@@ -156,6 +156,20 @@ def wheel_tag(path: Path) -> str:
     return "-".join(parts[-3:])
 
 
+def native_extension_name(path: Path) -> str:
+    python_tag = wheel_tag(path).split("-", 1)[0]
+    return f"grimace/_core.cpython-{python_tag.removeprefix('cp')}-x86_64-linux-gnu.so"
+
+
+def wheel_names_with_extra_dictionaries(path: Path) -> tuple[str, ...]:
+    return (
+        "grimace/__init__.py",
+        native_extension_name(path),
+        *wheel_dictionary_names(TEST_DICTIONARY_ARTIFACT),
+        *wheel_dictionary_names(TEST_SECOND_DICTIONARY_ARTIFACT),
+    )
+
+
 def wheel_archive_metadata(*, tag: str) -> str:
     return wheel_archive_metadata_with_headers(
         "Wheel-Version: 1.0",
@@ -269,12 +283,18 @@ def write_sdist(
 
 def write_wheel(
     path: Path,
-    names: tuple[str, ...] = ("grimace/__init__.py", *WHEEL_DICTIONARY_NAMES),
+    names: tuple[str, ...] | None = None,
     *,
     manifest_script: str = TEST_GENERATOR_SCRIPT,
     include_dist_info_metadata: bool = True,
     payload_overrides: dict[str, bytes] | None = None,
 ) -> None:
+    if names is None:
+        names = (
+            "grimace/__init__.py",
+            native_extension_name(path),
+            *WHEEL_DICTIONARY_NAMES,
+        )
     if include_dist_info_metadata:
         for metadata_name in (
             wheel_metadata_name(path),
@@ -662,6 +682,29 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
             write_wheel(wheel, ("grimace/__init__.py",))
             with self.assertRaisesRegex(ValueError, "missing PreparedMol zstd"):
+                validator.validate_wheel(wheel)
+
+    def test_rejects_wheel_without_native_extension(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel(wheel, ("grimace/__init__.py", *WHEEL_DICTIONARY_NAMES))
+            with self.assertRaisesRegex(ValueError, "native grimace._core"):
+                validator.validate_wheel(wheel)
+
+    def test_rejects_wheel_native_extension_that_does_not_match_python_tag(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp313-cp313-manylinux_2_28_x86_64.whl"
+            write_wheel(
+                wheel,
+                (
+                    "grimace/__init__.py",
+                    "grimace/_core.cpython-312-x86_64-linux-gnu.so",
+                    *WHEEL_DICTIONARY_NAMES,
+                ),
+            )
+            with self.assertRaisesRegex(ValueError, "native extension tag"):
                 validator.validate_wheel(wheel)
 
     def test_rejects_incomplete_wheel_prepared_mol_zstd_dictionary_data(self) -> None:
@@ -1354,11 +1397,6 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             TEST_GENERATOR_SCRIPT,
             TEST_SECOND_GENERATOR_SCRIPT,
         )
-        wheel_names = (
-            "grimace/__init__.py",
-            *wheel_dictionary_names(TEST_DICTIONARY_ARTIFACT),
-            *wheel_dictionary_names(TEST_SECOND_DICTIONARY_ARTIFACT),
-        )
         sdist_payloads = {
             sdist_dictionary_names(TEST_DICTIONARY_ARTIFACT)[0]: dictionary_manifest(
                 TEST_GENERATOR_SCRIPT,
@@ -1398,9 +1436,10 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
                         payload_overrides=sdist_payloads,
                     )
                 else:
+                    wheel = dist / name
                     write_wheel(
-                        dist / name,
-                        wheel_names,
+                        wheel,
+                        wheel_names_with_extra_dictionaries(wheel),
                         include_dist_info_metadata=True,
                         payload_overrides=wheel_payloads,
                     )

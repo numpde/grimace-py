@@ -452,6 +452,7 @@ def validate_wheel(wheel_path: Path) -> WheelInfo:
                 file_sha256_by_name=prepared_mol_zstd_file_sha256,
                 file_size_by_name=prepared_mol_zstd_file_size,
             )
+            validate_native_extension(names, wheel_match=wheel_match)
             return WheelInfo(
                 version=wheel_match.group("version"),
                 prepared_mol_zstd=prepared_mol_zstd,
@@ -527,6 +528,27 @@ def validate_wheel_archive_metadata(
         raise ValueError("wheel WHEEL metadata lacks compatibility tags")
     if expected_tag not in tags:
         raise ValueError("wheel WHEEL metadata tags do not match filename")
+
+
+def validate_native_extension(
+    names: Iterable[str],
+    *,
+    wheel_match: re.Match[str],
+) -> None:
+    python_tag = wheel_match.group("python_tag")
+    abi_tag = wheel_match.group("abi_tag")
+    if not python_tag.startswith("cp") or python_tag != abi_tag:
+        raise ValueError("wheel filename tags are not supported for grimace-py")
+    expected_prefix = f"grimace/_core.cpython-{python_tag.removeprefix('cp')}-"
+    candidates = tuple(
+        name
+        for name in names
+        if name.startswith("grimace/_core.") and name.endswith(".so")
+    )
+    if len(candidates) != 1:
+        raise ValueError("wheel must contain exactly one native grimace._core extension")
+    if not candidates[0].startswith(expected_prefix):
+        raise ValueError("wheel native extension tag does not match filename")
 
 
 def single_metadata_header(message: Message, header: str) -> str:

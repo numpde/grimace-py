@@ -11,6 +11,9 @@ RECORD_PERF_HOTSPOTS_SCRIPT = REPO_ROOT / "scripts" / "record_perf_hotspots.py"
 PREPARED_ZSTD_DICT_SCRIPT = (
     REPO_ROOT / "scripts" / "prepared_mol_zstd_dictionary_generate.py"
 )
+HISTORICAL_PREPARED_ZSTD_DICT_SCRIPT = (
+    REPO_ROOT / "scripts" / "generate_prepared_mol_zstd_dictionary.py"
+)
 MEASURE_PREPARED_ZSTD_TIMINGS_SCRIPT = (
     REPO_ROOT / "scripts" / "timings_prepared_mol_zstd_measure.py"
 )
@@ -35,19 +38,24 @@ class LocalScriptsSmokeTests(unittest.TestCase):
     def test_prepared_mol_zstd_dictionary_generator_help_loads_without_deps(
         self,
     ) -> None:
-        proc = subprocess.run(
-            [sys.executable, "-I", str(PREPARED_ZSTD_DICT_SCRIPT), "--help"],
-            cwd=REPO_ROOT,
-            env=os.environ.copy(),
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        self.assertEqual(proc.returncode, 0, msg=proc.stderr or proc.stdout)
-        self.assertIn(
-            "Generate the production PreparedMol zstd dictionary artifact",
-            proc.stdout,
-        )
+        for script in (
+            PREPARED_ZSTD_DICT_SCRIPT,
+            HISTORICAL_PREPARED_ZSTD_DICT_SCRIPT,
+        ):
+            with self.subTest(script=script.name):
+                proc = subprocess.run(
+                    [sys.executable, "-I", str(script), "--help"],
+                    cwd=REPO_ROOT,
+                    env=os.environ.copy(),
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                self.assertEqual(proc.returncode, 0, msg=proc.stderr or proc.stdout)
+                self.assertIn(
+                    "Generate the production PreparedMol zstd dictionary artifact",
+                    proc.stdout,
+                )
 
     def test_prepared_mol_zstd_timing_scripts_help_load_without_deps(self) -> None:
         cases = (

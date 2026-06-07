@@ -14,6 +14,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 GENERATOR_PATH = ROOT / "scripts" / "prepared_mol_zstd_dictionary_generate.py"
+DICTIONARY_ROOT = ROOT / "python" / "grimace" / "data" / "prepared_mol_zstd"
 
 
 def generator_constants() -> dict[str, ast.AST]:
@@ -156,6 +157,22 @@ class PreparedMolZstdGeneratorContractTests(unittest.TestCase):
             },
             literal_constant("SELECTION_RULE"),
         )
+
+    def test_shipped_manifest_generator_paths_are_resolvable(self) -> None:
+        manifests = tuple(sorted(DICTIONARY_ROOT.glob("*/default_v1.json")))
+        self.assertTrue(manifests)
+        for manifest_path in manifests:
+            with self.subTest(manifest=manifest_path.parent.name):
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                script = manifest["training_identity"]["generator"]["script"]
+                self.assertIsInstance(script, str)
+                script_path = Path(script)
+                self.assertFalse(script_path.is_absolute())
+                self.assertNotIn("..", script_path.parts)
+                self.assertTrue(
+                    (ROOT / script_path).is_file(),
+                    f"Missing generator script recorded by {manifest_path}: {script}",
+                )
 
     def test_dictionary_id_derivation_rule_is_the_committed_recipe(self) -> None:
         self.assertEqual(

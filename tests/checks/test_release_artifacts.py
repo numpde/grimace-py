@@ -676,6 +676,21 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             write_wheel(wheel)
             validator.validate_wheel(wheel)
 
+    def test_accepts_wheel_core_type_stub_alongside_native_extension(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel(
+                wheel,
+                (
+                    "grimace/__init__.py",
+                    "grimace/_core.pyi",
+                    native_extension_name(wheel),
+                    *WHEEL_DICTIONARY_NAMES,
+                ),
+            )
+            validator.validate_wheel(wheel)
+
     def test_rejects_wheel_without_prepared_mol_zstd_dictionary_data(self) -> None:
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:
@@ -705,6 +720,22 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
                 ),
             )
             with self.assertRaisesRegex(ValueError, "native extension tag"):
+                validator.validate_wheel(wheel)
+
+    def test_rejects_wheel_with_extra_native_extension_artifact(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel(
+                wheel,
+                (
+                    "grimace/__init__.py",
+                    native_extension_name(wheel),
+                    "grimace/_core.pyd",
+                    *WHEEL_DICTIONARY_NAMES,
+                ),
+            )
+            with self.assertRaisesRegex(ValueError, "exactly one native"):
                 validator.validate_wheel(wheel)
 
     def test_rejects_incomplete_wheel_prepared_mol_zstd_dictionary_data(self) -> None:

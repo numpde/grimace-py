@@ -14,6 +14,14 @@ def read_text(relative_path: str) -> str:
     return (ROOT / relative_path).read_text(encoding="utf-8")
 
 
+def assert_before(test: unittest.TestCase, text: str, earlier: str, later: str) -> None:
+    earlier_index = text.find(earlier)
+    later_index = text.find(later)
+    test.assertNotEqual(earlier_index, -1, earlier)
+    test.assertNotEqual(later_index, -1, later)
+    test.assertLess(earlier_index, later_index)
+
+
 class ContainerPostureTests(unittest.TestCase):
     def test_compose_files_do_not_set_project_name(self) -> None:
         compose_files = sorted((ROOT / "compose").glob("*.yml"))
@@ -112,17 +120,17 @@ class ContainerPostureTests(unittest.TestCase):
             compose,
         )
         self.assertIn('python -m twine check "$$dist_dir"/*', compose)
-        self.assertLess(
-            compose.index(
-                'python scripts/validate_release_artifacts.py "$$dist_dir"/*.whl --wheel-only'
-            ),
-            compose.index('python -m twine check "$$dist_dir"/*'),
+        assert_before(
+            self,
+            compose,
+            'python scripts/validate_release_artifacts.py "$$dist_dir"/*.whl --wheel-only',
+            'python -m twine check "$$dist_dir"/*',
         )
-        self.assertLess(
-            compose.index('python -m twine check "$$dist_dir"/*'),
-            compose.index(
-                '/venv/wheel/bin/python -m pip install --no-deps "$$dist_dir"/*.whl'
-            ),
+        assert_before(
+            self,
+            compose,
+            'python -m twine check "$$dist_dir"/*',
+            '/venv/wheel/bin/python -m pip install --no-deps "$$dist_dir"/*.whl',
         )
         self.assertNotIn("source: ..\n", compose)
         self.assertNotIn(".venv", compose)
@@ -213,9 +221,11 @@ class ContainerPostureTests(unittest.TestCase):
             "python scripts/prepared_mol_zstd_dictionary_generate.py \"$$@\"",
             compose,
         )
-        self.assertLess(
-            compose.index("python scripts/prepared_mol_zstd_dictionary_generate.py"),
-            compose.index("python -m unittest tests.prepared_mol_zstd_dictionary_rates"),
+        assert_before(
+            self,
+            compose,
+            "python scripts/prepared_mol_zstd_dictionary_generate.py",
+            "python -m unittest tests.prepared_mol_zstd_dictionary_rates",
         )
         self.assertEqual(1, compose.count("type: bind"))
         self.assertNotIn("source: ..\n", compose)
@@ -277,9 +287,11 @@ class ContainerPostureTests(unittest.TestCase):
             "python scripts/timings_prepared_mol_zstd_plot.py --input /build-src/docs/timings-prepared-mol-zstd-output.tsv",
             compose,
         )
-        self.assertLess(
-            compose.index("python scripts/timings_prepared_mol_zstd_measure.py"),
-            compose.index("python scripts/timings_prepared_mol_zstd_plot.py"),
+        assert_before(
+            self,
+            compose,
+            "python scripts/timings_prepared_mol_zstd_measure.py",
+            "python scripts/timings_prepared_mol_zstd_plot.py",
         )
         self.assertEqual(2, compose.count("create_host_path: false"))
         self.assertNotIn("source: ..\n", compose)

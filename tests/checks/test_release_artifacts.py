@@ -81,6 +81,19 @@ def wheel_metadata(
     )
 
 
+def wheel_metadata_with_project_urls(*project_urls: str, version: str = "0.1.12") -> str:
+    metadata = project_metadata()
+    return "\n".join(
+        (
+            "Metadata-Version: 2.4",
+            f"Name: {metadata['name']}",
+            f"Version: {version}",
+            *(f"Project-URL: {project_url}" for project_url in project_urls),
+            "",
+        )
+    )
+
+
 def wheel_metadata_name(path: Path) -> str:
     version = path.name.split("-", 2)[1]
     return f"grimace_py-{version}.dist-info/METADATA"
@@ -130,6 +143,8 @@ def write_sdist(
     manifest_script: str = TEST_GENERATOR_SCRIPT,
     include_generator_script: bool = True,
     directory_names: tuple[str, ...] = (),
+    include_root_directory: bool = False,
+    include_root_directory_marker: bool = False,
     payload_overrides: dict[str, bytes] | None = None,
 ) -> None:
     root = path.name.removesuffix(".tar.gz")
@@ -142,6 +157,14 @@ def write_sdist(
         names = (*names, manifest_script)
     payload_overrides = payload_overrides or {}
     with tarfile.open(path, "w:gz") as archive:
+        if include_root_directory:
+            info = tarfile.TarInfo(root)
+            info.type = tarfile.DIRTYPE
+            archive.addfile(info)
+        if include_root_directory_marker:
+            info = tarfile.TarInfo(f"{root}/")
+            info.type = tarfile.DIRTYPE
+            archive.addfile(info)
         for name in directory_names:
             full_name = f"{root}/{name}"
             info = tarfile.TarInfo(full_name)
@@ -274,6 +297,47 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "unsafe sdist path"):
                 validator.validate_sdist(sdist)
 
+    def test_accepts_explicit_sdist_root_directory_member(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            sdist = Path(tmp) / "grimace_py-0.1.12.tar.gz"
+            write_sdist(
+                sdist,
+                ("pyproject.toml", "Cargo.toml", *SDIST_DICTIONARY_NAMES),
+                include_root_directory=True,
+            )
+            validator.validate_sdist(sdist)
+
+    def test_accepts_explicit_sdist_root_directory_marker(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            sdist = Path(tmp) / "grimace_py-0.1.12.tar.gz"
+            write_sdist(
+                sdist,
+                ("pyproject.toml", "Cargo.toml", *SDIST_DICTIONARY_NAMES),
+                include_root_directory_marker=True,
+            )
+            validator.validate_sdist(sdist)
+
+    def test_rejects_normalized_sdist_path_aliases(self) -> None:
+        validator = load_validator()
+        unsafe_names = (
+            "grimace_py-0.1.12//pyproject.toml",
+            "grimace_py-0.1.12/./pyproject.toml",
+            "grimace_py-0.1.12//",
+        )
+        for unsafe_name in unsafe_names:
+            with self.subTest(unsafe_name=unsafe_name):
+                with tempfile.TemporaryDirectory() as tmp:
+                    sdist = Path(tmp) / "grimace_py-0.1.12.tar.gz"
+                    with tarfile.open(sdist, "w:gz") as archive:
+                        payload = b""
+                        info = tarfile.TarInfo(unsafe_name)
+                        info.size = len(payload)
+                        archive.addfile(info, BytesIO(payload))
+                    with self.assertRaisesRegex(ValueError, "unsafe sdist path"):
+                        validator.validate_sdist(sdist)
+
     def test_rejects_platform_specific_unsafe_sdist_paths(self) -> None:
         validator = load_validator()
         unsafe_names = (
@@ -335,6 +399,17 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
     def test_rejects_platform_specific_unsafe_wheel_paths(self) -> None:
         validator = load_validator()
         unsafe_names = ("nested\\escape", "C:/escape")
+        for unsafe_name in unsafe_names:
+            with self.subTest(unsafe_name=unsafe_name):
+                with tempfile.TemporaryDirectory() as tmp:
+                    wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+                    write_wheel(wheel, (unsafe_name,))
+                    with self.assertRaisesRegex(ValueError, "unsafe wheel path"):
+                        validator.validate_wheel(wheel)
+
+    def test_rejects_normalized_wheel_path_aliases(self) -> None:
+        validator = load_validator()
+        unsafe_names = ("grimace//__init__.py", "grimace/./__init__.py")
         for unsafe_name in unsafe_names:
             with self.subTest(unsafe_name=unsafe_name):
                 with tempfile.TemporaryDirectory() as tmp:
@@ -558,6 +633,38 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "METADATA"):
                 validator.validate_wheel(wheel)
 
+    def test_accepts_wheel_source_project_url_label_with_spacing_and_case(self) -> None:
+        validator = load_validator()
+        source_url = project_metadata()["urls"]["Source"]
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel(
+                wheel,
+                payload_overrides={
+                    wheel_metadata_name(wheel): wheel_metadata_with_project_urls(
+                        f" source , {source_url} ",
+                    ).encode("utf-8"),
+                },
+            )
+            validator.validate_wheel(wheel)
+
+    def test_rejects_duplicate_wheel_source_project_url_labels(self) -> None:
+        validator = load_validator()
+        source_url = project_metadata()["urls"]["Source"]
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel(
+                wheel,
+                payload_overrides={
+                    wheel_metadata_name(wheel): wheel_metadata_with_project_urls(
+                        f"Source, {source_url}",
+                        "Source, https://example.invalid/source",
+                    ).encode("utf-8"),
+                },
+            )
+            with self.assertRaisesRegex(ValueError, "Project-URL"):
+                validator.validate_wheel(wheel)
+
     def test_rejects_wheel_metadata_name_mismatch(self) -> None:
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:
@@ -666,6 +773,39 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
                         payload_overrides=wheel_payloads,
                     )
             with self.assertRaisesRegex(ValueError, "generator provenance"):
+                validator.validate_artifacts(dist, "v0.1.12")
+
+    def test_rejects_release_when_wheel_dictionary_payload_differs_from_sdist(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            dist = Path(tmp)
+            write_expected_artifacts(validator, dist, "0.1.12")
+            for wheel in dist.glob("*.whl"):
+                write_wheel(
+                    wheel,
+                    payload_overrides={WHEEL_DICTIONARY_NAMES[1]: b"different dictionary"},
+                )
+            with self.assertRaisesRegex(ValueError, "package data bytes"):
+                validator.validate_artifacts(dist, "v0.1.12")
+
+    def test_rejects_release_when_wheel_manifest_payload_differs_from_sdist(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            dist = Path(tmp)
+            write_expected_artifacts(validator, dist, "0.1.12")
+            for wheel in dist.glob("*.whl"):
+                write_wheel(
+                    wheel,
+                    payload_overrides={
+                        WHEEL_DICTIONARY_NAMES[0]: dictionary_manifest(
+                            TEST_GENERATOR_SCRIPT,
+                            artifact=TEST_DICTIONARY_ARTIFACT,
+                        )
+                        .replace("}", ', "extra": true}', 1)
+                        .encode("utf-8"),
+                    },
+                )
+            with self.assertRaisesRegex(ValueError, "package data bytes"):
                 validator.validate_artifacts(dist, "v0.1.12")
 
     def test_rejects_release_when_wheel_source_url_differs_from_sdist(self) -> None:

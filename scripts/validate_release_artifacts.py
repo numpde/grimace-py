@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Iterable
 from email.parser import Parser
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -81,33 +82,46 @@ FORBIDDEN_SDIST_PATH_FRAGMENTS = (
 
 
 class WheelInfo:
-    __slots__ = ("version", "source_url", "prepared_mol_zstd_scripts")
+    __slots__ = ("version", "source_url", "prepared_mol_zstd")
 
     def __init__(
         self,
         *,
         version: str,
         source_url: str,
-        prepared_mol_zstd_scripts: dict[str, str],
+        prepared_mol_zstd: "PreparedMolZstdPackageData",
     ) -> None:
         self.version = version
         self.source_url = source_url
-        self.prepared_mol_zstd_scripts = prepared_mol_zstd_scripts
+        self.prepared_mol_zstd = prepared_mol_zstd
 
 
 class SdistInfo:
-    __slots__ = ("version", "source_url", "prepared_mol_zstd_scripts")
+    __slots__ = ("version", "source_url", "prepared_mol_zstd")
 
     def __init__(
         self,
         *,
         version: str,
         source_url: str,
-        prepared_mol_zstd_scripts: dict[str, str],
+        prepared_mol_zstd: "PreparedMolZstdPackageData",
     ) -> None:
         self.version = version
         self.source_url = source_url
-        self.prepared_mol_zstd_scripts = prepared_mol_zstd_scripts
+        self.prepared_mol_zstd = prepared_mol_zstd
+
+
+class PreparedMolZstdPackageData:
+    __slots__ = ("generator_scripts", "file_sha256")
+
+    def __init__(
+        self,
+        *,
+        generator_scripts: dict[str, str],
+        file_sha256: dict[str, dict[str, str]],
+    ) -> None:
+        self.generator_scripts = generator_scripts
+        self.file_sha256 = file_sha256
 
 
 def expected_artifact_names(version: str) -> tuple[str, ...]:
@@ -162,9 +176,20 @@ def validate_artifacts(dist_dir: Path, tag: str) -> None:
             raise ValueError(
                 "wheel source repository URL does not match source distribution"
             )
-        if wheel_info.prepared_mol_zstd_scripts != sdist_info.prepared_mol_zstd_scripts:
+        if (
+            wheel_info.prepared_mol_zstd.generator_scripts
+            != sdist_info.prepared_mol_zstd.generator_scripts
+        ):
             raise ValueError(
                 "wheel PreparedMol zstd generator provenance does not match "
+                "the companion source distribution"
+            )
+        if (
+            wheel_info.prepared_mol_zstd.file_sha256
+            != sdist_info.prepared_mol_zstd.file_sha256
+        ):
+            raise ValueError(
+                "wheel PreparedMol zstd package data bytes do not match "
                 "the companion source distribution"
             )
 
@@ -188,12 +213,19 @@ def is_forbidden_archive_member(relative: str) -> bool:
     )
 
 
-def is_unsafe_archive_path(name: str) -> bool:
-    parts = Path(name).parts
+def is_unsafe_archive_path(
+    name: str,
+    *,
+    allow_directory_marker: bool = False,
+) -> bool:
+    if allow_directory_marker and name.endswith("/"):
+        name = name[:-1]
+    parts = name.split("/")
     return (
-        name.startswith("/")
+        not name
+        or name.startswith("/")
         or "\\" in name
-        or ".." in parts
+        or any(part in ("", ".", "..") for part in parts)
         or any(re.match(r"^[A-Za-z]:", part) is not None for part in parts)
     )
 
@@ -209,6 +241,10 @@ def decode_archive_text(payload: bytes, member_name: str) -> str:
         return payload.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise ValueError(f"archive member is not valid UTF-8: {member_name!r}") from exc
+
+
+def sha256_hex(payload: bytes) -> str:
+    return hashlib.sha256(payload).hexdigest()
 
 
 def canonical_project_name(name: str) -> str:
@@ -252,9 +288,11 @@ def validate_sdist(sdist_path: Path) -> SdistInfo:
         )
 
     root = f"{sdist_path.name.removesuffix('.tar.gz')}/"
+    root_dir = root.rstrip("/")
     names: list[str] = []
     file_names: list[str] = []
     manifest_texts: dict[str, str] = {}
+    prepared_mol_zstd_file_sha256: dict[str, str] = {}
     pyproject_text: str | None = None
     seen_names: set[str] = set()
     try:
@@ -263,12 +301,17 @@ def validate_sdist(sdist_path: Path) -> SdistInfo:
                 name = member.name
                 reject_duplicate_archive_member(name, seen_names)
                 names.append(name)
-                if is_unsafe_archive_path(name):
+                if is_unsafe_archive_path(
+                    name,
+                    allow_directory_marker=member.isdir(),
+                ):
                     raise ValueError(f"unsafe sdist path: {name!r}")
                 if member.issym() or member.islnk():
                     raise ValueError(f"unexpected link in sdist: {name!r}")
                 if not member.isfile() and not member.isdir():
                     raise ValueError(f"unexpected special file in sdist: {name!r}")
+                if name in (root_dir, root) and member.isdir():
+                    continue
                 if not name.startswith(root):
                     raise ValueError(f"sdist member is outside archive root: {name!r}")
 
@@ -286,24 +329,27 @@ def validate_sdist(sdist_path: Path) -> SdistInfo:
                     pyproject_text = decode_archive_text(payload.read(), relative)
                 if (
                     relative.startswith(SDIST_PREPARED_MOL_ZSTD_PREFIX)
-                    and relative.endswith("/default_v1.json")
                     and member.isfile()
                 ):
                     payload = archive.extractfile(member)
                     if payload is None:
                         raise ValueError(f"could not read sdist member: {name!r}")
-                    manifest_texts[relative] = decode_archive_text(
-                        payload.read(),
-                        relative,
-                    )
+                    payload_bytes = payload.read()
+                    prepared_mol_zstd_file_sha256[relative] = sha256_hex(payload_bytes)
+                    if relative.endswith("/default_v1.json"):
+                        manifest_texts[relative] = decode_archive_text(
+                            payload_bytes,
+                            relative,
+                        )
             relative_names = tuple(name[len(root) :] for name in names if name.startswith(root))
-            prepared_mol_zstd_scripts = validate_prepared_mol_zstd_package_data(
+            prepared_mol_zstd = validate_prepared_mol_zstd_package_data(
                 relative_names,
                 prefix=SDIST_PREPARED_MOL_ZSTD_PREFIX,
                 manifest_texts=manifest_texts,
+                file_sha256_by_name=prepared_mol_zstd_file_sha256,
             )
             validate_prepared_mol_zstd_sdist_provenance(
-                prepared_mol_zstd_scripts,
+                prepared_mol_zstd.generator_scripts,
                 source_file_names=frozenset(file_names),
             )
             source_url = sdist_project_source_url(
@@ -313,7 +359,7 @@ def validate_sdist(sdist_path: Path) -> SdistInfo:
             return SdistInfo(
                 version=sdist_match.group("version"),
                 source_url=source_url,
-                prepared_mol_zstd_scripts=prepared_mol_zstd_scripts,
+                prepared_mol_zstd=prepared_mol_zstd,
             )
     except (OSError, tarfile.TarError) as exc:
         raise ValueError(f"could not read source distribution {sdist_path}: {exc}") from exc
@@ -342,7 +388,10 @@ def validate_wheel(wheel_path: Path) -> WheelInfo:
             for member in archive.infolist():
                 name = member.filename
                 reject_duplicate_archive_member(name, seen_names)
-                if is_unsafe_archive_path(name):
+                if is_unsafe_archive_path(
+                    name,
+                    allow_directory_marker=member.is_dir(),
+                ):
                     raise ValueError(f"unsafe wheel path: {name!r}")
                 mode = (member.external_attr >> 16) & 0o170000
                 if mode == 0o120000:
@@ -360,21 +409,27 @@ def validate_wheel(wheel_path: Path) -> WheelInfo:
                 dist_info_root=dist_info_root,
                 expected_version=wheel_match.group("version"),
             )
-            manifest_texts = {
-                name: decode_archive_text(archive.read(name), name)
-                for name in names
-                if name.startswith(WHEEL_PREPARED_MOL_ZSTD_PREFIX)
-                and name.endswith("/default_v1.json")
-            }
-            prepared_mol_zstd_scripts = validate_prepared_mol_zstd_package_data(
+            prepared_mol_zstd_file_sha256: dict[str, str] = {}
+            manifest_texts: dict[str, str] = {}
+            for name in names:
+                if not name.startswith(WHEEL_PREPARED_MOL_ZSTD_PREFIX):
+                    continue
+                if name.endswith("/"):
+                    continue
+                payload = archive.read(name)
+                prepared_mol_zstd_file_sha256[name] = sha256_hex(payload)
+                if name.endswith("/default_v1.json"):
+                    manifest_texts[name] = decode_archive_text(payload, name)
+            prepared_mol_zstd = validate_prepared_mol_zstd_package_data(
                 names,
                 prefix=WHEEL_PREPARED_MOL_ZSTD_PREFIX,
                 manifest_texts=manifest_texts,
+                file_sha256_by_name=prepared_mol_zstd_file_sha256,
             )
             return WheelInfo(
                 version=wheel_match.group("version"),
                 source_url=source_url,
-                prepared_mol_zstd_scripts=prepared_mol_zstd_scripts,
+                prepared_mol_zstd=prepared_mol_zstd,
             )
     except (OSError, zipfile.BadZipFile) as exc:
         raise ValueError(f"could not read wheel {wheel_path}: {exc}") from exc
@@ -398,13 +453,21 @@ def validate_wheel_source_metadata(
     if message.get("Version") != expected_version:
         raise ValueError("wheel METADATA version does not match filename")
     source_urls = tuple(
-        value.removeprefix("Source,").strip()
+        url
         for value in message.get_all("Project-URL", ())
-        if value.startswith("Source,")
+        for label, url in (project_url_parts(value),)
+        if label == "source"
     )
     if len(source_urls) != 1 or not source_urls[0]:
         raise ValueError("wheel METADATA lacks the source repository Project-URL")
     return source_urls[0]
+
+
+def project_url_parts(value: str) -> tuple[str, str]:
+    label, separator, url = value.partition(",")
+    if not separator:
+        return "", ""
+    return label.strip().casefold(), url.strip()
 
 
 def validate_prepared_mol_zstd_package_data(
@@ -412,9 +475,11 @@ def validate_prepared_mol_zstd_package_data(
     *,
     prefix: str,
     manifest_texts: dict[str, str],
-) -> dict[str, str]:
+    file_sha256_by_name: dict[str, str],
+) -> PreparedMolZstdPackageData:
     artifacts: dict[str, set[str]] = {}
     generator_scripts: dict[str, str] = {}
+    file_sha256: dict[str, dict[str, str]] = {}
     for name in names:
         if not name.startswith(prefix) or name.endswith("/"):
             continue
@@ -430,6 +495,13 @@ def validate_prepared_mol_zstd_package_data(
         if filename not in PREPARED_MOL_ZSTD_FILENAMES:
             raise ValueError(f"unexpected PreparedMol zstd package data file: {name!r}")
         artifacts.setdefault(artifact, set()).add(filename)
+        try:
+            digest = file_sha256_by_name[name]
+        except KeyError as exc:
+            raise ValueError(
+                f"missing PreparedMol zstd package data payload: {name!r}"
+            ) from exc
+        file_sha256.setdefault(artifact, {})[filename] = digest
         if filename == "default_v1.json":
             try:
                 manifest_artifact, script = prepared_mol_zstd_manifest_provenance(
@@ -458,7 +530,10 @@ def validate_prepared_mol_zstd_package_data(
         raise ValueError(
             f"incomplete PreparedMol zstd dictionary package data: {incomplete!r}"
         )
-    return generator_scripts
+    return PreparedMolZstdPackageData(
+        generator_scripts=generator_scripts,
+        file_sha256=file_sha256,
+    )
 
 
 def validate_prepared_mol_zstd_sdist_provenance(

@@ -217,6 +217,12 @@ class _WriterScheduledAction:
             )
 
 
+@dataclass(frozen=True, slots=True)
+class _WriterScheduledActionEmission:
+    action: _WriterScheduledAction
+    transitions: tuple[WriterTransition, ...]
+
+
 def _consume_pending_entry_action(
     pending_entry: PendingWriterEntry,
 ) -> _WriterScheduledAction:
@@ -1001,6 +1007,30 @@ def _transitions_from_scheduled_action(
     )
 
 
+def _scheduled_action_emissions(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+    actions: tuple[_WriterScheduledAction, ...],
+) -> tuple[_WriterScheduledActionEmission, ...]:
+    emissions: list[_WriterScheduledActionEmission] = []
+
+    for action in actions:
+        emissions.append(
+            _WriterScheduledActionEmission(
+                action=action,
+                transitions=_transitions_from_scheduled_action(
+                    prepared,
+                    state,
+                    context,
+                    action,
+                ),
+            )
+        )
+
+    return tuple(emissions)
+
+
 def _transitions_from_scheduled_actions(
     prepared: SouthStarPreparedMol,
     state: WriterState,
@@ -1009,15 +1039,13 @@ def _transitions_from_scheduled_actions(
 ) -> tuple[WriterTransition, ...]:
     transitions: list[WriterTransition] = []
 
-    for action in actions:
-        transitions.extend(
-            _transitions_from_scheduled_action(
-                prepared,
-                state,
-                context,
-                action,
-            )
-        )
+    for emission in _scheduled_action_emissions(
+        prepared,
+        state,
+        context,
+        actions,
+    ):
+        transitions.extend(emission.transitions)
 
     return tuple(transitions)
 

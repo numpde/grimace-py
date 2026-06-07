@@ -1494,6 +1494,78 @@ class WriterStateKernelTest(unittest.TestCase):
             AtomId(4),
         )
 
+    def test_scheduled_action_emissions_preserve_action_identity(self) -> None:
+        prepared = object()
+        state = object()
+        context = object()
+        first_action = writer_transitions._finish_active_action(AtomId(0))
+        second_action = writer_transitions._emit_root_atom_action(AtomId(1))
+        transition = object()
+
+        with patch(
+            "grimace._south_star1.writer_transitions._transitions_from_scheduled_action",
+            side_effect=((transition,), ()),
+        ) as emit_action:
+            emissions = writer_transitions._scheduled_action_emissions(
+                prepared,  # type: ignore[arg-type]
+                state,  # type: ignore[arg-type]
+                context,  # type: ignore[arg-type]
+                (first_action, second_action),
+            )
+
+        self.assertEqual(len(emissions), 2)
+        self.assertIs(emissions[0].action, first_action)
+        self.assertEqual(emissions[0].transitions, (transition,))
+        self.assertIs(emissions[1].action, second_action)
+        self.assertEqual(emissions[1].transitions, ())
+        self.assertEqual(emit_action.call_count, 2)
+        self.assertEqual(
+            emit_action.call_args_list[0].args,
+            (prepared, state, context, first_action),
+        )
+        self.assertEqual(
+            emit_action.call_args_list[1].args,
+            (prepared, state, context, second_action),
+        )
+
+    def test_transitions_from_scheduled_actions_flattens_emissions(self) -> None:
+        prepared = object()
+        state = object()
+        context = object()
+        first_action = writer_transitions._finish_active_action(AtomId(0))
+        second_action = writer_transitions._emit_root_atom_action(AtomId(1))
+        first_transition = object()
+        second_transition = object()
+        emissions = (
+            writer_transitions._WriterScheduledActionEmission(
+                action=first_action,
+                transitions=(first_transition,),
+            ),
+            writer_transitions._WriterScheduledActionEmission(
+                action=second_action,
+                transitions=(second_transition,),
+            ),
+        )
+
+        with patch(
+            "grimace._south_star1.writer_transitions._scheduled_action_emissions",
+            return_value=emissions,
+        ) as scheduled_emissions:
+            result = writer_transitions._transitions_from_scheduled_actions(
+                prepared,  # type: ignore[arg-type]
+                state,  # type: ignore[arg-type]
+                context,  # type: ignore[arg-type]
+                (first_action, second_action),
+            )
+
+        self.assertEqual(result, (first_transition, second_transition))
+        scheduled_emissions.assert_called_once_with(
+            prepared,
+            state,
+            context,
+            (first_action, second_action),
+        )
+
     def test_active_emitted_scheduler_does_not_compute_children_when_closure_transition_survives(self) -> None:
         prepared = object()
         state = object()

@@ -17,6 +17,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_STEM = "grimace_py"
 PROJECT_NAME = "grimace-py"
+EXPECTED_PROJECT_SOURCE_URL = "https://github.com/numpde/grimace-py"
 PYTHON_TAGS = ("cp312", "cp313")
 PLATFORM_TAG = "manylinux_2_28_x86_64"
 TAG_PATTERN = re.compile(r"^v(?P<version>[0-9]+\.[0-9]+\.[0-9]+)$")
@@ -275,6 +276,11 @@ def sdist_project_source_url(
         raise ValueError("source distribution project version does not match filename")
     if not isinstance(source_url, str) or not source_url:
         raise ValueError("source distribution project.urls.Source must be non-empty")
+    if source_url != EXPECTED_PROJECT_SOURCE_URL:
+        raise ValueError(
+            "source distribution project.urls.Source does not match the official "
+            "repository URL"
+        )
     return source_url
 
 
@@ -460,6 +466,11 @@ def validate_wheel_source_metadata(
     )
     if len(source_urls) != 1 or not source_urls[0]:
         raise ValueError("wheel METADATA lacks the source repository Project-URL")
+    if source_urls[0] != EXPECTED_PROJECT_SOURCE_URL:
+        raise ValueError(
+            "wheel METADATA source repository URL does not match the official "
+            "repository URL"
+        )
     return source_urls[0]
 
 

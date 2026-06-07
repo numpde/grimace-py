@@ -230,6 +230,13 @@ def load_validator():
 
 
 class ReleaseArtifactValidationTests(unittest.TestCase):
+    def test_official_source_url_policy_matches_pyproject(self) -> None:
+        validator = load_validator()
+        self.assertEqual(
+            project_metadata()["urls"]["Source"],
+            validator.EXPECTED_PROJECT_SOURCE_URL,
+        )
+
     def test_accepts_exact_release_artifact_set_for_tag(self) -> None:
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:
@@ -601,6 +608,22 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "project version"):
                 validator.validate_sdist(sdist)
 
+    def test_rejects_sdist_source_url_that_is_not_official_repository(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            sdist = Path(tmp) / "grimace_py-0.1.12.tar.gz"
+            write_sdist(
+                sdist,
+                ("pyproject.toml", "Cargo.toml", *SDIST_DICTIONARY_NAMES),
+                payload_overrides={
+                    "pyproject.toml": pyproject_toml(
+                        source_url="https://example.invalid/source",
+                    ).encode("utf-8"),
+                },
+            )
+            with self.assertRaisesRegex(ValueError, "official repository URL"):
+                validator.validate_sdist(sdist)
+
     def test_rejects_invalid_utf8_wheel_manifest(self) -> None:
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:
@@ -689,6 +712,21 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
                 },
             )
             with self.assertRaisesRegex(ValueError, "METADATA version"):
+                validator.validate_wheel(wheel)
+
+    def test_rejects_wheel_source_url_that_is_not_official_repository(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel(
+                wheel,
+                payload_overrides={
+                    wheel_metadata_name(wheel): wheel_metadata(
+                        source_url="https://example.invalid/source",
+                    ).encode("utf-8"),
+                },
+            )
+            with self.assertRaisesRegex(ValueError, "official repository URL"):
                 validator.validate_wheel(wheel)
 
     def test_rejects_wheel_without_canonical_metadata_member(self) -> None:

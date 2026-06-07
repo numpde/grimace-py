@@ -14,7 +14,6 @@ import tomllib
 import zipfile
 
 
-ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_STEM = "grimace_py"
 PROJECT_NAME = "grimace-py"
 EXPECTED_PROJECT_SOURCE_URL = "https://github.com/numpde/grimace-py"
@@ -83,32 +82,28 @@ FORBIDDEN_SDIST_PATH_FRAGMENTS = (
 
 
 class WheelInfo:
-    __slots__ = ("version", "source_url", "prepared_mol_zstd")
+    __slots__ = ("version", "prepared_mol_zstd")
 
     def __init__(
         self,
         *,
         version: str,
-        source_url: str,
         prepared_mol_zstd: "PreparedMolZstdPackageData",
     ) -> None:
         self.version = version
-        self.source_url = source_url
         self.prepared_mol_zstd = prepared_mol_zstd
 
 
 class SdistInfo:
-    __slots__ = ("version", "source_url", "prepared_mol_zstd")
+    __slots__ = ("version", "prepared_mol_zstd")
 
     def __init__(
         self,
         *,
         version: str,
-        source_url: str,
         prepared_mol_zstd: "PreparedMolZstdPackageData",
     ) -> None:
         self.version = version
-        self.source_url = source_url
         self.prepared_mol_zstd = prepared_mol_zstd
 
 
@@ -172,10 +167,6 @@ def validate_artifacts(dist_dir: Path, tag: str) -> None:
             raise ValueError(
                 "wheel version does not match release tag: "
                 f"{wheel_info.version!r}"
-            )
-        if wheel_info.source_url != sdist_info.source_url:
-            raise ValueError(
-                "wheel source repository URL does not match source distribution"
             )
         if (
             wheel_info.prepared_mol_zstd.generator_scripts
@@ -252,11 +243,11 @@ def canonical_project_name(name: str) -> str:
     return re.sub(r"[-_.]+", "-", name).lower()
 
 
-def sdist_project_source_url(
+def validate_sdist_project_metadata(
     pyproject_text: str | None,
     *,
     expected_version: str,
-) -> str:
+) -> None:
     if pyproject_text is None:
         raise ValueError("source distribution lacks pyproject.toml")
     try:
@@ -281,7 +272,6 @@ def sdist_project_source_url(
             "source distribution project.urls.Source does not match the official "
             "repository URL"
         )
-    return source_url
 
 
 def validate_sdist(sdist_path: Path) -> SdistInfo:
@@ -358,13 +348,12 @@ def validate_sdist(sdist_path: Path) -> SdistInfo:
                 prepared_mol_zstd.generator_scripts,
                 source_file_names=frozenset(file_names),
             )
-            source_url = sdist_project_source_url(
+            validate_sdist_project_metadata(
                 pyproject_text,
                 expected_version=sdist_match.group("version"),
             )
             return SdistInfo(
                 version=sdist_match.group("version"),
-                source_url=source_url,
                 prepared_mol_zstd=prepared_mol_zstd,
             )
     except (OSError, tarfile.TarError) as exc:
@@ -409,7 +398,7 @@ def validate_wheel(wheel_path: Path) -> WheelInfo:
                 root = name.rstrip("/").split("/", 1)[0]
                 if root not in allowed_roots:
                     raise ValueError(f"unexpected top-level wheel member: {name!r}")
-            source_url = validate_wheel_source_metadata(
+            validate_wheel_source_metadata(
                 archive,
                 names,
                 dist_info_root=dist_info_root,
@@ -434,7 +423,6 @@ def validate_wheel(wheel_path: Path) -> WheelInfo:
             )
             return WheelInfo(
                 version=wheel_match.group("version"),
-                source_url=source_url,
                 prepared_mol_zstd=prepared_mol_zstd,
             )
     except (OSError, zipfile.BadZipFile) as exc:
@@ -447,7 +435,7 @@ def validate_wheel_source_metadata(
     *,
     dist_info_root: str,
     expected_version: str,
-) -> str:
+) -> None:
     metadata_name = f"{dist_info_root}/METADATA"
     if metadata_name not in names:
         raise ValueError(f"wheel lacks canonical METADATA file: {metadata_name!r}")
@@ -471,7 +459,6 @@ def validate_wheel_source_metadata(
             "wheel METADATA source repository URL does not match the official "
             "repository URL"
         )
-    return source_urls[0]
 
 
 def project_url_parts(value: str) -> tuple[str, str]:

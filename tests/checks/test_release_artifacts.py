@@ -846,23 +846,6 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "package data bytes"):
                 validator.validate_artifacts(dist, "v0.1.12")
 
-    def test_rejects_release_when_wheel_source_url_differs_from_sdist(self) -> None:
-        validator = load_validator()
-        with tempfile.TemporaryDirectory() as tmp:
-            dist = Path(tmp)
-            write_expected_artifacts(validator, dist, "0.1.12")
-            for wheel in dist.glob("*.whl"):
-                write_wheel(
-                    wheel,
-                    payload_overrides={
-                        wheel_metadata_name(wheel): wheel_metadata(
-                            source_url="https://example.invalid/source",
-                        ).encode("utf-8"),
-                    },
-                )
-            with self.assertRaisesRegex(ValueError, "source repository URL"):
-                validator.validate_artifacts(dist, "v0.1.12")
-
     def test_rejects_tag_that_does_not_match_release_version_shape(self) -> None:
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:

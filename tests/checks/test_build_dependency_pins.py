@@ -90,6 +90,10 @@ class BuildDependencyPinTests(unittest.TestCase):
                         text,
                     )
                     self.assertIn(
+                        f'TWINE_PIP_VERSION: "{TWINE_VERSION}"',
+                        text,
+                    )
+                    self.assertIn(
                         f'ZSTANDARD_FIXTURE_PIP_VERSION: "{ZSTANDARD_VERSION}"',
                         text,
                     )

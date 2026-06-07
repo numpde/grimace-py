@@ -128,6 +128,7 @@ class WorkflowPostureTests(unittest.TestCase):
         self.assertIn('MATURIN_PIP_VERSION: "1.13.1"', workflow)
         self.assertIn('MATURIN_ACTION_VERSION: "v1.13.1"', workflow)
         self.assertIn('ZSTANDARD_FIXTURE_PIP_VERSION: "0.25.0"', workflow)
+        self.assertIn('TWINE_PIP_VERSION: "6.2.0"', workflow)
         self.assertIn('PIP_DISABLE_PIP_VERSION_CHECK: "1"', workflow)
         self.assertIn('PIP_NO_CACHE_DIR: "1"', workflow)
         self.assertRegex(
@@ -145,7 +146,10 @@ class WorkflowPostureTests(unittest.TestCase):
             2,
         )
         self.assertIn('"maturin==$MATURIN_PIP_VERSION"', workflow)
+        self.assertEqual(workflow.count('"twine==$TWINE_PIP_VERSION"'), 2)
         self.assertEqual(workflow.count('"zstandard==$ZSTANDARD_FIXTURE_PIP_VERSION"'), 2)
+        self.assertIn("python -m twine check dist/*.whl", workflow)
+        self.assertIn("python -m twine check dist/*.tar.gz", workflow)
         self.assertIn("python -m pip install --no-deps dist/*.whl", workflow)
         self.assertIn("python -m pip install --no-deps --no-build-isolation dist/*.tar.gz", workflow)
         self.assertEqual(
@@ -177,12 +181,24 @@ class WorkflowPostureTests(unittest.TestCase):
             self,
             wheel,
             "python scripts/validate_release_artifacts.py dist/*.whl --wheel-only",
+            "python -m twine check dist/*.whl",
+        )
+        assert_before(
+            self,
+            wheel,
+            "python -m twine check dist/*.whl",
             "python -m pip install --no-deps dist/*.whl",
         )
         assert_before(
             self,
             sdist,
             "python scripts/validate_release_artifacts.py dist/*.tar.gz --sdist-only",
+            "python -m twine check dist/*.tar.gz",
+        )
+        assert_before(
+            self,
+            sdist,
+            "python -m twine check dist/*.tar.gz",
             "python -m pip install --no-deps --no-build-isolation dist/*.tar.gz",
         )
 

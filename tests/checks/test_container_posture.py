@@ -111,6 +111,19 @@ class ContainerPostureTests(unittest.TestCase):
             'python scripts/validate_release_artifacts.py "$$dist_dir"/*.whl --wheel-only',
             compose,
         )
+        self.assertIn('python -m twine check "$$dist_dir"/*', compose)
+        self.assertLess(
+            compose.index(
+                'python scripts/validate_release_artifacts.py "$$dist_dir"/*.whl --wheel-only'
+            ),
+            compose.index('python -m twine check "$$dist_dir"/*'),
+        )
+        self.assertLess(
+            compose.index('python -m twine check "$$dist_dir"/*'),
+            compose.index(
+                '/venv/wheel/bin/python -m pip install --no-deps "$$dist_dir"/*.whl'
+            ),
+        )
         self.assertNotIn("source: ..\n", compose)
         self.assertNotIn(".venv", compose)
         self.assertNotIn("docker.sock", compose)

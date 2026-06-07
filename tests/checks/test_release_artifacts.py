@@ -151,7 +151,7 @@ def wheel_record_name(path: Path) -> str:
 def wheel_tag(path: Path) -> str:
     parts = path.name.removesuffix(".whl").split("-")
     if len(parts) < 5:
-        return "cp312-cp312-manylinux_2_28_x86_64"
+        raise ValueError(f"cannot infer wheel tag from filename: {path.name!r}")
     return "-".join(parts[-3:])
 
 
@@ -638,7 +638,11 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:
             wheel = Path(tmp) / "grimace_py-0.1.12-notawheel.whl"
-            write_wheel(wheel)
+            write_wheel(
+                wheel,
+                ("grimace/__init__.py",),
+                include_dist_info_metadata=False,
+            )
             with self.assertRaisesRegex(ValueError, "wheel filename does not match grimace_py"):
                 validator.validate_wheel(wheel)
 

@@ -22,6 +22,10 @@ EXPECTED_PROJECT_SOURCE_URL = "https://github.com/numpde/grimace-py"
 EXPECTED_WHEEL_METADATA_VERSION = "2.4"
 PYTHON_TAGS = ("cp312", "cp313")
 PLATFORM_TAG = "manylinux_2_28_x86_64"
+NATIVE_EXTENSION_PLATFORM_SUFFIXES = {
+    "linux_x86_64": "-x86_64-linux-gnu.so",
+    PLATFORM_TAG: "-x86_64-linux-gnu.so",
+}
 TAG_PATTERN = re.compile(r"^v(?P<version>[0-9]+\.[0-9]+\.[0-9]+)$")
 WHEEL_NAME_PATTERN = re.compile(
     rf"^{re.escape(PACKAGE_STEM)}-"
@@ -538,8 +542,13 @@ def validate_native_extension(
 ) -> None:
     python_tag = wheel_match.group("python_tag")
     abi_tag = wheel_match.group("abi_tag")
+    platform_tag = wheel_match.group("platform_tag")
     if not python_tag.startswith("cp") or python_tag != abi_tag:
         raise ValueError("wheel filename tags are not supported for grimace-py")
+    try:
+        expected_platform_suffix = NATIVE_EXTENSION_PLATFORM_SUFFIXES[platform_tag]
+    except KeyError as exc:
+        raise ValueError("wheel platform tag is not supported for grimace-py") from exc
     expected_prefix = f"grimace/_core.cpython-{python_tag.removeprefix('cp')}-"
     candidates = tuple(
         name
@@ -552,7 +561,7 @@ def validate_native_extension(
         raise ValueError("wheel native extension must be a Linux .so file")
     if not candidates[0].startswith(expected_prefix):
         raise ValueError("wheel native extension tag does not match filename")
-    if not candidates[0].endswith("-x86_64-linux-gnu.so"):
+    if not candidates[0].endswith(expected_platform_suffix):
         raise ValueError("wheel native extension platform does not match filename")
 
 

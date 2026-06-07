@@ -737,6 +737,14 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "native extension platform"):
                 validator.validate_wheel(wheel)
 
+    def test_rejects_wheel_with_unsupported_platform_tag(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-macosx_14_0_x86_64.whl"
+            write_wheel(wheel)
+            with self.assertRaisesRegex(ValueError, "platform tag is not supported"):
+                validator.validate_wheel(wheel)
+
     def test_rejects_wheel_with_extra_native_extension_artifact(self) -> None:
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:

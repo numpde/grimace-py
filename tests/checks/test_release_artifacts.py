@@ -296,6 +296,17 @@ def write_wheel(
             )
 
 
+def write_wheel_with_archive_metadata(path: Path, *headers: str) -> None:
+    write_wheel(
+        path,
+        payload_overrides={
+            wheel_archive_metadata_name(path): (
+                wheel_archive_metadata_with_headers(*headers).encode("utf-8")
+            ),
+        },
+    )
+
+
 def write_expected_artifacts(validator, dist: Path, version: str) -> None:
     for name in validator.expected_artifact_names(version):
         if name.endswith(".tar.gz"):
@@ -1184,35 +1195,50 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:
             wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
-            write_wheel(
+            write_wheel_with_archive_metadata(
                 wheel,
-                payload_overrides={
-                    wheel_archive_metadata_name(wheel): (
-                        wheel_archive_metadata_with_headers(
-                            "Wheel-Version: 2.0",
-                            "Root-Is-Purelib: false",
-                            "Tag: cp312-cp312-manylinux_2_28_x86_64",
-                        ).encode("utf-8")
-                    ),
-                },
+                "Wheel-Version: 2.0",
+                "Root-Is-Purelib: false",
+                "Tag: cp312-cp312-manylinux_2_28_x86_64",
             )
             with self.assertRaisesRegex(ValueError, "WHEEL metadata version"):
+                validator.validate_wheel(wheel)
+
+    def test_rejects_duplicate_wheel_archive_metadata_version(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel_with_archive_metadata(
+                wheel,
+                "Wheel-Version: 1.0",
+                "Wheel-Version: 1.0",
+                "Root-Is-Purelib: false",
+                "Tag: cp312-cp312-manylinux_2_28_x86_64",
+            )
+            with self.assertRaisesRegex(ValueError, "exactly one Wheel-Version"):
                 validator.validate_wheel(wheel)
 
     def test_rejects_wheel_archive_metadata_without_tags(self) -> None:
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:
             wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
-            write_wheel(
+            write_wheel_with_archive_metadata(
                 wheel,
-                payload_overrides={
-                    wheel_archive_metadata_name(wheel): (
-                        wheel_archive_metadata_with_headers(
-                            "Wheel-Version: 1.0",
-                            "Root-Is-Purelib: false",
-                        ).encode("utf-8")
-                    ),
-                },
+                "Wheel-Version: 1.0",
+                "Root-Is-Purelib: false",
+            )
+            with self.assertRaisesRegex(ValueError, "lacks compatibility tags"):
+                validator.validate_wheel(wheel)
+
+    def test_rejects_empty_wheel_archive_metadata_tag(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel_with_archive_metadata(
+                wheel,
+                "Wheel-Version: 1.0",
+                "Root-Is-Purelib: false",
+                "Tag:",
             )
             with self.assertRaisesRegex(ValueError, "lacks compatibility tags"):
                 validator.validate_wheel(wheel)
@@ -1221,35 +1247,37 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:
             wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
-            write_wheel(
+            write_wheel_with_archive_metadata(
                 wheel,
-                payload_overrides={
-                    wheel_archive_metadata_name(wheel): (
-                        wheel_archive_metadata_with_headers(
-                            "Wheel-Version: 1.0",
-                            "Tag: cp312-cp312-manylinux_2_28_x86_64",
-                        ).encode("utf-8")
-                    ),
-                },
+                "Wheel-Version: 1.0",
+                "Tag: cp312-cp312-manylinux_2_28_x86_64",
             )
             with self.assertRaisesRegex(ValueError, "Root-Is-Purelib"):
+                validator.validate_wheel(wheel)
+
+    def test_rejects_duplicate_wheel_archive_root_is_purelib(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel_with_archive_metadata(
+                wheel,
+                "Wheel-Version: 1.0",
+                "Root-Is-Purelib: false",
+                "Root-Is-Purelib: false",
+                "Tag: cp312-cp312-manylinux_2_28_x86_64",
+            )
+            with self.assertRaisesRegex(ValueError, "exactly one Root-Is-Purelib"):
                 validator.validate_wheel(wheel)
 
     def test_rejects_invalid_wheel_archive_root_is_purelib(self) -> None:
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:
             wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
-            write_wheel(
+            write_wheel_with_archive_metadata(
                 wheel,
-                payload_overrides={
-                    wheel_archive_metadata_name(wheel): (
-                        wheel_archive_metadata_with_headers(
-                            "Wheel-Version: 1.0",
-                            "Root-Is-Purelib: maybe",
-                            "Tag: cp312-cp312-manylinux_2_28_x86_64",
-                        ).encode("utf-8")
-                    ),
-                },
+                "Wheel-Version: 1.0",
+                "Root-Is-Purelib: maybe",
+                "Tag: cp312-cp312-manylinux_2_28_x86_64",
             )
             with self.assertRaisesRegex(ValueError, "Root-Is-Purelib is invalid"):
                 validator.validate_wheel(wheel)
@@ -1258,17 +1286,11 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:
             wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
-            write_wheel(
+            write_wheel_with_archive_metadata(
                 wheel,
-                payload_overrides={
-                    wheel_archive_metadata_name(wheel): (
-                        wheel_archive_metadata_with_headers(
-                            "Wheel-Version: 1.0",
-                            "Root-Is-Purelib: true",
-                            "Tag: cp312-cp312-manylinux_2_28_x86_64",
-                        ).encode("utf-8")
-                    ),
-                },
+                "Wheel-Version: 1.0",
+                "Root-Is-Purelib: true",
+                "Tag: cp312-cp312-manylinux_2_28_x86_64",
             )
             with self.assertRaisesRegex(ValueError, "must be false"):
                 validator.validate_wheel(wheel)
@@ -1277,17 +1299,11 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:
             wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
-            write_wheel(
+            write_wheel_with_archive_metadata(
                 wheel,
-                payload_overrides={
-                    wheel_archive_metadata_name(wheel): (
-                        wheel_archive_metadata_with_headers(
-                            "Wheel-Version: 1.0",
-                            "Root-Is-Purelib: false",
-                            "Tag: cp313-cp313-manylinux_2_28_x86_64",
-                        ).encode("utf-8")
-                    ),
-                },
+                "Wheel-Version: 1.0",
+                "Root-Is-Purelib: false",
+                "Tag: cp313-cp313-manylinux_2_28_x86_64",
             )
             with self.assertRaisesRegex(ValueError, "tags do not match filename"):
                 validator.validate_wheel(wheel)

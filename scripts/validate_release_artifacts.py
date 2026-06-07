@@ -74,10 +74,13 @@ FORBIDDEN_SDIST_SUFFIXES = (
     ".p12",
     ".pem",
     ".pfx",
+    ".pyc",
+    ".pyo",
     ".secret",
     ".token",
 )
 FORBIDDEN_SDIST_COMPONENTS = {
+    "__pycache__",
     ".aws",
     ".azure",
     ".docker",

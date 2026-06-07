@@ -414,6 +414,20 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, "forbidden file in sdist"):
                         validator.validate_sdist(sdist)
 
+    def test_rejects_generated_python_cache_sdist_content(self) -> None:
+        validator = load_validator()
+        generated_paths = (
+            "python/grimace/__pycache__/_runtime.cpython-312.pyc",
+            "python/grimace/_runtime.pyc",
+        )
+        for generated_path in generated_paths:
+            with self.subTest(generated_path=generated_path):
+                with tempfile.TemporaryDirectory() as tmp:
+                    sdist = Path(tmp) / "grimace_py-0.1.12.tar.gz"
+                    write_sdist(sdist, ("pyproject.toml", generated_path))
+                    with self.assertRaisesRegex(ValueError, "forbidden file in sdist"):
+                        validator.validate_sdist(sdist)
+
     def test_rejects_unsafe_sdist_path(self) -> None:
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:
@@ -640,6 +654,20 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             write_wheel(wheel, ("grimace/__init__.py", ".config/gh/hosts.yml"))
             with self.assertRaisesRegex(ValueError, "forbidden file in wheel"):
                 validator.validate_wheel(wheel)
+
+    def test_rejects_generated_python_cache_wheel_content(self) -> None:
+        validator = load_validator()
+        generated_paths = (
+            "grimace/__pycache__/_runtime.cpython-312.pyc",
+            "grimace/_runtime.pyc",
+        )
+        for generated_path in generated_paths:
+            with self.subTest(generated_path=generated_path):
+                with tempfile.TemporaryDirectory() as tmp:
+                    wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+                    write_wheel(wheel, ("grimace/__init__.py", generated_path))
+                    with self.assertRaisesRegex(ValueError, "forbidden file in wheel"):
+                        validator.validate_wheel(wheel)
 
     def test_rejects_unexpected_top_level_wheel_content(self) -> None:
         validator = load_validator()

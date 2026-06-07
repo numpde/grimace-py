@@ -1428,6 +1428,20 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "tags do not match filename"):
                 validator.validate_wheel(wheel)
 
+    def test_rejects_wheel_archive_metadata_extra_tag(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel_with_archive_metadata(
+                wheel,
+                "Wheel-Version: 1.0",
+                "Root-Is-Purelib: false",
+                "Tag: cp312-cp312-manylinux_2_28_x86_64",
+                "Tag: cp312-cp312-linux_x86_64",
+            )
+            with self.assertRaisesRegex(ValueError, "tags do not match filename"):
+                validator.validate_wheel(wheel)
+
     def test_rejects_release_when_wheel_generator_is_absent_from_sdist(self) -> None:
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:

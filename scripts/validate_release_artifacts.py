@@ -531,7 +531,7 @@ def validate_wheel_archive_metadata(
     tags = tuple(message.get_all("Tag", ()))
     if not tags or any(not tag for tag in tags):
         raise ValueError("wheel WHEEL metadata lacks compatibility tags")
-    if expected_tag not in tags:
+    if tags != (expected_tag,):
         raise ValueError("wheel WHEEL metadata tags do not match filename")
 
 

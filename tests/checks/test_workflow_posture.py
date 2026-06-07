@@ -35,6 +35,14 @@ def load_release_validator():
     return module
 
 
+def assert_before(test: unittest.TestCase, text: str, earlier: str, later: str) -> None:
+    earlier_index = text.find(earlier)
+    later_index = text.find(later)
+    test.assertNotEqual(earlier_index, -1, earlier)
+    test.assertNotEqual(later_index, -1, later)
+    test.assertLess(earlier_index, later_index)
+
+
 class WorkflowPostureTests(unittest.TestCase):
     def test_workflows_pin_github_hosted_runner_image(self) -> None:
         for workflow_path in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
@@ -158,6 +166,24 @@ class WorkflowPostureTests(unittest.TestCase):
         self.assertEqual(
             workflow.count("python scripts/validate_release_artifacts.py dist --tag"),
             2,
+        )
+
+    def test_release_workflow_validates_archives_before_installing_them(self) -> None:
+        workflow = read_text(".github/workflows/release.yml")
+        wheel = job_section(workflow, "wheel")
+        sdist = job_section(workflow, "sdist")
+
+        assert_before(
+            self,
+            wheel,
+            "python scripts/validate_release_artifacts.py dist/*.whl --wheel-only",
+            "python -m pip install --no-deps dist/*.whl",
+        )
+        assert_before(
+            self,
+            sdist,
+            "python scripts/validate_release_artifacts.py dist/*.tar.gz --sdist-only",
+            "python -m pip install --no-deps --no-build-isolation dist/*.tar.gz",
         )
 
     def test_release_workflow_wheel_matrix_matches_artifact_validator(self) -> None:

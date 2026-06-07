@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Iterable
+from email.message import Message
 from email.parser import Parser
 import hashlib
 import json
@@ -393,6 +394,10 @@ def validate_wheel(wheel_path: Path) -> WheelInfo:
                     raise ValueError(f"unexpected link in wheel: {name!r}")
                 if mode not in (0, 0o040000, 0o100000):
                     raise ValueError(f"unexpected special file in wheel: {name!r}")
+                if mode == 0o040000 and not member.is_dir():
+                    raise ValueError(
+                        f"non-canonical directory entry in wheel: {name!r}"
+                    )
                 if is_forbidden_archive_member(name):
                     raise ValueError(f"forbidden file in wheel: {name!r}")
                 root = name.rstrip("/").split("/", 1)[0]
@@ -441,10 +446,10 @@ def validate_wheel_source_metadata(
         raise ValueError(f"wheel lacks canonical METADATA file: {metadata_name!r}")
     metadata = decode_archive_text(archive.read(metadata_name), metadata_name)
     message = Parser().parsestr(metadata)
-    name = message.get("Name")
-    if name is None or canonical_project_name(name) != PROJECT_NAME:
+    name = single_metadata_header(message, "Name")
+    if canonical_project_name(name) != PROJECT_NAME:
         raise ValueError("wheel METADATA project name does not match grimace-py")
-    if message.get("Version") != expected_version:
+    if single_metadata_header(message, "Version") != expected_version:
         raise ValueError("wheel METADATA version does not match filename")
     source_urls = tuple(
         url
@@ -459,6 +464,13 @@ def validate_wheel_source_metadata(
             "wheel METADATA source repository URL does not match the official "
             "repository URL"
         )
+
+
+def single_metadata_header(message: Message, header: str) -> str:
+    values = message.get_all(header, ())
+    if len(values) != 1 or not values[0]:
+        raise ValueError(f"wheel METADATA must contain exactly one {header} header")
+    return values[0]
 
 
 def project_url_parts(value: str) -> tuple[str, str]:

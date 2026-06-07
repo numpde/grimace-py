@@ -98,6 +98,10 @@ def wheel_metadata_with_project_urls(*project_urls: str, version: str = "0.1.12"
     )
 
 
+def wheel_metadata_with_headers(*headers: str) -> str:
+    return "\n".join((*headers, ""))
+
+
 def wheel_metadata_name(path: Path) -> str:
     version = path.name.split("-", 2)[1]
     return f"grimace_py-{version}.dist-info/METADATA"
@@ -457,6 +461,28 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "unexpected special file in wheel"):
                 validator.validate_wheel(wheel)
 
+    def test_rejects_wheel_directory_mode_without_directory_marker(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            dictionary_name = WHEEL_DICTIONARY_NAMES[1]
+            with zipfile.ZipFile(wheel, "w") as archive:
+                archive.writestr("grimace/__init__.py", b"")
+                archive.writestr(
+                    WHEEL_DICTIONARY_NAMES[0],
+                    archive_payload(WHEEL_DICTIONARY_NAMES[0]),
+                )
+                info = zipfile.ZipInfo(dictionary_name)
+                info.create_system = 3
+                info.external_attr = 0o040755 << 16
+                archive.writestr(info, "")
+                archive.writestr(
+                    wheel_metadata_name(wheel),
+                    archive_payload(wheel_metadata_name(wheel)),
+                )
+            with self.assertRaisesRegex(ValueError, "non-canonical directory"):
+                validator.validate_wheel(wheel)
+
     def test_rejects_duplicate_wheel_member(self) -> None:
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:
@@ -723,6 +749,25 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "project name"):
                 validator.validate_wheel(wheel)
 
+    def test_rejects_duplicate_wheel_metadata_name_header(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel(
+                wheel,
+                payload_overrides={
+                    wheel_metadata_name(wheel): wheel_metadata_with_headers(
+                        "Metadata-Version: 2.4",
+                        "Name: grimace-py",
+                        "Name: other-project",
+                        "Version: 0.1.12",
+                        f"Project-URL: Source, {project_metadata()['urls']['Source']}",
+                    ).encode("utf-8"),
+                },
+            )
+            with self.assertRaisesRegex(ValueError, "exactly one Name"):
+                validator.validate_wheel(wheel)
+
     def test_rejects_wheel_metadata_version_mismatch(self) -> None:
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:
@@ -734,6 +779,25 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
                 },
             )
             with self.assertRaisesRegex(ValueError, "METADATA version"):
+                validator.validate_wheel(wheel)
+
+    def test_rejects_duplicate_wheel_metadata_version_header(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel(
+                wheel,
+                payload_overrides={
+                    wheel_metadata_name(wheel): wheel_metadata_with_headers(
+                        "Metadata-Version: 2.4",
+                        "Name: grimace-py",
+                        "Version: 0.1.12",
+                        "Version: 0.1.99",
+                        f"Project-URL: Source, {project_metadata()['urls']['Source']}",
+                    ).encode("utf-8"),
+                },
+            )
+            with self.assertRaisesRegex(ValueError, "exactly one Version"):
                 validator.validate_wheel(wheel)
 
     def test_rejects_wheel_source_url_that_is_not_official_repository(self) -> None:

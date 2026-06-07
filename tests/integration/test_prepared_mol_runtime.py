@@ -9,6 +9,7 @@ from tests.helpers.public_runtime import (
     choice_texts,
     prepared_writer_kwargs,
     public_enum_support,
+    public_entrypoint_calls,
     public_token_inventory,
     public_token_inventory_superset,
     reachable_outputs_from_decoder,
@@ -32,7 +33,11 @@ class PreparedMolRuntimeTests(unittest.TestCase):
             ("round_tripped", grimace.PreparedMol.from_bytes(prepared.to_bytes())),
         )
 
-    def _terminal_token_path(self, mol_or_prepared: object, kwargs: dict[str, object]) -> tuple[str, ...]:
+    def _terminal_token_path(
+        self,
+        mol_or_prepared: object,
+        kwargs: dict[str, object],
+    ) -> tuple[str, ...]:
         decoder = grimace.MolToSmilesDeterminizedDecoder(mol_or_prepared, **kwargs)
         tokens: list[str] = []
         while not decoder.is_terminal:
@@ -43,7 +48,15 @@ class PreparedMolRuntimeTests(unittest.TestCase):
             decoder = choice.next_state
         return tuple(tokens)
 
-    def _public_operation_calls(
+    def _public_entrypoint_result(self, result: object) -> object:
+        if isinstance(
+            result,
+            (grimace.MolToSmilesDecoder, grimace.MolToSmilesDeterminizedDecoder),
+        ):
+            return reachable_outputs_from_decoder(result)
+        return result
+
+    def _candidate_operation_calls(
         self,
         mol_or_prepared: object,
         kwargs: dict[str, object],
@@ -51,30 +64,6 @@ class PreparedMolRuntimeTests(unittest.TestCase):
     ) -> tuple[tuple[str, Callable[[], object]], ...]:
         string_candidate = "".join(token_candidate)
         return (
-            (
-                "enum",
-                lambda: public_enum_support(mol_or_prepared, **kwargs),
-            ),
-            (
-                "decoder",
-                lambda: reachable_outputs_from_decoder(
-                    grimace.MolToSmilesDecoder(mol_or_prepared, **kwargs)
-                ),
-            ),
-            (
-                "determinized_decoder",
-                lambda: reachable_outputs_from_decoder(
-                    grimace.MolToSmilesDeterminizedDecoder(mol_or_prepared, **kwargs)
-                ),
-            ),
-            (
-                "inventory",
-                lambda: public_token_inventory(mol_or_prepared, **kwargs),
-            ),
-            (
-                "inventory_superset",
-                lambda: public_token_inventory_superset(mol_or_prepared, **kwargs),
-            ),
             (
                 "deviation_string",
                 lambda: grimace.MolToSmilesDeviation(
@@ -91,6 +80,25 @@ class PreparedMolRuntimeTests(unittest.TestCase):
                     **kwargs,
                 ),
             ),
+        )
+
+    def _public_operation_calls(
+        self,
+        mol_or_prepared: object,
+        kwargs: dict[str, object],
+        token_candidate: tuple[str, ...],
+    ) -> tuple[tuple[str, Callable[[], object]], ...]:
+        shared_calls = tuple(
+            (
+                entrypoint,
+                lambda call=call: self._public_entrypoint_result(call()),
+            )
+            for entrypoint, call in public_entrypoint_calls(mol_or_prepared, **kwargs)
+        )
+        return shared_calls + self._candidate_operation_calls(
+            mol_or_prepared,
+            kwargs,
+            token_candidate,
         )
 
     def _with_prepare_mol_replaced(
@@ -308,17 +316,12 @@ class PreparedMolRuntimeTests(unittest.TestCase):
             rootedAtAtom=0,
         )
 
-        calls = (
-            lambda: tuple(grimace.MolToSmilesEnum(prepared, **kwargs)),
-            lambda: grimace.MolToSmilesDecoder(prepared, **kwargs).next_choices,
-            lambda: grimace.MolToSmilesDeterminizedDecoder(prepared, **kwargs).next_choices,
-            lambda: grimace.MolToSmilesTokenInventory(prepared, **kwargs),
-            lambda: grimace.MolToSmilesTokenInventorySuperset(prepared, **kwargs),
-            lambda: grimace.MolToSmilesDeviation(prepared, "CCO", **kwargs),
-        )
-
-        for call in calls:
-            with self.subTest(call=call):
+        for entrypoint, call in self._public_operation_calls(
+            prepared,
+            kwargs,
+            ("C", "C", "O"),
+        ):
+            with self.subTest(entrypoint=entrypoint):
                 with self.assertRaisesRegex(ValueError, "writer flags"):
                     call()
 

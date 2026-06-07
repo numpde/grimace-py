@@ -1143,6 +1143,80 @@ class WriterStateKernelTest(unittest.TestCase):
             str(raised.exception),
         )
 
+    def test_checked_child_obligations_use_atom_scoped_blockers(self) -> None:
+        context = object()
+        state = object()
+        atom = AtomId(0)
+        blocker = writer_transitions._WriterChildObligationBlocker(
+            kind=(
+                writer_transitions._WriterChildObligationBlockerKind
+                .MULTI_INCIDENCE_RESIDUAL_ATTACHMENT
+            ),
+            atom=atom,
+            attachment_id=7,
+            attachment_action_kind=WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY,
+        )
+
+        with patch(
+            "grimace._south_star1.writer_transitions._child_obligation_blockers_for_atom",
+            return_value=(blocker,),
+        ) as blockers, patch(
+            "grimace._south_star1.writer_transitions._unblocked_child_obligations_from_context",
+            side_effect=AssertionError("unblocked child obligations were computed"),
+        ):
+            with self.assertRaises(SouthStarError) as raised:
+                writer_transitions._child_obligations_from_context(
+                    context,  # type: ignore[arg-type]
+                    state,  # type: ignore[arg-type]
+                    atom,
+                )
+
+        blockers.assert_called_once_with(
+            context,
+            atom,
+        )
+        self.assertIs(
+            raised.exception.kind,
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+        )
+        self.assertIn(
+            "WRITER_SHAPED multi-incidence residual attachments are not supported yet",
+            str(raised.exception),
+        )
+
+    def test_checked_child_obligations_delegate_when_no_atom_scoped_blockers(self) -> None:
+        context = object()
+        state = object()
+        atom = AtomId(0)
+        child = writer_transitions._WriterChildObligation(
+            bond=BondId(1),
+            child=AtomId(2),
+        )
+
+        with patch(
+            "grimace._south_star1.writer_transitions._child_obligation_blockers_for_atom",
+            return_value=(),
+        ) as blockers, patch(
+            "grimace._south_star1.writer_transitions._unblocked_child_obligations_from_context",
+            return_value=(child,),
+        ) as unblocked:
+            result = writer_transitions._child_obligations_from_context(
+                context,  # type: ignore[arg-type]
+                state,  # type: ignore[arg-type]
+                atom,
+            )
+
+        self.assertEqual(result, (child,))
+        blockers.assert_called_once_with(
+            context,
+            atom,
+        )
+        unblocked.assert_called_once_with(
+            context,
+            state,
+            atom,
+        )
+
     def test_active_emitted_scheduler_does_not_compute_children_when_closure_transition_survives(self) -> None:
         prepared = object()
         state = object()

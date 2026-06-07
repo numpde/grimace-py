@@ -1534,7 +1534,10 @@ def _child_obligations_from_context(
     atom: AtomId,
 ) -> tuple[_WriterChildObligation, ...]:
     _raise_for_child_obligation_blockers(
-        _child_obligation_blockers_from_context(context)
+        _child_obligation_blockers_for_atom(
+            context,
+            atom,
+        )
     )
 
     return _unblocked_child_obligations_from_context(

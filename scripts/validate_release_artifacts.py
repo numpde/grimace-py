@@ -399,6 +399,10 @@ def validate_wheel(wheel_path: Path) -> WheelInfo:
                 root = name.rstrip("/").split("/", 1)[0]
                 if root not in allowed_roots:
                     raise ValueError(f"unexpected top-level wheel member: {name!r}")
+                if root == name:
+                    raise ValueError(
+                        f"ambiguous top-level wheel root entry: {name!r}"
+                    )
             validate_wheel_source_metadata(
                 archive,
                 names,

@@ -550,6 +550,27 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "unexpected top-level wheel member"):
                 validator.validate_wheel(wheel)
 
+    def test_rejects_bare_top_level_wheel_root_files(self) -> None:
+        validator = load_validator()
+        root_names = (
+            "grimace",
+            "grimace_py-0.1.12.dist-info",
+        )
+        for root_name in root_names:
+            with self.subTest(root_name=root_name):
+                with tempfile.TemporaryDirectory() as tmp:
+                    wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+                    write_wheel(
+                        wheel,
+                        (
+                            root_name,
+                            "grimace/__init__.py",
+                            *WHEEL_DICTIONARY_NAMES,
+                        ),
+                    )
+                    with self.assertRaisesRegex(ValueError, "ambiguous top-level"):
+                        validator.validate_wheel(wheel)
+
     def test_rejects_wrong_project_wheel_filename(self) -> None:
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:

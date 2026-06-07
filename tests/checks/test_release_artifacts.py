@@ -768,6 +768,60 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "exactly one Name"):
                 validator.validate_wheel(wheel)
 
+    def test_rejects_missing_wheel_metadata_version_dialect_header(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel(
+                wheel,
+                payload_overrides={
+                    wheel_metadata_name(wheel): wheel_metadata_with_headers(
+                        "Name: grimace-py",
+                        "Version: 0.1.12",
+                        f"Project-URL: Source, {project_metadata()['urls']['Source']}",
+                    ).encode("utf-8"),
+                },
+            )
+            with self.assertRaisesRegex(ValueError, "exactly one Metadata-Version"):
+                validator.validate_wheel(wheel)
+
+    def test_rejects_duplicate_wheel_metadata_version_dialect_header(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel(
+                wheel,
+                payload_overrides={
+                    wheel_metadata_name(wheel): wheel_metadata_with_headers(
+                        "Metadata-Version: 2.4",
+                        "Metadata-Version: 2.1",
+                        "Name: grimace-py",
+                        "Version: 0.1.12",
+                        f"Project-URL: Source, {project_metadata()['urls']['Source']}",
+                    ).encode("utf-8"),
+                },
+            )
+            with self.assertRaisesRegex(ValueError, "exactly one Metadata-Version"):
+                validator.validate_wheel(wheel)
+
+    def test_rejects_unsupported_wheel_metadata_version_dialect(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel(
+                wheel,
+                payload_overrides={
+                    wheel_metadata_name(wheel): wheel_metadata_with_headers(
+                        "Metadata-Version: 2.1",
+                        "Name: grimace-py",
+                        "Version: 0.1.12",
+                        f"Project-URL: Source, {project_metadata()['urls']['Source']}",
+                    ).encode("utf-8"),
+                },
+            )
+            with self.assertRaisesRegex(ValueError, "dialect is not supported"):
+                validator.validate_wheel(wheel)
+
     def test_rejects_wheel_metadata_version_mismatch(self) -> None:
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:

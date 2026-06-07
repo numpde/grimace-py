@@ -18,6 +18,7 @@ import zipfile
 PACKAGE_STEM = "grimace_py"
 PROJECT_NAME = "grimace-py"
 EXPECTED_PROJECT_SOURCE_URL = "https://github.com/numpde/grimace-py"
+EXPECTED_WHEEL_METADATA_VERSION = "2.4"
 PYTHON_TAGS = ("cp312", "cp313")
 PLATFORM_TAG = "manylinux_2_28_x86_64"
 TAG_PATTERN = re.compile(r"^v(?P<version>[0-9]+\.[0-9]+\.[0-9]+)$")
@@ -446,6 +447,11 @@ def validate_wheel_source_metadata(
         raise ValueError(f"wheel lacks canonical METADATA file: {metadata_name!r}")
     metadata = decode_archive_text(archive.read(metadata_name), metadata_name)
     message = Parser().parsestr(metadata)
+    if (
+        single_metadata_header(message, "Metadata-Version")
+        != EXPECTED_WHEEL_METADATA_VERSION
+    ):
+        raise ValueError("wheel METADATA version dialect is not supported")
     name = single_metadata_header(message, "Name")
     if canonical_project_name(name) != PROJECT_NAME:
         raise ValueError("wheel METADATA project name does not match grimace-py")

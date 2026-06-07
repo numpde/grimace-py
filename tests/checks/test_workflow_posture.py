@@ -143,13 +143,17 @@ class WorkflowPostureTests(unittest.TestCase):
         )
         self.assertEqual(
             workflow.count("--constraint requirements/container-build-constraints.txt"),
-            2,
+            4,
         )
         self.assertIn('"maturin==$MATURIN_PIP_VERSION"', workflow)
-        self.assertEqual(workflow.count('"twine==$TWINE_PIP_VERSION"'), 2)
+        self.assertEqual(workflow.count('"twine==$TWINE_PIP_VERSION"'), 4)
         self.assertEqual(workflow.count('"zstandard==$ZSTANDARD_FIXTURE_PIP_VERSION"'), 2)
         self.assertIn("python -m twine check dist/*.whl", workflow)
         self.assertIn("python -m twine check dist/*.tar.gz", workflow)
+        self.assertEqual(
+            len(re.findall(r"(?m)^\s+run: python -m twine check dist/\*$", workflow)),
+            2,
+        )
         self.assertIn("python -m pip install --no-deps dist/*.whl", workflow)
         self.assertIn("python -m pip install --no-deps --no-build-isolation dist/*.tar.gz", workflow)
         self.assertEqual(
@@ -176,6 +180,8 @@ class WorkflowPostureTests(unittest.TestCase):
         workflow = read_text(".github/workflows/release.yml")
         wheel = job_section(workflow, "wheel")
         sdist = job_section(workflow, "sdist")
+        release = job_section(workflow, "release")
+        publish = job_section(workflow, "publish-pypi")
 
         assert_before(
             self,
@@ -200,6 +206,26 @@ class WorkflowPostureTests(unittest.TestCase):
             sdist,
             "python -m twine check dist/*.tar.gz",
             "python -m pip install --no-deps --no-build-isolation dist/*.tar.gz",
+        )
+        for job_name, job in (("release", release), ("publish-pypi", publish)):
+            with self.subTest(job=job_name):
+                assert_before(
+                    self,
+                    job,
+                    'python scripts/validate_release_artifacts.py dist --tag "$GITHUB_REF_NAME"',
+                    "python -m twine check dist/*",
+                )
+        assert_before(
+            self,
+            release,
+            "python -m twine check dist/*",
+            "softprops/action-gh-release@",
+        )
+        assert_before(
+            self,
+            publish,
+            "python -m twine check dist/*",
+            "pypa/gh-action-pypi-publish@",
         )
 
     def test_release_workflow_wheel_matrix_matches_artifact_validator(self) -> None:

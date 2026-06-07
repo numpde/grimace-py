@@ -25,8 +25,9 @@ bounded correctness checks; heavier profiling runs should be explicit.
 ## Release Tooling
 
 - `validate_release_artifacts.py`
-  - checks that tag-triggered release jobs publish exactly the expected wheel
-    and sdist filenames
+  - validates release wheel and sdist filenames, archive member safety,
+    package metadata, PreparedMol zstd package data, and wheel/sdist
+    dictionary equivalence
 
 ## RDKit Writer Support Count Tooling
 

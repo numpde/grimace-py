@@ -131,7 +131,9 @@ def validate_artifacts(dist_dir: Path, tag: str) -> None:
         raise ValueError(f"artifact directory does not exist: {dist_dir}")
 
     paths = tuple(sorted(dist_dir.iterdir(), key=lambda path: path.name))
-    non_files = tuple(path.name for path in paths if path.is_symlink() or not path.is_file())
+    non_files = tuple(
+        path.name for path in paths if path.is_symlink() or not path.is_file()
+    )
     if non_files:
         raise ValueError(f"unexpected non-file release artifacts: {list(non_files)!r}")
 
@@ -226,7 +228,9 @@ def decode_archive_text(payload: bytes, member_name: str) -> str:
     try:
         return payload.decode("utf-8")
     except UnicodeDecodeError as exc:
-        raise ValueError(f"archive member is not valid UTF-8: {member_name!r}") from exc
+        raise ValueError(
+            f"archive member is not valid UTF-8: {member_name!r}"
+        ) from exc
 
 
 def sha256_hex(payload: bytes) -> str:
@@ -254,7 +258,9 @@ def validate_sdist_project_metadata(
         version = project["version"]
         source_url = project["urls"]["Source"]
     except (KeyError, TypeError) as exc:
-        raise ValueError("source distribution pyproject.toml lacks project metadata") from exc
+        raise ValueError(
+            "source distribution pyproject.toml lacks project metadata"
+        ) from exc
     if not isinstance(name, str) or canonical_project_name(name) != PROJECT_NAME:
         raise ValueError("source distribution project name does not match grimace-py")
     if version != expected_version:
@@ -270,11 +276,14 @@ def validate_sdist_project_metadata(
 
 def validate_sdist(sdist_path: Path) -> SdistInfo:
     if sdist_path.is_symlink() or not sdist_path.is_file():
-        raise ValueError(f"source distribution does not exist or is not a file: {sdist_path}")
+        raise ValueError(
+            f"source distribution does not exist or is not a file: {sdist_path}"
+        )
     sdist_match = SDIST_NAME_PATTERN.fullmatch(sdist_path.name)
     if sdist_match is None:
         raise ValueError(
-            f"source distribution filename does not match {PACKAGE_STEM}: {sdist_path.name!r}"
+            "source distribution filename does not match "
+            f"{PACKAGE_STEM}: {sdist_path.name!r}"
         )
 
     root = f"{sdist_path.name.removesuffix('.tar.gz')}/"
@@ -304,7 +313,9 @@ def validate_sdist(sdist_path: Path) -> SdistInfo:
                 if name in (root_dir, root) and member.isdir():
                     continue
                 if not name.startswith(root):
-                    raise ValueError(f"sdist member is outside archive root: {name!r}")
+                    raise ValueError(
+                        f"sdist member is outside archive root: {name!r}"
+                    )
 
                 relative = name[len(root) :]
                 if not relative:
@@ -326,14 +337,18 @@ def validate_sdist(sdist_path: Path) -> SdistInfo:
                     if payload is None:
                         raise ValueError(f"could not read sdist member: {name!r}")
                     payload_bytes = payload.read()
-                    prepared_mol_zstd_file_sha256[relative] = sha256_hex(payload_bytes)
+                    prepared_mol_zstd_file_sha256[relative] = sha256_hex(
+                        payload_bytes
+                    )
                     prepared_mol_zstd_file_size[relative] = len(payload_bytes)
                     if relative.endswith("/default_v1.json"):
                         manifest_texts[relative] = decode_archive_text(
                             payload_bytes,
                             relative,
                         )
-            relative_names = tuple(name[len(root) :] for name in names if name.startswith(root))
+            relative_names = tuple(
+                name[len(root) :] for name in names if name.startswith(root)
+            )
             prepared_mol_zstd = validate_prepared_mol_zstd_package_data(
                 relative_names,
                 prefix=SDIST_PREPARED_MOL_ZSTD_PREFIX,
@@ -354,7 +369,9 @@ def validate_sdist(sdist_path: Path) -> SdistInfo:
                 prepared_mol_zstd=prepared_mol_zstd,
             )
     except (OSError, tarfile.TarError) as exc:
-        raise ValueError(f"could not read source distribution {sdist_path}: {exc}") from exc
+        raise ValueError(
+            f"could not read source distribution {sdist_path}: {exc}"
+        ) from exc
 
 
 def validate_wheel(wheel_path: Path) -> WheelInfo:
@@ -685,7 +702,8 @@ def prepared_mol_zstd_manifest_metadata(
         )
     if not isinstance(script, str):
         raise ValueError(
-            f"PreparedMol zstd manifest generator script is not a string: {member_name!r}"
+            "PreparedMol zstd manifest generator script is not a string: "
+            f"{member_name!r}"
         )
     if dictionary_file != "default_v1.zstdict":
         raise ValueError(
@@ -699,7 +717,8 @@ def prepared_mol_zstd_manifest_metadata(
         )
     if not isinstance(dictionary_id, int) or isinstance(dictionary_id, bool):
         raise ValueError(
-            f"PreparedMol zstd manifest dictionary id is not an integer: {member_name!r}"
+            "PreparedMol zstd manifest dictionary id is not an integer: "
+            f"{member_name!r}"
         )
     if dictionary_id == 0:
         raise ValueError(
@@ -707,11 +726,13 @@ def prepared_mol_zstd_manifest_metadata(
         )
     if not isinstance(training_level, int) or isinstance(training_level, bool):
         raise ValueError(
-            f"PreparedMol zstd manifest training level is not an integer: {member_name!r}"
+            "PreparedMol zstd manifest training level is not an integer: "
+            f"{member_name!r}"
         )
     if not isinstance(dictionary_sha256, str):
         raise ValueError(
-            f"PreparedMol zstd manifest dictionary SHA-256 is not a string: {member_name!r}"
+            "PreparedMol zstd manifest dictionary SHA-256 is not a string: "
+            f"{member_name!r}"
         )
     if (
         len(dictionary_sha256) != 64
@@ -725,7 +746,8 @@ def prepared_mol_zstd_manifest_metadata(
         bool,
     ):
         raise ValueError(
-            f"PreparedMol zstd manifest dictionary size is not an integer: {member_name!r}"
+            "PreparedMol zstd manifest dictionary size is not an integer: "
+            f"{member_name!r}"
         )
     if dictionary_size_bytes < 0:
         raise ValueError(
@@ -771,7 +793,9 @@ def main(argv: list[str]) -> int:
             validate_wheel(args.artifact_path)
         else:
             if args.tag is None:
-                raise ValueError("--tag is required unless an artifact-only mode is used")
+                raise ValueError(
+                    "--tag is required unless an artifact-only mode is used"
+                )
             validate_artifacts(args.artifact_path, args.tag)
     except ValueError as exc:
         print(exc, file=sys.stderr)

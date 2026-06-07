@@ -7,6 +7,7 @@ import json
 import tarfile
 import tempfile
 import unittest
+import warnings
 import zipfile
 
 
@@ -67,6 +68,8 @@ def write_sdist(
     *,
     manifest_script: str = TEST_GENERATOR_SCRIPT,
     include_generator_script: bool = True,
+    directory_names: tuple[str, ...] = (),
+    payload_overrides: dict[str, bytes] | None = None,
 ) -> None:
     root = path.name.removesuffix(".tar.gz")
     if (
@@ -75,11 +78,20 @@ def write_sdist(
         and manifest_script not in names
     ):
         names = (*names, manifest_script)
+    payload_overrides = payload_overrides or {}
     with tarfile.open(path, "w:gz") as archive:
+        for name in directory_names:
+            full_name = f"{root}/{name}"
+            info = tarfile.TarInfo(full_name)
+            info.type = tarfile.DIRTYPE
+            archive.addfile(info)
         for name in names:
             full_name = f"{root}/{name}"
-            payload = archive_payload(name, manifest_script=manifest_script)
             info = tarfile.TarInfo(full_name)
+            payload = payload_overrides.get(
+                name,
+                archive_payload(name, manifest_script=manifest_script),
+            )
             info.size = len(payload)
             archive.addfile(info, BytesIO(payload))
 
@@ -90,14 +102,22 @@ def write_wheel(
     *,
     manifest_script: str = TEST_GENERATOR_SCRIPT,
     include_source_metadata: bool = True,
+    payload_overrides: dict[str, bytes] | None = None,
 ) -> None:
     if include_source_metadata and not any(
         name.endswith(".dist-info/METADATA") for name in names
     ):
         names = (*names, wheel_metadata_name(path))
+    payload_overrides = payload_overrides or {}
     with zipfile.ZipFile(path, "w") as archive:
         for name in names:
-            archive.writestr(name, archive_payload(name, manifest_script=manifest_script))
+            archive.writestr(
+                name,
+                payload_overrides.get(
+                    name,
+                    archive_payload(name, manifest_script=manifest_script),
+                ),
+            )
 
 
 def write_expected_artifacts(validator, dist: Path, version: str) -> None:
@@ -224,6 +244,20 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "unexpected special file in sdist"):
                 validator.validate_sdist(sdist)
 
+    def test_rejects_duplicate_sdist_member(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            sdist = Path(tmp) / "grimace_py-0.1.12.tar.gz"
+            root = sdist.name.removesuffix(".tar.gz")
+            with tarfile.open(sdist, "w:gz") as archive:
+                for _ in range(2):
+                    payload = b""
+                    info = tarfile.TarInfo(f"{root}/pyproject.toml")
+                    info.size = len(payload)
+                    archive.addfile(info, BytesIO(payload))
+            with self.assertRaisesRegex(ValueError, "duplicate archive member"):
+                validator.validate_sdist(sdist)
+
     def test_rejects_unsafe_wheel_path(self) -> None:
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:
@@ -265,6 +299,26 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
                 info.external_attr = 0o010644 << 16
                 archive.writestr(info, "")
             with self.assertRaisesRegex(ValueError, "unexpected special file in wheel"):
+                validator.validate_wheel(wheel)
+
+    def test_rejects_duplicate_wheel_member(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            metadata_name = wheel_metadata_name(wheel)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", UserWarning)
+                write_wheel(
+                    wheel,
+                    (
+                        "grimace/__init__.py",
+                        *WHEEL_DICTIONARY_NAMES,
+                        metadata_name,
+                        metadata_name,
+                    ),
+                    include_source_metadata=False,
+                )
+            with self.assertRaisesRegex(ValueError, "duplicate archive member"):
                 validator.validate_wheel(wheel)
 
     def test_rejects_secret_shaped_wheel_content(self) -> None:
@@ -338,6 +392,19 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "absent from source distribution"):
                 validator.validate_sdist(sdist)
 
+    def test_rejects_sdist_manifest_generator_script_directory(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            sdist = Path(tmp) / "grimace_py-0.1.12.tar.gz"
+            write_sdist(
+                sdist,
+                ("pyproject.toml", "Cargo.toml", *SDIST_DICTIONARY_NAMES),
+                include_generator_script=False,
+                directory_names=(TEST_GENERATOR_SCRIPT,),
+            )
+            with self.assertRaisesRegex(ValueError, "absent from source distribution"):
+                validator.validate_sdist(sdist)
+
     def test_rejects_unsafe_manifest_generator_script_path(self) -> None:
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:
@@ -350,6 +417,42 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(ValueError, "unsafe PreparedMol zstd"):
                 validator.validate_sdist(sdist)
+
+    def test_rejects_invalid_utf8_sdist_manifest(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            sdist = Path(tmp) / "grimace_py-0.1.12.tar.gz"
+            write_sdist(
+                sdist,
+                ("pyproject.toml", "Cargo.toml", *SDIST_DICTIONARY_NAMES),
+                payload_overrides={SDIST_DICTIONARY_NAMES[0]: b"\xff"},
+            )
+            with self.assertRaisesRegex(ValueError, "not valid UTF-8"):
+                validator.validate_sdist(sdist)
+
+    def test_rejects_invalid_utf8_wheel_manifest(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel(
+                wheel,
+                payload_overrides={WHEEL_DICTIONARY_NAMES[0]: b"\xff"},
+            )
+            with self.assertRaisesRegex(ValueError, "not valid UTF-8"):
+                validator.validate_wheel(wheel)
+
+    def test_wheel_only_cli_reports_invalid_utf8_metadata(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel(
+                wheel,
+                payload_overrides={wheel_metadata_name(wheel): b"\xff"},
+            )
+            stderr = io.StringIO()
+            with redirect_stderr(stderr):
+                self.assertEqual(2, validator.main([str(wheel), "--wheel-only"]))
+            self.assertIn("not valid UTF-8", stderr.getvalue())
 
     def test_rejects_wheel_manifest_without_source_project_url(self) -> None:
         validator = load_validator()

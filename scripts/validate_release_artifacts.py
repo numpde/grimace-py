@@ -161,6 +161,19 @@ def is_unsafe_archive_path(name: str) -> bool:
     )
 
 
+def reject_duplicate_archive_member(name: str, seen_names: set[str]) -> None:
+    if name in seen_names:
+        raise ValueError(f"duplicate archive member: {name!r}")
+    seen_names.add(name)
+
+
+def decode_archive_text(payload: bytes, member_name: str) -> str:
+    try:
+        return payload.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"archive member is not valid UTF-8: {member_name!r}") from exc
+
+
 def validate_sdist(sdist_path: Path) -> frozenset[str]:
     if sdist_path.is_symlink() or not sdist_path.is_file():
         raise ValueError(f"source distribution does not exist or is not a file: {sdist_path}")
@@ -169,11 +182,14 @@ def validate_sdist(sdist_path: Path) -> frozenset[str]:
 
     root = f"{sdist_path.name.removesuffix('.tar.gz')}/"
     names: list[str] = []
+    file_names: list[str] = []
     manifest_texts: dict[str, str] = {}
+    seen_names: set[str] = set()
     try:
         with tarfile.open(sdist_path, "r:gz") as archive:
             for member in archive.getmembers():
                 name = member.name
+                reject_duplicate_archive_member(name, seen_names)
                 names.append(name)
                 if is_unsafe_archive_path(name):
                     raise ValueError(f"unsafe sdist path: {name!r}")
@@ -189,6 +205,8 @@ def validate_sdist(sdist_path: Path) -> frozenset[str]:
                     continue
                 if is_forbidden_archive_member(relative):
                     raise ValueError(f"forbidden file in sdist: {relative!r}")
+                if member.isfile():
+                    file_names.append(relative)
                 if (
                     relative.startswith(SDIST_PREPARED_MOL_ZSTD_PREFIX)
                     and relative.endswith("/default_v1.json")
@@ -197,13 +215,16 @@ def validate_sdist(sdist_path: Path) -> frozenset[str]:
                     payload = archive.extractfile(member)
                     if payload is None:
                         raise ValueError(f"could not read sdist member: {name!r}")
-                    manifest_texts[relative] = payload.read().decode("utf-8")
+                    manifest_texts[relative] = decode_archive_text(
+                        payload.read(),
+                        relative,
+                    )
             relative_names = tuple(name[len(root) :] for name in names if name.startswith(root))
             return validate_prepared_mol_zstd_package_data(
                 relative_names,
                 prefix=SDIST_PREPARED_MOL_ZSTD_PREFIX,
                 manifest_texts=manifest_texts,
-                source_names=frozenset(relative_names),
+                source_file_names=frozenset(file_names),
             )
     except (OSError, tarfile.TarError) as exc:
         raise ValueError(f"could not read source distribution {sdist_path}: {exc}") from exc
@@ -228,8 +249,10 @@ def validate_wheel(wheel_path: Path) -> frozenset[str]:
     try:
         with zipfile.ZipFile(wheel_path) as archive:
             names = archive.namelist()
+            seen_names: set[str] = set()
             for member in archive.infolist():
                 name = member.filename
+                reject_duplicate_archive_member(name, seen_names)
                 if is_unsafe_archive_path(name):
                     raise ValueError(f"unsafe wheel path: {name!r}")
                 mode = (member.external_attr >> 16) & 0o170000
@@ -248,7 +271,7 @@ def validate_wheel(wheel_path: Path) -> frozenset[str]:
                 dist_info_root=dist_info_root,
             )
             manifest_texts = {
-                name: archive.read(name).decode("utf-8")
+                name: decode_archive_text(archive.read(name), name)
                 for name in names
                 if name.startswith(WHEEL_PREPARED_MOL_ZSTD_PREFIX)
                 and name.endswith("/default_v1.json")
@@ -271,7 +294,7 @@ def validate_wheel_source_metadata(
     metadata_name = f"{dist_info_root}/METADATA"
     if metadata_name not in names:
         raise ValueError(f"wheel lacks canonical METADATA file: {metadata_name!r}")
-    metadata = archive.read(metadata_name).decode("utf-8")
+    metadata = decode_archive_text(archive.read(metadata_name), metadata_name)
     expected_source_line = f"Project-URL: Source, {project_source_url()}"
     if expected_source_line not in metadata.splitlines():
         raise ValueError("wheel METADATA lacks the source repository Project-URL")
@@ -282,7 +305,7 @@ def validate_prepared_mol_zstd_package_data(
     *,
     prefix: str,
     manifest_texts: dict[str, str],
-    source_names: frozenset[str] | None = None,
+    source_file_names: frozenset[str] | None = None,
 ) -> frozenset[str]:
     artifacts: dict[str, set[str]] = {}
     generator_scripts: set[str] = set()
@@ -308,7 +331,7 @@ def validate_prepared_mol_zstd_package_data(
                 raise ValueError(
                     f"missing PreparedMol zstd manifest payload: {name!r}"
                 ) from exc
-            if source_names is not None and script not in source_names:
+            if source_file_names is not None and script not in source_file_names:
                 raise ValueError(
                     "PreparedMol zstd generator script is absent from source "
                     f"distribution: {script!r}"

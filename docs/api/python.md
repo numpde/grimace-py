@@ -121,6 +121,9 @@ Both decoder classes expose:
 
 `choices()` returns the same cached tuple as `next_choices`.
 `MolToSmilesChoice.next_state` is cached after first access.
+`is_terminal` is true when the current prefix is a complete supported SMILES
+for the molecule. In normal public decoder use, terminal states should have no
+next choices.
 
 Use `MolToSmilesDecoder(...)` when each branch-preserving writer choice matters.
 Use `MolToSmilesDeterminizedDecoder(...)` when you want at most one visible

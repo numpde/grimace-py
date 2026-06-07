@@ -52,9 +52,11 @@ def dictionary_manifest(
     script: str = TEST_GENERATOR_SCRIPT,
     *,
     artifact: str = TEST_DICTIONARY_ARTIFACT,
+    dictionary_id: object = 123_456,
     dictionary_sha256: str = EMPTY_SHA256,
     dictionary_size_bytes: int = 0,
     dictionary_file: str = "default_v1.zstdict",
+    training_level: object = 3,
 ) -> str:
     return json.dumps(
         {
@@ -63,11 +65,15 @@ def dictionary_manifest(
                 "dictionary": dictionary_file,
                 "manifest": "default_v1.json",
             },
+            "zstd_dictionary_id": dictionary_id,
             "zstd_dictionary_sha256": dictionary_sha256,
             "zstd_dictionary_size_bytes": dictionary_size_bytes,
             "training_identity": {
                 "generator": {
                     "script": script,
+                },
+                "training_parameters": {
+                    "level": training_level,
                 },
             },
         },
@@ -662,6 +668,42 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(ValueError, "dictionary file"):
                 validator.validate_wheel(wheel)
+
+    def test_rejects_manifest_dictionary_id_that_is_not_runtime_usable(self) -> None:
+        validator = load_validator()
+        invalid_dictionary_ids = ("123456", 0, True)
+        for dictionary_id in invalid_dictionary_ids:
+            with self.subTest(dictionary_id=dictionary_id):
+                with tempfile.TemporaryDirectory() as tmp:
+                    wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+                    write_wheel(
+                        wheel,
+                        payload_overrides={
+                            WHEEL_DICTIONARY_NAMES[0]: dictionary_manifest(
+                                dictionary_id=dictionary_id,
+                            ).encode("utf-8"),
+                        },
+                    )
+                    with self.assertRaisesRegex(ValueError, "dictionary id"):
+                        validator.validate_wheel(wheel)
+
+    def test_rejects_manifest_training_level_that_is_not_runtime_usable(self) -> None:
+        validator = load_validator()
+        invalid_training_levels = ("3", True)
+        for training_level in invalid_training_levels:
+            with self.subTest(training_level=training_level):
+                with tempfile.TemporaryDirectory() as tmp:
+                    wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+                    write_wheel(
+                        wheel,
+                        payload_overrides={
+                            WHEEL_DICTIONARY_NAMES[0]: dictionary_manifest(
+                                training_level=training_level,
+                            ).encode("utf-8"),
+                        },
+                    )
+                    with self.assertRaisesRegex(ValueError, "training level"):
+                        validator.validate_wheel(wheel)
 
     def test_rejects_sdist_manifest_without_recorded_generator_script(self) -> None:
         validator = load_validator()

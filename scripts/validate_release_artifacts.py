@@ -610,9 +610,11 @@ def prepared_mol_zstd_manifest_metadata(
         artifact = manifest["artifact_dir"]
         dictionary_file = manifest["files"]["dictionary"]
         manifest_file = manifest["files"]["manifest"]
+        dictionary_id = manifest["zstd_dictionary_id"]
         dictionary_sha256 = manifest["zstd_dictionary_sha256"]
         dictionary_size_bytes = manifest["zstd_dictionary_size_bytes"]
         script = manifest["training_identity"]["generator"]["script"]
+        training_level = manifest["training_identity"]["training_parameters"]["level"]
     except (KeyError, TypeError, json.JSONDecodeError) as exc:
         raise ValueError(
             f"PreparedMol zstd manifest lacks required metadata: {member_name!r}"
@@ -634,6 +636,18 @@ def prepared_mol_zstd_manifest_metadata(
         raise ValueError(
             "PreparedMol zstd manifest file does not match "
             f"the shipped package data layout: {member_name!r}"
+        )
+    if not isinstance(dictionary_id, int) or isinstance(dictionary_id, bool):
+        raise ValueError(
+            f"PreparedMol zstd manifest dictionary id is not an integer: {member_name!r}"
+        )
+    if dictionary_id == 0:
+        raise ValueError(
+            f"PreparedMol zstd manifest dictionary id is zero: {member_name!r}"
+        )
+    if not isinstance(training_level, int) or isinstance(training_level, bool):
+        raise ValueError(
+            f"PreparedMol zstd manifest training level is not an integer: {member_name!r}"
         )
     if not isinstance(dictionary_sha256, str):
         raise ValueError(

@@ -90,43 +90,19 @@ FORBIDDEN_SDIST_PATH_FRAGMENTS = (
 )
 
 
-class WheelInfo:
-    __slots__ = ("version", "prepared_mol_zstd")
-
-    def __init__(
-        self,
-        *,
-        version: str,
-        prepared_mol_zstd: "PreparedMolZstdPackageData",
-    ) -> None:
-        self.version = version
-        self.prepared_mol_zstd = prepared_mol_zstd
+class WheelInfo(NamedTuple):
+    version: str
+    prepared_mol_zstd: "PreparedMolZstdPackageData"
 
 
-class SdistInfo:
-    __slots__ = ("version", "prepared_mol_zstd")
-
-    def __init__(
-        self,
-        *,
-        version: str,
-        prepared_mol_zstd: "PreparedMolZstdPackageData",
-    ) -> None:
-        self.version = version
-        self.prepared_mol_zstd = prepared_mol_zstd
+class SdistInfo(NamedTuple):
+    version: str
+    prepared_mol_zstd: "PreparedMolZstdPackageData"
 
 
-class PreparedMolZstdPackageData:
-    __slots__ = ("generator_scripts", "file_sha256")
-
-    def __init__(
-        self,
-        *,
-        generator_scripts: dict[str, str],
-        file_sha256: dict[str, dict[str, str]],
-    ) -> None:
-        self.generator_scripts = generator_scripts
-        self.file_sha256 = file_sha256
+class PreparedMolZstdPackageData(NamedTuple):
+    generator_scripts: dict[str, str]
+    file_sha256: dict[str, dict[str, str]]
 
 
 class PreparedMolZstdManifestMetadata(NamedTuple):

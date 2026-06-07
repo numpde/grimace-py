@@ -1,6 +1,7 @@
 from pathlib import Path
 from contextlib import redirect_stderr
 from io import BytesIO
+import hashlib
 import io
 import importlib.util
 import json
@@ -18,6 +19,7 @@ TEST_DICTIONARY_ARTIFACT = "20000102_1234abcd"
 TEST_SECOND_DICTIONARY_ARTIFACT = "20000103_5678abcd"
 TEST_GENERATOR_SCRIPT = "scripts/generate_prepared_mol_zstd_dictionary.py"
 TEST_SECOND_GENERATOR_SCRIPT = "scripts/prepared_mol_zstd_dictionary_generate.py"
+EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
 SDIST_DICTIONARY_NAMES = (
     f"python/grimace/data/prepared_mol_zstd/{TEST_DICTIONARY_ARTIFACT}/default_v1.json",
     f"python/grimace/data/prepared_mol_zstd/{TEST_DICTIONARY_ARTIFACT}/default_v1.zstdict",
@@ -50,16 +52,39 @@ def dictionary_manifest(
     script: str = TEST_GENERATOR_SCRIPT,
     *,
     artifact: str = TEST_DICTIONARY_ARTIFACT,
+    dictionary_sha256: str = EMPTY_SHA256,
+    dictionary_size_bytes: int = 0,
+    dictionary_file: str = "default_v1.zstdict",
 ) -> str:
     return json.dumps(
         {
             "artifact_dir": artifact,
+            "files": {
+                "dictionary": dictionary_file,
+                "manifest": "default_v1.json",
+            },
+            "zstd_dictionary_sha256": dictionary_sha256,
+            "zstd_dictionary_size_bytes": dictionary_size_bytes,
             "training_identity": {
                 "generator": {
                     "script": script,
                 },
             },
         },
+    )
+
+
+def dictionary_manifest_for_payload(
+    payload: bytes,
+    script: str = TEST_GENERATOR_SCRIPT,
+    *,
+    artifact: str = TEST_DICTIONARY_ARTIFACT,
+) -> str:
+    return dictionary_manifest(
+        script,
+        artifact=artifact,
+        dictionary_sha256=hashlib.sha256(payload).hexdigest(),
+        dictionary_size_bytes=len(payload),
     )
 
 
@@ -593,6 +618,51 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "artifact_dir does not match"):
                 validator.validate_sdist(sdist)
 
+    def test_rejects_manifest_dictionary_hash_that_does_not_match_payload(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel(
+                wheel,
+                payload_overrides={
+                    WHEEL_DICTIONARY_NAMES[0]: dictionary_manifest(
+                        dictionary_sha256="0" * 64,
+                    ).encode("utf-8"),
+                },
+            )
+            with self.assertRaisesRegex(ValueError, "dictionary SHA-256"):
+                validator.validate_wheel(wheel)
+
+    def test_rejects_manifest_dictionary_size_that_does_not_match_payload(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel(
+                wheel,
+                payload_overrides={
+                    WHEEL_DICTIONARY_NAMES[0]: dictionary_manifest(
+                        dictionary_size_bytes=1,
+                    ).encode("utf-8"),
+                },
+            )
+            with self.assertRaisesRegex(ValueError, "dictionary size"):
+                validator.validate_wheel(wheel)
+
+    def test_rejects_manifest_dictionary_file_that_does_not_match_layout(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel(
+                wheel,
+                payload_overrides={
+                    WHEEL_DICTIONARY_NAMES[0]: dictionary_manifest(
+                        dictionary_file="other.zstdict",
+                    ).encode("utf-8"),
+                },
+            )
+            with self.assertRaisesRegex(ValueError, "dictionary file"):
+                validator.validate_wheel(wheel)
+
     def test_rejects_sdist_manifest_without_recorded_generator_script(self) -> None:
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:
@@ -985,13 +1055,19 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
 
     def test_rejects_release_when_wheel_dictionary_payload_differs_from_sdist(self) -> None:
         validator = load_validator()
+        wheel_dictionary_payload = b"different dictionary"
         with tempfile.TemporaryDirectory() as tmp:
             dist = Path(tmp)
             write_expected_artifacts(validator, dist, "0.1.12")
             for wheel in dist.glob("*.whl"):
                 write_wheel(
                     wheel,
-                    payload_overrides={WHEEL_DICTIONARY_NAMES[1]: b"different dictionary"},
+                    payload_overrides={
+                        WHEEL_DICTIONARY_NAMES[0]: dictionary_manifest_for_payload(
+                            wheel_dictionary_payload,
+                        ).encode("utf-8"),
+                        WHEEL_DICTIONARY_NAMES[1]: wheel_dictionary_payload,
+                    },
                 )
             with self.assertRaisesRegex(ValueError, "package data bytes"):
                 validator.validate_artifacts(dist, "v0.1.12")

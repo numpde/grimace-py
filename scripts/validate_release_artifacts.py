@@ -297,6 +297,7 @@ def validate_sdist(sdist_path: Path) -> SdistInfo:
     file_names: list[str] = []
     manifest_texts: dict[str, str] = {}
     prepared_mol_zstd_file_sha256: dict[str, str] = {}
+    prepared_mol_zstd_file_size: dict[str, int] = {}
     pyproject_text: str | None = None
     seen_names: set[str] = set()
     try:
@@ -340,6 +341,7 @@ def validate_sdist(sdist_path: Path) -> SdistInfo:
                         raise ValueError(f"could not read sdist member: {name!r}")
                     payload_bytes = payload.read()
                     prepared_mol_zstd_file_sha256[relative] = sha256_hex(payload_bytes)
+                    prepared_mol_zstd_file_size[relative] = len(payload_bytes)
                     if relative.endswith("/default_v1.json"):
                         manifest_texts[relative] = decode_archive_text(
                             payload_bytes,
@@ -351,6 +353,7 @@ def validate_sdist(sdist_path: Path) -> SdistInfo:
                 prefix=SDIST_PREPARED_MOL_ZSTD_PREFIX,
                 manifest_texts=manifest_texts,
                 file_sha256_by_name=prepared_mol_zstd_file_sha256,
+                file_size_by_name=prepared_mol_zstd_file_size,
             )
             validate_prepared_mol_zstd_sdist_provenance(
                 prepared_mol_zstd.generator_scripts,
@@ -417,6 +420,7 @@ def validate_wheel(wheel_path: Path) -> WheelInfo:
                 expected_version=wheel_match.group("version"),
             )
             prepared_mol_zstd_file_sha256: dict[str, str] = {}
+            prepared_mol_zstd_file_size: dict[str, int] = {}
             manifest_texts: dict[str, str] = {}
             for name in names:
                 if not name.startswith(WHEEL_PREPARED_MOL_ZSTD_PREFIX):
@@ -425,6 +429,7 @@ def validate_wheel(wheel_path: Path) -> WheelInfo:
                     continue
                 payload = archive.read(name)
                 prepared_mol_zstd_file_sha256[name] = sha256_hex(payload)
+                prepared_mol_zstd_file_size[name] = len(payload)
                 if name.endswith("/default_v1.json"):
                     manifest_texts[name] = decode_archive_text(payload, name)
             prepared_mol_zstd = validate_prepared_mol_zstd_package_data(
@@ -432,6 +437,7 @@ def validate_wheel(wheel_path: Path) -> WheelInfo:
                 prefix=WHEEL_PREPARED_MOL_ZSTD_PREFIX,
                 manifest_texts=manifest_texts,
                 file_sha256_by_name=prepared_mol_zstd_file_sha256,
+                file_size_by_name=prepared_mol_zstd_file_size,
             )
             return WheelInfo(
                 version=wheel_match.group("version"),
@@ -498,9 +504,11 @@ def validate_prepared_mol_zstd_package_data(
     prefix: str,
     manifest_texts: dict[str, str],
     file_sha256_by_name: dict[str, str],
+    file_size_by_name: dict[str, int],
 ) -> PreparedMolZstdPackageData:
     artifacts: dict[str, set[str]] = {}
     generator_scripts: dict[str, str] = {}
+    manifest_dictionary_integrity: dict[str, tuple[str, int]] = {}
     file_sha256: dict[str, dict[str, str]] = {}
     for name in names:
         if not name.startswith(prefix) or name.endswith("/"):
@@ -526,7 +534,12 @@ def validate_prepared_mol_zstd_package_data(
         file_sha256.setdefault(artifact, {})[filename] = digest
         if filename == "default_v1.json":
             try:
-                manifest_artifact, script = prepared_mol_zstd_manifest_provenance(
+                (
+                    manifest_artifact,
+                    script,
+                    dictionary_sha256,
+                    dictionary_size_bytes,
+                ) = prepared_mol_zstd_manifest_metadata(
                     manifest_texts[name],
                     name,
                 )
@@ -539,6 +552,10 @@ def validate_prepared_mol_zstd_package_data(
                     "PreparedMol zstd manifest artifact_dir does not match "
                     f"archive path: {name!r}"
                 )
+            manifest_dictionary_integrity[artifact] = (
+                dictionary_sha256,
+                dictionary_size_bytes,
+            )
             generator_scripts[artifact] = script
 
     if not artifacts:
@@ -552,6 +569,19 @@ def validate_prepared_mol_zstd_package_data(
         raise ValueError(
             f"incomplete PreparedMol zstd dictionary package data: {incomplete!r}"
         )
+    for artifact, expected_dictionary in manifest_dictionary_integrity.items():
+        dictionary_sha256, dictionary_size_bytes = expected_dictionary
+        dictionary_name = f"{prefix}{artifact}/default_v1.zstdict"
+        if file_sha256_by_name[dictionary_name] != dictionary_sha256:
+            raise ValueError(
+                "PreparedMol zstd manifest dictionary SHA-256 does not "
+                f"match archive payload: {dictionary_name!r}"
+            )
+        if file_size_by_name[dictionary_name] != dictionary_size_bytes:
+            raise ValueError(
+                "PreparedMol zstd manifest dictionary size does not match "
+                f"archive payload: {dictionary_name!r}"
+            )
     return PreparedMolZstdPackageData(
         generator_scripts=generator_scripts,
         file_sha256=file_sha256,
@@ -571,17 +601,21 @@ def validate_prepared_mol_zstd_sdist_provenance(
             )
 
 
-def prepared_mol_zstd_manifest_provenance(
+def prepared_mol_zstd_manifest_metadata(
     manifest_text: str,
     member_name: str,
-) -> tuple[str, str]:
+) -> tuple[str, str, str, int]:
     try:
         manifest = json.loads(manifest_text)
         artifact = manifest["artifact_dir"]
+        dictionary_file = manifest["files"]["dictionary"]
+        manifest_file = manifest["files"]["manifest"]
+        dictionary_sha256 = manifest["zstd_dictionary_sha256"]
+        dictionary_size_bytes = manifest["zstd_dictionary_size_bytes"]
         script = manifest["training_identity"]["generator"]["script"]
     except (KeyError, TypeError, json.JSONDecodeError) as exc:
         raise ValueError(
-            f"PreparedMol zstd manifest lacks generator provenance: {member_name!r}"
+            f"PreparedMol zstd manifest lacks required metadata: {member_name!r}"
         ) from exc
     if not isinstance(artifact, str):
         raise ValueError(
@@ -590,6 +624,38 @@ def prepared_mol_zstd_manifest_provenance(
     if not isinstance(script, str):
         raise ValueError(
             f"PreparedMol zstd manifest generator script is not a string: {member_name!r}"
+        )
+    if dictionary_file != "default_v1.zstdict":
+        raise ValueError(
+            "PreparedMol zstd manifest dictionary file does not match "
+            f"the shipped package data layout: {member_name!r}"
+        )
+    if manifest_file != "default_v1.json":
+        raise ValueError(
+            "PreparedMol zstd manifest file does not match "
+            f"the shipped package data layout: {member_name!r}"
+        )
+    if not isinstance(dictionary_sha256, str):
+        raise ValueError(
+            f"PreparedMol zstd manifest dictionary SHA-256 is not a string: {member_name!r}"
+        )
+    if (
+        len(dictionary_sha256) != 64
+        or re.fullmatch(r"[0-9a-f]{64}", dictionary_sha256) is None
+    ):
+        raise ValueError(
+            f"PreparedMol zstd manifest dictionary SHA-256 is invalid: {member_name!r}"
+        )
+    if not isinstance(dictionary_size_bytes, int) or isinstance(
+        dictionary_size_bytes,
+        bool,
+    ):
+        raise ValueError(
+            f"PreparedMol zstd manifest dictionary size is not an integer: {member_name!r}"
+        )
+    if dictionary_size_bytes < 0:
+        raise ValueError(
+            f"PreparedMol zstd manifest dictionary size is negative: {member_name!r}"
         )
     if is_unsafe_archive_path(script):
         raise ValueError(
@@ -600,7 +666,7 @@ def prepared_mol_zstd_manifest_provenance(
             "PreparedMol zstd generator script must be a scripts/*.py source "
             f"path: {script!r}"
         )
-    return artifact, script
+    return artifact, script, dictionary_sha256, dictionary_size_bytes
 
 
 def main(argv: list[str]) -> int:

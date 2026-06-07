@@ -475,12 +475,14 @@ def _active_emitted_transitions(
         closure_actions,
     )
 
-    closure_transitions = _transitions_from_scheduled_action_emissions(
+    surviving_closure_emissions = _surviving_scheduled_action_emissions(
         closure_emissions
     )
 
-    if closure_transitions:
-        return closure_transitions
+    if surviving_closure_emissions:
+        return _transitions_from_scheduled_action_emissions(
+            surviving_closure_emissions
+        )
 
     return _transitions_from_scheduled_actions(
         prepared,
@@ -1033,6 +1035,16 @@ def _scheduled_action_emissions(
         )
 
     return tuple(emissions)
+
+
+def _surviving_scheduled_action_emissions(
+    emissions: tuple[_WriterScheduledActionEmission, ...],
+) -> tuple[_WriterScheduledActionEmission, ...]:
+    return tuple(
+        emission
+        for emission in emissions
+        if emission.transitions
+    )
 
 
 def _transitions_from_scheduled_action_emissions(

@@ -3,6 +3,8 @@ import importlib.util
 import re
 import unittest
 
+from tests.checks.posture_helpers import assert_before, line_count
+
 
 ROOT = Path(__file__).resolve().parents[2]
 RELEASE_VALIDATOR = ROOT / "scripts" / "validate_release_artifacts.py"
@@ -35,14 +37,6 @@ def load_release_validator():
     return module
 
 
-def assert_before(test: unittest.TestCase, text: str, earlier: str, later: str) -> None:
-    earlier_index = text.find(earlier)
-    later_index = text.find(later)
-    test.assertNotEqual(earlier_index, -1, earlier)
-    test.assertNotEqual(later_index, -1, later)
-    test.assertLess(earlier_index, later_index)
-
-
 class WorkflowPostureTests(unittest.TestCase):
     def test_workflows_pin_github_hosted_runner_image(self) -> None:
         for workflow_path in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
@@ -72,8 +66,8 @@ class WorkflowPostureTests(unittest.TestCase):
         workflow = read_text(".github/workflows/ci.yml")
         self.assertRegex(workflow, r"(?m)^permissions:\n  contents: read$")
         self.assertEqual(
-            workflow.count("persist-credentials: false"),
-            workflow.count("uses: actions/checkout@"),
+            line_count(workflow, r"\s+persist-credentials:\s+false"),
+            line_count(workflow, r"\s*-\s+uses:\s+actions/checkout@[0-9a-f]{40}.*"),
         )
         self.assertNotIn("contents: write", workflow)
         self.assertNotIn("id-token: write", workflow)
@@ -89,8 +83,8 @@ class WorkflowPostureTests(unittest.TestCase):
         workflow = read_text(".github/workflows/release.yml")
         self.assertRegex(workflow, r"(?m)^permissions:\n  contents: read$")
         self.assertEqual(
-            workflow.count("persist-credentials: false"),
-            workflow.count("uses: actions/checkout@"),
+            line_count(workflow, r"\s+persist-credentials:\s+false"),
+            line_count(workflow, r"\s*-\s+uses:\s+actions/checkout@[0-9a-f]{40}.*"),
         )
 
         wheel = job_section(workflow, "wheel")
@@ -135,19 +129,43 @@ class WorkflowPostureTests(unittest.TestCase):
             workflow,
             r'MANYLINUX_2_28_X86_64_IMAGE: "quay\.io/pypa/manylinux_2_28_x86_64@sha256:[0-9a-f]{64}"',
         )
-        self.assertEqual(workflow.count("maturin-version: ${{ env.MATURIN_ACTION_VERSION }}"), 2)
-        self.assertEqual(workflow.count("container: ${{ env.MANYLINUX_2_28_X86_64_IMAGE }}"), 1)
+        self.assertEqual(
+            line_count(
+                workflow,
+                r"\s+maturin-version:\s+\$\{\{ env\.MATURIN_ACTION_VERSION \}\}",
+            ),
+            2,
+        )
+        self.assertEqual(
+            line_count(
+                workflow,
+                r"\s+container:\s+\$\{\{ env\.MANYLINUX_2_28_X86_64_IMAGE \}\}",
+            ),
+            1,
+        )
         self.assertIn(
             "args: --release --compatibility pypi --out dist -i python${{ matrix.python-version }}",
             workflow,
         )
         self.assertEqual(
-            workflow.count("--constraint requirements/container-build-constraints.txt"),
+            line_count(
+                workflow,
+                r"\s+run: python -m pip install --constraint requirements/container-build-constraints\.txt .*",
+            ),
             4,
         )
         self.assertIn('"maturin==$MATURIN_PIP_VERSION"', workflow)
-        self.assertEqual(workflow.count('"twine==$TWINE_PIP_VERSION"'), 4)
-        self.assertEqual(workflow.count('"zstandard==$ZSTANDARD_FIXTURE_PIP_VERSION"'), 2)
+        self.assertEqual(
+            line_count(workflow, r"\s+run: .*\"twine==\$TWINE_PIP_VERSION\".*"),
+            4,
+        )
+        self.assertEqual(
+            line_count(
+                workflow,
+                r"\s+run: .*\"zstandard==\$ZSTANDARD_FIXTURE_PIP_VERSION\".*",
+            ),
+            2,
+        )
         self.assertIn("python -m twine check dist/*.whl", workflow)
         self.assertIn("python -m twine check dist/*.tar.gz", workflow)
         self.assertEqual(
@@ -157,22 +175,27 @@ class WorkflowPostureTests(unittest.TestCase):
         self.assertIn("python -m pip install --no-deps dist/*.whl", workflow)
         self.assertIn("python -m pip install --no-deps --no-build-isolation dist/*.tar.gz", workflow)
         self.assertEqual(
-            workflow.count(
-                "python scripts/validate_release_artifacts.py dist/*.whl --wheel-only"
+            line_count(
+                workflow,
+                r"\s+run: python scripts/validate_release_artifacts\.py dist/\*\.whl --wheel-only",
             ),
             1,
         )
         self.assertEqual(
-            workflow.count(
-                "python scripts/validate_release_artifacts.py dist/*.tar.gz --sdist-only"
+            line_count(
+                workflow,
+                r"\s+run: python scripts/validate_release_artifacts\.py dist/\*\.tar\.gz --sdist-only",
             ),
             1,
         )
         self.assertIn("path: dist/*.whl", workflow)
         self.assertIn("path: dist/*.tar.gz", workflow)
-        self.assertEqual(workflow.count("if-no-files-found: error"), 2)
+        self.assertEqual(line_count(workflow, r"\s+if-no-files-found:\s+error"), 2)
         self.assertEqual(
-            workflow.count("python scripts/validate_release_artifacts.py dist --tag"),
+            line_count(
+                workflow,
+                r'\s+run: python scripts/validate_release_artifacts\.py dist --tag "\$GITHUB_REF_NAME"',
+            ),
             2,
         )
 

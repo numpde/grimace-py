@@ -70,12 +70,16 @@ def wheel_metadata(
     source_url: str | None = None,
 ) -> str:
     metadata = project_metadata()
+    project_name = metadata["name"] if name is None else name
+    project_source_url = (
+        metadata["urls"]["Source"] if source_url is None else source_url
+    )
     return "\n".join(
         (
             "Metadata-Version: 2.4",
-            f"Name: {name or metadata['name']}",
+            f"Name: {project_name}",
             f"Version: {version}",
-            f"Project-URL: Source, {source_url or metadata['urls']['Source']}",
+            f"Project-URL: Source, {project_source_url}",
             "",
         )
     )
@@ -106,14 +110,18 @@ def pyproject_toml(
     source_url: str | None = None,
 ) -> str:
     metadata = project_metadata()
+    project_name = metadata["name"] if name is None else name
+    project_source_url = (
+        metadata["urls"]["Source"] if source_url is None else source_url
+    )
     return "\n".join(
         (
             "[project]",
-            f"name = {json.dumps(name or metadata['name'])}",
+            f"name = {json.dumps(project_name)}",
             f"version = {json.dumps(version)}",
             "",
             "[project.urls]",
-            f"Source = {json.dumps(source_url or metadata['urls']['Source'])}",
+            f"Source = {json.dumps(project_source_url)}",
             "",
         )
     )
@@ -624,6 +632,20 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "official repository URL"):
                 validator.validate_sdist(sdist)
 
+    def test_rejects_empty_sdist_source_url(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            sdist = Path(tmp) / "grimace_py-0.1.12.tar.gz"
+            write_sdist(
+                sdist,
+                ("pyproject.toml", "Cargo.toml", *SDIST_DICTIONARY_NAMES),
+                payload_overrides={
+                    "pyproject.toml": pyproject_toml(source_url="").encode("utf-8"),
+                },
+            )
+            with self.assertRaisesRegex(ValueError, "Source must be non-empty"):
+                validator.validate_sdist(sdist)
+
     def test_rejects_invalid_utf8_wheel_manifest(self) -> None:
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:
@@ -727,6 +749,21 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
                 },
             )
             with self.assertRaisesRegex(ValueError, "official repository URL"):
+                validator.validate_wheel(wheel)
+
+    def test_rejects_empty_wheel_source_url(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel(
+                wheel,
+                payload_overrides={
+                    wheel_metadata_name(wheel): wheel_metadata(
+                        source_url="",
+                    ).encode("utf-8"),
+                },
+            )
+            with self.assertRaisesRegex(ValueError, "Project-URL"):
                 validator.validate_wheel(wheel)
 
     def test_rejects_wheel_without_canonical_metadata_member(self) -> None:

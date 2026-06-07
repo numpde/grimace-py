@@ -47,6 +47,7 @@ from grimace._south_star1.writer_graph_obligations import WriterEdgeObligationKi
 from grimace._south_star1.writer_graph_obligations import WriterResidualAttachmentActionKind
 from grimace._south_star1.writer_state import ComponentCursor
 from grimace._south_star1.writer_state import ObligationState
+from grimace._south_star1.writer_state import PendingWriterEntry
 from grimace._south_star1.writer_state import WriterAtomFrame
 from grimace._south_star1.writer_state import WriterClosedClosure
 from grimace._south_star1.writer_state import WriterClosureLabel
@@ -1534,6 +1535,30 @@ class WriterStateKernelTest(unittest.TestCase):
             parent=AtomId(0),
             closure_pair_obligation=pair,
         )
+
+    def test_scheduled_action_requires_pending_entry_payload(self) -> None:
+        with self.assertRaises(SouthStarError):
+            writer_transitions._WriterScheduledAction(
+                kind=writer_transitions._WriterScheduledActionKind.CONSUME_PENDING_ENTRY,
+                parent=AtomId(0),
+            )
+
+    def test_scheduled_action_accepts_pending_entry_payload(self) -> None:
+        pending = PendingWriterEntry(
+            parent=AtomId(0),
+            child=AtomId(1),
+            bond=BondId(0),
+            branch=False,
+        )
+
+        action = writer_transitions._consume_pending_entry_action(pending)
+
+        self.assertIs(
+            action.kind,
+            writer_transitions._WriterScheduledActionKind.CONSUME_PENDING_ENTRY,
+        )
+        self.assertEqual(action.parent, AtomId(0))
+        self.assertEqual(action.pending_entry, pending)
 
     def test_writer_shaped_acyclic_stereo_uses_writer_frontier(self) -> None:
         for facts in (tetrahedral_facts(), directional_facts()):

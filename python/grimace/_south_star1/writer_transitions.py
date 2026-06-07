@@ -135,6 +135,7 @@ class _WriterClosurePairObligation:
 
 
 class _WriterScheduledActionKind(Enum):
+    CONSUME_PENDING_ENTRY = "consume_pending_entry"
     FINISH_ACTIVE = "finish_active"
     ENTER_INLINE_CHILD = "enter_inline_child"
     OPEN_BRANCH = "open_branch"
@@ -146,12 +147,14 @@ class _WriterScheduledActionKind(Enum):
 class _WriterScheduledAction:
     kind: _WriterScheduledActionKind
     parent: AtomId
+    pending_entry: PendingWriterEntry | None = None
     child_obligation: _WriterChildObligation | None = None
     closure_open_obligation: _WriterClosureOpenObligation | None = None
     closure_open_label: WriterClosureLabel | None = None
     closure_pair_obligation: _WriterClosurePairObligation | None = None
 
     def __post_init__(self) -> None:
+        has_pending = self.pending_entry is not None
         has_child = self.child_obligation is not None
         has_open_obligation = self.closure_open_obligation is not None
         has_open_label = self.closure_open_label is not None
@@ -159,7 +162,8 @@ class _WriterScheduledAction:
 
         if self.kind is _WriterScheduledActionKind.FINISH_ACTIVE:
             valid = (
-                not has_child
+                not has_pending
+                and not has_child
                 and not has_open_obligation
                 and not has_open_label
                 and not has_pair
@@ -169,24 +173,35 @@ class _WriterScheduledAction:
             _WriterScheduledActionKind.OPEN_BRANCH,
         ):
             valid = (
-                has_child
+                not has_pending
+                and has_child
                 and not has_open_obligation
                 and not has_open_label
                 and not has_pair
             )
         elif self.kind is _WriterScheduledActionKind.OPEN_CLOSURE_ENDPOINT:
             valid = (
-                not has_child
+                not has_pending
+                and not has_child
                 and has_open_obligation
                 and has_open_label
                 and not has_pair
             )
         elif self.kind is _WriterScheduledActionKind.PAIR_CLOSURE_ENDPOINT:
             valid = (
-                not has_child
+                not has_pending
+                and not has_child
                 and not has_open_obligation
                 and not has_open_label
                 and has_pair
+            )
+        elif self.kind is _WriterScheduledActionKind.CONSUME_PENDING_ENTRY:
+            valid = (
+                has_pending
+                and not has_child
+                and not has_open_obligation
+                and not has_open_label
+                and not has_pair
             )
         else:
             valid = False
@@ -196,6 +211,16 @@ class _WriterScheduledAction:
                 SouthStarErrorKind.INTERNAL_INVARIANT,
                 f"invalid scheduled action payload: {self.kind!r}",
             )
+
+
+def _consume_pending_entry_action(
+    pending_entry: PendingWriterEntry,
+) -> _WriterScheduledAction:
+    return _WriterScheduledAction(
+        kind=_WriterScheduledActionKind.CONSUME_PENDING_ENTRY,
+        parent=pending_entry.parent,
+        pending_entry=pending_entry,
+    )
 
 
 def _finish_active_action(parent: AtomId) -> _WriterScheduledAction:
@@ -448,13 +473,29 @@ def _active_emitted_transitions(
     )
 
 
+def _pending_entry_scheduled_actions(
+    state: WriterState,
+) -> tuple[_WriterScheduledAction, ...]:
+    pending = state.obligations.pending_entry
+
+    if pending is None:
+        return ()
+
+    return (_consume_pending_entry_action(pending),)
+
+
 def _scheduled_writer_transitions(
     prepared: SouthStarPreparedMol,
     state: WriterState,
     context: WriterTransitionExpansionContext,
 ) -> tuple[WriterTransition, ...]:
     if state.obligations.pending_entry is not None:
-        return _pending_entry_transitions(prepared, state, context)
+        return _transitions_from_scheduled_actions(
+            prepared,
+            state,
+            context,
+            _pending_entry_scheduled_actions(state),
+        )
 
     active = state.active
 
@@ -540,6 +581,31 @@ def _pending_entry_transitions(
         pending,
         kind=kind,
         context=context,
+    )
+
+
+def _pending_entry_transitions_from_scheduled_action(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+    action: _WriterScheduledAction,
+) -> tuple[WriterTransition, ...]:
+    if action.kind is not _WriterScheduledActionKind.CONSUME_PENDING_ENTRY:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            f"unsupported pending-entry scheduled action: {action.kind!r}",
+        )
+
+    if action.pending_entry is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "scheduled pending-entry action requires a pending entry",
+        )
+
+    return _pending_entry_transitions(
+        prepared,
+        state,
+        context,
     )
 
 
@@ -833,6 +899,14 @@ def _transitions_from_scheduled_action(
     context: WriterTransitionExpansionContext,
     action: _WriterScheduledAction,
 ) -> tuple[WriterTransition, ...]:
+    if action.kind is _WriterScheduledActionKind.CONSUME_PENDING_ENTRY:
+        return _pending_entry_transitions_from_scheduled_action(
+            prepared,
+            state,
+            context,
+            action,
+        )
+
     if action.kind in (
         _WriterScheduledActionKind.FINISH_ACTIVE,
         _WriterScheduledActionKind.ENTER_INLINE_CHILD,

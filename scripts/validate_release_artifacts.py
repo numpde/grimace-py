@@ -12,6 +12,7 @@ import re
 import sys
 import tarfile
 import tomllib
+from typing import NamedTuple
 import zipfile
 
 
@@ -126,6 +127,15 @@ class PreparedMolZstdPackageData:
     ) -> None:
         self.generator_scripts = generator_scripts
         self.file_sha256 = file_sha256
+
+
+class PreparedMolZstdManifestMetadata(NamedTuple):
+    artifact: str
+    generator_script: str
+    dictionary_id: int
+    training_level: int
+    dictionary_sha256: str
+    dictionary_size_bytes: int
 
 
 def expected_artifact_names(version: str) -> tuple[str, ...]:
@@ -509,6 +519,8 @@ def validate_prepared_mol_zstd_package_data(
     artifacts: dict[str, set[str]] = {}
     generator_scripts: dict[str, str] = {}
     manifest_dictionary_integrity: dict[str, tuple[str, int]] = {}
+    dictionary_ids: dict[int, str] = {}
+    training_levels: dict[int, str] = {}
     file_sha256: dict[str, dict[str, str]] = {}
     for name in names:
         if not name.startswith(prefix) or name.endswith("/"):
@@ -534,12 +546,7 @@ def validate_prepared_mol_zstd_package_data(
         file_sha256.setdefault(artifact, {})[filename] = digest
         if filename == "default_v1.json":
             try:
-                (
-                    manifest_artifact,
-                    script,
-                    dictionary_sha256,
-                    dictionary_size_bytes,
-                ) = prepared_mol_zstd_manifest_metadata(
+                metadata = prepared_mol_zstd_manifest_metadata(
                     manifest_texts[name],
                     name,
                 )
@@ -547,16 +554,34 @@ def validate_prepared_mol_zstd_package_data(
                 raise ValueError(
                     f"missing PreparedMol zstd manifest payload: {name!r}"
                 ) from exc
-            if manifest_artifact != artifact:
+            if metadata.artifact != artifact:
                 raise ValueError(
                     "PreparedMol zstd manifest artifact_dir does not match "
                     f"archive path: {name!r}"
                 )
-            manifest_dictionary_integrity[artifact] = (
-                dictionary_sha256,
-                dictionary_size_bytes,
+            previous_artifact = dictionary_ids.setdefault(
+                metadata.dictionary_id,
+                artifact,
             )
-            generator_scripts[artifact] = script
+            if previous_artifact != artifact:
+                raise ValueError(
+                    "duplicate PreparedMol zstd dictionary id in package data: "
+                    f"{metadata.dictionary_id!r}"
+                )
+            previous_artifact = training_levels.setdefault(
+                metadata.training_level,
+                artifact,
+            )
+            if previous_artifact != artifact:
+                raise ValueError(
+                    "duplicate PreparedMol zstd training level in package data: "
+                    f"{metadata.training_level!r}"
+                )
+            manifest_dictionary_integrity[artifact] = (
+                metadata.dictionary_sha256,
+                metadata.dictionary_size_bytes,
+            )
+            generator_scripts[artifact] = metadata.generator_script
 
     if not artifacts:
         raise ValueError("missing PreparedMol zstd dictionary package data")
@@ -604,7 +629,7 @@ def validate_prepared_mol_zstd_sdist_provenance(
 def prepared_mol_zstd_manifest_metadata(
     manifest_text: str,
     member_name: str,
-) -> tuple[str, str, str, int]:
+) -> PreparedMolZstdManifestMetadata:
     try:
         manifest = json.loads(manifest_text)
         artifact = manifest["artifact_dir"]
@@ -680,7 +705,14 @@ def prepared_mol_zstd_manifest_metadata(
             "PreparedMol zstd generator script must be a scripts/*.py source "
             f"path: {script!r}"
         )
-    return artifact, script, dictionary_sha256, dictionary_size_bytes
+    return PreparedMolZstdManifestMetadata(
+        artifact=artifact,
+        generator_script=script,
+        dictionary_id=dictionary_id,
+        training_level=training_level,
+        dictionary_sha256=dictionary_sha256,
+        dictionary_size_bytes=dictionary_size_bytes,
+    )
 
 
 def main(argv: list[str]) -> int:

@@ -705,6 +705,60 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, "training level"):
                         validator.validate_wheel(wheel)
 
+    def test_rejects_duplicate_manifest_dictionary_ids(self) -> None:
+        validator = load_validator()
+        artifact_names = (
+            *wheel_dictionary_names(TEST_DICTIONARY_ARTIFACT),
+            *wheel_dictionary_names(TEST_SECOND_DICTIONARY_ARTIFACT),
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel(
+                wheel,
+                ("grimace/__init__.py", *artifact_names),
+                payload_overrides={
+                    wheel_dictionary_names(TEST_DICTIONARY_ARTIFACT)[0]: dictionary_manifest(
+                        artifact=TEST_DICTIONARY_ARTIFACT,
+                        dictionary_id=123_456,
+                        training_level=3,
+                    ).encode("utf-8"),
+                    wheel_dictionary_names(TEST_SECOND_DICTIONARY_ARTIFACT)[0]: dictionary_manifest(
+                        artifact=TEST_SECOND_DICTIONARY_ARTIFACT,
+                        dictionary_id=123_456,
+                        training_level=10,
+                    ).encode("utf-8"),
+                },
+            )
+            with self.assertRaisesRegex(ValueError, "duplicate PreparedMol zstd dictionary id"):
+                validator.validate_wheel(wheel)
+
+    def test_rejects_duplicate_manifest_training_levels(self) -> None:
+        validator = load_validator()
+        artifact_names = (
+            *wheel_dictionary_names(TEST_DICTIONARY_ARTIFACT),
+            *wheel_dictionary_names(TEST_SECOND_DICTIONARY_ARTIFACT),
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel(
+                wheel,
+                ("grimace/__init__.py", *artifact_names),
+                payload_overrides={
+                    wheel_dictionary_names(TEST_DICTIONARY_ARTIFACT)[0]: dictionary_manifest(
+                        artifact=TEST_DICTIONARY_ARTIFACT,
+                        dictionary_id=123_456,
+                        training_level=3,
+                    ).encode("utf-8"),
+                    wheel_dictionary_names(TEST_SECOND_DICTIONARY_ARTIFACT)[0]: dictionary_manifest(
+                        artifact=TEST_SECOND_DICTIONARY_ARTIFACT,
+                        dictionary_id=654_321,
+                        training_level=3,
+                    ).encode("utf-8"),
+                },
+            )
+            with self.assertRaisesRegex(ValueError, "duplicate PreparedMol zstd training level"):
+                validator.validate_wheel(wheel)
+
     def test_rejects_sdist_manifest_without_recorded_generator_script(self) -> None:
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:
@@ -1059,20 +1113,28 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             sdist_dictionary_names(TEST_DICTIONARY_ARTIFACT)[0]: dictionary_manifest(
                 TEST_GENERATOR_SCRIPT,
                 artifact=TEST_DICTIONARY_ARTIFACT,
+                dictionary_id=123_456,
+                training_level=3,
             ).encode("utf-8"),
             sdist_dictionary_names(TEST_SECOND_DICTIONARY_ARTIFACT)[0]: dictionary_manifest(
                 TEST_SECOND_GENERATOR_SCRIPT,
                 artifact=TEST_SECOND_DICTIONARY_ARTIFACT,
+                dictionary_id=654_321,
+                training_level=10,
             ).encode("utf-8"),
         }
         wheel_payloads = {
             wheel_dictionary_names(TEST_DICTIONARY_ARTIFACT)[0]: dictionary_manifest(
                 TEST_SECOND_GENERATOR_SCRIPT,
                 artifact=TEST_DICTIONARY_ARTIFACT,
+                dictionary_id=123_456,
+                training_level=3,
             ).encode("utf-8"),
             wheel_dictionary_names(TEST_SECOND_DICTIONARY_ARTIFACT)[0]: dictionary_manifest(
                 TEST_SECOND_GENERATOR_SCRIPT,
                 artifact=TEST_SECOND_DICTIONARY_ARTIFACT,
+                dictionary_id=654_321,
+                training_level=10,
             ).encode("utf-8"),
         }
         with tempfile.TemporaryDirectory() as tmp:

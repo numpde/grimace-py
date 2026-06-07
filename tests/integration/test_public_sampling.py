@@ -329,6 +329,47 @@ class PublicSamplingTests(unittest.TestCase):
                 separator_step = mol_sample.steps[mol_sample.tokens.index(".")]
                 self.assertEqual(((".", 1),), _step_choice_pairs(separator_step))
 
+    def test_sampling_accepts_empty_molecule_and_prepared_mol_round_trips(
+        self,
+    ) -> None:
+        mol = parse_smiles("")
+        kwargs = supported_public_kwargs(isomericSmiles=False, rootedAtAtom=-1)
+        prepared = grimace.PrepareMol(mol, **prepared_writer_kwargs(kwargs))
+        inputs = (
+            ("rdkit", mol),
+            ("prepared_raw", grimace.PreparedMol.from_bytes(prepared.to_bytes())),
+            (
+                "prepared_zstd",
+                grimace.PreparedMol.from_bytes(
+                    prepared.to_bytes(compression="zstd"),
+                ),
+            ),
+        )
+
+        for input_name, mol_or_prepared in inputs:
+            for decoder_view, sampling_mode in SAMPLING_MODE_PAIRS:
+                with self.subTest(
+                    input=input_name,
+                    decoder_view=decoder_view,
+                    sampling_mode=sampling_mode,
+                ):
+                    sample = grimace.MolToSmilesSample(
+                        mol_or_prepared,
+                        seed=0,
+                        decoder_view=decoder_view,
+                        sampling_mode=sampling_mode,
+                        **kwargs,
+                    )
+
+                    self._assert_sample_invariants(
+                        sample,
+                        decoder_view=decoder_view,
+                        sampling_mode=sampling_mode,
+                    )
+                    self.assertEqual((), sample.tokens)
+                    self.assertEqual("", sample.smiles)
+                    self.assertEqual((), sample.steps)
+
     def test_sampling_rejects_invalid_mode_pairs(self) -> None:
         mol = parse_smiles("CCO")
         kwargs = supported_public_kwargs(isomericSmiles=False, rootedAtAtom=0)

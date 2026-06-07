@@ -72,6 +72,9 @@ for token in target_tokens:
         for choice in decoder.next_choices
         if choice.text == token
     )
+
+prefix = decoder.prefix if decoder.prefix else '""'
+print(f"{prefix} -> {[choice.text for choice in decoder.next_choices]}")
 ```
 
 Output on aspirin along that target path:

@@ -138,6 +138,35 @@ def wheel_metadata_name(path: Path) -> str:
     return f"grimace_py-{version}.dist-info/METADATA"
 
 
+def wheel_archive_metadata_name(path: Path) -> str:
+    version = path.name.split("-", 2)[1]
+    return f"grimace_py-{version}.dist-info/WHEEL"
+
+
+def wheel_record_name(path: Path) -> str:
+    version = path.name.split("-", 2)[1]
+    return f"grimace_py-{version}.dist-info/RECORD"
+
+
+def wheel_tag(path: Path) -> str:
+    parts = path.name.removesuffix(".whl").split("-")
+    if len(parts) < 5:
+        return "cp312-cp312-manylinux_2_28_x86_64"
+    return "-".join(parts[-3:])
+
+
+def wheel_archive_metadata(*, tag: str) -> str:
+    return wheel_archive_metadata_with_headers(
+        "Wheel-Version: 1.0",
+        "Root-Is-Purelib: false",
+        f"Tag: {tag}",
+    )
+
+
+def wheel_archive_metadata_with_headers(*headers: str) -> str:
+    return "\n".join((*headers, ""))
+
+
 def pyproject_toml(
     *,
     version: str = "0.1.12",
@@ -166,6 +195,7 @@ def archive_payload(
     name: str,
     *,
     manifest_script: str = TEST_GENERATOR_SCRIPT,
+    wheel_path: Path | None = None,
     version: str = "0.1.12",
 ) -> bytes:
     if name.endswith("/default_v1.json"):
@@ -174,6 +204,12 @@ def archive_payload(
     if name.endswith(".dist-info/METADATA"):
         version = name.split("-", 1)[1].split(".dist-info/", 1)[0]
         return wheel_metadata(version=version).encode("utf-8")
+    if name.endswith(".dist-info/WHEEL"):
+        if wheel_path is None:
+            raise AssertionError("wheel_path is required for WHEEL payloads")
+        return wheel_archive_metadata(tag=wheel_tag(wheel_path)).encode("utf-8")
+    if name.endswith(".dist-info/RECORD"):
+        return b""
     if name == "pyproject.toml":
         return pyproject_toml(version=version).encode("utf-8")
     return b""
@@ -233,13 +269,17 @@ def write_wheel(
     names: tuple[str, ...] = ("grimace/__init__.py", *WHEEL_DICTIONARY_NAMES),
     *,
     manifest_script: str = TEST_GENERATOR_SCRIPT,
-    include_source_metadata: bool = True,
+    include_dist_info_metadata: bool = True,
     payload_overrides: dict[str, bytes] | None = None,
 ) -> None:
-    if include_source_metadata and not any(
-        name.endswith(".dist-info/METADATA") for name in names
-    ):
-        names = (*names, wheel_metadata_name(path))
+    if include_dist_info_metadata:
+        for metadata_name in (
+            wheel_metadata_name(path),
+            wheel_archive_metadata_name(path),
+            wheel_record_name(path),
+        ):
+            if metadata_name not in names:
+                names = (*names, metadata_name)
     payload_overrides = payload_overrides or {}
     with zipfile.ZipFile(path, "w") as archive:
         for name in names:
@@ -247,7 +287,11 @@ def write_wheel(
                 name,
                 payload_overrides.get(
                     name,
-                    archive_payload(name, manifest_script=manifest_script),
+                    archive_payload(
+                        name,
+                        manifest_script=manifest_script,
+                        wheel_path=path,
+                    ),
                 ),
             )
 
@@ -529,7 +573,7 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
                         metadata_name,
                         metadata_name,
                     ),
-                    include_source_metadata=False,
+                    include_dist_info_metadata=False,
                 )
             with self.assertRaisesRegex(ValueError, "duplicate archive member"):
                 validator.validate_wheel(wheel)
@@ -902,7 +946,7 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:
             wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
-            write_wheel(wheel, include_source_metadata=False)
+            write_wheel(wheel, include_dist_info_metadata=False)
             with self.assertRaisesRegex(ValueError, "METADATA"):
                 validator.validate_wheel(wheel)
 
@@ -1097,9 +1141,136 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
                     *WHEEL_DICTIONARY_NAMES,
                     "grimace/not-package.dist-info/METADATA",
                 ),
-                include_source_metadata=False,
+                include_dist_info_metadata=False,
             )
             with self.assertRaisesRegex(ValueError, "canonical METADATA"):
+                validator.validate_wheel(wheel)
+
+    def test_rejects_wheel_without_canonical_wheel_member(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel(
+                wheel,
+                (
+                    "grimace/__init__.py",
+                    *WHEEL_DICTIONARY_NAMES,
+                    wheel_metadata_name(wheel),
+                    wheel_record_name(wheel),
+                ),
+                include_dist_info_metadata=False,
+            )
+            with self.assertRaisesRegex(ValueError, "canonical WHEEL"):
+                validator.validate_wheel(wheel)
+
+    def test_rejects_wheel_without_canonical_record_member(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel(
+                wheel,
+                (
+                    "grimace/__init__.py",
+                    *WHEEL_DICTIONARY_NAMES,
+                    wheel_metadata_name(wheel),
+                    wheel_archive_metadata_name(wheel),
+                ),
+                include_dist_info_metadata=False,
+            )
+            with self.assertRaisesRegex(ValueError, "canonical RECORD"):
+                validator.validate_wheel(wheel)
+
+    def test_rejects_unsupported_wheel_archive_metadata_version(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel(
+                wheel,
+                payload_overrides={
+                    wheel_archive_metadata_name(wheel): (
+                        wheel_archive_metadata_with_headers(
+                            "Wheel-Version: 2.0",
+                            "Root-Is-Purelib: false",
+                            "Tag: cp312-cp312-manylinux_2_28_x86_64",
+                        ).encode("utf-8")
+                    ),
+                },
+            )
+            with self.assertRaisesRegex(ValueError, "WHEEL metadata version"):
+                validator.validate_wheel(wheel)
+
+    def test_rejects_wheel_archive_metadata_without_tags(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel(
+                wheel,
+                payload_overrides={
+                    wheel_archive_metadata_name(wheel): (
+                        wheel_archive_metadata_with_headers(
+                            "Wheel-Version: 1.0",
+                            "Root-Is-Purelib: false",
+                        ).encode("utf-8")
+                    ),
+                },
+            )
+            with self.assertRaisesRegex(ValueError, "lacks compatibility tags"):
+                validator.validate_wheel(wheel)
+
+    def test_rejects_wheel_archive_metadata_without_root_is_purelib(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel(
+                wheel,
+                payload_overrides={
+                    wheel_archive_metadata_name(wheel): (
+                        wheel_archive_metadata_with_headers(
+                            "Wheel-Version: 1.0",
+                            "Tag: cp312-cp312-manylinux_2_28_x86_64",
+                        ).encode("utf-8")
+                    ),
+                },
+            )
+            with self.assertRaisesRegex(ValueError, "Root-Is-Purelib"):
+                validator.validate_wheel(wheel)
+
+    def test_rejects_invalid_wheel_archive_root_is_purelib(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel(
+                wheel,
+                payload_overrides={
+                    wheel_archive_metadata_name(wheel): (
+                        wheel_archive_metadata_with_headers(
+                            "Wheel-Version: 1.0",
+                            "Root-Is-Purelib: maybe",
+                            "Tag: cp312-cp312-manylinux_2_28_x86_64",
+                        ).encode("utf-8")
+                    ),
+                },
+            )
+            with self.assertRaisesRegex(ValueError, "Root-Is-Purelib is invalid"):
+                validator.validate_wheel(wheel)
+
+    def test_rejects_wheel_archive_metadata_tag_mismatch(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel(
+                wheel,
+                payload_overrides={
+                    wheel_archive_metadata_name(wheel): (
+                        wheel_archive_metadata_with_headers(
+                            "Wheel-Version: 1.0",
+                            "Root-Is-Purelib: false",
+                            "Tag: cp313-cp313-manylinux_2_28_x86_64",
+                        ).encode("utf-8")
+                    ),
+                },
+            )
+            with self.assertRaisesRegex(ValueError, "tags do not match filename"):
                 validator.validate_wheel(wheel)
 
     def test_rejects_release_when_wheel_generator_is_absent_from_sdist(self) -> None:
@@ -1172,7 +1343,7 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
                     write_wheel(
                         dist / name,
                         wheel_names,
-                        include_source_metadata=True,
+                        include_dist_info_metadata=True,
                         payload_overrides=wheel_payloads,
                     )
             with self.assertRaisesRegex(ValueError, "generator provenance"):

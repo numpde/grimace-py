@@ -27,9 +27,9 @@ WHEEL_NAME_PATTERN = re.compile(
     rf"^{re.escape(PACKAGE_STEM)}-"
     rf"(?P<version>[0-9]+\.[0-9]+\.[0-9]+)"
     rf"(?:-[0-9][A-Za-z0-9_.]*)?"
-    rf"-[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*"
-    rf"-[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*"
-    rf"-[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*"
+    rf"-(?P<python_tag>[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*)"
+    rf"-(?P<abi_tag>[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*)"
+    rf"-(?P<platform_tag>[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*)"
     rf"\.whl$"
 )
 SDIST_NAME_PATTERN = re.compile(
@@ -409,6 +409,12 @@ def validate_wheel(wheel_path: Path) -> WheelInfo:
                 dist_info_root=dist_info_root,
                 expected_version=wheel_match.group("version"),
             )
+            validate_wheel_archive_metadata(
+                archive,
+                names,
+                dist_info_root=dist_info_root,
+                expected_tag=wheel_filename_tag(wheel_match),
+            )
             prepared_mol_zstd_file_sha256: dict[str, str] = {}
             prepared_mol_zstd_file_size: dict[str, int] = {}
             manifest_texts: dict[str, str] = {}
@@ -474,11 +480,60 @@ def validate_wheel_source_metadata(
         )
 
 
+def validate_wheel_archive_metadata(
+    archive: zipfile.ZipFile,
+    names: Iterable[str],
+    *,
+    dist_info_root: str,
+    expected_tag: str,
+) -> None:
+    wheel_name = f"{dist_info_root}/WHEEL"
+    if wheel_name not in names:
+        raise ValueError(f"wheel lacks canonical WHEEL file: {wheel_name!r}")
+    record_name = f"{dist_info_root}/RECORD"
+    if record_name not in names:
+        raise ValueError(f"wheel lacks canonical RECORD file: {record_name!r}")
+
+    wheel_metadata = decode_archive_text(archive.read(wheel_name), wheel_name)
+    message = Parser().parsestr(wheel_metadata)
+    if single_wheel_header(message, "Wheel-Version") != "1.0":
+        raise ValueError("wheel WHEEL metadata version is not supported")
+    if single_wheel_header(message, "Root-Is-Purelib").casefold() not in {
+        "true",
+        "false",
+    }:
+        raise ValueError("wheel WHEEL metadata Root-Is-Purelib is invalid")
+    tags = tuple(message.get_all("Tag", ()))
+    if not tags or any(not tag for tag in tags):
+        raise ValueError("wheel WHEEL metadata lacks compatibility tags")
+    if expected_tag not in tags:
+        raise ValueError("wheel WHEEL metadata tags do not match filename")
+
+
 def single_metadata_header(message: Message, header: str) -> str:
     values = message.get_all(header, ())
     if len(values) != 1 or not values[0]:
         raise ValueError(f"wheel METADATA must contain exactly one {header} header")
     return values[0]
+
+
+def single_wheel_header(message: Message, header: str) -> str:
+    values = message.get_all(header, ())
+    if len(values) != 1 or not values[0]:
+        raise ValueError(
+            f"wheel WHEEL metadata must contain exactly one {header} header"
+        )
+    return values[0]
+
+
+def wheel_filename_tag(match: re.Match[str]) -> str:
+    return "-".join(
+        (
+            match.group("python_tag"),
+            match.group("abi_tag"),
+            match.group("platform_tag"),
+        )
+    )
 
 
 def project_url_parts(value: str) -> tuple[str, str]:

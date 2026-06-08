@@ -7,9 +7,13 @@ import json
 import subprocess
 import sys
 import textwrap
+import tempfile
 import unittest
+from pathlib import Path
+from unittest import mock
 
 import grimace
+import grimace._prepared_mol as prepared_mol_module
 from tests.helpers.mols import parse_smiles
 from tests.helpers.public_runtime import (
     choice_texts,
@@ -342,6 +346,29 @@ class PreparedMolZstdContractTests(unittest.TestCase):
                 restored = grimace.PreparedMol.from_bytes(zstd_payload)
 
                 self.assertEqual(prepared.to_bytes(), restored.to_bytes())
+
+    def test_compression_rejects_invalid_dictionary_manifests(self) -> None:
+        prepared = self._prepare("CCO", isomericSmiles=False)
+
+        for manifest_payload in ("{", "[]"):
+            with self.subTest(manifest_payload=manifest_payload):
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    artifact = Path(tmpdir) / "artifact"
+                    artifact.mkdir()
+                    (artifact / "default_v1.json").write_text(
+                        manifest_payload,
+                        encoding="utf-8",
+                    )
+
+                    prepared_mol_module._ZSTD_DICTIONARY_BY_ID.clear()
+                    prepared_mol_module._ZSTD_DICTIONARY_ID_BY_TRAINING_LEVEL.clear()
+                    with mock.patch.object(
+                        prepared_mol_module,
+                        "_zstd_dictionary_root",
+                        return_value=Path(tmpdir),
+                    ):
+                        with self.assertRaisesRegex(ValueError, "manifest is invalid"):
+                            prepared.to_bytes(compression="zstd")
 
     def test_from_bytes_reuses_cached_builtin_dictionary(self) -> None:
         prepared = self._prepare("CCO", isomericSmiles=False)

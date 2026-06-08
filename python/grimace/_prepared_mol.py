@@ -168,11 +168,20 @@ def _zstd_dictionary_manifests() -> tuple[dict[str, Any], ...]:
     for artifact in _zstd_dictionary_root().iterdir():
         manifest_path = artifact.joinpath("default_v1.json")
         if manifest_path.is_file():
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            if not isinstance(manifest, dict):
-                raise ValueError("PreparedMol zstd dictionary manifest is invalid")
-            manifests.append(manifest)
+            manifests.append(_read_zstd_dictionary_manifest(manifest_path))
     return tuple(manifests)
+
+
+def _read_zstd_dictionary_manifest(
+    manifest_path: resources.abc.Traversable,
+) -> dict[str, Any]:
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("PreparedMol zstd dictionary manifest is invalid") from exc
+    if not isinstance(manifest, dict):
+        raise ValueError("PreparedMol zstd dictionary manifest is invalid")
+    return manifest
 
 
 def _zstd_dictionary_manifest_id(manifest: dict[str, Any]) -> int:

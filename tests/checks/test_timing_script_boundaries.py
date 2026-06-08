@@ -13,19 +13,33 @@ ROOT = Path(__file__).resolve().parents[2]
 PREPARED_MOL_ZSTD_TIMING_SCRIPT = (
     ROOT / "scripts" / "timings_prepared_mol_zstd_measure.py"
 )
+PREPARED_MOL_ZSTD_PLOT_SCRIPT = (
+    ROOT / "scripts" / "timings_prepared_mol_zstd_plot.py"
+)
 
 
-def load_prepared_mol_zstd_timing_module() -> ModuleType:
-    spec = importlib.util.spec_from_file_location(
-        "timings_prepared_mol_zstd_measure",
-        PREPARED_MOL_ZSTD_TIMING_SCRIPT,
-    )
+def load_script_module(name: str, path: Path) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
-        raise AssertionError("Could not load PreparedMol zstd timing module spec")
+        raise AssertionError(f"Could not load {name} module spec")
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
+
+
+def load_prepared_mol_zstd_timing_module() -> ModuleType:
+    return load_script_module(
+        "timings_prepared_mol_zstd_measure",
+        PREPARED_MOL_ZSTD_TIMING_SCRIPT,
+    )
+
+
+def load_prepared_mol_zstd_plot_module() -> ModuleType:
+    return load_script_module(
+        "timings_prepared_mol_zstd_plot",
+        PREPARED_MOL_ZSTD_PLOT_SCRIPT,
+    )
 
 
 class TimingScriptBoundaryTests(unittest.TestCase):
@@ -184,6 +198,46 @@ class TimingScriptBoundaryTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(RuntimeError, "SHA-256"):
                 timing._dictionary_bytes(artifact_dir, bad_manifest)
+
+    def test_prepared_mol_zstd_plot_input_rejects_malformed_tsv(self) -> None:
+        plot = load_prepared_mol_zstd_plot_module()
+        header = tuple(plot.REQUIRED_FIELDS)
+        valid_row = {field: "1" for field in header}
+        valid_row["mode"] = "dictionary"
+        cases = (
+            (
+                ("mode",),
+                ("dictionary",),
+                "lacks required field",
+            ),
+            (
+                header,
+                tuple(
+                    "not-a-mode" if field == "mode" else valid_row[field]
+                    for field in header
+                ),
+                "unknown mode",
+            ),
+            (
+                header,
+                tuple(valid_row[field] for field in header) + ("extra",),
+                "too many columns",
+            ),
+        )
+        for fields, values, message in cases:
+            with self.subTest(message=message):
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    input_path = Path(tmpdir) / "timings.tsv"
+                    input_path.write_text(
+                        "\t".join(fields)
+                        + "\n"
+                        + "\t".join(values)
+                        + "\n",
+                        encoding="utf-8",
+                    )
+
+                    with self.assertRaisesRegex(SystemExit, message):
+                        plot._read_rows(input_path)
 
 
 if __name__ == "__main__":

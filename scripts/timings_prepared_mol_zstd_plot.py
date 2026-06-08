@@ -12,6 +12,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from scripts import prepared_mol_zstd_dictionary_generate as generator
+from scripts import timings_prepared_mol_zstd_measure as measure
 
 
 DEFAULT_INPUT = REPO_ROOT / "docs" / "timings-prepared-mol-zstd.tsv"
@@ -29,11 +30,31 @@ MODE_STYLE = {
         "marker": "s",
     },
 }
+REQUIRED_FIELDS = (
+    *measure.BenchmarkEnvironment.fieldnames(),
+    *measure.TimingRow.fieldnames(),
+)
 
 
 def _read_rows(path: Path) -> list[dict[str, str]]:
     with path.open("r", encoding="utf-8", newline="") as handle:
-        return list(csv.DictReader(handle, dialect="excel-tab"))
+        reader = csv.DictReader(handle, dialect="excel-tab")
+        fieldnames = tuple(reader.fieldnames or ())
+        missing = tuple(field for field in REQUIRED_FIELDS if field not in fieldnames)
+        if missing:
+            raise SystemExit(
+                f"Timing input lacks required field(s): {', '.join(missing)}"
+            )
+        rows = list(reader)
+    for index, row in enumerate(rows, start=2):
+        unexpected_cells = row.get(None)
+        if unexpected_cells:
+            raise SystemExit(f"Timing input row {index} has too many columns")
+        if row["mode"] not in MODE_STYLE:
+            raise SystemExit(
+                f"Timing input row {index} has unknown mode: {row['mode']!r}"
+            )
+    return rows
 
 
 def _artifact_output_dir(output_dir: Path, dictionary_artifact: str) -> Path:

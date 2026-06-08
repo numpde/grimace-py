@@ -109,6 +109,29 @@ class WriterStateKernelTest(unittest.TestCase):
             2,
         )
 
+    def test_writer_frontier_choices_use_next_token_frontier_not_flattened_transitions(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+
+        with patch.object(
+            writer_frontier_module,
+            "legal_writer_transitions",
+            side_effect=AssertionError("writer_frontier used flattened transitions"),
+            create=True,
+        ), patch(
+            "grimace._south_star1.writer_transitions.legal_writer_transitions",
+            side_effect=AssertionError(
+                "writer_frontier used public flattened transitions"
+            ),
+        ), patch(
+            "grimace._south_star1.writer_frontier._legal_writer_next_token_frontier",
+            wraps=writer_frontier_module._legal_writer_next_token_frontier,
+        ) as frontier:
+            choices = writer_frontier_choices(prepared, cursor)
+
+        self.assertEqual(tuple(choice.emitted_text for choice in choices.choices), ("C",))
+        self.assertGreater(frontier.call_count, 0)
+
     def test_writer_frontier_counts_duplicate_token_paths_to_same_state(self) -> None:
         prepared = prepare_south_star_mol_from_facts(
             chain_facts(("C",)),
@@ -2254,6 +2277,53 @@ class WriterStateKernelTest(unittest.TestCase):
             top_decision.selected_next_token_frontier,
             active_decision.selected_next_token_frontier,
         )
+
+    def test_scheduled_writer_next_token_frontier_returns_selected_frontier(self) -> None:
+        action = writer_transitions._emit_root_atom_action(AtomId(0))
+        transition = SimpleNamespace(emitted_text="C")
+        emission = writer_transitions._WriterScheduledActionEmission(
+            action=action,
+            transitions=(transition,),  # type: ignore[arg-type]
+        )
+        batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(action,),
+            emissions=(emission,),
+            surviving_emissions=(emission,),
+        )
+        decision = writer_transitions._top_level_actions_decision(batch)
+
+        with patch(
+            "grimace._south_star1.writer_transitions._top_level_schedule_decision",
+            return_value=decision,
+        ) as schedule:
+            frontier = writer_transitions._scheduled_writer_next_token_frontier(
+                object(),  # type: ignore[arg-type]
+                object(),  # type: ignore[arg-type]
+                object(),  # type: ignore[arg-type]
+            )
+
+        self.assertEqual(frontier, decision.selected_next_token_frontier)
+        schedule.assert_called_once()
+
+    def test_legal_writer_next_token_frontier_builds_context_and_delegates(self) -> None:
+        scheduled_frontier = (object(),)
+        context = object()
+
+        with patch(
+            "grimace._south_star1.writer_transitions.build_writer_transition_expansion_context",
+            return_value=context,
+        ) as build, patch(
+            "grimace._south_star1.writer_transitions._scheduled_writer_next_token_frontier",
+            return_value=scheduled_frontier,  # type: ignore[arg-type]
+        ) as scheduled:
+            result = writer_transitions._legal_writer_next_token_frontier(
+                object(),  # type: ignore[arg-type]
+                object(),  # type: ignore[arg-type]
+            )
+
+        self.assertEqual(result, scheduled_frontier)
+        build.assert_called_once()
+        scheduled.assert_called_once()
 
     def test_closure_endpoint_schedule_decision_separates_pair_and_open_batches(self) -> None:
         prepared = object()

@@ -1071,6 +1071,33 @@ def _scheduled_writer_transitions(
     return decision.selected_transitions
 
 
+def _scheduled_writer_next_token_frontier(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+) -> tuple[_WriterNextTokenFrontierEntry, ...]:
+    decision = _top_level_schedule_decision(
+        prepared,
+        state,
+        context,
+    )
+
+    return decision.selected_next_token_frontier
+
+
+def _legal_writer_next_token_frontier(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+) -> tuple[_WriterNextTokenFrontierEntry, ...]:
+    context = build_writer_transition_expansion_context(prepared, state)
+
+    return _scheduled_writer_next_token_frontier(
+        prepared,
+        state,
+        context,
+    )
+
+
 def legal_writer_transitions(
     prepared: SouthStarPreparedMol,
     state: WriterState,

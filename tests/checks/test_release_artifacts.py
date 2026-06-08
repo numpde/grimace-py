@@ -1,5 +1,7 @@
 from pathlib import Path
+import base64
 from contextlib import redirect_stderr
+import csv
 from io import BytesIO
 import hashlib
 import io
@@ -182,6 +184,32 @@ def wheel_archive_metadata_with_headers(*headers: str) -> str:
     return "\n".join((*headers, ""))
 
 
+def wheel_record_payload(
+    names: tuple[str, ...],
+    payloads: dict[str, bytes],
+    *,
+    record_name: str,
+) -> bytes:
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, lineterminator="\n")
+    for name in names:
+        if name.endswith("/"):
+            continue
+        if name == record_name:
+            writer.writerow((name, "", ""))
+            continue
+        payload = payloads[name]
+        digest = base64.urlsafe_b64encode(hashlib.sha256(payload).digest())
+        writer.writerow(
+            (
+                name,
+                "sha256=" + digest.rstrip(b"=").decode("ascii"),
+                str(len(payload)),
+            )
+        )
+    return buffer.getvalue().encode("utf-8")
+
+
 def pyproject_toml(
     *,
     version: str = "0.1.12",
@@ -304,19 +332,28 @@ def write_wheel(
             if metadata_name not in names:
                 names = (*names, metadata_name)
     payload_overrides = payload_overrides or {}
+    record_name = wheel_record_name(path)
+    payloads: dict[str, bytes] = {}
+    for name in names:
+        if name == record_name and name not in payload_overrides:
+            continue
+        payloads[name] = payload_overrides.get(
+            name,
+            archive_payload(
+                name,
+                manifest_script=manifest_script,
+                wheel_path=path,
+            ),
+        )
+    if record_name in names and record_name not in payload_overrides:
+        payloads[record_name] = wheel_record_payload(
+            names,
+            payloads,
+            record_name=record_name,
+        )
     with zipfile.ZipFile(path, "w") as archive:
         for name in names:
-            archive.writestr(
-                name,
-                payload_overrides.get(
-                    name,
-                    archive_payload(
-                        name,
-                        manifest_script=manifest_script,
-                        wheel_path=path,
-                    ),
-                ),
-            )
+            archive.writestr(name, payloads[name])
 
 
 def write_wheel_with_archive_metadata(path: Path, *headers: str) -> None:
@@ -351,6 +388,23 @@ def load_validator():
 
 
 class ReleaseArtifactValidationTests(unittest.TestCase):
+    def assert_wheel_record_error(
+        self,
+        record_payload: bytes,
+        message_pattern: str,
+    ) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel(
+                wheel,
+                payload_overrides={
+                    wheel_record_name(wheel): record_payload,
+                },
+            )
+            with self.assertRaisesRegex(ValueError, message_pattern):
+                validator.validate_wheel(wheel)
+
     def test_official_source_url_policy_matches_pyproject(self) -> None:
         validator = load_validator()
         self.assertEqual(
@@ -1359,6 +1413,69 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(ValueError, "canonical RECORD"):
                 validator.validate_wheel(wheel)
+
+    def test_rejects_wheel_record_that_lacks_file_entry(self) -> None:
+        self.assert_wheel_record_error(
+            b"grimace_py-0.1.12.dist-info/RECORD,,\n",
+            "RECORD lacks files",
+        )
+
+    def test_rejects_empty_wheel_record(self) -> None:
+        self.assert_wheel_record_error(b"", "RECORD is empty")
+
+    def test_rejects_malformed_wheel_record_row(self) -> None:
+        self.assert_wheel_record_error(
+            (
+                "grimace_py-0.1.12.dist-info/RECORD,,\n"
+                "grimace/__init__.py,too,many,fields\n"
+            ).encode("utf-8"),
+            "exactly three fields",
+        )
+
+    def test_rejects_duplicate_wheel_record_entry(self) -> None:
+        self.assert_wheel_record_error(
+            (
+                "grimace_py-0.1.12.dist-info/RECORD,,\n"
+                "grimace_py-0.1.12.dist-info/RECORD,,\n"
+            ).encode("utf-8"),
+            "duplicate entry",
+        )
+
+    def test_rejects_wheel_record_with_unknown_file_entry(self) -> None:
+        self.assert_wheel_record_error(
+            (
+                "not-in-wheel.py,,\n"
+                "grimace_py-0.1.12.dist-info/RECORD,,\n"
+            ).encode("utf-8"),
+            "unknown file",
+        )
+
+    def test_rejects_wheel_record_hash_that_does_not_match_payload(self) -> None:
+        self.assert_wheel_record_error(
+            (
+                "grimace/__init__.py,sha256=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,0\n"
+                "grimace_py-0.1.12.dist-info/RECORD,,\n"
+            ).encode("utf-8"),
+            "RECORD hash",
+        )
+
+    def test_rejects_wheel_record_size_that_does_not_match_payload(self) -> None:
+        payload = archive_payload("grimace/__init__.py")
+        digest = base64.urlsafe_b64encode(hashlib.sha256(payload).digest())
+        self.assert_wheel_record_error(
+            (
+                "grimace/__init__.py,"
+                f"sha256={digest.rstrip(b'=').decode('ascii')},1\n"
+                "grimace_py-0.1.12.dist-info/RECORD,,\n"
+            ).encode("utf-8"),
+            "RECORD size",
+        )
+
+    def test_rejects_wheel_record_self_entry_with_hash_or_size(self) -> None:
+        self.assert_wheel_record_error(
+            b"grimace_py-0.1.12.dist-info/RECORD,sha256=abc,3\n",
+            "must omit hash and size",
+        )
 
     def test_rejects_unsupported_wheel_archive_metadata_version(self) -> None:
         validator = load_validator()

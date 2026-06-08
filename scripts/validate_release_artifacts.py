@@ -2,10 +2,13 @@
 from __future__ import annotations
 
 import argparse
+import base64
 from collections.abc import Iterable
+import csv
 from email.message import Message
 from email.parser import Parser
 import hashlib
+import io
 import json
 from pathlib import Path
 import re
@@ -430,6 +433,7 @@ def validate_wheel(wheel_path: Path) -> WheelInfo:
     try:
         with zipfile.ZipFile(wheel_path) as archive:
             names = archive.namelist()
+            file_names: list[str] = []
             seen_names: set[str] = set()
             seen_canonical_names: set[str] = set()
             for member in archive.infolist():
@@ -454,6 +458,8 @@ def validate_wheel(wheel_path: Path) -> WheelInfo:
                     raise ValueError(
                         f"non-canonical directory entry in wheel: {name!r}"
                     )
+                if not member.is_dir():
+                    file_names.append(name)
                 if is_forbidden_archive_member(name):
                     raise ValueError(f"forbidden file in wheel: {name!r}")
                 root = name.rstrip("/").split("/", 1)[0]
@@ -471,7 +477,7 @@ def validate_wheel(wheel_path: Path) -> WheelInfo:
             )
             validate_wheel_archive_metadata(
                 archive,
-                names,
+                file_names,
                 dist_info_root=dist_info_root,
                 expected_tag=wheel_filename_tag(wheel_match),
             )
@@ -543,11 +549,12 @@ def validate_wheel_source_metadata(
 
 def validate_wheel_archive_metadata(
     archive: zipfile.ZipFile,
-    names: Iterable[str],
+    file_names: Iterable[str],
     *,
     dist_info_root: str,
     expected_tag: str,
 ) -> None:
+    names = tuple(file_names)
     wheel_name = f"{dist_info_root}/WHEEL"
     if wheel_name not in names:
         raise ValueError(f"wheel lacks canonical WHEEL file: {wheel_name!r}")
@@ -571,6 +578,48 @@ def validate_wheel_archive_metadata(
         raise ValueError("wheel WHEEL metadata lacks compatibility tags")
     if tags != (expected_tag,):
         raise ValueError("wheel WHEEL metadata tags do not match filename")
+    validate_wheel_record(archive, names, record_name=record_name)
+
+
+def validate_wheel_record(
+    archive: zipfile.ZipFile,
+    file_names: tuple[str, ...],
+    *,
+    record_name: str,
+) -> None:
+    record_text = decode_archive_text(archive.read(record_name), record_name)
+    expected = set(file_names)
+    seen: set[str] = set()
+    try:
+        rows = tuple(csv.reader(io.StringIO(record_text)))
+    except csv.Error as exc:
+        raise ValueError("wheel RECORD is not valid CSV") from exc
+    if not rows:
+        raise ValueError("wheel RECORD is empty")
+    for row in rows:
+        if len(row) != 3:
+            raise ValueError("wheel RECORD rows must have exactly three fields")
+        name, digest, size = row
+        if name in seen:
+            raise ValueError(f"wheel RECORD contains duplicate entry: {name!r}")
+        if name not in expected:
+            raise ValueError(f"wheel RECORD contains unknown file: {name!r}")
+        seen.add(name)
+        if name == record_name:
+            if digest or size:
+                raise ValueError("wheel RECORD entry for RECORD must omit hash and size")
+            continue
+        payload = archive.read(name)
+        expected_digest = "sha256=" + base64.urlsafe_b64encode(
+            hashlib.sha256(payload).digest(),
+        ).rstrip(b"=").decode("ascii")
+        if digest != expected_digest:
+            raise ValueError(f"wheel RECORD hash does not match payload: {name!r}")
+        if size != str(len(payload)):
+            raise ValueError(f"wheel RECORD size does not match payload: {name!r}")
+    missing = expected - seen
+    if missing:
+        raise ValueError(f"wheel RECORD lacks files: {sorted(missing)!r}")
 
 
 def validate_native_extension(

@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 import re
 import unittest
 
-from tests.helpers.fixture_paths import CHECKED_IN_FIXTURE_ROOT
+from tests.helpers.fixture_paths import CHECKED_IN_FIXTURE_ROOT, read_fixture_json_object
 from tests.helpers.rdkit_serializer_coverage import (
     COVERAGE_FIELDS,
     ENTRY_FIELDS,
@@ -70,7 +69,10 @@ class RdkitUpstreamSerializerCoverageFixtureTest(unittest.TestCase):
             source_manifest_path.relative_to(REPO_ROOT).as_posix(),
             coverage["source_manifest"],
         )
-        source_manifest = json.loads(source_manifest_path.read_text())
+        source_manifest = read_fixture_json_object(
+            source_manifest_path,
+            context="source manifest",
+        )
         self.assertEqual(source_manifest["source_commit"], coverage["source_commit"])
         manifest_paths = {entry["path"] for entry in source_manifest["files"]}
         fixture_case_ids = checked_in_fixture_case_ids_by_path(repo_root=REPO_ROOT)

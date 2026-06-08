@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 from rdkit import Chem, rdBase
 import zstandard as zstd
@@ -125,6 +126,35 @@ class PreparedMolZstdDictionaryFlightTests(unittest.TestCase):
                     force=False,
                     postflight_payload=_prepared_payload(),
                 )
+
+            self.assertEqual((), tuple(output_root.iterdir()))
+
+    def test_artifact_write_failure_removes_partial_output(self) -> None:
+        dictionary_id = 123_456
+        dictionary_bytes = _training_dictionary_bytes(dictionary_id)
+        identity = _artifact_identity(
+            dictionary_bytes=dictionary_bytes,
+            dictionary_id=dictionary_id,
+        )
+        original_write_text = Path.write_text
+
+        def fail_manifest_write(path: Path, *args: object, **kwargs: object) -> int:
+            if path.name == f"{generator.ARTIFACT_STEM}.json":
+                raise OSError("simulated manifest write failure")
+            return original_write_text(path, *args, **kwargs)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = Path(tmpdir)
+            with mock.patch.object(Path, "write_text", fail_manifest_write):
+                with self.assertRaisesRegex(OSError, "simulated manifest"):
+                    generator.write_artifact(
+                        output_root=output_root,
+                        created_yyyymmdd=TEST_CREATED_YYYYMMDD,
+                        dictionary_bytes=dictionary_bytes,
+                        identity=identity,
+                        force=False,
+                        postflight_payload=_prepared_payload(),
+                    )
 
             self.assertEqual((), tuple(output_root.iterdir()))
 

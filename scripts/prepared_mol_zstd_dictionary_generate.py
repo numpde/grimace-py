@@ -648,12 +648,12 @@ def write_artifact(
             raise FileExistsError(f"Artifact directory already exists: {artifact_dir}")
         shutil.rmtree(artifact_dir)
     artifact_dir.mkdir(parents=True)
-    (artifact_dir / f"{ARTIFACT_STEM}.zstdict").write_bytes(dictionary_bytes)
-    (artifact_dir / f"{ARTIFACT_STEM}.json").write_text(
-        json.dumps(manifest, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
     try:
+        (artifact_dir / f"{ARTIFACT_STEM}.zstdict").write_bytes(dictionary_bytes)
+        (artifact_dir / f"{ARTIFACT_STEM}.json").write_text(
+            json.dumps(manifest, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
         validate_artifact(artifact_dir, smoke_payload=postflight_payload)
     except Exception:
         shutil.rmtree(artifact_dir, ignore_errors=True)

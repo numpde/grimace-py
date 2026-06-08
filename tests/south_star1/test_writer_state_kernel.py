@@ -1722,6 +1722,113 @@ class WriterStateKernelTest(unittest.TestCase):
         )
         self.assertIsNone(active_top_level_decision.top_level_batch)
 
+    def test_closure_endpoint_schedule_decision_separates_pair_and_open_batches(self) -> None:
+        prepared = object()
+        state = SimpleNamespace(
+            active=SimpleNamespace(atom=AtomId(0)),
+            ring_state=object(),
+        )
+        context = object()
+        pair_action = object()
+        open_action = object()
+        label = object()
+        pair_survivor = object()
+        open_survivor = object()
+        pair_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(pair_action,),  # type: ignore[arg-type]
+            emissions=(object(),),  # type: ignore[arg-type]
+            surviving_emissions=(pair_survivor,),  # type: ignore[arg-type]
+        )
+        open_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(open_action,),  # type: ignore[arg-type]
+            emissions=(object(),),  # type: ignore[arg-type]
+            surviving_emissions=(open_survivor,),  # type: ignore[arg-type]
+        )
+
+        with patch(
+            "grimace._south_star1.writer_transitions._closure_pair_scheduled_actions",
+            return_value=(pair_action,),
+        ) as pair_actions, patch(
+            "grimace._south_star1.writer_transitions._available_closure_labels_for_open",
+            return_value=(label,),
+        ) as available_labels, patch(
+            "grimace._south_star1.writer_transitions._closure_open_scheduled_actions",
+            return_value=(open_action,),
+        ) as open_actions, patch(
+            "grimace._south_star1.writer_transitions._scheduled_action_emission_batch",
+            side_effect=(pair_batch, open_batch),
+        ) as emission_batch:
+            decision = writer_transitions._closure_endpoint_schedule_decision(
+                prepared,  # type: ignore[arg-type]
+                state,  # type: ignore[arg-type]
+                context,  # type: ignore[arg-type]
+            )
+
+        self.assertIs(decision.pair_batch, pair_batch)
+        self.assertIs(decision.open_batch, open_batch)
+        self.assertEqual(
+            decision.surviving_emissions,
+            (pair_survivor, open_survivor),
+        )
+        pair_actions.assert_called_once_with(state, AtomId(0))
+        available_labels.assert_called_once_with(prepared, state.ring_state)
+        open_actions.assert_called_once_with(context, AtomId(0), (label,))
+        self.assertEqual(emission_batch.call_count, 2)
+        self.assertEqual(
+            emission_batch.call_args_list[0].args,
+            (prepared, state, context, (pair_action,)),
+        )
+        self.assertEqual(
+            emission_batch.call_args_list[1].args,
+            (prepared, state, context, (open_action,)),
+        )
+
+    def test_closure_endpoint_schedule_decision_skips_open_actions_without_labels(self) -> None:
+        prepared = object()
+        state = SimpleNamespace(
+            active=SimpleNamespace(atom=AtomId(0)),
+            ring_state=object(),
+        )
+        context = object()
+        pair_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        open_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+
+        with patch(
+            "grimace._south_star1.writer_transitions._closure_pair_scheduled_actions",
+            return_value=(),
+        ), patch(
+            "grimace._south_star1.writer_transitions._available_closure_labels_for_open",
+            return_value=(),
+        ), patch(
+            "grimace._south_star1.writer_transitions._closure_open_scheduled_actions",
+            side_effect=AssertionError("open actions should not be built without labels"),
+        ), patch(
+            "grimace._south_star1.writer_transitions._scheduled_action_emission_batch",
+            side_effect=(pair_batch, open_batch),
+        ) as emission_batch:
+            decision = writer_transitions._closure_endpoint_schedule_decision(
+                prepared,  # type: ignore[arg-type]
+                state,  # type: ignore[arg-type]
+                context,  # type: ignore[arg-type]
+            )
+
+        self.assertIs(decision.pair_batch, pair_batch)
+        self.assertIs(decision.open_batch, open_batch)
+        self.assertEqual(decision.surviving_emissions, ())
+        self.assertEqual(emission_batch.call_count, 2)
+        self.assertEqual(
+            emission_batch.call_args_list[1].args,
+            (prepared, state, context, ()),
+        )
+
     def test_top_level_schedule_decision_selects_top_level_batch(self) -> None:
         prepared = object()
         state = object()
@@ -2155,24 +2262,29 @@ class WriterStateKernelTest(unittest.TestCase):
         state = object()
         context = object()
         active_atom = AtomId(7)
-
-        closure_action = object()
-        closure_emission = object()
-        closure_survivor = object()
-
-        closure_batch = writer_transitions._WriterScheduledActionEmissionBatch(
-            actions=(closure_action,),  # type: ignore[arg-type]
-            emissions=(closure_emission,),  # type: ignore[arg-type]
-            surviving_emissions=(closure_survivor,),  # type: ignore[arg-type]
+        pair_action = object()
+        pair_emission = object()
+        pair_survivor = object()
+        pair_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(pair_action,),  # type: ignore[arg-type]
+            emissions=(pair_emission,),  # type: ignore[arg-type]
+            surviving_emissions=(pair_survivor,),  # type: ignore[arg-type]
+        )
+        open_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        closure_decision = writer_transitions._WriterClosureEndpointScheduleDecision(
+            pair_batch=pair_batch,
+            open_batch=open_batch,
+            surviving_emissions=(pair_survivor,),  # type: ignore[arg-type]
         )
 
         with patch(
-            "grimace._south_star1.writer_transitions._closure_endpoint_scheduled_actions",
-            return_value=(closure_action,),
-        ) as closure_actions, patch(
-            "grimace._south_star1.writer_transitions._scheduled_action_emission_batch",
-            return_value=closure_batch,
-        ) as emission_batch, patch(
+            "grimace._south_star1.writer_transitions._closure_endpoint_schedule_decision",
+            return_value=closure_decision,
+        ) as closure_schedule, patch(
             "grimace._south_star1.writer_transitions._active_child_scheduled_actions_from_context",
             side_effect=AssertionError("child policy should not run"),
         ):
@@ -2187,19 +2299,77 @@ class WriterStateKernelTest(unittest.TestCase):
             decision.kind,
             writer_transitions._WriterActiveEmittedScheduleDecisionKind.CLOSURE_ENDPOINT,
         )
-        self.assertIs(decision.closure_batch, closure_batch)
-        self.assertIs(decision.selected_batch, closure_batch)
+        self.assertEqual(decision.closure_batch.actions, (pair_action,))
+        self.assertEqual(decision.closure_batch.emissions, (pair_emission,))
+        self.assertEqual(decision.closure_batch.surviving_emissions, (pair_survivor,))
+        self.assertIs(decision.selected_batch, decision.closure_batch)
         self.assertIsNone(decision.child_batch)
-        closure_actions.assert_called_once_with(
+        closure_schedule.assert_called_once_with(
             prepared,
             state,
             context,
         )
-        emission_batch.assert_called_once_with(
+
+    def test_active_emitted_schedule_decision_uses_closure_endpoint_decision(self) -> None:
+        prepared = object()
+        state = object()
+        context = object()
+        active_atom = AtomId(7)
+        pair_action = object()
+        open_action = object()
+        pair_emission = object()
+        open_emission = object()
+        open_survivor = object()
+        pair_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(pair_action,),  # type: ignore[arg-type]
+            emissions=(pair_emission,),  # type: ignore[arg-type]
+            surviving_emissions=(),
+        )
+        open_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(open_action,),  # type: ignore[arg-type]
+            emissions=(open_emission,),  # type: ignore[arg-type]
+            surviving_emissions=(open_survivor,),  # type: ignore[arg-type]
+        )
+        closure_decision = writer_transitions._WriterClosureEndpointScheduleDecision(
+            pair_batch=pair_batch,
+            open_batch=open_batch,
+            surviving_emissions=(open_survivor,),  # type: ignore[arg-type]
+        )
+
+        with patch(
+            "grimace._south_star1.writer_transitions._closure_endpoint_schedule_decision",
+            return_value=closure_decision,
+        ) as closure_schedule, patch(
+            "grimace._south_star1.writer_transitions._active_child_scheduled_actions_from_context",
+            side_effect=AssertionError("child policy should not run"),
+        ):
+            decision = writer_transitions._active_emitted_schedule_decision(
+                prepared,  # type: ignore[arg-type]
+                state,  # type: ignore[arg-type]
+                context,  # type: ignore[arg-type]
+                active_atom,
+            )
+
+        self.assertIs(
+            decision.kind,
+            writer_transitions._WriterActiveEmittedScheduleDecisionKind.CLOSURE_ENDPOINT,
+        )
+        self.assertEqual(
+            decision.selected_batch.actions,
+            (pair_action, open_action),
+        )
+        self.assertEqual(
+            decision.selected_batch.emissions,
+            (pair_emission, open_emission),
+        )
+        self.assertEqual(
+            decision.selected_batch.surviving_emissions,
+            (open_survivor,),
+        )
+        closure_schedule.assert_called_once_with(
             prepared,
             state,
             context,
-            (closure_action,),
         )
 
     def test_active_emitted_schedule_decision_selects_child_batch_after_zero_closure_survivors(self) -> None:
@@ -2208,12 +2378,21 @@ class WriterStateKernelTest(unittest.TestCase):
         context = object()
         active_atom = AtomId(7)
 
-        closure_action = object()
         child_action = object()
 
-        closure_batch = writer_transitions._WriterScheduledActionEmissionBatch(
-            actions=(closure_action,),  # type: ignore[arg-type]
+        pair_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
             emissions=(),
+            surviving_emissions=(),
+        )
+        open_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        closure_decision = writer_transitions._WriterClosureEndpointScheduleDecision(
+            pair_batch=pair_batch,
+            open_batch=open_batch,
             surviving_emissions=(),
         )
         child_batch = writer_transitions._WriterScheduledActionEmissionBatch(
@@ -2223,14 +2402,14 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
         with patch(
-            "grimace._south_star1.writer_transitions._closure_endpoint_scheduled_actions",
-            return_value=(closure_action,),
-        ) as closure_actions, patch(
+            "grimace._south_star1.writer_transitions._closure_endpoint_schedule_decision",
+            return_value=closure_decision,
+        ) as closure_schedule, patch(
             "grimace._south_star1.writer_transitions._active_child_scheduled_actions_from_context",
             return_value=(child_action,),
         ) as child_actions, patch(
             "grimace._south_star1.writer_transitions._scheduled_action_emission_batch",
-            side_effect=(closure_batch, child_batch),
+            return_value=child_batch,
         ) as emission_batch:
             decision = writer_transitions._active_emitted_schedule_decision(
                 prepared,  # type: ignore[arg-type]
@@ -2243,10 +2422,12 @@ class WriterStateKernelTest(unittest.TestCase):
             decision.kind,
             writer_transitions._WriterActiveEmittedScheduleDecisionKind.ACTIVE_CHILD,
         )
-        self.assertIs(decision.closure_batch, closure_batch)
+        self.assertEqual(decision.closure_batch.actions, ())
+        self.assertEqual(decision.closure_batch.emissions, ())
+        self.assertEqual(decision.closure_batch.surviving_emissions, ())
         self.assertIs(decision.child_batch, child_batch)
         self.assertIs(decision.selected_batch, child_batch)
-        closure_actions.assert_called_once_with(
+        closure_schedule.assert_called_once_with(
             prepared,
             state,
             context,
@@ -2256,14 +2437,11 @@ class WriterStateKernelTest(unittest.TestCase):
             state,
             active_atom,
         )
-        self.assertEqual(emission_batch.call_count, 2)
-        self.assertEqual(
-            emission_batch.call_args_list[0].args,
-            (prepared, state, context, (closure_action,)),
-        )
-        self.assertEqual(
-            emission_batch.call_args_list[1].args,
-            (prepared, state, context, (child_action,)),
+        emission_batch.assert_called_once_with(
+            prepared,
+            state,
+            context,
+            (child_action,),
         )
 
     def test_active_emitted_scheduler_does_not_compute_children_when_closure_transition_survives(self) -> None:
@@ -2271,23 +2449,28 @@ class WriterStateKernelTest(unittest.TestCase):
         state = object()
         context = object()
         active_atom = AtomId(7)
-        closure_action = object()
-        closure_emission = object()
         surviving_closure_emission = object()
         closure_transition = object()
-        closure_batch = writer_transitions._WriterScheduledActionEmissionBatch(
-            actions=(closure_action,),  # type: ignore[arg-type]
-            emissions=(closure_emission,),  # type: ignore[arg-type]
+        pair_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(surviving_closure_emission,),  # type: ignore[arg-type]
+        )
+        open_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        closure_decision = writer_transitions._WriterClosureEndpointScheduleDecision(
+            pair_batch=pair_batch,
+            open_batch=open_batch,
             surviving_emissions=(surviving_closure_emission,),  # type: ignore[arg-type]
         )
 
         with patch(
-            "grimace._south_star1.writer_transitions._closure_endpoint_scheduled_actions",
-            return_value=(closure_action,),
-        ) as closure_actions, patch(
-            "grimace._south_star1.writer_transitions._scheduled_action_emission_batch",
-            return_value=closure_batch,
-        ) as emission_batch, patch(
+            "grimace._south_star1.writer_transitions._closure_endpoint_schedule_decision",
+            return_value=closure_decision,
+        ) as closure_schedule, patch(
             "grimace._south_star1.writer_transitions._transitions_from_scheduled_action_emissions",
             return_value=(closure_transition,),
         ) as flatten_emissions, patch(
@@ -2305,16 +2488,10 @@ class WriterStateKernelTest(unittest.TestCase):
             )
 
         self.assertEqual(result, (closure_transition,))
-        closure_actions.assert_called_once_with(
+        closure_schedule.assert_called_once_with(
             prepared,
             state,
             context,
-        )
-        emission_batch.assert_called_once_with(
-            prepared,
-            state,
-            context,
-            (closure_action,),
         )
         flatten_emissions.assert_called_once_with((surviving_closure_emission,))
 
@@ -2323,16 +2500,24 @@ class WriterStateKernelTest(unittest.TestCase):
         state = object()
         context = object()
         active_atom = AtomId(7)
-        closure_action = object()
-        closure_emission = object()
         child_obligation = object()
         child_action = object()
         child_emission = object()
         surviving_child_emission = object()
         child_transition = object()
-        closure_batch = writer_transitions._WriterScheduledActionEmissionBatch(
-            actions=(closure_action,),  # type: ignore[arg-type]
-            emissions=(closure_emission,),  # type: ignore[arg-type]
+        pair_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        open_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        closure_decision = writer_transitions._WriterClosureEndpointScheduleDecision(
+            pair_batch=pair_batch,
+            open_batch=open_batch,
             surviving_emissions=(),
         )
         child_batch = writer_transitions._WriterScheduledActionEmissionBatch(
@@ -2342,11 +2527,11 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
         with patch(
-            "grimace._south_star1.writer_transitions._closure_endpoint_scheduled_actions",
-            return_value=(closure_action,),
-        ) as closure_actions, patch(
+            "grimace._south_star1.writer_transitions._closure_endpoint_schedule_decision",
+            return_value=closure_decision,
+        ) as closure_schedule, patch(
             "grimace._south_star1.writer_transitions._scheduled_action_emission_batch",
-            side_effect=(closure_batch, child_batch),
+            return_value=child_batch,
         ) as emission_batch, patch(
             "grimace._south_star1.writer_transitions._transitions_from_scheduled_action_emissions",
             return_value=(child_transition,),
@@ -2368,19 +2553,16 @@ class WriterStateKernelTest(unittest.TestCase):
             )
 
         self.assertEqual(result, (child_transition,))
-        closure_actions.assert_called_once_with(
+        closure_schedule.assert_called_once_with(
             prepared,
             state,
             context,
         )
-        self.assertEqual(emission_batch.call_count, 2)
-        self.assertEqual(
-            emission_batch.call_args_list[0].args,
-            (prepared, state, context, (closure_action,)),
-        )
-        self.assertEqual(
-            emission_batch.call_args_list[1].args,
-            (prepared, state, context, (child_action,)),
+        emission_batch.assert_called_once_with(
+            prepared,
+            state,
+            context,
+            (child_action,),
         )
         flatten_emissions.assert_called_once_with(
             (surviving_child_emission,),
@@ -2405,13 +2587,22 @@ class WriterStateKernelTest(unittest.TestCase):
         context = object()
         active_atom = AtomId(7)
 
-        closure_action = object()
         child_obligation = object()
         child_action = object()
 
-        closure_batch = writer_transitions._WriterScheduledActionEmissionBatch(
-            actions=(closure_action,),  # type: ignore[arg-type]
+        pair_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
             emissions=(),
+            surviving_emissions=(),
+        )
+        open_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        closure_decision = writer_transitions._WriterClosureEndpointScheduleDecision(
+            pair_batch=pair_batch,
+            open_batch=open_batch,
             surviving_emissions=(),
         )
         child_batch = writer_transitions._WriterScheduledActionEmissionBatch(
@@ -2421,11 +2612,11 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
         with patch(
-            "grimace._south_star1.writer_transitions._closure_endpoint_scheduled_actions",
-            return_value=(closure_action,),
+            "grimace._south_star1.writer_transitions._closure_endpoint_schedule_decision",
+            return_value=closure_decision,
         ), patch(
             "grimace._south_star1.writer_transitions._scheduled_action_emission_batch",
-            side_effect=(closure_batch, child_batch),
+            return_value=child_batch,
         ), patch(
             "grimace._south_star1.writer_transitions._transitions_from_scheduled_action_emissions",
             return_value=(),

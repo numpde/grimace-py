@@ -241,6 +241,13 @@ class _WriterScheduledActionEmissionBatch:
 
 
 @dataclass(frozen=True, slots=True)
+class _WriterClosureEndpointScheduleDecision:
+    pair_batch: _WriterScheduledActionEmissionBatch
+    open_batch: _WriterScheduledActionEmissionBatch
+    surviving_emissions: tuple[_WriterScheduledActionEmission, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class _WriterActiveEmittedScheduleDecision:
     kind: _WriterActiveEmittedScheduleDecisionKind
     closure_batch: _WriterScheduledActionEmissionBatch
@@ -580,17 +587,22 @@ def _active_emitted_schedule_decision(
     context: WriterTransitionExpansionContext,
     active_atom: AtomId,
 ) -> _WriterActiveEmittedScheduleDecision:
-    closure_actions = _closure_endpoint_scheduled_actions(
+    closure_decision = _closure_endpoint_schedule_decision(
         prepared,
         state,
         context,
     )
 
-    closure_batch = _scheduled_action_emission_batch(
-        prepared,
-        state,
-        context,
-        closure_actions,
+    closure_batch = _WriterScheduledActionEmissionBatch(
+        actions=(
+            *closure_decision.pair_batch.actions,
+            *closure_decision.open_batch.actions,
+        ),
+        emissions=(
+            *closure_decision.pair_batch.emissions,
+            *closure_decision.open_batch.emissions,
+        ),
+        surviving_emissions=closure_decision.surviving_emissions,
     )
 
     if closure_batch.surviving_emissions:
@@ -1091,6 +1103,55 @@ def _closure_endpoint_scheduled_actions(
         )
 
     return tuple(actions)
+
+
+def _closure_endpoint_schedule_decision(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+) -> _WriterClosureEndpointScheduleDecision:
+    active_atom = state.active.atom
+
+    pair_actions = _closure_pair_scheduled_actions(
+        state,
+        active_atom,
+    )
+    pair_batch = _scheduled_action_emission_batch(
+        prepared,
+        state,
+        context,
+        pair_actions,
+    )
+
+    labels = _available_closure_labels_for_open(
+        prepared,
+        state.ring_state,
+    )
+
+    if labels:
+        open_actions = _closure_open_scheduled_actions(
+            context,
+            active_atom,
+            labels,
+        )
+    else:
+        open_actions = ()
+
+    open_batch = _scheduled_action_emission_batch(
+        prepared,
+        state,
+        context,
+        open_actions,
+    )
+
+    return _WriterClosureEndpointScheduleDecision(
+        pair_batch=pair_batch,
+        open_batch=open_batch,
+        surviving_emissions=(
+            *pair_batch.surviving_emissions,
+            *open_batch.surviving_emissions,
+        ),
+    )
 
 
 def _closure_endpoint_transitions_from_scheduled_action(

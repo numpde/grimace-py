@@ -233,6 +233,20 @@ class _WriterScheduledAction:
 
 
 @dataclass(frozen=True, slots=True)
+class _WriterScheduledGraphActionSurface:
+    kind: _WriterScheduledActionKind
+    active_atom: AtomId
+    bond: BondId | None = None
+    partner_atom: AtomId | None = None
+    boundary_atom: AtomId | None = None
+    attachment_id: int | None = None
+    attachment_action_kind: WriterResidualAttachmentActionKind | None = None
+    owner_kind: WriterBoundaryOwnerKind | None = None
+    closure_label: WriterClosureLabel | None = None
+    pending_entry: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class _WriterScheduledActionEmission:
     action: _WriterScheduledAction
     transitions: tuple[WriterTransition, ...]
@@ -453,6 +467,118 @@ def _pair_closure_endpoint_action(
         kind=_WriterScheduledActionKind.PAIR_CLOSURE_ENDPOINT,
         parent=parent,
         closure_pair_obligation=pair_obligation,
+    )
+
+
+def _scheduled_graph_action_surface(
+    action: _WriterScheduledAction,
+) -> _WriterScheduledGraphActionSurface:
+    if action.kind is _WriterScheduledActionKind.CONSUME_PENDING_ENTRY:
+        pending = action.pending_entry
+
+        if pending is None:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "pending-entry scheduled action has no pending entry",
+            )
+
+        return _WriterScheduledGraphActionSurface(
+            kind=action.kind,
+            active_atom=action.parent,
+            bond=pending.bond,
+            partner_atom=pending.child,
+            boundary_atom=pending.parent,
+            pending_entry=True,
+        )
+
+    if action.kind is _WriterScheduledActionKind.EMIT_ROOT_ATOM:
+        return _WriterScheduledGraphActionSurface(
+            kind=action.kind,
+            active_atom=action.parent,
+        )
+
+    if action.kind is _WriterScheduledActionKind.FINISH_ACTIVE:
+        return _WriterScheduledGraphActionSurface(
+            kind=action.kind,
+            active_atom=action.parent,
+        )
+
+    if action.kind in (
+        _WriterScheduledActionKind.ENTER_INLINE_CHILD,
+        _WriterScheduledActionKind.OPEN_BRANCH,
+    ):
+        child = action.child_obligation
+
+        if child is None:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "child scheduled action has no child obligation",
+            )
+
+        return _WriterScheduledGraphActionSurface(
+            kind=action.kind,
+            active_atom=action.parent,
+            bond=child.bond,
+            partner_atom=child.child,
+            boundary_atom=child.boundary_atom,
+            attachment_id=child.attachment_id,
+            attachment_action_kind=child.attachment_action_kind,
+            owner_kind=child.owner_kind,
+            pending_entry=child.pending_entry,
+        )
+
+    if action.kind is _WriterScheduledActionKind.OPEN_CLOSURE_ENDPOINT:
+        closure_open = action.closure_open_obligation
+
+        if closure_open is None:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "closure-open scheduled action has no open obligation",
+            )
+
+        label = action.closure_open_label
+
+        if label is None:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "closure-open scheduled action has no closure label",
+            )
+
+        return _WriterScheduledGraphActionSurface(
+            kind=action.kind,
+            active_atom=action.parent,
+            bond=closure_open.bond,
+            partner_atom=closure_open.second_atom,
+            boundary_atom=closure_open.first_atom,
+            attachment_id=closure_open.attachment_id,
+            attachment_action_kind=closure_open.attachment_action_kind,
+            owner_kind=closure_open.owner_kind,
+            closure_label=label,
+        )
+
+    if action.kind is _WriterScheduledActionKind.PAIR_CLOSURE_ENDPOINT:
+        pair = action.closure_pair_obligation
+
+        if pair is None:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "closure-pair scheduled action has no pair obligation",
+            )
+
+        closure = pair.closure
+
+        return _WriterScheduledGraphActionSurface(
+            kind=action.kind,
+            active_atom=action.parent,
+            bond=closure.bond,
+            partner_atom=closure.first_atom,
+            boundary_atom=closure.second_atom,
+            closure_label=closure.label,
+        )
+
+    raise SouthStarError(
+        SouthStarErrorKind.INTERNAL_INVARIANT,
+        f"unsupported scheduled graph action surface: {action.kind!r}",
     )
 
 

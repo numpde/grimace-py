@@ -3164,6 +3164,141 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(action.parent, AtomId(0))
         self.assertEqual(action.pending_entry, pending)
 
+    def test_scheduled_graph_action_surface_for_child_action_carries_incidence_metadata(self) -> None:
+        child = writer_transitions._WriterChildObligation(
+            bond=BondId(1),
+            child=AtomId(2),
+            boundary_atom=AtomId(0),
+            owner_kind=WriterBoundaryOwnerKind.ACTIVE_ATOM,
+            attachment_id=7,
+            attachment_action_kind=(
+                WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY
+            ),
+        )
+        action = writer_transitions._enter_inline_child_action(
+            AtomId(0),
+            child,
+        )
+
+        surface = writer_transitions._scheduled_graph_action_surface(action)
+
+        self.assertIs(
+            surface.kind,
+            writer_transitions._WriterScheduledActionKind.ENTER_INLINE_CHILD,
+        )
+        self.assertEqual(surface.active_atom, AtomId(0))
+        self.assertEqual(surface.bond, BondId(1))
+        self.assertEqual(surface.partner_atom, AtomId(2))
+        self.assertEqual(surface.boundary_atom, AtomId(0))
+        self.assertEqual(surface.attachment_id, 7)
+        self.assertIs(
+            surface.attachment_action_kind,
+            WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY,
+        )
+        self.assertIs(surface.owner_kind, WriterBoundaryOwnerKind.ACTIVE_ATOM)
+        self.assertFalse(surface.pending_entry)
+
+    def test_scheduled_graph_action_surface_for_closure_open_carries_label_and_incidence_metadata(self) -> None:
+        label = WriterClosureLabel(value=1, text="1")
+        obligation = writer_transitions._WriterClosureOpenObligation(
+            bond=BondId(3),
+            first_atom=AtomId(0),
+            second_atom=AtomId(4),
+            attachment_id=9,
+            attachment_action_kind=(
+                WriterResidualAttachmentActionKind.CLOSURE_OPEN_READY
+            ),
+            owner_kind=WriterBoundaryOwnerKind.ACTIVE_ATOM,
+        )
+        action = writer_transitions._open_closure_endpoint_action(
+            AtomId(0),
+            obligation,
+            label,
+        )
+
+        surface = writer_transitions._scheduled_graph_action_surface(action)
+
+        self.assertIs(
+            surface.kind,
+            writer_transitions._WriterScheduledActionKind.OPEN_CLOSURE_ENDPOINT,
+        )
+        self.assertEqual(surface.active_atom, AtomId(0))
+        self.assertEqual(surface.bond, BondId(3))
+        self.assertEqual(surface.partner_atom, AtomId(4))
+        self.assertEqual(surface.boundary_atom, AtomId(0))
+        self.assertEqual(surface.attachment_id, 9)
+        self.assertIs(
+            surface.attachment_action_kind,
+            WriterResidualAttachmentActionKind.CLOSURE_OPEN_READY,
+        )
+        self.assertIs(surface.owner_kind, WriterBoundaryOwnerKind.ACTIVE_ATOM)
+        self.assertIs(surface.closure_label, label)
+
+    def test_scheduled_graph_action_surface_for_pending_entry_marks_pending_source(self) -> None:
+        pending = PendingWriterEntry(
+            parent=AtomId(0),
+            child=AtomId(2),
+            bond=BondId(1),
+            branch=False,
+        )
+        action = writer_transitions._consume_pending_entry_action(pending)
+
+        surface = writer_transitions._scheduled_graph_action_surface(action)
+
+        self.assertIs(
+            surface.kind,
+            writer_transitions._WriterScheduledActionKind.CONSUME_PENDING_ENTRY,
+        )
+        self.assertEqual(surface.active_atom, AtomId(0))
+        self.assertEqual(surface.bond, BondId(1))
+        self.assertEqual(surface.partner_atom, AtomId(2))
+        self.assertEqual(surface.boundary_atom, AtomId(0))
+        self.assertTrue(surface.pending_entry)
+        self.assertIsNone(surface.attachment_id)
+        self.assertIsNone(surface.attachment_action_kind)
+        self.assertIsNone(surface.owner_kind)
+
+    def test_scheduled_graph_action_surface_for_closure_pair_carries_closure_label(self) -> None:
+        label = WriterClosureLabel(value=1, text="1")
+        endpoint = WriterOpenClosureEndpoint(
+            bond=BondId(5),
+            first_atom=AtomId(0),
+            second_atom=AtomId(3),
+            label=label,
+            first_endpoint_text="1",
+            first_endpoint_bond_text="",
+        )
+        closure = WriterClosedClosure(
+            bond=BondId(5),
+            first_atom=AtomId(0),
+            second_atom=AtomId(3),
+            label=label,
+            first_endpoint_text="1",
+            second_endpoint_text="1",
+            first_endpoint_bond_text="",
+            second_endpoint_bond_text="",
+        )
+        pair = writer_transitions._WriterClosurePairObligation(
+            endpoint=endpoint,
+            closure=closure,
+        )
+        action = writer_transitions._pair_closure_endpoint_action(
+            AtomId(3),
+            pair,
+        )
+
+        surface = writer_transitions._scheduled_graph_action_surface(action)
+
+        self.assertIs(
+            surface.kind,
+            writer_transitions._WriterScheduledActionKind.PAIR_CLOSURE_ENDPOINT,
+        )
+        self.assertEqual(surface.active_atom, AtomId(3))
+        self.assertEqual(surface.bond, BondId(5))
+        self.assertEqual(surface.partner_atom, AtomId(0))
+        self.assertEqual(surface.boundary_atom, AtomId(3))
+        self.assertIs(surface.closure_label, label)
+
     def test_writer_shaped_acyclic_stereo_uses_writer_frontier(self) -> None:
         for facts in (tetrahedral_facts(), directional_facts()):
             with self.subTest(facts=facts):

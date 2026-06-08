@@ -350,8 +350,56 @@ class PreparedMolZstdContractTests(unittest.TestCase):
     def test_compression_rejects_invalid_dictionary_manifests(self) -> None:
         prepared = self._prepare("CCO", isomericSmiles=False)
 
-        for manifest_payload in ("{", "[]"):
-            with self.subTest(manifest_payload=manifest_payload):
+        cases = (
+            ("{", "manifest is invalid"),
+            ("[]", "manifest is invalid"),
+            (
+                json.dumps(
+                    {
+                        "artifact_dir": "other",
+                        "files": {"dictionary": "default_v1.zstdict"},
+                        "zstd_dictionary_id": 123_456,
+                        "training_identity": {"training_parameters": {"level": 3}},
+                    },
+                ),
+                "invalid artifact",
+            ),
+            (
+                json.dumps(
+                    {
+                        "artifact_dir": "artifact",
+                        "files": {"dictionary": "../default_v1.zstdict"},
+                        "zstd_dictionary_id": 123_456,
+                        "training_identity": {"training_parameters": {"level": 3}},
+                    },
+                ),
+                "invalid files",
+            ),
+            (
+                json.dumps(
+                    {
+                        "artifact_dir": "artifact",
+                        "files": {"dictionary": "default_v1.zstdict"},
+                        "zstd_dictionary_id": True,
+                        "training_identity": {"training_parameters": {"level": 3}},
+                    },
+                ),
+                "invalid id",
+            ),
+            (
+                json.dumps(
+                    {
+                        "artifact_dir": "artifact",
+                        "files": {"dictionary": "default_v1.zstdict"},
+                        "zstd_dictionary_id": 123_456,
+                        "training_identity": {"training_parameters": {"level": "3"}},
+                    },
+                ),
+                "invalid level",
+            ),
+        )
+        for manifest_payload, message in cases:
+            with self.subTest(message=message):
                 with tempfile.TemporaryDirectory() as tmpdir:
                     artifact = Path(tmpdir) / "artifact"
                     artifact.mkdir()
@@ -367,7 +415,7 @@ class PreparedMolZstdContractTests(unittest.TestCase):
                         "_zstd_dictionary_root",
                         return_value=Path(tmpdir),
                     ):
-                        with self.assertRaisesRegex(ValueError, "manifest is invalid"):
+                        with self.assertRaisesRegex(ValueError, message):
                             prepared.to_bytes(compression="zstd")
 
     def test_from_bytes_reuses_cached_builtin_dictionary(self) -> None:

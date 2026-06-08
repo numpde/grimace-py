@@ -18,6 +18,8 @@ from grimace._mol_to_smiles_options import (
 _RAW_PREPARED_MOL_MAGIC = b"GPM\0"
 _ZSTD_FRAME_MAGIC = b"\x28\xb5\x2f\xfd"
 _ZSTD_DICT_ID_SIZE_BY_FLAG = (0, 1, 2, 4)
+_ZSTD_MANIFEST_FILE = "default_v1.json"
+_ZSTD_DICTIONARY_FILE = "default_v1.zstdict"
 _DEFAULT_ZSTD_LEVEL = 3
 _DEFAULT_ZSTD_DICTIONARY_LEVEL = 3
 _ZSTD_DICTIONARY_BY_ID: dict[int, object] = {}
@@ -123,10 +125,11 @@ def _zstd_dictionary_from_manifest(manifest: dict[str, Any]) -> object:
 
     zstd = _load_zstd()
     root = _zstd_dictionary_root()
+    artifact_dir = _zstd_dictionary_manifest_artifact_dir(manifest)
     dictionary_bytes = (
         root
-        .joinpath(manifest["artifact_dir"])
-        .joinpath(manifest["files"]["dictionary"])
+        .joinpath(artifact_dir)
+        .joinpath(_ZSTD_DICTIONARY_FILE)
         .read_bytes()
     )
     compression_dictionary = zstd.ZstdCompressionDict(dictionary_bytes)
@@ -166,14 +169,21 @@ def _zstd_dictionary_manifest_for_id(dictionary_id: int) -> dict[str, Any]:
 def _zstd_dictionary_manifests() -> tuple[dict[str, Any], ...]:
     manifests: list[dict[str, Any]] = []
     for artifact in _zstd_dictionary_root().iterdir():
-        manifest_path = artifact.joinpath("default_v1.json")
+        manifest_path = artifact.joinpath(_ZSTD_MANIFEST_FILE)
         if manifest_path.is_file():
-            manifests.append(_read_zstd_dictionary_manifest(manifest_path))
+            manifests.append(
+                _read_zstd_dictionary_manifest(
+                    manifest_path,
+                    artifact_name=artifact.name,
+                )
+            )
     return tuple(manifests)
 
 
 def _read_zstd_dictionary_manifest(
     manifest_path: resources.abc.Traversable,
+    *,
+    artifact_name: str,
 ) -> dict[str, Any]:
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -181,18 +191,49 @@ def _read_zstd_dictionary_manifest(
         raise ValueError("PreparedMol zstd dictionary manifest is invalid") from exc
     if not isinstance(manifest, dict):
         raise ValueError("PreparedMol zstd dictionary manifest is invalid")
+    if _zstd_dictionary_manifest_artifact_dir(manifest) != artifact_name:
+        raise ValueError("PreparedMol zstd dictionary manifest has invalid artifact")
+    if _zstd_dictionary_manifest_file(manifest) != _ZSTD_DICTIONARY_FILE:
+        raise ValueError("PreparedMol zstd dictionary manifest has invalid files")
+    _zstd_dictionary_manifest_id(manifest)
+    _zstd_dictionary_manifest_training_level(manifest)
     return manifest
 
 
+def _zstd_dictionary_manifest_artifact_dir(manifest: dict[str, Any]) -> str:
+    artifact_dir = manifest.get("artifact_dir")
+    if not isinstance(artifact_dir, str) or not artifact_dir:
+        raise ValueError("PreparedMol zstd dictionary manifest has invalid artifact")
+    return artifact_dir
+
+
+def _zstd_dictionary_manifest_file(manifest: dict[str, Any]) -> str:
+    files = manifest.get("files")
+    dictionary_file = files.get("dictionary") if isinstance(files, dict) else None
+    if not isinstance(dictionary_file, str) or not dictionary_file:
+        raise ValueError("PreparedMol zstd dictionary manifest has invalid files")
+    return dictionary_file
+
+
 def _zstd_dictionary_manifest_id(manifest: dict[str, Any]) -> int:
-    dictionary_id = manifest["zstd_dictionary_id"]
+    dictionary_id = manifest.get("zstd_dictionary_id")
     if not isinstance(dictionary_id, int) or isinstance(dictionary_id, bool):
         raise ValueError("PreparedMol zstd dictionary manifest has invalid id")
     return dictionary_id
 
 
 def _zstd_dictionary_manifest_training_level(manifest: dict[str, Any]) -> int:
-    training_level = manifest["training_identity"]["training_parameters"]["level"]
+    training_identity = manifest.get("training_identity")
+    training_parameters = (
+        training_identity.get("training_parameters")
+        if isinstance(training_identity, dict)
+        else None
+    )
+    training_level = (
+        training_parameters.get("level")
+        if isinstance(training_parameters, dict)
+        else None
+    )
     if not isinstance(training_level, int) or isinstance(training_level, bool):
         raise ValueError("PreparedMol zstd dictionary manifest has invalid level")
     return training_level

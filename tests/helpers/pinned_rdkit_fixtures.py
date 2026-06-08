@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import json
 from pathlib import Path
 
-from tests.helpers.fixture_paths import checked_in_fixture_path
+from tests.helpers.fixture_paths import checked_in_fixture_path, read_fixture_json_object
 
 
 PINNED_RDKIT_EXACT_SMALL_SUPPORT = "rdkit_exact_small_support"
@@ -78,16 +77,6 @@ def pinned_rdkit_fixture_versions(fixture_root: Path) -> tuple[str, ...]:
         if path.is_dir()
     }
     return tuple(sorted(versions))
-
-
-def _read_json_object(path: Path) -> dict[str, object]:
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError(f"fixture {path} is not readable JSON") from exc
-    if not isinstance(payload, dict):
-        raise ValueError(f"fixture {path} must contain a JSON object")
-    return payload
 
 
 def normalized_unique_sorted_strings(
@@ -255,10 +244,10 @@ def load_pinned_rdkit_fixture_cases(
     fixture_path = fixture_root / f"{rdkit_version}.json"
     fixture_dir = fixture_root / rdkit_version
     if fixture_path.is_file():
-        payloads = ((fixture_path, _read_json_object(fixture_path)),)
+        payloads = ((fixture_path, read_fixture_json_object(fixture_path)),)
     elif fixture_dir.is_dir():
         payloads = tuple(
-            (path, _read_json_object(path))
+            (path, read_fixture_json_object(path))
             for path in sorted(fixture_dir.glob("*.json"))
         )
         if not payloads:

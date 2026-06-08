@@ -449,6 +449,19 @@ class WriterSupportCountFixtureLoaderTest(unittest.TestCase):
         )
         self.assertEqual([12345, 54321], [run.seed for run in cases[0].evidence.runs])
 
+    def test_writer_support_count_fixture_rejects_malformed_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            fixture_path = root / RDKIT_VERSION / "nonisomeric__random.json"
+            fixture_path.parent.mkdir(parents=True)
+            fixture_path.write_text("{", encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "not readable JSON"):
+                load_pinned_writer_support_count_cases(
+                    RDKIT_VERSION,
+                    fixture_root=root,
+                )
+
     def test_writer_support_count_fixture_rejects_bad_flag_surface(self) -> None:
         invalid_payloads = (
             _writer_support_count_payload(

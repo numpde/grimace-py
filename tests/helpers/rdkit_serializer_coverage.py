@@ -1,10 +1,8 @@
 from __future__ import annotations
-
-import json
 from pathlib import Path
 from typing import Any, cast
 
-from tests.helpers.fixture_paths import checked_in_fixture_path
+from tests.helpers.fixture_paths import checked_in_fixture_path, read_fixture_json_object
 
 
 DEFAULT_RDKIT_SERIALIZER_VERSION = "2026.03.1"
@@ -98,18 +96,8 @@ def default_serializer_source_root(rdkit_version: str) -> Path:
     return RDKIT_SERIALIZER_SOURCE_ROOT / rdkit_version
 
 
-def _read_json_object(path: Path, *, context: str) -> dict[str, Any]:
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError(f"{context} is not readable JSON: {path}") from exc
-    if not isinstance(payload, dict):
-        raise ValueError(f"{path} must contain a JSON object")
-    return payload
-
-
 def load_serializer_coverage(path: Path) -> dict[str, Any]:
-    payload = _read_json_object(path, context="serializer coverage")
+    payload = read_fixture_json_object(path, context="serializer coverage")
     entries = payload.get("entries")
     if not isinstance(entries, list):
         raise ValueError(f"{path} must define entries as a list")
@@ -139,7 +127,10 @@ def checked_in_fixture_case_ids_by_path(
     case_ids_by_fixture: dict[str, frozenset[str]] = {}
     for fixture_path in sorted(fixture_root.rglob("*.json")):
         relative_path = fixture_path.relative_to(repo_root).as_posix()
-        payload = _read_json_object(fixture_path, context="checked-in fixture")
+        payload = read_fixture_json_object(
+            fixture_path,
+            context="checked-in fixture",
+        )
         raw_cases = payload.get("cases")
         if not isinstance(raw_cases, list):
             continue

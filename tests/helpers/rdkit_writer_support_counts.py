@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import json
 from pathlib import Path
 
+from tests.helpers.fixture_paths import read_fixture_json_object
 from tests.helpers.pinned_rdkit_fixtures import (
     PINNED_RDKIT_WRITER_SUPPORT_COUNTS,
     optional_int,
@@ -493,9 +493,7 @@ def load_pinned_writer_support_count_cases(
     cases: list[PinnedWriterSupportCountCase] = []
     seen_ids: dict[str, Path] = {}
     for fixture_path in _payload_paths(fixture_root, rdkit_version):
-        payload = json.loads(fixture_path.read_text(encoding="utf-8"))
-        if not isinstance(payload, dict):
-            raise ValueError(f"fixture {fixture_path} must contain a JSON object")
+        payload = read_fixture_json_object(fixture_path)
         if payload.get("rdkit_version") != rdkit_version:
             raise ValueError(
                 f"fixture {fixture_path} declares "

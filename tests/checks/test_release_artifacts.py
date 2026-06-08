@@ -1128,6 +1128,69 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "project version"):
                 validator.validate_sdist(sdist)
 
+    def test_rejects_sdist_without_pyproject_toml(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            sdist = Path(tmp) / "grimace_py-0.1.12.tar.gz"
+            write_sdist(
+                sdist,
+                ("Cargo.toml", *SDIST_DICTIONARY_NAMES),
+            )
+            with self.assertRaisesRegex(ValueError, "lacks pyproject.toml"):
+                validator.validate_sdist(sdist)
+
+    def test_rejects_invalid_utf8_sdist_pyproject_toml(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            sdist = Path(tmp) / "grimace_py-0.1.12.tar.gz"
+            write_sdist(
+                sdist,
+                ("pyproject.toml", "Cargo.toml", *SDIST_DICTIONARY_NAMES),
+                payload_overrides={"pyproject.toml": b"\xff"},
+            )
+            with self.assertRaisesRegex(ValueError, "not valid UTF-8"):
+                validator.validate_sdist(sdist)
+
+    def test_rejects_invalid_sdist_pyproject_toml(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            sdist = Path(tmp) / "grimace_py-0.1.12.tar.gz"
+            write_sdist(
+                sdist,
+                ("pyproject.toml", "Cargo.toml", *SDIST_DICTIONARY_NAMES),
+                payload_overrides={"pyproject.toml": b"[project\n"},
+            )
+            with self.assertRaisesRegex(ValueError, "pyproject.toml is invalid"):
+                validator.validate_sdist(sdist)
+
+    def test_rejects_sdist_pyproject_without_project_metadata(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            sdist = Path(tmp) / "grimace_py-0.1.12.tar.gz"
+            write_sdist(
+                sdist,
+                ("pyproject.toml", "Cargo.toml", *SDIST_DICTIONARY_NAMES),
+                payload_overrides={"pyproject.toml": b"[build-system]\n"},
+            )
+            with self.assertRaisesRegex(ValueError, "lacks project metadata"):
+                validator.validate_sdist(sdist)
+
+    def test_rejects_sdist_pyproject_name_mismatch(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            sdist = Path(tmp) / "grimace_py-0.1.12.tar.gz"
+            write_sdist(
+                sdist,
+                ("pyproject.toml", "Cargo.toml", *SDIST_DICTIONARY_NAMES),
+                payload_overrides={
+                    "pyproject.toml": pyproject_toml(
+                        name="other-project",
+                    ).encode("utf-8"),
+                },
+            )
+            with self.assertRaisesRegex(ValueError, "project name"):
+                validator.validate_sdist(sdist)
+
     def test_rejects_sdist_without_pkg_info(self) -> None:
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:

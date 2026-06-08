@@ -1,8 +1,10 @@
 from pathlib import Path
-import csv
 import re
 import unittest
 from urllib.parse import unquote, urlparse
+
+from scripts import timings_enum_measure
+from scripts import timings_prepared_mol_zstd_plot
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -128,8 +130,10 @@ class DocsPagesTests(unittest.TestCase):
         )
         for path in paths:
             with self.subTest(path=path.name):
-                with path.open("r", encoding="utf-8", newline="") as handle:
-                    rows = tuple(csv.DictReader(handle, delimiter="\t"))
+                if path.name == "timings-enum.tsv":
+                    rows = timings_enum_measure._read_timing_rows_from_tsv(path)
+                else:
+                    rows = tuple(timings_prepared_mol_zstd_plot._read_rows(path))
                 self.assertTrue(rows)
                 for field in (
                     "recorded_at_utc",
@@ -173,8 +177,7 @@ class DocsPagesTests(unittest.TestCase):
     def test_prepared_mol_zstd_plots_are_under_dictionary_artifact(self) -> None:
         dictionary_artifacts: set[str] = set()
         for path in sorted((ROOT / "docs").glob("timings-prepared-mol-zstd*.tsv")):
-            with path.open("r", encoding="utf-8", newline="") as handle:
-                rows = tuple(csv.DictReader(handle, delimiter="\t"))
+            rows = timings_prepared_mol_zstd_plot._read_rows(path)
             artifacts = {row["dictionary_artifact"] for row in rows}
             self.assertEqual(1, len(artifacts), path.name)
             dictionary_artifacts.update(artifacts)

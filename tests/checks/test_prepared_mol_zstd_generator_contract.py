@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 import sys
 import tempfile
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 import unittest
 
 
@@ -75,6 +75,16 @@ def load_generator_module() -> ModuleType:
 
 
 class PreparedMolZstdGeneratorContractTests(unittest.TestCase):
+    def _write_candidate_fixture(self, tmpdir: str, *smiles_values: str) -> Path:
+        import gzip
+
+        path = Path(tmpdir) / "fixture.tsv.gz"
+        with gzip.open(path, "wt", encoding="utf-8", newline="") as handle:
+            handle.write("CID\tSMILES\n")
+            for index, smiles in enumerate(smiles_values, start=1):
+                handle.write(f"{index}\t{smiles}\n")
+        return path
+
     def test_training_parameters_are_explicit_recipe_values(self) -> None:
         self.assertEqual(
             r"^[0-9]{8}_[0-9a-f]{8}$",
@@ -157,6 +167,46 @@ class PreparedMolZstdGeneratorContractTests(unittest.TestCase):
             },
             literal_constant("SELECTION_RULE"),
         )
+
+    def test_candidate_builder_counts_expected_preparation_failures(self) -> None:
+        generator = load_generator_module()
+
+        class FakePrepared:
+            def to_bytes(self) -> bytes:
+                return b"GPM\0ok"
+
+        def prepare_mol(mol: object, **kwargs: object) -> FakePrepared:
+            if mol == "BAD":
+                raise RuntimeError("unsupported molecule")
+            return FakePrepared()
+
+        generator.Chem = SimpleNamespace(MolFromSmiles=lambda smiles: smiles)
+        generator.grimace = SimpleNamespace(PrepareMol=prepare_mol)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            corpus = generator.build_candidates(
+                self._write_candidate_fixture(tmpdir, "BAD", "GOOD"),
+            )
+
+        self.assertEqual(1, corpus.candidate_success_count)
+        self.assertEqual(1, corpus.preparation_failure_count)
+        self.assertEqual(
+            (b"GPM\0ok",),
+            tuple(item.raw_payload for item in corpus.selected),
+        )
+
+    def test_candidate_builder_does_not_swallow_programmer_errors(self) -> None:
+        generator = load_generator_module()
+
+        def prepare_mol(mol: object, **kwargs: object) -> object:
+            raise TypeError("bad writer options")
+
+        generator.Chem = SimpleNamespace(MolFromSmiles=lambda smiles: smiles)
+        generator.grimace = SimpleNamespace(PrepareMol=prepare_mol)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with self.assertRaisesRegex(TypeError, "bad writer options"):
+                generator.build_candidates(
+                    self._write_candidate_fixture(tmpdir, "CCO"),
+                )
 
     def test_shipped_manifest_generator_source_paths_resolve_in_checkout(self) -> None:
         manifests = tuple(sorted(DICTIONARY_ROOT.glob("*/default_v1.json")))

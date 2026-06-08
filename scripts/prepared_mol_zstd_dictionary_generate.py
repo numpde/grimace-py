@@ -258,7 +258,7 @@ def build_candidates(fixture_path: Path) -> Corpus:
             try:
                 prepared = grimace.PrepareMol(mol, **WRITER_OPTIONS)
                 raw_payload = prepared.to_bytes()
-            except Exception:
+            except (ValueError, RuntimeError):
                 preparation_failure_count += 1
                 continue
 

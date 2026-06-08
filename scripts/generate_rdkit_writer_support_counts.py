@@ -68,13 +68,17 @@ def run_is_saturated(
 
 
 def _load_input_cases(path: Path) -> list[dict[str, Any]]:
-    payload = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"{path} must contain readable JSON") from exc
     if not isinstance(payload, dict):
         raise ValueError(f"{path} must contain a JSON object")
     raw_cases = payload.get("cases")
     if not isinstance(raw_cases, list) or not raw_cases:
         raise ValueError(f"{path} must define a nonempty cases list")
     cases = []
+    seen_ids: set[str] = set()
     for raw_case in raw_cases:
         if not isinstance(raw_case, dict):
             raise ValueError(f"{path} contains a non-object case")
@@ -89,6 +93,9 @@ def _load_input_cases(path: Path) -> list[dict[str, Any]]:
             raise ValueError(f"{path} case has invalid smiles: {raw_case!r}")
         if type(raw_case["rooted_at_atom"]) is not int:
             raise ValueError(f"{path} case has invalid rooted_at_atom: {raw_case!r}")
+        if raw_case["id"] in seen_ids:
+            raise ValueError(f"{path} contains duplicate case id: {raw_case['id']!r}")
+        seen_ids.add(raw_case["id"])
         cases.append(raw_case)
     return cases
 

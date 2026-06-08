@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 import subprocess
 import sys
@@ -106,6 +107,42 @@ class RdkitWriterSupportCountGeneratorTests(unittest.TestCase):
             bad_kwargs = dict(kwargs, **{field: value})
             with self.subTest(field=field):
                 self.assertFalse(GENERATOR.run_is_saturated(**bad_kwargs))
+
+    def test_input_cases_reject_invalid_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = Path(tmpdir) / "input.json"
+            input_path.write_text("{", encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "readable JSON"):
+                GENERATOR._load_input_cases(input_path)
+
+    def test_input_cases_reject_duplicate_ids(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = Path(tmpdir) / "input.json"
+            input_path.write_text(
+                json.dumps(
+                    {
+                        "cases": [
+                            {
+                                "id": "duplicate",
+                                "source": "test",
+                                "smiles": "CC",
+                                "rooted_at_atom": -1,
+                            },
+                            {
+                                "id": "duplicate",
+                                "source": "test",
+                                "smiles": "CO",
+                                "rooted_at_atom": -1,
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "duplicate case id"):
+                GENERATOR._load_input_cases(input_path)
 
     def test_cli_refuses_to_overwrite_existing_output_without_force(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

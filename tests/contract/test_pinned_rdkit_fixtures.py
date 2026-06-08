@@ -693,6 +693,21 @@ class CheckedInRdkitCompatibilityFixtureTest(unittest.TestCase):
 
 
 class RdkitCompatibilityFixtureLoaderTest(unittest.TestCase):
+    def test_compatibility_fixtures_reject_malformed_json(self) -> None:
+        cases = (
+            ("root_zero_smiles.json", load_disconnected_root_zero_smiles),
+            ("steroid.json", load_steroid_ring_coupled_component_regression),
+            ("rooted_membership.json", load_stereo_expected_member_regressions),
+        )
+        for filename, loader in cases:
+            with self.subTest(filename=filename):
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    fixture_path = Path(tmpdir) / filename
+                    fixture_path.write_text("{", encoding="utf-8")
+
+                    with self.assertRaisesRegex(ValueError, "not readable JSON"):
+                        loader(fixture_path)
+
     def test_disconnected_root_zero_fixture_rejects_bad_case_list(self) -> None:
         invalid_payloads = (
             [],

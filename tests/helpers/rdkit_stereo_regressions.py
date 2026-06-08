@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import json
 from pathlib import Path
 
-from tests.helpers.fixture_paths import checked_in_fixture_path
+from tests.helpers.fixture_paths import checked_in_fixture_path, read_fixture_json_object
 
 
 _STEROID_RING_COUPLED_COMPONENT_PATH = checked_in_fixture_path(
@@ -37,9 +36,7 @@ class StereoExpectedMemberRegression:
 def load_steroid_ring_coupled_component_regression(
     fixture_path: Path = _STEROID_RING_COUPLED_COMPONENT_PATH,
 ) -> StereoMembershipRegression:
-    data = json.loads(fixture_path.read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        raise ValueError(f"fixture {fixture_path} must contain a JSON object")
+    data = read_fixture_json_object(fixture_path)
     return StereoMembershipRegression(
         input_smiles=_required_string(data, "input_smiles", fixture_path),
         rooted_at_atom=_required_int(data, "rooted_at_atom", fixture_path),
@@ -51,9 +48,7 @@ def load_steroid_ring_coupled_component_regression(
 def load_stereo_expected_member_regressions(
     fixture_path: Path = _ROOTED_MEMBERSHIP_PATH,
 ) -> tuple[StereoExpectedMemberRegression, ...]:
-    data = json.loads(fixture_path.read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        raise ValueError(f"fixture {fixture_path} must contain a JSON object")
+    data = read_fixture_json_object(fixture_path)
     raw_cases = data.get("cases")
     if not isinstance(raw_cases, list) or not raw_cases:
         raise ValueError(f"fixture {fixture_path} must define nonempty cases")

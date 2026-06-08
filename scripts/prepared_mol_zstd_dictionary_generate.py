@@ -156,6 +156,16 @@ def file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def read_manifest_object(path: Path, *, context: str) -> dict[str, Any]:
+    try:
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"{context} manifest is not readable JSON: {path}") from exc
+    if not isinstance(manifest, dict):
+        raise RuntimeError(f"{context} manifest is not a JSON object: {path}")
+    return manifest
+
+
 def gzip_uncompressed_sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with gzip.open(path, "rb") as handle:
@@ -284,7 +294,7 @@ def existing_shipped_dictionary_ids(dictionary_root: Path | None = None) -> set[
         return set()
 
     for manifest_path in dictionary_root.glob("*/*.json"):
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest = read_manifest_object(manifest_path, context="Shipped dictionary")
         dictionary_id = manifest.get("zstd_dictionary_id")
         if not isinstance(dictionary_id, int):
             raise RuntimeError(
@@ -310,7 +320,7 @@ def existing_dictionary_id_for_training_identity(
         return None
 
     for manifest_path in dictionary_root.glob("*/*.json"):
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest = read_manifest_object(manifest_path, context="Shipped dictionary")
         if manifest.get("training_identity_sha256") != training_identity_sha256:
             continue
         dictionary_id = manifest.get("zstd_dictionary_id")
@@ -543,9 +553,7 @@ def validate_artifact(
     if not dictionary_path.is_file():
         raise RuntimeError(f"Artifact dictionary is missing: {dictionary_path}")
 
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, dict):
-        raise RuntimeError(f"Artifact manifest is not a JSON object: {manifest_path}")
+    manifest = read_manifest_object(manifest_path, context="Artifact")
 
     expected_files = {
         "dictionary": dictionary_path.name,
@@ -618,8 +626,9 @@ def write_artifact(
     if artifact_dir.exists():
         existing_manifest_path = artifact_dir / f"{ARTIFACT_STEM}.json"
         if existing_manifest_path.exists():
-            existing_manifest = json.loads(
-                existing_manifest_path.read_text(encoding="utf-8")
+            existing_manifest = read_manifest_object(
+                existing_manifest_path,
+                context="Existing artifact",
             )
             existing_manifest_sha = existing_manifest.get("manifest_sha256")
             if existing_manifest_sha != manifest_sha:

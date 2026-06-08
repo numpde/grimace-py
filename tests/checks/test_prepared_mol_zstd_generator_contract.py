@@ -233,6 +233,27 @@ class PreparedMolZstdGeneratorContractTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 generator.existing_shipped_dictionary_ids()
 
+    def test_existing_shipped_dictionary_ids_rejects_invalid_json_manifests(
+        self,
+    ) -> None:
+        generator = load_generator_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            artifact = (
+                root
+                / "python"
+                / "grimace"
+                / "data"
+                / "prepared_mol_zstd"
+                / "artifact"
+            )
+            artifact.mkdir(parents=True)
+            (artifact / "default_v1.json").write_text("{", encoding="utf-8")
+
+            generator.ROOT = root
+            with self.assertRaisesRegex(RuntimeError, "not readable JSON"):
+                generator.existing_shipped_dictionary_ids()
+
     def test_existing_shipped_dictionary_ids_rejects_duplicate_ids(self) -> None:
         generator = load_generator_module()
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -328,6 +349,36 @@ class PreparedMolZstdGeneratorContractTests(unittest.TestCase):
                 generator.existing_dictionary_id_for_training_identity(
                     dictionary_root,
                     "abc",
+                )
+
+    def test_existing_dictionary_id_for_training_identity_rejects_non_object_manifest(
+        self,
+    ) -> None:
+        generator = load_generator_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dictionary_root = Path(tmpdir)
+            artifact = dictionary_root / "artifact"
+            artifact.mkdir()
+            (artifact / "default_v1.json").write_text("[]", encoding="utf-8")
+
+            with self.assertRaisesRegex(RuntimeError, "not a JSON object"):
+                generator.existing_dictionary_id_for_training_identity(
+                    dictionary_root,
+                    "abc",
+                )
+
+    def test_validate_artifact_rejects_invalid_json_manifest(self) -> None:
+        generator = load_generator_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            artifact_dir = Path(tmpdir) / "20000102_abcdef12"
+            artifact_dir.mkdir()
+            (artifact_dir / "default_v1.json").write_text("{", encoding="utf-8")
+            (artifact_dir / "default_v1.zstdict").write_bytes(b"not reached")
+
+            with self.assertRaisesRegex(RuntimeError, "not readable JSON"):
+                generator.validate_artifact(
+                    artifact_dir,
+                    smoke_payload=b"GPM\0not reached",
                 )
 
 

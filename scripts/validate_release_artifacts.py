@@ -126,6 +126,12 @@ class PreparedMolZstdManifestMetadata(NamedTuple):
     dictionary_size_bytes: int
 
 
+class ProjectIdentity(NamedTuple):
+    name: str
+    version: str
+    source_url: str
+
+
 def expected_artifact_names(version: str) -> tuple[str, ...]:
     wheels = tuple(
         f"{PACKAGE_STEM}-{version}-{python_tag}-{python_tag}-{PLATFORM_TAG}.whl"
@@ -289,24 +295,22 @@ def validate_sdist_project_metadata(
         raise ValueError("source distribution pyproject.toml is invalid") from exc
     try:
         project = pyproject["project"]
-        name = project["name"]
-        version = project["version"]
-        source_url = project["urls"]["Source"]
+        identity = ProjectIdentity(
+            name=project["name"],
+            version=project["version"],
+            source_url=project["urls"]["Source"],
+        )
     except (KeyError, TypeError) as exc:
         raise ValueError(
             "source distribution pyproject.toml lacks project metadata"
         ) from exc
-    if not isinstance(name, str) or canonical_project_name(name) != PROJECT_NAME:
-        raise ValueError("source distribution project name does not match grimace-py")
-    if version != expected_version:
-        raise ValueError("source distribution project version does not match filename")
-    if not isinstance(source_url, str) or not source_url:
-        raise ValueError("source distribution project.urls.Source must be non-empty")
-    if source_url != EXPECTED_PROJECT_SOURCE_URL:
-        raise ValueError(
-            "source distribution project.urls.Source does not match the official "
-            "repository URL"
-        )
+    validate_project_identity(
+        identity,
+        expected_version=expected_version,
+        source="source distribution",
+        version_field="project version",
+        source_url_field="project.urls.Source",
+    )
 
 
 def validate_sdist(sdist_path: Path) -> SdistInfo:
@@ -565,11 +569,6 @@ def validate_distribution_metadata(
         != EXPECTED_DISTRIBUTION_METADATA_VERSION
     ):
         raise ValueError(f"{source} version dialect is not supported")
-    name = single_metadata_header(message, "Name", source=source)
-    if canonical_project_name(name) != PROJECT_NAME:
-        raise ValueError(f"{source} project name does not match grimace-py")
-    if single_metadata_header(message, "Version", source=source) != expected_version:
-        raise ValueError(f"{source} version does not match filename")
     source_urls = tuple(
         url
         for value in message.get_all("Project-URL", ())
@@ -578,10 +577,38 @@ def validate_distribution_metadata(
     )
     if len(source_urls) != 1 or not source_urls[0]:
         raise ValueError(f"{source} lacks the source repository Project-URL")
-    if source_urls[0] != EXPECTED_PROJECT_SOURCE_URL:
+    validate_project_identity(
+        ProjectIdentity(
+            name=single_metadata_header(message, "Name", source=source),
+            version=single_metadata_header(message, "Version", source=source),
+            source_url=source_urls[0],
+        ),
+        expected_version=expected_version,
+        source=source,
+        source_url_field="source repository Project-URL",
+    )
+
+
+def validate_project_identity(
+    identity: ProjectIdentity,
+    *,
+    expected_version: str,
+    source: str,
+    source_url_field: str,
+    version_field: str = "version",
+) -> None:
+    if (
+        not isinstance(identity.name, str)
+        or canonical_project_name(identity.name) != PROJECT_NAME
+    ):
+        raise ValueError(f"{source} project name does not match grimace-py")
+    if identity.version != expected_version:
+        raise ValueError(f"{source} {version_field} does not match filename")
+    if not isinstance(identity.source_url, str) or not identity.source_url:
+        raise ValueError(f"{source} {source_url_field} must be non-empty")
+    if identity.source_url != EXPECTED_PROJECT_SOURCE_URL:
         raise ValueError(
-            f"{source} source repository URL does not match the official "
-            "repository URL"
+            f"{source} {source_url_field} does not match the official repository URL"
         )
 
 

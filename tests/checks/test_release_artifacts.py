@@ -1194,6 +1194,20 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "PKG-INFO version"):
                 validator.validate_sdist(sdist)
 
+    def test_rejects_sdist_pkg_info_name_mismatch(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            sdist = Path(tmp) / "grimace_py-0.1.12.tar.gz"
+            write_sdist(
+                sdist,
+                ("pyproject.toml", "Cargo.toml", *SDIST_DICTIONARY_NAMES),
+                payload_overrides={
+                    "PKG-INFO": sdist_metadata(name="other-project").encode("utf-8"),
+                },
+            )
+            with self.assertRaisesRegex(ValueError, "project name"):
+                validator.validate_sdist(sdist)
+
     def test_rejects_sdist_pkg_info_source_url_that_is_not_official_repository(self) -> None:
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:

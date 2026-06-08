@@ -144,6 +144,11 @@ class _WriterScheduledActionKind(Enum):
     PAIR_CLOSURE_ENDPOINT = "pair_closure_endpoint"
 
 
+class _WriterActiveEmittedScheduleDecisionKind(Enum):
+    CLOSURE_ENDPOINT = "closure_endpoint"
+    ACTIVE_CHILD = "active_child"
+
+
 @dataclass(frozen=True, slots=True)
 class _WriterScheduledAction:
     kind: _WriterScheduledActionKind
@@ -228,6 +233,14 @@ class _WriterScheduledActionEmissionBatch:
     actions: tuple[_WriterScheduledAction, ...]
     emissions: tuple[_WriterScheduledActionEmission, ...]
     surviving_emissions: tuple[_WriterScheduledActionEmission, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterActiveEmittedScheduleDecision:
+    kind: _WriterActiveEmittedScheduleDecisionKind
+    closure_batch: _WriterScheduledActionEmissionBatch
+    selected_batch: _WriterScheduledActionEmissionBatch
+    child_batch: _WriterScheduledActionEmissionBatch | None = None
 
 
 def _consume_pending_entry_action(
@@ -463,12 +476,12 @@ def _active_child_transitions_from_scheduled_action(
     )
 
 
-def _active_emitted_transitions(
+def _active_emitted_schedule_decision(
     prepared: SouthStarPreparedMol,
     state: WriterState,
     context: WriterTransitionExpansionContext,
     active_atom: AtomId,
-) -> tuple[WriterTransition, ...]:
+) -> _WriterActiveEmittedScheduleDecision:
     closure_actions = _closure_endpoint_scheduled_actions(
         prepared,
         state,
@@ -483,8 +496,10 @@ def _active_emitted_transitions(
     )
 
     if closure_batch.surviving_emissions:
-        return _transitions_from_scheduled_action_emissions(
-            closure_batch.surviving_emissions
+        return _WriterActiveEmittedScheduleDecision(
+            kind=_WriterActiveEmittedScheduleDecisionKind.CLOSURE_ENDPOINT,
+            closure_batch=closure_batch,
+            selected_batch=closure_batch,
         )
 
     child_actions = _active_child_scheduled_actions_from_context(
@@ -500,8 +515,29 @@ def _active_emitted_transitions(
         child_actions,
     )
 
+    return _WriterActiveEmittedScheduleDecision(
+        kind=_WriterActiveEmittedScheduleDecisionKind.ACTIVE_CHILD,
+        closure_batch=closure_batch,
+        child_batch=child_batch,
+        selected_batch=child_batch,
+    )
+
+
+def _active_emitted_transitions(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+    active_atom: AtomId,
+) -> tuple[WriterTransition, ...]:
+    decision = _active_emitted_schedule_decision(
+        prepared,
+        state,
+        context,
+        active_atom,
+    )
+
     return _transitions_from_scheduled_action_emissions(
-        child_batch.surviving_emissions
+        decision.selected_batch.surviving_emissions
     )
 
 

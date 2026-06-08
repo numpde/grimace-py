@@ -1731,6 +1731,122 @@ class WriterStateKernelTest(unittest.TestCase):
             (first_emission, second_emission),
         )
 
+    def test_active_emitted_schedule_decision_selects_surviving_closure_batch(self) -> None:
+        prepared = object()
+        state = object()
+        context = object()
+        active_atom = AtomId(7)
+
+        closure_action = object()
+        closure_emission = object()
+        closure_survivor = object()
+
+        closure_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(closure_action,),  # type: ignore[arg-type]
+            emissions=(closure_emission,),  # type: ignore[arg-type]
+            surviving_emissions=(closure_survivor,),  # type: ignore[arg-type]
+        )
+
+        with patch(
+            "grimace._south_star1.writer_transitions._closure_endpoint_scheduled_actions",
+            return_value=(closure_action,),
+        ) as closure_actions, patch(
+            "grimace._south_star1.writer_transitions._scheduled_action_emission_batch",
+            return_value=closure_batch,
+        ) as emission_batch, patch(
+            "grimace._south_star1.writer_transitions._active_child_scheduled_actions_from_context",
+            side_effect=AssertionError("child policy should not run"),
+        ):
+            decision = writer_transitions._active_emitted_schedule_decision(
+                prepared,  # type: ignore[arg-type]
+                state,  # type: ignore[arg-type]
+                context,  # type: ignore[arg-type]
+                active_atom,
+            )
+
+        self.assertIs(
+            decision.kind,
+            writer_transitions._WriterActiveEmittedScheduleDecisionKind.CLOSURE_ENDPOINT,
+        )
+        self.assertIs(decision.closure_batch, closure_batch)
+        self.assertIs(decision.selected_batch, closure_batch)
+        self.assertIsNone(decision.child_batch)
+        closure_actions.assert_called_once_with(
+            prepared,
+            state,
+            context,
+        )
+        emission_batch.assert_called_once_with(
+            prepared,
+            state,
+            context,
+            (closure_action,),
+        )
+
+    def test_active_emitted_schedule_decision_selects_child_batch_after_zero_closure_survivors(self) -> None:
+        prepared = object()
+        state = object()
+        context = object()
+        active_atom = AtomId(7)
+
+        closure_action = object()
+        child_action = object()
+
+        closure_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(closure_action,),  # type: ignore[arg-type]
+            emissions=(),
+            surviving_emissions=(),
+        )
+        child_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(child_action,),  # type: ignore[arg-type]
+            emissions=(object(),),  # type: ignore[arg-type]
+            surviving_emissions=(object(),),  # type: ignore[arg-type]
+        )
+
+        with patch(
+            "grimace._south_star1.writer_transitions._closure_endpoint_scheduled_actions",
+            return_value=(closure_action,),
+        ) as closure_actions, patch(
+            "grimace._south_star1.writer_transitions._active_child_scheduled_actions_from_context",
+            return_value=(child_action,),
+        ) as child_actions, patch(
+            "grimace._south_star1.writer_transitions._scheduled_action_emission_batch",
+            side_effect=(closure_batch, child_batch),
+        ) as emission_batch:
+            decision = writer_transitions._active_emitted_schedule_decision(
+                prepared,  # type: ignore[arg-type]
+                state,  # type: ignore[arg-type]
+                context,  # type: ignore[arg-type]
+                active_atom,
+            )
+
+        self.assertIs(
+            decision.kind,
+            writer_transitions._WriterActiveEmittedScheduleDecisionKind.ACTIVE_CHILD,
+        )
+        self.assertIs(decision.closure_batch, closure_batch)
+        self.assertIs(decision.child_batch, child_batch)
+        self.assertIs(decision.selected_batch, child_batch)
+        closure_actions.assert_called_once_with(
+            prepared,
+            state,
+            context,
+        )
+        child_actions.assert_called_once_with(
+            context,
+            state,
+            active_atom,
+        )
+        self.assertEqual(emission_batch.call_count, 2)
+        self.assertEqual(
+            emission_batch.call_args_list[0].args,
+            (prepared, state, context, (closure_action,)),
+        )
+        self.assertEqual(
+            emission_batch.call_args_list[1].args,
+            (prepared, state, context, (child_action,)),
+        )
+
     def test_active_emitted_scheduler_does_not_compute_children_when_closure_transition_survives(self) -> None:
         prepared = object()
         state = object()

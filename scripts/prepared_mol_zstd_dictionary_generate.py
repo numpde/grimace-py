@@ -503,7 +503,7 @@ def validate_zstd_dictionary(
     try:
         compression_dictionary = zstd.ZstdCompressionDict(dictionary_bytes)
         actual_dictionary_id = compression_dictionary.dict_id()
-    except Exception as exc:
+    except zstd.ZstdError as exc:
         raise RuntimeError("zstd dictionary bytes are not a valid dictionary") from exc
 
     if actual_dictionary_id != dictionary_id:
@@ -522,7 +522,7 @@ def validate_zstd_dictionary(
         restored = zstd.ZstdDecompressor(
             dict_data=compression_dictionary,
         ).decompress(compressed)
-    except Exception as exc:
+    except zstd.ZstdError as exc:
         raise RuntimeError("zstd dictionary cannot round-trip a payload") from exc
 
     if parameters.dict_id != dictionary_id:

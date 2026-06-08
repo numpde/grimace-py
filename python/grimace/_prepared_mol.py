@@ -276,7 +276,7 @@ def _decompress_prepared_mol_zstd(data: bytes) -> bytes:
     decompressor = zstd.ZstdDecompressor(dict_data=dictionary)
     try:
         raw_payload = decompressor.decompress(data, allow_extra_data=False)
-    except Exception as exc:
+    except zstd.ZstdError as exc:
         raise ValueError("Malformed PreparedMol zstd payload") from exc
     if not isinstance(raw_payload, bytes) or not raw_payload.startswith(
         _RAW_PREPARED_MOL_MAGIC

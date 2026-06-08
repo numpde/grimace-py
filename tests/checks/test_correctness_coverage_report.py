@@ -263,7 +263,7 @@ class CorrectnessCoverageReportTests(unittest.TestCase):
             malformed_fixture.parent.mkdir(parents=True)
             malformed_fixture.write_text("[", encoding="utf-8")
 
-            with self.assertRaises(json.JSONDecodeError):
+            with self.assertRaisesRegex(ValueError, "checked-in fixture"):
                 REPORT.build_summary(Path(tmpdir))
 
     def test_report_fails_on_non_object_checked_in_fixture_json(self) -> None:

@@ -16,14 +16,47 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from rdkit import Chem, rdBase
-
-import grimace
-from scripts.timing_environment import current_machine_metadata, current_run_metadata
 from scripts.timing_history import (
     append_history_record,
     latest_history_record,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class _RuntimeModules:
+    chem: Any
+    rd_base: Any
+    grimace: Any
+
+
+_RUNTIME_MODULES: _RuntimeModules | None = None
+
+
+def _runtime_modules() -> _RuntimeModules:
+    global _RUNTIME_MODULES
+    if _RUNTIME_MODULES is None:
+        from rdkit import Chem, rdBase
+
+        import grimace
+
+        _RUNTIME_MODULES = _RuntimeModules(
+            chem=Chem,
+            rd_base=rdBase,
+            grimace=grimace,
+        )
+    return _RUNTIME_MODULES
+
+
+def _current_machine_metadata() -> dict[str, Any]:
+    from scripts.timing_environment import current_machine_metadata
+
+    return current_machine_metadata()
+
+
+def _current_run_metadata() -> dict[str, Any]:
+    from scripts.timing_environment import current_run_metadata
+
+    return current_run_metadata()
 
 
 @dataclass(frozen=True, slots=True)
@@ -181,8 +214,9 @@ def _format_cpu(machine: dict[str, Any]) -> str:
     return f"{model}; {visible_cpus} logical CPUs visible"
 
 
-def _parse_smiles(smiles: str) -> Chem.Mol:
-    mol = Chem.MolFromSmiles(smiles)
+def _parse_smiles(smiles: str) -> Any:
+    chem = _runtime_modules().chem
+    mol = chem.MolFromSmiles(smiles)
     if mol is None:
         raise ValueError(f"Failed to parse SMILES: {smiles!r}")
     return mol
@@ -191,7 +225,7 @@ def _parse_smiles(smiles: str) -> Chem.Mol:
 def _metadata_with_machine(metadata: dict[str, Any]) -> dict[str, Any]:
     if isinstance(metadata.get("machine"), dict):
         return metadata
-    return {**metadata, "machine": current_machine_metadata()}
+    return {**metadata, "machine": _current_machine_metadata()}
 
 
 def _benchmark_environment(metadata: dict[str, Any]) -> BenchmarkEnvironment:
@@ -287,7 +321,7 @@ class EnumTimingBenchmark:
     )
 
     def run(self) -> None:
-        metadata = current_run_metadata()
+        metadata = _current_run_metadata()
         rows = self._measure_rows()
         self._write_tsv(rows, metadata)
         self._write_plots_from_tsv()
@@ -303,11 +337,14 @@ class EnumTimingBenchmark:
             print(row)
 
     def _measure_rows(self) -> list[TimingRow]:
+        runtime = _runtime_modules()
+        chem = runtime.chem
+        grimace_module = runtime.grimace
         rows: list[TimingRow] = []
         for case in self.CASES:
             mol = _parse_smiles(case.smiles)
-            canonical_smiles = Chem.MolToSmiles(
-                Chem.Mol(mol),
+            canonical_smiles = chem.MolToSmiles(
+                chem.Mol(mol),
                 canonical=True,
                 isomericSmiles=True,
             )
@@ -321,28 +358,28 @@ class EnumTimingBenchmark:
                 lambda: self._enumerate_all_roots_with_decoder(
                     mol,
                     case,
-                    decoder_cls=grimace.MolToSmilesDecoder,
+                    decoder_cls=grimace_module.MolToSmilesDecoder,
                 )
             )
             determinized_decoder_times = _runtime_trials(
                 lambda: self._enumerate_all_roots_with_decoder(
                     mol,
                     case,
-                    decoder_cls=grimace.MolToSmilesDeterminizedDecoder,
+                    decoder_cls=grimace_module.MolToSmilesDeterminizedDecoder,
                 )
             )
             merged_decoder_times = _runtime_trials(
                 lambda: self._enumerate_all_roots_with_merged_decoder(
                     mol,
                     case,
-                    decoder_cls=grimace.MolToSmilesDecoder,
+                    decoder_cls=grimace_module.MolToSmilesDecoder,
                 )
             )
             merged_determinized_decoder_times = _runtime_trials(
                 lambda: self._enumerate_all_roots_with_merged_decoder(
                     mol,
                     case,
-                    decoder_cls=grimace.MolToSmilesDeterminizedDecoder,
+                    decoder_cls=grimace_module.MolToSmilesDeterminizedDecoder,
                 )
             )
             decoder_supports = (
@@ -351,7 +388,7 @@ class EnumTimingBenchmark:
                     self._enumerate_all_roots_with_decoder(
                         mol,
                         case,
-                        decoder_cls=grimace.MolToSmilesDecoder,
+                        decoder_cls=grimace_module.MolToSmilesDecoder,
                     ),
                 ),
                 (
@@ -359,7 +396,7 @@ class EnumTimingBenchmark:
                     self._enumerate_all_roots_with_decoder(
                         mol,
                         case,
-                        decoder_cls=grimace.MolToSmilesDeterminizedDecoder,
+                        decoder_cls=grimace_module.MolToSmilesDeterminizedDecoder,
                     ),
                 ),
                 (
@@ -367,7 +404,7 @@ class EnumTimingBenchmark:
                     self._enumerate_all_roots_with_merged_decoder(
                         mol,
                         case,
-                        decoder_cls=grimace.MolToSmilesDecoder,
+                        decoder_cls=grimace_module.MolToSmilesDecoder,
                     ),
                 ),
                 (
@@ -375,7 +412,7 @@ class EnumTimingBenchmark:
                     self._enumerate_all_roots_with_merged_decoder(
                         mol,
                         case,
-                        decoder_cls=grimace.MolToSmilesDeterminizedDecoder,
+                        decoder_cls=grimace_module.MolToSmilesDeterminizedDecoder,
                     ),
                 ),
             )
@@ -616,7 +653,7 @@ class EnumTimingBenchmark:
             metadata = (
                 self._metadata_from_tsv()
                 or latest_history_record(self.HISTORY_KIND)
-                or current_run_metadata()
+                or _current_run_metadata()
             )
         header = (
             "| Molecule | Atoms | Support | Grimace enum (per-root union) | "
@@ -800,7 +837,7 @@ class EnumTimingBenchmark:
 
     def _sampling_trials(
         self,
-        mol: Chem.Mol,
+        mol: Any,
         case: TimingCase,
         *,
         target_count: int,
@@ -830,21 +867,23 @@ class EnumTimingBenchmark:
 
     def _sample_until_support(
         self,
-        mol: Chem.Mol,
+        mol: Any,
         case: TimingCase,
         *,
         target_count: int,
         max_draws: int,
         seed: int,
     ) -> tuple[int, float]:
-        rdBase.SeedRandomNumberGenerator(seed)
+        runtime = _runtime_modules()
+        chem = runtime.chem
+        runtime.rd_base.SeedRandomNumberGenerator(seed)
         seen: set[str] = set()
         roots = list(range(mol.GetNumAtoms()))
         start = time.perf_counter()
 
         for draw_idx in range(1, max_draws + 1):
-            sampled = Chem.MolToSmiles(
-                Chem.Mol(mol),
+            sampled = chem.MolToSmiles(
+                chem.Mol(mol),
                 rootedAtAtom=roots[(draw_idx - 1) % len(roots)],
                 canonical=False,
                 doRandom=True,
@@ -854,16 +893,17 @@ class EnumTimingBenchmark:
             if len(seen) >= target_count:
                 return draw_idx, time.perf_counter() - start
 
-        raise AssertionError(
+        raise RuntimeError(
             f"RDKit sampling did not reach target_count={target_count} for {case.smiles} "
             f"within max_draws={max_draws}"
         )
 
-    def _enumerate_all_roots(self, mol: Chem.Mol, case: TimingCase) -> set[str]:
+    def _enumerate_all_roots(self, mol: Any, case: TimingCase) -> set[str]:
+        grimace_module = _runtime_modules().grimace
         return {
             smiles
             for root_idx in range(mol.GetNumAtoms())
-            for smiles in grimace.MolToSmilesEnum(
+            for smiles in grimace_module.MolToSmilesEnum(
                 mol,
                 rootedAtAtom=root_idx,
                 isomericSmiles=case.isomeric_smiles,
@@ -874,7 +914,7 @@ class EnumTimingBenchmark:
 
     def _enumerate_all_roots_with_decoder(
         self,
-        mol: Chem.Mol,
+        mol: Any,
         case: TimingCase,
         *,
         decoder_cls,
@@ -903,7 +943,7 @@ class EnumTimingBenchmark:
 
     def _enumerate_all_roots_with_merged_decoder(
         self,
-        mol: Chem.Mol,
+        mol: Any,
         case: TimingCase,
         *,
         decoder_cls,

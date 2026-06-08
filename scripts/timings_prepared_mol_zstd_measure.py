@@ -118,6 +118,13 @@ class DictionaryArtifact:
     dictionary_sha256: str
 
 
+@dataclass(frozen=True, slots=True)
+class DictionaryManifest:
+    dictionary_file: str
+    dictionary_id: int
+    dictionary_sha256: str
+
+
 def _runtime_trials(fn, *, repeats: int) -> list[float]:
     fn()
     timings: list[float] = []
@@ -172,24 +179,63 @@ def _artifact_dir(dictionary_artifact: str | None) -> Path:
     return manifests[0].parent
 
 
+def _dictionary_manifest(artifact_dir: Path) -> DictionaryManifest:
+    manifest_path = artifact_dir / f"{generator.ARTIFACT_STEM}.json"
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError(
+            f"Dictionary manifest is not readable JSON: {manifest_path}"
+        ) from exc
+    if not isinstance(manifest, dict):
+        raise RuntimeError(f"Dictionary manifest is not a JSON object: {manifest_path}")
+
+    try:
+        files = manifest["files"]
+        dictionary_file = files["dictionary"]
+        dictionary_id = manifest["zstd_dictionary_id"]
+        dictionary_sha256 = manifest["zstd_dictionary_sha256"]
+    except (KeyError, TypeError) as exc:
+        raise RuntimeError(
+            f"Dictionary manifest lacks timing metadata: {manifest_path}"
+        ) from exc
+
+    if dictionary_file != f"{generator.ARTIFACT_STEM}.zstdict":
+        raise RuntimeError(
+            f"Dictionary manifest names unexpected dictionary file: {manifest_path}"
+        )
+    if type(dictionary_id) is not int or dictionary_id <= 0:
+        raise RuntimeError(
+            f"Dictionary manifest has invalid dictionary id: {manifest_path}"
+        )
+    if (
+        not isinstance(dictionary_sha256, str)
+        or re.fullmatch(r"[0-9a-f]{64}", dictionary_sha256) is None
+    ):
+        raise RuntimeError(
+            f"Dictionary manifest has invalid dictionary SHA-256: {manifest_path}"
+        )
+    return DictionaryManifest(
+        dictionary_file=dictionary_file,
+        dictionary_id=dictionary_id,
+        dictionary_sha256=dictionary_sha256,
+    )
+
+
 def _dictionary(dictionary_artifact: str | None) -> DictionaryArtifact:
     assert zstd is not None
     artifact_dir = _artifact_dir(dictionary_artifact)
-    manifest = json.loads(
-        (artifact_dir / f"{generator.ARTIFACT_STEM}.json").read_text(
-            encoding="utf-8",
-        ),
-    )
+    manifest = _dictionary_manifest(artifact_dir)
     dictionary = zstd.ZstdCompressionDict(
-        (artifact_dir / manifest["files"]["dictionary"]).read_bytes(),
+        (artifact_dir / manifest.dictionary_file).read_bytes(),
     )
-    if dictionary.dict_id() != manifest["zstd_dictionary_id"]:
+    if dictionary.dict_id() != manifest.dictionary_id:
         raise RuntimeError("Dictionary ID does not match shipped manifest")
     return DictionaryArtifact(
         dictionary=dictionary,
         artifact=artifact_dir.name,
-        dictionary_id=manifest["zstd_dictionary_id"],
-        dictionary_sha256=manifest["zstd_dictionary_sha256"],
+        dictionary_id=manifest.dictionary_id,
+        dictionary_sha256=manifest.dictionary_sha256,
     )
 
 

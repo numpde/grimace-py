@@ -145,7 +145,7 @@ def coerce_option(
                 "and be an integer"
             )
         return int(value)
-    raise AssertionError(
+    raise RuntimeError(
         f"unsupported MolToSmiles option value_rule: {spec.value_rule!r}"
     )
 

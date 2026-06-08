@@ -10,6 +10,8 @@ from grimace._mol_to_smiles_options import (
     MOL_TO_SMILES_OPTIONS,
     MOL_TO_SMILES_PREPARED_OPTIONS,
     MOL_TO_SMILES_PUBLIC_OPTION_NAMES,
+    _OptionSpec,
+    coerce_option,
     coerce_internal_options,
     coerce_public_options,
     coerce_required_public_options,
@@ -170,6 +172,18 @@ class MolToSmilesOptionInventoryTests(unittest.TestCase):
                         {public_name: value},
                         context="TestContext",
                     )
+
+    def test_option_parser_rejects_unknown_inventory_value_rule(self) -> None:
+        bad_spec = _OptionSpec(
+            public_name="badOption",
+            internal_name="bad_option",
+            default=False,
+            value_rule="not-a-rule",
+            scope="call",
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "unsupported MolToSmiles option"):
+            coerce_option(bad_spec, False, context="TestContext")
 
     def test_option_parsers_reject_unknown_names(self) -> None:
         public_values = {

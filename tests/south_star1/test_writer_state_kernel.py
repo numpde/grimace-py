@@ -1145,6 +1145,126 @@ class WriterStateKernelTest(unittest.TestCase):
             str(raised.exception),
         )
 
+    def test_active_child_schedule_surface_records_blockers_without_children(self) -> None:
+        context = object()
+        state = object()
+        active_atom = AtomId(0)
+        blocker = writer_transitions._WriterChildObligationBlocker(
+            kind=(
+                writer_transitions._WriterChildObligationBlockerKind
+                .MULTI_INCIDENCE_RESIDUAL_ATTACHMENT
+            ),
+            atom=active_atom,
+            attachment_id=7,
+            attachment_action_kind=WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY,
+        )
+
+        with patch(
+            "grimace._south_star1.writer_transitions._child_obligation_blockers_for_atom",
+            return_value=(blocker,),
+        ) as blockers, patch(
+            "grimace._south_star1.writer_transitions._unblocked_child_obligations_from_context",
+            side_effect=AssertionError("unblocked children should not be computed"),
+        ) as unblocked:
+            surface = writer_transitions._active_child_schedule_surface_from_context(
+                context,  # type: ignore[arg-type]
+                state,  # type: ignore[arg-type]
+                active_atom,
+            )
+
+        self.assertEqual(surface.active_atom, active_atom)
+        self.assertTrue(surface.blocked)
+        self.assertEqual(surface.blockers, (blocker,))
+        self.assertEqual(surface.child_obligations, ())
+        self.assertEqual(surface.scheduled_actions, ())
+        self.assertEqual(surface.graph_action_surfaces, ())
+        blockers.assert_called_once_with(context, active_atom)
+        unblocked.assert_not_called()
+
+    def test_active_child_schedule_surface_records_child_actions_and_surfaces(self) -> None:
+        context = object()
+        state = object()
+        active_atom = AtomId(0)
+        child = writer_transitions._WriterChildObligation(
+            bond=BondId(1),
+            child=AtomId(2),
+            boundary_atom=active_atom,
+            owner_kind=WriterBoundaryOwnerKind.ACTIVE_ATOM,
+            attachment_id=9,
+            attachment_action_kind=(
+                WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY
+            ),
+        )
+
+        with patch(
+            "grimace._south_star1.writer_transitions._child_obligation_blockers_for_atom",
+            return_value=(),
+        ) as blockers, patch(
+            "grimace._south_star1.writer_transitions._unblocked_child_obligations_from_context",
+            return_value=(child,),
+        ) as unblocked:
+            surface = writer_transitions._active_child_schedule_surface_from_context(
+                context,  # type: ignore[arg-type]
+                state,  # type: ignore[arg-type]
+                active_atom,
+            )
+
+        self.assertFalse(surface.blocked)
+        self.assertEqual(surface.blockers, ())
+        self.assertEqual(surface.child_obligations, (child,))
+        self.assertEqual(len(surface.scheduled_actions), 1)
+        graph_surface = surface.graph_action_surfaces[0]
+        self.assertIs(
+            graph_surface.kind,
+            writer_transitions._WriterScheduledActionKind.ENTER_INLINE_CHILD,
+        )
+        self.assertEqual(graph_surface.active_atom, active_atom)
+        self.assertEqual(graph_surface.bond, BondId(1))
+        self.assertEqual(graph_surface.partner_atom, AtomId(2))
+        self.assertEqual(graph_surface.boundary_atom, active_atom)
+        self.assertEqual(graph_surface.attachment_id, 9)
+        self.assertIs(
+            graph_surface.attachment_action_kind,
+            WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY,
+        )
+        self.assertIs(
+            graph_surface.owner_kind,
+            WriterBoundaryOwnerKind.ACTIVE_ATOM,
+        )
+        blockers.assert_called_once_with(context, active_atom)
+        unblocked.assert_called_once_with(context, state, active_atom)
+
+    def test_active_child_schedule_surface_records_finish_action_when_no_children(self) -> None:
+        context = object()
+        state = object()
+        active_atom = AtomId(5)
+
+        with patch(
+            "grimace._south_star1.writer_transitions._child_obligation_blockers_for_atom",
+            return_value=(),
+        ) as blockers, patch(
+            "grimace._south_star1.writer_transitions._unblocked_child_obligations_from_context",
+            return_value=(),
+        ) as unblocked:
+            surface = writer_transitions._active_child_schedule_surface_from_context(
+                context,  # type: ignore[arg-type]
+                state,  # type: ignore[arg-type]
+                active_atom,
+            )
+
+        self.assertFalse(surface.blocked)
+        self.assertEqual(surface.blockers, ())
+        self.assertEqual(surface.child_obligations, ())
+        self.assertEqual(len(surface.scheduled_actions), 1)
+        graph_surface = surface.graph_action_surfaces[0]
+        self.assertIs(
+            graph_surface.kind,
+            writer_transitions._WriterScheduledActionKind.FINISH_ACTIVE,
+        )
+        self.assertEqual(graph_surface.active_atom, active_atom)
+        blockers.assert_called_once_with(context, active_atom)
+        unblocked.assert_called_once_with(context, state, active_atom)
+
     def test_checked_child_obligations_use_atom_scoped_blockers(self) -> None:
         context = object()
         state = object()

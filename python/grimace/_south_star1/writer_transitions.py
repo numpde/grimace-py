@@ -284,6 +284,25 @@ class _WriterScheduledActionEmissionBatch:
 
 
 @dataclass(frozen=True, slots=True)
+class _WriterActiveChildScheduleSurface:
+    active_atom: AtomId
+    blockers: tuple[_WriterChildObligationBlocker, ...]
+    child_obligations: tuple[_WriterChildObligation, ...]
+    scheduled_actions: tuple[_WriterScheduledAction, ...]
+
+    @property
+    def blocked(self) -> bool:
+        return bool(self.blockers)
+
+    @property
+    def graph_action_surfaces(self) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            _scheduled_graph_action_surface(action)
+            for action in self.scheduled_actions
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class _WriterClosureEndpointScheduleDecision:
     pair_batch: _WriterScheduledActionEmissionBatch
     open_batch: _WriterScheduledActionEmissionBatch
@@ -700,28 +719,57 @@ def _active_child_scheduled_actions(
     )
 
 
-def _active_child_scheduled_actions_from_context(
+def _active_child_schedule_surface_from_context(
     context: WriterTransitionExpansionContext,
     state: WriterState,
     active_atom: AtomId,
-) -> tuple[_WriterScheduledAction, ...]:
-    _raise_for_child_obligation_blockers(
-        _child_obligation_blockers_for_atom(
-            context,
-            active_atom,
-        )
+) -> _WriterActiveChildScheduleSurface:
+    blockers = _child_obligation_blockers_for_atom(
+        context,
+        active_atom,
     )
 
-    children = _unblocked_child_obligations_from_context(
+    if blockers:
+        return _WriterActiveChildScheduleSurface(
+            active_atom=active_atom,
+            blockers=blockers,
+            child_obligations=(),
+            scheduled_actions=(),
+        )
+
+    child_obligations = _unblocked_child_obligations_from_context(
         context,
         state,
         active_atom,
     )
 
-    return _active_child_scheduled_actions(
+    scheduled_actions = _active_child_scheduled_actions(
         active_atom,
-        children,
+        child_obligations,
     )
+
+    return _WriterActiveChildScheduleSurface(
+        active_atom=active_atom,
+        blockers=(),
+        child_obligations=child_obligations,
+        scheduled_actions=scheduled_actions,
+    )
+
+
+def _active_child_scheduled_actions_from_context(
+    context: WriterTransitionExpansionContext,
+    state: WriterState,
+    active_atom: AtomId,
+) -> tuple[_WriterScheduledAction, ...]:
+    surface = _active_child_schedule_surface_from_context(
+        context,
+        state,
+        active_atom,
+    )
+
+    _raise_for_child_obligation_blockers(surface.blockers)
+
+    return surface.scheduled_actions
 
 
 def _active_child_transitions_from_scheduled_action(

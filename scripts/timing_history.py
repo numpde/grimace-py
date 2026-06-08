@@ -28,10 +28,22 @@ def append_history_record(record: dict[str, Any]) -> None:
 def latest_history_record(kind: str) -> dict[str, Any] | None:
     if not HISTORY_PATH.is_file():
         return None
-    for line in reversed(HISTORY_PATH.read_text(encoding="utf-8").splitlines()):
+    lines = HISTORY_PATH.read_text(encoding="utf-8").splitlines()
+    for line_number in range(len(lines), 0, -1):
+        line = lines[line_number - 1]
         if not line.strip():
             continue
-        record = json.loads(line)
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"Malformed timing history record at {HISTORY_PATH}:{line_number}"
+            ) from exc
+        if not isinstance(record, dict):
+            raise ValueError(
+                f"Timing history record at {HISTORY_PATH}:{line_number} "
+                "is not an object"
+            )
         if record.get("kind") == kind:
             return record
     return None

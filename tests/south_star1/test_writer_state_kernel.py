@@ -2472,6 +2472,82 @@ class WriterStateKernelTest(unittest.TestCase):
             (prepared, state, context, second_action),
         )
 
+    def test_scheduled_action_emission_exposes_graph_action_surface(self) -> None:
+        child = writer_transitions._WriterChildObligation(
+            bond=BondId(1),
+            child=AtomId(2),
+            boundary_atom=AtomId(0),
+            owner_kind=WriterBoundaryOwnerKind.ACTIVE_ATOM,
+            attachment_id=7,
+            attachment_action_kind=(
+                WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY
+            ),
+        )
+        action = writer_transitions._enter_inline_child_action(AtomId(0), child)
+        transition = object()
+        emission = writer_transitions._WriterScheduledActionEmission(
+            action=action,
+            transitions=(transition,),  # type: ignore[arg-type]
+        )
+
+        surface = emission.graph_action_surface
+
+        self.assertIs(
+            surface.kind,
+            writer_transitions._WriterScheduledActionKind.ENTER_INLINE_CHILD,
+        )
+        self.assertEqual(surface.active_atom, AtomId(0))
+        self.assertEqual(surface.bond, BondId(1))
+        self.assertEqual(surface.partner_atom, AtomId(2))
+        self.assertEqual(surface.boundary_atom, AtomId(0))
+        self.assertEqual(surface.attachment_id, 7)
+        self.assertTrue(emission.survived)
+        self.assertEqual(emission.transitions, (transition,))
+
+    def test_zero_transition_scheduled_action_emission_still_exposes_surface(self) -> None:
+        action = writer_transitions._finish_active_action(AtomId(3))
+        emission = writer_transitions._WriterScheduledActionEmission(
+            action=action,
+            transitions=(),
+        )
+
+        self.assertFalse(emission.survived)
+        self.assertIs(
+            emission.graph_action_surface.kind,
+            writer_transitions._WriterScheduledActionKind.FINISH_ACTIVE,
+        )
+        self.assertEqual(emission.graph_action_surface.active_atom, AtomId(3))
+
+    def test_scheduled_action_emission_batch_exposes_all_and_surviving_surfaces(self) -> None:
+        first_action = writer_transitions._finish_active_action(AtomId(0))
+        second_action = writer_transitions._emit_root_atom_action(AtomId(1))
+        transition = object()
+        first_emission = writer_transitions._WriterScheduledActionEmission(
+            action=first_action,
+            transitions=(transition,),  # type: ignore[arg-type]
+        )
+        second_emission = writer_transitions._WriterScheduledActionEmission(
+            action=second_action,
+            transitions=(),
+        )
+        batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(first_action, second_action),
+            emissions=(first_emission, second_emission),
+            surviving_emissions=(first_emission,),
+        )
+
+        self.assertEqual(
+            batch.graph_action_surfaces,
+            (
+                first_emission.graph_action_surface,
+                second_emission.graph_action_surface,
+            ),
+        )
+        self.assertEqual(
+            batch.surviving_graph_action_surfaces,
+            (first_emission.graph_action_surface,),
+        )
+
     def test_transitions_from_scheduled_actions_flattens_emissions(self) -> None:
         prepared = object()
         state = object()

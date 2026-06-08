@@ -251,12 +251,36 @@ class _WriterScheduledActionEmission:
     action: _WriterScheduledAction
     transitions: tuple[WriterTransition, ...]
 
+    @property
+    def graph_action_surface(self) -> _WriterScheduledGraphActionSurface:
+        return _scheduled_graph_action_surface(self.action)
+
+    @property
+    def survived(self) -> bool:
+        return bool(self.transitions)
+
 
 @dataclass(frozen=True, slots=True)
 class _WriterScheduledActionEmissionBatch:
     actions: tuple[_WriterScheduledAction, ...]
     emissions: tuple[_WriterScheduledActionEmission, ...]
     surviving_emissions: tuple[_WriterScheduledActionEmission, ...]
+
+    @property
+    def graph_action_surfaces(self) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            emission.graph_action_surface
+            for emission in self.emissions
+        )
+
+    @property
+    def surviving_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            emission.graph_action_surface
+            for emission in self.surviving_emissions
+        )
 
 
 @dataclass(frozen=True, slots=True)

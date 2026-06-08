@@ -123,6 +123,21 @@ class RdkitRegressionMinerTests(unittest.TestCase):
             check=False,
         )
 
+    def test_worker_payload_requires_one_json_object(self) -> None:
+        self.assertEqual(
+            {"status": "clean"},
+            MINER._worker_payload('{"status":"clean"}\n'),
+        )
+        for stdout, message in (
+            ("", "not valid JSON"),
+            ("not json", "not valid JSON"),
+            ("[]", "not a JSON object"),
+            ('"clean"', "not a JSON object"),
+        ):
+            with self.subTest(stdout=stdout):
+                with self.assertRaisesRegex(ValueError, message):
+                    MINER._worker_payload(stdout)
+
     def test_worker_sampled_mode_reports_clean_plateau_case(self) -> None:
         payload = self._run_worker(
             "--worker",

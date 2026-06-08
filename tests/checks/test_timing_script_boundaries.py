@@ -25,7 +25,12 @@ def load_script_module(name: str, path: Path) -> ModuleType:
         raise AssertionError(f"Could not load {name} module spec")
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
+    try:
+        spec.loader.exec_module(module)
+    except ModuleNotFoundError as exc:
+        if exc.name in {"rdkit", "grimace", "zstandard"}:
+            raise unittest.SkipTest(f"{exc.name} is not installed") from exc
+        raise
     return module
 
 

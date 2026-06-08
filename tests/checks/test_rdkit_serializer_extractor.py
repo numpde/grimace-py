@@ -22,7 +22,12 @@ def load_extractor_module() -> ModuleType:
         raise AssertionError(f"Could not load extractor module spec for {SCRIPT}")
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
+    try:
+        spec.loader.exec_module(module)
+    except ModuleNotFoundError as exc:
+        if exc.name == "tree_sitter":
+            raise unittest.SkipTest("tree_sitter is not installed") from exc
+        raise
     return module
 
 

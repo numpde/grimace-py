@@ -245,6 +245,47 @@ def _append_jsonl_record(path: str | None, record: dict[str, Any]) -> None:
         handle.write("\n")
 
 
+def _worker_payload(stdout: str) -> dict[str, Any]:
+    """Decode the single success payload emitted by one worker subprocess."""
+    try:
+        payload = json.loads(stdout.strip())
+    except json.JSONDecodeError as exc:
+        raise ValueError("Worker success stdout is not valid JSON") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("Worker success stdout is not a JSON object")
+    return payload
+
+
+def _emit_worker_error(
+    *,
+    jsonl_output: str | None,
+    checked: int,
+    idx: int,
+    cid: str,
+    smiles: str,
+    atoms: int,
+    root: int | None,
+    detail: str,
+) -> None:
+    _append_jsonl_record(
+        jsonl_output,
+        {
+            "record_type": "error",
+            "checked": checked,
+            "idx": idx,
+            "cid": cid,
+            "smiles": smiles,
+            "atoms": atoms,
+            "root": root,
+            "detail": detail,
+        },
+    )
+    print(f"ERROR checked={checked} idx={idx} cid={cid} atoms={atoms}", flush=True)
+    print(smiles, flush=True)
+    if detail:
+        print(detail, flush=True)
+
+
 def _iter_jsonl_records(path: str | Path) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     with Path(path).open(encoding="utf-8") as handle:
@@ -655,30 +696,33 @@ def _controller_main(args: argparse.Namespace) -> int:
 
         if proc.returncode != 0:
             detail = (proc.stderr or proc.stdout).strip()
-            _append_jsonl_record(
-                args.jsonl_output,
-                {
-                    "record_type": "error",
-                    "checked": checked,
-                    "idx": idx,
-                    "cid": case.cid,
-                    "smiles": case.smiles,
-                    "atoms": mol.GetNumAtoms(),
-                    "root": rooted_at_atom,
-                    "detail": detail,
-                },
+            _emit_worker_error(
+                jsonl_output=args.jsonl_output,
+                checked=checked,
+                idx=idx,
+                cid=case.cid,
+                smiles=case.smiles,
+                atoms=mol.GetNumAtoms(),
+                root=rooted_at_atom,
+                detail=detail,
             )
-            print(
-                f"ERROR checked={checked} idx={idx} cid={case.cid} atoms={mol.GetNumAtoms()}",
-                flush=True,
-            )
-            print(case.smiles, flush=True)
-            if detail:
-                print(detail, flush=True)
             return 1
 
         # The worker only prints one JSON payload on success.
-        payload = json.loads(proc.stdout.strip())
+        try:
+            payload = _worker_payload(proc.stdout)
+        except ValueError as exc:
+            _emit_worker_error(
+                jsonl_output=args.jsonl_output,
+                checked=checked,
+                idx=idx,
+                cid=case.cid,
+                smiles=case.smiles,
+                atoms=mol.GetNumAtoms(),
+                root=rooted_at_atom,
+                detail=str(exc),
+            )
+            return 1
         _append_jsonl_record(
             args.jsonl_output,
             {

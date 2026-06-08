@@ -54,7 +54,25 @@ class TimingScriptBoundaryTests(unittest.TestCase):
             (
                 json.dumps(
                     {
-                        "files": {"dictionary": "../default_v1.zstdict"},
+                        "artifact_dir": "other",
+                        "files": {
+                            "dictionary": "default_v1.zstdict",
+                            "manifest": "default_v1.json",
+                        },
+                        "zstd_dictionary_id": 123_456,
+                        "zstd_dictionary_sha256": "a" * 64,
+                    },
+                ),
+                "unexpected artifact",
+            ),
+            (
+                json.dumps(
+                    {
+                        "artifact_dir": "__ARTIFACT__",
+                        "files": {
+                            "dictionary": "../default_v1.zstdict",
+                            "manifest": "default_v1.json",
+                        },
                         "zstd_dictionary_id": 123_456,
                         "zstd_dictionary_sha256": "a" * 64,
                     },
@@ -64,7 +82,25 @@ class TimingScriptBoundaryTests(unittest.TestCase):
             (
                 json.dumps(
                     {
-                        "files": {"dictionary": "default_v1.zstdict"},
+                        "artifact_dir": "__ARTIFACT__",
+                        "files": {
+                            "dictionary": "default_v1.zstdict",
+                            "manifest": "../default_v1.json",
+                        },
+                        "zstd_dictionary_id": 123_456,
+                        "zstd_dictionary_sha256": "a" * 64,
+                    },
+                ),
+                "unexpected manifest file",
+            ),
+            (
+                json.dumps(
+                    {
+                        "artifact_dir": "__ARTIFACT__",
+                        "files": {
+                            "dictionary": "default_v1.zstdict",
+                            "manifest": "default_v1.json",
+                        },
                         "zstd_dictionary_id": True,
                         "zstd_dictionary_sha256": "a" * 64,
                     },
@@ -74,7 +110,11 @@ class TimingScriptBoundaryTests(unittest.TestCase):
             (
                 json.dumps(
                     {
-                        "files": {"dictionary": "default_v1.zstdict"},
+                        "artifact_dir": "__ARTIFACT__",
+                        "files": {
+                            "dictionary": "default_v1.zstdict",
+                            "manifest": "default_v1.json",
+                        },
                         "zstd_dictionary_id": 123_456,
                         "zstd_dictionary_sha256": "abc",
                     },
@@ -87,7 +127,7 @@ class TimingScriptBoundaryTests(unittest.TestCase):
                 with tempfile.TemporaryDirectory() as tmpdir:
                     artifact_dir = Path(tmpdir)
                     artifact_dir.joinpath("default_v1.json").write_text(
-                        payload,
+                        payload.replace("__ARTIFACT__", artifact_dir.name),
                         encoding="utf-8",
                     )
 
@@ -101,7 +141,11 @@ class TimingScriptBoundaryTests(unittest.TestCase):
             artifact_dir.joinpath("default_v1.json").write_text(
                 json.dumps(
                     {
-                        "files": {"dictionary": "default_v1.zstdict"},
+                        "artifact_dir": artifact_dir.name,
+                        "files": {
+                            "dictionary": "default_v1.zstdict",
+                            "manifest": "default_v1.json",
+                        },
                         "zstd_dictionary_id": 123_456,
                         "zstd_dictionary_sha256": "a" * 64,
                     },
@@ -114,6 +158,32 @@ class TimingScriptBoundaryTests(unittest.TestCase):
         self.assertEqual("default_v1.zstdict", manifest.dictionary_file)
         self.assertEqual(123_456, manifest.dictionary_id)
         self.assertEqual("a" * 64, manifest.dictionary_sha256)
+
+    def test_prepared_mol_zstd_timing_dictionary_bytes_match_manifest_hash(
+        self,
+    ) -> None:
+        timing = load_prepared_mol_zstd_timing_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            artifact_dir = Path(tmpdir)
+            artifact_dir.joinpath("default_v1.zstdict").write_bytes(b"dictionary")
+            manifest = timing.DictionaryManifest(
+                dictionary_file="default_v1.zstdict",
+                dictionary_id=123_456,
+                dictionary_sha256=timing.generator.sha256_hex(b"dictionary"),
+            )
+
+            self.assertEqual(
+                b"dictionary",
+                timing._dictionary_bytes(artifact_dir, manifest),
+            )
+
+            bad_manifest = timing.DictionaryManifest(
+                dictionary_file="default_v1.zstdict",
+                dictionary_id=123_456,
+                dictionary_sha256="0" * 64,
+            )
+            with self.assertRaisesRegex(RuntimeError, "SHA-256"):
+                timing._dictionary_bytes(artifact_dir, bad_manifest)
 
 
 if __name__ == "__main__":

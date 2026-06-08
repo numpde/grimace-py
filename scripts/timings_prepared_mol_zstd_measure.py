@@ -192,7 +192,9 @@ def _dictionary_manifest(artifact_dir: Path) -> DictionaryManifest:
 
     try:
         files = manifest["files"]
+        artifact_name = manifest["artifact_dir"]
         dictionary_file = files["dictionary"]
+        manifest_file = files["manifest"]
         dictionary_id = manifest["zstd_dictionary_id"]
         dictionary_sha256 = manifest["zstd_dictionary_sha256"]
     except (KeyError, TypeError) as exc:
@@ -200,9 +202,17 @@ def _dictionary_manifest(artifact_dir: Path) -> DictionaryManifest:
             f"Dictionary manifest lacks timing metadata: {manifest_path}"
         ) from exc
 
+    if artifact_name != artifact_dir.name:
+        raise RuntimeError(
+            f"Dictionary manifest names unexpected artifact: {manifest_path}"
+        )
     if dictionary_file != f"{generator.ARTIFACT_STEM}.zstdict":
         raise RuntimeError(
             f"Dictionary manifest names unexpected dictionary file: {manifest_path}"
+        )
+    if manifest_file != f"{generator.ARTIFACT_STEM}.json":
+        raise RuntimeError(
+            f"Dictionary manifest names unexpected manifest file: {manifest_path}"
         )
     if type(dictionary_id) is not int or dictionary_id <= 0:
         raise RuntimeError(
@@ -222,13 +232,19 @@ def _dictionary_manifest(artifact_dir: Path) -> DictionaryManifest:
     )
 
 
+def _dictionary_bytes(artifact_dir: Path, manifest: DictionaryManifest) -> bytes:
+    dictionary_bytes = artifact_dir.joinpath(manifest.dictionary_file).read_bytes()
+    dictionary_sha256 = generator.sha256_hex(dictionary_bytes)
+    if dictionary_sha256 != manifest.dictionary_sha256:
+        raise RuntimeError("Dictionary SHA-256 does not match shipped manifest")
+    return dictionary_bytes
+
+
 def _dictionary(dictionary_artifact: str | None) -> DictionaryArtifact:
     assert zstd is not None
     artifact_dir = _artifact_dir(dictionary_artifact)
     manifest = _dictionary_manifest(artifact_dir)
-    dictionary = zstd.ZstdCompressionDict(
-        (artifact_dir / manifest.dictionary_file).read_bytes(),
-    )
+    dictionary = zstd.ZstdCompressionDict(_dictionary_bytes(artifact_dir, manifest))
     if dictionary.dict_id() != manifest.dictionary_id:
         raise RuntimeError("Dictionary ID does not match shipped manifest")
     return DictionaryArtifact(

@@ -546,11 +546,15 @@ def _scheduled_writer_transitions(
     top_level_actions = _top_level_scheduled_actions(state)
 
     if top_level_actions:
-        return _transitions_from_scheduled_actions(
+        top_level_batch = _scheduled_action_emission_batch(
             prepared,
             state,
             context,
             top_level_actions,
+        )
+
+        return _transitions_from_scheduled_action_emissions(
+            top_level_batch.surviving_emissions
         )
 
     active = state.active

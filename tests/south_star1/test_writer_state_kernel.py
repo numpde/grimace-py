@@ -1321,15 +1321,25 @@ class WriterStateKernelTest(unittest.TestCase):
             ),
         )
         action = object()
+        emission = object()
+        surviving_emission = object()
         transition = object()
+        batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(action,),  # type: ignore[arg-type]
+            emissions=(emission,),  # type: ignore[arg-type]
+            surviving_emissions=(surviving_emission,),  # type: ignore[arg-type]
+        )
 
         with patch(
             "grimace._south_star1.writer_transitions._pending_entry_scheduled_actions",
             return_value=(action,),
         ) as pending_actions, patch(
-            "grimace._south_star1.writer_transitions._transitions_from_scheduled_actions",
+            "grimace._south_star1.writer_transitions._scheduled_action_emission_batch",
+            return_value=batch,
+        ) as emission_batch, patch(
+            "grimace._south_star1.writer_transitions._transitions_from_scheduled_action_emissions",
             return_value=(transition,),
-        ) as emit_actions, patch(
+        ) as flatten_emissions, patch(
             "grimace._south_star1.writer_transitions._root_atom_transitions",
             side_effect=AssertionError("root atom path should not run"),
         ), patch(
@@ -1344,11 +1354,14 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertEqual(result, (transition,))
         pending_actions.assert_called_once_with(state)
-        emit_actions.assert_called_once_with(
+        emission_batch.assert_called_once_with(
             prepared,
             state,
             context,
             (action,),
+        )
+        flatten_emissions.assert_called_once_with(
+            (surviving_emission,),
         )
 
     def test_scheduled_writer_transitions_dispatches_root_atom_actions(self) -> None:
@@ -1364,15 +1377,25 @@ class WriterStateKernelTest(unittest.TestCase):
             ),
         )
         action = object()
+        emission = object()
+        surviving_emission = object()
         transition = object()
+        batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(action,),  # type: ignore[arg-type]
+            emissions=(emission,),  # type: ignore[arg-type]
+            surviving_emissions=(surviving_emission,),  # type: ignore[arg-type]
+        )
 
         with patch(
             "grimace._south_star1.writer_transitions._root_atom_scheduled_actions",
             return_value=(action,),
         ) as root_actions, patch(
-            "grimace._south_star1.writer_transitions._transitions_from_scheduled_actions",
+            "grimace._south_star1.writer_transitions._scheduled_action_emission_batch",
+            return_value=batch,
+        ) as emission_batch, patch(
+            "grimace._south_star1.writer_transitions._transitions_from_scheduled_action_emissions",
             return_value=(transition,),
-        ) as emit_actions, patch(
+        ) as flatten_emissions, patch(
             "grimace._south_star1.writer_transitions._active_emitted_transitions",
             side_effect=AssertionError("active-emitted path should not run"),
         ):
@@ -1384,11 +1407,14 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertEqual(result, (transition,))
         root_actions.assert_called_once_with(state)
-        emit_actions.assert_called_once_with(
+        emission_batch.assert_called_once_with(
             prepared,
             state,
             context,
             (action,),
+        )
+        flatten_emissions.assert_called_once_with(
+            (surviving_emission,),
         )
 
     def test_top_level_scheduled_actions_prefer_pending_entry_over_root(self) -> None:
@@ -1458,6 +1484,55 @@ class WriterStateKernelTest(unittest.TestCase):
             ),
             (),
         )
+
+    def test_scheduled_writer_transitions_does_not_fall_through_when_top_level_actions_do_not_survive(self) -> None:
+        prepared = object()
+        context = object()
+        state = SimpleNamespace(
+            obligations=SimpleNamespace(
+                pending_entry=None,
+            ),
+            active=SimpleNamespace(
+                atom=AtomId(0),
+                atom_emitted=False,
+            ),
+        )
+        action = object()
+        emission = object()
+        batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(action,),  # type: ignore[arg-type]
+            emissions=(emission,),  # type: ignore[arg-type]
+            surviving_emissions=(),
+        )
+
+        with patch(
+            "grimace._south_star1.writer_transitions._top_level_scheduled_actions",
+            return_value=(action,),
+        ) as top_level_actions, patch(
+            "grimace._south_star1.writer_transitions._scheduled_action_emission_batch",
+            return_value=batch,
+        ) as emission_batch, patch(
+            "grimace._south_star1.writer_transitions._transitions_from_scheduled_action_emissions",
+            return_value=(),
+        ) as flatten_emissions, patch(
+            "grimace._south_star1.writer_transitions._active_emitted_transitions",
+            side_effect=AssertionError("active-emitted path should not run"),
+        ):
+            result = writer_transitions._scheduled_writer_transitions(
+                prepared,  # type: ignore[arg-type]
+                state,  # type: ignore[arg-type]
+                context,  # type: ignore[arg-type]
+            )
+
+        self.assertEqual(result, ())
+        top_level_actions.assert_called_once_with(state)
+        emission_batch.assert_called_once_with(
+            prepared,
+            state,
+            context,
+            (action,),
+        )
+        flatten_emissions.assert_called_once_with(())
 
     def test_scheduled_writer_transitions_falls_through_after_empty_top_level_actions(self) -> None:
         prepared = object()

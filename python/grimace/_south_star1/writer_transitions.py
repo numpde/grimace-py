@@ -149,6 +149,11 @@ class _WriterActiveEmittedScheduleDecisionKind(Enum):
     ACTIVE_CHILD = "active_child"
 
 
+class _WriterTopLevelScheduleDecisionKind(Enum):
+    TOP_LEVEL_ACTIONS = "top_level_actions"
+    ACTIVE_EMITTED = "active_emitted"
+
+
 @dataclass(frozen=True, slots=True)
 class _WriterScheduledAction:
     kind: _WriterScheduledActionKind
@@ -241,6 +246,14 @@ class _WriterActiveEmittedScheduleDecision:
     closure_batch: _WriterScheduledActionEmissionBatch
     selected_batch: _WriterScheduledActionEmissionBatch
     child_batch: _WriterScheduledActionEmissionBatch | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterTopLevelScheduleDecision:
+    kind: _WriterTopLevelScheduleDecisionKind
+    selected_batch: _WriterScheduledActionEmissionBatch
+    top_level_batch: _WriterScheduledActionEmissionBatch | None = None
+    active_emitted_decision: _WriterActiveEmittedScheduleDecision | None = None
 
 
 def _consume_pending_entry_action(
@@ -574,11 +587,11 @@ def _top_level_scheduled_actions(
     return _root_atom_scheduled_actions(state)
 
 
-def _scheduled_writer_transitions(
+def _top_level_schedule_decision(
     prepared: SouthStarPreparedMol,
     state: WriterState,
     context: WriterTransitionExpansionContext,
-) -> tuple[WriterTransition, ...]:
+) -> _WriterTopLevelScheduleDecision:
     top_level_actions = _top_level_scheduled_actions(state)
 
     if top_level_actions:
@@ -589,17 +602,41 @@ def _scheduled_writer_transitions(
             top_level_actions,
         )
 
-        return _transitions_from_scheduled_action_emissions(
-            top_level_batch.surviving_emissions
+        return _WriterTopLevelScheduleDecision(
+            kind=_WriterTopLevelScheduleDecisionKind.TOP_LEVEL_ACTIONS,
+            selected_batch=top_level_batch,
+            top_level_batch=top_level_batch,
         )
 
     active = state.active
 
-    return _active_emitted_transitions(
+    active_emitted_decision = _active_emitted_schedule_decision(
         prepared,
         state,
         context,
         active.atom,
+    )
+
+    return _WriterTopLevelScheduleDecision(
+        kind=_WriterTopLevelScheduleDecisionKind.ACTIVE_EMITTED,
+        selected_batch=active_emitted_decision.selected_batch,
+        active_emitted_decision=active_emitted_decision,
+    )
+
+
+def _scheduled_writer_transitions(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+) -> tuple[WriterTransition, ...]:
+    decision = _top_level_schedule_decision(
+        prepared,
+        state,
+        context,
+    )
+
+    return _transitions_from_scheduled_action_emissions(
+        decision.selected_batch.surviving_emissions
     )
 
 

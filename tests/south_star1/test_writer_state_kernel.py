@@ -1485,6 +1485,175 @@ class WriterStateKernelTest(unittest.TestCase):
             (),
         )
 
+    def test_top_level_schedule_decision_selects_top_level_batch(self) -> None:
+        prepared = object()
+        state = object()
+        context = object()
+        action = object()
+        emission = object()
+        survivor = object()
+
+        batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(action,),  # type: ignore[arg-type]
+            emissions=(emission,),  # type: ignore[arg-type]
+            surviving_emissions=(survivor,),  # type: ignore[arg-type]
+        )
+
+        with patch(
+            "grimace._south_star1.writer_transitions._top_level_scheduled_actions",
+            return_value=(action,),
+        ) as top_level_actions, patch(
+            "grimace._south_star1.writer_transitions._scheduled_action_emission_batch",
+            return_value=batch,
+        ) as emission_batch, patch(
+            "grimace._south_star1.writer_transitions._active_emitted_schedule_decision",
+            side_effect=AssertionError("active-emitted decision should not run"),
+        ):
+            decision = writer_transitions._top_level_schedule_decision(
+                prepared,  # type: ignore[arg-type]
+                state,  # type: ignore[arg-type]
+                context,  # type: ignore[arg-type]
+            )
+
+        self.assertIs(
+            decision.kind,
+            writer_transitions._WriterTopLevelScheduleDecisionKind.TOP_LEVEL_ACTIONS,
+        )
+        self.assertIs(decision.selected_batch, batch)
+        self.assertIs(decision.top_level_batch, batch)
+        self.assertIsNone(decision.active_emitted_decision)
+        top_level_actions.assert_called_once_with(state)
+        emission_batch.assert_called_once_with(
+            prepared,
+            state,
+            context,
+            (action,),
+        )
+
+    def test_top_level_schedule_decision_keeps_zero_survivor_top_level_batch(self) -> None:
+        prepared = object()
+        state = object()
+        context = object()
+        action = object()
+        emission = object()
+
+        batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(action,),  # type: ignore[arg-type]
+            emissions=(emission,),  # type: ignore[arg-type]
+            surviving_emissions=(),
+        )
+
+        with patch(
+            "grimace._south_star1.writer_transitions._top_level_scheduled_actions",
+            return_value=(action,),
+        ), patch(
+            "grimace._south_star1.writer_transitions._scheduled_action_emission_batch",
+            return_value=batch,
+        ), patch(
+            "grimace._south_star1.writer_transitions._active_emitted_schedule_decision",
+            side_effect=AssertionError("active-emitted decision should not run"),
+        ):
+            decision = writer_transitions._top_level_schedule_decision(
+                prepared,  # type: ignore[arg-type]
+                state,  # type: ignore[arg-type]
+                context,  # type: ignore[arg-type]
+            )
+
+        self.assertIs(
+            decision.kind,
+            writer_transitions._WriterTopLevelScheduleDecisionKind.TOP_LEVEL_ACTIONS,
+        )
+        self.assertIs(decision.selected_batch, batch)
+        self.assertEqual(decision.selected_batch.surviving_emissions, ())
+
+    def test_top_level_schedule_decision_selects_active_emitted_when_no_top_level_actions(self) -> None:
+        prepared = object()
+        context = object()
+        state = SimpleNamespace(
+            active=SimpleNamespace(
+                atom=AtomId(4),
+            ),
+        )
+
+        selected_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        active_decision = writer_transitions._WriterActiveEmittedScheduleDecision(
+            kind=writer_transitions._WriterActiveEmittedScheduleDecisionKind.ACTIVE_CHILD,
+            closure_batch=selected_batch,
+            selected_batch=selected_batch,
+            child_batch=selected_batch,
+        )
+
+        with patch(
+            "grimace._south_star1.writer_transitions._top_level_scheduled_actions",
+            return_value=(),
+        ) as top_level_actions, patch(
+            "grimace._south_star1.writer_transitions._active_emitted_schedule_decision",
+            return_value=active_decision,
+        ) as active_emitted_decision:
+            decision = writer_transitions._top_level_schedule_decision(
+                prepared,  # type: ignore[arg-type]
+                state,  # type: ignore[arg-type]
+                context,  # type: ignore[arg-type]
+            )
+
+        self.assertIs(
+            decision.kind,
+            writer_transitions._WriterTopLevelScheduleDecisionKind.ACTIVE_EMITTED,
+        )
+        self.assertIs(decision.selected_batch, selected_batch)
+        self.assertIsNone(decision.top_level_batch)
+        self.assertIs(decision.active_emitted_decision, active_decision)
+        top_level_actions.assert_called_once_with(state)
+        active_emitted_decision.assert_called_once_with(
+            prepared,
+            state,
+            context,
+            AtomId(4),
+        )
+
+    def test_scheduled_writer_transitions_flattens_top_level_decision_survivors(self) -> None:
+        prepared = object()
+        state = object()
+        context = object()
+        survivor = object()
+        transition = object()
+
+        selected_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(survivor,),  # type: ignore[arg-type]
+        )
+        decision = writer_transitions._WriterTopLevelScheduleDecision(
+            kind=writer_transitions._WriterTopLevelScheduleDecisionKind.TOP_LEVEL_ACTIONS,
+            selected_batch=selected_batch,
+            top_level_batch=selected_batch,
+        )
+
+        with patch(
+            "grimace._south_star1.writer_transitions._top_level_schedule_decision",
+            return_value=decision,
+        ) as schedule_decision, patch(
+            "grimace._south_star1.writer_transitions._transitions_from_scheduled_action_emissions",
+            return_value=(transition,),
+        ) as flatten_emissions:
+            result = writer_transitions._scheduled_writer_transitions(
+                prepared,  # type: ignore[arg-type]
+                state,  # type: ignore[arg-type]
+                context,  # type: ignore[arg-type]
+            )
+
+        self.assertEqual(result, (transition,))
+        schedule_decision.assert_called_once_with(
+            prepared,
+            state,
+            context,
+        )
+        flatten_emissions.assert_called_once_with((survivor,))
+
     def test_scheduled_writer_transitions_does_not_fall_through_when_top_level_actions_do_not_survive(self) -> None:
         prepared = object()
         context = object()
@@ -1542,18 +1711,30 @@ class WriterStateKernelTest(unittest.TestCase):
                 atom=AtomId(4),
             ),
         )
+        survivor = object()
         transition = object()
+        selected_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(survivor,),  # type: ignore[arg-type]
+        )
+        active_decision = writer_transitions._WriterActiveEmittedScheduleDecision(
+            kind=writer_transitions._WriterActiveEmittedScheduleDecisionKind.ACTIVE_CHILD,
+            closure_batch=selected_batch,
+            selected_batch=selected_batch,
+            child_batch=selected_batch,
+        )
 
         with patch(
             "grimace._south_star1.writer_transitions._top_level_scheduled_actions",
             return_value=(),
         ) as top_level_actions, patch(
-            "grimace._south_star1.writer_transitions._active_emitted_transitions",
+            "grimace._south_star1.writer_transitions._active_emitted_schedule_decision",
+            return_value=active_decision,
+        ) as active_emitted_decision, patch(
+            "grimace._south_star1.writer_transitions._transitions_from_scheduled_action_emissions",
             return_value=(transition,),
-        ) as active_emitted, patch(
-            "grimace._south_star1.writer_transitions._transitions_from_scheduled_actions",
-            side_effect=AssertionError("top-level actions should not emit"),
-        ):
+        ) as flatten_emissions:
             result = writer_transitions._scheduled_writer_transitions(
                 prepared,  # type: ignore[arg-type]
                 state,  # type: ignore[arg-type]
@@ -1562,12 +1743,13 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertEqual(result, (transition,))
         top_level_actions.assert_called_once_with(state)
-        active_emitted.assert_called_once_with(
+        active_emitted_decision.assert_called_once_with(
             prepared,
             state,
             context,
             AtomId(4),
         )
+        flatten_emissions.assert_called_once_with((survivor,))
 
     def test_scheduled_action_emissions_preserve_action_identity(self) -> None:
         prepared = object()

@@ -1873,6 +1873,12 @@ class WriterStateKernelTest(unittest.TestCase):
             emissions=(),
             surviving_emissions=(),
         )
+        child_surface = writer_transitions._WriterActiveChildScheduleSurface(
+            active_atom=AtomId(0),
+            blockers=(),
+            child_obligations=(),
+            scheduled_actions=child_batch.actions,
+        )
 
         closure_decision = writer_transitions._WriterActiveEmittedScheduleDecision(
             kind=(
@@ -1892,6 +1898,7 @@ class WriterStateKernelTest(unittest.TestCase):
             closure_endpoint_decision=closure_endpoint_decision,
             closure_batch=closure_batch,
             child_batch=child_batch,
+            child_schedule_surface=child_surface,
             selected_batch=child_batch,
         )
 
@@ -1948,12 +1955,19 @@ class WriterStateKernelTest(unittest.TestCase):
             emissions=(),
             surviving_emissions=(),
         )
+        child_surface = writer_transitions._WriterActiveChildScheduleSurface(
+            active_atom=AtomId(0),
+            blockers=(),
+            child_obligations=(),
+            scheduled_actions=child_batch.actions,
+        )
 
         closure_decision = writer_transitions._active_emitted_closure_decision(
             closure_endpoint_decision,
         )
         child_decision = writer_transitions._active_emitted_child_decision(
             closure_endpoint_decision,
+            child_surface,
             child_batch,
         )
 
@@ -1970,6 +1984,7 @@ class WriterStateKernelTest(unittest.TestCase):
         )
         self.assertEqual(child_decision.closure_batch, closure_batch)
         self.assertIs(child_decision.child_batch, child_batch)
+        self.assertIs(child_decision.child_schedule_surface, child_surface)
         self.assertIs(child_decision.selected_batch, child_batch)
 
     def test_active_emitted_decision_constructors_carry_closure_endpoint_decision(self) -> None:
@@ -1995,12 +2010,19 @@ class WriterStateKernelTest(unittest.TestCase):
             emissions=(),
             surviving_emissions=(),
         )
+        child_surface = writer_transitions._WriterActiveChildScheduleSurface(
+            active_atom=AtomId(0),
+            blockers=(),
+            child_obligations=(),
+            scheduled_actions=child_batch.actions,
+        )
 
         closure_decision = writer_transitions._active_emitted_closure_decision(
             closure_endpoint_decision,
         )
         child_decision = writer_transitions._active_emitted_child_decision(
             closure_endpoint_decision,
+            child_surface,
             child_batch,
         )
 
@@ -2025,7 +2047,81 @@ class WriterStateKernelTest(unittest.TestCase):
                 closure_endpoint_decision
             ),
         )
+        self.assertIs(
+            child_decision.child_schedule_surface,
+            child_surface,
+        )
         self.assertIs(child_decision.selected_batch, child_batch)
+
+    def test_active_emitted_child_decision_retains_child_schedule_surface(self) -> None:
+        pair_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        open_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        closure_endpoint_decision = (
+            writer_transitions._WriterClosureEndpointScheduleDecision(
+                pair_batch=pair_batch,
+                open_batch=open_batch,
+                surviving_emissions=(),
+            )
+        )
+        child = writer_transitions._WriterChildObligation(
+            bond=BondId(1),
+            child=AtomId(2),
+            boundary_atom=AtomId(0),
+            owner_kind=WriterBoundaryOwnerKind.ACTIVE_ATOM,
+            attachment_id=7,
+            attachment_action_kind=(
+                WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY
+            ),
+        )
+        child_action = writer_transitions._enter_inline_child_action(
+            AtomId(0),
+            child,
+        )
+        child_surface = writer_transitions._WriterActiveChildScheduleSurface(
+            active_atom=AtomId(0),
+            blockers=(),
+            child_obligations=(child,),
+            scheduled_actions=(child_action,),
+        )
+        child_emission = writer_transitions._WriterScheduledActionEmission(
+            action=child_action,
+            transitions=(object(),),  # type: ignore[arg-type]
+        )
+        child_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(child_action,),
+            emissions=(child_emission,),
+            surviving_emissions=(child_emission,),
+        )
+
+        decision = writer_transitions._active_emitted_child_decision(
+            closure_endpoint_decision,
+            child_surface,
+            child_batch,
+        )
+
+        self.assertIs(
+            decision.kind,
+            writer_transitions._WriterActiveEmittedScheduleDecisionKind.ACTIVE_CHILD,
+        )
+        self.assertIs(decision.child_schedule_surface, child_surface)
+        self.assertIs(decision.child_batch, child_batch)
+        self.assertIs(decision.selected_batch, child_batch)
+        self.assertEqual(
+            decision.considered_graph_action_surfaces,
+            child_surface.graph_action_surfaces,
+        )
+        self.assertEqual(
+            decision.selected_graph_action_surfaces,
+            child_batch.surviving_graph_action_surfaces,
+        )
 
     def test_top_level_decision_constructors_preserve_selected_batches(self) -> None:
         top_level_batch = writer_transitions._WriterScheduledActionEmissionBatch(
@@ -2374,12 +2470,19 @@ class WriterStateKernelTest(unittest.TestCase):
                 surviving_emissions=(),
             )
         )
+        child_surface = writer_transitions._WriterActiveChildScheduleSurface(
+            active_atom=AtomId(4),
+            blockers=(),
+            child_obligations=(),
+            scheduled_actions=selected_batch.actions,
+        )
         active_decision = writer_transitions._WriterActiveEmittedScheduleDecision(
             kind=writer_transitions._WriterActiveEmittedScheduleDecisionKind.ACTIVE_CHILD,
             closure_endpoint_decision=closure_endpoint_decision,
             closure_batch=selected_batch,
             selected_batch=selected_batch,
             child_batch=selected_batch,
+            child_schedule_surface=child_surface,
         )
 
         with patch(
@@ -2524,12 +2627,19 @@ class WriterStateKernelTest(unittest.TestCase):
                 surviving_emissions=(survivor,),  # type: ignore[arg-type]
             )
         )
+        child_surface = writer_transitions._WriterActiveChildScheduleSurface(
+            active_atom=AtomId(4),
+            blockers=(),
+            child_obligations=(),
+            scheduled_actions=selected_batch.actions,
+        )
         active_decision = writer_transitions._WriterActiveEmittedScheduleDecision(
             kind=writer_transitions._WriterActiveEmittedScheduleDecisionKind.ACTIVE_CHILD,
             closure_endpoint_decision=closure_endpoint_decision,
             closure_batch=selected_batch,
             selected_batch=selected_batch,
             child_batch=selected_batch,
+            child_schedule_surface=child_surface,
         )
 
         with patch(
@@ -2824,7 +2934,7 @@ class WriterStateKernelTest(unittest.TestCase):
             "grimace._south_star1.writer_transitions._closure_endpoint_schedule_decision",
             return_value=closure_decision,
         ) as closure_schedule, patch(
-            "grimace._south_star1.writer_transitions._active_child_scheduled_actions_from_context",
+            "grimace._south_star1.writer_transitions._active_child_schedule_surface_from_context",
             side_effect=AssertionError("child policy should not run"),
         ):
             decision = writer_transitions._active_emitted_schedule_decision(
@@ -2843,6 +2953,7 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(decision.closure_batch.surviving_emissions, (pair_survivor,))
         self.assertIs(decision.selected_batch, decision.closure_batch)
         self.assertIsNone(decision.child_batch)
+        self.assertIsNone(decision.child_schedule_surface)
         closure_schedule.assert_called_once_with(
             prepared,
             state,
@@ -2879,7 +2990,7 @@ class WriterStateKernelTest(unittest.TestCase):
             "grimace._south_star1.writer_transitions._closure_endpoint_schedule_decision",
             return_value=closure_decision,
         ) as closure_schedule, patch(
-            "grimace._south_star1.writer_transitions._active_child_scheduled_actions_from_context",
+            "grimace._south_star1.writer_transitions._active_child_schedule_surface_from_context",
             side_effect=AssertionError("child policy should not run"),
         ):
             decision = writer_transitions._active_emitted_schedule_decision(
@@ -2918,6 +3029,12 @@ class WriterStateKernelTest(unittest.TestCase):
         active_atom = AtomId(7)
 
         child_action = object()
+        child_surface = writer_transitions._WriterActiveChildScheduleSurface(
+            active_atom=active_atom,
+            blockers=(),
+            child_obligations=(),
+            scheduled_actions=(child_action,),  # type: ignore[arg-type]
+        )
 
         pair_batch = writer_transitions._WriterScheduledActionEmissionBatch(
             actions=(),
@@ -2944,9 +3061,9 @@ class WriterStateKernelTest(unittest.TestCase):
             "grimace._south_star1.writer_transitions._closure_endpoint_schedule_decision",
             return_value=closure_decision,
         ) as closure_schedule, patch(
-            "grimace._south_star1.writer_transitions._active_child_scheduled_actions_from_context",
-            return_value=(child_action,),
-        ) as child_actions, patch(
+            "grimace._south_star1.writer_transitions._active_child_schedule_surface_from_context",
+            return_value=child_surface,
+        ) as child_surface_from_context, patch(
             "grimace._south_star1.writer_transitions._scheduled_action_emission_batch",
             return_value=child_batch,
         ) as emission_batch:
@@ -2965,13 +3082,14 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(decision.closure_batch.emissions, ())
         self.assertEqual(decision.closure_batch.surviving_emissions, ())
         self.assertIs(decision.child_batch, child_batch)
+        self.assertIs(decision.child_schedule_surface, child_surface)
         self.assertIs(decision.selected_batch, child_batch)
         closure_schedule.assert_called_once_with(
             prepared,
             state,
             context,
         )
-        child_actions.assert_called_once_with(
+        child_surface_from_context.assert_called_once_with(
             context,
             state,
             active_atom,
@@ -2982,6 +3100,171 @@ class WriterStateKernelTest(unittest.TestCase):
             context,
             (child_action,),
         )
+
+    def test_active_emitted_schedule_decision_threads_child_surface_after_empty_closure_survivors(self) -> None:
+        prepared = object()
+        state = object()
+        context = object()
+        active_atom = AtomId(7)
+        child_action = object()
+        child_surface = writer_transitions._WriterActiveChildScheduleSurface(
+            active_atom=active_atom,
+            blockers=(),
+            child_obligations=(),
+            scheduled_actions=(child_action,),  # type: ignore[arg-type]
+        )
+        pair_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        open_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        closure_decision = writer_transitions._WriterClosureEndpointScheduleDecision(
+            pair_batch=pair_batch,
+            open_batch=open_batch,
+            surviving_emissions=(),
+        )
+        child_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(child_action,),  # type: ignore[arg-type]
+            emissions=(object(),),  # type: ignore[arg-type]
+            surviving_emissions=(object(),),  # type: ignore[arg-type]
+        )
+
+        with patch(
+            "grimace._south_star1.writer_transitions._closure_endpoint_schedule_decision",
+            return_value=closure_decision,
+        ), patch(
+            "grimace._south_star1.writer_transitions._active_child_schedule_surface_from_context",
+            return_value=child_surface,
+        ), patch(
+            "grimace._south_star1.writer_transitions._scheduled_action_emission_batch",
+            return_value=child_batch,
+        ) as emission_batch:
+            decision = writer_transitions._active_emitted_schedule_decision(
+                prepared,  # type: ignore[arg-type]
+                state,  # type: ignore[arg-type]
+                context,  # type: ignore[arg-type]
+                active_atom,
+            )
+
+        self.assertIs(
+            decision.kind,
+            writer_transitions._WriterActiveEmittedScheduleDecisionKind.ACTIVE_CHILD,
+        )
+        self.assertIs(decision.child_schedule_surface, child_surface)
+        emission_batch.assert_called_once_with(
+            prepared,
+            state,
+            context,
+            child_surface.scheduled_actions,
+        )
+
+    def test_active_emitted_schedule_decision_does_not_compute_child_surface_when_closure_survives(self) -> None:
+        prepared = object()
+        state = object()
+        context = object()
+        active_atom = AtomId(7)
+        survivor = object()
+        pair_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(survivor,),  # type: ignore[arg-type]
+        )
+        open_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        closure_decision = writer_transitions._WriterClosureEndpointScheduleDecision(
+            pair_batch=pair_batch,
+            open_batch=open_batch,
+            surviving_emissions=(survivor,),  # type: ignore[arg-type]
+        )
+
+        with patch(
+            "grimace._south_star1.writer_transitions._closure_endpoint_schedule_decision",
+            return_value=closure_decision,
+        ), patch(
+            "grimace._south_star1.writer_transitions._active_child_schedule_surface_from_context",
+            side_effect=AssertionError("child surface should not be computed"),
+        ) as child_surface:
+            decision = writer_transitions._active_emitted_schedule_decision(
+                prepared,  # type: ignore[arg-type]
+                state,  # type: ignore[arg-type]
+                context,  # type: ignore[arg-type]
+                active_atom,
+            )
+
+        self.assertIs(
+            decision.kind,
+            writer_transitions._WriterActiveEmittedScheduleDecisionKind.CLOSURE_ENDPOINT,
+        )
+        self.assertIsNone(decision.child_schedule_surface)
+        child_surface.assert_not_called()
+
+    def test_active_emitted_schedule_decision_raises_from_child_surface_blockers_without_emitting_child_batch(self) -> None:
+        prepared = object()
+        state = object()
+        context = object()
+        active_atom = AtomId(7)
+        blocker = writer_transitions._WriterChildObligationBlocker(
+            kind=(
+                writer_transitions._WriterChildObligationBlockerKind
+                .MULTI_INCIDENCE_RESIDUAL_ATTACHMENT
+            ),
+            atom=active_atom,
+            attachment_id=7,
+            attachment_action_kind=WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY,
+        )
+        child_surface = writer_transitions._WriterActiveChildScheduleSurface(
+            active_atom=active_atom,
+            blockers=(blocker,),
+            child_obligations=(),
+            scheduled_actions=(),
+        )
+        pair_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        open_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        closure_decision = writer_transitions._WriterClosureEndpointScheduleDecision(
+            pair_batch=pair_batch,
+            open_batch=open_batch,
+            surviving_emissions=(),
+        )
+
+        with patch(
+            "grimace._south_star1.writer_transitions._closure_endpoint_schedule_decision",
+            return_value=closure_decision,
+        ), patch(
+            "grimace._south_star1.writer_transitions._active_child_schedule_surface_from_context",
+            return_value=child_surface,
+        ), patch(
+            "grimace._south_star1.writer_transitions._scheduled_action_emission_batch",
+            side_effect=AssertionError("child batch should not emit"),
+        ) as emission_batch:
+            with self.assertRaises(SouthStarError) as raised:
+                writer_transitions._active_emitted_schedule_decision(
+                    prepared,  # type: ignore[arg-type]
+                    state,  # type: ignore[arg-type]
+                    context,  # type: ignore[arg-type]
+                    active_atom,
+                )
+
+        self.assertIs(
+            raised.exception.kind,
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+        )
+        emission_batch.assert_not_called()
 
     def test_active_emitted_scheduler_does_not_compute_children_when_closure_transition_survives(self) -> None:
         prepared = object()

@@ -332,6 +332,7 @@ class _WriterActiveEmittedScheduleDecision:
     closure_batch: _WriterScheduledActionEmissionBatch
     selected_batch: _WriterScheduledActionEmissionBatch
     child_batch: _WriterScheduledActionEmissionBatch | None = None
+    child_schedule_surface: _WriterActiveChildScheduleSurface | None = None
 
     def __post_init__(self) -> None:
         expected_closure_batch = _closure_endpoint_combined_batch(
@@ -343,11 +344,16 @@ class _WriterActiveEmittedScheduleDecision:
                 self.closure_batch == expected_closure_batch
                 and self.selected_batch is self.closure_batch
                 and self.child_batch is None
+                and self.child_schedule_surface is None
             )
         elif self.kind is _WriterActiveEmittedScheduleDecisionKind.ACTIVE_CHILD:
             valid = (
                 self.closure_batch == expected_closure_batch
                 and self.child_batch is not None
+                and self.child_schedule_surface is not None
+                and not self.child_schedule_surface.blocked
+                and self.child_batch.actions
+                == self.child_schedule_surface.scheduled_actions
                 and self.selected_batch is self.child_batch
             )
         else:
@@ -358,6 +364,24 @@ class _WriterActiveEmittedScheduleDecision:
                 SouthStarErrorKind.INTERNAL_INVARIANT,
                 f"invalid active-emitted schedule decision payload: {self.kind!r}",
             )
+
+    @property
+    def considered_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        if self.kind is _WriterActiveEmittedScheduleDecisionKind.CLOSURE_ENDPOINT:
+            return self.closure_batch.graph_action_surfaces
+
+        if self.child_schedule_surface is None:
+            return ()
+
+        return self.child_schedule_surface.graph_action_surfaces
+
+    @property
+    def selected_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return self.selected_batch.surviving_graph_action_surfaces
 
 
 @dataclass(frozen=True, slots=True)
@@ -408,6 +432,7 @@ def _active_emitted_closure_decision(
 
 def _active_emitted_child_decision(
     closure_endpoint_decision: _WriterClosureEndpointScheduleDecision,
+    child_schedule_surface: _WriterActiveChildScheduleSurface,
     child_batch: _WriterScheduledActionEmissionBatch,
 ) -> _WriterActiveEmittedScheduleDecision:
     closure_batch = _closure_endpoint_combined_batch(
@@ -419,6 +444,7 @@ def _active_emitted_child_decision(
         closure_endpoint_decision=closure_endpoint_decision,
         closure_batch=closure_batch,
         child_batch=child_batch,
+        child_schedule_surface=child_schedule_surface,
         selected_batch=child_batch,
     )
 
@@ -832,21 +858,24 @@ def _active_emitted_schedule_decision(
     if closure_decision.surviving_emissions:
         return _active_emitted_closure_decision(closure_decision)
 
-    child_actions = _active_child_scheduled_actions_from_context(
+    child_schedule_surface = _active_child_schedule_surface_from_context(
         context,
         state,
         active_atom,
     )
 
+    _raise_for_child_obligation_blockers(child_schedule_surface.blockers)
+
     child_batch = _scheduled_action_emission_batch(
         prepared,
         state,
         context,
-        child_actions,
+        child_schedule_surface.scheduled_actions,
     )
 
     return _active_emitted_child_decision(
         closure_endpoint_decision=closure_decision,
+        child_schedule_surface=child_schedule_surface,
         child_batch=child_batch,
     )
 

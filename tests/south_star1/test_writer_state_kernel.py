@@ -1717,11 +1717,18 @@ class WriterStateKernelTest(unittest.TestCase):
         closure_emission = object()
         child_obligation = object()
         child_action = object()
+        child_emission = object()
+        surviving_child_emission = object()
         child_transition = object()
         closure_batch = writer_transitions._WriterScheduledActionEmissionBatch(
             actions=(closure_action,),  # type: ignore[arg-type]
             emissions=(closure_emission,),  # type: ignore[arg-type]
             surviving_emissions=(),
+        )
+        child_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(child_action,),  # type: ignore[arg-type]
+            emissions=(child_emission,),  # type: ignore[arg-type]
+            surviving_emissions=(surviving_child_emission,),  # type: ignore[arg-type]
         )
 
         with patch(
@@ -1729,11 +1736,11 @@ class WriterStateKernelTest(unittest.TestCase):
             return_value=(closure_action,),
         ) as closure_actions, patch(
             "grimace._south_star1.writer_transitions._scheduled_action_emission_batch",
-            return_value=closure_batch,
+            side_effect=(closure_batch, child_batch),
         ) as emission_batch, patch(
             "grimace._south_star1.writer_transitions._transitions_from_scheduled_action_emissions",
-            side_effect=AssertionError("zero-surviving closure emissions should not be flattened"),
-        ), patch(
+            return_value=(child_transition,),
+        ) as flatten_emissions, patch(
             "grimace._south_star1.writer_transitions._child_obligation_blockers_for_atom",
             return_value=(),
         ) as child_blockers, patch(
@@ -1742,10 +1749,7 @@ class WriterStateKernelTest(unittest.TestCase):
         ) as child_obligations, patch(
             "grimace._south_star1.writer_transitions._active_child_scheduled_actions",
             return_value=(child_action,),
-        ) as child_actions, patch(
-            "grimace._south_star1.writer_transitions._transitions_from_scheduled_actions",
-            return_value=(child_transition,),
-        ) as emit_child_actions:
+        ) as child_actions:
             result = writer_transitions._active_emitted_transitions(
                 prepared,  # type: ignore[arg-type]
                 state,  # type: ignore[arg-type]
@@ -1759,11 +1763,17 @@ class WriterStateKernelTest(unittest.TestCase):
             state,
             context,
         )
-        emission_batch.assert_called_once_with(
-            prepared,
-            state,
-            context,
-            (closure_action,),
+        self.assertEqual(emission_batch.call_count, 2)
+        self.assertEqual(
+            emission_batch.call_args_list[0].args,
+            (prepared, state, context, (closure_action,)),
+        )
+        self.assertEqual(
+            emission_batch.call_args_list[1].args,
+            (prepared, state, context, (child_action,)),
+        )
+        flatten_emissions.assert_called_once_with(
+            (surviving_child_emission,),
         )
         child_blockers.assert_called_once_with(
             context,
@@ -1778,12 +1788,56 @@ class WriterStateKernelTest(unittest.TestCase):
             active_atom,
             (child_obligation,),
         )
-        emit_child_actions.assert_called_once_with(
-            prepared,
-            state,
-            context,
-            (child_action,),
+
+    def test_active_emitted_child_fallback_returns_empty_when_no_child_emissions_survive(self) -> None:
+        prepared = object()
+        state = object()
+        context = object()
+        active_atom = AtomId(7)
+
+        closure_action = object()
+        child_obligation = object()
+        child_action = object()
+
+        closure_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(closure_action,),  # type: ignore[arg-type]
+            emissions=(),
+            surviving_emissions=(),
         )
+        child_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(child_action,),  # type: ignore[arg-type]
+            emissions=(),
+            surviving_emissions=(),
+        )
+
+        with patch(
+            "grimace._south_star1.writer_transitions._closure_endpoint_scheduled_actions",
+            return_value=(closure_action,),
+        ), patch(
+            "grimace._south_star1.writer_transitions._scheduled_action_emission_batch",
+            side_effect=(closure_batch, child_batch),
+        ), patch(
+            "grimace._south_star1.writer_transitions._transitions_from_scheduled_action_emissions",
+            return_value=(),
+        ) as flatten_emissions, patch(
+            "grimace._south_star1.writer_transitions._child_obligation_blockers_for_atom",
+            return_value=(),
+        ), patch(
+            "grimace._south_star1.writer_transitions._unblocked_child_obligations_from_context",
+            return_value=(child_obligation,),
+        ), patch(
+            "grimace._south_star1.writer_transitions._active_child_scheduled_actions",
+            return_value=(child_action,),
+        ):
+            result = writer_transitions._active_emitted_transitions(
+                prepared,  # type: ignore[arg-type]
+                state,  # type: ignore[arg-type]
+                context,  # type: ignore[arg-type]
+                active_atom,
+            )
+
+        self.assertEqual(result, ())
+        flatten_emissions.assert_called_once_with(())
 
     def test_scheduled_action_rejects_finish_payload(self) -> None:
         child = writer_transitions._WriterChildObligation(

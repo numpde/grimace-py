@@ -487,15 +487,21 @@ def _active_emitted_transitions(
             closure_batch.surviving_emissions
         )
 
-    return _transitions_from_scheduled_actions(
+    child_actions = _active_child_scheduled_actions_from_context(
+        context,
+        state,
+        active_atom,
+    )
+
+    child_batch = _scheduled_action_emission_batch(
         prepared,
         state,
         context,
-        _active_child_scheduled_actions_from_context(
-            context,
-            state,
-            active_atom,
-        ),
+        child_actions,
+    )
+
+    return _transitions_from_scheduled_action_emissions(
+        child_batch.surviving_emissions
     )
 
 

@@ -249,6 +249,25 @@ class PinnedRdkitFixtureLoaderTest(unittest.TestCase):
                     fixture_label="contract",
                 )
 
+    def test_fixture_rejects_malformed_json_with_context(self) -> None:
+        for relative_path in (
+            Path(f"{RDKIT_VERSION}.json"),
+            Path(RDKIT_VERSION) / "10_bad.json",
+        ):
+            with self.subTest(relative_path=relative_path):
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    root = Path(tmpdir)
+                    fixture_path = root / relative_path
+                    fixture_path.parent.mkdir(parents=True, exist_ok=True)
+                    fixture_path.write_text("{", encoding="utf-8")
+
+                    with self.assertRaisesRegex(ValueError, "not readable JSON"):
+                        load_pinned_rdkit_fixture_cases(
+                            fixture_root=root,
+                            rdkit_version=RDKIT_VERSION,
+                            fixture_label="contract",
+                        )
+
     def test_fixture_rejects_malformed_payloads(self) -> None:
         invalid_payloads = (
             [],

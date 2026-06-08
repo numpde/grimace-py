@@ -80,6 +80,16 @@ def pinned_rdkit_fixture_versions(fixture_root: Path) -> tuple[str, ...]:
     return tuple(sorted(versions))
 
 
+def _read_json_object(path: Path) -> dict[str, object]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"fixture {path} is not readable JSON") from exc
+    if not isinstance(payload, dict):
+        raise ValueError(f"fixture {path} must contain a JSON object")
+    return payload
+
+
 def normalized_unique_sorted_strings(
     values: list[object],
     *,
@@ -245,12 +255,10 @@ def load_pinned_rdkit_fixture_cases(
     fixture_path = fixture_root / f"{rdkit_version}.json"
     fixture_dir = fixture_root / rdkit_version
     if fixture_path.is_file():
-        payloads = (
-            (fixture_path, json.loads(fixture_path.read_text(encoding="utf-8"))),
-        )
+        payloads = ((fixture_path, _read_json_object(fixture_path)),)
     elif fixture_dir.is_dir():
         payloads = tuple(
-            (path, json.loads(path.read_text(encoding="utf-8")))
+            (path, _read_json_object(path))
             for path in sorted(fixture_dir.glob("*.json"))
         )
         if not payloads:
@@ -266,8 +274,6 @@ def load_pinned_rdkit_fixture_cases(
     cases = []
     seen_ids: dict[str, Path] = {}
     for current_fixture_path, data in payloads:
-        if not isinstance(data, dict):
-            raise ValueError(f"fixture {current_fixture_path} must contain a JSON object")
         if data.get("rdkit_version") != rdkit_version:
             raise ValueError(
                 f"fixture {current_fixture_path} declares "

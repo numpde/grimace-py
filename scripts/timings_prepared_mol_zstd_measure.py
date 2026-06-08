@@ -292,8 +292,10 @@ def _prepared_sample(limit: int, *, seed: int) -> SampleBatch:
     RDLogger.DisableLog("rdApp.*")
     try:
         with gzip.open(fixture_path, "rt", encoding="utf-8", newline="") as handle:
-            reader = csv.DictReader(handle, delimiter="\t")
-            for row_number, row in enumerate(reader, start=2):
+            for row_number, row in generator.fixture_rows(
+                handle,
+                first_row_number=2,
+            ):
                 mol = Chem.MolFromSmiles(row["SMILES"])
                 if mol is None:
                     continue

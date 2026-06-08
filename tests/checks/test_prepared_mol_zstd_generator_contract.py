@@ -85,6 +85,14 @@ class PreparedMolZstdGeneratorContractTests(unittest.TestCase):
                 handle.write(f"{index}\t{smiles}\n")
         return path
 
+    def _write_fixture_text(self, tmpdir: str, text: str) -> Path:
+        import gzip
+
+        path = Path(tmpdir) / "fixture.tsv.gz"
+        with gzip.open(path, "wt", encoding="utf-8", newline="") as handle:
+            handle.write(text)
+        return path
+
     def test_training_parameters_are_explicit_recipe_values(self) -> None:
         self.assertEqual(
             r"^[0-9]{8}_[0-9a-f]{8}$",
@@ -167,6 +175,57 @@ class PreparedMolZstdGeneratorContractTests(unittest.TestCase):
             },
             literal_constant("SELECTION_RULE"),
         )
+
+    def test_fixture_rows_validate_shape_without_changing_row_numbering(
+        self,
+    ) -> None:
+        generator = load_generator_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            fixture = self._write_fixture_text(
+                tmpdir,
+                "CID\tSMILES\tname\n1\tCCO\tethanol\n",
+            )
+            with generator.gzip.open(
+                fixture,
+                "rt",
+                encoding="utf-8",
+                newline="",
+            ) as handle:
+                rows = tuple(generator.fixture_rows(handle, first_row_number=1))
+            with generator.gzip.open(
+                fixture,
+                "rt",
+                encoding="utf-8",
+                newline="",
+            ) as handle:
+                file_line_rows = tuple(
+                    generator.fixture_rows(handle, first_row_number=2)
+                )
+
+        self.assertEqual(
+            (1, "1", "CCO"),
+            (rows[0][0], rows[0][1]["CID"], rows[0][1]["SMILES"]),
+        )
+        self.assertEqual(2, file_line_rows[0][0])
+
+    def test_fixture_rows_reject_malformed_fixture_shape(self) -> None:
+        generator = load_generator_module()
+        cases = (
+            ("CID\tname\n1\tethanol\n", "lacks required column"),
+            ("CID\tSMILES\n1\tCCO\textra\n", "too many columns"),
+        )
+        for text, message in cases:
+            with self.subTest(message=message):
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    fixture = self._write_fixture_text(tmpdir, text)
+                    with generator.gzip.open(
+                        fixture,
+                        "rt",
+                        encoding="utf-8",
+                        newline="",
+                    ) as handle:
+                        with self.assertRaisesRegex(RuntimeError, message):
+                            tuple(generator.fixture_rows(handle, first_row_number=1))
 
     def test_candidate_builder_counts_expected_preparation_failures(self) -> None:
         generator = load_generator_module()

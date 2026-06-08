@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import shutil
 import sys
-from typing import Any
+from typing import Any, Iterator, TextIO
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,6 +36,7 @@ EXPECTED_RDKIT_VERSION = "2026.03.1"
 EXPECTED_ZSTANDARD_BACKEND = "cext"
 EXPECTED_ZSTD_LIBRARY_VERSION = (1, 5, 7)
 FIXTURE_RELATIVE_PATH = Path("tests/fixtures/top_100000_CIDs.tsv.gz")
+FIXTURE_REQUIRED_COLUMNS = ("CID", "SMILES")
 PACKAGE_DICTIONARY_ROOT = Path("python/grimace/data/prepared_mol_zstd")
 EXPECTED_FIXTURE_GZIP_SHA256 = (
     "67d1d31c3eb27da5ae5a8b8c1a3369531061113464c0dbfaf46e274493acc1ea"
@@ -174,6 +175,27 @@ def gzip_uncompressed_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def fixture_rows(
+    handle: TextIO,
+    *,
+    first_row_number: int,
+) -> Iterator[tuple[int, dict[str, str]]]:
+    reader = csv.DictReader(handle, delimiter="\t")
+    fieldnames = tuple(reader.fieldnames or ())
+    missing = tuple(
+        column for column in FIXTURE_REQUIRED_COLUMNS if column not in fieldnames
+    )
+    if missing:
+        raise RuntimeError(
+            f"Fixture lacks required column(s): {', '.join(missing)}"
+        )
+
+    for row_number, row in enumerate(reader, start=first_row_number):
+        if row.get(None):
+            raise RuntimeError(f"Fixture row {row_number} has too many columns")
+        yield row_number, row
+
+
 def digest_length_prefixed_bytes(values: tuple[bytes, ...]) -> str:
     digest = hashlib.sha256()
     for value in values:
@@ -247,8 +269,7 @@ def build_candidates(fixture_path: Path) -> Corpus:
     preparation_failure_count = 0
 
     with gzip.open(fixture_path, "rt", encoding="utf-8", newline="") as handle:
-        reader = csv.DictReader(handle, delimiter="\t")
-        for row_number, row in enumerate(reader, start=1):
+        for row_number, row in fixture_rows(handle, first_row_number=1):
             smiles = row["SMILES"]
             mol = Chem.MolFromSmiles(smiles)
             if mol is None:

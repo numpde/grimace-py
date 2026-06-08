@@ -44,8 +44,10 @@ SDIST_NAME_PATTERN = re.compile(
     rf"^{re.escape(PACKAGE_STEM)}-(?P<version>[0-9]+\.[0-9]+\.[0-9]+)\.tar\.gz$"
 )
 PREPARED_MOL_ZSTD_ARTIFACT_PATTERN = re.compile(r"^[0-9]{8}_[0-9a-f]{8}$")
+PREPARED_MOL_ZSTD_MANIFEST_FILE = "default_v1.json"
+PREPARED_MOL_ZSTD_DICTIONARY_FILE = "default_v1.zstdict"
 PREPARED_MOL_ZSTD_FILENAMES = frozenset(
-    {"default_v1.json", "default_v1.zstdict"}
+    {PREPARED_MOL_ZSTD_MANIFEST_FILE, PREPARED_MOL_ZSTD_DICTIONARY_FILE}
 )
 SDIST_PREPARED_MOL_ZSTD_PREFIX = "python/grimace/data/prepared_mol_zstd/"
 WHEEL_PREPARED_MOL_ZSTD_PREFIX = "grimace/data/prepared_mol_zstd/"
@@ -391,7 +393,7 @@ def validate_sdist(sdist_path: Path) -> SdistInfo:
                         payload_bytes
                     )
                     prepared_mol_zstd_file_size[relative] = len(payload_bytes)
-                    if relative.endswith("/default_v1.json"):
+                    if relative.endswith(f"/{PREPARED_MOL_ZSTD_MANIFEST_FILE}"):
                         manifest_texts[relative] = decode_archive_text(
                             payload_bytes,
                             relative,
@@ -506,7 +508,7 @@ def validate_wheel(wheel_path: Path) -> WheelInfo:
                 payload = archive.read(name)
                 prepared_mol_zstd_file_sha256[name] = sha256_hex(payload)
                 prepared_mol_zstd_file_size[name] = len(payload)
-                if name.endswith("/default_v1.json"):
+                if name.endswith(f"/{PREPARED_MOL_ZSTD_MANIFEST_FILE}"):
                     manifest_texts[name] = decode_archive_text(payload, name)
             prepared_mol_zstd = validate_prepared_mol_zstd_package_data(
                 names,
@@ -785,7 +787,7 @@ def validate_prepared_mol_zstd_package_data(
                 f"missing PreparedMol zstd package data payload: {name!r}"
             ) from exc
         file_sha256.setdefault(artifact, {})[filename] = digest
-        if filename == "default_v1.json":
+        if filename == PREPARED_MOL_ZSTD_MANIFEST_FILE:
             try:
                 metadata = prepared_mol_zstd_manifest_metadata(
                     manifest_texts[name],
@@ -837,7 +839,7 @@ def validate_prepared_mol_zstd_package_data(
         )
     for artifact, expected_dictionary in manifest_dictionary_integrity.items():
         dictionary_sha256, dictionary_size_bytes = expected_dictionary
-        dictionary_name = f"{prefix}{artifact}/default_v1.zstdict"
+        dictionary_name = f"{prefix}{artifact}/{PREPARED_MOL_ZSTD_DICTIONARY_FILE}"
         if file_sha256_by_name[dictionary_name] != dictionary_sha256:
             raise ValueError(
                 "PreparedMol zstd manifest dictionary SHA-256 does not "
@@ -894,12 +896,12 @@ def prepared_mol_zstd_manifest_metadata(
             "PreparedMol zstd manifest generator script is not a string: "
             f"{member_name!r}"
         )
-    if dictionary_file != "default_v1.zstdict":
+    if dictionary_file != PREPARED_MOL_ZSTD_DICTIONARY_FILE:
         raise ValueError(
             "PreparedMol zstd manifest dictionary file does not match "
             f"the shipped package data layout: {member_name!r}"
         )
-    if manifest_file != "default_v1.json":
+    if manifest_file != PREPARED_MOL_ZSTD_MANIFEST_FILE:
         raise ValueError(
             "PreparedMol zstd manifest file does not match "
             f"the shipped package data layout: {member_name!r}"

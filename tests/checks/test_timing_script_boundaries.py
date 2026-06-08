@@ -204,6 +204,16 @@ class TimingScriptBoundaryTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "SHA-256"):
                 timing._dictionary_bytes(artifact_dir, bad_manifest)
 
+    def test_prepared_mol_zstd_timing_runtime_dependencies_are_explicit(
+        self,
+    ) -> None:
+        timing = load_prepared_mol_zstd_timing_module()
+
+        with self.assertRaisesRegex(RuntimeError, "load_runtime_dependencies"):
+            timing._require_zstd()
+        with self.assertRaisesRegex(RuntimeError, "load_runtime_dependencies"):
+            timing._require_preparation_dependencies()
+
     def test_prepared_mol_zstd_plot_input_rejects_malformed_tsv(self) -> None:
         plot = load_prepared_mol_zstd_plot_module()
         header = tuple(plot.REQUIRED_FIELDS)

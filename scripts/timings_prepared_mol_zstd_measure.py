@@ -151,6 +151,18 @@ def load_runtime_dependencies() -> None:
     grimace = loaded_grimace
 
 
+def _require_zstd() -> Any:
+    if zstd is None:
+        raise RuntimeError("load_runtime_dependencies() must be called first")
+    return zstd
+
+
+def _require_preparation_dependencies() -> tuple[Any, Any, Any]:
+    if Chem is None or RDLogger is None or grimace is None:
+        raise RuntimeError("load_runtime_dependencies() must be called first")
+    return Chem, RDLogger, grimace
+
+
 def _artifact_dir(dictionary_artifact: str | None) -> Path:
     manifests = tuple(
         sorted(
@@ -241,10 +253,12 @@ def _dictionary_bytes(artifact_dir: Path, manifest: DictionaryManifest) -> bytes
 
 
 def _dictionary(dictionary_artifact: str | None) -> DictionaryArtifact:
-    assert zstd is not None
+    loaded_zstd = _require_zstd()
     artifact_dir = _artifact_dir(dictionary_artifact)
     manifest = _dictionary_manifest(artifact_dir)
-    dictionary = zstd.ZstdCompressionDict(_dictionary_bytes(artifact_dir, manifest))
+    dictionary = loaded_zstd.ZstdCompressionDict(
+        _dictionary_bytes(artifact_dir, manifest)
+    )
     if dictionary.dict_id() != manifest.dictionary_id:
         raise RuntimeError("Dictionary ID does not match shipped manifest")
     return DictionaryArtifact(
@@ -256,7 +270,7 @@ def _dictionary(dictionary_artifact: str | None) -> DictionaryArtifact:
 
 
 def _benchmark_environment() -> BenchmarkEnvironment:
-    assert zstd is not None
+    loaded_zstd = _require_zstd()
 
     from scripts.timing_environment import current_run_metadata
 
@@ -270,8 +284,8 @@ def _benchmark_environment() -> BenchmarkEnvironment:
         platform=run["platform"],
         python=run["python"],
         rdkit=run["rdkit"],
-        zstandard=zstd.__version__,
-        zstd_library=".".join(str(part) for part in zstd.ZSTD_VERSION),
+        zstandard=loaded_zstd.__version__,
+        zstd_library=".".join(str(part) for part in loaded_zstd.ZSTD_VERSION),
         cpu_model=machine["cpu_model"],
         visible_cpus=machine["visible_cpus"],
         cgroup_memory_limit_bytes=machine["cgroup_memory_limit_bytes"],
@@ -283,20 +297,18 @@ def _benchmark_environment() -> BenchmarkEnvironment:
 
 
 def _prepared_sample(limit: int, *, seed: int) -> SampleBatch:
-    assert Chem is not None
-    assert RDLogger is not None
-    assert grimace is not None
+    loaded_Chem, loaded_RDLogger, loaded_grimace = _require_preparation_dependencies()
 
     candidates: list[ParseableRow] = []
     fixture_path = generator.ROOT / generator.FIXTURE_RELATIVE_PATH
-    RDLogger.DisableLog("rdApp.*")
+    loaded_RDLogger.DisableLog("rdApp.*")
     try:
         with gzip.open(fixture_path, "rt", encoding="utf-8", newline="") as handle:
             for row_number, row in generator.fixture_rows(
                 handle,
                 first_row_number=2,
             ):
-                mol = Chem.MolFromSmiles(row["SMILES"])
+                mol = loaded_Chem.MolFromSmiles(row["SMILES"])
                 if mol is None:
                     continue
                 candidates.append(
@@ -307,7 +319,7 @@ def _prepared_sample(limit: int, *, seed: int) -> SampleBatch:
                     ),
                 )
     finally:
-        RDLogger.EnableLog("rdApp.*")
+        loaded_RDLogger.EnableLog("rdApp.*")
     if len(candidates) < limit:
         raise RuntimeError(
             f"Fixture yielded {len(candidates)} prepared payloads, "
@@ -318,24 +330,24 @@ def _prepared_sample(limit: int, *, seed: int) -> SampleBatch:
         key=lambda row: row.source_row,
     )
     samples: list[Sample] = []
-    RDLogger.DisableLog("rdApp.*")
+    loaded_RDLogger.DisableLog("rdApp.*")
     try:
         for row in rows:
-            mol = Chem.MolFromSmiles(row.smiles)
+            mol = loaded_Chem.MolFromSmiles(row.smiles)
             if mol is None:
                 raise RuntimeError(f"Selected parseable row no longer parses: {row.cid}")
             samples.append(
                 Sample(
                     source_row=row.source_row,
                     cid=row.cid,
-                    payload=grimace.PrepareMol(
+                    payload=loaded_grimace.PrepareMol(
                         mol,
                         **generator.WRITER_OPTIONS,
                     ).to_bytes(),
                 ),
             )
     finally:
-        RDLogger.EnableLog("rdApp.*")
+        loaded_RDLogger.EnableLog("rdApp.*")
     return SampleBatch(tuple(samples))
 
 

@@ -4,11 +4,13 @@ import csv
 import gzip
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, TextIO
 
 from rdkit import Chem
 
 from grimace._reference._paths import DEFAULT_MOLECULE_SOURCE_PATH
+
+_REQUIRED_COLUMNS = ("CID", "iupac_name", "SMILES")
 
 
 @dataclass(frozen=True)
@@ -23,14 +25,32 @@ def molecule_is_connected(mol: Chem.Mol) -> bool:
 
 
 def molecule_has_stereochemistry(mol: Chem.Mol) -> bool:
-    if any(atom.GetChiralTag() != Chem.ChiralType.CHI_UNSPECIFIED for atom in mol.GetAtoms()):
+    if any(
+        atom.GetChiralTag() != Chem.ChiralType.CHI_UNSPECIFIED
+        for atom in mol.GetAtoms()
+    ):
         return True
     if any(
-        bond.GetStereo() != Chem.BondStereo.STEREONONE or bond.GetBondDir() != Chem.BondDir.NONE
+        bond.GetStereo() != Chem.BondStereo.STEREONONE
+        or bond.GetBondDir() != Chem.BondDir.NONE
         for bond in mol.GetBonds()
     ):
         return True
     return bool(mol.GetStereoGroups())
+
+
+def _iter_tsv_rows(handle: TextIO) -> Iterator[dict[str, str]]:
+    reader = csv.DictReader(handle, delimiter="\t")
+    fieldnames = tuple(reader.fieldnames or ())
+    missing = tuple(column for column in _REQUIRED_COLUMNS if column not in fieldnames)
+    if missing:
+        raise ValueError(
+            f"Molecule fixture lacks required column(s): {', '.join(missing)}"
+        )
+    for row_number, row in enumerate(reader, start=2):
+        if row.get(None):
+            raise ValueError(f"Molecule fixture row {row_number} has too many columns")
+        yield row
 
 
 def iter_molecule_cases(
@@ -46,9 +66,8 @@ def iter_molecule_cases(
         raise ValueError("max_smiles_length must be non-negative or None")
 
     with gzip.open(source_path, "rt", encoding="utf-8", newline="") as handle:
-        reader = csv.DictReader(handle, delimiter="\t")
         yielded = 0
-        for row in reader:
+        for row in _iter_tsv_rows(handle):
             case = MoleculeCase(
                 cid=row["CID"],
                 name=row["iupac_name"],

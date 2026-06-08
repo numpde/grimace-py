@@ -22,12 +22,13 @@ import zipfile
 PACKAGE_STEM = "grimace_py"
 PROJECT_NAME = "grimace-py"
 EXPECTED_PROJECT_SOURCE_URL = "https://github.com/numpde/grimace-py"
-EXPECTED_WHEEL_METADATA_VERSION = "2.4"
+EXPECTED_DISTRIBUTION_METADATA_VERSION = "2.4"
 PYTHON_TAGS = ("cp312", "cp313")
 PLATFORM_TAG = "manylinux_2_28_x86_64"
 NATIVE_EXTENSION_PLATFORM_SUFFIXES = {
     "linux_x86_64": "-x86_64-linux-gnu.so",
     PLATFORM_TAG: "-x86_64-linux-gnu.so",
+    "manylinux_2_34_x86_64": "-x86_64-linux-gnu.so",
 }
 TAG_PATTERN = re.compile(r"^v(?P<version>[0-9]+\.[0-9]+\.[0-9]+)$")
 WHEEL_NAME_PATTERN = re.compile(
@@ -328,6 +329,7 @@ def validate_sdist(sdist_path: Path) -> SdistInfo:
     prepared_mol_zstd_file_sha256: dict[str, str] = {}
     prepared_mol_zstd_file_size: dict[str, int] = {}
     pyproject_text: str | None = None
+    pkg_info_text: str | None = None
     seen_names: set[str] = set()
     seen_canonical_names: set[str] = set()
     try:
@@ -369,6 +371,11 @@ def validate_sdist(sdist_path: Path) -> SdistInfo:
                     if payload is None:
                         raise ValueError(f"could not read sdist member: {name!r}")
                     pyproject_text = decode_archive_text(payload.read(), relative)
+                if relative == "PKG-INFO" and member.isfile():
+                    payload = archive.extractfile(member)
+                    if payload is None:
+                        raise ValueError(f"could not read sdist member: {name!r}")
+                    pkg_info_text = decode_archive_text(payload.read(), relative)
                 if (
                     relative.startswith(SDIST_PREPARED_MOL_ZSTD_PREFIX)
                     and member.isfile()
@@ -402,6 +409,10 @@ def validate_sdist(sdist_path: Path) -> SdistInfo:
             )
             validate_sdist_project_metadata(
                 pyproject_text,
+                expected_version=sdist_match.group("version"),
+            )
+            validate_sdist_distribution_metadata(
+                pkg_info_text,
                 expected_version=sdist_match.group("version"),
             )
             return SdistInfo(
@@ -521,17 +532,44 @@ def validate_wheel_source_metadata(
     if metadata_name not in names:
         raise ValueError(f"wheel lacks canonical METADATA file: {metadata_name!r}")
     metadata = decode_archive_text(archive.read(metadata_name), metadata_name)
+    validate_distribution_metadata(
+        metadata,
+        expected_version=expected_version,
+        source="wheel METADATA",
+    )
+
+
+def validate_sdist_distribution_metadata(
+    pkg_info_text: str | None,
+    *,
+    expected_version: str,
+) -> None:
+    if pkg_info_text is None:
+        raise ValueError("source distribution lacks PKG-INFO")
+    validate_distribution_metadata(
+        pkg_info_text,
+        expected_version=expected_version,
+        source="source distribution PKG-INFO",
+    )
+
+
+def validate_distribution_metadata(
+    metadata: str,
+    *,
+    expected_version: str,
+    source: str,
+) -> None:
     message = Parser().parsestr(metadata)
     if (
-        single_metadata_header(message, "Metadata-Version")
-        != EXPECTED_WHEEL_METADATA_VERSION
+        single_metadata_header(message, "Metadata-Version", source=source)
+        != EXPECTED_DISTRIBUTION_METADATA_VERSION
     ):
-        raise ValueError("wheel METADATA version dialect is not supported")
-    name = single_metadata_header(message, "Name")
+        raise ValueError(f"{source} version dialect is not supported")
+    name = single_metadata_header(message, "Name", source=source)
     if canonical_project_name(name) != PROJECT_NAME:
-        raise ValueError("wheel METADATA project name does not match grimace-py")
-    if single_metadata_header(message, "Version") != expected_version:
-        raise ValueError("wheel METADATA version does not match filename")
+        raise ValueError(f"{source} project name does not match grimace-py")
+    if single_metadata_header(message, "Version", source=source) != expected_version:
+        raise ValueError(f"{source} version does not match filename")
     source_urls = tuple(
         url
         for value in message.get_all("Project-URL", ())
@@ -539,10 +577,10 @@ def validate_wheel_source_metadata(
         if label == "source"
     )
     if len(source_urls) != 1 or not source_urls[0]:
-        raise ValueError("wheel METADATA lacks the source repository Project-URL")
+        raise ValueError(f"{source} lacks the source repository Project-URL")
     if source_urls[0] != EXPECTED_PROJECT_SOURCE_URL:
         raise ValueError(
-            "wheel METADATA source repository URL does not match the official "
+            f"{source} source repository URL does not match the official "
             "repository URL"
         )
 
@@ -652,10 +690,10 @@ def validate_native_extension(
         raise ValueError("wheel native extension platform does not match filename")
 
 
-def single_metadata_header(message: Message, header: str) -> str:
+def single_metadata_header(message: Message, header: str, *, source: str) -> str:
     values = message.get_all(header, ())
     if len(values) != 1 or not values[0]:
-        raise ValueError(f"wheel METADATA must contain exactly one {header} header")
+        raise ValueError(f"{source} must contain exactly one {header} header")
     return values[0]
 
 

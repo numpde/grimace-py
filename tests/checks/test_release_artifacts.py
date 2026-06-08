@@ -97,11 +97,12 @@ def dictionary_manifest_for_payload(
     )
 
 
-def wheel_metadata(
+def distribution_metadata(
     *,
     version: str = "0.1.12",
     name: str | None = None,
     source_url: str | None = None,
+    metadata_version: str = "2.4",
 ) -> str:
     metadata = project_metadata()
     project_name = metadata["name"] if name is None else name
@@ -110,12 +111,40 @@ def wheel_metadata(
     )
     return "\n".join(
         (
-            "Metadata-Version: 2.4",
+            f"Metadata-Version: {metadata_version}",
             f"Name: {project_name}",
             f"Version: {version}",
             f"Project-URL: Source, {project_source_url}",
             "",
         )
+    )
+
+
+def wheel_metadata(
+    *,
+    version: str = "0.1.12",
+    name: str | None = None,
+    source_url: str | None = None,
+) -> str:
+    return distribution_metadata(
+        version=version,
+        name=name,
+        source_url=source_url,
+    )
+
+
+def sdist_metadata(
+    *,
+    version: str = "0.1.12",
+    name: str | None = None,
+    source_url: str | None = None,
+    metadata_version: str = "2.4",
+) -> str:
+    return distribution_metadata(
+        version=version,
+        name=name,
+        source_url=source_url,
+        metadata_version=metadata_version,
     )
 
 
@@ -255,6 +284,8 @@ def archive_payload(
         return wheel_archive_metadata(tag=wheel_tag(wheel_path)).encode("utf-8")
     if name.endswith(".dist-info/RECORD"):
         return b""
+    if name == "PKG-INFO":
+        return sdist_metadata(version=version).encode("utf-8")
     if name == "pyproject.toml":
         return pyproject_toml(version=version).encode("utf-8")
     return b""
@@ -266,6 +297,7 @@ def write_sdist(
     *,
     manifest_script: str = TEST_GENERATOR_SCRIPT,
     include_generator_script: bool = True,
+    include_pkg_info: bool = True,
     directory_names: tuple[str, ...] = (),
     include_root_directory: bool = False,
     include_root_directory_marker: bool = False,
@@ -273,6 +305,8 @@ def write_sdist(
 ) -> None:
     root = path.name.removesuffix(".tar.gz")
     version = path.name.removesuffix(".tar.gz").split("-", 1)[1]
+    if include_pkg_info and "PKG-INFO" not in names:
+        names = ("PKG-INFO", *names)
     if (
         include_generator_script
         and any(name.endswith("/default_v1.json") for name in names)
@@ -1122,6 +1156,60 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "project version"):
                 validator.validate_sdist(sdist)
 
+    def test_rejects_sdist_without_pkg_info(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            sdist = Path(tmp) / "grimace_py-0.1.12.tar.gz"
+            write_sdist(
+                sdist,
+                ("pyproject.toml", "Cargo.toml", *SDIST_DICTIONARY_NAMES),
+                include_pkg_info=False,
+            )
+            with self.assertRaisesRegex(ValueError, "lacks PKG-INFO"):
+                validator.validate_sdist(sdist)
+
+    def test_rejects_invalid_utf8_sdist_pkg_info(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            sdist = Path(tmp) / "grimace_py-0.1.12.tar.gz"
+            write_sdist(
+                sdist,
+                ("pyproject.toml", "Cargo.toml", *SDIST_DICTIONARY_NAMES),
+                payload_overrides={"PKG-INFO": b"\xff"},
+            )
+            with self.assertRaisesRegex(ValueError, "not valid UTF-8"):
+                validator.validate_sdist(sdist)
+
+    def test_rejects_sdist_pkg_info_version_mismatch(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            sdist = Path(tmp) / "grimace_py-0.1.12.tar.gz"
+            write_sdist(
+                sdist,
+                ("pyproject.toml", "Cargo.toml", *SDIST_DICTIONARY_NAMES),
+                payload_overrides={
+                    "PKG-INFO": sdist_metadata(version="0.1.99").encode("utf-8"),
+                },
+            )
+            with self.assertRaisesRegex(ValueError, "PKG-INFO version"):
+                validator.validate_sdist(sdist)
+
+    def test_rejects_sdist_pkg_info_source_url_that_is_not_official_repository(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            sdist = Path(tmp) / "grimace_py-0.1.12.tar.gz"
+            write_sdist(
+                sdist,
+                ("pyproject.toml", "Cargo.toml", *SDIST_DICTIONARY_NAMES),
+                payload_overrides={
+                    "PKG-INFO": sdist_metadata(
+                        source_url="https://example.invalid/source",
+                    ).encode("utf-8"),
+                },
+            )
+            with self.assertRaisesRegex(ValueError, "official repository URL"):
+                validator.validate_sdist(sdist)
+
     def test_rejects_sdist_source_url_that_is_not_official_repository(self) -> None:
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:
@@ -1739,6 +1827,13 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:
             wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-linux_x86_64.whl"
+            write_wheel(wheel)
+            self.assertEqual(0, validator.main([str(wheel), "--wheel-only"]))
+
+    def test_wheel_only_cli_accepts_local_manylinux_smoke_test_tag(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_34_x86_64.whl"
             write_wheel(wheel)
             self.assertEqual(0, validator.main([str(wheel), "--wheel-only"]))
 

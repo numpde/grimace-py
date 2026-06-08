@@ -299,6 +299,48 @@ class _WriterTopLevelScheduleDecision:
             )
 
 
+def _active_emitted_closure_decision(
+    closure_batch: _WriterScheduledActionEmissionBatch,
+) -> _WriterActiveEmittedScheduleDecision:
+    return _WriterActiveEmittedScheduleDecision(
+        kind=_WriterActiveEmittedScheduleDecisionKind.CLOSURE_ENDPOINT,
+        closure_batch=closure_batch,
+        selected_batch=closure_batch,
+    )
+
+
+def _active_emitted_child_decision(
+    closure_batch: _WriterScheduledActionEmissionBatch,
+    child_batch: _WriterScheduledActionEmissionBatch,
+) -> _WriterActiveEmittedScheduleDecision:
+    return _WriterActiveEmittedScheduleDecision(
+        kind=_WriterActiveEmittedScheduleDecisionKind.ACTIVE_CHILD,
+        closure_batch=closure_batch,
+        child_batch=child_batch,
+        selected_batch=child_batch,
+    )
+
+
+def _top_level_actions_decision(
+    top_level_batch: _WriterScheduledActionEmissionBatch,
+) -> _WriterTopLevelScheduleDecision:
+    return _WriterTopLevelScheduleDecision(
+        kind=_WriterTopLevelScheduleDecisionKind.TOP_LEVEL_ACTIONS,
+        selected_batch=top_level_batch,
+        top_level_batch=top_level_batch,
+    )
+
+
+def _top_level_active_emitted_decision(
+    active_emitted_decision: _WriterActiveEmittedScheduleDecision,
+) -> _WriterTopLevelScheduleDecision:
+    return _WriterTopLevelScheduleDecision(
+        kind=_WriterTopLevelScheduleDecisionKind.ACTIVE_EMITTED,
+        selected_batch=active_emitted_decision.selected_batch,
+        active_emitted_decision=active_emitted_decision,
+    )
+
+
 def _consume_pending_entry_action(
     pending_entry: PendingWriterEntry,
 ) -> _WriterScheduledAction:
@@ -552,11 +594,7 @@ def _active_emitted_schedule_decision(
     )
 
     if closure_batch.surviving_emissions:
-        return _WriterActiveEmittedScheduleDecision(
-            kind=_WriterActiveEmittedScheduleDecisionKind.CLOSURE_ENDPOINT,
-            closure_batch=closure_batch,
-            selected_batch=closure_batch,
-        )
+        return _active_emitted_closure_decision(closure_batch)
 
     child_actions = _active_child_scheduled_actions_from_context(
         context,
@@ -571,11 +609,9 @@ def _active_emitted_schedule_decision(
         child_actions,
     )
 
-    return _WriterActiveEmittedScheduleDecision(
-        kind=_WriterActiveEmittedScheduleDecisionKind.ACTIVE_CHILD,
+    return _active_emitted_child_decision(
         closure_batch=closure_batch,
         child_batch=child_batch,
-        selected_batch=child_batch,
     )
 
 
@@ -645,11 +681,7 @@ def _top_level_schedule_decision(
             top_level_actions,
         )
 
-        return _WriterTopLevelScheduleDecision(
-            kind=_WriterTopLevelScheduleDecisionKind.TOP_LEVEL_ACTIONS,
-            selected_batch=top_level_batch,
-            top_level_batch=top_level_batch,
-        )
+        return _top_level_actions_decision(top_level_batch)
 
     active = state.active
 
@@ -660,10 +692,8 @@ def _top_level_schedule_decision(
         active.atom,
     )
 
-    return _WriterTopLevelScheduleDecision(
-        kind=_WriterTopLevelScheduleDecisionKind.ACTIVE_EMITTED,
-        selected_batch=active_emitted_decision.selected_batch,
-        active_emitted_decision=active_emitted_decision,
+    return _top_level_active_emitted_decision(
+        active_emitted_decision
     )
 
 

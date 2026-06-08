@@ -1645,6 +1645,83 @@ class WriterStateKernelTest(unittest.TestCase):
             active_emitted_decision=child_decision,
         )
 
+    def test_active_emitted_decision_constructors_preserve_selected_batches(self) -> None:
+        closure_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        child_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+
+        closure_decision = writer_transitions._active_emitted_closure_decision(
+            closure_batch,
+        )
+        child_decision = writer_transitions._active_emitted_child_decision(
+            closure_batch,
+            child_batch,
+        )
+
+        self.assertIs(
+            closure_decision.kind,
+            writer_transitions._WriterActiveEmittedScheduleDecisionKind.CLOSURE_ENDPOINT,
+        )
+        self.assertIs(closure_decision.closure_batch, closure_batch)
+        self.assertIs(closure_decision.selected_batch, closure_batch)
+        self.assertIsNone(closure_decision.child_batch)
+        self.assertIs(
+            child_decision.kind,
+            writer_transitions._WriterActiveEmittedScheduleDecisionKind.ACTIVE_CHILD,
+        )
+        self.assertIs(child_decision.closure_batch, closure_batch)
+        self.assertIs(child_decision.child_batch, child_batch)
+        self.assertIs(child_decision.selected_batch, child_batch)
+
+    def test_top_level_decision_constructors_preserve_selected_batches(self) -> None:
+        top_level_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        active_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        active_decision = writer_transitions._active_emitted_closure_decision(
+            active_batch,
+        )
+
+        top_level_decision = writer_transitions._top_level_actions_decision(
+            top_level_batch,
+        )
+        active_top_level_decision = (
+            writer_transitions._top_level_active_emitted_decision(
+                active_decision,
+            )
+        )
+
+        self.assertIs(
+            top_level_decision.kind,
+            writer_transitions._WriterTopLevelScheduleDecisionKind.TOP_LEVEL_ACTIONS,
+        )
+        self.assertIs(top_level_decision.selected_batch, top_level_batch)
+        self.assertIs(top_level_decision.top_level_batch, top_level_batch)
+        self.assertIsNone(top_level_decision.active_emitted_decision)
+        self.assertIs(
+            active_top_level_decision.kind,
+            writer_transitions._WriterTopLevelScheduleDecisionKind.ACTIVE_EMITTED,
+        )
+        self.assertIs(active_top_level_decision.selected_batch, active_batch)
+        self.assertIs(
+            active_top_level_decision.active_emitted_decision,
+            active_decision,
+        )
+        self.assertIsNone(active_top_level_decision.top_level_batch)
+
     def test_top_level_schedule_decision_selects_top_level_batch(self) -> None:
         prepared = object()
         state = object()

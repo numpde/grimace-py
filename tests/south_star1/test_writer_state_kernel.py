@@ -1486,10 +1486,25 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_active_emitted_schedule_decision_rejects_closure_with_child_batch(self) -> None:
-        closure_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+        pair_batch = writer_transitions._WriterScheduledActionEmissionBatch(
             actions=(),
             emissions=(),
             surviving_emissions=(),
+        )
+        open_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        closure_endpoint_decision = (
+            writer_transitions._WriterClosureEndpointScheduleDecision(
+                pair_batch=pair_batch,
+                open_batch=open_batch,
+                surviving_emissions=(),
+            )
+        )
+        closure_batch = writer_transitions._closure_endpoint_combined_batch(
+            closure_endpoint_decision
         )
         child_batch = writer_transitions._WriterScheduledActionEmissionBatch(
             actions=(),
@@ -1503,16 +1518,32 @@ class WriterStateKernelTest(unittest.TestCase):
                     writer_transitions._WriterActiveEmittedScheduleDecisionKind
                     .CLOSURE_ENDPOINT
                 ),
+                closure_endpoint_decision=closure_endpoint_decision,
                 closure_batch=closure_batch,
                 selected_batch=closure_batch,
                 child_batch=child_batch,
             )
 
     def test_active_emitted_schedule_decision_requires_selected_child_batch(self) -> None:
-        closure_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+        pair_batch = writer_transitions._WriterScheduledActionEmissionBatch(
             actions=(),
             emissions=(),
             surviving_emissions=(),
+        )
+        open_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        closure_endpoint_decision = (
+            writer_transitions._WriterClosureEndpointScheduleDecision(
+                pair_batch=pair_batch,
+                open_batch=open_batch,
+                surviving_emissions=(),
+            )
+        )
+        closure_batch = writer_transitions._closure_endpoint_combined_batch(
+            closure_endpoint_decision
         )
         child_batch = writer_transitions._WriterScheduledActionEmissionBatch(
             actions=(),
@@ -1526,6 +1557,7 @@ class WriterStateKernelTest(unittest.TestCase):
                     writer_transitions._WriterActiveEmittedScheduleDecisionKind
                     .ACTIVE_CHILD
                 ),
+                closure_endpoint_decision=closure_endpoint_decision,
                 closure_batch=closure_batch,
                 selected_batch=closure_batch,
                 child_batch=child_batch,
@@ -1541,6 +1573,15 @@ class WriterStateKernelTest(unittest.TestCase):
             kind=(
                 writer_transitions._WriterActiveEmittedScheduleDecisionKind
                 .CLOSURE_ENDPOINT
+            ),
+            closure_endpoint_decision=writer_transitions._WriterClosureEndpointScheduleDecision(
+                pair_batch=batch,
+                open_batch=writer_transitions._WriterScheduledActionEmissionBatch(
+                    actions=(),
+                    emissions=(),
+                    surviving_emissions=(),
+                ),
+                surviving_emissions=(),
             ),
             closure_batch=batch,
             selected_batch=batch,
@@ -1573,6 +1614,15 @@ class WriterStateKernelTest(unittest.TestCase):
                 writer_transitions._WriterActiveEmittedScheduleDecisionKind
                 .CLOSURE_ENDPOINT
             ),
+            closure_endpoint_decision=writer_transitions._WriterClosureEndpointScheduleDecision(
+                pair_batch=active_batch,
+                open_batch=writer_transitions._WriterScheduledActionEmissionBatch(
+                    actions=(),
+                    emissions=(),
+                    surviving_emissions=(),
+                ),
+                surviving_emissions=(),
+            ),
             closure_batch=active_batch,
             selected_batch=active_batch,
         )
@@ -1588,10 +1638,25 @@ class WriterStateKernelTest(unittest.TestCase):
             )
 
     def test_scheduler_decisions_accept_valid_payloads(self) -> None:
-        closure_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+        pair_batch = writer_transitions._WriterScheduledActionEmissionBatch(
             actions=(),
             emissions=(),
             surviving_emissions=(),
+        )
+        open_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        closure_endpoint_decision = (
+            writer_transitions._WriterClosureEndpointScheduleDecision(
+                pair_batch=pair_batch,
+                open_batch=open_batch,
+                surviving_emissions=(),
+            )
+        )
+        closure_batch = writer_transitions._closure_endpoint_combined_batch(
+            closure_endpoint_decision
         )
         child_batch = writer_transitions._WriterScheduledActionEmissionBatch(
             actions=(),
@@ -1604,6 +1669,7 @@ class WriterStateKernelTest(unittest.TestCase):
                 writer_transitions._WriterActiveEmittedScheduleDecisionKind
                 .CLOSURE_ENDPOINT
             ),
+            closure_endpoint_decision=closure_endpoint_decision,
             closure_batch=closure_batch,
             selected_batch=closure_batch,
         )
@@ -1613,6 +1679,7 @@ class WriterStateKernelTest(unittest.TestCase):
                 writer_transitions._WriterActiveEmittedScheduleDecisionKind
                 .ACTIVE_CHILD
             ),
+            closure_endpoint_decision=closure_endpoint_decision,
             closure_batch=closure_batch,
             child_batch=child_batch,
             selected_batch=child_batch,
@@ -1646,10 +1713,25 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_active_emitted_decision_constructors_preserve_selected_batches(self) -> None:
-        closure_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+        pair_batch = writer_transitions._WriterScheduledActionEmissionBatch(
             actions=(),
             emissions=(),
             surviving_emissions=(),
+        )
+        open_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        closure_endpoint_decision = (
+            writer_transitions._WriterClosureEndpointScheduleDecision(
+                pair_batch=pair_batch,
+                open_batch=open_batch,
+                surviving_emissions=(),
+            )
+        )
+        closure_batch = writer_transitions._closure_endpoint_combined_batch(
+            closure_endpoint_decision
         )
         child_batch = writer_transitions._WriterScheduledActionEmissionBatch(
             actions=(),
@@ -1658,10 +1740,10 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
         closure_decision = writer_transitions._active_emitted_closure_decision(
-            closure_batch,
+            closure_endpoint_decision,
         )
         child_decision = writer_transitions._active_emitted_child_decision(
-            closure_batch,
+            closure_endpoint_decision,
             child_batch,
         )
 
@@ -1669,15 +1751,70 @@ class WriterStateKernelTest(unittest.TestCase):
             closure_decision.kind,
             writer_transitions._WriterActiveEmittedScheduleDecisionKind.CLOSURE_ENDPOINT,
         )
-        self.assertIs(closure_decision.closure_batch, closure_batch)
-        self.assertIs(closure_decision.selected_batch, closure_batch)
+        self.assertEqual(closure_decision.closure_batch, closure_batch)
+        self.assertIs(closure_decision.selected_batch, closure_decision.closure_batch)
         self.assertIsNone(closure_decision.child_batch)
         self.assertIs(
             child_decision.kind,
             writer_transitions._WriterActiveEmittedScheduleDecisionKind.ACTIVE_CHILD,
         )
-        self.assertIs(child_decision.closure_batch, closure_batch)
+        self.assertEqual(child_decision.closure_batch, closure_batch)
         self.assertIs(child_decision.child_batch, child_batch)
+        self.assertIs(child_decision.selected_batch, child_batch)
+
+    def test_active_emitted_decision_constructors_carry_closure_endpoint_decision(self) -> None:
+        pair_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        open_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        closure_endpoint_decision = (
+            writer_transitions._WriterClosureEndpointScheduleDecision(
+                pair_batch=pair_batch,
+                open_batch=open_batch,
+                surviving_emissions=(),
+            )
+        )
+        child_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+
+        closure_decision = writer_transitions._active_emitted_closure_decision(
+            closure_endpoint_decision,
+        )
+        child_decision = writer_transitions._active_emitted_child_decision(
+            closure_endpoint_decision,
+            child_batch,
+        )
+
+        self.assertIs(
+            closure_decision.closure_endpoint_decision,
+            closure_endpoint_decision,
+        )
+        self.assertEqual(
+            closure_decision.closure_batch,
+            writer_transitions._closure_endpoint_combined_batch(
+                closure_endpoint_decision
+            ),
+        )
+        self.assertIs(closure_decision.selected_batch, closure_decision.closure_batch)
+        self.assertIs(
+            child_decision.closure_endpoint_decision,
+            closure_endpoint_decision,
+        )
+        self.assertEqual(
+            child_decision.closure_batch,
+            writer_transitions._closure_endpoint_combined_batch(
+                closure_endpoint_decision
+            ),
+        )
         self.assertIs(child_decision.selected_batch, child_batch)
 
     def test_top_level_decision_constructors_preserve_selected_batches(self) -> None:
@@ -1691,8 +1828,19 @@ class WriterStateKernelTest(unittest.TestCase):
             emissions=(),
             surviving_emissions=(),
         )
+        active_closure_endpoint_decision = (
+            writer_transitions._WriterClosureEndpointScheduleDecision(
+                pair_batch=active_batch,
+                open_batch=writer_transitions._WriterScheduledActionEmissionBatch(
+                    actions=(),
+                    emissions=(),
+                    surviving_emissions=(),
+                ),
+                surviving_emissions=(),
+            )
+        )
         active_decision = writer_transitions._active_emitted_closure_decision(
-            active_batch,
+            active_closure_endpoint_decision,
         )
 
         top_level_decision = writer_transitions._top_level_actions_decision(
@@ -1715,7 +1863,11 @@ class WriterStateKernelTest(unittest.TestCase):
             active_top_level_decision.kind,
             writer_transitions._WriterTopLevelScheduleDecisionKind.ACTIVE_EMITTED,
         )
-        self.assertIs(active_top_level_decision.selected_batch, active_batch)
+        self.assertIs(
+            active_top_level_decision.selected_batch,
+            active_decision.selected_batch,
+        )
+        self.assertEqual(active_top_level_decision.selected_batch, active_batch)
         self.assertIs(
             active_top_level_decision.active_emitted_decision,
             active_decision,
@@ -1829,6 +1981,38 @@ class WriterStateKernelTest(unittest.TestCase):
             (prepared, state, context, ()),
         )
 
+    def test_closure_endpoint_combined_batch_preserves_pair_before_open(self) -> None:
+        pair_action = object()
+        open_action = object()
+        pair_emission = object()
+        open_emission = object()
+        pair_survivor = object()
+        open_survivor = object()
+        pair_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(pair_action,),  # type: ignore[arg-type]
+            emissions=(pair_emission,),  # type: ignore[arg-type]
+            surviving_emissions=(pair_survivor,),  # type: ignore[arg-type]
+        )
+        open_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(open_action,),  # type: ignore[arg-type]
+            emissions=(open_emission,),  # type: ignore[arg-type]
+            surviving_emissions=(open_survivor,),  # type: ignore[arg-type]
+        )
+        decision = writer_transitions._WriterClosureEndpointScheduleDecision(
+            pair_batch=pair_batch,
+            open_batch=open_batch,
+            surviving_emissions=(pair_survivor, open_survivor),  # type: ignore[arg-type]
+        )
+
+        combined = writer_transitions._closure_endpoint_combined_batch(decision)
+
+        self.assertEqual(combined.actions, (pair_action, open_action))
+        self.assertEqual(combined.emissions, (pair_emission, open_emission))
+        self.assertEqual(
+            combined.surviving_emissions,
+            (pair_survivor, open_survivor),
+        )
+
     def test_top_level_schedule_decision_selects_top_level_batch(self) -> None:
         prepared = object()
         state = object()
@@ -1924,8 +2108,20 @@ class WriterStateKernelTest(unittest.TestCase):
             emissions=(),
             surviving_emissions=(),
         )
+        closure_endpoint_decision = (
+            writer_transitions._WriterClosureEndpointScheduleDecision(
+                pair_batch=selected_batch,
+                open_batch=writer_transitions._WriterScheduledActionEmissionBatch(
+                    actions=(),
+                    emissions=(),
+                    surviving_emissions=(),
+                ),
+                surviving_emissions=(),
+            )
+        )
         active_decision = writer_transitions._WriterActiveEmittedScheduleDecision(
             kind=writer_transitions._WriterActiveEmittedScheduleDecisionKind.ACTIVE_CHILD,
+            closure_endpoint_decision=closure_endpoint_decision,
             closure_batch=selected_batch,
             selected_batch=selected_batch,
             child_batch=selected_batch,
@@ -2062,8 +2258,20 @@ class WriterStateKernelTest(unittest.TestCase):
             emissions=(),
             surviving_emissions=(survivor,),  # type: ignore[arg-type]
         )
+        closure_endpoint_decision = (
+            writer_transitions._WriterClosureEndpointScheduleDecision(
+                pair_batch=selected_batch,
+                open_batch=writer_transitions._WriterScheduledActionEmissionBatch(
+                    actions=(),
+                    emissions=(),
+                    surviving_emissions=(),
+                ),
+                surviving_emissions=(survivor,),  # type: ignore[arg-type]
+            )
+        )
         active_decision = writer_transitions._WriterActiveEmittedScheduleDecision(
             kind=writer_transitions._WriterActiveEmittedScheduleDecisionKind.ACTIVE_CHILD,
+            closure_endpoint_decision=closure_endpoint_decision,
             closure_batch=selected_batch,
             selected_batch=selected_batch,
             child_batch=selected_batch,

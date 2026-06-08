@@ -247,22 +247,45 @@ class _WriterClosureEndpointScheduleDecision:
     surviving_emissions: tuple[_WriterScheduledActionEmission, ...]
 
 
+def _closure_endpoint_combined_batch(
+    decision: _WriterClosureEndpointScheduleDecision,
+) -> _WriterScheduledActionEmissionBatch:
+    return _WriterScheduledActionEmissionBatch(
+        actions=(
+            *decision.pair_batch.actions,
+            *decision.open_batch.actions,
+        ),
+        emissions=(
+            *decision.pair_batch.emissions,
+            *decision.open_batch.emissions,
+        ),
+        surviving_emissions=decision.surviving_emissions,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class _WriterActiveEmittedScheduleDecision:
     kind: _WriterActiveEmittedScheduleDecisionKind
+    closure_endpoint_decision: _WriterClosureEndpointScheduleDecision
     closure_batch: _WriterScheduledActionEmissionBatch
     selected_batch: _WriterScheduledActionEmissionBatch
     child_batch: _WriterScheduledActionEmissionBatch | None = None
 
     def __post_init__(self) -> None:
+        expected_closure_batch = _closure_endpoint_combined_batch(
+            self.closure_endpoint_decision
+        )
+
         if self.kind is _WriterActiveEmittedScheduleDecisionKind.CLOSURE_ENDPOINT:
             valid = (
-                self.selected_batch is self.closure_batch
+                self.closure_batch == expected_closure_batch
+                and self.selected_batch is self.closure_batch
                 and self.child_batch is None
             )
         elif self.kind is _WriterActiveEmittedScheduleDecisionKind.ACTIVE_CHILD:
             valid = (
-                self.child_batch is not None
+                self.closure_batch == expected_closure_batch
+                and self.child_batch is not None
                 and self.selected_batch is self.child_batch
             )
         else:
@@ -307,21 +330,31 @@ class _WriterTopLevelScheduleDecision:
 
 
 def _active_emitted_closure_decision(
-    closure_batch: _WriterScheduledActionEmissionBatch,
+    closure_endpoint_decision: _WriterClosureEndpointScheduleDecision,
 ) -> _WriterActiveEmittedScheduleDecision:
+    closure_batch = _closure_endpoint_combined_batch(
+        closure_endpoint_decision
+    )
+
     return _WriterActiveEmittedScheduleDecision(
         kind=_WriterActiveEmittedScheduleDecisionKind.CLOSURE_ENDPOINT,
+        closure_endpoint_decision=closure_endpoint_decision,
         closure_batch=closure_batch,
         selected_batch=closure_batch,
     )
 
 
 def _active_emitted_child_decision(
-    closure_batch: _WriterScheduledActionEmissionBatch,
+    closure_endpoint_decision: _WriterClosureEndpointScheduleDecision,
     child_batch: _WriterScheduledActionEmissionBatch,
 ) -> _WriterActiveEmittedScheduleDecision:
+    closure_batch = _closure_endpoint_combined_batch(
+        closure_endpoint_decision
+    )
+
     return _WriterActiveEmittedScheduleDecision(
         kind=_WriterActiveEmittedScheduleDecisionKind.ACTIVE_CHILD,
+        closure_endpoint_decision=closure_endpoint_decision,
         closure_batch=closure_batch,
         child_batch=child_batch,
         selected_batch=child_batch,
@@ -593,20 +626,8 @@ def _active_emitted_schedule_decision(
         context,
     )
 
-    closure_batch = _WriterScheduledActionEmissionBatch(
-        actions=(
-            *closure_decision.pair_batch.actions,
-            *closure_decision.open_batch.actions,
-        ),
-        emissions=(
-            *closure_decision.pair_batch.emissions,
-            *closure_decision.open_batch.emissions,
-        ),
-        surviving_emissions=closure_decision.surviving_emissions,
-    )
-
-    if closure_batch.surviving_emissions:
-        return _active_emitted_closure_decision(closure_batch)
+    if closure_decision.surviving_emissions:
+        return _active_emitted_closure_decision(closure_decision)
 
     child_actions = _active_child_scheduled_actions_from_context(
         context,
@@ -622,7 +643,7 @@ def _active_emitted_schedule_decision(
     )
 
     return _active_emitted_child_decision(
-        closure_batch=closure_batch,
+        closure_endpoint_decision=closure_decision,
         child_batch=child_batch,
     )
 

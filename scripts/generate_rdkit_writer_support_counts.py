@@ -43,6 +43,18 @@ def adaptive_patience(support_count: int) -> int:
     return max(10_000, 20 * support_count)
 
 
+def _expected_output_name(flags: dict[str, bool]) -> str:
+    return f"{surface_name(flags)}.json"
+
+
+def _validate_output_name(path: Path, flags: dict[str, bool]) -> None:
+    expected = _expected_output_name(flags)
+    if path.name != expected:
+        raise ValueError(
+            f"output filename must be {expected!r} for the selected flags"
+        )
+
+
 def run_is_saturated(
     *,
     draw_count: int,
@@ -91,7 +103,10 @@ def _load_input_cases(path: Path) -> list[dict[str, Any]]:
             raise ValueError(f"{path} case has invalid source: {raw_case!r}")
         if not isinstance(raw_case["smiles"], str) or not raw_case["smiles"]:
             raise ValueError(f"{path} case has invalid smiles: {raw_case!r}")
-        if type(raw_case["rooted_at_atom"]) is not int:
+        if (
+            type(raw_case["rooted_at_atom"]) is not int
+            or raw_case["rooted_at_atom"] < -1
+        ):
             raise ValueError(f"{path} case has invalid rooted_at_atom: {raw_case!r}")
         if raw_case["id"] in seen_ids:
             raise ValueError(f"{path} contains duplicate case id: {raw_case['id']!r}")
@@ -171,11 +186,7 @@ def generate_fixture(args: argparse.Namespace) -> dict[str, object]:
     from rdkit import Chem, rdBase
 
     flags = writer_flags_from_args(args)
-    if args.output.stem != surface_name(flags):
-        raise ValueError(
-            f"output filename must be {surface_name(flags)!r}.json for the "
-            "selected flags"
-        )
+    _validate_output_name(args.output, flags)
 
     cases = []
     for raw_case in _load_input_cases(args.input):
@@ -276,6 +287,10 @@ def main() -> int:
         raise SystemExit("--unseen-mass-threshold must be in (0, 1]")
     if args.allowed_missing_variants < 0:
         raise SystemExit("--allowed-missing-variants must be nonnegative")
+    try:
+        _validate_output_name(args.output, writer_flags_from_args(args))
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     if args.output.exists() and not args.force:
         raise SystemExit(f"{args.output} already exists; pass --force to overwrite it")
 

@@ -144,6 +144,50 @@ class RdkitWriterSupportCountGeneratorTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "duplicate case id"):
                 GENERATOR._load_input_cases(input_path)
 
+    def test_input_cases_reject_invalid_roots(self) -> None:
+        for rooted_at_atom in (True, -2):
+            with self.subTest(rooted_at_atom=rooted_at_atom):
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    input_path = Path(tmpdir) / "input.json"
+                    input_path.write_text(
+                        json.dumps(
+                            {
+                                "cases": [
+                                    {
+                                        "id": "bad-root",
+                                        "source": "test",
+                                        "smiles": "CC",
+                                        "rooted_at_atom": rooted_at_atom,
+                                    }
+                                ],
+                            }
+                        ),
+                        encoding="utf-8",
+                    )
+
+                    with self.assertRaisesRegex(ValueError, "invalid rooted_at_atom"):
+                        GENERATOR._load_input_cases(input_path)
+
+    def test_output_name_requires_surface_json_filename(self) -> None:
+        flags = {
+            "isomericSmiles": False,
+            "canonical": False,
+            "doRandom": True,
+            "kekuleSmiles": False,
+            "allBondsExplicit": False,
+            "allHsExplicit": False,
+            "ignoreAtomMapNumbers": False,
+        }
+        GENERATOR._validate_output_name(Path("nonisomeric__random.json"), flags)
+        for output_name in (
+            "nonisomeric__random.txt",
+            "other.json",
+            "nonisomeric__random.json.gz",
+        ):
+            with self.subTest(output_name=output_name):
+                with self.assertRaisesRegex(ValueError, "output filename"):
+                    GENERATOR._validate_output_name(Path(output_name), flags)
+
     def test_cli_refuses_to_overwrite_existing_output_without_force(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             input_path = Path(tmpdir) / "input.json"

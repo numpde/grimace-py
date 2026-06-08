@@ -120,34 +120,6 @@ def distribution_metadata(
     )
 
 
-def wheel_metadata(
-    *,
-    version: str = "0.1.12",
-    name: str | None = None,
-    source_url: str | None = None,
-) -> str:
-    return distribution_metadata(
-        version=version,
-        name=name,
-        source_url=source_url,
-    )
-
-
-def sdist_metadata(
-    *,
-    version: str = "0.1.12",
-    name: str | None = None,
-    source_url: str | None = None,
-    metadata_version: str = "2.4",
-) -> str:
-    return distribution_metadata(
-        version=version,
-        name=name,
-        source_url=source_url,
-        metadata_version=metadata_version,
-    )
-
-
 def wheel_metadata_with_project_urls(*project_urls: str, version: str = "0.1.12") -> str:
     metadata = project_metadata()
     return "\n".join(
@@ -277,7 +249,7 @@ def archive_payload(
         return TEST_DICTIONARY_PAYLOAD
     if name.endswith(".dist-info/METADATA"):
         version = name.split("-", 1)[1].split(".dist-info/", 1)[0]
-        return wheel_metadata(version=version).encode("utf-8")
+        return distribution_metadata(version=version).encode("utf-8")
     if name.endswith(".dist-info/WHEEL"):
         if wheel_path is None:
             raise AssertionError("wheel_path is required for WHEEL payloads")
@@ -285,7 +257,7 @@ def archive_payload(
     if name.endswith(".dist-info/RECORD"):
         return b""
     if name == "PKG-INFO":
-        return sdist_metadata(version=version).encode("utf-8")
+        return distribution_metadata(version=version).encode("utf-8")
     if name == "pyproject.toml":
         return pyproject_toml(version=version).encode("utf-8")
     return b""
@@ -1188,7 +1160,9 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
                 sdist,
                 ("pyproject.toml", "Cargo.toml", *SDIST_DICTIONARY_NAMES),
                 payload_overrides={
-                    "PKG-INFO": sdist_metadata(version="0.1.99").encode("utf-8"),
+                    "PKG-INFO": distribution_metadata(
+                        version="0.1.99",
+                    ).encode("utf-8"),
                 },
             )
             with self.assertRaisesRegex(ValueError, "PKG-INFO version"):
@@ -1202,7 +1176,9 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
                 sdist,
                 ("pyproject.toml", "Cargo.toml", *SDIST_DICTIONARY_NAMES),
                 payload_overrides={
-                    "PKG-INFO": sdist_metadata(name="other-project").encode("utf-8"),
+                    "PKG-INFO": distribution_metadata(
+                        name="other-project",
+                    ).encode("utf-8"),
                 },
             )
             with self.assertRaisesRegex(ValueError, "project name"):
@@ -1216,7 +1192,7 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
                 sdist,
                 ("pyproject.toml", "Cargo.toml", *SDIST_DICTIONARY_NAMES),
                 payload_overrides={
-                    "PKG-INFO": sdist_metadata(
+                    "PKG-INFO": distribution_metadata(
                         source_url="https://example.invalid/source",
                     ).encode("utf-8"),
                 },
@@ -1325,7 +1301,9 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             write_wheel(
                 wheel,
                 payload_overrides={
-                    wheel_metadata_name(wheel): wheel_metadata(name="other-project").encode("utf-8"),
+                    wheel_metadata_name(wheel): distribution_metadata(
+                        name="other-project",
+                    ).encode("utf-8"),
                 },
             )
             with self.assertRaisesRegex(ValueError, "project name"):
@@ -1411,7 +1389,9 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             write_wheel(
                 wheel,
                 payload_overrides={
-                    wheel_metadata_name(wheel): wheel_metadata(version="0.1.99").encode("utf-8"),
+                    wheel_metadata_name(wheel): distribution_metadata(
+                        version="0.1.99",
+                    ).encode("utf-8"),
                 },
             )
             with self.assertRaisesRegex(ValueError, "METADATA version"):
@@ -1443,7 +1423,7 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             write_wheel(
                 wheel,
                 payload_overrides={
-                    wheel_metadata_name(wheel): wheel_metadata(
+                    wheel_metadata_name(wheel): distribution_metadata(
                         source_url="https://example.invalid/source",
                     ).encode("utf-8"),
                 },
@@ -1458,7 +1438,7 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             write_wheel(
                 wheel,
                 payload_overrides={
-                    wheel_metadata_name(wheel): wheel_metadata(
+                    wheel_metadata_name(wheel): distribution_metadata(
                         source_url="",
                     ).encode("utf-8"),
                 },

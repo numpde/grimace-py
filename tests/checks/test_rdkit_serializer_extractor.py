@@ -22,12 +22,7 @@ def load_extractor_module() -> ModuleType:
         raise AssertionError(f"Could not load extractor module spec for {SCRIPT}")
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
-    try:
-        spec.loader.exec_module(module)
-    except ModuleNotFoundError as exc:
-        if exc.name == "tree_sitter":
-            raise unittest.SkipTest("tree_sitter is not installed") from exc
-        raise
+    spec.loader.exec_module(module)
     return module
 
 
@@ -43,6 +38,25 @@ class RdkitSerializerExtractorTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "source manifest"):
                 EXTRACTOR._load_source_manifest(source_root)
 
+    def test_source_manifest_rejects_missing_metadata(self) -> None:
+        for field in ("rdkit_version", "source_commit"):
+            with self.subTest(field=field):
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    source_root = Path(tmpdir)
+                    manifest = {
+                        "rdkit_version": "2026.3.1",
+                        "source_commit": "abc123",
+                        "files": [{"path": "Code/test.cpp"}],
+                    }
+                    del manifest[field]
+                    source_root.joinpath("manifest.json").write_text(
+                        json.dumps(manifest),
+                        encoding="utf-8",
+                    )
+
+                    with self.assertRaisesRegex(ValueError, field):
+                        EXTRACTOR._load_source_manifest(source_root)
+
     def test_source_manifest_rejects_unsafe_file_paths(self) -> None:
         cases = (
             "/absolute.cpp",
@@ -57,6 +71,17 @@ class RdkitSerializerExtractorTests(unittest.TestCase):
                     EXTRACTOR._source_files_from_manifest(
                         {"files": [{"path": rel_path}]},
                     )
+
+    def test_source_manifest_rejects_duplicate_file_paths(self) -> None:
+        with self.assertRaisesRegex(ValueError, "duplicate file path"):
+            EXTRACTOR._source_files_from_manifest(
+                {
+                    "files": [
+                        {"path": "Code/test.cpp"},
+                        {"path": "Code/test.cpp"},
+                    ],
+                },
+            )
 
     def test_existing_reviews_reject_duplicate_ids(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

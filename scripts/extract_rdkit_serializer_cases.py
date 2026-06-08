@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+from collections import Counter
 from dataclasses import dataclass
 import hashlib
 import json
@@ -13,10 +14,6 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
-
-from tree_sitter import Language, Node, Parser
-import tree_sitter_cpp
-import tree_sitter_java
 
 from tests.helpers.rdkit_serializer_coverage import (
     DEFAULT_COVERAGE_REVIEW,
@@ -175,6 +172,9 @@ def _nearest_cpp_test_case(source: bytes, node: Node) -> str | None:
 
 
 def _extract_cpp(source_root: Path, rel_path: str) -> list[ExtractedBlock]:
+    from tree_sitter import Language, Parser
+    import tree_sitter_cpp
+
     source_path = source_root / "source" / rel_path
     source = source_path.read_bytes()
     parser = Parser(Language(tree_sitter_cpp.language()))
@@ -283,6 +283,9 @@ def _nearest_java_class(source: bytes, node: Node) -> str | None:
 
 
 def _extract_java(source_root: Path, rel_path: str) -> list[ExtractedBlock]:
+    from tree_sitter import Language, Parser
+    import tree_sitter_java
+
     source_path = source_root / "source" / rel_path
     source = source_path.read_bytes()
     parser = Parser(Language(tree_sitter_java.language()))
@@ -319,7 +322,12 @@ def _extract_java(source_root: Path, rel_path: str) -> list[ExtractedBlock]:
 
 
 def _load_source_manifest(source_root: Path) -> dict[str, Any]:
-    return _load_json_object(source_root / "manifest.json", context="source manifest")
+    manifest = _load_json_object(source_root / "manifest.json", context="source manifest")
+    for field in ("rdkit_version", "source_commit"):
+        if not isinstance(manifest.get(field), str) or not manifest[field]:
+            raise ValueError(f"source manifest must define nonempty {field!r}")
+    _source_files_from_manifest(manifest)
+    return manifest
 
 
 def _source_files_from_manifest(source_manifest: dict[str, Any]) -> list[str]:
@@ -338,6 +346,15 @@ def _source_files_from_manifest(source_manifest: dict[str, Any]) -> list[str]:
         if rel_path.startswith(("/", "\\")) or ":" in rel_path or has_unsafe_part:
             raise ValueError(f"source manifest contains unsafe file path: {rel_path!r}")
         source_files.append(rel_path)
+    duplicates = sorted(
+        rel_path
+        for rel_path, count in Counter(source_files).items()
+        if count > 1
+    )
+    if duplicates:
+        raise ValueError(
+            f"source manifest contains duplicate file path: {duplicates[0]!r}"
+        )
     return sorted(source_files)
 
 

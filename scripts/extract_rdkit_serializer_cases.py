@@ -319,11 +319,26 @@ def _extract_java(source_root: Path, rel_path: str) -> list[ExtractedBlock]:
 
 
 def _load_source_manifest(source_root: Path) -> dict[str, Any]:
-    return json.loads((source_root / "manifest.json").read_text(encoding="utf-8"))
+    return _load_json_object(source_root / "manifest.json", context="source manifest")
 
 
 def _source_files_from_manifest(source_manifest: dict[str, Any]) -> list[str]:
-    return sorted(file["path"] for file in source_manifest["files"])
+    files = source_manifest.get("files")
+    if not isinstance(files, list) or not files:
+        raise ValueError("source manifest must define a nonempty files list")
+    source_files: list[str] = []
+    for file in files:
+        if not isinstance(file, dict):
+            raise ValueError("source manifest contains a non-object file entry")
+        rel_path = file.get("path")
+        if not isinstance(rel_path, str) or not rel_path:
+            raise ValueError("source manifest contains a file entry without path")
+        parts = rel_path.replace("\\", "/").split("/")
+        has_unsafe_part = any(part in {"", ".", ".."} for part in parts)
+        if rel_path.startswith(("/", "\\")) or ":" in rel_path or has_unsafe_part:
+            raise ValueError(f"source manifest contains unsafe file path: {rel_path!r}")
+        source_files.append(rel_path)
+    return sorted(source_files)
 
 
 def extract_blocks(
@@ -356,11 +371,33 @@ def extract_blocks(
 def _load_existing_reviews(output_path: Path) -> dict[str, dict[str, Any]]:
     if not output_path.exists():
         return {}
-    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    payload = _load_json_object(output_path, context="existing coverage")
+    entries = payload.get("entries")
+    if not isinstance(entries, list):
+        raise ValueError(f"{output_path} must define entries as a list")
     reviews = {}
-    for entry in payload.get("entries", []):
-        reviews[entry["id"]] = {field: entry[field] for field in REVIEW_FIELDS if field in entry}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise ValueError(f"{output_path} contains a non-object ledger entry")
+        entry_id = entry.get("id")
+        if not isinstance(entry_id, str) or not entry_id:
+            raise ValueError(f"{output_path} contains a ledger entry without id")
+        if entry_id in reviews:
+            raise ValueError(f"{output_path} contains duplicate ledger id: {entry_id!r}")
+        reviews[entry_id] = {
+            field: entry[field] for field in REVIEW_FIELDS if field in entry
+        }
     return reviews
+
+
+def _load_json_object(path: Path, *, context: str) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"{context} is not readable JSON: {path}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError(f"{context} must contain a JSON object: {path}")
+    return payload
 
 
 def build_manifest(source_root: Path, output_path: Path) -> dict[str, Any]:

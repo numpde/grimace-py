@@ -43,6 +43,7 @@ from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
 from grimace._south_star1.writer_frontier import initial_writer_transition_frontier_cursor
 from grimace._south_star1.writer_frontier import iter_writer_frontier_support
 from grimace._south_star1.writer_frontier import writer_frontier_choices
+from grimace._south_star1.writer_graph_obligations import WriterBoundaryOwnerKind
 from grimace._south_star1.writer_graph_obligations import WriterEdgeObligationKind
 from grimace._south_star1.writer_graph_obligations import WriterResidualAttachmentActionKind
 from grimace._south_star1.writer_state import ComponentCursor
@@ -1981,6 +1982,51 @@ class WriterStateKernelTest(unittest.TestCase):
             (prepared, state, context, ()),
         )
 
+    def test_closure_open_obligations_carry_action_incidence_metadata(self) -> None:
+        action = SimpleNamespace(
+            attachment_id=7,
+            kind=WriterResidualAttachmentActionKind.CLOSURE_OPEN_READY,
+        )
+        attachment = SimpleNamespace(
+            attachment_id=7,
+            boundary=(
+                SimpleNamespace(
+                    bond=BondId(1),
+                    written_atom=AtomId(0),
+                    residual_atom=AtomId(2),
+                    owner_kind=WriterBoundaryOwnerKind.ACTIVE_ATOM,
+                ),
+            ),
+        )
+        summary = SimpleNamespace(
+            attachments=SimpleNamespace(attachments=(attachment,)),
+            attachment_actions=(action,),
+        )
+        context = SimpleNamespace(
+            graph=SimpleNamespace(
+                residual_summary=summary,
+            ),
+        )
+
+        obligations = writer_transitions._closure_open_obligations_from_context(
+            context,  # type: ignore[arg-type]
+            AtomId(0),
+        )
+
+        self.assertEqual(len(obligations), 1)
+        self.assertEqual(obligations[0].bond, BondId(1))
+        self.assertEqual(obligations[0].first_atom, AtomId(0))
+        self.assertEqual(obligations[0].second_atom, AtomId(2))
+        self.assertEqual(obligations[0].attachment_id, 7)
+        self.assertIs(
+            obligations[0].attachment_action_kind,
+            WriterResidualAttachmentActionKind.CLOSURE_OPEN_READY,
+        )
+        self.assertIs(
+            obligations[0].owner_kind,
+            WriterBoundaryOwnerKind.ACTIVE_ATOM,
+        )
+
     def test_closure_endpoint_combined_batch_preserves_pair_before_open(self) -> None:
         pair_action = object()
         open_action = object()
@@ -2927,6 +2973,10 @@ class WriterStateKernelTest(unittest.TestCase):
             first_atom=AtomId(0),
             second_atom=AtomId(1),
             attachment_id=7,
+            attachment_action_kind=(
+                WriterResidualAttachmentActionKind.CLOSURE_OPEN_READY
+            ),
+            owner_kind=WriterBoundaryOwnerKind.ACTIVE_ATOM,
         )
 
         with self.assertRaises(SouthStarError):
@@ -2946,6 +2996,10 @@ class WriterStateKernelTest(unittest.TestCase):
             first_atom=AtomId(0),
             second_atom=AtomId(2),
             attachment_id=7,
+            attachment_action_kind=(
+                WriterResidualAttachmentActionKind.CLOSURE_OPEN_READY
+            ),
+            owner_kind=WriterBoundaryOwnerKind.ACTIVE_ATOM,
         )
         label = WriterClosureLabel(value=1, text="1")
         endpoint = WriterOpenClosureEndpoint(

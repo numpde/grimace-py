@@ -11,6 +11,7 @@ from .errors import SouthStarError
 from .errors import SouthStarErrorKind
 from .ids import AtomId
 from .ids import BondId
+from .writer_graph_obligations import WriterBoundaryOwnerKind
 from .writer_graph_obligations import WriterEdgeObligationKind
 from .writer_graph_obligations import WriterGraphObligationContext
 from .writer_graph_obligations import WriterResidualAttachmentActionKind
@@ -126,6 +127,8 @@ class _WriterClosureOpenObligation:
     first_atom: AtomId
     second_atom: AtomId
     attachment_id: int
+    attachment_action_kind: WriterResidualAttachmentActionKind
+    owner_kind: WriterBoundaryOwnerKind
 
 
 @dataclass(frozen=True, slots=True)
@@ -1462,6 +1465,8 @@ def _closure_open_obligations_from_context(
                 first_atom=atom,
                 second_atom=incidence.residual_atom,
                 attachment_id=action.attachment_id,
+                attachment_action_kind=action.kind,
+                owner_kind=incidence.owner_kind,
             )
         )
 

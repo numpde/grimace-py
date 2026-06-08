@@ -47,7 +47,6 @@ PREPARED_MOL_ZSTD_ARTIFACT_PATTERN = re.compile(r"^[0-9]{8}_[0-9a-f]{8}$")
 PREPARED_MOL_ZSTD_FILENAMES = frozenset(
     {"default_v1.json", "default_v1.zstdict"}
 )
-NATIVE_EXTENSION_SUFFIXES = (".so", ".pyd", ".dll", ".dylib")
 SDIST_PREPARED_MOL_ZSTD_PREFIX = "python/grimace/data/prepared_mol_zstd/"
 WHEEL_PREPARED_MOL_ZSTD_PREFIX = "grimace/data/prepared_mol_zstd/"
 FORBIDDEN_SDIST_PREFIXES = (
@@ -705,7 +704,7 @@ def validate_native_extension(
     candidates = tuple(
         name
         for name in names
-        if name.startswith("grimace/_core.") and name.endswith(NATIVE_EXTENSION_SUFFIXES)
+        if name.startswith("grimace/_core.") and name != "grimace/_core.pyi"
     )
     if len(candidates) != 1:
         raise ValueError("wheel must contain exactly one native grimace._core extension")

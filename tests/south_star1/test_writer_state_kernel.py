@@ -2180,6 +2180,81 @@ class WriterStateKernelTest(unittest.TestCase):
         )
         self.assertIsNone(active_top_level_decision.top_level_batch)
 
+    def test_top_level_actions_decision_exposes_selected_frontier_and_surfaces(self) -> None:
+        action = writer_transitions._emit_root_atom_action(AtomId(0))
+        transition = SimpleNamespace(emitted_text="C")
+        emission = writer_transitions._WriterScheduledActionEmission(
+            action=action,
+            transitions=(transition,),  # type: ignore[arg-type]
+        )
+        batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(action,),
+            emissions=(emission,),
+            surviving_emissions=(emission,),
+        )
+
+        decision = writer_transitions._top_level_actions_decision(batch)
+
+        self.assertEqual(
+            decision.considered_graph_action_surfaces,
+            batch.graph_action_surfaces,
+        )
+        self.assertEqual(
+            decision.selected_graph_action_surfaces,
+            batch.surviving_graph_action_surfaces,
+        )
+        self.assertEqual(decision.selected_transitions, batch.surviving_transitions)
+        self.assertEqual(
+            decision.selected_next_token_frontier,
+            batch.surviving_next_token_frontier,
+        )
+
+    def test_top_level_active_emitted_decision_delegates_selected_frontier(self) -> None:
+        action = writer_transitions._finish_active_action(AtomId(0))
+        transition = SimpleNamespace(emitted_text="")
+        emission = writer_transitions._WriterScheduledActionEmission(
+            action=action,
+            transitions=(transition,),  # type: ignore[arg-type]
+        )
+        batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(action,),
+            emissions=(emission,),
+            surviving_emissions=(emission,),
+        )
+        open_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        closure_endpoint_decision = (
+            writer_transitions._WriterClosureEndpointScheduleDecision(
+                pair_batch=batch,
+                open_batch=open_batch,
+                surviving_emissions=(emission,),
+            )
+        )
+        active_decision = writer_transitions._active_emitted_closure_decision(
+            closure_endpoint_decision,
+        )
+
+        top_decision = writer_transitions._top_level_active_emitted_decision(
+            active_decision,
+        )
+
+        self.assertIs(top_decision.selected_batch, active_decision.selected_batch)
+        self.assertEqual(
+            top_decision.considered_graph_action_surfaces,
+            active_decision.considered_graph_action_surfaces,
+        )
+        self.assertEqual(
+            top_decision.selected_graph_action_surfaces,
+            active_decision.selected_graph_action_surfaces,
+        )
+        self.assertEqual(
+            top_decision.selected_next_token_frontier,
+            active_decision.selected_next_token_frontier,
+        )
+
     def test_closure_endpoint_schedule_decision_separates_pair_and_open_batches(self) -> None:
         prepared = object()
         state = SimpleNamespace(
@@ -2517,13 +2592,17 @@ class WriterStateKernelTest(unittest.TestCase):
         prepared = object()
         state = object()
         context = object()
-        survivor = object()
-        transition = object()
+        action = writer_transitions._finish_active_action(AtomId(0))
+        transition = SimpleNamespace(emitted_text="")
+        emission = writer_transitions._WriterScheduledActionEmission(
+            action=action,
+            transitions=(transition,),  # type: ignore[arg-type]
+        )
 
         selected_batch = writer_transitions._WriterScheduledActionEmissionBatch(
-            actions=(),
-            emissions=(),
-            surviving_emissions=(survivor,),  # type: ignore[arg-type]
+            actions=(action,),
+            emissions=(emission,),
+            surviving_emissions=(emission,),
         )
         decision = writer_transitions._WriterTopLevelScheduleDecision(
             kind=writer_transitions._WriterTopLevelScheduleDecisionKind.TOP_LEVEL_ACTIONS,
@@ -2534,23 +2613,19 @@ class WriterStateKernelTest(unittest.TestCase):
         with patch(
             "grimace._south_star1.writer_transitions._top_level_schedule_decision",
             return_value=decision,
-        ) as schedule_decision, patch(
-            "grimace._south_star1.writer_transitions._transitions_from_scheduled_action_emissions",
-            return_value=(transition,),
-        ) as flatten_emissions:
+        ) as schedule_decision:
             result = writer_transitions._scheduled_writer_transitions(
                 prepared,  # type: ignore[arg-type]
                 state,  # type: ignore[arg-type]
                 context,  # type: ignore[arg-type]
             )
 
-        self.assertEqual(result, (transition,))
+        self.assertEqual(result, decision.selected_transitions)
         schedule_decision.assert_called_once_with(
             prepared,
             state,
             context,
         )
-        flatten_emissions.assert_called_once_with((survivor,))
 
     def test_scheduled_writer_transitions_does_not_fall_through_when_top_level_actions_do_not_survive(self) -> None:
         prepared = object()
@@ -2777,6 +2852,78 @@ class WriterStateKernelTest(unittest.TestCase):
             batch.surviving_graph_action_surfaces,
             (first_emission.graph_action_surface,),
         )
+
+    def test_scheduled_action_batch_exposes_surviving_next_token_frontier(self) -> None:
+        first_action = writer_transitions._finish_active_action(AtomId(0))
+        second_action = writer_transitions._emit_root_atom_action(AtomId(1))
+        first_transition = SimpleNamespace(emitted_text="C")
+        second_transition = SimpleNamespace(emitted_text="N")
+        third_transition = SimpleNamespace(emitted_text="C")
+        first_emission = writer_transitions._WriterScheduledActionEmission(
+            action=first_action,
+            transitions=(
+                first_transition,  # type: ignore[arg-type]
+                second_transition,  # type: ignore[arg-type]
+            ),
+        )
+        second_emission = writer_transitions._WriterScheduledActionEmission(
+            action=second_action,
+            transitions=(third_transition,),  # type: ignore[arg-type]
+        )
+        batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(first_action, second_action),
+            emissions=(first_emission, second_emission),
+            surviving_emissions=(first_emission, second_emission),
+        )
+
+        frontier = batch.surviving_next_token_frontier
+
+        self.assertEqual(
+            tuple(entry.emitted_text for entry in frontier),
+            ("C", "N"),
+        )
+        self.assertEqual(len(frontier[0].supports), 2)
+        self.assertEqual(len(frontier[1].supports), 1)
+        self.assertIs(frontier[0].supports[0].emission, first_emission)
+        self.assertIs(frontier[0].supports[0].transition, first_transition)
+        self.assertIs(frontier[0].supports[1].emission, second_emission)
+        self.assertIs(frontier[0].supports[1].transition, third_transition)
+        self.assertIs(frontier[1].supports[0].emission, first_emission)
+        self.assertIs(frontier[1].supports[0].transition, second_transition)
+        self.assertEqual(
+            frontier[0].supports[0].graph_action_surface,
+            first_emission.graph_action_surface,
+        )
+        self.assertEqual(
+            frontier[0].transitions,
+            (first_transition, third_transition),
+        )
+        self.assertEqual(frontier[1].transitions, (second_transition,))
+
+    def test_scheduled_action_batch_frontier_uses_only_surviving_emissions(self) -> None:
+        first_action = writer_transitions._finish_active_action(AtomId(0))
+        second_action = writer_transitions._emit_root_atom_action(AtomId(1))
+        transition = SimpleNamespace(emitted_text="C")
+        first_emission = writer_transitions._WriterScheduledActionEmission(
+            action=first_action,
+            transitions=(),
+        )
+        second_emission = writer_transitions._WriterScheduledActionEmission(
+            action=second_action,
+            transitions=(transition,),  # type: ignore[arg-type]
+        )
+        batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(first_action, second_action),
+            emissions=(first_emission, second_emission),
+            surviving_emissions=(second_emission,),
+        )
+
+        frontier = batch.surviving_next_token_frontier
+
+        self.assertEqual(len(frontier), 1)
+        self.assertEqual(frontier[0].emitted_text, "C")
+        self.assertEqual(len(frontier[0].supports), 1)
+        self.assertIs(frontier[0].supports[0].emission, second_emission)
 
     def test_transitions_from_scheduled_actions_flattens_emissions(self) -> None:
         prepared = object()

@@ -261,6 +261,42 @@ class _WriterScheduledActionEmission:
 
 
 @dataclass(frozen=True, slots=True)
+class _WriterNextTokenFrontierSupport:
+    emission: _WriterScheduledActionEmission
+    transition: WriterTransition
+
+    @property
+    def emitted_text(self) -> str:
+        return self.transition.emitted_text
+
+    @property
+    def graph_action_surface(self) -> _WriterScheduledGraphActionSurface:
+        return self.emission.graph_action_surface
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterNextTokenFrontierEntry:
+    emitted_text: str
+    supports: tuple[_WriterNextTokenFrontierSupport, ...]
+
+    @property
+    def transitions(self) -> tuple[WriterTransition, ...]:
+        return tuple(
+            support.transition
+            for support in self.supports
+        )
+
+    @property
+    def graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            support.graph_action_surface
+            for support in self.supports
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class _WriterScheduledActionEmissionBatch:
     actions: tuple[_WriterScheduledAction, ...]
     emissions: tuple[_WriterScheduledActionEmission, ...]
@@ -280,6 +316,20 @@ class _WriterScheduledActionEmissionBatch:
         return tuple(
             emission.graph_action_surface
             for emission in self.surviving_emissions
+        )
+
+    @property
+    def surviving_transitions(self) -> tuple[WriterTransition, ...]:
+        return _transitions_from_scheduled_action_emissions(
+            self.surviving_emissions
+        )
+
+    @property
+    def surviving_next_token_frontier(
+        self,
+    ) -> tuple[_WriterNextTokenFrontierEntry, ...]:
+        return _next_token_frontier_from_scheduled_action_emissions(
+            self.surviving_emissions
         )
 
 
@@ -383,6 +433,16 @@ class _WriterActiveEmittedScheduleDecision:
     ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
         return self.selected_batch.surviving_graph_action_surfaces
 
+    @property
+    def selected_transitions(self) -> tuple[WriterTransition, ...]:
+        return self.selected_batch.surviving_transitions
+
+    @property
+    def selected_next_token_frontier(
+        self,
+    ) -> tuple[_WriterNextTokenFrontierEntry, ...]:
+        return self.selected_batch.surviving_next_token_frontier
+
 
 @dataclass(frozen=True, slots=True)
 class _WriterTopLevelScheduleDecision:
@@ -413,6 +473,43 @@ class _WriterTopLevelScheduleDecision:
                 SouthStarErrorKind.INTERNAL_INVARIANT,
                 f"invalid top-level schedule decision payload: {self.kind!r}",
             )
+
+    @property
+    def considered_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        if self.kind is _WriterTopLevelScheduleDecisionKind.TOP_LEVEL_ACTIONS:
+            if self.top_level_batch is None:
+                return ()
+
+            return self.top_level_batch.graph_action_surfaces
+
+        if self.active_emitted_decision is None:
+            return ()
+
+        return self.active_emitted_decision.considered_graph_action_surfaces
+
+    @property
+    def selected_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        if self.kind is _WriterTopLevelScheduleDecisionKind.ACTIVE_EMITTED:
+            if self.active_emitted_decision is None:
+                return ()
+
+            return self.active_emitted_decision.selected_graph_action_surfaces
+
+        return self.selected_batch.surviving_graph_action_surfaces
+
+    @property
+    def selected_transitions(self) -> tuple[WriterTransition, ...]:
+        return self.selected_batch.surviving_transitions
+
+    @property
+    def selected_next_token_frontier(
+        self,
+    ) -> tuple[_WriterNextTokenFrontierEntry, ...]:
+        return self.selected_batch.surviving_next_token_frontier
 
 
 def _active_emitted_closure_decision(
@@ -893,9 +990,7 @@ def _active_emitted_transitions(
         active_atom,
     )
 
-    return _transitions_from_scheduled_action_emissions(
-        decision.selected_batch.surviving_emissions
-    )
+    return decision.selected_transitions
 
 
 def _pending_entry_scheduled_actions(
@@ -973,9 +1068,7 @@ def _scheduled_writer_transitions(
         context,
     )
 
-    return _transitions_from_scheduled_action_emissions(
-        decision.selected_batch.surviving_emissions
-    )
+    return decision.selected_transitions
 
 
 def legal_writer_transitions(
@@ -1541,6 +1634,31 @@ def _scheduled_action_emission_batch(
         actions=actions,
         emissions=emissions,
         surviving_emissions=surviving_emissions,
+    )
+
+
+def _next_token_frontier_from_scheduled_action_emissions(
+    emissions: tuple[_WriterScheduledActionEmission, ...],
+) -> tuple[_WriterNextTokenFrontierEntry, ...]:
+    support_lists: dict[str, list[_WriterNextTokenFrontierSupport]] = {}
+
+    for emission in emissions:
+        for transition in emission.transitions:
+            support = _WriterNextTokenFrontierSupport(
+                emission=emission,
+                transition=transition,
+            )
+            support_lists.setdefault(
+                transition.emitted_text,
+                [],
+            ).append(support)
+
+    return tuple(
+        _WriterNextTokenFrontierEntry(
+            emitted_text=emitted_text,
+            supports=tuple(supports),
+        )
+        for emitted_text, supports in support_lists.items()
     )
 
 

@@ -1307,6 +1307,95 @@ class WriterStateKernelTest(unittest.TestCase):
             str(raised.exception),
         )
 
+    def test_unblocked_child_obligations_carry_action_incidence_metadata(self) -> None:
+        action = SimpleNamespace(
+            attachment_id=7,
+            kind=WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY,
+        )
+        attachment = SimpleNamespace(
+            attachment_id=7,
+            boundary=(
+                SimpleNamespace(
+                    bond=BondId(1),
+                    written_atom=AtomId(0),
+                    residual_atom=AtomId(2),
+                    owner_kind=WriterBoundaryOwnerKind.ACTIVE_ATOM,
+                ),
+            ),
+        )
+        summary = SimpleNamespace(
+            attachments=SimpleNamespace(attachments=(attachment,)),
+            attachment_actions=(action,),
+        )
+        context = SimpleNamespace(
+            graph=SimpleNamespace(
+                residual_summary=summary,
+            ),
+        )
+        state = SimpleNamespace(
+            obligations=SimpleNamespace(
+                pending_entry=None,
+            ),
+        )
+
+        children = writer_transitions._unblocked_child_obligations_from_context(
+            context,  # type: ignore[arg-type]
+            state,  # type: ignore[arg-type]
+            AtomId(0),
+        )
+
+        self.assertEqual(len(children), 1)
+        self.assertEqual(children[0].bond, BondId(1))
+        self.assertEqual(children[0].child, AtomId(2))
+        self.assertEqual(children[0].boundary_atom, AtomId(0))
+        self.assertIs(
+            children[0].owner_kind,
+            WriterBoundaryOwnerKind.ACTIVE_ATOM,
+        )
+        self.assertEqual(children[0].attachment_id, 7)
+        self.assertIs(
+            children[0].attachment_action_kind,
+            WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY,
+        )
+        self.assertFalse(children[0].pending_entry)
+
+    def test_unblocked_child_obligations_carry_pending_parent_as_boundary_atom(self) -> None:
+        pending = PendingWriterEntry(
+            parent=AtomId(0),
+            child=AtomId(2),
+            bond=BondId(1),
+            branch=False,
+        )
+        summary = SimpleNamespace(
+            attachments=SimpleNamespace(attachments=()),
+            attachment_actions=(),
+        )
+        context = SimpleNamespace(
+            graph=SimpleNamespace(
+                residual_summary=summary,
+            ),
+        )
+        state = SimpleNamespace(
+            obligations=SimpleNamespace(
+                pending_entry=pending,
+            ),
+        )
+
+        children = writer_transitions._unblocked_child_obligations_from_context(
+            context,  # type: ignore[arg-type]
+            state,  # type: ignore[arg-type]
+            AtomId(0),
+        )
+
+        self.assertEqual(len(children), 1)
+        self.assertEqual(children[0].bond, BondId(1))
+        self.assertEqual(children[0].child, AtomId(2))
+        self.assertEqual(children[0].boundary_atom, AtomId(0))
+        self.assertIsNone(children[0].owner_kind)
+        self.assertIsNone(children[0].attachment_id)
+        self.assertIsNone(children[0].attachment_action_kind)
+        self.assertTrue(children[0].pending_entry)
+
     def test_scheduled_writer_transitions_dispatches_pending_entry_actions(self) -> None:
         prepared = object()
         context = object()

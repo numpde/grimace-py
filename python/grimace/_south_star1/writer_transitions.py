@@ -102,6 +102,8 @@ class WriterTransitionExpansionContext:
 class _WriterChildObligation:
     bond: BondId
     child: AtomId
+    boundary_atom: AtomId | None = None
+    owner_kind: WriterBoundaryOwnerKind | None = None
     attachment_id: int | None = None
     attachment_action_kind: WriterResidualAttachmentActionKind | None = None
     pending_entry: bool = False
@@ -1965,6 +1967,8 @@ def _unblocked_child_obligations_from_context(
             _WriterChildObligation(
                 bond=incidence.bond,
                 child=incidence.residual_atom,
+                boundary_atom=incidence.written_atom,
+                owner_kind=incidence.owner_kind,
                 attachment_id=action.attachment_id,
                 attachment_action_kind=action.kind,
             )
@@ -1977,6 +1981,7 @@ def _unblocked_child_obligations_from_context(
             _WriterChildObligation(
                 bond=pending.bond,
                 child=pending.child,
+                boundary_atom=pending.parent,
                 pending_entry=True,
             )
         )

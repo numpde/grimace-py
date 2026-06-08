@@ -1485,6 +1485,166 @@ class WriterStateKernelTest(unittest.TestCase):
             (),
         )
 
+    def test_active_emitted_schedule_decision_rejects_closure_with_child_batch(self) -> None:
+        closure_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        child_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+
+        with self.assertRaises(SouthStarError):
+            writer_transitions._WriterActiveEmittedScheduleDecision(
+                kind=(
+                    writer_transitions._WriterActiveEmittedScheduleDecisionKind
+                    .CLOSURE_ENDPOINT
+                ),
+                closure_batch=closure_batch,
+                selected_batch=closure_batch,
+                child_batch=child_batch,
+            )
+
+    def test_active_emitted_schedule_decision_requires_selected_child_batch(self) -> None:
+        closure_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        child_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+
+        with self.assertRaises(SouthStarError):
+            writer_transitions._WriterActiveEmittedScheduleDecision(
+                kind=(
+                    writer_transitions._WriterActiveEmittedScheduleDecisionKind
+                    .ACTIVE_CHILD
+                ),
+                closure_batch=closure_batch,
+                selected_batch=closure_batch,
+                child_batch=child_batch,
+            )
+
+    def test_top_level_schedule_decision_rejects_active_payload_for_top_level_actions(self) -> None:
+        batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        active_decision = writer_transitions._WriterActiveEmittedScheduleDecision(
+            kind=(
+                writer_transitions._WriterActiveEmittedScheduleDecisionKind
+                .CLOSURE_ENDPOINT
+            ),
+            closure_batch=batch,
+            selected_batch=batch,
+        )
+
+        with self.assertRaises(SouthStarError):
+            writer_transitions._WriterTopLevelScheduleDecision(
+                kind=(
+                    writer_transitions._WriterTopLevelScheduleDecisionKind
+                    .TOP_LEVEL_ACTIONS
+                ),
+                selected_batch=batch,
+                top_level_batch=batch,
+                active_emitted_decision=active_decision,
+            )
+
+    def test_top_level_schedule_decision_requires_selected_active_batch(self) -> None:
+        active_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        wrong_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        active_decision = writer_transitions._WriterActiveEmittedScheduleDecision(
+            kind=(
+                writer_transitions._WriterActiveEmittedScheduleDecisionKind
+                .CLOSURE_ENDPOINT
+            ),
+            closure_batch=active_batch,
+            selected_batch=active_batch,
+        )
+
+        with self.assertRaises(SouthStarError):
+            writer_transitions._WriterTopLevelScheduleDecision(
+                kind=(
+                    writer_transitions._WriterTopLevelScheduleDecisionKind
+                    .ACTIVE_EMITTED
+                ),
+                selected_batch=wrong_batch,
+                active_emitted_decision=active_decision,
+            )
+
+    def test_scheduler_decisions_accept_valid_payloads(self) -> None:
+        closure_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        child_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+
+        closure_decision = writer_transitions._WriterActiveEmittedScheduleDecision(
+            kind=(
+                writer_transitions._WriterActiveEmittedScheduleDecisionKind
+                .CLOSURE_ENDPOINT
+            ),
+            closure_batch=closure_batch,
+            selected_batch=closure_batch,
+        )
+
+        child_decision = writer_transitions._WriterActiveEmittedScheduleDecision(
+            kind=(
+                writer_transitions._WriterActiveEmittedScheduleDecisionKind
+                .ACTIVE_CHILD
+            ),
+            closure_batch=closure_batch,
+            child_batch=child_batch,
+            selected_batch=child_batch,
+        )
+
+        writer_transitions._WriterTopLevelScheduleDecision(
+            kind=(
+                writer_transitions._WriterTopLevelScheduleDecisionKind
+                .TOP_LEVEL_ACTIONS
+            ),
+            selected_batch=closure_batch,
+            top_level_batch=closure_batch,
+        )
+
+        writer_transitions._WriterTopLevelScheduleDecision(
+            kind=(
+                writer_transitions._WriterTopLevelScheduleDecisionKind
+                .ACTIVE_EMITTED
+            ),
+            selected_batch=closure_decision.selected_batch,
+            active_emitted_decision=closure_decision,
+        )
+
+        writer_transitions._WriterTopLevelScheduleDecision(
+            kind=(
+                writer_transitions._WriterTopLevelScheduleDecisionKind
+                .ACTIVE_EMITTED
+            ),
+            selected_batch=child_decision.selected_batch,
+            active_emitted_decision=child_decision,
+        )
+
     def test_top_level_schedule_decision_selects_top_level_batch(self) -> None:
         prepared = object()
         state = object()

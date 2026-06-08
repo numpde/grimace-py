@@ -247,6 +247,26 @@ class _WriterActiveEmittedScheduleDecision:
     selected_batch: _WriterScheduledActionEmissionBatch
     child_batch: _WriterScheduledActionEmissionBatch | None = None
 
+    def __post_init__(self) -> None:
+        if self.kind is _WriterActiveEmittedScheduleDecisionKind.CLOSURE_ENDPOINT:
+            valid = (
+                self.selected_batch is self.closure_batch
+                and self.child_batch is None
+            )
+        elif self.kind is _WriterActiveEmittedScheduleDecisionKind.ACTIVE_CHILD:
+            valid = (
+                self.child_batch is not None
+                and self.selected_batch is self.child_batch
+            )
+        else:
+            valid = False
+
+        if not valid:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                f"invalid active-emitted schedule decision payload: {self.kind!r}",
+            )
+
 
 @dataclass(frozen=True, slots=True)
 class _WriterTopLevelScheduleDecision:
@@ -254,6 +274,29 @@ class _WriterTopLevelScheduleDecision:
     selected_batch: _WriterScheduledActionEmissionBatch
     top_level_batch: _WriterScheduledActionEmissionBatch | None = None
     active_emitted_decision: _WriterActiveEmittedScheduleDecision | None = None
+
+    def __post_init__(self) -> None:
+        if self.kind is _WriterTopLevelScheduleDecisionKind.TOP_LEVEL_ACTIONS:
+            valid = (
+                self.top_level_batch is not None
+                and self.selected_batch is self.top_level_batch
+                and self.active_emitted_decision is None
+            )
+        elif self.kind is _WriterTopLevelScheduleDecisionKind.ACTIVE_EMITTED:
+            valid = (
+                self.top_level_batch is None
+                and self.active_emitted_decision is not None
+                and self.selected_batch
+                is self.active_emitted_decision.selected_batch
+            )
+        else:
+            valid = False
+
+        if not valid:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                f"invalid top-level schedule decision payload: {self.kind!r}",
+            )
 
 
 def _consume_pending_entry_action(

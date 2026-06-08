@@ -16,6 +16,7 @@ PREPARED_MOL_ZSTD_TIMING_SCRIPT = (
 PREPARED_MOL_ZSTD_PLOT_SCRIPT = (
     ROOT / "scripts" / "timings_prepared_mol_zstd_plot.py"
 )
+ENUM_TIMING_SCRIPT = ROOT / "scripts" / "timings_enum_measure.py"
 
 
 def load_script_module(name: str, path: Path) -> ModuleType:
@@ -40,6 +41,10 @@ def load_prepared_mol_zstd_plot_module() -> ModuleType:
         "timings_prepared_mol_zstd_plot",
         PREPARED_MOL_ZSTD_PLOT_SCRIPT,
     )
+
+
+def load_enum_timing_module() -> ModuleType:
+    return load_script_module("timings_enum_measure", ENUM_TIMING_SCRIPT)
 
 
 class TimingScriptBoundaryTests(unittest.TestCase):
@@ -238,6 +243,46 @@ class TimingScriptBoundaryTests(unittest.TestCase):
 
                     with self.assertRaisesRegex(SystemExit, message):
                         plot._read_rows(input_path)
+
+    def test_enum_timing_input_rejects_malformed_tsv(self) -> None:
+        enum_timing = load_enum_timing_module()
+        header = tuple(enum_timing._timing_tsv_fieldnames())
+        valid_row = {field: "1" for field in header}
+        valid_row["surface"] = "non-stereo"
+        cases = (
+            (
+                ("surface",),
+                ("non-stereo",),
+                "lacks required field",
+            ),
+            (
+                header,
+                tuple(
+                    "not-a-surface" if field == "surface" else valid_row[field]
+                    for field in header
+                ),
+                "unknown surface",
+            ),
+            (
+                header,
+                tuple(valid_row[field] for field in header) + ("extra",),
+                "too many columns",
+            ),
+        )
+        for fields, values, message in cases:
+            with self.subTest(message=message):
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    input_path = Path(tmpdir) / "timings.tsv"
+                    input_path.write_text(
+                        "\t".join(fields)
+                        + "\n"
+                        + "\t".join(values)
+                        + "\n",
+                        encoding="utf-8",
+                    )
+
+                    with self.assertRaisesRegex(RuntimeError, message):
+                        enum_timing._read_timing_rows_from_tsv(input_path)
 
 
 if __name__ == "__main__":

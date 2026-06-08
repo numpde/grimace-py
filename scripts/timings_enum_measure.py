@@ -85,6 +85,35 @@ class BenchmarkEnvironment:
 ENUM_TIMING_CONTAINER = (
     "compose/timings-enum.yml timings-enum service, network disabled"
 )
+ENUM_TIMING_SURFACES = frozenset({"non-stereo", "stereo"})
+
+
+def _timing_tsv_fieldnames() -> tuple[str, ...]:
+    return BenchmarkEnvironment.tsv_fieldnames() + TimingRow.tsv_fieldnames()
+
+
+def _read_timing_rows_from_tsv(path: Path) -> tuple[dict[str, str], ...]:
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle, dialect="excel-tab")
+        fieldnames = tuple(reader.fieldnames or ())
+        missing = tuple(
+            field for field in _timing_tsv_fieldnames() if field not in fieldnames
+        )
+        if missing:
+            raise RuntimeError(
+                f"Timing TSV lacks required field(s): {', '.join(missing)}"
+            )
+        rows = tuple(reader)
+
+    for row_number, row in enumerate(rows, start=2):
+        if row.get(None):
+            raise RuntimeError(f"Timing TSV row {row_number} has too many columns")
+        surface = row["surface"]
+        if surface not in ENUM_TIMING_SURFACES:
+            raise RuntimeError(
+                f"Timing TSV row {row_number} has unknown surface: {surface!r}"
+            )
+    return rows
 
 
 def _runtime_trials(fn, *, repeats: int = 7) -> list[float]:
@@ -398,9 +427,7 @@ class EnumTimingBenchmark:
         with self.OUTPUT_TSV_PATH.open("w", encoding="utf-8", newline="") as handle:
             writer = csv.DictWriter(
                 handle,
-                fieldnames=(
-                    BenchmarkEnvironment.tsv_fieldnames() + TimingRow.tsv_fieldnames()
-                ),
+                fieldnames=_timing_tsv_fieldnames(),
                 dialect="excel-tab",
                 lineterminator="\n",
             )
@@ -410,8 +437,7 @@ class EnumTimingBenchmark:
                 writer.writerow({**environment_payload, **asdict(row)})
 
     def _timing_rows_from_tsv(self) -> tuple[dict[str, str], ...]:
-        with self.OUTPUT_TSV_PATH.open("r", encoding="utf-8", newline="") as handle:
-            return tuple(csv.DictReader(handle, dialect="excel-tab"))
+        return _read_timing_rows_from_tsv(self.OUTPUT_TSV_PATH)
 
     def _metadata_from_tsv(self) -> dict[str, Any] | None:
         rows = self._timing_rows_from_tsv()

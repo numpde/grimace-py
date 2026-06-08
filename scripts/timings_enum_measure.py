@@ -311,116 +311,131 @@ class EnumTimingBenchmark:
                 canonical=True,
                 isomericSmiles=True,
             )
-            if True:
-                support = self._enumerate_all_roots(mol, case)
-                support_size = len(support)
-                assert support_size > 0, canonical_smiles
+            support = self._enumerate_all_roots(mol, case)
+            support_size = len(support)
+            if support_size <= 0:
+                raise RuntimeError(f"Empty support in timing case: {canonical_smiles}")
 
-                enum_times = _runtime_trials(
-                    lambda: self._enumerate_all_roots(mol, case)
-                )
-                decoder_times = _runtime_trials(
-                    lambda: self._enumerate_all_roots_with_decoder(
-                        mol,
-                        case,
-                        decoder_cls=grimace.MolToSmilesDecoder,
-                    )
-                )
-                determinized_decoder_times = _runtime_trials(
-                    lambda: self._enumerate_all_roots_with_decoder(
-                        mol,
-                        case,
-                        decoder_cls=grimace.MolToSmilesDeterminizedDecoder,
-                    )
-                )
-                merged_decoder_times = _runtime_trials(
-                    lambda: self._enumerate_all_roots_with_merged_decoder(
-                        mol,
-                        case,
-                        decoder_cls=grimace.MolToSmilesDecoder,
-                    )
-                )
-                merged_determinized_decoder_times = _runtime_trials(
-                    lambda: self._enumerate_all_roots_with_merged_decoder(
-                        mol,
-                        case,
-                        decoder_cls=grimace.MolToSmilesDeterminizedDecoder,
-                    )
-                )
-                assert support == self._enumerate_all_roots_with_decoder(
+            enum_times = _runtime_trials(lambda: self._enumerate_all_roots(mol, case))
+            decoder_times = _runtime_trials(
+                lambda: self._enumerate_all_roots_with_decoder(
                     mol,
                     case,
                     decoder_cls=grimace.MolToSmilesDecoder,
                 )
-                assert support == self._enumerate_all_roots_with_decoder(
+            )
+            determinized_decoder_times = _runtime_trials(
+                lambda: self._enumerate_all_roots_with_decoder(
                     mol,
                     case,
                     decoder_cls=grimace.MolToSmilesDeterminizedDecoder,
                 )
-                assert support == self._enumerate_all_roots_with_merged_decoder(
+            )
+            merged_decoder_times = _runtime_trials(
+                lambda: self._enumerate_all_roots_with_merged_decoder(
                     mol,
                     case,
                     decoder_cls=grimace.MolToSmilesDecoder,
                 )
-                assert support == self._enumerate_all_roots_with_merged_decoder(
+            )
+            merged_determinized_decoder_times = _runtime_trials(
+                lambda: self._enumerate_all_roots_with_merged_decoder(
                     mol,
                     case,
                     decoder_cls=grimace.MolToSmilesDeterminizedDecoder,
                 )
-
-                half_target = math.ceil(support_size / 2)
-                full_target = support_size
-                max_draws = max(5_000, support_size * mol.GetNumAtoms() * 20)
-
-                half_draws, half_times = self._sampling_trials(
-                    mol,
-                    case,
-                    target_count=half_target,
-                    max_draws=max_draws,
-                )
-                full_draws, full_times = self._sampling_trials(
-                    mol,
-                    case,
-                    target_count=full_target,
-                    max_draws=max_draws,
-                )
-
-                rows.append(
-                    TimingRow(
-                        surface=(
-                            "stereo" if case.isomeric_smiles else "non-stereo"
-                        ),
-                        molecule=canonical_smiles,
-                        atoms=mol.GetNumAtoms(),
-                        support=support_size,
-                        enum_mean_s=statistics.mean(enum_times),
-                        enum_std_s=statistics.stdev(enum_times),
-                        decoder_per_root_mean_s=statistics.mean(decoder_times),
-                        decoder_per_root_std_s=statistics.stdev(decoder_times),
-                        determinized_decoder_per_root_mean_s=statistics.mean(
-                            determinized_decoder_times
-                        ),
-                        determinized_decoder_per_root_std_s=statistics.stdev(
-                            determinized_decoder_times
-                        ),
-                        decoder_merged_mean_s=statistics.mean(merged_decoder_times),
-                        decoder_merged_std_s=statistics.stdev(merged_decoder_times),
-                        determinized_decoder_merged_mean_s=statistics.mean(
-                            merged_determinized_decoder_times
-                        ),
-                        determinized_decoder_merged_std_s=statistics.stdev(
-                            merged_determinized_decoder_times
-                        ),
-                        rdkit_half_mean_s=statistics.mean(half_times),
-                        rdkit_half_std_s=statistics.stdev(half_times),
-                        rdkit_half_draw_mean=statistics.mean(half_draws),
-                        rdkit_half_draw_std=statistics.stdev(half_draws),
-                        rdkit_full_mean_s=statistics.mean(full_times),
-                        rdkit_full_std_s=statistics.stdev(full_times),
-                        rdkit_full_draw_mean=statistics.mean(full_draws),
-                        rdkit_full_draw_std=statistics.stdev(full_draws),
+            )
+            decoder_supports = (
+                (
+                    "branch-preserving per-root",
+                    self._enumerate_all_roots_with_decoder(
+                        mol,
+                        case,
+                        decoder_cls=grimace.MolToSmilesDecoder,
+                    ),
+                ),
+                (
+                    "determinized per-root",
+                    self._enumerate_all_roots_with_decoder(
+                        mol,
+                        case,
+                        decoder_cls=grimace.MolToSmilesDeterminizedDecoder,
+                    ),
+                ),
+                (
+                    "branch-preserving merged",
+                    self._enumerate_all_roots_with_merged_decoder(
+                        mol,
+                        case,
+                        decoder_cls=grimace.MolToSmilesDecoder,
+                    ),
+                ),
+                (
+                    "determinized merged",
+                    self._enumerate_all_roots_with_merged_decoder(
+                        mol,
+                        case,
+                        decoder_cls=grimace.MolToSmilesDeterminizedDecoder,
+                    ),
+                ),
+            )
+            for label, decoder_support in decoder_supports:
+                if decoder_support != support:
+                    raise RuntimeError(
+                        f"{label} support mismatch in timing case: {canonical_smiles}"
                     )
+
+            half_target = math.ceil(support_size / 2)
+            full_target = support_size
+            max_draws = max(5_000, support_size * mol.GetNumAtoms() * 20)
+
+            half_draws, half_times = self._sampling_trials(
+                mol,
+                case,
+                target_count=half_target,
+                max_draws=max_draws,
+            )
+            full_draws, full_times = self._sampling_trials(
+                mol,
+                case,
+                target_count=full_target,
+                max_draws=max_draws,
+            )
+
+            rows.append(
+                TimingRow(
+                    surface="stereo" if case.isomeric_smiles else "non-stereo",
+                    molecule=canonical_smiles,
+                    atoms=mol.GetNumAtoms(),
+                    support=support_size,
+                    enum_mean_s=statistics.mean(enum_times),
+                    enum_std_s=statistics.stdev(enum_times),
+                    decoder_per_root_mean_s=statistics.mean(decoder_times),
+                    decoder_per_root_std_s=statistics.stdev(decoder_times),
+                    determinized_decoder_per_root_mean_s=statistics.mean(
+                        determinized_decoder_times
+                    ),
+                    determinized_decoder_per_root_std_s=statistics.stdev(
+                        determinized_decoder_times
+                    ),
+                    decoder_merged_mean_s=statistics.mean(merged_decoder_times),
+                    decoder_merged_std_s=statistics.stdev(merged_decoder_times),
+                    determinized_decoder_merged_mean_s=statistics.mean(
+                        merged_determinized_decoder_times
+                    ),
+                    determinized_decoder_merged_std_s=statistics.stdev(
+                        merged_determinized_decoder_times
+                    ),
+                    rdkit_half_mean_s=statistics.mean(half_times),
+                    rdkit_half_std_s=statistics.stdev(half_times),
+                    rdkit_half_draw_mean=statistics.mean(half_draws),
+                    rdkit_half_draw_std=statistics.stdev(half_draws),
+                    rdkit_full_mean_s=statistics.mean(full_times),
+                    rdkit_full_std_s=statistics.stdev(full_times),
+                    rdkit_full_draw_mean=statistics.mean(full_draws),
+                    rdkit_full_draw_std=statistics.stdev(full_draws),
                 )
+            )
         return rows
 
     def _write_tsv(self, rows: list[TimingRow], metadata: dict[str, Any]) -> None:
@@ -803,8 +818,11 @@ class EnumTimingBenchmark:
                 max_draws=max_draws,
                 seed=seed,
             )
-            assert draws >= target_count
-            assert draws <= max_draws
+            if not target_count <= draws <= max_draws:
+                raise RuntimeError(
+                    "RDKit sampling draw count escaped benchmark bounds: "
+                    f"target={target_count}, draws={draws}, max_draws={max_draws}"
+                )
             draws_taken.append(draws)
             elapsed_times.append(elapsed)
 

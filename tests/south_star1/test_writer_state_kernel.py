@@ -1614,6 +1614,48 @@ class WriterStateKernelTest(unittest.TestCase):
             (first_emission,),
         )
 
+    def test_scheduled_action_emission_batch_preserves_actions_and_survivors(self) -> None:
+        prepared = object()
+        state = object()
+        context = object()
+        first_action = writer_transitions._finish_active_action(AtomId(0))
+        second_action = writer_transitions._emit_root_atom_action(AtomId(1))
+        first_emission = writer_transitions._WriterScheduledActionEmission(
+            action=first_action,
+            transitions=(object(),),
+        )
+        second_emission = writer_transitions._WriterScheduledActionEmission(
+            action=second_action,
+            transitions=(),
+        )
+
+        with patch(
+            "grimace._south_star1.writer_transitions._scheduled_action_emissions",
+            return_value=(first_emission, second_emission),
+        ) as scheduled_emissions, patch(
+            "grimace._south_star1.writer_transitions._surviving_scheduled_action_emissions",
+            return_value=(first_emission,),
+        ) as surviving_emissions:
+            batch = writer_transitions._scheduled_action_emission_batch(
+                prepared,  # type: ignore[arg-type]
+                state,  # type: ignore[arg-type]
+                context,  # type: ignore[arg-type]
+                (first_action, second_action),
+            )
+
+        self.assertEqual(batch.actions, (first_action, second_action))
+        self.assertEqual(batch.emissions, (first_emission, second_emission))
+        self.assertEqual(batch.surviving_emissions, (first_emission,))
+        scheduled_emissions.assert_called_once_with(
+            prepared,
+            state,
+            context,
+            (first_action, second_action),
+        )
+        surviving_emissions.assert_called_once_with(
+            (first_emission, second_emission),
+        )
+
     def test_active_emitted_scheduler_does_not_compute_children_when_closure_transition_survives(self) -> None:
         prepared = object()
         state = object()
@@ -1623,17 +1665,19 @@ class WriterStateKernelTest(unittest.TestCase):
         closure_emission = object()
         surviving_closure_emission = object()
         closure_transition = object()
+        closure_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(closure_action,),  # type: ignore[arg-type]
+            emissions=(closure_emission,),  # type: ignore[arg-type]
+            surviving_emissions=(surviving_closure_emission,),  # type: ignore[arg-type]
+        )
 
         with patch(
             "grimace._south_star1.writer_transitions._closure_endpoint_scheduled_actions",
             return_value=(closure_action,),
         ) as closure_actions, patch(
-            "grimace._south_star1.writer_transitions._scheduled_action_emissions",
-            return_value=(closure_emission,),
-        ) as scheduled_emissions, patch(
-            "grimace._south_star1.writer_transitions._surviving_scheduled_action_emissions",
-            return_value=(surviving_closure_emission,),
-        ) as surviving_emissions, patch(
+            "grimace._south_star1.writer_transitions._scheduled_action_emission_batch",
+            return_value=closure_batch,
+        ) as emission_batch, patch(
             "grimace._south_star1.writer_transitions._transitions_from_scheduled_action_emissions",
             return_value=(closure_transition,),
         ) as flatten_emissions, patch(
@@ -1656,13 +1700,12 @@ class WriterStateKernelTest(unittest.TestCase):
             state,
             context,
         )
-        scheduled_emissions.assert_called_once_with(
+        emission_batch.assert_called_once_with(
             prepared,
             state,
             context,
             (closure_action,),
         )
-        surviving_emissions.assert_called_once_with((closure_emission,))
         flatten_emissions.assert_called_once_with((surviving_closure_emission,))
 
     def test_active_emitted_scheduler_computes_children_after_empty_closure_transitions(self) -> None:
@@ -1675,17 +1718,19 @@ class WriterStateKernelTest(unittest.TestCase):
         child_obligation = object()
         child_action = object()
         child_transition = object()
+        closure_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(closure_action,),  # type: ignore[arg-type]
+            emissions=(closure_emission,),  # type: ignore[arg-type]
+            surviving_emissions=(),
+        )
 
         with patch(
             "grimace._south_star1.writer_transitions._closure_endpoint_scheduled_actions",
             return_value=(closure_action,),
         ) as closure_actions, patch(
-            "grimace._south_star1.writer_transitions._scheduled_action_emissions",
-            return_value=(closure_emission,),
-        ) as scheduled_emissions, patch(
-            "grimace._south_star1.writer_transitions._surviving_scheduled_action_emissions",
-            return_value=(),
-        ) as surviving_emissions, patch(
+            "grimace._south_star1.writer_transitions._scheduled_action_emission_batch",
+            return_value=closure_batch,
+        ) as emission_batch, patch(
             "grimace._south_star1.writer_transitions._transitions_from_scheduled_action_emissions",
             side_effect=AssertionError("zero-surviving closure emissions should not be flattened"),
         ), patch(
@@ -1714,13 +1759,12 @@ class WriterStateKernelTest(unittest.TestCase):
             state,
             context,
         )
-        scheduled_emissions.assert_called_once_with(
+        emission_batch.assert_called_once_with(
             prepared,
             state,
             context,
             (closure_action,),
         )
-        surviving_emissions.assert_called_once_with((closure_emission,))
         child_blockers.assert_called_once_with(
             context,
             active_atom,

@@ -223,6 +223,13 @@ class _WriterScheduledActionEmission:
     transitions: tuple[WriterTransition, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class _WriterScheduledActionEmissionBatch:
+    actions: tuple[_WriterScheduledAction, ...]
+    emissions: tuple[_WriterScheduledActionEmission, ...]
+    surviving_emissions: tuple[_WriterScheduledActionEmission, ...]
+
+
 def _consume_pending_entry_action(
     pending_entry: PendingWriterEntry,
 ) -> _WriterScheduledAction:
@@ -468,20 +475,16 @@ def _active_emitted_transitions(
         context,
     )
 
-    closure_emissions = _scheduled_action_emissions(
+    closure_batch = _scheduled_action_emission_batch(
         prepared,
         state,
         context,
         closure_actions,
     )
 
-    surviving_closure_emissions = _surviving_scheduled_action_emissions(
-        closure_emissions
-    )
-
-    if surviving_closure_emissions:
+    if closure_batch.surviving_emissions:
         return _transitions_from_scheduled_action_emissions(
-            surviving_closure_emissions
+            closure_batch.surviving_emissions
         )
 
     return _transitions_from_scheduled_actions(
@@ -1044,6 +1047,30 @@ def _surviving_scheduled_action_emissions(
         emission
         for emission in emissions
         if emission.transitions
+    )
+
+
+def _scheduled_action_emission_batch(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+    actions: tuple[_WriterScheduledAction, ...],
+) -> _WriterScheduledActionEmissionBatch:
+    emissions = _scheduled_action_emissions(
+        prepared,
+        state,
+        context,
+        actions,
+    )
+
+    surviving_emissions = _surviving_scheduled_action_emissions(
+        emissions,
+    )
+
+    return _WriterScheduledActionEmissionBatch(
+        actions=actions,
+        emissions=emissions,
+        surviving_emissions=surviving_emissions,
     )
 
 

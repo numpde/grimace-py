@@ -363,6 +363,97 @@ class _WriterScheduledActionEmission:
 
 
 @dataclass(frozen=True, slots=True)
+class _WriterResidualAttachmentPolicyEmissionGroup:
+    key: _WriterResidualAttachmentPolicyKey
+    emissions: tuple[_WriterScheduledActionEmission, ...]
+
+    @property
+    def surfaces(self) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            emission.graph_action_surface
+            for emission in self.emissions
+        )
+
+    @property
+    def surviving_emissions(
+        self,
+    ) -> tuple[_WriterScheduledActionEmission, ...]:
+        return tuple(
+            emission
+            for emission in self.emissions
+            if emission.survived
+        )
+
+    @property
+    def surviving_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            emission.graph_action_surface
+            for emission in self.surviving_emissions
+        )
+
+    def emissions_for_policy_family(
+        self,
+        family: _WriterGraphPolicyActionFamily,
+    ) -> tuple[_WriterScheduledActionEmission, ...]:
+        return tuple(
+            emission
+            for emission in self.emissions
+            if emission.graph_action_surface.policy_family is family
+        )
+
+    def surviving_emissions_for_policy_family(
+        self,
+        family: _WriterGraphPolicyActionFamily,
+    ) -> tuple[_WriterScheduledActionEmission, ...]:
+        return tuple(
+            emission
+            for emission in self.surviving_emissions
+            if emission.graph_action_surface.policy_family is family
+        )
+
+    @property
+    def closure_open_emissions(
+        self,
+    ) -> tuple[_WriterScheduledActionEmission, ...]:
+        return self.emissions_for_policy_family(
+            _WriterGraphPolicyActionFamily.CLOSURE_OPEN
+        )
+
+    @property
+    def cyclic_tree_entry_emissions(
+        self,
+    ) -> tuple[_WriterScheduledActionEmission, ...]:
+        return self.emissions_for_policy_family(
+            _WriterGraphPolicyActionFamily.CYCLIC_TREE_ENTRY
+        )
+
+    @property
+    def surviving_closure_open_emissions(
+        self,
+    ) -> tuple[_WriterScheduledActionEmission, ...]:
+        return self.surviving_emissions_for_policy_family(
+            _WriterGraphPolicyActionFamily.CLOSURE_OPEN
+        )
+
+    @property
+    def surviving_cyclic_tree_entry_emissions(
+        self,
+    ) -> tuple[_WriterScheduledActionEmission, ...]:
+        return self.surviving_emissions_for_policy_family(
+            _WriterGraphPolicyActionFamily.CYCLIC_TREE_ENTRY
+        )
+
+    @property
+    def has_closure_open_vs_cyclic_tree_entry_choice(self) -> bool:
+        return bool(
+            self.closure_open_emissions
+            and self.cyclic_tree_entry_emissions
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class _WriterNextTokenFrontierSupport:
     emission: _WriterScheduledActionEmission
     transition: WriterTransition
@@ -443,6 +534,26 @@ class _WriterScheduledActionEmissionBatch:
     ) -> tuple[_WriterNextTokenFrontierEntry, ...]:
         return _next_token_frontier_from_scheduled_action_emissions(
             self.surviving_emissions
+        )
+
+    @property
+    def residual_attachment_policy_emission_groups(
+        self,
+    ) -> tuple[_WriterResidualAttachmentPolicyEmissionGroup, ...]:
+        return (
+            _residual_attachment_policy_emission_groups_from_scheduled_action_emissions(
+                self.emissions
+            )
+        )
+
+    @property
+    def surviving_residual_attachment_policy_emission_groups(
+        self,
+    ) -> tuple[_WriterResidualAttachmentPolicyEmissionGroup, ...]:
+        return (
+            _residual_attachment_policy_emission_groups_from_scheduled_action_emissions(
+                self.surviving_emissions
+            )
         )
 
 
@@ -555,6 +666,22 @@ class _WriterClosureEndpointScheduleDecision:
         return _closure_endpoint_combined_batch(
             self,
         ).surviving_graph_action_surfaces
+
+    @property
+    def considered_residual_attachment_policy_emission_groups(
+        self,
+    ) -> tuple[_WriterResidualAttachmentPolicyEmissionGroup, ...]:
+        return _closure_endpoint_combined_batch(
+            self,
+        ).residual_attachment_policy_emission_groups
+
+    @property
+    def selected_residual_attachment_policy_emission_groups(
+        self,
+    ) -> tuple[_WriterResidualAttachmentPolicyEmissionGroup, ...]:
+        return _closure_endpoint_combined_batch(
+            self,
+        ).surviving_residual_attachment_policy_emission_groups
 
 
 @dataclass(frozen=True, slots=True)
@@ -890,6 +1017,12 @@ class _WriterActiveEmittedScheduleDecision:
         self,
     ) -> tuple[_WriterNextTokenFrontierEntry, ...]:
         return self.selected_batch.surviving_next_token_frontier
+
+    @property
+    def selected_residual_attachment_policy_emission_groups(
+        self,
+    ) -> tuple[_WriterResidualAttachmentPolicyEmissionGroup, ...]:
+        return self.selected_batch.surviving_residual_attachment_policy_emission_groups
 
     def considered_graph_action_surfaces_for_policy_family(
         self,
@@ -1340,6 +1473,36 @@ def _residual_attachment_policy_groups_from_graph_action_surfaces(
         _WriterResidualAttachmentPolicyGroup(
             key=key,
             surfaces=tuple(grouped[key]),
+        )
+        for key in order
+    )
+
+
+def _residual_attachment_policy_emission_groups_from_scheduled_action_emissions(
+    emissions: tuple[_WriterScheduledActionEmission, ...],
+) -> tuple[_WriterResidualAttachmentPolicyEmissionGroup, ...]:
+    grouped: dict[
+        _WriterResidualAttachmentPolicyKey,
+        list[_WriterScheduledActionEmission],
+    ] = {}
+    order: list[_WriterResidualAttachmentPolicyKey] = []
+
+    for emission in emissions:
+        key = emission.graph_action_surface.residual_attachment_policy_key
+
+        if key is None:
+            continue
+
+        if key not in grouped:
+            grouped[key] = []
+            order.append(key)
+
+        grouped[key].append(emission)
+
+    return tuple(
+        _WriterResidualAttachmentPolicyEmissionGroup(
+            key=key,
+            emissions=tuple(grouped[key]),
         )
         for key in order
     )

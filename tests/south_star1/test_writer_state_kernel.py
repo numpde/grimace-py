@@ -2609,6 +2609,81 @@ class WriterStateKernelTest(unittest.TestCase):
             child_batch.surviving_graph_action_surfaces,
         )
 
+    def test_active_emitted_schedule_decision_exposes_selected_residual_policy_emission_groups(self) -> None:
+        active_atom = AtomId(0)
+        pair_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        open_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        closure_decision = writer_transitions._WriterClosureEndpointScheduleDecision(
+            pair_batch=pair_batch,
+            open_batch=open_batch,
+            surviving_emissions=(),
+        )
+        child = writer_transitions._WriterChildObligation(
+            bond=BondId(2),
+            child=AtomId(4),
+            boundary_atom=active_atom,
+            owner_kind=WriterBoundaryOwnerKind.ACTIVE_ATOM,
+            attachment_id=9,
+            attachment_action_kind=(
+                WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY
+            ),
+        )
+        child_action = writer_transitions._enter_inline_child_action(
+            active_atom,
+            child,
+        )
+        child_surface = writer_transitions._WriterActiveChildScheduleSurface(
+            active_atom=active_atom,
+            blockers=(),
+            child_obligations=(child,),
+            scheduled_actions=(child_action,),
+        )
+        policy = writer_transitions._WriterActiveEmittedGraphPolicyDecision(
+            kind=(
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyDecisionKind
+                .ACTIVE_CHILD
+            ),
+            active_atom=active_atom,
+            closure_endpoint_decision=closure_decision,
+            child_schedule_surface=child_surface,
+        )
+        child_emission = writer_transitions._WriterScheduledActionEmission(
+            action=child_action,
+            transitions=(SimpleNamespace(emitted_text="C"),),  # type: ignore[arg-type]
+        )
+        child_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(child_action,),
+            emissions=(child_emission,),
+            surviving_emissions=(child_emission,),
+        )
+        decision = writer_transitions._active_emitted_child_decision(
+            closure_endpoint_decision=closure_decision,
+            child_schedule_surface=child_surface,
+            child_batch=child_batch,
+            graph_policy_decision=policy,
+        )
+
+        groups = decision.selected_residual_attachment_policy_emission_groups
+
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(
+            groups[0].cyclic_tree_entry_emissions,
+            (child_emission,),
+        )
+        self.assertEqual(
+            groups[0].surviving_cyclic_tree_entry_emissions,
+            (child_emission,),
+        )
+
     def test_top_level_decision_constructors_preserve_selected_batches(self) -> None:
         top_level_batch = writer_transitions._WriterScheduledActionEmissionBatch(
             actions=(),
@@ -3088,6 +3163,61 @@ class WriterStateKernelTest(unittest.TestCase):
             decision.selected_graph_action_surfaces,
             (pair_emission.graph_action_surface,),
         )
+
+    def test_closure_endpoint_schedule_decision_exposes_residual_policy_emission_groups(self) -> None:
+        active_atom = AtomId(0)
+        label = WriterClosureLabel(value=1, text="1")
+        open_obligation = writer_transitions._WriterClosureOpenObligation(
+            bond=BondId(2),
+            first_atom=active_atom,
+            second_atom=AtomId(3),
+            attachment_id=7,
+            attachment_action_kind=(
+                WriterResidualAttachmentActionKind.CLOSURE_OPEN_READY
+            ),
+            owner_kind=WriterBoundaryOwnerKind.ACTIVE_ATOM,
+        )
+        open_action = writer_transitions._open_closure_endpoint_action(
+            active_atom,
+            open_obligation,
+            label,
+        )
+        surface = writer_transitions._WriterClosureEndpointScheduleSurface(
+            active_atom=active_atom,
+            pair_actions=(),
+            open_actions=(open_action,),
+        )
+        closure_open_emission = writer_transitions._WriterScheduledActionEmission(
+            action=open_action,
+            transitions=(),
+        )
+        pair_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        open_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(open_action,),
+            emissions=(closure_open_emission,),
+            surviving_emissions=(),
+        )
+        decision = writer_transitions._WriterClosureEndpointScheduleDecision(
+            pair_batch=pair_batch,
+            open_batch=open_batch,
+            surviving_emissions=(),
+            schedule_surface=surface,
+        )
+
+        considered = decision.considered_residual_attachment_policy_emission_groups
+        selected = decision.selected_residual_attachment_policy_emission_groups
+
+        self.assertEqual(len(considered), 1)
+        self.assertEqual(
+            considered[0].closure_open_emissions,
+            (closure_open_emission,),
+        )
+        self.assertEqual(considered[0].surviving_closure_open_emissions, ())
+        self.assertEqual(selected, ())
 
     def test_closure_endpoint_schedule_decision_separates_pair_and_open_batches(self) -> None:
         prepared = object()
@@ -3998,6 +4128,184 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertTrue(groups[0].has_closure_open_vs_cyclic_tree_entry_choice)
         self.assertEqual(groups[1].acyclic_tree_entry_surfaces, (acyclic_tree_8,))
         self.assertFalse(groups[1].has_closure_open_vs_cyclic_tree_entry_choice)
+
+    def test_residual_attachment_policy_emission_groups_preserve_order_and_skip_non_residual(self) -> None:
+        active_atom = AtomId(0)
+        label = WriterClosureLabel(value=1, text="1")
+        closure_open = writer_transitions._WriterClosureOpenObligation(
+            bond=BondId(1),
+            first_atom=active_atom,
+            second_atom=AtomId(3),
+            attachment_id=7,
+            attachment_action_kind=(
+                WriterResidualAttachmentActionKind.CLOSURE_OPEN_READY
+            ),
+            owner_kind=WriterBoundaryOwnerKind.ACTIVE_ATOM,
+        )
+        closure_open_action = writer_transitions._open_closure_endpoint_action(
+            active_atom,
+            closure_open,
+            label,
+        )
+        finish_action = writer_transitions._finish_active_action(active_atom)
+        cyclic_child = writer_transitions._WriterChildObligation(
+            bond=BondId(2),
+            child=AtomId(4),
+            boundary_atom=active_atom,
+            owner_kind=WriterBoundaryOwnerKind.ACTIVE_ATOM,
+            attachment_id=7,
+            attachment_action_kind=(
+                WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY
+            ),
+        )
+        cyclic_action = writer_transitions._enter_inline_child_action(
+            active_atom,
+            cyclic_child,
+        )
+        acyclic_child = writer_transitions._WriterChildObligation(
+            bond=BondId(3),
+            child=AtomId(5),
+            boundary_atom=active_atom,
+            owner_kind=WriterBoundaryOwnerKind.ACTIVE_ATOM,
+            attachment_id=8,
+            attachment_action_kind=(
+                WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY
+            ),
+        )
+        acyclic_action = writer_transitions._enter_inline_child_action(
+            active_atom,
+            acyclic_child,
+        )
+        closure_open_emission = writer_transitions._WriterScheduledActionEmission(
+            action=closure_open_action,
+            transitions=(),
+        )
+        finish_emission = writer_transitions._WriterScheduledActionEmission(
+            action=finish_action,
+            transitions=(SimpleNamespace(emitted_text=""),),  # type: ignore[arg-type]
+        )
+        cyclic_tree_emission = writer_transitions._WriterScheduledActionEmission(
+            action=cyclic_action,
+            transitions=(SimpleNamespace(emitted_text="C"),),  # type: ignore[arg-type]
+        )
+        acyclic_tree_emission = writer_transitions._WriterScheduledActionEmission(
+            action=acyclic_action,
+            transitions=(SimpleNamespace(emitted_text="N"),),  # type: ignore[arg-type]
+        )
+
+        groups = (
+            writer_transitions
+            ._residual_attachment_policy_emission_groups_from_scheduled_action_emissions(
+                (
+                    closure_open_emission,
+                    finish_emission,
+                    cyclic_tree_emission,
+                    acyclic_tree_emission,
+                ),
+            )
+        )
+
+        self.assertEqual(len(groups), 2)
+        self.assertEqual(
+            groups[0].key,
+            writer_transitions._WriterResidualAttachmentPolicyKey(active_atom, 7),
+        )
+        self.assertEqual(
+            groups[0].emissions,
+            (closure_open_emission, cyclic_tree_emission),
+        )
+        self.assertEqual(groups[0].closure_open_emissions, (closure_open_emission,))
+        self.assertEqual(
+            groups[0].cyclic_tree_entry_emissions,
+            (cyclic_tree_emission,),
+        )
+        self.assertEqual(groups[0].surviving_emissions, (cyclic_tree_emission,))
+        self.assertEqual(groups[0].surviving_closure_open_emissions, ())
+        self.assertEqual(
+            groups[0].surviving_cyclic_tree_entry_emissions,
+            (cyclic_tree_emission,),
+        )
+        self.assertTrue(groups[0].has_closure_open_vs_cyclic_tree_entry_choice)
+        self.assertEqual(
+            groups[1].key,
+            writer_transitions._WriterResidualAttachmentPolicyKey(active_atom, 8),
+        )
+        self.assertEqual(groups[1].emissions, (acyclic_tree_emission,))
+
+    def test_scheduled_action_batch_exposes_all_and_surviving_residual_policy_emission_groups(self) -> None:
+        active_atom = AtomId(0)
+        label = WriterClosureLabel(value=1, text="1")
+        closure_open = writer_transitions._WriterClosureOpenObligation(
+            bond=BondId(1),
+            first_atom=active_atom,
+            second_atom=AtomId(3),
+            attachment_id=7,
+            attachment_action_kind=(
+                WriterResidualAttachmentActionKind.CLOSURE_OPEN_READY
+            ),
+            owner_kind=WriterBoundaryOwnerKind.ACTIVE_ATOM,
+        )
+        closure_open_action = writer_transitions._open_closure_endpoint_action(
+            active_atom,
+            closure_open,
+            label,
+        )
+        cyclic_child = writer_transitions._WriterChildObligation(
+            bond=BondId(2),
+            child=AtomId(4),
+            boundary_atom=active_atom,
+            owner_kind=WriterBoundaryOwnerKind.ACTIVE_ATOM,
+            attachment_id=7,
+            attachment_action_kind=(
+                WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY
+            ),
+        )
+        cyclic_action = writer_transitions._enter_inline_child_action(
+            active_atom,
+            cyclic_child,
+        )
+        closure_open_zero_emission = (
+            writer_transitions._WriterScheduledActionEmission(
+                action=closure_open_action,
+                transitions=(),
+            )
+        )
+        cyclic_tree_surviving_emission = (
+            writer_transitions._WriterScheduledActionEmission(
+                action=cyclic_action,
+                transitions=(SimpleNamespace(emitted_text="C"),),  # type: ignore[arg-type]
+            )
+        )
+        batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(closure_open_action, cyclic_action),
+            emissions=(
+                closure_open_zero_emission,
+                cyclic_tree_surviving_emission,
+            ),
+            surviving_emissions=(cyclic_tree_surviving_emission,),
+        )
+
+        all_groups = batch.residual_attachment_policy_emission_groups
+        surviving_groups = batch.surviving_residual_attachment_policy_emission_groups
+
+        self.assertEqual(len(all_groups), 1)
+        self.assertEqual(
+            all_groups[0].emissions,
+            (
+                closure_open_zero_emission,
+                cyclic_tree_surviving_emission,
+            ),
+        )
+        self.assertEqual(len(surviving_groups), 1)
+        self.assertEqual(
+            surviving_groups[0].emissions,
+            (cyclic_tree_surviving_emission,),
+        )
+        self.assertEqual(surviving_groups[0].closure_open_emissions, ())
+        self.assertEqual(
+            surviving_groups[0].cyclic_tree_entry_emissions,
+            (cyclic_tree_surviving_emission,),
+        )
 
     def test_next_token_frontier_entry_exposes_policy_families_per_support(self) -> None:
         active_atom = AtomId(0)

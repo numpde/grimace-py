@@ -24,6 +24,7 @@ from .writer_state import writer_state_key_sort_tuple
 from .writer_stereo import empty_writer_stereo_state
 from .writer_transitions import finalize_writer_terminal_state
 from .writer_transitions import _WriterActiveEmittedGraphPolicyBlocker
+from .writer_transitions import _WriterNextTokenFrontierSupport
 from .writer_transitions import _WriterTopLevelScheduleOutcome
 from .writer_transitions import _legal_writer_schedule_outcome
 from .writer_transitions import _raise_for_top_level_schedule_outcome_blockers
@@ -118,11 +119,65 @@ class _WriterFrontierStateScheduleOutcome:
 
 
 @dataclass(frozen=True, slots=True)
+class _WriterFrontierNextTokenSupport:
+    state_key: WriterStateKey
+    parent_weight: int
+    schedule_support: _WriterNextTokenFrontierSupport
+    successor_key: WriterStateKey
+
+    @property
+    def emitted_text(self) -> str:
+        return self.schedule_support.emitted_text
+
+    @property
+    def graph_action_surface(self):
+        return self.schedule_support.graph_action_surface
+
+    @property
+    def policy_family(self):
+        return self.schedule_support.policy_family
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterFrontierNextTokenEntry:
+    emitted_text: str
+    supports: tuple[_WriterFrontierNextTokenSupport, ...]
+
+    @property
+    def successor_keys(self) -> frozenset[WriterStateKey]:
+        return frozenset(
+            support.successor_key
+            for support in self.supports
+        )
+
+    @property
+    def weighted_successors(self) -> Counter[WriterStateKey]:
+        weighted: Counter[WriterStateKey] = Counter()
+
+        for support in self.supports:
+            weighted[support.successor_key] += support.parent_weight
+
+        return weighted
+
+    @property
+    def immediate_multiplicity(self) -> int:
+        return sum(self.weighted_successors.values())
+
+    @property
+    def policy_families(self):
+        return tuple(
+            support.policy_family
+            for support in self.supports
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class _WriterFrontierScheduleOutcome:
     state_outcomes: tuple[_WriterFrontierStateScheduleOutcome, ...]
     terminal_by_key: Counter[WriterStateKey]
     grouped_by_text: dict[str, set[WriterStateKey]]
     weighted_by_text: dict[str, Counter[WriterStateKey]]
+    next_token_frontier: tuple[_WriterFrontierNextTokenEntry, ...] = ()
 
     @property
     def blocked_state_outcomes(
@@ -155,6 +210,34 @@ class _WriterFrontierScheduleOutcome:
             grouped_by_text=self.grouped_by_text,
             weighted_by_text=self.weighted_by_text,
         )
+
+    @property
+    def next_token_supports(
+        self,
+    ) -> tuple[_WriterFrontierNextTokenSupport, ...]:
+        return tuple(
+            support
+            for entry in self.next_token_frontier
+            for support in entry.supports
+        )
+
+    @property
+    def grouped_by_text_from_next_token_frontier(
+        self,
+    ) -> dict[str, set[WriterStateKey]]:
+        return {
+            entry.emitted_text: set(entry.successor_keys)
+            for entry in self.next_token_frontier
+        }
+
+    @property
+    def weighted_by_text_from_next_token_frontier(
+        self,
+    ) -> dict[str, Counter[WriterStateKey]]:
+        return {
+            entry.emitted_text: entry.weighted_successors
+            for entry in self.next_token_frontier
+        }
 
 
 def initial_writer_frontier_cursor(
@@ -306,6 +389,30 @@ def _successors_from_grouped(
     )
 
 
+def _writer_frontier_next_token_entries_from_supports(
+    supports: tuple[_WriterFrontierNextTokenSupport, ...],
+) -> tuple[_WriterFrontierNextTokenEntry, ...]:
+    grouped: dict[str, list[_WriterFrontierNextTokenSupport]] = {}
+    order: list[str] = []
+
+    for support in supports:
+        emitted_text = support.emitted_text
+
+        if emitted_text not in grouped:
+            grouped[emitted_text] = []
+            order.append(emitted_text)
+
+        grouped[emitted_text].append(support)
+
+    return tuple(
+        _WriterFrontierNextTokenEntry(
+            emitted_text=emitted_text,
+            supports=tuple(grouped[emitted_text]),
+        )
+        for emitted_text in order
+    )
+
+
 def _writer_frontier_schedule_outcome(
     prepared: SouthStarPreparedMol,
     cursor: WriterFrontierCursor,
@@ -316,6 +423,7 @@ def _writer_frontier_schedule_outcome(
     weighted: dict[str, Counter[WriterStateKey]] = {}
     terminal_by_key: Counter[WriterStateKey] = Counter()
     state_outcomes: list[_WriterFrontierStateScheduleOutcome] = []
+    frontier_supports: list[_WriterFrontierNextTokenSupport] = []
 
     for key, parent_weight in cursor.weighted_states:
         state = writer_state_from_key(key)
@@ -346,6 +454,15 @@ def _writer_frontier_schedule_outcome(
         for entry in schedule_outcome.selected_next_token_frontier:
             for support in entry.supports:
                 successor_key = writer_state_key(support.transition.successor)
+
+                frontier_support = _WriterFrontierNextTokenSupport(
+                    state_key=key,
+                    parent_weight=parent_weight,
+                    schedule_support=support,
+                    successor_key=successor_key,
+                )
+                frontier_supports.append(frontier_support)
+
                 grouped.setdefault(entry.emitted_text, set()).add(successor_key)
                 weighted.setdefault(
                     entry.emitted_text,
@@ -357,6 +474,11 @@ def _writer_frontier_schedule_outcome(
         terminal_by_key=terminal_by_key,
         grouped_by_text=grouped,
         weighted_by_text=weighted,
+        next_token_frontier=(
+            _writer_frontier_next_token_entries_from_supports(
+                tuple(frontier_supports)
+            )
+        ),
     )
 
 

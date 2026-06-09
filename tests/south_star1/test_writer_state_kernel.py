@@ -302,6 +302,8 @@ class WriterStateKernelTest(unittest.TestCase):
             outcome.graph_policy_blockers,
             blocked_top_level_outcome.graph_policy_blockers,
         )
+        self.assertEqual(outcome.next_token_frontier, ())
+        self.assertEqual(outcome.next_token_supports, ())
         self.assertEqual(outcome.grouped_by_text, {})
         self.assertEqual(outcome.weighted_by_text, {})
 
@@ -393,6 +395,124 @@ class WriterStateKernelTest(unittest.TestCase):
             )
 
         self.assertEqual(grouped, outcome.grouped_transitions)
+
+    def test_writer_frontier_next_token_entries_group_supports_by_emitted_text(self) -> None:
+        parent_key = writer_state_key(_raw_initial_state(AtomId(0)))
+        successor_a = writer_state_key(_raw_initial_state(AtomId(1)))
+        successor_b = writer_state_key(_raw_initial_state(AtomId(2)))
+        cyclic_family = (
+            writer_transitions._WriterGraphPolicyActionFamily.CYCLIC_TREE_ENTRY
+        )
+        closure_family = (
+            writer_transitions._WriterGraphPolicyActionFamily.CLOSURE_OPEN
+        )
+        support_1 = writer_frontier_module._WriterFrontierNextTokenSupport(
+            state_key=parent_key,
+            parent_weight=2,
+            schedule_support=SimpleNamespace(
+                emitted_text="C",
+                graph_action_surface=object(),
+                policy_family=cyclic_family,
+            ),  # type: ignore[arg-type]
+            successor_key=successor_a,
+        )
+        support_2 = writer_frontier_module._WriterFrontierNextTokenSupport(
+            state_key=parent_key,
+            parent_weight=3,
+            schedule_support=SimpleNamespace(
+                emitted_text="N",
+                graph_action_surface=object(),
+                policy_family=closure_family,
+            ),  # type: ignore[arg-type]
+            successor_key=successor_b,
+        )
+        support_3 = writer_frontier_module._WriterFrontierNextTokenSupport(
+            state_key=parent_key,
+            parent_weight=5,
+            schedule_support=SimpleNamespace(
+                emitted_text="C",
+                graph_action_surface=object(),
+                policy_family=cyclic_family,
+            ),  # type: ignore[arg-type]
+            successor_key=successor_a,
+        )
+
+        entries = (
+            writer_frontier_module
+            ._writer_frontier_next_token_entries_from_supports(
+                (support_1, support_2, support_3)
+            )
+        )
+
+        self.assertEqual(tuple(entry.emitted_text for entry in entries), ("C", "N"))
+        self.assertEqual(entries[0].supports, (support_1, support_3))
+        self.assertEqual(entries[1].supports, (support_2,))
+        self.assertEqual(entries[0].successor_keys, frozenset({successor_a}))
+        self.assertEqual(entries[0].weighted_successors[successor_a], 7)
+        self.assertEqual(entries[0].immediate_multiplicity, 7)
+        self.assertEqual(entries[0].policy_families, (cyclic_family, cyclic_family))
+
+    def test_writer_frontier_schedule_outcome_records_next_token_support_provenance(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+
+        outcome = writer_frontier_module._writer_frontier_schedule_outcome(
+            prepared,
+            cursor,
+        )
+
+        self.assertFalse(outcome.blocked)
+        self.assertTrue(outcome.next_token_frontier)
+        self.assertTrue(outcome.next_token_supports)
+
+        cursor_weight_by_key = dict(cursor.weighted_states)
+        selected_schedule_supports = tuple(
+            support
+            for state_outcome in outcome.state_outcomes
+            for entry in (
+                state_outcome
+                .schedule_outcome
+                .selected_next_token_frontier
+            )
+            for support in entry.supports
+        )
+        support = outcome.next_token_supports[0]
+
+        self.assertIn(support.state_key, cursor_weight_by_key)
+        self.assertEqual(
+            support.parent_weight,
+            cursor_weight_by_key[support.state_key],
+        )
+        self.assertIn(support.schedule_support, selected_schedule_supports)
+        self.assertEqual(
+            support.successor_key,
+            writer_state_key(support.schedule_support.transition.successor),
+        )
+        self.assertEqual(
+            support.emitted_text,
+            support.schedule_support.emitted_text,
+        )
+        self.assertEqual(
+            outcome.grouped_by_text_from_next_token_frontier,
+            outcome.grouped_by_text,
+        )
+        self.assertEqual(
+            outcome.weighted_by_text_from_next_token_frontier,
+            outcome.weighted_by_text,
+        )
+
+    def test_writer_frontier_schedule_outcome_terminal_only_has_no_next_token_supports(self) -> None:
+        key = writer_state_key(_raw_initial_state(AtomId(0)))
+        outcome = writer_frontier_module._WriterFrontierScheduleOutcome(
+            state_outcomes=(),
+            terminal_by_key=Counter({key: 2}),
+            grouped_by_text={},
+            weighted_by_text={},
+        )
+
+        self.assertEqual(outcome.terminal_by_key, Counter({key: 2}))
+        self.assertEqual(outcome.next_token_frontier, ())
+        self.assertEqual(outcome.next_token_supports, ())
 
     def test_writer_frontier_counts_duplicate_token_paths_to_same_state(self) -> None:
         prepared = prepare_south_star_mol_from_facts(

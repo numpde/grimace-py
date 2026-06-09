@@ -166,6 +166,9 @@ def reachable_terminal_prefixes(
     outputs: set[str] = set()
     if state.is_terminal():
         outputs.add(state.prefix())
+        resolved = frozenset(outputs)
+        memo[key] = resolved
+        return resolved
 
     for _, successor in runtime_realized_branch_transitions(state):
         outputs.update(reachable_terminal_prefixes(successor, memo=memo))

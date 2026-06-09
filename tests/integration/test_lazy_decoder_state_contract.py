@@ -462,23 +462,23 @@ class LazyDecoderStateContractTests(unittest.TestCase):
                 self.assertEqual(expected_prefix, advanced.prefix)
 
     def test_merged_state_does_not_query_terminal_child_transitions(self) -> None:
-        terminal = _FakeState(
+        first = _FakeState(
             "C",
             terminal=True,
             reject_terminal_transitions=True,
         )
-        nonterminal = _FakeState(
+        second = _FakeState(
             "C",
-            terminal=False,
-            transitions=(_fake_transition("C", lambda: nonterminal),),
+            terminal=True,
+            reject_terminal_transitions=True,
         )
         merged = _runtime_states._MergedStateAdapter(
-            (terminal, nonterminal)
+            (first, second)
         )
 
         self.assertTrue(merged.is_terminal())
-        self.assertEqual(("C",), _branch_transition_texts(merged))
-        self.assertEqual(("C",), _token_transition_texts(merged))
+        self.assertEqual((), _branch_transition_texts(merged))
+        self.assertEqual((), _token_transition_texts(merged))
 
     def test_merged_state_sums_token_transition_branch_counts(self) -> None:
         first = _FakeState(
@@ -537,28 +537,27 @@ class LazyDecoderStateContractTests(unittest.TestCase):
             ),
         )
 
-    def test_reachable_outputs_include_accepting_state_continuations(self) -> None:
+    def test_reachable_outputs_stop_at_terminal_state(self) -> None:
         terminal_child = _FakeState("CC", terminal=True)
-        accepting_with_continuation = _FakeState(
+        terminal_with_continuation = _FakeState(
             "C",
             terminal=True,
             transitions=(_fake_transition("C", lambda: terminal_child),),
+            reject_terminal_transitions=True,
         )
 
         self.assertEqual(
-            frozenset({"C", "CC"}),
-            reachable_terminal_prefixes(accepting_with_continuation),
+            frozenset({"C"}),
+            reachable_terminal_prefixes(terminal_with_continuation),
         )
 
-    def test_disconnected_accepting_fragment_keeps_continuations_and_separator(
+    def test_disconnected_terminal_fragment_exposes_only_separator_before_last(
         self,
     ) -> None:
         first_fragment = _FakeState(
             "C",
             terminal=True,
-            transitions=(
-                _fake_transition("C", lambda: _FakeState("CC", terminal=True)),
-            ),
+            reject_terminal_transitions=True,
         )
 
         disconnected = _runtime_states._DisconnectedStateAdapter(
@@ -569,10 +568,10 @@ class LazyDecoderStateContractTests(unittest.TestCase):
         )
 
         self.assertFalse(disconnected.is_terminal())
-        self.assertEqual(("C", "."), _branch_transition_texts(disconnected))
-        self.assertEqual(("C", "."), _token_transition_texts(disconnected))
+        self.assertEqual((".",), _branch_transition_texts(disconnected))
+        self.assertEqual((".",), _token_transition_texts(disconnected))
         self.assertEqual(
-            (("C", 1), (".", 1)),
+            ((".", 1),),
             runtime_token_transition_counts(disconnected),
         )
         last_fragment = _runtime_states._DisconnectedStateAdapter(
@@ -580,8 +579,8 @@ class LazyDecoderStateContractTests(unittest.TestCase):
         )
 
         self.assertTrue(last_fragment.is_terminal())
-        self.assertEqual(("C",), _branch_transition_texts(last_fragment))
-        self.assertEqual(("C",), _token_transition_texts(last_fragment))
+        self.assertEqual((), _branch_transition_texts(last_fragment))
+        self.assertEqual((), _token_transition_texts(last_fragment))
 
     def test_disconnected_state_rejects_invalid_constructor_state(self) -> None:
         fragment = _FakeState("C", terminal=True)

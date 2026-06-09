@@ -123,17 +123,18 @@ class RuntimeStateInvariantTests(unittest.TestCase):
 
             if state.is_terminal():
                 self.assertIn(prefix, reachable)
+                self.assertEqual(frozenset({prefix}), reachable)
+                self.assertFalse(successor_states)
+                continue
 
             if not successor_states:
-                self.assertTrue(state.is_terminal())
-                self.assertEqual(frozenset({prefix}), reachable)
-                continue
+                self.fail("nonterminal runtime state has no successors")
 
             if require_unique_choice_texts:
                 option_texts = tuple(text for text, _ in successor_states)
                 self.assertEqual(len(set(option_texts)), len(option_texts))
 
-            union_of_branch_outputs: set[str] = {prefix} if state.is_terminal() else set()
+            union_of_branch_outputs: set[str] = set()
             for _, successor in successor_states:
                 branch_outputs = reachable_terminal_prefixes(
                     successor,

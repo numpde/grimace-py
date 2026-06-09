@@ -52,11 +52,12 @@ here.
   keeps docs-only pushes cheap, but it also means checked-in docs health checks
   run for docs changes only via pull requests, manual dispatch, or nearby code
   changes.
-- Internal runtime-state audits deliberately allow an accepted state to still
-  have outgoing transitions, because composed states can model acceptance and
-  continuations separately. Public decoder tests cover terminal no-choice
-  behavior on sampled paths and empty molecules, but they do not exhaustively
-  assert that every reachable public terminal state has empty `next_choices`.
+- Internal runtime-state audits deliberately allowed a state marked terminal to
+  still have outgoing transitions. That was a test-model leak, not a proven
+  property of real public decoders: for a fixed molecule, a public terminal
+  prefix should be a complete supported SMILES and should have no next choices.
+  Fragment-level acceptance may still need an internal name such as
+  `is_accepting`, but public `is_terminal` should remain a stopping predicate.
 - `PreparedMol.from_bytes()` requires zstd frames to carry content size and
   checksum before decompression, but it does not apply an explicit
   Grimace-level maximum decompressed-size policy before calling zstd. The Rust
@@ -403,35 +404,44 @@ Checklist:
 - [ ] Update workflow posture tests to cover the docs workflow.
 - [ ] Keep main CI path-ignore if the docs workflow covers docs health.
 
-### 10. Accepted internal states may have outgoing transitions
+### 10. Public terminality versus internal acceptance
 
-Issue: internal composed states can be accepted and still have outgoing
-transitions. Public terminal states are expected to have no next choices, but
-that invariant is not exhaustively asserted across reachable public states.
+Issue: the test/runtime adapter model allowed a state marked `is_terminal()` to
+also expose outgoing transitions. On inspection, that is too permissive for the
+public decoder contract. For a fixed molecule, a public terminal prefix should
+be a complete supported SMILES and a stopping state. The possible weaker concept
+is fragment- or branch-level acceptance during composition, which should not be
+called public terminality.
 
 Serious alternatives:
 
-- Document the internal distinction and leave tests as-is.
-- Assert only selected terminal examples.
-- Exhaustively audit reachable public decoder states for terminal/no-choice.
-- Change internal `is_terminal` to mean no outgoing choices.
-- Split internal acceptance from public terminality.
+- Keep the permissive test model and document that terminal can have
+  continuations.
+- Add only a few selected public terminal/no-choice examples.
+- Make public runtime-state audits treat terminal as a stopping state.
+- Rename the internal predicate to `is_accepting()` everywhere now.
+- Split internal acceptance from public terminality in a later implementation
+  pass, after tests state the desired public invariant.
 
-Principled direction: split names semantically. Internal state should expose
-`is_accepting()`; public decoder should expose `is_terminal` after applying the
-public stopping rule. Tests should assert the public invariant exhaustively.
+Principled direction: first make tests express the desired public invariant:
+reachable public states with `is_terminal` must have no transitions. Then, in a
+separate implementation pass, split names semantically if needed: internal
+fragment/branch completion can be `is_accepting()`, while public decoder
+`is_terminal` remains the whole-molecule stopping predicate.
 
 Checklist:
 
-- [ ] Rename internal protocol method from `is_terminal()` to `is_accepting()`
-      or add a wrapper that makes the distinction explicit.
-- [ ] Define public terminality as accepting with no public continuation.
-- [ ] Audit branch-preserving and determinized public states over representative
-      reachable state graphs.
-- [ ] Add tests: every reachable public state with `is_terminal` has
-      `next_choices == ()`.
-- [ ] Keep walker sampling stopping on acceptance if that remains the desired
-      draw semantics.
+- [x] Change test helpers that compute reachable public outputs to stop at
+      `is_terminal`.
+- [x] Rewrite synthetic tests that manufacture terminal-with-continuation states
+      so they do not bless that shape.
+- [x] Add/keep exhaustive audits for branch-preserving and determinized public
+      states: if `state.is_terminal()`, realized public transitions must be
+      empty and reachable output must be exactly `{state.prefix()}`.
+- [ ] If implementation changes are needed later, introduce `is_accepting()` for
+      fragment/branch composition before changing public `is_terminal`.
+- [ ] Keep walker sampling semantics explicit: a public draw stops when the
+      public state is terminal.
 
 ### 11. PreparedMol zstd decompression has no Grimace size cap
 

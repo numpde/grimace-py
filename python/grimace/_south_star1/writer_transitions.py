@@ -176,6 +176,9 @@ class _WriterActiveEmittedGraphPolicyDecisionKind(Enum):
     CLOSURE_ENDPOINT = "closure_endpoint"
     ACTIVE_CHILD = "active_child"
     BLOCKED_CHILD = "blocked_child"
+    UNRESOLVED_RESIDUAL_ATTACHMENT_CHOICE = (
+        "unresolved_residual_attachment_choice"
+    )
 
 
 class _WriterTopLevelScheduleDecisionKind(Enum):
@@ -590,6 +593,21 @@ class _WriterActiveEmittedGraphPolicyDecision:
                 and child_present
                 and self.child_schedule_surface.blocked
             )
+        elif (
+            self.kind
+            is (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .UNRESOLVED_RESIDUAL_ATTACHMENT_CHOICE
+            )
+        ):
+            valid = (
+                not closure_survived
+                and child_present
+                and not self.child_schedule_surface.blocked
+                and bool(
+                    self.considered_closure_open_vs_cyclic_tree_entry_groups
+                )
+            )
         else:
             valid = False
 
@@ -601,9 +619,12 @@ class _WriterActiveEmittedGraphPolicyDecision:
 
     @property
     def blocked(self) -> bool:
-        return (
-            self.kind
-            is _WriterActiveEmittedGraphPolicyDecisionKind.BLOCKED_CHILD
+        return self.kind in (
+            _WriterActiveEmittedGraphPolicyDecisionKind.BLOCKED_CHILD,
+            (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .UNRESOLVED_RESIDUAL_ATTACHMENT_CHOICE
+            ),
         )
 
     @property
@@ -615,7 +636,13 @@ class _WriterActiveEmittedGraphPolicyDecision:
 
     @property
     def child_scheduled_actions(self) -> tuple[_WriterScheduledAction, ...]:
-        if self.child_schedule_surface is None or self.child_schedule_surface.blocked:
+        if (
+            self.kind
+            is not _WriterActiveEmittedGraphPolicyDecisionKind.ACTIVE_CHILD
+        ):
+            return ()
+
+        if self.child_schedule_surface is None:
             return ()
 
         return self.child_schedule_surface.scheduled_actions
@@ -713,6 +740,21 @@ class _WriterActiveEmittedGraphPolicyDecision:
             for group in self.considered_residual_attachment_policy_groups
             if group.has_closure_open_vs_cyclic_tree_entry_choice
         )
+
+    @property
+    def unresolved_residual_attachment_policy_groups(
+        self,
+    ) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+        if (
+            self.kind
+            is not (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .UNRESOLVED_RESIDUAL_ATTACHMENT_CHOICE
+            )
+        ):
+            return ()
+
+        return self.considered_closure_open_vs_cyclic_tree_entry_groups
 
 
 def _closure_endpoint_combined_batch(
@@ -1534,6 +1576,32 @@ def _active_emitted_graph_policy_decision(
             child_schedule_surface=child_schedule_surface,
         )
 
+    candidate_surfaces = (
+        *closure_decision.considered_graph_action_surfaces,
+        *child_schedule_surface.graph_action_surfaces,
+    )
+    candidate_groups = (
+        _residual_attachment_policy_groups_from_graph_action_surfaces(
+            candidate_surfaces
+        )
+    )
+    unresolved_groups = tuple(
+        group
+        for group in candidate_groups
+        if group.has_closure_open_vs_cyclic_tree_entry_choice
+    )
+
+    if unresolved_groups:
+        return _WriterActiveEmittedGraphPolicyDecision(
+            kind=(
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .UNRESOLVED_RESIDUAL_ATTACHMENT_CHOICE
+            ),
+            active_atom=active_atom,
+            closure_endpoint_decision=closure_decision,
+            child_schedule_surface=child_schedule_surface,
+        )
+
     return _WriterActiveEmittedGraphPolicyDecision(
         kind=_WriterActiveEmittedGraphPolicyDecisionKind.ACTIVE_CHILD,
         active_atom=active_atom,
@@ -1564,7 +1632,19 @@ def _active_emitted_schedule_decision(
             graph_policy_decision=policy_decision,
         )
 
-    _raise_for_child_obligation_blockers(policy_decision.blockers)
+    _raise_for_active_emitted_graph_policy_blockers(policy_decision)
+
+    if (
+        policy_decision.kind
+        is not _WriterActiveEmittedGraphPolicyDecisionKind.ACTIVE_CHILD
+    ):
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            (
+                "active-emitted graph policy did not select an emittable "
+                f"child action: {policy_decision.kind!r}"
+            ),
+        )
 
     child_schedule_surface = policy_decision.child_schedule_surface
     if child_schedule_surface is None:
@@ -2914,6 +2994,35 @@ def _raise_for_child_obligation_blockers(
         raise SouthStarError(
             SouthStarErrorKind.UNSUPPORTED_POLICY,
             "WRITER_SHAPED multi-incidence residual attachments are not supported yet",
+        )
+
+
+def _raise_for_active_emitted_graph_policy_blockers(
+    policy_decision: _WriterActiveEmittedGraphPolicyDecision,
+) -> None:
+    if (
+        policy_decision.kind
+        is _WriterActiveEmittedGraphPolicyDecisionKind.BLOCKED_CHILD
+    ):
+        _raise_for_child_obligation_blockers(policy_decision.blockers)
+        return
+
+    if (
+        policy_decision.kind
+        is (
+            _WriterActiveEmittedGraphPolicyDecisionKind
+            .UNRESOLVED_RESIDUAL_ATTACHMENT_CHOICE
+        )
+    ):
+        groups = policy_decision.unresolved_residual_attachment_policy_groups
+        keys = tuple(group.key for group in groups)
+
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            (
+                "unsupported active-emitted residual attachment policy choice: "
+                f"{keys!r}"
+            ),
         )
 
 

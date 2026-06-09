@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from dataclasses import field
 from dataclasses import replace
 from enum import Enum
 from typing import TYPE_CHECKING
@@ -562,6 +563,10 @@ class _WriterActiveEmittedScheduleDecision:
     selected_batch: _WriterScheduledActionEmissionBatch
     child_batch: _WriterScheduledActionEmissionBatch | None = None
     child_schedule_surface: _WriterActiveChildScheduleSurface | None = None
+    graph_policy_decision: _WriterActiveEmittedGraphPolicyDecision | None = field(
+        default=None,
+        compare=False,
+    )
 
     def __post_init__(self) -> None:
         expected_closure_batch = _closure_endpoint_combined_batch(
@@ -593,6 +598,34 @@ class _WriterActiveEmittedScheduleDecision:
                 SouthStarErrorKind.INTERNAL_INVARIANT,
                 f"invalid active-emitted schedule decision payload: {self.kind!r}",
             )
+
+        policy = self.graph_policy_decision
+        if policy is not None:
+            if policy.closure_endpoint_decision is not self.closure_endpoint_decision:
+                valid = False
+            elif self.kind is _WriterActiveEmittedScheduleDecisionKind.CLOSURE_ENDPOINT:
+                valid = (
+                    policy.kind
+                    is _WriterActiveEmittedGraphPolicyDecisionKind.CLOSURE_ENDPOINT
+                    and policy.child_schedule_surface is None
+                )
+            elif self.kind is _WriterActiveEmittedScheduleDecisionKind.ACTIVE_CHILD:
+                valid = (
+                    policy.kind
+                    is _WriterActiveEmittedGraphPolicyDecisionKind.ACTIVE_CHILD
+                    and policy.child_schedule_surface is self.child_schedule_surface
+                )
+            else:
+                valid = False
+
+            if not valid:
+                raise SouthStarError(
+                    SouthStarErrorKind.INTERNAL_INVARIANT,
+                    (
+                        "invalid active-emitted schedule graph policy payload: "
+                        f"{policy.kind!r}"
+                    ),
+                )
 
     @property
     def considered_graph_action_surfaces(
@@ -690,9 +723,19 @@ class _WriterTopLevelScheduleDecision:
     ) -> tuple[_WriterNextTokenFrontierEntry, ...]:
         return self.selected_batch.surviving_next_token_frontier
 
+    @property
+    def active_emitted_graph_policy_decision(
+        self,
+    ) -> _WriterActiveEmittedGraphPolicyDecision | None:
+        if self.active_emitted_decision is None:
+            return None
+
+        return self.active_emitted_decision.graph_policy_decision
+
 
 def _active_emitted_closure_decision(
     closure_endpoint_decision: _WriterClosureEndpointScheduleDecision,
+    graph_policy_decision: _WriterActiveEmittedGraphPolicyDecision | None = None,
 ) -> _WriterActiveEmittedScheduleDecision:
     closure_batch = _closure_endpoint_combined_batch(
         closure_endpoint_decision
@@ -703,6 +746,7 @@ def _active_emitted_closure_decision(
         closure_endpoint_decision=closure_endpoint_decision,
         closure_batch=closure_batch,
         selected_batch=closure_batch,
+        graph_policy_decision=graph_policy_decision,
     )
 
 
@@ -710,6 +754,7 @@ def _active_emitted_child_decision(
     closure_endpoint_decision: _WriterClosureEndpointScheduleDecision,
     child_schedule_surface: _WriterActiveChildScheduleSurface,
     child_batch: _WriterScheduledActionEmissionBatch,
+    graph_policy_decision: _WriterActiveEmittedGraphPolicyDecision | None = None,
 ) -> _WriterActiveEmittedScheduleDecision:
     closure_batch = _closure_endpoint_combined_batch(
         closure_endpoint_decision
@@ -722,6 +767,7 @@ def _active_emitted_child_decision(
         child_batch=child_batch,
         child_schedule_surface=child_schedule_surface,
         selected_batch=child_batch,
+        graph_policy_decision=graph_policy_decision,
     )
 
 
@@ -1184,7 +1230,8 @@ def _active_emitted_schedule_decision(
         is _WriterActiveEmittedGraphPolicyDecisionKind.CLOSURE_ENDPOINT
     ):
         return _active_emitted_closure_decision(
-            policy_decision.closure_endpoint_decision
+            policy_decision.closure_endpoint_decision,
+            graph_policy_decision=policy_decision,
         )
 
     _raise_for_child_obligation_blockers(policy_decision.blockers)
@@ -1207,6 +1254,7 @@ def _active_emitted_schedule_decision(
         closure_endpoint_decision=policy_decision.closure_endpoint_decision,
         child_schedule_surface=child_schedule_surface,
         child_batch=child_batch,
+        graph_policy_decision=policy_decision,
     )
 
 

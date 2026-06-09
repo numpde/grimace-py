@@ -518,7 +518,31 @@ class _WriterActiveEmittedGraphPolicyDecision:
         return self.child_schedule_surface.scheduled_actions
 
     @property
-    def graph_action_surfaces(
+    def closure_considered_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return self.closure_endpoint_decision.considered_graph_action_surfaces
+
+    @property
+    def child_considered_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        if self.child_schedule_surface is None:
+            return ()
+
+        return self.child_schedule_surface.graph_action_surfaces
+
+    @property
+    def considered_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return (
+            *self.closure_considered_graph_action_surfaces,
+            *self.child_considered_graph_action_surfaces,
+        )
+
+    @property
+    def chosen_graph_action_surfaces(
         self,
     ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
         if (
@@ -531,12 +555,15 @@ class _WriterActiveEmittedGraphPolicyDecision:
             self.kind
             is _WriterActiveEmittedGraphPolicyDecisionKind.ACTIVE_CHILD
         ):
-            if self.child_schedule_surface is None:
-                return ()
-
-            return self.child_schedule_surface.graph_action_surfaces
+            return self.child_considered_graph_action_surfaces
 
         return ()
+
+    @property
+    def graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return self.chosen_graph_action_surfaces
 
 
 def _closure_endpoint_combined_batch(
@@ -631,8 +658,26 @@ class _WriterActiveEmittedScheduleDecision:
     def considered_graph_action_surfaces(
         self,
     ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        if self.graph_policy_decision is not None:
+            return self.graph_policy_decision.considered_graph_action_surfaces
+
         if self.kind is _WriterActiveEmittedScheduleDecisionKind.CLOSURE_ENDPOINT:
             return self.closure_endpoint_decision.considered_graph_action_surfaces
+
+        if self.child_schedule_surface is None:
+            return ()
+
+        return self.child_schedule_surface.graph_action_surfaces
+
+    @property
+    def policy_chosen_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        if self.graph_policy_decision is not None:
+            return self.graph_policy_decision.chosen_graph_action_surfaces
+
+        if self.kind is _WriterActiveEmittedScheduleDecisionKind.CLOSURE_ENDPOINT:
+            return self.closure_endpoint_decision.selected_graph_action_surfaces
 
         if self.child_schedule_surface is None:
             return ()
@@ -712,6 +757,15 @@ class _WriterTopLevelScheduleDecision:
             return self.active_emitted_decision.selected_graph_action_surfaces
 
         return self.selected_batch.surviving_graph_action_surfaces
+
+    @property
+    def policy_chosen_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        if self.active_emitted_decision is None:
+            return self.selected_graph_action_surfaces
+
+        return self.active_emitted_decision.policy_chosen_graph_action_surfaces
 
     @property
     def selected_transitions(self) -> tuple[WriterTransition, ...]:

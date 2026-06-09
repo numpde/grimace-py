@@ -5218,6 +5218,92 @@ class WriterStateKernelTest(unittest.TestCase):
             (groups[0],),
         )
 
+    def test_active_emitted_graph_policy_records_unsupported_owner_scope_residual_choice(self) -> None:
+        active_atom = AtomId(0)
+        label = WriterClosureLabel(value=1, text="1")
+        open_obligation = writer_transitions._WriterClosureOpenObligation(
+            bond=BondId(1),
+            first_atom=active_atom,
+            second_atom=AtomId(3),
+            attachment_id=11,
+            attachment_action_kind=(
+                WriterResidualAttachmentActionKind.CLOSURE_OPEN_READY
+            ),
+            owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+        )
+        open_action = writer_transitions._open_closure_endpoint_action(
+            active_atom,
+            open_obligation,
+            label,
+        )
+        open_emission = writer_transitions._WriterScheduledActionEmission(
+            action=open_action,
+            transitions=(),
+        )
+        closure_decision = writer_transitions._WriterClosureEndpointScheduleDecision(
+            pair_batch=writer_transitions._WriterScheduledActionEmissionBatch(
+                actions=(),
+                emissions=(),
+                surviving_emissions=(),
+            ),
+            open_batch=writer_transitions._WriterScheduledActionEmissionBatch(
+                actions=(open_action,),
+                emissions=(open_emission,),
+                surviving_emissions=(),
+            ),
+            surviving_emissions=(),
+            schedule_surface=writer_transitions._WriterClosureEndpointScheduleSurface(
+                active_atom=active_atom,
+                pair_actions=(),
+                open_actions=(open_action,),
+            ),
+        )
+        child = writer_transitions._WriterChildObligation(
+            bond=BondId(2),
+            child=AtomId(4),
+            boundary_atom=active_atom,
+            owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+            attachment_id=11,
+            attachment_action_kind=(
+                WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY
+            ),
+        )
+        child_action = writer_transitions._enter_inline_child_action(
+            active_atom,
+            child,
+        )
+        child_surface = writer_transitions._WriterActiveChildScheduleSurface(
+            active_atom=active_atom,
+            blockers=(),
+            child_obligations=(child,),
+            scheduled_actions=(child_action,),
+        )
+        policy = writer_transitions._WriterActiveEmittedGraphPolicyDecision(
+            kind=(
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyDecisionKind
+                .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+            ),
+            active_atom=active_atom,
+            closure_endpoint_decision=closure_decision,
+            child_schedule_surface=child_surface,
+        )
+
+        self.assertTrue(policy.blocked)
+        self.assertFalse(policy.emits_child_actions)
+        self.assertEqual(policy.child_scheduled_actions, ())
+        self.assertTrue(
+            policy.unsupported_owner_scope_residual_attachment_policy_groups
+        )
+        self.assertEqual(
+            policy.unresolved_residual_attachment_policy_groups,
+            (),
+        )
+        self.assertEqual(
+            policy.resolved_residual_attachment_policy_groups,
+            (),
+        )
+
     def test_active_emitted_graph_policy_selects_unresolved_residual_choice_before_child(self) -> None:
         prepared = object()
         state = object()
@@ -5460,7 +5546,7 @@ class WriterStateKernelTest(unittest.TestCase):
             kind=(
                 writer_transitions
                 ._WriterActiveEmittedGraphPolicyDecisionKind
-                .UNRESOLVED_RESIDUAL_ATTACHMENT_CHOICE
+                .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
             ),
             active_atom=active_atom,
             closure_endpoint_decision=closure_decision,
@@ -5594,6 +5680,14 @@ class WriterStateKernelTest(unittest.TestCase):
             (),
         )
         self.assertEqual(
+            decision.unsupported_owner_scope_residual_attachment_policy_groups,
+            (),
+        )
+        self.assertEqual(
+            decision.missing_closure_open_support_evidence_groups,
+            (),
+        )
+        self.assertEqual(
             decision.unresolved_closure_open_vs_cyclic_tree_entry_groups,
             (),
         )
@@ -5602,7 +5696,7 @@ class WriterStateKernelTest(unittest.TestCase):
             child_surface.scheduled_actions,
         )
 
-    def test_active_emitted_graph_policy_keeps_branch_return_owned_dead_closure_choice_unresolved(self) -> None:
+    def test_active_emitted_graph_policy_records_branch_return_owned_dead_closure_choice_as_unsupported_owner_scope(self) -> None:
         prepared = object()
         state = object()
         context = object()
@@ -5685,7 +5779,7 @@ class WriterStateKernelTest(unittest.TestCase):
             (
                 writer_transitions
                 ._WriterActiveEmittedGraphPolicyDecisionKind
-                .UNRESOLVED_RESIDUAL_ATTACHMENT_CHOICE
+                .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
             ),
         )
         self.assertEqual(decision.resolved_residual_attachment_policy_groups, ())
@@ -5695,10 +5789,17 @@ class WriterStateKernelTest(unittest.TestCase):
                 .unsupported_owner_scope_closure_open_vs_cyclic_tree_entry_groups
             )
         )
-        self.assertTrue(decision.unresolved_residual_attachment_policy_groups)
+        self.assertTrue(
+            decision.unsupported_owner_scope_residual_attachment_policy_groups
+        )
+        self.assertEqual(
+            decision.missing_closure_open_support_evidence_groups,
+            (),
+        )
+        self.assertEqual(decision.unresolved_residual_attachment_policy_groups, ())
         self.assertEqual(decision.child_scheduled_actions, ())
 
-    def test_active_emitted_graph_policy_keeps_mixed_owner_dead_closure_choice_unresolved(self) -> None:
+    def test_active_emitted_graph_policy_records_mixed_owner_dead_closure_choice_as_unsupported_owner_scope(self) -> None:
         prepared = object()
         state = object()
         context = object()
@@ -5781,7 +5882,7 @@ class WriterStateKernelTest(unittest.TestCase):
             (
                 writer_transitions
                 ._WriterActiveEmittedGraphPolicyDecisionKind
-                .UNRESOLVED_RESIDUAL_ATTACHMENT_CHOICE
+                .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
             ),
         )
         self.assertTrue(
@@ -5789,6 +5890,13 @@ class WriterStateKernelTest(unittest.TestCase):
                 decision
                 .unsupported_owner_scope_closure_open_vs_cyclic_tree_entry_groups
             )
+        )
+        self.assertTrue(
+            decision.unsupported_owner_scope_residual_attachment_policy_groups
+        )
+        self.assertEqual(
+            decision.unresolved_residual_attachment_policy_groups,
+            (),
         )
         self.assertEqual(decision.child_scheduled_actions, ())
 
@@ -5875,6 +5983,11 @@ class WriterStateKernelTest(unittest.TestCase):
             ),
         )
         self.assertTrue(decision.unresolved_residual_attachment_policy_groups)
+        self.assertTrue(decision.missing_closure_open_support_evidence_groups)
+        self.assertEqual(
+            decision.unsupported_owner_scope_residual_attachment_policy_groups,
+            (),
+        )
         self.assertEqual(
             decision.support_dead_closure_open_vs_cyclic_tree_entry_groups,
             (),

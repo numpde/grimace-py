@@ -179,6 +179,9 @@ class _WriterActiveEmittedGraphPolicyDecisionKind(Enum):
         "active_child_after_dead_closure_open"
     )
     BLOCKED_CHILD = "blocked_child"
+    UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE = (
+        "unsupported_owner_scope_residual_attachment_choice"
+    )
     UNRESOLVED_RESIDUAL_ATTACHMENT_CHOICE = (
         "unresolved_residual_attachment_choice"
     )
@@ -795,7 +798,10 @@ class _WriterActiveEmittedGraphPolicyDecision:
                 and bool(
                     self.support_dead_closure_open_vs_cyclic_tree_entry_groups
                 )
-                and not self.unresolved_closure_open_vs_cyclic_tree_entry_groups
+                and not (
+                    self.unsupported_owner_scope_closure_open_vs_cyclic_tree_entry_groups
+                )
+                and not self.missing_closure_open_support_evidence_groups
             )
         elif (
             self.kind
@@ -810,6 +816,21 @@ class _WriterActiveEmittedGraphPolicyDecision:
             self.kind
             is (
                 _WriterActiveEmittedGraphPolicyDecisionKind
+                .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+            )
+        ):
+            valid = (
+                not closure_survived
+                and child_present
+                and not self.child_schedule_surface.blocked
+                and bool(
+                    self.unsupported_owner_scope_closure_open_vs_cyclic_tree_entry_groups
+                )
+            )
+        elif (
+            self.kind
+            is (
+                _WriterActiveEmittedGraphPolicyDecisionKind
                 .UNRESOLVED_RESIDUAL_ATTACHMENT_CHOICE
             )
         ):
@@ -817,7 +838,10 @@ class _WriterActiveEmittedGraphPolicyDecision:
                 not closure_survived
                 and child_present
                 and not self.child_schedule_surface.blocked
-                and bool(self.unresolved_closure_open_vs_cyclic_tree_entry_groups)
+                and not (
+                    self.unsupported_owner_scope_closure_open_vs_cyclic_tree_entry_groups
+                )
+                and bool(self.missing_closure_open_support_evidence_groups)
             )
         else:
             valid = False
@@ -835,6 +859,10 @@ class _WriterActiveEmittedGraphPolicyDecision:
             (
                 _WriterActiveEmittedGraphPolicyDecisionKind
                 .UNRESOLVED_RESIDUAL_ATTACHMENT_CHOICE
+            ),
+            (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
             ),
         )
 
@@ -979,13 +1007,19 @@ class _WriterActiveEmittedGraphPolicyDecision:
         )
 
     @property
-    def unresolved_closure_open_vs_cyclic_tree_entry_groups(
+    def missing_closure_open_support_evidence_groups(
         self,
     ) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
-        return _unresolved_closure_open_vs_cyclic_tree_entry_groups(
+        return _missing_closure_open_support_evidence_groups(
             self.closure_endpoint_decision,
             self.considered_closure_open_vs_cyclic_tree_entry_groups,
         )
+
+    @property
+    def unresolved_closure_open_vs_cyclic_tree_entry_groups(
+        self,
+    ) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+        return self.missing_closure_open_support_evidence_groups
 
     @property
     def unresolved_residual_attachment_policy_groups(
@@ -1000,7 +1034,24 @@ class _WriterActiveEmittedGraphPolicyDecision:
         ):
             return ()
 
-        return self.unresolved_closure_open_vs_cyclic_tree_entry_groups
+        return self.missing_closure_open_support_evidence_groups
+
+    @property
+    def unsupported_owner_scope_residual_attachment_policy_groups(
+        self,
+    ) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+        if (
+            self.kind
+            is not (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+            )
+        ):
+            return ()
+
+        return (
+            self.unsupported_owner_scope_closure_open_vs_cyclic_tree_entry_groups
+        )
 
     @property
     def resolved_residual_attachment_policy_groups(
@@ -1687,14 +1738,35 @@ def _support_dead_closure_open_vs_cyclic_tree_entry_groups(
     )
 
 
-def _unresolved_closure_open_vs_cyclic_tree_entry_groups(
+def _closure_open_support_evidence_missing_for_residual_attachment_policy_group(
+    closure_endpoint_decision: _WriterClosureEndpointScheduleDecision,
+    group: _WriterResidualAttachmentPolicyGroup,
+) -> bool:
+    if not group.has_active_atom_owned_closure_open_vs_cyclic_tree_entry_choice:
+        return False
+
+    emission_group = _residual_attachment_policy_emission_group_for_key(
+        (
+            closure_endpoint_decision
+            .considered_residual_attachment_policy_emission_groups
+        ),
+        group.key,
+    )
+
+    if emission_group is None:
+        return True
+
+    return not emission_group.closure_open_was_considered
+
+
+def _missing_closure_open_support_evidence_groups(
     closure_endpoint_decision: _WriterClosureEndpointScheduleDecision,
     groups: tuple[_WriterResidualAttachmentPolicyGroup, ...],
 ) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
     return tuple(
         group
         for group in groups
-        if not _closure_open_support_dead_for_residual_attachment_policy_group(
+        if _closure_open_support_evidence_missing_for_residual_attachment_policy_group(
             closure_endpoint_decision,
             group,
         )
@@ -1946,18 +2018,29 @@ def _active_emitted_graph_policy_decision(
         for group in candidate_groups
         if group.has_closure_open_vs_cyclic_tree_entry_choice
     )
-    unresolved_groups = _unresolved_closure_open_vs_cyclic_tree_entry_groups(
+    unsupported_owner_scope_groups = tuple(
+        group
+        for group in choice_groups
+        if group.has_unsupported_owner_scope_closure_open_vs_cyclic_tree_entry_choice
+    )
+
+    if unsupported_owner_scope_groups:
+        return _WriterActiveEmittedGraphPolicyDecision(
+            kind=(
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+            ),
+            active_atom=active_atom,
+            closure_endpoint_decision=closure_decision,
+            child_schedule_surface=child_schedule_surface,
+        )
+
+    missing_evidence_groups = _missing_closure_open_support_evidence_groups(
         closure_decision,
         choice_groups,
     )
-    support_dead_groups = (
-        _support_dead_closure_open_vs_cyclic_tree_entry_groups(
-            closure_decision,
-            choice_groups,
-        )
-    )
 
-    if unresolved_groups:
+    if missing_evidence_groups:
         return _WriterActiveEmittedGraphPolicyDecision(
             kind=(
                 _WriterActiveEmittedGraphPolicyDecisionKind
@@ -1967,6 +2050,13 @@ def _active_emitted_graph_policy_decision(
             closure_endpoint_decision=closure_decision,
             child_schedule_surface=child_schedule_surface,
         )
+
+    support_dead_groups = (
+        _support_dead_closure_open_vs_cyclic_tree_entry_groups(
+            closure_decision,
+            choice_groups,
+        )
+    )
 
     if support_dead_groups:
         return _WriterActiveEmittedGraphPolicyDecision(
@@ -3380,6 +3470,27 @@ def _raise_for_active_emitted_graph_policy_blockers(
     ):
         _raise_for_child_obligation_blockers(policy_decision.blockers)
         return
+
+    if (
+        policy_decision.kind
+        is (
+            _WriterActiveEmittedGraphPolicyDecisionKind
+            .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+        )
+    ):
+        groups = (
+            policy_decision
+            .unsupported_owner_scope_residual_attachment_policy_groups
+        )
+        keys = tuple(group.key for group in groups)
+
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            (
+                "unsupported active-emitted residual attachment owner scope: "
+                f"{keys!r}"
+            ),
+        )
 
     if (
         policy_decision.kind

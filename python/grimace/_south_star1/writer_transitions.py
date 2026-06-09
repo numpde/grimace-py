@@ -359,10 +359,95 @@ class _WriterActiveChildScheduleSurface:
 
 
 @dataclass(frozen=True, slots=True)
+class _WriterClosureEndpointScheduleSurface:
+    active_atom: AtomId
+    pair_actions: tuple[_WriterScheduledAction, ...]
+    open_actions: tuple[_WriterScheduledAction, ...]
+
+    def __post_init__(self) -> None:
+        for action in self.pair_actions:
+            if (
+                action.kind
+                is not _WriterScheduledActionKind.PAIR_CLOSURE_ENDPOINT
+                or action.parent != self.active_atom
+            ):
+                raise SouthStarError(
+                    SouthStarErrorKind.INTERNAL_INVARIANT,
+                    "invalid closure-pair schedule surface action",
+                )
+
+        for action in self.open_actions:
+            if (
+                action.kind
+                is not _WriterScheduledActionKind.OPEN_CLOSURE_ENDPOINT
+                or action.parent != self.active_atom
+            ):
+                raise SouthStarError(
+                    SouthStarErrorKind.INTERNAL_INVARIANT,
+                    "invalid closure-open schedule surface action",
+                )
+
+    @property
+    def scheduled_actions(self) -> tuple[_WriterScheduledAction, ...]:
+        return (
+            *self.pair_actions,
+            *self.open_actions,
+        )
+
+    @property
+    def pair_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            _scheduled_graph_action_surface(action)
+            for action in self.pair_actions
+        )
+
+    @property
+    def open_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            _scheduled_graph_action_surface(action)
+            for action in self.open_actions
+        )
+
+    @property
+    def graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return (
+            *self.pair_graph_action_surfaces,
+            *self.open_graph_action_surfaces,
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class _WriterClosureEndpointScheduleDecision:
     pair_batch: _WriterScheduledActionEmissionBatch
     open_batch: _WriterScheduledActionEmissionBatch
     surviving_emissions: tuple[_WriterScheduledActionEmission, ...]
+    schedule_surface: _WriterClosureEndpointScheduleSurface | None = None
+
+    @property
+    def considered_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        if self.schedule_surface is not None:
+            return self.schedule_surface.graph_action_surfaces
+
+        return (
+            *self.pair_batch.graph_action_surfaces,
+            *self.open_batch.graph_action_surfaces,
+        )
+
+    @property
+    def selected_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return _closure_endpoint_combined_batch(
+            self,
+        ).surviving_graph_action_surfaces
 
 
 @dataclass(frozen=True, slots=True)
@@ -439,9 +524,7 @@ class _WriterActiveEmittedGraphPolicyDecision:
             self.kind
             is _WriterActiveEmittedGraphPolicyDecisionKind.CLOSURE_ENDPOINT
         ):
-            return _closure_endpoint_combined_batch(
-                self.closure_endpoint_decision
-            ).surviving_graph_action_surfaces
+            return self.closure_endpoint_decision.selected_graph_action_surfaces
 
         if (
             self.kind
@@ -516,7 +599,7 @@ class _WriterActiveEmittedScheduleDecision:
         self,
     ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
         if self.kind is _WriterActiveEmittedScheduleDecisionKind.CLOSURE_ENDPOINT:
-            return self.closure_batch.graph_action_surfaces
+            return self.closure_endpoint_decision.considered_graph_action_surfaces
 
         if self.child_schedule_surface is None:
             return ()
@@ -1639,13 +1722,6 @@ def _closure_endpoint_schedule_decision(
         state,
         active_atom,
     )
-    pair_batch = _scheduled_action_emission_batch(
-        prepared,
-        state,
-        context,
-        pair_actions,
-    )
-
     labels = _available_closure_labels_for_open(
         prepared,
         state.ring_state,
@@ -1660,11 +1736,24 @@ def _closure_endpoint_schedule_decision(
     else:
         open_actions = ()
 
+    schedule_surface = _WriterClosureEndpointScheduleSurface(
+        active_atom=active_atom,
+        pair_actions=pair_actions,
+        open_actions=open_actions,
+    )
+
+    pair_batch = _scheduled_action_emission_batch(
+        prepared,
+        state,
+        context,
+        schedule_surface.pair_actions,
+    )
+
     open_batch = _scheduled_action_emission_batch(
         prepared,
         state,
         context,
-        open_actions,
+        schedule_surface.open_actions,
     )
 
     return _WriterClosureEndpointScheduleDecision(
@@ -1674,6 +1763,7 @@ def _closure_endpoint_schedule_decision(
             *pair_batch.surviving_emissions,
             *open_batch.surviving_emissions,
         ),
+        schedule_surface=schedule_surface,
     )
 
 

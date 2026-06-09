@@ -2146,6 +2146,75 @@ class WriterStateKernelTest(unittest.TestCase):
             child_batch.surviving_graph_action_surfaces,
         )
 
+    def test_active_emitted_closure_decision_considered_surfaces_delegate_to_closure_decision(self) -> None:
+        label = WriterClosureLabel(value=1, text="1")
+        endpoint = WriterOpenClosureEndpoint(
+            bond=BondId(1),
+            first_atom=AtomId(2),
+            second_atom=AtomId(0),
+            label=label,
+            first_endpoint_text="1",
+            first_endpoint_bond_text="",
+        )
+        closure = WriterClosedClosure(
+            bond=BondId(1),
+            first_atom=AtomId(2),
+            second_atom=AtomId(0),
+            label=label,
+            first_endpoint_text="1",
+            second_endpoint_text="1",
+            first_endpoint_bond_text="",
+            second_endpoint_bond_text="",
+        )
+        pair = writer_transitions._WriterClosurePairObligation(
+            endpoint=endpoint,
+            closure=closure,
+        )
+        pair_action = writer_transitions._pair_closure_endpoint_action(
+            AtomId(0),
+            pair,
+        )
+        surface = writer_transitions._WriterClosureEndpointScheduleSurface(
+            active_atom=AtomId(0),
+            pair_actions=(pair_action,),
+            open_actions=(),
+        )
+        emission = writer_transitions._WriterScheduledActionEmission(
+            action=pair_action,
+            transitions=(object(),),  # type: ignore[arg-type]
+        )
+        pair_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(pair_action,),
+            emissions=(emission,),
+            surviving_emissions=(emission,),
+        )
+        open_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        closure_endpoint_decision = (
+            writer_transitions._WriterClosureEndpointScheduleDecision(
+                pair_batch=pair_batch,
+                open_batch=open_batch,
+                surviving_emissions=(emission,),
+                schedule_surface=surface,
+            )
+        )
+
+        decision = writer_transitions._active_emitted_closure_decision(
+            closure_endpoint_decision,
+        )
+
+        self.assertEqual(
+            decision.considered_graph_action_surfaces,
+            closure_endpoint_decision.considered_graph_action_surfaces,
+        )
+        self.assertEqual(
+            decision.selected_graph_action_surfaces,
+            closure_endpoint_decision.selected_graph_action_surfaces,
+        )
+
     def test_top_level_decision_constructors_preserve_selected_batches(self) -> None:
         top_level_batch = writer_transitions._WriterScheduledActionEmissionBatch(
             actions=(),
@@ -2325,6 +2394,163 @@ class WriterStateKernelTest(unittest.TestCase):
         build.assert_called_once()
         scheduled.assert_called_once()
 
+    def test_closure_endpoint_schedule_surface_projects_pair_before_open_actions(self) -> None:
+        pair_label = WriterClosureLabel(value=1, text="1")
+        open_label = WriterClosureLabel(value=2, text="2")
+        endpoint = WriterOpenClosureEndpoint(
+            bond=BondId(1),
+            first_atom=AtomId(2),
+            second_atom=AtomId(0),
+            label=pair_label,
+            first_endpoint_text="1",
+            first_endpoint_bond_text="",
+        )
+        closure = WriterClosedClosure(
+            bond=BondId(1),
+            first_atom=AtomId(2),
+            second_atom=AtomId(0),
+            label=pair_label,
+            first_endpoint_text="1",
+            second_endpoint_text="1",
+            first_endpoint_bond_text="",
+            second_endpoint_bond_text="",
+        )
+        pair = writer_transitions._WriterClosurePairObligation(
+            endpoint=endpoint,
+            closure=closure,
+        )
+        pair_action = writer_transitions._pair_closure_endpoint_action(
+            AtomId(0),
+            pair,
+        )
+        open_obligation = writer_transitions._WriterClosureOpenObligation(
+            bond=BondId(2),
+            first_atom=AtomId(0),
+            second_atom=AtomId(3),
+            attachment_id=7,
+            attachment_action_kind=(
+                WriterResidualAttachmentActionKind.CLOSURE_OPEN_READY
+            ),
+            owner_kind=WriterBoundaryOwnerKind.ACTIVE_ATOM,
+        )
+        open_action = writer_transitions._open_closure_endpoint_action(
+            AtomId(0),
+            open_obligation,
+            open_label,
+        )
+
+        surface = writer_transitions._WriterClosureEndpointScheduleSurface(
+            active_atom=AtomId(0),
+            pair_actions=(pair_action,),
+            open_actions=(open_action,),
+        )
+
+        self.assertEqual(surface.scheduled_actions, (pair_action, open_action))
+        self.assertEqual(
+            surface.graph_action_surfaces,
+            (
+                surface.pair_graph_action_surfaces[0],
+                surface.open_graph_action_surfaces[0],
+            ),
+        )
+        pair_surface = surface.pair_graph_action_surfaces[0]
+        open_surface = surface.open_graph_action_surfaces[0]
+        self.assertIs(
+            pair_surface.kind,
+            writer_transitions._WriterScheduledActionKind.PAIR_CLOSURE_ENDPOINT,
+        )
+        self.assertIs(
+            open_surface.kind,
+            writer_transitions._WriterScheduledActionKind.OPEN_CLOSURE_ENDPOINT,
+        )
+        self.assertIs(pair_surface.closure_label, pair_label)
+        self.assertIs(open_surface.closure_label, open_label)
+        self.assertEqual(open_surface.attachment_id, 7)
+        self.assertIs(open_surface.owner_kind, WriterBoundaryOwnerKind.ACTIVE_ATOM)
+
+    def test_closure_endpoint_schedule_decision_exposes_considered_and_selected_surfaces(self) -> None:
+        label = WriterClosureLabel(value=1, text="1")
+        endpoint = WriterOpenClosureEndpoint(
+            bond=BondId(1),
+            first_atom=AtomId(2),
+            second_atom=AtomId(0),
+            label=label,
+            first_endpoint_text="1",
+            first_endpoint_bond_text="",
+        )
+        closure = WriterClosedClosure(
+            bond=BondId(1),
+            first_atom=AtomId(2),
+            second_atom=AtomId(0),
+            label=label,
+            first_endpoint_text="1",
+            second_endpoint_text="1",
+            first_endpoint_bond_text="",
+            second_endpoint_bond_text="",
+        )
+        pair = writer_transitions._WriterClosurePairObligation(
+            endpoint=endpoint,
+            closure=closure,
+        )
+        pair_action = writer_transitions._pair_closure_endpoint_action(
+            AtomId(0),
+            pair,
+        )
+        open_obligation = writer_transitions._WriterClosureOpenObligation(
+            bond=BondId(2),
+            first_atom=AtomId(0),
+            second_atom=AtomId(3),
+            attachment_id=7,
+            attachment_action_kind=(
+                WriterResidualAttachmentActionKind.CLOSURE_OPEN_READY
+            ),
+            owner_kind=WriterBoundaryOwnerKind.ACTIVE_ATOM,
+        )
+        open_action = writer_transitions._open_closure_endpoint_action(
+            AtomId(0),
+            open_obligation,
+            label,
+        )
+        surface = writer_transitions._WriterClosureEndpointScheduleSurface(
+            active_atom=AtomId(0),
+            pair_actions=(pair_action,),
+            open_actions=(open_action,),
+        )
+        pair_emission = writer_transitions._WriterScheduledActionEmission(
+            action=pair_action,
+            transitions=(object(),),  # type: ignore[arg-type]
+        )
+        open_emission = writer_transitions._WriterScheduledActionEmission(
+            action=open_action,
+            transitions=(),
+        )
+        pair_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(pair_action,),
+            emissions=(pair_emission,),
+            surviving_emissions=(pair_emission,),
+        )
+        open_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(open_action,),
+            emissions=(open_emission,),
+            surviving_emissions=(),
+        )
+        decision = writer_transitions._WriterClosureEndpointScheduleDecision(
+            pair_batch=pair_batch,
+            open_batch=open_batch,
+            surviving_emissions=(pair_emission,),
+            schedule_surface=surface,
+        )
+
+        self.assertIs(decision.schedule_surface, surface)
+        self.assertEqual(
+            decision.considered_graph_action_surfaces,
+            surface.graph_action_surfaces,
+        )
+        self.assertEqual(
+            decision.selected_graph_action_surfaces,
+            (pair_emission.graph_action_surface,),
+        )
+
     def test_closure_endpoint_schedule_decision_separates_pair_and_open_batches(self) -> None:
         prepared = object()
         state = SimpleNamespace(
@@ -2332,20 +2558,65 @@ class WriterStateKernelTest(unittest.TestCase):
             ring_state=object(),
         )
         context = object()
-        pair_action = object()
-        open_action = object()
-        label = object()
-        pair_survivor = object()
-        open_survivor = object()
+        label = WriterClosureLabel(value=1, text="1")
+        endpoint = WriterOpenClosureEndpoint(
+            bond=BondId(1),
+            first_atom=AtomId(2),
+            second_atom=AtomId(0),
+            label=label,
+            first_endpoint_text="1",
+            first_endpoint_bond_text="",
+        )
+        closure = WriterClosedClosure(
+            bond=BondId(1),
+            first_atom=AtomId(2),
+            second_atom=AtomId(0),
+            label=label,
+            first_endpoint_text="1",
+            second_endpoint_text="1",
+            first_endpoint_bond_text="",
+            second_endpoint_bond_text="",
+        )
+        pair = writer_transitions._WriterClosurePairObligation(
+            endpoint=endpoint,
+            closure=closure,
+        )
+        pair_action = writer_transitions._pair_closure_endpoint_action(
+            AtomId(0),
+            pair,
+        )
+        open_obligation = writer_transitions._WriterClosureOpenObligation(
+            bond=BondId(2),
+            first_atom=AtomId(0),
+            second_atom=AtomId(3),
+            attachment_id=7,
+            attachment_action_kind=(
+                WriterResidualAttachmentActionKind.CLOSURE_OPEN_READY
+            ),
+            owner_kind=WriterBoundaryOwnerKind.ACTIVE_ATOM,
+        )
+        open_action = writer_transitions._open_closure_endpoint_action(
+            AtomId(0),
+            open_obligation,
+            label,
+        )
+        pair_emission = writer_transitions._WriterScheduledActionEmission(
+            action=pair_action,
+            transitions=(object(),),  # type: ignore[arg-type]
+        )
+        open_emission = writer_transitions._WriterScheduledActionEmission(
+            action=open_action,
+            transitions=(object(),),  # type: ignore[arg-type]
+        )
         pair_batch = writer_transitions._WriterScheduledActionEmissionBatch(
-            actions=(pair_action,),  # type: ignore[arg-type]
-            emissions=(object(),),  # type: ignore[arg-type]
-            surviving_emissions=(pair_survivor,),  # type: ignore[arg-type]
+            actions=(pair_action,),
+            emissions=(pair_emission,),
+            surviving_emissions=(pair_emission,),
         )
         open_batch = writer_transitions._WriterScheduledActionEmissionBatch(
-            actions=(open_action,),  # type: ignore[arg-type]
-            emissions=(object(),),  # type: ignore[arg-type]
-            surviving_emissions=(open_survivor,),  # type: ignore[arg-type]
+            actions=(open_action,),
+            emissions=(open_emission,),
+            surviving_emissions=(open_emission,),
         )
 
         with patch(
@@ -2369,9 +2640,19 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertIs(decision.pair_batch, pair_batch)
         self.assertIs(decision.open_batch, open_batch)
+        self.assertIsNotNone(decision.schedule_surface)
+        self.assertEqual(decision.schedule_surface.pair_actions, decision.pair_batch.actions)
+        self.assertEqual(decision.schedule_surface.open_actions, decision.open_batch.actions)
+        self.assertEqual(
+            decision.considered_graph_action_surfaces,
+            (
+                *decision.pair_batch.graph_action_surfaces,
+                *decision.open_batch.graph_action_surfaces,
+            ),
+        )
         self.assertEqual(
             decision.surviving_emissions,
-            (pair_survivor, open_survivor),
+            (pair_emission, open_emission),
         )
         pair_actions.assert_called_once_with(state, AtomId(0))
         available_labels.assert_called_once_with(prepared, state.ring_state)

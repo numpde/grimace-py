@@ -187,6 +187,16 @@ class _WriterActiveEmittedGraphPolicyDecisionKind(Enum):
     )
 
 
+class _WriterActiveEmittedGraphPolicyBlockerKind(Enum):
+    CHILD_OBLIGATION = "child_obligation"
+    UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE = (
+        "unsupported_owner_scope_residual_attachment_choice"
+    )
+    MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE = (
+        "missing_closure_open_support_evidence"
+    )
+
+
 class _WriterTopLevelScheduleDecisionKind(Enum):
     TOP_LEVEL_ACTIONS = "top_level_actions"
     ACTIVE_EMITTED = "active_emitted"
@@ -757,6 +767,51 @@ class _WriterClosureEndpointScheduleDecision:
 
 
 @dataclass(frozen=True, slots=True)
+class _WriterActiveEmittedGraphPolicyBlocker:
+    kind: _WriterActiveEmittedGraphPolicyBlockerKind
+    child_blocker: _WriterChildObligationBlocker | None = None
+    residual_group: _WriterResidualAttachmentPolicyGroup | None = None
+
+    def __post_init__(self) -> None:
+        has_child = self.child_blocker is not None
+        has_group = self.residual_group is not None
+
+        if (
+            self.kind
+            is _WriterActiveEmittedGraphPolicyBlockerKind.CHILD_OBLIGATION
+        ):
+            valid = has_child and not has_group
+        elif self.kind in (
+            (
+                _WriterActiveEmittedGraphPolicyBlockerKind
+                .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+            ),
+            (
+                _WriterActiveEmittedGraphPolicyBlockerKind
+                .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
+            ),
+        ):
+            valid = has_group and not has_child
+        else:
+            valid = False
+
+        if not valid:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                f"invalid active-emitted graph policy blocker: {self.kind!r}",
+            )
+
+    @property
+    def residual_attachment_policy_key(
+        self,
+    ) -> _WriterResidualAttachmentPolicyKey | None:
+        if self.residual_group is None:
+            return None
+
+        return self.residual_group.key
+
+
+@dataclass(frozen=True, slots=True)
 class _WriterActiveEmittedGraphPolicyDecision:
     kind: _WriterActiveEmittedGraphPolicyDecisionKind
     active_atom: AtomId
@@ -1052,6 +1107,69 @@ class _WriterActiveEmittedGraphPolicyDecision:
         return (
             self.unsupported_owner_scope_closure_open_vs_cyclic_tree_entry_groups
         )
+
+    @property
+    def graph_policy_blockers(
+        self,
+    ) -> tuple[_WriterActiveEmittedGraphPolicyBlocker, ...]:
+        if (
+            self.kind
+            is _WriterActiveEmittedGraphPolicyDecisionKind.BLOCKED_CHILD
+        ):
+            return tuple(
+                _WriterActiveEmittedGraphPolicyBlocker(
+                    kind=(
+                        _WriterActiveEmittedGraphPolicyBlockerKind
+                        .CHILD_OBLIGATION
+                    ),
+                    child_blocker=blocker,
+                )
+                for blocker in self.blockers
+            )
+
+        if (
+            self.kind
+            is (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+            )
+        ):
+            return tuple(
+                _WriterActiveEmittedGraphPolicyBlocker(
+                    kind=(
+                        _WriterActiveEmittedGraphPolicyBlockerKind
+                        .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+                    ),
+                    residual_group=group,
+                )
+                for group in (
+                    self.unsupported_owner_scope_residual_attachment_policy_groups
+                )
+            )
+
+        if (
+            self.kind
+            is (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .UNRESOLVED_RESIDUAL_ATTACHMENT_CHOICE
+            )
+        ):
+            return tuple(
+                _WriterActiveEmittedGraphPolicyBlocker(
+                    kind=(
+                        _WriterActiveEmittedGraphPolicyBlockerKind
+                        .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
+                    ),
+                    residual_group=group,
+                )
+                for group in self.unresolved_residual_attachment_policy_groups
+            )
+
+        return ()
+
+    @property
+    def graph_policy_blocked(self) -> bool:
+        return bool(self.graph_policy_blockers)
 
     @property
     def resolved_residual_attachment_policy_groups(
@@ -3464,51 +3582,58 @@ def _raise_for_child_obligation_blockers(
 def _raise_for_active_emitted_graph_policy_blockers(
     policy_decision: _WriterActiveEmittedGraphPolicyDecision,
 ) -> None:
+    blockers = policy_decision.graph_policy_blockers
+
+    if not blockers:
+        return
+
+    first = blockers[0]
+
     if (
-        policy_decision.kind
-        is _WriterActiveEmittedGraphPolicyDecisionKind.BLOCKED_CHILD
+        first.kind
+        is _WriterActiveEmittedGraphPolicyBlockerKind.CHILD_OBLIGATION
     ):
         _raise_for_child_obligation_blockers(policy_decision.blockers)
         return
 
+    keys = tuple(
+        blocker.residual_attachment_policy_key
+        for blocker in blockers
+        if blocker.residual_attachment_policy_key is not None
+    )
+
     if (
-        policy_decision.kind
+        first.kind
         is (
-            _WriterActiveEmittedGraphPolicyDecisionKind
+            _WriterActiveEmittedGraphPolicyBlockerKind
             .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
         )
     ):
-        groups = (
-            policy_decision
-            .unsupported_owner_scope_residual_attachment_policy_groups
+        message = (
+            "unsupported active-emitted residual attachment owner scope: "
+            f"{keys!r}"
         )
-        keys = tuple(group.key for group in groups)
-
-        raise SouthStarError(
-            SouthStarErrorKind.UNSUPPORTED_POLICY,
-            (
-                "unsupported active-emitted residual attachment owner scope: "
-                f"{keys!r}"
-            ),
-        )
-
-    if (
-        policy_decision.kind
+    elif (
+        first.kind
         is (
-            _WriterActiveEmittedGraphPolicyDecisionKind
-            .UNRESOLVED_RESIDUAL_ATTACHMENT_CHOICE
+            _WriterActiveEmittedGraphPolicyBlockerKind
+            .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
         )
     ):
-        groups = policy_decision.unresolved_residual_attachment_policy_groups
-        keys = tuple(group.key for group in groups)
-
-        raise SouthStarError(
-            SouthStarErrorKind.UNSUPPORTED_POLICY,
-            (
-                "unsupported active-emitted residual attachment policy choice: "
-                f"{keys!r}"
-            ),
+        message = (
+            "unsupported active-emitted residual attachment policy choice: "
+            f"{keys!r}"
         )
+    else:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            f"unknown active-emitted graph policy blocker: {first.kind!r}",
+        )
+
+    raise SouthStarError(
+        SouthStarErrorKind.UNSUPPORTED_POLICY,
+        message,
+    )
 
 
 def _unblocked_child_obligations_from_context(

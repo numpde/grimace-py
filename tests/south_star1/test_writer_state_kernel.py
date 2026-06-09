@@ -4214,6 +4214,97 @@ class WriterStateKernelTest(unittest.TestCase):
             .has_unsupported_owner_scope_closure_open_vs_cyclic_tree_entry_choice
         )
 
+    def test_active_emitted_graph_policy_blocker_validates_payload_shape(self) -> None:
+        child_blocker = writer_transitions._WriterChildObligationBlocker(
+            kind=(
+                writer_transitions._WriterChildObligationBlockerKind
+                .MULTI_INCIDENCE_RESIDUAL_ATTACHMENT
+            ),
+            atom=AtomId(0),
+            attachment_id=7,
+            attachment_action_kind=(
+                WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY
+            ),
+        )
+        surface = writer_transitions._WriterScheduledGraphActionSurface(
+            kind=writer_transitions._WriterScheduledActionKind.OPEN_CLOSURE_ENDPOINT,
+            active_atom=AtomId(0),
+            attachment_id=7,
+            attachment_action_kind=(
+                WriterResidualAttachmentActionKind.CLOSURE_OPEN_READY
+            ),
+            owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+        )
+        group = writer_transitions._WriterResidualAttachmentPolicyGroup(
+            key=writer_transitions._WriterResidualAttachmentPolicyKey(
+                AtomId(0),
+                7,
+            ),
+            surfaces=(surface,),
+        )
+
+        writer_transitions._WriterActiveEmittedGraphPolicyBlocker(
+            kind=(
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyBlockerKind
+                .CHILD_OBLIGATION
+            ),
+            child_blocker=child_blocker,
+        )
+        writer_transitions._WriterActiveEmittedGraphPolicyBlocker(
+            kind=(
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyBlockerKind
+                .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+            ),
+            residual_group=group,
+        )
+        writer_transitions._WriterActiveEmittedGraphPolicyBlocker(
+            kind=(
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyBlockerKind
+                .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
+            ),
+            residual_group=group,
+        )
+
+        invalid_payloads = (
+            {
+                "kind": (
+                    writer_transitions
+                    ._WriterActiveEmittedGraphPolicyBlockerKind
+                    .CHILD_OBLIGATION
+                ),
+                "residual_group": group,
+            },
+            {
+                "kind": (
+                    writer_transitions
+                    ._WriterActiveEmittedGraphPolicyBlockerKind
+                    .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+                ),
+                "child_blocker": child_blocker,
+            },
+            {
+                "kind": (
+                    writer_transitions
+                    ._WriterActiveEmittedGraphPolicyBlockerKind
+                    .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
+                ),
+            },
+        )
+
+        for payload in invalid_payloads:
+            with self.assertRaises(SouthStarError) as raised:
+                writer_transitions._WriterActiveEmittedGraphPolicyBlocker(
+                    **payload,
+                )
+
+            self.assertIs(
+                raised.exception.kind,
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+            )
+
     def test_residual_attachment_policy_emission_group_reports_dead_closure_open_support(self) -> None:
         active_atom = AtomId(0)
         label = WriterClosureLabel(value=1, text="1")
@@ -4716,6 +4807,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIsNone(decision.child_schedule_surface)
         self.assertFalse(decision.blocked)
         self.assertEqual(decision.blockers, ())
+        self.assertEqual(decision.graph_policy_blockers, ())
+        self.assertFalse(decision.graph_policy_blocked)
         child_surface.assert_not_called()
 
     def test_active_emitted_graph_policy_selects_child_after_empty_closure_survivors(self) -> None:
@@ -4786,6 +4879,8 @@ class WriterStateKernelTest(unittest.TestCase):
             decision.child_scheduled_actions,
             child_surface.scheduled_actions,
         )
+        self.assertEqual(decision.graph_policy_blockers, ())
+        self.assertFalse(decision.graph_policy_blocked)
         self.assertEqual(
             decision.graph_action_surfaces,
             child_surface.graph_action_surfaces,
@@ -4855,6 +4950,65 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(decision.blockers, child_surface.blockers)
         self.assertEqual(decision.child_scheduled_actions, ())
         self.assertEqual(decision.graph_action_surfaces, ())
+
+    def test_active_emitted_graph_policy_exposes_child_graph_policy_blockers(self) -> None:
+        active_atom = AtomId(7)
+        child_blocker = writer_transitions._WriterChildObligationBlocker(
+            kind=(
+                writer_transitions._WriterChildObligationBlockerKind
+                .MULTI_INCIDENCE_RESIDUAL_ATTACHMENT
+            ),
+            atom=active_atom,
+            attachment_id=7,
+            attachment_action_kind=(
+                WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY
+            ),
+        )
+        child_surface = writer_transitions._WriterActiveChildScheduleSurface(
+            active_atom=active_atom,
+            blockers=(child_blocker,),
+            child_obligations=(),
+            scheduled_actions=(),
+        )
+        closure_decision = writer_transitions._WriterClosureEndpointScheduleDecision(
+            pair_batch=writer_transitions._WriterScheduledActionEmissionBatch(
+                actions=(),
+                emissions=(),
+                surviving_emissions=(),
+            ),
+            open_batch=writer_transitions._WriterScheduledActionEmissionBatch(
+                actions=(),
+                emissions=(),
+                surviving_emissions=(),
+            ),
+            surviving_emissions=(),
+        )
+        policy = writer_transitions._WriterActiveEmittedGraphPolicyDecision(
+            kind=(
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyDecisionKind
+                .BLOCKED_CHILD
+            ),
+            active_atom=active_atom,
+            closure_endpoint_decision=closure_decision,
+            child_schedule_surface=child_surface,
+        )
+
+        blockers = policy.graph_policy_blockers
+
+        self.assertTrue(policy.graph_policy_blocked)
+        self.assertEqual(policy.blocked, policy.graph_policy_blocked)
+        self.assertEqual(len(blockers), 1)
+        self.assertIs(
+            blockers[0].kind,
+            (
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyBlockerKind
+                .CHILD_OBLIGATION
+            ),
+        )
+        self.assertIs(blockers[0].child_blocker, child_blocker)
+        self.assertIsNone(blockers[0].residual_group)
 
     def test_active_emitted_graph_policy_closure_surfaces_distinguish_considered_and_chosen(self) -> None:
         active_atom = AtomId(0)
@@ -5294,6 +5448,26 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(policy.child_scheduled_actions, ())
         self.assertTrue(
             policy.unsupported_owner_scope_residual_attachment_policy_groups
+        )
+        blockers = policy.graph_policy_blockers
+        self.assertTrue(policy.graph_policy_blocked)
+        self.assertEqual(policy.blocked, policy.graph_policy_blocked)
+        self.assertEqual(len(blockers), 1)
+        self.assertIs(
+            blockers[0].kind,
+            (
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyBlockerKind
+                .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+            ),
+        )
+        self.assertEqual(
+            blockers[0].residual_group,
+            policy.unsupported_owner_scope_residual_attachment_policy_groups[0],
+        )
+        self.assertEqual(
+            blockers[0].residual_attachment_policy_key,
+            writer_transitions._WriterResidualAttachmentPolicyKey(active_atom, 11),
         )
         self.assertEqual(
             policy.unresolved_residual_attachment_policy_groups,
@@ -5797,6 +5971,8 @@ class WriterStateKernelTest(unittest.TestCase):
             (),
         )
         self.assertEqual(decision.unresolved_residual_attachment_policy_groups, ())
+        self.assertTrue(decision.graph_policy_blocked)
+        self.assertEqual(decision.blocked, decision.graph_policy_blocked)
         self.assertEqual(decision.child_scheduled_actions, ())
 
     def test_active_emitted_graph_policy_records_mixed_owner_dead_closure_choice_as_unsupported_owner_scope(self) -> None:
@@ -5984,6 +6160,22 @@ class WriterStateKernelTest(unittest.TestCase):
         )
         self.assertTrue(decision.unresolved_residual_attachment_policy_groups)
         self.assertTrue(decision.missing_closure_open_support_evidence_groups)
+        blockers = decision.graph_policy_blockers
+        self.assertTrue(decision.graph_policy_blocked)
+        self.assertEqual(decision.blocked, decision.graph_policy_blocked)
+        self.assertEqual(len(blockers), 1)
+        self.assertIs(
+            blockers[0].kind,
+            (
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyBlockerKind
+                .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
+            ),
+        )
+        self.assertEqual(
+            blockers[0].residual_group,
+            decision.unresolved_residual_attachment_policy_groups[0],
+        )
         self.assertEqual(
             decision.unsupported_owner_scope_residual_attachment_policy_groups,
             (),
@@ -6198,6 +6390,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
         self.assertTrue(decision.emits_child_actions)
         self.assertEqual(decision.resolved_residual_attachment_policy_groups, ())
+        self.assertEqual(decision.graph_policy_blockers, ())
+        self.assertFalse(decision.graph_policy_blocked)
         self.assertEqual(
             decision.child_scheduled_actions,
             child_surface.scheduled_actions,

@@ -172,6 +172,11 @@ class _WriterActiveEmittedScheduleDecisionKind(Enum):
     ACTIVE_CHILD = "active_child"
 
 
+class _WriterActiveEmittedScheduleOutcomeKind(Enum):
+    SCHEDULED = "scheduled"
+    BLOCKED = "blocked"
+
+
 class _WriterActiveEmittedGraphPolicyDecisionKind(Enum):
     CLOSURE_ENDPOINT = "closure_endpoint"
     ACTIVE_CHILD = "active_child"
@@ -1358,6 +1363,59 @@ class _WriterActiveEmittedScheduleDecision:
 
 
 @dataclass(frozen=True, slots=True)
+class _WriterActiveEmittedScheduleOutcome:
+    kind: _WriterActiveEmittedScheduleOutcomeKind
+    graph_policy_decision: _WriterActiveEmittedGraphPolicyDecision
+    schedule_decision: _WriterActiveEmittedScheduleDecision | None = None
+
+    def __post_init__(self) -> None:
+        if self.kind is _WriterActiveEmittedScheduleOutcomeKind.SCHEDULED:
+            valid = (
+                self.schedule_decision is not None
+                and not self.graph_policy_decision.graph_policy_blocked
+                and (
+                    self.schedule_decision.graph_policy_decision
+                    is self.graph_policy_decision
+                )
+            )
+        elif self.kind is _WriterActiveEmittedScheduleOutcomeKind.BLOCKED:
+            valid = (
+                self.schedule_decision is None
+                and self.graph_policy_decision.graph_policy_blocked
+            )
+        else:
+            valid = False
+
+        if not valid:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                f"invalid active-emitted schedule outcome: {self.kind!r}",
+            )
+
+    @property
+    def graph_policy_blockers(
+        self,
+    ) -> tuple[_WriterActiveEmittedGraphPolicyBlocker, ...]:
+        return self.graph_policy_decision.graph_policy_blockers
+
+    @property
+    def selected_transitions(self) -> tuple[WriterTransition, ...]:
+        if self.schedule_decision is None:
+            return ()
+
+        return self.schedule_decision.selected_transitions
+
+    @property
+    def selected_next_token_frontier(
+        self,
+    ) -> tuple[_WriterNextTokenFrontierEntry, ...]:
+        if self.schedule_decision is None:
+            return ()
+
+        return self.schedule_decision.selected_next_token_frontier
+
+
+@dataclass(frozen=True, slots=True)
 class _WriterTopLevelScheduleDecision:
     kind: _WriterTopLevelScheduleDecisionKind
     selected_batch: _WriterScheduledActionEmissionBatch
@@ -2195,12 +2253,12 @@ def _active_emitted_graph_policy_decision(
     )
 
 
-def _active_emitted_schedule_decision(
+def _active_emitted_schedule_outcome(
     prepared: SouthStarPreparedMol,
     state: WriterState,
     context: WriterTransitionExpansionContext,
     active_atom: AtomId,
-) -> _WriterActiveEmittedScheduleDecision:
+) -> _WriterActiveEmittedScheduleOutcome:
     policy_decision = _active_emitted_graph_policy_decision(
         prepared,
         state,
@@ -2208,16 +2266,26 @@ def _active_emitted_schedule_decision(
         active_atom,
     )
 
+    if policy_decision.graph_policy_blocked:
+        return _WriterActiveEmittedScheduleOutcome(
+            kind=_WriterActiveEmittedScheduleOutcomeKind.BLOCKED,
+            graph_policy_decision=policy_decision,
+        )
+
     if (
         policy_decision.kind
         is _WriterActiveEmittedGraphPolicyDecisionKind.CLOSURE_ENDPOINT
     ):
-        return _active_emitted_closure_decision(
+        schedule_decision = _active_emitted_closure_decision(
             policy_decision.closure_endpoint_decision,
             graph_policy_decision=policy_decision,
         )
 
-    _raise_for_active_emitted_graph_policy_blockers(policy_decision)
+        return _WriterActiveEmittedScheduleOutcome(
+            kind=_WriterActiveEmittedScheduleOutcomeKind.SCHEDULED,
+            graph_policy_decision=policy_decision,
+            schedule_decision=schedule_decision,
+        )
 
     if not policy_decision.emits_child_actions:
         raise SouthStarError(
@@ -2242,12 +2310,45 @@ def _active_emitted_schedule_decision(
         policy_decision.child_scheduled_actions,
     )
 
-    return _active_emitted_child_decision(
+    schedule_decision = _active_emitted_child_decision(
         closure_endpoint_decision=policy_decision.closure_endpoint_decision,
         child_schedule_surface=child_schedule_surface,
         child_batch=child_batch,
         graph_policy_decision=policy_decision,
     )
+
+    return _WriterActiveEmittedScheduleOutcome(
+        kind=_WriterActiveEmittedScheduleOutcomeKind.SCHEDULED,
+        graph_policy_decision=policy_decision,
+        schedule_decision=schedule_decision,
+    )
+
+
+def _active_emitted_schedule_decision(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+    active_atom: AtomId,
+) -> _WriterActiveEmittedScheduleDecision:
+    outcome = _active_emitted_schedule_outcome(
+        prepared,
+        state,
+        context,
+        active_atom,
+    )
+
+    if outcome.graph_policy_blockers:
+        _raise_for_active_emitted_graph_policy_blockers(
+            outcome.graph_policy_decision
+        )
+
+    if outcome.schedule_decision is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "active-emitted schedule outcome did not contain a schedule decision",
+        )
+
+    return outcome.schedule_decision
 
 
 def _active_emitted_transitions(

@@ -438,10 +438,14 @@ Checklist:
 - [x] Add/keep exhaustive audits for branch-preserving and determinized public
       states: if `state.is_terminal()`, realized public transitions must be
       empty and reachable output must be exactly `{state.prefix()}`.
-- [ ] If implementation changes are needed later, introduce `is_accepting()` for
-      fragment/branch composition before changing public `is_terminal`.
-- [ ] Keep walker sampling semantics explicit: a public draw stops when the
+- [x] Fix disconnected-state transitions so active terminal fragments expose
+      only a separator, or no transition for the last fragment, without querying
+      child transitions.
+- [x] Keep walker sampling semantics explicit: a public draw stops when the
       public state is terminal.
+- [ ] If future composition needs a weaker fragment/branch completion
+      predicate, introduce `is_accepting()` without changing public
+      `is_terminal`.
 
 ### 11. PreparedMol zstd decompression has no Grimace size cap
 

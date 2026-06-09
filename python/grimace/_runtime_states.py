@@ -338,29 +338,17 @@ class _DisconnectedStateAdapter:
             return ()
         return (_branch_transition(".", lambda: self._advance_fragment(active)),)
 
-    def _active_state_transitions(
-        self,
-        transitions: _StateTransitions,
-        active: _BaseDecoderState,
-    ) -> _StateTransitions:
-        wrapped = self._wrap_active_transitions(transitions)
-        if active.is_terminal():
-            return wrapped + self._fragment_separator_transition(active)
-        return wrapped
-
     def _branch_state_transitions(self) -> _StateTransitions:
         active = self._active_state()
-        return self._active_state_transitions(
-            active._branch_state_transitions(),
-            active,
-        )
+        if active.is_terminal():
+            return self._fragment_separator_transition(active)
+        return self._wrap_active_transitions(active._branch_state_transitions())
 
     def _token_state_transitions(self) -> _StateTransitions:
         active = self._active_state()
-        return self._active_state_transitions(
-            active._token_state_transitions(),
-            active,
-        )
+        if active.is_terminal():
+            return self._fragment_separator_transition(active)
+        return self._wrap_active_transitions(active._token_state_transitions())
 
     def prefix(self) -> str:
         return f"{self._completed_prefix}{self._active_state().prefix()}"

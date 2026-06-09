@@ -200,8 +200,6 @@ def _walk_token_transitions(
     builder = _TokenWalkBuilder()
     state = initial_state
     while not state.is_terminal():
-        # Accepted states may still have outgoing transitions in composed
-        # runtimes; walking stops on acceptance, not on absence of choices.
         transitions = state._token_state_transitions()
         selected_idx = _selected_transition_index(
             transitions,

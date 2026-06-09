@@ -380,8 +380,8 @@ Merged state:
 - Branch transitions concatenate live branch transitions.
 - Token transitions group live token transitions by text and sum branch_count.
 - Terminal branches do not contribute outgoing transitions.
-- is_terminal remains an acceptance predicate, not a "no outgoing transitions"
-  predicate.
+- Public terminality remains a stopping predicate: terminal states do not
+  expose outgoing transitions.
 
 Disconnected state:
 

@@ -2548,15 +2548,7 @@ def _top_level_schedule_decision(
         context,
     )
 
-    if outcome.graph_policy_blockers:
-        policy = outcome.graph_policy_decision
-        if policy is None:
-            raise SouthStarError(
-                SouthStarErrorKind.INTERNAL_INVARIANT,
-                "blocked top-level outcome did not contain graph policy",
-            )
-
-        _raise_for_active_emitted_graph_policy_blockers(policy)
+    _raise_for_top_level_schedule_outcome_blockers(outcome)
 
     if outcome.schedule_decision is None:
         raise SouthStarError(
@@ -2567,18 +2559,48 @@ def _top_level_schedule_decision(
     return outcome.schedule_decision
 
 
-def _scheduled_writer_transitions(
+def _raise_for_top_level_schedule_outcome_blockers(
+    outcome: _WriterTopLevelScheduleOutcome,
+) -> None:
+    if not outcome.graph_policy_blockers:
+        return
+
+    policy = outcome.graph_policy_decision
+    if policy is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "blocked top-level outcome did not contain graph policy",
+        )
+
+    _raise_for_active_emitted_graph_policy_blockers(policy)
+
+
+def _scheduled_writer_schedule_outcome(
     prepared: SouthStarPreparedMol,
     state: WriterState,
     context: WriterTransitionExpansionContext,
-) -> tuple[WriterTransition, ...]:
-    decision = _top_level_schedule_decision(
+) -> _WriterTopLevelScheduleOutcome:
+    return _top_level_schedule_outcome(
         prepared,
         state,
         context,
     )
 
-    return decision.selected_transitions
+
+def _scheduled_writer_transitions(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+) -> tuple[WriterTransition, ...]:
+    outcome = _scheduled_writer_schedule_outcome(
+        prepared,
+        state,
+        context,
+    )
+
+    _raise_for_top_level_schedule_outcome_blockers(outcome)
+
+    return outcome.selected_transitions
 
 
 def _scheduled_writer_next_token_frontier(
@@ -2586,13 +2608,28 @@ def _scheduled_writer_next_token_frontier(
     state: WriterState,
     context: WriterTransitionExpansionContext,
 ) -> tuple[_WriterNextTokenFrontierEntry, ...]:
-    decision = _top_level_schedule_decision(
+    outcome = _scheduled_writer_schedule_outcome(
         prepared,
         state,
         context,
     )
 
-    return decision.selected_next_token_frontier
+    _raise_for_top_level_schedule_outcome_blockers(outcome)
+
+    return outcome.selected_next_token_frontier
+
+
+def _legal_writer_schedule_outcome(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+) -> _WriterTopLevelScheduleOutcome:
+    context = build_writer_transition_expansion_context(prepared, state)
+
+    return _scheduled_writer_schedule_outcome(
+        prepared,
+        state,
+        context,
+    )
 
 
 def _legal_writer_next_token_frontier(

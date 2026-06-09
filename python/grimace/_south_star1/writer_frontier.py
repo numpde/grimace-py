@@ -23,7 +23,8 @@ from .writer_state import writer_state_key
 from .writer_state import writer_state_key_sort_tuple
 from .writer_stereo import empty_writer_stereo_state
 from .writer_transitions import finalize_writer_terminal_state
-from .writer_transitions import _legal_writer_next_token_frontier
+from .writer_transitions import _legal_writer_schedule_outcome
+from .writer_transitions import _raise_for_top_level_schedule_outcome_blockers
 from .writer_transitions import validate_writer_supported_prepared
 from .writer_transitions import validate_writer_transition_prepared
 
@@ -257,7 +258,10 @@ def _group_writer_frontier_transitions(
         finalized = finalize_writer_terminal_state(prepared, state)
         if finalized is not None:
             terminal_by_key[writer_state_key(finalized)] += parent_weight
-        for entry in _legal_writer_next_token_frontier(prepared, state):
+        outcome = _legal_writer_schedule_outcome(prepared, state)
+        _raise_for_top_level_schedule_outcome_blockers(outcome)
+
+        for entry in outcome.selected_next_token_frontier:
             for support in entry.supports:
                 successor_key = writer_state_key(support.transition.successor)
                 grouped.setdefault(entry.emitted_text, set()).add(successor_key)
@@ -332,7 +336,10 @@ def _count_writer_state_completions(
         return cached
     state = writer_state_from_key(key)
     total = 1 if finalize_writer_terminal_state(prepared, state) is not None else 0
-    for entry in _legal_writer_next_token_frontier(prepared, state):
+    outcome = _legal_writer_schedule_outcome(prepared, state)
+    _raise_for_top_level_schedule_outcome_blockers(outcome)
+
+    for entry in outcome.selected_next_token_frontier:
         for support in entry.supports:
             total += _count_writer_state_completions(
                 prepared,

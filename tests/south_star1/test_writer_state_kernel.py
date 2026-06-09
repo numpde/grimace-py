@@ -200,7 +200,7 @@ class WriterStateKernelTest(unittest.TestCase):
             2,
         )
 
-    def test_writer_frontier_choices_use_next_token_frontier_not_flattened_transitions(self) -> None:
+    def test_writer_frontier_choices_use_schedule_outcome_not_legal_next_token_helper(self) -> None:
         prepared = _prepare(chain_facts(("C", "C")))
         cursor = initial_writer_frontier_cursor(prepared, _writer_options())
 
@@ -215,13 +215,36 @@ class WriterStateKernelTest(unittest.TestCase):
                 "writer_frontier used public flattened transitions"
             ),
         ), patch(
-            "grimace._south_star1.writer_frontier._legal_writer_next_token_frontier",
-            wraps=writer_frontier_module._legal_writer_next_token_frontier,
-        ) as frontier:
+            "grimace._south_star1.writer_transitions._legal_writer_next_token_frontier",
+            side_effect=AssertionError(
+                "writer_frontier used legal next-token frontier helper"
+            ),
+        ), patch(
+            "grimace._south_star1.writer_frontier._legal_writer_schedule_outcome",
+            wraps=writer_frontier_module._legal_writer_schedule_outcome,
+        ) as schedule_outcome:
             choices = writer_frontier_choices(prepared, cursor)
 
         self.assertEqual(tuple(choice.emitted_text for choice in choices.choices), ("C",))
-        self.assertGreater(frontier.call_count, 0)
+        self.assertGreater(schedule_outcome.call_count, 0)
+
+    def test_count_writer_cursor_completions_use_schedule_outcome_not_legal_next_token_helper(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+
+        with patch(
+            "grimace._south_star1.writer_transitions._legal_writer_next_token_frontier",
+            side_effect=AssertionError(
+                "completion count used legal next-token frontier helper"
+            ),
+        ), patch(
+            "grimace._south_star1.writer_frontier._legal_writer_schedule_outcome",
+            wraps=writer_frontier_module._legal_writer_schedule_outcome,
+        ) as schedule_outcome:
+            count = count_writer_cursor_completions(prepared, cursor)
+
+        self.assertEqual(count, 2)
+        self.assertGreater(schedule_outcome.call_count, 0)
 
     def test_writer_frontier_counts_duplicate_token_paths_to_same_state(self) -> None:
         prepared = prepare_south_star_mol_from_facts(
@@ -3218,10 +3241,14 @@ class WriterStateKernelTest(unittest.TestCase):
             surviving_emissions=(emission,),
         )
         decision = writer_transitions._top_level_actions_decision(batch)
+        outcome = writer_transitions._WriterTopLevelScheduleOutcome(
+            kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.SCHEDULED,
+            schedule_decision=decision,
+        )
 
         with patch(
-            "grimace._south_star1.writer_transitions._top_level_schedule_decision",
-            return_value=decision,
+            "grimace._south_star1.writer_transitions._scheduled_writer_schedule_outcome",
+            return_value=outcome,
         ) as schedule:
             frontier = writer_transitions._scheduled_writer_next_token_frontier(
                 object(),  # type: ignore[arg-type]
@@ -3231,6 +3258,134 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertEqual(frontier, decision.selected_next_token_frontier)
         schedule.assert_called_once()
+
+    def test_legal_writer_schedule_outcome_builds_context_and_delegates(self) -> None:
+        action = writer_transitions._emit_root_atom_action(AtomId(0))
+        batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(action,),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        outcome = writer_transitions._WriterTopLevelScheduleOutcome(
+            kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.SCHEDULED,
+            schedule_decision=writer_transitions._top_level_actions_decision(batch),
+        )
+        context = object()
+
+        with patch(
+            "grimace._south_star1.writer_transitions.build_writer_transition_expansion_context",
+            return_value=context,
+        ) as build, patch(
+            "grimace._south_star1.writer_transitions._scheduled_writer_schedule_outcome",
+            return_value=outcome,
+        ) as scheduled:
+            result = writer_transitions._legal_writer_schedule_outcome(
+                object(),  # type: ignore[arg-type]
+                object(),  # type: ignore[arg-type]
+            )
+
+        self.assertIs(result, outcome)
+        build.assert_called_once()
+        scheduled.assert_called_once()
+
+    def test_scheduled_writer_next_token_frontier_uses_schedule_outcome(self) -> None:
+        action = writer_transitions._emit_root_atom_action(AtomId(0))
+        transition = SimpleNamespace(emitted_text="C")
+        emission = writer_transitions._WriterScheduledActionEmission(
+            action=action,
+            transitions=(transition,),  # type: ignore[arg-type]
+        )
+        batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(action,),
+            emissions=(emission,),
+            surviving_emissions=(emission,),
+        )
+        outcome = writer_transitions._WriterTopLevelScheduleOutcome(
+            kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.SCHEDULED,
+            schedule_decision=writer_transitions._top_level_actions_decision(batch),
+        )
+
+        with patch(
+            "grimace._south_star1.writer_transitions._scheduled_writer_schedule_outcome",
+            return_value=outcome,
+        ) as scheduled, patch(
+            "grimace._south_star1.writer_transitions._top_level_schedule_decision",
+            side_effect=AssertionError("scheduled frontier used checked decision"),
+        ):
+            frontier = writer_transitions._scheduled_writer_next_token_frontier(
+                object(),  # type: ignore[arg-type]
+                object(),  # type: ignore[arg-type]
+                object(),  # type: ignore[arg-type]
+            )
+
+        self.assertEqual(frontier, outcome.selected_next_token_frontier)
+        scheduled.assert_called_once()
+
+    def test_scheduled_writer_transitions_use_schedule_outcome(self) -> None:
+        action = writer_transitions._emit_root_atom_action(AtomId(0))
+        transition = SimpleNamespace(emitted_text="C")
+        emission = writer_transitions._WriterScheduledActionEmission(
+            action=action,
+            transitions=(transition,),  # type: ignore[arg-type]
+        )
+        batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(action,),
+            emissions=(emission,),
+            surviving_emissions=(emission,),
+        )
+        outcome = writer_transitions._WriterTopLevelScheduleOutcome(
+            kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.SCHEDULED,
+            schedule_decision=writer_transitions._top_level_actions_decision(batch),
+        )
+
+        with patch(
+            "grimace._south_star1.writer_transitions._scheduled_writer_schedule_outcome",
+            return_value=outcome,
+        ) as scheduled, patch(
+            "grimace._south_star1.writer_transitions._top_level_schedule_decision",
+            side_effect=AssertionError("scheduled transitions used checked decision"),
+        ):
+            transitions = writer_transitions._scheduled_writer_transitions(
+                object(),  # type: ignore[arg-type]
+                object(),  # type: ignore[arg-type]
+                object(),  # type: ignore[arg-type]
+            )
+
+        self.assertEqual(transitions, outcome.selected_transitions)
+        scheduled.assert_called_once()
+
+    def test_scheduled_writer_helpers_raise_from_blocked_schedule_outcome(self) -> None:
+        active_outcome = self._blocked_child_active_emitted_outcome(AtomId(0))
+        outcome = writer_transitions._WriterTopLevelScheduleOutcome(
+            kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.BLOCKED,
+            active_emitted_outcome=active_outcome,
+        )
+
+        with patch(
+            "grimace._south_star1.writer_transitions._scheduled_writer_schedule_outcome",
+            return_value=outcome,
+        ):
+            with self.assertRaises(SouthStarError) as raised:
+                writer_transitions._scheduled_writer_next_token_frontier(
+                    object(),  # type: ignore[arg-type]
+                    object(),  # type: ignore[arg-type]
+                    object(),  # type: ignore[arg-type]
+                )
+
+        self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+
+        with patch(
+            "grimace._south_star1.writer_transitions._scheduled_writer_schedule_outcome",
+            return_value=outcome,
+        ):
+            with self.assertRaises(SouthStarError) as raised:
+                writer_transitions._scheduled_writer_transitions(
+                    object(),  # type: ignore[arg-type]
+                    object(),  # type: ignore[arg-type]
+                    object(),  # type: ignore[arg-type]
+                )
+
+        self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
 
     def test_legal_writer_next_token_frontier_builds_context_and_delegates(self) -> None:
         scheduled_frontier = (object(),)
@@ -4060,11 +4215,15 @@ class WriterStateKernelTest(unittest.TestCase):
             selected_batch=selected_batch,
             top_level_batch=selected_batch,
         )
+        outcome = writer_transitions._WriterTopLevelScheduleOutcome(
+            kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.SCHEDULED,
+            schedule_decision=decision,
+        )
 
         with patch(
-            "grimace._south_star1.writer_transitions._top_level_schedule_decision",
-            return_value=decision,
-        ) as schedule_decision:
+            "grimace._south_star1.writer_transitions._scheduled_writer_schedule_outcome",
+            return_value=outcome,
+        ) as schedule_outcome:
             result = writer_transitions._scheduled_writer_transitions(
                 prepared,  # type: ignore[arg-type]
                 state,  # type: ignore[arg-type]
@@ -4072,7 +4231,7 @@ class WriterStateKernelTest(unittest.TestCase):
             )
 
         self.assertEqual(result, decision.selected_transitions)
-        schedule_decision.assert_called_once_with(
+        schedule_outcome.assert_called_once_with(
             prepared,
             state,
             context,

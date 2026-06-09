@@ -446,6 +446,21 @@ class _WriterResidualAttachmentPolicyEmissionGroup:
         )
 
     @property
+    def closure_open_was_considered(self) -> bool:
+        return bool(self.closure_open_emissions)
+
+    @property
+    def closure_open_support_survived(self) -> bool:
+        return bool(self.surviving_closure_open_emissions)
+
+    @property
+    def closure_open_support_dead(self) -> bool:
+        return (
+            self.closure_open_was_considered
+            and not self.closure_open_support_survived
+        )
+
+    @property
     def has_closure_open_vs_cyclic_tree_entry_choice(self) -> bool:
         return bool(
             self.closure_open_emissions
@@ -731,9 +746,7 @@ class _WriterActiveEmittedGraphPolicyDecision:
                 not closure_survived
                 and child_present
                 and not self.child_schedule_surface.blocked
-                and bool(
-                    self.considered_closure_open_vs_cyclic_tree_entry_groups
-                )
+                and bool(self.unresolved_closure_open_vs_cyclic_tree_entry_groups)
             )
         else:
             valid = False
@@ -869,6 +882,24 @@ class _WriterActiveEmittedGraphPolicyDecision:
         )
 
     @property
+    def support_dead_closure_open_vs_cyclic_tree_entry_groups(
+        self,
+    ) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+        return _support_dead_closure_open_vs_cyclic_tree_entry_groups(
+            self.closure_endpoint_decision,
+            self.considered_closure_open_vs_cyclic_tree_entry_groups,
+        )
+
+    @property
+    def unresolved_closure_open_vs_cyclic_tree_entry_groups(
+        self,
+    ) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+        return _unresolved_closure_open_vs_cyclic_tree_entry_groups(
+            self.closure_endpoint_decision,
+            self.considered_closure_open_vs_cyclic_tree_entry_groups,
+        )
+
+    @property
     def unresolved_residual_attachment_policy_groups(
         self,
     ) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
@@ -881,7 +912,7 @@ class _WriterActiveEmittedGraphPolicyDecision:
         ):
             return ()
 
-        return self.considered_closure_open_vs_cyclic_tree_entry_groups
+        return self.unresolved_closure_open_vs_cyclic_tree_entry_groups
 
 
 def _closure_endpoint_combined_batch(
@@ -1508,6 +1539,63 @@ def _residual_attachment_policy_emission_groups_from_scheduled_action_emissions(
     )
 
 
+def _residual_attachment_policy_emission_group_for_key(
+    groups: tuple[_WriterResidualAttachmentPolicyEmissionGroup, ...],
+    key: _WriterResidualAttachmentPolicyKey,
+) -> _WriterResidualAttachmentPolicyEmissionGroup | None:
+    for group in groups:
+        if group.key == key:
+            return group
+
+    return None
+
+
+def _closure_open_support_dead_for_residual_attachment_policy_group(
+    closure_endpoint_decision: _WriterClosureEndpointScheduleDecision,
+    group: _WriterResidualAttachmentPolicyGroup,
+) -> bool:
+    emission_group = _residual_attachment_policy_emission_group_for_key(
+        (
+            closure_endpoint_decision
+            .considered_residual_attachment_policy_emission_groups
+        ),
+        group.key,
+    )
+
+    if emission_group is None:
+        return False
+
+    return emission_group.closure_open_support_dead
+
+
+def _support_dead_closure_open_vs_cyclic_tree_entry_groups(
+    closure_endpoint_decision: _WriterClosureEndpointScheduleDecision,
+    groups: tuple[_WriterResidualAttachmentPolicyGroup, ...],
+) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+    return tuple(
+        group
+        for group in groups
+        if _closure_open_support_dead_for_residual_attachment_policy_group(
+            closure_endpoint_decision,
+            group,
+        )
+    )
+
+
+def _unresolved_closure_open_vs_cyclic_tree_entry_groups(
+    closure_endpoint_decision: _WriterClosureEndpointScheduleDecision,
+    groups: tuple[_WriterResidualAttachmentPolicyGroup, ...],
+) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+    return tuple(
+        group
+        for group in groups
+        if not _closure_open_support_dead_for_residual_attachment_policy_group(
+            closure_endpoint_decision,
+            group,
+        )
+    )
+
+
 def build_writer_transition_expansion_context(
     prepared: SouthStarPreparedMol,
     state: WriterState,
@@ -1748,10 +1836,14 @@ def _active_emitted_graph_policy_decision(
             candidate_surfaces
         )
     )
-    unresolved_groups = tuple(
+    choice_groups = tuple(
         group
         for group in candidate_groups
         if group.has_closure_open_vs_cyclic_tree_entry_choice
+    )
+    unresolved_groups = _unresolved_closure_open_vs_cyclic_tree_entry_groups(
+        closure_decision,
+        choice_groups,
     )
 
     if unresolved_groups:

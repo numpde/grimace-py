@@ -301,6 +301,15 @@ class _WriterResidualAttachmentPolicyGroup:
             if surface.policy_family is family
         )
 
+    def owner_kinds_for_policy_family(
+        self,
+        family: _WriterGraphPolicyActionFamily,
+    ) -> tuple[WriterBoundaryOwnerKind | None, ...]:
+        return tuple(
+            surface.owner_kind
+            for surface in self.surfaces_for_policy_family(family)
+        )
+
     @property
     def generic_tree_entry_surfaces(
         self,
@@ -334,6 +343,31 @@ class _WriterResidualAttachmentPolicyGroup:
         )
 
     @property
+    def closure_open_owner_kinds(
+        self,
+    ) -> tuple[WriterBoundaryOwnerKind | None, ...]:
+        return self.owner_kinds_for_policy_family(
+            _WriterGraphPolicyActionFamily.CLOSURE_OPEN
+        )
+
+    @property
+    def cyclic_tree_entry_owner_kinds(
+        self,
+    ) -> tuple[WriterBoundaryOwnerKind | None, ...]:
+        return self.owner_kinds_for_policy_family(
+            _WriterGraphPolicyActionFamily.CYCLIC_TREE_ENTRY
+        )
+
+    @property
+    def closure_open_vs_cyclic_tree_entry_owner_kinds(
+        self,
+    ) -> tuple[WriterBoundaryOwnerKind | None, ...]:
+        return (
+            *self.closure_open_owner_kinds,
+            *self.cyclic_tree_entry_owner_kinds,
+        )
+
+    @property
     def tree_entry_surfaces(
         self,
     ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
@@ -348,6 +382,23 @@ class _WriterResidualAttachmentPolicyGroup:
         return bool(
             self.closure_open_surfaces
             and self.cyclic_tree_entry_surfaces
+        )
+
+    @property
+    def has_active_atom_owned_closure_open_vs_cyclic_tree_entry_choice(self) -> bool:
+        if not self.has_closure_open_vs_cyclic_tree_entry_choice:
+            return False
+
+        return all(
+            owner_kind is WriterBoundaryOwnerKind.ACTIVE_ATOM
+            for owner_kind in self.closure_open_vs_cyclic_tree_entry_owner_kinds
+        )
+
+    @property
+    def has_unsupported_owner_scope_closure_open_vs_cyclic_tree_entry_choice(self) -> bool:
+        return (
+            self.has_closure_open_vs_cyclic_tree_entry_choice
+            and not self.has_active_atom_owned_closure_open_vs_cyclic_tree_entry_choice
         )
 
 
@@ -903,6 +954,19 @@ class _WriterActiveEmittedGraphPolicyDecision:
             group
             for group in self.considered_residual_attachment_policy_groups
             if group.has_closure_open_vs_cyclic_tree_entry_choice
+        )
+
+    @property
+    def unsupported_owner_scope_closure_open_vs_cyclic_tree_entry_groups(
+        self,
+    ) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+        return tuple(
+            group
+            for group in self.considered_closure_open_vs_cyclic_tree_entry_groups
+            if (
+                group
+                .has_unsupported_owner_scope_closure_open_vs_cyclic_tree_entry_choice
+            )
         )
 
     @property
@@ -1592,6 +1656,9 @@ def _closure_open_support_dead_for_residual_attachment_policy_group(
     closure_endpoint_decision: _WriterClosureEndpointScheduleDecision,
     group: _WriterResidualAttachmentPolicyGroup,
 ) -> bool:
+    if not group.has_active_atom_owned_closure_open_vs_cyclic_tree_entry_choice:
+        return False
+
     emission_group = _residual_attachment_policy_emission_group_for_key(
         (
             closure_endpoint_decision

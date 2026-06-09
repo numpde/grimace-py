@@ -154,6 +154,12 @@ class _WriterActiveEmittedScheduleDecisionKind(Enum):
     ACTIVE_CHILD = "active_child"
 
 
+class _WriterActiveEmittedGraphPolicyDecisionKind(Enum):
+    CLOSURE_ENDPOINT = "closure_endpoint"
+    ACTIVE_CHILD = "active_child"
+    BLOCKED_CHILD = "blocked_child"
+
+
 class _WriterTopLevelScheduleDecisionKind(Enum):
     TOP_LEVEL_ACTIONS = "top_level_actions"
     ACTIVE_EMITTED = "active_emitted"
@@ -357,6 +363,96 @@ class _WriterClosureEndpointScheduleDecision:
     pair_batch: _WriterScheduledActionEmissionBatch
     open_batch: _WriterScheduledActionEmissionBatch
     surviving_emissions: tuple[_WriterScheduledActionEmission, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterActiveEmittedGraphPolicyDecision:
+    kind: _WriterActiveEmittedGraphPolicyDecisionKind
+    active_atom: AtomId
+    closure_endpoint_decision: _WriterClosureEndpointScheduleDecision
+    child_schedule_surface: _WriterActiveChildScheduleSurface | None = None
+
+    def __post_init__(self) -> None:
+        closure_survived = bool(
+            self.closure_endpoint_decision.surviving_emissions
+        )
+        child_present = self.child_schedule_surface is not None
+
+        if (
+            self.kind
+            is _WriterActiveEmittedGraphPolicyDecisionKind.CLOSURE_ENDPOINT
+        ):
+            valid = closure_survived and not child_present
+        elif (
+            self.kind
+            is _WriterActiveEmittedGraphPolicyDecisionKind.ACTIVE_CHILD
+        ):
+            valid = (
+                not closure_survived
+                and child_present
+                and not self.child_schedule_surface.blocked
+            )
+        elif (
+            self.kind
+            is _WriterActiveEmittedGraphPolicyDecisionKind.BLOCKED_CHILD
+        ):
+            valid = (
+                not closure_survived
+                and child_present
+                and self.child_schedule_surface.blocked
+            )
+        else:
+            valid = False
+
+        if not valid:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                f"invalid active-emitted graph policy decision: {self.kind!r}",
+            )
+
+    @property
+    def blocked(self) -> bool:
+        return (
+            self.kind
+            is _WriterActiveEmittedGraphPolicyDecisionKind.BLOCKED_CHILD
+        )
+
+    @property
+    def blockers(self) -> tuple[_WriterChildObligationBlocker, ...]:
+        if self.child_schedule_surface is None:
+            return ()
+
+        return self.child_schedule_surface.blockers
+
+    @property
+    def child_scheduled_actions(self) -> tuple[_WriterScheduledAction, ...]:
+        if self.child_schedule_surface is None or self.child_schedule_surface.blocked:
+            return ()
+
+        return self.child_schedule_surface.scheduled_actions
+
+    @property
+    def graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        if (
+            self.kind
+            is _WriterActiveEmittedGraphPolicyDecisionKind.CLOSURE_ENDPOINT
+        ):
+            return _closure_endpoint_combined_batch(
+                self.closure_endpoint_decision
+            ).surviving_graph_action_surfaces
+
+        if (
+            self.kind
+            is _WriterActiveEmittedGraphPolicyDecisionKind.ACTIVE_CHILD
+        ):
+            if self.child_schedule_surface is None:
+                return ()
+
+            return self.child_schedule_surface.graph_action_surfaces
+
+        return ()
 
 
 def _closure_endpoint_combined_batch(
@@ -940,12 +1036,12 @@ def _active_child_transitions_from_scheduled_action(
     )
 
 
-def _active_emitted_schedule_decision(
+def _active_emitted_graph_policy_decision(
     prepared: SouthStarPreparedMol,
     state: WriterState,
     context: WriterTransitionExpansionContext,
     active_atom: AtomId,
-) -> _WriterActiveEmittedScheduleDecision:
+) -> _WriterActiveEmittedGraphPolicyDecision:
     closure_decision = _closure_endpoint_schedule_decision(
         prepared,
         state,
@@ -953,7 +1049,14 @@ def _active_emitted_schedule_decision(
     )
 
     if closure_decision.surviving_emissions:
-        return _active_emitted_closure_decision(closure_decision)
+        return _WriterActiveEmittedGraphPolicyDecision(
+            kind=(
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .CLOSURE_ENDPOINT
+            ),
+            active_atom=active_atom,
+            closure_endpoint_decision=closure_decision,
+        )
 
     child_schedule_surface = _active_child_schedule_surface_from_context(
         context,
@@ -961,17 +1064,64 @@ def _active_emitted_schedule_decision(
         active_atom,
     )
 
-    _raise_for_child_obligation_blockers(child_schedule_surface.blockers)
+    if child_schedule_surface.blocked:
+        return _WriterActiveEmittedGraphPolicyDecision(
+            kind=(
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .BLOCKED_CHILD
+            ),
+            active_atom=active_atom,
+            closure_endpoint_decision=closure_decision,
+            child_schedule_surface=child_schedule_surface,
+        )
+
+    return _WriterActiveEmittedGraphPolicyDecision(
+        kind=_WriterActiveEmittedGraphPolicyDecisionKind.ACTIVE_CHILD,
+        active_atom=active_atom,
+        closure_endpoint_decision=closure_decision,
+        child_schedule_surface=child_schedule_surface,
+    )
+
+
+def _active_emitted_schedule_decision(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+    active_atom: AtomId,
+) -> _WriterActiveEmittedScheduleDecision:
+    policy_decision = _active_emitted_graph_policy_decision(
+        prepared,
+        state,
+        context,
+        active_atom,
+    )
+
+    if (
+        policy_decision.kind
+        is _WriterActiveEmittedGraphPolicyDecisionKind.CLOSURE_ENDPOINT
+    ):
+        return _active_emitted_closure_decision(
+            policy_decision.closure_endpoint_decision
+        )
+
+    _raise_for_child_obligation_blockers(policy_decision.blockers)
+
+    child_schedule_surface = policy_decision.child_schedule_surface
+    if child_schedule_surface is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "active-child graph policy requires a child schedule surface",
+        )
 
     child_batch = _scheduled_action_emission_batch(
         prepared,
         state,
         context,
-        child_schedule_surface.scheduled_actions,
+        policy_decision.child_scheduled_actions,
     )
 
     return _active_emitted_child_decision(
-        closure_endpoint_decision=closure_decision,
+        closure_endpoint_decision=policy_decision.closure_endpoint_decision,
         child_schedule_surface=child_schedule_surface,
         child_batch=child_batch,
     )

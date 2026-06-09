@@ -175,6 +175,9 @@ class _WriterActiveEmittedScheduleDecisionKind(Enum):
 class _WriterActiveEmittedGraphPolicyDecisionKind(Enum):
     CLOSURE_ENDPOINT = "closure_endpoint"
     ACTIVE_CHILD = "active_child"
+    ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN = (
+        "active_child_after_dead_closure_open"
+    )
     BLOCKED_CHILD = "blocked_child"
     UNRESOLVED_RESIDUAL_ATTACHMENT_CHOICE = (
         "unresolved_residual_attachment_choice"
@@ -725,6 +728,23 @@ class _WriterActiveEmittedGraphPolicyDecision:
                 not closure_survived
                 and child_present
                 and not self.child_schedule_surface.blocked
+                and not self.considered_closure_open_vs_cyclic_tree_entry_groups
+            )
+        elif (
+            self.kind
+            is (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+            )
+        ):
+            valid = (
+                not closure_survived
+                and child_present
+                and not self.child_schedule_surface.blocked
+                and bool(
+                    self.support_dead_closure_open_vs_cyclic_tree_entry_groups
+                )
+                and not self.unresolved_closure_open_vs_cyclic_tree_entry_groups
             )
         elif (
             self.kind
@@ -775,11 +795,18 @@ class _WriterActiveEmittedGraphPolicyDecision:
         return self.child_schedule_surface.blockers
 
     @property
+    def emits_child_actions(self) -> bool:
+        return self.kind in (
+            _WriterActiveEmittedGraphPolicyDecisionKind.ACTIVE_CHILD,
+            (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+            ),
+        )
+
+    @property
     def child_scheduled_actions(self) -> tuple[_WriterScheduledAction, ...]:
-        if (
-            self.kind
-            is not _WriterActiveEmittedGraphPolicyDecisionKind.ACTIVE_CHILD
-        ):
+        if not self.emits_child_actions:
             return ()
 
         if self.child_schedule_surface is None:
@@ -821,10 +848,7 @@ class _WriterActiveEmittedGraphPolicyDecision:
         ):
             return self.closure_endpoint_decision.selected_graph_action_surfaces
 
-        if (
-            self.kind
-            is _WriterActiveEmittedGraphPolicyDecisionKind.ACTIVE_CHILD
-        ):
+        if self.emits_child_actions:
             return self.child_considered_graph_action_surfaces
 
         return ()
@@ -914,6 +938,21 @@ class _WriterActiveEmittedGraphPolicyDecision:
 
         return self.unresolved_closure_open_vs_cyclic_tree_entry_groups
 
+    @property
+    def resolved_residual_attachment_policy_groups(
+        self,
+    ) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+        if (
+            self.kind
+            is not (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+            )
+        ):
+            return ()
+
+        return self.support_dead_closure_open_vs_cyclic_tree_entry_groups
+
 
 def _closure_endpoint_combined_batch(
     decision: _WriterClosureEndpointScheduleDecision,
@@ -987,8 +1026,7 @@ class _WriterActiveEmittedScheduleDecision:
                 )
             elif self.kind is _WriterActiveEmittedScheduleDecisionKind.ACTIVE_CHILD:
                 valid = (
-                    policy.kind
-                    is _WriterActiveEmittedGraphPolicyDecisionKind.ACTIVE_CHILD
+                    policy.emits_child_actions
                     and policy.child_schedule_surface is self.child_schedule_surface
                 )
             else:
@@ -1845,12 +1883,29 @@ def _active_emitted_graph_policy_decision(
         closure_decision,
         choice_groups,
     )
+    support_dead_groups = (
+        _support_dead_closure_open_vs_cyclic_tree_entry_groups(
+            closure_decision,
+            choice_groups,
+        )
+    )
 
     if unresolved_groups:
         return _WriterActiveEmittedGraphPolicyDecision(
             kind=(
                 _WriterActiveEmittedGraphPolicyDecisionKind
                 .UNRESOLVED_RESIDUAL_ATTACHMENT_CHOICE
+            ),
+            active_atom=active_atom,
+            closure_endpoint_decision=closure_decision,
+            child_schedule_surface=child_schedule_surface,
+        )
+
+    if support_dead_groups:
+        return _WriterActiveEmittedGraphPolicyDecision(
+            kind=(
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
             ),
             active_atom=active_atom,
             closure_endpoint_decision=closure_decision,
@@ -1889,10 +1944,7 @@ def _active_emitted_schedule_decision(
 
     _raise_for_active_emitted_graph_policy_blockers(policy_decision)
 
-    if (
-        policy_decision.kind
-        is not _WriterActiveEmittedGraphPolicyDecisionKind.ACTIVE_CHILD
-    ):
+    if not policy_decision.emits_child_actions:
         raise SouthStarError(
             SouthStarErrorKind.INTERNAL_INVARIANT,
             (

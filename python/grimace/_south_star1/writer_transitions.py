@@ -150,6 +150,17 @@ class _WriterScheduledActionKind(Enum):
     PAIR_CLOSURE_ENDPOINT = "pair_closure_endpoint"
 
 
+class _WriterGraphPolicyActionFamily(Enum):
+    PENDING_ENTRY = "pending_entry"
+    ROOT_ATOM = "root_atom"
+    FINISH_ACTIVE = "finish_active"
+    TREE_ENTRY = "tree_entry"
+    ACYCLIC_TREE_ENTRY = "acyclic_tree_entry"
+    CYCLIC_TREE_ENTRY = "cyclic_tree_entry"
+    CLOSURE_OPEN = "closure_open"
+    CLOSURE_PAIR = "closure_pair"
+
+
 class _WriterActiveEmittedScheduleDecisionKind(Enum):
     CLOSURE_ENDPOINT = "closure_endpoint"
     ACTIVE_CHILD = "active_child"
@@ -252,6 +263,10 @@ class _WriterScheduledGraphActionSurface:
     closure_label: WriterClosureLabel | None = None
     pending_entry: bool = False
 
+    @property
+    def policy_family(self) -> _WriterGraphPolicyActionFamily:
+        return _graph_policy_action_family_from_surface(self)
+
 
 @dataclass(frozen=True, slots=True)
 class _WriterScheduledActionEmission:
@@ -280,6 +295,10 @@ class _WriterNextTokenFrontierSupport:
     def graph_action_surface(self) -> _WriterScheduledGraphActionSurface:
         return self.emission.graph_action_surface
 
+    @property
+    def policy_family(self) -> _WriterGraphPolicyActionFamily:
+        return self.graph_action_surface.policy_family
+
 
 @dataclass(frozen=True, slots=True)
 class _WriterNextTokenFrontierEntry:
@@ -299,6 +318,13 @@ class _WriterNextTokenFrontierEntry:
     ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
         return tuple(
             support.graph_action_surface
+            for support in self.supports
+        )
+
+    @property
+    def policy_families(self) -> tuple[_WriterGraphPolicyActionFamily, ...]:
+        return tuple(
+            support.policy_family
             for support in self.supports
         )
 
@@ -565,6 +591,26 @@ class _WriterActiveEmittedGraphPolicyDecision:
     ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
         return self.chosen_graph_action_surfaces
 
+    def considered_graph_action_surfaces_for_policy_family(
+        self,
+        family: _WriterGraphPolicyActionFamily,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            surface
+            for surface in self.considered_graph_action_surfaces
+            if surface.policy_family is family
+        )
+
+    def chosen_graph_action_surfaces_for_policy_family(
+        self,
+        family: _WriterGraphPolicyActionFamily,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            surface
+            for surface in self.chosen_graph_action_surfaces
+            if surface.policy_family is family
+        )
+
 
 def _closure_endpoint_combined_batch(
     decision: _WriterClosureEndpointScheduleDecision,
@@ -699,6 +745,36 @@ class _WriterActiveEmittedScheduleDecision:
         self,
     ) -> tuple[_WriterNextTokenFrontierEntry, ...]:
         return self.selected_batch.surviving_next_token_frontier
+
+    def considered_graph_action_surfaces_for_policy_family(
+        self,
+        family: _WriterGraphPolicyActionFamily,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            surface
+            for surface in self.considered_graph_action_surfaces
+            if surface.policy_family is family
+        )
+
+    def policy_chosen_graph_action_surfaces_for_policy_family(
+        self,
+        family: _WriterGraphPolicyActionFamily,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            surface
+            for surface in self.policy_chosen_graph_action_surfaces
+            if surface.policy_family is family
+        )
+
+    def selected_graph_action_surfaces_for_policy_family(
+        self,
+        family: _WriterGraphPolicyActionFamily,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            surface
+            for surface in self.selected_graph_action_surfaces
+            if surface.policy_family is family
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -1024,6 +1100,48 @@ def _scheduled_graph_action_surface(
     raise SouthStarError(
         SouthStarErrorKind.INTERNAL_INVARIANT,
         f"unsupported scheduled graph action surface: {action.kind!r}",
+    )
+
+
+def _graph_policy_action_family_from_surface(
+    surface: _WriterScheduledGraphActionSurface,
+) -> _WriterGraphPolicyActionFamily:
+    if surface.kind is _WriterScheduledActionKind.CONSUME_PENDING_ENTRY:
+        return _WriterGraphPolicyActionFamily.PENDING_ENTRY
+
+    if surface.kind is _WriterScheduledActionKind.EMIT_ROOT_ATOM:
+        return _WriterGraphPolicyActionFamily.ROOT_ATOM
+
+    if surface.kind is _WriterScheduledActionKind.FINISH_ACTIVE:
+        return _WriterGraphPolicyActionFamily.FINISH_ACTIVE
+
+    if surface.kind in (
+        _WriterScheduledActionKind.ENTER_INLINE_CHILD,
+        _WriterScheduledActionKind.OPEN_BRANCH,
+    ):
+        if (
+            surface.attachment_action_kind
+            is WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY
+        ):
+            return _WriterGraphPolicyActionFamily.ACYCLIC_TREE_ENTRY
+
+        if (
+            surface.attachment_action_kind
+            is WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY
+        ):
+            return _WriterGraphPolicyActionFamily.CYCLIC_TREE_ENTRY
+
+        return _WriterGraphPolicyActionFamily.TREE_ENTRY
+
+    if surface.kind is _WriterScheduledActionKind.OPEN_CLOSURE_ENDPOINT:
+        return _WriterGraphPolicyActionFamily.CLOSURE_OPEN
+
+    if surface.kind is _WriterScheduledActionKind.PAIR_CLOSURE_ENDPOINT:
+        return _WriterGraphPolicyActionFamily.CLOSURE_PAIR
+
+    raise SouthStarError(
+        SouthStarErrorKind.INTERNAL_INVARIANT,
+        f"unknown graph policy action surface kind: {surface.kind!r}",
     )
 
 

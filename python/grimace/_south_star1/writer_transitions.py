@@ -207,6 +207,11 @@ class _WriterTopLevelScheduleDecisionKind(Enum):
     ACTIVE_EMITTED = "active_emitted"
 
 
+class _WriterTopLevelScheduleOutcomeKind(Enum):
+    SCHEDULED = "scheduled"
+    BLOCKED = "blocked"
+
+
 @dataclass(frozen=True, slots=True)
 class _WriterScheduledAction:
     kind: _WriterScheduledActionKind
@@ -1501,6 +1506,82 @@ class _WriterTopLevelScheduleDecision:
         return self.active_emitted_decision.graph_policy_decision
 
 
+@dataclass(frozen=True, slots=True)
+class _WriterTopLevelScheduleOutcome:
+    kind: _WriterTopLevelScheduleOutcomeKind
+    schedule_decision: _WriterTopLevelScheduleDecision | None = None
+    active_emitted_outcome: _WriterActiveEmittedScheduleOutcome | None = None
+
+    def __post_init__(self) -> None:
+        if self.kind is _WriterTopLevelScheduleOutcomeKind.SCHEDULED:
+            if self.schedule_decision is None:
+                valid = False
+            elif (
+                self.schedule_decision.kind
+                is _WriterTopLevelScheduleDecisionKind.ACTIVE_EMITTED
+            ):
+                valid = (
+                    self.active_emitted_outcome is not None
+                    and self.active_emitted_outcome.kind
+                    is _WriterActiveEmittedScheduleOutcomeKind.SCHEDULED
+                    and (
+                        self.schedule_decision.active_emitted_decision
+                        is self.active_emitted_outcome.schedule_decision
+                    )
+                )
+            else:
+                valid = self.active_emitted_outcome is None
+        elif self.kind is _WriterTopLevelScheduleOutcomeKind.BLOCKED:
+            valid = (
+                self.schedule_decision is None
+                and self.active_emitted_outcome is not None
+                and self.active_emitted_outcome.kind
+                is _WriterActiveEmittedScheduleOutcomeKind.BLOCKED
+            )
+        else:
+            valid = False
+
+        if not valid:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                f"invalid top-level schedule outcome: {self.kind!r}",
+            )
+
+    @property
+    def graph_policy_decision(
+        self,
+    ) -> _WriterActiveEmittedGraphPolicyDecision | None:
+        if self.active_emitted_outcome is None:
+            return None
+
+        return self.active_emitted_outcome.graph_policy_decision
+
+    @property
+    def graph_policy_blockers(
+        self,
+    ) -> tuple[_WriterActiveEmittedGraphPolicyBlocker, ...]:
+        if self.active_emitted_outcome is None:
+            return ()
+
+        return self.active_emitted_outcome.graph_policy_blockers
+
+    @property
+    def selected_transitions(self) -> tuple[WriterTransition, ...]:
+        if self.schedule_decision is None:
+            return ()
+
+        return self.schedule_decision.selected_transitions
+
+    @property
+    def selected_next_token_frontier(
+        self,
+    ) -> tuple[_WriterNextTokenFrontierEntry, ...]:
+        if self.schedule_decision is None:
+            return ()
+
+        return self.schedule_decision.selected_next_token_frontier
+
+
 def _active_emitted_closure_decision(
     closure_endpoint_decision: _WriterClosureEndpointScheduleDecision,
     graph_policy_decision: _WriterActiveEmittedGraphPolicyDecision | None = None,
@@ -2400,11 +2481,11 @@ def _top_level_scheduled_actions(
     return _root_atom_scheduled_actions(state)
 
 
-def _top_level_schedule_decision(
+def _top_level_schedule_outcome(
     prepared: SouthStarPreparedMol,
     state: WriterState,
     context: WriterTransitionExpansionContext,
-) -> _WriterTopLevelScheduleDecision:
+) -> _WriterTopLevelScheduleOutcome:
     top_level_actions = _top_level_scheduled_actions(state)
 
     if top_level_actions:
@@ -2415,20 +2496,75 @@ def _top_level_schedule_decision(
             top_level_actions,
         )
 
-        return _top_level_actions_decision(top_level_batch)
+        return _WriterTopLevelScheduleOutcome(
+            kind=_WriterTopLevelScheduleOutcomeKind.SCHEDULED,
+            schedule_decision=_top_level_actions_decision(top_level_batch),
+        )
 
     active = state.active
 
-    active_emitted_decision = _active_emitted_schedule_decision(
+    active_emitted_outcome = _active_emitted_schedule_outcome(
         prepared,
         state,
         context,
         active.atom,
     )
 
-    return _top_level_active_emitted_decision(
-        active_emitted_decision
+    if (
+        active_emitted_outcome.kind
+        is _WriterActiveEmittedScheduleOutcomeKind.BLOCKED
+    ):
+        return _WriterTopLevelScheduleOutcome(
+            kind=_WriterTopLevelScheduleOutcomeKind.BLOCKED,
+            active_emitted_outcome=active_emitted_outcome,
+        )
+
+    active_decision = active_emitted_outcome.schedule_decision
+    if active_decision is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "scheduled active-emitted outcome did not contain a schedule decision",
+        )
+
+    top_level_decision = _top_level_active_emitted_decision(
+        active_decision
     )
+
+    return _WriterTopLevelScheduleOutcome(
+        kind=_WriterTopLevelScheduleOutcomeKind.SCHEDULED,
+        schedule_decision=top_level_decision,
+        active_emitted_outcome=active_emitted_outcome,
+    )
+
+
+def _top_level_schedule_decision(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+) -> _WriterTopLevelScheduleDecision:
+    outcome = _top_level_schedule_outcome(
+        prepared,
+        state,
+        context,
+    )
+
+    if outcome.graph_policy_blockers:
+        policy = outcome.graph_policy_decision
+        if policy is None:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "blocked top-level outcome did not contain graph policy",
+            )
+
+        _raise_for_active_emitted_graph_policy_blockers(policy)
+
+    if outcome.schedule_decision is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "top-level schedule outcome did not contain a schedule decision",
+        )
+
+    return outcome.schedule_decision
 
 
 def _scheduled_writer_transitions(

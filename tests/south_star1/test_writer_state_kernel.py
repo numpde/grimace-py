@@ -76,6 +76,97 @@ SOUTH_STAR1_ROOT = REPO_ROOT / "python" / "grimace" / "_south_star1"
 
 
 class WriterStateKernelTest(unittest.TestCase):
+    def _closure_policy_for_outcome(
+        self,
+        active_atom: AtomId,
+    ) -> tuple[
+        writer_transitions._WriterActiveEmittedGraphPolicyDecision,
+        writer_transitions._WriterActiveEmittedScheduleDecision,
+    ]:
+        action = writer_transitions._finish_active_action(active_atom)
+        transition = SimpleNamespace(emitted_text="")
+        emission = writer_transitions._WriterScheduledActionEmission(
+            action=action,
+            transitions=(transition,),  # type: ignore[arg-type]
+        )
+        batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(action,),
+            emissions=(emission,),
+            surviving_emissions=(emission,),
+        )
+        empty_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        closure_decision = writer_transitions._WriterClosureEndpointScheduleDecision(
+            pair_batch=batch,
+            open_batch=empty_batch,
+            surviving_emissions=(emission,),
+        )
+        policy = writer_transitions._WriterActiveEmittedGraphPolicyDecision(
+            kind=(
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyDecisionKind
+                .CLOSURE_ENDPOINT
+            ),
+            active_atom=active_atom,
+            closure_endpoint_decision=closure_decision,
+        )
+        active_decision = writer_transitions._active_emitted_closure_decision(
+            closure_decision,
+            graph_policy_decision=policy,
+        )
+
+        return policy, active_decision
+
+    def _blocked_child_active_emitted_outcome(
+        self,
+        active_atom: AtomId,
+    ) -> writer_transitions._WriterActiveEmittedScheduleOutcome:
+        child_blocker = writer_transitions._WriterChildObligationBlocker(
+            kind=(
+                writer_transitions._WriterChildObligationBlockerKind
+                .MULTI_INCIDENCE_RESIDUAL_ATTACHMENT
+            ),
+            atom=active_atom,
+            attachment_id=7,
+            attachment_action_kind=(
+                WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY
+            ),
+        )
+        child_surface = writer_transitions._WriterActiveChildScheduleSurface(
+            active_atom=active_atom,
+            blockers=(child_blocker,),
+            child_obligations=(),
+            scheduled_actions=(),
+        )
+        empty_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        closure_decision = writer_transitions._WriterClosureEndpointScheduleDecision(
+            pair_batch=empty_batch,
+            open_batch=empty_batch,
+            surviving_emissions=(),
+        )
+        policy = writer_transitions._WriterActiveEmittedGraphPolicyDecision(
+            kind=(
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyDecisionKind
+                .BLOCKED_CHILD
+            ),
+            active_atom=active_atom,
+            closure_endpoint_decision=closure_decision,
+            child_schedule_surface=child_surface,
+        )
+
+        return writer_transitions._WriterActiveEmittedScheduleOutcome(
+            kind=writer_transitions._WriterActiveEmittedScheduleOutcomeKind.BLOCKED,
+            graph_policy_decision=policy,
+        )
+
     def test_writer_shaped_acyclic_support_uses_writer_frontier(self) -> None:
         prepared = _prepare(cco_facts())
 
@@ -2811,6 +2902,165 @@ class WriterStateKernelTest(unittest.TestCase):
             active_decision.selected_next_token_frontier,
         )
 
+    def test_top_level_schedule_outcome_validates_top_level_scheduled_payload(self) -> None:
+        action = writer_transitions._emit_root_atom_action(AtomId(0))
+        transition = SimpleNamespace(emitted_text="C")
+        emission = writer_transitions._WriterScheduledActionEmission(
+            action=action,
+            transitions=(transition,),  # type: ignore[arg-type]
+        )
+        batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(action,),
+            emissions=(emission,),
+            surviving_emissions=(emission,),
+        )
+        decision = writer_transitions._top_level_actions_decision(batch)
+
+        outcome = writer_transitions._WriterTopLevelScheduleOutcome(
+            kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.SCHEDULED,
+            schedule_decision=decision,
+        )
+
+        self.assertIs(outcome.schedule_decision, decision)
+        self.assertIsNone(outcome.active_emitted_outcome)
+        self.assertEqual(outcome.selected_transitions, decision.selected_transitions)
+        self.assertEqual(
+            outcome.selected_next_token_frontier,
+            decision.selected_next_token_frontier,
+        )
+        self.assertEqual(outcome.graph_policy_blockers, ())
+
+        with self.assertRaises(SouthStarError) as raised:
+            writer_transitions._WriterTopLevelScheduleOutcome(
+                kind=(
+                    writer_transitions
+                    ._WriterTopLevelScheduleOutcomeKind
+                    .SCHEDULED
+                ),
+            )
+
+        self.assertIs(raised.exception.kind, SouthStarErrorKind.INTERNAL_INVARIANT)
+
+        active_policy, active_decision = self._closure_policy_for_outcome(
+            AtomId(1),
+        )
+        active_outcome = writer_transitions._WriterActiveEmittedScheduleOutcome(
+            kind=writer_transitions._WriterActiveEmittedScheduleOutcomeKind.SCHEDULED,
+            graph_policy_decision=active_policy,
+            schedule_decision=active_decision,
+        )
+
+        with self.assertRaises(SouthStarError) as raised:
+            writer_transitions._WriterTopLevelScheduleOutcome(
+                kind=(
+                    writer_transitions
+                    ._WriterTopLevelScheduleOutcomeKind
+                    .SCHEDULED
+                ),
+                schedule_decision=decision,
+                active_emitted_outcome=active_outcome,
+            )
+
+        self.assertIs(raised.exception.kind, SouthStarErrorKind.INTERNAL_INVARIANT)
+
+    def test_top_level_schedule_outcome_validates_active_emitted_scheduled_payload(self) -> None:
+        policy, active_decision = self._closure_policy_for_outcome(AtomId(0))
+        active_outcome = writer_transitions._WriterActiveEmittedScheduleOutcome(
+            kind=writer_transitions._WriterActiveEmittedScheduleOutcomeKind.SCHEDULED,
+            graph_policy_decision=policy,
+            schedule_decision=active_decision,
+        )
+        top_decision = writer_transitions._top_level_active_emitted_decision(
+            active_decision,
+        )
+
+        outcome = writer_transitions._WriterTopLevelScheduleOutcome(
+            kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.SCHEDULED,
+            schedule_decision=top_decision,
+            active_emitted_outcome=active_outcome,
+        )
+
+        self.assertIs(outcome.schedule_decision, top_decision)
+        self.assertIs(outcome.active_emitted_outcome, active_outcome)
+        self.assertIs(outcome.graph_policy_decision, policy)
+
+        other_policy, other_active_decision = self._closure_policy_for_outcome(
+            AtomId(1),
+        )
+        other_active_outcome = writer_transitions._WriterActiveEmittedScheduleOutcome(
+            kind=writer_transitions._WriterActiveEmittedScheduleOutcomeKind.SCHEDULED,
+            graph_policy_decision=other_policy,
+            schedule_decision=other_active_decision,
+        )
+
+        with self.assertRaises(SouthStarError) as raised:
+            writer_transitions._WriterTopLevelScheduleOutcome(
+                kind=(
+                    writer_transitions
+                    ._WriterTopLevelScheduleOutcomeKind
+                    .SCHEDULED
+                ),
+                schedule_decision=top_decision,
+                active_emitted_outcome=other_active_outcome,
+            )
+
+        self.assertIs(raised.exception.kind, SouthStarErrorKind.INTERNAL_INVARIANT)
+
+    def test_top_level_schedule_outcome_validates_blocked_active_emitted_payload(self) -> None:
+        blocked_outcome = self._blocked_child_active_emitted_outcome(AtomId(0))
+
+        outcome = writer_transitions._WriterTopLevelScheduleOutcome(
+            kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.BLOCKED,
+            active_emitted_outcome=blocked_outcome,
+        )
+
+        self.assertIsNone(outcome.schedule_decision)
+        self.assertIs(outcome.active_emitted_outcome, blocked_outcome)
+        self.assertEqual(
+            outcome.graph_policy_blockers,
+            blocked_outcome.graph_policy_blockers,
+        )
+        self.assertEqual(outcome.selected_transitions, ())
+        self.assertEqual(outcome.selected_next_token_frontier, ())
+
+        action = writer_transitions._emit_root_atom_action(AtomId(0))
+        batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(action,),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        top_decision = writer_transitions._top_level_actions_decision(batch)
+
+        with self.assertRaises(SouthStarError) as raised:
+            writer_transitions._WriterTopLevelScheduleOutcome(
+                kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.BLOCKED,
+                schedule_decision=top_decision,
+                active_emitted_outcome=blocked_outcome,
+            )
+
+        self.assertIs(raised.exception.kind, SouthStarErrorKind.INTERNAL_INVARIANT)
+
+        policy, active_decision = self._closure_policy_for_outcome(AtomId(1))
+        scheduled_active_outcome = (
+            writer_transitions._WriterActiveEmittedScheduleOutcome(
+                kind=(
+                    writer_transitions
+                    ._WriterActiveEmittedScheduleOutcomeKind
+                    .SCHEDULED
+                ),
+                graph_policy_decision=policy,
+                schedule_decision=active_decision,
+            )
+        )
+
+        with self.assertRaises(SouthStarError) as raised:
+            writer_transitions._WriterTopLevelScheduleOutcome(
+                kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.BLOCKED,
+                active_emitted_outcome=scheduled_active_outcome,
+            )
+
+        self.assertIs(raised.exception.kind, SouthStarErrorKind.INTERNAL_INVARIANT)
+
     def test_top_level_active_emitted_decision_exposes_graph_policy_decision(self) -> None:
         action = writer_transitions._finish_active_action(AtomId(0))
         emission = writer_transitions._WriterScheduledActionEmission(
@@ -3474,7 +3724,7 @@ class WriterStateKernelTest(unittest.TestCase):
             "grimace._south_star1.writer_transitions._scheduled_action_emission_batch",
             return_value=batch,
         ) as emission_batch, patch(
-            "grimace._south_star1.writer_transitions._active_emitted_schedule_decision",
+            "grimace._south_star1.writer_transitions._active_emitted_schedule_outcome",
             side_effect=AssertionError("active-emitted decision should not run"),
         ):
             decision = writer_transitions._top_level_schedule_decision(
@@ -3518,7 +3768,7 @@ class WriterStateKernelTest(unittest.TestCase):
             "grimace._south_star1.writer_transitions._scheduled_action_emission_batch",
             return_value=batch,
         ), patch(
-            "grimace._south_star1.writer_transitions._active_emitted_schedule_decision",
+            "grimace._south_star1.writer_transitions._active_emitted_schedule_outcome",
             side_effect=AssertionError("active-emitted decision should not run"),
         ):
             decision = writer_transitions._top_level_schedule_decision(
@@ -3565,22 +3815,35 @@ class WriterStateKernelTest(unittest.TestCase):
             child_obligations=(),
             scheduled_actions=selected_batch.actions,
         )
-        active_decision = writer_transitions._WriterActiveEmittedScheduleDecision(
-            kind=writer_transitions._WriterActiveEmittedScheduleDecisionKind.ACTIVE_CHILD,
-            closure_endpoint_decision=closure_endpoint_decision,
-            closure_batch=selected_batch,
-            selected_batch=selected_batch,
-            child_batch=selected_batch,
+        policy = writer_transitions._WriterActiveEmittedGraphPolicyDecision(
+            kind=(
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyDecisionKind
+                .ACTIVE_CHILD
+            ),
+            active_atom=AtomId(4),
             child_schedule_surface=child_surface,
+            closure_endpoint_decision=closure_endpoint_decision,
+        )
+        active_decision = writer_transitions._active_emitted_child_decision(
+            closure_endpoint_decision=closure_endpoint_decision,
+            child_schedule_surface=child_surface,
+            child_batch=selected_batch,
+            graph_policy_decision=policy,
+        )
+        active_outcome = writer_transitions._WriterActiveEmittedScheduleOutcome(
+            kind=writer_transitions._WriterActiveEmittedScheduleOutcomeKind.SCHEDULED,
+            graph_policy_decision=policy,
+            schedule_decision=active_decision,
         )
 
         with patch(
             "grimace._south_star1.writer_transitions._top_level_scheduled_actions",
             return_value=(),
         ) as top_level_actions, patch(
-            "grimace._south_star1.writer_transitions._active_emitted_schedule_decision",
-            return_value=active_decision,
-        ) as active_emitted_decision:
+            "grimace._south_star1.writer_transitions._active_emitted_schedule_outcome",
+            return_value=active_outcome,
+        ) as active_emitted_outcome:
             decision = writer_transitions._top_level_schedule_decision(
                 prepared,  # type: ignore[arg-type]
                 state,  # type: ignore[arg-type]
@@ -3595,12 +3858,186 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIsNone(decision.top_level_batch)
         self.assertIs(decision.active_emitted_decision, active_decision)
         top_level_actions.assert_called_once_with(state)
-        active_emitted_decision.assert_called_once_with(
+        active_emitted_outcome.assert_called_once_with(
             prepared,
             state,
             context,
             AtomId(4),
         )
+
+    def test_top_level_schedule_outcome_keeps_top_level_action_priority(self) -> None:
+        prepared = object()
+        state = object()
+        context = object()
+        action = writer_transitions._emit_root_atom_action(AtomId(0))
+        batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(action,),
+            emissions=(),
+            surviving_emissions=(),
+        )
+
+        with patch(
+            "grimace._south_star1.writer_transitions._top_level_scheduled_actions",
+            return_value=(action,),
+        ) as top_level_actions, patch(
+            "grimace._south_star1.writer_transitions._scheduled_action_emission_batch",
+            return_value=batch,
+        ) as emission_batch, patch(
+            "grimace._south_star1.writer_transitions._active_emitted_schedule_outcome",
+            side_effect=AssertionError("active-emitted outcome should not run"),
+        ) as active_emitted_outcome:
+            outcome = writer_transitions._top_level_schedule_outcome(
+                prepared,  # type: ignore[arg-type]
+                state,  # type: ignore[arg-type]
+                context,  # type: ignore[arg-type]
+            )
+
+        self.assertIs(
+            outcome.kind,
+            writer_transitions._WriterTopLevelScheduleOutcomeKind.SCHEDULED,
+        )
+        self.assertIs(
+            outcome.schedule_decision.kind,
+            writer_transitions._WriterTopLevelScheduleDecisionKind.TOP_LEVEL_ACTIONS,
+        )
+        top_level_actions.assert_called_once_with(state)
+        emission_batch.assert_called_once_with(
+            prepared,
+            state,
+            context,
+            (action,),
+        )
+        active_emitted_outcome.assert_not_called()
+
+    def test_top_level_schedule_outcome_wraps_active_emitted_scheduled_outcome(self) -> None:
+        prepared = object()
+        context = object()
+        active_atom = AtomId(4)
+        state = SimpleNamespace(
+            active=SimpleNamespace(
+                atom=active_atom,
+            ),
+        )
+        policy, active_decision = self._closure_policy_for_outcome(active_atom)
+        active_outcome = writer_transitions._WriterActiveEmittedScheduleOutcome(
+            kind=writer_transitions._WriterActiveEmittedScheduleOutcomeKind.SCHEDULED,
+            graph_policy_decision=policy,
+            schedule_decision=active_decision,
+        )
+
+        with patch(
+            "grimace._south_star1.writer_transitions._top_level_scheduled_actions",
+            return_value=(),
+        ), patch(
+            "grimace._south_star1.writer_transitions._active_emitted_schedule_outcome",
+            return_value=active_outcome,
+        ) as active_emitted_outcome:
+            outcome = writer_transitions._top_level_schedule_outcome(
+                prepared,  # type: ignore[arg-type]
+                state,  # type: ignore[arg-type]
+                context,  # type: ignore[arg-type]
+            )
+
+        self.assertIs(
+            outcome.kind,
+            writer_transitions._WriterTopLevelScheduleOutcomeKind.SCHEDULED,
+        )
+        self.assertIs(outcome.active_emitted_outcome, active_outcome)
+        self.assertIs(
+            outcome.schedule_decision.kind,
+            writer_transitions._WriterTopLevelScheduleDecisionKind.ACTIVE_EMITTED,
+        )
+        self.assertIs(
+            outcome.schedule_decision.active_emitted_decision,
+            active_decision,
+        )
+        active_emitted_outcome.assert_called_once_with(
+            prepared,
+            state,
+            context,
+            active_atom,
+        )
+
+    def test_top_level_schedule_outcome_wraps_active_emitted_blocked_outcome(self) -> None:
+        prepared = object()
+        context = object()
+        active_atom = AtomId(4)
+        state = SimpleNamespace(
+            active=SimpleNamespace(
+                atom=active_atom,
+            ),
+        )
+        active_outcome = self._blocked_child_active_emitted_outcome(active_atom)
+
+        with patch(
+            "grimace._south_star1.writer_transitions._top_level_scheduled_actions",
+            return_value=(),
+        ), patch(
+            "grimace._south_star1.writer_transitions._active_emitted_schedule_outcome",
+            return_value=active_outcome,
+        ):
+            outcome = writer_transitions._top_level_schedule_outcome(
+                prepared,  # type: ignore[arg-type]
+                state,  # type: ignore[arg-type]
+                context,  # type: ignore[arg-type]
+            )
+
+        self.assertIs(
+            outcome.kind,
+            writer_transitions._WriterTopLevelScheduleOutcomeKind.BLOCKED,
+        )
+        self.assertIsNone(outcome.schedule_decision)
+        self.assertIs(outcome.active_emitted_outcome, active_outcome)
+        self.assertEqual(
+            outcome.graph_policy_blockers,
+            active_outcome.graph_policy_blockers,
+        )
+
+    def test_top_level_schedule_decision_raises_from_blocked_top_level_outcome(self) -> None:
+        active_atom = AtomId(4)
+        outcome = self._blocked_child_active_emitted_outcome(active_atom)
+        top_outcome = writer_transitions._WriterTopLevelScheduleOutcome(
+            kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.BLOCKED,
+            active_emitted_outcome=outcome,
+        )
+
+        with patch(
+            "grimace._south_star1.writer_transitions._top_level_schedule_outcome",
+            return_value=top_outcome,
+        ):
+            with self.assertRaises(SouthStarError) as raised:
+                writer_transitions._top_level_schedule_decision(
+                    object(),  # type: ignore[arg-type]
+                    object(),  # type: ignore[arg-type]
+                    object(),  # type: ignore[arg-type]
+                )
+
+        self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+
+    def test_top_level_schedule_decision_returns_scheduled_outcome_decision(self) -> None:
+        action = writer_transitions._emit_root_atom_action(AtomId(0))
+        batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(action,),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        decision = writer_transitions._top_level_actions_decision(batch)
+        outcome = writer_transitions._WriterTopLevelScheduleOutcome(
+            kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.SCHEDULED,
+            schedule_decision=decision,
+        )
+
+        with patch(
+            "grimace._south_star1.writer_transitions._top_level_schedule_outcome",
+            return_value=outcome,
+        ):
+            result = writer_transitions._top_level_schedule_decision(
+                object(),  # type: ignore[arg-type]
+                object(),  # type: ignore[arg-type]
+                object(),  # type: ignore[arg-type]
+            )
+
+        self.assertIs(result, decision)
 
     def test_scheduled_writer_transitions_flattens_top_level_decision_survivors(self) -> None:
         prepared = object()
@@ -3716,28 +4153,32 @@ class WriterStateKernelTest(unittest.TestCase):
                 surviving_emissions=(survivor,),  # type: ignore[arg-type]
             )
         )
-        child_surface = writer_transitions._WriterActiveChildScheduleSurface(
+        policy = writer_transitions._WriterActiveEmittedGraphPolicyDecision(
+            kind=(
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyDecisionKind
+                .CLOSURE_ENDPOINT
+            ),
             active_atom=AtomId(4),
-            blockers=(),
-            child_obligations=(),
-            scheduled_actions=selected_batch.actions,
-        )
-        active_decision = writer_transitions._WriterActiveEmittedScheduleDecision(
-            kind=writer_transitions._WriterActiveEmittedScheduleDecisionKind.ACTIVE_CHILD,
             closure_endpoint_decision=closure_endpoint_decision,
-            closure_batch=selected_batch,
-            selected_batch=selected_batch,
-            child_batch=selected_batch,
-            child_schedule_surface=child_surface,
+        )
+        active_decision = writer_transitions._active_emitted_closure_decision(
+            closure_endpoint_decision,
+            graph_policy_decision=policy,
+        )
+        active_outcome = writer_transitions._WriterActiveEmittedScheduleOutcome(
+            kind=writer_transitions._WriterActiveEmittedScheduleOutcomeKind.SCHEDULED,
+            graph_policy_decision=policy,
+            schedule_decision=active_decision,
         )
 
         with patch(
             "grimace._south_star1.writer_transitions._top_level_scheduled_actions",
             return_value=(),
         ) as top_level_actions, patch(
-            "grimace._south_star1.writer_transitions._active_emitted_schedule_decision",
-            return_value=active_decision,
-        ) as active_emitted_decision, patch(
+            "grimace._south_star1.writer_transitions._active_emitted_schedule_outcome",
+            return_value=active_outcome,
+        ) as active_emitted_outcome, patch(
             "grimace._south_star1.writer_transitions._transitions_from_scheduled_action_emissions",
             return_value=(transition,),
         ) as flatten_emissions:
@@ -3749,7 +4190,7 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertEqual(result, (transition,))
         top_level_actions.assert_called_once_with(state)
-        active_emitted_decision.assert_called_once_with(
+        active_emitted_outcome.assert_called_once_with(
             prepared,
             state,
             context,

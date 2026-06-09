@@ -161,6 +161,12 @@ class _WriterGraphPolicyActionFamily(Enum):
     CLOSURE_PAIR = "closure_pair"
 
 
+@dataclass(frozen=True, slots=True)
+class _WriterResidualAttachmentPolicyKey:
+    active_atom: AtomId
+    attachment_id: int
+
+
 class _WriterActiveEmittedScheduleDecisionKind(Enum):
     CLOSURE_ENDPOINT = "closure_endpoint"
     ACTIVE_CHILD = "active_child"
@@ -266,6 +272,77 @@ class _WriterScheduledGraphActionSurface:
     @property
     def policy_family(self) -> _WriterGraphPolicyActionFamily:
         return _graph_policy_action_family_from_surface(self)
+
+    @property
+    def residual_attachment_policy_key(
+        self,
+    ) -> _WriterResidualAttachmentPolicyKey | None:
+        return _residual_attachment_policy_key_from_surface(self)
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterResidualAttachmentPolicyGroup:
+    key: _WriterResidualAttachmentPolicyKey
+    surfaces: tuple[_WriterScheduledGraphActionSurface, ...]
+
+    def surfaces_for_policy_family(
+        self,
+        family: _WriterGraphPolicyActionFamily,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            surface
+            for surface in self.surfaces
+            if surface.policy_family is family
+        )
+
+    @property
+    def generic_tree_entry_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return self.surfaces_for_policy_family(
+            _WriterGraphPolicyActionFamily.TREE_ENTRY
+        )
+
+    @property
+    def acyclic_tree_entry_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return self.surfaces_for_policy_family(
+            _WriterGraphPolicyActionFamily.ACYCLIC_TREE_ENTRY
+        )
+
+    @property
+    def cyclic_tree_entry_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return self.surfaces_for_policy_family(
+            _WriterGraphPolicyActionFamily.CYCLIC_TREE_ENTRY
+        )
+
+    @property
+    def closure_open_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return self.surfaces_for_policy_family(
+            _WriterGraphPolicyActionFamily.CLOSURE_OPEN
+        )
+
+    @property
+    def tree_entry_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return (
+            *self.generic_tree_entry_surfaces,
+            *self.acyclic_tree_entry_surfaces,
+            *self.cyclic_tree_entry_surfaces,
+        )
+
+    @property
+    def has_closure_open_vs_cyclic_tree_entry_choice(self) -> bool:
+        return bool(
+            self.closure_open_surfaces
+            and self.cyclic_tree_entry_surfaces
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -609,6 +686,32 @@ class _WriterActiveEmittedGraphPolicyDecision:
             surface
             for surface in self.chosen_graph_action_surfaces
             if surface.policy_family is family
+        )
+
+    @property
+    def considered_residual_attachment_policy_groups(
+        self,
+    ) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+        return _residual_attachment_policy_groups_from_graph_action_surfaces(
+            self.considered_graph_action_surfaces
+        )
+
+    @property
+    def chosen_residual_attachment_policy_groups(
+        self,
+    ) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+        return _residual_attachment_policy_groups_from_graph_action_surfaces(
+            self.chosen_graph_action_surfaces
+        )
+
+    @property
+    def considered_closure_open_vs_cyclic_tree_entry_groups(
+        self,
+    ) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+        return tuple(
+            group
+            for group in self.considered_residual_attachment_policy_groups
+            if group.has_closure_open_vs_cyclic_tree_entry_choice
         )
 
 
@@ -1142,6 +1245,61 @@ def _graph_policy_action_family_from_surface(
     raise SouthStarError(
         SouthStarErrorKind.INTERNAL_INVARIANT,
         f"unknown graph policy action surface kind: {surface.kind!r}",
+    )
+
+
+_RESIDUAL_ATTACHMENT_POLICY_FAMILIES = frozenset(
+    {
+        _WriterGraphPolicyActionFamily.TREE_ENTRY,
+        _WriterGraphPolicyActionFamily.ACYCLIC_TREE_ENTRY,
+        _WriterGraphPolicyActionFamily.CYCLIC_TREE_ENTRY,
+        _WriterGraphPolicyActionFamily.CLOSURE_OPEN,
+    }
+)
+
+
+def _residual_attachment_policy_key_from_surface(
+    surface: _WriterScheduledGraphActionSurface,
+) -> _WriterResidualAttachmentPolicyKey | None:
+    if surface.attachment_id is None:
+        return None
+
+    if surface.policy_family not in _RESIDUAL_ATTACHMENT_POLICY_FAMILIES:
+        return None
+
+    return _WriterResidualAttachmentPolicyKey(
+        active_atom=surface.active_atom,
+        attachment_id=surface.attachment_id,
+    )
+
+
+def _residual_attachment_policy_groups_from_graph_action_surfaces(
+    surfaces: tuple[_WriterScheduledGraphActionSurface, ...],
+) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+    grouped: dict[
+        _WriterResidualAttachmentPolicyKey,
+        list[_WriterScheduledGraphActionSurface],
+    ] = {}
+    order: list[_WriterResidualAttachmentPolicyKey] = []
+
+    for surface in surfaces:
+        key = surface.residual_attachment_policy_key
+
+        if key is None:
+            continue
+
+        if key not in grouped:
+            grouped[key] = []
+            order.append(key)
+
+        grouped[key].append(surface)
+
+    return tuple(
+        _WriterResidualAttachmentPolicyGroup(
+            key=key,
+            surfaces=tuple(grouped[key]),
+        )
+        for key in order
     )
 
 

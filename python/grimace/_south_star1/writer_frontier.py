@@ -23,6 +23,8 @@ from .writer_state import writer_state_key
 from .writer_state import writer_state_key_sort_tuple
 from .writer_stereo import empty_writer_stereo_state
 from .writer_transitions import finalize_writer_terminal_state
+from .writer_transitions import _WriterActiveEmittedGraphPolicyBlocker
+from .writer_transitions import _WriterTopLevelScheduleOutcome
 from .writer_transitions import _legal_writer_schedule_outcome
 from .writer_transitions import _raise_for_top_level_schedule_outcome_blockers
 from .writer_transitions import validate_writer_supported_prepared
@@ -95,6 +97,64 @@ class _GroupedWriterFrontierTransitions:
     terminal_by_key: Counter[WriterStateKey]
     grouped_by_text: dict[str, set[WriterStateKey]]
     weighted_by_text: dict[str, Counter[WriterStateKey]]
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterFrontierStateScheduleOutcome:
+    state_key: WriterStateKey
+    parent_weight: int
+    finalized_state_key: WriterStateKey | None
+    schedule_outcome: _WriterTopLevelScheduleOutcome
+
+    @property
+    def blocked(self) -> bool:
+        return bool(self.schedule_outcome.graph_policy_blockers)
+
+    @property
+    def graph_policy_blockers(
+        self,
+    ) -> tuple[_WriterActiveEmittedGraphPolicyBlocker, ...]:
+        return self.schedule_outcome.graph_policy_blockers
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterFrontierScheduleOutcome:
+    state_outcomes: tuple[_WriterFrontierStateScheduleOutcome, ...]
+    terminal_by_key: Counter[WriterStateKey]
+    grouped_by_text: dict[str, set[WriterStateKey]]
+    weighted_by_text: dict[str, Counter[WriterStateKey]]
+
+    @property
+    def blocked_state_outcomes(
+        self,
+    ) -> tuple[_WriterFrontierStateScheduleOutcome, ...]:
+        return tuple(
+            state_outcome
+            for state_outcome in self.state_outcomes
+            if state_outcome.blocked
+        )
+
+    @property
+    def graph_policy_blockers(
+        self,
+    ) -> tuple[_WriterActiveEmittedGraphPolicyBlocker, ...]:
+        return tuple(
+            blocker
+            for state_outcome in self.blocked_state_outcomes
+            for blocker in state_outcome.graph_policy_blockers
+        )
+
+    @property
+    def blocked(self) -> bool:
+        return bool(self.graph_policy_blockers)
+
+    @property
+    def grouped_transitions(self) -> _GroupedWriterFrontierTransitions:
+        return _GroupedWriterFrontierTransitions(
+            terminal_by_key=self.terminal_by_key,
+            grouped_by_text=self.grouped_by_text,
+            weighted_by_text=self.weighted_by_text,
+        )
 
 
 def initial_writer_frontier_cursor(
@@ -246,22 +306,44 @@ def _successors_from_grouped(
     )
 
 
-def _group_writer_frontier_transitions(
+def _writer_frontier_schedule_outcome(
     prepared: SouthStarPreparedMol,
     cursor: WriterFrontierCursor,
-) -> _GroupedWriterFrontierTransitions:
+    *,
+    stop_after_first_blocked: bool = False,
+) -> _WriterFrontierScheduleOutcome:
     grouped: dict[str, set[WriterStateKey]] = {}
     weighted: dict[str, Counter[WriterStateKey]] = {}
     terminal_by_key: Counter[WriterStateKey] = Counter()
+    state_outcomes: list[_WriterFrontierStateScheduleOutcome] = []
+
     for key, parent_weight in cursor.weighted_states:
         state = writer_state_from_key(key)
-        finalized = finalize_writer_terminal_state(prepared, state)
-        if finalized is not None:
-            terminal_by_key[writer_state_key(finalized)] += parent_weight
-        outcome = _legal_writer_schedule_outcome(prepared, state)
-        _raise_for_top_level_schedule_outcome_blockers(outcome)
 
-        for entry in outcome.selected_next_token_frontier:
+        finalized = finalize_writer_terminal_state(prepared, state)
+        finalized_key = None
+
+        if finalized is not None:
+            finalized_key = writer_state_key(finalized)
+            terminal_by_key[finalized_key] += parent_weight
+
+        schedule_outcome = _legal_writer_schedule_outcome(prepared, state)
+
+        state_outcome = _WriterFrontierStateScheduleOutcome(
+            state_key=key,
+            parent_weight=parent_weight,
+            finalized_state_key=finalized_key,
+            schedule_outcome=schedule_outcome,
+        )
+        state_outcomes.append(state_outcome)
+
+        if state_outcome.blocked:
+            if stop_after_first_blocked:
+                break
+
+            continue
+
+        for entry in schedule_outcome.selected_next_token_frontier:
             for support in entry.supports:
                 successor_key = writer_state_key(support.transition.successor)
                 grouped.setdefault(entry.emitted_text, set()).add(successor_key)
@@ -269,11 +351,37 @@ def _group_writer_frontier_transitions(
                     entry.emitted_text,
                     Counter(),
                 )[successor_key] += parent_weight
-    return _GroupedWriterFrontierTransitions(
+
+    return _WriterFrontierScheduleOutcome(
+        state_outcomes=tuple(state_outcomes),
         terminal_by_key=terminal_by_key,
         grouped_by_text=grouped,
         weighted_by_text=weighted,
     )
+
+
+def _raise_for_writer_frontier_schedule_outcome_blockers(
+    outcome: _WriterFrontierScheduleOutcome,
+) -> None:
+    for state_outcome in outcome.blocked_state_outcomes:
+        _raise_for_top_level_schedule_outcome_blockers(
+            state_outcome.schedule_outcome
+        )
+
+
+def _group_writer_frontier_transitions(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+) -> _GroupedWriterFrontierTransitions:
+    outcome = _writer_frontier_schedule_outcome(
+        prepared,
+        cursor,
+        stop_after_first_blocked=True,
+    )
+
+    _raise_for_writer_frontier_schedule_outcome_blockers(outcome)
+
+    return outcome.grouped_transitions
 
 
 def count_writer_frontier_support(

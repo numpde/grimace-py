@@ -6,6 +6,7 @@ import ast
 import contextlib
 import inspect
 import unittest
+from collections import Counter
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -245,6 +246,153 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertEqual(count, 2)
         self.assertGreater(schedule_outcome.call_count, 0)
+
+    def test_writer_frontier_schedule_outcome_records_scheduled_state_outcomes(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+
+        outcome = writer_frontier_module._writer_frontier_schedule_outcome(
+            prepared,
+            cursor,
+        )
+
+        self.assertFalse(outcome.blocked)
+        self.assertEqual(outcome.graph_policy_blockers, ())
+        self.assertEqual(len(outcome.state_outcomes), len(cursor.weighted_states))
+        self.assertEqual(
+            outcome.grouped_transitions.grouped_by_text,
+            outcome.grouped_by_text,
+        )
+        self.assertEqual(
+            outcome.grouped_transitions.weighted_by_text,
+            outcome.weighted_by_text,
+        )
+        self.assertEqual(tuple(sorted(outcome.grouped_by_text)), ("C",))
+
+    def test_writer_frontier_schedule_outcome_records_blocked_state_without_raising(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        base_cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        cursor = WriterFrontierCursor(
+            weighted_states=base_cursor.weighted_states[:1],
+        )
+        active_outcome = self._blocked_child_active_emitted_outcome(AtomId(0))
+        blocked_top_level_outcome = (
+            writer_transitions._WriterTopLevelScheduleOutcome(
+                kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.BLOCKED,
+                active_emitted_outcome=active_outcome,
+            )
+        )
+
+        with patch(
+            "grimace._south_star1.writer_frontier._legal_writer_schedule_outcome",
+            return_value=blocked_top_level_outcome,
+        ):
+            outcome = writer_frontier_module._writer_frontier_schedule_outcome(
+                prepared,
+                cursor,
+            )
+
+        self.assertTrue(outcome.blocked)
+        self.assertEqual(len(outcome.blocked_state_outcomes), 1)
+        self.assertIs(
+            outcome.blocked_state_outcomes[0].schedule_outcome,
+            blocked_top_level_outcome,
+        )
+        self.assertEqual(
+            outcome.graph_policy_blockers,
+            blocked_top_level_outcome.graph_policy_blockers,
+        )
+        self.assertEqual(outcome.grouped_by_text, {})
+        self.assertEqual(outcome.weighted_by_text, {})
+
+    def test_writer_frontier_schedule_outcome_can_stop_after_first_blocked_state(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        self.assertGreater(len(cursor.weighted_states), 1)
+        active_outcome = self._blocked_child_active_emitted_outcome(AtomId(0))
+        blocked_top_level_outcome = (
+            writer_transitions._WriterTopLevelScheduleOutcome(
+                kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.BLOCKED,
+                active_emitted_outcome=active_outcome,
+            )
+        )
+
+        with patch(
+            "grimace._south_star1.writer_frontier._legal_writer_schedule_outcome",
+            side_effect=(
+                blocked_top_level_outcome,
+                AssertionError("second state should not be scheduled"),
+            ),
+        ):
+            outcome = writer_frontier_module._writer_frontier_schedule_outcome(
+                prepared,
+                cursor,
+                stop_after_first_blocked=True,
+            )
+
+        self.assertEqual(len(outcome.state_outcomes), 1)
+        self.assertTrue(outcome.blocked)
+
+    def test_group_writer_frontier_transitions_raises_from_blocked_frontier_schedule_outcome(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        active_outcome = self._blocked_child_active_emitted_outcome(AtomId(0))
+        blocked_top_level_outcome = (
+            writer_transitions._WriterTopLevelScheduleOutcome(
+                kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.BLOCKED,
+                active_emitted_outcome=active_outcome,
+            )
+        )
+        state_outcome = writer_frontier_module._WriterFrontierStateScheduleOutcome(
+            state_key=cursor.weighted_states[0][0],
+            parent_weight=cursor.weighted_states[0][1],
+            finalized_state_key=None,
+            schedule_outcome=blocked_top_level_outcome,
+        )
+        outcome = writer_frontier_module._WriterFrontierScheduleOutcome(
+            state_outcomes=(state_outcome,),
+            terminal_by_key=Counter(),
+            grouped_by_text={},
+            weighted_by_text={},
+        )
+
+        with patch(
+            "grimace._south_star1.writer_frontier._writer_frontier_schedule_outcome",
+            return_value=outcome,
+        ):
+            with self.assertRaises(SouthStarError) as raised:
+                writer_frontier_module._group_writer_frontier_transitions(
+                    prepared,
+                    cursor,
+                )
+
+        self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+
+    def test_group_writer_frontier_transitions_returns_grouped_transitions_from_frontier_outcome(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        terminal_by_key: Counter[WriterStateKey] = Counter()
+        grouped_by_text = {"C": {cursor.weighted_states[0][0]}}
+        weighted_by_text = {
+            "C": Counter({cursor.weighted_states[0][0]: 2}),
+        }
+        outcome = writer_frontier_module._WriterFrontierScheduleOutcome(
+            state_outcomes=(),
+            terminal_by_key=terminal_by_key,
+            grouped_by_text=grouped_by_text,
+            weighted_by_text=weighted_by_text,
+        )
+
+        with patch(
+            "grimace._south_star1.writer_frontier._writer_frontier_schedule_outcome",
+            return_value=outcome,
+        ):
+            grouped = writer_frontier_module._group_writer_frontier_transitions(
+                prepared,
+                cursor,
+            )
+
+        self.assertEqual(grouped, outcome.grouped_transitions)
 
     def test_writer_frontier_counts_duplicate_token_paths_to_same_state(self) -> None:
         prepared = prepare_south_star_mol_from_facts(

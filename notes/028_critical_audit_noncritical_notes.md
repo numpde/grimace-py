@@ -56,8 +56,9 @@ here.
   still have outgoing transitions. That was a test-model leak, not a proven
   property of real public decoders: for a fixed molecule, a public terminal
   prefix should be a complete supported SMILES and should have no next choices.
-  Fragment-level acceptance may still need an internal name such as
-  `is_accepting`, but public `is_terminal` should remain a stopping predicate.
+  If future composition needs a weaker fragment-level predicate, it should use
+  a distinct internal name; public `is_terminal` should remain a stopping
+  predicate.
 - `PreparedMol.from_bytes()` requires zstd frames to carry content size and
   checksum before decompression, but it does not apply an explicit
   Grimace-level maximum decompressed-size policy before calling zstd. The Rust
@@ -419,15 +420,15 @@ Serious alternatives:
   continuations.
 - Add only a few selected public terminal/no-choice examples.
 - Make public runtime-state audits treat terminal as a stopping state.
-- Rename the internal predicate to `is_accepting()` everywhere now.
+- Rename the internal predicate everywhere now.
 - Split internal acceptance from public terminality in a later implementation
   pass, after tests state the desired public invariant.
 
 Principled direction: first make tests express the desired public invariant:
 reachable public states with `is_terminal` must have no transitions. Then, in a
-separate implementation pass, split names semantically if needed: internal
-fragment/branch completion can be `is_accepting()`, while public decoder
-`is_terminal` remains the whole-molecule stopping predicate.
+separate implementation pass, split names semantically only if a weaker internal
+completion predicate becomes necessary. Public decoder `is_terminal` remains the
+whole-molecule stopping predicate.
 
 Checklist:
 
@@ -443,9 +444,9 @@ Checklist:
       child transitions.
 - [x] Keep walker sampling semantics explicit: a public draw stops when the
       public state is terminal.
-- [ ] If future composition needs a weaker fragment/branch completion
-      predicate, introduce `is_accepting()` without changing public
-      `is_terminal`.
+- [x] Keep a weaker internal completion predicate out of the implementation for
+      now; the current public/runtime model only needs `is_terminal` as a
+      stopping predicate.
 
 ### 11. PreparedMol zstd decompression has no Grimace size cap
 

@@ -396,6 +396,34 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertEqual(grouped, outcome.grouped_transitions)
 
+    def test_group_writer_frontier_transitions_returns_checked_outcome_grouped_projection(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        grouped_by_text = {"C": {cursor.weighted_states[0][0]}}
+        weighted_by_text = {
+            "C": Counter({cursor.weighted_states[0][0]: 2}),
+        }
+        outcome = writer_frontier_module._WriterFrontierScheduleOutcome(
+            state_outcomes=(),
+            terminal_by_key=Counter(),
+            grouped_by_text=grouped_by_text,
+            weighted_by_text=weighted_by_text,
+        )
+
+        with patch(
+            (
+                "grimace._south_star1.writer_frontier"
+                "._checked_writer_frontier_schedule_outcome"
+            ),
+            return_value=outcome,
+        ):
+            grouped = writer_frontier_module._group_writer_frontier_transitions(
+                prepared,
+                cursor,
+            )
+
+        self.assertEqual(grouped, outcome.grouped_transitions)
+
     def test_writer_frontier_next_token_entries_group_supports_by_emitted_text(self) -> None:
         parent_key = writer_state_key(_raw_initial_state(AtomId(0)))
         successor_a = writer_state_key(_raw_initial_state(AtomId(1)))
@@ -451,6 +479,54 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(entries[0].weighted_successors[successor_a], 7)
         self.assertEqual(entries[0].immediate_multiplicity, 7)
         self.assertEqual(entries[0].policy_families, (cyclic_family, cyclic_family))
+
+    def test_successors_from_next_token_frontier_sort_by_emitted_text(self) -> None:
+        parent_key = writer_state_key(_raw_initial_state(AtomId(0)))
+        c_successor = writer_state_key(_raw_initial_state(AtomId(1)))
+        n_successor = writer_state_key(_raw_initial_state(AtomId(2)))
+        family = writer_transitions._WriterGraphPolicyActionFamily.ACYCLIC_TREE_ENTRY
+        n_support = writer_frontier_module._WriterFrontierNextTokenSupport(
+            state_key=parent_key,
+            parent_weight=3,
+            schedule_support=SimpleNamespace(
+                emitted_text="N",
+                graph_action_surface=object(),
+                policy_family=family,
+            ),  # type: ignore[arg-type]
+            successor_key=n_successor,
+        )
+        c_support = writer_frontier_module._WriterFrontierNextTokenSupport(
+            state_key=parent_key,
+            parent_weight=2,
+            schedule_support=SimpleNamespace(
+                emitted_text="C",
+                graph_action_surface=object(),
+                policy_family=family,
+            ),  # type: ignore[arg-type]
+            successor_key=c_successor,
+        )
+        n_entry = writer_frontier_module._WriterFrontierNextTokenEntry(
+            emitted_text="N",
+            supports=(n_support,),
+        )
+        c_entry = writer_frontier_module._WriterFrontierNextTokenEntry(
+            emitted_text="C",
+            supports=(c_support,),
+        )
+
+        successors = writer_frontier_module._successors_from_next_token_frontier(
+            (n_entry, c_entry)
+        )
+
+        self.assertEqual(tuple(text for text, _ in successors), ("C", "N"))
+        self.assertEqual(
+            successors[0][1].weighted_states,
+            tuple(c_entry.weighted_successors.items()),
+        )
+        self.assertEqual(
+            successors[1][1].weighted_states,
+            tuple(n_entry.weighted_successors.items()),
+        )
 
     def test_writer_frontier_schedule_outcome_grouped_transitions_use_next_token_supports(self) -> None:
         parent_key = writer_state_key(_raw_initial_state(AtomId(0)))
@@ -636,6 +712,92 @@ class WriterStateKernelTest(unittest.TestCase):
             weighted_raised.exception.kind,
             SouthStarErrorKind.INTERNAL_INVARIANT,
         )
+
+    def test_writer_frontier_choices_use_next_token_entries_not_grouped_transitions(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+
+        with patch(
+            "grimace._south_star1.writer_frontier._group_writer_frontier_transitions",
+            side_effect=AssertionError("choices used grouped transitions"),
+        ), patch(
+            "grimace._south_star1.writer_frontier._count_writer_frontier_support",
+            return_value=1,
+        ), patch(
+            (
+                "grimace._south_star1.writer_frontier"
+                "._count_weighted_successor_completions"
+            ),
+            return_value=2,
+        ):
+            choices = writer_frontier_choices(prepared, cursor)
+
+        self.assertEqual(tuple(choice.emitted_text for choice in choices.choices), ("C",))
+
+    def test_count_writer_frontier_support_uses_next_token_entries_not_grouped_transitions(self) -> None:
+        prepared = _prepare(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+
+        with patch(
+            "grimace._south_star1.writer_frontier._group_writer_frontier_transitions",
+            side_effect=AssertionError("support count used grouped transitions"),
+        ):
+            support_count = count_writer_frontier_support(
+                prepared,
+                cursor.support_state,
+            )
+
+        self.assertEqual(support_count, 4)
+
+    def test_iter_writer_frontier_support_uses_next_token_entries_not_grouped_transitions(self) -> None:
+        prepared = _prepare(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+
+        with patch(
+            "grimace._south_star1.writer_frontier._group_writer_frontier_transitions",
+            side_effect=AssertionError("streaming used grouped transitions"),
+        ):
+            strings = tuple(iter_writer_frontier_support(prepared, cursor))
+
+        self.assertEqual(strings, ("C(C)O", "C(O)C", "CCO", "OCC"))
+
+    def test_checked_writer_frontier_schedule_outcome_raises_from_blocked_outcome(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        active_outcome = self._blocked_child_active_emitted_outcome(AtomId(0))
+        blocked_top_level_outcome = (
+            writer_transitions._WriterTopLevelScheduleOutcome(
+                kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.BLOCKED,
+                active_emitted_outcome=active_outcome,
+            )
+        )
+        state_outcome = writer_frontier_module._WriterFrontierStateScheduleOutcome(
+            state_key=cursor.weighted_states[0][0],
+            parent_weight=cursor.weighted_states[0][1],
+            finalized_state_key=None,
+            schedule_outcome=blocked_top_level_outcome,
+        )
+        outcome = writer_frontier_module._WriterFrontierScheduleOutcome(
+            state_outcomes=(state_outcome,),
+            terminal_by_key=Counter(),
+            grouped_by_text={},
+            weighted_by_text={},
+        )
+
+        with patch(
+            "grimace._south_star1.writer_frontier._writer_frontier_schedule_outcome",
+            return_value=outcome,
+        ):
+            with self.assertRaises(SouthStarError) as raised:
+                (
+                    writer_frontier_module
+                    ._checked_writer_frontier_schedule_outcome(
+                        prepared,
+                        cursor,
+                    )
+                )
+
+        self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
 
     def test_writer_frontier_counts_duplicate_token_paths_to_same_state(self) -> None:
         prepared = prepare_south_star_mol_from_facts(

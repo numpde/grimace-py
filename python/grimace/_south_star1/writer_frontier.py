@@ -326,18 +326,21 @@ def writer_frontier_choices(
     prepared: SouthStarPreparedMol,
     cursor: WriterFrontierCursor,
 ) -> WriterFrontierChoices:
-    grouped = _group_writer_frontier_transitions(prepared, cursor)
+    outcome = _checked_writer_frontier_schedule_outcome(prepared, cursor)
     support_memo: dict[WriterFrontierState, int] = {}
     completion_memo: dict[WriterStateKey, int] = {}
     choices = []
-    for text in sorted(grouped.grouped_by_text):
+    for entry in sorted(
+        outcome.next_token_frontier,
+        key=lambda entry: entry.emitted_text,
+    ):
         successor = WriterFrontierCursor(
-            weighted_states=tuple(grouped.weighted_by_text[text].items())
+            weighted_states=tuple(entry.weighted_successors.items())
         )
-        weighted_successors = grouped.weighted_by_text[text]
+        weighted_successors = entry.weighted_successors
         support_count = _count_writer_frontier_support(
             prepared,
-            successor.support_state,
+            WriterFrontierState(states=entry.successor_keys),
             support_memo,
         )
         completion_count = _count_weighted_successor_completions(
@@ -349,19 +352,19 @@ def writer_frontier_choices(
             continue
         choices.append(
             WriterFrontierChoice(
-                emitted_text=text,
+                emitted_text=entry.emitted_text,
                 successor=successor,
-                immediate_multiplicity=sum(weighted_successors.values()),
+                immediate_multiplicity=entry.immediate_multiplicity,
                 support_count=support_count,
                 completion_count=completion_count,
             )
         )
     terminal = None
-    if grouped.terminal_by_key:
+    if outcome.terminal_by_key:
         finalized_cursor = WriterFrontierCursor(
-            weighted_states=tuple(grouped.terminal_by_key.items())
+            weighted_states=tuple(outcome.terminal_by_key.items())
         )
-        terminal_weight = sum(grouped.terminal_by_key.values())
+        terminal_weight = sum(outcome.terminal_by_key.values())
         terminal = WriterFrontierTerminal(
             support_count=1,
             completion_count=terminal_weight,
@@ -378,8 +381,14 @@ def _writer_frontier_raw_successors_for_streaming(
     prepared: SouthStarPreparedMol,
     cursor: WriterFrontierCursor,
 ) -> tuple[tuple[str, WriterFrontierCursor], ...]:
-    grouped = _group_writer_frontier_transitions(prepared, cursor)
-    return _successors_from_grouped(grouped)
+    outcome = _checked_writer_frontier_schedule_outcome(
+        prepared,
+        cursor,
+    )
+
+    return _successors_from_next_token_frontier(
+        outcome.next_token_frontier,
+    )
 
 
 def _successors_from_grouped(
@@ -393,6 +402,23 @@ def _successors_from_grouped(
             ),
         )
         for text in sorted(grouped.grouped_by_text)
+    )
+
+
+def _successors_from_next_token_frontier(
+    next_token_frontier: tuple[_WriterFrontierNextTokenEntry, ...],
+) -> tuple[tuple[str, WriterFrontierCursor], ...]:
+    return tuple(
+        (
+            entry.emitted_text,
+            WriterFrontierCursor(
+                weighted_states=tuple(entry.weighted_successors.items()),
+            ),
+        )
+        for entry in sorted(
+            next_token_frontier,
+            key=lambda entry: entry.emitted_text,
+        )
     )
 
 
@@ -527,10 +553,10 @@ def _raise_for_writer_frontier_schedule_outcome_blockers(
         )
 
 
-def _group_writer_frontier_transitions(
+def _checked_writer_frontier_schedule_outcome(
     prepared: SouthStarPreparedMol,
     cursor: WriterFrontierCursor,
-) -> _GroupedWriterFrontierTransitions:
+) -> _WriterFrontierScheduleOutcome:
     outcome = _writer_frontier_schedule_outcome(
         prepared,
         cursor,
@@ -538,6 +564,18 @@ def _group_writer_frontier_transitions(
     )
 
     _raise_for_writer_frontier_schedule_outcome_blockers(outcome)
+
+    return outcome
+
+
+def _group_writer_frontier_transitions(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+) -> _GroupedWriterFrontierTransitions:
+    outcome = _checked_writer_frontier_schedule_outcome(
+        prepared,
+        cursor,
+    )
 
     return outcome.grouped_transitions
 
@@ -557,13 +595,13 @@ def _count_writer_frontier_support(
     cached = memo.get(frontier)
     if cached is not None:
         return cached
-    grouped = _group_writer_frontier_transitions(
+    outcome = _checked_writer_frontier_schedule_outcome(
         prepared,
         _cursor_from_support_state(frontier),
     )
-    total = 1 if grouped.terminal_by_key else 0
-    for text, successor_keys in grouped.grouped_by_text.items():
-        successor = WriterFrontierState(states=frozenset(successor_keys))
+    total = 1 if outcome.terminal_by_key else 0
+    for entry in outcome.next_token_frontier:
+        successor = WriterFrontierState(states=entry.successor_keys)
         total += _count_writer_frontier_support(prepared, successor, memo)
     memo[frontier] = total
     return total
@@ -621,10 +659,17 @@ def iter_writer_frontier_support(
     cursor: WriterFrontierCursor,
 ) -> Iterator[str]:
     def rec(current: WriterFrontierCursor, prefix: str) -> Iterator[str]:
-        grouped = _group_writer_frontier_transitions(prepared, current)
-        if grouped.terminal_by_key:
+        outcome = _checked_writer_frontier_schedule_outcome(
+            prepared,
+            current,
+        )
+
+        if outcome.terminal_by_key:
             yield prefix
-        for text, successor in _successors_from_grouped(grouped):
+
+        for text, successor in _successors_from_next_token_frontier(
+            outcome.next_token_frontier,
+        ):
             yield from rec(successor, prefix + text)
 
     yield from rec(cursor, "")

@@ -205,10 +205,17 @@ class _WriterFrontierScheduleOutcome:
 
     @property
     def grouped_transitions(self) -> _GroupedWriterFrontierTransitions:
+        if self.next_token_frontier:
+            grouped_by_text = self.grouped_by_text_from_next_token_frontier
+            weighted_by_text = self.weighted_by_text_from_next_token_frontier
+        else:
+            grouped_by_text = self.grouped_by_text
+            weighted_by_text = self.weighted_by_text
+
         return _GroupedWriterFrontierTransitions(
             terminal_by_key=self.terminal_by_key,
-            grouped_by_text=self.grouped_by_text,
-            weighted_by_text=self.weighted_by_text,
+            grouped_by_text=grouped_by_text,
+            weighted_by_text=weighted_by_text,
         )
 
     @property
@@ -413,14 +420,37 @@ def _writer_frontier_next_token_entries_from_supports(
     )
 
 
+def _validate_writer_frontier_schedule_outcome_grouping(
+    outcome: _WriterFrontierScheduleOutcome,
+) -> None:
+    if not outcome.next_token_frontier:
+        return
+
+    if (
+        outcome.grouped_by_text
+        != outcome.grouped_by_text_from_next_token_frontier
+    ):
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "frontier grouped_by_text does not match next-token supports",
+        )
+
+    if (
+        outcome.weighted_by_text
+        != outcome.weighted_by_text_from_next_token_frontier
+    ):
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "frontier weighted_by_text does not match next-token supports",
+        )
+
+
 def _writer_frontier_schedule_outcome(
     prepared: SouthStarPreparedMol,
     cursor: WriterFrontierCursor,
     *,
     stop_after_first_blocked: bool = False,
 ) -> _WriterFrontierScheduleOutcome:
-    grouped: dict[str, set[WriterStateKey]] = {}
-    weighted: dict[str, Counter[WriterStateKey]] = {}
     terminal_by_key: Counter[WriterStateKey] = Counter()
     state_outcomes: list[_WriterFrontierStateScheduleOutcome] = []
     frontier_supports: list[_WriterFrontierNextTokenSupport] = []
@@ -455,31 +485,37 @@ def _writer_frontier_schedule_outcome(
             for support in entry.supports:
                 successor_key = writer_state_key(support.transition.successor)
 
-                frontier_support = _WriterFrontierNextTokenSupport(
-                    state_key=key,
-                    parent_weight=parent_weight,
-                    schedule_support=support,
-                    successor_key=successor_key,
+                frontier_supports.append(
+                    _WriterFrontierNextTokenSupport(
+                        state_key=key,
+                        parent_weight=parent_weight,
+                        schedule_support=support,
+                        successor_key=successor_key,
+                    )
                 )
-                frontier_supports.append(frontier_support)
 
-                grouped.setdefault(entry.emitted_text, set()).add(successor_key)
-                weighted.setdefault(
-                    entry.emitted_text,
-                    Counter(),
-                )[successor_key] += parent_weight
+    next_token_frontier = _writer_frontier_next_token_entries_from_supports(
+        tuple(frontier_supports)
+    )
+    grouped = {
+        entry.emitted_text: set(entry.successor_keys)
+        for entry in next_token_frontier
+    }
+    weighted = {
+        entry.emitted_text: entry.weighted_successors
+        for entry in next_token_frontier
+    }
 
-    return _WriterFrontierScheduleOutcome(
+    outcome = _WriterFrontierScheduleOutcome(
         state_outcomes=tuple(state_outcomes),
         terminal_by_key=terminal_by_key,
         grouped_by_text=grouped,
         weighted_by_text=weighted,
-        next_token_frontier=(
-            _writer_frontier_next_token_entries_from_supports(
-                tuple(frontier_supports)
-            )
-        ),
+        next_token_frontier=next_token_frontier,
     )
+    _validate_writer_frontier_schedule_outcome_grouping(outcome)
+
+    return outcome
 
 
 def _raise_for_writer_frontier_schedule_outcome_blockers(

@@ -452,6 +452,57 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(entries[0].immediate_multiplicity, 7)
         self.assertEqual(entries[0].policy_families, (cyclic_family, cyclic_family))
 
+    def test_writer_frontier_schedule_outcome_grouped_transitions_use_next_token_supports(self) -> None:
+        parent_key = writer_state_key(_raw_initial_state(AtomId(0)))
+        successor_key = writer_state_key(_raw_initial_state(AtomId(1)))
+        support = writer_frontier_module._WriterFrontierNextTokenSupport(
+            state_key=parent_key,
+            parent_weight=4,
+            schedule_support=SimpleNamespace(
+                emitted_text="C",
+                graph_action_surface=object(),
+                policy_family=(
+                    writer_transitions
+                    ._WriterGraphPolicyActionFamily
+                    .ACYCLIC_TREE_ENTRY
+                ),
+            ),  # type: ignore[arg-type]
+            successor_key=successor_key,
+        )
+        entry = writer_frontier_module._WriterFrontierNextTokenEntry(
+            emitted_text="C",
+            supports=(support,),
+        )
+        outcome = writer_frontier_module._WriterFrontierScheduleOutcome(
+            state_outcomes=(),
+            terminal_by_key=Counter(),
+            grouped_by_text={"stale": set()},
+            weighted_by_text={"stale": Counter()},
+            next_token_frontier=(entry,),
+        )
+
+        grouped = outcome.grouped_transitions
+
+        self.assertEqual(grouped.grouped_by_text, {"C": {successor_key}})
+        self.assertEqual(
+            grouped.weighted_by_text,
+            {"C": Counter({successor_key: 4})},
+        )
+
+    def test_writer_frontier_schedule_outcome_grouped_transitions_fallback_without_next_token_frontier(self) -> None:
+        successor_key = writer_state_key(_raw_initial_state(AtomId(1)))
+        outcome = writer_frontier_module._WriterFrontierScheduleOutcome(
+            state_outcomes=(),
+            terminal_by_key=Counter(),
+            grouped_by_text={"C": {successor_key}},
+            weighted_by_text={"C": Counter({successor_key: 2})},
+        )
+
+        grouped = outcome.grouped_transitions
+
+        self.assertEqual(grouped.grouped_by_text, outcome.grouped_by_text)
+        self.assertEqual(grouped.weighted_by_text, outcome.weighted_by_text)
+
     def test_writer_frontier_schedule_outcome_records_next_token_support_provenance(self) -> None:
         prepared = _prepare(chain_facts(("C", "C")))
         cursor = initial_writer_frontier_cursor(prepared, _writer_options())
@@ -500,6 +551,14 @@ class WriterStateKernelTest(unittest.TestCase):
             outcome.weighted_by_text_from_next_token_frontier,
             outcome.weighted_by_text,
         )
+        self.assertEqual(
+            outcome.grouped_transitions.grouped_by_text,
+            outcome.grouped_by_text_from_next_token_frontier,
+        )
+        self.assertEqual(
+            outcome.grouped_transitions.weighted_by_text,
+            outcome.weighted_by_text_from_next_token_frontier,
+        )
 
     def test_writer_frontier_schedule_outcome_terminal_only_has_no_next_token_supports(self) -> None:
         key = writer_state_key(_raw_initial_state(AtomId(0)))
@@ -513,6 +572,70 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(outcome.terminal_by_key, Counter({key: 2}))
         self.assertEqual(outcome.next_token_frontier, ())
         self.assertEqual(outcome.next_token_supports, ())
+
+    def test_writer_frontier_schedule_outcome_grouping_validation_rejects_mismatch(self) -> None:
+        parent_key = writer_state_key(_raw_initial_state(AtomId(0)))
+        successor_key = writer_state_key(_raw_initial_state(AtomId(1)))
+        stale_key = writer_state_key(_raw_initial_state(AtomId(2)))
+        support = writer_frontier_module._WriterFrontierNextTokenSupport(
+            state_key=parent_key,
+            parent_weight=2,
+            schedule_support=SimpleNamespace(
+                emitted_text="C",
+                graph_action_surface=object(),
+                policy_family=(
+                    writer_transitions
+                    ._WriterGraphPolicyActionFamily
+                    .ACYCLIC_TREE_ENTRY
+                ),
+            ),  # type: ignore[arg-type]
+            successor_key=successor_key,
+        )
+        entry = writer_frontier_module._WriterFrontierNextTokenEntry(
+            emitted_text="C",
+            supports=(support,),
+        )
+        grouped_mismatch = writer_frontier_module._WriterFrontierScheduleOutcome(
+            state_outcomes=(),
+            terminal_by_key=Counter(),
+            grouped_by_text={"C": {stale_key}},
+            weighted_by_text={"C": Counter({successor_key: 2})},
+            next_token_frontier=(entry,),
+        )
+
+        with self.assertRaises(SouthStarError) as grouped_raised:
+            (
+                writer_frontier_module
+                ._validate_writer_frontier_schedule_outcome_grouping(
+                    grouped_mismatch
+                )
+            )
+
+        self.assertIs(
+            grouped_raised.exception.kind,
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+        )
+
+        weighted_mismatch = writer_frontier_module._WriterFrontierScheduleOutcome(
+            state_outcomes=(),
+            terminal_by_key=Counter(),
+            grouped_by_text={"C": {successor_key}},
+            weighted_by_text={"C": Counter({successor_key: 3})},
+            next_token_frontier=(entry,),
+        )
+
+        with self.assertRaises(SouthStarError) as weighted_raised:
+            (
+                writer_frontier_module
+                ._validate_writer_frontier_schedule_outcome_grouping(
+                    weighted_mismatch
+                )
+            )
+
+        self.assertIs(
+            weighted_raised.exception.kind,
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+        )
 
     def test_writer_frontier_counts_duplicate_token_paths_to_same_state(self) -> None:
         prepared = prepare_south_star_mol_from_facts(

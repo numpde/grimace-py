@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from dataclasses import replace
+from enum import Enum
 
 from .errors import SouthStarError
 from .errors import SouthStarErrorKind
@@ -43,6 +44,7 @@ from .writer_frontier import WriterFrontierCursor
 from .writer_frontier import _WriterFrontierChoiceSnapshot
 from .writer_frontier import _WriterFrontierChoiceSnapshotEntry
 from .writer_frontier import _checked_writer_frontier_choice_snapshot
+from .writer_frontier import _raise_for_writer_frontier_schedule_outcome_blockers
 from .writer_frontier import _writer_frontier_choice_snapshot
 from .writer_state import ComponentCursor
 from .writer_state import ObligationStateKey
@@ -156,26 +158,80 @@ def _checked_writer_frontier_choice_snapshot_from_snapshot(
     )
 
 
-def _writer_frontier_choice_snapshot_entry_for_emitted_text(
+class _WriterSnapshotAdvanceOutcomeKind(Enum):
+    ADVANCED = "advanced"
+    BLOCKED = "blocked"
+    INVALID_EMITTED_TEXT = "invalid_emitted_text"
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterSnapshotAdvanceOutcome:
+    kind: _WriterSnapshotAdvanceOutcomeKind
+    source_snapshot: WriterSearchSnapshot
+    emitted_text: str
+    choice_snapshot: _WriterFrontierChoiceSnapshot
+    choice: _WriterFrontierChoiceSnapshotEntry | None = None
+    advanced_snapshot: WriterSearchSnapshot | None = None
+
+    def __post_init__(self) -> None:
+        has_choice = self.choice is not None
+        has_advanced = self.advanced_snapshot is not None
+
+        if self.kind is _WriterSnapshotAdvanceOutcomeKind.ADVANCED:
+            valid = (
+                not self.choice_snapshot.blocked
+                and has_choice
+                and has_advanced
+                and self.choice.emitted_text == self.emitted_text
+            )
+        elif self.kind is _WriterSnapshotAdvanceOutcomeKind.BLOCKED:
+            valid = (
+                self.choice_snapshot.blocked
+                and not has_choice
+                and not has_advanced
+            )
+        elif self.kind is _WriterSnapshotAdvanceOutcomeKind.INVALID_EMITTED_TEXT:
+            valid = (
+                not self.choice_snapshot.blocked
+                and not has_choice
+                and not has_advanced
+            )
+        else:
+            valid = False
+
+        if not valid:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                f"invalid writer snapshot advance outcome: {self.kind!r}",
+            )
+
+    @property
+    def blocked(self) -> bool:
+        return self.kind is _WriterSnapshotAdvanceOutcomeKind.BLOCKED
+
+    @property
+    def invalid_emitted_text(self) -> bool:
+        return (
+            self.kind
+            is _WriterSnapshotAdvanceOutcomeKind.INVALID_EMITTED_TEXT
+        )
+
+    @property
+    def graph_policy_blockers(self):
+        return self.choice_snapshot.graph_policy_blockers
+
+
+def _maybe_writer_frontier_choice_snapshot_entry_for_emitted_text(
     choice_snapshot: _WriterFrontierChoiceSnapshot,
     emitted_text: str,
-) -> _WriterFrontierChoiceSnapshotEntry:
+) -> _WriterFrontierChoiceSnapshotEntry | None:
     matches = tuple(
         choice
         for choice in choice_snapshot.choices
         if choice.emitted_text == emitted_text
     )
 
-    if not matches:
-        raise SouthStarError(
-            SouthStarErrorKind.INVALID_FACTS,
-            (
-                "writer snapshot emitted text is not in the current "
-                f"frontier: {emitted_text!r}"
-            ),
-        )
-
-    if len(matches) != 1:
+    if len(matches) > 1:
         raise SouthStarError(
             SouthStarErrorKind.INTERNAL_INVARIANT,
             (
@@ -184,7 +240,31 @@ def _writer_frontier_choice_snapshot_entry_for_emitted_text(
             ),
         )
 
+    if not matches:
+        return None
+
     return matches[0]
+
+
+def _writer_frontier_choice_snapshot_entry_for_emitted_text(
+    choice_snapshot: _WriterFrontierChoiceSnapshot,
+    emitted_text: str,
+) -> _WriterFrontierChoiceSnapshotEntry:
+    choice = _maybe_writer_frontier_choice_snapshot_entry_for_emitted_text(
+        choice_snapshot,
+        emitted_text,
+    )
+
+    if choice is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INVALID_FACTS,
+            (
+                "writer snapshot emitted text is not in the current "
+                f"frontier: {emitted_text!r}"
+            ),
+        )
+
+    return choice
 
 
 def _writer_search_snapshot_with_cursor_after_emitted_text(
@@ -214,28 +294,99 @@ def _writer_search_snapshot_with_cursor_after_emitted_text(
     return advanced
 
 
+def _writer_snapshot_advance_outcome_by_emitted_text(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    emitted_text: str,
+) -> _WriterSnapshotAdvanceOutcome:
+    choice_snapshot = _writer_frontier_choice_snapshot_from_snapshot(
+        snapshot,
+        prepared=prepared,
+        include_counts=False,
+        stop_after_first_blocked=True,
+    )
+
+    if choice_snapshot.blocked:
+        return _WriterSnapshotAdvanceOutcome(
+            kind=_WriterSnapshotAdvanceOutcomeKind.BLOCKED,
+            source_snapshot=snapshot,
+            emitted_text=emitted_text,
+            choice_snapshot=choice_snapshot,
+        )
+
+    choice = _maybe_writer_frontier_choice_snapshot_entry_for_emitted_text(
+        choice_snapshot,
+        emitted_text,
+    )
+
+    if choice is None:
+        return _WriterSnapshotAdvanceOutcome(
+            kind=_WriterSnapshotAdvanceOutcomeKind.INVALID_EMITTED_TEXT,
+            source_snapshot=snapshot,
+            emitted_text=emitted_text,
+            choice_snapshot=choice_snapshot,
+        )
+
+    advanced_snapshot = _writer_search_snapshot_with_cursor_after_emitted_text(
+        snapshot,
+        prepared=prepared,
+        cursor=choice.successor,
+    )
+
+    return _WriterSnapshotAdvanceOutcome(
+        kind=_WriterSnapshotAdvanceOutcomeKind.ADVANCED,
+        source_snapshot=snapshot,
+        emitted_text=emitted_text,
+        choice_snapshot=choice_snapshot,
+        choice=choice,
+        advanced_snapshot=advanced_snapshot,
+    )
+
+
+def _raise_for_writer_snapshot_advance_outcome_errors(
+    outcome: _WriterSnapshotAdvanceOutcome,
+) -> None:
+    if outcome.kind is _WriterSnapshotAdvanceOutcomeKind.BLOCKED:
+        _raise_for_writer_frontier_schedule_outcome_blockers(
+            outcome.choice_snapshot.schedule_outcome,
+        )
+        return
+
+    if (
+        outcome.kind
+        is _WriterSnapshotAdvanceOutcomeKind.INVALID_EMITTED_TEXT
+    ):
+        raise SouthStarError(
+            SouthStarErrorKind.INVALID_FACTS,
+            (
+                "writer snapshot emitted text is not in the current "
+                f"frontier: {outcome.emitted_text!r}"
+            ),
+        )
+
+
 def _advance_writer_search_snapshot_by_emitted_text(
     snapshot: WriterSearchSnapshot,
     *,
     prepared: SouthStarPreparedMol,
     emitted_text: str,
 ) -> WriterSearchSnapshot:
-    choice_snapshot = _checked_writer_frontier_choice_snapshot_from_snapshot(
+    outcome = _writer_snapshot_advance_outcome_by_emitted_text(
         snapshot,
         prepared=prepared,
-        include_counts=False,
+        emitted_text=emitted_text,
     )
 
-    choice = _writer_frontier_choice_snapshot_entry_for_emitted_text(
-        choice_snapshot,
-        emitted_text,
-    )
+    _raise_for_writer_snapshot_advance_outcome_errors(outcome)
 
-    return _writer_search_snapshot_with_cursor_after_emitted_text(
-        snapshot,
-        prepared=prepared,
-        cursor=choice.successor,
-    )
+    if outcome.advanced_snapshot is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "writer snapshot advance outcome did not contain a snapshot",
+        )
+
+    return outcome.advanced_snapshot
 
 
 def resume_writer_frontier_choices_from_snapshot(

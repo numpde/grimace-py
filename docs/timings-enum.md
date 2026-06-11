@@ -74,8 +74,10 @@ stability, or universality guarantee.
   across all roots until half of the exact support has been seen.
 - `RDKit to full support`: the same sampling process until the full exact
   support has been seen.
-- `Non-stereo` means `isomericSmiles=False`.
-- `Stereo` means `isomericSmiles=True`.
+- In this benchmark, `Non-stereo` means `isomericSmiles=False` with the other
+  writer flags at their defaults.
+- `Stereo` means `isomericSmiles=True` with the other writer flags at their
+  defaults.
 - All timing columns are shown as `time mean ± std`.
 - The two RDKit columns also show `(draw mean ± std)` over repeated seeded
   trials.

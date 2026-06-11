@@ -48,6 +48,11 @@ If you use `PrepareMol(...)`, these flags are baked into the prepared molecule.
 Later runtime calls must use matching writer flags. `canonical`, `doRandom`,
 and `rootedAtAtom` remain runtime options.
 
+`isomericSmiles=False` suppresses isotope and stereo annotations for the usual
+non-explicit writer surface, but the full writer surface is still determined by
+the whole flag set. For example, explicit-bond output can make directional bond
+markers writer-visible.
+
 For the difference between writer parity and chemical equivalence, see
 [Correctness contracts](correctness-contracts.html).
 

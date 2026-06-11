@@ -164,6 +164,12 @@ class _WriterSnapshotAdvanceOutcomeKind(Enum):
     INVALID_EMITTED_TEXT = "invalid_emitted_text"
 
 
+class _WriterSnapshotAdvanceSequenceOutcomeKind(Enum):
+    ADVANCED = "advanced"
+    BLOCKED = "blocked"
+    INVALID_EMITTED_TEXT = "invalid_emitted_text"
+
+
 @dataclass(frozen=True, slots=True)
 class _WriterSnapshotAdvanceOutcome:
     kind: _WriterSnapshotAdvanceOutcomeKind
@@ -219,6 +225,141 @@ class _WriterSnapshotAdvanceOutcome:
     @property
     def graph_policy_blockers(self):
         return self.choice_snapshot.graph_policy_blockers
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterSnapshotAdvanceSequenceOutcome:
+    kind: _WriterSnapshotAdvanceSequenceOutcomeKind
+    source_snapshot: WriterSearchSnapshot
+    emitted_texts: tuple[str, ...]
+    step_outcomes: tuple[_WriterSnapshotAdvanceOutcome, ...]
+    current_snapshot: WriterSearchSnapshot
+
+    def __post_init__(self) -> None:
+        if tuple(
+            step.emitted_text
+            for step in self.step_outcomes
+        ) != self.emitted_texts[: len(self.step_outcomes)]:
+            valid = False
+        else:
+            valid = self._payload_is_valid()
+
+        if not valid:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                (
+                    "invalid writer snapshot advance sequence outcome: "
+                    f"{self.kind!r}"
+                ),
+            )
+
+    def _payload_is_valid(self) -> bool:
+        current = self.source_snapshot
+
+        for index, step in enumerate(self.step_outcomes):
+            if step.source_snapshot != current:
+                return False
+
+            is_last = index == len(self.step_outcomes) - 1
+
+            if not is_last:
+                if (
+                    step.kind
+                    is not _WriterSnapshotAdvanceOutcomeKind.ADVANCED
+                    or step.advanced_snapshot is None
+                ):
+                    return False
+
+                current = step.advanced_snapshot
+
+        if self.kind is _WriterSnapshotAdvanceSequenceOutcomeKind.ADVANCED:
+            if len(self.step_outcomes) != len(self.emitted_texts):
+                return False
+
+            for step in self.step_outcomes:
+                if (
+                    step.kind
+                    is not _WriterSnapshotAdvanceOutcomeKind.ADVANCED
+                    or step.advanced_snapshot is None
+                ):
+                    return False
+
+            expected = (
+                self.source_snapshot
+                if not self.step_outcomes
+                else self.step_outcomes[-1].advanced_snapshot
+            )
+
+            return self.current_snapshot == expected
+
+        if self.kind is _WriterSnapshotAdvanceSequenceOutcomeKind.BLOCKED:
+            return (
+                bool(self.step_outcomes)
+                and self.step_outcomes[-1].kind
+                is _WriterSnapshotAdvanceOutcomeKind.BLOCKED
+                and self.current_snapshot == self.step_outcomes[-1].source_snapshot
+            )
+
+        if (
+            self.kind
+            is _WriterSnapshotAdvanceSequenceOutcomeKind.INVALID_EMITTED_TEXT
+        ):
+            return (
+                bool(self.step_outcomes)
+                and self.step_outcomes[-1].kind
+                is _WriterSnapshotAdvanceOutcomeKind.INVALID_EMITTED_TEXT
+                and self.current_snapshot == self.step_outcomes[-1].source_snapshot
+            )
+
+        return False
+
+    @property
+    def advanced_snapshot(self) -> WriterSearchSnapshot | None:
+        if self.kind is _WriterSnapshotAdvanceSequenceOutcomeKind.ADVANCED:
+            return self.current_snapshot
+
+        return None
+
+    @property
+    def failed_outcome(self) -> _WriterSnapshotAdvanceOutcome | None:
+        if self.kind is _WriterSnapshotAdvanceSequenceOutcomeKind.ADVANCED:
+            return None
+
+        if not self.step_outcomes:
+            return None
+
+        return self.step_outcomes[-1]
+
+    @property
+    def consumed_emitted_texts(self) -> tuple[str, ...]:
+        if self.kind is _WriterSnapshotAdvanceSequenceOutcomeKind.ADVANCED:
+            return self.emitted_texts
+
+        return self.emitted_texts[: max(0, len(self.step_outcomes) - 1)]
+
+    @property
+    def remaining_emitted_texts(self) -> tuple[str, ...]:
+        return self.emitted_texts[len(self.consumed_emitted_texts) :]
+
+    @property
+    def blocked(self) -> bool:
+        return self.kind is _WriterSnapshotAdvanceSequenceOutcomeKind.BLOCKED
+
+    @property
+    def invalid_emitted_text(self) -> bool:
+        return (
+            self.kind
+            is _WriterSnapshotAdvanceSequenceOutcomeKind.INVALID_EMITTED_TEXT
+        )
+
+    @property
+    def graph_policy_blockers(self):
+        failed = self.failed_outcome
+
+        if failed is None:
+            return ()
+
+        return failed.graph_policy_blockers
 
 
 def _maybe_writer_frontier_choice_snapshot_entry_for_emitted_text(
@@ -344,6 +485,68 @@ def _writer_snapshot_advance_outcome_by_emitted_text(
     )
 
 
+def _writer_snapshot_advance_sequence_outcome_by_emitted_texts(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    emitted_texts: tuple[str, ...],
+) -> _WriterSnapshotAdvanceSequenceOutcome:
+    current = snapshot
+    step_outcomes: list[_WriterSnapshotAdvanceOutcome] = []
+
+    for emitted_text in emitted_texts:
+        step = _writer_snapshot_advance_outcome_by_emitted_text(
+            current,
+            prepared=prepared,
+            emitted_text=emitted_text,
+        )
+        step_outcomes.append(step)
+
+        if step.kind is _WriterSnapshotAdvanceOutcomeKind.ADVANCED:
+            if step.advanced_snapshot is None:
+                raise SouthStarError(
+                    SouthStarErrorKind.INTERNAL_INVARIANT,
+                    "advanced writer snapshot step did not contain a snapshot",
+                )
+
+            current = step.advanced_snapshot
+            continue
+
+        if step.kind is _WriterSnapshotAdvanceOutcomeKind.BLOCKED:
+            return _WriterSnapshotAdvanceSequenceOutcome(
+                kind=_WriterSnapshotAdvanceSequenceOutcomeKind.BLOCKED,
+                source_snapshot=snapshot,
+                emitted_texts=emitted_texts,
+                step_outcomes=tuple(step_outcomes),
+                current_snapshot=current,
+            )
+
+        if step.kind is _WriterSnapshotAdvanceOutcomeKind.INVALID_EMITTED_TEXT:
+            return _WriterSnapshotAdvanceSequenceOutcome(
+                kind=(
+                    _WriterSnapshotAdvanceSequenceOutcomeKind
+                    .INVALID_EMITTED_TEXT
+                ),
+                source_snapshot=snapshot,
+                emitted_texts=emitted_texts,
+                step_outcomes=tuple(step_outcomes),
+                current_snapshot=current,
+            )
+
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            f"unknown writer snapshot advance step outcome: {step.kind!r}",
+        )
+
+    return _WriterSnapshotAdvanceSequenceOutcome(
+        kind=_WriterSnapshotAdvanceSequenceOutcomeKind.ADVANCED,
+        source_snapshot=snapshot,
+        emitted_texts=emitted_texts,
+        step_outcomes=tuple(step_outcomes),
+        current_snapshot=current,
+    )
+
+
 def _raise_for_writer_snapshot_advance_outcome_errors(
     outcome: _WriterSnapshotAdvanceOutcome,
 ) -> None:
@@ -366,6 +569,17 @@ def _raise_for_writer_snapshot_advance_outcome_errors(
         )
 
 
+def _raise_for_writer_snapshot_advance_sequence_outcome_errors(
+    outcome: _WriterSnapshotAdvanceSequenceOutcome,
+) -> None:
+    failed = outcome.failed_outcome
+
+    if failed is None:
+        return
+
+    _raise_for_writer_snapshot_advance_outcome_errors(failed)
+
+
 def _advance_writer_search_snapshot_by_emitted_text(
     snapshot: WriterSearchSnapshot,
     *,
@@ -384,6 +598,29 @@ def _advance_writer_search_snapshot_by_emitted_text(
         raise SouthStarError(
             SouthStarErrorKind.INTERNAL_INVARIANT,
             "writer snapshot advance outcome did not contain a snapshot",
+        )
+
+    return outcome.advanced_snapshot
+
+
+def _advance_writer_search_snapshot_by_emitted_texts(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    emitted_texts: tuple[str, ...],
+) -> WriterSearchSnapshot:
+    outcome = _writer_snapshot_advance_sequence_outcome_by_emitted_texts(
+        snapshot,
+        prepared=prepared,
+        emitted_texts=emitted_texts,
+    )
+
+    _raise_for_writer_snapshot_advance_sequence_outcome_errors(outcome)
+
+    if outcome.advanced_snapshot is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "writer snapshot advance sequence outcome did not contain a snapshot",
         )
 
     return outcome.advanced_snapshot

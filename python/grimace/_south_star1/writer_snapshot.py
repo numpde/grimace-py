@@ -170,6 +170,12 @@ class _WriterSnapshotAdvanceSequenceOutcomeKind(Enum):
     INVALID_EMITTED_TEXT = "invalid_emitted_text"
 
 
+class _WriterSnapshotReplayChoiceSnapshotOutcomeKind(Enum):
+    CHOICE_SNAPSHOT = "choice_snapshot"
+    REPLAY_BLOCKED = "replay_blocked"
+    INVALID_EMITTED_TEXT = "invalid_emitted_text"
+
+
 @dataclass(frozen=True, slots=True)
 class _WriterSnapshotAdvanceOutcome:
     kind: _WriterSnapshotAdvanceOutcomeKind
@@ -362,6 +368,133 @@ class _WriterSnapshotAdvanceSequenceOutcome:
         return failed.graph_policy_blockers
 
 
+@dataclass(frozen=True, slots=True)
+class _WriterSnapshotReplayChoiceSnapshotOutcome:
+    kind: _WriterSnapshotReplayChoiceSnapshotOutcomeKind
+    source_snapshot: WriterSearchSnapshot
+    emitted_texts: tuple[str, ...]
+    sequence_outcome: _WriterSnapshotAdvanceSequenceOutcome
+    choice_snapshot: _WriterFrontierChoiceSnapshot | None = None
+
+    def __post_init__(self) -> None:
+        common_valid = (
+            self.sequence_outcome.source_snapshot == self.source_snapshot
+            and self.sequence_outcome.emitted_texts == self.emitted_texts
+        )
+
+        if (
+            self.kind
+            is _WriterSnapshotReplayChoiceSnapshotOutcomeKind.CHOICE_SNAPSHOT
+        ):
+            valid = (
+                common_valid
+                and self.sequence_outcome.kind
+                is _WriterSnapshotAdvanceSequenceOutcomeKind.ADVANCED
+                and self.sequence_outcome.advanced_snapshot is not None
+                and self.choice_snapshot is not None
+            )
+        elif (
+            self.kind
+            is _WriterSnapshotReplayChoiceSnapshotOutcomeKind.REPLAY_BLOCKED
+        ):
+            valid = (
+                common_valid
+                and self.sequence_outcome.kind
+                is _WriterSnapshotAdvanceSequenceOutcomeKind.BLOCKED
+                and self.choice_snapshot is None
+            )
+        elif (
+            self.kind
+            is (
+                _WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                .INVALID_EMITTED_TEXT
+            )
+        ):
+            valid = (
+                common_valid
+                and self.sequence_outcome.kind
+                is (
+                    _WriterSnapshotAdvanceSequenceOutcomeKind
+                    .INVALID_EMITTED_TEXT
+                )
+                and self.choice_snapshot is None
+            )
+        else:
+            valid = False
+
+        if not valid:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                (
+                    "invalid writer snapshot replay choice snapshot outcome: "
+                    f"{self.kind!r}"
+                ),
+            )
+
+    @property
+    def replay_succeeded(self) -> bool:
+        return (
+            self.kind
+            is _WriterSnapshotReplayChoiceSnapshotOutcomeKind.CHOICE_SNAPSHOT
+        )
+
+    @property
+    def replay_failed(self) -> bool:
+        return not self.replay_succeeded
+
+    @property
+    def advanced_snapshot(self) -> WriterSearchSnapshot | None:
+        return self.sequence_outcome.advanced_snapshot
+
+    @property
+    def failed_outcome(self) -> _WriterSnapshotAdvanceOutcome | None:
+        return self.sequence_outcome.failed_outcome
+
+    @property
+    def consumed_emitted_texts(self) -> tuple[str, ...]:
+        return self.sequence_outcome.consumed_emitted_texts
+
+    @property
+    def remaining_emitted_texts(self) -> tuple[str, ...]:
+        return self.sequence_outcome.remaining_emitted_texts
+
+    @property
+    def blocked(self) -> bool:
+        if (
+            self.kind
+            is _WriterSnapshotReplayChoiceSnapshotOutcomeKind.REPLAY_BLOCKED
+        ):
+            return True
+
+        if self.choice_snapshot is None:
+            return False
+
+        return self.choice_snapshot.blocked
+
+    @property
+    def invalid_emitted_text(self) -> bool:
+        return (
+            self.kind
+            is (
+                _WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                .INVALID_EMITTED_TEXT
+            )
+        )
+
+    @property
+    def graph_policy_blockers(self):
+        if (
+            self.kind
+            is _WriterSnapshotReplayChoiceSnapshotOutcomeKind.REPLAY_BLOCKED
+        ):
+            return self.sequence_outcome.graph_policy_blockers
+
+        if self.choice_snapshot is None:
+            return ()
+
+        return self.choice_snapshot.graph_policy_blockers
+
+
 def _maybe_writer_frontier_choice_snapshot_entry_for_emitted_text(
     choice_snapshot: _WriterFrontierChoiceSnapshot,
     emitted_text: str,
@@ -547,6 +680,76 @@ def _writer_snapshot_advance_sequence_outcome_by_emitted_texts(
     )
 
 
+def _writer_frontier_choice_snapshot_after_emitted_texts(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    emitted_texts: tuple[str, ...],
+    include_counts: bool = True,
+    stop_after_first_blocked: bool = False,
+) -> _WriterSnapshotReplayChoiceSnapshotOutcome:
+    sequence_outcome = (
+        _writer_snapshot_advance_sequence_outcome_by_emitted_texts(
+            snapshot,
+            prepared=prepared,
+            emitted_texts=emitted_texts,
+        )
+    )
+
+    if (
+        sequence_outcome.kind
+        is _WriterSnapshotAdvanceSequenceOutcomeKind.BLOCKED
+    ):
+        return _WriterSnapshotReplayChoiceSnapshotOutcome(
+            kind=(
+                _WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                .REPLAY_BLOCKED
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=emitted_texts,
+            sequence_outcome=sequence_outcome,
+        )
+
+    if (
+        sequence_outcome.kind
+        is (
+            _WriterSnapshotAdvanceSequenceOutcomeKind
+            .INVALID_EMITTED_TEXT
+        )
+    ):
+        return _WriterSnapshotReplayChoiceSnapshotOutcome(
+            kind=(
+                _WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                .INVALID_EMITTED_TEXT
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=emitted_texts,
+            sequence_outcome=sequence_outcome,
+        )
+
+    advanced_snapshot = sequence_outcome.advanced_snapshot
+    if advanced_snapshot is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "advanced replay outcome did not contain a snapshot",
+        )
+
+    choice_snapshot = _writer_frontier_choice_snapshot_from_snapshot(
+        advanced_snapshot,
+        prepared=prepared,
+        include_counts=include_counts,
+        stop_after_first_blocked=stop_after_first_blocked,
+    )
+
+    return _WriterSnapshotReplayChoiceSnapshotOutcome(
+        kind=_WriterSnapshotReplayChoiceSnapshotOutcomeKind.CHOICE_SNAPSHOT,
+        source_snapshot=snapshot,
+        emitted_texts=emitted_texts,
+        sequence_outcome=sequence_outcome,
+        choice_snapshot=choice_snapshot,
+    )
+
+
 def _raise_for_writer_snapshot_advance_outcome_errors(
     outcome: _WriterSnapshotAdvanceOutcome,
 ) -> None:
@@ -578,6 +781,41 @@ def _raise_for_writer_snapshot_advance_sequence_outcome_errors(
         return
 
     _raise_for_writer_snapshot_advance_outcome_errors(failed)
+
+
+def _raise_for_writer_snapshot_replay_choice_snapshot_outcome_errors(
+    outcome: _WriterSnapshotReplayChoiceSnapshotOutcome,
+) -> None:
+    if (
+        outcome.kind
+        is _WriterSnapshotReplayChoiceSnapshotOutcomeKind.REPLAY_BLOCKED
+    ):
+        _raise_for_writer_snapshot_advance_sequence_outcome_errors(
+            outcome.sequence_outcome
+        )
+        return
+
+    if (
+        outcome.kind
+        is (
+            _WriterSnapshotReplayChoiceSnapshotOutcomeKind
+            .INVALID_EMITTED_TEXT
+        )
+    ):
+        _raise_for_writer_snapshot_advance_sequence_outcome_errors(
+            outcome.sequence_outcome
+        )
+        return
+
+    if outcome.choice_snapshot is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "replay choice snapshot outcome did not contain a choice snapshot",
+        )
+
+    _raise_for_writer_frontier_schedule_outcome_blockers(
+        outcome.choice_snapshot.schedule_outcome,
+    )
 
 
 def _advance_writer_search_snapshot_by_emitted_text(
@@ -624,6 +862,34 @@ def _advance_writer_search_snapshot_by_emitted_texts(
         )
 
     return outcome.advanced_snapshot
+
+
+def _checked_writer_frontier_choice_snapshot_after_emitted_texts(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    emitted_texts: tuple[str, ...],
+    include_counts: bool = True,
+) -> _WriterFrontierChoiceSnapshot:
+    outcome = _writer_frontier_choice_snapshot_after_emitted_texts(
+        snapshot,
+        prepared=prepared,
+        emitted_texts=emitted_texts,
+        include_counts=include_counts,
+        stop_after_first_blocked=True,
+    )
+
+    _raise_for_writer_snapshot_replay_choice_snapshot_outcome_errors(
+        outcome
+    )
+
+    if outcome.choice_snapshot is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "checked replay did not contain a choice snapshot",
+        )
+
+    return outcome.choice_snapshot
 
 
 def resume_writer_frontier_choices_from_snapshot(

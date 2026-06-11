@@ -39,7 +39,9 @@ from .writer_graph_obligations import writer_graph_completion_status
 from .writer_graph_obligations import writer_residual_attachment_action_is_blocked
 from .writer_frontier import WriterFrontierChoices
 from .writer_frontier import WriterFrontierCursor
-from .writer_frontier import writer_frontier_choices
+from .writer_frontier import _WriterFrontierChoiceSnapshot
+from .writer_frontier import _checked_writer_frontier_choice_snapshot
+from .writer_frontier import _writer_frontier_choice_snapshot
 from .writer_state import ComponentCursor
 from .writer_state import ObligationStateKey
 from .writer_state import PendingEntryPhase
@@ -114,13 +116,55 @@ def writer_frontier_cursor_from_snapshot(
     return snapshot.cursor
 
 
+def _writer_frontier_choice_snapshot_from_snapshot(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    include_counts: bool = True,
+    stop_after_first_blocked: bool = False,
+) -> _WriterFrontierChoiceSnapshot:
+    cursor = writer_frontier_cursor_from_snapshot(
+        snapshot,
+        prepared=prepared,
+    )
+
+    return _writer_frontier_choice_snapshot(
+        prepared,
+        cursor,
+        include_counts=include_counts,
+        stop_after_first_blocked=stop_after_first_blocked,
+    )
+
+
+def _checked_writer_frontier_choice_snapshot_from_snapshot(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    include_counts: bool = True,
+) -> _WriterFrontierChoiceSnapshot:
+    cursor = writer_frontier_cursor_from_snapshot(
+        snapshot,
+        prepared=prepared,
+    )
+
+    return _checked_writer_frontier_choice_snapshot(
+        prepared,
+        cursor,
+        include_counts=include_counts,
+    )
+
+
 def resume_writer_frontier_choices_from_snapshot(
     snapshot: WriterSearchSnapshot,
     *,
     prepared: SouthStarPreparedMol,
 ) -> WriterFrontierChoices:
-    cursor = writer_frontier_cursor_from_snapshot(snapshot, prepared=prepared)
-    return writer_frontier_choices(prepared, cursor)
+    choice_snapshot = _checked_writer_frontier_choice_snapshot_from_snapshot(
+        snapshot,
+        prepared=prepared,
+    )
+
+    return choice_snapshot.public_choices
 
 
 def validate_writer_search_snapshot(

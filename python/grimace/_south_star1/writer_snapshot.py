@@ -892,17 +892,33 @@ def _checked_writer_frontier_choice_snapshot_after_emitted_texts(
     return outcome.choice_snapshot
 
 
+def _writer_frontier_choices_after_emitted_texts(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    emitted_texts: tuple[str, ...],
+) -> WriterFrontierChoices:
+    choice_snapshot = (
+        _checked_writer_frontier_choice_snapshot_after_emitted_texts(
+            snapshot,
+            prepared=prepared,
+            emitted_texts=emitted_texts,
+        )
+    )
+
+    return choice_snapshot.public_choices
+
+
 def resume_writer_frontier_choices_from_snapshot(
     snapshot: WriterSearchSnapshot,
     *,
     prepared: SouthStarPreparedMol,
 ) -> WriterFrontierChoices:
-    choice_snapshot = _checked_writer_frontier_choice_snapshot_from_snapshot(
+    return _writer_frontier_choices_after_emitted_texts(
         snapshot,
         prepared=prepared,
+        emitted_texts=(),
     )
-
-    return choice_snapshot.public_choices
 
 
 def validate_writer_search_snapshot(

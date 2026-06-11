@@ -747,11 +747,37 @@ def count_writer_cursor_completions(
     cursor: WriterFrontierCursor,
 ) -> int:
     memo: dict[WriterStateKey, int] = {}
-
-    return sum(
-        weight * _count_writer_state_completions(prepared, key, memo)
-        for key, weight in cursor.weighted_states
+    snapshot = _checked_writer_frontier_choice_snapshot(
+        prepared,
+        cursor,
+        include_counts=False,
     )
+
+    return _count_writer_choice_snapshot_completions(
+        prepared,
+        snapshot,
+        memo,
+    )
+
+
+def _count_writer_choice_snapshot_completions(
+    prepared: SouthStarPreparedMol,
+    snapshot: _WriterFrontierChoiceSnapshot,
+    memo: dict[WriterStateKey, int],
+) -> int:
+    total = 0
+
+    if snapshot.terminal is not None:
+        total += snapshot.terminal.completion_count
+
+    for choice in snapshot.choices:
+        total += _count_weighted_successor_completions(
+            prepared,
+            choice.weighted_successors,
+            memo,
+        )
+
+    return total
 
 
 def _count_weighted_successor_completions(
@@ -773,18 +799,16 @@ def _count_writer_state_completions(
     cached = memo.get(key)
     if cached is not None:
         return cached
-    state = writer_state_from_key(key)
-    total = 1 if finalize_writer_terminal_state(prepared, state) is not None else 0
-    outcome = _legal_writer_schedule_outcome(prepared, state)
-    _raise_for_top_level_schedule_outcome_blockers(outcome)
-
-    for entry in outcome.selected_next_token_frontier:
-        for support in entry.supports:
-            total += _count_writer_state_completions(
-                prepared,
-                writer_state_key(support.transition.successor),
-                memo,
-            )
+    snapshot = _checked_writer_frontier_choice_snapshot(
+        prepared,
+        WriterFrontierCursor(weighted_states=((key, 1),)),
+        include_counts=False,
+    )
+    total = _count_writer_choice_snapshot_completions(
+        prepared,
+        snapshot,
+        memo,
+    )
     memo[key] = total
     return total
 

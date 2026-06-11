@@ -1221,6 +1221,206 @@ class WriterStateKernelTest(unittest.TestCase):
             )
         )
 
+    def test_count_writer_choice_snapshot_completions_counts_terminal_and_weighted_successors(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        parent_key = writer_state_key(_raw_initial_state(AtomId(0)))
+        successor_a = writer_state_key(_raw_initial_state(AtomId(1)))
+        successor_b = writer_state_key(_raw_initial_state(AtomId(2)))
+        family = writer_transitions._WriterGraphPolicyActionFamily.ACYCLIC_TREE_ENTRY
+        support_a = writer_frontier_module._WriterFrontierNextTokenSupport(
+            state_key=parent_key,
+            parent_weight=2,
+            schedule_support=SimpleNamespace(
+                emitted_text="C",
+                graph_action_surface=object(),
+                policy_family=family,
+            ),  # type: ignore[arg-type]
+            successor_key=successor_a,
+        )
+        support_b = writer_frontier_module._WriterFrontierNextTokenSupport(
+            state_key=parent_key,
+            parent_weight=5,
+            schedule_support=SimpleNamespace(
+                emitted_text="C",
+                graph_action_surface=object(),
+                policy_family=family,
+            ),  # type: ignore[arg-type]
+            successor_key=successor_b,
+        )
+        entry = writer_frontier_module._WriterFrontierNextTokenEntry(
+            emitted_text="C",
+            supports=(support_a, support_b),
+        )
+        choice = writer_frontier_module._WriterFrontierChoiceSnapshotEntry(
+            next_token_entry=entry,
+            successor=WriterFrontierCursor(
+                weighted_states=tuple(entry.weighted_successors.items())
+            ),
+        )
+        terminal = writer_frontier_module.WriterFrontierTerminal(
+            support_count=1,
+            completion_count=3,
+            multiplicity=3,
+            finalized_cursor=WriterFrontierCursor(weighted_states=()),
+        )
+        snapshot = writer_frontier_module._WriterFrontierChoiceSnapshot(
+            schedule_outcome=writer_frontier_module._WriterFrontierScheduleOutcome(
+                state_outcomes=(),
+                terminal_by_key=Counter(),
+                grouped_by_text={},
+                weighted_by_text={},
+            ),
+            terminal=terminal,
+            choices=(choice,),
+        )
+
+        def count_state(
+            _prepared,
+            key: WriterStateKey,
+            _memo,
+        ) -> int:
+            if key == successor_a:
+                return 7
+            if key == successor_b:
+                return 11
+            raise AssertionError(f"unexpected successor key: {key!r}")
+
+        with patch(
+            "grimace._south_star1.writer_frontier._count_writer_state_completions",
+            side_effect=count_state,
+        ):
+            total = (
+                writer_frontier_module
+                ._count_writer_choice_snapshot_completions(
+                    prepared,
+                    snapshot,
+                    {},
+                )
+            )
+
+        self.assertEqual(total, 3 + 2 * 7 + 5 * 11)
+
+    def test_count_writer_cursor_completions_uses_uncounted_choice_snapshot(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        snapshot = writer_frontier_module._WriterFrontierChoiceSnapshot(
+            schedule_outcome=writer_frontier_module._WriterFrontierScheduleOutcome(
+                state_outcomes=(),
+                terminal_by_key=Counter(),
+                grouped_by_text={},
+                weighted_by_text={},
+            ),
+            terminal=None,
+            choices=(),
+        )
+
+        with patch(
+            (
+                "grimace._south_star1.writer_frontier"
+                "._checked_writer_frontier_choice_snapshot"
+            ),
+            return_value=snapshot,
+        ) as checked_snapshot, patch(
+            (
+                "grimace._south_star1.writer_frontier"
+                "._count_writer_choice_snapshot_completions"
+            ),
+            return_value=123,
+        ) as count_snapshot:
+            count = count_writer_cursor_completions(prepared, cursor)
+
+        self.assertEqual(count, 123)
+        checked_snapshot.assert_called_once_with(
+            prepared,
+            cursor,
+            include_counts=False,
+        )
+        count_snapshot.assert_called_once()
+        self.assertIs(count_snapshot.call_args.args[1], snapshot)
+
+    def test_count_writer_state_completions_uses_uncounted_choice_snapshot(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        key = writer_state_key(_raw_initial_state(AtomId(0)))
+        snapshot = writer_frontier_module._WriterFrontierChoiceSnapshot(
+            schedule_outcome=writer_frontier_module._WriterFrontierScheduleOutcome(
+                state_outcomes=(),
+                terminal_by_key=Counter(),
+                grouped_by_text={},
+                weighted_by_text={},
+            ),
+            terminal=None,
+            choices=(),
+        )
+        memo: dict[WriterStateKey, int] = {}
+
+        with patch(
+            (
+                "grimace._south_star1.writer_frontier"
+                "._checked_writer_frontier_choice_snapshot"
+            ),
+            return_value=snapshot,
+        ) as checked_snapshot, patch(
+            (
+                "grimace._south_star1.writer_frontier"
+                "._count_writer_choice_snapshot_completions"
+            ),
+            return_value=17,
+        ):
+            count = writer_frontier_module._count_writer_state_completions(
+                prepared,
+                key,
+                memo,
+            )
+
+        self.assertEqual(count, 17)
+        checked_snapshot.assert_called_once_with(
+            prepared,
+            WriterFrontierCursor(weighted_states=((key, 1),)),
+            include_counts=False,
+        )
+        self.assertEqual(memo[key], 17)
+
+    def test_count_writer_state_completions_uses_memo_before_snapshot(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        key = writer_state_key(_raw_initial_state(AtomId(0)))
+
+        with patch(
+            (
+                "grimace._south_star1.writer_frontier"
+                "._checked_writer_frontier_choice_snapshot"
+            ),
+            side_effect=AssertionError("memoized completion used snapshot"),
+        ):
+            count = writer_frontier_module._count_writer_state_completions(
+                prepared,
+                key,
+                {key: 42},
+            )
+
+        self.assertEqual(count, 42)
+
+    def test_completion_count_uses_uncounted_choice_snapshots(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+
+        with patch(
+            (
+                "grimace._south_star1.writer_frontier"
+                "._checked_writer_frontier_choice_snapshot"
+            ),
+            wraps=writer_frontier_module._checked_writer_frontier_choice_snapshot,
+        ) as checked_snapshot:
+            count = count_writer_cursor_completions(prepared, cursor)
+
+        self.assertEqual(count, 2)
+        self.assertGreater(checked_snapshot.call_count, 0)
+        self.assertTrue(
+            all(
+                call.kwargs.get("include_counts") is False
+                for call in checked_snapshot.call_args_list
+            )
+        )
+
     def test_count_writer_frontier_support_uses_next_token_entries_not_grouped_transitions(self) -> None:
         prepared = _prepare(cco_facts())
         cursor = initial_writer_frontier_cursor(prepared, _writer_options())

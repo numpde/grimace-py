@@ -5,6 +5,11 @@
 Grimace should normalize an RDKit molecule to the selected RDKit writer surface,
 not to a generic "all RDKit metadata removed" shape.
 
+The full writer flag set is the source of truth. `isomericSmiles` alone does
+not define the surface: `isomericSmiles=False, allBondsExplicit=False` can hide
+directional markers, while `isomericSmiles=False, allBondsExplicit=True` can
+make them writer-visible.
+
 For the nonstereo surface, that means:
 
 - call `Chem.RemoveStereochemistry()`;
@@ -45,6 +50,13 @@ This is a surface decision, not a shortcut for every `isomericSmiles=False`
 call. Some non-isomeric writer options, notably explicit-bond output, can still
 make directional markers writer-visible; those paths must select and validate a
 stereo-capable surface.
+
+The current internal names `CONNECTED_NONSTEREO_SURFACE` and
+`CONNECTED_STEREO_SURFACE` are historical shorthand. Principally, the distinction
+is "surface that does not carry directional/stereo writer metadata" versus
+"surface that can carry it." A future rename should make that capability boundary
+explicit, but the behavior should continue to be selected from the complete
+writer flag set.
 
 ## Implementation stance
 

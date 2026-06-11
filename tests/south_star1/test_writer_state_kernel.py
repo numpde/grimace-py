@@ -974,6 +974,137 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(snapshot.choices, ())
         self.assertEqual(snapshot.public_choices.choices, ())
 
+    def test_successors_from_choice_snapshot_preserve_snapshot_choice_order(self) -> None:
+        parent_key = writer_state_key(_raw_initial_state(AtomId(0)))
+        n_successor_key = writer_state_key(_raw_initial_state(AtomId(1)))
+        c_successor_key = writer_state_key(_raw_initial_state(AtomId(2)))
+        family = writer_transitions._WriterGraphPolicyActionFamily.ACYCLIC_TREE_ENTRY
+        n_support = writer_frontier_module._WriterFrontierNextTokenSupport(
+            state_key=parent_key,
+            parent_weight=3,
+            schedule_support=SimpleNamespace(
+                emitted_text="N",
+                graph_action_surface=object(),
+                policy_family=family,
+            ),  # type: ignore[arg-type]
+            successor_key=n_successor_key,
+        )
+        c_support = writer_frontier_module._WriterFrontierNextTokenSupport(
+            state_key=parent_key,
+            parent_weight=2,
+            schedule_support=SimpleNamespace(
+                emitted_text="C",
+                graph_action_surface=object(),
+                policy_family=family,
+            ),  # type: ignore[arg-type]
+            successor_key=c_successor_key,
+        )
+        n_entry = writer_frontier_module._WriterFrontierNextTokenEntry(
+            emitted_text="N",
+            supports=(n_support,),
+        )
+        c_entry = writer_frontier_module._WriterFrontierNextTokenEntry(
+            emitted_text="C",
+            supports=(c_support,),
+        )
+        n_successor = WriterFrontierCursor(
+            weighted_states=tuple(n_entry.weighted_successors.items())
+        )
+        c_successor = WriterFrontierCursor(
+            weighted_states=tuple(c_entry.weighted_successors.items())
+        )
+        snapshot = writer_frontier_module._WriterFrontierChoiceSnapshot(
+            schedule_outcome=writer_frontier_module._WriterFrontierScheduleOutcome(
+                state_outcomes=(),
+                terminal_by_key=Counter(),
+                grouped_by_text={},
+                weighted_by_text={},
+            ),
+            terminal=None,
+            choices=(
+                writer_frontier_module._WriterFrontierChoiceSnapshotEntry(
+                    next_token_entry=n_entry,
+                    successor=n_successor,
+                ),
+                writer_frontier_module._WriterFrontierChoiceSnapshotEntry(
+                    next_token_entry=c_entry,
+                    successor=c_successor,
+                ),
+            ),
+        )
+
+        successors = writer_frontier_module._successors_from_choice_snapshot(
+            snapshot
+        )
+
+        self.assertEqual(
+            successors,
+            (
+                ("N", n_successor),
+                ("C", c_successor),
+            ),
+        )
+
+    def test_writer_frontier_raw_successors_for_streaming_uses_uncounted_choice_snapshot(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        successor_key = cursor.weighted_states[0][0]
+        support = writer_frontier_module._WriterFrontierNextTokenSupport(
+            state_key=successor_key,
+            parent_weight=1,
+            schedule_support=SimpleNamespace(
+                emitted_text="C",
+                graph_action_surface=object(),
+                policy_family=(
+                    writer_transitions
+                    ._WriterGraphPolicyActionFamily
+                    .ACYCLIC_TREE_ENTRY
+                ),
+            ),  # type: ignore[arg-type]
+            successor_key=successor_key,
+        )
+        entry = writer_frontier_module._WriterFrontierNextTokenEntry(
+            emitted_text="C",
+            supports=(support,),
+        )
+        choice = writer_frontier_module._WriterFrontierChoiceSnapshotEntry(
+            next_token_entry=entry,
+            successor=WriterFrontierCursor(weighted_states=((successor_key, 1),)),
+        )
+        snapshot = writer_frontier_module._WriterFrontierChoiceSnapshot(
+            schedule_outcome=writer_frontier_module._WriterFrontierScheduleOutcome(
+                state_outcomes=(),
+                terminal_by_key=Counter(),
+                grouped_by_text={"C": {successor_key}},
+                weighted_by_text={"C": Counter({successor_key: 1})},
+                next_token_frontier=(entry,),
+            ),
+            terminal=None,
+            choices=(choice,),
+        )
+
+        with patch(
+            (
+                "grimace._south_star1.writer_frontier"
+                "._checked_writer_frontier_choice_snapshot"
+            ),
+            return_value=snapshot,
+        ) as checked_snapshot:
+            successors = (
+                writer_frontier_module
+                ._writer_frontier_raw_successors_for_streaming(
+                    prepared,
+                    cursor,
+                )
+            )
+
+        self.assertEqual(successors, ((choice.emitted_text, choice.successor),))
+        checked_snapshot.assert_called_once_with(
+            prepared,
+            cursor,
+            include_counts=False,
+        )
+
     def test_writer_frontier_choices_routes_through_checked_choice_snapshot(self) -> None:
         prepared = _prepare(chain_facts(("C", "C")))
         cursor = initial_writer_frontier_cursor(prepared, _writer_options())
@@ -1026,6 +1157,24 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(choices, snapshot.public_choices)
         checked_snapshot.assert_called_once_with(prepared, cursor)
 
+    def test_writer_frontier_choices_uses_counted_choice_snapshot(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+
+        with patch(
+            (
+                "grimace._south_star1.writer_frontier"
+                "._checked_writer_frontier_choice_snapshot"
+            ),
+            wraps=writer_frontier_module._checked_writer_frontier_choice_snapshot,
+        ) as checked_snapshot:
+            choices = writer_frontier_choices(prepared, cursor)
+
+        self.assertEqual(tuple(choice.emitted_text for choice in choices.choices), ("C",))
+        self.assertGreater(checked_snapshot.call_count, 0)
+        self.assertEqual(checked_snapshot.call_args_list[0].args, (prepared, cursor))
+        self.assertNotIn("include_counts", checked_snapshot.call_args_list[0].kwargs)
+
     def test_writer_frontier_choices_use_next_token_entries_not_grouped_transitions(self) -> None:
         prepared = _prepare(chain_facts(("C", "C")))
         cursor = initial_writer_frontier_cursor(prepared, _writer_options())
@@ -1047,6 +1196,31 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertEqual(tuple(choice.emitted_text for choice in choices.choices), ("C",))
 
+    def test_count_writer_frontier_support_uses_uncounted_choice_snapshot(self) -> None:
+        prepared = _prepare(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+
+        with patch(
+            (
+                "grimace._south_star1.writer_frontier"
+                "._checked_writer_frontier_choice_snapshot"
+            ),
+            wraps=writer_frontier_module._checked_writer_frontier_choice_snapshot,
+        ) as checked_snapshot:
+            support_count = count_writer_frontier_support(
+                prepared,
+                cursor.support_state,
+            )
+
+        self.assertEqual(support_count, 4)
+        self.assertGreater(checked_snapshot.call_count, 0)
+        self.assertTrue(
+            all(
+                call.kwargs.get("include_counts") is False
+                for call in checked_snapshot.call_args_list
+            )
+        )
+
     def test_count_writer_frontier_support_uses_next_token_entries_not_grouped_transitions(self) -> None:
         prepared = _prepare(cco_facts())
         cursor = initial_writer_frontier_cursor(prepared, _writer_options())
@@ -1061,6 +1235,28 @@ class WriterStateKernelTest(unittest.TestCase):
             )
 
         self.assertEqual(support_count, 4)
+
+    def test_iter_writer_frontier_support_uses_uncounted_choice_snapshot(self) -> None:
+        prepared = _prepare(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+
+        with patch(
+            (
+                "grimace._south_star1.writer_frontier"
+                "._checked_writer_frontier_choice_snapshot"
+            ),
+            wraps=writer_frontier_module._checked_writer_frontier_choice_snapshot,
+        ) as checked_snapshot:
+            strings = tuple(iter_writer_frontier_support(prepared, cursor))
+
+        self.assertEqual(strings, ("C(C)O", "C(O)C", "CCO", "OCC"))
+        self.assertGreater(checked_snapshot.call_count, 0)
+        self.assertTrue(
+            all(
+                call.kwargs.get("include_counts") is False
+                for call in checked_snapshot.call_args_list
+            )
+        )
 
     def test_iter_writer_frontier_support_uses_next_token_entries_not_grouped_transitions(self) -> None:
         prepared = _prepare(cco_facts())
@@ -1193,6 +1389,15 @@ class WriterStateKernelTest(unittest.TestCase):
             side_effect=AssertionError("streaming computed support count"),
         ), patch(
             "grimace._south_star1.writer_frontier.count_writer_cursor_completions",
+            side_effect=AssertionError("streaming computed completion count"),
+        ), patch(
+            "grimace._south_star1.writer_frontier._count_writer_frontier_support",
+            side_effect=AssertionError("streaming computed support count"),
+        ), patch(
+            (
+                "grimace._south_star1.writer_frontier"
+                "._count_weighted_successor_completions"
+            ),
             side_effect=AssertionError("streaming computed completion count"),
         ):
             self.assertEqual(

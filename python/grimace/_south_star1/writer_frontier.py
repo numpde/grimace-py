@@ -504,14 +504,13 @@ def _writer_frontier_raw_successors_for_streaming(
     prepared: SouthStarPreparedMol,
     cursor: WriterFrontierCursor,
 ) -> tuple[tuple[str, WriterFrontierCursor], ...]:
-    outcome = _checked_writer_frontier_schedule_outcome(
+    snapshot = _checked_writer_frontier_choice_snapshot(
         prepared,
         cursor,
+        include_counts=False,
     )
 
-    return _successors_from_next_token_frontier(
-        outcome.next_token_frontier,
-    )
+    return _successors_from_choice_snapshot(snapshot)
 
 
 def _successors_from_grouped(
@@ -542,6 +541,18 @@ def _successors_from_next_token_frontier(
             next_token_frontier,
             key=lambda entry: entry.emitted_text,
         )
+    )
+
+
+def _successors_from_choice_snapshot(
+    snapshot: _WriterFrontierChoiceSnapshot,
+) -> tuple[tuple[str, WriterFrontierCursor], ...]:
+    return tuple(
+        (
+            choice.emitted_text,
+            choice.successor,
+        )
+        for choice in snapshot.choices
     )
 
 
@@ -718,13 +729,14 @@ def _count_writer_frontier_support(
     cached = memo.get(frontier)
     if cached is not None:
         return cached
-    outcome = _checked_writer_frontier_schedule_outcome(
+    snapshot = _checked_writer_frontier_choice_snapshot(
         prepared,
         _cursor_from_support_state(frontier),
+        include_counts=False,
     )
-    total = 1 if outcome.terminal_by_key else 0
-    for entry in outcome.next_token_frontier:
-        successor = WriterFrontierState(states=entry.successor_keys)
+    total = 1 if snapshot.terminal is not None else 0
+    for choice in snapshot.choices:
+        successor = WriterFrontierState(states=choice.successor_keys)
         total += _count_writer_frontier_support(prepared, successor, memo)
     memo[frontier] = total
     return total
@@ -782,17 +794,16 @@ def iter_writer_frontier_support(
     cursor: WriterFrontierCursor,
 ) -> Iterator[str]:
     def rec(current: WriterFrontierCursor, prefix: str) -> Iterator[str]:
-        outcome = _checked_writer_frontier_schedule_outcome(
+        snapshot = _checked_writer_frontier_choice_snapshot(
             prepared,
             current,
+            include_counts=False,
         )
 
-        if outcome.terminal_by_key:
+        if snapshot.terminal is not None:
             yield prefix
 
-        for text, successor in _successors_from_next_token_frontier(
-            outcome.next_token_frontier,
-        ):
+        for text, successor in _successors_from_choice_snapshot(snapshot):
             yield from rec(successor, prefix + text)
 
     yield from rec(cursor, "")

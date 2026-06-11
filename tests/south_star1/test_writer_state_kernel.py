@@ -1389,6 +1389,305 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIs(raised.exception.kind, SouthStarErrorKind.INVALID_FACTS)
         build_snapshot.assert_not_called()
 
+    def test_writer_choice_snapshot_entry_for_emitted_text_returns_match(self) -> None:
+        parent_key = writer_state_key(_raw_initial_state(AtomId(0)))
+        c_key = writer_state_key(_raw_initial_state(AtomId(1)))
+        n_key = writer_state_key(_raw_initial_state(AtomId(2)))
+        family = writer_transitions._WriterGraphPolicyActionFamily.ACYCLIC_TREE_ENTRY
+        c_entry = writer_frontier_module._WriterFrontierNextTokenEntry(
+            emitted_text="C",
+            supports=(
+                writer_frontier_module._WriterFrontierNextTokenSupport(
+                    state_key=parent_key,
+                    parent_weight=1,
+                    schedule_support=SimpleNamespace(
+                        emitted_text="C",
+                        graph_action_surface=object(),
+                        policy_family=family,
+                    ),  # type: ignore[arg-type]
+                    successor_key=c_key,
+                ),
+            ),
+        )
+        n_entry = writer_frontier_module._WriterFrontierNextTokenEntry(
+            emitted_text="N",
+            supports=(
+                writer_frontier_module._WriterFrontierNextTokenSupport(
+                    state_key=parent_key,
+                    parent_weight=1,
+                    schedule_support=SimpleNamespace(
+                        emitted_text="N",
+                        graph_action_surface=object(),
+                        policy_family=family,
+                    ),  # type: ignore[arg-type]
+                    successor_key=n_key,
+                ),
+            ),
+        )
+        c_choice = writer_frontier_module._WriterFrontierChoiceSnapshotEntry(
+            next_token_entry=c_entry,
+            successor=WriterFrontierCursor(
+                weighted_states=tuple(c_entry.weighted_successors.items())
+            ),
+        )
+        n_choice = writer_frontier_module._WriterFrontierChoiceSnapshotEntry(
+            next_token_entry=n_entry,
+            successor=WriterFrontierCursor(
+                weighted_states=tuple(n_entry.weighted_successors.items())
+            ),
+        )
+        choice_snapshot = writer_frontier_module._WriterFrontierChoiceSnapshot(
+            schedule_outcome=writer_frontier_module._WriterFrontierScheduleOutcome(
+                state_outcomes=(),
+                terminal_by_key=Counter(),
+                grouped_by_text={},
+                weighted_by_text={},
+            ),
+            terminal=None,
+            choices=(c_choice, n_choice),
+        )
+
+        self.assertIs(
+            writer_snapshot._writer_frontier_choice_snapshot_entry_for_emitted_text(
+                choice_snapshot,
+                "C",
+            ),
+            c_choice,
+        )
+        self.assertIs(
+            writer_snapshot._writer_frontier_choice_snapshot_entry_for_emitted_text(
+                choice_snapshot,
+                "N",
+            ),
+            n_choice,
+        )
+
+    def test_writer_choice_snapshot_entry_for_emitted_text_rejects_missing_text(self) -> None:
+        choice_snapshot = writer_frontier_module._WriterFrontierChoiceSnapshot(
+            schedule_outcome=writer_frontier_module._WriterFrontierScheduleOutcome(
+                state_outcomes=(),
+                terminal_by_key=Counter(),
+                grouped_by_text={},
+                weighted_by_text={},
+            ),
+            terminal=None,
+            choices=(),
+        )
+
+        with self.assertRaises(SouthStarError) as raised:
+            writer_snapshot._writer_frontier_choice_snapshot_entry_for_emitted_text(
+                choice_snapshot,
+                "O",
+            )
+
+        self.assertIs(raised.exception.kind, SouthStarErrorKind.INVALID_FACTS)
+
+    def test_writer_choice_snapshot_entry_for_emitted_text_rejects_duplicate_text(self) -> None:
+        parent_key = writer_state_key(_raw_initial_state(AtomId(0)))
+        successor_key = writer_state_key(_raw_initial_state(AtomId(1)))
+        family = writer_transitions._WriterGraphPolicyActionFamily.ACYCLIC_TREE_ENTRY
+        entry = writer_frontier_module._WriterFrontierNextTokenEntry(
+            emitted_text="C",
+            supports=(
+                writer_frontier_module._WriterFrontierNextTokenSupport(
+                    state_key=parent_key,
+                    parent_weight=1,
+                    schedule_support=SimpleNamespace(
+                        emitted_text="C",
+                        graph_action_surface=object(),
+                        policy_family=family,
+                    ),  # type: ignore[arg-type]
+                    successor_key=successor_key,
+                ),
+            ),
+        )
+        choice = writer_frontier_module._WriterFrontierChoiceSnapshotEntry(
+            next_token_entry=entry,
+            successor=WriterFrontierCursor(
+                weighted_states=tuple(entry.weighted_successors.items())
+            ),
+        )
+        choice_snapshot = writer_frontier_module._WriterFrontierChoiceSnapshot(
+            schedule_outcome=writer_frontier_module._WriterFrontierScheduleOutcome(
+                state_outcomes=(),
+                terminal_by_key=Counter(),
+                grouped_by_text={},
+                weighted_by_text={},
+            ),
+            terminal=None,
+            choices=(choice, choice),
+        )
+
+        with self.assertRaises(SouthStarError) as raised:
+            writer_snapshot._writer_frontier_choice_snapshot_entry_for_emitted_text(
+                choice_snapshot,
+                "C",
+            )
+
+        self.assertIs(raised.exception.kind, SouthStarErrorKind.INTERNAL_INVARIANT)
+
+    def test_writer_search_snapshot_with_cursor_after_emitted_text_updates_cursor_and_boundary(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        choice_snapshot = (
+            writer_snapshot
+            ._checked_writer_frontier_choice_snapshot_from_snapshot(
+                snapshot,
+                prepared=prepared,
+                include_counts=False,
+            )
+        )
+        choice = choice_snapshot.choices[0]
+
+        advanced = (
+            writer_snapshot
+            ._writer_search_snapshot_with_cursor_after_emitted_text(
+                snapshot,
+                prepared=prepared,
+                cursor=choice.successor,
+            )
+        )
+
+        self.assertEqual(advanced.cursor, choice.successor)
+        self.assertEqual(
+            advanced.decoder_boundary.consumed_token_count,
+            snapshot.decoder_boundary.consumed_token_count + 1,
+        )
+        self.assertEqual(
+            advanced.frame_stack,
+            (writer_snapshot.WriterFrontierFrame(choice.successor),),
+        )
+        self.assertEqual(advanced.runtime_options, snapshot.runtime_options)
+        self.assertEqual(advanced.prepared_identity, snapshot.prepared_identity)
+        writer_snapshot.validate_writer_search_snapshot(
+            advanced,
+            prepared=prepared,
+        )
+
+    def test_advance_writer_search_snapshot_by_emitted_text_uses_uncounted_choice_snapshot(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        choice_snapshot = (
+            writer_snapshot
+            ._checked_writer_frontier_choice_snapshot_from_snapshot(
+                snapshot,
+                prepared=prepared,
+                include_counts=False,
+            )
+        )
+        choice = choice_snapshot.choices[0]
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._checked_writer_frontier_choice_snapshot_from_snapshot"
+            ),
+            wraps=writer_snapshot._checked_writer_frontier_choice_snapshot_from_snapshot,
+        ) as checked_snapshot:
+            advanced = writer_snapshot._advance_writer_search_snapshot_by_emitted_text(
+                snapshot,
+                prepared=prepared,
+                emitted_text=choice.emitted_text,
+            )
+
+        checked_snapshot.assert_called_once_with(
+            snapshot,
+            prepared=prepared,
+            include_counts=False,
+        )
+        self.assertEqual(advanced.cursor, choice.successor)
+        self.assertEqual(advanced.decoder_boundary.consumed_token_count, 1)
+
+    def test_advance_writer_search_snapshot_by_emitted_text_rejects_illegal_text(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+
+        with self.assertRaises(SouthStarError) as raised:
+            writer_snapshot._advance_writer_search_snapshot_by_emitted_text(
+                snapshot,
+                prepared=prepared,
+                emitted_text="not-a-frontier-token",
+            )
+
+        self.assertIs(raised.exception.kind, SouthStarErrorKind.INVALID_FACTS)
+        self.assertEqual(snapshot.cursor, cursor)
+        self.assertEqual(snapshot.decoder_boundary.consumed_token_count, 0)
+
+    def test_advance_writer_search_snapshot_by_emitted_text_raises_from_blocked_choice_snapshot(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._checked_writer_frontier_choice_snapshot_from_snapshot"
+            ),
+            side_effect=SouthStarError(
+                SouthStarErrorKind.UNSUPPORTED_POLICY,
+                "blocked",
+            ),
+        ):
+            with self.assertRaises(SouthStarError) as raised:
+                writer_snapshot._advance_writer_search_snapshot_by_emitted_text(
+                    snapshot,
+                    prepared=prepared,
+                    emitted_text="C",
+                )
+
+        self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+
+    def test_resume_writer_frontier_choices_after_private_snapshot_advance_matches_choice_successor(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        choices_before = writer_snapshot.resume_writer_frontier_choices_from_snapshot(
+            snapshot,
+            prepared=prepared,
+        )
+        selected = choices_before.choices[0]
+
+        advanced = writer_snapshot._advance_writer_search_snapshot_by_emitted_text(
+            snapshot,
+            prepared=prepared,
+            emitted_text=selected.emitted_text,
+        )
+        choices_after = writer_snapshot.resume_writer_frontier_choices_from_snapshot(
+            advanced,
+            prepared=prepared,
+        )
+        direct_after = writer_frontier_choices(prepared, selected.successor)
+
+        self.assertEqual(choices_after, direct_after)
+
     def test_successors_from_choice_snapshot_preserve_snapshot_choice_order(self) -> None:
         parent_key = writer_state_key(_raw_initial_state(AtomId(0)))
         n_successor_key = writer_state_key(_raw_initial_state(AtomId(1)))

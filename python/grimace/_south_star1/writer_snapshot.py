@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from dataclasses import replace
 
 from .errors import SouthStarError
 from .errors import SouthStarErrorKind
@@ -40,6 +41,7 @@ from .writer_graph_obligations import writer_residual_attachment_action_is_block
 from .writer_frontier import WriterFrontierChoices
 from .writer_frontier import WriterFrontierCursor
 from .writer_frontier import _WriterFrontierChoiceSnapshot
+from .writer_frontier import _WriterFrontierChoiceSnapshotEntry
 from .writer_frontier import _checked_writer_frontier_choice_snapshot
 from .writer_frontier import _writer_frontier_choice_snapshot
 from .writer_state import ComponentCursor
@@ -151,6 +153,88 @@ def _checked_writer_frontier_choice_snapshot_from_snapshot(
         prepared,
         cursor,
         include_counts=include_counts,
+    )
+
+
+def _writer_frontier_choice_snapshot_entry_for_emitted_text(
+    choice_snapshot: _WriterFrontierChoiceSnapshot,
+    emitted_text: str,
+) -> _WriterFrontierChoiceSnapshotEntry:
+    matches = tuple(
+        choice
+        for choice in choice_snapshot.choices
+        if choice.emitted_text == emitted_text
+    )
+
+    if not matches:
+        raise SouthStarError(
+            SouthStarErrorKind.INVALID_FACTS,
+            (
+                "writer snapshot emitted text is not in the current "
+                f"frontier: {emitted_text!r}"
+            ),
+        )
+
+    if len(matches) != 1:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            (
+                "writer choice snapshot contains duplicate emitted-text "
+                f"entries: {emitted_text!r}"
+            ),
+        )
+
+    return matches[0]
+
+
+def _writer_search_snapshot_with_cursor_after_emitted_text(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+) -> WriterSearchSnapshot:
+    next_boundary = WriterDecoderBoundary(
+        consumed_token_count=(
+            snapshot.decoder_boundary.consumed_token_count + 1
+        )
+    )
+
+    advanced = replace(
+        snapshot,
+        cursor=cursor,
+        decoder_boundary=next_boundary,
+        frame_stack=(WriterFrontierFrame(cursor),),
+    )
+
+    validate_writer_search_snapshot(
+        advanced,
+        prepared=prepared,
+    )
+
+    return advanced
+
+
+def _advance_writer_search_snapshot_by_emitted_text(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    emitted_text: str,
+) -> WriterSearchSnapshot:
+    choice_snapshot = _checked_writer_frontier_choice_snapshot_from_snapshot(
+        snapshot,
+        prepared=prepared,
+        include_counts=False,
+    )
+
+    choice = _writer_frontier_choice_snapshot_entry_for_emitted_text(
+        choice_snapshot,
+        emitted_text,
+    )
+
+    return _writer_search_snapshot_with_cursor_after_emitted_text(
+        snapshot,
+        prepared=prepared,
+        cursor=choice.successor,
     )
 
 

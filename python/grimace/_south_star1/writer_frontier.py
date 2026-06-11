@@ -172,6 +172,47 @@ class _WriterFrontierNextTokenEntry:
 
 
 @dataclass(frozen=True, slots=True)
+class _WriterFrontierChoiceSnapshotEntry:
+    next_token_entry: _WriterFrontierNextTokenEntry
+    successor: WriterFrontierCursor
+    support_count: int | None = None
+    completion_count: int | None = None
+
+    @property
+    def emitted_text(self) -> str:
+        return self.next_token_entry.emitted_text
+
+    @property
+    def immediate_multiplicity(self) -> int:
+        return self.next_token_entry.immediate_multiplicity
+
+    @property
+    def supports(self) -> tuple[_WriterFrontierNextTokenSupport, ...]:
+        return self.next_token_entry.supports
+
+    @property
+    def successor_keys(self) -> frozenset[WriterStateKey]:
+        return self.next_token_entry.successor_keys
+
+    @property
+    def weighted_successors(self) -> Counter[WriterStateKey]:
+        return self.next_token_entry.weighted_successors
+
+    @property
+    def policy_families(self):
+        return self.next_token_entry.policy_families
+
+    def to_public_choice(self) -> WriterFrontierChoice:
+        return WriterFrontierChoice(
+            emitted_text=self.emitted_text,
+            successor=self.successor,
+            immediate_multiplicity=self.immediate_multiplicity,
+            support_count=self.support_count,
+            completion_count=self.completion_count,
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class _WriterFrontierScheduleOutcome:
     state_outcomes: tuple[_WriterFrontierStateScheduleOutcome, ...]
     terminal_by_key: Counter[WriterStateKey]
@@ -245,6 +286,33 @@ class _WriterFrontierScheduleOutcome:
             entry.emitted_text: entry.weighted_successors
             for entry in self.next_token_frontier
         }
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterFrontierChoiceSnapshot:
+    schedule_outcome: _WriterFrontierScheduleOutcome
+    terminal: WriterFrontierTerminal | None
+    choices: tuple[_WriterFrontierChoiceSnapshotEntry, ...]
+
+    @property
+    def blocked(self) -> bool:
+        return self.schedule_outcome.blocked
+
+    @property
+    def graph_policy_blockers(
+        self,
+    ) -> tuple[_WriterActiveEmittedGraphPolicyBlocker, ...]:
+        return self.schedule_outcome.graph_policy_blockers
+
+    @property
+    def public_choices(self) -> WriterFrontierChoices:
+        return WriterFrontierChoices(
+            terminal=self.terminal,
+            choices=tuple(
+                choice.to_public_choice()
+                for choice in self.choices
+            ),
+        )
 
 
 def initial_writer_frontier_cursor(
@@ -322,14 +390,44 @@ def _cursor_from_support_state(frontier: WriterFrontierState) -> WriterFrontierC
     )
 
 
-def writer_frontier_choices(
+def _writer_frontier_terminal_from_schedule_outcome(
+    outcome: _WriterFrontierScheduleOutcome,
+) -> WriterFrontierTerminal | None:
+    if not outcome.terminal_by_key:
+        return None
+
+    finalized_cursor = WriterFrontierCursor(
+        weighted_states=tuple(outcome.terminal_by_key.items())
+    )
+    terminal_weight = sum(outcome.terminal_by_key.values())
+
+    return WriterFrontierTerminal(
+        support_count=1,
+        completion_count=terminal_weight,
+        multiplicity=terminal_weight,
+        finalized_cursor=finalized_cursor,
+    )
+
+
+def _writer_frontier_choice_snapshot_from_schedule_outcome(
     prepared: SouthStarPreparedMol,
-    cursor: WriterFrontierCursor,
-) -> WriterFrontierChoices:
-    outcome = _checked_writer_frontier_schedule_outcome(prepared, cursor)
+    outcome: _WriterFrontierScheduleOutcome,
+    *,
+    include_counts: bool = True,
+) -> _WriterFrontierChoiceSnapshot:
+    terminal = _writer_frontier_terminal_from_schedule_outcome(outcome)
+
+    if outcome.blocked:
+        return _WriterFrontierChoiceSnapshot(
+            schedule_outcome=outcome,
+            terminal=terminal,
+            choices=(),
+        )
+
     support_memo: dict[WriterFrontierState, int] = {}
     completion_memo: dict[WriterStateKey, int] = {}
-    choices = []
+    choices: list[_WriterFrontierChoiceSnapshotEntry] = []
+
     for entry in sorted(
         outcome.next_token_frontier,
         key=lambda entry: entry.emitted_text,
@@ -337,44 +435,69 @@ def writer_frontier_choices(
         successor = WriterFrontierCursor(
             weighted_states=tuple(entry.weighted_successors.items())
         )
-        weighted_successors = entry.weighted_successors
-        support_count = _count_writer_frontier_support(
-            prepared,
-            WriterFrontierState(states=entry.successor_keys),
-            support_memo,
-        )
-        completion_count = _count_weighted_successor_completions(
-            prepared,
-            weighted_successors,
-            completion_memo,
-        )
-        if support_count == 0 and completion_count == 0:
-            continue
+
+        support_count = None
+        completion_count = None
+
+        if include_counts:
+            support_count = _count_writer_frontier_support(
+                prepared,
+                WriterFrontierState(states=entry.successor_keys),
+                support_memo,
+            )
+            completion_count = _count_weighted_successor_completions(
+                prepared,
+                entry.weighted_successors,
+                completion_memo,
+            )
+
+            if support_count == 0 and completion_count == 0:
+                continue
+
         choices.append(
-            WriterFrontierChoice(
-                emitted_text=entry.emitted_text,
+            _WriterFrontierChoiceSnapshotEntry(
+                next_token_entry=entry,
                 successor=successor,
-                immediate_multiplicity=entry.immediate_multiplicity,
                 support_count=support_count,
                 completion_count=completion_count,
             )
         )
-    terminal = None
-    if outcome.terminal_by_key:
-        finalized_cursor = WriterFrontierCursor(
-            weighted_states=tuple(outcome.terminal_by_key.items())
-        )
-        terminal_weight = sum(outcome.terminal_by_key.values())
-        terminal = WriterFrontierTerminal(
-            support_count=1,
-            completion_count=terminal_weight,
-            multiplicity=terminal_weight,
-            finalized_cursor=finalized_cursor,
-        )
-    return WriterFrontierChoices(
+
+    return _WriterFrontierChoiceSnapshot(
+        schedule_outcome=outcome,
         terminal=terminal,
         choices=tuple(choices),
     )
+
+
+def _checked_writer_frontier_choice_snapshot(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+    *,
+    include_counts: bool = True,
+) -> _WriterFrontierChoiceSnapshot:
+    outcome = _checked_writer_frontier_schedule_outcome(
+        prepared,
+        cursor,
+    )
+
+    return _writer_frontier_choice_snapshot_from_schedule_outcome(
+        prepared,
+        outcome,
+        include_counts=include_counts,
+    )
+
+
+def writer_frontier_choices(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+) -> WriterFrontierChoices:
+    snapshot = _checked_writer_frontier_choice_snapshot(
+        prepared,
+        cursor,
+    )
+
+    return snapshot.public_choices
 
 
 def _writer_frontier_raw_successors_for_streaming(

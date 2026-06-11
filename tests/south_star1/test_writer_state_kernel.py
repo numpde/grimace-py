@@ -713,6 +713,319 @@ class WriterStateKernelTest(unittest.TestCase):
             SouthStarErrorKind.INTERNAL_INVARIANT,
         )
 
+    def test_writer_frontier_choice_snapshot_entry_converts_to_public_choice(self) -> None:
+        parent_key = writer_state_key(_raw_initial_state(AtomId(0)))
+        successor_key = writer_state_key(_raw_initial_state(AtomId(1)))
+        family = writer_transitions._WriterGraphPolicyActionFamily.ACYCLIC_TREE_ENTRY
+        support = writer_frontier_module._WriterFrontierNextTokenSupport(
+            state_key=parent_key,
+            parent_weight=3,
+            schedule_support=SimpleNamespace(
+                emitted_text="C",
+                graph_action_surface=object(),
+                policy_family=family,
+            ),  # type: ignore[arg-type]
+            successor_key=successor_key,
+        )
+        next_token_entry = writer_frontier_module._WriterFrontierNextTokenEntry(
+            emitted_text="C",
+            supports=(support,),
+        )
+        successor = WriterFrontierCursor(
+            weighted_states=tuple(next_token_entry.weighted_successors.items())
+        )
+        entry = writer_frontier_module._WriterFrontierChoiceSnapshotEntry(
+            next_token_entry=next_token_entry,
+            successor=successor,
+            support_count=5,
+            completion_count=8,
+        )
+
+        self.assertEqual(entry.emitted_text, next_token_entry.emitted_text)
+        self.assertEqual(
+            entry.immediate_multiplicity,
+            next_token_entry.immediate_multiplicity,
+        )
+        self.assertEqual(entry.supports, next_token_entry.supports)
+        self.assertEqual(entry.successor_keys, next_token_entry.successor_keys)
+        self.assertEqual(
+            entry.weighted_successors,
+            next_token_entry.weighted_successors,
+        )
+
+        public = entry.to_public_choice()
+
+        self.assertEqual(public.emitted_text, entry.emitted_text)
+        self.assertIs(public.successor, entry.successor)
+        self.assertEqual(
+            public.immediate_multiplicity,
+            entry.immediate_multiplicity,
+        )
+        self.assertEqual(public.support_count, entry.support_count)
+        self.assertEqual(public.completion_count, entry.completion_count)
+
+    def test_writer_frontier_choice_snapshot_builds_terminal_from_schedule_outcome(self) -> None:
+        prepared = _prepare(chain_facts(("C",)))
+        final_key = writer_state_key(_raw_initial_state(AtomId(0)))
+        outcome = writer_frontier_module._WriterFrontierScheduleOutcome(
+            state_outcomes=(),
+            terminal_by_key=Counter({final_key: 3}),
+            grouped_by_text={},
+            weighted_by_text={},
+        )
+
+        snapshot = (
+            writer_frontier_module
+            ._writer_frontier_choice_snapshot_from_schedule_outcome(
+                prepared,
+                outcome,
+            )
+        )
+
+        self.assertIsNotNone(snapshot.terminal)
+        assert snapshot.terminal is not None
+        self.assertEqual(snapshot.terminal.multiplicity, 3)
+        self.assertEqual(snapshot.terminal.completion_count, 3)
+        self.assertEqual(
+            snapshot.terminal.finalized_cursor.weighted_states,
+            ((final_key, 3),),
+        )
+        self.assertEqual(snapshot.public_choices.terminal, snapshot.terminal)
+
+    def test_writer_frontier_choice_snapshot_sorts_choices_by_emitted_text(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        parent_key = writer_state_key(_raw_initial_state(AtomId(0)))
+        c_successor = writer_state_key(_raw_initial_state(AtomId(1)))
+        n_successor = writer_state_key(_raw_initial_state(AtomId(2)))
+        family = writer_transitions._WriterGraphPolicyActionFamily.ACYCLIC_TREE_ENTRY
+        n_support = writer_frontier_module._WriterFrontierNextTokenSupport(
+            state_key=parent_key,
+            parent_weight=3,
+            schedule_support=SimpleNamespace(
+                emitted_text="N",
+                graph_action_surface=object(),
+                policy_family=family,
+            ),  # type: ignore[arg-type]
+            successor_key=n_successor,
+        )
+        c_support = writer_frontier_module._WriterFrontierNextTokenSupport(
+            state_key=parent_key,
+            parent_weight=2,
+            schedule_support=SimpleNamespace(
+                emitted_text="C",
+                graph_action_surface=object(),
+                policy_family=family,
+            ),  # type: ignore[arg-type]
+            successor_key=c_successor,
+        )
+        outcome = writer_frontier_module._WriterFrontierScheduleOutcome(
+            state_outcomes=(),
+            terminal_by_key=Counter(),
+            grouped_by_text={
+                "N": {n_successor},
+                "C": {c_successor},
+            },
+            weighted_by_text={
+                "N": Counter({n_successor: 3}),
+                "C": Counter({c_successor: 2}),
+            },
+            next_token_frontier=(
+                writer_frontier_module._WriterFrontierNextTokenEntry(
+                    emitted_text="N",
+                    supports=(n_support,),
+                ),
+                writer_frontier_module._WriterFrontierNextTokenEntry(
+                    emitted_text="C",
+                    supports=(c_support,),
+                ),
+            ),
+        )
+
+        with patch(
+            "grimace._south_star1.writer_frontier._count_writer_frontier_support",
+            return_value=1,
+        ), patch(
+            (
+                "grimace._south_star1.writer_frontier"
+                "._count_weighted_successor_completions"
+            ),
+            return_value=2,
+        ):
+            snapshot = (
+                writer_frontier_module
+                ._writer_frontier_choice_snapshot_from_schedule_outcome(
+                    prepared,
+                    outcome,
+                )
+            )
+
+        self.assertEqual(
+            tuple(choice.emitted_text for choice in snapshot.choices),
+            ("C", "N"),
+        )
+        self.assertEqual(
+            tuple(choice.emitted_text for choice in snapshot.public_choices.choices),
+            ("C", "N"),
+        )
+
+    def test_writer_frontier_choice_snapshot_can_omit_counts(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        parent_key = writer_state_key(_raw_initial_state(AtomId(0)))
+        successor_key = writer_state_key(_raw_initial_state(AtomId(1)))
+        support = writer_frontier_module._WriterFrontierNextTokenSupport(
+            state_key=parent_key,
+            parent_weight=2,
+            schedule_support=SimpleNamespace(
+                emitted_text="C",
+                graph_action_surface=object(),
+                policy_family=(
+                    writer_transitions
+                    ._WriterGraphPolicyActionFamily
+                    .ACYCLIC_TREE_ENTRY
+                ),
+            ),  # type: ignore[arg-type]
+            successor_key=successor_key,
+        )
+        outcome = writer_frontier_module._WriterFrontierScheduleOutcome(
+            state_outcomes=(),
+            terminal_by_key=Counter(),
+            grouped_by_text={"C": {successor_key}},
+            weighted_by_text={"C": Counter({successor_key: 2})},
+            next_token_frontier=(
+                writer_frontier_module._WriterFrontierNextTokenEntry(
+                    emitted_text="C",
+                    supports=(support,),
+                ),
+            ),
+        )
+
+        with patch(
+            "grimace._south_star1.writer_frontier._count_writer_frontier_support",
+            side_effect=AssertionError("snapshot counted support"),
+        ), patch(
+            (
+                "grimace._south_star1.writer_frontier"
+                "._count_weighted_successor_completions"
+            ),
+            side_effect=AssertionError("snapshot counted completions"),
+        ):
+            snapshot = (
+                writer_frontier_module
+                ._writer_frontier_choice_snapshot_from_schedule_outcome(
+                    prepared,
+                    outcome,
+                    include_counts=False,
+                )
+            )
+
+        self.assertTrue(snapshot.choices)
+        self.assertTrue(
+            all(choice.support_count is None for choice in snapshot.choices)
+        )
+        self.assertTrue(
+            all(choice.completion_count is None for choice in snapshot.choices)
+        )
+
+    def test_writer_frontier_choice_snapshot_records_blocked_outcome_without_counting(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        active_outcome = self._blocked_child_active_emitted_outcome(AtomId(0))
+        blocked_top_level_outcome = (
+            writer_transitions._WriterTopLevelScheduleOutcome(
+                kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.BLOCKED,
+                active_emitted_outcome=active_outcome,
+            )
+        )
+        state_outcome = writer_frontier_module._WriterFrontierStateScheduleOutcome(
+            state_key=writer_state_key(_raw_initial_state(AtomId(0))),
+            parent_weight=1,
+            finalized_state_key=None,
+            schedule_outcome=blocked_top_level_outcome,
+        )
+        outcome = writer_frontier_module._WriterFrontierScheduleOutcome(
+            state_outcomes=(state_outcome,),
+            terminal_by_key=Counter(),
+            grouped_by_text={},
+            weighted_by_text={},
+        )
+
+        with patch(
+            "grimace._south_star1.writer_frontier._count_writer_frontier_support",
+            side_effect=AssertionError("blocked snapshot counted support"),
+        ), patch(
+            (
+                "grimace._south_star1.writer_frontier"
+                "._count_weighted_successor_completions"
+            ),
+            side_effect=AssertionError("blocked snapshot counted completions"),
+        ):
+            snapshot = (
+                writer_frontier_module
+                ._writer_frontier_choice_snapshot_from_schedule_outcome(
+                    prepared,
+                    outcome,
+                )
+            )
+
+        self.assertTrue(snapshot.blocked)
+        self.assertEqual(
+            snapshot.graph_policy_blockers,
+            outcome.graph_policy_blockers,
+        )
+        self.assertEqual(snapshot.choices, ())
+        self.assertEqual(snapshot.public_choices.choices, ())
+
+    def test_writer_frontier_choices_routes_through_checked_choice_snapshot(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        successor_key = cursor.weighted_states[0][0]
+        support = writer_frontier_module._WriterFrontierNextTokenSupport(
+            state_key=successor_key,
+            parent_weight=1,
+            schedule_support=SimpleNamespace(
+                emitted_text="C",
+                graph_action_surface=object(),
+                policy_family=(
+                    writer_transitions
+                    ._WriterGraphPolicyActionFamily
+                    .ACYCLIC_TREE_ENTRY
+                ),
+            ),  # type: ignore[arg-type]
+            successor_key=successor_key,
+        )
+        entry = writer_frontier_module._WriterFrontierNextTokenEntry(
+            emitted_text="C",
+            supports=(support,),
+        )
+        choice = writer_frontier_module._WriterFrontierChoiceSnapshotEntry(
+            next_token_entry=entry,
+            successor=WriterFrontierCursor(weighted_states=((successor_key, 1),)),
+            support_count=1,
+            completion_count=2,
+        )
+        snapshot = writer_frontier_module._WriterFrontierChoiceSnapshot(
+            schedule_outcome=writer_frontier_module._WriterFrontierScheduleOutcome(
+                state_outcomes=(),
+                terminal_by_key=Counter(),
+                grouped_by_text={"C": {successor_key}},
+                weighted_by_text={"C": Counter({successor_key: 1})},
+                next_token_frontier=(entry,),
+            ),
+            terminal=None,
+            choices=(choice,),
+        )
+
+        with patch(
+            (
+                "grimace._south_star1.writer_frontier"
+                "._checked_writer_frontier_choice_snapshot"
+            ),
+            return_value=snapshot,
+        ) as checked_snapshot:
+            choices = writer_frontier_choices(prepared, cursor)
+
+        self.assertEqual(choices, snapshot.public_choices)
+        checked_snapshot.assert_called_once_with(prepared, cursor)
+
     def test_writer_frontier_choices_use_next_token_entries_not_grouped_transitions(self) -> None:
         prepared = _prepare(chain_facts(("C", "C")))
         cursor = initial_writer_frontier_cursor(prepared, _writer_options())

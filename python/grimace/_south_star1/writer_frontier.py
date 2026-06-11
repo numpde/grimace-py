@@ -305,6 +305,12 @@ class _WriterFrontierChoiceSnapshot:
         return self.schedule_outcome.graph_policy_blockers
 
     @property
+    def blocked_state_outcomes(
+        self,
+    ) -> tuple[_WriterFrontierStateScheduleOutcome, ...]:
+        return self.schedule_outcome.blocked_state_outcomes
+
+    @property
     def public_choices(self) -> WriterFrontierChoices:
         return WriterFrontierChoices(
             terminal=self.terminal,
@@ -470,15 +476,17 @@ def _writer_frontier_choice_snapshot_from_schedule_outcome(
     )
 
 
-def _checked_writer_frontier_choice_snapshot(
+def _writer_frontier_choice_snapshot(
     prepared: SouthStarPreparedMol,
     cursor: WriterFrontierCursor,
     *,
     include_counts: bool = True,
+    stop_after_first_blocked: bool = False,
 ) -> _WriterFrontierChoiceSnapshot:
-    outcome = _checked_writer_frontier_schedule_outcome(
+    outcome = _writer_frontier_schedule_outcome(
         prepared,
         cursor,
+        stop_after_first_blocked=stop_after_first_blocked,
     )
 
     return _writer_frontier_choice_snapshot_from_schedule_outcome(
@@ -486,6 +494,26 @@ def _checked_writer_frontier_choice_snapshot(
         outcome,
         include_counts=include_counts,
     )
+
+
+def _checked_writer_frontier_choice_snapshot(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+    *,
+    include_counts: bool = True,
+) -> _WriterFrontierChoiceSnapshot:
+    snapshot = _writer_frontier_choice_snapshot(
+        prepared,
+        cursor,
+        include_counts=include_counts,
+        stop_after_first_blocked=True,
+    )
+
+    _raise_for_writer_frontier_schedule_outcome_blockers(
+        snapshot.schedule_outcome,
+    )
+
+    return snapshot
 
 
 def writer_frontier_choices(

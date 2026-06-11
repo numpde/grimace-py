@@ -974,6 +974,205 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(snapshot.choices, ())
         self.assertEqual(snapshot.public_choices.choices, ())
 
+    def test_writer_frontier_choice_snapshot_returns_scheduled_snapshot(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+
+        snapshot = writer_frontier_module._writer_frontier_choice_snapshot(
+            prepared,
+            cursor,
+        )
+
+        self.assertFalse(snapshot.blocked)
+        self.assertEqual(snapshot.graph_policy_blockers, ())
+        self.assertFalse(snapshot.schedule_outcome.blocked)
+        self.assertTrue(snapshot.choices)
+        self.assertEqual(
+            snapshot.public_choices,
+            writer_frontier_choices(prepared, cursor),
+        )
+
+    def test_writer_frontier_choice_snapshot_returns_blocked_snapshot_without_raising(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        active_outcome = self._blocked_child_active_emitted_outcome(AtomId(0))
+        blocked_top_level_outcome = (
+            writer_transitions._WriterTopLevelScheduleOutcome(
+                kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.BLOCKED,
+                active_emitted_outcome=active_outcome,
+            )
+        )
+        state_outcome = writer_frontier_module._WriterFrontierStateScheduleOutcome(
+            state_key=cursor.weighted_states[0][0],
+            parent_weight=cursor.weighted_states[0][1],
+            finalized_state_key=None,
+            schedule_outcome=blocked_top_level_outcome,
+        )
+        blocked_outcome = writer_frontier_module._WriterFrontierScheduleOutcome(
+            state_outcomes=(state_outcome,),
+            terminal_by_key=Counter(),
+            grouped_by_text={},
+            weighted_by_text={},
+        )
+
+        with patch(
+            "grimace._south_star1.writer_frontier._writer_frontier_schedule_outcome",
+            return_value=blocked_outcome,
+        ):
+            snapshot = writer_frontier_module._writer_frontier_choice_snapshot(
+                prepared,
+                cursor,
+            )
+
+        self.assertTrue(snapshot.blocked)
+        self.assertIs(snapshot.schedule_outcome, blocked_outcome)
+        self.assertEqual(
+            snapshot.graph_policy_blockers,
+            blocked_outcome.graph_policy_blockers,
+        )
+        self.assertEqual(snapshot.blocked_state_outcomes, (state_outcome,))
+        self.assertEqual(snapshot.choices, ())
+        self.assertEqual(snapshot.public_choices.choices, ())
+
+    def test_writer_frontier_choice_snapshot_forwards_include_counts(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        outcome = writer_frontier_module._WriterFrontierScheduleOutcome(
+            state_outcomes=(),
+            terminal_by_key=Counter(),
+            grouped_by_text={},
+            weighted_by_text={},
+        )
+        snapshot = writer_frontier_module._WriterFrontierChoiceSnapshot(
+            schedule_outcome=outcome,
+            terminal=None,
+            choices=(),
+        )
+
+        with patch(
+            "grimace._south_star1.writer_frontier._writer_frontier_schedule_outcome",
+            return_value=outcome,
+        ), patch(
+            (
+                "grimace._south_star1.writer_frontier"
+                "._writer_frontier_choice_snapshot_from_schedule_outcome"
+            ),
+            return_value=snapshot,
+        ) as build_snapshot:
+            writer_frontier_module._writer_frontier_choice_snapshot(
+                prepared,
+                cursor,
+                include_counts=False,
+            )
+            writer_frontier_module._writer_frontier_choice_snapshot(
+                prepared,
+                cursor,
+                include_counts=True,
+            )
+
+        self.assertEqual(
+            tuple(call.kwargs["include_counts"] for call in build_snapshot.call_args_list),
+            (False, True),
+        )
+
+    def test_writer_frontier_choice_snapshot_forwards_stop_after_first_blocked(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        outcome = writer_frontier_module._WriterFrontierScheduleOutcome(
+            state_outcomes=(),
+            terminal_by_key=Counter(),
+            grouped_by_text={},
+            weighted_by_text={},
+        )
+
+        with patch(
+            "grimace._south_star1.writer_frontier._writer_frontier_schedule_outcome",
+            return_value=outcome,
+        ) as schedule_outcome:
+            writer_frontier_module._writer_frontier_choice_snapshot(
+                prepared,
+                cursor,
+                stop_after_first_blocked=True,
+            )
+
+        schedule_outcome.assert_called_once_with(
+            prepared,
+            cursor,
+            stop_after_first_blocked=True,
+        )
+
+    def test_checked_writer_frontier_choice_snapshot_raises_from_blocked_unchecked_snapshot(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        active_outcome = self._blocked_child_active_emitted_outcome(AtomId(0))
+        blocked_top_level_outcome = (
+            writer_transitions._WriterTopLevelScheduleOutcome(
+                kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.BLOCKED,
+                active_emitted_outcome=active_outcome,
+            )
+        )
+        blocked_outcome = writer_frontier_module._WriterFrontierScheduleOutcome(
+            state_outcomes=(
+                writer_frontier_module._WriterFrontierStateScheduleOutcome(
+                    state_key=cursor.weighted_states[0][0],
+                    parent_weight=cursor.weighted_states[0][1],
+                    finalized_state_key=None,
+                    schedule_outcome=blocked_top_level_outcome,
+                ),
+            ),
+            terminal_by_key=Counter(),
+            grouped_by_text={},
+            weighted_by_text={},
+        )
+        snapshot = writer_frontier_module._WriterFrontierChoiceSnapshot(
+            schedule_outcome=blocked_outcome,
+            terminal=None,
+            choices=(),
+        )
+
+        with patch(
+            "grimace._south_star1.writer_frontier._writer_frontier_choice_snapshot",
+            return_value=snapshot,
+        ) as unchecked_snapshot:
+            with self.assertRaises(SouthStarError) as raised:
+                writer_frontier_module._checked_writer_frontier_choice_snapshot(
+                    prepared,
+                    cursor,
+                )
+
+        self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+        unchecked_snapshot.assert_called_once_with(
+            prepared,
+            cursor,
+            include_counts=True,
+            stop_after_first_blocked=True,
+        )
+
+    def test_checked_writer_frontier_choice_snapshot_returns_scheduled_unchecked_snapshot(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        snapshot = writer_frontier_module._WriterFrontierChoiceSnapshot(
+            schedule_outcome=writer_frontier_module._WriterFrontierScheduleOutcome(
+                state_outcomes=(),
+                terminal_by_key=Counter(),
+                grouped_by_text={},
+                weighted_by_text={},
+            ),
+            terminal=None,
+            choices=(),
+        )
+
+        with patch(
+            "grimace._south_star1.writer_frontier._writer_frontier_choice_snapshot",
+            return_value=snapshot,
+        ):
+            result = writer_frontier_module._checked_writer_frontier_choice_snapshot(
+                prepared,
+                cursor,
+            )
+
+        self.assertIs(result, snapshot)
+
     def test_successors_from_choice_snapshot_preserve_snapshot_choice_order(self) -> None:
         parent_key = writer_state_key(_raw_initial_state(AtomId(0)))
         n_successor_key = writer_state_key(_raw_initial_state(AtomId(1)))

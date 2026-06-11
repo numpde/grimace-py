@@ -35,11 +35,16 @@ Prepared graphs should carry only metadata needed for the selected Grimace
 writer surface.
 
 When the selected surface is nonstereo, hidden residual `BondDir` metadata is
-not part of the writer-visible language. Keeping it causes Grimace to reject
+not part of that surface's graph language. Keeping it causes Grimace to reject
 molecules that RDKit can serialize on that surface without `/` or `\` tokens.
 
 For stereo-capable surfaces, direction metadata remains part of the prepared
 surface. Those surfaces must continue to validate and consume it explicitly.
+
+This is a surface decision, not a shortcut for every `isomericSmiles=False`
+call. Some non-isomeric writer options, notably explicit-bond output, can still
+make directional markers writer-visible; those paths must select and validate a
+stereo-capable surface.
 
 ## Implementation stance
 

@@ -3,13 +3,21 @@ from __future__ import annotations
 from dataclasses import fields, is_dataclass
 import unittest
 
+from rdkit import Chem
+
 import grimace
 from tests.helpers.mols import parse_smiles
 from tests.helpers.public_runtime import (
     prepared_writer_kwargs,
     public_enum_support,
     public_token_inventory,
+    public_token_inventory_superset,
     supported_public_kwargs,
+)
+
+
+_DIRECTIONAL_BOND_RESIDUE_SMILES = (
+    r"O=S(=O)(/C(c1ccc(Cl)cc1)=c1\o/c(=C\CCBr)c2ccccc12)c1ccc(Br)cc1"
 )
 
 
@@ -236,6 +244,56 @@ class PreparedMolContractTests(unittest.TestCase):
         )
         self.assertTrue(support)
         self.assertTrue(all("." in smiles for smiles in support))
+
+    def test_nonstereo_surface_ignores_residual_directional_bond_dirs(self) -> None:
+        mol = parse_smiles(_DIRECTIONAL_BOND_RESIDUE_SMILES)
+        kwargs = supported_public_kwargs(
+            isomericSmiles=False,
+            kekuleSmiles=False,
+            allBondsExplicit=False,
+            allHsExplicit=False,
+            rootedAtAtom=0,
+            ignoreAtomMapNumbers=True,
+        )
+        prepared_kwargs = prepared_writer_kwargs(kwargs)
+        rooted_nonisomeric_smiles = Chem.MolToSmiles(
+            mol,
+            canonical=False,
+            rootedAtAtom=0,
+            isomericSmiles=False,
+            allBondsExplicit=False,
+            allHsExplicit=False,
+        )
+        self.assertNotIn("/", rooted_nonisomeric_smiles)
+        self.assertNotIn("\\", rooted_nonisomeric_smiles)
+
+        # This molecule reproduces the boundary between RDKit stereo removal
+        # and Grimace's nonstereo writer surface: aromatic BondDir metadata can
+        # remain on the RDKit mol, but it is hidden by this writer mode.
+        def restored_prepared() -> object:
+            prepared = grimace.PrepareMol(mol, **prepared_kwargs)
+            return grimace.PreparedMol.from_bytes(prepared.to_bytes())
+
+        for name, mol_or_prepared_factory in (
+            ("mol", lambda: mol),
+            ("prepared", lambda: grimace.PrepareMol(mol, **prepared_kwargs)),
+            ("restored", restored_prepared),
+        ):
+            with self.subTest(name=name):
+                mol_or_prepared = mol_or_prepared_factory()
+                token_superset = public_token_inventory_superset(
+                    mol_or_prepared,
+                    **kwargs,
+                )
+                self.assertNotIn("/", token_superset)
+                self.assertNotIn("\\", token_superset)
+                self.assertIsNone(
+                    grimace.MolToSmilesDeviation(
+                        mol_or_prepared,
+                        rooted_nonisomeric_smiles,
+                        **kwargs,
+                    )
+                )
 
     def test_to_bytes_uses_versioned_binary_payload(self) -> None:
         prepared = self._prepare("CCO.N", isomericSmiles=False)

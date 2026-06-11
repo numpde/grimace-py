@@ -158,6 +158,11 @@ def coerce_molecule_to_supported_surface(
     working_mol = Chem.Mol(mol)
     if surface_kind == CONNECTED_NONSTEREO_SURFACE:
         Chem.RemoveStereochemistry(working_mol)
+        # RemoveStereochemistry clears directions on single and double bonds,
+        # but aromatic BondDir metadata may remain. Grimace's nonstereo surface
+        # follows the non-isomeric writer output where those markers are hidden.
+        for bond in working_mol.GetBonds():
+            bond.SetBondDir(Chem.BondDir.NONE)
     return working_mol
 
 

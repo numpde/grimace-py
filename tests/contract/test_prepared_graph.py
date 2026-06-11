@@ -15,6 +15,29 @@ from grimace._reference.prepared_graph import (
 from tests.helpers.policies import load_connected_nonstereo_policy
 
 
+def _bond_dir_rows(mol: Chem.Mol) -> tuple[tuple[int, int, int, str, str], ...]:
+    return tuple(
+        (
+            bond.GetIdx(),
+            bond.GetBeginAtomIdx(),
+            bond.GetEndAtomIdx(),
+            str(bond.GetBondType()),
+            str(bond.GetBondDir()),
+        )
+        for bond in mol.GetBonds()
+        if bond.GetBondDir() != Chem.BondDir.NONE
+    )
+
+
+def _mol_with_residual_directional_bond_dirs() -> Chem.Mol:
+    mol = Chem.MolFromSmiles("c1ccccc1")
+    if mol is None:
+        raise AssertionError("failed to parse synthetic directional-residue molecule")
+    mol.GetBondWithIdx(0).SetBondDir(Chem.BondDir.ENDDOWNRIGHT)
+    mol.GetBondWithIdx(1).SetBondDir(Chem.BondDir.ENDUPRIGHT)
+    return mol
+
+
 class PreparedSmilesGraphContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -260,6 +283,39 @@ class PreparedSmilesGraphContractTests(unittest.TestCase):
         self.assertEqual((), prepared.bond_stereo_kinds)
         self.assertEqual((), prepared.bond_stereo_atoms)
         self.assertEqual((), prepared.bond_dirs)
+
+    def test_nonstereo_prepared_graph_drops_residual_bond_dirs(self) -> None:
+        mol = _mol_with_residual_directional_bond_dirs()
+        stripped = Chem.Mol(mol)
+        Chem.RemoveStereochemistry(stripped)
+
+        # RemoveStereochemistry is not a clear-all-directions operation.
+        # Grimace's nonstereo graph shape is stricter: it only keeps metadata
+        # that belongs to the non-isomeric writer surface.
+        self.assertEqual(
+            _bond_dir_rows(mol),
+            _bond_dir_rows(stripped),
+        )
+        self.assertNotEqual((), _bond_dir_rows(mol))
+        stereo_prepared = prepare_smiles_graph(
+            mol,
+            self.policy,
+            surface_kind=CONNECTED_STEREO_SURFACE,
+        )
+        stereo_bond_dirs = tuple(
+            bond_dir for bond_dir in stereo_prepared.bond_dirs if bond_dir != "NONE"
+        )
+        self.assertEqual(
+            ("ENDDOWNRIGHT", "ENDUPRIGHT"),
+            stereo_bond_dirs,
+        )
+
+        nonstereo_prepared = prepare_smiles_graph(
+            mol,
+            self.policy,
+            surface_kind=CONNECTED_NONSTEREO_SURFACE,
+        )
+        self.assertEqual((), nonstereo_prepared.bond_dirs)
 
     def test_connected_stereo_surface_still_rejects_unsupported_stereo_families(self) -> None:
         mol = Chem.MolFromSmiles("C/C=C/C")

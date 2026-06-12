@@ -308,6 +308,44 @@ class _WriterFrontierResidualAttachmentEvidenceGroup:
     def has_selected_support_evidence(self) -> bool:
         return bool(self.selected_support_groups)
 
+    @property
+    def has_selected_closure_open_supports(self) -> bool:
+        return bool(self.selected_closure_open_supports)
+
+    @property
+    def has_selected_cyclic_tree_entry_supports(self) -> bool:
+        return bool(self.selected_cyclic_tree_entry_supports)
+
+    @property
+    def has_selected_acyclic_tree_entry_supports(self) -> bool:
+        return bool(self.selected_acyclic_tree_entry_supports)
+
+    @property
+    def has_selected_tree_entry_supports(self) -> bool:
+        return bool(
+            self.selected_supports_for_policy_family(
+                _WriterGraphPolicyActionFamily.TREE_ENTRY
+            )
+            or self.selected_acyclic_tree_entry_supports
+            or self.selected_cyclic_tree_entry_supports
+        )
+
+    @property
+    def has_dead_closure_open_resolution_evidence(self) -> bool:
+        return (
+            self.has_resolved_policy_evidence
+            and self.has_support_dead_closure_open_evidence
+        )
+
+    @property
+    def has_dead_closure_open_resolved_cyclic_tree_entry_support(
+        self,
+    ) -> bool:
+        return (
+            self.has_dead_closure_open_resolution_evidence
+            and self.has_selected_cyclic_tree_entry_supports
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class _WriterFrontierChoiceResidualAttachmentEvidence:
@@ -362,6 +400,27 @@ class _WriterFrontierChoiceResidualAttachmentEvidence:
     @property
     def has_residual_attachment_evidence(self) -> bool:
         return bool(self.residual_attachment_evidence_groups)
+
+    @property
+    def dead_closure_open_resolved_cyclic_tree_entry_groups(
+        self,
+    ) -> tuple[_WriterFrontierResidualAttachmentEvidenceGroup, ...]:
+        return tuple(
+            group
+            for group in self.residual_attachment_evidence_groups
+            if (
+                group
+                .has_dead_closure_open_resolved_cyclic_tree_entry_support
+            )
+        )
+
+    @property
+    def has_dead_closure_open_resolved_cyclic_tree_entry_support(
+        self,
+    ) -> bool:
+        return bool(
+            self.dead_closure_open_resolved_cyclic_tree_entry_groups
+        )
 
     @property
     def public_choice(self) -> WriterFrontierChoice:
@@ -712,6 +771,19 @@ class _WriterFrontierChoiceSnapshot:
             return None
 
         return matches[0]
+
+    @property
+    def dead_closure_open_resolved_cyclic_tree_entry_choice_evidence(
+        self,
+    ) -> tuple[_WriterFrontierChoiceResidualAttachmentEvidence, ...]:
+        return tuple(
+            evidence
+            for evidence in self.choice_residual_attachment_evidence
+            if (
+                evidence
+                .has_dead_closure_open_resolved_cyclic_tree_entry_support
+            )
+        )
 
     @property
     def public_choices(self) -> WriterFrontierChoices:

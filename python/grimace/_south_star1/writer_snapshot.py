@@ -792,6 +792,31 @@ class _WriterSnapshotPrefixReadOutcome:
     def replayed_selected_policy_families(self):
         return self.replay_outcome.replayed_selected_policy_families
 
+    @property
+    def final_choice_dead_closure_open_resolved_cyclic_tree_entry_evidence(
+        self,
+    ):
+        if self.choice_snapshot is None:
+            return ()
+
+        return (
+            self.choice_snapshot
+            .dead_closure_open_resolved_cyclic_tree_entry_choice_evidence
+        )
+
+    @property
+    def replayed_dead_closure_open_resolved_cyclic_tree_entry_evidence(
+        self,
+    ):
+        return tuple(
+            evidence
+            for evidence in self.replayed_choice_residual_attachment_evidence
+            if (
+                evidence
+                .has_dead_closure_open_resolved_cyclic_tree_entry_support
+            )
+        )
+
 
 def _maybe_writer_frontier_choice_snapshot_entry_for_emitted_text(
     choice_snapshot: _WriterFrontierChoiceSnapshot,

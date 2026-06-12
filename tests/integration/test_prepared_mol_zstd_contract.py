@@ -713,6 +713,27 @@ with mock.patch("importlib.resources.files", wraps=real_files) as files:
                 with self.assertRaises(ValueError):
                     prepared.to_bytes(compression="zstd", level=level)
 
+    def test_to_bytes_rejects_invalid_options_before_serializing(self) -> None:
+        class SerializationShouldNotRun:
+            def to_bytes(self) -> bytes:
+                raise AssertionError("raw serialization should not run")
+
+        prepared = prepared_mol_module._make_prepared_mol(
+            SerializationShouldNotRun(),
+        )
+
+        with self.assertRaisesRegex(ValueError, "compression"):
+            prepared.to_bytes(compression="gzip")
+
+        with self.assertRaisesRegex(TypeError, "dictionary_level"):
+            prepared.to_bytes(compression="zstd", dictionary_level="3")
+
+        with self.assertRaisesRegex(TypeError, "level"):
+            prepared.to_bytes(compression="zstd", level="3")
+
+        with self.assertRaisesRegex(ValueError, "level"):
+            prepared.to_bytes(compression="zstd", level=0)
+
     def test_from_bytes_compression_option_surface_is_strict(self) -> None:
         raw_payload = self._prepare("C", isomericSmiles=False).to_bytes()
 

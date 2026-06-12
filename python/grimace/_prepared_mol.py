@@ -48,17 +48,20 @@ class PreparedMol:
         dictionary_level: int = _DEFAULT_ZSTD_DICTIONARY_LEVEL,
         level: int = _DEFAULT_ZSTD_LEVEL,
     ) -> bytes:
+        if compression not in (None, "zstd"):
+            raise ValueError("PreparedMol.to_bytes compression must be None or 'zstd'")
+        if compression == "zstd":
+            _require_int(dictionary_level, "PreparedMol.to_bytes dictionary_level")
+            _require_int(level, "PreparedMol.to_bytes level")
+            if not 1 <= level <= 22:
+                raise ValueError(
+                    "PreparedMol.to_bytes level must be in zstd range 1..22"
+                )
+
         raw_payload = self._inner.to_bytes()
         _check_raw_prepared_mol_size(len(raw_payload))
         if compression is None:
             return raw_payload
-        if compression != "zstd":
-            raise ValueError("PreparedMol.to_bytes compression must be None or 'zstd'")
-        _require_int(dictionary_level, "PreparedMol.to_bytes dictionary_level")
-        _require_int(level, "PreparedMol.to_bytes level")
-        if not 1 <= level <= 22:
-            raise ValueError("PreparedMol.to_bytes level must be in zstd range 1..22")
-
         compression_dictionary = _zstd_dictionary_for_training_level(
             dictionary_level,
         )

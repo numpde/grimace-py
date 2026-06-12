@@ -11,6 +11,7 @@ from grimace._mol_to_smiles_options import (
     MOL_TO_SMILES_PREPARED_OPTIONS,
     coerce_internal_options,
     internal_option_values,
+    normalize_root_atom,
 )
 
 
@@ -38,6 +39,9 @@ class MolToSmilesFlags:
                     raise TypeError(
                         "MolToSmilesFlags.rooted_at_atom must be an int"
                     )
+                normalized = normalize_root_atom(value)
+                if normalized != value:
+                    object.__setattr__(self, spec.internal_name, normalized)
             else:
                 raise RuntimeError(
                     f"unsupported MolToSmiles option value_rule: {spec.value_rule!r}"

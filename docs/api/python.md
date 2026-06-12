@@ -79,10 +79,10 @@ whole SMILES strings.
 Although the signature mirrors RDKit defaults, the current runtime does not
 support those defaults. Use the supported options from [Runtime](../runtime.html).
 
-When `rootedAtAtom < 0`, the result is the exact union across all valid roots
-for the requested writer flags. `rootedAtAtom=-1` is the preferred public
-spelling for that all-roots mode. `rootedAtAtom=None` is not supported; omit
-the argument or use `-1` instead.
+When `rootedAtAtom` is negative, Grimace normalizes it to `-1` and returns the
+exact union across all valid roots for the requested writer flags. Use
+`rootedAtAtom=-1` for that all-roots mode. `rootedAtAtom=None` is not
+supported; omit the argument or use `-1` instead.
 
 Set semantics are the contract here. `MolToSmilesEnum(...)` yields the exact
 support, but callers should not rely on the yielded iteration order as a
@@ -287,13 +287,14 @@ semantics. The guide shows both cases.
 This returns the exact sorted tuple of reachable decoder tokens for one
 molecule under the requested public writer flags.
 
-When `rootedAtAtom < 0`, it unions the exact reachable token inventories
-across all roots. When `rootedAtAtom >= 0`, it reports the inventory for that
-rooted public runtime. Omitting `rootedAtAtom` means the same thing as passing
-`-1`, and `-1` is the preferred public spelling for that all-roots mode. For
-disconnected molecules it includes the `"."` separator token when fragment
-transitions are reachable under the requested root mode. `rootedAtAtom=None`
-is not supported; omit the argument or use `-1` instead.
+When `rootedAtAtom` is negative, it normalizes to `-1` and unions the exact
+reachable token inventories across all roots. When `rootedAtAtom >= 0`, it
+reports the inventory for that rooted public runtime. Omitting `rootedAtAtom`
+means the same thing as passing `-1`, and `-1` is the preferred public spelling
+for that all-roots mode. For disconnected molecules it includes the `"."`
+separator token when fragment transitions are reachable under the requested
+root mode. `rootedAtAtom=None` is not supported; omit the argument or use `-1`
+instead.
 
 Use this when you need exact per-molecule coverage for Grimace decoder tokens.
 
@@ -310,7 +311,7 @@ datasets. See [Token inventories](../guides/token-inventory.html).
 For the same molecule and flags, the exact inventory is contained in the
 superset inventory.
 
-When `rootedAtAtom < 0`, it unions conservative token inventories across all
-roots.
+When `rootedAtAtom` is negative, it normalizes to `-1` and unions conservative
+token inventories across all roots.
 For disconnected molecules it includes the `"."` separator token. `PreparedMol`
 inputs are accepted when their writer flags match the requested public options.

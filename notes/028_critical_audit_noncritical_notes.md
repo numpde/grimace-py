@@ -577,11 +577,11 @@ normalization keeps compatibility while avoiding internal mixed sentinels.
 
 Checklist:
 
-- [ ] Ensure public option coercion converts any negative root to `-1`.
-- [ ] Keep tests proving `-2` and `-3` behave like `-1` if compatibility is
+- [x] Ensure public option coercion converts any negative root to `-1`.
+- [x] Keep tests proving `-2` and `-3` behave like `-1` if compatibility is
       intentionally preserved.
-- [ ] Add docs wording: negative roots are normalized to `-1`; use `-1`.
-- [ ] Keep Rust prepared root mapping strict for explicit rooted fragment calls.
+- [x] Add docs wording: negative roots are normalized to `-1`; use `-1`.
+- [x] Keep Rust prepared root mapping strict for explicit rooted fragment calls.
 
 ### 16. Cargo manifest dependency range differs from lock
 

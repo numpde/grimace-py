@@ -144,10 +144,14 @@ def coerce_option(
                 f"{context} requires {spec.public_name} to follow RDKit's Python binding "
                 "and be an integer"
             )
-        return int(value)
+        return normalize_root_atom(int(value))
     raise RuntimeError(
         f"unsupported MolToSmiles option value_rule: {spec.value_rule!r}"
     )
+
+
+def normalize_root_atom(value: int) -> int:
+    return -1 if value < 0 else value
 
 
 def coerce_public_options(

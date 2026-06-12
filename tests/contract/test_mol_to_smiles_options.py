@@ -167,6 +167,37 @@ class MolToSmilesOptionInventoryTests(unittest.TestCase):
         with self.assertRaisesRegex(TypeError, "rooted_at_atom must be an int"):
             flags.with_rooted_at_atom(True)
 
+    def test_negative_roots_normalize_to_single_all_roots_sentinel(self) -> None:
+        self.assertEqual(
+            -1,
+            coerce_public_options(
+                MOL_TO_SMILES_OPTIONS,
+                {"rootedAtAtom": -2},
+                context="TestContext",
+            )["rooted_at_atom"],
+        )
+        self.assertEqual(
+            -1,
+            coerce_internal_options(
+                MOL_TO_SMILES_OPTIONS,
+                {"rooted_at_atom": -3},
+                context="TestContext",
+            )["rooted_at_atom"],
+        )
+        self.assertEqual(
+            -1,
+            public_options_from_internal_options(
+                MOL_TO_SMILES_OPTIONS,
+                {"rooted_at_atom": -4},
+                context="TestContext",
+            )["rootedAtAtom"],
+        )
+        self.assertEqual(-1, make_flags(rooted_at_atom=-5).rooted_at_atom)
+
+        flags = MolToSmilesFlags(rooted_at_atom=-6)
+        self.assertEqual(-1, flags.rooted_at_atom)
+        self.assertEqual(-1, flags.with_rooted_at_atom(-7).rooted_at_atom)
+
     def test_make_flags_is_the_internal_coercion_boundary(self) -> None:
         flags = make_flags(
             isomeric_smiles=None,

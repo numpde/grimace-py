@@ -1,3 +1,9 @@
+"""Private typing surface for the compiled grimace._core extension.
+
+These names are for Grimace internals and internal tests. Public callers should
+use the top-level `grimace` API documented in `docs/api/python.md`.
+"""
+
 from collections.abc import Sequence
 from typing import Any
 

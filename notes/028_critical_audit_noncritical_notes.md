@@ -707,11 +707,11 @@ and docs.
 
 Checklist:
 
-- [ ] Add a top-of-file comment in `_core.pyi` stating it is private extension
+- [x] Add a top-of-file comment in `_core.pyi` stating it is private extension
       typing, not public API.
-- [ ] Keep public docs limited to top-level `grimace` symbols.
-- [ ] Add/keep tests asserting private `_core` symbols are not re-exported.
-- [ ] Avoid adding new `_core` methods unless a public wrapper or internal test
+- [x] Keep public docs limited to top-level `grimace` symbols.
+- [x] Add/keep tests asserting private `_core` symbols are not re-exported.
+- [x] Avoid adding new `_core` methods unless a public wrapper or internal test
       needs them.
 
 ### 21. Direct `MolToSmilesFlags` construction bypasses coercion

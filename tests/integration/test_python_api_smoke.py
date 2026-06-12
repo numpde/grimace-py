@@ -25,8 +25,18 @@ ABSENT_TOP_LEVEL_NAMES = (
     "coerce_public_options",
     "internal_option_values",
     "public_option_values",
+    "PreparedSmilesGraph",
+    "RootedConnectedNonStereoDecoder",
+    "RootedConnectedNonStereoWalker",
+    "RootedConnectedNonStereoWalkerState",
+    "RootedConnectedStereoDecoder",
+    "RootedConnectedStereoWalker",
+    "RootedConnectedStereoWalkerState",
+    "_SplitMix64Sampler",
     "enumerate_rooted_connected_nonstereo_smiles_support",
     "enumerate_rooted_connected_stereo_smiles_support",
+    "mol_to_smiles_support",
+    "prepared_smiles_graph_schema_version",
 )
 
 

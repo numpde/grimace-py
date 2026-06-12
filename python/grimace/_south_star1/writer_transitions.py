@@ -167,6 +167,17 @@ class _WriterResidualAttachmentPolicyKey:
     attachment_id: int
 
 
+class _WriterResidualAttachmentOwnerScopeKind(Enum):
+    NONE = "none"
+    ACTIVE_ATOM = "active_atom"
+    BRANCH_RETURN = "branch_return"
+    PENDING_PARENT = "pending_parent"
+    OPEN_RING_ENDPOINT = "open_ring_endpoint"
+    UNOWNED = "unowned"
+    MISSING = "missing"
+    MIXED = "mixed"
+
+
 class _WriterActiveEmittedScheduleDecisionKind(Enum):
     CLOSURE_ENDPOINT = "closure_endpoint"
     ACTIVE_CHILD = "active_child"
@@ -408,20 +419,101 @@ class _WriterResidualAttachmentPolicyGroup:
         )
 
     @property
-    def has_active_atom_owned_closure_open_vs_cyclic_tree_entry_choice(self) -> bool:
+    def closure_open_vs_cyclic_tree_entry_owner_scope_kind(
+        self,
+    ) -> _WriterResidualAttachmentOwnerScopeKind:
         if not self.has_closure_open_vs_cyclic_tree_entry_choice:
-            return False
+            return _WriterResidualAttachmentOwnerScopeKind.NONE
 
-        return all(
-            owner_kind is WriterBoundaryOwnerKind.ACTIVE_ATOM
-            for owner_kind in self.closure_open_vs_cyclic_tree_entry_owner_kinds
+        return _residual_attachment_owner_scope_kind_from_owner_kinds(
+            self.closure_open_vs_cyclic_tree_entry_owner_kinds
         )
 
     @property
-    def has_unsupported_owner_scope_closure_open_vs_cyclic_tree_entry_choice(self) -> bool:
+    def has_active_atom_owner_scope_closure_open_vs_cyclic_tree_entry_choice(
+        self,
+    ) -> bool:
+        return (
+            self.closure_open_vs_cyclic_tree_entry_owner_scope_kind
+            is _WriterResidualAttachmentOwnerScopeKind.ACTIVE_ATOM
+        )
+
+    @property
+    def has_branch_return_owner_scope_closure_open_vs_cyclic_tree_entry_choice(
+        self,
+    ) -> bool:
+        return (
+            self.closure_open_vs_cyclic_tree_entry_owner_scope_kind
+            is _WriterResidualAttachmentOwnerScopeKind.BRANCH_RETURN
+        )
+
+    @property
+    def has_pending_parent_owner_scope_closure_open_vs_cyclic_tree_entry_choice(
+        self,
+    ) -> bool:
+        return (
+            self.closure_open_vs_cyclic_tree_entry_owner_scope_kind
+            is _WriterResidualAttachmentOwnerScopeKind.PENDING_PARENT
+        )
+
+    @property
+    def has_open_ring_endpoint_owner_scope_closure_open_vs_cyclic_tree_entry_choice(
+        self,
+    ) -> bool:
+        return (
+            self.closure_open_vs_cyclic_tree_entry_owner_scope_kind
+            is _WriterResidualAttachmentOwnerScopeKind.OPEN_RING_ENDPOINT
+        )
+
+    @property
+    def has_unowned_owner_scope_closure_open_vs_cyclic_tree_entry_choice(
+        self,
+    ) -> bool:
+        return (
+            self.closure_open_vs_cyclic_tree_entry_owner_scope_kind
+            is _WriterResidualAttachmentOwnerScopeKind.UNOWNED
+        )
+
+    @property
+    def has_missing_owner_scope_closure_open_vs_cyclic_tree_entry_choice(
+        self,
+    ) -> bool:
+        return (
+            self.closure_open_vs_cyclic_tree_entry_owner_scope_kind
+            is _WriterResidualAttachmentOwnerScopeKind.MISSING
+        )
+
+    @property
+    def has_mixed_owner_scope_closure_open_vs_cyclic_tree_entry_choice(
+        self,
+    ) -> bool:
+        return (
+            self.closure_open_vs_cyclic_tree_entry_owner_scope_kind
+            is _WriterResidualAttachmentOwnerScopeKind.MIXED
+        )
+
+    @property
+    def has_active_atom_owned_closure_open_vs_cyclic_tree_entry_choice(
+        self,
+    ) -> bool:
         return (
             self.has_closure_open_vs_cyclic_tree_entry_choice
-            and not self.has_active_atom_owned_closure_open_vs_cyclic_tree_entry_choice
+            and (
+                self
+                .has_active_atom_owner_scope_closure_open_vs_cyclic_tree_entry_choice
+            )
+        )
+
+    @property
+    def has_unsupported_owner_scope_closure_open_vs_cyclic_tree_entry_choice(
+        self,
+    ) -> bool:
+        return (
+            self.has_closure_open_vs_cyclic_tree_entry_choice
+            and not (
+                self
+                .has_active_atom_owner_scope_closure_open_vs_cyclic_tree_entry_choice
+            )
         )
 
 
@@ -820,6 +912,18 @@ class _WriterActiveEmittedGraphPolicyBlocker:
 
         return self.residual_group.key
 
+    @property
+    def residual_attachment_owner_scope_kind(
+        self,
+    ) -> _WriterResidualAttachmentOwnerScopeKind | None:
+        if self.residual_group is None:
+            return None
+
+        return (
+            self.residual_group
+            .closure_open_vs_cyclic_tree_entry_owner_scope_kind
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class _WriterActiveEmittedGraphPolicyDecision:
@@ -1116,6 +1220,20 @@ class _WriterActiveEmittedGraphPolicyDecision:
 
         return (
             self.unsupported_owner_scope_closure_open_vs_cyclic_tree_entry_groups
+        )
+
+    @property
+    def unsupported_owner_scope_kinds(
+        self,
+    ) -> tuple[_WriterResidualAttachmentOwnerScopeKind, ...]:
+        return tuple(
+            (
+                group
+                .closure_open_vs_cyclic_tree_entry_owner_scope_kind
+            )
+            for group in (
+                self.unsupported_owner_scope_residual_attachment_policy_groups
+            )
         )
 
     @property
@@ -1886,6 +2004,43 @@ def _residual_attachment_policy_key_from_surface(
     return _WriterResidualAttachmentPolicyKey(
         active_atom=surface.active_atom,
         attachment_id=surface.attachment_id,
+    )
+
+
+def _residual_attachment_owner_scope_kind_from_owner_kinds(
+    owner_kinds: tuple[WriterBoundaryOwnerKind | None, ...],
+) -> _WriterResidualAttachmentOwnerScopeKind:
+    if not owner_kinds:
+        return _WriterResidualAttachmentOwnerScopeKind.NONE
+
+    distinct = frozenset(owner_kinds)
+
+    if len(distinct) > 1:
+        return _WriterResidualAttachmentOwnerScopeKind.MIXED
+
+    owner_kind = next(iter(distinct))
+
+    if owner_kind is None:
+        return _WriterResidualAttachmentOwnerScopeKind.MISSING
+
+    if owner_kind is WriterBoundaryOwnerKind.ACTIVE_ATOM:
+        return _WriterResidualAttachmentOwnerScopeKind.ACTIVE_ATOM
+
+    if owner_kind is WriterBoundaryOwnerKind.BRANCH_RETURN:
+        return _WriterResidualAttachmentOwnerScopeKind.BRANCH_RETURN
+
+    if owner_kind is WriterBoundaryOwnerKind.PENDING_PARENT:
+        return _WriterResidualAttachmentOwnerScopeKind.PENDING_PARENT
+
+    if owner_kind is WriterBoundaryOwnerKind.OPEN_RING_ENDPOINT:
+        return _WriterResidualAttachmentOwnerScopeKind.OPEN_RING_ENDPOINT
+
+    if owner_kind is WriterBoundaryOwnerKind.UNOWNED:
+        return _WriterResidualAttachmentOwnerScopeKind.UNOWNED
+
+    raise SouthStarError(
+        SouthStarErrorKind.INTERNAL_INVARIANT,
+        f"unknown residual attachment owner kind: {owner_kind!r}",
     )
 
 

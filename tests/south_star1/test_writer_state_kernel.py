@@ -263,6 +263,89 @@ class WriterStateKernelTest(unittest.TestCase):
 
         return policy, active_outcome
 
+    def _dead_closure_open_graph_policy_decision_for_owner_scope(
+        self,
+        *,
+        closure_owner_kind: WriterBoundaryOwnerKind | None,
+        child_owner_kind: WriterBoundaryOwnerKind | None,
+    ) -> writer_transitions._WriterActiveEmittedGraphPolicyDecision:
+        prepared = object()
+        state = object()
+        context = object()
+        active_atom = AtomId(0)
+        label = WriterClosureLabel(value=1, text="1")
+        open_obligation = writer_transitions._WriterClosureOpenObligation(
+            bond=BondId(1),
+            first_atom=active_atom,
+            second_atom=AtomId(3),
+            attachment_id=11,
+            attachment_action_kind=(
+                WriterResidualAttachmentActionKind.CLOSURE_OPEN_READY
+            ),
+            owner_kind=closure_owner_kind,  # type: ignore[arg-type]
+        )
+        open_action = writer_transitions._open_closure_endpoint_action(
+            active_atom,
+            open_obligation,
+            label,
+        )
+        open_emission = writer_transitions._WriterScheduledActionEmission(
+            action=open_action,
+            transitions=(),
+        )
+        closure_decision = writer_transitions._WriterClosureEndpointScheduleDecision(
+            pair_batch=writer_transitions._WriterScheduledActionEmissionBatch(
+                actions=(),
+                emissions=(),
+                surviving_emissions=(),
+            ),
+            open_batch=writer_transitions._WriterScheduledActionEmissionBatch(
+                actions=(open_action,),
+                emissions=(open_emission,),
+                surviving_emissions=(),
+            ),
+            surviving_emissions=(),
+            schedule_surface=writer_transitions._WriterClosureEndpointScheduleSurface(
+                active_atom=active_atom,
+                pair_actions=(),
+                open_actions=(open_action,),
+            ),
+        )
+        child = writer_transitions._WriterChildObligation(
+            bond=BondId(2),
+            child=AtomId(4),
+            boundary_atom=active_atom,
+            owner_kind=child_owner_kind,
+            attachment_id=11,
+            attachment_action_kind=(
+                WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY
+            ),
+        )
+        child_action = writer_transitions._enter_inline_child_action(
+            active_atom,
+            child,
+        )
+        child_surface = writer_transitions._WriterActiveChildScheduleSurface(
+            active_atom=active_atom,
+            blockers=(),
+            child_obligations=(child,),
+            scheduled_actions=(child_action,),
+        )
+
+        with patch(
+            "grimace._south_star1.writer_transitions._closure_endpoint_schedule_decision",
+            return_value=closure_decision,
+        ), patch(
+            "grimace._south_star1.writer_transitions._active_child_schedule_surface_from_context",
+            return_value=child_surface,
+        ):
+            return writer_transitions._active_emitted_graph_policy_decision(
+                prepared,  # type: ignore[arg-type]
+                state,  # type: ignore[arg-type]
+                context,  # type: ignore[arg-type]
+                active_atom,
+            )
+
     def _test_choice_snapshot_entry(
         self,
         emitted_text: str,
@@ -12465,6 +12548,88 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(groups[1].acyclic_tree_entry_surfaces, (acyclic_tree_8,))
         self.assertFalse(groups[1].has_closure_open_vs_cyclic_tree_entry_choice)
 
+    def test_residual_attachment_owner_scope_kind_from_owner_kinds(self) -> None:
+        cases = (
+            (
+                (),
+                writer_transitions._WriterResidualAttachmentOwnerScopeKind.NONE,
+            ),
+            (
+                (WriterBoundaryOwnerKind.ACTIVE_ATOM,),
+                (
+                    writer_transitions
+                    ._WriterResidualAttachmentOwnerScopeKind
+                    .ACTIVE_ATOM
+                ),
+            ),
+            (
+                (WriterBoundaryOwnerKind.BRANCH_RETURN,),
+                (
+                    writer_transitions
+                    ._WriterResidualAttachmentOwnerScopeKind
+                    .BRANCH_RETURN
+                ),
+            ),
+            (
+                (WriterBoundaryOwnerKind.PENDING_PARENT,),
+                (
+                    writer_transitions
+                    ._WriterResidualAttachmentOwnerScopeKind
+                    .PENDING_PARENT
+                ),
+            ),
+            (
+                (WriterBoundaryOwnerKind.OPEN_RING_ENDPOINT,),
+                (
+                    writer_transitions
+                    ._WriterResidualAttachmentOwnerScopeKind
+                    .OPEN_RING_ENDPOINT
+                ),
+            ),
+            (
+                (WriterBoundaryOwnerKind.UNOWNED,),
+                writer_transitions._WriterResidualAttachmentOwnerScopeKind.UNOWNED,
+            ),
+            (
+                (None,),
+                writer_transitions._WriterResidualAttachmentOwnerScopeKind.MISSING,
+            ),
+            (
+                (
+                    WriterBoundaryOwnerKind.ACTIVE_ATOM,
+                    WriterBoundaryOwnerKind.ACTIVE_ATOM,
+                ),
+                (
+                    writer_transitions
+                    ._WriterResidualAttachmentOwnerScopeKind
+                    .ACTIVE_ATOM
+                ),
+            ),
+            (
+                (
+                    WriterBoundaryOwnerKind.ACTIVE_ATOM,
+                    WriterBoundaryOwnerKind.BRANCH_RETURN,
+                ),
+                writer_transitions._WriterResidualAttachmentOwnerScopeKind.MIXED,
+            ),
+            (
+                (WriterBoundaryOwnerKind.ACTIVE_ATOM, None),
+                writer_transitions._WriterResidualAttachmentOwnerScopeKind.MIXED,
+            ),
+        )
+
+        for owner_kinds, expected in cases:
+            with self.subTest(owner_kinds=owner_kinds):
+                self.assertIs(
+                    (
+                        writer_transitions
+                        ._residual_attachment_owner_scope_kind_from_owner_kinds(
+                            owner_kinds,
+                        )
+                    ),
+                    expected,
+                )
+
     def test_residual_attachment_policy_group_reports_owner_scope_for_closure_open_cyclic_choice(self) -> None:
         closure_open = writer_transitions._WriterScheduledGraphActionSurface(
             kind=writer_transitions._WriterScheduledActionKind.OPEN_CLOSURE_ENDPOINT,
@@ -12501,57 +12666,133 @@ class WriterStateKernelTest(unittest.TestCase):
                 WriterBoundaryOwnerKind.ACTIVE_ATOM,
             ),
         )
+        self.assertIs(
+            active_owned.closure_open_vs_cyclic_tree_entry_owner_scope_kind,
+            (
+                writer_transitions
+                ._WriterResidualAttachmentOwnerScopeKind
+                .ACTIVE_ATOM
+            ),
+        )
         self.assertTrue(
             active_owned.has_active_atom_owned_closure_open_vs_cyclic_tree_entry_choice
+        )
+        self.assertTrue(
+            (
+                active_owned
+                .has_active_atom_owner_scope_closure_open_vs_cyclic_tree_entry_choice
+            )
         )
         self.assertFalse(
             active_owned
             .has_unsupported_owner_scope_closure_open_vs_cyclic_tree_entry_choice
         )
 
-        branch_return_cyclic = replace(
-            cyclic_tree,
-            owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
-        )
-        branch_return_group = (
-            writer_transitions._WriterResidualAttachmentPolicyGroup(
-                key=writer_transitions._WriterResidualAttachmentPolicyKey(
-                    AtomId(0),
-                    7,
+        cases = (
+            (
+                WriterBoundaryOwnerKind.BRANCH_RETURN,
+                WriterBoundaryOwnerKind.BRANCH_RETURN,
+                (
+                    writer_transitions
+                    ._WriterResidualAttachmentOwnerScopeKind
+                    .BRANCH_RETURN
                 ),
-                surfaces=(closure_open, branch_return_cyclic),
-            )
+                "has_branch_return_owner_scope_closure_open_vs_cyclic_tree_entry_choice",
+            ),
+            (
+                WriterBoundaryOwnerKind.PENDING_PARENT,
+                WriterBoundaryOwnerKind.PENDING_PARENT,
+                (
+                    writer_transitions
+                    ._WriterResidualAttachmentOwnerScopeKind
+                    .PENDING_PARENT
+                ),
+                "has_pending_parent_owner_scope_closure_open_vs_cyclic_tree_entry_choice",
+            ),
+            (
+                WriterBoundaryOwnerKind.OPEN_RING_ENDPOINT,
+                WriterBoundaryOwnerKind.OPEN_RING_ENDPOINT,
+                (
+                    writer_transitions
+                    ._WriterResidualAttachmentOwnerScopeKind
+                    .OPEN_RING_ENDPOINT
+                ),
+                "has_open_ring_endpoint_owner_scope_closure_open_vs_cyclic_tree_entry_choice",
+            ),
+            (
+                WriterBoundaryOwnerKind.UNOWNED,
+                WriterBoundaryOwnerKind.UNOWNED,
+                writer_transitions._WriterResidualAttachmentOwnerScopeKind.UNOWNED,
+                "has_unowned_owner_scope_closure_open_vs_cyclic_tree_entry_choice",
+            ),
+            (
+                None,
+                None,
+                writer_transitions._WriterResidualAttachmentOwnerScopeKind.MISSING,
+                "has_missing_owner_scope_closure_open_vs_cyclic_tree_entry_choice",
+            ),
+            (
+                WriterBoundaryOwnerKind.ACTIVE_ATOM,
+                WriterBoundaryOwnerKind.BRANCH_RETURN,
+                writer_transitions._WriterResidualAttachmentOwnerScopeKind.MIXED,
+                "has_mixed_owner_scope_closure_open_vs_cyclic_tree_entry_choice",
+            ),
+            (
+                WriterBoundaryOwnerKind.ACTIVE_ATOM,
+                None,
+                writer_transitions._WriterResidualAttachmentOwnerScopeKind.MIXED,
+                "has_mixed_owner_scope_closure_open_vs_cyclic_tree_entry_choice",
+            ),
         )
 
+        for closure_owner, child_owner, expected, predicate in cases:
+            with self.subTest(
+                closure_owner=closure_owner,
+                child_owner=child_owner,
+            ):
+                group = writer_transitions._WriterResidualAttachmentPolicyGroup(
+                    key=writer_transitions._WriterResidualAttachmentPolicyKey(
+                        AtomId(0),
+                        7,
+                    ),
+                    surfaces=(
+                        replace(closure_open, owner_kind=closure_owner),
+                        replace(cyclic_tree, owner_kind=child_owner),
+                    ),
+                )
+
+                self.assertIs(
+                    group.closure_open_vs_cyclic_tree_entry_owner_scope_kind,
+                    expected,
+                )
+                self.assertTrue(getattr(group, predicate))
+                self.assertFalse(
+                    group
+                    .has_active_atom_owned_closure_open_vs_cyclic_tree_entry_choice
+                )
+                self.assertTrue(
+                    group
+                    .has_unsupported_owner_scope_closure_open_vs_cyclic_tree_entry_choice
+                )
+
+        no_choice = writer_transitions._WriterResidualAttachmentPolicyGroup(
+            key=writer_transitions._WriterResidualAttachmentPolicyKey(
+                AtomId(0),
+                7,
+            ),
+            surfaces=(closure_open,),
+        )
+
+        self.assertIs(
+            no_choice.closure_open_vs_cyclic_tree_entry_owner_scope_kind,
+            writer_transitions._WriterResidualAttachmentOwnerScopeKind.NONE,
+        )
         self.assertFalse(
-            branch_return_group
+            no_choice
             .has_active_atom_owned_closure_open_vs_cyclic_tree_entry_choice
         )
-        self.assertTrue(
-            branch_return_group
-            .has_unsupported_owner_scope_closure_open_vs_cyclic_tree_entry_choice
-        )
-
-        missing_owner_closure = replace(
-            closure_open,
-            owner_kind=None,
-        )
-        missing_owner_group = (
-            writer_transitions._WriterResidualAttachmentPolicyGroup(
-                key=writer_transitions._WriterResidualAttachmentPolicyKey(
-                    AtomId(0),
-                    7,
-                ),
-                surfaces=(missing_owner_closure, cyclic_tree),
-            )
-        )
-
         self.assertFalse(
-            missing_owner_group
-            .has_active_atom_owned_closure_open_vs_cyclic_tree_entry_choice
-        )
-        self.assertTrue(
-            missing_owner_group
+            no_choice
             .has_unsupported_owner_scope_closure_open_vs_cyclic_tree_entry_choice
         )
 
@@ -12645,6 +12886,29 @@ class WriterStateKernelTest(unittest.TestCase):
                 raised.exception.kind,
                 SouthStarErrorKind.INTERNAL_INVARIANT,
             )
+
+    def test_active_emitted_graph_policy_child_blocker_has_no_residual_owner_scope(self) -> None:
+        child_blocker = writer_transitions._WriterChildObligationBlocker(
+            kind=(
+                writer_transitions._WriterChildObligationBlockerKind
+                .MULTI_INCIDENCE_RESIDUAL_ATTACHMENT
+            ),
+            atom=AtomId(0),
+            attachment_id=7,
+            attachment_action_kind=(
+                WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY
+            ),
+        )
+        blocker = writer_transitions._WriterActiveEmittedGraphPolicyBlocker(
+            kind=(
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyBlockerKind
+                .CHILD_OBLIGATION
+            ),
+            child_blocker=child_blocker,
+        )
+
+        self.assertIsNone(blocker.residual_attachment_owner_scope_kind)
 
     def test_residual_attachment_policy_emission_group_reports_dead_closure_open_support(self) -> None:
         active_atom = AtomId(0)
@@ -14783,6 +15047,7 @@ class WriterStateKernelTest(unittest.TestCase):
             decision.unsupported_owner_scope_residual_attachment_policy_groups,
             (),
         )
+        self.assertEqual(decision.unsupported_owner_scope_kinds, ())
         self.assertEqual(
             decision.missing_closure_open_support_evidence_groups,
             (),
@@ -15001,6 +15266,90 @@ class WriterStateKernelTest(unittest.TestCase):
             (),
         )
         self.assertEqual(decision.child_scheduled_actions, ())
+
+    def test_active_emitted_graph_policy_reports_unsupported_owner_scope_kind(self) -> None:
+        cases = (
+            (
+                WriterBoundaryOwnerKind.BRANCH_RETURN,
+                WriterBoundaryOwnerKind.BRANCH_RETURN,
+                (
+                    writer_transitions
+                    ._WriterResidualAttachmentOwnerScopeKind
+                    .BRANCH_RETURN
+                ),
+            ),
+            (
+                WriterBoundaryOwnerKind.PENDING_PARENT,
+                WriterBoundaryOwnerKind.PENDING_PARENT,
+                (
+                    writer_transitions
+                    ._WriterResidualAttachmentOwnerScopeKind
+                    .PENDING_PARENT
+                ),
+            ),
+            (
+                WriterBoundaryOwnerKind.OPEN_RING_ENDPOINT,
+                WriterBoundaryOwnerKind.OPEN_RING_ENDPOINT,
+                (
+                    writer_transitions
+                    ._WriterResidualAttachmentOwnerScopeKind
+                    .OPEN_RING_ENDPOINT
+                ),
+            ),
+            (
+                WriterBoundaryOwnerKind.UNOWNED,
+                WriterBoundaryOwnerKind.UNOWNED,
+                writer_transitions._WriterResidualAttachmentOwnerScopeKind.UNOWNED,
+            ),
+            (
+                None,
+                None,
+                writer_transitions._WriterResidualAttachmentOwnerScopeKind.MISSING,
+            ),
+            (
+                WriterBoundaryOwnerKind.ACTIVE_ATOM,
+                WriterBoundaryOwnerKind.BRANCH_RETURN,
+                writer_transitions._WriterResidualAttachmentOwnerScopeKind.MIXED,
+            ),
+            (
+                WriterBoundaryOwnerKind.ACTIVE_ATOM,
+                None,
+                writer_transitions._WriterResidualAttachmentOwnerScopeKind.MIXED,
+            ),
+        )
+
+        for closure_owner, child_owner, expected in cases:
+            with self.subTest(
+                closure_owner=closure_owner,
+                child_owner=child_owner,
+            ):
+                decision = (
+                    self
+                    ._dead_closure_open_graph_policy_decision_for_owner_scope(
+                        closure_owner_kind=closure_owner,
+                        child_owner_kind=child_owner,
+                    )
+                )
+
+                self.assertIs(
+                    decision.kind,
+                    (
+                        writer_transitions
+                        ._WriterActiveEmittedGraphPolicyDecisionKind
+                        .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+                    ),
+                )
+                self.assertEqual(
+                    decision.unsupported_owner_scope_kinds,
+                    (expected,),
+                )
+                blockers = decision.graph_policy_blockers
+                self.assertEqual(len(blockers), 1)
+                self.assertIs(
+                    blockers[0].residual_attachment_owner_scope_kind,
+                    expected,
+                )
+                self.assertEqual(decision.child_scheduled_actions, ())
 
     def test_active_emitted_graph_policy_remains_unresolved_without_closure_open_emission_evidence(self) -> None:
         prepared = object()

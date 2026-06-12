@@ -8,7 +8,7 @@ EXACT_PUBLIC_INVARIANT_MODULES: tuple[str, ...] = (
     "tests.integration.test_token_inventory",
     "tests.integration.test_public_runtime_writer_flags",
     "tests.integration.test_public_all_roots_identities",
-    "tests.integration.test_public_prepared_equivalence",
+    "tests.integration.test_public_prepared_graph_equivalence",
     "tests.integration.test_public_sampling",
 )
 

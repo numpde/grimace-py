@@ -243,7 +243,7 @@ def public_token_inventory_union_over_explicit_roots(
     return tuple(sorted(inventory))
 
 
-def prepared_input_variants(
+def prepared_graph_input_variants(
     mol: object,
     **kwargs: object,
 ) -> tuple[tuple[str, object], ...]:

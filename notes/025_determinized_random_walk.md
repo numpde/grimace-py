@@ -202,7 +202,7 @@ Reuse these existing oracles:
 ```text
 tests/integration/test_runtime_state_invariants.py
 tests/integration/test_public_all_roots_identities.py
-tests/integration/test_public_prepared_equivalence.py
+tests/integration/test_public_prepared_graph_equivalence.py
 tests/integration/test_public_runtime_writer_flags.py
 tests/parity/nonstereo/test_kernel_walker.py
 tests/parity/stereo/test_kernel_walker.py

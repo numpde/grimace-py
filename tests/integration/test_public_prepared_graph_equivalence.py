@@ -8,7 +8,7 @@ from tests.helpers.public_runtime import (
     choice_texts,
     make_decoder,
     make_determinized_decoder,
-    prepared_input_variants,
+    prepared_graph_input_variants,
     public_enum_support,
     public_samples,
     public_token_inventory,
@@ -19,7 +19,7 @@ from tests.helpers.public_runtime import (
 
 
 @dataclass(frozen=True, slots=True)
-class PreparedEquivalenceCase:
+class PreparedGraphEquivalenceCase:
     name: str
     smiles: str
     rooted_at_atom: int = 0
@@ -40,48 +40,48 @@ class PreparedEquivalenceCase:
         )
 
 
-class PublicPreparedEquivalenceTests(unittest.TestCase):
+class PublicPreparedGraphEquivalenceTests(unittest.TestCase):
     CASES = (
-        PreparedEquivalenceCase(
+        PreparedGraphEquivalenceCase(
             name="connected_nonstereo",
             smiles="CCO",
             rooted_at_atom=0,
             isomeric_smiles=False,
         ),
-        PreparedEquivalenceCase(
+        PreparedGraphEquivalenceCase(
             name="connected_all_roots",
             smiles="CCO",
             rooted_at_atom=-1,
             isomeric_smiles=False,
         ),
-        PreparedEquivalenceCase(
+        PreparedGraphEquivalenceCase(
             name="connected_stereo",
             smiles="F/C=C\\Cl",
             rooted_at_atom=0,
             isomeric_smiles=True,
         ),
-        PreparedEquivalenceCase(
+        PreparedGraphEquivalenceCase(
             name="kekule_surface",
             smiles="c1ccncc1",
             rooted_at_atom=0,
             isomeric_smiles=False,
             kekule_smiles=True,
         ),
-        PreparedEquivalenceCase(
+        PreparedGraphEquivalenceCase(
             name="all_bonds_explicit",
             smiles="CC#N",
             rooted_at_atom=0,
             isomeric_smiles=False,
             all_bonds_explicit=True,
         ),
-        PreparedEquivalenceCase(
+        PreparedGraphEquivalenceCase(
             name="all_hs_explicit",
             smiles="C",
             rooted_at_atom=0,
             isomeric_smiles=False,
             all_hs_explicit=True,
         ),
-        PreparedEquivalenceCase(
+        PreparedGraphEquivalenceCase(
             name="ignore_atom_map_numbers",
             smiles="[CH3:7]C",
             rooted_at_atom=0,
@@ -90,11 +90,11 @@ class PublicPreparedEquivalenceTests(unittest.TestCase):
         ),
     )
 
-    def test_enum_support_matches_across_mol_and_prepared_inputs(self) -> None:
+    def test_enum_support_matches_across_mol_and_prepared_graph_inputs(self) -> None:
         for case in self.CASES:
             mol = parse_smiles(case.smiles)
             runtime_kwargs = case.runtime_kwargs()
-            variants = prepared_input_variants(mol, **runtime_kwargs)
+            variants = prepared_graph_input_variants(mol, **runtime_kwargs)
             expected = public_enum_support(variants[0][1], **runtime_kwargs)
 
             with self.subTest(case=case.name, smiles=case.smiles):
@@ -105,11 +105,11 @@ class PublicPreparedEquivalenceTests(unittest.TestCase):
                         msg=f"variant={variant_name}",
                     )
 
-    def test_token_inventory_matches_across_mol_and_prepared_inputs(self) -> None:
+    def test_token_inventory_matches_across_mol_and_prepared_graph_inputs(self) -> None:
         for case in self.CASES:
             mol = parse_smiles(case.smiles)
             runtime_kwargs = case.runtime_kwargs()
-            variants = prepared_input_variants(mol, **runtime_kwargs)
+            variants = prepared_graph_input_variants(mol, **runtime_kwargs)
             expected = public_token_inventory(variants[0][1], **runtime_kwargs)
 
             with self.subTest(case=case.name, smiles=case.smiles):
@@ -120,11 +120,11 @@ class PublicPreparedEquivalenceTests(unittest.TestCase):
                         msg=f"variant={variant_name}",
                     )
 
-    def test_token_inventory_superset_matches_across_mol_and_prepared_inputs(self) -> None:
+    def test_token_inventory_superset_matches_across_mol_and_prepared_graph_inputs(self) -> None:
         for case in self.CASES:
             mol = parse_smiles(case.smiles)
             runtime_kwargs = case.runtime_kwargs()
-            variants = prepared_input_variants(mol, **runtime_kwargs)
+            variants = prepared_graph_input_variants(mol, **runtime_kwargs)
             expected = public_token_inventory_superset(variants[0][1], **runtime_kwargs)
 
             with self.subTest(case=case.name, smiles=case.smiles):
@@ -135,11 +135,11 @@ class PublicPreparedEquivalenceTests(unittest.TestCase):
                         msg=f"variant={variant_name}",
                     )
 
-    def test_sample_matches_across_mol_and_prepared_inputs(self) -> None:
+    def test_sample_matches_across_mol_and_prepared_graph_inputs(self) -> None:
         for case in self.CASES:
             mol = parse_smiles(case.smiles)
             runtime_kwargs = case.runtime_kwargs()
-            variants = prepared_input_variants(mol, **runtime_kwargs)
+            variants = prepared_graph_input_variants(mol, **runtime_kwargs)
             expected = public_samples(variants[0][1], **runtime_kwargs)
 
             with self.subTest(case=case.name, smiles=case.smiles):
@@ -150,11 +150,11 @@ class PublicPreparedEquivalenceTests(unittest.TestCase):
                         msg=f"variant={variant_name}",
                     )
 
-    def test_decoder_reachable_outputs_match_across_mol_and_prepared_inputs(self) -> None:
+    def test_decoder_reachable_outputs_match_across_mol_and_prepared_graph_inputs(self) -> None:
         for case in self.CASES:
             mol = parse_smiles(case.smiles)
             runtime_kwargs = case.runtime_kwargs()
-            variants = prepared_input_variants(mol, **runtime_kwargs)
+            variants = prepared_graph_input_variants(mol, **runtime_kwargs)
             expected_decoder = make_decoder(variants[0][1], **runtime_kwargs)
             expected_prefix = expected_decoder.prefix
             expected_choices = choice_texts(expected_decoder)
@@ -171,11 +171,11 @@ class PublicPreparedEquivalenceTests(unittest.TestCase):
                         msg=f"variant={variant_name}",
                     )
 
-    def test_determinized_decoder_reachable_outputs_match_across_mol_and_prepared_inputs(self) -> None:
+    def test_determinized_decoder_reachable_outputs_match_across_mol_and_prepared_graph_inputs(self) -> None:
         for case in self.CASES:
             mol = parse_smiles(case.smiles)
             runtime_kwargs = case.runtime_kwargs()
-            variants = prepared_input_variants(mol, **runtime_kwargs)
+            variants = prepared_graph_input_variants(mol, **runtime_kwargs)
             expected_decoder = make_determinized_decoder(variants[0][1], **runtime_kwargs)
             expected_prefix = expected_decoder.prefix
             expected_choices = choice_texts(expected_decoder)

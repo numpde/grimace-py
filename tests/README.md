@@ -75,3 +75,7 @@ support cardinalities.
   excluded from default discovery until they become passing conformance tests.
 - Shared case selectors and policy overrides belong in `tests/helpers/`, not duplicated across files.
 - Prefer strengthening Rust-native tests before expanding parity breadth.
+- Prepared graph input equivalence and serialized `PreparedMol` equivalence are
+  different matrices. Use `prepared_graph_input_variants()` only for RDKit mol,
+  reference prepared graph, and core prepared graph coverage; keep raw/zstd
+  byte round-trips in PreparedMol-specific tests.

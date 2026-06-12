@@ -114,11 +114,11 @@ here.
   membership. That matches the current random-writer contract, but the
   `rdkit_writer_membership` family name/test docstring read stronger than the
   effective assertion for those cases.
-- `tests.helpers.public_runtime.prepared_input_variants()` is named broadly but
-  currently returns only RDKit mol, reference prepared graph, and core prepared
-  graph. PreparedMol raw/zstd equivalence is covered in separate PreparedMol and
-  zstd contract tests, so this is not a missing release invariant, but the
-  split matrix makes the boundary coverage less obvious during source review.
+- `tests.helpers.public_runtime.prepared_graph_input_variants()` now names the
+  graph-prepared matrix explicitly: it covers RDKit mol, reference prepared
+  graph, and core prepared graph. PreparedMol raw/zstd equivalence is covered in
+  separate PreparedMol and zstd contract tests, so this is not a missing release
+  invariant.
 - `rust/src/rooted_stereo.rs` has Rust unit-test helpers that optionally import
   RDKit through the checkout's Python path and `.venv` site-packages when
   available. That keeps native stereo regression tests close to the Rust
@@ -767,7 +767,7 @@ Checklist:
       separately.
 - [ ] Update docs so readers can see which cases are strict parity evidence.
 
-### 23. `prepared_input_variants()` name hides matrix split
+### 23. Prepared input helper name hid matrix split
 
 Issue: the helper name sounds broad but omits PreparedMol raw/zstd variants,
 which are covered elsewhere.
@@ -786,11 +786,11 @@ one broad helper obscures that.
 
 Checklist:
 
-- [ ] Rename `prepared_input_variants()` to `prepared_graph_input_variants()`.
-- [ ] Add a separate `prepared_mol_input_variants()` only where raw/zstd bytes
-      equivalence is the test subject.
-- [ ] Update test names to state which boundary they cover.
-- [ ] Add a small docs/testing note explaining the two prepared-input matrices.
+- [x] Rename `prepared_input_variants()` to `prepared_graph_input_variants()`.
+- [x] Avoid a broad `prepared_mol_input_variants()` helper until multiple
+      PreparedMol byte-equivalence tests need the same matrix.
+- [x] Update test names to state which boundary they cover.
+- [x] Add a small docs/testing note explaining the two prepared-input matrices.
 
 ### 24. Rust stereo tests optionally import host RDKit
 

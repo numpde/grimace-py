@@ -211,7 +211,7 @@ Add new integration coverage that does not depend on RDKit version.
 
 2. Prepared-input equivalence tests.
    Add a file such as:
-   - `tests/integration/test_public_prepared_equivalence.py`
+   - `tests/integration/test_public_prepared_graph_equivalence.py`
 
    Assertions to add:
    - the same public call returns exactly the same result for:
@@ -241,7 +241,7 @@ CI changes:
   - `tests.integration.test_public_decoder`
   - `tests.integration.test_token_inventory`
   - `tests.integration.test_public_all_roots_identities`
-  - `tests.integration.test_public_prepared_equivalence`
+  - `tests.integration.test_public_prepared_graph_equivalence`
 
 - In the sdist job, run the same subset if runtime is acceptable.
 
@@ -320,7 +320,7 @@ Concrete file additions
 -----------------------
 
 - `tests/integration/test_public_all_roots_identities.py`
-- `tests/integration/test_public_prepared_equivalence.py`
+- `tests/integration/test_public_prepared_graph_equivalence.py`
 - `tests/rdkit_serialization/test_exact_small_support.py`
 
 Acceptance bar

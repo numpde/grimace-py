@@ -805,18 +805,18 @@ Serious alternatives:
 - Make the Rust tests require RDKit in the container lane.
 - Add explicit ignored Rust tests for RDKit-backed checks.
 
-Principled direction: move RDKit-dependent cases to Python integration/parity
-tests and keep Rust unit tests pure Rust. Rust tests should not depend on host
-Python path state.
+Principled direction: move RDKit-dependent cases to Python parity tests and
+keep Rust unit tests pure Rust. Rust tests should not depend on host Python
+path state.
 
 Checklist:
 
-- [ ] Identify Rust tests using `prepared_graph_from_smiles()`.
-- [ ] Port those cases to Python integration tests that prepare graphs through
+- [x] Identify Rust tests using `prepared_graph_from_smiles()`.
+- [x] Port those cases to Python parity tests that prepare graphs through
       the normal containerized RDKit path.
-- [ ] Keep pure Rust tests using hand-built `PreparedSmilesGraphData`.
-- [ ] Delete optional `.venv` path injection from Rust tests.
-- [ ] Add a contract test or grep check preventing future Rust tests from
+- [x] Keep pure Rust tests using hand-built `PreparedSmilesGraphData`.
+- [x] Delete optional `.venv` path injection from Rust tests.
+- [x] Add a contract test or grep check preventing future Rust tests from
       importing `rdkit` via Python.
 
 ### 25. Docs checker misses raw HTML links

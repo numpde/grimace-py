@@ -117,6 +117,15 @@ class RuntimeBoundaryTests(unittest.TestCase):
                 }
                 self.assertNotIn("rdkit", imported_roots)
 
+    def test_rust_source_does_not_import_host_rdkit(self) -> None:
+        forbidden = ("rdkit.Chem", ".venv/lib/python")
+
+        for path in sorted((REPO_ROOT / "rust" / "src").glob("*.rs")):
+            text = path.read_text(encoding="utf-8")
+            for needle in forbidden:
+                with self.subTest(path=path.relative_to(REPO_ROOT), needle=needle):
+                    self.assertNotIn(needle, text)
+
     def test_runtime_modules_do_not_call_rdkit_methods_directly(self) -> None:
         forbidden_methods = {"GetMolFrags", "GetNumAtoms"}
 

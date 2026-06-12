@@ -4862,16 +4862,15 @@ impl PyRootedConnectedStereoDecoder {
 mod tests {
     use std::{collections::BTreeSet, sync::Arc};
 
-    use pyo3::types::{PyAnyMethods, PyDictMethods};
     use pyo3::Python;
 
     use super::{
         advance_stereo_choice_state, advance_stereo_token_state, build_walker_runtime,
-        check_supported_stereo_writer_surface, choices_for_stereo_state,
-        enumerate_rooted_connected_stereo_smiles_support, enumerate_support_from_stereo_state,
-        initial_stereo_state_for_root, is_terminal_stereo_state, merged_stereo_grouped_transitions,
-        merged_stereo_is_terminal, merged_stereo_prefix, next_token_support_for_stereo_state,
-        stereo_frontier_is_terminal, validate_root_idx, StereoDecoderBranch,
+        check_supported_stereo_writer_surface, enumerate_rooted_connected_stereo_smiles_support,
+        enumerate_support_from_stereo_state, initial_stereo_state_for_root,
+        is_terminal_stereo_state, merged_stereo_grouped_transitions, merged_stereo_is_terminal,
+        merged_stereo_prefix, next_token_support_for_stereo_state, stereo_frontier_is_terminal,
+        validate_root_idx, StereoDecoderBranch,
     };
     use crate::prepared_graph::{
         PreparedSmilesGraphData, CONNECTED_STEREO_SURFACE, PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
@@ -4946,27 +4945,6 @@ mod tests {
                     .map(|transition| transition.successors),
             );
         }
-    }
-
-    fn observed_choice_support(
-        graph: &PreparedSmilesGraphData,
-        root_idx: usize,
-    ) -> BTreeSet<String> {
-        let (runtime, initial_state) = stereo_runtime_and_state(graph, root_idx);
-        let mut stack = vec![initial_state];
-        let mut observed = BTreeSet::new();
-        while let Some(state) = stack.pop() {
-            if is_terminal_stereo_state(&state) {
-                observed.insert(state.prefix.to_string());
-                continue;
-            }
-            let mut choices = choices_for_stereo_state(&runtime, graph, &state)
-                .expect("stereo choices should enumerate");
-            while let Some(choice) = choices.pop() {
-                stack.extend(choice.successors);
-            }
-        }
-        observed
     }
 
     fn sample_stereo_graph() -> PreparedSmilesGraphData {
@@ -5115,58 +5093,6 @@ mod tests {
         }
     }
 
-    fn prepared_graph_from_smiles(smiles: &str) -> Option<PreparedSmilesGraphData> {
-        Python::initialize();
-        Python::attach(|py| {
-            let sys = py.import("sys").ok()?;
-            let path = sys.getattr("path").ok()?;
-            let version_info = sys.getattr("version_info").ok()?;
-            let major: usize = version_info.get_item(0).ok()?.extract().ok()?;
-            let minor: usize = version_info.get_item(1).ok()?.extract().ok()?;
-            let repo_python = format!("{}/python", env!("CARGO_MANIFEST_DIR"));
-            let venv_site_packages = format!(
-                "{}/.venv/lib/python{}.{}/site-packages",
-                env!("CARGO_MANIFEST_DIR"),
-                major,
-                minor
-            );
-            let _ = path.call_method1("insert", (0, repo_python));
-            let _ = path.call_method1("insert", (0, venv_site_packages));
-            let Ok(chem) = py.import("rdkit.Chem") else {
-                return None;
-            };
-            let runtime_inputs = py
-                .import("grimace._runtime_inputs")
-                .expect("grimace._runtime_inputs import should succeed");
-            let runtime_graphs = py
-                .import("grimace._runtime_graphs")
-                .expect("grimace._runtime_graphs import should succeed");
-            let mol = chem
-                .getattr("MolFromSmiles")
-                .expect("MolFromSmiles should exist")
-                .call1((smiles,))
-                .expect("SMILES should parse");
-            let flags = runtime_inputs
-                .getattr("make_flags")
-                .expect("make_flags should exist")
-                .call0()
-                .expect("make_flags should build default flags");
-            let kwargs = pyo3::types::PyDict::new(py);
-            kwargs
-                .set_item("flags", flags)
-                .expect("kwargs population should succeed");
-            let prepared = runtime_graphs
-                .getattr("prepare_smiles_graph")
-                .expect("prepare_smiles_graph should exist")
-                .call((mol,), Some(&kwargs))
-                .expect("prepare_smiles_graph should succeed");
-            Some(
-                PreparedSmilesGraphData::from_any(&prepared)
-                    .expect("prepared graph extraction should work"),
-            )
-        })
-    }
-
     #[test]
     fn stereo_root_validation_rejects_out_of_range_indices() {
         let graph = sample_stereo_graph();
@@ -5224,30 +5150,6 @@ mod tests {
 
             assert_eq!(direct_support, walker_support);
         }
-    }
-
-    #[test]
-    fn native_online_walker_matches_reference_for_coupled_diene_root_5() {
-        let Some(graph) = prepared_graph_from_smiles("C/C=C(/C(=C/C)/c1ccccc1)\\c1ccccc1") else {
-            return;
-        };
-        let observed = observed_choice_support(&graph, 5);
-        let expected = stereo_support_set(&graph, 5);
-
-        assert_eq!(expected, observed);
-    }
-
-    #[test]
-    fn native_online_walker_matches_reference_for_polyene_root_11() {
-        let Some(graph) =
-            prepared_graph_from_smiles("CC1=C(C(CCC1)(C)C)/C=C/C(=C/C=C/C(=C/C(=O)O)/C)/C")
-        else {
-            return;
-        };
-        let observed = observed_choice_support(&graph, 11);
-        let expected = stereo_support_set(&graph, 11);
-
-        assert_eq!(expected, observed);
     }
 
     #[test]

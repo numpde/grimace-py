@@ -287,14 +287,14 @@ integrity self-contained rather than depending only on release-time checks.
 
 Checklist:
 
-- [ ] Extend `_zstd_dictionary_from_manifest()` to read expected SHA-256 and
+- [x] Extend `_zstd_dictionary_from_manifest()` to read expected SHA-256 and
       size from the manifest.
-- [ ] Validate dictionary byte length and SHA-256 before constructing
+- [x] Validate dictionary byte length and SHA-256 before constructing
       `ZstdCompressionDict`.
-- [ ] Keep the validated dictionary cached by dictionary ID.
-- [ ] Add tests that a patched manifest or dictionary payload mismatch fails
+- [x] Keep the validated dictionary cached by dictionary ID.
+- [x] Add tests that a patched manifest or dictionary payload mismatch fails
       before decompression.
-- [ ] Keep release artifact byte-equivalence checks; runtime validation is a
+- [x] Keep release artifact byte-equivalence checks; runtime validation is a
       defense-in-depth layer, not a replacement.
 
 ### 6. `tests/contract/` not in `make ci`

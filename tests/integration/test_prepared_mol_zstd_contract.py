@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 import base64
+import hashlib
 import importlib.resources as resources
 import json
 import subprocess
@@ -157,6 +160,53 @@ def _dictionary_manifest_for_training_level(level: int) -> dict[str, object]:
             f"got {len(matches)}"
         )
     return matches[0]
+
+
+def _copy_manifest_for_test_artifact(
+    manifest: dict[str, object],
+) -> dict[str, object]:
+    copied = json.loads(json.dumps(manifest))
+    copied["artifact_dir"] = "artifact"
+    return copied
+
+
+def _dictionary_bytes_for_manifest(manifest: dict[str, object]) -> bytes:
+    artifact_dir = (
+        resources.files("grimace")
+        .joinpath("data", "prepared_mol_zstd")
+        .joinpath(manifest["artifact_dir"])
+    )
+    return artifact_dir.joinpath(manifest["files"]["dictionary"]).read_bytes()
+
+
+@contextmanager
+def _patched_dictionary_root(
+    manifest: dict[str, object],
+    dictionary_bytes: bytes,
+) -> Iterator[None]:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        artifact = Path(tmpdir) / manifest["artifact_dir"]
+        artifact.mkdir()
+        artifact.joinpath("default_v1.json").write_text(
+            json.dumps(manifest),
+            encoding="utf-8",
+        )
+        artifact.joinpath("default_v1.zstdict").write_bytes(dictionary_bytes)
+
+        with (
+            mock.patch.object(prepared_mol_module, "_ZSTD_DICTIONARY_BY_ID", {}),
+            mock.patch.object(
+                prepared_mol_module,
+                "_ZSTD_DICTIONARY_ID_BY_TRAINING_LEVEL",
+                {},
+            ),
+            mock.patch.object(
+                prepared_mol_module,
+                "_zstd_dictionary_root",
+                return_value=Path(tmpdir),
+            ),
+        ):
+            yield
 
 
 def _shipped_dictionary_ids() -> set[int]:
@@ -528,7 +578,7 @@ class PreparedMolZstdContractTests(unittest.TestCase):
                         "training_identity": {"training_parameters": {"level": 3}},
                     },
                 ),
-                "invalid id",
+                "invalid ID",
             ),
             (
                 json.dumps(
@@ -536,6 +586,8 @@ class PreparedMolZstdContractTests(unittest.TestCase):
                         "artifact_dir": "artifact",
                         "files": {"dictionary": "default_v1.zstdict"},
                         "zstd_dictionary_id": 123_456,
+                        "zstd_dictionary_sha256": "0" * 64,
+                        "zstd_dictionary_size_bytes": 1,
                         "training_identity": {"training_parameters": {"level": "3"}},
                     },
                 ),
@@ -571,6 +623,68 @@ class PreparedMolZstdContractTests(unittest.TestCase):
                     ):
                         with self.assertRaisesRegex(ValueError, message):
                             prepared.to_bytes(compression="zstd")
+
+    def test_dictionary_size_must_match_manifest_before_use(self) -> None:
+        prepared = self._prepare("CCO", isomericSmiles=False)
+        zstd_payload = prepared.to_bytes(compression="zstd", dictionary_level=3)
+        manifest = _dictionary_manifest_for_training_level(3)
+        dictionary_bytes = _dictionary_bytes_for_manifest(manifest)
+        patched_manifest = _copy_manifest_for_test_artifact(manifest)
+        patched_manifest["zstd_dictionary_size_bytes"] = len(dictionary_bytes) + 1
+
+        operations = (
+            (
+                "write",
+                lambda: prepared.to_bytes(
+                    compression="zstd",
+                    dictionary_level=3,
+                ),
+            ),
+            ("read", lambda: grimace.PreparedMol.from_bytes(zstd_payload)),
+        )
+        for name, operation in operations:
+            with self.subTest(operation=name):
+                with _patched_dictionary_root(
+                    patched_manifest,
+                    dictionary_bytes,
+                ):
+                    with self.assertRaisesRegex(
+                        ValueError,
+                        "size does not match manifest",
+                    ):
+                        operation()
+
+    def test_dictionary_sha256_must_match_manifest_before_use(self) -> None:
+        prepared = self._prepare("CCO", isomericSmiles=False)
+        zstd_payload = prepared.to_bytes(compression="zstd", dictionary_level=3)
+        manifest = _dictionary_manifest_for_training_level(3)
+        dictionary_bytes = _dictionary_bytes_for_manifest(manifest)
+        patched_manifest = _copy_manifest_for_test_artifact(manifest)
+        patched_manifest["zstd_dictionary_sha256"] = hashlib.sha256(
+            b"different dictionary bytes",
+        ).hexdigest()
+
+        operations = (
+            (
+                "write",
+                lambda: prepared.to_bytes(
+                    compression="zstd",
+                    dictionary_level=3,
+                ),
+            ),
+            ("read", lambda: grimace.PreparedMol.from_bytes(zstd_payload)),
+        )
+        for name, operation in operations:
+            with self.subTest(operation=name):
+                with _patched_dictionary_root(
+                    patched_manifest,
+                    dictionary_bytes,
+                ):
+                    with self.assertRaisesRegex(
+                        ValueError,
+                        "SHA-256 does not match manifest",
+                    ):
+                        operation()
 
     def test_from_bytes_reuses_cached_builtin_dictionary(self) -> None:
         prepared = self._prepare("CCO", isomericSmiles=False)

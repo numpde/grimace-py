@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from importlib import resources
 import json
 from typing import Any
@@ -143,9 +144,18 @@ def _zstd_dictionary_from_manifest(manifest: dict[str, Any]) -> object:
         .joinpath(_ZSTD_DICTIONARY_FILE)
         .read_bytes()
     )
+    if len(dictionary_bytes) != _zstd_dictionary_manifest_size_bytes(manifest):
+        raise ValueError("PreparedMol zstd dictionary size does not match manifest")
+    if (
+        hashlib.sha256(dictionary_bytes).hexdigest()
+        != _zstd_dictionary_manifest_sha256(manifest)
+    ):
+        raise ValueError(
+            "PreparedMol zstd dictionary SHA-256 does not match manifest"
+        )
     compression_dictionary = zstd.ZstdCompressionDict(dictionary_bytes)
     if compression_dictionary.dict_id() != dictionary_id:
-        raise ValueError("PreparedMol zstd dictionary id does not match manifest")
+        raise ValueError("PreparedMol zstd dictionary ID does not match manifest")
     _ZSTD_DICTIONARY_ID_BY_TRAINING_LEVEL[
         _zstd_dictionary_manifest_training_level(manifest)
     ] = dictionary_id
@@ -207,6 +217,8 @@ def _read_zstd_dictionary_manifest(
     if _zstd_dictionary_manifest_file(manifest) != _ZSTD_DICTIONARY_FILE:
         raise ValueError("PreparedMol zstd dictionary manifest has invalid files")
     _zstd_dictionary_manifest_id(manifest)
+    _zstd_dictionary_manifest_sha256(manifest)
+    _zstd_dictionary_manifest_size_bytes(manifest)
     _zstd_dictionary_manifest_training_level(manifest)
     return manifest
 
@@ -229,8 +241,32 @@ def _zstd_dictionary_manifest_file(manifest: dict[str, Any]) -> str:
 def _zstd_dictionary_manifest_id(manifest: dict[str, Any]) -> int:
     dictionary_id = manifest.get("zstd_dictionary_id")
     if not isinstance(dictionary_id, int) or isinstance(dictionary_id, bool):
-        raise ValueError("PreparedMol zstd dictionary manifest has invalid id")
+        raise ValueError("PreparedMol zstd dictionary manifest has invalid ID")
     return dictionary_id
+
+
+def _zstd_dictionary_manifest_sha256(manifest: dict[str, Any]) -> str:
+    dictionary_sha256 = manifest.get("zstd_dictionary_sha256")
+    if (
+        not isinstance(dictionary_sha256, str)
+        or len(dictionary_sha256) != 64
+        or any(char not in "0123456789abcdef" for char in dictionary_sha256)
+    ):
+        raise ValueError(
+            "PreparedMol zstd dictionary manifest has invalid SHA-256"
+        )
+    return dictionary_sha256
+
+
+def _zstd_dictionary_manifest_size_bytes(manifest: dict[str, Any]) -> int:
+    dictionary_size_bytes = manifest.get("zstd_dictionary_size_bytes")
+    if (
+        not isinstance(dictionary_size_bytes, int)
+        or isinstance(dictionary_size_bytes, bool)
+        or dictionary_size_bytes <= 0
+    ):
+        raise ValueError("PreparedMol zstd dictionary manifest has invalid size")
+    return dictionary_size_bytes
 
 
 def _zstd_dictionary_manifest_training_level(manifest: dict[str, Any]) -> int:

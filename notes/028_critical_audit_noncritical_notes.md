@@ -370,11 +370,11 @@ needed; explicit coverage is clearer here.
 
 Checklist:
 
-- [ ] Add the two token inventory functions to `test_public_api_docs.py`.
-- [ ] Add a guard that every backtick signature in `docs/api/python.md` is
+- [x] Add the two token inventory functions to `test_public_api_docs.py`.
+- [x] Add a guard that every backtick signature in `docs/api/python.md` is
       matched by one test case.
-- [ ] Keep option-inventory tests as the SSoT for default flag lists.
-- [ ] Avoid generating docs from tests; this is a small completeness fix.
+- [x] Keep option-inventory tests as the SSoT for default flag lists.
+- [x] Avoid generating docs from tests; this is a small completeness fix.
 
 ### 9. Docs-only pushes skip CI
 

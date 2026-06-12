@@ -10,6 +10,29 @@ from tests.helpers.sampling import SAMPLING_MODE_PAIRS
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+PYTHON_API_SIGNATURE_CASES = (
+    ("PrepareMol", grimace.PrepareMol, False),
+    ("PreparedMol.to_bytes", grimace.PreparedMol.to_bytes, True),
+    ("PreparedMol.from_bytes", grimace.PreparedMol.from_bytes, False),
+    ("MolToSmilesEnum", grimace.MolToSmilesEnum, False),
+    ("MolToSmilesDecoder", grimace.MolToSmilesDecoder.__init__, True),
+    (
+        "MolToSmilesDeterminizedDecoder",
+        grimace.MolToSmilesDeterminizedDecoder.__init__,
+        True,
+    ),
+    ("MolToSmilesSample", grimace.MolToSmilesSample, False),
+    ("MolToSmilesDeviation", grimace.MolToSmilesDeviation, False),
+    ("MolToSmilesTokenInventory", grimace.MolToSmilesTokenInventory, False),
+    (
+        "MolToSmilesTokenInventorySuperset",
+        grimace.MolToSmilesTokenInventorySuperset,
+        False,
+    ),
+)
+PYTHON_API_SIGNATURE_PATTERN = re.compile(
+    r"^`([A-Za-z][A-Za-z0-9_.]+)\(.*\)`$",
+)
 
 
 def _documented_signature(path: Path, label: str) -> str:
@@ -26,6 +49,14 @@ def _documented_sampling_mode_pairs(path: Path) -> tuple[tuple[str, str], ...]:
         match.groups()
         for line in path.read_text(encoding="utf-8").splitlines()
         if (match := pattern.match(line))
+    )
+
+
+def _documented_signature_labels(path: Path) -> tuple[str, ...]:
+    return tuple(
+        match.group(1)
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if (match := PYTHON_API_SIGNATURE_PATTERN.match(line))
     )
 
 
@@ -53,22 +84,16 @@ def _compact_signature(
 class PublicApiDocsTests(unittest.TestCase):
     def test_python_api_page_signatures_match_public_callables(self) -> None:
         docs_path = REPO_ROOT / "docs" / "api" / "python.md"
-        cases = (
-            ("PrepareMol", grimace.PrepareMol, False),
-            ("PreparedMol.to_bytes", grimace.PreparedMol.to_bytes, True),
-            ("PreparedMol.from_bytes", grimace.PreparedMol.from_bytes, False),
-            ("MolToSmilesEnum", grimace.MolToSmilesEnum, False),
-            ("MolToSmilesDecoder", grimace.MolToSmilesDecoder.__init__, True),
-            (
-                "MolToSmilesDeterminizedDecoder",
-                grimace.MolToSmilesDeterminizedDecoder.__init__,
-                True,
-            ),
-            ("MolToSmilesSample", grimace.MolToSmilesSample, False),
-            ("MolToSmilesDeviation", grimace.MolToSmilesDeviation, False),
+        documented_labels = _documented_signature_labels(docs_path)
+        case_labels = tuple(label for label, _, _ in PYTHON_API_SIGNATURE_CASES)
+
+        self.assertEqual(len(case_labels), len(documented_labels))
+        self.assertEqual(
+            frozenset(case_labels),
+            frozenset(documented_labels),
         )
 
-        for label, callable_object, skip_self in cases:
+        for label, callable_object, skip_self in PYTHON_API_SIGNATURE_CASES:
             with self.subTest(label=label):
                 self.assertEqual(
                     _compact_signature(

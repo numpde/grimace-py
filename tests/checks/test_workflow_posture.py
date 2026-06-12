@@ -72,6 +72,32 @@ class WorkflowPostureTests(unittest.TestCase):
         self.assertNotIn("contents: write", workflow)
         self.assertNotIn("id-token: write", workflow)
 
+    def test_docs_workflow_uses_read_only_token_and_non_persistent_checkout(self) -> None:
+        workflow = read_text(".github/workflows/docs.yml")
+        self.assertRegex(workflow, r"(?m)^permissions:\n  contents: read$")
+        self.assertEqual(
+            line_count(workflow, r"\s+persist-credentials:\s+false"),
+            line_count(workflow, r"\s*-\s+uses:\s+actions/checkout@[0-9a-f]{40}.*"),
+        )
+        self.assertNotIn("contents: write", workflow)
+        self.assertNotIn("id-token: write", workflow)
+
+    def test_docs_workflow_covers_docs_only_pushes_lightly(self) -> None:
+        workflow = read_text(".github/workflows/docs.yml")
+        self.assertRegex(workflow, r"(?m)^  push:\n    branches:\n      - main$")
+        self.assertIn('- "README.md"', workflow)
+        self.assertIn('- "docs/**"', workflow)
+        self.assertIn('- "compose/docs.yml"', workflow)
+        self.assertIn('- ".github/workflows/docs.yml"', workflow)
+        self.assertIn('- "Makefile"', workflow)
+        self.assertNotIn("containers/checks", workflow)
+        self.assertNotIn("containers/docs", workflow)
+        self.assertNotIn("tests/checks", workflow)
+        self.assertIn("run: make docs", workflow)
+        self.assertIn("run: make checks", workflow)
+        self.assertNotIn("run: make ci", workflow)
+        self.assertNotIn("run: make test-package", workflow)
+
     def test_ci_checks_job_fetches_tags_for_release_note_checks(self) -> None:
         workflow = read_text(".github/workflows/ci.yml")
         checks_job = job_section(workflow, "container-ci")

@@ -1,0 +1,40 @@
+name: Docs
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "README.md"
+      - "docs/**"
+      - "compose/docs.yml"
+      - ".github/workflows/docs.yml"
+      - "Makefile"
+  pull_request:
+    paths:
+      - "README.md"
+      - "docs/**"
+      - "compose/docs.yml"
+      - ".github/workflows/docs.yml"
+      - "Makefile"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  docs:
+    name: Build docs and run source checks
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - name: Build documentation site
+        run: make docs
+      - name: Run source checks
+        run: make checks

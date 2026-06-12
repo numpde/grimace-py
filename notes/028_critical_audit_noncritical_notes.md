@@ -32,26 +32,20 @@ here.
   are excluded by `.dockerignore`/release validation, and are not part of the
   containerized correctness lanes, but they can affect ad hoc host imports.
 - `PreparedMol.from_bytes()` selects shipped zstd dictionaries by frame
-  dictionary ID and checks that loaded dictionary bytes report the manifest's
-  dictionary ID. Manifest SHA-256/size are enforced by release artifact
-  validation, not re-hashed on every runtime dictionary load.
-- `tests/contract/` is not wired into `make ci`; the CI lanes run
-  `tests/checks`, Rust tests, installed-package correctness, pinned RDKit
-  parity, exact public invariants, and package tests. Contract tests are still
-  useful SSoT/docs/schema guards, but they are not currently a default CI lane.
+  dictionary ID. Runtime dictionary loading now validates manifest SHA-256,
+  byte size, and zstd dictionary ID before caching the dictionary.
+- `tests/contract/` now has a dedicated `make contract` lane in the
+  installed-package test image and is included in `make ci`.
 - Rust frontier prefix helpers rely on `debug_assert!` for prefix homogeneity
   and return the first prefix in release builds. Public/integration tests audit
   reachable decoder state graphs, so this is not an observed correctness break,
   but the invariant is not enforced at the exact helper boundary in optimized
   builds.
-- `tests/contract/test_public_api_docs.py` checks several documented public
-  signatures against live callables, but it does not include the token inventory
-  function signatures even though those are documented on the API page. The
-  option-inventory contract still covers the callable signatures themselves.
-- The CI workflow ignores `README.md` and `docs/**` on pushes to `main`. That
-  keeps docs-only pushes cheap, but it also means checked-in docs health checks
-  run for docs changes only via pull requests, manual dispatch, or nearby code
-  changes.
+- `tests/contract/test_public_api_docs.py` now checks every standalone
+  signature documented on the API page, including token inventory functions.
+- The CI workflow still ignores `README.md` and `docs/**` on pushes to `main`,
+  but a lightweight docs workflow now covers docs-only pushes with `make docs`
+  and source-only `make checks`.
 - Internal runtime-state audits deliberately allowed a state marked terminal to
   still have outgoing transitions. That was a test-model leak, not a proven
   property of real public decoders: for a fixed molecule, a public terminal
@@ -391,17 +385,18 @@ Serious alternatives:
 - Run only docs/checks lanes on docs paths.
 
 Principled direction: add a lightweight docs workflow for docs/README changes.
-Do not run full Rust/package lanes for text-only changes; do run link/build
-checks so published Pages drift is caught.
+Do not run full Rust/package lanes for text-only changes; do run the docs build
+and existing source-only checks so published Pages drift is caught without
+creating a second partial checks surface.
 
 Checklist:
 
-- [ ] Add `.github/workflows/docs.yml` for `README.md`, `docs/**`, and docs
+- [x] Add `.github/workflows/docs.yml` for `README.md`, `docs/**`, and docs
       config/script paths.
-- [ ] Run `make docs` and the docs/checks subset in the strict container lane.
-- [ ] Pin actions and use read-only permissions like CI.
-- [ ] Update workflow posture tests to cover the docs workflow.
-- [ ] Keep main CI path-ignore if the docs workflow covers docs health.
+- [x] Run `make docs` and source-only `make checks` in strict container lanes.
+- [x] Pin actions and use read-only permissions like CI.
+- [x] Update workflow posture tests to cover the docs workflow.
+- [x] Keep main CI path-ignore because the docs workflow covers docs health.
 
 ### 10. Public terminality versus internal acceptance
 

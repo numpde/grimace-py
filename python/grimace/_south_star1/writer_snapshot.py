@@ -596,6 +596,47 @@ class _WriterSnapshotPrefixReadOutcome:
     def graph_policy_blockers(self):
         return self.replay_outcome.graph_policy_blockers
 
+    @property
+    def graph_policy_decisions(self):
+        if self.choice_snapshot is None:
+            return ()
+
+        return self.choice_snapshot.graph_policy_decisions
+
+    @property
+    def resolved_residual_attachment_policy_groups(self):
+        if self.choice_snapshot is None:
+            return ()
+
+        return self.choice_snapshot.resolved_residual_attachment_policy_groups
+
+    @property
+    def support_dead_closure_open_vs_cyclic_tree_entry_groups(self):
+        if self.choice_snapshot is None:
+            return ()
+
+        return (
+            self.choice_snapshot
+            .support_dead_closure_open_vs_cyclic_tree_entry_groups
+        )
+
+    @property
+    def unsupported_owner_scope_residual_attachment_policy_groups(self):
+        if self.choice_snapshot is None:
+            return ()
+
+        return (
+            self.choice_snapshot
+            .unsupported_owner_scope_residual_attachment_policy_groups
+        )
+
+    @property
+    def unresolved_residual_attachment_policy_groups(self):
+        if self.choice_snapshot is None:
+            return ()
+
+        return self.choice_snapshot.unresolved_residual_attachment_policy_groups
+
 
 def _maybe_writer_frontier_choice_snapshot_entry_for_emitted_text(
     choice_snapshot: _WriterFrontierChoiceSnapshot,

@@ -24,6 +24,7 @@ from .writer_state import writer_state_key_sort_tuple
 from .writer_stereo import empty_writer_stereo_state
 from .writer_transitions import finalize_writer_terminal_state
 from .writer_transitions import _WriterActiveEmittedGraphPolicyBlocker
+from .writer_transitions import _WriterActiveEmittedGraphPolicyDecision
 from .writer_transitions import _WriterNextTokenFrontierSupport
 from .writer_transitions import _WriterTopLevelScheduleOutcome
 from .writer_transitions import _legal_writer_schedule_outcome
@@ -116,6 +117,12 @@ class _WriterFrontierStateScheduleOutcome:
         self,
     ) -> tuple[_WriterActiveEmittedGraphPolicyBlocker, ...]:
         return self.schedule_outcome.graph_policy_blockers
+
+    @property
+    def graph_policy_decision(
+        self,
+    ) -> _WriterActiveEmittedGraphPolicyDecision | None:
+        return self.schedule_outcome.graph_policy_decision
 
 
 @dataclass(frozen=True, slots=True)
@@ -245,6 +252,53 @@ class _WriterFrontierScheduleOutcome:
         return bool(self.graph_policy_blockers)
 
     @property
+    def graph_policy_decisions(
+        self,
+    ) -> tuple[_WriterActiveEmittedGraphPolicyDecision, ...]:
+        return tuple(
+            state_outcome.graph_policy_decision
+            for state_outcome in self.state_outcomes
+            if state_outcome.graph_policy_decision is not None
+        )
+
+    @property
+    def resolved_residual_attachment_policy_groups(self):
+        return tuple(
+            group
+            for decision in self.graph_policy_decisions
+            for group in decision.resolved_residual_attachment_policy_groups
+        )
+
+    @property
+    def support_dead_closure_open_vs_cyclic_tree_entry_groups(self):
+        return tuple(
+            group
+            for decision in self.graph_policy_decisions
+            for group in (
+                decision.support_dead_closure_open_vs_cyclic_tree_entry_groups
+            )
+        )
+
+    @property
+    def unsupported_owner_scope_residual_attachment_policy_groups(self):
+        return tuple(
+            group
+            for decision in self.graph_policy_decisions
+            for group in (
+                decision
+                .unsupported_owner_scope_residual_attachment_policy_groups
+            )
+        )
+
+    @property
+    def unresolved_residual_attachment_policy_groups(self):
+        return tuple(
+            group
+            for decision in self.graph_policy_decisions
+            for group in decision.unresolved_residual_attachment_policy_groups
+        )
+
+    @property
     def grouped_transitions(self) -> _GroupedWriterFrontierTransitions:
         if self.next_token_frontier:
             grouped_by_text = self.grouped_by_text_from_next_token_frontier
@@ -309,6 +363,37 @@ class _WriterFrontierChoiceSnapshot:
         self,
     ) -> tuple[_WriterFrontierStateScheduleOutcome, ...]:
         return self.schedule_outcome.blocked_state_outcomes
+
+    @property
+    def graph_policy_decisions(
+        self,
+    ) -> tuple[_WriterActiveEmittedGraphPolicyDecision, ...]:
+        return self.schedule_outcome.graph_policy_decisions
+
+    @property
+    def resolved_residual_attachment_policy_groups(self):
+        return self.schedule_outcome.resolved_residual_attachment_policy_groups
+
+    @property
+    def support_dead_closure_open_vs_cyclic_tree_entry_groups(self):
+        return (
+            self.schedule_outcome
+            .support_dead_closure_open_vs_cyclic_tree_entry_groups
+        )
+
+    @property
+    def unsupported_owner_scope_residual_attachment_policy_groups(self):
+        return (
+            self.schedule_outcome
+            .unsupported_owner_scope_residual_attachment_policy_groups
+        )
+
+    @property
+    def unresolved_residual_attachment_policy_groups(self):
+        return (
+            self.schedule_outcome
+            .unresolved_residual_attachment_policy_groups
+        )
 
     @property
     def public_choices(self) -> WriterFrontierChoices:

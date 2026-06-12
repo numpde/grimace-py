@@ -169,6 +169,100 @@ class WriterStateKernelTest(unittest.TestCase):
             graph_policy_decision=policy,
         )
 
+    def _dead_closure_open_active_emitted_outcome(
+        self,
+        active_atom: AtomId,
+    ) -> tuple[
+        writer_transitions._WriterActiveEmittedGraphPolicyDecision,
+        writer_transitions._WriterActiveEmittedScheduleOutcome,
+    ]:
+        label = WriterClosureLabel(value=1, text="1")
+        open_obligation = writer_transitions._WriterClosureOpenObligation(
+            bond=BondId(1),
+            first_atom=active_atom,
+            second_atom=AtomId(3),
+            attachment_id=11,
+            attachment_action_kind=(
+                WriterResidualAttachmentActionKind.CLOSURE_OPEN_READY
+            ),
+            owner_kind=WriterBoundaryOwnerKind.ACTIVE_ATOM,
+        )
+        open_action = writer_transitions._open_closure_endpoint_action(
+            active_atom,
+            open_obligation,
+            label,
+        )
+        open_emission = writer_transitions._WriterScheduledActionEmission(
+            action=open_action,
+            transitions=(),
+        )
+        closure_decision = writer_transitions._WriterClosureEndpointScheduleDecision(
+            pair_batch=writer_transitions._WriterScheduledActionEmissionBatch(
+                actions=(),
+                emissions=(),
+                surviving_emissions=(),
+            ),
+            open_batch=writer_transitions._WriterScheduledActionEmissionBatch(
+                actions=(open_action,),
+                emissions=(open_emission,),
+                surviving_emissions=(),
+            ),
+            surviving_emissions=(),
+            schedule_surface=writer_transitions._WriterClosureEndpointScheduleSurface(
+                active_atom=active_atom,
+                pair_actions=(),
+                open_actions=(open_action,),
+            ),
+        )
+        child = writer_transitions._WriterChildObligation(
+            bond=BondId(2),
+            child=AtomId(4),
+            boundary_atom=active_atom,
+            owner_kind=WriterBoundaryOwnerKind.ACTIVE_ATOM,
+            attachment_id=11,
+            attachment_action_kind=(
+                WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY
+            ),
+        )
+        child_action = writer_transitions._enter_inline_child_action(
+            active_atom,
+            child,
+        )
+        child_surface = writer_transitions._WriterActiveChildScheduleSurface(
+            active_atom=active_atom,
+            blockers=(),
+            child_obligations=(child,),
+            scheduled_actions=(child_action,),
+        )
+        policy = writer_transitions._WriterActiveEmittedGraphPolicyDecision(
+            kind=(
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyDecisionKind
+                .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+            ),
+            active_atom=active_atom,
+            closure_endpoint_decision=closure_decision,
+            child_schedule_surface=child_surface,
+        )
+        child_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(child_action,),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        active_decision = writer_transitions._active_emitted_child_decision(
+            closure_endpoint_decision=closure_decision,
+            child_schedule_surface=child_surface,
+            child_batch=child_batch,
+            graph_policy_decision=policy,
+        )
+        active_outcome = writer_transitions._WriterActiveEmittedScheduleOutcome(
+            kind=writer_transitions._WriterActiveEmittedScheduleOutcomeKind.SCHEDULED,
+            graph_policy_decision=policy,
+            schedule_decision=active_decision,
+        )
+
+        return policy, active_outcome
+
     def _test_choice_snapshot_entry(
         self,
         emitted_text: str,
@@ -218,6 +312,36 @@ class WriterStateKernelTest(unittest.TestCase):
             ),
             terminal=None,
             choices=choices,
+        )
+
+    def _test_frontier_choice_snapshot_with_active_policy(
+        self,
+        active_outcome: writer_transitions._WriterActiveEmittedScheduleOutcome,
+    ) -> writer_frontier_module._WriterFrontierChoiceSnapshot:
+        top_outcome = writer_transitions._WriterTopLevelScheduleOutcome(
+            kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.SCHEDULED,
+            schedule_decision=writer_transitions._top_level_active_emitted_decision(
+                active_outcome.schedule_decision,
+            ),
+            active_emitted_outcome=active_outcome,
+        )
+        state_outcome = writer_frontier_module._WriterFrontierStateScheduleOutcome(
+            state_key=writer_state_key(_raw_initial_state(AtomId(0))),
+            parent_weight=1,
+            finalized_state_key=None,
+            schedule_outcome=top_outcome,
+        )
+        schedule_outcome = writer_frontier_module._WriterFrontierScheduleOutcome(
+            state_outcomes=(state_outcome,),
+            terminal_by_key=Counter(),
+            grouped_by_text={},
+            weighted_by_text={},
+        )
+
+        return writer_frontier_module._WriterFrontierChoiceSnapshot(
+            schedule_outcome=schedule_outcome,
+            terminal=None,
+            choices=(),
         )
 
     def _test_blocked_frontier_choice_snapshot(
@@ -381,6 +505,159 @@ class WriterStateKernelTest(unittest.TestCase):
             outcome.weighted_by_text,
         )
         self.assertEqual(tuple(sorted(outcome.grouped_by_text)), ("C",))
+
+    def test_writer_frontier_state_schedule_outcome_exposes_graph_policy_decision(self) -> None:
+        state_key = writer_state_key(_raw_initial_state(AtomId(0)))
+        policy, active_outcome = self._dead_closure_open_active_emitted_outcome(
+            AtomId(0),
+        )
+        active_top_outcome = writer_transitions._WriterTopLevelScheduleOutcome(
+            kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.SCHEDULED,
+            schedule_decision=writer_transitions._top_level_active_emitted_decision(
+                active_outcome.schedule_decision,
+            ),
+            active_emitted_outcome=active_outcome,
+        )
+
+        state_outcome = writer_frontier_module._WriterFrontierStateScheduleOutcome(
+            state_key=state_key,
+            parent_weight=1,
+            finalized_state_key=None,
+            schedule_outcome=active_top_outcome,
+        )
+
+        self.assertIs(state_outcome.graph_policy_decision, policy)
+
+        action = writer_transitions._emit_root_atom_action(AtomId(0))
+        batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(action,),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        root_outcome = writer_transitions._WriterTopLevelScheduleOutcome(
+            kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.SCHEDULED,
+            schedule_decision=writer_transitions._top_level_actions_decision(batch),
+        )
+        root_state_outcome = (
+            writer_frontier_module._WriterFrontierStateScheduleOutcome(
+                state_key=state_key,
+                parent_weight=1,
+                finalized_state_key=None,
+                schedule_outcome=root_outcome,
+            )
+        )
+
+        self.assertIsNone(root_state_outcome.graph_policy_decision)
+
+    def test_writer_frontier_schedule_outcome_aggregates_graph_policy_decisions(self) -> None:
+        state_key_1 = writer_state_key(_raw_initial_state(AtomId(0)))
+        state_key_2 = writer_state_key(_raw_initial_state(AtomId(1)))
+        state_key_3 = writer_state_key(_raw_initial_state(AtomId(2)))
+        policy_a, active_outcome_a = (
+            self._dead_closure_open_active_emitted_outcome(AtomId(0))
+        )
+        policy_b, active_outcome_b = self._closure_policy_for_outcome(AtomId(2))
+        top_a = writer_transitions._WriterTopLevelScheduleOutcome(
+            kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.SCHEDULED,
+            schedule_decision=writer_transitions._top_level_active_emitted_decision(
+                active_outcome_a.schedule_decision,
+            ),
+            active_emitted_outcome=active_outcome_a,
+        )
+        action = writer_transitions._emit_root_atom_action(AtomId(1))
+        batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(action,),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        top_without_policy = writer_transitions._WriterTopLevelScheduleOutcome(
+            kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.SCHEDULED,
+            schedule_decision=writer_transitions._top_level_actions_decision(batch),
+        )
+        active_outcome_b = writer_transitions._WriterActiveEmittedScheduleOutcome(
+            kind=writer_transitions._WriterActiveEmittedScheduleOutcomeKind.SCHEDULED,
+            graph_policy_decision=policy_b,
+            schedule_decision=active_outcome_b,
+        )
+        top_b = writer_transitions._WriterTopLevelScheduleOutcome(
+            kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.SCHEDULED,
+            schedule_decision=writer_transitions._top_level_active_emitted_decision(
+                active_outcome_b.schedule_decision,
+            ),
+            active_emitted_outcome=active_outcome_b,
+        )
+        outcome = writer_frontier_module._WriterFrontierScheduleOutcome(
+            state_outcomes=(
+                writer_frontier_module._WriterFrontierStateScheduleOutcome(
+                    state_key=state_key_1,
+                    parent_weight=1,
+                    finalized_state_key=None,
+                    schedule_outcome=top_a,
+                ),
+                writer_frontier_module._WriterFrontierStateScheduleOutcome(
+                    state_key=state_key_2,
+                    parent_weight=1,
+                    finalized_state_key=None,
+                    schedule_outcome=top_without_policy,
+                ),
+                writer_frontier_module._WriterFrontierStateScheduleOutcome(
+                    state_key=state_key_3,
+                    parent_weight=1,
+                    finalized_state_key=None,
+                    schedule_outcome=top_b,
+                ),
+            ),
+            terminal_by_key=Counter(),
+            grouped_by_text={},
+            weighted_by_text={},
+        )
+
+        self.assertEqual(outcome.graph_policy_decisions, (policy_a, policy_b))
+        self.assertEqual(
+            outcome.resolved_residual_attachment_policy_groups,
+            policy_a.resolved_residual_attachment_policy_groups,
+        )
+        self.assertEqual(
+            outcome.support_dead_closure_open_vs_cyclic_tree_entry_groups,
+            policy_a.support_dead_closure_open_vs_cyclic_tree_entry_groups,
+        )
+
+    def test_writer_frontier_choice_snapshot_exposes_graph_policy_evidence(self) -> None:
+        policy, active_outcome = self._dead_closure_open_active_emitted_outcome(
+            AtomId(0),
+        )
+        snapshot = self._test_frontier_choice_snapshot_with_active_policy(
+            active_outcome,
+        )
+        schedule_outcome = snapshot.schedule_outcome
+
+        self.assertEqual(
+            snapshot.graph_policy_decisions,
+            schedule_outcome.graph_policy_decisions,
+        )
+        self.assertEqual(snapshot.graph_policy_decisions, (policy,))
+        self.assertEqual(
+            snapshot.resolved_residual_attachment_policy_groups,
+            schedule_outcome.resolved_residual_attachment_policy_groups,
+        )
+        self.assertEqual(
+            snapshot.support_dead_closure_open_vs_cyclic_tree_entry_groups,
+            (
+                schedule_outcome
+                .support_dead_closure_open_vs_cyclic_tree_entry_groups
+            ),
+        )
+        self.assertEqual(
+            snapshot.unsupported_owner_scope_residual_attachment_policy_groups,
+            (
+                schedule_outcome
+                .unsupported_owner_scope_residual_attachment_policy_groups
+            ),
+        )
+        self.assertEqual(
+            snapshot.unresolved_residual_attachment_policy_groups,
+            schedule_outcome.unresolved_residual_attachment_policy_groups,
+        )
 
     def test_writer_frontier_schedule_outcome_records_blocked_state_without_raising(self) -> None:
         prepared = _prepare(chain_facts(("C", "C")))
@@ -2098,6 +2375,171 @@ class WriterStateKernelTest(unittest.TestCase):
                 self.assertIs(
                     raised.exception.kind,
                     SouthStarErrorKind.INTERNAL_INVARIANT,
+                )
+
+    def test_writer_snapshot_prefix_read_outcome_exposes_graph_policy_evidence(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        policy, active_outcome = self._dead_closure_open_active_emitted_outcome(
+            AtomId(0),
+        )
+        choice_snapshot = self._test_frontier_choice_snapshot_with_active_policy(
+            active_outcome,
+        )
+        sequence = writer_snapshot._WriterSnapshotAdvanceSequenceOutcome(
+            kind=writer_snapshot._WriterSnapshotAdvanceSequenceOutcomeKind.ADVANCED,
+            source_snapshot=snapshot,
+            emitted_texts=(),
+            step_outcomes=(),
+            current_snapshot=snapshot,
+        )
+        replay = writer_snapshot._WriterSnapshotReplayChoiceSnapshotOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                .CHOICE_SNAPSHOT
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=(),
+            sequence_outcome=sequence,
+            choice_snapshot=choice_snapshot,
+        )
+        prefix_outcome = writer_snapshot._WriterSnapshotPrefixReadOutcome(
+            kind=writer_snapshot._WriterSnapshotPrefixReadOutcomeKind.READABLE,
+            replay_outcome=replay,
+        )
+
+        self.assertEqual(
+            prefix_outcome.graph_policy_decisions,
+            choice_snapshot.graph_policy_decisions,
+        )
+        self.assertEqual(prefix_outcome.graph_policy_decisions, (policy,))
+        self.assertEqual(
+            prefix_outcome.resolved_residual_attachment_policy_groups,
+            choice_snapshot.resolved_residual_attachment_policy_groups,
+        )
+        self.assertTrue(
+            prefix_outcome.resolved_residual_attachment_policy_groups
+        )
+        self.assertEqual(
+            (
+                prefix_outcome
+                .support_dead_closure_open_vs_cyclic_tree_entry_groups
+            ),
+            (
+                choice_snapshot
+                .support_dead_closure_open_vs_cyclic_tree_entry_groups
+            ),
+        )
+        self.assertTrue(
+            (
+                prefix_outcome
+                .support_dead_closure_open_vs_cyclic_tree_entry_groups
+            )
+        )
+        self.assertEqual(
+            (
+                prefix_outcome
+                .unsupported_owner_scope_residual_attachment_policy_groups
+            ),
+            (),
+        )
+        self.assertEqual(
+            prefix_outcome.unresolved_residual_attachment_policy_groups,
+            (),
+        )
+
+        blocked_choice_snapshot = self._test_blocked_frontier_choice_snapshot(cursor)
+        blocked_step = writer_snapshot._WriterSnapshotAdvanceOutcome(
+            kind=writer_snapshot._WriterSnapshotAdvanceOutcomeKind.BLOCKED,
+            source_snapshot=snapshot,
+            emitted_text="blocked",
+            choice_snapshot=blocked_choice_snapshot,
+        )
+        blocked_sequence = writer_snapshot._WriterSnapshotAdvanceSequenceOutcome(
+            kind=writer_snapshot._WriterSnapshotAdvanceSequenceOutcomeKind.BLOCKED,
+            source_snapshot=snapshot,
+            emitted_texts=("blocked",),
+            step_outcomes=(blocked_step,),
+            current_snapshot=snapshot,
+        )
+        replay_blocked = writer_snapshot._WriterSnapshotReplayChoiceSnapshotOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                .REPLAY_BLOCKED
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=("blocked",),
+            sequence_outcome=blocked_sequence,
+        )
+        replay_blocked_outcome = writer_snapshot._WriterSnapshotPrefixReadOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotPrefixReadOutcomeKind
+                .REPLAY_BLOCKED
+            ),
+            replay_outcome=replay_blocked,
+        )
+        invalid_step = writer_snapshot._WriterSnapshotAdvanceOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotAdvanceOutcomeKind
+                .INVALID_EMITTED_TEXT
+            ),
+            source_snapshot=snapshot,
+            emitted_text="bad",
+            choice_snapshot=choice_snapshot,
+        )
+        invalid_sequence = writer_snapshot._WriterSnapshotAdvanceSequenceOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotAdvanceSequenceOutcomeKind
+                .INVALID_EMITTED_TEXT
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=("bad",),
+            step_outcomes=(invalid_step,),
+            current_snapshot=snapshot,
+        )
+        invalid_replay = writer_snapshot._WriterSnapshotReplayChoiceSnapshotOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                .INVALID_EMITTED_TEXT
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=("bad",),
+            sequence_outcome=invalid_sequence,
+        )
+        invalid_outcome = writer_snapshot._WriterSnapshotPrefixReadOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotPrefixReadOutcomeKind
+                .INVALID_EMITTED_TEXT
+            ),
+            replay_outcome=invalid_replay,
+        )
+
+        for failed in (replay_blocked_outcome, invalid_outcome):
+            with self.subTest(kind=failed.kind):
+                self.assertEqual(failed.graph_policy_decisions, ())
+                self.assertEqual(
+                    failed.resolved_residual_attachment_policy_groups,
+                    (),
+                )
+                self.assertEqual(
+                    (
+                        failed
+                        .support_dead_closure_open_vs_cyclic_tree_entry_groups
+                    ),
+                    (),
                 )
 
     def test_writer_snapshot_prefix_read_outcome_returns_counted_readable_prefix(self) -> None:

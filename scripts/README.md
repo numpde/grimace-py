@@ -54,6 +54,8 @@ bounded correctness checks; heavier profiling runs should be explicit.
     `default_v1.json`
   - validates the written manifest, dictionary ID, dictionary hash, and zstd
     round trip before returning success
+  - replaces an existing artifact only when given its exact
+    `--replace-artifact YYYYMMDD_hash` directory name
   - requires the pinned `zstandard` development dependency
 - `generate_prepared_mol_zstd_dictionary.py`
   - compatibility source/sdist entry point for shipped manifests that record

@@ -193,15 +193,15 @@ only the exact expected artifact directory when the user explicitly names it.
 
 Checklist:
 
-- [ ] Replace boolean `--force` with `--replace-artifact YYYYMMDD_hash`.
-- [ ] Write new artifacts to a sibling temp directory under the same output
+- [x] Replace boolean `--force` with `--replace-artifact YYYYMMDD_hash`.
+- [x] Write new artifacts to a sibling temp directory under the same output
       root.
-- [ ] Validate the staged artifact before any replacement.
-- [ ] If replacement is requested, require the requested artifact name to equal
+- [x] Validate the staged artifact before any replacement.
+- [x] If replacement is requested, require the requested artifact name to equal
       the computed artifact name.
-- [ ] Rename the old artifact to a temporary backup, rename the staged artifact
+- [x] Rename the old artifact to a temporary backup, rename the staged artifact
       into place, then remove the backup.
-- [ ] Update Make/Compose posture tests to require the explicit replacement
+- [x] Update Make/Compose posture tests to require the explicit replacement
       contract.
 
 ### 3. Large isomeric writer-membership drift handling

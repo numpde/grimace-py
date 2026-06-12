@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import shutil
 import sys
+import tempfile
 from typing import Any, Iterator, TextIO
 
 
@@ -632,12 +633,14 @@ def write_artifact(
     created_yyyymmdd: str,
     dictionary_bytes: bytes,
     identity: dict[str, Any],
-    force: bool,
+    replace_artifact: str | None,
     postflight_payload: bytes,
 ) -> Path:
+    validate_replace_artifact(replace_artifact)
     manifest_sha = sha256_hex(canonical_json_bytes(identity))
     artifact_dir_name = f"{created_yyyymmdd}_{manifest_sha[:8]}"
     artifact_dir = output_root / artifact_dir_name
+    output_root.mkdir(parents=True, exist_ok=True)
     existing_same_hash = tuple(sorted(output_root.glob(f"*_{manifest_sha[:8]}")))
     if existing_same_hash and artifact_dir not in existing_same_hash:
         raise FileExistsError(
@@ -657,6 +660,14 @@ def write_artifact(
                     "Artifact directory exists with a different manifest hash: "
                     f"{artifact_dir}"
                 )
+        if replace_artifact != artifact_dir_name:
+            hint = f"; pass --replace-artifact {artifact_dir_name} to replace it"
+            raise FileExistsError(f"Artifact directory already exists: {artifact_dir}{hint}")
+    elif replace_artifact is not None:
+        raise FileNotFoundError(
+            f"--replace-artifact {replace_artifact} was requested, but "
+            f"{artifact_dir_name} does not exist"
+        )
     manifest = build_manifest(
         created_yyyymmdd=created_yyyymmdd,
         artifact_dir=artifact_dir_name,
@@ -664,21 +675,43 @@ def write_artifact(
         identity=identity,
     )
 
-    if artifact_dir.exists():
-        if not force:
-            raise FileExistsError(f"Artifact directory already exists: {artifact_dir}")
-        shutil.rmtree(artifact_dir)
-    artifact_dir.mkdir(parents=True)
+    staged_parent = Path(
+        tempfile.mkdtemp(
+            prefix=f".{artifact_dir_name}.tmp.",
+            dir=output_root,
+        )
+    )
+    staged_dir = staged_parent / artifact_dir_name
+    staged_dir.mkdir()
     try:
-        (artifact_dir / f"{ARTIFACT_STEM}.zstdict").write_bytes(dictionary_bytes)
-        (artifact_dir / f"{ARTIFACT_STEM}.json").write_text(
+        (staged_dir / f"{ARTIFACT_STEM}.zstdict").write_bytes(dictionary_bytes)
+        (staged_dir / f"{ARTIFACT_STEM}.json").write_text(
             json.dumps(manifest, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
             encoding="utf-8",
         )
-        validate_artifact(artifact_dir, smoke_payload=postflight_payload)
+        validate_artifact(staged_dir, smoke_payload=postflight_payload)
     except Exception:
-        shutil.rmtree(artifact_dir, ignore_errors=True)
+        shutil.rmtree(staged_parent, ignore_errors=True)
         raise
+
+    backup_dir: Path | None = None
+    try:
+        if artifact_dir.exists():
+            if replace_artifact != artifact_dir_name:
+                raise RuntimeError("Internal replacement guard was bypassed")
+            backup_dir = output_root / f".{artifact_dir_name}.replace-backup"
+            if backup_dir.exists():
+                raise FileExistsError(f"Replacement backup already exists: {backup_dir}")
+            artifact_dir.rename(backup_dir)
+        staged_dir.rename(artifact_dir)
+    except Exception:
+        if backup_dir is not None and backup_dir.exists() and not artifact_dir.exists():
+            backup_dir.rename(artifact_dir)
+        shutil.rmtree(staged_parent, ignore_errors=True)
+        raise
+    if backup_dir is not None:
+        shutil.rmtree(backup_dir)
+    shutil.rmtree(staged_parent, ignore_errors=True)
     return artifact_dir
 
 
@@ -698,9 +731,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="Artifact creation date used in the output directory name, YYYYMMDD.",
     )
     parser.add_argument(
-        "--force",
-        action="store_true",
-        help="Replace the computed artifact directory if it already exists.",
+        "--replace-artifact",
+        help=(
+            "Replace the existing computed artifact directory only when this "
+            "exact YYYYMMDD_hash value matches it."
+        ),
     )
     parser.add_argument(
         "--training-level",
@@ -717,9 +752,18 @@ def validate_created_date(value: str) -> None:
     datetime.strptime(value, "%Y%m%d")
 
 
+def validate_replace_artifact(value: str | None) -> None:
+    if value is not None and re.fullmatch(ARTIFACT_DIR_PATTERN, value) is None:
+        raise ValueError("replace_artifact must be YYYYMMDD_hash")
+
+
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
     validate_created_date(args.created_date)
+    try:
+        validate_replace_artifact(args.replace_artifact)
+    except ValueError:
+        raise SystemExit("--replace-artifact must be YYYYMMDD_hash")
     if args.training_level < 1 or args.training_level > 22:
         raise SystemExit("--training-level must be in zstd range 1..22")
     fixture_path = (ROOT / FIXTURE_RELATIVE_PATH).resolve()
@@ -760,7 +804,7 @@ def main(argv: list[str]) -> int:
         created_yyyymmdd=args.created_date,
         dictionary_bytes=dictionary_bytes,
         identity=identity,
-        force=args.force,
+        replace_artifact=args.replace_artifact,
         postflight_payload=corpus.selected[0].raw_payload,
     )
 

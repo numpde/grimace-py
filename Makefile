@@ -22,7 +22,7 @@ override TIMINGS_PREPARED_MOL_ZSTD_ARTIFACTS := $(TIMINGS_PREPARED_MOL_ZSTD_ARTI
 override TIMING_METADATA_IGNORE_ARGS := --ignore docs/timings-enum.tsv --ignore docs/timings-enum.md --ignore notes/004_perf_history.jsonl --ignore docs/timings-enum-plots --ignore 'docs/timings-prepared-mol-zstd*.tsv' --ignore docs/timings-prepared-mol-zstd.md --ignore docs/timings-prepared-mol-zstd-plots
 DOCS_PORT ?= 8000
 PREPARED_MOL_ZSTD_CREATED_DATE ?=
-PREPARED_MOL_ZSTD_FORCE ?= 0
+PREPARED_MOL_ZSTD_REPLACE_ARTIFACT ?=
 PREPARED_MOL_ZSTD_TRAINING_LEVEL ?=
 TIMINGS_PREPARED_MOL_ZSTD_DICTIONARY_ARTIFACT ?=
 
@@ -43,7 +43,7 @@ endef
 
 docs docs-serve: export DOCS_PORT := $(value DOCS_PORT)
 prepared-mol-zstd-dictionary: export PREPARED_MOL_ZSTD_CREATED_DATE := $(value PREPARED_MOL_ZSTD_CREATED_DATE)
-prepared-mol-zstd-dictionary: export PREPARED_MOL_ZSTD_FORCE := $(value PREPARED_MOL_ZSTD_FORCE)
+prepared-mol-zstd-dictionary: export PREPARED_MOL_ZSTD_REPLACE_ARTIFACT := $(value PREPARED_MOL_ZSTD_REPLACE_ARTIFACT)
 prepared-mol-zstd-dictionary: export PREPARED_MOL_ZSTD_TRAINING_LEVEL := $(value PREPARED_MOL_ZSTD_TRAINING_LEVEL)
 timings-prepared-mol-zstd: export TIMINGS_PREPARED_MOL_ZSTD_OUTPUT := $(value TIMINGS_PREPARED_MOL_ZSTD_OUTPUT)
 timings-prepared-mol-zstd: export TIMINGS_PREPARED_MOL_ZSTD_DICTIONARY_ARTIFACT := $(value TIMINGS_PREPARED_MOL_ZSTD_DICTIONARY_ARTIFACT)
@@ -69,7 +69,7 @@ help:
 	  '  DOCS_PORT=8000  Local docs URL and docs-serve host port; must be 1..65535' \
 	  '  Example: make docs-serve DOCS_PORT=8010' \
 	  '  PREPARED_MOL_ZSTD_CREATED_DATE=YYYYMMDD  Optional artifact date override' \
-	  '  PREPARED_MOL_ZSTD_FORCE=1  Replace the computed artifact directory' \
+	  '  PREPARED_MOL_ZSTD_REPLACE_ARTIFACT=YYYYMMDD_hash  Replace that exact computed artifact' \
 	  '  PREPARED_MOL_ZSTD_TRAINING_LEVEL=3  Required zstd dictionary training level, 1..22' \
 	  '  TIMINGS_PREPARED_MOL_ZSTD_DICTIONARY_ARTIFACT=YYYYMMDD_hash  Dictionary timing input' \
 	  '  TIMINGS_PREPARED_MOL_ZSTD_OUTPUT=docs/timings-prepared-mol-zstd.tsv  Dictionary timing TSV' \
@@ -106,12 +106,12 @@ timings-enum:
 prepared-mol-zstd-dictionary:
 	@$(NON_ROOT_GUARD); \
 	output_dir="$(PREPARED_MOL_ZSTD_PACKAGE_DATA_DIR)"; \
-	if [[ ! "$${PREPARED_MOL_ZSTD_FORCE}" =~ ^(0|1)$$ ]]; then \
-	  printf '%s\n' 'PREPARED_MOL_ZSTD_FORCE must be 0 or 1.' >&2; \
-	  exit 2; \
-	fi; \
 	if [[ -n "$${PREPARED_MOL_ZSTD_CREATED_DATE}" && ! "$${PREPARED_MOL_ZSTD_CREATED_DATE}" =~ ^[0-9]{8}$$ ]]; then \
 	  printf '%s\n' 'PREPARED_MOL_ZSTD_CREATED_DATE must be YYYYMMDD when set.' >&2; \
+	  exit 2; \
+	fi; \
+	if [[ -n "$${PREPARED_MOL_ZSTD_REPLACE_ARTIFACT}" && ! "$${PREPARED_MOL_ZSTD_REPLACE_ARTIFACT}" =~ ^[0-9]{8}_[0-9a-f]{8}$$ ]]; then \
+	  printf '%s\n' 'PREPARED_MOL_ZSTD_REPLACE_ARTIFACT must be YYYYMMDD_hash when set.' >&2; \
 	  exit 2; \
 	fi; \
 	if [[ ! "$${PREPARED_MOL_ZSTD_TRAINING_LEVEL}" =~ ^[1-9][0-9]*$$ || "$${PREPARED_MOL_ZSTD_TRAINING_LEVEL}" -gt 22 ]]; then \
@@ -126,7 +126,7 @@ prepared-mol-zstd-dictionary:
 	  exit 2; \
 	fi; \
 	PREPARED_MOL_ZSTD_CREATED_DATE="$${PREPARED_MOL_ZSTD_CREATED_DATE}" \
-	PREPARED_MOL_ZSTD_FORCE="$${PREPARED_MOL_ZSTD_FORCE}" \
+	PREPARED_MOL_ZSTD_REPLACE_ARTIFACT="$${PREPARED_MOL_ZSTD_REPLACE_ARTIFACT}" \
 	PREPARED_MOL_ZSTD_TRAINING_LEVEL="$${PREPARED_MOL_ZSTD_TRAINING_LEVEL}" \
 	$(COMPOSE_ENV) $(DOCKER_COMPOSE) -f $(COMPOSE_DIR)/prepared-mol-zstd-dictionary.yml run --build --rm prepared-mol-zstd-dictionary
 

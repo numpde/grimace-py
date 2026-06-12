@@ -125,6 +125,23 @@ class PreparedMolZstdGeneratorContractTests(unittest.TestCase):
         args = generator.parse_args(["--training-level", "3"])
         self.assertEqual(3, args.training_level)
 
+    def test_replacement_artifact_is_named_explicitly(self) -> None:
+        generator = load_generator_module()
+
+        args = generator.parse_args(
+            [
+                "--training-level",
+                "3",
+                "--replace-artifact",
+                "20260531_deadbeef",
+            ]
+        )
+
+        self.assertEqual("20260531_deadbeef", args.replace_artifact)
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit):
+                generator.parse_args(["--training-level", "3", "--force"])
+
     def test_training_level_is_the_only_tunable_training_parameter(self) -> None:
         generator = load_generator_module()
         self.assertEqual(

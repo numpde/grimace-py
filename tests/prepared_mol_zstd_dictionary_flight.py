@@ -78,7 +78,7 @@ class PreparedMolZstdDictionaryFlightTests(unittest.TestCase):
                 created_yyyymmdd=TEST_CREATED_YYYYMMDD,
                 dictionary_bytes=dictionary_bytes,
                 identity=identity,
-                force=False,
+                replace_artifact=None,
                 postflight_payload=_prepared_payload(),
             )
 
@@ -86,6 +86,121 @@ class PreparedMolZstdDictionaryFlightTests(unittest.TestCase):
                 artifact_dir,
                 smoke_payload=_prepared_payload(),
             )
+
+    def test_existing_artifact_requires_exact_replacement_name(self) -> None:
+        dictionary_id = 123_456
+        dictionary_bytes = _training_dictionary_bytes(dictionary_id)
+        identity = _artifact_identity(
+            dictionary_bytes=dictionary_bytes,
+            dictionary_id=dictionary_id,
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = Path(tmpdir)
+            artifact_dir = generator.write_artifact(
+                output_root=output_root,
+                created_yyyymmdd=TEST_CREATED_YYYYMMDD,
+                dictionary_bytes=dictionary_bytes,
+                identity=identity,
+                replace_artifact=None,
+                postflight_payload=_prepared_payload(),
+            )
+            sentinel = artifact_dir / "stale"
+            sentinel.write_text("stale", encoding="utf-8")
+
+            with self.assertRaisesRegex(FileExistsError, "--replace-artifact"):
+                generator.write_artifact(
+                    output_root=output_root,
+                    created_yyyymmdd=TEST_CREATED_YYYYMMDD,
+                    dictionary_bytes=dictionary_bytes,
+                    identity=identity,
+                    replace_artifact=None,
+                    postflight_payload=_prepared_payload(),
+                )
+            with self.assertRaisesRegex(FileExistsError, "already exists"):
+                generator.write_artifact(
+                    output_root=output_root,
+                    created_yyyymmdd=TEST_CREATED_YYYYMMDD,
+                    dictionary_bytes=dictionary_bytes,
+                    identity=identity,
+                    replace_artifact="20260531_deadbeef",
+                    postflight_payload=_prepared_payload(),
+                )
+
+            replaced = generator.write_artifact(
+                output_root=output_root,
+                created_yyyymmdd=TEST_CREATED_YYYYMMDD,
+                dictionary_bytes=dictionary_bytes,
+                identity=identity,
+                replace_artifact=artifact_dir.name,
+                postflight_payload=_prepared_payload(),
+            )
+
+            self.assertEqual(artifact_dir, replaced)
+            self.assertFalse(sentinel.exists())
+            generator.validate_artifact(replaced, smoke_payload=_prepared_payload())
+
+    def test_replacement_name_validation_is_not_only_cli_policy(self) -> None:
+        dictionary_id = 123_456
+        dictionary_bytes = _training_dictionary_bytes(dictionary_id)
+        identity = _artifact_identity(
+            dictionary_bytes=dictionary_bytes,
+            dictionary_id=dictionary_id,
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with self.assertRaisesRegex(ValueError, "YYYYMMDD_hash"):
+                generator.write_artifact(
+                    output_root=Path(tmpdir),
+                    created_yyyymmdd=TEST_CREATED_YYYYMMDD,
+                    dictionary_bytes=dictionary_bytes,
+                    identity=identity,
+                    replace_artifact="../bad",
+                    postflight_payload=_prepared_payload(),
+                )
+
+    def test_replacement_validates_staged_artifact_before_touching_existing_output(
+        self,
+    ) -> None:
+        dictionary_id = 123_456
+        dictionary_bytes = _training_dictionary_bytes(dictionary_id)
+        identity = _artifact_identity(
+            dictionary_bytes=dictionary_bytes,
+            dictionary_id=dictionary_id,
+        )
+        original_write_text = Path.write_text
+
+        def fail_manifest_write(path: Path, *args: object, **kwargs: object) -> int:
+            if path.name == f"{generator.ARTIFACT_STEM}.json":
+                raise OSError("simulated manifest write failure")
+            return original_write_text(path, *args, **kwargs)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = Path(tmpdir)
+            artifact_dir = generator.write_artifact(
+                output_root=output_root,
+                created_yyyymmdd=TEST_CREATED_YYYYMMDD,
+                dictionary_bytes=dictionary_bytes,
+                identity=identity,
+                replace_artifact=None,
+                postflight_payload=_prepared_payload(),
+            )
+            sentinel = artifact_dir / "keep"
+            sentinel.write_text("keep", encoding="utf-8")
+
+            with mock.patch.object(Path, "write_text", fail_manifest_write):
+                with self.assertRaisesRegex(OSError, "simulated manifest"):
+                    generator.write_artifact(
+                        output_root=output_root,
+                        created_yyyymmdd=TEST_CREATED_YYYYMMDD,
+                        dictionary_bytes=dictionary_bytes,
+                        identity=identity,
+                        replace_artifact=artifact_dir.name,
+                        postflight_payload=_prepared_payload(),
+                    )
+
+            self.assertTrue(sentinel.exists())
+            generator.validate_artifact(artifact_dir, smoke_payload=_prepared_payload())
 
     def test_artifact_postflight_rejects_wrong_dictionary_id(self) -> None:
         dictionary_bytes = _training_dictionary_bytes(123_456)
@@ -102,7 +217,7 @@ class PreparedMolZstdDictionaryFlightTests(unittest.TestCase):
                     created_yyyymmdd=TEST_CREATED_YYYYMMDD,
                     dictionary_bytes=dictionary_bytes,
                     identity=identity,
-                    force=False,
+                    replace_artifact=None,
                     postflight_payload=_prepared_payload(),
                 )
 
@@ -123,7 +238,7 @@ class PreparedMolZstdDictionaryFlightTests(unittest.TestCase):
                     created_yyyymmdd=TEST_CREATED_YYYYMMDD,
                     dictionary_bytes=dictionary_bytes,
                     identity=identity,
-                    force=False,
+                    replace_artifact=None,
                     postflight_payload=_prepared_payload(),
                 )
 
@@ -152,7 +267,7 @@ class PreparedMolZstdDictionaryFlightTests(unittest.TestCase):
                         created_yyyymmdd=TEST_CREATED_YYYYMMDD,
                         dictionary_bytes=dictionary_bytes,
                         identity=identity,
-                        force=False,
+                        replace_artifact=None,
                         postflight_payload=_prepared_payload(),
                     )
 
@@ -172,7 +287,7 @@ class PreparedMolZstdDictionaryFlightTests(unittest.TestCase):
                 created_yyyymmdd=TEST_CREATED_YYYYMMDD,
                 dictionary_bytes=dictionary_bytes,
                 identity=identity,
-                force=False,
+                replace_artifact=None,
                 postflight_payload=_prepared_payload(),
             )
             dictionary_path = artifact_dir / f"{generator.ARTIFACT_STEM}.zstdict"

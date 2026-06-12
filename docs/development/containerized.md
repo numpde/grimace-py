@@ -61,7 +61,7 @@ check on the written artifact before exiting successfully. Optional controls:
 ```bash
 make prepared-mol-zstd-dictionary \
   PREPARED_MOL_ZSTD_CREATED_DATE=20260531 \
-  PREPARED_MOL_ZSTD_FORCE=1 \
+  PREPARED_MOL_ZSTD_REPLACE_ARTIFACT=20260531_40762836 \
   PREPARED_MOL_ZSTD_TRAINING_LEVEL=10
 ```
 

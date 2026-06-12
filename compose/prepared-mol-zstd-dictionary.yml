@@ -18,7 +18,7 @@ services:
       - /tmp:size=1024m,mode=1777
     environment:
       PREPARED_MOL_ZSTD_CREATED_DATE: "${PREPARED_MOL_ZSTD_CREATED_DATE:-}"
-      PREPARED_MOL_ZSTD_FORCE: "${PREPARED_MOL_ZSTD_FORCE:-0}"
+      PREPARED_MOL_ZSTD_REPLACE_ARTIFACT: "${PREPARED_MOL_ZSTD_REPLACE_ARTIFACT:-}"
       PREPARED_MOL_ZSTD_TRAINING_LEVEL: "${PREPARED_MOL_ZSTD_TRAINING_LEVEL:?Set PREPARED_MOL_ZSTD_TRAINING_LEVEL through Makefile}"
     volumes:
       - type: bind
@@ -30,10 +30,12 @@ services:
       - /bin/sh
       - -euc
       - |
-        case "$${PREPARED_MOL_ZSTD_FORCE}" in
-          0|1) ;;
-          *) printf '%s\n' 'PREPARED_MOL_ZSTD_FORCE must be 0 or 1.' >&2; exit 2 ;;
-        esac
+        if [ -n "$${PREPARED_MOL_ZSTD_REPLACE_ARTIFACT}" ]; then
+          case "$${PREPARED_MOL_ZSTD_REPLACE_ARTIFACT}" in
+            [0123456789][0123456789][0123456789][0123456789][0123456789][0123456789][0123456789][0123456789]_[0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef]) ;;
+            *) printf '%s\n' 'PREPARED_MOL_ZSTD_REPLACE_ARTIFACT must be YYYYMMDD_hash when set.' >&2; exit 2 ;;
+          esac
+        fi
         case "$${PREPARED_MOL_ZSTD_TRAINING_LEVEL}" in
           ''|*[!0-9]*) printf '%s\n' 'PREPARED_MOL_ZSTD_TRAINING_LEVEL must be an integer.' >&2; exit 2 ;;
         esac
@@ -48,8 +50,8 @@ services:
         if [ -n "$${PREPARED_MOL_ZSTD_CREATED_DATE}" ]; then
           set -- "$$@" --created-date "$${PREPARED_MOL_ZSTD_CREATED_DATE}"
         fi
-        if [ "$${PREPARED_MOL_ZSTD_FORCE}" = "1" ]; then
-          set -- "$$@" --force
+        if [ -n "$${PREPARED_MOL_ZSTD_REPLACE_ARTIFACT}" ]; then
+          set -- "$$@" --replace-artifact "$${PREPARED_MOL_ZSTD_REPLACE_ARTIFACT}"
         fi
         python scripts/prepared_mol_zstd_dictionary_generate.py "$$@"
         python -m unittest tests.prepared_mol_zstd_dictionary_rates -q

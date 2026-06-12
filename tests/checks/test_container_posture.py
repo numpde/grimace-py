@@ -182,7 +182,7 @@ class ContainerPostureTests(unittest.TestCase):
             r"(?ms)^\s+security_opt:\n\s+- no-new-privileges:true\s*$",
         )
         self.assertIn("PREPARED_MOL_ZSTD_CREATED_DATE", compose)
-        self.assertIn("PREPARED_MOL_ZSTD_FORCE", compose)
+        self.assertIn("PREPARED_MOL_ZSTD_REPLACE_ARTIFACT", compose)
         self.assertIn("PREPARED_MOL_ZSTD_TRAINING_LEVEL", compose)
         self.assertIn(
             'PREPARED_MOL_ZSTD_TRAINING_LEVEL: "${PREPARED_MOL_ZSTD_TRAINING_LEVEL:?Set PREPARED_MOL_ZSTD_TRAINING_LEVEL through Makefile}"',
@@ -190,7 +190,12 @@ class ContainerPostureTests(unittest.TestCase):
         )
         self.assertNotIn("PREPARED_MOL_ZSTD_TRAINING_LEVEL:-3", compose)
         self.assertNotIn("PREPARED_MOL_ZSTD_OUTPUT_DIR", compose)
-        self.assertIn("PREPARED_MOL_ZSTD_FORCE must be 0 or 1.", compose)
+        self.assertNotIn("PREPARED_MOL_ZSTD_FORCE", compose)
+        self.assertNotIn("--force", compose)
+        self.assertIn(
+            "PREPARED_MOL_ZSTD_REPLACE_ARTIFACT must be YYYYMMDD_hash when set.",
+            compose,
+        )
         self.assertIn(
             "PREPARED_MOL_ZSTD_TRAINING_LEVEL must be in zstd range 1..22.",
             compose,
@@ -216,6 +221,10 @@ class ContainerPostureTests(unittest.TestCase):
         )
         self.assertIn(
             'set -- "$$@" --training-level "$${PREPARED_MOL_ZSTD_TRAINING_LEVEL}"',
+            compose,
+        )
+        self.assertIn(
+            'set -- "$$@" --replace-artifact "$${PREPARED_MOL_ZSTD_REPLACE_ARTIFACT}"',
             compose,
         )
         self.assertIn(
@@ -561,7 +570,8 @@ class ContainerPostureTests(unittest.TestCase):
         )
         self.assertIn("DOCS_PORT ?= 8000", makefile)
         self.assertIn("PREPARED_MOL_ZSTD_CREATED_DATE ?=", makefile)
-        self.assertIn("PREPARED_MOL_ZSTD_FORCE ?= 0", makefile)
+        self.assertIn("PREPARED_MOL_ZSTD_REPLACE_ARTIFACT ?=", makefile)
+        self.assertNotIn("PREPARED_MOL_ZSTD_FORCE", makefile)
         self.assertIn("PREPARED_MOL_ZSTD_TRAINING_LEVEL ?=", makefile)
         self.assertNotIn("PREPARED_MOL_ZSTD_TRAINING_LEVEL ?= 3", makefile)
         self.assertIn("TIMINGS_PREPARED_MOL_ZSTD_DICTIONARY_ARTIFACT ?=", makefile)
@@ -589,7 +599,7 @@ class ContainerPostureTests(unittest.TestCase):
             makefile,
         )
         self.assertIn(
-            "prepared-mol-zstd-dictionary: export PREPARED_MOL_ZSTD_FORCE := $(value PREPARED_MOL_ZSTD_FORCE)",
+            "prepared-mol-zstd-dictionary: export PREPARED_MOL_ZSTD_REPLACE_ARTIFACT := $(value PREPARED_MOL_ZSTD_REPLACE_ARTIFACT)",
             makefile,
         )
         self.assertIn(
@@ -634,7 +644,10 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertIn("GRIMACE_PERF_GIT_COMMIT", timing_metadata)
         self.assertIn("GRIMACE_PERF_GIT_CHANGE", timing_metadata)
         self.assertIn("GRIMACE_PERF_GIT_DIRTY", timing_metadata)
-        self.assertIn("PREPARED_MOL_ZSTD_FORCE must be 0 or 1", makefile)
+        self.assertIn(
+            "PREPARED_MOL_ZSTD_REPLACE_ARTIFACT must be YYYYMMDD_hash when set",
+            makefile,
+        )
         self.assertIn("PREPARED_MOL_ZSTD_CREATED_DATE must be YYYYMMDD", makefile)
         self.assertIn("PREPARED_MOL_ZSTD_PACKAGE_DATA_DIR", makefile)
         self.assertNotIn("PREPARED_MOL_ZSTD_OUTPUT_DIR", makefile)

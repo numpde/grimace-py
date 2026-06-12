@@ -10,7 +10,6 @@ from grimace._mol_to_smiles_options import (
     MOL_TO_SMILES_OPTIONS,
     MOL_TO_SMILES_PREPARED_OPTIONS,
     coerce_internal_options,
-    coerce_option,
     internal_option_values,
 )
 
@@ -25,6 +24,24 @@ class MolToSmilesFlags:
     all_hs_explicit: bool = False
     do_random: bool = False
     ignore_atom_map_numbers: bool = False
+
+    def __post_init__(self) -> None:
+        for spec in MOL_TO_SMILES_OPTIONS:
+            value = getattr(self, spec.internal_name)
+            if spec.value_rule == "bool_like":
+                if type(value) is not bool:
+                    raise TypeError(
+                        f"MolToSmilesFlags.{spec.internal_name} must be a bool"
+                    )
+            elif spec.value_rule == "root_atom":
+                if type(value) is not int:
+                    raise TypeError(
+                        "MolToSmilesFlags.rooted_at_atom must be an int"
+                    )
+            else:
+                raise RuntimeError(
+                    f"unsupported MolToSmiles option value_rule: {spec.value_rule!r}"
+                )
 
     def with_rooted_at_atom(self, rooted_at_atom: int) -> "MolToSmilesFlags":
         return replace(self, rooted_at_atom=rooted_at_atom)
@@ -60,7 +77,7 @@ def _make_flags_from_internal_options(
 
 def writer_flag_kwargs(flags: MolToSmilesFlags) -> dict[str, bool]:
     return {
-        spec.internal_name: bool(getattr(flags, spec.internal_name))
+        spec.internal_name: getattr(flags, spec.internal_name)
         for spec in MOL_TO_SMILES_PREPARED_OPTIONS
     }
 
@@ -93,7 +110,7 @@ def ensure_singly_connected_molecule(mol: object) -> None:
 
 def _runtime_public_writer_flag_kwargs(flags: MolToSmilesFlags) -> dict[str, bool]:
     return {
-        spec.public_name: bool(getattr(flags, spec.internal_name))
+        spec.public_name: getattr(flags, spec.internal_name)
         for spec in MOL_TO_SMILES_PREPARED_OPTIONS
     }
 
@@ -112,15 +129,7 @@ def _validate_prepared_mol_writer_flags(
 
 
 def _validate_supported_flags(flags: MolToSmilesFlags) -> None:
-    normalized = {
-        spec.internal_name: coerce_option(
-            spec,
-            getattr(flags, spec.internal_name),
-            context="MolToSmiles runtime",
-        )
-        for spec in MOL_TO_SMILES_OPTIONS
-    }
-    if bool(normalized["canonical"]) or not bool(normalized["do_random"]):
+    if flags.canonical or not flags.do_random:
         raise NotImplementedError(
             "MolToSmiles runtime currently supports only canonical=False and "
             "doRandom=True; the public signatures keep RDKit-like defaults for "

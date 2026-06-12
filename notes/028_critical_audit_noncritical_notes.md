@@ -733,13 +733,13 @@ be allowed for tests, but it should not create invalid internal states.
 
 Checklist:
 
-- [ ] Add `__post_init__` with exact `bool` checks for bool fields and exact
+- [x] Add `__post_init__` with exact `bool` checks for bool fields and exact
       `int` check for `rooted_at_atom`.
-- [ ] Keep public/RDKit-like coercion in `_mol_to_smiles_options.py`.
-- [ ] Update tests that intentionally construct flags to use valid internal
+- [x] Keep public/RDKit-like coercion in `_mol_to_smiles_options.py`.
+- [x] Update tests that intentionally construct flags to use valid internal
       types.
-- [ ] Add tests that direct invalid construction fails early.
-- [ ] Avoid duplicating defaults; keep defaults sourced from the option
+- [x] Add tests that direct invalid construction fails early.
+- [x] Avoid duplicating defaults; keep defaults sourced from the option
       inventory tests.
 
 ### 22. Writer-membership family name overstates weaker cases

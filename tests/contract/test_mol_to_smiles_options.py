@@ -19,7 +19,7 @@ from grimace._mol_to_smiles_options import (
     public_options_from_internal_options,
     public_option_values,
 )
-from grimace._runtime_inputs import MolToSmilesFlags
+from grimace._runtime_inputs import MolToSmilesFlags, make_flags
 from tests.helpers.mols import parse_smiles
 
 
@@ -122,6 +122,75 @@ class MolToSmilesOptionInventoryTests(unittest.TestCase):
         self.assertEqual(
             _internal_option_defaults(MOL_TO_SMILES_OPTIONS),
             tuple((field.name, field.default) for field in fields(MolToSmilesFlags)),
+        )
+
+    def test_runtime_flags_direct_construction_requires_exact_internal_types(self) -> None:
+        flags = MolToSmilesFlags(canonical=False, do_random=True)
+
+        self.assertIs(False, flags.canonical)
+        self.assertIs(True, flags.do_random)
+        self.assertEqual(-1, flags.rooted_at_atom)
+
+        bad_cases = (
+            ("isomeric_smiles", 0, "isomeric_smiles must be a bool"),
+            ("kekule_smiles", None, "kekule_smiles must be a bool"),
+            ("rooted_at_atom", True, "rooted_at_atom must be an int"),
+            ("rooted_at_atom", 0.0, "rooted_at_atom must be an int"),
+            ("canonical", 0, "canonical must be a bool"),
+            ("all_bonds_explicit", 1, "all_bonds_explicit must be a bool"),
+            ("all_hs_explicit", None, "all_hs_explicit must be a bool"),
+            ("do_random", 1, "do_random must be a bool"),
+            (
+                "ignore_atom_map_numbers",
+                0,
+                "ignore_atom_map_numbers must be a bool",
+            ),
+        )
+        for name, value, message in bad_cases:
+            with self.subTest(name=name):
+                with self.assertRaisesRegex(TypeError, message):
+                    MolToSmilesFlags(
+                        **{
+                            "canonical": False,
+                            "do_random": True,
+                            name: value,
+                        }
+                    )
+
+    def test_runtime_flags_root_replacement_keeps_exact_internal_types(self) -> None:
+        flags = MolToSmilesFlags(canonical=False, do_random=True)
+
+        self.assertEqual(
+            2,
+            flags.with_rooted_at_atom(2).rooted_at_atom,
+        )
+        with self.assertRaisesRegex(TypeError, "rooted_at_atom must be an int"):
+            flags.with_rooted_at_atom(True)
+
+    def test_make_flags_is_the_internal_coercion_boundary(self) -> None:
+        flags = make_flags(
+            isomeric_smiles=None,
+            kekule_smiles=1,
+            rooted_at_atom=True,
+            canonical=0,
+            all_bonds_explicit=1,
+            all_hs_explicit=None,
+            do_random=1,
+            ignore_atom_map_numbers=0,
+        )
+
+        self.assertEqual(
+            {
+                "isomeric_smiles": False,
+                "kekule_smiles": True,
+                "rooted_at_atom": 1,
+                "canonical": False,
+                "all_bonds_explicit": True,
+                "all_hs_explicit": False,
+                "do_random": True,
+                "ignore_atom_map_numbers": False,
+            },
+            {field.name: getattr(flags, field.name) for field in fields(flags)},
         )
 
     def test_prepared_and_call_options_partition_full_inventory(self) -> None:

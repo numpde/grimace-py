@@ -32,6 +32,9 @@ ZSTD_FRAME_MAGIC = b"\x28\xb5\x2f\xfd"
 ZSTD_SKIPPABLE_FRAME_MAGIC = b"\x50\x2a\x4d\x18"
 ZSTD_DICT_ID_SIZE_BY_FLAG = (0, 1, 2, 4)
 SHIPPED_DICTIONARY_LEVELS = (3, 10)
+# Keep size-cap tests cheap while leaving room for the real CCO zstd frame to
+# pass preflight so the post-decompression guard is tested separately.
+TEST_PREPARED_MOL_RAW_BYTE_LIMIT = 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -317,25 +320,34 @@ class PreparedMolZstdContractTests(unittest.TestCase):
         class FakePreparedMolInner:
             def to_bytes(self) -> bytes:
                 return RAW_PREPARED_MOL_MAGIC + b"\0" * (
-                    prepared_mol_module._MAX_PREPARED_MOL_RAW_BYTES
+                    TEST_PREPARED_MOL_RAW_BYTE_LIMIT
                     - len(RAW_PREPARED_MOL_MAGIC)
                     + 1
                 )
 
         prepared = prepared_mol_module._make_prepared_mol(FakePreparedMolInner())
 
-        with self.assertRaisesRegex(ValueError, "exceeds"):
-            prepared.to_bytes()
+        with mock.patch.object(
+            prepared_mol_module,
+            "_MAX_PREPARED_MOL_RAW_BYTES",
+            TEST_PREPARED_MOL_RAW_BYTE_LIMIT,
+        ):
+            with self.assertRaisesRegex(ValueError, "exceeds"):
+                prepared.to_bytes()
 
     def test_from_bytes_rejects_raw_payloads_above_size_limit(self) -> None:
         raw_payload = RAW_PREPARED_MOL_MAGIC + b"\0" * (
-            prepared_mol_module._MAX_PREPARED_MOL_RAW_BYTES
-            - len(RAW_PREPARED_MOL_MAGIC)
+            TEST_PREPARED_MOL_RAW_BYTE_LIMIT - len(RAW_PREPARED_MOL_MAGIC)
             + 1
         )
 
-        with self.assertRaisesRegex(ValueError, "exceeds"):
-            grimace.PreparedMol.from_bytes(raw_payload)
+        with mock.patch.object(
+            prepared_mol_module,
+            "_MAX_PREPARED_MOL_RAW_BYTES",
+            TEST_PREPARED_MOL_RAW_BYTE_LIMIT,
+        ):
+            with self.assertRaisesRegex(ValueError, "exceeds"):
+                grimace.PreparedMol.from_bytes(raw_payload)
 
     def test_from_bytes_rejects_declared_zstd_size_above_limit_before_lookup(
         self,
@@ -343,13 +355,20 @@ class PreparedMolZstdContractTests(unittest.TestCase):
         dictionary_id = _dictionary_id_for_training_level(3)
         payload = _zstd_frame_header_with_content_size(
             dictionary_id=dictionary_id,
-            content_size=prepared_mol_module._MAX_PREPARED_MOL_RAW_BYTES + 1,
+            content_size=TEST_PREPARED_MOL_RAW_BYTE_LIMIT + 1,
         )
 
-        with mock.patch.object(
-            prepared_mol_module,
-            "_zstd_dictionary_for_id",
-            side_effect=AssertionError("dictionary lookup should not run"),
+        with (
+            mock.patch.object(
+                prepared_mol_module,
+                "_MAX_PREPARED_MOL_RAW_BYTES",
+                TEST_PREPARED_MOL_RAW_BYTE_LIMIT,
+            ),
+            mock.patch.object(
+                prepared_mol_module,
+                "_zstd_dictionary_for_id",
+                side_effect=AssertionError("dictionary lookup should not run"),
+            ),
         ):
             with self.assertRaisesRegex(ValueError, "exceeds"):
                 grimace.PreparedMol.from_bytes(payload)
@@ -360,8 +379,7 @@ class PreparedMolZstdContractTests(unittest.TestCase):
         prepared = self._prepare("CCO", isomericSmiles=False)
         zstd_payload = prepared.to_bytes(compression="zstd")
         oversized_raw_payload = RAW_PREPARED_MOL_MAGIC + b"\0" * (
-            prepared_mol_module._MAX_PREPARED_MOL_RAW_BYTES
-            - len(RAW_PREPARED_MOL_MAGIC)
+            TEST_PREPARED_MOL_RAW_BYTE_LIMIT - len(RAW_PREPARED_MOL_MAGIC)
             + 1
         )
 
@@ -396,6 +414,11 @@ class PreparedMolZstdContractTests(unittest.TestCase):
             ZstdDecompressor = FakeZstdDecompressor
 
         with (
+            mock.patch.object(
+                prepared_mol_module,
+                "_MAX_PREPARED_MOL_RAW_BYTES",
+                TEST_PREPARED_MOL_RAW_BYTE_LIMIT,
+            ),
             mock.patch.object(
                 prepared_mol_module,
                 "_zstd_dictionary_for_id",

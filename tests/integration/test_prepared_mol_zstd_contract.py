@@ -42,7 +42,6 @@ class ZstdFrameHeader:
     dictionary_id: int | None
     dictionary_id_offset: int | None
     dictionary_id_size: int
-    content_size: int | None
     has_content_size: bool
     has_checksum: bool
 
@@ -80,25 +79,10 @@ def _read_zstd_frame_header(payload: bytes) -> ZstdFrameHeader:
         )
         offset += dictionary_id_size
 
-    content_size: int | None = None
-    if content_size_present:
-        content_size_size = (0, 2, 4, 8)[content_size_flag]
-        if single_segment_flag and content_size_flag == 0:
-            content_size_size = 1
-        if len(payload) < offset + content_size_size:
-            raise AssertionError("payload is too short for zstd content size")
-        content_size = int.from_bytes(
-            payload[offset : offset + content_size_size],
-            "little",
-        )
-        if content_size_size == 2:
-            content_size += 256
-
     return ZstdFrameHeader(
         dictionary_id=dictionary_id,
         dictionary_id_offset=dictionary_id_offset,
         dictionary_id_size=dictionary_id_size,
-        content_size=content_size,
         has_content_size=content_size_present,
         has_checksum=checksum_flag,
     )
@@ -430,13 +414,18 @@ class PreparedMolZstdContractTests(unittest.TestCase):
                 grimace.PreparedMol.from_bytes(zstd_payload)
 
     def test_default_zstd_write_embeds_builtin_dictionary_selector(self) -> None:
+        import zstandard as zstd
+
         prepared = self._prepare("CCO", isomericSmiles=False)
 
         zstd_payload = prepared.to_bytes(compression="zstd")
         header = _read_zstd_frame_header(zstd_payload)
 
         self.assertEqual(_dictionary_id_for_training_level(3), header.dictionary_id)
-        self.assertEqual(len(prepared.to_bytes()), header.content_size)
+        self.assertEqual(
+            len(prepared.to_bytes()),
+            zstd.frame_content_size(zstd_payload),
+        )
         self.assertTrue(header.has_content_size)
         self.assertTrue(header.has_checksum)
 

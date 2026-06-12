@@ -479,10 +479,14 @@ Checklist:
 
 ### 12. GitHub release and PyPI publish are sibling jobs
 
-Issue: PyPI can publish even if the GitHub release job fails, because both jobs
-depend only on wheel/sdist validation.
+Status: accepted design.
 
-Serious alternatives:
+Observation: PyPI can publish even if the GitHub release job fails, because both
+jobs depend only on wheel/sdist validation. That is intentional: GitHub Release
+and PyPI are independent publication sinks, and neither provider's availability
+should block the other after the shared artifact set has passed validation.
+
+Alternatives considered:
 
 - Keep sibling jobs; both validate artifacts independently.
 - Make PyPI depend on GitHub release.
@@ -490,17 +494,20 @@ Serious alternatives:
 - Add a final verification job after both.
 - Publish to PyPI first, then create GitHub release only after PyPI success.
 
-Principled direction: make PyPI depend on GitHub release if GitHub release notes
-and downloadable artifacts are part of the release contract. This avoids a
-PyPI-only public release when the GitHub release page fails.
+Principled direction: keep sibling jobs. Both publication jobs download the same
+artifact set from the same tag, run `validate_release_artifacts.py dist --tag
+"$GITHUB_REF_NAME"`, run `twine check dist/*`, and then publish to their own
+provider with narrow permissions. Partial publication is visible as a failed
+provider job in the same workflow run; adding a final verifier would mostly
+duplicate those provider-specific success/failure signals.
 
 Checklist:
 
-- [ ] Decide whether GitHub release is release-contractual or informational.
-- [ ] If contractual, change `publish-pypi.needs` to include `release`.
-- [ ] Keep PyPI artifact revalidation even when it depends on release.
-- [ ] Add workflow posture test for release ordering.
-- [ ] Document the order in release notes/process docs.
+- [x] Treat GitHub Release and PyPI as independent publication sinks.
+- [x] Keep artifact validation inside both publication jobs.
+- [x] Keep provider-specific permissions narrow.
+- [x] Do not add a redundant final verification job unless it checks a
+      materially different public-propagation invariant.
 
 ### 13. Writer support-count tests skip on missing local RDKit fixture
 

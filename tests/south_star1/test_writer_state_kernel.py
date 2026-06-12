@@ -3895,6 +3895,628 @@ class WriterStateKernelTest(unittest.TestCase):
             .choice_residual_attachment_evidence_for_emitted_text("C")
         )
 
+    def test_writer_snapshot_advance_outcome_exposes_choice_residual_attachment_evidence(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        key = writer_transitions._WriterResidualAttachmentPolicyKey(
+            active_atom=AtomId(0),
+            attachment_id=7,
+        )
+        support = self._test_frontier_next_token_support(
+            emitted_text="C",
+            successor_atom=AtomId(1),
+            policy_family=(
+                writer_transitions
+                ._WriterGraphPolicyActionFamily
+                .CYCLIC_TREE_ENTRY
+            ),
+            residual_key=key,
+        )
+        choice = self._test_choice_snapshot_entry_from_supports("C", (support,))
+        choice_snapshot = writer_frontier_module._WriterFrontierChoiceSnapshot(
+            schedule_outcome=writer_frontier_module._WriterFrontierScheduleOutcome(
+                state_outcomes=(),
+                terminal_by_key=Counter(),
+                grouped_by_text={},
+                weighted_by_text={},
+                next_token_frontier=(choice.next_token_entry,),
+            ),
+            terminal=None,
+            choices=(choice,),
+        )
+        outcome = writer_snapshot._WriterSnapshotAdvanceOutcome(
+            kind=writer_snapshot._WriterSnapshotAdvanceOutcomeKind.ADVANCED,
+            source_snapshot=snapshot,
+            emitted_text="C",
+            choice_snapshot=choice_snapshot,
+            choice=choice,
+            advanced_snapshot=snapshot,
+        )
+
+        self.assertEqual(
+            outcome.choice_residual_attachment_evidence,
+            (
+                outcome.choice_snapshot
+                .choice_residual_attachment_evidence_for_emitted_text(
+                    outcome.emitted_text
+                )
+            ),
+        )
+        self.assertIs(outcome.choice_residual_attachment_evidence.choice, choice)
+
+        blocked_snapshot = self._test_blocked_frontier_choice_snapshot(cursor)
+        blocked = writer_snapshot._WriterSnapshotAdvanceOutcome(
+            kind=writer_snapshot._WriterSnapshotAdvanceOutcomeKind.BLOCKED,
+            source_snapshot=snapshot,
+            emitted_text="blocked",
+            choice_snapshot=blocked_snapshot,
+        )
+        invalid = writer_snapshot._WriterSnapshotAdvanceOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotAdvanceOutcomeKind
+                .INVALID_EMITTED_TEXT
+            ),
+            source_snapshot=snapshot,
+            emitted_text="bad",
+            choice_snapshot=choice_snapshot,
+        )
+
+        self.assertIsNone(blocked.choice_residual_attachment_evidence)
+        self.assertIsNone(invalid.choice_residual_attachment_evidence)
+
+    def test_writer_snapshot_advance_outcome_rejects_missing_choice_residual_evidence(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        support = self._test_frontier_next_token_support(
+            emitted_text="C",
+            successor_atom=AtomId(1),
+            policy_family=(
+                writer_transitions
+                ._WriterGraphPolicyActionFamily
+                .CYCLIC_TREE_ENTRY
+            ),
+        )
+        choice = self._test_choice_snapshot_entry_from_supports("C", (support,))
+        choice_snapshot = writer_frontier_module._WriterFrontierChoiceSnapshot(
+            schedule_outcome=writer_frontier_module._WriterFrontierScheduleOutcome(
+                state_outcomes=(),
+                terminal_by_key=Counter(),
+                grouped_by_text={},
+                weighted_by_text={},
+            ),
+            terminal=None,
+            choices=(),
+        )
+        outcome = writer_snapshot._WriterSnapshotAdvanceOutcome(
+            kind=writer_snapshot._WriterSnapshotAdvanceOutcomeKind.ADVANCED,
+            source_snapshot=snapshot,
+            emitted_text="C",
+            choice_snapshot=choice_snapshot,
+            choice=choice,
+            advanced_snapshot=snapshot,
+        )
+
+        with self.assertRaises(SouthStarError) as raised:
+            _ = outcome.choice_residual_attachment_evidence
+
+        self.assertIs(
+            raised.exception.kind,
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+        )
+
+    def test_writer_snapshot_advance_sequence_outcome_exposes_replayed_choice_evidence(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        snapshot_1 = replace(
+            snapshot,
+            decoder_boundary=writer_snapshot.WriterDecoderBoundary(
+                consumed_token_count=1,
+            ),
+        )
+        snapshot_2 = replace(
+            snapshot,
+            decoder_boundary=writer_snapshot.WriterDecoderBoundary(
+                consumed_token_count=2,
+            ),
+        )
+        key_c = writer_transitions._WriterResidualAttachmentPolicyKey(
+            active_atom=AtomId(0),
+            attachment_id=7,
+        )
+        key_n = writer_transitions._WriterResidualAttachmentPolicyKey(
+            active_atom=AtomId(0),
+            attachment_id=8,
+        )
+        support_c = self._test_frontier_next_token_support(
+            emitted_text="C",
+            successor_atom=AtomId(1),
+            policy_family=(
+                writer_transitions
+                ._WriterGraphPolicyActionFamily
+                .CYCLIC_TREE_ENTRY
+            ),
+            residual_key=key_c,
+        )
+        support_n = self._test_frontier_next_token_support(
+            emitted_text="N",
+            successor_atom=AtomId(2),
+            policy_family=(
+                writer_transitions
+                ._WriterGraphPolicyActionFamily
+                .CLOSURE_OPEN
+            ),
+            residual_key=key_n,
+        )
+        choice_c = self._test_choice_snapshot_entry_from_supports(
+            "C",
+            (support_c,),
+        )
+        choice_n = self._test_choice_snapshot_entry_from_supports(
+            "N",
+            (support_n,),
+        )
+        choice_snapshot_c = writer_frontier_module._WriterFrontierChoiceSnapshot(
+            schedule_outcome=writer_frontier_module._WriterFrontierScheduleOutcome(
+                state_outcomes=(),
+                terminal_by_key=Counter(),
+                grouped_by_text={},
+                weighted_by_text={},
+                next_token_frontier=(choice_c.next_token_entry,),
+            ),
+            terminal=None,
+            choices=(choice_c,),
+        )
+        choice_snapshot_n = writer_frontier_module._WriterFrontierChoiceSnapshot(
+            schedule_outcome=writer_frontier_module._WriterFrontierScheduleOutcome(
+                state_outcomes=(),
+                terminal_by_key=Counter(),
+                grouped_by_text={},
+                weighted_by_text={},
+                next_token_frontier=(choice_n.next_token_entry,),
+            ),
+            terminal=None,
+            choices=(choice_n,),
+        )
+        step_c = writer_snapshot._WriterSnapshotAdvanceOutcome(
+            kind=writer_snapshot._WriterSnapshotAdvanceOutcomeKind.ADVANCED,
+            source_snapshot=snapshot,
+            emitted_text="C",
+            choice_snapshot=choice_snapshot_c,
+            choice=choice_c,
+            advanced_snapshot=snapshot_1,
+        )
+        step_n = writer_snapshot._WriterSnapshotAdvanceOutcome(
+            kind=writer_snapshot._WriterSnapshotAdvanceOutcomeKind.ADVANCED,
+            source_snapshot=snapshot_1,
+            emitted_text="N",
+            choice_snapshot=choice_snapshot_n,
+            choice=choice_n,
+            advanced_snapshot=snapshot_2,
+        )
+        sequence = writer_snapshot._WriterSnapshotAdvanceSequenceOutcome(
+            kind=writer_snapshot._WriterSnapshotAdvanceSequenceOutcomeKind.ADVANCED,
+            source_snapshot=snapshot,
+            emitted_texts=("C", "N"),
+            step_outcomes=(step_c, step_n),
+            current_snapshot=snapshot_2,
+        )
+
+        self.assertEqual(
+            sequence.choice_residual_attachment_evidence,
+            (
+                step_c.choice_residual_attachment_evidence,
+                step_n.choice_residual_attachment_evidence,
+            ),
+        )
+        self.assertEqual(
+            sequence.selected_supports,
+            (
+                *step_c.choice_residual_attachment_evidence.selected_supports,
+                *step_n.choice_residual_attachment_evidence.selected_supports,
+            ),
+        )
+        self.assertEqual(
+            sequence.selected_policy_families,
+            (
+                *step_c.choice_residual_attachment_evidence.selected_policy_families,
+                *step_n.choice_residual_attachment_evidence.selected_policy_families,
+            ),
+        )
+
+    def test_writer_snapshot_advance_sequence_outcome_exposes_only_consumed_evidence_after_failure(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        snapshot_1 = replace(
+            snapshot,
+            decoder_boundary=writer_snapshot.WriterDecoderBoundary(
+                consumed_token_count=1,
+            ),
+        )
+        key = writer_transitions._WriterResidualAttachmentPolicyKey(
+            active_atom=AtomId(0),
+            attachment_id=7,
+        )
+        support = self._test_frontier_next_token_support(
+            emitted_text="C",
+            successor_atom=AtomId(1),
+            policy_family=(
+                writer_transitions
+                ._WriterGraphPolicyActionFamily
+                .CYCLIC_TREE_ENTRY
+            ),
+            residual_key=key,
+        )
+        choice = self._test_choice_snapshot_entry_from_supports("C", (support,))
+        choice_snapshot = writer_frontier_module._WriterFrontierChoiceSnapshot(
+            schedule_outcome=writer_frontier_module._WriterFrontierScheduleOutcome(
+                state_outcomes=(),
+                terminal_by_key=Counter(),
+                grouped_by_text={},
+                weighted_by_text={},
+                next_token_frontier=(choice.next_token_entry,),
+            ),
+            terminal=None,
+            choices=(choice,),
+        )
+        step = writer_snapshot._WriterSnapshotAdvanceOutcome(
+            kind=writer_snapshot._WriterSnapshotAdvanceOutcomeKind.ADVANCED,
+            source_snapshot=snapshot,
+            emitted_text="C",
+            choice_snapshot=choice_snapshot,
+            choice=choice,
+            advanced_snapshot=snapshot_1,
+        )
+        failed = writer_snapshot._WriterSnapshotAdvanceOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotAdvanceOutcomeKind
+                .INVALID_EMITTED_TEXT
+            ),
+            source_snapshot=snapshot_1,
+            emitted_text="bad",
+            choice_snapshot=choice_snapshot,
+        )
+        sequence = writer_snapshot._WriterSnapshotAdvanceSequenceOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotAdvanceSequenceOutcomeKind
+                .INVALID_EMITTED_TEXT
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=("C", "bad", "not-attempted"),
+            step_outcomes=(step, failed),
+            current_snapshot=snapshot_1,
+        )
+
+        self.assertEqual(
+            sequence.choice_residual_attachment_evidence,
+            (step.choice_residual_attachment_evidence,),
+        )
+        self.assertEqual(sequence.consumed_emitted_texts, ("C",))
+        self.assertEqual(
+            sequence.remaining_emitted_texts,
+            ("bad", "not-attempted"),
+        )
+
+    def test_writer_snapshot_replay_choice_snapshot_outcome_exposes_replayed_token_evidence(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        snapshot_1 = replace(
+            snapshot,
+            decoder_boundary=writer_snapshot.WriterDecoderBoundary(
+                consumed_token_count=1,
+            ),
+        )
+        key = writer_transitions._WriterResidualAttachmentPolicyKey(
+            active_atom=AtomId(0),
+            attachment_id=7,
+        )
+        support = self._test_frontier_next_token_support(
+            emitted_text="C",
+            successor_atom=AtomId(1),
+            policy_family=(
+                writer_transitions
+                ._WriterGraphPolicyActionFamily
+                .CYCLIC_TREE_ENTRY
+            ),
+            residual_key=key,
+        )
+        choice = self._test_choice_snapshot_entry_from_supports("C", (support,))
+        choice_snapshot = writer_frontier_module._WriterFrontierChoiceSnapshot(
+            schedule_outcome=writer_frontier_module._WriterFrontierScheduleOutcome(
+                state_outcomes=(),
+                terminal_by_key=Counter(),
+                grouped_by_text={},
+                weighted_by_text={},
+                next_token_frontier=(choice.next_token_entry,),
+            ),
+            terminal=None,
+            choices=(choice,),
+        )
+        step = writer_snapshot._WriterSnapshotAdvanceOutcome(
+            kind=writer_snapshot._WriterSnapshotAdvanceOutcomeKind.ADVANCED,
+            source_snapshot=snapshot,
+            emitted_text="C",
+            choice_snapshot=choice_snapshot,
+            choice=choice,
+            advanced_snapshot=snapshot_1,
+        )
+        sequence = writer_snapshot._WriterSnapshotAdvanceSequenceOutcome(
+            kind=writer_snapshot._WriterSnapshotAdvanceSequenceOutcomeKind.ADVANCED,
+            source_snapshot=snapshot,
+            emitted_texts=("C",),
+            step_outcomes=(step,),
+            current_snapshot=snapshot_1,
+        )
+        replay = writer_snapshot._WriterSnapshotReplayChoiceSnapshotOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                .CHOICE_SNAPSHOT
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=("C",),
+            sequence_outcome=sequence,
+            choice_snapshot=choice_snapshot,
+        )
+
+        self.assertEqual(
+            replay.replayed_choice_residual_attachment_evidence,
+            sequence.choice_residual_attachment_evidence,
+        )
+        self.assertEqual(
+            replay.replayed_residual_attachment_evidence_groups,
+            sequence.residual_attachment_evidence_groups,
+        )
+        self.assertEqual(
+            replay.replayed_selected_supports,
+            sequence.selected_supports,
+        )
+        self.assertEqual(
+            replay.replayed_selected_policy_families,
+            sequence.selected_policy_families,
+        )
+
+        failed = writer_snapshot._WriterSnapshotAdvanceOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotAdvanceOutcomeKind
+                .INVALID_EMITTED_TEXT
+            ),
+            source_snapshot=snapshot_1,
+            emitted_text="bad",
+            choice_snapshot=choice_snapshot,
+        )
+        failed_sequence = writer_snapshot._WriterSnapshotAdvanceSequenceOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotAdvanceSequenceOutcomeKind
+                .INVALID_EMITTED_TEXT
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=("C", "bad"),
+            step_outcomes=(step, failed),
+            current_snapshot=snapshot_1,
+        )
+        failed_replay = writer_snapshot._WriterSnapshotReplayChoiceSnapshotOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                .INVALID_EMITTED_TEXT
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=("C", "bad"),
+            sequence_outcome=failed_sequence,
+        )
+
+        self.assertEqual(
+            failed_replay.replayed_choice_residual_attachment_evidence,
+            (step.choice_residual_attachment_evidence,),
+        )
+        self.assertEqual(
+            failed_replay.replayed_selected_supports,
+            step.choice_residual_attachment_evidence.selected_supports,
+        )
+
+    def test_writer_snapshot_prefix_read_outcome_separates_replayed_and_final_choice_evidence(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        snapshot_1 = replace(
+            snapshot,
+            decoder_boundary=writer_snapshot.WriterDecoderBoundary(
+                consumed_token_count=1,
+            ),
+        )
+        replay_key = writer_transitions._WriterResidualAttachmentPolicyKey(
+            active_atom=AtomId(0),
+            attachment_id=7,
+        )
+        final_key = writer_transitions._WriterResidualAttachmentPolicyKey(
+            active_atom=AtomId(0),
+            attachment_id=8,
+        )
+        replay_support = self._test_frontier_next_token_support(
+            emitted_text="C",
+            successor_atom=AtomId(1),
+            policy_family=(
+                writer_transitions
+                ._WriterGraphPolicyActionFamily
+                .CYCLIC_TREE_ENTRY
+            ),
+            residual_key=replay_key,
+        )
+        final_support = self._test_frontier_next_token_support(
+            emitted_text="N",
+            successor_atom=AtomId(2),
+            policy_family=(
+                writer_transitions
+                ._WriterGraphPolicyActionFamily
+                .CLOSURE_OPEN
+            ),
+            residual_key=final_key,
+        )
+        replay_choice = self._test_choice_snapshot_entry_from_supports(
+            "C",
+            (replay_support,),
+        )
+        final_choice = self._test_choice_snapshot_entry_from_supports(
+            "N",
+            (final_support,),
+        )
+        replay_choice_snapshot = (
+            writer_frontier_module._WriterFrontierChoiceSnapshot(
+                schedule_outcome=(
+                    writer_frontier_module._WriterFrontierScheduleOutcome(
+                        state_outcomes=(),
+                        terminal_by_key=Counter(),
+                        grouped_by_text={},
+                        weighted_by_text={},
+                        next_token_frontier=(replay_choice.next_token_entry,),
+                    )
+                ),
+                terminal=None,
+                choices=(replay_choice,),
+            )
+        )
+        final_choice_snapshot = (
+            writer_frontier_module._WriterFrontierChoiceSnapshot(
+                schedule_outcome=(
+                    writer_frontier_module._WriterFrontierScheduleOutcome(
+                        state_outcomes=(),
+                        terminal_by_key=Counter(),
+                        grouped_by_text={},
+                        weighted_by_text={},
+                        next_token_frontier=(final_choice.next_token_entry,),
+                    )
+                ),
+                terminal=None,
+                choices=(final_choice,),
+            )
+        )
+        step = writer_snapshot._WriterSnapshotAdvanceOutcome(
+            kind=writer_snapshot._WriterSnapshotAdvanceOutcomeKind.ADVANCED,
+            source_snapshot=snapshot,
+            emitted_text="C",
+            choice_snapshot=replay_choice_snapshot,
+            choice=replay_choice,
+            advanced_snapshot=snapshot_1,
+        )
+        sequence = writer_snapshot._WriterSnapshotAdvanceSequenceOutcome(
+            kind=writer_snapshot._WriterSnapshotAdvanceSequenceOutcomeKind.ADVANCED,
+            source_snapshot=snapshot,
+            emitted_texts=("C",),
+            step_outcomes=(step,),
+            current_snapshot=snapshot_1,
+        )
+        replay = writer_snapshot._WriterSnapshotReplayChoiceSnapshotOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                .CHOICE_SNAPSHOT
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=("C",),
+            sequence_outcome=sequence,
+            choice_snapshot=final_choice_snapshot,
+        )
+        prefix_outcome = writer_snapshot._WriterSnapshotPrefixReadOutcome(
+            kind=writer_snapshot._WriterSnapshotPrefixReadOutcomeKind.READABLE,
+            replay_outcome=replay,
+        )
+
+        self.assertEqual(
+            prefix_outcome.replayed_choice_residual_attachment_evidence,
+            replay.replayed_choice_residual_attachment_evidence,
+        )
+        self.assertEqual(
+            prefix_outcome.choice_residual_attachment_evidence,
+            final_choice_snapshot.choice_residual_attachment_evidence,
+        )
+        self.assertNotEqual(
+            prefix_outcome.replayed_choice_residual_attachment_evidence,
+            prefix_outcome.choice_residual_attachment_evidence,
+        )
+
+    def test_writer_snapshot_empty_replay_has_no_replayed_token_evidence(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        sequence = writer_snapshot._WriterSnapshotAdvanceSequenceOutcome(
+            kind=writer_snapshot._WriterSnapshotAdvanceSequenceOutcomeKind.ADVANCED,
+            source_snapshot=snapshot,
+            emitted_texts=(),
+            step_outcomes=(),
+            current_snapshot=snapshot,
+        )
+        replay = writer_snapshot._WriterSnapshotReplayChoiceSnapshotOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                .CHOICE_SNAPSHOT
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=(),
+            sequence_outcome=sequence,
+            choice_snapshot=self._test_frontier_choice_snapshot(()),
+        )
+        prefix_outcome = writer_snapshot._WriterSnapshotPrefixReadOutcome(
+            kind=writer_snapshot._WriterSnapshotPrefixReadOutcomeKind.READABLE,
+            replay_outcome=replay,
+        )
+
+        self.assertEqual(
+            prefix_outcome.replayed_choice_residual_attachment_evidence,
+            (),
+        )
+        self.assertEqual(
+            prefix_outcome.replayed_residual_attachment_evidence_groups,
+            (),
+        )
+        self.assertEqual(prefix_outcome.replayed_selected_supports, ())
+        self.assertEqual(prefix_outcome.replayed_selected_policy_families, ())
+
     def test_writer_snapshot_prefix_read_outcome_returns_counted_readable_prefix(self) -> None:
         prepared = _prepare(chain_facts(("C", "C")))
         options = _writer_options()

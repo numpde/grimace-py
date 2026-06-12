@@ -42,6 +42,7 @@ from .writer_graph_obligations import writer_graph_completion_status
 from .writer_graph_obligations import writer_residual_attachment_action_is_blocked
 from .writer_frontier import WriterFrontierChoices
 from .writer_frontier import WriterFrontierCursor
+from .writer_frontier import _WriterFrontierChoiceResidualAttachmentEvidence
 from .writer_frontier import _WriterFrontierChoiceSnapshot
 from .writer_frontier import _WriterFrontierChoiceSnapshotEntry
 from .writer_frontier import _checked_writer_frontier_choice_snapshot
@@ -241,6 +242,38 @@ class _WriterSnapshotAdvanceOutcome:
     def graph_policy_blockers(self):
         return self.choice_snapshot.graph_policy_blockers
 
+    @property
+    def choice_residual_attachment_evidence(
+        self,
+    ) -> _WriterFrontierChoiceResidualAttachmentEvidence | None:
+        if self.kind is not _WriterSnapshotAdvanceOutcomeKind.ADVANCED:
+            return None
+
+        if self.choice is None:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "advanced writer snapshot outcome did not contain a choice",
+            )
+
+        evidence = (
+            self.choice_snapshot
+            .choice_residual_attachment_evidence_for_emitted_text(
+                self.emitted_text
+            )
+        )
+
+        if evidence is None:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                (
+                    "advanced writer snapshot outcome did not contain "
+                    "residual evidence for emitted text: "
+                    f"{self.emitted_text!r}"
+                ),
+            )
+
+        return evidence
+
 
 @dataclass(frozen=True, slots=True)
 class _WriterSnapshotAdvanceSequenceOutcome:
@@ -376,6 +409,59 @@ class _WriterSnapshotAdvanceSequenceOutcome:
 
         return failed.graph_policy_blockers
 
+    @property
+    def advanced_step_outcomes(
+        self,
+    ) -> tuple[_WriterSnapshotAdvanceOutcome, ...]:
+        return tuple(
+            step
+            for step in self.step_outcomes
+            if step.kind is _WriterSnapshotAdvanceOutcomeKind.ADVANCED
+        )
+
+    @property
+    def choice_residual_attachment_evidence(
+        self,
+    ) -> tuple[_WriterFrontierChoiceResidualAttachmentEvidence, ...]:
+        evidence: list[_WriterFrontierChoiceResidualAttachmentEvidence] = []
+
+        for step in self.advanced_step_outcomes:
+            step_evidence = step.choice_residual_attachment_evidence
+
+            if step_evidence is None:
+                raise SouthStarError(
+                    SouthStarErrorKind.INTERNAL_INVARIANT,
+                    "advanced replay step did not expose residual evidence",
+                )
+
+            evidence.append(step_evidence)
+
+        return tuple(evidence)
+
+    @property
+    def residual_attachment_evidence_groups(self):
+        return tuple(
+            group
+            for evidence in self.choice_residual_attachment_evidence
+            for group in evidence.residual_attachment_evidence_groups
+        )
+
+    @property
+    def selected_supports(self):
+        return tuple(
+            support
+            for evidence in self.choice_residual_attachment_evidence
+            for support in evidence.selected_supports
+        )
+
+    @property
+    def selected_policy_families(self):
+        return tuple(
+            family
+            for evidence in self.choice_residual_attachment_evidence
+            for family in evidence.selected_policy_families
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class _WriterSnapshotReplayChoiceSnapshotOutcome:
@@ -502,6 +588,24 @@ class _WriterSnapshotReplayChoiceSnapshotOutcome:
             return ()
 
         return self.choice_snapshot.graph_policy_blockers
+
+    @property
+    def replayed_choice_residual_attachment_evidence(
+        self,
+    ) -> tuple[_WriterFrontierChoiceResidualAttachmentEvidence, ...]:
+        return self.sequence_outcome.choice_residual_attachment_evidence
+
+    @property
+    def replayed_residual_attachment_evidence_groups(self):
+        return self.sequence_outcome.residual_attachment_evidence_groups
+
+    @property
+    def replayed_selected_supports(self):
+        return self.sequence_outcome.selected_supports
+
+    @property
+    def replayed_selected_policy_families(self):
+        return self.sequence_outcome.selected_policy_families
 
 
 @dataclass(frozen=True, slots=True)
@@ -671,6 +775,22 @@ class _WriterSnapshotPrefixReadOutcome:
                 emitted_text
             )
         )
+
+    @property
+    def replayed_choice_residual_attachment_evidence(self):
+        return self.replay_outcome.replayed_choice_residual_attachment_evidence
+
+    @property
+    def replayed_residual_attachment_evidence_groups(self):
+        return self.replay_outcome.replayed_residual_attachment_evidence_groups
+
+    @property
+    def replayed_selected_supports(self):
+        return self.replay_outcome.replayed_selected_supports
+
+    @property
+    def replayed_selected_policy_families(self):
+        return self.replay_outcome.replayed_selected_policy_families
 
 
 def _maybe_writer_frontier_choice_snapshot_entry_for_emitted_text(

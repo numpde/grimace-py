@@ -637,6 +637,13 @@ class _WriterSnapshotPrefixReadOutcome:
 
         return self.choice_snapshot.unresolved_residual_attachment_policy_groups
 
+    @property
+    def residual_attachment_support_groups(self):
+        if self.choice_snapshot is None:
+            return ()
+
+        return self.choice_snapshot.residual_attachment_support_groups
+
 
 def _maybe_writer_frontier_choice_snapshot_entry_for_emitted_text(
     choice_snapshot: _WriterFrontierChoiceSnapshot,

@@ -25,7 +25,9 @@ from .writer_stereo import empty_writer_stereo_state
 from .writer_transitions import finalize_writer_terminal_state
 from .writer_transitions import _WriterActiveEmittedGraphPolicyBlocker
 from .writer_transitions import _WriterActiveEmittedGraphPolicyDecision
+from .writer_transitions import _WriterGraphPolicyActionFamily
 from .writer_transitions import _WriterNextTokenFrontierSupport
+from .writer_transitions import _WriterResidualAttachmentPolicyKey
 from .writer_transitions import _WriterTopLevelScheduleOutcome
 from .writer_transitions import _legal_writer_schedule_outcome
 from .writer_transitions import _raise_for_top_level_schedule_outcome_blockers
@@ -146,6 +148,67 @@ class _WriterFrontierNextTokenSupport:
 
 
 @dataclass(frozen=True, slots=True)
+class _WriterFrontierResidualAttachmentSupportGroup:
+    key: _WriterResidualAttachmentPolicyKey
+    supports: tuple[_WriterFrontierNextTokenSupport, ...]
+
+    @property
+    def policy_families(
+        self,
+    ) -> tuple[_WriterGraphPolicyActionFamily, ...]:
+        return tuple(
+            support.policy_family
+            for support in self.supports
+        )
+
+    def supports_for_policy_family(
+        self,
+        family: _WriterGraphPolicyActionFamily,
+    ) -> tuple[_WriterFrontierNextTokenSupport, ...]:
+        return tuple(
+            support
+            for support in self.supports
+            if support.policy_family is family
+        )
+
+    @property
+    def closure_open_supports(
+        self,
+    ) -> tuple[_WriterFrontierNextTokenSupport, ...]:
+        return self.supports_for_policy_family(
+            _WriterGraphPolicyActionFamily.CLOSURE_OPEN
+        )
+
+    @property
+    def cyclic_tree_entry_supports(
+        self,
+    ) -> tuple[_WriterFrontierNextTokenSupport, ...]:
+        return self.supports_for_policy_family(
+            _WriterGraphPolicyActionFamily.CYCLIC_TREE_ENTRY
+        )
+
+    @property
+    def acyclic_tree_entry_supports(
+        self,
+    ) -> tuple[_WriterFrontierNextTokenSupport, ...]:
+        return self.supports_for_policy_family(
+            _WriterGraphPolicyActionFamily.ACYCLIC_TREE_ENTRY
+        )
+
+    @property
+    def tree_entry_supports(
+        self,
+    ) -> tuple[_WriterFrontierNextTokenSupport, ...]:
+        return (
+            *self.supports_for_policy_family(
+                _WriterGraphPolicyActionFamily.TREE_ENTRY
+            ),
+            *self.acyclic_tree_entry_supports,
+            *self.cyclic_tree_entry_supports,
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class _WriterFrontierNextTokenEntry:
     emitted_text: str
     supports: tuple[_WriterFrontierNextTokenSupport, ...]
@@ -175,6 +238,14 @@ class _WriterFrontierNextTokenEntry:
         return tuple(
             support.policy_family
             for support in self.supports
+        )
+
+    @property
+    def residual_attachment_support_groups(
+        self,
+    ) -> tuple[_WriterFrontierResidualAttachmentSupportGroup, ...]:
+        return _writer_frontier_residual_attachment_support_groups_from_supports(
+            self.supports
         )
 
 
@@ -208,6 +279,12 @@ class _WriterFrontierChoiceSnapshotEntry:
     @property
     def policy_families(self):
         return self.next_token_entry.policy_families
+
+    @property
+    def residual_attachment_support_groups(
+        self,
+    ) -> tuple[_WriterFrontierResidualAttachmentSupportGroup, ...]:
+        return self.next_token_entry.residual_attachment_support_groups
 
     def to_public_choice(self) -> WriterFrontierChoice:
         return WriterFrontierChoice(
@@ -324,6 +401,14 @@ class _WriterFrontierScheduleOutcome:
         )
 
     @property
+    def residual_attachment_support_groups(
+        self,
+    ) -> tuple[_WriterFrontierResidualAttachmentSupportGroup, ...]:
+        return _writer_frontier_residual_attachment_support_groups_from_supports(
+            self.next_token_supports
+        )
+
+    @property
     def grouped_by_text_from_next_token_frontier(
         self,
     ) -> dict[str, set[WriterStateKey]]:
@@ -394,6 +479,12 @@ class _WriterFrontierChoiceSnapshot:
             self.schedule_outcome
             .unresolved_residual_attachment_policy_groups
         )
+
+    @property
+    def residual_attachment_support_groups(
+        self,
+    ) -> tuple[_WriterFrontierResidualAttachmentSupportGroup, ...]:
+        return self.schedule_outcome.residual_attachment_support_groups
 
     @property
     def public_choices(self) -> WriterFrontierChoices:
@@ -690,6 +781,40 @@ def _writer_frontier_next_token_entries_from_supports(
             supports=tuple(grouped[emitted_text]),
         )
         for emitted_text in order
+    )
+
+
+def _writer_frontier_residual_attachment_support_groups_from_supports(
+    supports: tuple[_WriterFrontierNextTokenSupport, ...],
+) -> tuple[_WriterFrontierResidualAttachmentSupportGroup, ...]:
+    grouped: dict[
+        _WriterResidualAttachmentPolicyKey,
+        list[_WriterFrontierNextTokenSupport],
+    ] = {}
+    order: list[_WriterResidualAttachmentPolicyKey] = []
+
+    for support in supports:
+        key = (
+            support
+            .graph_action_surface
+            .residual_attachment_policy_key
+        )
+
+        if key is None:
+            continue
+
+        if key not in grouped:
+            grouped[key] = []
+            order.append(key)
+
+        grouped[key].append(support)
+
+    return tuple(
+        _WriterFrontierResidualAttachmentSupportGroup(
+            key=key,
+            supports=tuple(grouped[key]),
+        )
+        for key in order
     )
 
 

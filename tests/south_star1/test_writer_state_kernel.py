@@ -1443,14 +1443,44 @@ class WriterStateKernelTest(unittest.TestCase):
             terminal=None,
             choices=(choice,),
         )
+        first_step = self._test_writer_snapshot_advance_step(
+            snapshot,
+            emitted_text="C",
+            prepared=prepared,
+        )
+        assert first_step.advanced_snapshot is not None
+        sequence = writer_snapshot._WriterSnapshotAdvanceSequenceOutcome(
+            kind=writer_snapshot._WriterSnapshotAdvanceSequenceOutcomeKind.ADVANCED,
+            source_snapshot=snapshot,
+            emitted_texts=("C",),
+            step_outcomes=(first_step,),
+            current_snapshot=first_step.advanced_snapshot,
+        )
+        replay = writer_snapshot._WriterSnapshotReplayChoiceSnapshotOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                .CHOICE_SNAPSHOT
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=("C",),
+            sequence_outcome=sequence,
+            choice_snapshot=choice_snapshot,
+        )
+        read_outcome = writer_snapshot._WriterSnapshotPrefixReadOutcome(
+            kind=writer_snapshot._WriterSnapshotPrefixReadOutcomeKind.READABLE,
+            replay_outcome=replay,
+            support_count=1,
+            completion_count=2,
+        )
 
         with patch(
             (
                 "grimace._south_star1.writer_snapshot"
-                "._checked_writer_frontier_choice_snapshot_after_emitted_texts"
+                "._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts"
             ),
-            return_value=choice_snapshot,
-        ) as checked_snapshot:
+            return_value=read_outcome,
+        ) as checked_read:
             choices = writer_snapshot._writer_frontier_choices_after_emitted_texts(
                 snapshot,
                 prepared=prepared,
@@ -1458,10 +1488,11 @@ class WriterStateKernelTest(unittest.TestCase):
             )
 
         self.assertEqual(choices, choice_snapshot.public_choices)
-        checked_snapshot.assert_called_once_with(
+        checked_read.assert_called_once_with(
             snapshot,
             prepared=prepared,
             emitted_texts=("C",),
+            include_counts=True,
         )
 
     def test_resume_writer_frontier_choices_from_snapshot_routes_through_empty_prefix_choices(self) -> None:
@@ -1601,7 +1632,7 @@ class WriterStateKernelTest(unittest.TestCase):
         with patch(
             (
                 "grimace._south_star1.writer_snapshot"
-                "._checked_writer_frontier_choice_snapshot_after_emitted_texts"
+                "._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts"
             ),
             side_effect=SouthStarError(
                 SouthStarErrorKind.UNSUPPORTED_POLICY,
@@ -1786,13 +1817,13 @@ class WriterStateKernelTest(unittest.TestCase):
         with patch(
             (
                 "grimace._south_star1.writer_snapshot"
-                "._checked_writer_frontier_choice_snapshot_after_emitted_texts"
+                "._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts"
             ),
             wraps=(
                 writer_snapshot
-                ._checked_writer_frontier_choice_snapshot_after_emitted_texts
+                ._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts
             ),
-        ) as checked_snapshot:
+        ) as checked_read:
             tuple(
                 writer_snapshot
                 ._iter_writer_frontier_support_suffixes_after_emitted_texts(
@@ -1802,11 +1833,11 @@ class WriterStateKernelTest(unittest.TestCase):
                 )
             )
 
-        self.assertTrue(checked_snapshot.call_args_list)
+        self.assertTrue(checked_read.call_args_list)
         self.assertTrue(
             all(
                 call.kwargs["include_counts"] is False
-                for call in checked_snapshot.call_args_list
+                for call in checked_read.call_args_list
             )
         )
 
@@ -1823,13 +1854,13 @@ class WriterStateKernelTest(unittest.TestCase):
         with patch(
             (
                 "grimace._south_star1.writer_snapshot"
-                "._checked_writer_frontier_choice_snapshot_after_emitted_texts"
+                "._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts"
             ),
             wraps=(
                 writer_snapshot
-                ._checked_writer_frontier_choice_snapshot_after_emitted_texts
+                ._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts
             ),
-        ) as checked_snapshot:
+        ) as checked_read:
             writer_snapshot._count_writer_frontier_support_after_emitted_texts(
                 snapshot,
                 prepared=prepared,
@@ -1841,11 +1872,11 @@ class WriterStateKernelTest(unittest.TestCase):
                 emitted_texts=(),
             )
 
-        self.assertEqual(len(checked_snapshot.call_args_list), 2)
+        self.assertEqual(len(checked_read.call_args_list), 2)
         self.assertTrue(
             all(
                 call.kwargs["include_counts"] is True
-                for call in checked_snapshot.call_args_list
+                for call in checked_read.call_args_list
             )
         )
 
@@ -1889,6 +1920,682 @@ class WriterStateKernelTest(unittest.TestCase):
             )
 
         self.assertIs(stream_raised.exception.kind, SouthStarErrorKind.INVALID_FACTS)
+
+    def test_writer_snapshot_prefix_read_outcome_validates_payload_shape(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        choice_snapshot = writer_snapshot._writer_frontier_choice_snapshot_from_snapshot(
+            snapshot,
+            prepared=prepared,
+        )
+        sequence = writer_snapshot._WriterSnapshotAdvanceSequenceOutcome(
+            kind=writer_snapshot._WriterSnapshotAdvanceSequenceOutcomeKind.ADVANCED,
+            source_snapshot=snapshot,
+            emitted_texts=(),
+            step_outcomes=(),
+            current_snapshot=snapshot,
+        )
+        replay = writer_snapshot._WriterSnapshotReplayChoiceSnapshotOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                .CHOICE_SNAPSHOT
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=(),
+            sequence_outcome=sequence,
+            choice_snapshot=choice_snapshot,
+        )
+        blocked_choice_snapshot = self._test_blocked_frontier_choice_snapshot(cursor)
+        final_blocked_replay = (
+            writer_snapshot._WriterSnapshotReplayChoiceSnapshotOutcome(
+                kind=(
+                    writer_snapshot
+                    ._WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                    .CHOICE_SNAPSHOT
+                ),
+                source_snapshot=snapshot,
+                emitted_texts=(),
+                sequence_outcome=sequence,
+                choice_snapshot=blocked_choice_snapshot,
+            )
+        )
+        blocked_step = writer_snapshot._WriterSnapshotAdvanceOutcome(
+            kind=writer_snapshot._WriterSnapshotAdvanceOutcomeKind.BLOCKED,
+            source_snapshot=snapshot,
+            emitted_text="blocked",
+            choice_snapshot=blocked_choice_snapshot,
+        )
+        blocked_sequence = writer_snapshot._WriterSnapshotAdvanceSequenceOutcome(
+            kind=writer_snapshot._WriterSnapshotAdvanceSequenceOutcomeKind.BLOCKED,
+            source_snapshot=snapshot,
+            emitted_texts=("blocked",),
+            step_outcomes=(blocked_step,),
+            current_snapshot=snapshot,
+        )
+        replay_blocked = writer_snapshot._WriterSnapshotReplayChoiceSnapshotOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                .REPLAY_BLOCKED
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=("blocked",),
+            sequence_outcome=blocked_sequence,
+        )
+        invalid_step = writer_snapshot._WriterSnapshotAdvanceOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotAdvanceOutcomeKind
+                .INVALID_EMITTED_TEXT
+            ),
+            source_snapshot=snapshot,
+            emitted_text="bad",
+            choice_snapshot=choice_snapshot,
+        )
+        invalid_sequence = writer_snapshot._WriterSnapshotAdvanceSequenceOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotAdvanceSequenceOutcomeKind
+                .INVALID_EMITTED_TEXT
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=("bad",),
+            step_outcomes=(invalid_step,),
+            current_snapshot=snapshot,
+        )
+        invalid_replay = writer_snapshot._WriterSnapshotReplayChoiceSnapshotOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                .INVALID_EMITTED_TEXT
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=("bad",),
+            sequence_outcome=invalid_sequence,
+        )
+
+        readable = writer_snapshot._WriterSnapshotPrefixReadOutcome(
+            kind=writer_snapshot._WriterSnapshotPrefixReadOutcomeKind.READABLE,
+            replay_outcome=replay,
+            support_count=1,
+            completion_count=2,
+        )
+        replay_blocked_outcome = writer_snapshot._WriterSnapshotPrefixReadOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotPrefixReadOutcomeKind
+                .REPLAY_BLOCKED
+            ),
+            replay_outcome=replay_blocked,
+        )
+        invalid_outcome = writer_snapshot._WriterSnapshotPrefixReadOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotPrefixReadOutcomeKind
+                .INVALID_EMITTED_TEXT
+            ),
+            replay_outcome=invalid_replay,
+        )
+        final_blocked = writer_snapshot._WriterSnapshotPrefixReadOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotPrefixReadOutcomeKind
+                .FINAL_FRONTIER_BLOCKED
+            ),
+            replay_outcome=final_blocked_replay,
+        )
+
+        self.assertEqual(readable.public_choices, choice_snapshot.public_choices)
+        self.assertTrue(replay_blocked_outcome.blocked)
+        self.assertTrue(invalid_outcome.invalid_emitted_text)
+        self.assertTrue(final_blocked.blocked)
+
+        invalid_payloads = (
+            dict(
+                kind=writer_snapshot._WriterSnapshotPrefixReadOutcomeKind.READABLE,
+                replay_outcome=replay_blocked,
+            ),
+            dict(
+                kind=(
+                    writer_snapshot
+                    ._WriterSnapshotPrefixReadOutcomeKind
+                    .REPLAY_BLOCKED
+                ),
+                replay_outcome=replay_blocked,
+                support_count=1,
+            ),
+            dict(
+                kind=(
+                    writer_snapshot
+                    ._WriterSnapshotPrefixReadOutcomeKind
+                    .FINAL_FRONTIER_BLOCKED
+                ),
+                replay_outcome=final_blocked_replay,
+                completion_count=1,
+            ),
+            dict(
+                kind=(
+                    writer_snapshot
+                    ._WriterSnapshotPrefixReadOutcomeKind
+                    .INVALID_EMITTED_TEXT
+                ),
+                replay_outcome=replay,
+            ),
+        )
+
+        for kwargs in invalid_payloads:
+            with self.subTest(kind=kwargs["kind"]):
+                with self.assertRaises(SouthStarError) as raised:
+                    writer_snapshot._WriterSnapshotPrefixReadOutcome(**kwargs)
+
+                self.assertIs(
+                    raised.exception.kind,
+                    SouthStarErrorKind.INTERNAL_INVARIANT,
+                )
+
+    def test_writer_snapshot_prefix_read_outcome_returns_counted_readable_prefix(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+
+        outcome = (
+            writer_snapshot
+            ._writer_snapshot_prefix_read_outcome_after_emitted_texts(
+                snapshot,
+                prepared=prepared,
+                emitted_texts=(),
+                include_counts=True,
+            )
+        )
+
+        self.assertIs(
+            outcome.kind,
+            writer_snapshot._WriterSnapshotPrefixReadOutcomeKind.READABLE,
+        )
+        self.assertEqual(
+            outcome.public_choices,
+            writer_snapshot.resume_writer_frontier_choices_from_snapshot(
+                snapshot,
+                prepared=prepared,
+            ),
+        )
+        self.assertEqual(
+            outcome.support_count,
+            count_writer_frontier_support(prepared, cursor.support_state),
+        )
+        self.assertEqual(
+            outcome.completion_count,
+            count_writer_cursor_completions(prepared, cursor),
+        )
+
+    def test_writer_snapshot_prefix_read_outcome_can_omit_counts(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._count_writer_frontier_choice_snapshot_supports"
+            ),
+            side_effect=AssertionError("support count computed"),
+        ), patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._count_writer_frontier_choice_snapshot_completions"
+            ),
+            side_effect=AssertionError("completion count computed"),
+        ):
+            outcome = (
+                writer_snapshot
+                ._writer_snapshot_prefix_read_outcome_after_emitted_texts(
+                    snapshot,
+                    prepared=prepared,
+                    emitted_texts=(),
+                    include_counts=False,
+                )
+            )
+
+        self.assertIs(
+            outcome.kind,
+            writer_snapshot._WriterSnapshotPrefixReadOutcomeKind.READABLE,
+        )
+        self.assertIsNone(outcome.support_count)
+        self.assertIsNone(outcome.completion_count)
+        self.assertIsNotNone(outcome.public_choices)
+
+    def test_writer_snapshot_prefix_read_outcome_preserves_failed_replay_outcomes(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        blocked_choice_snapshot = self._test_blocked_frontier_choice_snapshot(cursor)
+        blocked_step = writer_snapshot._WriterSnapshotAdvanceOutcome(
+            kind=writer_snapshot._WriterSnapshotAdvanceOutcomeKind.BLOCKED,
+            source_snapshot=snapshot,
+            emitted_text="blocked",
+            choice_snapshot=blocked_choice_snapshot,
+        )
+        blocked_sequence = writer_snapshot._WriterSnapshotAdvanceSequenceOutcome(
+            kind=writer_snapshot._WriterSnapshotAdvanceSequenceOutcomeKind.BLOCKED,
+            source_snapshot=snapshot,
+            emitted_texts=("blocked",),
+            step_outcomes=(blocked_step,),
+            current_snapshot=snapshot,
+        )
+        replay_blocked = writer_snapshot._WriterSnapshotReplayChoiceSnapshotOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                .REPLAY_BLOCKED
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=("blocked",),
+            sequence_outcome=blocked_sequence,
+        )
+        choice_snapshot = writer_snapshot._writer_frontier_choice_snapshot_from_snapshot(
+            snapshot,
+            prepared=prepared,
+        )
+        invalid_step = writer_snapshot._WriterSnapshotAdvanceOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotAdvanceOutcomeKind
+                .INVALID_EMITTED_TEXT
+            ),
+            source_snapshot=snapshot,
+            emitted_text="bad",
+            choice_snapshot=choice_snapshot,
+        )
+        invalid_sequence = writer_snapshot._WriterSnapshotAdvanceSequenceOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotAdvanceSequenceOutcomeKind
+                .INVALID_EMITTED_TEXT
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=("bad",),
+            step_outcomes=(invalid_step,),
+            current_snapshot=snapshot,
+        )
+        invalid_replay = writer_snapshot._WriterSnapshotReplayChoiceSnapshotOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                .INVALID_EMITTED_TEXT
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=("bad",),
+            sequence_outcome=invalid_sequence,
+        )
+
+        for replay_outcome, kind in (
+            (
+                replay_blocked,
+                writer_snapshot._WriterSnapshotPrefixReadOutcomeKind.REPLAY_BLOCKED,
+            ),
+            (
+                invalid_replay,
+                (
+                    writer_snapshot
+                    ._WriterSnapshotPrefixReadOutcomeKind
+                    .INVALID_EMITTED_TEXT
+                ),
+            ),
+        ):
+            with self.subTest(kind=kind):
+                with patch(
+                    (
+                        "grimace._south_star1.writer_snapshot"
+                        "._writer_frontier_choice_snapshot_after_emitted_texts"
+                    ),
+                    return_value=replay_outcome,
+                ):
+                    outcome = (
+                        writer_snapshot
+                        ._writer_snapshot_prefix_read_outcome_after_emitted_texts(
+                            snapshot,
+                            prepared=prepared,
+                            emitted_texts=replay_outcome.emitted_texts,
+                        )
+                    )
+
+                self.assertIs(outcome.kind, kind)
+                self.assertIsNone(outcome.public_choices)
+                self.assertIsNone(outcome.support_count)
+                self.assertIsNone(outcome.completion_count)
+
+    def test_writer_snapshot_prefix_read_outcome_preserves_final_blocked_frontier(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        sequence = writer_snapshot._WriterSnapshotAdvanceSequenceOutcome(
+            kind=writer_snapshot._WriterSnapshotAdvanceSequenceOutcomeKind.ADVANCED,
+            source_snapshot=snapshot,
+            emitted_texts=(),
+            step_outcomes=(),
+            current_snapshot=snapshot,
+        )
+        blocked_choice_snapshot = self._test_blocked_frontier_choice_snapshot(cursor)
+        replay_outcome = writer_snapshot._WriterSnapshotReplayChoiceSnapshotOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                .CHOICE_SNAPSHOT
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=(),
+            sequence_outcome=sequence,
+            choice_snapshot=blocked_choice_snapshot,
+        )
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._writer_frontier_choice_snapshot_after_emitted_texts"
+            ),
+            return_value=replay_outcome,
+        ):
+            outcome = (
+                writer_snapshot
+                ._writer_snapshot_prefix_read_outcome_after_emitted_texts(
+                    snapshot,
+                    prepared=prepared,
+                    emitted_texts=(),
+                )
+            )
+
+        self.assertIs(
+            outcome.kind,
+            (
+                writer_snapshot
+                ._WriterSnapshotPrefixReadOutcomeKind
+                .FINAL_FRONTIER_BLOCKED
+            ),
+        )
+        self.assertTrue(outcome.blocked)
+        self.assertEqual(
+            outcome.graph_policy_blockers,
+            blocked_choice_snapshot.graph_policy_blockers,
+        )
+        self.assertIsNone(outcome.support_count)
+        self.assertIsNone(outcome.completion_count)
+
+    def test_checked_writer_snapshot_prefix_read_outcome_returns_readable_outcome(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        outcome = (
+            writer_snapshot
+            ._writer_snapshot_prefix_read_outcome_after_emitted_texts(
+                snapshot,
+                prepared=prepared,
+                emitted_texts=(),
+            )
+        )
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._writer_snapshot_prefix_read_outcome_after_emitted_texts"
+            ),
+            return_value=outcome,
+        ):
+            result = (
+                writer_snapshot
+                ._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
+                    snapshot,
+                    prepared=prepared,
+                    emitted_texts=(),
+                )
+            )
+
+        self.assertIs(result, outcome)
+
+    def test_checked_writer_snapshot_prefix_read_outcome_raises_for_failed_or_blocked_outcome(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        blocked_choice_snapshot = self._test_blocked_frontier_choice_snapshot(cursor)
+        blocked_step = writer_snapshot._WriterSnapshotAdvanceOutcome(
+            kind=writer_snapshot._WriterSnapshotAdvanceOutcomeKind.BLOCKED,
+            source_snapshot=snapshot,
+            emitted_text="blocked",
+            choice_snapshot=blocked_choice_snapshot,
+        )
+        blocked_sequence = writer_snapshot._WriterSnapshotAdvanceSequenceOutcome(
+            kind=writer_snapshot._WriterSnapshotAdvanceSequenceOutcomeKind.BLOCKED,
+            source_snapshot=snapshot,
+            emitted_texts=("blocked",),
+            step_outcomes=(blocked_step,),
+            current_snapshot=snapshot,
+        )
+        replay_blocked = writer_snapshot._WriterSnapshotReplayChoiceSnapshotOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                .REPLAY_BLOCKED
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=("blocked",),
+            sequence_outcome=blocked_sequence,
+        )
+        replay_blocked_read = writer_snapshot._WriterSnapshotPrefixReadOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotPrefixReadOutcomeKind
+                .REPLAY_BLOCKED
+            ),
+            replay_outcome=replay_blocked,
+        )
+        choice_snapshot = writer_snapshot._writer_frontier_choice_snapshot_from_snapshot(
+            snapshot,
+            prepared=prepared,
+        )
+        invalid_step = writer_snapshot._WriterSnapshotAdvanceOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotAdvanceOutcomeKind
+                .INVALID_EMITTED_TEXT
+            ),
+            source_snapshot=snapshot,
+            emitted_text="bad",
+            choice_snapshot=choice_snapshot,
+        )
+        invalid_sequence = writer_snapshot._WriterSnapshotAdvanceSequenceOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotAdvanceSequenceOutcomeKind
+                .INVALID_EMITTED_TEXT
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=("bad",),
+            step_outcomes=(invalid_step,),
+            current_snapshot=snapshot,
+        )
+        invalid_replay = writer_snapshot._WriterSnapshotReplayChoiceSnapshotOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                .INVALID_EMITTED_TEXT
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=("bad",),
+            sequence_outcome=invalid_sequence,
+        )
+        invalid_read = writer_snapshot._WriterSnapshotPrefixReadOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotPrefixReadOutcomeKind
+                .INVALID_EMITTED_TEXT
+            ),
+            replay_outcome=invalid_replay,
+        )
+        sequence = writer_snapshot._WriterSnapshotAdvanceSequenceOutcome(
+            kind=writer_snapshot._WriterSnapshotAdvanceSequenceOutcomeKind.ADVANCED,
+            source_snapshot=snapshot,
+            emitted_texts=(),
+            step_outcomes=(),
+            current_snapshot=snapshot,
+        )
+        final_blocked_replay = writer_snapshot._WriterSnapshotReplayChoiceSnapshotOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                .CHOICE_SNAPSHOT
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=(),
+            sequence_outcome=sequence,
+            choice_snapshot=blocked_choice_snapshot,
+        )
+        final_blocked_read = writer_snapshot._WriterSnapshotPrefixReadOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotPrefixReadOutcomeKind
+                .FINAL_FRONTIER_BLOCKED
+            ),
+            replay_outcome=final_blocked_replay,
+        )
+
+        cases = (
+            (replay_blocked_read, SouthStarErrorKind.UNSUPPORTED_POLICY),
+            (invalid_read, SouthStarErrorKind.INVALID_FACTS),
+            (final_blocked_read, SouthStarErrorKind.UNSUPPORTED_POLICY),
+        )
+
+        for outcome, kind in cases:
+            with self.subTest(kind=outcome.kind):
+                with patch(
+                    (
+                        "grimace._south_star1.writer_snapshot"
+                        "._writer_snapshot_prefix_read_outcome_after_emitted_texts"
+                    ),
+                    return_value=outcome,
+                ):
+                    with self.assertRaises(SouthStarError) as raised:
+                        (
+                            writer_snapshot
+                            ._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
+                                snapshot,
+                                prepared=prepared,
+                                emitted_texts=outcome.emitted_texts,
+                            )
+                        )
+
+                self.assertIs(raised.exception.kind, kind)
+
+    def test_replayed_prefix_helpers_route_through_checked_prefix_read(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        outcome = (
+            writer_snapshot
+            ._writer_snapshot_prefix_read_outcome_after_emitted_texts(
+                snapshot,
+                prepared=prepared,
+                emitted_texts=(),
+                include_counts=True,
+            )
+        )
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts"
+            ),
+            return_value=outcome,
+        ) as checked_read:
+            writer_snapshot._writer_frontier_choices_after_emitted_texts(
+                snapshot,
+                prepared=prepared,
+                emitted_texts=(),
+            )
+            writer_snapshot._count_writer_frontier_support_after_emitted_texts(
+                snapshot,
+                prepared=prepared,
+                emitted_texts=(),
+            )
+            writer_snapshot._count_writer_completions_after_emitted_texts(
+                snapshot,
+                prepared=prepared,
+                emitted_texts=(),
+            )
+
+        self.assertEqual(
+            tuple(call.kwargs["include_counts"] for call in checked_read.call_args_list),
+            (True, True, True),
+        )
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts"
+            ),
+            return_value=outcome,
+        ) as checked_read, patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._iter_writer_frontier_support_suffixes_from_choice_snapshot"
+            ),
+            return_value=iter(("C",)),
+        ):
+            tuple(
+                writer_snapshot
+                ._iter_writer_frontier_support_suffixes_after_emitted_texts(
+                    snapshot,
+                    prepared=prepared,
+                    emitted_texts=(),
+                )
+            )
+
+        checked_read.assert_called_once_with(
+            snapshot,
+            prepared=prepared,
+            emitted_texts=(),
+            include_counts=False,
+        )
 
     def test_writer_choice_snapshot_from_snapshot_validates_before_frontier_snapshot(self) -> None:
         prepared = _prepare(chain_facts(("C", "C")))

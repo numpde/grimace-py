@@ -178,6 +178,13 @@ class _WriterSnapshotReplayChoiceSnapshotOutcomeKind(Enum):
     INVALID_EMITTED_TEXT = "invalid_emitted_text"
 
 
+class _WriterSnapshotPrefixReadOutcomeKind(Enum):
+    READABLE = "readable"
+    REPLAY_BLOCKED = "replay_blocked"
+    INVALID_EMITTED_TEXT = "invalid_emitted_text"
+    FINAL_FRONTIER_BLOCKED = "final_frontier_blocked"
+
+
 @dataclass(frozen=True, slots=True)
 class _WriterSnapshotAdvanceOutcome:
     kind: _WriterSnapshotAdvanceOutcomeKind
@@ -495,6 +502,99 @@ class _WriterSnapshotReplayChoiceSnapshotOutcome:
             return ()
 
         return self.choice_snapshot.graph_policy_blockers
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterSnapshotPrefixReadOutcome:
+    kind: _WriterSnapshotPrefixReadOutcomeKind
+    replay_outcome: _WriterSnapshotReplayChoiceSnapshotOutcome
+    support_count: int | None = None
+    completion_count: int | None = None
+
+    def __post_init__(self) -> None:
+        choice_snapshot = self.replay_outcome.choice_snapshot
+
+        if self.kind is _WriterSnapshotPrefixReadOutcomeKind.READABLE:
+            valid = (
+                self.replay_outcome.kind
+                is _WriterSnapshotReplayChoiceSnapshotOutcomeKind.CHOICE_SNAPSHOT
+                and choice_snapshot is not None
+                and not choice_snapshot.blocked
+            )
+        elif self.kind is _WriterSnapshotPrefixReadOutcomeKind.REPLAY_BLOCKED:
+            valid = (
+                self.replay_outcome.kind
+                is _WriterSnapshotReplayChoiceSnapshotOutcomeKind.REPLAY_BLOCKED
+                and choice_snapshot is None
+                and self.support_count is None
+                and self.completion_count is None
+            )
+        elif self.kind is _WriterSnapshotPrefixReadOutcomeKind.INVALID_EMITTED_TEXT:
+            valid = (
+                self.replay_outcome.kind
+                is (
+                    _WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                    .INVALID_EMITTED_TEXT
+                )
+                and choice_snapshot is None
+                and self.support_count is None
+                and self.completion_count is None
+            )
+        elif self.kind is _WriterSnapshotPrefixReadOutcomeKind.FINAL_FRONTIER_BLOCKED:
+            valid = (
+                self.replay_outcome.kind
+                is _WriterSnapshotReplayChoiceSnapshotOutcomeKind.CHOICE_SNAPSHOT
+                and choice_snapshot is not None
+                and choice_snapshot.blocked
+                and self.support_count is None
+                and self.completion_count is None
+            )
+        else:
+            valid = False
+
+        if not valid:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                f"invalid writer snapshot prefix read outcome: {self.kind!r}",
+            )
+
+    @property
+    def source_snapshot(self) -> WriterSearchSnapshot:
+        return self.replay_outcome.source_snapshot
+
+    @property
+    def emitted_texts(self) -> tuple[str, ...]:
+        return self.replay_outcome.emitted_texts
+
+    @property
+    def choice_snapshot(self) -> _WriterFrontierChoiceSnapshot | None:
+        return self.replay_outcome.choice_snapshot
+
+    @property
+    def public_choices(self) -> WriterFrontierChoices | None:
+        if self.choice_snapshot is None:
+            return None
+
+        return self.choice_snapshot.public_choices
+
+    @property
+    def replay_succeeded(self) -> bool:
+        return self.replay_outcome.replay_succeeded
+
+    @property
+    def blocked(self) -> bool:
+        return self.kind in (
+            _WriterSnapshotPrefixReadOutcomeKind.REPLAY_BLOCKED,
+            _WriterSnapshotPrefixReadOutcomeKind.FINAL_FRONTIER_BLOCKED,
+        )
+
+    @property
+    def invalid_emitted_text(self) -> bool:
+        return self.kind is _WriterSnapshotPrefixReadOutcomeKind.INVALID_EMITTED_TEXT
+
+    @property
+    def graph_policy_blockers(self):
+        return self.replay_outcome.graph_policy_blockers
 
 
 def _maybe_writer_frontier_choice_snapshot_entry_for_emitted_text(
@@ -900,15 +1000,20 @@ def _writer_frontier_choices_after_emitted_texts(
     prepared: SouthStarPreparedMol,
     emitted_texts: tuple[str, ...],
 ) -> WriterFrontierChoices:
-    choice_snapshot = (
-        _checked_writer_frontier_choice_snapshot_after_emitted_texts(
-            snapshot,
-            prepared=prepared,
-            emitted_texts=emitted_texts,
-        )
+    outcome = _checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
+        snapshot,
+        prepared=prepared,
+        emitted_texts=emitted_texts,
+        include_counts=True,
     )
 
-    return choice_snapshot.public_choices
+    if outcome.public_choices is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "checked prefix read did not contain public choices",
+        )
+
+    return outcome.public_choices
 
 
 def _count_writer_frontier_choice_snapshot_supports(
@@ -966,24 +1071,126 @@ def _iter_writer_frontier_support_suffixes_from_choice_snapshot(
             yield choice.emitted_text + suffix
 
 
+def _writer_snapshot_prefix_read_outcome_after_emitted_texts(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    emitted_texts: tuple[str, ...],
+    include_counts: bool = True,
+    stop_after_first_blocked: bool = False,
+) -> _WriterSnapshotPrefixReadOutcome:
+    replay_outcome = _writer_frontier_choice_snapshot_after_emitted_texts(
+        snapshot,
+        prepared=prepared,
+        emitted_texts=emitted_texts,
+        include_counts=include_counts,
+        stop_after_first_blocked=stop_after_first_blocked,
+    )
+
+    if (
+        replay_outcome.kind
+        is _WriterSnapshotReplayChoiceSnapshotOutcomeKind.REPLAY_BLOCKED
+    ):
+        return _WriterSnapshotPrefixReadOutcome(
+            kind=_WriterSnapshotPrefixReadOutcomeKind.REPLAY_BLOCKED,
+            replay_outcome=replay_outcome,
+        )
+
+    if (
+        replay_outcome.kind
+        is (
+            _WriterSnapshotReplayChoiceSnapshotOutcomeKind
+            .INVALID_EMITTED_TEXT
+        )
+    ):
+        return _WriterSnapshotPrefixReadOutcome(
+            kind=_WriterSnapshotPrefixReadOutcomeKind.INVALID_EMITTED_TEXT,
+            replay_outcome=replay_outcome,
+        )
+
+    choice_snapshot = replay_outcome.choice_snapshot
+    if choice_snapshot is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "prefix read replay outcome did not contain a choice snapshot",
+        )
+
+    if choice_snapshot.blocked:
+        return _WriterSnapshotPrefixReadOutcome(
+            kind=_WriterSnapshotPrefixReadOutcomeKind.FINAL_FRONTIER_BLOCKED,
+            replay_outcome=replay_outcome,
+        )
+
+    support_count = None
+    completion_count = None
+
+    if include_counts:
+        support_count = _count_writer_frontier_choice_snapshot_supports(
+            choice_snapshot
+        )
+        completion_count = _count_writer_frontier_choice_snapshot_completions(
+            choice_snapshot
+        )
+
+    return _WriterSnapshotPrefixReadOutcome(
+        kind=_WriterSnapshotPrefixReadOutcomeKind.READABLE,
+        replay_outcome=replay_outcome,
+        support_count=support_count,
+        completion_count=completion_count,
+    )
+
+
+def _checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    emitted_texts: tuple[str, ...],
+    include_counts: bool = True,
+) -> _WriterSnapshotPrefixReadOutcome:
+    outcome = _writer_snapshot_prefix_read_outcome_after_emitted_texts(
+        snapshot,
+        prepared=prepared,
+        emitted_texts=emitted_texts,
+        include_counts=include_counts,
+        stop_after_first_blocked=True,
+    )
+
+    _raise_for_writer_snapshot_replay_choice_snapshot_outcome_errors(
+        outcome.replay_outcome
+    )
+
+    if outcome.kind is not _WriterSnapshotPrefixReadOutcomeKind.READABLE:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            (
+                "checked prefix read did not produce a readable outcome: "
+                f"{outcome.kind!r}"
+            ),
+        )
+
+    return outcome
+
+
 def _count_writer_frontier_support_after_emitted_texts(
     snapshot: WriterSearchSnapshot,
     *,
     prepared: SouthStarPreparedMol,
     emitted_texts: tuple[str, ...],
 ) -> int:
-    choice_snapshot = (
-        _checked_writer_frontier_choice_snapshot_after_emitted_texts(
-            snapshot,
-            prepared=prepared,
-            emitted_texts=emitted_texts,
-            include_counts=True,
-        )
+    outcome = _checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
+        snapshot,
+        prepared=prepared,
+        emitted_texts=emitted_texts,
+        include_counts=True,
     )
 
-    return _count_writer_frontier_choice_snapshot_supports(
-        choice_snapshot
-    )
+    if outcome.support_count is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "checked prefix read did not contain a support count",
+        )
+
+    return outcome.support_count
 
 
 def _count_writer_completions_after_emitted_texts(
@@ -992,18 +1199,20 @@ def _count_writer_completions_after_emitted_texts(
     prepared: SouthStarPreparedMol,
     emitted_texts: tuple[str, ...],
 ) -> int:
-    choice_snapshot = (
-        _checked_writer_frontier_choice_snapshot_after_emitted_texts(
-            snapshot,
-            prepared=prepared,
-            emitted_texts=emitted_texts,
-            include_counts=True,
-        )
+    outcome = _checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
+        snapshot,
+        prepared=prepared,
+        emitted_texts=emitted_texts,
+        include_counts=True,
     )
 
-    return _count_writer_frontier_choice_snapshot_completions(
-        choice_snapshot
-    )
+    if outcome.completion_count is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "checked prefix read did not contain a completion count",
+        )
+
+    return outcome.completion_count
 
 
 def _iter_writer_frontier_support_suffixes_after_emitted_texts(
@@ -1012,18 +1221,22 @@ def _iter_writer_frontier_support_suffixes_after_emitted_texts(
     prepared: SouthStarPreparedMol,
     emitted_texts: tuple[str, ...],
 ) -> Iterator[str]:
-    choice_snapshot = (
-        _checked_writer_frontier_choice_snapshot_after_emitted_texts(
-            snapshot,
-            prepared=prepared,
-            emitted_texts=emitted_texts,
-            include_counts=False,
-        )
+    outcome = _checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
+        snapshot,
+        prepared=prepared,
+        emitted_texts=emitted_texts,
+        include_counts=False,
     )
+
+    if outcome.choice_snapshot is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "checked prefix read did not contain a choice snapshot",
+        )
 
     yield from _iter_writer_frontier_support_suffixes_from_choice_snapshot(
         prepared,
-        choice_snapshot,
+        outcome.choice_snapshot,
     )
 
 

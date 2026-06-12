@@ -552,12 +552,22 @@ class PreparedMolZstdContractTests(unittest.TestCase):
                         encoding="utf-8",
                     )
 
-                    prepared_mol_module._ZSTD_DICTIONARY_BY_ID.clear()
-                    prepared_mol_module._ZSTD_DICTIONARY_ID_BY_TRAINING_LEVEL.clear()
-                    with mock.patch.object(
-                        prepared_mol_module,
-                        "_zstd_dictionary_root",
-                        return_value=Path(tmpdir),
+                    with (
+                        mock.patch.object(
+                            prepared_mol_module,
+                            "_ZSTD_DICTIONARY_BY_ID",
+                            {},
+                        ),
+                        mock.patch.object(
+                            prepared_mol_module,
+                            "_ZSTD_DICTIONARY_ID_BY_TRAINING_LEVEL",
+                            {},
+                        ),
+                        mock.patch.object(
+                            prepared_mol_module,
+                            "_zstd_dictionary_root",
+                            return_value=Path(tmpdir),
+                        ),
                     ):
                         with self.assertRaisesRegex(ValueError, message):
                             prepared.to_bytes(compression="zstd")

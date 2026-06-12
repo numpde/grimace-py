@@ -60,15 +60,14 @@ object. Runtime calls with conflicting writer flags raise `ValueError`.
 
 `PreparedMol.to_bytes()` returns a versioned binary payload owned by the Rust
 core. `PreparedMol.from_bytes(...)` accepts that payload and reconstructs an
-opaque object ready for the runtime. Raw `PreparedMol` payloads are limited to
-1 MiB.
+opaque object ready for the runtime. See [Limitations](../current-limitations.html)
+for the current payload size limit.
 
 `PreparedMol.to_bytes(compression="zstd")` writes a zstd frame using the
 default shipped dictionary and compression level. `PreparedMol.from_bytes(...)`
 detects compressed payloads from the zstd frame and selects the matching
-shipped dictionary from the frame dictionary id. The default is
-`dictionary_level=3, level=3`. Compressed payloads must declare a decompressed
-size of at most 1 MiB.
+shipped dictionary from the frame dictionary ID. The default is
+`dictionary_level=3, level=3`.
 
 ## MolToSmilesEnum
 

@@ -31,8 +31,8 @@ payload = prepared.to_bytes(compression="zstd")
 restored = grimace.PreparedMol.from_bytes(payload)
 ```
 
-The compressed payload records the shipped dictionary id in the zstd frame.
-`PreparedMol.from_bytes(...)` uses that id to select the right built-in
+The compressed payload records the shipped dictionary ID in the zstd frame.
+`PreparedMol.from_bytes(...)` uses that ID to select the right built-in
 dictionary. The current default is equivalent to:
 
 ```python
@@ -41,6 +41,11 @@ payload = prepared.to_bytes(compression="zstd", dictionary_level=3, level=3)
 
 `dictionary_level` chooses the shipped dictionary training level. `level` is
 the ordinary zstd compression level used when writing this payload.
+
+`PreparedMol.to_bytes()` returns a versioned binary payload owned by the Rust
+core. Treat the bytes as opaque. Raw payloads, including the decompressed form
+of zstd payloads, must fit the current
+[PreparedMol bytes](../current-limitations.html#preparedmol-bytes) limit.
 
 ## Use everywhere
 
@@ -70,9 +75,5 @@ all_smiles = tuple(
     )
 )
 ```
-
-`PreparedMol.to_bytes()` returns a versioned binary payload owned by the Rust
-core. Treat the bytes as opaque. Raw payloads, including the decompressed form
-of zstd payloads, are limited to 1 MiB.
 
 For the supported writer flags, see [Runtime](../runtime.html).

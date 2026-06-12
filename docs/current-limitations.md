@@ -41,6 +41,10 @@ platforms are expected source-build paths today.
 
 ## PreparedMol bytes
 
-`PreparedMol.to_bytes()` and `PreparedMol.from_bytes(...)` accept raw prepared
-payloads up to 1 MiB. zstd-compressed payloads must declare and decompress to a
-raw payload within the same limit.
+Raw `PreparedMol` payloads are limited to 1 MiB. This applies when writing
+bytes with `PreparedMol.to_bytes()`, reading raw bytes with
+`PreparedMol.from_bytes(...)`, and reading zstd-compressed bytes after
+decompression.
+
+Compressed payloads must declare their decompressed size in the zstd frame.
+Frames declaring more than 1 MiB are rejected before decompression.

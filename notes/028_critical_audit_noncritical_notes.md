@@ -679,12 +679,12 @@ with contextual errors.
 
 Checklist:
 
-- [ ] Add `required_string_list()` or equivalent beside existing
+- [x] Add `required_string_list()` or equivalent beside existing
       `required_string`/`required_int` helpers.
-- [ ] Require list type before iterating.
-- [ ] Validate sorted/unique string lists in the helper when requested.
-- [ ] Use the helper in exact small-support loaders.
-- [ ] Add loader tests for missing field, string-as-list, duplicate, and
+- [x] Require list type before iterating.
+- [x] Validate sorted/unique string lists in the helper when requested.
+- [x] Use the helper in exact small-support loaders.
+- [x] Add loader tests for missing field, string-as-list, duplicate, and
       unsorted cases.
 
 ### 20. `_core.pyi` exposes low-level internals

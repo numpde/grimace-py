@@ -422,6 +422,39 @@ class KnownStereoGapFixtureLoaderTest(unittest.TestCase):
                         )
 
 
+class ExactSmallSupportFixtureLoaderTest(unittest.TestCase):
+    def test_exact_small_support_rejects_malformed_string_lists(self) -> None:
+        invalid_cases = (
+            ("missing_expected", "expected", None, "nonempty list expected"),
+            ("string_expected", "expected", "CCO", "nonempty list expected"),
+            ("duplicate_expected", "expected", ["CCO", "CCO"], "non-canonical expected"),
+            ("unsorted_expected", "expected", ["OCC", "CCO"], "non-canonical expected"),
+            (
+                "nonstring_inventory",
+                "expected_inventory",
+                ["C", 123],
+                "expected_inventory as strings",
+            ),
+        )
+        for case_id, field_name, value, message in invalid_cases:
+            with self.subTest(case_id=case_id):
+                case = _serializer_case(case_id)
+                if value is None:
+                    del case[field_name]
+                else:
+                    case[field_name] = value
+
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    root = Path(tmpdir)
+                    _write_json(root / f"{RDKIT_VERSION}.json", _base_payload(case))
+
+                    with self.assertRaisesRegex(ValueError, message):
+                        load_pinned_exact_small_support_cases(
+                            RDKIT_VERSION,
+                            fixture_root=root,
+                        )
+
+
 class WriterSupportCountFixtureLoaderTest(unittest.TestCase):
     def test_writer_support_count_fixture_loads_directory_shards(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

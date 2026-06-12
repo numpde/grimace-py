@@ -116,6 +116,35 @@ def required_string_tuple(
     return tuple(values)
 
 
+def required_string_list(
+    raw_case: dict[str, object],
+    *,
+    field_name: str,
+    fixture_path: Path,
+    case_id: str,
+    sorted_unique: bool = False,
+) -> tuple[str, ...]:
+    raw_value = raw_case.get(field_name)
+    if not isinstance(raw_value, list) or not raw_value:
+        raise ValueError(
+            f"fixture {fixture_path} case {case_id!r} must define nonempty "
+            f"list {field_name}; got {raw_value!r}"
+        )
+    if sorted_unique:
+        return normalized_unique_sorted_strings(
+            raw_value,
+            field_name=field_name,
+            fixture_path=fixture_path,
+            case_id=case_id,
+        )
+    return required_string_tuple(
+        raw_value,
+        field_name=field_name,
+        fixture_path=fixture_path,
+        case_id=case_id,
+    )
+
+
 def optional_positive_int(
     raw_case: dict[str, object],
     *,

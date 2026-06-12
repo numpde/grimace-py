@@ -161,6 +161,13 @@ class _WriterGraphPolicyActionFamily(Enum):
     CLOSURE_PAIR = "closure_pair"
 
 
+class _WriterClosureEndpointSelectionKind(Enum):
+    NONE = "none"
+    CLOSURE_PAIR = "closure_pair"
+    CLOSURE_OPEN = "closure_open"
+    PAIR_AND_OPEN = "pair_and_open"
+
+
 @dataclass(frozen=True, slots=True)
 class _WriterResidualAttachmentPolicyKey:
     active_atom: AtomId
@@ -852,6 +859,62 @@ class _WriterClosureEndpointScheduleDecision:
         ).surviving_graph_action_surfaces
 
     @property
+    def considered_closure_pair_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            surface
+            for surface in self.considered_graph_action_surfaces
+            if surface.policy_family is _WriterGraphPolicyActionFamily.CLOSURE_PAIR
+        )
+
+    @property
+    def considered_closure_open_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            surface
+            for surface in self.considered_graph_action_surfaces
+            if surface.policy_family is _WriterGraphPolicyActionFamily.CLOSURE_OPEN
+        )
+
+    @property
+    def considered_closure_endpoint_selection_kind(
+        self,
+    ) -> _WriterClosureEndpointSelectionKind:
+        return _closure_endpoint_selection_kind_from_graph_action_surfaces(
+            self.considered_graph_action_surfaces
+        )
+
+    @property
+    def selected_closure_pair_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            surface
+            for surface in self.selected_graph_action_surfaces
+            if surface.policy_family is _WriterGraphPolicyActionFamily.CLOSURE_PAIR
+        )
+
+    @property
+    def selected_closure_open_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            surface
+            for surface in self.selected_graph_action_surfaces
+            if surface.policy_family is _WriterGraphPolicyActionFamily.CLOSURE_OPEN
+        )
+
+    @property
+    def selected_closure_endpoint_selection_kind(
+        self,
+    ) -> _WriterClosureEndpointSelectionKind:
+        return _closure_endpoint_selection_kind_from_graph_action_surfaces(
+            self.selected_graph_action_surfaces
+        )
+
+    @property
     def considered_residual_attachment_policy_emission_groups(
         self,
     ) -> tuple[_WriterResidualAttachmentPolicyEmissionGroup, ...]:
@@ -1067,6 +1130,60 @@ class _WriterActiveEmittedGraphPolicyDecision:
         self,
     ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
         return self.closure_endpoint_decision.considered_graph_action_surfaces
+
+    @property
+    def considered_closure_endpoint_selection_kind(
+        self,
+    ) -> _WriterClosureEndpointSelectionKind:
+        return (
+            self.closure_endpoint_decision
+            .considered_closure_endpoint_selection_kind
+        )
+
+    @property
+    def closure_endpoint_selection_kind(
+        self,
+    ) -> _WriterClosureEndpointSelectionKind:
+        if (
+            self.kind
+            is _WriterActiveEmittedGraphPolicyDecisionKind.CLOSURE_ENDPOINT
+        ):
+            return (
+                self.closure_endpoint_decision
+                .selected_closure_endpoint_selection_kind
+            )
+
+        return _WriterClosureEndpointSelectionKind.NONE
+
+    @property
+    def selected_closure_open_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        if (
+            self.kind
+            is not _WriterActiveEmittedGraphPolicyDecisionKind.CLOSURE_ENDPOINT
+        ):
+            return ()
+
+        return (
+            self.closure_endpoint_decision
+            .selected_closure_open_graph_action_surfaces
+        )
+
+    @property
+    def selected_closure_pair_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        if (
+            self.kind
+            is not _WriterActiveEmittedGraphPolicyDecisionKind.CLOSURE_ENDPOINT
+        ):
+            return ()
+
+        return (
+            self.closure_endpoint_decision
+            .selected_closure_pair_graph_action_surfaces
+        )
 
     @property
     def child_considered_graph_action_surfaces(
@@ -1980,6 +2097,30 @@ def _graph_policy_action_family_from_surface(
         SouthStarErrorKind.INTERNAL_INVARIANT,
         f"unknown graph policy action surface kind: {surface.kind!r}",
     )
+
+
+def _closure_endpoint_selection_kind_from_graph_action_surfaces(
+    surfaces: tuple[_WriterScheduledGraphActionSurface, ...],
+) -> _WriterClosureEndpointSelectionKind:
+    has_pair = any(
+        surface.policy_family is _WriterGraphPolicyActionFamily.CLOSURE_PAIR
+        for surface in surfaces
+    )
+    has_open = any(
+        surface.policy_family is _WriterGraphPolicyActionFamily.CLOSURE_OPEN
+        for surface in surfaces
+    )
+
+    if has_pair and has_open:
+        return _WriterClosureEndpointSelectionKind.PAIR_AND_OPEN
+
+    if has_pair:
+        return _WriterClosureEndpointSelectionKind.CLOSURE_PAIR
+
+    if has_open:
+        return _WriterClosureEndpointSelectionKind.CLOSURE_OPEN
+
+    return _WriterClosureEndpointSelectionKind.NONE
 
 
 _RESIDUAL_ATTACHMENT_POLICY_FAMILIES = frozenset(

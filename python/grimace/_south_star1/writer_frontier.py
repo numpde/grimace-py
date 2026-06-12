@@ -310,6 +310,65 @@ class _WriterFrontierResidualAttachmentEvidenceGroup:
 
 
 @dataclass(frozen=True, slots=True)
+class _WriterFrontierChoiceResidualAttachmentEvidence:
+    choice: _WriterFrontierChoiceSnapshotEntry
+    residual_attachment_evidence_groups: tuple[
+        _WriterFrontierResidualAttachmentEvidenceGroup,
+        ...,
+    ]
+
+    @property
+    def emitted_text(self) -> str:
+        return self.choice.emitted_text
+
+    @property
+    def successor(self) -> WriterFrontierCursor:
+        return self.choice.successor
+
+    @property
+    def supports(
+        self,
+    ) -> tuple[_WriterFrontierNextTokenSupport, ...]:
+        return self.choice.supports
+
+    @property
+    def residual_attachment_policy_keys(
+        self,
+    ) -> tuple[_WriterResidualAttachmentPolicyKey, ...]:
+        return tuple(
+            group.key
+            for group in self.residual_attachment_evidence_groups
+        )
+
+    @property
+    def selected_supports(
+        self,
+    ) -> tuple[_WriterFrontierNextTokenSupport, ...]:
+        return tuple(
+            support
+            for group in self.residual_attachment_evidence_groups
+            for support in group.selected_supports
+        )
+
+    @property
+    def selected_policy_families(
+        self,
+    ) -> tuple[_WriterGraphPolicyActionFamily, ...]:
+        return tuple(
+            support.policy_family
+            for support in self.selected_supports
+        )
+
+    @property
+    def has_residual_attachment_evidence(self) -> bool:
+        return bool(self.residual_attachment_evidence_groups)
+
+    @property
+    def public_choice(self) -> WriterFrontierChoice:
+        return self.choice.to_public_choice()
+
+
+@dataclass(frozen=True, slots=True)
 class _WriterFrontierNextTokenEntry:
     emitted_text: str
     supports: tuple[_WriterFrontierNextTokenSupport, ...]
@@ -612,6 +671,47 @@ class _WriterFrontierChoiceSnapshot:
         self,
     ) -> tuple[_WriterFrontierResidualAttachmentEvidenceGroup, ...]:
         return self.schedule_outcome.residual_attachment_evidence_groups
+
+    @property
+    def choice_residual_attachment_evidence(
+        self,
+    ) -> tuple[_WriterFrontierChoiceResidualAttachmentEvidence, ...]:
+        return tuple(
+            _WriterFrontierChoiceResidualAttachmentEvidence(
+                choice=choice,
+                residual_attachment_evidence_groups=(
+                    _writer_frontier_choice_residual_attachment_evidence_groups(
+                        choice=choice,
+                        schedule_outcome=self.schedule_outcome,
+                    )
+                ),
+            )
+            for choice in self.choices
+        )
+
+    def choice_residual_attachment_evidence_for_emitted_text(
+        self,
+        emitted_text: str,
+    ) -> _WriterFrontierChoiceResidualAttachmentEvidence | None:
+        matches = tuple(
+            evidence
+            for evidence in self.choice_residual_attachment_evidence
+            if evidence.emitted_text == emitted_text
+        )
+
+        if len(matches) > 1:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                (
+                    "writer choice snapshot contains duplicate emitted-text "
+                    f"residual evidence entries: {emitted_text!r}"
+                ),
+            )
+
+        if not matches:
+            return None
+
+        return matches[0]
 
     @property
     def public_choices(self) -> WriterFrontierChoices:
@@ -1025,6 +1125,54 @@ def _writer_frontier_residual_attachment_evidence_groups(
             ),
         )
         for key in order
+    )
+
+
+def _writer_frontier_choice_residual_attachment_evidence_groups(
+    *,
+    choice: _WriterFrontierChoiceSnapshotEntry,
+    schedule_outcome: _WriterFrontierScheduleOutcome,
+) -> tuple[_WriterFrontierResidualAttachmentEvidenceGroup, ...]:
+    selected_support_groups = choice.residual_attachment_support_groups
+
+    return tuple(
+        _WriterFrontierResidualAttachmentEvidenceGroup(
+            key=support_group.key,
+            resolved_policy_groups=tuple(
+                group
+                for group in (
+                    schedule_outcome
+                    .resolved_residual_attachment_policy_groups
+                )
+                if group.key == support_group.key
+            ),
+            support_dead_closure_open_vs_cyclic_tree_entry_policy_groups=tuple(
+                group
+                for group in (
+                    schedule_outcome
+                    .support_dead_closure_open_vs_cyclic_tree_entry_groups
+                )
+                if group.key == support_group.key
+            ),
+            unsupported_owner_scope_policy_groups=tuple(
+                group
+                for group in (
+                    schedule_outcome
+                    .unsupported_owner_scope_residual_attachment_policy_groups
+                )
+                if group.key == support_group.key
+            ),
+            unresolved_policy_groups=tuple(
+                group
+                for group in (
+                    schedule_outcome
+                    .unresolved_residual_attachment_policy_groups
+                )
+                if group.key == support_group.key
+            ),
+            selected_support_groups=(support_group,),
+        )
+        for support_group in selected_support_groups
     )
 
 

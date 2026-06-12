@@ -651,6 +651,27 @@ class _WriterSnapshotPrefixReadOutcome:
 
         return self.choice_snapshot.residual_attachment_evidence_groups
 
+    @property
+    def choice_residual_attachment_evidence(self):
+        if self.choice_snapshot is None:
+            return ()
+
+        return self.choice_snapshot.choice_residual_attachment_evidence
+
+    def choice_residual_attachment_evidence_for_emitted_text(
+        self,
+        emitted_text: str,
+    ):
+        if self.choice_snapshot is None:
+            return None
+
+        return (
+            self.choice_snapshot
+            .choice_residual_attachment_evidence_for_emitted_text(
+                emitted_text
+            )
+        )
+
 
 def _maybe_writer_frontier_choice_snapshot_entry_for_emitted_text(
     choice_snapshot: _WriterFrontierChoiceSnapshot,

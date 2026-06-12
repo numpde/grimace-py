@@ -1617,6 +1617,279 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
 
+    def test_writer_choice_snapshot_count_helpers_reject_missing_counts(self) -> None:
+        choice = self._test_choice_snapshot_entry(
+            "C",
+            successor_atom=AtomId(1),
+        )
+        choice_snapshot = self._test_frontier_choice_snapshot((choice,))
+
+        with self.assertRaises(SouthStarError) as support_raised:
+            writer_snapshot._count_writer_frontier_choice_snapshot_supports(
+                choice_snapshot,
+            )
+
+        self.assertIs(
+            support_raised.exception.kind,
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+        )
+
+        with self.assertRaises(SouthStarError) as completion_raised:
+            writer_snapshot._count_writer_frontier_choice_snapshot_completions(
+                choice_snapshot,
+            )
+
+        self.assertIs(
+            completion_raised.exception.kind,
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+        )
+
+    def test_count_writer_frontier_support_after_empty_emitted_texts_matches_snapshot_cursor(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+
+        self.assertEqual(
+            writer_snapshot._count_writer_frontier_support_after_emitted_texts(
+                snapshot,
+                prepared=prepared,
+                emitted_texts=(),
+            ),
+            count_writer_frontier_support(prepared, cursor.support_state),
+        )
+
+    def test_count_writer_completions_after_empty_emitted_texts_matches_snapshot_cursor(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+
+        self.assertEqual(
+            writer_snapshot._count_writer_completions_after_emitted_texts(
+                snapshot,
+                prepared=prepared,
+                emitted_texts=(),
+            ),
+            count_writer_cursor_completions(prepared, cursor),
+        )
+
+    def test_replayed_prefix_counts_match_advanced_snapshot_cursor(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        choices = writer_snapshot.resume_writer_frontier_choices_from_snapshot(
+            snapshot,
+            prepared=prepared,
+        )
+        first_text = choices.choices[0].emitted_text
+        advanced = writer_snapshot._advance_writer_search_snapshot_by_emitted_text(
+            snapshot,
+            prepared=prepared,
+            emitted_text=first_text,
+        )
+
+        self.assertEqual(
+            writer_snapshot._count_writer_frontier_support_after_emitted_texts(
+                snapshot,
+                prepared=prepared,
+                emitted_texts=(first_text,),
+            ),
+            count_writer_frontier_support(prepared, advanced.cursor.support_state),
+        )
+        self.assertEqual(
+            writer_snapshot._count_writer_completions_after_emitted_texts(
+                snapshot,
+                prepared=prepared,
+                emitted_texts=(first_text,),
+            ),
+            count_writer_cursor_completions(prepared, advanced.cursor),
+        )
+
+    def test_iter_writer_frontier_support_suffixes_after_empty_emitted_texts_matches_cursor_stream(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+
+        self.assertEqual(
+            tuple(
+                writer_snapshot
+                ._iter_writer_frontier_support_suffixes_after_emitted_texts(
+                    snapshot,
+                    prepared=prepared,
+                    emitted_texts=(),
+                )
+            ),
+            tuple(iter_writer_frontier_support(prepared, cursor)),
+        )
+
+    def test_iter_writer_frontier_support_suffixes_after_emitted_texts_matches_advanced_cursor_stream(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        choices = writer_snapshot.resume_writer_frontier_choices_from_snapshot(
+            snapshot,
+            prepared=prepared,
+        )
+        first_text = choices.choices[0].emitted_text
+        advanced = writer_snapshot._advance_writer_search_snapshot_by_emitted_text(
+            snapshot,
+            prepared=prepared,
+            emitted_text=first_text,
+        )
+
+        self.assertEqual(
+            tuple(
+                writer_snapshot
+                ._iter_writer_frontier_support_suffixes_after_emitted_texts(
+                    snapshot,
+                    prepared=prepared,
+                    emitted_texts=(first_text,),
+                )
+            ),
+            tuple(iter_writer_frontier_support(prepared, advanced.cursor)),
+        )
+
+    def test_iter_writer_frontier_support_suffixes_after_emitted_texts_uses_uncounted_snapshot(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._checked_writer_frontier_choice_snapshot_after_emitted_texts"
+            ),
+            wraps=(
+                writer_snapshot
+                ._checked_writer_frontier_choice_snapshot_after_emitted_texts
+            ),
+        ) as checked_snapshot:
+            tuple(
+                writer_snapshot
+                ._iter_writer_frontier_support_suffixes_after_emitted_texts(
+                    snapshot,
+                    prepared=prepared,
+                    emitted_texts=(),
+                )
+            )
+
+        self.assertTrue(checked_snapshot.call_args_list)
+        self.assertTrue(
+            all(
+                call.kwargs["include_counts"] is False
+                for call in checked_snapshot.call_args_list
+            )
+        )
+
+    def test_replayed_prefix_count_helpers_use_counted_snapshot(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._checked_writer_frontier_choice_snapshot_after_emitted_texts"
+            ),
+            wraps=(
+                writer_snapshot
+                ._checked_writer_frontier_choice_snapshot_after_emitted_texts
+            ),
+        ) as checked_snapshot:
+            writer_snapshot._count_writer_frontier_support_after_emitted_texts(
+                snapshot,
+                prepared=prepared,
+                emitted_texts=(),
+            )
+            writer_snapshot._count_writer_completions_after_emitted_texts(
+                snapshot,
+                prepared=prepared,
+                emitted_texts=(),
+            )
+
+        self.assertEqual(len(checked_snapshot.call_args_list), 2)
+        self.assertTrue(
+            all(
+                call.kwargs["include_counts"] is True
+                for call in checked_snapshot.call_args_list
+            )
+        )
+
+    def test_replayed_prefix_support_helpers_raise_for_invalid_emitted_text(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+
+        helpers = (
+            writer_snapshot._count_writer_frontier_support_after_emitted_texts,
+            writer_snapshot._count_writer_completions_after_emitted_texts,
+        )
+
+        for helper in helpers:
+            with self.subTest(helper=helper.__name__):
+                with self.assertRaises(SouthStarError) as raised:
+                    helper(
+                        snapshot,
+                        prepared=prepared,
+                        emitted_texts=("not-a-frontier-token",),
+                    )
+
+                self.assertIs(
+                    raised.exception.kind,
+                    SouthStarErrorKind.INVALID_FACTS,
+                )
+
+        with self.assertRaises(SouthStarError) as stream_raised:
+            tuple(
+                writer_snapshot
+                ._iter_writer_frontier_support_suffixes_after_emitted_texts(
+                    snapshot,
+                    prepared=prepared,
+                    emitted_texts=("not-a-frontier-token",),
+                )
+            )
+
+        self.assertIs(stream_raised.exception.kind, SouthStarErrorKind.INVALID_FACTS)
+
     def test_writer_choice_snapshot_from_snapshot_validates_before_frontier_snapshot(self) -> None:
         prepared = _prepare(chain_facts(("C", "C")))
         other_prepared = _prepare(cco_facts())

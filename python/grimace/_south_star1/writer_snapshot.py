@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 from dataclasses import replace
 from enum import Enum
@@ -46,6 +47,7 @@ from .writer_frontier import _WriterFrontierChoiceSnapshotEntry
 from .writer_frontier import _checked_writer_frontier_choice_snapshot
 from .writer_frontier import _raise_for_writer_frontier_schedule_outcome_blockers
 from .writer_frontier import _writer_frontier_choice_snapshot
+from .writer_frontier import iter_writer_frontier_support
 from .writer_state import ComponentCursor
 from .writer_state import ObligationStateKey
 from .writer_state import PendingEntryPhase
@@ -907,6 +909,122 @@ def _writer_frontier_choices_after_emitted_texts(
     )
 
     return choice_snapshot.public_choices
+
+
+def _count_writer_frontier_choice_snapshot_supports(
+    choice_snapshot: _WriterFrontierChoiceSnapshot,
+) -> int:
+    total = 0
+
+    if choice_snapshot.terminal is not None:
+        total += choice_snapshot.terminal.support_count
+
+    for choice in choice_snapshot.choices:
+        if choice.support_count is None:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "writer frontier choice snapshot is missing support counts",
+            )
+
+        total += choice.support_count
+
+    return total
+
+
+def _count_writer_frontier_choice_snapshot_completions(
+    choice_snapshot: _WriterFrontierChoiceSnapshot,
+) -> int:
+    total = 0
+
+    if choice_snapshot.terminal is not None:
+        total += choice_snapshot.terminal.completion_count
+
+    for choice in choice_snapshot.choices:
+        if choice.completion_count is None:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "writer frontier choice snapshot is missing completion counts",
+            )
+
+        total += choice.completion_count
+
+    return total
+
+
+def _iter_writer_frontier_support_suffixes_from_choice_snapshot(
+    prepared: SouthStarPreparedMol,
+    choice_snapshot: _WriterFrontierChoiceSnapshot,
+) -> Iterator[str]:
+    if choice_snapshot.terminal is not None:
+        yield ""
+
+    for choice in choice_snapshot.choices:
+        for suffix in iter_writer_frontier_support(
+            prepared,
+            choice.successor,
+        ):
+            yield choice.emitted_text + suffix
+
+
+def _count_writer_frontier_support_after_emitted_texts(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    emitted_texts: tuple[str, ...],
+) -> int:
+    choice_snapshot = (
+        _checked_writer_frontier_choice_snapshot_after_emitted_texts(
+            snapshot,
+            prepared=prepared,
+            emitted_texts=emitted_texts,
+            include_counts=True,
+        )
+    )
+
+    return _count_writer_frontier_choice_snapshot_supports(
+        choice_snapshot
+    )
+
+
+def _count_writer_completions_after_emitted_texts(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    emitted_texts: tuple[str, ...],
+) -> int:
+    choice_snapshot = (
+        _checked_writer_frontier_choice_snapshot_after_emitted_texts(
+            snapshot,
+            prepared=prepared,
+            emitted_texts=emitted_texts,
+            include_counts=True,
+        )
+    )
+
+    return _count_writer_frontier_choice_snapshot_completions(
+        choice_snapshot
+    )
+
+
+def _iter_writer_frontier_support_suffixes_after_emitted_texts(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    emitted_texts: tuple[str, ...],
+) -> Iterator[str]:
+    choice_snapshot = (
+        _checked_writer_frontier_choice_snapshot_after_emitted_texts(
+            snapshot,
+            prepared=prepared,
+            emitted_texts=emitted_texts,
+            include_counts=False,
+        )
+    )
+
+    yield from _iter_writer_frontier_support_suffixes_from_choice_snapshot(
+        prepared,
+        choice_snapshot,
+    )
 
 
 def resume_writer_frontier_choices_from_snapshot(

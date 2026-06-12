@@ -59,12 +59,9 @@ here.
   If future composition needs a weaker fragment-level predicate, it should use
   a distinct internal name; public `is_terminal` should remain a stopping
   predicate.
-- `PreparedMol.from_bytes()` requires zstd frames to carry content size and
-  checksum before decompression, but it does not apply an explicit
-  Grimace-level maximum decompressed-size policy before calling zstd. The Rust
-  raw-byte reader bounds internal vector lengths against the available payload,
-  so this is not a format-safety break for valid raw payloads, but untrusted
-  compressed input can still be a memory-pressure surface.
+- `PreparedMol` raw bytes now have a 1 MiB cap enforced on raw reads, raw
+  writes, zstd-declared content size, and zstd decompressed output. That closes
+  the earlier untrusted compressed-input memory-pressure surface.
 - The release workflow publishes the GitHub release and PyPI artifacts as
   sibling jobs after wheel/sdist validation. Both revalidate artifacts before
   acting, but PyPI publication does not depend on the GitHub release job
@@ -448,10 +445,10 @@ Checklist:
       now; the current public/runtime model only needs `is_terminal` as a
       stopping predicate.
 
-### 11. PreparedMol zstd decompression has no Grimace size cap
+### 11. PreparedMol zstd decompression size cap
 
-Issue: zstd frames require checksum and content size, but Grimace does not apply
-an explicit maximum decompressed-size policy before decompression.
+Issue found: zstd frames required checksum and content size, but Grimace did
+not apply an explicit maximum decompressed-size policy before decompression.
 
 Serious alternatives:
 
@@ -465,16 +462,19 @@ Principled direction: add a fixed public safety cap first. A configurable cap is
 surface area; streaming into Rust is larger work. A hard cap protects untrusted
 input while keeping `from_bytes()` simple.
 
+Chosen policy: raw `PreparedMol` payloads are limited to 1 MiB. The same limit
+applies to raw reads, raw writes, zstd-declared content size, and the actual
+decompressed zstd payload. This keeps the storage contract self-consistent:
+Grimace should not emit bytes that its reader refuses.
+
 Checklist:
 
-- [ ] Choose an initial cap based on observed prepared-mol sizes plus large
-      headroom.
-- [ ] Parse zstd frame content size and reject sizes above the cap before
-      decompression.
-- [ ] After decompression, verify actual length equals the announced size when
-      available.
-- [ ] Add tests for over-cap frame metadata and over-cap decompressed payloads.
-- [ ] Document the cap under PreparedMol bytes limitations.
+- [x] Choose an initial cap: 1 MiB raw `PreparedMol` bytes.
+- [x] Parse zstd frame content size and reject sizes above the cap before
+      dictionary lookup or decompression.
+- [x] After decompression, verify actual length equals the announced size.
+- [x] Add tests for over-cap frame metadata and over-cap decompressed payloads.
+- [x] Document the cap under PreparedMol bytes limitations.
 - [ ] Revisit streaming only if legitimate workloads exceed the cap.
 
 ### 12. GitHub release and PyPI publish are sibling jobs

@@ -22,6 +22,7 @@ _ZSTD_MANIFEST_FILE = "default_v1.json"
 _ZSTD_DICTIONARY_FILE = "default_v1.zstdict"
 _DEFAULT_ZSTD_LEVEL = 3
 _DEFAULT_ZSTD_DICTIONARY_LEVEL = 3
+_MAX_PREPARED_MOL_RAW_BYTES = 1024 * 1024
 _ZSTD_DICTIONARY_BY_ID: dict[int, object] = {}
 _ZSTD_DICTIONARY_ID_BY_TRAINING_LEVEL: dict[int, int] = {}
 
@@ -48,6 +49,7 @@ class PreparedMol:
         level: int = _DEFAULT_ZSTD_LEVEL,
     ) -> bytes:
         raw_payload = self._inner.to_bytes()
+        _check_raw_prepared_mol_size(len(raw_payload))
         if compression is None:
             return raw_payload
         if compression != "zstd":
@@ -75,6 +77,7 @@ class PreparedMol:
         if not isinstance(data, bytes):
             raise TypeError("PreparedMol.from_bytes requires bytes")
         if data.startswith(_RAW_PREPARED_MOL_MAGIC):
+            _check_raw_prepared_mol_size(len(data))
             return _make_prepared_mol(_core.PreparedMol.from_bytes(data))
         if data.startswith(_ZSTD_FRAME_MAGIC):
             raw_payload = _decompress_prepared_mol_zstd(data)
@@ -91,6 +94,11 @@ def _load_zstd() -> Any:
 def _require_int(value: object, name: str) -> None:
     if not isinstance(value, int) or isinstance(value, bool):
         raise TypeError(f"{name} must be an integer")
+
+
+def _check_raw_prepared_mol_size(size: int) -> None:
+    if size > _MAX_PREPARED_MOL_RAW_BYTES:
+        raise ValueError("PreparedMol payload exceeds the 1 MiB size limit")
 
 
 def _zstd_dictionary_for_training_level(
@@ -271,18 +279,43 @@ def _zstd_frame_dictionary_id(data: bytes) -> int:
 
 def _decompress_prepared_mol_zstd(data: bytes) -> bytes:
     dictionary_id = _zstd_frame_dictionary_id(data)
-    dictionary = _zstd_dictionary_for_id(dictionary_id)
     zstd = _load_zstd()
+    content_size = _zstd_frame_content_size(zstd, data)
+    # This is the allocation guard: reject oversized frames before loading a
+    # dictionary or asking zstd to materialize the raw PreparedMol bytes.
+    _check_raw_prepared_mol_size(content_size)
+
+    dictionary = _zstd_dictionary_for_id(dictionary_id)
     decompressor = zstd.ZstdDecompressor(dict_data=dictionary)
     try:
         raw_payload = decompressor.decompress(data, allow_extra_data=False)
     except zstd.ZstdError as exc:
         raise ValueError("Malformed PreparedMol zstd payload") from exc
-    if not isinstance(raw_payload, bytes) or not raw_payload.startswith(
-        _RAW_PREPARED_MOL_MAGIC
-    ):
+    if not isinstance(raw_payload, bytes):
+        raise ValueError("Malformed PreparedMol zstd payload")
+    _check_raw_prepared_mol_size(len(raw_payload))
+    if len(raw_payload) != content_size:
+        raise ValueError("Malformed PreparedMol zstd payload")
+    if not raw_payload.startswith(_RAW_PREPARED_MOL_MAGIC):
         raise ValueError("Malformed PreparedMol zstd payload")
     return raw_payload
+
+
+def _zstd_frame_content_size(zstd: Any, data: bytes) -> int:
+    try:
+        content_size = zstd.frame_content_size(data)
+    except zstd.ZstdError as exc:
+        raise ValueError("Malformed PreparedMol zstd payload") from exc
+
+    if content_size == zstd.CONTENTSIZE_UNKNOWN:
+        raise ValueError("PreparedMol zstd frame does not include content size")
+    if content_size == zstd.CONTENTSIZE_ERROR:
+        raise ValueError("Malformed PreparedMol zstd payload")
+    if not isinstance(content_size, int) or isinstance(content_size, bool):
+        raise ValueError("Malformed PreparedMol zstd payload")
+    if content_size < 0:
+        raise ValueError("Malformed PreparedMol zstd payload")
+    return content_size
 
 
 def _make_prepared_mol(inner: object) -> PreparedMol:

@@ -132,15 +132,14 @@ For Grimace-produced frames, require:
 - a nonzero dictionary ID
 - frame content size present
 - content checksum present
-- decompressed size below a named implementation limit
+- decompressed size at or below the 1 MiB raw `PreparedMol` limit
 
 The reader should reject missing content size or missing checksum for v1
 compressed `PreparedMol` payloads. Even with content size present,
 decompression must be bounded so a hostile frame cannot allocate unbounded
-memory before the raw `GPM\0` parser sees it. Use a named constant for the cap
-and test it directly. The cap is part of the implementation contract: choose it
-large enough for the largest supported raw `PreparedMol`, and document that
-larger payloads are unsupported rather than trying to allocate and hope.
+memory before the raw `GPM\0` parser sees it. The cap is part of the
+implementation contract: payloads above 1 MiB are unsupported rather than
+allocated speculatively.
 
 If the frame has no dictionary ID, has dictionary ID zero, or references an
 unknown dictionary, `from_bytes(payload)` must fail with a clear error. v1 only

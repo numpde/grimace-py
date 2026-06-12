@@ -72,6 +72,7 @@ all_smiles = tuple(
 ```
 
 `PreparedMol.to_bytes()` returns a versioned binary payload owned by the Rust
-core. Treat the bytes as opaque.
+core. Treat the bytes as opaque. Raw payloads, including the decompressed form
+of zstd payloads, are limited to 1 MiB.
 
 For the supported writer flags, see [Runtime](../runtime.html).

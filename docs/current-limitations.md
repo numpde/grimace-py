@@ -38,3 +38,9 @@ Package metadata declares Python `>=3.11` and `rdkit>=2026.3`.
 The exercised release assets are Linux `x86_64` wheels for CPython `3.12` and
 `3.13`, plus a source distribution. Other Python versions and non-Linux
 platforms are expected source-build paths today.
+
+## PreparedMol bytes
+
+`PreparedMol.to_bytes()` and `PreparedMol.from_bytes(...)` accept raw prepared
+payloads up to 1 MiB. zstd-compressed payloads must declare and decompress to a
+raw payload within the same limit.

@@ -39,6 +39,7 @@ class ZstdFrameHeader:
     dictionary_id: int | None
     dictionary_id_offset: int | None
     dictionary_id_size: int
+    content_size: int | None
     has_content_size: bool
     has_checksum: bool
 
@@ -74,13 +75,50 @@ def _read_zstd_frame_header(payload: bytes) -> ZstdFrameHeader:
             payload[offset : offset + dictionary_id_size],
             "little",
         )
+        offset += dictionary_id_size
+
+    content_size: int | None = None
+    if content_size_present:
+        content_size_size = (0, 2, 4, 8)[content_size_flag]
+        if single_segment_flag and content_size_flag == 0:
+            content_size_size = 1
+        if len(payload) < offset + content_size_size:
+            raise AssertionError("payload is too short for zstd content size")
+        content_size = int.from_bytes(
+            payload[offset : offset + content_size_size],
+            "little",
+        )
+        if content_size_size == 2:
+            content_size += 256
 
     return ZstdFrameHeader(
         dictionary_id=dictionary_id,
         dictionary_id_offset=dictionary_id_offset,
         dictionary_id_size=dictionary_id_size,
+        content_size=content_size,
         has_content_size=content_size_present,
         has_checksum=checksum_flag,
+    )
+
+
+def _zstd_frame_header_with_content_size(
+    *,
+    dictionary_id: int,
+    content_size: int,
+) -> bytes:
+    if not 0 <= dictionary_id < (1 << 32):
+        raise AssertionError("dictionary ID does not fit a 4-byte zstd header")
+    if not 0 <= content_size < (1 << 32):
+        raise AssertionError("content size does not fit a 4-byte zstd header")
+
+    descriptor = 0b1000_0000 | 0b0010_0000 | 0b0000_0100 | 0b0000_0011
+    return b"".join(
+        (
+            ZSTD_FRAME_MAGIC,
+            bytes((descriptor,)),
+            dictionary_id.to_bytes(4, "little"),
+            content_size.to_bytes(4, "little"),
+        ),
     )
 
 
@@ -275,6 +313,99 @@ class PreparedMolZstdContractTests(unittest.TestCase):
                     kwargs=kwargs,
                 )
 
+    def test_to_bytes_rejects_raw_payloads_above_size_limit(self) -> None:
+        class FakePreparedMolInner:
+            def to_bytes(self) -> bytes:
+                return RAW_PREPARED_MOL_MAGIC + b"\0" * (
+                    prepared_mol_module._MAX_PREPARED_MOL_RAW_BYTES
+                    - len(RAW_PREPARED_MOL_MAGIC)
+                    + 1
+                )
+
+        prepared = prepared_mol_module._make_prepared_mol(FakePreparedMolInner())
+
+        with self.assertRaisesRegex(ValueError, "exceeds"):
+            prepared.to_bytes()
+
+    def test_from_bytes_rejects_raw_payloads_above_size_limit(self) -> None:
+        raw_payload = RAW_PREPARED_MOL_MAGIC + b"\0" * (
+            prepared_mol_module._MAX_PREPARED_MOL_RAW_BYTES
+            - len(RAW_PREPARED_MOL_MAGIC)
+            + 1
+        )
+
+        with self.assertRaisesRegex(ValueError, "exceeds"):
+            grimace.PreparedMol.from_bytes(raw_payload)
+
+    def test_from_bytes_rejects_declared_zstd_size_above_limit_before_lookup(
+        self,
+    ) -> None:
+        dictionary_id = _dictionary_id_for_training_level(3)
+        payload = _zstd_frame_header_with_content_size(
+            dictionary_id=dictionary_id,
+            content_size=prepared_mol_module._MAX_PREPARED_MOL_RAW_BYTES + 1,
+        )
+
+        with mock.patch.object(
+            prepared_mol_module,
+            "_zstd_dictionary_for_id",
+            side_effect=AssertionError("dictionary lookup should not run"),
+        ):
+            with self.assertRaisesRegex(ValueError, "exceeds"):
+                grimace.PreparedMol.from_bytes(payload)
+
+    def test_from_bytes_rejects_decompressed_zstd_payloads_above_size_limit(
+        self,
+    ) -> None:
+        prepared = self._prepare("CCO", isomericSmiles=False)
+        zstd_payload = prepared.to_bytes(compression="zstd")
+        oversized_raw_payload = RAW_PREPARED_MOL_MAGIC + b"\0" * (
+            prepared_mol_module._MAX_PREPARED_MOL_RAW_BYTES
+            - len(RAW_PREPARED_MOL_MAGIC)
+            + 1
+        )
+
+        class FakeZstdError(Exception):
+            pass
+
+        class FakeZstdDecompressor:
+            def __init__(self, *, dict_data: object) -> None:
+                pass
+
+            def decompress(
+                self,
+                data: bytes,
+                *,
+                allow_extra_data: bool,
+            ) -> bytes:
+                if data != zstd_payload or allow_extra_data:
+                    raise AssertionError("unexpected zstd decompression call")
+                return oversized_raw_payload
+
+        class FakeZstd:
+            CONTENTSIZE_UNKNOWN = -1
+            CONTENTSIZE_ERROR = -2
+            ZstdError = FakeZstdError
+
+            @staticmethod
+            def frame_content_size(data: bytes) -> int:
+                if data != zstd_payload:
+                    raise AssertionError("unexpected zstd frame inspection")
+                return len(prepared.to_bytes())
+
+            ZstdDecompressor = FakeZstdDecompressor
+
+        with (
+            mock.patch.object(
+                prepared_mol_module,
+                "_zstd_dictionary_for_id",
+                return_value=object(),
+            ),
+            mock.patch.object(prepared_mol_module, "_load_zstd", return_value=FakeZstd),
+        ):
+            with self.assertRaisesRegex(ValueError, "exceeds"):
+                grimace.PreparedMol.from_bytes(zstd_payload)
+
     def test_default_zstd_write_embeds_builtin_dictionary_selector(self) -> None:
         prepared = self._prepare("CCO", isomericSmiles=False)
 
@@ -282,6 +413,7 @@ class PreparedMolZstdContractTests(unittest.TestCase):
         header = _read_zstd_frame_header(zstd_payload)
 
         self.assertEqual(_dictionary_id_for_training_level(3), header.dictionary_id)
+        self.assertEqual(len(prepared.to_bytes()), header.content_size)
         self.assertTrue(header.has_content_size)
         self.assertTrue(header.has_checksum)
 

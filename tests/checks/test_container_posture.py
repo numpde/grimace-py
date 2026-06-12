@@ -68,9 +68,16 @@ class ContainerPostureTests(unittest.TestCase):
 
     def test_test_compose_has_strict_copied_context_posture(self) -> None:
         compose = read_text("compose/test.yml")
-        for service in ("rust", "test", "parity", "exact-public-invariants"):
+        for service in (
+            "rust",
+            "test",
+            "contract",
+            "parity",
+            "exact-public-invariants",
+        ):
             with self.subTest(service=service):
                 self.assertRegex(compose, rf"(?m)^  {service}:$")
+        self.assertIn("- tests/contract", compose)
         self.assertIn("dockerfile: containers/test/Dockerfile", compose)
         self.assertIn("- --offline\n      - --locked", compose)
         self.assertRegex(compose, r'(?m)^  user:\s+"65532:65532"\s*$')
@@ -644,6 +651,7 @@ class ContainerPostureTests(unittest.TestCase):
             "checks": "checks.yml,checks",
             "rust": "test.yml,rust",
             "test": "test.yml,test",
+            "contract": "test.yml,contract",
             "parity": "test.yml,parity",
             "exact-public-invariants": "test.yml,exact-public-invariants",
             "test-package": "test-package.yml,test-package",
@@ -682,7 +690,7 @@ class ContainerPostureTests(unittest.TestCase):
         )
         self.assertRegex(
             makefile,
-            r"(?m)^ci: checks rust test parity exact-public-invariants$",
+            r"(?m)^ci: checks rust test contract parity exact-public-invariants$",
         )
 
     def test_ci_workflow_uses_container_make_lanes(self) -> None:

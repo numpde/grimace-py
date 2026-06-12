@@ -310,19 +310,20 @@ Serious alternatives:
 - Split slow contract tests from cheap static contract tests.
 - Move high-value contract tests into `tests/checks`.
 
-Principled direction: add `make contract` and include it in `make ci` if the
-runtime cost is modest. Keeping a named lane preserves intent better than
-silently mixing contracts into generic checks.
+Principled direction: add `make contract` in the installed-package test image
+and include it in `make ci` if the runtime cost is modest. Keeping a named lane
+preserves intent better than silently mixing contracts into generic checks.
 
 Checklist:
 
-- [ ] Measure current `tests/contract` runtime inside the checks container.
-- [ ] Add a `contract` service or reuse the checks service if dependencies are
-      identical.
-- [ ] Add `make contract` with the same strict container posture as checks.
-- [ ] Include `contract` in `make ci` only if the measured cost is acceptable.
-- [ ] Update docs/development/make-lanes.md.
-- [ ] Add a posture test proving CI runs the contract lane.
+- [x] Measure current `tests/contract` runtime inside the installed-package
+      test container.
+- [x] Add a `contract` service in the existing test-image Compose file.
+- [x] Add `make contract` with the same strict copied-context posture as the
+      installed-package test lanes.
+- [x] Include `contract` in `make ci` only if the measured cost is acceptable.
+- [x] Update the containerized development lane guide.
+- [x] Add a posture test proving CI runs the contract lane.
 
 ### 7. Rust frontier prefix homogeneity uses `debug_assert!`
 

@@ -12,6 +12,7 @@ and avoid the host Python environment for routine checks.
 | `make checks` | `checks` service in `compose/checks.yml`; read-only checkout | No project artifacts |
 | `make rust` | `rust` service in `compose/test.yml`; copied-context test image | Container-local test output only |
 | `make test` | `test` service in `compose/test.yml`; installed package | Container-local test output only |
+| `make contract` | `contract` service in `compose/test.yml`; installed-package API/schema/docs contracts | Container-local test output only |
 | `make parity` | `parity` service in `compose/test.yml`; pinned RDKit parity | Container-local test output only |
 | `make exact-public-invariants` | `exact-public-invariants` service in `compose/test.yml` | Container-local test output only |
 | `make test-package` | `test-package` service in `compose/test-package.yml` | Container-local temporary directory only |
@@ -20,7 +21,7 @@ and avoid the host Python environment for routine checks.
 | `make timings-prepared-mol-zstd` | `timings-prepared-mol-zstd` service in `compose/timings-prepared-mol-zstd.yml` | PreparedMol zstd timing TSV and plots |
 | `make docs` | `docs` service in `compose/docs.yml`; GitHub Pages Jekyll image | `build/docs-site/` |
 | `make docs-serve` | `make docs`, then `docs-serve` service in `compose/docs.yml` | Rebuilds `build/docs-site/`; publishes a local HTTP port |
-| `make ci` | `checks`, `rust`, `test`, `parity`, and `exact-public-invariants` | No package, timing, or docs artifacts |
+| `make ci` | `checks`, `rust`, `test`, `contract`, `parity`, and `exact-public-invariants` | No package, timing, or docs artifacts |
 
 ## Details
 
@@ -30,9 +31,14 @@ and avoid the host Python environment for routine checks.
 make checks
 make rust
 make test
+make contract
 make parity
 make exact-public-invariants
 ```
+
+`make contract` runs `tests/contract/` in the installed-package test image.
+Those tests check public API signatures, fixture schemas, documentation
+contracts, and boundary invariants that need the built package.
 
 `make test-package` builds release-shaped wheel and source distribution
 artifacts inside the `test-package` container, validates them, installs

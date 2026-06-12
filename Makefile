@@ -39,7 +39,7 @@ define compose_run
 $(COMPOSE_ENV) $(DOCKER_COMPOSE) -f $(COMPOSE_DIR)/$(1) run --build --rm $(2)
 endef
 
-.PHONY: help checks rust test parity exact-public-invariants test-package timings-enum prepared-mol-zstd-dictionary timings-prepared-mol-zstd docs docs-serve ci
+.PHONY: help checks rust test contract parity exact-public-invariants test-package timings-enum prepared-mol-zstd-dictionary timings-prepared-mol-zstd docs docs-serve ci
 
 docs docs-serve: export DOCS_PORT := $(value DOCS_PORT)
 prepared-mol-zstd-dictionary: export PREPARED_MOL_ZSTD_CREATED_DATE := $(value PREPARED_MOL_ZSTD_CREATED_DATE)
@@ -54,6 +54,7 @@ help:
 	  '  make checks  Run offline repository/source checks' \
 	  '  make rust    Run Rust unit tests in the copied-context test image' \
 	  '  make test    Run installed-package correctness in the test image' \
+	  '  make contract  Run API/schema/docs contract tests in the test image' \
 	  '  make parity  Run pinned RDKit parity in the test image' \
 	  '  make exact-public-invariants  Run exact public invariant tests' \
 	  '  make test-package  Build and validate wheel/sdist artifacts in a container temp directory' \
@@ -62,7 +63,7 @@ help:
 	  '  make timings-prepared-mol-zstd  Measure PreparedMol zstd timing tradeoffs' \
 	  '  make docs     Build the documentation site under build/docs-site/' \
 	  '  make docs-serve  Serve the documentation site on DOCS_PORT' \
-	  '  make ci      Run checks, rust, test, parity, and exact invariants' \
+	  '  make ci      Run checks, rust, test, contract, parity, and exact invariants' \
 	  '' \
 	  'Variables:' \
 	  '  DOCS_PORT=8000  Local docs URL and docs-serve host port; must be 1..65535' \
@@ -83,6 +84,9 @@ rust:
 
 test:
 	$(call compose_run,test.yml,test)
+
+contract:
+	$(call compose_run,test.yml,contract)
 
 parity:
 	$(call compose_run,test.yml,parity)
@@ -152,4 +156,4 @@ docs-serve: docs
 	$(DOCS_ARTIFACTS_GUARD); \
 	$(COMPOSE_ENV) $(DOCKER_COMPOSE) -f $(COMPOSE_DIR)/docs.yml run --rm --publish "127.0.0.1:$${DOCS_PORT}:8000" docs-serve
 
-ci: checks rust test parity exact-public-invariants
+ci: checks rust test contract parity exact-public-invariants

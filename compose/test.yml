@@ -33,6 +33,18 @@ services:
   test:
     <<: *test-runtime
 
+  contract:
+    <<: *test-runtime
+    command:
+      - -m
+      - unittest
+      - discover
+      - -s
+      - tests/contract
+      - -t
+      - .
+      - -q
+
   parity:
     <<: *test-runtime
     command:

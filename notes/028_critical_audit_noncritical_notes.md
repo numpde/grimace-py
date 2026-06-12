@@ -838,9 +838,10 @@ the check offline, dependency-light, and close to the docs source.
 
 Checklist:
 
-- [ ] Replace raw HTML links with Markdown where possible.
-- [ ] Extend `tests/checks/test_docs_pages.py` to collect raw `href` and `src`
+- [x] Review raw HTML links; keep the docs index table as HTML because Markdown
+      table syntax would be less readable there.
+- [x] Extend `tests/checks/test_docs_pages.py` to collect raw `href` and `src`
       attributes from Markdown files.
-- [ ] Resolve local targets using the same rules as Markdown links.
-- [ ] Reject external raw HTML links unless explicitly allowlisted.
-- [ ] Add a test fixture or real docs case proving raw HTML links are checked.
+- [x] Resolve local targets using the same rules as Markdown links.
+- [x] Reject external raw HTML links unless explicitly allowlisted.
+- [x] Add a test fixture or real docs case proving raw HTML links are checked.

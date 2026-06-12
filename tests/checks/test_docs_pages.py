@@ -11,6 +11,10 @@ ROOT = Path(__file__).resolve().parents[2]
 LOCAL_LINK = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 HEADING = re.compile(r"^(#{1,6}) ")
 HTML_IMAGE_SRC = re.compile(r'<img\s+[^>]*src="([^"]+)"')
+HTML_LINK_ATTR = re.compile(
+    r"<(?:a|img)\b[^>]*\s(?:href|src)=(?P<quote>['\"])(?P<target>.*?)(?P=quote)",
+    re.IGNORECASE,
+)
 
 
 def markdown_files() -> tuple[Path, ...]:
@@ -38,6 +42,24 @@ def linked_path(source: Path, raw_target: str) -> Path | None:
     if source.is_relative_to(ROOT / "docs") and path_text.endswith(".html"):
         path_text = f"{path_text[:-5]}.md"
     return (source.parent / path_text).resolve()
+
+
+def is_external_target(raw_target: str) -> bool:
+    parsed = urlparse(raw_target.strip())
+    return bool(parsed.scheme or parsed.netloc)
+
+
+def raw_html_attribute_targets(markdown: Path) -> tuple[str, ...]:
+    targets: list[str] = []
+    in_fence = False
+    for line in markdown.read_text(encoding="utf-8").splitlines():
+        if line.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        targets.extend(match.group("target") for match in HTML_LINK_ATTR.finditer(line))
+    return tuple(targets)
 
 
 def document_headings(markdown: Path) -> tuple[int, ...]:
@@ -269,6 +291,33 @@ class DocsPagesTests(unittest.TestCase):
                     missing.append(f"{markdown.relative_to(ROOT)} -> {match.group(1)}")
 
         self.assertEqual([], missing)
+
+    def test_raw_html_links_resolve(self) -> None:
+        offenders: list[str] = []
+        observed: set[tuple[Path, str]] = set()
+        for markdown in markdown_files():
+            for raw_target in raw_html_attribute_targets(markdown):
+                observed.add((markdown.relative_to(ROOT), raw_target))
+                if is_external_target(raw_target):
+                    offenders.append(
+                        f"{markdown.relative_to(ROOT)} -> raw external {raw_target}"
+                    )
+                    continue
+
+                target = linked_path(markdown, raw_target)
+                if target is None:
+                    continue
+                try:
+                    target.relative_to(ROOT)
+                except ValueError:
+                    offenders.append(f"{markdown.relative_to(ROOT)} -> {raw_target}")
+                    continue
+                if not target.exists():
+                    offenders.append(f"{markdown.relative_to(ROOT)} -> {raw_target}")
+
+        self.assertEqual([], offenders)
+        self.assertIn((Path("docs/index.md"), "getting-started.html"), observed)
+        self.assertTrue(any(target.endswith(".png") for _, target in observed))
 
 
 if __name__ == "__main__":

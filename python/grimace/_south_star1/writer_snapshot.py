@@ -817,6 +817,28 @@ class _WriterSnapshotPrefixReadOutcome:
             )
         )
 
+    @property
+    def final_choice_unsupported_owner_scope_evidence(self):
+        if self.choice_snapshot is None:
+            return ()
+
+        return self.choice_snapshot.unsupported_owner_scope_choice_evidence
+
+    @property
+    def final_choice_unsupported_owner_scope_kinds(self):
+        if self.choice_snapshot is None:
+            return ()
+
+        return self.choice_snapshot.unsupported_owner_scope_kinds
+
+    @property
+    def blocker_owner_scope_kinds(self):
+        return tuple(
+            blocker.residual_attachment_owner_scope_kind
+            for blocker in self.graph_policy_blockers
+            if blocker.residual_attachment_owner_scope_kind is not None
+        )
+
 
 def _maybe_writer_frontier_choice_snapshot_entry_for_emitted_text(
     choice_snapshot: _WriterFrontierChoiceSnapshot,

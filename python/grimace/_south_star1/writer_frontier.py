@@ -27,6 +27,7 @@ from .writer_transitions import _WriterActiveEmittedGraphPolicyBlocker
 from .writer_transitions import _WriterActiveEmittedGraphPolicyDecision
 from .writer_transitions import _WriterGraphPolicyActionFamily
 from .writer_transitions import _WriterNextTokenFrontierSupport
+from .writer_transitions import _WriterResidualAttachmentOwnerScopeKind
 from .writer_transitions import _WriterResidualAttachmentPolicyGroup
 from .writer_transitions import _WriterResidualAttachmentPolicyKey
 from .writer_transitions import _WriterTopLevelScheduleOutcome
@@ -309,6 +310,101 @@ class _WriterFrontierResidualAttachmentEvidenceGroup:
         return bool(self.selected_support_groups)
 
     @property
+    def resolved_policy_owner_scope_kinds(
+        self,
+    ) -> tuple[_WriterResidualAttachmentOwnerScopeKind, ...]:
+        return _owner_scope_kinds_from_residual_policy_groups(
+            self.resolved_policy_groups
+        )
+
+    @property
+    def support_dead_closure_open_vs_cyclic_tree_entry_policy_owner_scope_kinds(
+        self,
+    ) -> tuple[_WriterResidualAttachmentOwnerScopeKind, ...]:
+        return _owner_scope_kinds_from_residual_policy_groups(
+            self.support_dead_closure_open_vs_cyclic_tree_entry_policy_groups
+        )
+
+    @property
+    def unsupported_owner_scope_kinds(
+        self,
+    ) -> tuple[_WriterResidualAttachmentOwnerScopeKind, ...]:
+        return _owner_scope_kinds_from_residual_policy_groups(
+            self.unsupported_owner_scope_policy_groups
+        )
+
+    @property
+    def unresolved_policy_owner_scope_kinds(
+        self,
+    ) -> tuple[_WriterResidualAttachmentOwnerScopeKind, ...]:
+        return _owner_scope_kinds_from_residual_policy_groups(
+            self.unresolved_policy_groups
+        )
+
+    @property
+    def policy_owner_scope_kinds(
+        self,
+    ) -> tuple[_WriterResidualAttachmentOwnerScopeKind, ...]:
+        return (
+            *self.resolved_policy_owner_scope_kinds,
+            *(
+                self
+                .support_dead_closure_open_vs_cyclic_tree_entry_policy_owner_scope_kinds
+            ),
+            *self.unsupported_owner_scope_kinds,
+            *self.unresolved_policy_owner_scope_kinds,
+        )
+
+    @property
+    def has_active_atom_owner_scope_evidence(self) -> bool:
+        return any(
+            scope is _WriterResidualAttachmentOwnerScopeKind.ACTIVE_ATOM
+            for scope in self.policy_owner_scope_kinds
+        )
+
+    @property
+    def has_branch_return_owner_scope_evidence(self) -> bool:
+        return any(
+            scope is _WriterResidualAttachmentOwnerScopeKind.BRANCH_RETURN
+            for scope in self.policy_owner_scope_kinds
+        )
+
+    @property
+    def has_pending_parent_owner_scope_evidence(self) -> bool:
+        return any(
+            scope is _WriterResidualAttachmentOwnerScopeKind.PENDING_PARENT
+            for scope in self.policy_owner_scope_kinds
+        )
+
+    @property
+    def has_open_ring_endpoint_owner_scope_evidence(self) -> bool:
+        return any(
+            scope is _WriterResidualAttachmentOwnerScopeKind.OPEN_RING_ENDPOINT
+            for scope in self.policy_owner_scope_kinds
+        )
+
+    @property
+    def has_unowned_owner_scope_evidence(self) -> bool:
+        return any(
+            scope is _WriterResidualAttachmentOwnerScopeKind.UNOWNED
+            for scope in self.policy_owner_scope_kinds
+        )
+
+    @property
+    def has_missing_owner_scope_evidence(self) -> bool:
+        return any(
+            scope is _WriterResidualAttachmentOwnerScopeKind.MISSING
+            for scope in self.policy_owner_scope_kinds
+        )
+
+    @property
+    def has_mixed_owner_scope_evidence(self) -> bool:
+        return any(
+            scope is _WriterResidualAttachmentOwnerScopeKind.MIXED
+            for scope in self.policy_owner_scope_kinds
+        )
+
+    @property
     def has_selected_closure_open_supports(self) -> bool:
         return bool(self.selected_closure_open_supports)
 
@@ -400,6 +496,30 @@ class _WriterFrontierChoiceResidualAttachmentEvidence:
     @property
     def has_residual_attachment_evidence(self) -> bool:
         return bool(self.residual_attachment_evidence_groups)
+
+    @property
+    def policy_owner_scope_kinds(
+        self,
+    ) -> tuple[_WriterResidualAttachmentOwnerScopeKind, ...]:
+        return tuple(
+            scope
+            for group in self.residual_attachment_evidence_groups
+            for scope in group.policy_owner_scope_kinds
+        )
+
+    @property
+    def unsupported_owner_scope_kinds(
+        self,
+    ) -> tuple[_WriterResidualAttachmentOwnerScopeKind, ...]:
+        return tuple(
+            scope
+            for group in self.residual_attachment_evidence_groups
+            for scope in group.unsupported_owner_scope_kinds
+        )
+
+    @property
+    def has_unsupported_owner_scope_evidence(self) -> bool:
+        return bool(self.unsupported_owner_scope_kinds)
 
     @property
     def dead_closure_open_resolved_cyclic_tree_entry_groups(
@@ -786,6 +906,26 @@ class _WriterFrontierChoiceSnapshot:
         )
 
     @property
+    def unsupported_owner_scope_choice_evidence(
+        self,
+    ) -> tuple[_WriterFrontierChoiceResidualAttachmentEvidence, ...]:
+        return tuple(
+            evidence
+            for evidence in self.choice_residual_attachment_evidence
+            if evidence.has_unsupported_owner_scope_evidence
+        )
+
+    @property
+    def unsupported_owner_scope_kinds(
+        self,
+    ) -> tuple[_WriterResidualAttachmentOwnerScopeKind, ...]:
+        return tuple(
+            scope
+            for evidence in self.choice_residual_attachment_evidence
+            for scope in evidence.unsupported_owner_scope_kinds
+        )
+
+    @property
     def public_choices(self) -> WriterFrontierChoices:
         return WriterFrontierChoices(
             terminal=self.terminal,
@@ -1114,6 +1254,15 @@ def _writer_frontier_residual_attachment_support_groups_from_supports(
             supports=tuple(grouped[key]),
         )
         for key in order
+    )
+
+
+def _owner_scope_kinds_from_residual_policy_groups(
+    groups: tuple[_WriterResidualAttachmentPolicyGroup, ...],
+) -> tuple[_WriterResidualAttachmentOwnerScopeKind, ...]:
+    return tuple(
+        group.closure_open_vs_cyclic_tree_entry_owner_scope_kind
+        for group in groups
     )
 
 

@@ -412,6 +412,34 @@ class WriterStateKernelTest(unittest.TestCase):
             surfaces=(),
         )
 
+    def _test_residual_policy_group_with_owner_scope(
+        self,
+        key: writer_transitions._WriterResidualAttachmentPolicyKey,
+        *,
+        closure_owner_kind: WriterBoundaryOwnerKind | None,
+        child_owner_kind: WriterBoundaryOwnerKind | None,
+    ) -> writer_transitions._WriterResidualAttachmentPolicyGroup:
+        closure_open = writer_transitions._WriterScheduledGraphActionSurface(
+            kind=writer_transitions._WriterScheduledActionKind.OPEN_CLOSURE_ENDPOINT,
+            active_atom=key.active_atom,
+            attachment_id=key.attachment_id,
+            owner_kind=closure_owner_kind,
+        )
+        cyclic_tree = writer_transitions._WriterScheduledGraphActionSurface(
+            kind=writer_transitions._WriterScheduledActionKind.ENTER_INLINE_CHILD,
+            active_atom=key.active_atom,
+            attachment_id=key.attachment_id,
+            attachment_action_kind=(
+                WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY
+            ),
+            owner_kind=child_owner_kind,
+        )
+
+        return writer_transitions._WriterResidualAttachmentPolicyGroup(
+            key=key,
+            surfaces=(closure_open, cyclic_tree),
+        )
+
     def _test_choice_snapshot_entry_from_supports(
         self,
         emitted_text: str,
@@ -1310,6 +1338,167 @@ class WriterStateKernelTest(unittest.TestCase):
             unsupported_owner.has_dead_closure_open_resolution_evidence
         )
 
+    def test_writer_frontier_residual_attachment_evidence_group_exposes_owner_scope_kinds(self) -> None:
+        key = writer_transitions._WriterResidualAttachmentPolicyKey(
+            active_atom=AtomId(0),
+            attachment_id=7,
+        )
+        active = self._test_residual_policy_group_with_owner_scope(
+            key,
+            closure_owner_kind=WriterBoundaryOwnerKind.ACTIVE_ATOM,
+            child_owner_kind=WriterBoundaryOwnerKind.ACTIVE_ATOM,
+        )
+        branch_return = self._test_residual_policy_group_with_owner_scope(
+            key,
+            closure_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+            child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+        )
+        missing = self._test_residual_policy_group_with_owner_scope(
+            key,
+            closure_owner_kind=None,
+            child_owner_kind=None,
+        )
+        group = (
+            writer_frontier_module
+            ._WriterFrontierResidualAttachmentEvidenceGroup(
+                key=key,
+                resolved_policy_groups=(active,),
+                support_dead_closure_open_vs_cyclic_tree_entry_policy_groups=(
+                    active,
+                ),
+                unsupported_owner_scope_policy_groups=(branch_return,),
+                unresolved_policy_groups=(missing,),
+            )
+        )
+
+        self.assertEqual(
+            group.resolved_policy_owner_scope_kinds,
+            (
+                writer_transitions
+                ._WriterResidualAttachmentOwnerScopeKind
+                .ACTIVE_ATOM,
+            ),
+        )
+        self.assertEqual(
+            (
+                group
+                .support_dead_closure_open_vs_cyclic_tree_entry_policy_owner_scope_kinds
+            ),
+            (
+                writer_transitions
+                ._WriterResidualAttachmentOwnerScopeKind
+                .ACTIVE_ATOM,
+            ),
+        )
+        self.assertEqual(
+            group.unsupported_owner_scope_kinds,
+            (
+                writer_transitions
+                ._WriterResidualAttachmentOwnerScopeKind
+                .BRANCH_RETURN,
+            ),
+        )
+        self.assertEqual(
+            group.unresolved_policy_owner_scope_kinds,
+            (
+                writer_transitions
+                ._WriterResidualAttachmentOwnerScopeKind
+                .MISSING,
+            ),
+        )
+        self.assertEqual(
+            group.policy_owner_scope_kinds,
+            (
+                writer_transitions
+                ._WriterResidualAttachmentOwnerScopeKind
+                .ACTIVE_ATOM,
+                writer_transitions
+                ._WriterResidualAttachmentOwnerScopeKind
+                .ACTIVE_ATOM,
+                writer_transitions
+                ._WriterResidualAttachmentOwnerScopeKind
+                .BRANCH_RETURN,
+                writer_transitions
+                ._WriterResidualAttachmentOwnerScopeKind
+                .MISSING,
+            ),
+        )
+        self.assertTrue(group.has_active_atom_owner_scope_evidence)
+        self.assertTrue(group.has_branch_return_owner_scope_evidence)
+        self.assertTrue(group.has_missing_owner_scope_evidence)
+        self.assertFalse(group.has_mixed_owner_scope_evidence)
+
+    def test_writer_frontier_residual_attachment_evidence_group_reports_unsupported_owner_scope_predicates(self) -> None:
+        key = writer_transitions._WriterResidualAttachmentPolicyKey(
+            active_atom=AtomId(0),
+            attachment_id=7,
+        )
+        cases = (
+            (
+                WriterBoundaryOwnerKind.BRANCH_RETURN,
+                WriterBoundaryOwnerKind.BRANCH_RETURN,
+                writer_transitions._WriterResidualAttachmentOwnerScopeKind.BRANCH_RETURN,
+                "has_branch_return_owner_scope_evidence",
+            ),
+            (
+                WriterBoundaryOwnerKind.PENDING_PARENT,
+                WriterBoundaryOwnerKind.PENDING_PARENT,
+                writer_transitions._WriterResidualAttachmentOwnerScopeKind.PENDING_PARENT,
+                "has_pending_parent_owner_scope_evidence",
+            ),
+            (
+                WriterBoundaryOwnerKind.OPEN_RING_ENDPOINT,
+                WriterBoundaryOwnerKind.OPEN_RING_ENDPOINT,
+                (
+                    writer_transitions
+                    ._WriterResidualAttachmentOwnerScopeKind
+                    .OPEN_RING_ENDPOINT
+                ),
+                "has_open_ring_endpoint_owner_scope_evidence",
+            ),
+            (
+                WriterBoundaryOwnerKind.UNOWNED,
+                WriterBoundaryOwnerKind.UNOWNED,
+                writer_transitions._WriterResidualAttachmentOwnerScopeKind.UNOWNED,
+                "has_unowned_owner_scope_evidence",
+            ),
+            (
+                None,
+                None,
+                writer_transitions._WriterResidualAttachmentOwnerScopeKind.MISSING,
+                "has_missing_owner_scope_evidence",
+            ),
+            (
+                WriterBoundaryOwnerKind.ACTIVE_ATOM,
+                WriterBoundaryOwnerKind.BRANCH_RETURN,
+                writer_transitions._WriterResidualAttachmentOwnerScopeKind.MIXED,
+                "has_mixed_owner_scope_evidence",
+            ),
+        )
+
+        for closure_owner, child_owner, expected, predicate in cases:
+            with self.subTest(scope=expected):
+                policy_group = (
+                    self._test_residual_policy_group_with_owner_scope(
+                        key,
+                        closure_owner_kind=closure_owner,
+                        child_owner_kind=child_owner,
+                    )
+                )
+                group = (
+                    writer_frontier_module
+                    ._WriterFrontierResidualAttachmentEvidenceGroup(
+                        key=key,
+                        unsupported_owner_scope_policy_groups=(policy_group,),
+                    )
+                )
+
+                self.assertEqual(
+                    group.unsupported_owner_scope_kinds,
+                    (expected,),
+                )
+                self.assertTrue(getattr(group, predicate))
+
     def test_writer_frontier_choice_residual_attachment_evidence_exposes_dead_closure_resolved_cyclic_groups(self) -> None:
         key_7 = writer_transitions._WriterResidualAttachmentPolicyKey(
             active_atom=AtomId(0),
@@ -1391,6 +1580,93 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertFalse(
             empty.has_dead_closure_open_resolved_cyclic_tree_entry_support
         )
+
+    def test_writer_frontier_choice_residual_attachment_evidence_exposes_owner_scope_kinds(self) -> None:
+        key_7 = writer_transitions._WriterResidualAttachmentPolicyKey(
+            active_atom=AtomId(0),
+            attachment_id=7,
+        )
+        key_8 = writer_transitions._WriterResidualAttachmentPolicyKey(
+            active_atom=AtomId(0),
+            attachment_id=8,
+        )
+        support = self._test_frontier_next_token_support(
+            emitted_text="C",
+            successor_atom=AtomId(1),
+            policy_family=(
+                writer_transitions
+                ._WriterGraphPolicyActionFamily
+                .CYCLIC_TREE_ENTRY
+            ),
+            residual_key=key_7,
+        )
+        choice = self._test_choice_snapshot_entry_from_supports("C", (support,))
+        branch_return = self._test_residual_policy_group_with_owner_scope(
+            key_7,
+            closure_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+            child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+        )
+        active = self._test_residual_policy_group_with_owner_scope(
+            key_8,
+            closure_owner_kind=WriterBoundaryOwnerKind.ACTIVE_ATOM,
+            child_owner_kind=WriterBoundaryOwnerKind.ACTIVE_ATOM,
+        )
+        unsupported_group = (
+            writer_frontier_module
+            ._WriterFrontierResidualAttachmentEvidenceGroup(
+                key=key_7,
+                unsupported_owner_scope_policy_groups=(branch_return,),
+            )
+        )
+        supported_group = (
+            writer_frontier_module
+            ._WriterFrontierResidualAttachmentEvidenceGroup(
+                key=key_8,
+                resolved_policy_groups=(active,),
+            )
+        )
+        evidence = (
+            writer_frontier_module
+            ._WriterFrontierChoiceResidualAttachmentEvidence(
+                choice=choice,
+                residual_attachment_evidence_groups=(
+                    unsupported_group,
+                    supported_group,
+                ),
+            )
+        )
+
+        self.assertEqual(
+            evidence.unsupported_owner_scope_kinds,
+            (
+                writer_transitions
+                ._WriterResidualAttachmentOwnerScopeKind
+                .BRANCH_RETURN,
+            ),
+        )
+        self.assertEqual(
+            evidence.policy_owner_scope_kinds,
+            (
+                writer_transitions
+                ._WriterResidualAttachmentOwnerScopeKind
+                .BRANCH_RETURN,
+                writer_transitions
+                ._WriterResidualAttachmentOwnerScopeKind
+                .ACTIVE_ATOM,
+            ),
+        )
+        self.assertTrue(evidence.has_unsupported_owner_scope_evidence)
+
+        empty = (
+            writer_frontier_module
+            ._WriterFrontierChoiceResidualAttachmentEvidence(
+                choice=choice,
+                residual_attachment_evidence_groups=(supported_group,),
+            )
+        )
+
+        self.assertEqual(empty.unsupported_owner_scope_kinds, ())
+        self.assertFalse(empty.has_unsupported_owner_scope_evidence)
 
     def test_writer_frontier_schedule_outcome_records_scheduled_state_outcomes(self) -> None:
         prepared = _prepare(chain_facts(("C", "C")))
@@ -1850,6 +2126,95 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIsNone(
             choice_snapshot
             .choice_residual_attachment_evidence_for_emitted_text("missing")
+        )
+
+    def test_writer_frontier_choice_snapshot_exposes_unsupported_owner_scope_choice_evidence(self) -> None:
+        decision = (
+            self._dead_closure_open_graph_policy_decision_for_owner_scope(
+                closure_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+                child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+            )
+        )
+        active_outcome = writer_transitions._WriterActiveEmittedScheduleOutcome(
+            kind=writer_transitions._WriterActiveEmittedScheduleOutcomeKind.BLOCKED,
+            graph_policy_decision=decision,
+        )
+        top_outcome = writer_transitions._WriterTopLevelScheduleOutcome(
+            kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.BLOCKED,
+            active_emitted_outcome=active_outcome,
+        )
+        group = (
+            decision
+            .unsupported_owner_scope_residual_attachment_policy_groups[0]
+        )
+        support_c = self._test_frontier_next_token_support(
+            emitted_text="C",
+            successor_atom=AtomId(1),
+            policy_family=(
+                writer_transitions
+                ._WriterGraphPolicyActionFamily
+                .CYCLIC_TREE_ENTRY
+            ),
+            residual_key=group.key,
+        )
+        support_n = self._test_frontier_next_token_support(
+            emitted_text="N",
+            successor_atom=AtomId(2),
+            policy_family=(
+                writer_transitions
+                ._WriterGraphPolicyActionFamily
+                .ACYCLIC_TREE_ENTRY
+            ),
+            residual_key=writer_transitions._WriterResidualAttachmentPolicyKey(
+                active_atom=AtomId(0),
+                attachment_id=99,
+            ),
+        )
+        choice_c = self._test_choice_snapshot_entry_from_supports(
+            "C",
+            (support_c,),
+        )
+        choice_n = self._test_choice_snapshot_entry_from_supports(
+            "N",
+            (support_n,),
+        )
+        schedule_outcome = writer_frontier_module._WriterFrontierScheduleOutcome(
+            state_outcomes=(
+                writer_frontier_module._WriterFrontierStateScheduleOutcome(
+                    state_key=writer_state_key(_raw_initial_state(AtomId(0))),
+                    parent_weight=1,
+                    finalized_state_key=None,
+                    schedule_outcome=top_outcome,
+                ),
+            ),
+            terminal_by_key=Counter(),
+            grouped_by_text={},
+            weighted_by_text={},
+            next_token_frontier=(
+                choice_c.next_token_entry,
+                choice_n.next_token_entry,
+            ),
+        )
+        snapshot = writer_frontier_module._WriterFrontierChoiceSnapshot(
+            schedule_outcome=schedule_outcome,
+            terminal=None,
+            choices=(choice_c, choice_n),
+        )
+        c_evidence = (
+            snapshot.choice_residual_attachment_evidence_for_emitted_text("C")
+        )
+
+        self.assertEqual(
+            snapshot.unsupported_owner_scope_choice_evidence,
+            (c_evidence,),
+        )
+        self.assertEqual(
+            snapshot.unsupported_owner_scope_kinds,
+            (
+                writer_transitions
+                ._WriterResidualAttachmentOwnerScopeKind
+                .BRANCH_RETURN,
+            ),
         )
 
     def test_writer_frontier_choice_snapshot_residual_evidence_lookup_rejects_duplicate_emitted_text(self) -> None:
@@ -4333,6 +4698,152 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIsNone(
             invalid_outcome
             .choice_residual_attachment_evidence_for_emitted_text("C")
+        )
+
+    def test_writer_snapshot_prefix_read_outcome_exposes_owner_scope_evidence(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        key = writer_transitions._WriterResidualAttachmentPolicyKey(
+            active_atom=AtomId(0),
+            attachment_id=7,
+        )
+        branch_return_group = (
+            self._test_residual_policy_group_with_owner_scope(
+                key,
+                closure_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+                child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+            )
+        )
+        support = self._test_frontier_next_token_support(
+            emitted_text="C",
+            successor_atom=AtomId(1),
+            policy_family=(
+                writer_transitions
+                ._WriterGraphPolicyActionFamily
+                .CYCLIC_TREE_ENTRY
+            ),
+            residual_key=key,
+        )
+        choice = self._test_choice_snapshot_entry_from_supports("C", (support,))
+        residual_evidence_group = (
+            writer_frontier_module
+            ._WriterFrontierResidualAttachmentEvidenceGroup(
+                key=key,
+                unsupported_owner_scope_policy_groups=(
+                    branch_return_group,
+                ),
+            )
+        )
+        choice_evidence = (
+            writer_frontier_module
+            ._WriterFrontierChoiceResidualAttachmentEvidence(
+                choice=choice,
+                residual_attachment_evidence_groups=(
+                    residual_evidence_group,
+                ),
+            )
+        )
+        scope = (
+            writer_transitions
+            ._WriterResidualAttachmentOwnerScopeKind
+            .BRANCH_RETURN
+        )
+        readable_choice_snapshot = SimpleNamespace(
+            blocked=False,
+            graph_policy_blockers=(),
+            unsupported_owner_scope_choice_evidence=(choice_evidence,),
+            unsupported_owner_scope_kinds=(scope,),
+        )
+        sequence = writer_snapshot._WriterSnapshotAdvanceSequenceOutcome(
+            kind=writer_snapshot._WriterSnapshotAdvanceSequenceOutcomeKind.ADVANCED,
+            source_snapshot=snapshot,
+            emitted_texts=(),
+            step_outcomes=(),
+            current_snapshot=snapshot,
+        )
+        replay = writer_snapshot._WriterSnapshotReplayChoiceSnapshotOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                .CHOICE_SNAPSHOT
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=(),
+            sequence_outcome=sequence,
+            choice_snapshot=readable_choice_snapshot,  # type: ignore[arg-type]
+        )
+        prefix_outcome = writer_snapshot._WriterSnapshotPrefixReadOutcome(
+            kind=writer_snapshot._WriterSnapshotPrefixReadOutcomeKind.READABLE,
+            replay_outcome=replay,
+        )
+
+        self.assertEqual(
+            prefix_outcome.final_choice_unsupported_owner_scope_evidence,
+            (choice_evidence,),
+        )
+        self.assertEqual(
+            prefix_outcome.final_choice_unsupported_owner_scope_kinds,
+            (scope,),
+        )
+        self.assertEqual(prefix_outcome.blocker_owner_scope_kinds, ())
+
+        blocker = writer_transitions._WriterActiveEmittedGraphPolicyBlocker(
+            kind=(
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyBlockerKind
+                .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+            ),
+            residual_group=branch_return_group,
+        )
+        blocked_choice_snapshot = SimpleNamespace(
+            blocked=True,
+            graph_policy_blockers=(blocker,),
+        )
+        blocked_step = writer_snapshot._WriterSnapshotAdvanceOutcome(
+            kind=writer_snapshot._WriterSnapshotAdvanceOutcomeKind.BLOCKED,
+            source_snapshot=snapshot,
+            emitted_text="blocked",
+            choice_snapshot=blocked_choice_snapshot,  # type: ignore[arg-type]
+        )
+        blocked_sequence = writer_snapshot._WriterSnapshotAdvanceSequenceOutcome(
+            kind=writer_snapshot._WriterSnapshotAdvanceSequenceOutcomeKind.BLOCKED,
+            source_snapshot=snapshot,
+            emitted_texts=("blocked",),
+            step_outcomes=(blocked_step,),
+            current_snapshot=snapshot,
+        )
+        blocked_replay = writer_snapshot._WriterSnapshotReplayChoiceSnapshotOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                .REPLAY_BLOCKED
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=("blocked",),
+            sequence_outcome=blocked_sequence,
+        )
+        blocked_prefix = writer_snapshot._WriterSnapshotPrefixReadOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotPrefixReadOutcomeKind
+                .REPLAY_BLOCKED
+            ),
+            replay_outcome=blocked_replay,
+        )
+
+        self.assertEqual(
+            blocked_prefix.final_choice_unsupported_owner_scope_evidence,
+            (),
+        )
+        self.assertEqual(
+            blocked_prefix.blocker_owner_scope_kinds,
+            (scope,),
         )
 
     def test_writer_snapshot_advance_outcome_exposes_choice_residual_attachment_evidence(self) -> None:

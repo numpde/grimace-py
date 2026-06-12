@@ -728,6 +728,9 @@ with mock.patch("importlib.resources.files", wraps=real_files) as files:
         with self.assertRaisesRegex(TypeError, "dictionary_level"):
             prepared.to_bytes(compression="zstd", dictionary_level="3")
 
+        with self.assertRaisesRegex(ValueError, "dictionary"):
+            prepared.to_bytes(compression="zstd", dictionary_level=4)
+
         with self.assertRaisesRegex(TypeError, "level"):
             prepared.to_bytes(compression="zstd", level="3")
 

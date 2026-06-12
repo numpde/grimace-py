@@ -57,14 +57,14 @@ class PreparedMol:
                 raise ValueError(
                     "PreparedMol.to_bytes level must be in zstd range 1..22"
                 )
+            compression_dictionary = _zstd_dictionary_for_training_level(
+                dictionary_level,
+            )
 
         raw_payload = self._inner.to_bytes()
         _check_raw_prepared_mol_size(len(raw_payload))
         if compression is None:
             return raw_payload
-        compression_dictionary = _zstd_dictionary_for_training_level(
-            dictionary_level,
-        )
         zstd = _load_zstd()
         return zstd.ZstdCompressor(
             level=level,

@@ -602,10 +602,10 @@ manifest pins are less idiomatic and can make dependency updates noisier.
 
 Checklist:
 
-- [ ] Confirm every container/release cargo invocation uses `--locked`.
-- [ ] Add a docs note that `Cargo.lock` is the release dependency SSoT.
-- [ ] Add a check that `Cargo.lock` is present and not ignored.
-- [ ] Do not exact-pin manifest dependencies unless a specific supply-chain
+- [x] Confirm every container/release cargo invocation uses `--locked`.
+- [x] Add a docs note that `Cargo.lock` is the release dependency SSoT.
+- [x] Add a check that `Cargo.lock` is present and not ignored.
+- [x] Do not exact-pin manifest dependencies unless a specific supply-chain
       reason appears.
 
 ### 17. Runtime dependency lower bounds versus pinned evidence

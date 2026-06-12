@@ -98,5 +98,10 @@ make docs-serve DOCS_PORT=8010
 Routine check/test lanes do not use host `.venv`, `target`, `dist`, or
 `build` artifacts.
 
+Rust dependency resolution is lockfile-backed. `Cargo.lock` is checked in and
+is the release dependency SSoT; direct Cargo lanes run with `--locked`, and
+maturin builds inherit the same policy from `tool.maturin.locked = true` in
+`pyproject.toml`.
+
 The stricter containerization contract is tracked in
 [the implementation note](https://github.com/numpde/grimace-py/blob/main/notes/014_strict_containerization_plan.md).

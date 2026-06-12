@@ -27,6 +27,7 @@ from .writer_transitions import _WriterActiveEmittedGraphPolicyBlocker
 from .writer_transitions import _WriterActiveEmittedGraphPolicyDecision
 from .writer_transitions import _WriterGraphPolicyActionFamily
 from .writer_transitions import _WriterNextTokenFrontierSupport
+from .writer_transitions import _WriterResidualAttachmentPolicyGroup
 from .writer_transitions import _WriterResidualAttachmentPolicyKey
 from .writer_transitions import _WriterTopLevelScheduleOutcome
 from .writer_transitions import _legal_writer_schedule_outcome
@@ -206,6 +207,106 @@ class _WriterFrontierResidualAttachmentSupportGroup:
             *self.acyclic_tree_entry_supports,
             *self.cyclic_tree_entry_supports,
         )
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterFrontierResidualAttachmentEvidenceGroup:
+    key: _WriterResidualAttachmentPolicyKey
+    resolved_policy_groups: tuple[
+        _WriterResidualAttachmentPolicyGroup,
+        ...,
+    ] = ()
+    support_dead_closure_open_vs_cyclic_tree_entry_policy_groups: tuple[
+        _WriterResidualAttachmentPolicyGroup,
+        ...,
+    ] = ()
+    unsupported_owner_scope_policy_groups: tuple[
+        _WriterResidualAttachmentPolicyGroup,
+        ...,
+    ] = ()
+    unresolved_policy_groups: tuple[
+        _WriterResidualAttachmentPolicyGroup,
+        ...,
+    ] = ()
+    selected_support_groups: tuple[
+        _WriterFrontierResidualAttachmentSupportGroup,
+        ...,
+    ] = ()
+
+    @property
+    def selected_supports(
+        self,
+    ) -> tuple[_WriterFrontierNextTokenSupport, ...]:
+        return tuple(
+            support
+            for group in self.selected_support_groups
+            for support in group.supports
+        )
+
+    @property
+    def selected_policy_families(
+        self,
+    ) -> tuple[_WriterGraphPolicyActionFamily, ...]:
+        return tuple(
+            support.policy_family
+            for support in self.selected_supports
+        )
+
+    def selected_supports_for_policy_family(
+        self,
+        family: _WriterGraphPolicyActionFamily,
+    ) -> tuple[_WriterFrontierNextTokenSupport, ...]:
+        return tuple(
+            support
+            for support in self.selected_supports
+            if support.policy_family is family
+        )
+
+    @property
+    def selected_closure_open_supports(
+        self,
+    ) -> tuple[_WriterFrontierNextTokenSupport, ...]:
+        return self.selected_supports_for_policy_family(
+            _WriterGraphPolicyActionFamily.CLOSURE_OPEN
+        )
+
+    @property
+    def selected_cyclic_tree_entry_supports(
+        self,
+    ) -> tuple[_WriterFrontierNextTokenSupport, ...]:
+        return self.selected_supports_for_policy_family(
+            _WriterGraphPolicyActionFamily.CYCLIC_TREE_ENTRY
+        )
+
+    @property
+    def selected_acyclic_tree_entry_supports(
+        self,
+    ) -> tuple[_WriterFrontierNextTokenSupport, ...]:
+        return self.selected_supports_for_policy_family(
+            _WriterGraphPolicyActionFamily.ACYCLIC_TREE_ENTRY
+        )
+
+    @property
+    def has_resolved_policy_evidence(self) -> bool:
+        return bool(self.resolved_policy_groups)
+
+    @property
+    def has_support_dead_closure_open_evidence(self) -> bool:
+        return bool(
+            self.support_dead_closure_open_vs_cyclic_tree_entry_policy_groups
+        )
+
+    @property
+    def has_unsupported_owner_scope_evidence(self) -> bool:
+        return bool(self.unsupported_owner_scope_policy_groups)
+
+    @property
+    def has_unresolved_policy_evidence(self) -> bool:
+        return bool(self.unresolved_policy_groups)
+
+    @property
+    def has_selected_support_evidence(self) -> bool:
+        return bool(self.selected_support_groups)
 
 
 @dataclass(frozen=True, slots=True)
@@ -409,6 +510,26 @@ class _WriterFrontierScheduleOutcome:
         )
 
     @property
+    def residual_attachment_evidence_groups(
+        self,
+    ) -> tuple[_WriterFrontierResidualAttachmentEvidenceGroup, ...]:
+        return _writer_frontier_residual_attachment_evidence_groups(
+            resolved_policy_groups=(
+                self.resolved_residual_attachment_policy_groups
+            ),
+            support_dead_closure_open_vs_cyclic_tree_entry_policy_groups=(
+                self.support_dead_closure_open_vs_cyclic_tree_entry_groups
+            ),
+            unsupported_owner_scope_policy_groups=(
+                self.unsupported_owner_scope_residual_attachment_policy_groups
+            ),
+            unresolved_policy_groups=(
+                self.unresolved_residual_attachment_policy_groups
+            ),
+            selected_support_groups=self.residual_attachment_support_groups,
+        )
+
+    @property
     def grouped_by_text_from_next_token_frontier(
         self,
     ) -> dict[str, set[WriterStateKey]]:
@@ -485,6 +606,12 @@ class _WriterFrontierChoiceSnapshot:
         self,
     ) -> tuple[_WriterFrontierResidualAttachmentSupportGroup, ...]:
         return self.schedule_outcome.residual_attachment_support_groups
+
+    @property
+    def residual_attachment_evidence_groups(
+        self,
+    ) -> tuple[_WriterFrontierResidualAttachmentEvidenceGroup, ...]:
+        return self.schedule_outcome.residual_attachment_evidence_groups
 
     @property
     def public_choices(self) -> WriterFrontierChoices:
@@ -813,6 +940,89 @@ def _writer_frontier_residual_attachment_support_groups_from_supports(
         _WriterFrontierResidualAttachmentSupportGroup(
             key=key,
             supports=tuple(grouped[key]),
+        )
+        for key in order
+    )
+
+
+def _writer_frontier_residual_attachment_evidence_groups(
+    *,
+    resolved_policy_groups: tuple[
+        _WriterResidualAttachmentPolicyGroup,
+        ...,
+    ],
+    support_dead_closure_open_vs_cyclic_tree_entry_policy_groups: tuple[
+        _WriterResidualAttachmentPolicyGroup,
+        ...,
+    ],
+    unsupported_owner_scope_policy_groups: tuple[
+        _WriterResidualAttachmentPolicyGroup,
+        ...,
+    ],
+    unresolved_policy_groups: tuple[
+        _WriterResidualAttachmentPolicyGroup,
+        ...,
+    ],
+    selected_support_groups: tuple[
+        _WriterFrontierResidualAttachmentSupportGroup,
+        ...,
+    ],
+) -> tuple[_WriterFrontierResidualAttachmentEvidenceGroup, ...]:
+    order: list[_WriterResidualAttachmentPolicyKey] = []
+    keys: set[_WriterResidualAttachmentPolicyKey] = set()
+
+    def remember(key: _WriterResidualAttachmentPolicyKey) -> None:
+        if key in keys:
+            return
+
+        keys.add(key)
+        order.append(key)
+
+    for group in resolved_policy_groups:
+        remember(group.key)
+
+    for group in support_dead_closure_open_vs_cyclic_tree_entry_policy_groups:
+        remember(group.key)
+
+    for group in unsupported_owner_scope_policy_groups:
+        remember(group.key)
+
+    for group in unresolved_policy_groups:
+        remember(group.key)
+
+    for group in selected_support_groups:
+        remember(group.key)
+
+    return tuple(
+        _WriterFrontierResidualAttachmentEvidenceGroup(
+            key=key,
+            resolved_policy_groups=tuple(
+                group
+                for group in resolved_policy_groups
+                if group.key == key
+            ),
+            support_dead_closure_open_vs_cyclic_tree_entry_policy_groups=tuple(
+                group
+                for group in (
+                    support_dead_closure_open_vs_cyclic_tree_entry_policy_groups
+                )
+                if group.key == key
+            ),
+            unsupported_owner_scope_policy_groups=tuple(
+                group
+                for group in unsupported_owner_scope_policy_groups
+                if group.key == key
+            ),
+            unresolved_policy_groups=tuple(
+                group
+                for group in unresolved_policy_groups
+                if group.key == key
+            ),
+            selected_support_groups=tuple(
+                group
+                for group in selected_support_groups
+                if group.key == key
+            ),
         )
         for key in order
     )

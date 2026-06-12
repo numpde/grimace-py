@@ -320,6 +320,15 @@ class WriterStateKernelTest(unittest.TestCase):
             successor_key=writer_state_key(_raw_initial_state(successor_atom)),
         )
 
+    def _test_residual_policy_group(
+        self,
+        key: writer_transitions._WriterResidualAttachmentPolicyKey,
+    ) -> writer_transitions._WriterResidualAttachmentPolicyGroup:
+        return writer_transitions._WriterResidualAttachmentPolicyGroup(
+            key=key,
+            surfaces=(),
+        )
+
     def _test_frontier_choice_snapshot(
         self,
         choices: tuple[
@@ -654,6 +663,199 @@ class WriterStateKernelTest(unittest.TestCase):
             next_token_entry.residual_attachment_support_groups,
         )
 
+    def test_writer_frontier_residual_attachment_evidence_groups_merge_policy_and_support_evidence(self) -> None:
+        key_7 = writer_transitions._WriterResidualAttachmentPolicyKey(
+            active_atom=AtomId(0),
+            attachment_id=7,
+        )
+        key_8 = writer_transitions._WriterResidualAttachmentPolicyKey(
+            active_atom=AtomId(0),
+            attachment_id=8,
+        )
+        resolved_7 = self._test_residual_policy_group(key_7)
+        support_dead_7 = self._test_residual_policy_group(key_7)
+        unresolved_8 = self._test_residual_policy_group(key_8)
+        cyclic_support_7 = self._test_frontier_next_token_support(
+            emitted_text="C",
+            successor_atom=AtomId(1),
+            policy_family=(
+                writer_transitions
+                ._WriterGraphPolicyActionFamily
+                .CYCLIC_TREE_ENTRY
+            ),
+            residual_key=key_7,
+        )
+        closure_support_8 = self._test_frontier_next_token_support(
+            emitted_text="1",
+            successor_atom=AtomId(2),
+            policy_family=(
+                writer_transitions
+                ._WriterGraphPolicyActionFamily
+                .CLOSURE_OPEN
+            ),
+            residual_key=key_8,
+        )
+        support_group_7 = (
+            writer_frontier_module._WriterFrontierResidualAttachmentSupportGroup(
+                key=key_7,
+                supports=(cyclic_support_7,),
+            )
+        )
+        support_group_8 = (
+            writer_frontier_module._WriterFrontierResidualAttachmentSupportGroup(
+                key=key_8,
+                supports=(closure_support_8,),
+            )
+        )
+
+        groups = (
+            writer_frontier_module
+            ._writer_frontier_residual_attachment_evidence_groups(
+                resolved_policy_groups=(resolved_7,),
+                support_dead_closure_open_vs_cyclic_tree_entry_policy_groups=(
+                    support_dead_7,
+                ),
+                unsupported_owner_scope_policy_groups=(),
+                unresolved_policy_groups=(unresolved_8,),
+                selected_support_groups=(support_group_7, support_group_8),
+            )
+        )
+
+        self.assertEqual(len(groups), 2)
+        self.assertEqual(groups[0].key, key_7)
+        self.assertEqual(groups[0].resolved_policy_groups, (resolved_7,))
+        self.assertEqual(
+            (
+                groups[0]
+                .support_dead_closure_open_vs_cyclic_tree_entry_policy_groups
+            ),
+            (support_dead_7,),
+        )
+        self.assertEqual(groups[0].selected_support_groups, (support_group_7,))
+        self.assertEqual(
+            groups[0].selected_cyclic_tree_entry_supports,
+            (cyclic_support_7,),
+        )
+        self.assertEqual(
+            groups[0].selected_policy_families,
+            (
+                writer_transitions
+                ._WriterGraphPolicyActionFamily
+                .CYCLIC_TREE_ENTRY,
+            ),
+        )
+        self.assertTrue(groups[0].has_resolved_policy_evidence)
+        self.assertTrue(groups[0].has_support_dead_closure_open_evidence)
+        self.assertTrue(groups[0].has_selected_support_evidence)
+        self.assertFalse(groups[0].has_unresolved_policy_evidence)
+        self.assertEqual(groups[1].key, key_8)
+        self.assertEqual(groups[1].unresolved_policy_groups, (unresolved_8,))
+        self.assertEqual(
+            groups[1].selected_closure_open_supports,
+            (closure_support_8,),
+        )
+        self.assertTrue(groups[1].has_unresolved_policy_evidence)
+
+    def test_writer_frontier_residual_attachment_evidence_groups_include_support_only_keys(self) -> None:
+        key = writer_transitions._WriterResidualAttachmentPolicyKey(
+            active_atom=AtomId(0),
+            attachment_id=7,
+        )
+        support = self._test_frontier_next_token_support(
+            emitted_text="C",
+            successor_atom=AtomId(1),
+            policy_family=(
+                writer_transitions
+                ._WriterGraphPolicyActionFamily
+                .ACYCLIC_TREE_ENTRY
+            ),
+            residual_key=key,
+        )
+        support_group = (
+            writer_frontier_module._WriterFrontierResidualAttachmentSupportGroup(
+                key=key,
+                supports=(support,),
+            )
+        )
+
+        groups = (
+            writer_frontier_module
+            ._writer_frontier_residual_attachment_evidence_groups(
+                resolved_policy_groups=(),
+                support_dead_closure_open_vs_cyclic_tree_entry_policy_groups=(),
+                unsupported_owner_scope_policy_groups=(),
+                unresolved_policy_groups=(),
+                selected_support_groups=(support_group,),
+            )
+        )
+
+        self.assertEqual(tuple(group.key for group in groups), (key,))
+        self.assertTrue(groups[0].has_selected_support_evidence)
+        self.assertFalse(groups[0].has_resolved_policy_evidence)
+        self.assertFalse(groups[0].has_unresolved_policy_evidence)
+
+    def test_writer_frontier_residual_attachment_evidence_groups_preserve_first_seen_key_order(self) -> None:
+        key_7 = writer_transitions._WriterResidualAttachmentPolicyKey(
+            active_atom=AtomId(0),
+            attachment_id=7,
+        )
+        key_8 = writer_transitions._WriterResidualAttachmentPolicyKey(
+            active_atom=AtomId(0),
+            attachment_id=8,
+        )
+        key_9 = writer_transitions._WriterResidualAttachmentPolicyKey(
+            active_atom=AtomId(0),
+            attachment_id=9,
+        )
+        support_9 = self._test_frontier_next_token_support(
+            emitted_text="N",
+            successor_atom=AtomId(9),
+            policy_family=(
+                writer_transitions
+                ._WriterGraphPolicyActionFamily
+                .ACYCLIC_TREE_ENTRY
+            ),
+            residual_key=key_9,
+        )
+        support_7 = self._test_frontier_next_token_support(
+            emitted_text="C",
+            successor_atom=AtomId(7),
+            policy_family=(
+                writer_transitions
+                ._WriterGraphPolicyActionFamily
+                .CLOSURE_OPEN
+            ),
+            residual_key=key_7,
+        )
+
+        groups = (
+            writer_frontier_module
+            ._writer_frontier_residual_attachment_evidence_groups(
+                resolved_policy_groups=(
+                    self._test_residual_policy_group(key_8),
+                ),
+                support_dead_closure_open_vs_cyclic_tree_entry_policy_groups=(),
+                unsupported_owner_scope_policy_groups=(),
+                unresolved_policy_groups=(
+                    self._test_residual_policy_group(key_7),
+                ),
+                selected_support_groups=(
+                    writer_frontier_module
+                    ._WriterFrontierResidualAttachmentSupportGroup(
+                        key=key_9,
+                        supports=(support_9,),
+                    ),
+                    writer_frontier_module
+                    ._WriterFrontierResidualAttachmentSupportGroup(
+                        key=key_7,
+                        supports=(support_7,),
+                    ),
+                ),
+            )
+        )
+
+        self.assertEqual(tuple(group.key for group in groups), (key_8, key_7, key_9))
+
     def test_writer_frontier_schedule_outcome_records_scheduled_state_outcomes(self) -> None:
         prepared = _prepare(chain_facts(("C", "C")))
         cursor = initial_writer_frontier_cursor(prepared, _writer_options())
@@ -854,6 +1056,80 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(groups[0].supports, (support_a, support_c))
         self.assertEqual(groups[1].supports, (support_b,))
 
+    def test_writer_frontier_schedule_outcome_exposes_residual_attachment_evidence_groups(self) -> None:
+        policy, active_outcome = self._dead_closure_open_active_emitted_outcome(
+            AtomId(0),
+        )
+        policy_group = policy.resolved_residual_attachment_policy_groups[0]
+        support = self._test_frontier_next_token_support(
+            emitted_text="C",
+            successor_atom=AtomId(1),
+            policy_family=(
+                writer_transitions
+                ._WriterGraphPolicyActionFamily
+                .CYCLIC_TREE_ENTRY
+            ),
+            residual_key=policy_group.key,
+        )
+        top_outcome = writer_transitions._WriterTopLevelScheduleOutcome(
+            kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.SCHEDULED,
+            schedule_decision=writer_transitions._top_level_active_emitted_decision(
+                active_outcome.schedule_decision,
+            ),
+            active_emitted_outcome=active_outcome,
+        )
+        outcome = writer_frontier_module._WriterFrontierScheduleOutcome(
+            state_outcomes=(
+                writer_frontier_module._WriterFrontierStateScheduleOutcome(
+                    state_key=writer_state_key(_raw_initial_state(AtomId(0))),
+                    parent_weight=1,
+                    finalized_state_key=None,
+                    schedule_outcome=top_outcome,
+                ),
+            ),
+            terminal_by_key=Counter(),
+            grouped_by_text={},
+            weighted_by_text={},
+            next_token_frontier=(
+                writer_frontier_module._WriterFrontierNextTokenEntry(
+                    emitted_text="C",
+                    supports=(support,),
+                ),
+            ),
+        )
+        expected = (
+            writer_frontier_module
+            ._writer_frontier_residual_attachment_evidence_groups(
+                resolved_policy_groups=(
+                    outcome.resolved_residual_attachment_policy_groups
+                ),
+                support_dead_closure_open_vs_cyclic_tree_entry_policy_groups=(
+                    outcome
+                    .support_dead_closure_open_vs_cyclic_tree_entry_groups
+                ),
+                unsupported_owner_scope_policy_groups=(
+                    outcome
+                    .unsupported_owner_scope_residual_attachment_policy_groups
+                ),
+                unresolved_policy_groups=(
+                    outcome.unresolved_residual_attachment_policy_groups
+                ),
+                selected_support_groups=(
+                    outcome.residual_attachment_support_groups
+                ),
+            )
+        )
+
+        self.assertEqual(outcome.residual_attachment_evidence_groups, expected)
+        self.assertEqual(
+            outcome.residual_attachment_evidence_groups[0].key,
+            policy_group.key,
+        )
+        self.assertEqual(
+            outcome.residual_attachment_evidence_groups[0].selected_supports,
+            (support,),
+        )
+
     def test_writer_frontier_choice_snapshot_exposes_graph_policy_evidence(self) -> None:
         policy, active_outcome = self._dead_closure_open_active_emitted_outcome(
             AtomId(0),
@@ -927,6 +1203,44 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(
             choice_snapshot.residual_attachment_support_groups,
             schedule_outcome.residual_attachment_support_groups,
+        )
+
+    def test_writer_frontier_choice_snapshot_exposes_residual_attachment_evidence_groups(self) -> None:
+        key = writer_transitions._WriterResidualAttachmentPolicyKey(
+            active_atom=AtomId(0),
+            attachment_id=7,
+        )
+        support = self._test_frontier_next_token_support(
+            emitted_text="C",
+            successor_atom=AtomId(1),
+            policy_family=(
+                writer_transitions
+                ._WriterGraphPolicyActionFamily
+                .CYCLIC_TREE_ENTRY
+            ),
+            residual_key=key,
+        )
+        schedule_outcome = writer_frontier_module._WriterFrontierScheduleOutcome(
+            state_outcomes=(),
+            terminal_by_key=Counter(),
+            grouped_by_text={},
+            weighted_by_text={},
+            next_token_frontier=(
+                writer_frontier_module._WriterFrontierNextTokenEntry(
+                    emitted_text="C",
+                    supports=(support,),
+                ),
+            ),
+        )
+        choice_snapshot = writer_frontier_module._WriterFrontierChoiceSnapshot(
+            schedule_outcome=schedule_outcome,
+            terminal=None,
+            choices=(),
+        )
+
+        self.assertEqual(
+            choice_snapshot.residual_attachment_evidence_groups,
+            schedule_outcome.residual_attachment_evidence_groups,
         )
 
     def test_writer_frontier_schedule_outcome_records_blocked_state_without_raising(self) -> None:
@@ -2961,6 +3275,156 @@ class WriterStateKernelTest(unittest.TestCase):
             (),
         )
         self.assertEqual(invalid_outcome.residual_attachment_support_groups, ())
+
+    def test_writer_snapshot_prefix_read_outcome_exposes_residual_attachment_evidence_groups(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        key = writer_transitions._WriterResidualAttachmentPolicyKey(
+            active_atom=AtomId(0),
+            attachment_id=7,
+        )
+        support = self._test_frontier_next_token_support(
+            emitted_text="C",
+            successor_atom=AtomId(1),
+            policy_family=(
+                writer_transitions
+                ._WriterGraphPolicyActionFamily
+                .CYCLIC_TREE_ENTRY
+            ),
+            residual_key=key,
+        )
+        schedule_outcome = writer_frontier_module._WriterFrontierScheduleOutcome(
+            state_outcomes=(),
+            terminal_by_key=Counter(),
+            grouped_by_text={},
+            weighted_by_text={},
+            next_token_frontier=(
+                writer_frontier_module._WriterFrontierNextTokenEntry(
+                    emitted_text="C",
+                    supports=(support,),
+                ),
+            ),
+        )
+        choice_snapshot = writer_frontier_module._WriterFrontierChoiceSnapshot(
+            schedule_outcome=schedule_outcome,
+            terminal=None,
+            choices=(),
+        )
+        sequence = writer_snapshot._WriterSnapshotAdvanceSequenceOutcome(
+            kind=writer_snapshot._WriterSnapshotAdvanceSequenceOutcomeKind.ADVANCED,
+            source_snapshot=snapshot,
+            emitted_texts=(),
+            step_outcomes=(),
+            current_snapshot=snapshot,
+        )
+        replay = writer_snapshot._WriterSnapshotReplayChoiceSnapshotOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                .CHOICE_SNAPSHOT
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=(),
+            sequence_outcome=sequence,
+            choice_snapshot=choice_snapshot,
+        )
+        prefix_outcome = writer_snapshot._WriterSnapshotPrefixReadOutcome(
+            kind=writer_snapshot._WriterSnapshotPrefixReadOutcomeKind.READABLE,
+            replay_outcome=replay,
+        )
+
+        self.assertEqual(
+            prefix_outcome.residual_attachment_evidence_groups,
+            choice_snapshot.residual_attachment_evidence_groups,
+        )
+        self.assertEqual(
+            prefix_outcome.residual_attachment_evidence_groups[0].selected_supports,
+            (support,),
+        )
+
+        blocked_choice_snapshot = self._test_blocked_frontier_choice_snapshot(cursor)
+        blocked_step = writer_snapshot._WriterSnapshotAdvanceOutcome(
+            kind=writer_snapshot._WriterSnapshotAdvanceOutcomeKind.BLOCKED,
+            source_snapshot=snapshot,
+            emitted_text="blocked",
+            choice_snapshot=blocked_choice_snapshot,
+        )
+        blocked_sequence = writer_snapshot._WriterSnapshotAdvanceSequenceOutcome(
+            kind=writer_snapshot._WriterSnapshotAdvanceSequenceOutcomeKind.BLOCKED,
+            source_snapshot=snapshot,
+            emitted_texts=("blocked",),
+            step_outcomes=(blocked_step,),
+            current_snapshot=snapshot,
+        )
+        replay_blocked = writer_snapshot._WriterSnapshotReplayChoiceSnapshotOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                .REPLAY_BLOCKED
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=("blocked",),
+            sequence_outcome=blocked_sequence,
+        )
+        replay_blocked_outcome = writer_snapshot._WriterSnapshotPrefixReadOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotPrefixReadOutcomeKind
+                .REPLAY_BLOCKED
+            ),
+            replay_outcome=replay_blocked,
+        )
+        invalid_step = writer_snapshot._WriterSnapshotAdvanceOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotAdvanceOutcomeKind
+                .INVALID_EMITTED_TEXT
+            ),
+            source_snapshot=snapshot,
+            emitted_text="bad",
+            choice_snapshot=choice_snapshot,
+        )
+        invalid_sequence = writer_snapshot._WriterSnapshotAdvanceSequenceOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotAdvanceSequenceOutcomeKind
+                .INVALID_EMITTED_TEXT
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=("bad",),
+            step_outcomes=(invalid_step,),
+            current_snapshot=snapshot,
+        )
+        invalid_replay = writer_snapshot._WriterSnapshotReplayChoiceSnapshotOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                .INVALID_EMITTED_TEXT
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=("bad",),
+            sequence_outcome=invalid_sequence,
+        )
+        invalid_outcome = writer_snapshot._WriterSnapshotPrefixReadOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotPrefixReadOutcomeKind
+                .INVALID_EMITTED_TEXT
+            ),
+            replay_outcome=invalid_replay,
+        )
+
+        self.assertEqual(
+            replay_blocked_outcome.residual_attachment_evidence_groups,
+            (),
+        )
+        self.assertEqual(invalid_outcome.residual_attachment_evidence_groups, ())
 
     def test_writer_snapshot_prefix_read_outcome_returns_counted_readable_prefix(self) -> None:
         prepared = _prepare(chain_facts(("C", "C")))

@@ -23,10 +23,10 @@ here.
   artifact only when `--replace-artifact YYYYMMDD_hash` names the computed
   artifact exactly. The remaining direct-script surface is broad `--output-root`
   choice, not recursive replacement of an arbitrary existing artifact.
-- `tests/rdkit_serialization/_support.py` intentionally treats some large
-  isomeric deterministic-writer membership cases as RDKit drift when the
-  deterministic output is not observed in a substantial rooted-random sample.
-  The exact-support lane is separate and still fail-closed.
+- `rdkit_writer_membership` now fail-closes: deterministic RDKit writer output
+  must be in Grimace support. The one bounded-random-unobserved deterministic
+  output found during the audit lives in `rdkit_deterministic_unobserved`
+  diagnostic evidence instead of the passing membership lane.
 - The local checkout contains ignored generated artifacts (`__pycache__`,
   `target/`, and a host-built `python/grimace/_core...so`). They are not tracked,
   are excluded by `.dockerignore`/release validation, and are not part of the
@@ -107,13 +107,6 @@ here.
   the public wrappers. Current public entrypoints route through the coercion
   path, but internal callers/tests can still create odd typed values that later
   get interpreted with `bool(...)` in writer-flag projection.
-- `tests/rdkit_serialization/_support.py` has an intentional deterministic
-  writer-membership escape hatch for large isomeric cases: when RDKit's
-  deterministic output is not observed in a bounded rooted-random sample, the
-  helper treats it as RDKit drift and returns without asserting Grimace
-  membership. That matches the current random-writer contract, but the
-  `rdkit_writer_membership` family name/test docstring read stronger than the
-  effective assertion for those cases.
 - `tests.helpers.public_runtime.prepared_graph_input_variants()` now names the
   graph-prepared matrix explicitly: it covers RDKit mol, reference prepared
   graph, and core prepared graph. PreparedMol raw/zstd equivalence is covered in
@@ -228,14 +221,16 @@ live in a separate evidence family with a name that states the weaker contract.
 
 Checklist:
 
-- [ ] Identify every fixture path/case using the deterministic-unobserved escape.
-- [ ] Add a new fixture family name for bounded deterministic-observation
+- [x] Identify every fixture path/case using the deterministic-unobserved escape:
+      `dataset_regression_02_porphyrin_like_fragment`.
+- [x] Add a new fixture family name for bounded deterministic-observation
       diagnostics.
-- [ ] Move weaker cases out of `rdkit_writer_membership`.
-- [ ] Make `rdkit_writer_membership` fail closed with no drift escape.
-- [ ] Update docs/testing-fixtures.md counts and wording.
-- [ ] Add a contract test that the strict membership helper contains no
-      deterministic-unobserved bypass.
+- [x] Move weaker cases out of `rdkit_writer_membership`.
+- [x] Make `rdkit_writer_membership` fail closed with no drift escape.
+- [x] Update docs/testing-fixtures.md counts and wording.
+- [x] Add a diagnostic runtime test for the bounded-unobserved case.
+- [x] Add a behavior contract that strict membership does not sample around
+      missing support.
 
 ### 4. Ignored generated artifacts in local checkout
 
@@ -766,12 +761,12 @@ should encode assertion strength; comments are not enough.
 
 Checklist:
 
-- [ ] Reuse the item 3 migration.
-- [ ] Make `rdkit_writer_membership` strictly assert membership.
-- [ ] Add a separate family for bounded deterministic-observation diagnostics.
-- [ ] Update correctness coverage report to count assertion strengths
+- [x] Reuse the item 3 migration.
+- [x] Make `rdkit_writer_membership` strictly assert membership.
+- [x] Add a separate family for bounded deterministic-observation diagnostics.
+- [x] Update correctness coverage report to count assertion strengths
       separately.
-- [ ] Update docs so readers can see which cases are strict parity evidence.
+- [x] Update docs so readers can see which cases are strict parity evidence.
 
 ### 23. Prepared input helper name hid matrix split
 

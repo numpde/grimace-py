@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from tests.helpers.pinned_rdkit_fixtures import (
+    PINNED_RDKIT_DETERMINISTIC_UNOBSERVED,
     PINNED_RDKIT_WRITER_MEMBERSHIP,
     load_pinned_rdkit_fixture_cases,
     optional_bool,
@@ -32,18 +33,22 @@ class PinnedWriterMembershipCase:
 
 
 _FIXTURE_ROOT = pinned_rdkit_fixture_root(PINNED_RDKIT_WRITER_MEMBERSHIP)
+_DETERMINISTIC_UNOBSERVED_FIXTURE_ROOT = pinned_rdkit_fixture_root(
+    PINNED_RDKIT_DETERMINISTIC_UNOBSERVED
+)
 
 
-def load_pinned_writer_membership_cases(
+def _load_pinned_writer_output_cases(
     rdkit_version: str,
     *,
-    fixture_root: Path = _FIXTURE_ROOT,
+    fixture_root: Path,
+    fixture_label: str,
 ) -> tuple[PinnedWriterMembershipCase, ...]:
     cases = []
     for fixture_case in load_pinned_rdkit_fixture_cases(
         fixture_root=fixture_root,
         rdkit_version=rdkit_version,
-        fixture_label="writer-membership",
+        fixture_label=fixture_label,
     ):
         raw_case = fixture_case.raw
         smiles = optional_string(
@@ -125,3 +130,27 @@ def load_pinned_writer_membership_cases(
         )
 
     return tuple(cases)
+
+
+def load_pinned_writer_membership_cases(
+    rdkit_version: str,
+    *,
+    fixture_root: Path = _FIXTURE_ROOT,
+) -> tuple[PinnedWriterMembershipCase, ...]:
+    return _load_pinned_writer_output_cases(
+        rdkit_version,
+        fixture_root=fixture_root,
+        fixture_label="writer-membership",
+    )
+
+
+def load_pinned_deterministic_unobserved_cases(
+    rdkit_version: str,
+    *,
+    fixture_root: Path = _DETERMINISTIC_UNOBSERVED_FIXTURE_ROOT,
+) -> tuple[PinnedWriterMembershipCase, ...]:
+    return _load_pinned_writer_output_cases(
+        rdkit_version,
+        fixture_root=fixture_root,
+        fixture_label="deterministic-unobserved",
+    )

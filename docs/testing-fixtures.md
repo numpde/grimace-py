@@ -31,7 +31,8 @@ python scripts/report_correctness_coverage.py
 |---|---:|---|
 | `rdkit_exact_small_support` | 76 | Exact support and token-inventory equality for small saturable cases. |
 | `rdkit_serializer_regressions` | 130 | Exact support and inventory regressions for serializer edge cases. |
-| `rdkit_writer_membership` | 56 | Deterministic RDKit writer outputs must be in Grimace support. |
+| `rdkit_writer_membership` | 55 | Deterministic RDKit writer outputs must be in Grimace support. |
+| `rdkit_deterministic_unobserved` | 1 | Deterministic RDKit writer outputs not observed in bounded random-writer sampling. |
 | `rdkit_writer_support_counts` | 30 | Count-only RDKit random-writer support evidence. |
 | `rdkit_rooted_random` | 1 | Version-pinned rooted random-writer output. |
 | `rdkit_known_stereo_gaps` | 16 | Executable parity debt, outside the passing parity lane. |
@@ -72,6 +73,7 @@ Documentation explains intent; loaders and tests enforce it.
 | `tests/fixtures/rdkit_exact_small_support/` | Passing exact support and inventory parity. |
 | `tests/fixtures/rdkit_serializer_regressions/` | Passing serializer edge-case support and inventory parity. |
 | `tests/fixtures/rdkit_writer_membership/` | Passing deterministic RDKit writer-membership parity. |
+| `tests/fixtures/rdkit_deterministic_unobserved/` | Diagnostic deterministic RDKit outputs outside bounded random-writer observations. |
 | `tests/fixtures/rdkit_writer_support_counts/` | Count-only RDKit random-writer support evidence. |
 | `tests/fixtures/rdkit_rooted_random/` | Passing rooted random-writer observations. |
 | `tests/fixtures/rdkit_known_stereo_gaps/` | Failing opt-in diagnostics for known stereo gaps. |
@@ -91,8 +93,11 @@ Mining output is candidate data only. Promote a mined case only when it has:
 - evidence that is not a near-duplicate of an existing fixture
 
 Prefer exact support and inventory equality for small cases. Use deterministic
-writer membership when exact support is too large. Keep `rdkit_only` cases as
-known gaps while they fail. Do not promote `uncertain` mined cases.
+writer membership when exact support is too large and the deterministic writer
+output is in Grimace support. Keep deterministic outputs that are not observed
+in bounded random-writer sampling in `rdkit_deterministic_unobserved`; that
+family is diagnostic evidence, not passing membership parity. Keep `rdkit_only`
+cases as known gaps while they fail. Do not promote `uncertain` mined cases.
 
 Prefer exact-support fixtures whenever the full support set is small enough to
 keep. Use writer support-count fixtures only when storing every support string

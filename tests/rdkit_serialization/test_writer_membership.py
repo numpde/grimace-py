@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import unittest
+from unittest import mock
 
 from rdkit import rdBase
 
-from tests.helpers.rdkit_writer_membership import load_pinned_writer_membership_cases
+from tests.helpers.rdkit_writer_membership import (
+    PinnedWriterMembershipCase,
+    load_pinned_writer_membership_cases,
+)
 from tests.rdkit_serialization._support import assert_exact_writer_case_in_grimace_support
 
 
@@ -35,6 +39,31 @@ class RDKITWriterMembershipTests(unittest.TestCase):
                 all_hs_explicit=case.all_hs_explicit,
                 ignore_atom_map_numbers=case.ignore_atom_map_numbers,
             ):
+                assert_exact_writer_case_in_grimace_support(self, case)
+
+    def test_membership_helper_does_not_sample_around_missing_support(self) -> None:
+        case = PinnedWriterMembershipCase(
+            case_id="strict_membership_contract",
+            source="Local contract test",
+            smiles="CCO",
+            molblock=None,
+            expected="CCO",
+            rooted_at_atom=None,
+            isomeric_smiles=False,
+            rdkit_canonical=False,
+        )
+
+        with (
+            mock.patch(
+                "tests.rdkit_serialization._support.grimace_support",
+                return_value=set(),
+            ),
+            mock.patch(
+                "tests.rdkit_serialization._support.sample_rdkit_random_support",
+                side_effect=AssertionError("strict membership must not sample"),
+            ),
+        ):
+            with self.assertRaises(AssertionError):
                 assert_exact_writer_case_in_grimace_support(self, case)
 
 

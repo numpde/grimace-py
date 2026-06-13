@@ -7,6 +7,7 @@ from tests.helpers.fixture_paths import checked_in_fixture_path, read_fixture_js
 
 
 PINNED_RDKIT_EXACT_SMALL_SUPPORT = "rdkit_exact_small_support"
+PINNED_RDKIT_DETERMINISTIC_UNOBSERVED = "rdkit_deterministic_unobserved"
 PINNED_RDKIT_KNOWN_QUIRKS = "rdkit_known_quirks"
 PINNED_RDKIT_KNOWN_STEREO_GAPS = "rdkit_known_stereo_gaps"
 PINNED_RDKIT_ROOTED_RANDOM = "rdkit_rooted_random"

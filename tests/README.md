@@ -51,6 +51,10 @@ support cardinalities.
   for each case.
 - Deterministic RDKit writer-output membership cases belong in version-keyed
   fixtures under `tests/fixtures/rdkit_writer_membership/`.
+- Deterministic RDKit writer outputs that were not observed in bounded
+  random-writer sampling belong in diagnostic fixtures under
+  `tests/fixtures/rdkit_deterministic_unobserved/`, not in passing membership
+  fixtures.
 - RDKit random-writer support-count evidence belongs in version-keyed shards
   under `tests/fixtures/rdkit_writer_support_counts/`; keep its adaptive
   saturation evidence explicit.

@@ -7,6 +7,7 @@ import unittest
 from unittest import mock
 
 from tests.helpers.pinned_rdkit_fixtures import (
+    PINNED_RDKIT_DETERMINISTIC_UNOBSERVED,
     PINNED_RDKIT_EXACT_SMALL_SUPPORT,
     PINNED_RDKIT_KNOWN_QUIRKS,
     PINNED_RDKIT_KNOWN_STEREO_GAPS,
@@ -35,7 +36,10 @@ from tests.helpers.rdkit_stereo_regressions import (
     load_stereo_expected_member_regressions,
     load_steroid_ring_coupled_component_regression,
 )
-from tests.helpers.rdkit_writer_membership import load_pinned_writer_membership_cases
+from tests.helpers.rdkit_writer_membership import (
+    load_pinned_deterministic_unobserved_cases,
+    load_pinned_writer_membership_cases,
+)
 from tests.helpers.rdkit_writer_support_counts import (
     load_pinned_writer_support_count_cases,
 )
@@ -719,6 +723,21 @@ class CheckedInRdkitCompatibilityFixtureTest(unittest.TestCase):
 
                 self.assertTrue(cases)
                 self.assertTrue(all(case.support_count > 0 for case in cases))
+
+    def test_deterministic_unobserved_fixture_loads(self) -> None:
+        fixture_root = pinned_rdkit_fixture_root(PINNED_RDKIT_DETERMINISTIC_UNOBSERVED)
+        versions = pinned_rdkit_fixture_versions(fixture_root)
+
+        self.assertTrue(versions)
+        for rdkit_version in versions:
+            with self.subTest(rdkit_version=rdkit_version):
+                cases = load_pinned_deterministic_unobserved_cases(
+                    rdkit_version,
+                    fixture_root=fixture_root,
+                )
+
+                self.assertTrue(cases)
+                self.assertTrue(all(case.expected for case in cases))
 
     def test_disconnected_root_zero_fixture_loads(self) -> None:
         cases = load_disconnected_root_zero_smiles()

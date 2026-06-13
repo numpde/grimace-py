@@ -6,13 +6,13 @@ from pathlib import Path
 from tests.helpers.pinned_rdkit_fixtures import (
     PINNED_RDKIT_SERIALIZER_REGRESSIONS,
     load_pinned_rdkit_fixture_cases,
-    normalized_unique_sorted_strings,
     optional_bool,
     optional_positive_int,
     optional_string,
     pinned_rdkit_fixture_root,
     required_bool,
     required_int,
+    required_string_list,
 )
 
 
@@ -83,17 +83,19 @@ def load_pinned_serializer_regression_cases(
                     fixture_path=fixture_case.fixture_path,
                     case_id=fixture_case.case_id,
                 ),
-                expected=normalized_unique_sorted_strings(
-                    list(raw_case["expected"]),
+                expected=required_string_list(
+                    raw_case,
                     field_name="expected",
                     fixture_path=fixture_case.fixture_path,
                     case_id=fixture_case.case_id,
+                    sorted_unique=True,
                 ),
-                expected_inventory=normalized_unique_sorted_strings(
-                    list(raw_case["expected_inventory"]),
+                expected_inventory=required_string_list(
+                    raw_case,
                     field_name="expected_inventory",
                     fixture_path=fixture_case.fixture_path,
                     case_id=fixture_case.case_id,
+                    sorted_unique=True,
                 ),
                 kekule_smiles=optional_bool(
                     raw_case,

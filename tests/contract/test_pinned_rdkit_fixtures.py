@@ -47,6 +47,7 @@ from tests import run_installed_package_correctness
 
 
 RDKIT_VERSION = "2099.01.1"
+ROOT = Path(__file__).resolve().parents[2]
 PINNED_FIXTURE_LOADERS = {
     PINNED_RDKIT_EXACT_SMALL_SUPPORT: load_pinned_exact_small_support_cases,
     PINNED_RDKIT_ROOTED_RANDOM: load_pinned_rooted_random_cases,
@@ -167,6 +168,15 @@ def _writer_support_count_case(case_id: str, **overrides: object) -> dict[str, o
 
 
 class PinnedRdkitFixtureLoaderTest(unittest.TestCase):
+    def test_pinned_rdkit_loaders_do_not_iterate_raw_fixture_fields(self) -> None:
+        helper_paths = sorted((ROOT / "tests" / "helpers").glob("rdkit_*.py"))
+        offenders = [
+            path.relative_to(ROOT).as_posix()
+            for path in helper_paths
+            if "list(raw_case[" in path.read_text(encoding="utf-8")
+        ]
+        self.assertEqual([], offenders)
+
     def test_single_file_fixture_loads_cases(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

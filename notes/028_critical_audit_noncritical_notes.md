@@ -88,13 +88,9 @@ here.
   `scripts/generate_rdkit_writer_support_counts.py` now restrict `--output` to
   their usual report/fixture trees unless `--allow-outside-repo` is passed.
   They still refuse to overwrite without `--force`.
-- `tests/helpers/rdkit_exact_small_support.py` loads `expected` and
-  `expected_inventory` via raw indexing plus `list(...)` before the shared
-  sorted-unique-string validator. Checked-in fixtures load and serializer
-  fixtures exercise similar validation, but this family could fail with a
-  less contextual `KeyError` or accept string iteration before rejecting
-  noncanonical data. A small required-list helper would make the fixture schema
-  tighter and more uniform.
+- Pinned RDKit fixture loaders now route list-valued fields through shared
+  typed-list helpers before iteration. A source-level guard blocks the old
+  `list(raw_case[...])` shape from returning in RDKit fixture loaders.
 - `python/grimace/_core.pyi` documents internal extension classes such as
   `PreparedSmilesGraph`, low-level rooted walkers, and `to_dict()`. They are
   underscore-module internals rather than `grimace.__all__` public API, but
@@ -114,10 +110,8 @@ here.
 - Rust tests no longer import RDKit through host Python or `.venv`; Rust-side
   walker tests use hand-built prepared graphs. A source-level posture check
   blocks the old host-RDKit helper shape from returning.
-- `tests/checks/test_docs_pages.py` validates Markdown links and image sources,
-  but not raw HTML `<a href="...">` links. The current raw HTML links inspected
-  during the pass resolve, but the link checker does not eliminate that whole
-  class of docs drift.
+- `tests/checks/test_docs_pages.py` now validates Markdown links, Markdown image
+  sources, and raw HTML `href`/`src` attributes used by the docs source.
 
 ## Solution planning
 
@@ -660,10 +654,10 @@ Checklist:
 - [x] Preserve `--force` overwrite checks.
 - [x] Add unit tests for symlink and parent traversal paths.
 
-### 19. Exact small-support loader uses raw indexing/list conversion
+### 19. Pinned RDKit loaders used raw indexing/list conversion
 
-Issue: fixture loading can produce less contextual errors and briefly accepts
-string iteration before shared validation rejects it.
+Issue: some fixture loaders produced less contextual errors and briefly
+accepted string iteration before shared validation rejected it.
 
 Serious alternatives:
 
@@ -675,7 +669,8 @@ Serious alternatives:
 
 Principled direction: centralize small typed JSON helpers in existing fixture
 helper modules. Avoid a schema framework; use simple required-list validators
-with contextual errors.
+with contextual errors, and block raw fixture-field iteration at the source
+level so the old pattern does not return.
 
 Checklist:
 
@@ -686,6 +681,9 @@ Checklist:
 - [x] Use the helper in exact small-support loaders.
 - [x] Add loader tests for missing field, string-as-list, duplicate, and
       unsorted cases.
+- [x] Route adjacent pinned RDKit loader list fields through the same helper.
+- [x] Add a source-level guard against `list(raw_case[...])` in RDKit fixture
+      loaders.
 
 ### 20. `_core.pyi` exposes low-level internals
 

@@ -8,7 +8,7 @@ from tests.helpers.pinned_rdkit_fixtures import (
     load_pinned_rdkit_fixture_cases,
     pinned_rdkit_fixture_root,
     required_string,
-    required_string_tuple,
+    required_string_list,
 )
 
 
@@ -45,8 +45,8 @@ def load_pinned_rooted_random_cases(
                     fixture_path=fixture_case.fixture_path,
                     case_id=fixture_case.case_id,
                 ),
-                rooted_outputs=required_string_tuple(
-                    list(raw_case["rooted_outputs"]),
+                rooted_outputs=required_string_list(
+                    raw_case,
                     field_name="rooted_outputs",
                     fixture_path=fixture_case.fixture_path,
                     case_id=fixture_case.case_id,

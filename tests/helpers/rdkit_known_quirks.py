@@ -8,7 +8,7 @@ from tests.helpers.pinned_rdkit_fixtures import (
     load_pinned_rdkit_fixture_cases,
     pinned_rdkit_fixture_root,
     required_string,
-    required_string_tuple,
+    required_string_list,
 )
 
 
@@ -60,14 +60,14 @@ def load_pinned_rdkit_known_quirk_cases(
                     fixture_path=fixture_case.fixture_path,
                     case_id=fixture_case.case_id,
                 ),
-                source_stereo_double_bonds=required_string_tuple(
-                    list(raw_case["source_stereo_double_bonds"]),
+                source_stereo_double_bonds=required_string_list(
+                    raw_case,
                     field_name="source_stereo_double_bonds",
                     fixture_path=fixture_case.fixture_path,
                     case_id=fixture_case.case_id,
                 ),
-                roundtrip_stereo_double_bonds=required_string_tuple(
-                    list(raw_case["roundtrip_stereo_double_bonds"]),
+                roundtrip_stereo_double_bonds=required_string_list(
+                    raw_case,
                     field_name="roundtrip_stereo_double_bonds",
                     fixture_path=fixture_case.fixture_path,
                     case_id=fixture_case.case_id,

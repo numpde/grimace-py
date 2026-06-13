@@ -19,10 +19,10 @@ here.
 
 ## Noncritical observations
 
-- `scripts/prepared_mol_zstd_dictionary_generate.py --output-root ... --force`
-  removes the computed artifact directory if it already exists. The Make/Compose
-  lane binds the package-data directory explicitly and validates the path, so this
-  is not a normal-lane escape, but the direct script surface is still powerful.
+- `scripts/prepared_mol_zstd_dictionary_generate.py` now replaces an existing
+  artifact only when `--replace-artifact YYYYMMDD_hash` names the computed
+  artifact exactly. The remaining direct-script surface is broad `--output-root`
+  choice, not recursive replacement of an arbitrary existing artifact.
 - `tests/rdkit_serialization/_support.py` intentionally treats some large
   isomeric deterministic-writer membership cases as RDKit drift when the
   deterministic output is not observed in a substantial rooted-random sample.
@@ -171,23 +171,26 @@ Checklist:
 - [ ] Delete the "Suspicious current model" path only after the known-gap lane
       proves equivalence.
 
-### 2. Direct zstd dictionary generator `--force`
+### 2. Direct zstd dictionary generator replacement surface
 
-Issue: the direct script can delete the computed output artifact directory when
-`--force` is passed. The Make/Compose lane validates the bind target, but the
-script itself remains a powerful local surface.
+Issue: the direct script can write to any requested `--output-root`. Existing
+artifact replacement is now scoped by exact `--replace-artifact
+YYYYMMDD_hash`, and the Make/Compose lane binds the package-data directory, but
+the direct script remains a powerful local surface.
 
-Serious alternatives:
+Original alternatives considered:
 
-- Keep as-is and rely on Make/Compose as the supported lane.
-- Remove `--force` entirely.
-- Keep `--force`, but require the output root to be the package-data directory.
-- Replace deletion with atomic write into a temp directory plus rename.
+- Keep the old `--force` behavior and rely on Make/Compose as the supported
+  lane.
+- Remove replacement entirely.
+- Keep replacement, but require the output root to be the package-data
+  directory.
+- Replace through atomic write into a temp directory plus rename.
 - Require an explicit `--replace-artifact ARTIFACT_ID` matching the computed
   artifact directory.
 
-Principled direction: make replacement artifact-scoped and atomic. The script
-should never recursively remove an arbitrary output root child just because it
+Principled direction: keep replacement artifact-scoped and atomic. The script
+should never recursively remove an arbitrary output-root child just because it
 matches a computed path; it should stage the artifact, validate it, then replace
 only the exact expected artifact directory when the user explicitly names it.
 

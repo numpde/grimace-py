@@ -1694,6 +1694,112 @@ class _WriterActiveEmittedGraphPolicyDecision:
         )
 
     @property
+    def residual_cyclic_blocker_groups(
+        self,
+    ) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+        residual = self.residual_cyclic_policy_decision
+
+        if residual is None:
+            if (
+                self.kind
+                is (
+                    _WriterActiveEmittedGraphPolicyDecisionKind
+                    .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+                )
+            ):
+                return (
+                    self
+                    .unsupported_owner_scope_residual_attachment_policy_groups
+                )
+
+            if (
+                self.kind
+                is (
+                    _WriterActiveEmittedGraphPolicyDecisionKind
+                    .UNRESOLVED_RESIDUAL_ATTACHMENT_CHOICE
+                )
+            ):
+                return self.unresolved_residual_attachment_policy_groups
+
+            return ()
+
+        if (
+            residual.kind
+            is _WriterResidualCyclicPolicyDecisionKind.UNSUPPORTED_OWNER_SCOPE
+        ):
+            return residual.unsupported_owner_scope_groups
+
+        if (
+            residual.kind
+            is (
+                _WriterResidualCyclicPolicyDecisionKind
+                .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
+            )
+        ):
+            return residual.missing_evidence_groups
+
+        return ()
+
+    @property
+    def residual_cyclic_blocker_kind(
+        self,
+    ) -> _WriterActiveEmittedGraphPolicyBlockerKind | None:
+        residual = self.residual_cyclic_policy_decision
+
+        if residual is not None:
+            if (
+                residual.kind
+                is (
+                    _WriterResidualCyclicPolicyDecisionKind
+                    .UNSUPPORTED_OWNER_SCOPE
+                )
+            ):
+                return (
+                    _WriterActiveEmittedGraphPolicyBlockerKind
+                    .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+                )
+
+            if (
+                residual.kind
+                is (
+                    _WriterResidualCyclicPolicyDecisionKind
+                    .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
+                )
+            ):
+                return (
+                    _WriterActiveEmittedGraphPolicyBlockerKind
+                    .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
+                )
+
+            return None
+
+        if (
+            self.kind
+            is (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+            )
+        ):
+            return (
+                _WriterActiveEmittedGraphPolicyBlockerKind
+                .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+            )
+
+        if (
+            self.kind
+            is (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .UNRESOLVED_RESIDUAL_ATTACHMENT_CHOICE
+            )
+        ):
+            return (
+                _WriterActiveEmittedGraphPolicyBlockerKind
+                .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
+            )
+
+        return None
+
+    @property
     def graph_policy_blockers(
         self,
     ) -> tuple[_WriterActiveEmittedGraphPolicyBlocker, ...]:
@@ -1712,42 +1818,14 @@ class _WriterActiveEmittedGraphPolicyDecision:
                 for blocker in self.blockers
             )
 
-        if (
-            self.kind
-            is (
-                _WriterActiveEmittedGraphPolicyDecisionKind
-                .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
-            )
-        ):
+        blocker_kind = self.residual_cyclic_blocker_kind
+        if blocker_kind is not None:
             return tuple(
                 _WriterActiveEmittedGraphPolicyBlocker(
-                    kind=(
-                        _WriterActiveEmittedGraphPolicyBlockerKind
-                        .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
-                    ),
+                    kind=blocker_kind,
                     residual_group=group,
                 )
-                for group in (
-                    self.unsupported_owner_scope_residual_attachment_policy_groups
-                )
-            )
-
-        if (
-            self.kind
-            is (
-                _WriterActiveEmittedGraphPolicyDecisionKind
-                .UNRESOLVED_RESIDUAL_ATTACHMENT_CHOICE
-            )
-        ):
-            return tuple(
-                _WriterActiveEmittedGraphPolicyBlocker(
-                    kind=(
-                        _WriterActiveEmittedGraphPolicyBlockerKind
-                        .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
-                    ),
-                    residual_group=group,
-                )
-                for group in self.unresolved_residual_attachment_policy_groups
+                for group in self.residual_cyclic_blocker_groups
             )
 
         return ()

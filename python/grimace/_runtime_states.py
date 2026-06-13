@@ -214,6 +214,11 @@ class _MergedStateAdapter:
     def __init__(self, states: tuple[_BaseDecoderState, ...]) -> None:
         if not states:
             raise ValueError("Merged decoder state requires at least one branch")
+        # Public terminality is a stopping predicate; a merged state cannot be
+        # both accepted and extendable without losing one side of the contract.
+        terminality = tuple(state.is_terminal() for state in states)
+        if any(terminality) and not all(terminality):
+            raise RuntimeError("Merged decoder states diverged on terminality")
         self._states = states
 
     def _branch_state_transitions(self) -> _StateTransitions:

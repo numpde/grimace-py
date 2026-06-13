@@ -736,6 +736,40 @@ class _WriterSnapshotPrefixReadOutcome:
         return self.choice_snapshot.selected_closure_pair_graph_action_surfaces
 
     @property
+    def considered_active_child_selection_kinds(self):
+        if self.choice_snapshot is None:
+            return ()
+
+        return self.choice_snapshot.considered_active_child_selection_kinds
+
+    @property
+    def selected_active_child_selection_kinds(self):
+        if self.choice_snapshot is None:
+            return ()
+
+        return self.choice_snapshot.selected_active_child_selection_kinds
+
+    @property
+    def considered_cyclic_tree_entry_graph_action_surfaces(self):
+        if self.choice_snapshot is None:
+            return ()
+
+        return (
+            self.choice_snapshot
+            .considered_cyclic_tree_entry_graph_action_surfaces
+        )
+
+    @property
+    def selected_cyclic_tree_entry_graph_action_surfaces(self):
+        if self.choice_snapshot is None:
+            return ()
+
+        return (
+            self.choice_snapshot
+            .selected_cyclic_tree_entry_graph_action_surfaces
+        )
+
+    @property
     def resolved_residual_attachment_policy_groups(self):
         if self.choice_snapshot is None:
             return ()

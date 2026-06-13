@@ -1640,6 +1640,42 @@ class _WriterActiveEmittedScheduleDecision:
         return self.child_schedule_surface.graph_action_surfaces
 
     @property
+    def considered_active_child_selection_kind(
+        self,
+    ) -> _WriterActiveChildSelectionKind:
+        if self.graph_policy_decision is not None:
+            return (
+                self.graph_policy_decision
+                .considered_active_child_selection_kind
+            )
+
+        if self.child_schedule_surface is None:
+            return _WriterActiveChildSelectionKind.NONE
+
+        return (
+            self.child_schedule_surface
+            .considered_active_child_selection_kind
+        )
+
+    @property
+    def considered_cyclic_tree_entry_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        if self.graph_policy_decision is not None:
+            return (
+                self.graph_policy_decision
+                .considered_cyclic_tree_entry_graph_action_surfaces
+            )
+
+        if self.child_schedule_surface is None:
+            return ()
+
+        return (
+            self.child_schedule_surface
+            .considered_cyclic_tree_entry_graph_action_surfaces
+        )
+
+    @property
     def selected_graph_action_surfaces(
         self,
     ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
@@ -1857,6 +1893,50 @@ class _WriterTopLevelScheduleDecision:
 
         return self.active_emitted_decision.graph_policy_decision
 
+    @property
+    def considered_active_child_selection_kind(
+        self,
+    ) -> _WriterActiveChildSelectionKind:
+        if self.active_emitted_decision is None:
+            return _WriterActiveChildSelectionKind.NONE
+
+        return (
+            self.active_emitted_decision
+            .considered_active_child_selection_kind
+        )
+
+    @property
+    def selected_active_child_selection_kind(
+        self,
+    ) -> _WriterActiveChildSelectionKind:
+        if self.active_emitted_decision is None:
+            return _WriterActiveChildSelectionKind.NONE
+
+        return (
+            self.active_emitted_decision
+            .selected_active_child_selection_kind
+        )
+
+    @property
+    def considered_cyclic_tree_entry_graph_action_surfaces(self):
+        if self.active_emitted_decision is None:
+            return ()
+
+        return (
+            self.active_emitted_decision
+            .considered_cyclic_tree_entry_graph_action_surfaces
+        )
+
+    @property
+    def selected_cyclic_tree_entry_graph_action_surfaces(self):
+        if self.active_emitted_decision is None:
+            return ()
+
+        return (
+            self.active_emitted_decision
+            .selected_cyclic_tree_entry_graph_action_surfaces
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class _WriterTopLevelScheduleOutcome:
@@ -1932,6 +2012,44 @@ class _WriterTopLevelScheduleOutcome:
             return ()
 
         return self.schedule_decision.selected_next_token_frontier
+
+    @property
+    def considered_active_child_selection_kind(
+        self,
+    ) -> _WriterActiveChildSelectionKind:
+        if self.schedule_decision is None:
+            return _WriterActiveChildSelectionKind.NONE
+
+        return self.schedule_decision.considered_active_child_selection_kind
+
+    @property
+    def selected_active_child_selection_kind(
+        self,
+    ) -> _WriterActiveChildSelectionKind:
+        if self.schedule_decision is None:
+            return _WriterActiveChildSelectionKind.NONE
+
+        return self.schedule_decision.selected_active_child_selection_kind
+
+    @property
+    def considered_cyclic_tree_entry_graph_action_surfaces(self):
+        if self.schedule_decision is None:
+            return ()
+
+        return (
+            self.schedule_decision
+            .considered_cyclic_tree_entry_graph_action_surfaces
+        )
+
+    @property
+    def selected_cyclic_tree_entry_graph_action_surfaces(self):
+        if self.schedule_decision is None:
+            return ()
+
+        return (
+            self.schedule_decision
+            .selected_cyclic_tree_entry_graph_action_surfaces
+        )
 
 
 def _active_emitted_closure_decision(

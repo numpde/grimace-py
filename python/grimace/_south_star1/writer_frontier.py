@@ -25,6 +25,7 @@ from .writer_stereo import empty_writer_stereo_state
 from .writer_transitions import finalize_writer_terminal_state
 from .writer_transitions import _WriterActiveEmittedGraphPolicyBlocker
 from .writer_transitions import _WriterActiveEmittedGraphPolicyDecision
+from .writer_transitions import _WriterActiveChildSelectionKind
 from .writer_transitions import _WriterClosureEndpointSelectionKind
 from .writer_transitions import _WriterGraphPolicyActionFamily
 from .writer_transitions import _WriterNextTokenFrontierSupport
@@ -128,6 +129,18 @@ class _WriterFrontierStateScheduleOutcome:
         self,
     ) -> _WriterActiveEmittedGraphPolicyDecision | None:
         return self.schedule_outcome.graph_policy_decision
+
+    @property
+    def considered_active_child_selection_kind(
+        self,
+    ) -> _WriterActiveChildSelectionKind:
+        return self.schedule_outcome.considered_active_child_selection_kind
+
+    @property
+    def selected_active_child_selection_kind(
+        self,
+    ) -> _WriterActiveChildSelectionKind:
+        return self.schedule_outcome.selected_active_child_selection_kind
 
 
 @dataclass(frozen=True, slots=True)
@@ -717,6 +730,56 @@ class _WriterFrontierScheduleOutcome:
         )
 
     @property
+    def considered_active_child_selection_kinds(
+        self,
+    ) -> tuple[_WriterActiveChildSelectionKind, ...]:
+        return tuple(
+            state_outcome.considered_active_child_selection_kind
+            for state_outcome in self.state_outcomes
+            if (
+                state_outcome.considered_active_child_selection_kind
+                is not _WriterActiveChildSelectionKind.NONE
+            )
+        )
+
+    @property
+    def selected_active_child_selection_kinds(
+        self,
+    ) -> tuple[_WriterActiveChildSelectionKind, ...]:
+        return tuple(
+            state_outcome.selected_active_child_selection_kind
+            for state_outcome in self.state_outcomes
+            if (
+                state_outcome.selected_active_child_selection_kind
+                is not _WriterActiveChildSelectionKind.NONE
+            )
+        )
+
+    @property
+    def considered_cyclic_tree_entry_graph_action_surfaces(self):
+        return tuple(
+            surface
+            for state_outcome in self.state_outcomes
+            for surface in (
+                state_outcome
+                .schedule_outcome
+                .considered_cyclic_tree_entry_graph_action_surfaces
+            )
+        )
+
+    @property
+    def selected_cyclic_tree_entry_graph_action_surfaces(self):
+        return tuple(
+            surface
+            for state_outcome in self.state_outcomes
+            for surface in (
+                state_outcome
+                .schedule_outcome
+                .selected_cyclic_tree_entry_graph_action_surfaces
+            )
+        )
+
+    @property
     def resolved_residual_attachment_policy_groups(self):
         return tuple(
             group
@@ -875,6 +938,32 @@ class _WriterFrontierChoiceSnapshot:
     @property
     def selected_closure_pair_graph_action_surfaces(self):
         return self.schedule_outcome.selected_closure_pair_graph_action_surfaces
+
+    @property
+    def considered_active_child_selection_kinds(
+        self,
+    ) -> tuple[_WriterActiveChildSelectionKind, ...]:
+        return self.schedule_outcome.considered_active_child_selection_kinds
+
+    @property
+    def selected_active_child_selection_kinds(
+        self,
+    ) -> tuple[_WriterActiveChildSelectionKind, ...]:
+        return self.schedule_outcome.selected_active_child_selection_kinds
+
+    @property
+    def considered_cyclic_tree_entry_graph_action_surfaces(self):
+        return (
+            self.schedule_outcome
+            .considered_cyclic_tree_entry_graph_action_surfaces
+        )
+
+    @property
+    def selected_cyclic_tree_entry_graph_action_surfaces(self):
+        return (
+            self.schedule_outcome
+            .selected_cyclic_tree_entry_graph_action_surfaces
+        )
 
     @property
     def resolved_residual_attachment_policy_groups(self):

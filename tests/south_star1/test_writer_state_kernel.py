@@ -247,6 +247,59 @@ class WriterStateKernelTest(unittest.TestCase):
 
         return policy, active_outcome
 
+    def _cyclic_active_child_scheduled_outcome(
+        self,
+        active_atom: AtomId,
+    ) -> writer_transitions._WriterActiveEmittedScheduleOutcome:
+        closure_decision, _, _ = self._test_closure_endpoint_decision(
+            active_atom=active_atom,
+            pair_survives=False,
+            open_survives=False,
+        )
+        cyclic_action = self._test_child_action(
+            active_atom,
+            attachment_action_kind=(
+                WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY
+            ),
+        )
+        child_surface = writer_transitions._WriterActiveChildScheduleSurface(
+            active_atom=active_atom,
+            blockers=(),
+            child_obligations=(cyclic_action.child_obligation,),
+            scheduled_actions=(cyclic_action,),
+        )
+        policy = writer_transitions._WriterActiveEmittedGraphPolicyDecision(
+            kind=(
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyDecisionKind
+                .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+            ),
+            active_atom=active_atom,
+            closure_endpoint_decision=closure_decision,
+            child_schedule_surface=child_surface,
+        )
+        cyclic_emission = writer_transitions._WriterScheduledActionEmission(
+            action=cyclic_action,
+            transitions=(object(),),  # type: ignore[arg-type]
+        )
+        child_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(cyclic_action,),
+            emissions=(cyclic_emission,),
+            surviving_emissions=(cyclic_emission,),
+        )
+        decision = writer_transitions._active_emitted_child_decision(
+            closure_decision,
+            child_surface,
+            child_batch,
+            graph_policy_decision=policy,
+        )
+
+        return writer_transitions._WriterActiveEmittedScheduleOutcome(
+            kind=writer_transitions._WriterActiveEmittedScheduleOutcomeKind.SCHEDULED,
+            graph_policy_decision=policy,
+            schedule_decision=decision,
+        )
+
     def _dead_closure_open_graph_policy_decision_for_owner_scope(
         self,
         *,
@@ -1914,6 +1967,151 @@ class WriterStateKernelTest(unittest.TestCase):
             policy_a.support_dead_closure_open_vs_cyclic_tree_entry_groups,
         )
 
+    def test_writer_frontier_schedule_outcome_exposes_active_child_selection_kinds(self) -> None:
+        state_key_1 = writer_state_key(_raw_initial_state(AtomId(0)))
+        state_key_2 = writer_state_key(_raw_initial_state(AtomId(1)))
+        state_key_3 = writer_state_key(_raw_initial_state(AtomId(2)))
+        cyclic_outcome = self._cyclic_active_child_scheduled_outcome(AtomId(0))
+        cyclic_top = writer_transitions._WriterTopLevelScheduleOutcome(
+            kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.SCHEDULED,
+            schedule_decision=writer_transitions._top_level_active_emitted_decision(
+                cyclic_outcome.schedule_decision,
+            ),
+            active_emitted_outcome=cyclic_outcome,
+        )
+        root_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(writer_transitions._emit_root_atom_action(AtomId(1)),),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        root_top = writer_transitions._WriterTopLevelScheduleOutcome(
+            kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.SCHEDULED,
+            schedule_decision=writer_transitions._top_level_actions_decision(
+                root_batch,
+            ),
+        )
+        closure_decision, _, _ = self._test_closure_endpoint_decision(
+            active_atom=AtomId(2),
+            pair_survives=False,
+            open_survives=False,
+        )
+        finish_action = writer_transitions._finish_active_action(AtomId(2))
+        finish_surface = writer_transitions._WriterActiveChildScheduleSurface(
+            active_atom=AtomId(2),
+            blockers=(),
+            child_obligations=(),
+            scheduled_actions=(finish_action,),
+        )
+        finish_policy = writer_transitions._WriterActiveEmittedGraphPolicyDecision(
+            kind=(
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyDecisionKind
+                .ACTIVE_CHILD
+            ),
+            active_atom=AtomId(2),
+            closure_endpoint_decision=closure_decision,
+            child_schedule_surface=finish_surface,
+        )
+        finish_emission = writer_transitions._WriterScheduledActionEmission(
+            action=finish_action,
+            transitions=(object(),),  # type: ignore[arg-type]
+        )
+        finish_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(finish_action,),
+            emissions=(finish_emission,),
+            surviving_emissions=(finish_emission,),
+        )
+        finish_decision = writer_transitions._active_emitted_child_decision(
+            closure_decision,
+            finish_surface,
+            finish_batch,
+            graph_policy_decision=finish_policy,
+        )
+        finish_outcome = writer_transitions._WriterActiveEmittedScheduleOutcome(
+            kind=writer_transitions._WriterActiveEmittedScheduleOutcomeKind.SCHEDULED,
+            graph_policy_decision=finish_policy,
+            schedule_decision=finish_decision,
+        )
+        finish_top = writer_transitions._WriterTopLevelScheduleOutcome(
+            kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.SCHEDULED,
+            schedule_decision=writer_transitions._top_level_active_emitted_decision(
+                finish_decision,
+            ),
+            active_emitted_outcome=finish_outcome,
+        )
+        outcome = writer_frontier_module._WriterFrontierScheduleOutcome(
+            state_outcomes=(
+                writer_frontier_module._WriterFrontierStateScheduleOutcome(
+                    state_key=state_key_1,
+                    parent_weight=1,
+                    finalized_state_key=None,
+                    schedule_outcome=cyclic_top,
+                ),
+                writer_frontier_module._WriterFrontierStateScheduleOutcome(
+                    state_key=state_key_2,
+                    parent_weight=1,
+                    finalized_state_key=None,
+                    schedule_outcome=root_top,
+                ),
+                writer_frontier_module._WriterFrontierStateScheduleOutcome(
+                    state_key=state_key_3,
+                    parent_weight=1,
+                    finalized_state_key=None,
+                    schedule_outcome=finish_top,
+                ),
+            ),
+            terminal_by_key=Counter(),
+            grouped_by_text={},
+            weighted_by_text={},
+        )
+
+        self.assertEqual(
+            outcome.considered_active_child_selection_kinds,
+            (
+                writer_transitions._WriterActiveChildSelectionKind.CYCLIC_TREE_ENTRY,
+                writer_transitions._WriterActiveChildSelectionKind.FINISH_ACTIVE,
+            ),
+        )
+        self.assertEqual(
+            outcome.selected_active_child_selection_kinds,
+            (
+                writer_transitions._WriterActiveChildSelectionKind.CYCLIC_TREE_ENTRY,
+                writer_transitions._WriterActiveChildSelectionKind.FINISH_ACTIVE,
+            ),
+        )
+
+    def test_writer_frontier_schedule_outcome_exposes_cyclic_tree_entry_surfaces(self) -> None:
+        state_key = writer_state_key(_raw_initial_state(AtomId(0)))
+        active_outcome = self._cyclic_active_child_scheduled_outcome(AtomId(0))
+        top = writer_transitions._WriterTopLevelScheduleOutcome(
+            kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.SCHEDULED,
+            schedule_decision=writer_transitions._top_level_active_emitted_decision(
+                active_outcome.schedule_decision,
+            ),
+            active_emitted_outcome=active_outcome,
+        )
+        state_outcome = writer_frontier_module._WriterFrontierStateScheduleOutcome(
+            state_key=state_key,
+            parent_weight=1,
+            finalized_state_key=None,
+            schedule_outcome=top,
+        )
+        outcome = writer_frontier_module._WriterFrontierScheduleOutcome(
+            state_outcomes=(state_outcome,),
+            terminal_by_key=Counter(),
+            grouped_by_text={},
+            weighted_by_text={},
+        )
+
+        self.assertEqual(
+            outcome.considered_cyclic_tree_entry_graph_action_surfaces,
+            top.considered_cyclic_tree_entry_graph_action_surfaces,
+        )
+        self.assertEqual(
+            outcome.selected_cyclic_tree_entry_graph_action_surfaces,
+            top.selected_cyclic_tree_entry_graph_action_surfaces,
+        )
+
     def test_writer_frontier_schedule_outcome_exposes_closure_endpoint_selection_kinds(self) -> None:
         pair_decision, _, _ = self._test_closure_endpoint_decision(
             pair_survives=True,
@@ -2356,6 +2554,36 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(
             snapshot.selected_closure_pair_graph_action_surfaces,
             schedule_outcome.selected_closure_pair_graph_action_surfaces,
+        )
+
+    def test_writer_frontier_choice_snapshot_exposes_active_child_selection_evidence(self) -> None:
+        active_outcome = self._cyclic_active_child_scheduled_outcome(AtomId(0))
+        snapshot = self._test_frontier_choice_snapshot_with_active_policy(
+            active_outcome,
+        )
+        schedule_outcome = snapshot.schedule_outcome
+
+        self.assertEqual(
+            snapshot.considered_active_child_selection_kinds,
+            schedule_outcome.considered_active_child_selection_kinds,
+        )
+        self.assertEqual(
+            snapshot.selected_active_child_selection_kinds,
+            schedule_outcome.selected_active_child_selection_kinds,
+        )
+        self.assertEqual(
+            snapshot.considered_cyclic_tree_entry_graph_action_surfaces,
+            (
+                schedule_outcome
+                .considered_cyclic_tree_entry_graph_action_surfaces
+            ),
+        )
+        self.assertEqual(
+            snapshot.selected_cyclic_tree_entry_graph_action_surfaces,
+            (
+                schedule_outcome
+                .selected_cyclic_tree_entry_graph_action_surfaces
+            ),
         )
 
     def test_writer_frontier_choice_snapshot_exposes_residual_attachment_support_groups(self) -> None:
@@ -4783,6 +5011,152 @@ class WriterStateKernelTest(unittest.TestCase):
                 )
                 self.assertEqual(
                     failed.selected_closure_pair_graph_action_surfaces,
+                    (),
+                )
+
+    def test_writer_snapshot_prefix_read_outcome_exposes_active_child_selection_evidence(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        choice_snapshot = self._test_frontier_choice_snapshot_with_active_policy(
+            self._cyclic_active_child_scheduled_outcome(AtomId(0)),
+        )
+        sequence = writer_snapshot._WriterSnapshotAdvanceSequenceOutcome(
+            kind=writer_snapshot._WriterSnapshotAdvanceSequenceOutcomeKind.ADVANCED,
+            source_snapshot=snapshot,
+            emitted_texts=(),
+            step_outcomes=(),
+            current_snapshot=snapshot,
+        )
+        replay = writer_snapshot._WriterSnapshotReplayChoiceSnapshotOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                .CHOICE_SNAPSHOT
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=(),
+            sequence_outcome=sequence,
+            choice_snapshot=choice_snapshot,
+        )
+        prefix_outcome = writer_snapshot._WriterSnapshotPrefixReadOutcome(
+            kind=writer_snapshot._WriterSnapshotPrefixReadOutcomeKind.READABLE,
+            replay_outcome=replay,
+        )
+
+        self.assertEqual(
+            prefix_outcome.considered_active_child_selection_kinds,
+            choice_snapshot.considered_active_child_selection_kinds,
+        )
+        self.assertEqual(
+            prefix_outcome.selected_active_child_selection_kinds,
+            choice_snapshot.selected_active_child_selection_kinds,
+        )
+        self.assertEqual(
+            prefix_outcome.considered_cyclic_tree_entry_graph_action_surfaces,
+            (
+                choice_snapshot
+                .considered_cyclic_tree_entry_graph_action_surfaces
+            ),
+        )
+        self.assertEqual(
+            prefix_outcome.selected_cyclic_tree_entry_graph_action_surfaces,
+            choice_snapshot.selected_cyclic_tree_entry_graph_action_surfaces,
+        )
+
+        blocked_choice_snapshot = self._test_blocked_frontier_choice_snapshot(cursor)
+        blocked_step = writer_snapshot._WriterSnapshotAdvanceOutcome(
+            kind=writer_snapshot._WriterSnapshotAdvanceOutcomeKind.BLOCKED,
+            source_snapshot=snapshot,
+            emitted_text="blocked",
+            choice_snapshot=blocked_choice_snapshot,
+        )
+        blocked_sequence = writer_snapshot._WriterSnapshotAdvanceSequenceOutcome(
+            kind=writer_snapshot._WriterSnapshotAdvanceSequenceOutcomeKind.BLOCKED,
+            source_snapshot=snapshot,
+            emitted_texts=("blocked",),
+            step_outcomes=(blocked_step,),
+            current_snapshot=snapshot,
+        )
+        replay_blocked = writer_snapshot._WriterSnapshotReplayChoiceSnapshotOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                .REPLAY_BLOCKED
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=("blocked",),
+            sequence_outcome=blocked_sequence,
+        )
+        replay_blocked_outcome = writer_snapshot._WriterSnapshotPrefixReadOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotPrefixReadOutcomeKind
+                .REPLAY_BLOCKED
+            ),
+            replay_outcome=replay_blocked,
+        )
+        invalid_step = writer_snapshot._WriterSnapshotAdvanceOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotAdvanceOutcomeKind
+                .INVALID_EMITTED_TEXT
+            ),
+            source_snapshot=snapshot,
+            emitted_text="bad",
+            choice_snapshot=choice_snapshot,
+        )
+        invalid_sequence = writer_snapshot._WriterSnapshotAdvanceSequenceOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotAdvanceSequenceOutcomeKind
+                .INVALID_EMITTED_TEXT
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=("bad",),
+            step_outcomes=(invalid_step,),
+            current_snapshot=snapshot,
+        )
+        invalid_replay = writer_snapshot._WriterSnapshotReplayChoiceSnapshotOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                .INVALID_EMITTED_TEXT
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=("bad",),
+            sequence_outcome=invalid_sequence,
+        )
+        invalid_outcome = writer_snapshot._WriterSnapshotPrefixReadOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotPrefixReadOutcomeKind
+                .INVALID_EMITTED_TEXT
+            ),
+            replay_outcome=invalid_replay,
+        )
+
+        for failed in (replay_blocked_outcome, invalid_outcome):
+            with self.subTest(kind=failed.kind):
+                self.assertEqual(
+                    failed.considered_active_child_selection_kinds,
+                    (),
+                )
+                self.assertEqual(
+                    failed.selected_active_child_selection_kinds,
+                    (),
+                )
+                self.assertEqual(
+                    failed.considered_cyclic_tree_entry_graph_action_surfaces,
+                    (),
+                )
+                self.assertEqual(
+                    failed.selected_cyclic_tree_entry_graph_action_surfaces,
                     (),
                 )
 
@@ -12078,6 +12452,99 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(
             top.selected_graph_action_surfaces,
             active_decision.selected_graph_action_surfaces,
+        )
+
+    def test_top_level_schedule_decision_exposes_active_child_selection(self) -> None:
+        active_outcome = self._cyclic_active_child_scheduled_outcome(AtomId(0))
+        active_decision = active_outcome.schedule_decision
+        top = writer_transitions._top_level_active_emitted_decision(
+            active_decision,
+        )
+
+        self.assertIs(
+            top.considered_active_child_selection_kind,
+            writer_transitions._WriterActiveChildSelectionKind.CYCLIC_TREE_ENTRY,
+        )
+        self.assertIs(
+            top.selected_active_child_selection_kind,
+            writer_transitions._WriterActiveChildSelectionKind.CYCLIC_TREE_ENTRY,
+        )
+        self.assertEqual(
+            top.considered_cyclic_tree_entry_graph_action_surfaces,
+            active_decision.considered_cyclic_tree_entry_graph_action_surfaces,
+        )
+        self.assertEqual(
+            top.selected_cyclic_tree_entry_graph_action_surfaces,
+            active_decision.selected_cyclic_tree_entry_graph_action_surfaces,
+        )
+
+        root_action = writer_transitions._emit_root_atom_action(AtomId(1))
+        root_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(root_action,),
+            emissions=(),
+            surviving_emissions=(),
+        )
+        root_top = writer_transitions._top_level_actions_decision(root_batch)
+
+        self.assertIs(
+            root_top.considered_active_child_selection_kind,
+            writer_transitions._WriterActiveChildSelectionKind.NONE,
+        )
+        self.assertIs(
+            root_top.selected_active_child_selection_kind,
+            writer_transitions._WriterActiveChildSelectionKind.NONE,
+        )
+        self.assertEqual(
+            root_top.considered_cyclic_tree_entry_graph_action_surfaces,
+            (),
+        )
+        self.assertEqual(
+            root_top.selected_cyclic_tree_entry_graph_action_surfaces,
+            (),
+        )
+
+    def test_top_level_schedule_outcome_exposes_active_child_selection(self) -> None:
+        active_outcome = self._cyclic_active_child_scheduled_outcome(AtomId(0))
+        top_decision = writer_transitions._top_level_active_emitted_decision(
+            active_outcome.schedule_decision,
+        )
+        scheduled = writer_transitions._WriterTopLevelScheduleOutcome(
+            kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.SCHEDULED,
+            schedule_decision=top_decision,
+            active_emitted_outcome=active_outcome,
+        )
+
+        self.assertIs(
+            scheduled.considered_active_child_selection_kind,
+            writer_transitions._WriterActiveChildSelectionKind.CYCLIC_TREE_ENTRY,
+        )
+        self.assertIs(
+            scheduled.selected_active_child_selection_kind,
+            writer_transitions._WriterActiveChildSelectionKind.CYCLIC_TREE_ENTRY,
+        )
+        self.assertEqual(
+            scheduled.considered_cyclic_tree_entry_graph_action_surfaces,
+            top_decision.considered_cyclic_tree_entry_graph_action_surfaces,
+        )
+        self.assertEqual(
+            scheduled.selected_cyclic_tree_entry_graph_action_surfaces,
+            top_decision.selected_cyclic_tree_entry_graph_action_surfaces,
+        )
+
+        blocked = writer_transitions._WriterTopLevelScheduleOutcome(
+            kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.BLOCKED,
+            active_emitted_outcome=self._blocked_child_active_emitted_outcome(
+                AtomId(0)
+            ),
+        )
+
+        self.assertIs(
+            blocked.considered_active_child_selection_kind,
+            writer_transitions._WriterActiveChildSelectionKind.NONE,
+        )
+        self.assertIs(
+            blocked.selected_active_child_selection_kind,
+            writer_transitions._WriterActiveChildSelectionKind.NONE,
         )
 
     def test_scheduled_writer_next_token_frontier_returns_selected_frontier(self) -> None:

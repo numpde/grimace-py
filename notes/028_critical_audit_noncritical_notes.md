@@ -633,9 +633,9 @@ silent parity claims across future RDKit versions would be worse.
 
 Checklist:
 
-- [ ] Ensure docs state parity evidence is RDKit-versioned.
-- [ ] Make strict test runners fail if the active RDKit version lacks fixtures.
-- [ ] Add a release checklist item to add fixtures before claiming a new RDKit
+- [x] Ensure docs state parity evidence is RDKit-versioned.
+- [x] Make strict test runners fail if the active RDKit version lacks fixtures.
+- [x] Add a release checklist item to add fixtures before claiming a new RDKit
       version.
 - [ ] Consider an upper bound only if a known future RDKit breaks runtime, not
       merely because evidence is versioned.

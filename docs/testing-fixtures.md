@@ -129,3 +129,5 @@ When adding or changing fixtures:
 6. Add runtime or parity tests for the actual behavior claim.
 7. Link RDKit source-tree serializer claims through the coverage ledger when a
    fixture exists to cover the RDKit source block.
+8. Before claiming a new RDKit version in release evidence, add its
+   version-keyed fixtures and run the strict pinned-fixture runners.

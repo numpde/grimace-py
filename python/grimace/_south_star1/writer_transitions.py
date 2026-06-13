@@ -1554,6 +1554,10 @@ class _WriterActiveEmittedGraphPolicyDecision:
     def considered_closure_open_vs_cyclic_tree_entry_groups(
         self,
     ) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+        residual = self.residual_cyclic_policy_decision
+        if residual is not None:
+            return residual.choice_groups
+
         if self.child_schedule_surface is None:
             return ()
 
@@ -1611,9 +1615,17 @@ class _WriterActiveEmittedGraphPolicyDecision:
         return self.residual_cyclic_policy_decision.support_dead_groups
 
     @property
+    def residual_cyclic_evidence_is_retained(self) -> bool:
+        return self.residual_cyclic_policy_decision is not None
+
+    @property
     def unsupported_owner_scope_closure_open_vs_cyclic_tree_entry_groups(
         self,
     ) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+        residual = self.residual_cyclic_policy_decision
+        if residual is not None:
+            return residual.unsupported_owner_scope_groups
+
         return tuple(
             group
             for group in self.considered_closure_open_vs_cyclic_tree_entry_groups
@@ -1627,6 +1639,10 @@ class _WriterActiveEmittedGraphPolicyDecision:
     def support_dead_closure_open_vs_cyclic_tree_entry_groups(
         self,
     ) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+        residual = self.residual_cyclic_policy_decision
+        if residual is not None:
+            return residual.support_dead_groups
+
         return _support_dead_closure_open_vs_cyclic_tree_entry_groups(
             self.closure_endpoint_decision,
             self.considered_closure_open_vs_cyclic_tree_entry_groups,
@@ -1636,6 +1652,10 @@ class _WriterActiveEmittedGraphPolicyDecision:
     def missing_closure_open_support_evidence_groups(
         self,
     ) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+        residual = self.residual_cyclic_policy_decision
+        if residual is not None:
+            return residual.missing_evidence_groups
+
         return _missing_closure_open_support_evidence_groups(
             self.closure_endpoint_decision,
             self.considered_closure_open_vs_cyclic_tree_entry_groups,
@@ -1660,6 +1680,10 @@ class _WriterActiveEmittedGraphPolicyDecision:
         ):
             return ()
 
+        residual = self.residual_cyclic_policy_decision
+        if residual is not None:
+            return residual.missing_evidence_groups
+
         return self.missing_closure_open_support_evidence_groups
 
     @property
@@ -1674,6 +1698,10 @@ class _WriterActiveEmittedGraphPolicyDecision:
             )
         ):
             return ()
+
+        residual = self.residual_cyclic_policy_decision
+        if residual is not None:
+            return residual.unsupported_owner_scope_groups
 
         return (
             self.unsupported_owner_scope_closure_open_vs_cyclic_tree_entry_groups
@@ -1846,6 +1874,10 @@ class _WriterActiveEmittedGraphPolicyDecision:
             )
         ):
             return ()
+
+        residual = self.residual_cyclic_policy_decision
+        if residual is not None:
+            return residual.resolved_residual_attachment_policy_groups
 
         return self.support_dead_closure_open_vs_cyclic_tree_entry_groups
 

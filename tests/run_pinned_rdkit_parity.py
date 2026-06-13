@@ -6,21 +6,20 @@ from rdkit import rdBase
 
 from tests.helpers.pinned_rdkit_fixtures import (
     PINNED_RDKIT_PARITY_MODULES,
-    has_pinned_rdkit_fixture,
+    missing_pinned_rdkit_fixture_roots,
     pinned_rdkit_parity_fixture_roots,
 )
 
 
 class PinnedRdkitParityFixtureAvailabilityTest(unittest.TestCase):
     def test_installed_rdkit_version_has_checked_in_pinned_fixtures(self) -> None:
-        missing = [
-            str(fixture_root)
-            for fixture_root in pinned_rdkit_parity_fixture_roots()
-            if not has_pinned_rdkit_fixture(fixture_root, rdBase.rdkitVersion)
-        ]
+        missing = missing_pinned_rdkit_fixture_roots(
+            pinned_rdkit_parity_fixture_roots(),
+            rdBase.rdkitVersion,
+        )
 
         self.assertEqual(
-            [],
+            (),
             missing,
             "pinned RDKit parity runner requires checked-in fixtures for "
             f"installed RDKit {rdBase.rdkitVersion}",

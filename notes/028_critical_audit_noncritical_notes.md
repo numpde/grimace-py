@@ -61,11 +61,11 @@ here.
   acting, but PyPI publication does not depend on the GitHub release job
   succeeding, so a GitHub-release-only outage could still leave a PyPI-only
   release.
-- `tests.rdkit_serialization.test_writer_support_counts` skips when the local
-  RDKit version has no count fixture, unlike the pinned RDKit parity runner
-  which fails closed on missing parity fixtures. Release lanes pin RDKit
-  `2026.3.1`, so the current release path has fixtures, but the count-only
-  evidence family is less fail-closed in ad hoc local environments.
+- `tests.rdkit_serialization.test_writer_support_counts` still skips when a
+  broad local discovery run uses an RDKit version with no checked-in count
+  fixture. The installed-package correctness runner now fails closed before
+  running that module, so release/package validation cannot silently lose the
+  count-only evidence family.
 - The Python release matrix now builds wheels for every CPython minor declared
   in package classifiers. Future Python minors still require an explicit
   release-matrix update and artifact-validation update before metadata should
@@ -524,13 +524,14 @@ making every local RDKit upgrade unusable.
 
 Checklist:
 
-- [ ] Add an environment variable or runner context for strict fixture mode.
-- [ ] Make `tests.run_installed_package_correctness` and pinned parity set
-      strict mode.
-- [ ] In strict mode, missing support-count fixtures should fail, not skip.
-- [ ] Keep ordinary `unittest discover` behavior skippable for exploratory
+- [x] Add runner context for strict fixture mode without a broad environment
+      variable.
+- [x] Make `tests.run_installed_package_correctness` fail closed for missing
+      support-count fixtures.
+- [x] In strict mode, missing support-count fixtures should fail, not skip.
+- [x] Keep ordinary `unittest discover` behavior skippable for exploratory
       environments.
-- [ ] Document the difference in testing-fixtures.md.
+- [x] Document the difference in testing-fixtures.md.
 
 ### 14. Python wheel matrix and package metadata alignment
 

@@ -67,6 +67,17 @@ def has_pinned_rdkit_fixture(fixture_root: Path, rdkit_version: str) -> bool:
     )
 
 
+def missing_pinned_rdkit_fixture_roots(
+    fixture_roots: tuple[Path, ...],
+    rdkit_version: str,
+) -> tuple[Path, ...]:
+    return tuple(
+        fixture_root
+        for fixture_root in fixture_roots
+        if not has_pinned_rdkit_fixture(fixture_root, rdkit_version)
+    )
+
+
 def pinned_rdkit_fixture_versions(fixture_root: Path) -> tuple[str, ...]:
     versions = {
         path.stem

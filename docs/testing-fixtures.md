@@ -106,6 +106,11 @@ For example, `pubchem_17730_nonisomeric_random_root27_counterion` first stopped
 at nearby counts and was promoted only after a higher-budget retry saturated at
 `16920`.
 
+The count tests are version-keyed. Broad local test discovery may skip them
+when the installed RDKit version has no checked-in count fixture. The
+installed-package correctness runner is stricter: missing count fixtures for its
+pinned RDKit version are a test failure, not a skip.
+
 Do not mine `ignore_atom_maps` count evidence from the checked-in `top_100000`
 dataset: that fixture has no atom-map labels, so the flag has no semantic
 effect there. Atom-map behavior is covered by exact-support and writer-flag

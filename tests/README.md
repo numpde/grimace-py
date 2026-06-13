@@ -71,6 +71,10 @@ support cardinalities.
 - Exact RDKit-parity tests should be version-keyed and runnable through `tests.run_pinned_rdkit_parity`.
 - `tests.run_pinned_rdkit_parity` must fail, not silently skip, when the
   installed RDKit version has no checked-in pinned fixtures.
+- `tests.run_installed_package_correctness` must also fail, not silently skip,
+  when its count-only RDKit writer support fixtures are missing for the
+  installed RDKit version. Direct discovery may skip those version-keyed count
+  tests for exploratory local RDKit installs.
 - Known gap tests should be runnable through a named diagnostic runner and
   excluded from default discovery until they become passing conformance tests.
 - Shared case selectors and policy overrides belong in `tests/helpers/`, not duplicated across files.

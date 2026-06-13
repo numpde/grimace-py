@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 from tests.helpers.pinned_rdkit_fixtures import (
     PINNED_RDKIT_EXACT_SMALL_SUPPORT,
@@ -38,6 +39,7 @@ from tests.helpers.rdkit_writer_membership import load_pinned_writer_membership_
 from tests.helpers.rdkit_writer_support_counts import (
     load_pinned_writer_support_count_cases,
 )
+from tests import run_installed_package_correctness
 
 
 RDKIT_VERSION = "2099.01.1"
@@ -289,6 +291,23 @@ class PinnedRdkitFixtureLoaderTest(unittest.TestCase):
                             rdkit_version=RDKIT_VERSION,
                             fixture_label="contract",
                         )
+
+    def test_installed_package_runner_fails_closed_on_missing_count_fixtures(self) -> None:
+        test = run_installed_package_correctness.InstalledPackageFixtureAvailabilityTest(
+            "test_installed_rdkit_version_has_writer_support_count_fixtures",
+        )
+        result = unittest.TestResult()
+
+        with mock.patch.object(
+            run_installed_package_correctness.rdBase,
+            "rdkitVersion",
+            RDKIT_VERSION,
+        ):
+            test.run(result)
+
+        self.assertEqual(1, len(result.failures))
+        self.assertEqual([], result.errors)
+        self.assertEqual([], result.skipped)
 
 
 class SerializerRegressionFixtureLoaderTest(unittest.TestCase):

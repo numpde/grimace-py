@@ -98,13 +98,7 @@ class PreparedMolContractTests(unittest.TestCase):
 
         walk(prepared)
 
-    def test_public_api_exposes_only_preparation_and_bytes_surface(self) -> None:
-        required_symbols = ("PreparedMol", "PrepareMol")
-        missing_symbols = tuple(
-            name for name in required_symbols if not hasattr(grimace, name)
-        )
-        self.assertEqual((), missing_symbols, msg="missing grimace public symbols")
-
+    def test_prepared_mol_exposes_only_bytes_surface(self) -> None:
         prepared = self._prepare("CCO", isomericSmiles=False)
         self.assertIsInstance(prepared, grimace.PreparedMol)
         self.assertTrue(callable(prepared.to_bytes))

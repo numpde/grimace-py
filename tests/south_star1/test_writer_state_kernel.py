@@ -897,6 +897,8 @@ class WriterStateKernelTest(unittest.TestCase):
         support_family: writer_transitions._WriterGraphPolicyActionFamily,
         residual_key: writer_transitions._WriterResidualAttachmentPolicyKey,
         emitted_text: str = "C",
+        support_count: int | None = None,
+        completion_count: int | None = None,
     ) -> writer_frontier_module._WriterFrontierChoiceSnapshot:
         support = self._test_frontier_next_token_support(
             emitted_text=emitted_text,
@@ -907,6 +909,11 @@ class WriterStateKernelTest(unittest.TestCase):
         choice = self._test_choice_snapshot_entry_from_supports(
             emitted_text,
             (support,),
+        )
+        choice = replace(
+            choice,
+            support_count=support_count,
+            completion_count=completion_count,
         )
         top_outcome = writer_transitions._WriterTopLevelScheduleOutcome(
             kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.SCHEDULED,
@@ -21053,6 +21060,330 @@ class WriterStateKernelTest(unittest.TestCase):
                 .retained_dead_closure_open_resolved_cyclic_tree_entry_choice_evidence
             ),
             (),
+        )
+
+    def test_active_owned_dead_closure_policy_reaches_counted_frontier_choices(self) -> None:
+        outcome = self._test_active_owned_dead_closure_active_outcome()
+        residual = outcome.graph_policy_decision.residual_cyclic_policy_decision
+        self.assertIsNotNone(residual)
+        key = residual.choice_groups[0].key  # type: ignore[union-attr]
+        choice_snapshot = self._test_frontier_choice_snapshot_for_active_outcome(
+            outcome,
+            support_family=(
+                writer_transitions
+                ._WriterGraphPolicyActionFamily
+                .CYCLIC_TREE_ENTRY
+            ),
+            residual_key=key,
+            support_count=3,
+            completion_count=5,
+        )
+
+        with patch(
+            (
+                "grimace._south_star1.writer_frontier"
+                "._checked_writer_frontier_choice_snapshot"
+            ),
+            return_value=choice_snapshot,
+        ):
+            choices = writer_frontier_choices(
+                object(),  # type: ignore[arg-type]
+                WriterFrontierCursor(weighted_states=()),
+            )
+
+        self.assertTrue(choice_snapshot.choice_residual_attachment_evidence)
+        evidence = choice_snapshot.choice_residual_attachment_evidence[0]
+        self.assertIn(
+            (
+                writer_transitions
+                ._WriterResidualCyclicPolicyDecisionKind
+                .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+            ),
+            evidence.residual_cyclic_policy_kinds,
+        )
+        self.assertIn(
+            writer_transitions._WriterActiveChildSelectionKind.CYCLIC_TREE_ENTRY,
+            choice_snapshot.selected_active_child_selection_kinds,
+        )
+        self.assertTrue(
+            (
+                evidence
+                .has_retained_dead_closure_open_resolved_cyclic_tree_entry_support
+            )
+        )
+        self.assertEqual(len(choices.choices), 1)
+        public_choice = choices.choices[0]
+        self.assertIsNotNone(public_choice.support_count)
+        self.assertIsNotNone(public_choice.completion_count)
+        self.assertGreater(public_choice.immediate_multiplicity, 0)
+
+    def test_active_owned_dead_closure_policy_prefix_support_count_succeeds(self) -> None:
+        outcome = self._test_active_owned_dead_closure_active_outcome()
+        residual = outcome.graph_policy_decision.residual_cyclic_policy_decision
+        self.assertIsNotNone(residual)
+        key = residual.choice_groups[0].key  # type: ignore[union-attr]
+        choice_snapshot = self._test_frontier_choice_snapshot_for_active_outcome(
+            outcome,
+            support_family=(
+                writer_transitions
+                ._WriterGraphPolicyActionFamily
+                .CYCLIC_TREE_ENTRY
+            ),
+            residual_key=key,
+            support_count=3,
+            completion_count=5,
+        )
+        prefix_outcome = self._test_readable_prefix_outcome(choice_snapshot)
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._writer_frontier_choice_snapshot_after_emitted_texts"
+            ),
+            return_value=prefix_outcome.replay_outcome,
+        ):
+            support_count = (
+                writer_snapshot
+                ._count_writer_frontier_support_after_emitted_texts(
+                    self._test_writer_search_snapshot(),
+                    prepared=object(),  # type: ignore[arg-type]
+                    emitted_texts=(),
+                )
+            )
+
+        self.assertGreater(support_count, 0)
+        self.assertIn(
+            (
+                writer_transitions
+                ._WriterResidualCyclicPolicyDecisionKind
+                .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+            ),
+            prefix_outcome.residual_cyclic_policy_kinds,
+        )
+        self.assertFalse(prefix_outcome.blocked)
+
+    def test_active_owned_dead_closure_policy_prefix_completion_count_succeeds(self) -> None:
+        outcome = self._test_active_owned_dead_closure_active_outcome()
+        residual = outcome.graph_policy_decision.residual_cyclic_policy_decision
+        self.assertIsNotNone(residual)
+        key = residual.choice_groups[0].key  # type: ignore[union-attr]
+        choice_snapshot = self._test_frontier_choice_snapshot_for_active_outcome(
+            outcome,
+            support_family=(
+                writer_transitions
+                ._WriterGraphPolicyActionFamily
+                .CYCLIC_TREE_ENTRY
+            ),
+            residual_key=key,
+            support_count=3,
+            completion_count=5,
+        )
+        prefix_outcome = self._test_readable_prefix_outcome(choice_snapshot)
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._writer_frontier_choice_snapshot_after_emitted_texts"
+            ),
+            return_value=prefix_outcome.replay_outcome,
+        ):
+            completion_count = (
+                writer_snapshot
+                ._count_writer_completions_after_emitted_texts(
+                    self._test_writer_search_snapshot(),
+                    prepared=object(),  # type: ignore[arg-type]
+                    emitted_texts=(),
+                )
+            )
+
+        self.assertGreater(completion_count, 0)
+
+    def test_active_owned_dead_closure_policy_prefix_support_stream_succeeds(self) -> None:
+        outcome = self._test_active_owned_dead_closure_active_outcome()
+        residual = outcome.graph_policy_decision.residual_cyclic_policy_decision
+        self.assertIsNotNone(residual)
+        key = residual.choice_groups[0].key  # type: ignore[union-attr]
+        choice_snapshot = self._test_frontier_choice_snapshot_for_active_outcome(
+            outcome,
+            support_family=(
+                writer_transitions
+                ._WriterGraphPolicyActionFamily
+                .CYCLIC_TREE_ENTRY
+            ),
+            residual_key=key,
+        )
+        prefix_outcome = self._test_readable_prefix_outcome(choice_snapshot)
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._writer_frontier_choice_snapshot_after_emitted_texts"
+            ),
+            return_value=prefix_outcome.replay_outcome,
+        ), patch(
+            "grimace._south_star1.writer_snapshot.iter_writer_frontier_support",
+            return_value=iter(("tail",)),
+        ):
+            suffixes = tuple(
+                writer_snapshot
+                ._iter_writer_frontier_support_suffixes_after_emitted_texts(
+                    self._test_writer_search_snapshot(),
+                    prepared=object(),  # type: ignore[arg-type]
+                    emitted_texts=(),
+                )
+            )
+
+        self.assertEqual(suffixes, ("Ctail",))
+        self.assertIn(
+            (
+                writer_transitions
+                ._WriterResidualCyclicPolicyDecisionKind
+                .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+            ),
+            prefix_outcome.residual_cyclic_policy_kinds,
+        )
+
+    def test_active_owned_dead_closure_policy_support_stream_does_not_compute_counts(self) -> None:
+        outcome = self._test_active_owned_dead_closure_active_outcome()
+        residual = outcome.graph_policy_decision.residual_cyclic_policy_decision
+        self.assertIsNotNone(residual)
+        key = residual.choice_groups[0].key  # type: ignore[union-attr]
+        choice_snapshot = self._test_frontier_choice_snapshot_for_active_outcome(
+            outcome,
+            support_family=(
+                writer_transitions
+                ._WriterGraphPolicyActionFamily
+                .CYCLIC_TREE_ENTRY
+            ),
+            residual_key=key,
+        )
+        prefix_outcome = self._test_readable_prefix_outcome(choice_snapshot)
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._writer_frontier_choice_snapshot_after_emitted_texts"
+            ),
+            return_value=prefix_outcome.replay_outcome,
+        ), patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._count_writer_frontier_choice_snapshot_supports"
+            ),
+            side_effect=AssertionError("stream computed support count"),
+        ), patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._count_writer_frontier_choice_snapshot_completions"
+            ),
+            side_effect=AssertionError("stream computed completion count"),
+        ), patch(
+            "grimace._south_star1.writer_snapshot.iter_writer_frontier_support",
+            return_value=iter(("tail",)),
+        ):
+            self.assertEqual(
+                tuple(
+                    writer_snapshot
+                    ._iter_writer_frontier_support_suffixes_after_emitted_texts(
+                        self._test_writer_search_snapshot(),
+                        prepared=object(),  # type: ignore[arg-type]
+                        emitted_texts=(),
+                    )
+                ),
+                ("Ctail",),
+            )
+
+    def test_acyclic_child_dead_closure_negative_count_stream_has_no_resolved_cyclic_evidence(self) -> None:
+        outcome = self._test_active_owned_dead_closure_active_outcome(
+            child_attachment_action_kind=(
+                WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY
+            ),
+        )
+        choice_snapshot = self._test_frontier_choice_snapshot_for_active_outcome(
+            outcome,
+            support_family=(
+                writer_transitions
+                ._WriterGraphPolicyActionFamily
+                .ACYCLIC_TREE_ENTRY
+            ),
+            residual_key=(
+                writer_transitions
+                ._WriterResidualAttachmentPolicyKey(AtomId(0), 7)
+            ),
+            support_count=2,
+            completion_count=2,
+        )
+        prefix_outcome = self._test_readable_prefix_outcome(choice_snapshot)
+
+        with patch(
+            (
+                "grimace._south_star1.writer_frontier"
+                "._checked_writer_frontier_choice_snapshot"
+            ),
+            return_value=choice_snapshot,
+        ):
+            choices = writer_frontier_choices(
+                object(),  # type: ignore[arg-type]
+                WriterFrontierCursor(weighted_states=()),
+            )
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._writer_frontier_choice_snapshot_after_emitted_texts"
+            ),
+            return_value=prefix_outcome.replay_outcome,
+        ), patch(
+            "grimace._south_star1.writer_snapshot.iter_writer_frontier_support",
+            return_value=iter(("tail",)),
+        ):
+            support_count = (
+                writer_snapshot
+                ._count_writer_frontier_support_after_emitted_texts(
+                    self._test_writer_search_snapshot(),
+                    prepared=object(),  # type: ignore[arg-type]
+                    emitted_texts=(),
+                )
+            )
+            completion_count = (
+                writer_snapshot
+                ._count_writer_completions_after_emitted_texts(
+                    self._test_writer_search_snapshot(),
+                    prepared=object(),  # type: ignore[arg-type]
+                    emitted_texts=(),
+                )
+            )
+            suffixes = tuple(
+                writer_snapshot
+                ._iter_writer_frontier_support_suffixes_after_emitted_texts(
+                    self._test_writer_search_snapshot(),
+                    prepared=object(),  # type: ignore[arg-type]
+                    emitted_texts=(),
+                )
+            )
+
+        self.assertTrue(choices.choices)
+        self.assertGreater(support_count, 0)
+        self.assertGreater(completion_count, 0)
+        self.assertEqual(suffixes, ("Ctail",))
+        self.assertNotIn(
+            (
+                writer_transitions
+                ._WriterResidualCyclicPolicyDecisionKind
+                .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+            ),
+            prefix_outcome.residual_cyclic_policy_kinds,
+        )
+        self.assertEqual(
+            (
+                prefix_outcome
+                .final_choice_dead_closure_open_resolved_cyclic_tree_entry_evidence
+            ),
+            (),
+        )
+        self.assertIn(
+            writer_transitions._WriterActiveChildSelectionKind.ACYCLIC_TREE_ENTRY,
+            prefix_outcome.selected_active_child_selection_kinds,
         )
 
     def test_active_emitted_graph_policy_allows_child_when_closure_open_and_cyclic_tree_use_different_attachments(self) -> None:

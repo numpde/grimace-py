@@ -708,6 +708,34 @@ class _WriterSnapshotPrefixReadOutcome:
         return self.choice_snapshot.graph_policy_decisions
 
     @property
+    def considered_closure_endpoint_selection_kinds(self):
+        if self.choice_snapshot is None:
+            return ()
+
+        return self.choice_snapshot.considered_closure_endpoint_selection_kinds
+
+    @property
+    def selected_closure_endpoint_selection_kinds(self):
+        if self.choice_snapshot is None:
+            return ()
+
+        return self.choice_snapshot.selected_closure_endpoint_selection_kinds
+
+    @property
+    def selected_closure_open_graph_action_surfaces(self):
+        if self.choice_snapshot is None:
+            return ()
+
+        return self.choice_snapshot.selected_closure_open_graph_action_surfaces
+
+    @property
+    def selected_closure_pair_graph_action_surfaces(self):
+        if self.choice_snapshot is None:
+            return ()
+
+        return self.choice_snapshot.selected_closure_pair_graph_action_surfaces
+
+    @property
     def resolved_residual_attachment_policy_groups(self):
         if self.choice_snapshot is None:
             return ()

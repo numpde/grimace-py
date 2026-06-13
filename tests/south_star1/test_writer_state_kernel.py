@@ -1909,6 +1909,228 @@ class WriterStateKernelTest(unittest.TestCase):
             policy_a.support_dead_closure_open_vs_cyclic_tree_entry_groups,
         )
 
+    def test_writer_frontier_schedule_outcome_exposes_closure_endpoint_selection_kinds(self) -> None:
+        pair_decision, _, _ = self._test_closure_endpoint_decision(
+            pair_survives=True,
+            open_survives=False,
+        )
+        policy_pair = writer_transitions._WriterActiveEmittedGraphPolicyDecision(
+            kind=(
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyDecisionKind
+                .CLOSURE_ENDPOINT
+            ),
+            active_atom=AtomId(0),
+            closure_endpoint_decision=pair_decision,
+        )
+        active_pair_decision = writer_transitions._active_emitted_closure_decision(
+            pair_decision,
+            graph_policy_decision=policy_pair,
+        )
+        active_pair_outcome = (
+            writer_transitions._WriterActiveEmittedScheduleOutcome(
+                kind=(
+                    writer_transitions
+                    ._WriterActiveEmittedScheduleOutcomeKind
+                    .SCHEDULED
+                ),
+                schedule_decision=active_pair_decision,
+                graph_policy_decision=policy_pair,
+            )
+        )
+
+        open_action = self._test_closure_open_action(AtomId(1))
+        open_decision = writer_transitions._WriterClosureEndpointScheduleDecision(
+            pair_batch=writer_transitions._WriterScheduledActionEmissionBatch(
+                actions=(),
+                emissions=(),
+                surviving_emissions=(),
+            ),
+            open_batch=writer_transitions._WriterScheduledActionEmissionBatch(
+                actions=(open_action,),
+                emissions=(
+                    writer_transitions._WriterScheduledActionEmission(
+                        action=open_action,
+                        transitions=(),
+                    ),
+                ),
+                surviving_emissions=(),
+            ),
+            surviving_emissions=(),
+            schedule_surface=writer_transitions._WriterClosureEndpointScheduleSurface(
+                active_atom=AtomId(1),
+                pair_actions=(),
+                open_actions=(open_action,),
+            ),
+        )
+        child = writer_transitions._WriterChildObligation(
+            bond=BondId(3),
+            child=AtomId(4),
+            boundary_atom=AtomId(1),
+            owner_kind=WriterBoundaryOwnerKind.ACTIVE_ATOM,
+            attachment_id=17,
+            attachment_action_kind=(
+                WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY
+            ),
+        )
+        child_action = writer_transitions._enter_inline_child_action(
+            AtomId(1),
+            child,
+        )
+        child_surface = writer_transitions._WriterActiveChildScheduleSurface(
+            active_atom=AtomId(1),
+            blockers=(),
+            child_obligations=(child,),
+            scheduled_actions=(child_action,),
+        )
+        policy_open_none = (
+            writer_transitions._WriterActiveEmittedGraphPolicyDecision(
+                kind=(
+                    writer_transitions
+                    ._WriterActiveEmittedGraphPolicyDecisionKind
+                    .ACTIVE_CHILD
+                ),
+                active_atom=AtomId(1),
+                closure_endpoint_decision=open_decision,
+                child_schedule_surface=child_surface,
+            )
+        )
+        active_child_decision = writer_transitions._active_emitted_child_decision(
+            closure_endpoint_decision=open_decision,
+            child_schedule_surface=child_surface,
+            child_batch=writer_transitions._WriterScheduledActionEmissionBatch(
+                actions=(child_action,),
+                emissions=(),
+                surviving_emissions=(),
+            ),
+            graph_policy_decision=policy_open_none,
+        )
+        active_child_outcome = (
+            writer_transitions._WriterActiveEmittedScheduleOutcome(
+                kind=(
+                    writer_transitions
+                    ._WriterActiveEmittedScheduleOutcomeKind
+                    .SCHEDULED
+                ),
+                schedule_decision=active_child_decision,
+                graph_policy_decision=policy_open_none,
+            )
+        )
+        top_pair = writer_transitions._WriterTopLevelScheduleOutcome(
+            kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.SCHEDULED,
+            schedule_decision=writer_transitions._top_level_active_emitted_decision(
+                active_pair_outcome.schedule_decision,
+            ),
+            active_emitted_outcome=active_pair_outcome,
+        )
+        top_child = writer_transitions._WriterTopLevelScheduleOutcome(
+            kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.SCHEDULED,
+            schedule_decision=writer_transitions._top_level_active_emitted_decision(
+                active_child_outcome.schedule_decision,
+            ),
+            active_emitted_outcome=active_child_outcome,
+        )
+        outcome = writer_frontier_module._WriterFrontierScheduleOutcome(
+            state_outcomes=(
+                writer_frontier_module._WriterFrontierStateScheduleOutcome(
+                    state_key=writer_state_key(_raw_initial_state(AtomId(0))),
+                    parent_weight=1,
+                    finalized_state_key=None,
+                    schedule_outcome=top_pair,
+                ),
+                writer_frontier_module._WriterFrontierStateScheduleOutcome(
+                    state_key=writer_state_key(_raw_initial_state(AtomId(1))),
+                    parent_weight=1,
+                    finalized_state_key=None,
+                    schedule_outcome=top_child,
+                ),
+            ),
+            terminal_by_key=Counter(),
+            grouped_by_text={},
+            weighted_by_text={},
+        )
+
+        self.assertEqual(
+            outcome.considered_closure_endpoint_selection_kinds,
+            (
+                writer_transitions
+                ._WriterClosureEndpointSelectionKind
+                .PAIR_AND_OPEN,
+                (
+                    writer_transitions
+                    ._WriterClosureEndpointSelectionKind
+                    .CLOSURE_OPEN
+                ),
+            ),
+        )
+        self.assertEqual(
+            outcome.selected_closure_endpoint_selection_kinds,
+            (
+                writer_transitions
+                ._WriterClosureEndpointSelectionKind
+                .CLOSURE_PAIR,
+            ),
+        )
+
+    def test_writer_frontier_schedule_outcome_exposes_selected_closure_surfaces(self) -> None:
+        closure_decision, pair_emission, open_emission = (
+            self._test_closure_endpoint_decision(
+                pair_survives=True,
+                open_survives=True,
+            )
+        )
+        policy = writer_transitions._WriterActiveEmittedGraphPolicyDecision(
+            kind=(
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyDecisionKind
+                .CLOSURE_ENDPOINT
+            ),
+            active_atom=AtomId(0),
+            closure_endpoint_decision=closure_decision,
+        )
+        active_decision = writer_transitions._active_emitted_closure_decision(
+            closure_decision,
+            graph_policy_decision=policy,
+        )
+        active_outcome = writer_transitions._WriterActiveEmittedScheduleOutcome(
+            kind=(
+                writer_transitions
+                ._WriterActiveEmittedScheduleOutcomeKind
+                .SCHEDULED
+            ),
+            schedule_decision=active_decision,
+            graph_policy_decision=policy,
+        )
+        top_outcome = writer_transitions._WriterTopLevelScheduleOutcome(
+            kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.SCHEDULED,
+            schedule_decision=writer_transitions._top_level_active_emitted_decision(
+                active_outcome.schedule_decision,
+            ),
+            active_emitted_outcome=active_outcome,
+        )
+        outcome = writer_frontier_module._WriterFrontierScheduleOutcome(
+            state_outcomes=(
+                writer_frontier_module._WriterFrontierStateScheduleOutcome(
+                    state_key=writer_state_key(_raw_initial_state(AtomId(0))),
+                    parent_weight=1,
+                    finalized_state_key=None,
+                    schedule_outcome=top_outcome,
+                ),
+            ),
+            terminal_by_key=Counter(),
+            grouped_by_text={},
+            weighted_by_text={},
+        )
+
+        self.assertEqual(
+            outcome.selected_closure_pair_graph_action_surfaces,
+            (pair_emission.graph_action_surface,),
+        )
+        self.assertEqual(
+            outcome.selected_closure_open_graph_action_surfaces,
+            (open_emission.graph_action_surface,),
+        )
+
     def test_writer_frontier_schedule_outcome_exposes_residual_attachment_support_groups(self) -> None:
         key_7 = writer_transitions._WriterResidualAttachmentPolicyKey(
             active_atom=AtomId(0),
@@ -2080,6 +2302,55 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(
             snapshot.unresolved_residual_attachment_policy_groups,
             schedule_outcome.unresolved_residual_attachment_policy_groups,
+        )
+
+    def test_writer_frontier_choice_snapshot_exposes_closure_endpoint_selection_evidence(self) -> None:
+        closure_decision, _, _ = self._test_closure_endpoint_decision(
+            pair_survives=False,
+            open_survives=True,
+        )
+        policy = writer_transitions._WriterActiveEmittedGraphPolicyDecision(
+            kind=(
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyDecisionKind
+                .CLOSURE_ENDPOINT
+            ),
+            active_atom=AtomId(0),
+            closure_endpoint_decision=closure_decision,
+        )
+        active_decision = writer_transitions._active_emitted_closure_decision(
+            closure_decision,
+            graph_policy_decision=policy,
+        )
+        active_outcome = writer_transitions._WriterActiveEmittedScheduleOutcome(
+            kind=(
+                writer_transitions
+                ._WriterActiveEmittedScheduleOutcomeKind
+                .SCHEDULED
+            ),
+            schedule_decision=active_decision,
+            graph_policy_decision=policy,
+        )
+        snapshot = self._test_frontier_choice_snapshot_with_active_policy(
+            active_outcome,
+        )
+        schedule_outcome = snapshot.schedule_outcome
+
+        self.assertEqual(
+            snapshot.considered_closure_endpoint_selection_kinds,
+            schedule_outcome.considered_closure_endpoint_selection_kinds,
+        )
+        self.assertEqual(
+            snapshot.selected_closure_endpoint_selection_kinds,
+            schedule_outcome.selected_closure_endpoint_selection_kinds,
+        )
+        self.assertEqual(
+            snapshot.selected_closure_open_graph_action_surfaces,
+            schedule_outcome.selected_closure_open_graph_action_surfaces,
+        )
+        self.assertEqual(
+            snapshot.selected_closure_pair_graph_action_surfaces,
+            schedule_outcome.selected_closure_pair_graph_action_surfaces,
         )
 
     def test_writer_frontier_choice_snapshot_exposes_residual_attachment_support_groups(self) -> None:
@@ -4338,6 +4609,175 @@ class WriterStateKernelTest(unittest.TestCase):
                         failed
                         .support_dead_closure_open_vs_cyclic_tree_entry_groups
                     ),
+                    (),
+                )
+
+    def test_writer_snapshot_prefix_read_outcome_exposes_closure_endpoint_selection_evidence(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        closure_decision, _, _ = self._test_closure_endpoint_decision(
+            pair_survives=False,
+            open_survives=True,
+        )
+        policy = writer_transitions._WriterActiveEmittedGraphPolicyDecision(
+            kind=(
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyDecisionKind
+                .CLOSURE_ENDPOINT
+            ),
+            active_atom=AtomId(0),
+            closure_endpoint_decision=closure_decision,
+        )
+        active_decision = writer_transitions._active_emitted_closure_decision(
+            closure_decision,
+            graph_policy_decision=policy,
+        )
+        active_outcome = writer_transitions._WriterActiveEmittedScheduleOutcome(
+            kind=(
+                writer_transitions
+                ._WriterActiveEmittedScheduleOutcomeKind
+                .SCHEDULED
+            ),
+            schedule_decision=active_decision,
+            graph_policy_decision=policy,
+        )
+        choice_snapshot = self._test_frontier_choice_snapshot_with_active_policy(
+            active_outcome,
+        )
+        sequence = writer_snapshot._WriterSnapshotAdvanceSequenceOutcome(
+            kind=writer_snapshot._WriterSnapshotAdvanceSequenceOutcomeKind.ADVANCED,
+            source_snapshot=snapshot,
+            emitted_texts=(),
+            step_outcomes=(),
+            current_snapshot=snapshot,
+        )
+        replay = writer_snapshot._WriterSnapshotReplayChoiceSnapshotOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                .CHOICE_SNAPSHOT
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=(),
+            sequence_outcome=sequence,
+            choice_snapshot=choice_snapshot,
+        )
+        prefix_outcome = writer_snapshot._WriterSnapshotPrefixReadOutcome(
+            kind=writer_snapshot._WriterSnapshotPrefixReadOutcomeKind.READABLE,
+            replay_outcome=replay,
+        )
+
+        self.assertEqual(
+            prefix_outcome.considered_closure_endpoint_selection_kinds,
+            choice_snapshot.considered_closure_endpoint_selection_kinds,
+        )
+        self.assertEqual(
+            prefix_outcome.selected_closure_endpoint_selection_kinds,
+            choice_snapshot.selected_closure_endpoint_selection_kinds,
+        )
+        self.assertEqual(
+            prefix_outcome.selected_closure_open_graph_action_surfaces,
+            choice_snapshot.selected_closure_open_graph_action_surfaces,
+        )
+        self.assertEqual(
+            prefix_outcome.selected_closure_pair_graph_action_surfaces,
+            choice_snapshot.selected_closure_pair_graph_action_surfaces,
+        )
+
+        blocked_choice_snapshot = self._test_blocked_frontier_choice_snapshot(cursor)
+        blocked_step = writer_snapshot._WriterSnapshotAdvanceOutcome(
+            kind=writer_snapshot._WriterSnapshotAdvanceOutcomeKind.BLOCKED,
+            source_snapshot=snapshot,
+            emitted_text="blocked",
+            choice_snapshot=blocked_choice_snapshot,
+        )
+        blocked_sequence = writer_snapshot._WriterSnapshotAdvanceSequenceOutcome(
+            kind=writer_snapshot._WriterSnapshotAdvanceSequenceOutcomeKind.BLOCKED,
+            source_snapshot=snapshot,
+            emitted_texts=("blocked",),
+            step_outcomes=(blocked_step,),
+            current_snapshot=snapshot,
+        )
+        replay_blocked = writer_snapshot._WriterSnapshotReplayChoiceSnapshotOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                .REPLAY_BLOCKED
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=("blocked",),
+            sequence_outcome=blocked_sequence,
+        )
+        replay_blocked_outcome = writer_snapshot._WriterSnapshotPrefixReadOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotPrefixReadOutcomeKind
+                .REPLAY_BLOCKED
+            ),
+            replay_outcome=replay_blocked,
+        )
+        invalid_step = writer_snapshot._WriterSnapshotAdvanceOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotAdvanceOutcomeKind
+                .INVALID_EMITTED_TEXT
+            ),
+            source_snapshot=snapshot,
+            emitted_text="bad",
+            choice_snapshot=choice_snapshot,
+        )
+        invalid_sequence = writer_snapshot._WriterSnapshotAdvanceSequenceOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotAdvanceSequenceOutcomeKind
+                .INVALID_EMITTED_TEXT
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=("bad",),
+            step_outcomes=(invalid_step,),
+            current_snapshot=snapshot,
+        )
+        invalid_replay = writer_snapshot._WriterSnapshotReplayChoiceSnapshotOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                .INVALID_EMITTED_TEXT
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=("bad",),
+            sequence_outcome=invalid_sequence,
+        )
+        invalid_outcome = writer_snapshot._WriterSnapshotPrefixReadOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotPrefixReadOutcomeKind
+                .INVALID_EMITTED_TEXT
+            ),
+            replay_outcome=invalid_replay,
+        )
+
+        for failed in (replay_blocked_outcome, invalid_outcome):
+            with self.subTest(kind=failed.kind):
+                self.assertEqual(
+                    failed.considered_closure_endpoint_selection_kinds,
+                    (),
+                )
+                self.assertEqual(
+                    failed.selected_closure_endpoint_selection_kinds,
+                    (),
+                )
+                self.assertEqual(
+                    failed.selected_closure_open_graph_action_surfaces,
+                    (),
+                )
+                self.assertEqual(
+                    failed.selected_closure_pair_graph_action_surfaces,
                     (),
                 )
 

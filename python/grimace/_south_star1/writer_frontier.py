@@ -25,6 +25,7 @@ from .writer_stereo import empty_writer_stereo_state
 from .writer_transitions import finalize_writer_terminal_state
 from .writer_transitions import _WriterActiveEmittedGraphPolicyBlocker
 from .writer_transitions import _WriterActiveEmittedGraphPolicyDecision
+from .writer_transitions import _WriterClosureEndpointSelectionKind
 from .writer_transitions import _WriterGraphPolicyActionFamily
 from .writer_transitions import _WriterNextTokenFrontierSupport
 from .writer_transitions import _WriterResidualAttachmentOwnerScopeKind
@@ -678,6 +679,44 @@ class _WriterFrontierScheduleOutcome:
         )
 
     @property
+    def considered_closure_endpoint_selection_kinds(
+        self,
+    ) -> tuple[_WriterClosureEndpointSelectionKind, ...]:
+        return tuple(
+            decision.considered_closure_endpoint_selection_kind
+            for decision in self.graph_policy_decisions
+        )
+
+    @property
+    def selected_closure_endpoint_selection_kinds(
+        self,
+    ) -> tuple[_WriterClosureEndpointSelectionKind, ...]:
+        return tuple(
+            decision.closure_endpoint_selection_kind
+            for decision in self.graph_policy_decisions
+            if (
+                decision.closure_endpoint_selection_kind
+                is not _WriterClosureEndpointSelectionKind.NONE
+            )
+        )
+
+    @property
+    def selected_closure_open_graph_action_surfaces(self):
+        return tuple(
+            surface
+            for decision in self.graph_policy_decisions
+            for surface in decision.selected_closure_open_graph_action_surfaces
+        )
+
+    @property
+    def selected_closure_pair_graph_action_surfaces(self):
+        return tuple(
+            surface
+            for decision in self.graph_policy_decisions
+            for surface in decision.selected_closure_pair_graph_action_surfaces
+        )
+
+    @property
     def resolved_residual_attachment_policy_groups(self):
         return tuple(
             group
@@ -813,6 +852,29 @@ class _WriterFrontierChoiceSnapshot:
         self,
     ) -> tuple[_WriterActiveEmittedGraphPolicyDecision, ...]:
         return self.schedule_outcome.graph_policy_decisions
+
+    @property
+    def considered_closure_endpoint_selection_kinds(
+        self,
+    ) -> tuple[_WriterClosureEndpointSelectionKind, ...]:
+        return (
+            self.schedule_outcome
+            .considered_closure_endpoint_selection_kinds
+        )
+
+    @property
+    def selected_closure_endpoint_selection_kinds(
+        self,
+    ) -> tuple[_WriterClosureEndpointSelectionKind, ...]:
+        return self.schedule_outcome.selected_closure_endpoint_selection_kinds
+
+    @property
+    def selected_closure_open_graph_action_surfaces(self):
+        return self.schedule_outcome.selected_closure_open_graph_action_surfaces
+
+    @property
+    def selected_closure_pair_graph_action_surfaces(self):
+        return self.schedule_outcome.selected_closure_pair_graph_action_surfaces
 
     @property
     def resolved_residual_attachment_policy_groups(self):

@@ -53,7 +53,8 @@ here.
   prefix should be a complete supported SMILES and should have no next choices.
   If future composition needs a weaker fragment-level predicate, it should use
   a distinct internal name; public `is_terminal` should remain a stopping
-  predicate.
+  predicate. Merged states now reject mixed terminal/nonterminal branches
+  instead of silently choosing either side of that contract.
 - `PreparedMol` raw bytes now have a 1 MiB cap enforced on raw reads, raw
   writes, zstd-declared content size, and zstd decompressed output. That closes
   the earlier untrusted compressed-input memory-pressure surface.
@@ -429,6 +430,7 @@ Checklist:
 - [x] Fix disconnected-state transitions so active terminal fragments expose
       only a separator, or no transition for the last fragment, without querying
       child transitions.
+- [x] Reject merged states whose hidden branches disagree on terminality.
 - [x] Keep walker sampling semantics explicit: a public draw stops when the
       public state is terminal.
 - [x] Keep a weaker internal completion predicate out of the implementation for

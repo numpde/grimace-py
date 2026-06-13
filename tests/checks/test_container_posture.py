@@ -93,6 +93,21 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertNotIn("docker.sock", compose)
         self.assertNotIn("privileged: true", compose)
 
+    def test_rust_sources_do_not_import_host_rdkit(self) -> None:
+        forbidden_patterns = {
+            "host virtualenv path": r"\.venv|site-packages",
+            "host Python path injection": r"PYTHONPATH|sys\.path",
+            "Python RDKit import": r"import\s+rdkit|from\s+rdkit",
+            "old RDKit-backed graph helper": r"prepared_graph_from_smiles",
+        }
+        rust_sources = sorted((ROOT / "rust" / "src").glob("*.rs"))
+        self.assertTrue(rust_sources)
+        for source_path in rust_sources:
+            source = source_path.read_text(encoding="utf-8")
+            for label, pattern in forbidden_patterns.items():
+                with self.subTest(source=source_path.name, forbidden=label):
+                    self.assertNotRegex(source, pattern)
+
     def test_test_package_compose_uses_container_local_artifacts(self) -> None:
         compose = read_text("compose/test-package.yml")
         self.assertRegex(compose, r"(?m)^  test-package:$")

@@ -111,11 +111,9 @@ here.
   graph, and core prepared graph. PreparedMol raw/zstd equivalence is covered in
   separate PreparedMol and zstd contract tests, so this is not a missing release
   invariant.
-- `rust/src/rooted_stereo.rs` has Rust unit-test helpers that optionally import
-  RDKit through the checkout's Python path and `.venv` site-packages when
-  available. That keeps native stereo regression tests close to the Rust
-  implementation, but it is more host-shaped than the strict container lanes
-  and silently skips those checks when RDKit is absent.
+- Rust tests no longer import RDKit through host Python or `.venv`; Rust-side
+  walker tests use hand-built prepared graphs. A source-level posture check
+  blocks the old host-RDKit helper shape from returning.
 - `tests/checks/test_docs_pages.py` validates Markdown links and image sources,
   but not raw HTML `<a href="...">` links. The current raw HTML links inspected
   during the pass resolve, but the link checker does not eliminate that whole

@@ -433,6 +433,95 @@ class WriterGraphObligationsTest(unittest.TestCase):
             {writer_transitions.WriterTransitionKind.ENTER_INLINE_CHILD},
         )
 
+    def test_prepared_active_owned_cycle_exposes_closure_open_and_cyclic_tree_entry_obligations(self) -> None:
+        prepared = _prepare(triangle_facts())
+        root_state = writer_state_from_key(
+            _emitted_root_key(prepared, root=AtomId(0))
+        )
+        root_context = writer_transitions.build_writer_transition_expansion_context(
+            prepared,
+            root_state,
+        )
+        closure_decision = writer_transitions._closure_endpoint_schedule_decision(
+            prepared,
+            root_state,
+            root_context,
+        )
+        opened_state = legal_writer_transitions(prepared, root_state)[0].successor
+        opened_context = (
+            writer_transitions.build_writer_transition_expansion_context(
+                prepared,
+                opened_state,
+            )
+        )
+        child_surface = writer_transitions._active_child_schedule_surface_from_context(
+            opened_context,
+            opened_state,
+            opened_state.active.atom,
+        )
+        closure_summary = _summary(prepared, writer_state_key(root_state))
+        child_summary = _summary(prepared, writer_state_key(opened_state))
+
+        closure_actions = tuple(
+            action
+            for action in closure_summary.attachment_actions
+            if (
+                action.kind
+                is WriterResidualAttachmentActionKind.CLOSURE_OPEN_READY
+            )
+        )
+        child_actions = tuple(
+            action
+            for action in child_summary.attachment_actions
+            if (
+                action.kind
+                is WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY
+            )
+        )
+
+        self.assertTrue(closure_actions)
+        self.assertTrue(child_actions)
+        self.assertEqual(
+            {action.attachment_id for action in closure_actions},
+            {action.attachment_id for action in child_actions},
+        )
+        self.assertTrue(
+            all(action.owner_atoms == (AtomId(0),) for action in closure_actions)
+        )
+        self.assertTrue(
+            all(action.owner_atoms == (AtomId(0),) for action in child_actions)
+        )
+        self.assertTrue(
+            closure_decision.considered_closure_open_graph_action_surfaces
+        )
+        self.assertTrue(
+            child_surface.considered_cyclic_tree_entry_graph_action_surfaces
+        )
+        self.assertTrue(
+            all(
+                surface.policy_family
+                is writer_transitions._WriterGraphPolicyActionFamily.CLOSURE_OPEN
+                for surface in (
+                    closure_decision
+                    .considered_closure_open_graph_action_surfaces
+                )
+            )
+        )
+        self.assertTrue(
+            all(
+                surface.policy_family
+                is (
+                    writer_transitions
+                    ._WriterGraphPolicyActionFamily
+                    .CYCLIC_TREE_ENTRY
+                )
+                for surface in (
+                    child_surface
+                    .considered_cyclic_tree_entry_graph_action_surfaces
+                )
+            )
+        )
+
     def test_triangle_partial_state_with_mixed_boundary_ownership_is_blocked(self) -> None:
         prepared = _prepare(triangle_facts())
         key = _triangle_two_visited_key()

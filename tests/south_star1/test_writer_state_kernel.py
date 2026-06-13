@@ -932,6 +932,98 @@ class WriterStateKernelTest(unittest.TestCase):
                 active_atom,
             )
 
+    def _test_prepared_active_owned_cycle_surfaces(
+        self,
+    ) -> tuple[
+        object,
+        WriterState,
+        writer_transitions.WriterTransitionExpansionContext,
+        writer_transitions._WriterClosureEndpointScheduleDecision,
+        writer_transitions._WriterActiveChildScheduleSurface,
+    ]:
+        prepared = _prepare(cyclopropane_facts())
+        root_state = writer_transitions.legal_writer_transitions(
+            prepared,
+            _raw_initial_state(AtomId(0)),
+        )[0].successor
+        root_context = writer_transitions.build_writer_transition_expansion_context(
+            prepared,
+            root_state,
+        )
+        closure_decision = writer_transitions._closure_endpoint_schedule_decision(
+            prepared,
+            root_state,
+            root_context,
+        )
+        opened_states = tuple(
+            transition.successor
+            for transition in writer_transitions.legal_writer_transitions(
+                prepared,
+                root_state,
+            )
+        )
+
+        for opened_state in opened_states:
+            opened_context = (
+                writer_transitions.build_writer_transition_expansion_context(
+                    prepared,
+                    opened_state,
+                )
+            )
+            child_surface = (
+                writer_transitions._active_child_schedule_surface_from_context(
+                    opened_context,
+                    opened_state,
+                    opened_state.active.atom,
+                )
+            )
+
+            if child_surface.considered_cyclic_tree_entry_available:
+                return (
+                    prepared,
+                    root_state,
+                    root_context,
+                    closure_decision,
+                    child_surface,
+                )
+
+        raise AssertionError("prepared cycle did not expose cyclic child surface")
+
+    def _test_closure_decision_with_open_emission_evidence(
+        self,
+        closure_decision: (
+            writer_transitions._WriterClosureEndpointScheduleDecision
+        ),
+        *,
+        include_open_emissions: bool,
+    ) -> writer_transitions._WriterClosureEndpointScheduleDecision:
+        open_emissions = (
+            tuple(
+                writer_transitions._WriterScheduledActionEmission(
+                    action=action,
+                    transitions=(),
+                )
+                for action in closure_decision.schedule_surface.open_actions
+            )
+            if include_open_emissions
+            else ()
+        )
+
+        return writer_transitions._WriterClosureEndpointScheduleDecision(
+            pair_batch=writer_transitions._WriterScheduledActionEmissionBatch(
+                actions=closure_decision.schedule_surface.pair_actions,
+                emissions=(),
+                surviving_emissions=(),
+            ),
+            open_batch=writer_transitions._WriterScheduledActionEmissionBatch(
+                actions=closure_decision.schedule_surface.open_actions,
+                emissions=open_emissions,
+                surviving_emissions=(),
+            ),
+            surviving_emissions=(),
+            schedule_surface=closure_decision.schedule_surface,
+        )
+
     def _test_residual_cyclic_blocked_top_level_outcome(
         self,
         active_outcome: writer_transitions._WriterActiveEmittedScheduleOutcome,
@@ -21804,6 +21896,221 @@ class WriterStateKernelTest(unittest.TestCase):
         )
         self.assertTrue(outcome.invalid_emitted_text)
         self.assertIsNone(outcome.choice_snapshot)
+
+    def test_prepared_active_owned_cycle_feeds_closure_open_vs_cyclic_tree_policy_groups(self) -> None:
+        (
+            _prepared,
+            _state,
+            _context,
+            closure_decision,
+            child_surface,
+        ) = self._test_prepared_active_owned_cycle_surfaces()
+
+        groups = (
+            writer_transitions
+            ._closure_open_vs_cyclic_tree_entry_policy_groups(
+                closure_decision,
+                child_surface,
+            )
+        )
+
+        self.assertEqual(len(groups), 1)
+        self.assertTrue(
+            (
+                groups[0]
+                .has_active_atom_owned_closure_open_vs_cyclic_tree_entry_choice
+            )
+        )
+        self.assertTrue(groups[0].closure_open_surfaces)
+        self.assertTrue(groups[0].cyclic_tree_entry_surfaces)
+        self.assertEqual(groups[0].key.attachment_id, 0)
+
+    def test_prepared_active_owned_dead_closure_resolves_to_retained_residual_decision(self) -> None:
+        (
+            prepared,
+            state,
+            context,
+            closure_decision,
+            child_surface,
+        ) = self._test_prepared_active_owned_cycle_surfaces()
+        support_dead_closure = (
+            self._test_closure_decision_with_open_emission_evidence(
+                closure_decision,
+                include_open_emissions=True,
+            )
+        )
+
+        with patch(
+            "grimace._south_star1.writer_transitions._closure_endpoint_schedule_decision",
+            return_value=support_dead_closure,
+        ), patch(
+            "grimace._south_star1.writer_transitions._active_child_schedule_surface_from_context",
+            return_value=child_surface,
+        ):
+            policy = writer_transitions._active_emitted_graph_policy_decision(
+                prepared,
+                state,
+                context,
+                state.active.atom,
+            )
+
+        self.assertIs(
+            policy.kind,
+            (
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyDecisionKind
+                .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+            ),
+        )
+        self.assertIsNotNone(policy.residual_cyclic_policy_decision)
+        self.assertIs(
+            policy.residual_cyclic_policy_kind,
+            (
+                writer_transitions
+                ._WriterResidualCyclicPolicyDecisionKind
+                .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+            ),
+        )
+        self.assertTrue(policy.residual_cyclic_support_dead_groups)
+        self.assertTrue(policy.considered_cyclic_tree_entry_available)
+
+    def test_prepared_active_owned_cycle_missing_closure_open_evidence_stays_unresolved(self) -> None:
+        (
+            prepared,
+            state,
+            context,
+            closure_decision,
+            child_surface,
+        ) = self._test_prepared_active_owned_cycle_surfaces()
+        missing_closure = self._test_closure_decision_with_open_emission_evidence(
+            closure_decision,
+            include_open_emissions=False,
+        )
+
+        with patch(
+            "grimace._south_star1.writer_transitions._closure_endpoint_schedule_decision",
+            return_value=missing_closure,
+        ), patch(
+            "grimace._south_star1.writer_transitions._active_child_schedule_surface_from_context",
+            return_value=child_surface,
+        ):
+            policy = writer_transitions._active_emitted_graph_policy_decision(
+                prepared,
+                state,
+                context,
+                state.active.atom,
+            )
+
+        self.assertIs(
+            policy.kind,
+            (
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyDecisionKind
+                .UNRESOLVED_RESIDUAL_ATTACHMENT_CHOICE
+            ),
+        )
+        self.assertIs(
+            policy.residual_cyclic_policy_kind,
+            (
+                writer_transitions
+                ._WriterResidualCyclicPolicyDecisionKind
+                .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
+            ),
+        )
+        self.assertTrue(policy.graph_policy_blockers)
+
+    def test_prepared_non_active_owned_cycle_remains_unsupported_owner_scope(self) -> None:
+        closure_decision, child_surface = (
+            self._test_residual_cyclic_policy_inputs(
+                closure_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+                child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+            )
+        )
+
+        policy = writer_transitions._WriterActiveEmittedGraphPolicyDecision(
+            kind=(
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyDecisionKind
+                .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+            ),
+            active_atom=AtomId(0),
+            closure_endpoint_decision=closure_decision,
+            child_schedule_surface=child_surface,
+            residual_cyclic_policy_decision=(
+                writer_transitions._residual_cyclic_policy_decision(
+                    closure_decision,
+                    child_surface,
+                )
+            ),
+        )
+
+        self.assertIs(
+            policy.kind,
+            (
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyDecisionKind
+                .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+            ),
+        )
+        self.assertIs(
+            policy.residual_cyclic_policy_kind,
+            (
+                writer_transitions
+                ._WriterResidualCyclicPolicyDecisionKind
+                .UNSUPPORTED_OWNER_SCOPE
+            ),
+        )
+        self.assertTrue(policy.unsupported_owner_scope_kinds)
+        self.assertTrue(policy.graph_policy_blockers)
+
+    def test_prepared_acyclic_child_with_dead_closure_open_does_not_trigger_residual_cyclic_policy(self) -> None:
+        closure_decision = self._test_prepared_active_owned_cycle_surfaces()[3]
+        support_dead_closure = (
+            self._test_closure_decision_with_open_emission_evidence(
+                closure_decision,
+                include_open_emissions=True,
+            )
+        )
+        acyclic_action = self._test_child_action(
+            AtomId(0),
+            attachment_id=0,
+            attachment_action_kind=(
+                WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY
+            ),
+        )
+        child_surface = writer_transitions._WriterActiveChildScheduleSurface(
+            active_atom=AtomId(0),
+            blockers=(),
+            child_obligations=(acyclic_action.child_obligation,),
+            scheduled_actions=(acyclic_action,),
+        )
+
+        policy = writer_transitions._WriterActiveEmittedGraphPolicyDecision(
+            kind=writer_transitions._WriterActiveEmittedGraphPolicyDecisionKind.ACTIVE_CHILD,
+            active_atom=AtomId(0),
+            closure_endpoint_decision=support_dead_closure,
+            child_schedule_surface=child_surface,
+            residual_cyclic_policy_decision=(
+                writer_transitions._residual_cyclic_policy_decision(
+                    support_dead_closure,
+                    child_surface,
+                )
+            ),
+        )
+
+        self.assertIs(
+            policy.kind,
+            writer_transitions._WriterActiveEmittedGraphPolicyDecisionKind.ACTIVE_CHILD,
+        )
+        self.assertIs(
+            policy.residual_cyclic_policy_kind,
+            writer_transitions._WriterResidualCyclicPolicyDecisionKind.NONE,
+        )
+        self.assertIs(
+            policy.considered_active_child_selection_kind,
+            writer_transitions._WriterActiveChildSelectionKind.ACYCLIC_TREE_ENTRY,
+        )
+        self.assertFalse(policy.considered_cyclic_tree_entry_available)
 
     def test_active_emitted_graph_policy_allows_child_when_closure_open_and_cyclic_tree_use_different_attachments(self) -> None:
         prepared = object()

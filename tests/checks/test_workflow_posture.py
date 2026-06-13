@@ -8,8 +8,9 @@ from tests.checks.posture_helpers import assert_before, line_count
 
 ROOT = Path(__file__).resolve().parents[2]
 RELEASE_VALIDATOR = ROOT / "scripts" / "validate_release_artifacts.py"
-PINNED_ACTION_REF = re.compile(
-    r"(?m)^\s*-\s+uses:\s+[^@\s]+@[0-9a-f]{40}(?:\s+#\s+\S+)?\s*$"
+ACTION_USES_LINE = re.compile(r"(?m)^\s*(?:-\s+)?uses:\s+")
+PINNED_ACTION_USES_LINE = re.compile(
+    r"(?m)^\s*(?:-\s+)?uses:\s+[^@\s]+@[0-9a-f]{40}(?:\s+#\s+\S+)?\s*$"
 )
 
 
@@ -23,6 +24,35 @@ def job_section(workflow: str, job_name: str) -> str:
     if match is None:
         raise AssertionError(f"missing job {job_name!r}")
     return match.group("body")
+
+
+def checkout_step(job: str) -> str:
+    steps = checkout_steps(job)
+    if len(steps) != 1:
+        raise AssertionError(f"expected exactly one pinned checkout step, got {len(steps)}")
+    return steps[0]
+
+
+def checkout_steps(text: str) -> tuple[str, ...]:
+    # Match the whole checkout step body so security-sensitive options are
+    # verified on that checkout, not merely somewhere else in the workflow.
+    pattern = (
+        r"(?ms)^      - (?:uses: actions/checkout|name: [^\n]+\n"
+        r"        uses: actions/checkout)@[0-9a-f]{40}[^\n]*\n"
+        r"(?P<body>.*?)(?=^      - (?:name|uses|run):|\Z)"
+    )
+    return tuple(match.group("body") for match in re.finditer(pattern, text))
+
+
+def assert_checkouts_do_not_persist_credentials(
+    test: unittest.TestCase,
+    workflow: str,
+) -> None:
+    steps = checkout_steps(workflow)
+    test.assertTrue(steps)
+    for step in steps:
+        test.assertRegex(step, r"(?m)^          persist-credentials: false$")
+        test.assertNotRegex(step, r"(?m)^          persist-credentials: true$")
 
 
 def load_release_validator():
@@ -49,6 +79,26 @@ def matrix_values(job: str, key: str) -> tuple[str, ...]:
 
 
 class WorkflowPostureTests(unittest.TestCase):
+    def test_workflow_posture_helpers_cover_named_action_steps(self) -> None:
+        workflow = """\
+jobs:
+  example:
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - name: Publish
+        uses: example/action@1111111111111111111111111111111111111111
+"""
+
+        uses_count = len(ACTION_USES_LINE.findall(workflow))
+        pinned_count = len(PINNED_ACTION_USES_LINE.findall(workflow))
+
+        self.assertEqual(uses_count, 2)
+        self.assertEqual(pinned_count, 2)
+        assert_checkouts_do_not_persist_credentials(self, workflow)
+
     def test_workflows_pin_github_hosted_runner_image(self) -> None:
         for workflow_path in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
             workflow = workflow_path.read_text(encoding="utf-8")
@@ -68,33 +118,29 @@ class WorkflowPostureTests(unittest.TestCase):
     def test_workflow_actions_are_pinned_to_commit_sha(self) -> None:
         for workflow_path in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
             workflow = workflow_path.read_text(encoding="utf-8")
-            uses_count = len(re.findall(r"(?m)^\s*-\s+uses:\s+", workflow))
-            pinned_count = len(PINNED_ACTION_REF.findall(workflow))
+            uses_count = len(ACTION_USES_LINE.findall(workflow))
+            pinned_count = len(PINNED_ACTION_USES_LINE.findall(workflow))
             with self.subTest(workflow=workflow_path.name):
                 self.assertEqual(uses_count, pinned_count)
 
     def test_ci_workflow_uses_read_only_token_and_non_persistent_checkout(self) -> None:
         workflow = read_text(".github/workflows/ci.yml")
         self.assertRegex(workflow, r"(?m)^permissions:\n  contents: read$")
-        self.assertEqual(
-            line_count(workflow, r"\s+persist-credentials:\s+false"),
-            line_count(workflow, r"\s*-\s+uses:\s+actions/checkout@[0-9a-f]{40}.*"),
-        )
+        assert_checkouts_do_not_persist_credentials(self, workflow)
         self.assertNotIn("contents: write", workflow)
         self.assertNotIn("id-token: write", workflow)
 
     def test_docs_workflow_uses_read_only_token_and_non_persistent_checkout(self) -> None:
         workflow = read_text(".github/workflows/docs.yml")
         self.assertRegex(workflow, r"(?m)^permissions:\n  contents: read$")
-        self.assertEqual(
-            line_count(workflow, r"\s+persist-credentials:\s+false"),
-            line_count(workflow, r"\s*-\s+uses:\s+actions/checkout@[0-9a-f]{40}.*"),
-        )
+        assert_checkouts_do_not_persist_credentials(self, workflow)
         self.assertNotIn("contents: write", workflow)
         self.assertNotIn("id-token: write", workflow)
 
     def test_docs_workflow_covers_docs_only_pushes_lightly(self) -> None:
         workflow = read_text(".github/workflows/docs.yml")
+        docs_job = job_section(workflow, "docs")
+        docs_checkout = checkout_step(docs_job)
         self.assertRegex(workflow, r"(?m)^  push:\n    branches:\n      - main$")
         self.assertIn('- "README.md"', workflow)
         self.assertIn('- "docs/**"', workflow)
@@ -104,9 +150,9 @@ class WorkflowPostureTests(unittest.TestCase):
         self.assertNotIn("containers/checks", workflow)
         self.assertNotIn("containers/docs", workflow)
         self.assertNotIn("tests/checks", workflow)
-        self.assertIn("fetch-depth: 0", workflow)
-        self.assertIn("run: make docs", workflow)
-        self.assertIn("run: make checks", workflow)
+        self.assertRegex(docs_checkout, r"(?m)^          fetch-depth: 0$")
+        self.assertIn("run: make docs", docs_job)
+        self.assertIn("run: make checks", docs_job)
         self.assertNotIn("run: make ci", workflow)
         self.assertNotIn("run: make test-package", workflow)
 
@@ -114,16 +160,13 @@ class WorkflowPostureTests(unittest.TestCase):
         workflow = read_text(".github/workflows/ci.yml")
         checks_job = job_section(workflow, "container-ci")
         package_job = job_section(workflow, "test-package")
-        self.assertIn("fetch-depth: 0", checks_job)
-        self.assertNotIn("fetch-depth: 0", package_job)
+        self.assertRegex(checkout_step(checks_job), r"(?m)^          fetch-depth: 0$")
+        self.assertNotRegex(checkout_step(package_job), r"(?m)^          fetch-depth: 0$")
 
     def test_release_workflow_scopes_token_permissions_by_job(self) -> None:
         workflow = read_text(".github/workflows/release.yml")
         self.assertRegex(workflow, r"(?m)^permissions:\n  contents: read$")
-        self.assertEqual(
-            line_count(workflow, r"\s+persist-credentials:\s+false"),
-            line_count(workflow, r"\s*-\s+uses:\s+actions/checkout@[0-9a-f]{40}.*"),
-        )
+        assert_checkouts_do_not_persist_credentials(self, workflow)
 
         wheel = job_section(workflow, "wheel")
         sdist = job_section(workflow, "sdist")

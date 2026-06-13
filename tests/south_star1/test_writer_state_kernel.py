@@ -85,26 +85,10 @@ class WriterStateKernelTest(unittest.TestCase):
         writer_transitions._WriterActiveEmittedGraphPolicyDecision,
         writer_transitions._WriterActiveEmittedScheduleDecision,
     ]:
-        action = writer_transitions._finish_active_action(active_atom)
-        transition = SimpleNamespace(emitted_text="")
-        emission = writer_transitions._WriterScheduledActionEmission(
-            action=action,
-            transitions=(transition,),  # type: ignore[arg-type]
-        )
-        batch = writer_transitions._WriterScheduledActionEmissionBatch(
-            actions=(action,),
-            emissions=(emission,),
-            surviving_emissions=(emission,),
-        )
-        empty_batch = writer_transitions._WriterScheduledActionEmissionBatch(
-            actions=(),
-            emissions=(),
-            surviving_emissions=(),
-        )
-        closure_decision = writer_transitions._WriterClosureEndpointScheduleDecision(
-            pair_batch=batch,
-            open_batch=empty_batch,
-            surviving_emissions=(emission,),
+        closure_decision, _, _ = self._test_closure_endpoint_decision(
+            active_atom=active_atom,
+            pair_survives=True,
+            open_survives=False,
         )
         policy = writer_transitions._WriterActiveEmittedGraphPolicyDecision(
             kind=(
@@ -499,6 +483,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def _test_closure_endpoint_decision(
         self,
         *,
+        active_atom: AtomId = AtomId(0),
         pair_survives: bool,
         open_survives: bool,
     ) -> tuple[
@@ -506,7 +491,6 @@ class WriterStateKernelTest(unittest.TestCase):
         writer_transitions._WriterScheduledActionEmission,
         writer_transitions._WriterScheduledActionEmission,
     ]:
-        active_atom = AtomId(0)
         pair_action = self._test_closure_pair_action(active_atom)
         open_action = self._test_closure_open_action(active_atom)
         pair_emission = writer_transitions._WriterScheduledActionEmission(
@@ -11208,26 +11192,10 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_active_emitted_closure_decision_retains_graph_policy_decision(self) -> None:
-        action = writer_transitions._finish_active_action(AtomId(0))
-        emission = writer_transitions._WriterScheduledActionEmission(
-            action=action,
-            transitions=(object(),),  # type: ignore[arg-type]
-        )
-        pair_batch = writer_transitions._WriterScheduledActionEmissionBatch(
-            actions=(action,),
-            emissions=(emission,),
-            surviving_emissions=(emission,),
-        )
-        open_batch = writer_transitions._WriterScheduledActionEmissionBatch(
-            actions=(),
-            emissions=(),
-            surviving_emissions=(),
-        )
-        closure_endpoint_decision = (
-            writer_transitions._WriterClosureEndpointScheduleDecision(
-                pair_batch=pair_batch,
-                open_batch=open_batch,
-                surviving_emissions=(emission,),
+        closure_endpoint_decision, _, _ = (
+            self._test_closure_endpoint_decision(
+                pair_survives=True,
+                open_survives=False,
             )
         )
         policy = writer_transitions._WriterActiveEmittedGraphPolicyDecision(
@@ -11963,24 +11931,9 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIs(raised.exception.kind, SouthStarErrorKind.INTERNAL_INVARIANT)
 
     def test_top_level_active_emitted_decision_exposes_graph_policy_decision(self) -> None:
-        action = writer_transitions._finish_active_action(AtomId(0))
-        emission = writer_transitions._WriterScheduledActionEmission(
-            action=action,
-            transitions=(object(),),  # type: ignore[arg-type]
-        )
-        batch = writer_transitions._WriterScheduledActionEmissionBatch(
-            actions=(action,),
-            emissions=(emission,),
-            surviving_emissions=(emission,),
-        )
-        closure_decision = writer_transitions._WriterClosureEndpointScheduleDecision(
-            pair_batch=batch,
-            open_batch=writer_transitions._WriterScheduledActionEmissionBatch(
-                actions=(),
-                emissions=(),
-                surviving_emissions=(),
-            ),
-            surviving_emissions=(emission,),
+        closure_decision, _, _ = self._test_closure_endpoint_decision(
+            pair_survives=True,
+            open_survives=False,
         )
         policy = writer_transitions._WriterActiveEmittedGraphPolicyDecision(
             kind=(
@@ -12594,6 +12547,62 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(
             decision.selected_closure_open_graph_action_surfaces,
             (open_emission.graph_action_surface,),
+        )
+
+    def test_closure_endpoint_schedule_decision_exposes_selection_booleans(self) -> None:
+        pair_selected, _, _ = self._test_closure_endpoint_decision(
+            pair_survives=True,
+            open_survives=False,
+        )
+
+        self.assertTrue(pair_selected.considered_closure_endpoint_available)
+        self.assertTrue(pair_selected.selected_closure_endpoint_survived)
+        self.assertIs(
+            pair_selected.considered_closure_endpoint_selection_kind,
+            (
+                writer_transitions
+                ._WriterClosureEndpointSelectionKind
+                .PAIR_AND_OPEN
+            ),
+        )
+        self.assertIs(
+            pair_selected.selected_closure_endpoint_selection_kind,
+            (
+                writer_transitions
+                ._WriterClosureEndpointSelectionKind
+                .CLOSURE_PAIR
+            ),
+        )
+
+        open_action = self._test_closure_open_action(AtomId(0))
+        open_emission = writer_transitions._WriterScheduledActionEmission(
+            action=open_action,
+            transitions=(),
+        )
+        open_dead = writer_transitions._WriterClosureEndpointScheduleDecision(
+            pair_batch=writer_transitions._WriterScheduledActionEmissionBatch(
+                actions=(),
+                emissions=(),
+                surviving_emissions=(),
+            ),
+            open_batch=writer_transitions._WriterScheduledActionEmissionBatch(
+                actions=(open_action,),
+                emissions=(open_emission,),
+                surviving_emissions=(),
+            ),
+            surviving_emissions=(),
+            schedule_surface=writer_transitions._WriterClosureEndpointScheduleSurface(
+                active_atom=AtomId(0),
+                pair_actions=(),
+                open_actions=(open_action,),
+            ),
+        )
+
+        self.assertTrue(open_dead.considered_closure_endpoint_available)
+        self.assertFalse(open_dead.selected_closure_endpoint_survived)
+        self.assertIs(
+            open_dead.selected_closure_endpoint_selection_kind,
+            writer_transitions._WriterClosureEndpointSelectionKind.NONE,
         )
 
     def test_closure_endpoint_schedule_decision_exposes_residual_policy_emission_groups(self) -> None:
@@ -13326,24 +13335,14 @@ class WriterStateKernelTest(unittest.TestCase):
                 atom=AtomId(4),
             ),
         )
-        survivor = object()
-        transition = object()
-        selected_batch = writer_transitions._WriterScheduledActionEmissionBatch(
-            actions=(),
-            emissions=(),
-            surviving_emissions=(survivor,),  # type: ignore[arg-type]
-        )
-        closure_endpoint_decision = (
-            writer_transitions._WriterClosureEndpointScheduleDecision(
-                pair_batch=selected_batch,
-                open_batch=writer_transitions._WriterScheduledActionEmissionBatch(
-                    actions=(),
-                    emissions=(),
-                    surviving_emissions=(),
-                ),
-                surviving_emissions=(survivor,),  # type: ignore[arg-type]
+        closure_endpoint_decision, survivor, _ = (
+            self._test_closure_endpoint_decision(
+                active_atom=AtomId(4),
+                pair_survives=True,
+                open_survives=False,
             )
         )
+        transition = object()
         policy = writer_transitions._WriterActiveEmittedGraphPolicyDecision(
             kind=(
                 writer_transitions
@@ -14574,25 +14573,9 @@ class WriterStateKernelTest(unittest.TestCase):
         state = object()
         context = object()
         active_atom = AtomId(7)
-        action = writer_transitions._finish_active_action(active_atom)
-        emission = writer_transitions._WriterScheduledActionEmission(
-            action=action,
-            transitions=(object(),),  # type: ignore[arg-type]
-        )
-        pair_batch = writer_transitions._WriterScheduledActionEmissionBatch(
-            actions=(action,),
-            emissions=(emission,),
-            surviving_emissions=(emission,),
-        )
-        open_batch = writer_transitions._WriterScheduledActionEmissionBatch(
-            actions=(),
-            emissions=(),
-            surviving_emissions=(),
-        )
-        closure_decision = writer_transitions._WriterClosureEndpointScheduleDecision(
-            pair_batch=pair_batch,
-            open_batch=open_batch,
-            surviving_emissions=(emission,),
+        closure_decision, _, _ = self._test_closure_endpoint_decision(
+            pair_survives=False,
+            open_survives=True,
         )
 
         with patch(
@@ -14618,10 +14601,60 @@ class WriterStateKernelTest(unittest.TestCase):
             ),
         )
         self.assertIsNone(decision.child_schedule_surface)
+        self.assertIs(
+            decision.closure_endpoint_selection_kind,
+            (
+                writer_transitions
+                ._WriterClosureEndpointSelectionKind
+                .CLOSURE_OPEN
+            ),
+        )
         self.assertFalse(decision.blocked)
         self.assertEqual(decision.blockers, ())
         self.assertEqual(decision.graph_policy_blockers, ())
         self.assertFalse(decision.graph_policy_blocked)
+        child_surface.assert_not_called()
+
+    def test_active_emitted_graph_policy_selects_closure_from_selected_endpoint_kind(self) -> None:
+        prepared = object()
+        state = object()
+        context = object()
+        active_atom = AtomId(7)
+        closure_decision, _, _ = self._test_closure_endpoint_decision(
+            pair_survives=True,
+            open_survives=False,
+        )
+
+        with patch(
+            "grimace._south_star1.writer_transitions._closure_endpoint_schedule_decision",
+            return_value=closure_decision,
+        ), patch(
+            "grimace._south_star1.writer_transitions._active_child_schedule_surface_from_context",
+            side_effect=AssertionError("child surface should not be computed"),
+        ) as child_surface:
+            decision = writer_transitions._active_emitted_graph_policy_decision(
+                prepared,  # type: ignore[arg-type]
+                state,  # type: ignore[arg-type]
+                context,  # type: ignore[arg-type]
+                active_atom,
+            )
+
+        self.assertIs(
+            decision.kind,
+            (
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyDecisionKind
+                .CLOSURE_ENDPOINT
+            ),
+        )
+        self.assertIs(
+            decision.closure_endpoint_selection_kind,
+            (
+                writer_transitions
+                ._WriterClosureEndpointSelectionKind
+                .CLOSURE_PAIR
+            ),
+        )
         child_surface.assert_not_called()
 
     def test_active_emitted_graph_policy_selects_child_after_empty_closure_survivors(self) -> None:
@@ -14700,6 +14733,86 @@ class WriterStateKernelTest(unittest.TestCase):
         )
         self.assertEqual(decision.blockers, ())
         self.assertFalse(decision.blocked)
+
+    def test_active_emitted_graph_policy_reaches_child_when_closure_considered_but_not_selected(self) -> None:
+        prepared = object()
+        state = object()
+        context = object()
+        active_atom = AtomId(7)
+        closure_decision, _, _ = self._test_closure_endpoint_decision(
+            pair_survives=False,
+            open_survives=False,
+        )
+        child = writer_transitions._WriterChildObligation(
+            bond=BondId(1),
+            child=AtomId(2),
+            boundary_atom=active_atom,
+            owner_kind=WriterBoundaryOwnerKind.ACTIVE_ATOM,
+            attachment_id=99,
+            attachment_action_kind=(
+                WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY
+            ),
+        )
+        action = writer_transitions._enter_inline_child_action(
+            active_atom,
+            child,
+        )
+        child_surface = writer_transitions._WriterActiveChildScheduleSurface(
+            active_atom=active_atom,
+            blockers=(),
+            child_obligations=(child,),
+            scheduled_actions=(action,),
+        )
+
+        with patch(
+            "grimace._south_star1.writer_transitions._closure_endpoint_schedule_decision",
+            return_value=closure_decision,
+        ), patch(
+            "grimace._south_star1.writer_transitions._active_child_schedule_surface_from_context",
+            return_value=child_surface,
+        ):
+            policy = writer_transitions._active_emitted_graph_policy_decision(
+                prepared,  # type: ignore[arg-type]
+                state,  # type: ignore[arg-type]
+                context,  # type: ignore[arg-type]
+                active_atom,
+            )
+
+        self.assertIs(
+            policy.kind,
+            writer_transitions._WriterActiveEmittedGraphPolicyDecisionKind.ACTIVE_CHILD,
+        )
+        self.assertIsNot(
+            policy.considered_closure_endpoint_selection_kind,
+            writer_transitions._WriterClosureEndpointSelectionKind.NONE,
+        )
+        self.assertIs(
+            policy.closure_endpoint_selection_kind,
+            writer_transitions._WriterClosureEndpointSelectionKind.NONE,
+        )
+        self.assertIs(policy.child_schedule_surface, child_surface)
+
+    def test_active_emitted_graph_policy_rejects_closure_policy_without_selected_endpoint(self) -> None:
+        closure_decision, _, _ = self._test_closure_endpoint_decision(
+            pair_survives=False,
+            open_survives=False,
+        )
+
+        with self.assertRaises(SouthStarError) as raised:
+            writer_transitions._WriterActiveEmittedGraphPolicyDecision(
+                kind=(
+                    writer_transitions
+                    ._WriterActiveEmittedGraphPolicyDecisionKind
+                    .CLOSURE_ENDPOINT
+                ),
+                active_atom=AtomId(0),
+                closure_endpoint_decision=closure_decision,
+            )
+
+        self.assertIs(
+            raised.exception.kind,
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+        )
 
     def test_active_emitted_graph_policy_records_blocked_child_without_raising(self) -> None:
         prepared = object()
@@ -14825,25 +14938,10 @@ class WriterStateKernelTest(unittest.TestCase):
 
     def test_active_emitted_schedule_outcome_validates_scheduled_payload_shape(self) -> None:
         active_atom = AtomId(7)
-        action = writer_transitions._finish_active_action(active_atom)
-        emission = writer_transitions._WriterScheduledActionEmission(
-            action=action,
-            transitions=(object(),),  # type: ignore[arg-type]
-        )
-        batch = writer_transitions._WriterScheduledActionEmissionBatch(
-            actions=(action,),
-            emissions=(emission,),
-            surviving_emissions=(emission,),
-        )
-        empty_batch = writer_transitions._WriterScheduledActionEmissionBatch(
-            actions=(),
-            emissions=(),
-            surviving_emissions=(),
-        )
-        closure_decision = writer_transitions._WriterClosureEndpointScheduleDecision(
-            pair_batch=batch,
-            open_batch=empty_batch,
-            surviving_emissions=(emission,),
+        closure_decision, _, _ = self._test_closure_endpoint_decision(
+            active_atom=active_atom,
+            pair_survives=True,
+            open_survives=False,
         )
         policy = writer_transitions._WriterActiveEmittedGraphPolicyDecision(
             kind=(
@@ -14964,21 +15062,11 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(outcome.selected_transitions, ())
         self.assertEqual(outcome.selected_next_token_frontier, ())
 
-        action = writer_transitions._finish_active_action(active_atom)
-        emission = writer_transitions._WriterScheduledActionEmission(
-            action=action,
-            transitions=(object(),),  # type: ignore[arg-type]
-        )
-        scheduled_batch = writer_transitions._WriterScheduledActionEmissionBatch(
-            actions=(action,),
-            emissions=(emission,),
-            surviving_emissions=(emission,),
-        )
-        scheduled_closure_decision = (
-            writer_transitions._WriterClosureEndpointScheduleDecision(
-                pair_batch=scheduled_batch,
-                open_batch=empty_batch,
-                surviving_emissions=(emission,),
+        scheduled_closure_decision, _, _ = (
+            self._test_closure_endpoint_decision(
+                active_atom=active_atom,
+                pair_survives=True,
+                open_survives=False,
             )
         )
         scheduled_policy = writer_transitions._WriterActiveEmittedGraphPolicyDecision(
@@ -15022,25 +15110,10 @@ class WriterStateKernelTest(unittest.TestCase):
 
     def test_active_emitted_schedule_outcome_returns_closure_schedule(self) -> None:
         active_atom = AtomId(7)
-        action = writer_transitions._finish_active_action(active_atom)
-        emission = writer_transitions._WriterScheduledActionEmission(
-            action=action,
-            transitions=(object(),),  # type: ignore[arg-type]
-        )
-        closure_batch = writer_transitions._WriterScheduledActionEmissionBatch(
-            actions=(action,),
-            emissions=(emission,),
-            surviving_emissions=(emission,),
-        )
-        empty_batch = writer_transitions._WriterScheduledActionEmissionBatch(
-            actions=(),
-            emissions=(),
-            surviving_emissions=(),
-        )
-        closure_decision = writer_transitions._WriterClosureEndpointScheduleDecision(
-            pair_batch=closure_batch,
-            open_batch=empty_batch,
-            surviving_emissions=(emission,),
+        closure_decision, _, _ = self._test_closure_endpoint_decision(
+            active_atom=active_atom,
+            pair_survives=True,
+            open_survives=False,
         )
         policy = writer_transitions._WriterActiveEmittedGraphPolicyDecision(
             kind=(
@@ -15356,25 +15429,10 @@ class WriterStateKernelTest(unittest.TestCase):
 
     def test_active_emitted_schedule_decision_returns_scheduled_outcome_decision(self) -> None:
         active_atom = AtomId(7)
-        action = writer_transitions._finish_active_action(active_atom)
-        emission = writer_transitions._WriterScheduledActionEmission(
-            action=action,
-            transitions=(object(),),  # type: ignore[arg-type]
-        )
-        closure_batch = writer_transitions._WriterScheduledActionEmissionBatch(
-            actions=(action,),
-            emissions=(emission,),
-            surviving_emissions=(emission,),
-        )
-        empty_batch = writer_transitions._WriterScheduledActionEmissionBatch(
-            actions=(),
-            emissions=(),
-            surviving_emissions=(),
-        )
-        closure_decision = writer_transitions._WriterClosureEndpointScheduleDecision(
-            pair_batch=closure_batch,
-            open_batch=empty_batch,
-            surviving_emissions=(emission,),
+        closure_decision, _, _ = self._test_closure_endpoint_decision(
+            active_atom=active_atom,
+            pair_survives=True,
+            open_survives=False,
         )
         policy = writer_transitions._WriterActiveEmittedGraphPolicyDecision(
             kind=(
@@ -17365,24 +17423,15 @@ class WriterStateKernelTest(unittest.TestCase):
         state = object()
         context = object()
         active_atom = AtomId(7)
-        pair_action = object()
-        pair_emission = object()
-        pair_survivor = object()
-        pair_batch = writer_transitions._WriterScheduledActionEmissionBatch(
-            actions=(pair_action,),  # type: ignore[arg-type]
-            emissions=(pair_emission,),  # type: ignore[arg-type]
-            surviving_emissions=(pair_survivor,),  # type: ignore[arg-type]
+        closure_decision, pair_emission, open_emission = (
+            self._test_closure_endpoint_decision(
+                active_atom=active_atom,
+                pair_survives=True,
+                open_survives=False,
+            )
         )
-        open_batch = writer_transitions._WriterScheduledActionEmissionBatch(
-            actions=(),
-            emissions=(),
-            surviving_emissions=(),
-        )
-        closure_decision = writer_transitions._WriterClosureEndpointScheduleDecision(
-            pair_batch=pair_batch,
-            open_batch=open_batch,
-            surviving_emissions=(pair_survivor,),  # type: ignore[arg-type]
-        )
+        pair_action = pair_emission.action
+        open_action = open_emission.action
 
         with patch(
             "grimace._south_star1.writer_transitions._closure_endpoint_schedule_decision",
@@ -17402,9 +17451,15 @@ class WriterStateKernelTest(unittest.TestCase):
             decision.kind,
             writer_transitions._WriterActiveEmittedScheduleDecisionKind.CLOSURE_ENDPOINT,
         )
-        self.assertEqual(decision.closure_batch.actions, (pair_action,))
-        self.assertEqual(decision.closure_batch.emissions, (pair_emission,))
-        self.assertEqual(decision.closure_batch.surviving_emissions, (pair_survivor,))
+        self.assertEqual(
+            decision.closure_batch.actions,
+            (pair_action, open_action),
+        )
+        self.assertEqual(
+            decision.closure_batch.emissions,
+            (pair_emission, open_emission),
+        )
+        self.assertEqual(decision.closure_batch.surviving_emissions, (pair_emission,))
         self.assertIs(decision.selected_batch, decision.closure_batch)
         self.assertIsNone(decision.child_batch)
         self.assertIsNone(decision.child_schedule_surface)
@@ -17419,26 +17474,15 @@ class WriterStateKernelTest(unittest.TestCase):
         state = object()
         context = object()
         active_atom = AtomId(7)
-        pair_action = object()
-        open_action = object()
-        pair_emission = object()
-        open_emission = object()
-        open_survivor = object()
-        pair_batch = writer_transitions._WriterScheduledActionEmissionBatch(
-            actions=(pair_action,),  # type: ignore[arg-type]
-            emissions=(pair_emission,),  # type: ignore[arg-type]
-            surviving_emissions=(),
+        closure_decision, pair_emission, open_emission = (
+            self._test_closure_endpoint_decision(
+                active_atom=active_atom,
+                pair_survives=False,
+                open_survives=True,
+            )
         )
-        open_batch = writer_transitions._WriterScheduledActionEmissionBatch(
-            actions=(open_action,),  # type: ignore[arg-type]
-            emissions=(open_emission,),  # type: ignore[arg-type]
-            surviving_emissions=(open_survivor,),  # type: ignore[arg-type]
-        )
-        closure_decision = writer_transitions._WriterClosureEndpointScheduleDecision(
-            pair_batch=pair_batch,
-            open_batch=open_batch,
-            surviving_emissions=(open_survivor,),  # type: ignore[arg-type]
-        )
+        pair_action = pair_emission.action
+        open_action = open_emission.action
 
         with patch(
             "grimace._south_star1.writer_transitions._closure_endpoint_schedule_decision",
@@ -17468,7 +17512,7 @@ class WriterStateKernelTest(unittest.TestCase):
         )
         self.assertEqual(
             decision.selected_batch.surviving_emissions,
-            (open_survivor,),
+            (open_emission,),
         )
         closure_schedule.assert_called_once_with(
             prepared,
@@ -17622,21 +17666,10 @@ class WriterStateKernelTest(unittest.TestCase):
         state = object()
         context = object()
         active_atom = AtomId(7)
-        survivor = object()
-        pair_batch = writer_transitions._WriterScheduledActionEmissionBatch(
-            actions=(),
-            emissions=(),
-            surviving_emissions=(survivor,),  # type: ignore[arg-type]
-        )
-        open_batch = writer_transitions._WriterScheduledActionEmissionBatch(
-            actions=(),
-            emissions=(),
-            surviving_emissions=(),
-        )
-        closure_decision = writer_transitions._WriterClosureEndpointScheduleDecision(
-            pair_batch=pair_batch,
-            open_batch=open_batch,
-            surviving_emissions=(survivor,),  # type: ignore[arg-type]
+        closure_decision, _, _ = self._test_closure_endpoint_decision(
+            active_atom=active_atom,
+            pair_survives=True,
+            open_survives=False,
         )
 
         with patch(
@@ -17858,24 +17891,10 @@ class WriterStateKernelTest(unittest.TestCase):
         state = object()
         context = object()
         active_atom = AtomId(7)
-        action = writer_transitions._finish_active_action(active_atom)
-        emission = writer_transitions._WriterScheduledActionEmission(
-            action=action,
-            transitions=(object(),),  # type: ignore[arg-type]
-        )
-        pair_batch = writer_transitions._WriterScheduledActionEmissionBatch(
-            actions=(action,),
-            emissions=(emission,),
-            surviving_emissions=(emission,),
-        )
-        closure_decision = writer_transitions._WriterClosureEndpointScheduleDecision(
-            pair_batch=pair_batch,
-            open_batch=writer_transitions._WriterScheduledActionEmissionBatch(
-                actions=(),
-                emissions=(),
-                surviving_emissions=(),
-            ),
-            surviving_emissions=(emission,),
+        closure_decision, _, _ = self._test_closure_endpoint_decision(
+            active_atom=active_atom,
+            pair_survives=True,
+            open_survives=False,
         )
         policy = writer_transitions._WriterActiveEmittedGraphPolicyDecision(
             kind=(
@@ -17976,23 +17995,14 @@ class WriterStateKernelTest(unittest.TestCase):
         state = object()
         context = object()
         active_atom = AtomId(7)
-        surviving_closure_emission = object()
+        closure_decision, surviving_closure_emission, _ = (
+            self._test_closure_endpoint_decision(
+                active_atom=active_atom,
+                pair_survives=True,
+                open_survives=False,
+            )
+        )
         closure_transition = object()
-        pair_batch = writer_transitions._WriterScheduledActionEmissionBatch(
-            actions=(),
-            emissions=(),
-            surviving_emissions=(surviving_closure_emission,),  # type: ignore[arg-type]
-        )
-        open_batch = writer_transitions._WriterScheduledActionEmissionBatch(
-            actions=(),
-            emissions=(),
-            surviving_emissions=(),
-        )
-        closure_decision = writer_transitions._WriterClosureEndpointScheduleDecision(
-            pair_batch=pair_batch,
-            open_batch=open_batch,
-            surviving_emissions=(surviving_closure_emission,),  # type: ignore[arg-type]
-        )
 
         with patch(
             "grimace._south_star1.writer_transitions._closure_endpoint_schedule_decision",

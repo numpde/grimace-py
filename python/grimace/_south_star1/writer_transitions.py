@@ -915,6 +915,20 @@ class _WriterClosureEndpointScheduleDecision:
         )
 
     @property
+    def considered_closure_endpoint_available(self) -> bool:
+        return (
+            self.considered_closure_endpoint_selection_kind
+            is not _WriterClosureEndpointSelectionKind.NONE
+        )
+
+    @property
+    def selected_closure_endpoint_survived(self) -> bool:
+        return (
+            self.selected_closure_endpoint_selection_kind
+            is not _WriterClosureEndpointSelectionKind.NONE
+        )
+
+    @property
     def considered_residual_attachment_policy_emission_groups(
         self,
     ) -> tuple[_WriterResidualAttachmentPolicyEmissionGroup, ...]:
@@ -996,8 +1010,8 @@ class _WriterActiveEmittedGraphPolicyDecision:
     child_schedule_surface: _WriterActiveChildScheduleSurface | None = None
 
     def __post_init__(self) -> None:
-        closure_survived = bool(
-            self.closure_endpoint_decision.surviving_emissions
+        closure_survived = (
+            self.closure_endpoint_decision.selected_closure_endpoint_survived
         )
         child_present = self.child_schedule_surface is not None
 
@@ -2530,7 +2544,7 @@ def _active_emitted_graph_policy_decision(
         context,
     )
 
-    if closure_decision.surviving_emissions:
+    if closure_decision.selected_closure_endpoint_survived:
         return _WriterActiveEmittedGraphPolicyDecision(
             kind=(
                 _WriterActiveEmittedGraphPolicyDecisionKind

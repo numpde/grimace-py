@@ -39,7 +39,7 @@ define compose_run
 $(COMPOSE_ENV) $(DOCKER_COMPOSE) -f $(COMPOSE_DIR)/$(1) run --build --rm $(2)
 endef
 
-.PHONY: help checks rust test contract parity exact-public-invariants test-package timings-enum prepared-mol-zstd-dictionary timings-prepared-mol-zstd docs docs-serve ci
+.PHONY: help checks rust test contract parity exact-public-invariants test-package timings-enum prepared-mol-zstd-dictionary timings-prepared-mol-zstd docs docs-serve clean-host-artifacts ci
 
 docs docs-serve: export DOCS_PORT := $(value DOCS_PORT)
 prepared-mol-zstd-dictionary: export PREPARED_MOL_ZSTD_CREATED_DATE := $(value PREPARED_MOL_ZSTD_CREATED_DATE)
@@ -63,6 +63,7 @@ help:
 	  '  make timings-prepared-mol-zstd  Measure PreparedMol zstd timing tradeoffs' \
 	  '  make docs     Build the documentation site under build/docs-site/' \
 	  '  make docs-serve  Serve the documentation site on DOCS_PORT' \
+	  '  make clean-host-artifacts  Remove ignored host build/cache artifacts' \
 	  '  make ci      Run checks, rust, test, contract, parity, and exact invariants' \
 	  '' \
 	  'Variables:' \
@@ -155,5 +156,11 @@ docs-serve: docs
 	$(DOCS_PORT_GUARD); \
 	$(DOCS_ARTIFACTS_GUARD); \
 	$(COMPOSE_ENV) $(DOCKER_COMPOSE) -f $(COMPOSE_DIR)/docs.yml run --rm --publish "127.0.0.1:$${DOCS_PORT}:8000" docs-serve
+
+clean-host-artifacts:
+	@find python rust tests scripts docs -type d \( -name __pycache__ -o -name .pytest_cache -o -name .ruff_cache -o -name .mypy_cache \) -prune -exec rm -rf -- {} +
+	@find python rust tests scripts docs -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete
+	@rm -f -- python/grimace/_core*.so python/grimace/_core*.dylib python/grimace/_core*.dll python/grimace/_core*.pyd
+	@rm -rf -- target
 
 ci: checks rust test contract parity exact-public-invariants

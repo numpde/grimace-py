@@ -31,6 +31,8 @@ here.
   `target/`, and a host-built `python/grimace/_core...so`). They are not tracked,
   are excluded by `.dockerignore`/release validation, and are not part of the
   containerized correctness lanes, but they can affect ad hoc host imports.
+  `make clean-host-artifacts` now removes the known ignored host artifacts
+  explicitly.
 - `PreparedMol.from_bytes()` selects shipped zstd dictionaries by frame
   dictionary ID. Runtime dictionary loading now validates manifest SHA-256,
   byte size, and zstd dictionary ID before caching the dictionary.
@@ -254,13 +256,13 @@ auditable when someone chooses to use host imports.
 
 Checklist:
 
-- [ ] Define the generated artifacts that are safe to remove.
-- [ ] Add `make clean-host-artifacts` with exact paths and no broad globs beyond
+- [x] Define the generated artifacts that are safe to remove.
+- [x] Add `make clean-host-artifacts` with exact paths and no broad globs beyond
       already-ignored generated classes.
-- [ ] Add a checks test that the cleanup lane and `.gitignore` agree.
-- [ ] Add a short docs/development note warning that host imports can see stale
+- [x] Add a checks test that the cleanup lane and `.gitignore` agree.
+- [x] Add a short docs/development note warning that host imports can see stale
       ignored extension builds.
-- [ ] Keep CI and release lanes containerized and independent of this cleanup.
+- [x] Keep CI and release lanes containerized and independent of this cleanup.
 
 ### 5. Runtime dictionary manifest hash not rechecked
 

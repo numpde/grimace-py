@@ -21,6 +21,7 @@ and avoid the host Python environment for routine checks.
 | `make timings-prepared-mol-zstd` | `timings-prepared-mol-zstd` service in `compose/timings-prepared-mol-zstd.yml` | PreparedMol zstd timing TSV and plots |
 | `make docs` | `docs` service in `compose/docs.yml`; GitHub Pages Jekyll image | `build/docs-site/` |
 | `make docs-serve` | `make docs`, then `docs-serve` service in `compose/docs.yml` | Rebuilds `build/docs-site/`; publishes a local HTTP port |
+| `make clean-host-artifacts` | Host cleanup for ignored build/cache artifacts | Removes `target/`, Python caches, and host-built `grimace._core` extensions |
 | `make ci` | `checks`, `rust`, `test`, `contract`, `parity`, and `exact-public-invariants` | No package, timing, or docs artifacts |
 
 ## Details
@@ -97,6 +98,10 @@ make docs-serve DOCS_PORT=8010
 
 Routine check/test lanes do not use host `.venv`, `target`, `dist`, or
 `build` artifacts.
+
+`make clean-host-artifacts` is an explicit host-maintenance lane. It removes
+ignored build/cache artifacts that can affect ad hoc host imports, but it is not
+part of routine containerized correctness or release lanes.
 
 Rust dependency resolution is lockfile-backed. `Cargo.lock` is checked in and
 is the release dependency SSoT; direct Cargo lanes run with `--locked`, and

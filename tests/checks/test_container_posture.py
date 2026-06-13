@@ -577,6 +577,10 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertIn("TIMINGS_PREPARED_MOL_ZSTD_DICTIONARY_ARTIFACT ?=", makefile)
         self.assertIn("make docs-serve  Serve the documentation site on DOCS_PORT", makefile)
         self.assertIn(
+            "make clean-host-artifacts  Remove ignored host build/cache artifacts",
+            makefile,
+        )
+        self.assertIn(
             "make prepared-mol-zstd-dictionary  Generate the PreparedMol zstd dictionary artifact",
             makefile,
         )
@@ -654,6 +658,22 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertIn("outside the repository", makefile)
         self.assertIn("prepared-mol-zstd-dictionary.yml", makefile)
         self.assertIn("timings-prepared-mol-zstd.yml", makefile)
+        self.assertIn("clean-host-artifacts:", makefile)
+        self.assertIn("find python rust tests scripts docs", makefile)
+        self.assertNotIn("find . -type", makefile)
+        self.assertIn("-name __pycache__", makefile)
+        self.assertIn("-name .pytest_cache", makefile)
+        self.assertIn("-name .ruff_cache", makefile)
+        self.assertIn("-name .mypy_cache", makefile)
+        self.assertIn("-name '*.pyc'", makefile)
+        self.assertIn("-name '*.pyo'", makefile)
+        self.assertIn("rm -f -- python/grimace/_core*.so", makefile)
+        self.assertIn("python/grimace/_core*.dylib", makefile)
+        self.assertIn("python/grimace/_core*.dll", makefile)
+        self.assertIn("python/grimace/_core*.pyd", makefile)
+        self.assertIn("rm -rf -- target", makefile)
+        self.assertNotIn("rm -rf -- .venv", makefile)
+        self.assertNotIn("rm -rf -- dist", makefile)
         self.assertNotIn("LOCAL_UID:-", read_text("compose/test-package.yml"))
         self.assertNotIn("LOCAL_GID:-", read_text("compose/test-package.yml"))
         self.assertNotIn("LOCAL_UID:-", read_text("compose/timings-enum.yml"))

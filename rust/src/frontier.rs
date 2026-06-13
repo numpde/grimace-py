@@ -84,6 +84,24 @@ pub(crate) fn frontier_prefix<S>(frontier: &[S], prefix_of: impl Fn(&S) -> &str)
     prefix.to_owned()
 }
 
+pub(crate) fn validate_frontier_prefix_homogeneous<S>(
+    frontier: &[S],
+    prefix_of: impl Fn(&S) -> &str,
+    context: &str,
+) -> PyResult<()> {
+    let Some(first) = frontier.first() else {
+        return Ok(());
+    };
+    let prefix = prefix_of(first);
+    if frontier.iter().all(|state| prefix_of(state) == prefix) {
+        Ok(())
+    } else {
+        Err(PyValueError::new_err(format!(
+            "{context} frontiers must be prefix-homogeneous"
+        )))
+    }
+}
+
 pub(crate) fn dedup_frontier<S>(states: Vec<S>) -> Vec<S>
 where
     S: Ord,
@@ -188,11 +206,13 @@ pub(crate) fn take_first_successor_or_err<S>(successors: Vec<S>, context: &str) 
 mod tests {
     use std::collections::BTreeMap;
 
+    use pyo3::Python;
+
     use super::{
         decoder_choices_from_token_successors, frontier_prefix, group_decoder_choices,
         take_choice_index_or_err, take_first_successor_or_err,
         take_grouped_transition_successors_or_err, take_only_successor_or_err,
-        take_token_support_successors_or_err, DecoderChoice,
+        take_token_support_successors_or_err, validate_frontier_prefix_homogeneous, DecoderChoice,
     };
 
     fn choice(text: &str, successors: Vec<i32>) -> DecoderChoice<i32> {
@@ -305,9 +325,14 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "decoder frontiers must be prefix-homogeneous")]
-    fn frontier_prefix_rejects_mixed_prefix_frontiers_in_debug_builds() {
-        let _ = frontier_prefix(&["C", "O"], |prefix| prefix);
+    fn frontier_validator_rejects_mixed_prefix_frontiers() {
+        Python::initialize();
+
+        let err =
+            validate_frontier_prefix_homogeneous(&["C", "O"], |prefix| *prefix, "test decoder")
+                .expect_err("mixed frontier should fail");
+
+        assert!(err.to_string().contains("test decoder frontiers"));
     }
 
     #[test]

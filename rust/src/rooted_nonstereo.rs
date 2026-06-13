@@ -12,7 +12,8 @@ use crate::frontier::{
     extend_decoder_choices_from_token_successors, frontier_prefix as shared_frontier_prefix,
     group_decoder_choices, take_branch_choice_successors_or_err, take_first_successor_or_err,
     take_only_successor_or_err, take_token_successors_or_err, take_token_support_successors_or_err,
-    token_support_from_choices, DecoderChoice, GroupedTransition,
+    token_support_from_choices, validate_frontier_prefix_homogeneous, DecoderChoice,
+    GroupedTransition,
 };
 use crate::prepared_graph::PreparedSmilesGraphData;
 use crate::smiles_shared::{add_pending, ring_label_text, take_pending_for_atom};
@@ -1206,6 +1207,14 @@ fn frontier_prefix(frontier: &[RootedConnectedNonStereoWalkerStateData]) -> Stri
     shared_frontier_prefix(frontier, |state| state.prefix.as_str())
 }
 
+fn validate_frontier_prefix(frontier: &[RootedConnectedNonStereoWalkerStateData]) -> PyResult<()> {
+    validate_frontier_prefix_homogeneous(
+        frontier,
+        |state| state.prefix.as_str(),
+        "non-stereo decoder",
+    )
+}
+
 fn exact_state_structural_cmp(
     left: &RootedConnectedNonStereoWalkerStateData,
     right: &RootedConnectedNonStereoWalkerStateData,
@@ -1466,12 +1475,22 @@ impl PyRootedConnectedNonStereoDecoder {
     fn from_frontier(
         graph: Arc<PreparedSmilesGraphData>,
         frontier: Vec<RootedConnectedNonStereoWalkerStateData>,
-    ) -> Self {
-        Self {
+    ) -> PyResult<Self> {
+        validate_frontier_prefix(&frontier)?;
+        Ok(Self {
             graph,
             frontier,
             cached_choices: None,
-        }
+        })
+    }
+
+    fn set_frontier(
+        &mut self,
+        frontier: Vec<RootedConnectedNonStereoWalkerStateData>,
+    ) -> PyResult<()> {
+        validate_frontier_prefix(&frontier)?;
+        self.frontier = frontier;
+        Ok(())
     }
 
     fn cached_frontier_choices(
@@ -1497,7 +1516,7 @@ impl PyRootedConnectedNonStereoDecoder {
     fn new(graph: &Bound<'_, PyAny>, root_idx: isize) -> PyResult<Self> {
         let graph = Arc::new(PreparedSmilesGraphData::from_any(graph)?);
         let frontier = initial_frontier_for_root_spec(graph.as_ref(), root_idx)?;
-        Ok(Self::from_frontier(graph, frontier))
+        Self::from_frontier(graph, frontier)
     }
 
     fn next_token_support(&mut self) -> Vec<String> {
@@ -1506,8 +1525,7 @@ impl PyRootedConnectedNonStereoDecoder {
 
     fn advance_token(&mut self, chosen_token: &str) -> PyResult<()> {
         let choices = self.take_frontier_choices();
-        self.frontier = take_token_support_successors_or_err(choices, chosen_token)?;
-        Ok(())
+        self.set_frontier(take_token_support_successors_or_err(choices, chosen_token)?)
     }
 
     fn next_choice_texts(&mut self) -> Vec<String> {
@@ -1516,8 +1534,7 @@ impl PyRootedConnectedNonStereoDecoder {
 
     fn advance_choice(&mut self, chosen_idx: usize) -> PyResult<()> {
         let choices = self.take_frontier_choices();
-        self.frontier = take_branch_choice_successors_or_err(choices, chosen_idx)?;
-        Ok(())
+        self.set_frontier(take_branch_choice_successors_or_err(choices, chosen_idx)?)
     }
 
     fn prefix(&self) -> String {
@@ -1552,6 +1569,7 @@ impl PyRootedConnectedNonStereoDecoder {
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
+    use std::sync::Arc;
 
     use pyo3::Python;
 
@@ -1560,6 +1578,7 @@ mod tests {
         enumerate_support_from_state, for_each_cartesian_choice, initial_frontier_for_root_spec,
         initial_state_for_root, is_terminal_state, next_token_support_for_state,
         permutations_py_order, permutations_py_order_copy, validate_root_idx, Action, AtomBitSet,
+        PyRootedConnectedNonStereoDecoder,
     };
     use crate::prepared_graph::{
         PreparedSmilesGraphData, CONNECTED_NONSTEREO_SURFACE, PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
@@ -1611,6 +1630,24 @@ mod tests {
         assert!(right.contains(3));
         assert!(right.contains(4));
         assert_ne!(left, right);
+    }
+
+    #[test]
+    fn nonstereo_decoder_rejects_mixed_prefix_frontier() {
+        Python::initialize();
+
+        let graph = Arc::new(linear_ccc_graph());
+        let mut first = initial_state_for_root(graph.as_ref(), 0);
+        let second = initial_state_for_root(graph.as_ref(), 1);
+        first.prefix = "C".to_owned();
+
+        let err = match PyRootedConnectedNonStereoDecoder::from_frontier(graph, vec![first, second])
+        {
+            Ok(_) => panic!("mixed-prefix frontier should fail"),
+            Err(err) => err,
+        };
+
+        assert!(err.to_string().contains("non-stereo decoder frontiers"));
     }
 
     #[test]

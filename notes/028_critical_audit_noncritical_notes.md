@@ -38,11 +38,10 @@ here.
   byte size, and zstd dictionary ID before caching the dictionary.
 - `tests/contract/` now has a dedicated `make contract` lane in the
   installed-package test image and is included in `make ci`.
-- Rust frontier prefix helpers rely on `debug_assert!` for prefix homogeneity
-  and return the first prefix in release builds. Public/integration tests audit
-  reachable decoder state graphs, so this is not an observed correctness break,
-  but the invariant is not enforced at the exact helper boundary in optimized
-  builds.
+- Rust connected decoder frontiers now validate prefix homogeneity when
+  non-stereo and stereo decoder modes are constructed or advanced. The raw
+  `frontier_prefix()` helper still has a debug assertion as a fallback for
+  lower-level exact-enumerator helpers.
 - `tests/contract/test_public_api_docs.py` now checks every standalone
   signature documented on the API page, including token inventory functions.
 - The CI workflow still ignores `README.md` and `docs/**` on pushes to `main`,
@@ -336,13 +335,15 @@ prefix reads can stay cheap without relying on a debug-only assertion.
 
 Checklist:
 
-- [ ] Find all `frontier_prefix()` callers and frontier construction sites.
-- [ ] Introduce a small frontier wrapper or constructor that validates
+- [x] Find all `frontier_prefix()` callers and frontier construction sites.
+- [x] Introduce a small frontier wrapper or constructor that validates
       nonempty/homogeneous prefix where required.
-- [ ] Replace raw `Vec<State>` frontiers in decoder modes where practical.
-- [ ] Keep low-level tests for malformed mixed-prefix frontiers.
-- [ ] Remove or downgrade the standalone `frontier_prefix()` helper once the
-      invariant lives in construction.
+- [x] Replace raw `Vec<State>` frontiers in public connected decoder modes
+      where practical.
+- [x] Keep low-level tests for malformed mixed-prefix frontiers.
+- [x] Keep the standalone `frontier_prefix()` helper as a read helper with a
+      debug assertion fallback; construction-time validation now owns the public
+      decoder invariant.
 
 ### 8. API docs signature coverage misses token inventories
 

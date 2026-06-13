@@ -19,7 +19,8 @@ use crate::frontier::{
     group_decoder_choices, take_branch_choice_successors_or_err, take_choice_index_or_err,
     take_first_successor_or_err, take_grouped_transition_successors_or_err,
     take_only_successor_or_err, take_token_successors_or_err, take_token_support_successors_or_err,
-    token_support_from_choices, DecoderChoice, GroupedTransition,
+    token_support_from_choices, validate_frontier_prefix_homogeneous, DecoderChoice,
+    GroupedTransition,
 };
 use crate::prepared_graph::{PreparedSmilesGraphData, CONNECTED_STEREO_SURFACE};
 use crate::smiles_shared::{add_pending, ring_label_text, take_pending_for_atom};
@@ -390,22 +391,24 @@ fn take_single_stereo_choices(
 }
 
 impl StereoDecoderMode {
-    fn from_branches(branches: Vec<StereoDecoderBranch>) -> Self {
+    fn from_branches(branches: Vec<StereoDecoderBranch>) -> PyResult<Self> {
+        validate_merged_stereo_branches(&branches)?;
         if let [branch] = branches.as_slice() {
             return Self::single(branch.runtime.clone(), branch.frontier.clone());
         }
-        Self::Merged { branches }
+        Ok(Self::Merged { branches })
     }
 
     fn single(
         runtime: Arc<StereoWalkerRuntimeData>,
         frontier: Vec<RootedConnectedStereoWalkerStateData>,
-    ) -> Self {
-        Self::Single {
+    ) -> PyResult<Self> {
+        validate_stereo_frontier_prefix(&frontier)?;
+        Ok(Self::Single {
             runtime,
             frontier,
             cached_choices: None,
-        }
+        })
     }
 
     fn next_token_support(
@@ -443,7 +446,7 @@ impl StereoDecoderMode {
                 *self = Self::from_branches(take_grouped_transition_successors_or_err(
                     successors,
                     chosen_token,
-                )?);
+                )?)?;
                 Ok(())
             }
             Self::Single {
@@ -453,7 +456,9 @@ impl StereoDecoderMode {
             } => {
                 let choices =
                     take_single_stereo_choices(runtime, graph.as_ref(), frontier, cached_choices)?;
-                *frontier = take_token_support_successors_or_err(choices, chosen_token)?;
+                let successors = take_token_support_successors_or_err(choices, chosen_token)?;
+                validate_stereo_frontier_prefix(&successors)?;
+                *frontier = successors;
                 Ok(())
             }
         }
@@ -501,7 +506,9 @@ impl StereoDecoderMode {
             } => {
                 let choices =
                     take_single_stereo_choices(runtime, graph.as_ref(), frontier, cached_choices)?;
-                *frontier = take_branch_choice_successors_or_err(choices, chosen_idx)?;
+                let successors = take_branch_choice_successors_or_err(choices, chosen_idx)?;
+                validate_stereo_frontier_prefix(&successors)?;
+                *frontier = successors;
                 Ok(())
             }
         }
@@ -4453,6 +4460,32 @@ fn stereo_frontier_prefix(frontier: &[RootedConnectedStereoWalkerStateData]) -> 
     shared_frontier_prefix(frontier, |state| state.prefix.as_ref())
 }
 
+fn validate_stereo_frontier_prefix(
+    frontier: &[RootedConnectedStereoWalkerStateData],
+) -> PyResult<()> {
+    validate_frontier_prefix_homogeneous(frontier, |state| state.prefix.as_ref(), "stereo decoder")
+}
+
+fn validate_merged_stereo_branches(branches: &[StereoDecoderBranch]) -> PyResult<()> {
+    for branch in branches {
+        validate_stereo_frontier_prefix(&branch.frontier)?;
+    }
+    let Some(first) = branches.first() else {
+        return Ok(());
+    };
+    let prefix = stereo_frontier_prefix(&first.frontier);
+    if branches
+        .iter()
+        .all(|branch| stereo_frontier_prefix(&branch.frontier) == prefix)
+    {
+        Ok(())
+    } else {
+        Err(PyValueError::new_err(
+            "merged stereo decoder branches must be prefix-homogeneous",
+        ))
+    }
+}
+
 fn stereo_frontier_is_terminal(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
@@ -4673,18 +4706,21 @@ impl PyRootedConnectedStereoDecoder {
         graph: Arc<PreparedSmilesGraphData>,
         runtime: Arc<StereoWalkerRuntimeData>,
         frontier: Vec<RootedConnectedStereoWalkerStateData>,
-    ) -> Self {
-        Self::from_mode(graph, StereoDecoderMode::single(runtime, frontier))
+    ) -> PyResult<Self> {
+        Ok(Self::from_mode(
+            graph,
+            StereoDecoderMode::single(runtime, frontier)?,
+        ))
     }
 
     fn from_merged(
         graph: Arc<PreparedSmilesGraphData>,
         branches: Vec<StereoDecoderBranch>,
-    ) -> Self {
-        Self {
+    ) -> PyResult<Self> {
+        Ok(Self {
             graph,
-            mode: StereoDecoderMode::from_branches(branches),
-        }
+            mode: StereoDecoderMode::from_branches(branches)?,
+        })
     }
 }
 
@@ -4739,7 +4775,7 @@ fn merged_stereo_choice_transitions(
                         choice.successors,
                         "stereo choice successor",
                     )?],
-                ),
+                )?,
             ));
         }
     }
@@ -4778,7 +4814,7 @@ impl PyRootedConnectedStereoDecoder {
         if graph.atom_count() == 0 {
             let root_idx = validate_root_idx(graph.as_ref(), 0)?;
             let runtime = Arc::new(build_walker_runtime(graph.as_ref(), root_idx)?);
-            return Ok(Self::from_single(
+            return Self::from_single(
                 graph.clone(),
                 runtime.clone(),
                 vec![initial_stereo_state_for_root(
@@ -4786,7 +4822,7 @@ impl PyRootedConnectedStereoDecoder {
                     graph.as_ref(),
                     root_idx,
                 )],
-            ));
+            );
         }
         if root_idx < 0 {
             let mut branches = Vec::with_capacity(graph.atom_count());
@@ -4801,11 +4837,11 @@ impl PyRootedConnectedStereoDecoder {
                     )],
                 });
             }
-            return Ok(Self::from_merged(graph, branches));
+            return Self::from_merged(graph, branches);
         }
         let root_idx = validate_root_idx(graph.as_ref(), root_idx)?;
         let runtime = Arc::new(build_walker_runtime(graph.as_ref(), root_idx)?);
-        Ok(Self::from_single(
+        Self::from_single(
             graph.clone(),
             runtime.clone(),
             vec![initial_stereo_state_for_root(
@@ -4813,7 +4849,7 @@ impl PyRootedConnectedStereoDecoder {
                 graph.as_ref(),
                 root_idx,
             )],
-        ))
+        )
     }
 
     fn next_token_support(&mut self) -> PyResult<Vec<String>> {
@@ -4870,7 +4906,7 @@ mod tests {
         enumerate_support_from_stereo_state, initial_stereo_state_for_root,
         is_terminal_stereo_state, merged_stereo_grouped_transitions, merged_stereo_is_terminal,
         merged_stereo_prefix, next_token_support_for_stereo_state, stereo_frontier_is_terminal,
-        validate_root_idx, StereoDecoderBranch,
+        validate_root_idx, StereoDecoderBranch, StereoDecoderMode,
     };
     use crate::prepared_graph::{
         PreparedSmilesGraphData, CONNECTED_STEREO_SURFACE, PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
@@ -4910,6 +4946,40 @@ mod tests {
                 }
             })
             .collect()
+    }
+
+    #[test]
+    fn stereo_decoder_rejects_mixed_prefix_single_frontier() {
+        Python::initialize();
+
+        let graph = sample_stereo_graph();
+        let runtime = Arc::new(build_walker_runtime(&graph, 0).expect("runtime should build"));
+        let mut first = initial_stereo_state_for_root(runtime.as_ref(), &graph, 0);
+        let second = initial_stereo_state_for_root(runtime.as_ref(), &graph, 0);
+        first.prefix = "C".into();
+
+        let err = match StereoDecoderMode::single(runtime, vec![first, second]) {
+            Ok(_) => panic!("mixed-prefix frontier should fail"),
+            Err(err) => err,
+        };
+
+        assert!(err.to_string().contains("stereo decoder frontiers"));
+    }
+
+    #[test]
+    fn stereo_decoder_rejects_mixed_prefix_merged_branches() {
+        Python::initialize();
+
+        let graph = sample_stereo_graph();
+        let mut branches = all_root_stereo_branches(&graph);
+        branches[0].frontier[0].prefix = "C".into();
+
+        let err = match StereoDecoderMode::from_branches(branches) {
+            Ok(_) => panic!("mixed-prefix branches should fail"),
+            Err(err) => err,
+        };
+
+        assert!(err.to_string().contains("merged stereo decoder branches"));
     }
 
     fn assert_merged_stereo_terminal_status_is_homogeneous(graph: &PreparedSmilesGraphData) {

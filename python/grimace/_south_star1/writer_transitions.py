@@ -1155,14 +1155,80 @@ class _WriterResidualCyclicPolicyDecision:
             )
 
     @property
-    def blocks_active_child(self) -> bool:
-        return self.kind in (
-            _WriterResidualCyclicPolicyDecisionKind.UNSUPPORTED_OWNER_SCOPE,
-            (
+    def active_emitted_graph_policy_kind(
+        self,
+    ) -> _WriterActiveEmittedGraphPolicyDecisionKind:
+        if self.kind is _WriterResidualCyclicPolicyDecisionKind.NONE:
+            return _WriterActiveEmittedGraphPolicyDecisionKind.ACTIVE_CHILD
+
+        if (
+            self.kind
+            is _WriterResidualCyclicPolicyDecisionKind.UNSUPPORTED_OWNER_SCOPE
+        ):
+            return (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+            )
+
+        if (
+            self.kind
+            is (
                 _WriterResidualCyclicPolicyDecisionKind
                 .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
+            )
+        ):
+            return (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .UNRESOLVED_RESIDUAL_ATTACHMENT_CHOICE
+            )
+
+        if (
+            self.kind
+            is (
+                _WriterResidualCyclicPolicyDecisionKind
+                .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+            )
+        ):
+            return (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+            )
+
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            f"unknown residual cyclic policy kind: {self.kind!r}",
+        )
+
+    @property
+    def selects_plain_active_child(self) -> bool:
+        return self.kind is _WriterResidualCyclicPolicyDecisionKind.NONE
+
+    @property
+    def selects_active_child(self) -> bool:
+        return self.active_emitted_graph_policy_kind in (
+            _WriterActiveEmittedGraphPolicyDecisionKind.ACTIVE_CHILD,
+            (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
             ),
         )
+
+    @property
+    def blocks_active_emitted_policy(self) -> bool:
+        return self.active_emitted_graph_policy_kind in (
+            (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+            ),
+            (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .UNRESOLVED_RESIDUAL_ATTACHMENT_CHOICE
+            ),
+        )
+
+    @property
+    def blocks_active_child(self) -> bool:
+        return self.blocks_active_emitted_policy
 
     @property
     def resolves_active_child_after_dead_closure_open(self) -> bool:
@@ -3306,59 +3372,8 @@ def _active_emitted_graph_policy_decision(
         child_schedule_surface,
     )
 
-    if (
-        residual_cyclic_decision.kind
-        is _WriterResidualCyclicPolicyDecisionKind.UNSUPPORTED_OWNER_SCOPE
-    ):
-        return _WriterActiveEmittedGraphPolicyDecision(
-            kind=(
-                _WriterActiveEmittedGraphPolicyDecisionKind
-                .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
-            ),
-            active_atom=active_atom,
-            closure_endpoint_decision=closure_decision,
-            child_schedule_surface=child_schedule_surface,
-            residual_cyclic_policy_decision=residual_cyclic_decision,
-        )
-
-    if (
-        residual_cyclic_decision.kind
-        is (
-            _WriterResidualCyclicPolicyDecisionKind
-            .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
-        )
-    ):
-        return _WriterActiveEmittedGraphPolicyDecision(
-            kind=(
-                _WriterActiveEmittedGraphPolicyDecisionKind
-                .UNRESOLVED_RESIDUAL_ATTACHMENT_CHOICE
-            ),
-            active_atom=active_atom,
-            closure_endpoint_decision=closure_decision,
-            child_schedule_surface=child_schedule_surface,
-            residual_cyclic_policy_decision=residual_cyclic_decision,
-        )
-
-    if (
-        residual_cyclic_decision.kind
-        is (
-            _WriterResidualCyclicPolicyDecisionKind
-            .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
-        )
-    ):
-        return _WriterActiveEmittedGraphPolicyDecision(
-            kind=(
-                _WriterActiveEmittedGraphPolicyDecisionKind
-                .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
-            ),
-            active_atom=active_atom,
-            closure_endpoint_decision=closure_decision,
-            child_schedule_surface=child_schedule_surface,
-            residual_cyclic_policy_decision=residual_cyclic_decision,
-        )
-
     return _WriterActiveEmittedGraphPolicyDecision(
-        kind=_WriterActiveEmittedGraphPolicyDecisionKind.ACTIVE_CHILD,
+        kind=residual_cyclic_decision.active_emitted_graph_policy_kind,
         active_atom=active_atom,
         closure_endpoint_decision=closure_decision,
         child_schedule_surface=child_schedule_surface,

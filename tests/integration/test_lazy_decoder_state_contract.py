@@ -253,6 +253,9 @@ class LazyDecoderStateContractTests(unittest.TestCase):
             def next_token_support(self) -> tuple[str, ...]:
                 return ("C",)
 
+            def prefix(self) -> str:
+                return "C"
+
             def is_terminal(self) -> bool:
                 return False
 
@@ -494,6 +497,13 @@ class LazyDecoderStateContractTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "terminality"):
             _runtime_states._MergedStateAdapter((terminal, nonterminal))
 
+    def test_merged_state_rejects_mixed_prefixes(self) -> None:
+        first = _FakeState("C", terminal=False)
+        second = _FakeState("N", terminal=False)
+
+        with self.assertRaisesRegex(RuntimeError, "prefix"):
+            _runtime_states._MergedStateAdapter((first, second))
+
     def test_merged_state_sums_token_transition_branch_counts(self) -> None:
         first = _FakeState(
             "C",
@@ -532,7 +542,13 @@ class LazyDecoderStateContractTests(unittest.TestCase):
 
     def test_merged_state_cache_keys_are_order_insensitive(self) -> None:
         first = _FakeState("C", terminal=False)
-        second = _FakeState("N", terminal=False)
+        second = _FakeState(
+            "C",
+            terminal=False,
+            transitions=(
+                _fake_transition("C", lambda: _FakeState("CC", terminal=True)),
+            ),
+        )
 
         self.assertEqual(
             _runtime_states._state_cache_key(

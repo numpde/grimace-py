@@ -209,17 +209,24 @@ class _LazyAllRootsConnectedStereoState:
 
 
 class _MergedStateAdapter:
-    __slots__ = ("_states",)
+    __slots__ = ("_states", "_prefix", "_is_terminal")
 
     def __init__(self, states: tuple[_BaseDecoderState, ...]) -> None:
         if not states:
             raise ValueError("Merged decoder state requires at least one branch")
+        prefix = states[0].prefix()
+        for state in states[1:]:
+            if state.prefix() != prefix:
+                raise RuntimeError("Merged decoder states diverged on prefix")
+
         # Public terminality is a stopping predicate; a merged state cannot be
         # both accepted and extendable without losing one side of the contract.
         terminality = tuple(state.is_terminal() for state in states)
         if any(terminality) and not all(terminality):
             raise RuntimeError("Merged decoder states diverged on terminality")
         self._states = states
+        self._prefix = prefix
+        self._is_terminal = terminality[0]
 
     def _branch_state_transitions(self) -> _StateTransitions:
         transitions: list[_StateTransition] = []
@@ -230,14 +237,10 @@ class _MergedStateAdapter:
         return tuple(transitions)
 
     def prefix(self) -> str:
-        prefix = self._states[0].prefix()
-        for state in self._states[1:]:
-            if state.prefix() != prefix:
-                raise RuntimeError("Merged decoder states diverged on prefix")
-        return prefix
+        return self._prefix
 
     def is_terminal(self) -> bool:
-        return any(state.is_terminal() for state in self._states)
+        return self._is_terminal
 
     def copy(self) -> "_MergedStateAdapter":
         return type(self)(tuple(state.copy() for state in self._states))

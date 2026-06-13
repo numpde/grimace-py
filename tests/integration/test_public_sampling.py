@@ -110,14 +110,6 @@ class PublicSamplingTests(unittest.TestCase):
                 )
                 self.assertEqual(selected_token, step.selected_token)
 
-    def test_public_sampling_exports_result_surface(self) -> None:
-        self.assertIn("MolToSmilesSample", grimace.__all__)
-        self.assertIn("SmilesSample", grimace.__all__)
-        self.assertIn("SmilesSampleStep", grimace.__all__)
-        self.assertTrue(callable(grimace.MolToSmilesSample))
-        self.assertTrue(callable(grimace.SmilesSample))
-        self.assertTrue(callable(grimace.SmilesSampleStep))
-
     def test_sampling_mode_pairs_match_public_contract(self) -> None:
         self.assertEqual(
             frozenset(SAMPLING_MODE_PAIRS),

@@ -818,6 +818,10 @@ class _WriterActiveChildScheduleSurface:
             if surface.policy_family is _WriterGraphPolicyActionFamily.CYCLIC_TREE_ENTRY
         )
 
+    @property
+    def considered_cyclic_tree_entry_available(self) -> bool:
+        return bool(self.considered_cyclic_tree_entry_graph_action_surfaces)
+
 
 @dataclass(frozen=True, slots=True)
 class _WriterClosureEndpointScheduleSurface:
@@ -931,6 +935,10 @@ class _WriterClosureEndpointScheduleDecision:
         )
 
     @property
+    def considered_closure_open_available(self) -> bool:
+        return bool(self.considered_closure_open_graph_action_surfaces)
+
+    @property
     def considered_closure_endpoint_selection_kind(
         self,
     ) -> _WriterClosureEndpointSelectionKind:
@@ -957,6 +965,10 @@ class _WriterClosureEndpointScheduleDecision:
             for surface in self.selected_graph_action_surfaces
             if surface.policy_family is _WriterGraphPolicyActionFamily.CLOSURE_OPEN
         )
+
+    @property
+    def selected_closure_open_survived(self) -> bool:
+        return bool(self.selected_closure_open_graph_action_surfaces)
 
     @property
     def selected_closure_endpoint_selection_kind(
@@ -1276,6 +1288,10 @@ class _WriterActiveEmittedGraphPolicyDecision:
         )
 
     @property
+    def considered_cyclic_tree_entry_available(self) -> bool:
+        return bool(self.considered_cyclic_tree_entry_graph_action_surfaces)
+
+    @property
     def child_considered_graph_action_surfaces(
         self,
     ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
@@ -1354,10 +1370,12 @@ class _WriterActiveEmittedGraphPolicyDecision:
     def considered_closure_open_vs_cyclic_tree_entry_groups(
         self,
     ) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
-        return tuple(
-            group
-            for group in self.considered_residual_attachment_policy_groups
-            if group.has_closure_open_vs_cyclic_tree_entry_choice
+        if self.child_schedule_surface is None:
+            return ()
+
+        return _closure_open_vs_cyclic_tree_entry_policy_groups(
+            self.closure_endpoint_decision,
+            self.child_schedule_surface,
         )
 
     @property
@@ -2497,6 +2515,32 @@ def _residual_attachment_policy_groups_from_graph_action_surfaces(
     )
 
 
+def _closure_open_vs_cyclic_tree_entry_policy_groups(
+    closure_endpoint_decision: _WriterClosureEndpointScheduleDecision,
+    child_schedule_surface: _WriterActiveChildScheduleSurface,
+) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+    if not closure_endpoint_decision.considered_closure_open_available:
+        return ()
+
+    if not child_schedule_surface.considered_cyclic_tree_entry_available:
+        return ()
+
+    surfaces = (
+        *closure_endpoint_decision.considered_closure_open_graph_action_surfaces,
+        *child_schedule_surface.considered_cyclic_tree_entry_graph_action_surfaces,
+    )
+
+    return tuple(
+        group
+        for group in (
+            _residual_attachment_policy_groups_from_graph_action_surfaces(
+                surfaces
+            )
+        )
+        if group.has_closure_open_vs_cyclic_tree_entry_choice
+    )
+
+
 def _residual_attachment_policy_emission_groups_from_scheduled_action_emissions(
     emissions: tuple[_WriterScheduledActionEmission, ...],
 ) -> tuple[_WriterResidualAttachmentPolicyEmissionGroup, ...]:
@@ -2839,19 +2883,9 @@ def _active_emitted_graph_policy_decision(
             child_schedule_surface=child_schedule_surface,
         )
 
-    candidate_surfaces = (
-        *closure_decision.considered_graph_action_surfaces,
-        *child_schedule_surface.graph_action_surfaces,
-    )
-    candidate_groups = (
-        _residual_attachment_policy_groups_from_graph_action_surfaces(
-            candidate_surfaces
-        )
-    )
-    choice_groups = tuple(
-        group
-        for group in candidate_groups
-        if group.has_closure_open_vs_cyclic_tree_entry_choice
+    choice_groups = _closure_open_vs_cyclic_tree_entry_policy_groups(
+        closure_decision,
+        child_schedule_surface,
     )
     unsupported_owner_scope_groups = tuple(
         group

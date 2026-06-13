@@ -97,11 +97,10 @@ here.
   typed users can still discover and call them. That is useful for internal
   tests and debugging, but it keeps the low-level Rust surface easier to depend
   on than a strictly opaque boundary would.
-- `MolToSmilesFlags` is an importable internal dataclass, and direct
-  construction can bypass the option coercion performed by `make_flags()` and
-  the public wrappers. Current public entrypoints route through the coercion
-  path, but internal callers/tests can still create odd typed values that later
-  get interpreted with `bool(...)` in writer-flag projection.
+- `MolToSmilesFlags` remains an importable internal dataclass, but direct
+  construction now validates exact internal types and normalizes negative roots.
+  Public/RDKit-like coercion remains centralized in `make_flags()` and the
+  public wrappers.
 - `tests.helpers.public_runtime.prepared_graph_input_variants()` now names the
   graph-prepared matrix explicitly: it covers RDKit mol, reference prepared
   graph, and core prepared graph. PreparedMol raw/zstd equivalence is covered in
@@ -712,10 +711,10 @@ Checklist:
 - [x] Avoid adding new `_core` methods unless a public wrapper or internal test
       needs them.
 
-### 21. Direct `MolToSmilesFlags` construction bypasses coercion
+### 21. Direct `MolToSmilesFlags` construction bypassed coercion
 
-Issue: the internal dataclass can be constructed with odd typed values and later
-interpreted by bool/int conversions.
+Issue: the internal dataclass could be constructed with odd typed values and
+later interpreted by bool/int conversions.
 
 Serious alternatives:
 

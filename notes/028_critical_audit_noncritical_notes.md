@@ -102,6 +102,9 @@ here.
   construction now validates exact internal types and normalizes negative roots.
   Public/RDKit-like coercion remains centralized in `make_flags()` and the
   public wrappers.
+- Sampling tests and API docs checks now derive supported
+  `decoder_view`/`sampling_mode` pairs from `_sampling._SAMPLING_WALKERS`, the
+  runtime validation table, instead of a separate test-only tuple.
 - `tests.helpers.public_runtime.prepared_graph_input_variants()` now names the
   graph-prepared matrix explicitly: it covers RDKit mol, reference prepared
   graph, and core prepared graph. PreparedMol raw/zstd equivalence is covered in

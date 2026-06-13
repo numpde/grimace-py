@@ -6,7 +6,6 @@ import unittest
 from unittest import mock
 
 import grimace
-import grimace._sampling as _sampling
 import grimace._runtime_walks as _runtime_walks
 from tests.helpers.mols import parse_smiles
 from tests.helpers.public_runtime import (
@@ -109,12 +108,6 @@ class PublicSamplingTests(unittest.TestCase):
                     step.selected_token,
                 )
                 self.assertEqual(selected_token, step.selected_token)
-
-    def test_sampling_mode_pairs_match_public_contract(self) -> None:
-        self.assertEqual(
-            frozenset(SAMPLING_MODE_PAIRS),
-            frozenset(_sampling._SAMPLING_WALKERS),
-        )
 
     def test_sample_records_reject_mutable_payload_containers(self) -> None:
         step = _valid_sample_step()

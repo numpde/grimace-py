@@ -6,7 +6,7 @@ import re
 import unittest
 
 import grimace
-from tests.helpers.sampling import SAMPLING_MODE_PAIRS
+import grimace._sampling as _sampling
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -105,15 +105,16 @@ class PublicApiDocsTests(unittest.TestCase):
                 )
 
     def test_python_api_page_sampling_pairs_match_public_contract(self) -> None:
+        sampling_mode_pairs = tuple(_sampling._SAMPLING_WALKERS)
         documented_pairs = _documented_sampling_mode_pairs(
             REPO_ROOT / "docs" / "api" / "python.md"
         )
 
         self.assertEqual(
-            frozenset(SAMPLING_MODE_PAIRS),
+            frozenset(sampling_mode_pairs),
             frozenset(documented_pairs),
         )
-        self.assertEqual(len(SAMPLING_MODE_PAIRS), len(documented_pairs))
+        self.assertEqual(len(sampling_mode_pairs), len(documented_pairs))
 
 
 if __name__ == "__main__":

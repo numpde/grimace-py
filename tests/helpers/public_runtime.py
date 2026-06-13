@@ -7,6 +7,7 @@ from collections.abc import Mapping
 from collections.abc import Sequence
 
 import grimace
+import grimace._sampling as _sampling
 import grimace._runtime_graphs as _runtime_graphs
 import grimace._runtime_states as _runtime_states
 from grimace._mol_to_smiles_options import (
@@ -17,7 +18,9 @@ from grimace._mol_to_smiles_options import (
 )
 from grimace._reference.prepared_graph import prepare_smiles_graph_from_mol_to_smiles_kwargs
 from grimace._runtime_inputs import MolToSmilesFlags, make_flags
-from tests.helpers.sampling import SAMPLING_MODE_PAIRS
+
+
+SAMPLING_MODE_PAIRS = tuple(_sampling._SAMPLING_WALKERS)
 
 
 def supported_public_kwargs(**kwargs: object) -> dict[str, object]:

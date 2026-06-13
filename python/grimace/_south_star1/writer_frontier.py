@@ -32,6 +32,8 @@ from .writer_transitions import _WriterNextTokenFrontierSupport
 from .writer_transitions import _WriterResidualAttachmentOwnerScopeKind
 from .writer_transitions import _WriterResidualAttachmentPolicyGroup
 from .writer_transitions import _WriterResidualAttachmentPolicyKey
+from .writer_transitions import _WriterResidualCyclicPolicyDecision
+from .writer_transitions import _WriterResidualCyclicPolicyDecisionKind
 from .writer_transitions import _WriterTopLevelScheduleOutcome
 from .writer_transitions import _legal_writer_schedule_outcome
 from .writer_transitions import _raise_for_top_level_schedule_outcome_blockers
@@ -692,6 +694,57 @@ class _WriterFrontierScheduleOutcome:
         )
 
     @property
+    def residual_cyclic_policy_decisions(
+        self,
+    ) -> tuple[_WriterResidualCyclicPolicyDecision, ...]:
+        return tuple(
+            decision.residual_cyclic_policy_decision
+            for decision in self.graph_policy_decisions
+            if decision.residual_cyclic_policy_decision is not None
+        )
+
+    @property
+    def residual_cyclic_policy_kinds(
+        self,
+    ) -> tuple[_WriterResidualCyclicPolicyDecisionKind, ...]:
+        return tuple(
+            decision.kind
+            for decision in self.residual_cyclic_policy_decisions
+        )
+
+    @property
+    def residual_cyclic_choice_groups(self):
+        return tuple(
+            group
+            for decision in self.residual_cyclic_policy_decisions
+            for group in decision.choice_groups
+        )
+
+    @property
+    def residual_cyclic_unsupported_owner_scope_groups(self):
+        return tuple(
+            group
+            for decision in self.residual_cyclic_policy_decisions
+            for group in decision.unsupported_owner_scope_groups
+        )
+
+    @property
+    def residual_cyclic_missing_evidence_groups(self):
+        return tuple(
+            group
+            for decision in self.residual_cyclic_policy_decisions
+            for group in decision.missing_evidence_groups
+        )
+
+    @property
+    def residual_cyclic_support_dead_groups(self):
+        return tuple(
+            group
+            for decision in self.residual_cyclic_policy_decisions
+            for group in decision.support_dead_groups
+        )
+
+    @property
     def considered_closure_endpoint_selection_kinds(
         self,
     ) -> tuple[_WriterClosureEndpointSelectionKind, ...]:
@@ -915,6 +968,37 @@ class _WriterFrontierChoiceSnapshot:
         self,
     ) -> tuple[_WriterActiveEmittedGraphPolicyDecision, ...]:
         return self.schedule_outcome.graph_policy_decisions
+
+    @property
+    def residual_cyclic_policy_decisions(
+        self,
+    ) -> tuple[_WriterResidualCyclicPolicyDecision, ...]:
+        return self.schedule_outcome.residual_cyclic_policy_decisions
+
+    @property
+    def residual_cyclic_policy_kinds(
+        self,
+    ) -> tuple[_WriterResidualCyclicPolicyDecisionKind, ...]:
+        return self.schedule_outcome.residual_cyclic_policy_kinds
+
+    @property
+    def residual_cyclic_choice_groups(self):
+        return self.schedule_outcome.residual_cyclic_choice_groups
+
+    @property
+    def residual_cyclic_unsupported_owner_scope_groups(self):
+        return (
+            self.schedule_outcome
+            .residual_cyclic_unsupported_owner_scope_groups
+        )
+
+    @property
+    def residual_cyclic_missing_evidence_groups(self):
+        return self.schedule_outcome.residual_cyclic_missing_evidence_groups
+
+    @property
+    def residual_cyclic_support_dead_groups(self):
+        return self.schedule_outcome.residual_cyclic_support_dead_groups
 
     @property
     def considered_closure_endpoint_selection_kinds(

@@ -1190,6 +1190,9 @@ class _WriterActiveEmittedGraphPolicyDecision:
     active_atom: AtomId
     closure_endpoint_decision: _WriterClosureEndpointScheduleDecision
     child_schedule_surface: _WriterActiveChildScheduleSurface | None = None
+    residual_cyclic_policy_decision: (
+        _WriterResidualCyclicPolicyDecision | None
+    ) = field(default=None, compare=False)
 
     def __post_init__(self) -> None:
         closure_survived = (
@@ -1273,6 +1276,69 @@ class _WriterActiveEmittedGraphPolicyDecision:
             )
         else:
             valid = False
+
+        residual_decision = self.residual_cyclic_policy_decision
+        if valid and residual_decision is not None:
+            if (
+                self.kind
+                is _WriterActiveEmittedGraphPolicyDecisionKind.ACTIVE_CHILD
+            ):
+                valid = (
+                    residual_decision.kind
+                    is _WriterResidualCyclicPolicyDecisionKind.NONE
+                )
+            elif (
+                self.kind
+                is (
+                    _WriterActiveEmittedGraphPolicyDecisionKind
+                    .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+                )
+            ):
+                valid = (
+                    residual_decision.kind
+                    is (
+                        _WriterResidualCyclicPolicyDecisionKind
+                        .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+                    )
+                )
+            elif (
+                self.kind
+                is (
+                    _WriterActiveEmittedGraphPolicyDecisionKind
+                    .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+                )
+            ):
+                valid = (
+                    residual_decision.kind
+                    is (
+                        _WriterResidualCyclicPolicyDecisionKind
+                        .UNSUPPORTED_OWNER_SCOPE
+                    )
+                )
+            elif (
+                self.kind
+                is (
+                    _WriterActiveEmittedGraphPolicyDecisionKind
+                    .UNRESOLVED_RESIDUAL_ATTACHMENT_CHOICE
+                )
+            ):
+                valid = (
+                    residual_decision.kind
+                    is (
+                        _WriterResidualCyclicPolicyDecisionKind
+                        .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
+                    )
+                )
+            else:
+                valid = False
+
+            valid = (
+                valid
+                and residual_decision.closure_endpoint_decision
+                is self.closure_endpoint_decision
+                and residual_decision.child_schedule_surface
+                is self.child_schedule_surface
+            )
 
         if not valid:
             raise SouthStarError(
@@ -1495,6 +1561,54 @@ class _WriterActiveEmittedGraphPolicyDecision:
             self.closure_endpoint_decision,
             self.child_schedule_surface,
         )
+
+    @property
+    def residual_cyclic_policy_kind(
+        self,
+    ) -> _WriterResidualCyclicPolicyDecisionKind:
+        if self.residual_cyclic_policy_decision is None:
+            return _WriterResidualCyclicPolicyDecisionKind.NONE
+
+        return self.residual_cyclic_policy_decision.kind
+
+    @property
+    def residual_cyclic_choice_groups(
+        self,
+    ) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+        if self.residual_cyclic_policy_decision is None:
+            return ()
+
+        return self.residual_cyclic_policy_decision.choice_groups
+
+    @property
+    def residual_cyclic_unsupported_owner_scope_groups(
+        self,
+    ) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+        if self.residual_cyclic_policy_decision is None:
+            return ()
+
+        return (
+            self.residual_cyclic_policy_decision
+            .unsupported_owner_scope_groups
+        )
+
+    @property
+    def residual_cyclic_missing_evidence_groups(
+        self,
+    ) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+        if self.residual_cyclic_policy_decision is None:
+            return ()
+
+        return self.residual_cyclic_policy_decision.missing_evidence_groups
+
+    @property
+    def residual_cyclic_support_dead_groups(
+        self,
+    ) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+        if self.residual_cyclic_policy_decision is None:
+            return ()
+
+        return self.residual_cyclic_policy_decision.support_dead_groups
 
     @property
     def unsupported_owner_scope_closure_open_vs_cyclic_tree_entry_groups(
@@ -3094,6 +3208,7 @@ def _active_emitted_graph_policy_decision(
             active_atom=active_atom,
             closure_endpoint_decision=closure_decision,
             child_schedule_surface=child_schedule_surface,
+            residual_cyclic_policy_decision=residual_cyclic_decision,
         )
 
     if (
@@ -3111,6 +3226,7 @@ def _active_emitted_graph_policy_decision(
             active_atom=active_atom,
             closure_endpoint_decision=closure_decision,
             child_schedule_surface=child_schedule_surface,
+            residual_cyclic_policy_decision=residual_cyclic_decision,
         )
 
     if (
@@ -3128,6 +3244,7 @@ def _active_emitted_graph_policy_decision(
             active_atom=active_atom,
             closure_endpoint_decision=closure_decision,
             child_schedule_surface=child_schedule_surface,
+            residual_cyclic_policy_decision=residual_cyclic_decision,
         )
 
     return _WriterActiveEmittedGraphPolicyDecision(
@@ -3135,6 +3252,7 @@ def _active_emitted_graph_policy_decision(
         active_atom=active_atom,
         closure_endpoint_decision=closure_decision,
         child_schedule_surface=child_schedule_surface,
+        residual_cyclic_policy_decision=residual_cyclic_decision,
     )
 
 

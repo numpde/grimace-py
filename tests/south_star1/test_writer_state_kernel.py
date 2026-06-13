@@ -890,6 +890,148 @@ class WriterStateKernelTest(unittest.TestCase):
                 context,  # type: ignore[arg-type]
             )
 
+    def _test_residual_cyclic_blocked_active_outcome(
+        self,
+        *,
+        closure_owner_kind: WriterBoundaryOwnerKind | None = (
+            WriterBoundaryOwnerKind.ACTIVE_ATOM
+        ),
+        child_owner_kind: WriterBoundaryOwnerKind | None = (
+            WriterBoundaryOwnerKind.ACTIVE_ATOM
+        ),
+        include_closure_emission: bool = True,
+    ) -> writer_transitions._WriterActiveEmittedScheduleOutcome:
+        prepared = object()
+        state = object()
+        context = object()
+        active_atom = AtomId(0)
+        closure_decision, child_surface = (
+            self._test_residual_cyclic_policy_inputs(
+                active_atom=active_atom,
+                attachment_id=7,
+                closure_owner_kind=closure_owner_kind,
+                child_owner_kind=child_owner_kind,
+                include_closure_emission=include_closure_emission,
+            )
+        )
+
+        with patch(
+            "grimace._south_star1.writer_transitions._closure_endpoint_schedule_decision",
+            return_value=closure_decision,
+        ), patch(
+            "grimace._south_star1.writer_transitions._active_child_schedule_surface_from_context",
+            return_value=child_surface,
+        ), patch(
+            "grimace._south_star1.writer_transitions._scheduled_action_emission_batch",
+            side_effect=AssertionError("blocked residual policy emitted child batch"),
+        ):
+            return writer_transitions._active_emitted_schedule_outcome(
+                prepared,  # type: ignore[arg-type]
+                state,  # type: ignore[arg-type]
+                context,  # type: ignore[arg-type]
+                active_atom,
+            )
+
+    def _test_residual_cyclic_blocked_top_level_outcome(
+        self,
+        active_outcome: writer_transitions._WriterActiveEmittedScheduleOutcome,
+    ) -> writer_transitions._WriterTopLevelScheduleOutcome:
+        return writer_transitions._WriterTopLevelScheduleOutcome(
+            kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.BLOCKED,
+            active_emitted_outcome=active_outcome,
+        )
+
+    def _test_residual_cyclic_blocked_choice_snapshot(
+        self,
+        active_outcome: writer_transitions._WriterActiveEmittedScheduleOutcome,
+    ) -> writer_frontier_module._WriterFrontierChoiceSnapshot:
+        top_outcome = self._test_residual_cyclic_blocked_top_level_outcome(
+            active_outcome,
+        )
+        state_outcome = writer_frontier_module._WriterFrontierStateScheduleOutcome(
+            state_key=writer_state_key(_raw_initial_state(AtomId(0))),
+            parent_weight=1,
+            finalized_state_key=None,
+            schedule_outcome=top_outcome,
+        )
+        schedule_outcome = writer_frontier_module._WriterFrontierScheduleOutcome(
+            state_outcomes=(state_outcome,),
+            terminal_by_key=Counter(),
+            grouped_by_text={},
+            weighted_by_text={},
+        )
+
+        return writer_frontier_module._WriterFrontierChoiceSnapshot(
+            schedule_outcome=schedule_outcome,
+            terminal=None,
+            choices=(),
+        )
+
+    def _test_replay_choice_snapshot_outcome_for_choice_snapshot(
+        self,
+        choice_snapshot: writer_frontier_module._WriterFrontierChoiceSnapshot,
+    ) -> writer_snapshot._WriterSnapshotReplayChoiceSnapshotOutcome:
+        snapshot = self._test_writer_search_snapshot()
+        sequence = writer_snapshot._WriterSnapshotAdvanceSequenceOutcome(
+            kind=writer_snapshot._WriterSnapshotAdvanceSequenceOutcomeKind.ADVANCED,
+            source_snapshot=snapshot,
+            emitted_texts=(),
+            step_outcomes=(),
+            current_snapshot=snapshot,
+        )
+
+        return writer_snapshot._WriterSnapshotReplayChoiceSnapshotOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                .CHOICE_SNAPSHOT
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=(),
+            sequence_outcome=sequence,
+            choice_snapshot=choice_snapshot,
+        )
+
+    def _test_invalid_replay_choice_snapshot_outcome(
+        self,
+        *,
+        emitted_text: str = "not-a-frontier-token",
+    ) -> writer_snapshot._WriterSnapshotReplayChoiceSnapshotOutcome:
+        snapshot = self._test_writer_search_snapshot()
+        choice_snapshot = self._test_frontier_choice_snapshot(())
+        invalid_step = writer_snapshot._WriterSnapshotAdvanceOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotAdvanceOutcomeKind
+                .INVALID_EMITTED_TEXT
+            ),
+            source_snapshot=snapshot,
+            emitted_text=emitted_text,
+            choice_snapshot=choice_snapshot,
+        )
+        sequence = writer_snapshot._WriterSnapshotAdvanceSequenceOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotAdvanceSequenceOutcomeKind
+                .INVALID_EMITTED_TEXT
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=(emitted_text,),
+            step_outcomes=(invalid_step,),
+            current_snapshot=snapshot,
+        )
+
+        return writer_snapshot._WriterSnapshotReplayChoiceSnapshotOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                .INVALID_EMITTED_TEXT
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=(emitted_text,),
+            sequence_outcome=sequence,
+        )
+
     def _test_frontier_choice_snapshot_for_active_outcome(
         self,
         active_outcome: writer_transitions._WriterActiveEmittedScheduleOutcome,
@@ -21385,6 +21527,283 @@ class WriterStateKernelTest(unittest.TestCase):
             writer_transitions._WriterActiveChildSelectionKind.ACYCLIC_TREE_ENTRY,
             prefix_outcome.selected_active_child_selection_kinds,
         )
+
+    def test_unsupported_owner_scope_residual_policy_reaches_frontier_blocker_evidence(self) -> None:
+        active_outcome = self._test_residual_cyclic_blocked_active_outcome(
+            closure_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+            child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+        )
+        policy = active_outcome.graph_policy_decision
+        top_outcome = self._test_residual_cyclic_blocked_top_level_outcome(
+            active_outcome,
+        )
+        choice_snapshot = self._test_residual_cyclic_blocked_choice_snapshot(
+            active_outcome,
+        )
+
+        self.assertIs(
+            policy.kind,
+            (
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyDecisionKind
+                .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+            ),
+        )
+        self.assertIs(
+            policy.residual_cyclic_policy_kind,
+            (
+                writer_transitions
+                ._WriterResidualCyclicPolicyDecisionKind
+                .UNSUPPORTED_OWNER_SCOPE
+            ),
+        )
+        self.assertIs(
+            top_outcome.kind,
+            writer_transitions._WriterTopLevelScheduleOutcomeKind.BLOCKED,
+        )
+        self.assertTrue(choice_snapshot.blocked)
+        self.assertTrue(choice_snapshot.graph_policy_blockers)
+        self.assertIs(
+            (
+                choice_snapshot
+                .graph_policy_blockers[0]
+                .residual_attachment_owner_scope_kind
+            ),
+            (
+                writer_transitions
+                ._WriterResidualAttachmentOwnerScopeKind
+                .BRANCH_RETURN
+            ),
+        )
+
+    def test_missing_closure_open_evidence_residual_policy_reaches_frontier_blocker_evidence(self) -> None:
+        active_outcome = self._test_residual_cyclic_blocked_active_outcome(
+            include_closure_emission=False,
+        )
+        policy = active_outcome.graph_policy_decision
+        top_outcome = self._test_residual_cyclic_blocked_top_level_outcome(
+            active_outcome,
+        )
+        choice_snapshot = self._test_residual_cyclic_blocked_choice_snapshot(
+            active_outcome,
+        )
+
+        self.assertIs(
+            policy.kind,
+            (
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyDecisionKind
+                .UNRESOLVED_RESIDUAL_ATTACHMENT_CHOICE
+            ),
+        )
+        self.assertIs(
+            policy.residual_cyclic_policy_kind,
+            (
+                writer_transitions
+                ._WriterResidualCyclicPolicyDecisionKind
+                .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
+            ),
+        )
+        self.assertIs(
+            top_outcome.kind,
+            writer_transitions._WriterTopLevelScheduleOutcomeKind.BLOCKED,
+        )
+        self.assertTrue(choice_snapshot.blocked)
+        self.assertTrue(choice_snapshot.graph_policy_blockers)
+        self.assertIs(
+            choice_snapshot.graph_policy_blockers[0].kind,
+            (
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyBlockerKind
+                .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
+            ),
+        )
+
+    def test_unsupported_owner_scope_residual_policy_checked_frontier_apis_raise(self) -> None:
+        active_outcome = self._test_residual_cyclic_blocked_active_outcome(
+            closure_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+            child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+        )
+        choice_snapshot = self._test_residual_cyclic_blocked_choice_snapshot(
+            active_outcome,
+        )
+        replay_outcome = (
+            self._test_replay_choice_snapshot_outcome_for_choice_snapshot(
+                choice_snapshot,
+            )
+        )
+
+        with patch(
+            "grimace._south_star1.writer_frontier._writer_frontier_choice_snapshot",
+            return_value=choice_snapshot,
+        ):
+            with self.assertRaises(SouthStarError) as choices_raised:
+                writer_frontier_choices(
+                    object(),  # type: ignore[arg-type]
+                    WriterFrontierCursor(weighted_states=()),
+                )
+
+            with self.assertRaises(SouthStarError) as completions_raised:
+                count_writer_cursor_completions(
+                    object(),  # type: ignore[arg-type]
+                    WriterFrontierCursor(weighted_states=()),
+                )
+
+        for raised in (choices_raised, completions_raised):
+            self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._writer_frontier_choice_snapshot_after_emitted_texts"
+            ),
+            return_value=replay_outcome,
+        ):
+            with self.assertRaises(SouthStarError) as support_raised:
+                writer_snapshot._count_writer_frontier_support_after_emitted_texts(
+                    self._test_writer_search_snapshot(),
+                    prepared=object(),  # type: ignore[arg-type]
+                    emitted_texts=(),
+                )
+
+            with self.assertRaises(SouthStarError) as stream_raised:
+                tuple(
+                    writer_snapshot
+                    ._iter_writer_frontier_support_suffixes_after_emitted_texts(
+                        self._test_writer_search_snapshot(),
+                        prepared=object(),  # type: ignore[arg-type]
+                        emitted_texts=(),
+                    )
+                )
+
+        for raised in (support_raised, stream_raised):
+            self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+
+    def test_missing_closure_open_evidence_residual_policy_checked_frontier_apis_raise(self) -> None:
+        active_outcome = self._test_residual_cyclic_blocked_active_outcome(
+            include_closure_emission=False,
+        )
+        choice_snapshot = self._test_residual_cyclic_blocked_choice_snapshot(
+            active_outcome,
+        )
+        replay_outcome = (
+            self._test_replay_choice_snapshot_outcome_for_choice_snapshot(
+                choice_snapshot,
+            )
+        )
+
+        with patch(
+            "grimace._south_star1.writer_frontier._writer_frontier_choice_snapshot",
+            return_value=choice_snapshot,
+        ):
+            with self.assertRaises(SouthStarError) as choices_raised:
+                writer_frontier_choices(
+                    object(),  # type: ignore[arg-type]
+                    WriterFrontierCursor(weighted_states=()),
+                )
+
+            with self.assertRaises(SouthStarError) as completions_raised:
+                count_writer_cursor_completions(
+                    object(),  # type: ignore[arg-type]
+                    WriterFrontierCursor(weighted_states=()),
+                )
+
+        for raised in (choices_raised, completions_raised):
+            self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._writer_frontier_choice_snapshot_after_emitted_texts"
+            ),
+            return_value=replay_outcome,
+        ):
+            with self.assertRaises(SouthStarError) as support_raised:
+                writer_snapshot._count_writer_frontier_support_after_emitted_texts(
+                    self._test_writer_search_snapshot(),
+                    prepared=object(),  # type: ignore[arg-type]
+                    emitted_texts=(),
+                )
+
+            with self.assertRaises(SouthStarError) as stream_raised:
+                tuple(
+                    writer_snapshot
+                    ._iter_writer_frontier_support_suffixes_after_emitted_texts(
+                        self._test_writer_search_snapshot(),
+                        prepared=object(),  # type: ignore[arg-type]
+                        emitted_texts=(),
+                    )
+                )
+
+        for raised in (support_raised, stream_raised):
+            self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+
+    def test_residual_cyclic_blocker_prefix_read_preserves_final_blocked_frontier(self) -> None:
+        active_outcome = self._test_residual_cyclic_blocked_active_outcome(
+            closure_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+            child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+        )
+        choice_snapshot = self._test_residual_cyclic_blocked_choice_snapshot(
+            active_outcome,
+        )
+        replay_outcome = (
+            self._test_replay_choice_snapshot_outcome_for_choice_snapshot(
+                choice_snapshot,
+            )
+        )
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._writer_frontier_choice_snapshot_after_emitted_texts"
+            ),
+            return_value=replay_outcome,
+        ):
+            outcome = (
+                writer_snapshot
+                ._writer_snapshot_prefix_read_outcome_after_emitted_texts(
+                    self._test_writer_search_snapshot(),
+                    prepared=object(),  # type: ignore[arg-type]
+                    emitted_texts=(),
+                    include_counts=False,
+                )
+            )
+
+        self.assertIs(
+            outcome.kind,
+            writer_snapshot._WriterSnapshotPrefixReadOutcomeKind.FINAL_FRONTIER_BLOCKED,
+        )
+        self.assertTrue(outcome.replay_succeeded)
+        self.assertTrue(outcome.blocked)
+        self.assertTrue(outcome.graph_policy_blockers)
+        self.assertTrue(outcome.residual_cyclic_policy_decisions)
+
+    def test_residual_cyclic_blocker_prefix_read_invalid_token_still_reports_invalid_text(self) -> None:
+        invalid_replay = self._test_invalid_replay_choice_snapshot_outcome()
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._writer_frontier_choice_snapshot_after_emitted_texts"
+            ),
+            return_value=invalid_replay,
+        ):
+            outcome = (
+                writer_snapshot
+                ._writer_snapshot_prefix_read_outcome_after_emitted_texts(
+                    self._test_writer_search_snapshot(),
+                    prepared=object(),  # type: ignore[arg-type]
+                    emitted_texts=("not-a-frontier-token",),
+                    include_counts=False,
+                )
+            )
+
+        self.assertIs(
+            outcome.kind,
+            writer_snapshot._WriterSnapshotPrefixReadOutcomeKind.INVALID_EMITTED_TEXT,
+        )
+        self.assertTrue(outcome.invalid_emitted_text)
+        self.assertIsNone(outcome.choice_snapshot)
 
     def test_active_emitted_graph_policy_allows_child_when_closure_open_and_cyclic_tree_use_different_attachments(self) -> None:
         prepared = object()

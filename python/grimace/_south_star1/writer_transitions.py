@@ -168,6 +168,15 @@ class _WriterClosureEndpointSelectionKind(Enum):
     PAIR_AND_OPEN = "pair_and_open"
 
 
+class _WriterActiveChildSelectionKind(Enum):
+    NONE = "none"
+    FINISH_ACTIVE = "finish_active"
+    TREE_ENTRY = "tree_entry"
+    ACYCLIC_TREE_ENTRY = "acyclic_tree_entry"
+    CYCLIC_TREE_ENTRY = "cyclic_tree_entry"
+    MIXED = "mixed"
+
+
 @dataclass(frozen=True, slots=True)
 class _WriterResidualAttachmentPolicyKey:
     active_atom: AtomId
@@ -766,6 +775,49 @@ class _WriterActiveChildScheduleSurface:
             for action in self.scheduled_actions
         )
 
+    @property
+    def considered_active_child_selection_kind(
+        self,
+    ) -> _WriterActiveChildSelectionKind:
+        return _active_child_selection_kind_from_graph_action_surfaces(
+            self.graph_action_surfaces
+        )
+
+    @property
+    def considered_finish_active_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            surface
+            for surface in self.graph_action_surfaces
+            if surface.policy_family is _WriterGraphPolicyActionFamily.FINISH_ACTIVE
+        )
+
+    @property
+    def considered_tree_entry_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            surface
+            for surface in self.graph_action_surfaces
+            if surface.policy_family
+            in (
+                _WriterGraphPolicyActionFamily.TREE_ENTRY,
+                _WriterGraphPolicyActionFamily.ACYCLIC_TREE_ENTRY,
+                _WriterGraphPolicyActionFamily.CYCLIC_TREE_ENTRY,
+            )
+        )
+
+    @property
+    def considered_cyclic_tree_entry_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            surface
+            for surface in self.graph_action_surfaces
+            if surface.policy_family is _WriterGraphPolicyActionFamily.CYCLIC_TREE_ENTRY
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class _WriterClosureEndpointScheduleSurface:
@@ -1200,6 +1252,30 @@ class _WriterActiveEmittedGraphPolicyDecision:
         )
 
     @property
+    def considered_active_child_selection_kind(
+        self,
+    ) -> _WriterActiveChildSelectionKind:
+        if self.child_schedule_surface is None:
+            return _WriterActiveChildSelectionKind.NONE
+
+        return (
+            self.child_schedule_surface
+            .considered_active_child_selection_kind
+        )
+
+    @property
+    def considered_cyclic_tree_entry_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        if self.child_schedule_surface is None:
+            return ()
+
+        return (
+            self.child_schedule_surface
+            .considered_cyclic_tree_entry_graph_action_surfaces
+        )
+
+    @property
     def child_considered_graph_action_surfaces(
         self,
     ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
@@ -1568,6 +1644,33 @@ class _WriterActiveEmittedScheduleDecision:
         self,
     ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
         return self.selected_batch.surviving_graph_action_surfaces
+
+    @property
+    def selected_active_child_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        if self.kind is not _WriterActiveEmittedScheduleDecisionKind.ACTIVE_CHILD:
+            return ()
+
+        return self.selected_graph_action_surfaces
+
+    @property
+    def selected_active_child_selection_kind(
+        self,
+    ) -> _WriterActiveChildSelectionKind:
+        return _active_child_selection_kind_from_graph_action_surfaces(
+            self.selected_active_child_graph_action_surfaces
+        )
+
+    @property
+    def selected_cyclic_tree_entry_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            surface
+            for surface in self.selected_active_child_graph_action_surfaces
+            if surface.policy_family is _WriterGraphPolicyActionFamily.CYCLIC_TREE_ENTRY
+        )
 
     @property
     def selected_transitions(self) -> tuple[WriterTransition, ...]:
@@ -2135,6 +2238,53 @@ def _closure_endpoint_selection_kind_from_graph_action_surfaces(
         return _WriterClosureEndpointSelectionKind.CLOSURE_OPEN
 
     return _WriterClosureEndpointSelectionKind.NONE
+
+
+_ACTIVE_CHILD_SELECTION_FAMILIES = frozenset(
+    {
+        _WriterGraphPolicyActionFamily.FINISH_ACTIVE,
+        _WriterGraphPolicyActionFamily.TREE_ENTRY,
+        _WriterGraphPolicyActionFamily.ACYCLIC_TREE_ENTRY,
+        _WriterGraphPolicyActionFamily.CYCLIC_TREE_ENTRY,
+    }
+)
+
+
+def _active_child_selection_kind_from_graph_action_surfaces(
+    surfaces: tuple[_WriterScheduledGraphActionSurface, ...],
+) -> _WriterActiveChildSelectionKind:
+    families = tuple(
+        surface.policy_family
+        for surface in surfaces
+        if surface.policy_family in _ACTIVE_CHILD_SELECTION_FAMILIES
+    )
+
+    distinct = frozenset(families)
+
+    if not distinct:
+        return _WriterActiveChildSelectionKind.NONE
+
+    if len(distinct) > 1:
+        return _WriterActiveChildSelectionKind.MIXED
+
+    family = next(iter(distinct))
+
+    if family is _WriterGraphPolicyActionFamily.FINISH_ACTIVE:
+        return _WriterActiveChildSelectionKind.FINISH_ACTIVE
+
+    if family is _WriterGraphPolicyActionFamily.TREE_ENTRY:
+        return _WriterActiveChildSelectionKind.TREE_ENTRY
+
+    if family is _WriterGraphPolicyActionFamily.ACYCLIC_TREE_ENTRY:
+        return _WriterActiveChildSelectionKind.ACYCLIC_TREE_ENTRY
+
+    if family is _WriterGraphPolicyActionFamily.CYCLIC_TREE_ENTRY:
+        return _WriterActiveChildSelectionKind.CYCLIC_TREE_ENTRY
+
+    raise SouthStarError(
+        SouthStarErrorKind.INTERNAL_INVARIANT,
+        f"unknown active-child graph policy family: {family!r}",
+    )
 
 
 _RESIDUAL_ATTACHMENT_POLICY_FAMILIES = frozenset(

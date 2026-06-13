@@ -527,6 +527,27 @@ class WriterStateKernelTest(unittest.TestCase):
 
         return decision, pair_emission, open_emission
 
+    def _test_child_action(
+        self,
+        active_atom: AtomId,
+        *,
+        attachment_id: int = 7,
+        attachment_action_kind: WriterResidualAttachmentActionKind | None = None,
+    ) -> writer_transitions._WriterScheduledAction:
+        child = writer_transitions._WriterChildObligation(
+            bond=BondId(1),
+            child=AtomId(2),
+            boundary_atom=active_atom,
+            owner_kind=WriterBoundaryOwnerKind.ACTIVE_ATOM,
+            attachment_id=attachment_id,
+            attachment_action_kind=attachment_action_kind,
+        )
+
+        return writer_transitions._enter_inline_child_action(
+            active_atom,
+            child,
+        )
+
     def _test_choice_snapshot_entry_from_supports(
         self,
         emitted_text: str,
@@ -12605,6 +12626,122 @@ class WriterStateKernelTest(unittest.TestCase):
             writer_transitions._WriterClosureEndpointSelectionKind.NONE,
         )
 
+    def test_active_child_selection_kind_from_graph_action_surfaces(self) -> None:
+        active_atom = AtomId(0)
+        finish = writer_transitions._scheduled_graph_action_surface(
+            writer_transitions._finish_active_action(active_atom)
+        )
+        generic_tree = writer_transitions._scheduled_graph_action_surface(
+            self._test_child_action(active_atom)
+        )
+        acyclic_tree = writer_transitions._scheduled_graph_action_surface(
+            self._test_child_action(
+                active_atom,
+                attachment_action_kind=(
+                    WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY
+                ),
+            )
+        )
+        cyclic_tree = writer_transitions._scheduled_graph_action_surface(
+            self._test_child_action(
+                active_atom,
+                attachment_action_kind=(
+                    WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY
+                ),
+            )
+        )
+        root = writer_transitions._scheduled_graph_action_surface(
+            writer_transitions._emit_root_atom_action(active_atom)
+        )
+        closure = writer_transitions._scheduled_graph_action_surface(
+            self._test_closure_open_action(active_atom)
+        )
+
+        cases = (
+            ((), writer_transitions._WriterActiveChildSelectionKind.NONE),
+            (
+                (finish,),
+                writer_transitions._WriterActiveChildSelectionKind.FINISH_ACTIVE,
+            ),
+            (
+                (generic_tree,),
+                writer_transitions._WriterActiveChildSelectionKind.TREE_ENTRY,
+            ),
+            (
+                (acyclic_tree,),
+                writer_transitions._WriterActiveChildSelectionKind.ACYCLIC_TREE_ENTRY,
+            ),
+            (
+                (cyclic_tree,),
+                writer_transitions._WriterActiveChildSelectionKind.CYCLIC_TREE_ENTRY,
+            ),
+            (
+                (finish, cyclic_tree),
+                writer_transitions._WriterActiveChildSelectionKind.MIXED,
+            ),
+            (
+                (root, closure),
+                writer_transitions._WriterActiveChildSelectionKind.NONE,
+            ),
+        )
+
+        for surfaces, expected in cases:
+            with self.subTest(expected=expected):
+                self.assertIs(
+                    (
+                        writer_transitions
+                        ._active_child_selection_kind_from_graph_action_surfaces(
+                            surfaces,
+                        )
+                    ),
+                    expected,
+                )
+
+    def test_active_child_schedule_surface_exposes_considered_child_family(self) -> None:
+        active_atom = AtomId(0)
+        cyclic_action = self._test_child_action(
+            active_atom,
+            attachment_action_kind=(
+                WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY
+            ),
+        )
+        cyclic_surface = writer_transitions._WriterActiveChildScheduleSurface(
+            active_atom=active_atom,
+            blockers=(),
+            child_obligations=(cyclic_action.child_obligation,),
+            scheduled_actions=(cyclic_action,),
+        )
+
+        self.assertIs(
+            cyclic_surface.considered_active_child_selection_kind,
+            writer_transitions._WriterActiveChildSelectionKind.CYCLIC_TREE_ENTRY,
+        )
+        self.assertEqual(
+            cyclic_surface.considered_cyclic_tree_entry_graph_action_surfaces,
+            cyclic_surface.graph_action_surfaces,
+        )
+        self.assertEqual(
+            cyclic_surface.considered_finish_active_graph_action_surfaces,
+            (),
+        )
+
+        finish_action = writer_transitions._finish_active_action(active_atom)
+        finish_surface = writer_transitions._WriterActiveChildScheduleSurface(
+            active_atom=active_atom,
+            blockers=(),
+            child_obligations=(),
+            scheduled_actions=(finish_action,),
+        )
+
+        self.assertIs(
+            finish_surface.considered_active_child_selection_kind,
+            writer_transitions._WriterActiveChildSelectionKind.FINISH_ACTIVE,
+        )
+        self.assertEqual(
+            finish_surface.considered_finish_active_graph_action_surfaces,
+            finish_surface.graph_action_surfaces,
+        )
+
     def test_closure_endpoint_schedule_decision_exposes_residual_policy_emission_groups(self) -> None:
         active_atom = AtomId(0)
         label = WriterClosureLabel(value=1, text="1")
@@ -14791,6 +14928,191 @@ class WriterStateKernelTest(unittest.TestCase):
             writer_transitions._WriterClosureEndpointSelectionKind.NONE,
         )
         self.assertIs(policy.child_schedule_surface, child_surface)
+
+    def test_active_emitted_schedule_decision_exposes_selected_active_child_family(self) -> None:
+        active_atom = AtomId(7)
+        closure_decision, _, _ = self._test_closure_endpoint_decision(
+            active_atom=active_atom,
+            pair_survives=False,
+            open_survives=False,
+        )
+        cyclic_action = self._test_child_action(
+            active_atom,
+            attachment_action_kind=(
+                WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY
+            ),
+        )
+        child_surface = writer_transitions._WriterActiveChildScheduleSurface(
+            active_atom=active_atom,
+            blockers=(),
+            child_obligations=(cyclic_action.child_obligation,),
+            scheduled_actions=(cyclic_action,),
+        )
+        cyclic_emission = writer_transitions._WriterScheduledActionEmission(
+            action=cyclic_action,
+            transitions=(object(),),  # type: ignore[arg-type]
+        )
+        child_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(cyclic_action,),
+            emissions=(cyclic_emission,),
+            surviving_emissions=(cyclic_emission,),
+        )
+        decision = writer_transitions._active_emitted_child_decision(
+            closure_decision,
+            child_surface,
+            child_batch,
+        )
+
+        self.assertIs(
+            decision.selected_active_child_selection_kind,
+            writer_transitions._WriterActiveChildSelectionKind.CYCLIC_TREE_ENTRY,
+        )
+        self.assertEqual(
+            decision.selected_cyclic_tree_entry_graph_action_surfaces,
+            decision.selected_graph_action_surfaces,
+        )
+
+        closure_selected, _, _ = self._test_closure_endpoint_decision(
+            active_atom=active_atom,
+            pair_survives=True,
+            open_survives=False,
+        )
+        closure_decision = writer_transitions._active_emitted_closure_decision(
+            closure_selected,
+        )
+
+        self.assertIs(
+            closure_decision.selected_active_child_selection_kind,
+            writer_transitions._WriterActiveChildSelectionKind.NONE,
+        )
+        self.assertEqual(
+            closure_decision.selected_active_child_graph_action_surfaces,
+            (),
+        )
+
+    def test_active_emitted_schedule_decision_selected_child_family_uses_surviving_emissions(self) -> None:
+        active_atom = AtomId(7)
+        closure_decision, _, _ = self._test_closure_endpoint_decision(
+            active_atom=active_atom,
+            pair_survives=False,
+            open_survives=False,
+        )
+        cyclic_action = self._test_child_action(
+            active_atom,
+            attachment_id=7,
+            attachment_action_kind=(
+                WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY
+            ),
+        )
+        acyclic_action = self._test_child_action(
+            active_atom,
+            attachment_id=8,
+            attachment_action_kind=(
+                WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY
+            ),
+        )
+        child_surface = writer_transitions._WriterActiveChildScheduleSurface(
+            active_atom=active_atom,
+            blockers=(),
+            child_obligations=(
+                cyclic_action.child_obligation,
+                acyclic_action.child_obligation,
+            ),
+            scheduled_actions=(cyclic_action, acyclic_action),
+        )
+        cyclic_emission = writer_transitions._WriterScheduledActionEmission(
+            action=cyclic_action,
+            transitions=(),
+        )
+        acyclic_emission = writer_transitions._WriterScheduledActionEmission(
+            action=acyclic_action,
+            transitions=(object(),),  # type: ignore[arg-type]
+        )
+        child_batch = writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=(cyclic_action, acyclic_action),
+            emissions=(cyclic_emission, acyclic_emission),
+            surviving_emissions=(acyclic_emission,),
+        )
+        decision = writer_transitions._active_emitted_child_decision(
+            closure_decision,
+            child_surface,
+            child_batch,
+        )
+
+        self.assertIs(
+            decision.selected_active_child_selection_kind,
+            writer_transitions._WriterActiveChildSelectionKind.ACYCLIC_TREE_ENTRY,
+        )
+        self.assertEqual(
+            decision.selected_cyclic_tree_entry_graph_action_surfaces,
+            (),
+        )
+
+    def test_active_emitted_graph_policy_exposes_considered_active_child_family(self) -> None:
+        active_atom = AtomId(7)
+        closure_decision, _, _ = self._test_closure_endpoint_decision(
+            active_atom=active_atom,
+            pair_survives=False,
+            open_survives=False,
+        )
+        cyclic_action = self._test_child_action(
+            active_atom,
+            attachment_action_kind=(
+                WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY
+            ),
+        )
+        child_surface = writer_transitions._WriterActiveChildScheduleSurface(
+            active_atom=active_atom,
+            blockers=(),
+            child_obligations=(cyclic_action.child_obligation,),
+            scheduled_actions=(cyclic_action,),
+        )
+        policy = writer_transitions._WriterActiveEmittedGraphPolicyDecision(
+            kind=(
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyDecisionKind
+                .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+            ),
+            active_atom=active_atom,
+            closure_endpoint_decision=closure_decision,
+            child_schedule_surface=child_surface,
+        )
+
+        self.assertIs(
+            policy.considered_active_child_selection_kind,
+            writer_transitions._WriterActiveChildSelectionKind.CYCLIC_TREE_ENTRY,
+        )
+        self.assertEqual(
+            policy.considered_cyclic_tree_entry_graph_action_surfaces,
+            (
+                child_surface
+                .considered_cyclic_tree_entry_graph_action_surfaces
+            ),
+        )
+
+        closure_selected, _, _ = self._test_closure_endpoint_decision(
+            active_atom=active_atom,
+            pair_survives=True,
+            open_survives=False,
+        )
+        closure_policy = writer_transitions._WriterActiveEmittedGraphPolicyDecision(
+            kind=(
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyDecisionKind
+                .CLOSURE_ENDPOINT
+            ),
+            active_atom=active_atom,
+            closure_endpoint_decision=closure_selected,
+        )
+
+        self.assertIs(
+            closure_policy.considered_active_child_selection_kind,
+            writer_transitions._WriterActiveChildSelectionKind.NONE,
+        )
+        self.assertEqual(
+            closure_policy.considered_cyclic_tree_entry_graph_action_surfaces,
+            (),
+        )
 
     def test_active_emitted_graph_policy_rejects_closure_policy_without_selected_endpoint(self) -> None:
         closure_decision, _, _ = self._test_closure_endpoint_decision(

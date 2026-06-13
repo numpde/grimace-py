@@ -104,6 +104,7 @@ class WorkflowPostureTests(unittest.TestCase):
         self.assertNotIn("containers/checks", workflow)
         self.assertNotIn("containers/docs", workflow)
         self.assertNotIn("tests/checks", workflow)
+        self.assertIn("fetch-depth: 0", workflow)
         self.assertIn("run: make docs", workflow)
         self.assertIn("run: make checks", workflow)
         self.assertNotIn("run: make ci", workflow)

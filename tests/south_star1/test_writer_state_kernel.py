@@ -790,6 +790,219 @@ class WriterStateKernelTest(unittest.TestCase):
             choices=(),
         )
 
+    def _test_surviving_child_batch(
+        self,
+        child_surface: writer_transitions._WriterActiveChildScheduleSurface,
+        *,
+        emitted_text: str = "C",
+    ) -> writer_transitions._WriterScheduledActionEmissionBatch:
+        transition = SimpleNamespace(emitted_text=emitted_text)
+        emissions = tuple(
+            writer_transitions._WriterScheduledActionEmission(
+                action=action,
+                transitions=(transition,),  # type: ignore[arg-type]
+            )
+            for action in child_surface.scheduled_actions
+        )
+
+        return writer_transitions._WriterScheduledActionEmissionBatch(
+            actions=child_surface.scheduled_actions,
+            emissions=emissions,
+            surviving_emissions=emissions,
+        )
+
+    def _test_active_owned_dead_closure_active_outcome(
+        self,
+        *,
+        child_attachment_action_kind: WriterResidualAttachmentActionKind = (
+            WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY
+        ),
+        emitted_text: str = "C",
+    ) -> writer_transitions._WriterActiveEmittedScheduleOutcome:
+        prepared = object()
+        state = object()
+        context = object()
+        active_atom = AtomId(0)
+        closure_decision, child_surface = (
+            self._test_residual_cyclic_policy_inputs(
+                active_atom=active_atom,
+                attachment_id=7,
+                child_attachment_action_kind=child_attachment_action_kind,
+            )
+        )
+        child_batch = self._test_surviving_child_batch(
+            child_surface,
+            emitted_text=emitted_text,
+        )
+
+        with patch(
+            "grimace._south_star1.writer_transitions._closure_endpoint_schedule_decision",
+            return_value=closure_decision,
+        ), patch(
+            "grimace._south_star1.writer_transitions._active_child_schedule_surface_from_context",
+            return_value=child_surface,
+        ), patch(
+            "grimace._south_star1.writer_transitions._scheduled_action_emission_batch",
+            return_value=child_batch,
+        ):
+            return writer_transitions._active_emitted_schedule_outcome(
+                prepared,  # type: ignore[arg-type]
+                state,  # type: ignore[arg-type]
+                context,  # type: ignore[arg-type]
+                active_atom,
+            )
+
+    def _test_top_level_active_owned_dead_closure_outcome(
+        self,
+    ) -> writer_transitions._WriterTopLevelScheduleOutcome:
+        prepared = object()
+        context = object()
+        active_atom = AtomId(0)
+        state = SimpleNamespace(
+            active=SimpleNamespace(
+                atom=active_atom,
+            ),
+        )
+        closure_decision, child_surface = (
+            self._test_residual_cyclic_policy_inputs(
+                active_atom=active_atom,
+                attachment_id=7,
+            )
+        )
+        child_batch = self._test_surviving_child_batch(child_surface)
+
+        with patch(
+            "grimace._south_star1.writer_transitions._top_level_scheduled_actions",
+            return_value=(),
+        ), patch(
+            "grimace._south_star1.writer_transitions._closure_endpoint_schedule_decision",
+            return_value=closure_decision,
+        ), patch(
+            "grimace._south_star1.writer_transitions._active_child_schedule_surface_from_context",
+            return_value=child_surface,
+        ), patch(
+            "grimace._south_star1.writer_transitions._scheduled_action_emission_batch",
+            return_value=child_batch,
+        ):
+            return writer_transitions._top_level_schedule_outcome(
+                prepared,  # type: ignore[arg-type]
+                state,  # type: ignore[arg-type]
+                context,  # type: ignore[arg-type]
+            )
+
+    def _test_frontier_choice_snapshot_for_active_outcome(
+        self,
+        active_outcome: writer_transitions._WriterActiveEmittedScheduleOutcome,
+        *,
+        support_family: writer_transitions._WriterGraphPolicyActionFamily,
+        residual_key: writer_transitions._WriterResidualAttachmentPolicyKey,
+        emitted_text: str = "C",
+    ) -> writer_frontier_module._WriterFrontierChoiceSnapshot:
+        support = self._test_frontier_next_token_support(
+            emitted_text=emitted_text,
+            successor_atom=AtomId(5),
+            policy_family=support_family,
+            residual_key=residual_key,
+        )
+        choice = self._test_choice_snapshot_entry_from_supports(
+            emitted_text,
+            (support,),
+        )
+        top_outcome = writer_transitions._WriterTopLevelScheduleOutcome(
+            kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.SCHEDULED,
+            schedule_decision=writer_transitions._top_level_active_emitted_decision(
+                active_outcome.schedule_decision,
+            ),
+            active_emitted_outcome=active_outcome,
+        )
+        state_outcome = writer_frontier_module._WriterFrontierStateScheduleOutcome(
+            state_key=writer_state_key(_raw_initial_state(AtomId(0))),
+            parent_weight=1,
+            finalized_state_key=None,
+            schedule_outcome=top_outcome,
+        )
+        schedule_outcome = writer_frontier_module._WriterFrontierScheduleOutcome(
+            state_outcomes=(state_outcome,),
+            terminal_by_key=Counter(),
+            grouped_by_text={},
+            weighted_by_text={},
+        )
+
+        return writer_frontier_module._WriterFrontierChoiceSnapshot(
+            schedule_outcome=schedule_outcome,
+            terminal=None,
+            choices=(choice,),
+        )
+
+    def _test_writer_search_snapshot(
+        self,
+    ) -> writer_snapshot.WriterSearchSnapshot:
+        cursor = WriterFrontierCursor(weighted_states=())
+
+        return writer_snapshot.WriterSearchSnapshot(
+            serialization_language=SerializationLanguageMode.WRITER_SHAPED,
+            prepared_identity=object(),  # type: ignore[arg-type]
+            runtime_options=object(),  # type: ignore[arg-type]
+            cursor=cursor,
+            decoder_boundary=writer_snapshot.WriterDecoderBoundary(),
+            frame_stack=(writer_snapshot.WriterFrontierFrame(cursor),),
+        )
+
+    def _test_readable_prefix_outcome(
+        self,
+        choice_snapshot: writer_frontier_module._WriterFrontierChoiceSnapshot,
+        *,
+        replay_choice: (
+            writer_frontier_module._WriterFrontierChoiceSnapshotEntry | None
+        ) = None,
+    ) -> writer_snapshot._WriterSnapshotPrefixReadOutcome:
+        source_snapshot = self._test_writer_search_snapshot()
+
+        if replay_choice is None:
+            emitted_texts = ()
+            step_outcomes = ()
+            current_snapshot = source_snapshot
+        else:
+            emitted_texts = (replay_choice.emitted_text,)
+            advanced_snapshot = self._test_writer_search_snapshot()
+            step_outcomes = (
+                writer_snapshot._WriterSnapshotAdvanceOutcome(
+                    kind=writer_snapshot._WriterSnapshotAdvanceOutcomeKind.ADVANCED,
+                    source_snapshot=source_snapshot,
+                    emitted_text=replay_choice.emitted_text,
+                    choice_snapshot=choice_snapshot,
+                    choice=replay_choice,
+                    advanced_snapshot=advanced_snapshot,
+                ),
+            )
+            current_snapshot = advanced_snapshot
+
+        sequence_outcome = writer_snapshot._WriterSnapshotAdvanceSequenceOutcome(
+            kind=writer_snapshot._WriterSnapshotAdvanceSequenceOutcomeKind.ADVANCED,
+            source_snapshot=source_snapshot,
+            emitted_texts=emitted_texts,
+            step_outcomes=step_outcomes,
+            current_snapshot=current_snapshot,
+        )
+        replay_outcome = writer_snapshot._WriterSnapshotReplayChoiceSnapshotOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                .CHOICE_SNAPSHOT
+            ),
+            source_snapshot=source_snapshot,
+            emitted_texts=emitted_texts,
+            sequence_outcome=sequence_outcome,
+            choice_snapshot=choice_snapshot,
+        )
+
+        return writer_snapshot._WriterSnapshotPrefixReadOutcome(
+            kind=writer_snapshot._WriterSnapshotPrefixReadOutcomeKind.READABLE,
+            replay_outcome=replay_outcome,
+            support_count=1,
+            completion_count=1,
+        )
+
     def _test_active_outcome_for_graph_policy(
         self,
         policy: writer_transitions._WriterActiveEmittedGraphPolicyDecision,
@@ -20617,6 +20830,229 @@ class WriterStateKernelTest(unittest.TestCase):
             state,
             context,
             child_surface.scheduled_actions,
+        )
+
+    def test_active_owned_dead_closure_policy_reaches_active_emitted_schedule_outcome(self) -> None:
+        outcome = self._test_active_owned_dead_closure_active_outcome()
+
+        self.assertIs(
+            outcome.kind,
+            writer_transitions._WriterActiveEmittedScheduleOutcomeKind.SCHEDULED,
+        )
+        self.assertIs(
+            outcome.graph_policy_decision.kind,
+            (
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyDecisionKind
+                .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+            ),
+        )
+        self.assertIs(
+            outcome.graph_policy_decision.residual_cyclic_policy_kind,
+            (
+                writer_transitions
+                ._WriterResidualCyclicPolicyDecisionKind
+                .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+            ),
+        )
+        self.assertTrue(
+            outcome.graph_policy_decision.residual_cyclic_support_dead_groups
+        )
+        self.assertIs(
+            outcome.schedule_decision.kind,
+            writer_transitions._WriterActiveEmittedScheduleDecisionKind.ACTIVE_CHILD,
+        )
+        self.assertIs(
+            outcome.schedule_decision.selected_active_child_selection_kind,
+            writer_transitions._WriterActiveChildSelectionKind.CYCLIC_TREE_ENTRY,
+        )
+
+    def test_active_owned_dead_closure_policy_reaches_top_level_schedule_outcome(self) -> None:
+        outcome = self._test_top_level_active_owned_dead_closure_outcome()
+
+        self.assertIs(
+            outcome.kind,
+            writer_transitions._WriterTopLevelScheduleOutcomeKind.SCHEDULED,
+        )
+        self.assertIs(
+            outcome.graph_policy_decision.kind,
+            (
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyDecisionKind
+                .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+            ),
+        )
+        self.assertIs(
+            outcome.selected_active_child_selection_kind,
+            writer_transitions._WriterActiveChildSelectionKind.CYCLIC_TREE_ENTRY,
+        )
+        self.assertTrue(outcome.selected_cyclic_tree_entry_graph_action_surfaces)
+        self.assertEqual(outcome.graph_policy_blockers, ())
+
+    def test_active_owned_dead_closure_policy_reaches_frontier_choice_snapshot_evidence(self) -> None:
+        outcome = self._test_active_owned_dead_closure_active_outcome()
+        residual = outcome.graph_policy_decision.residual_cyclic_policy_decision
+        self.assertIsNotNone(residual)
+        key = residual.choice_groups[0].key  # type: ignore[union-attr]
+        choice_snapshot = self._test_frontier_choice_snapshot_for_active_outcome(
+            outcome,
+            support_family=(
+                writer_transitions
+                ._WriterGraphPolicyActionFamily
+                .CYCLIC_TREE_ENTRY
+            ),
+            residual_key=key,
+        )
+
+        self.assertIn(
+            (
+                writer_transitions
+                ._WriterResidualCyclicPolicyDecisionKind
+                .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+            ),
+            choice_snapshot.residual_cyclic_policy_kinds,
+        )
+        self.assertIn(
+            writer_transitions._WriterActiveChildSelectionKind.CYCLIC_TREE_ENTRY,
+            choice_snapshot.selected_active_child_selection_kinds,
+        )
+        self.assertTrue(
+            (
+                choice_snapshot
+                .dead_closure_open_resolved_cyclic_tree_entry_choice_evidence
+            )
+        )
+        retained = (
+            choice_snapshot
+            .retained_dead_closure_open_resolved_cyclic_tree_entry_choice_evidence
+        )
+        self.assertTrue(retained)
+        evidence = retained[0]
+        self.assertTrue(
+            (
+                evidence
+                .has_retained_dead_closure_open_resolved_cyclic_tree_entry_support
+            )
+        )
+        self.assertIn(
+            writer_transitions._WriterGraphPolicyActionFamily.CYCLIC_TREE_ENTRY,
+            evidence.selected_policy_families,
+        )
+
+    def test_active_owned_dead_closure_policy_is_visible_in_prefix_read_evidence(self) -> None:
+        outcome = self._test_active_owned_dead_closure_active_outcome()
+        residual = outcome.graph_policy_decision.residual_cyclic_policy_decision
+        self.assertIsNotNone(residual)
+        key = residual.choice_groups[0].key  # type: ignore[union-attr]
+        choice_snapshot = self._test_frontier_choice_snapshot_for_active_outcome(
+            outcome,
+            support_family=(
+                writer_transitions
+                ._WriterGraphPolicyActionFamily
+                .CYCLIC_TREE_ENTRY
+            ),
+            residual_key=key,
+        )
+        final_prefix = self._test_readable_prefix_outcome(choice_snapshot)
+
+        self.assertIn(
+            (
+                writer_transitions
+                ._WriterResidualCyclicPolicyDecisionKind
+                .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+            ),
+            final_prefix.residual_cyclic_policy_kinds,
+        )
+        self.assertTrue(
+            (
+                final_prefix
+                .final_choice_dead_closure_open_resolved_cyclic_tree_entry_evidence
+            )
+        )
+        self.assertEqual(final_prefix.replayed_residual_cyclic_policy_kinds, ())
+        self.assertEqual(
+            (
+                final_prefix
+                .replayed_dead_closure_open_resolved_cyclic_tree_entry_evidence
+            ),
+            (),
+        )
+
+        replayed_prefix = self._test_readable_prefix_outcome(
+            choice_snapshot,
+            replay_choice=choice_snapshot.choices[0],
+        )
+        self.assertIn(
+            (
+                writer_transitions
+                ._WriterResidualCyclicPolicyDecisionKind
+                .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+            ),
+            replayed_prefix.replayed_residual_cyclic_policy_kinds,
+        )
+        self.assertTrue(
+            (
+                replayed_prefix
+                .replayed_dead_closure_open_resolved_cyclic_tree_entry_evidence
+            )
+        )
+
+    def test_active_owned_dead_closure_evidence_does_not_mark_acyclic_child_as_cyclic(self) -> None:
+        outcome = self._test_active_owned_dead_closure_active_outcome(
+            child_attachment_action_kind=(
+                WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY
+            ),
+        )
+
+        self.assertIs(
+            outcome.graph_policy_decision.kind,
+            writer_transitions._WriterActiveEmittedGraphPolicyDecisionKind.ACTIVE_CHILD,
+        )
+        self.assertIs(
+            outcome.graph_policy_decision.residual_cyclic_policy_kind,
+            writer_transitions._WriterResidualCyclicPolicyDecisionKind.NONE,
+        )
+        self.assertIs(
+            outcome.schedule_decision.selected_active_child_selection_kind,
+            writer_transitions._WriterActiveChildSelectionKind.ACYCLIC_TREE_ENTRY,
+        )
+        support = self._test_frontier_next_token_support(
+            emitted_text="C",
+            successor_atom=AtomId(5),
+            policy_family=(
+                writer_transitions
+                ._WriterGraphPolicyActionFamily
+                .ACYCLIC_TREE_ENTRY
+            ),
+            residual_key=(
+                writer_transitions
+                ._WriterResidualAttachmentPolicyKey(AtomId(0), 7)
+            ),
+        )
+        choice = self._test_choice_snapshot_entry_from_supports("C", (support,))
+        choice_snapshot = writer_frontier_module._WriterFrontierChoiceSnapshot(
+            schedule_outcome=(
+                self._test_frontier_schedule_outcome_for_graph_policies(
+                    (outcome.graph_policy_decision,)
+                )
+            ),
+            terminal=None,
+            choices=(choice,),
+        )
+
+        self.assertEqual(
+            (
+                choice_snapshot
+                .dead_closure_open_resolved_cyclic_tree_entry_choice_evidence
+            ),
+            (),
+        )
+        self.assertEqual(
+            (
+                choice_snapshot
+                .retained_dead_closure_open_resolved_cyclic_tree_entry_choice_evidence
+            ),
+            (),
         )
 
     def test_active_emitted_graph_policy_allows_child_when_closure_open_and_cyclic_tree_use_different_attachments(self) -> None:

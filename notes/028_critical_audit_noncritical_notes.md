@@ -66,10 +66,10 @@ here.
   which fails closed on missing parity fixtures. Release lanes pin RDKit
   `2026.3.1`, so the current release path has fixtures, but the count-only
   evidence family is less fail-closed in ad hoc local environments.
-- `pyproject.toml` declares `requires-python = ">=3.11"` while the release
-  workflow builds Linux wheels only for CPython 3.12 and 3.13. Python 3.11 users
-  would rely on the sdist/build path rather than a checked wheel. That is a
-  packaging-support posture question, not a current correctness failure.
+- The Python release matrix now builds wheels for every CPython minor declared
+  in package classifiers. Future Python minors still require an explicit
+  release-matrix update and artifact-validation update before metadata should
+  claim wheel support.
 - Public `rootedAtAtom` coercion accepts arbitrary negative integers and the
   runtime treats them like all-roots. Documentation and examples use `-1`, so a
   stricter root sentinel policy would be cleaner, but this is not a critical
@@ -532,10 +532,11 @@ Checklist:
       environments.
 - [ ] Document the difference in testing-fixtures.md.
 
-### 14. Python 3.11 metadata without 3.11 wheels
+### 14. Python wheel matrix and package metadata alignment
 
-Issue: package metadata allows Python 3.11, but release wheels are only cp312
-and cp313 Linux. Python 3.11 users take the sdist path.
+Original issue: package metadata allowed Python 3.11, but the release workflow
+built Linux wheels only for cp312 and cp313. Python 3.11 users took the sdist
+path despite metadata implying support.
 
 Serious alternatives:
 
@@ -545,18 +546,19 @@ Serious alternatives:
 - Add cp311 source-build CI only.
 - Mark classifiers only for built wheels and leave metadata broad.
 
-Principled direction: either build cp311 wheels or raise metadata. The no-regret
-choice depends on whether 3.11 is an intended supported runtime. Metadata should
-not imply support that release testing does not exercise.
+Principled direction: metadata should describe the Python versions exercised by
+the release wheel matrix. The release artifact validator owns the wheel tags;
+package classifiers and the workflow matrix are checked against it so adding a
+future Python version is an explicit validator/workflow/metadata decision, not a
+copy-paste exercise across repeated platform rows.
 
 Checklist:
 
-- [ ] Decide whether Python 3.11 is supported or merely possible.
-- [ ] If supported, add cp311 to release wheel matrix and artifact validator.
-- [ ] If not supported, set `requires-python = ">=3.12"` and remove 3.11 docs
-      expectations.
-- [ ] Update runtime docs release matrix.
-- [ ] Add workflow posture tests for whichever policy is chosen.
+- [x] Decide whether Python 3.11 is supported or merely possible.
+- [x] Add cp311 and cp314 to the release wheel matrix and artifact validator.
+- [x] Keep `requires-python = ">=3.11"`.
+- [x] Update runtime docs release matrix.
+- [x] Add workflow posture tests for whichever policy is chosen.
 
 ### 15. Arbitrary negative `rootedAtAtom` means all-roots
 

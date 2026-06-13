@@ -87,6 +87,7 @@ fixed fragment order, but non-rooted fragments can still vary internally.
 
 Package metadata declares Python `>=3.11` and `rdkit>=2026.3`.
 
-The currently exercised release matrix publishes Linux `x86_64` wheels for
-CPython `3.12` and `3.13`, plus a source distribution. Other Python versions
-and non-Linux platforms are expected source-build paths today.
+The exercised release matrix publishes Linux `x86_64` wheels for CPython
+`3.11` through `3.14`, plus a source distribution. Future Python versions and
+non-Linux platforms are source-build paths unless the release matrix says
+otherwise.

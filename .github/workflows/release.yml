@@ -52,17 +52,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - name: linux-x86_64
-            os: ubuntu-24.04
-            target: x86_64
-            manylinux: "2_28"
-            python-version: "3.12"
-          - name: linux-x86_64
-            os: ubuntu-24.04
-            target: x86_64
-            manylinux: "2_28"
-            python-version: "3.13"
+        python-version:
+          - "3.11"
+          - "3.12"
+          - "3.13"
+          - "3.14"
+        name:
+          - linux-x86_64
+        os:
+          - ubuntu-24.04
+        target:
+          - x86_64
+        manylinux:
+          - "2_28"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:

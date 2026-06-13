@@ -23,7 +23,7 @@ PACKAGE_STEM = "grimace_py"
 PROJECT_NAME = "grimace-py"
 EXPECTED_PROJECT_SOURCE_URL = "https://github.com/numpde/grimace-py"
 EXPECTED_DISTRIBUTION_METADATA_VERSION = "2.4"
-PYTHON_TAGS = ("cp312", "cp313")
+PYTHON_TAGS = ("cp311", "cp312", "cp313", "cp314")
 PLATFORM_TAG = "manylinux_2_28_x86_64"
 NATIVE_EXTENSION_PLATFORM_SUFFIXES = {
     "linux_x86_64": "-x86_64-linux-gnu.so",

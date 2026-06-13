@@ -73,13 +73,11 @@ assert len(all_smiles) == 304
 Please find the main documentation at
 [numpde.github.io/grimace-py](https://numpde.github.io/grimace-py/).
 
-## Install matrix
+## Install
 
-Package metadata declares Python `>=3.11` and `rdkit>=2026.3`.
-
-The currently exercised release matrix publishes Linux `x86_64` wheels for
-CPython `3.12` and `3.13`, plus a source distribution. Other Python versions
-and non-Linux platforms are expected source-build paths today.
+Package metadata declares Python `>=3.11` and `rdkit>=2026.3`. See
+[Runtime](docs/runtime.md) for the exercised wheel and source-distribution
+matrix.
 
 For a host source build, you need Rust `>=1.83` and `maturin`:
 

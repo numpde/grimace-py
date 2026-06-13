@@ -37,6 +37,17 @@ def load_release_validator():
     return module
 
 
+def matrix_values(job: str, key: str) -> tuple[str, ...]:
+    pattern = rf"(?m)^\s{{8}}{re.escape(key)}:\n(?P<body>(?:^\s{{10}}- [^\n]+\n)+)"
+    match = re.search(pattern, job)
+    if match is None:
+        raise AssertionError(f"missing matrix axis {key!r}")
+    return tuple(
+        item.strip().strip('"')
+        for item in re.findall(r"(?m)^\s{10}- ([^\n]+)$", match.group("body"))
+    )
+
+
 class WorkflowPostureTests(unittest.TestCase):
     def test_workflows_pin_github_hosted_runner_image(self) -> None:
         for workflow_path in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
@@ -282,28 +293,21 @@ class WorkflowPostureTests(unittest.TestCase):
         wheel = job_section(workflow, "wheel")
         validator = load_release_validator()
 
-        matrix_entries = re.findall(
-            r"(?ms)^\s{10}- name:.*?(?=^\s{10}- name:|^    steps:)",
-            wheel,
+        python_versions = matrix_values(wheel, "python-version")
+        python_tags = tuple(
+            f"cp{python_version.replace('.', '')}"
+            for python_version in python_versions
         )
-        self.assertTrue(matrix_entries)
-        python_tags: list[str] = []
-        platforms: set[str] = set()
-        for entry in matrix_entries:
-            target = re.search(r"(?m)^\s+target: (\S+)$", entry)
-            manylinux = re.search(r'(?m)^\s+manylinux: "([0-9]+_[0-9]+)"$', entry)
-            python_version = re.search(
-                r'(?m)^\s+python-version: "([0-9]+\.[0-9]+)"$',
-                entry,
-            )
-            self.assertIsNotNone(target)
-            self.assertIsNotNone(manylinux)
-            self.assertIsNotNone(python_version)
-            python_tags.append(f"cp{python_version.group(1).replace('.', '')}")
-            platforms.add(f"manylinux_{manylinux.group(1)}_{target.group(1)}")
+        platform_tags = tuple(
+            f"manylinux_{manylinux}_{target}"
+            for manylinux in matrix_values(wheel, "manylinux")
+            for target in matrix_values(wheel, "target")
+        )
 
-        self.assertEqual(validator.PYTHON_TAGS, tuple(python_tags))
-        self.assertEqual((validator.PLATFORM_TAG,), tuple(sorted(set(platforms))))
+        self.assertEqual(validator.PYTHON_TAGS, python_tags)
+        self.assertEqual((validator.PLATFORM_TAG,), platform_tags)
+        self.assertEqual(("linux-x86_64",), matrix_values(wheel, "name"))
+        self.assertEqual(("ubuntu-24.04",), matrix_values(wheel, "os"))
         self.assertEqual(
             validator.expected_artifact_names("0.0.0"),
             tuple(

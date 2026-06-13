@@ -1,3 +1,4 @@
+import importlib.util
 from pathlib import Path
 import re
 import tomllib
@@ -32,6 +33,11 @@ def constraint_lines() -> tuple[str, ...]:
             continue
         lines.append(stripped)
     return tuple(lines)
+
+
+def python_version_key(version: str) -> tuple[int, int]:
+    major, minor = version.split(".", 1)
+    return int(major), int(minor)
 
 
 class BuildDependencyPinTests(unittest.TestCase):
@@ -129,6 +135,39 @@ class BuildDependencyPinTests(unittest.TestCase):
     def test_project_dependencies_include_zstandard_runtime(self) -> None:
         pyproject = tomllib.loads(read_text("pyproject.toml"))
         self.assertIn("zstandard>=0.25", pyproject["project"]["dependencies"])
+
+    def test_python_classifiers_match_release_wheel_tags(self) -> None:
+        pyproject = tomllib.loads(read_text("pyproject.toml"))
+        validator_path = ROOT / "scripts" / "validate_release_artifacts.py"
+        spec = importlib.util.spec_from_file_location(
+            "validate_release_artifacts",
+            validator_path,
+        )
+        if spec is None or spec.loader is None:
+            raise AssertionError(f"Could not load {validator_path}")
+        validator = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(validator)
+
+        wheel_versions = tuple(
+            f"{tag[2]}.{tag[3:]}"
+            for tag in validator.PYTHON_TAGS
+        )
+        self.assertEqual(
+            tuple(sorted(wheel_versions, key=python_version_key)),
+            wheel_versions,
+        )
+
+        classifiers = tuple(
+            classifier.rsplit(" :: ", 1)[-1]
+            for classifier in pyproject["project"]["classifiers"]
+            if classifier.startswith("Programming Language :: Python :: 3.")
+        )
+
+        self.assertEqual(wheel_versions, classifiers)
+        self.assertEqual(
+            f">={wheel_versions[0]}",
+            pyproject["project"]["requires-python"],
+        )
 
     def test_container_constraints_are_exact_and_sorted(self) -> None:
         lines = constraint_lines()

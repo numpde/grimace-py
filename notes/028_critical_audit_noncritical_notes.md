@@ -96,7 +96,8 @@ here.
   underscore-module internals rather than `grimace.__all__` public API, but
   typed users can still discover and call them. That is useful for internal
   tests and debugging, but it keeps the low-level Rust surface easier to depend
-  on than a strictly opaque boundary would.
+  on than a strictly opaque boundary would. The public export contract now
+  asserts the exact top-level `grimace.__all__` tuple.
 - `MolToSmilesFlags` remains an importable internal dataclass, but direct
   construction now validates exact internal types and normalizes negative roots.
   Public/RDKit-like coercion remains centralized in `make_flags()` and the
@@ -707,7 +708,8 @@ Checklist:
 - [x] Add a top-of-file comment in `_core.pyi` stating it is private extension
       typing, not public API.
 - [x] Keep public docs limited to top-level `grimace` symbols.
-- [x] Add/keep tests asserting private `_core` symbols are not re-exported.
+- [x] Add/keep tests asserting private `_core` symbols are not re-exported and
+      the top-level `grimace.__all__` tuple is exact.
 - [x] Avoid adding new `_core` methods unless a public wrapper or internal test
       needs them.
 

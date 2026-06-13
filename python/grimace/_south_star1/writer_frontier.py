@@ -448,6 +448,9 @@ class _WriterFrontierResidualAttachmentEvidenceGroup:
 
     @property
     def has_dead_closure_open_resolution_evidence(self) -> bool:
+        if self.residual_cyclic_policy_decisions:
+            return self.has_residual_cyclic_support_dead_resolution
+
         return (
             self.has_resolved_policy_evidence
             and self.has_support_dead_closure_open_evidence
@@ -504,6 +507,27 @@ class _WriterFrontierResidualAttachmentEvidenceGroup:
             is _WriterResidualCyclicPolicyDecisionKind.UNSUPPORTED_OWNER_SCOPE
             for decision in self.residual_cyclic_policy_decisions
         )
+
+    @property
+    def has_retained_residual_cyclic_blocker(self) -> bool:
+        return (
+            self.has_residual_cyclic_missing_evidence_blocker
+            or self.has_residual_cyclic_unsupported_owner_scope_blocker
+        )
+
+    @property
+    def has_missing_closure_open_support_evidence_blocker(self) -> bool:
+        if self.residual_cyclic_policy_decisions:
+            return self.has_residual_cyclic_missing_evidence_blocker
+
+        return self.has_unresolved_policy_evidence
+
+    @property
+    def has_unsupported_owner_scope_blocker(self) -> bool:
+        if self.residual_cyclic_policy_decisions:
+            return self.has_residual_cyclic_unsupported_owner_scope_blocker
+
+        return self.has_unsupported_owner_scope_evidence
 
 
 @dataclass(frozen=True, slots=True)
@@ -601,6 +625,26 @@ class _WriterFrontierChoiceResidualAttachmentEvidence:
         return tuple(
             decision.kind
             for decision in self.residual_cyclic_policy_decisions
+        )
+
+    @property
+    def has_retained_residual_cyclic_policy_evidence(self) -> bool:
+        return bool(self.residual_cyclic_policy_decisions)
+
+    @property
+    def has_retained_dead_closure_open_resolved_cyclic_tree_entry_support(
+        self,
+    ) -> bool:
+        return any(
+            group.has_dead_closure_open_resolved_cyclic_tree_entry_support
+            for group in self.residual_attachment_evidence_groups
+        )
+
+    @property
+    def has_retained_residual_cyclic_blocker_evidence(self) -> bool:
+        return any(
+            group.has_retained_residual_cyclic_blocker
+            for group in self.residual_attachment_evidence_groups
         )
 
     @property
@@ -1206,6 +1250,26 @@ class _WriterFrontierChoiceSnapshot:
             if (
                 evidence
                 .has_dead_closure_open_resolved_cyclic_tree_entry_support
+            )
+        )
+
+    @property
+    def has_retained_residual_cyclic_policy_evidence(self) -> bool:
+        return any(
+            evidence.has_retained_residual_cyclic_policy_evidence
+            for evidence in self.choice_residual_attachment_evidence
+        )
+
+    @property
+    def retained_dead_closure_open_resolved_cyclic_tree_entry_choice_evidence(
+        self,
+    ) -> tuple[_WriterFrontierChoiceResidualAttachmentEvidence, ...]:
+        return tuple(
+            evidence
+            for evidence in self.choice_residual_attachment_evidence
+            if (
+                evidence
+                .has_retained_dead_closure_open_resolved_cyclic_tree_entry_support
             )
         )
 

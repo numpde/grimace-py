@@ -1684,6 +1684,219 @@ class WriterStateKernelTest(unittest.TestCase):
             (residual_7.kind,),
         )
 
+    def test_writer_frontier_residual_attachment_evidence_group_uses_retained_support_dead_decision_for_resolution(self) -> None:
+        key = writer_transitions._WriterResidualAttachmentPolicyKey(
+            active_atom=AtomId(0),
+            attachment_id=7,
+        )
+        support = self._test_frontier_next_token_support(
+            emitted_text="C",
+            successor_atom=AtomId(1),
+            policy_family=(
+                writer_transitions
+                ._WriterGraphPolicyActionFamily
+                .CYCLIC_TREE_ENTRY
+            ),
+            residual_key=key,
+        )
+        support_group = (
+            writer_frontier_module._WriterFrontierResidualAttachmentSupportGroup(
+                key=key,
+                supports=(support,),
+            )
+        )
+        closure_decision, child_surface = (
+            self._test_residual_cyclic_policy_inputs(
+                attachment_id=7,
+            )
+        )
+        residual_decision = writer_transitions._residual_cyclic_policy_decision(
+            closure_decision,
+            child_surface,
+        )
+        group = writer_frontier_module._WriterFrontierResidualAttachmentEvidenceGroup(
+            key=key,
+            selected_support_groups=(support_group,),
+            residual_cyclic_policy_decisions=(residual_decision,),
+        )
+
+        self.assertTrue(group.has_dead_closure_open_resolution_evidence)
+        self.assertTrue(
+            group.has_dead_closure_open_resolved_cyclic_tree_entry_support
+        )
+
+    def test_writer_frontier_residual_attachment_evidence_group_falls_back_without_retained_decisions(self) -> None:
+        key = writer_transitions._WriterResidualAttachmentPolicyKey(
+            active_atom=AtomId(0),
+            attachment_id=7,
+        )
+        support = self._test_frontier_next_token_support(
+            emitted_text="C",
+            successor_atom=AtomId(1),
+            policy_family=(
+                writer_transitions
+                ._WriterGraphPolicyActionFamily
+                .CYCLIC_TREE_ENTRY
+            ),
+            residual_key=key,
+        )
+        support_group = (
+            writer_frontier_module._WriterFrontierResidualAttachmentSupportGroup(
+                key=key,
+                supports=(support,),
+            )
+        )
+        group = writer_frontier_module._WriterFrontierResidualAttachmentEvidenceGroup(
+            key=key,
+            resolved_policy_groups=(self._test_residual_policy_group(key),),
+            support_dead_closure_open_vs_cyclic_tree_entry_policy_groups=(
+                self._test_residual_policy_group(key),
+            ),
+            selected_support_groups=(support_group,),
+        )
+
+        self.assertTrue(group.has_dead_closure_open_resolution_evidence)
+        self.assertTrue(
+            group.has_dead_closure_open_resolved_cyclic_tree_entry_support
+        )
+
+    def test_writer_frontier_residual_attachment_evidence_group_prefers_retained_missing_evidence_blocker(self) -> None:
+        key = writer_transitions._WriterResidualAttachmentPolicyKey(
+            active_atom=AtomId(0),
+            attachment_id=7,
+        )
+        closure_decision, child_surface = (
+            self._test_residual_cyclic_policy_inputs(
+                attachment_id=7,
+                include_closure_emission=False,
+            )
+        )
+        residual_decision = writer_transitions._residual_cyclic_policy_decision(
+            closure_decision,
+            child_surface,
+        )
+        group = writer_frontier_module._WriterFrontierResidualAttachmentEvidenceGroup(
+            key=key,
+            residual_cyclic_policy_decisions=(residual_decision,),
+        )
+
+        self.assertTrue(
+            group.has_missing_closure_open_support_evidence_blocker
+        )
+        self.assertTrue(group.has_retained_residual_cyclic_blocker)
+
+    def test_writer_frontier_residual_attachment_evidence_group_prefers_retained_unsupported_owner_blocker(self) -> None:
+        key = writer_transitions._WriterResidualAttachmentPolicyKey(
+            active_atom=AtomId(0),
+            attachment_id=7,
+        )
+        closure_decision, child_surface = (
+            self._test_residual_cyclic_policy_inputs(
+                attachment_id=7,
+                closure_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+                child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+            )
+        )
+        residual_decision = writer_transitions._residual_cyclic_policy_decision(
+            closure_decision,
+            child_surface,
+        )
+        group = writer_frontier_module._WriterFrontierResidualAttachmentEvidenceGroup(
+            key=key,
+            residual_cyclic_policy_decisions=(residual_decision,),
+        )
+
+        self.assertTrue(group.has_unsupported_owner_scope_blocker)
+        self.assertTrue(group.has_retained_residual_cyclic_blocker)
+
+    def test_writer_frontier_choice_residual_attachment_evidence_exposes_retained_residual_predicates(self) -> None:
+        key = writer_transitions._WriterResidualAttachmentPolicyKey(
+            active_atom=AtomId(0),
+            attachment_id=7,
+        )
+        support = self._test_frontier_next_token_support(
+            emitted_text="C",
+            successor_atom=AtomId(1),
+            policy_family=(
+                writer_transitions
+                ._WriterGraphPolicyActionFamily
+                .CYCLIC_TREE_ENTRY
+            ),
+            residual_key=key,
+        )
+        choice = self._test_choice_snapshot_entry_from_supports(
+            "C",
+            (support,),
+        )
+        support_group = (
+            writer_frontier_module._WriterFrontierResidualAttachmentSupportGroup(
+                key=key,
+                supports=(support,),
+            )
+        )
+        support_dead_closure, support_dead_child = (
+            self._test_residual_cyclic_policy_inputs(
+                attachment_id=7,
+            )
+        )
+        support_dead_decision = (
+            writer_transitions._residual_cyclic_policy_decision(
+                support_dead_closure,
+                support_dead_child,
+            )
+        )
+        support_dead_group = (
+            writer_frontier_module
+            ._WriterFrontierResidualAttachmentEvidenceGroup(
+                key=key,
+                selected_support_groups=(support_group,),
+                residual_cyclic_policy_decisions=(support_dead_decision,),
+            )
+        )
+        support_dead_evidence = (
+            writer_frontier_module
+            ._WriterFrontierChoiceResidualAttachmentEvidence(
+                choice=choice,
+                residual_attachment_evidence_groups=(support_dead_group,),
+            )
+        )
+        missing_closure, missing_child = self._test_residual_cyclic_policy_inputs(
+            attachment_id=7,
+            include_closure_emission=False,
+        )
+        missing_decision = writer_transitions._residual_cyclic_policy_decision(
+            missing_closure,
+            missing_child,
+        )
+        missing_group = (
+            writer_frontier_module
+            ._WriterFrontierResidualAttachmentEvidenceGroup(
+                key=key,
+                residual_cyclic_policy_decisions=(missing_decision,),
+            )
+        )
+        missing_evidence = (
+            writer_frontier_module
+            ._WriterFrontierChoiceResidualAttachmentEvidence(
+                choice=choice,
+                residual_attachment_evidence_groups=(missing_group,),
+            )
+        )
+
+        self.assertTrue(
+            support_dead_evidence.has_retained_residual_cyclic_policy_evidence
+        )
+        self.assertTrue(
+            support_dead_evidence
+            .has_retained_dead_closure_open_resolved_cyclic_tree_entry_support
+        )
+        self.assertFalse(
+            support_dead_evidence.has_retained_residual_cyclic_blocker_evidence
+        )
+        self.assertTrue(
+            missing_evidence.has_retained_residual_cyclic_blocker_evidence
+        )
+
     def test_writer_frontier_choice_residual_attachment_evidence_groups_include_support_only_keys(self) -> None:
         key = writer_transitions._WriterResidualAttachmentPolicyKey(
             active_atom=AtomId(0),
@@ -3629,6 +3842,72 @@ class WriterStateKernelTest(unittest.TestCase):
             (
                 snapshot
                 .dead_closure_open_resolved_cyclic_tree_entry_choice_evidence
+            ),
+            (c_evidence,),
+        )
+
+    def test_writer_frontier_choice_snapshot_exposes_retained_dead_closure_resolved_cyclic_choice_evidence(self) -> None:
+        closure_decision, child_surface = self._test_residual_cyclic_policy_inputs()
+        residual_decision = writer_transitions._residual_cyclic_policy_decision(
+            closure_decision,
+            child_surface,
+        )
+        policy = writer_transitions._WriterActiveEmittedGraphPolicyDecision(
+            kind=(
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyDecisionKind
+                .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+            ),
+            active_atom=AtomId(0),
+            closure_endpoint_decision=closure_decision,
+            child_schedule_surface=child_surface,
+            residual_cyclic_policy_decision=residual_decision,
+        )
+        cyclic_support = self._test_frontier_next_token_support(
+            emitted_text="C",
+            successor_atom=AtomId(1),
+            policy_family=(
+                writer_transitions
+                ._WriterGraphPolicyActionFamily
+                .CYCLIC_TREE_ENTRY
+            ),
+            residual_key=residual_decision.choice_groups[0].key,
+        )
+        plain_support = self._test_frontier_next_token_support(
+            emitted_text="N",
+            successor_atom=AtomId(2),
+            policy_family=(
+                writer_transitions
+                ._WriterGraphPolicyActionFamily
+                .ACYCLIC_TREE_ENTRY
+            ),
+        )
+        choice_c = self._test_choice_snapshot_entry_from_supports(
+            "C",
+            (cyclic_support,),
+        )
+        choice_n = self._test_choice_snapshot_entry_from_supports(
+            "N",
+            (plain_support,),
+        )
+        snapshot = writer_frontier_module._WriterFrontierChoiceSnapshot(
+            schedule_outcome=(
+                self._test_frontier_schedule_outcome_for_graph_policies(
+                    (policy,),
+                )
+            ),
+            terminal=None,
+            choices=(choice_c, choice_n),
+        )
+        c_evidence = (
+            snapshot.choice_residual_attachment_evidence_for_emitted_text("C")
+        )
+
+        self.assertTrue(snapshot.has_retained_residual_cyclic_policy_evidence)
+        self.assertEqual(
+            (
+                snapshot
+                .retained_dead_closure_open_resolved_cyclic_tree_entry_choice_evidence
             ),
             (c_evidence,),
         )

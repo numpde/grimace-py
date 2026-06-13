@@ -328,7 +328,6 @@ def validate_sdist(sdist_path: Path) -> SdistInfo:
 
     root = f"{sdist_path.name.removesuffix('.tar.gz')}/"
     root_dir = root.rstrip("/")
-    names: list[str] = []
     file_names: list[str] = []
     manifest_texts: dict[str, str] = {}
     prepared_mol_zstd_file_sha256: dict[str, str] = {}
@@ -347,7 +346,6 @@ def validate_sdist(sdist_path: Path) -> SdistInfo:
                     seen_canonical_names,
                     allow_directory_marker=member.isdir(),
                 )
-                names.append(name)
                 if is_unsafe_archive_path(
                     name,
                     allow_directory_marker=member.isdir(),
@@ -398,11 +396,8 @@ def validate_sdist(sdist_path: Path) -> SdistInfo:
                             payload_bytes,
                             relative,
                         )
-            relative_names = tuple(
-                name[len(root) :] for name in names if name.startswith(root)
-            )
             prepared_mol_zstd = validate_prepared_mol_zstd_package_data(
-                relative_names,
+                file_names,
                 prefix=SDIST_PREPARED_MOL_ZSTD_PREFIX,
                 manifest_texts=manifest_texts,
                 file_sha256_by_name=prepared_mol_zstd_file_sha256,
@@ -448,7 +443,6 @@ def validate_wheel(wheel_path: Path) -> WheelInfo:
 
     try:
         with zipfile.ZipFile(wheel_path) as archive:
-            names = archive.namelist()
             file_names: list[str] = []
             seen_names: set[str] = set()
             seen_canonical_names: set[str] = set()
@@ -487,7 +481,7 @@ def validate_wheel(wheel_path: Path) -> WheelInfo:
                     )
             validate_wheel_source_metadata(
                 archive,
-                names,
+                file_names,
                 dist_info_root=dist_info_root,
                 expected_version=wheel_match.group("version"),
             )
@@ -500,10 +494,8 @@ def validate_wheel(wheel_path: Path) -> WheelInfo:
             prepared_mol_zstd_file_sha256: dict[str, str] = {}
             prepared_mol_zstd_file_size: dict[str, int] = {}
             manifest_texts: dict[str, str] = {}
-            for name in names:
+            for name in file_names:
                 if not name.startswith(WHEEL_PREPARED_MOL_ZSTD_PREFIX):
-                    continue
-                if name.endswith("/"):
                     continue
                 payload = archive.read(name)
                 prepared_mol_zstd_file_sha256[name] = sha256_hex(payload)
@@ -511,13 +503,13 @@ def validate_wheel(wheel_path: Path) -> WheelInfo:
                 if name.endswith(f"/{PREPARED_MOL_ZSTD_MANIFEST_FILE}"):
                     manifest_texts[name] = decode_archive_text(payload, name)
             prepared_mol_zstd = validate_prepared_mol_zstd_package_data(
-                names,
+                file_names,
                 prefix=WHEEL_PREPARED_MOL_ZSTD_PREFIX,
                 manifest_texts=manifest_texts,
                 file_sha256_by_name=prepared_mol_zstd_file_sha256,
                 file_size_by_name=prepared_mol_zstd_file_size,
             )
-            validate_native_extension(names, wheel_match=wheel_match)
+            validate_native_extension(file_names, wheel_match=wheel_match)
             return WheelInfo(
                 version=wheel_match.group("version"),
                 prepared_mol_zstd=prepared_mol_zstd,

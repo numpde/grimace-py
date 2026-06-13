@@ -521,6 +521,36 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             )
             validator.validate_sdist(sdist)
 
+    def test_accepts_explicit_sdist_prepared_mol_zstd_directories(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            sdist = Path(tmp) / "grimace_py-0.1.12.tar.gz"
+            write_sdist(
+                sdist,
+                ("pyproject.toml", "Cargo.toml", *SDIST_DICTIONARY_NAMES),
+                directory_names=(
+                    "python/grimace/data/prepared_mol_zstd",
+                    f"python/grimace/data/prepared_mol_zstd/{TEST_DICTIONARY_ARTIFACT}",
+                ),
+            )
+            validator.validate_sdist(sdist)
+
+    def test_accepts_explicit_wheel_prepared_mol_zstd_directory_markers(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel(
+                wheel,
+                (
+                    "grimace/data/prepared_mol_zstd/",
+                    f"grimace/data/prepared_mol_zstd/{TEST_DICTIONARY_ARTIFACT}/",
+                    "grimace/__init__.py",
+                    native_extension_name(wheel),
+                    *WHEEL_DICTIONARY_NAMES,
+                ),
+            )
+            validator.validate_wheel(wheel)
+
     def test_rejects_normalized_sdist_path_aliases(self) -> None:
         validator = load_validator()
         unsafe_names = (

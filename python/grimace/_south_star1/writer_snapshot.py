@@ -897,6 +897,22 @@ class _WriterSnapshotPrefixReadOutcome:
         return self.replay_outcome.replayed_selected_policy_families
 
     @property
+    def final_choice_residual_cyclic_policy_kinds(self):
+        return tuple(
+            kind
+            for evidence in self.choice_residual_attachment_evidence
+            for kind in evidence.residual_cyclic_policy_kinds
+        )
+
+    @property
+    def replayed_residual_cyclic_policy_kinds(self):
+        return tuple(
+            kind
+            for evidence in self.replayed_choice_residual_attachment_evidence
+            for kind in evidence.residual_cyclic_policy_kinds
+        )
+
+    @property
     def final_choice_dead_closure_open_resolved_cyclic_tree_entry_evidence(
         self,
     ):

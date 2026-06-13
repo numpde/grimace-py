@@ -13,10 +13,15 @@ import json
 from pathlib import Path
 from typing import Any
 
+from _path_policy import checked_output_path
 from rdkit_writer_support_count_surfaces import surface_name
 
 
 CRITERION_VERSION = 1
+APPROVED_OUTPUT_ROOTS = (
+    Path("notes/support_count_mining"),
+    Path("tests/fixtures/rdkit_writer_support_counts"),
+)
 
 
 def writer_flags_from_args(args: argparse.Namespace) -> dict[str, bool]:
@@ -262,6 +267,14 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--force", action="store_true")
+    parser.add_argument(
+        "--allow-outside-repo",
+        action="store_true",
+        help=(
+            "Allow --output outside notes/support_count_mining or "
+            "tests/fixtures/rdkit_writer_support_counts for scratch runs."
+        ),
+    )
     parser.add_argument("--seed", type=int, action="append", required=True)
     parser.add_argument("--min-draws", type=int, default=20_000)
     parser.add_argument("--max-draws", type=int, default=200_000)
@@ -291,12 +304,19 @@ def main() -> int:
         _validate_output_name(args.output, writer_flags_from_args(args))
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
-    if args.output.exists() and not args.force:
-        raise SystemExit(f"{args.output} already exists; pass --force to overwrite it")
+    try:
+        output = checked_output_path(
+            args.output,
+            approved_roots=APPROVED_OUTPUT_ROOTS,
+            allow_outside_repo=args.allow_outside_repo,
+            force=args.force,
+        )
+    except (ValueError, FileExistsError) as exc:
+        raise SystemExit(str(exc)) from exc
 
     payload = generate_fixture(args)
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(
         json.dumps(payload, indent=2, sort_keys=False) + "\n",
         encoding="utf-8",
     )

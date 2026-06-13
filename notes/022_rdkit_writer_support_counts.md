@@ -155,8 +155,10 @@ Only promote cases whose independent RDKit seed runs satisfy the adaptive
 criterion and agree on the count. The fixture remains curated; mining reports
 are evidence discovery, not evidence acceptance.
 
-Both scripts refuse to overwrite an existing output path unless `--force` is
-passed. Use `--force` only when intentionally replacing a local review artifact.
+Both scripts restrict outputs to the review/fixture trees unless
+`--allow-outside-repo` is passed, and refuse to overwrite an existing output
+path unless `--force` is passed. Use `--force` only when intentionally
+replacing a local review artifact.
 
 The checked-in `top_100000` molecule fixture has no atom-map labels. Do not add
 a dataset-mined `ignore_atom_maps` support-count shard from that source: it

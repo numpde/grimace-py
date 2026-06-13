@@ -96,6 +96,7 @@ class RdkitWriterSupportCountCandidateMinerTests(unittest.TestCase):
                     str(output_path),
                     "--limit",
                     "0",
+                    "--allow-outside-repo",
                 ],
                 cwd=ROOT,
                 capture_output=True,
@@ -105,6 +106,26 @@ class RdkitWriterSupportCountCandidateMinerTests(unittest.TestCase):
 
         self.assertNotEqual(0, proc.returncode)
         self.assertIn("already exists", proc.stderr)
+
+    def test_cli_rejects_outside_repo_output_without_explicit_opt_in(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--output",
+                    str(Path(tmpdir) / "candidates.json"),
+                    "--limit",
+                    "0",
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertNotEqual(0, proc.returncode)
+        self.assertIn("output path must be under", proc.stderr)
 
 
 if __name__ == "__main__":

@@ -8,10 +8,14 @@ import json
 from pathlib import Path
 import re
 
+from _path_policy import checked_output_path
 from rdkit_writer_support_count_surfaces import (
     CANDIDATE_MINING_SURFACE_FLAGS,
     surface_flags,
 )
+
+
+APPROVED_OUTPUT_ROOTS = (Path("notes/support_count_mining"),)
 
 
 @dataclass(frozen=True)
@@ -235,6 +239,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--force", action="store_true")
     parser.add_argument(
+        "--allow-outside-repo",
+        action="store_true",
+        help="Allow --output outside notes/support_count_mining for scratch runs.",
+    )
+    parser.add_argument(
         "--surface",
         choices=sorted(CANDIDATE_MINING_SURFACE_FLAGS),
         default="nonisomeric__random",
@@ -268,12 +277,19 @@ def main() -> int:
         raise SystemExit("--max-support-count must be at least --min-support-count")
     if args.max_candidates <= 0:
         raise SystemExit("--max-candidates must be positive")
-    if args.output.exists() and not args.force:
-        raise SystemExit(f"{args.output} already exists; pass --force to overwrite it")
+    try:
+        output = checked_output_path(
+            args.output,
+            approved_roots=APPROVED_OUTPUT_ROOTS,
+            allow_outside_repo=args.allow_outside_repo,
+            force=args.force,
+        )
+    except (ValueError, FileExistsError) as exc:
+        raise SystemExit(str(exc)) from exc
 
     payload = mine_candidates(args)
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(
         json.dumps(payload, indent=2, sort_keys=False) + "\n",
         encoding="utf-8",
     )

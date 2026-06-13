@@ -207,6 +207,7 @@ class RdkitWriterSupportCountGeneratorTests(unittest.TestCase):
                     "1",
                     "--seed",
                     "2",
+                    "--allow-outside-repo",
                 ],
                 cwd=ROOT,
                 capture_output=True,
@@ -216,6 +217,33 @@ class RdkitWriterSupportCountGeneratorTests(unittest.TestCase):
 
         self.assertNotEqual(0, proc.returncode)
         self.assertIn("already exists", proc.stderr)
+
+    def test_cli_rejects_outside_repo_output_without_explicit_opt_in(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = Path(tmpdir) / "input.json"
+            input_path.write_text('{"cases": []}\n', encoding="utf-8")
+
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--input",
+                    str(input_path),
+                    "--output",
+                    str(Path(tmpdir) / "nonisomeric__random.json"),
+                    "--seed",
+                    "1",
+                    "--seed",
+                    "2",
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertNotEqual(0, proc.returncode)
+        self.assertIn("output path must be under", proc.stderr)
 
 
 if __name__ == "__main__":

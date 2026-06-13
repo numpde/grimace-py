@@ -84,11 +84,9 @@ here.
   is tied to the pinned fixture versions and may not transfer automatically to
   future RDKit releases.
 - `scripts/mine_rdkit_writer_support_count_candidates.py` and
-  `scripts/generate_rdkit_writer_support_counts.py` are direct local tooling
-  surfaces whose `--output` paths can point outside their usual report/fixture
-  trees. They refuse to overwrite without `--force` and are not default
-  container lanes, but their path policy is looser than the stricter
-  Make/Compose lanes.
+  `scripts/generate_rdkit_writer_support_counts.py` now restrict `--output` to
+  their usual report/fixture trees unless `--allow-outside-repo` is passed.
+  They still refuse to overwrite without `--force`.
 - `tests/helpers/rdkit_exact_small_support.py` loads `expected` and
   `expected_inventory` via raw indexing plus `list(...)` before the shared
   sorted-unique-string validator. Checked-in fixtures load and serializer
@@ -659,12 +657,12 @@ an explicit opt-in flag.
 
 Checklist:
 
-- [ ] Add a small `scripts/_path_policy.py` helper for repo-root resolution and
+- [x] Add a small `scripts/_path_policy.py` helper for repo-root resolution and
       approved output roots.
-- [ ] Apply it to mining/count scripts.
-- [ ] Require `--allow-outside-repo` for arbitrary paths.
-- [ ] Preserve `--force` overwrite checks.
-- [ ] Add unit tests for symlink, parent traversal, and outside-repo paths.
+- [x] Apply it to mining/count scripts.
+- [x] Require `--allow-outside-repo` for arbitrary paths.
+- [x] Preserve `--force` overwrite checks.
+- [x] Add unit tests for symlink and parent traversal paths.
 
 ### 19. Exact small-support loader uses raw indexing/list conversion
 

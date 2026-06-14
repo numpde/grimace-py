@@ -16,7 +16,7 @@ PINNED_ACTION_USES_LINE = re.compile(
     r"(?m)^\s*(?:-\s+)?uses:\s+[^@\s]+@[0-9a-f]{40}(?:\s+#\s+\S+)?\s*$"
 )
 PINNED_CHECKOUT_USES_LINE = re.compile(
-    r"(?m)^(?:uses:|        uses:) actions/checkout@[0-9a-f]{40}(?:\s+#\s+\S+)?\s*$"
+    r"(?m)^\s*uses:\s+actions/checkout@[0-9a-f]{40}(?:\s+#\s+\S+)?\s*$"
 )
 
 
@@ -58,8 +58,8 @@ def assert_checkouts_do_not_persist_credentials(
     steps = checkout_steps(workflow)
     test.assertTrue(steps)
     for step in steps:
-        test.assertRegex(step, r"(?m)^          persist-credentials: false$")
-        test.assertNotRegex(step, r"(?m)^          persist-credentials: true$")
+        test.assertRegex(step, r"(?m)^\s+persist-credentials:\s+false$")
+        test.assertNotRegex(step, r"(?m)^\s+persist-credentials:\s+true$")
 
 
 def matrix_values(job: str, key: str) -> tuple[str, ...]:
@@ -149,7 +149,7 @@ jobs:
         self.assertNotIn("containers/checks", workflow)
         self.assertNotIn("containers/docs", workflow)
         self.assertNotIn("tests/checks", workflow)
-        self.assertRegex(docs_checkout, r"(?m)^          fetch-depth: 0$")
+        self.assertRegex(docs_checkout, r"(?m)^\s+fetch-depth:\s+0$")
         self.assertIn("run: make docs", docs_job)
         self.assertIn("run: make checks", docs_job)
         self.assertNotIn("run: make ci", workflow)
@@ -159,8 +159,8 @@ jobs:
         workflow = read_text(".github/workflows/ci.yml")
         checks_job = job_section(workflow, "container-ci")
         package_job = job_section(workflow, "test-package")
-        self.assertRegex(checkout_step(checks_job), r"(?m)^          fetch-depth: 0$")
-        self.assertNotRegex(checkout_step(package_job), r"(?m)^          fetch-depth: 0$")
+        self.assertRegex(checkout_step(checks_job), r"(?m)^\s+fetch-depth:\s+0$")
+        self.assertNotRegex(checkout_step(package_job), r"(?m)^\s+fetch-depth:\s+0$")
 
     def test_release_workflow_scopes_token_permissions_by_job(self) -> None:
         workflow = read_text(".github/workflows/release.yml")

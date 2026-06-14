@@ -490,6 +490,10 @@ class _WriterFrontierResidualAttachmentEvidenceGroup:
                     _WriterResidualCyclicPolicyDecisionKind
                     .BRANCH_RETURN_AFTER_DEAD_CLOSURE_OPEN
                 ),
+                (
+                    _WriterResidualCyclicPolicyDecisionKind
+                    .PENDING_PARENT_AFTER_DEAD_CLOSURE_OPEN
+                ),
             )
             for decision in self.residual_cyclic_policy_decisions
         )

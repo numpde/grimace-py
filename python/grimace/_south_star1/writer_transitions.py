@@ -1227,6 +1227,54 @@ class _WriterResidualCyclicPolicyDecision:
         )
 
     @property
+    def active_emitted_graph_policy_blocker_kind(
+        self,
+    ) -> _WriterActiveEmittedGraphPolicyBlockerKind | None:
+        if (
+            self.kind
+            is _WriterResidualCyclicPolicyDecisionKind.UNSUPPORTED_OWNER_SCOPE
+        ):
+            return (
+                _WriterActiveEmittedGraphPolicyBlockerKind
+                .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+            )
+
+        if (
+            self.kind
+            is (
+                _WriterResidualCyclicPolicyDecisionKind
+                .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
+            )
+        ):
+            return (
+                _WriterActiveEmittedGraphPolicyBlockerKind
+                .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
+            )
+
+        return None
+
+    @property
+    def active_emitted_graph_policy_blocker_groups(
+        self,
+    ) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+        if (
+            self.kind
+            is _WriterResidualCyclicPolicyDecisionKind.UNSUPPORTED_OWNER_SCOPE
+        ):
+            return self.unsupported_owner_scope_groups
+
+        if (
+            self.kind
+            is (
+                _WriterResidualCyclicPolicyDecisionKind
+                .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
+            )
+        ):
+            return self.missing_evidence_groups
+
+        return ()
+
+    @property
     def blocks_active_child(self) -> bool:
         return self.blocks_active_emitted_policy
 
@@ -1793,44 +1841,29 @@ class _WriterActiveEmittedGraphPolicyDecision:
     ) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
         residual = self.residual_cyclic_policy_decision
 
-        if residual is None:
-            if (
-                self.kind
-                is (
-                    _WriterActiveEmittedGraphPolicyDecisionKind
-                    .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
-                )
-            ):
-                return (
-                    self
-                    .unsupported_owner_scope_residual_attachment_policy_groups
-                )
-
-            if (
-                self.kind
-                is (
-                    _WriterActiveEmittedGraphPolicyDecisionKind
-                    .UNRESOLVED_RESIDUAL_ATTACHMENT_CHOICE
-                )
-            ):
-                return self.unresolved_residual_attachment_policy_groups
-
-            return ()
+        if residual is not None:
+            return residual.active_emitted_graph_policy_blocker_groups
 
         if (
-            residual.kind
-            is _WriterResidualCyclicPolicyDecisionKind.UNSUPPORTED_OWNER_SCOPE
-        ):
-            return residual.unsupported_owner_scope_groups
-
-        if (
-            residual.kind
+            self.kind
             is (
-                _WriterResidualCyclicPolicyDecisionKind
-                .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
             )
         ):
-            return residual.missing_evidence_groups
+            return (
+                self
+                .unsupported_owner_scope_residual_attachment_policy_groups
+            )
+
+        if (
+            self.kind
+            is (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .UNRESOLVED_RESIDUAL_ATTACHMENT_CHOICE
+            )
+        ):
+            return self.unresolved_residual_attachment_policy_groups
 
         return ()
 
@@ -1841,31 +1874,7 @@ class _WriterActiveEmittedGraphPolicyDecision:
         residual = self.residual_cyclic_policy_decision
 
         if residual is not None:
-            if (
-                residual.kind
-                is (
-                    _WriterResidualCyclicPolicyDecisionKind
-                    .UNSUPPORTED_OWNER_SCOPE
-                )
-            ):
-                return (
-                    _WriterActiveEmittedGraphPolicyBlockerKind
-                    .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
-                )
-
-            if (
-                residual.kind
-                is (
-                    _WriterResidualCyclicPolicyDecisionKind
-                    .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
-                )
-            ):
-                return (
-                    _WriterActiveEmittedGraphPolicyBlockerKind
-                    .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
-                )
-
-            return None
+            return residual.active_emitted_graph_policy_blocker_kind
 
         if (
             self.kind

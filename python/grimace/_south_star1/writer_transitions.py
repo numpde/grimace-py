@@ -2918,20 +2918,15 @@ def _closure_open_vs_cyclic_tree_entry_policy_groups(
     )
 
 
-def _residual_cyclic_policy_decision(
+def _active_owned_residual_cyclic_policy_decision(
     closure_endpoint_decision: _WriterClosureEndpointScheduleDecision,
     child_schedule_surface: _WriterActiveChildScheduleSurface,
+    choice_groups: tuple[_WriterResidualAttachmentPolicyGroup, ...],
 ) -> _WriterResidualCyclicPolicyDecision:
-    choice_groups = _closure_open_vs_cyclic_tree_entry_policy_groups(
-        closure_endpoint_decision,
-        child_schedule_surface,
-    )
-
     if not choice_groups:
-        return _WriterResidualCyclicPolicyDecision(
-            kind=_WriterResidualCyclicPolicyDecisionKind.NONE,
-            closure_endpoint_decision=closure_endpoint_decision,
-            child_schedule_surface=child_schedule_surface,
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "active-owned residual cyclic policy requires choice groups",
         )
 
     unsupported_owner_scope_groups = tuple(
@@ -2941,15 +2936,9 @@ def _residual_cyclic_policy_decision(
     )
 
     if unsupported_owner_scope_groups:
-        return _WriterResidualCyclicPolicyDecision(
-            kind=(
-                _WriterResidualCyclicPolicyDecisionKind
-                .UNSUPPORTED_OWNER_SCOPE
-            ),
-            closure_endpoint_decision=closure_endpoint_decision,
-            child_schedule_surface=child_schedule_surface,
-            choice_groups=choice_groups,
-            unsupported_owner_scope_groups=unsupported_owner_scope_groups,
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "active-owned residual cyclic policy received unsupported owner scope",
         )
 
     missing_evidence_groups = _missing_closure_open_support_evidence_groups(
@@ -2990,7 +2979,48 @@ def _residual_cyclic_policy_decision(
 
     raise SouthStarError(
         SouthStarErrorKind.INTERNAL_INVARIANT,
-        "residual cyclic choice did not classify",
+        "active-owned residual cyclic choice did not classify",
+    )
+
+
+def _residual_cyclic_policy_decision(
+    closure_endpoint_decision: _WriterClosureEndpointScheduleDecision,
+    child_schedule_surface: _WriterActiveChildScheduleSurface,
+) -> _WriterResidualCyclicPolicyDecision:
+    choice_groups = _closure_open_vs_cyclic_tree_entry_policy_groups(
+        closure_endpoint_decision,
+        child_schedule_surface,
+    )
+
+    if not choice_groups:
+        return _WriterResidualCyclicPolicyDecision(
+            kind=_WriterResidualCyclicPolicyDecisionKind.NONE,
+            closure_endpoint_decision=closure_endpoint_decision,
+            child_schedule_surface=child_schedule_surface,
+        )
+
+    unsupported_owner_scope_groups = tuple(
+        group
+        for group in choice_groups
+        if group.has_unsupported_owner_scope_closure_open_vs_cyclic_tree_entry_choice
+    )
+
+    if unsupported_owner_scope_groups:
+        return _WriterResidualCyclicPolicyDecision(
+            kind=(
+                _WriterResidualCyclicPolicyDecisionKind
+                .UNSUPPORTED_OWNER_SCOPE
+            ),
+            closure_endpoint_decision=closure_endpoint_decision,
+            child_schedule_surface=child_schedule_surface,
+            choice_groups=choice_groups,
+            unsupported_owner_scope_groups=unsupported_owner_scope_groups,
+        )
+
+    return _active_owned_residual_cyclic_policy_decision(
+        closure_endpoint_decision,
+        child_schedule_surface,
+        choice_groups,
     )
 
 

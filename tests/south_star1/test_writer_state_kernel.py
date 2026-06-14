@@ -19443,6 +19443,185 @@ class WriterStateKernelTest(unittest.TestCase):
             decision.support_dead_groups,
         )
 
+    def test_active_owned_residual_cyclic_policy_decision_classifies_missing_evidence(self) -> None:
+        closure_decision, child_surface = (
+            self._test_residual_cyclic_policy_inputs(
+                include_closure_emission=False,
+            )
+        )
+        choice_groups = (
+            writer_transitions
+            ._closure_open_vs_cyclic_tree_entry_policy_groups(
+                closure_decision,
+                child_surface,
+            )
+        )
+
+        decision = (
+            writer_transitions
+            ._active_owned_residual_cyclic_policy_decision(
+                closure_decision,
+                child_surface,
+                choice_groups,
+            )
+        )
+
+        self.assertIs(
+            decision.kind,
+            (
+                writer_transitions
+                ._WriterResidualCyclicPolicyDecisionKind
+                .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
+            ),
+        )
+        self.assertTrue(decision.blocks_active_emitted_policy)
+        self.assertTrue(decision.missing_evidence_groups)
+        self.assertIs(
+            decision.active_emitted_graph_policy_kind,
+            (
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyDecisionKind
+                .UNRESOLVED_RESIDUAL_ATTACHMENT_CHOICE
+            ),
+        )
+
+    def test_active_owned_residual_cyclic_policy_decision_classifies_support_dead_resolution(self) -> None:
+        closure_decision, child_surface = self._test_residual_cyclic_policy_inputs()
+        choice_groups = (
+            writer_transitions
+            ._closure_open_vs_cyclic_tree_entry_policy_groups(
+                closure_decision,
+                child_surface,
+            )
+        )
+
+        decision = (
+            writer_transitions
+            ._active_owned_residual_cyclic_policy_decision(
+                closure_decision,
+                child_surface,
+                choice_groups,
+            )
+        )
+
+        self.assertIs(
+            decision.kind,
+            (
+                writer_transitions
+                ._WriterResidualCyclicPolicyDecisionKind
+                .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+            ),
+        )
+        self.assertTrue(decision.selects_active_child)
+        self.assertTrue(decision.support_dead_groups)
+        self.assertIs(
+            decision.active_emitted_graph_policy_kind,
+            (
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyDecisionKind
+                .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+            ),
+        )
+
+    def test_active_owned_residual_cyclic_policy_decision_rejects_unsupported_owner_scope(self) -> None:
+        closure_decision, child_surface = (
+            self._test_residual_cyclic_policy_inputs(
+                closure_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+                child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+            )
+        )
+        choice_groups = (
+            writer_transitions
+            ._closure_open_vs_cyclic_tree_entry_policy_groups(
+                closure_decision,
+                child_surface,
+            )
+        )
+
+        with self.assertRaises(SouthStarError) as raised:
+            (
+                writer_transitions
+                ._active_owned_residual_cyclic_policy_decision(
+                    closure_decision,
+                    child_surface,
+                    choice_groups,
+                )
+            )
+
+        self.assertIs(raised.exception.kind, SouthStarErrorKind.INTERNAL_INVARIANT)
+
+    def test_residual_cyclic_policy_dispatcher_classifies_unsupported_owner_scope_before_active_owned_rule(self) -> None:
+        closure_decision, child_surface = (
+            self._test_residual_cyclic_policy_inputs(
+                closure_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+                child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+            )
+        )
+
+        with patch(
+            (
+                "grimace._south_star1.writer_transitions"
+                "._active_owned_residual_cyclic_policy_decision"
+            ),
+            side_effect=AssertionError(
+                "active-owned rule should not receive unsupported owner scope"
+            ),
+        ) as active_owned_rule:
+            decision = writer_transitions._residual_cyclic_policy_decision(
+                closure_decision,
+                child_surface,
+            )
+
+        self.assertIs(
+            decision.kind,
+            (
+                writer_transitions
+                ._WriterResidualCyclicPolicyDecisionKind
+                .UNSUPPORTED_OWNER_SCOPE
+            ),
+        )
+        active_owned_rule.assert_not_called()
+
+    def test_residual_cyclic_policy_dispatcher_delegates_active_owned_choice(self) -> None:
+        closure_decision, child_surface = self._test_residual_cyclic_policy_inputs()
+        choice_groups = (
+            writer_transitions
+            ._closure_open_vs_cyclic_tree_entry_policy_groups(
+                closure_decision,
+                child_surface,
+            )
+        )
+        returned_decision = writer_transitions._WriterResidualCyclicPolicyDecision(
+            kind=(
+                writer_transitions
+                ._WriterResidualCyclicPolicyDecisionKind
+                .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+            ),
+            closure_endpoint_decision=closure_decision,
+            child_schedule_surface=child_surface,
+            choice_groups=choice_groups,
+            support_dead_groups=choice_groups,
+        )
+
+        with patch(
+            (
+                "grimace._south_star1.writer_transitions"
+                "._active_owned_residual_cyclic_policy_decision"
+            ),
+            return_value=returned_decision,
+        ) as active_owned_rule:
+            decision = writer_transitions._residual_cyclic_policy_decision(
+                closure_decision,
+                child_surface,
+            )
+
+        self.assertIs(decision, returned_decision)
+        active_owned_rule.assert_called_once_with(
+            closure_decision,
+            child_surface,
+            choice_groups,
+        )
+
     def test_residual_cyclic_policy_decision_maps_to_active_emitted_policy_kind(self) -> None:
         active_atom = AtomId(0)
         key = writer_transitions._WriterResidualAttachmentPolicyKey(
@@ -22609,6 +22788,52 @@ class WriterStateKernelTest(unittest.TestCase):
         )
         self.assertTrue(policy.residual_cyclic_support_dead_groups)
         self.assertTrue(policy.considered_cyclic_tree_entry_available)
+
+    def test_prepared_active_owned_residual_policy_still_resolves_after_dispatch_extraction(self) -> None:
+        (
+            prepared,
+            state,
+            context,
+            closure_decision,
+            child_surface,
+        ) = self._test_prepared_active_owned_cycle_surfaces()
+        support_dead_closure = (
+            self._test_closure_decision_with_open_emission_evidence(
+                closure_decision,
+                include_open_emissions=True,
+            )
+        )
+
+        with patch(
+            "grimace._south_star1.writer_transitions._closure_endpoint_schedule_decision",
+            return_value=support_dead_closure,
+        ), patch(
+            "grimace._south_star1.writer_transitions._active_child_schedule_surface_from_context",
+            return_value=child_surface,
+        ):
+            policy = writer_transitions._active_emitted_graph_policy_decision(
+                prepared,
+                state,
+                context,
+                state.active.atom,
+            )
+
+        self.assertIs(
+            policy.kind,
+            (
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyDecisionKind
+                .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+            ),
+        )
+        self.assertIs(
+            policy.residual_cyclic_policy_kind,
+            (
+                writer_transitions
+                ._WriterResidualCyclicPolicyDecisionKind
+                .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+            ),
+        )
 
     def test_prepared_active_owned_cycle_missing_closure_open_evidence_stays_unresolved(self) -> None:
         (

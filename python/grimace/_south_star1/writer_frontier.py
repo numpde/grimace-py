@@ -494,6 +494,10 @@ class _WriterFrontierResidualAttachmentEvidenceGroup:
                     _WriterResidualCyclicPolicyDecisionKind
                     .PENDING_PARENT_AFTER_DEAD_CLOSURE_OPEN
                 ),
+                (
+                    _WriterResidualCyclicPolicyDecisionKind
+                    .OPEN_RING_ENDPOINT_AFTER_DEAD_CLOSURE_OPEN
+                ),
             )
             for decision in self.residual_cyclic_policy_decisions
         )

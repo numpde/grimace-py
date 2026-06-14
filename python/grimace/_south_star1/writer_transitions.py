@@ -234,6 +234,9 @@ class _WriterResidualCyclicPolicyDecisionKind(Enum):
     PENDING_PARENT_AFTER_DEAD_CLOSURE_OPEN = (
         "pending_parent_after_dead_closure_open"
     )
+    OPEN_RING_ENDPOINT_AFTER_DEAD_CLOSURE_OPEN = (
+        "open_ring_endpoint_after_dead_closure_open"
+    )
 
 
 class _WriterActiveEmittedGraphPolicyBlockerKind(Enum):
@@ -543,9 +546,11 @@ class _WriterResidualAttachmentPolicyGroup:
     ) -> bool:
         return (
             self.has_closure_open_vs_cyclic_tree_entry_choice
-            and not (
-                self
-                .has_active_atom_owner_scope_closure_open_vs_cyclic_tree_entry_choice
+            and (
+                _supported_dead_closure_owner_scope_decision_kind(
+                    self.closure_open_vs_cyclic_tree_entry_owner_scope_kind
+                )
+                is None
             )
         )
 
@@ -1156,6 +1161,12 @@ class _WriterResidualCyclicPolicyDecision:
                 _WriterResidualCyclicPolicyDecisionKind
                 .PENDING_PARENT_AFTER_DEAD_CLOSURE_OPEN
             )
+        ) or (
+            self.kind
+            is (
+                _WriterResidualCyclicPolicyDecisionKind
+                .OPEN_RING_ENDPOINT_AFTER_DEAD_CLOSURE_OPEN
+            )
         ):
             valid = (
                 has_choice
@@ -1217,6 +1228,12 @@ class _WriterResidualCyclicPolicyDecision:
             is (
                 _WriterResidualCyclicPolicyDecisionKind
                 .PENDING_PARENT_AFTER_DEAD_CLOSURE_OPEN
+            )
+        ) or (
+            self.kind
+            is (
+                _WriterResidualCyclicPolicyDecisionKind
+                .OPEN_RING_ENDPOINT_AFTER_DEAD_CLOSURE_OPEN
             )
         ):
             return (
@@ -1334,6 +1351,10 @@ class _WriterResidualCyclicPolicyDecision:
                 (
                     _WriterResidualCyclicPolicyDecisionKind
                     .PENDING_PARENT_AFTER_DEAD_CLOSURE_OPEN
+                ),
+                (
+                    _WriterResidualCyclicPolicyDecisionKind
+                    .OPEN_RING_ENDPOINT_AFTER_DEAD_CLOSURE_OPEN
                 ),
             )
         )
@@ -2974,6 +2995,10 @@ _SUPPORTED_DEAD_CLOSURE_OWNER_SCOPE_TO_DECISION_KIND: dict[
         _WriterResidualCyclicPolicyDecisionKind
         .PENDING_PARENT_AFTER_DEAD_CLOSURE_OPEN
     ),
+    _WriterResidualAttachmentOwnerScopeKind.OPEN_RING_ENDPOINT: (
+        _WriterResidualCyclicPolicyDecisionKind
+        .OPEN_RING_ENDPOINT_AFTER_DEAD_CLOSURE_OPEN
+    ),
 }
 
 
@@ -3220,6 +3245,10 @@ def _closure_open_support_dead_for_residual_attachment_policy_group(
             group
             .has_pending_parent_owner_scope_closure_open_vs_cyclic_tree_entry_choice
         )
+        or (
+            group
+            .has_open_ring_endpoint_owner_scope_closure_open_vs_cyclic_tree_entry_choice
+        )
     ):
         return False
 
@@ -3264,6 +3293,10 @@ def _closure_open_support_evidence_missing_for_residual_attachment_policy_group(
         or (
             group
             .has_pending_parent_owner_scope_closure_open_vs_cyclic_tree_entry_choice
+        )
+        or (
+            group
+            .has_open_ring_endpoint_owner_scope_closure_open_vs_cyclic_tree_entry_choice
         )
     ):
         return False

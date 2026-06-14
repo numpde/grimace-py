@@ -4,7 +4,7 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[2]
-TAG_PATTERN = re.compile(r"^v0\.1\.\d+$")
+RELEASE_TAG_PATTERN = re.compile(r"^v\d+\.\d+\.\d+$")
 
 
 def read_text(relative_path: str) -> str:
@@ -17,7 +17,7 @@ def release_tags() -> tuple[str, ...]:
     refs_tags = ROOT / ".git" / "refs" / "tags"
     if refs_tags.is_dir():
         for path in refs_tags.iterdir():
-            if TAG_PATTERN.fullmatch(path.name):
+            if RELEASE_TAG_PATTERN.fullmatch(path.name):
                 tags.add(path.name)
 
     packed_refs = ROOT / ".git" / "packed-refs"
@@ -32,16 +32,16 @@ def release_tags() -> tuple[str, ...]:
             if not ref.startswith("refs/tags/"):
                 continue
             tag = ref.rsplit("/", 1)[-1]
-            if TAG_PATTERN.fullmatch(tag):
+            if RELEASE_TAG_PATTERN.fullmatch(tag):
                 tags.add(tag)
 
     return tuple(sorted(tags))
 
 
 class ReleaseNotesTests(unittest.TestCase):
-    def test_every_v0_1_release_tag_has_checked_in_note(self) -> None:
+    def test_every_release_tag_has_checked_in_note(self) -> None:
         tags = release_tags()
-        self.assertTrue(tags, "expected local git metadata with v0.1.* tags")
+        self.assertTrue(tags, "expected local git metadata with vX.Y.Z tags")
         missing = [
             tag
             for tag in tags

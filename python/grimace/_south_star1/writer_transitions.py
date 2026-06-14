@@ -239,6 +239,17 @@ class _WriterResidualCyclicPolicyDecisionKind(Enum):
     )
 
 
+class _WriterResidualCyclicPolicyCoverageKind(Enum):
+    NO_RESIDUAL_CYCLIC_CHOICE = "no_residual_cyclic_choice"
+    SUPPORTED_DEAD_CLOSURE_RESOLUTION = (
+        "supported_dead_closure_resolution"
+    )
+    MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE = (
+        "missing_closure_open_support_evidence"
+    )
+    UNSUPPORTED_OWNER_SCOPE = "unsupported_owner_scope"
+
+
 class _WriterActiveEmittedGraphPolicyBlockerKind(Enum):
     CHILD_OBLIGATION = "child_obligation"
     UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE = (
@@ -1368,6 +1379,65 @@ class _WriterResidualCyclicPolicyDecision:
 
         return self.support_dead_groups
 
+    @property
+    def coverage_kind(
+        self,
+    ) -> _WriterResidualCyclicPolicyCoverageKind:
+        if self.kind is _WriterResidualCyclicPolicyDecisionKind.NONE:
+            return (
+                _WriterResidualCyclicPolicyCoverageKind
+                .NO_RESIDUAL_CYCLIC_CHOICE
+            )
+
+        if (
+            self.kind
+            is _WriterResidualCyclicPolicyDecisionKind.UNSUPPORTED_OWNER_SCOPE
+        ):
+            return (
+                _WriterResidualCyclicPolicyCoverageKind
+                .UNSUPPORTED_OWNER_SCOPE
+            )
+
+        if (
+            self.kind
+            is (
+                _WriterResidualCyclicPolicyDecisionKind
+                .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
+            )
+        ):
+            return (
+                _WriterResidualCyclicPolicyCoverageKind
+                .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
+            )
+
+        if self.resolves_active_child_after_dead_closure_open:
+            return (
+                _WriterResidualCyclicPolicyCoverageKind
+                .SUPPORTED_DEAD_CLOSURE_RESOLUTION
+            )
+
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            f"unknown residual cyclic policy coverage: {self.kind!r}",
+        )
+
+    @property
+    def cyclic_policy_is_covered(self) -> bool:
+        return self.coverage_kind in (
+            (
+                _WriterResidualCyclicPolicyCoverageKind
+                .NO_RESIDUAL_CYCLIC_CHOICE
+            ),
+            (
+                _WriterResidualCyclicPolicyCoverageKind
+                .SUPPORTED_DEAD_CLOSURE_RESOLUTION
+            ),
+        )
+
+    @property
+    def cyclic_policy_is_blocked(self) -> bool:
+        return not self.cyclic_policy_is_covered
+
 
 @dataclass(frozen=True, slots=True)
 class _WriterActiveEmittedGraphPolicyDecision:
@@ -1752,6 +1822,33 @@ class _WriterActiveEmittedGraphPolicyDecision:
     @property
     def residual_cyclic_evidence_is_retained(self) -> bool:
         return self.residual_cyclic_policy_decision is not None
+
+    @property
+    def residual_cyclic_policy_coverage_kind(
+        self,
+    ) -> _WriterResidualCyclicPolicyCoverageKind | None:
+        if self.residual_cyclic_policy_decision is None:
+            return None
+
+        return self.residual_cyclic_policy_decision.coverage_kind
+
+    @property
+    def residual_cyclic_policy_is_covered(self) -> bool:
+        residual = self.residual_cyclic_policy_decision
+
+        if residual is None:
+            return True
+
+        return residual.cyclic_policy_is_covered
+
+    @property
+    def residual_cyclic_policy_is_blocked(self) -> bool:
+        residual = self.residual_cyclic_policy_decision
+
+        if residual is None:
+            return False
+
+        return residual.cyclic_policy_is_blocked
 
     @property
     def unsupported_owner_scope_closure_open_vs_cyclic_tree_entry_groups(

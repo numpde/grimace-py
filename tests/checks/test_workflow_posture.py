@@ -24,13 +24,7 @@ PINNED_CHECKOUT_USES_LINE = re.compile(
     r"(?m)^(?:uses:| {8}uses:)[ \t]+actions/checkout@[0-9a-f]{40}"
     r"(?:[ \t]+#[ \t]*\S+)?[ \t]*$"
 )
-WORKFLOW_ACTION_STEP_BLOCKS = re.compile(
-    # Match real workflow step starts, not action-like text inside run: |
-    # blocks. This keeps the pinning posture check tied to GitHub's step
-    # surface without pulling in a YAML dependency for source-only checks.
-    r"(?ms)^      - (?P<body>(?:uses:|name:|if:|run:).*?)"
-    r"(?=^      - (?:uses:|name:|if:|run:)|\Z)"
-)
+WORKFLOW_STEP_BLOCKS = re.compile(r"(?ms)^      - (?P<body>.*?)(?=^      - |\Z)")
 
 
 def read_text(relative_path: str) -> str:
@@ -58,7 +52,7 @@ def checkout_steps(text: str) -> tuple[str, ...]:
     # order inside the YAML step.
     return tuple(
         match.group("body")
-        for match in WORKFLOW_ACTION_STEP_BLOCKS.finditer(text)
+        for match in WORKFLOW_STEP_BLOCKS.finditer(text)
         if PINNED_CHECKOUT_USES_LINE.search(match.group("body"))
     )
 
@@ -66,7 +60,7 @@ def checkout_steps(text: str) -> tuple[str, ...]:
 def workflow_uses_lines(workflow: str, pattern: re.Pattern[str]) -> tuple[str, ...]:
     return tuple(
         line
-        for step in WORKFLOW_ACTION_STEP_BLOCKS.finditer(workflow)
+        for step in WORKFLOW_STEP_BLOCKS.finditer(workflow)
         for line in pattern.findall(step.group("body"))
     )
 

@@ -72,7 +72,7 @@ def workflow_uses_lines(workflow: str, pattern: re.Pattern[str]) -> tuple[str, .
     )
 
 
-def pinned_workflow_uses_counts(workflow: str) -> tuple[int, int]:
+def unpinned_workflow_uses_lines(workflow: str) -> tuple[str, ...]:
     step_uses = workflow_uses_lines(workflow, ACTION_USES_LINE)
     pinned_step_uses = workflow_uses_lines(workflow, PINNED_ACTION_USES_LINE)
     # Reusable workflow jobs are `jobs.<id>.uses`, outside any step block.
@@ -82,7 +82,12 @@ def pinned_workflow_uses_counts(workflow: str) -> tuple[int, int]:
         if not LOCAL_JOB_USES_LINE.fullmatch(line)
     )
     pinned_job_uses = PINNED_JOB_USES_LINE.findall(workflow)
-    return len(step_uses) + len(job_uses), len(pinned_step_uses) + len(pinned_job_uses)
+    pinned_uses = {*pinned_step_uses, *pinned_job_uses}
+    return tuple(
+        line
+        for line in (*step_uses, *job_uses)
+        if line not in pinned_uses
+    )
 
 
 def assert_checkouts_do_not_persist_credentials(
@@ -132,10 +137,7 @@ jobs:
     uses: ./.github/workflows/local.yml
 """
 
-        uses_count, pinned_count = pinned_workflow_uses_counts(workflow)
-
-        self.assertEqual(uses_count, 3)
-        self.assertEqual(pinned_count, 3)
+        self.assertEqual((), unpinned_workflow_uses_lines(workflow))
         assert_checkouts_do_not_persist_credentials(self, workflow)
         self.assertNotIn("if: always()", checkout_step(workflow))
 
@@ -144,9 +146,10 @@ jobs:
             + "  unpinned:\n"
             + "    uses: example/workflow/.github/workflows/build.yml@v1\n"
         )
-        uses_count, pinned_count = pinned_workflow_uses_counts(unpinned_reusable)
-        self.assertEqual(uses_count, 4)
-        self.assertEqual(pinned_count, 3)
+        self.assertEqual(
+            ("    uses: example/workflow/.github/workflows/build.yml@v1",),
+            unpinned_workflow_uses_lines(unpinned_reusable),
+        )
 
     def test_workflows_pin_github_hosted_runner_image(self) -> None:
         for workflow_path in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
@@ -167,9 +170,8 @@ jobs:
     def test_workflow_uses_refs_are_pinned_to_commit_sha(self) -> None:
         for workflow_path in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
             workflow = workflow_path.read_text(encoding="utf-8")
-            uses_count, pinned_count = pinned_workflow_uses_counts(workflow)
             with self.subTest(workflow=workflow_path.name):
-                self.assertEqual(uses_count, pinned_count)
+                self.assertEqual((), unpinned_workflow_uses_lines(workflow))
 
     def test_ci_workflow_uses_read_only_token_and_non_persistent_checkout(self) -> None:
         workflow = read_text(".github/workflows/ci.yml")

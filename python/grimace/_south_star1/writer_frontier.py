@@ -481,10 +481,15 @@ class _WriterFrontierResidualAttachmentEvidenceGroup:
     @property
     def has_residual_cyclic_support_dead_resolution(self) -> bool:
         return any(
-            decision.kind
-            is (
-                _WriterResidualCyclicPolicyDecisionKind
-                .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+            decision.kind in (
+                (
+                    _WriterResidualCyclicPolicyDecisionKind
+                    .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+                ),
+                (
+                    _WriterResidualCyclicPolicyDecisionKind
+                    .BRANCH_RETURN_AFTER_DEAD_CLOSURE_OPEN
+                ),
             )
             for decision in self.residual_cyclic_policy_decisions
         )

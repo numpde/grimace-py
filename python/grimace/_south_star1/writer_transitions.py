@@ -228,6 +228,9 @@ class _WriterResidualCyclicPolicyDecisionKind(Enum):
     ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN = (
         "active_child_after_dead_closure_open"
     )
+    BRANCH_RETURN_AFTER_DEAD_CLOSURE_OPEN = (
+        "branch_return_after_dead_closure_open"
+    )
 
 
 class _WriterActiveEmittedGraphPolicyBlockerKind(Enum):
@@ -1138,6 +1141,12 @@ class _WriterResidualCyclicPolicyDecision:
                 _WriterResidualCyclicPolicyDecisionKind
                 .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
             )
+        ) or (
+            self.kind
+            is (
+                _WriterResidualCyclicPolicyDecisionKind
+                .BRANCH_RETURN_AFTER_DEAD_CLOSURE_OPEN
+            )
         ):
             valid = (
                 has_choice
@@ -1187,6 +1196,12 @@ class _WriterResidualCyclicPolicyDecision:
             is (
                 _WriterResidualCyclicPolicyDecisionKind
                 .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+            )
+        ) or (
+            self.kind
+            is (
+                _WriterResidualCyclicPolicyDecisionKind
+                .BRANCH_RETURN_AFTER_DEAD_CLOSURE_OPEN
             )
         ):
             return (
@@ -1292,9 +1307,15 @@ class _WriterResidualCyclicPolicyDecision:
     def resolves_active_child_after_dead_closure_open(self) -> bool:
         return (
             self.kind
-            is (
-                _WriterResidualCyclicPolicyDecisionKind
-                .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+            in (
+                (
+                    _WriterResidualCyclicPolicyDecisionKind
+                    .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+                ),
+                (
+                    _WriterResidualCyclicPolicyDecisionKind
+                    .BRANCH_RETURN_AFTER_DEAD_CLOSURE_OPEN
+                ),
             )
         )
 
@@ -2983,6 +3004,68 @@ def _active_owned_residual_cyclic_policy_decision(
     )
 
 
+def _branch_return_owned_residual_cyclic_policy_decision(
+    closure_endpoint_decision: _WriterClosureEndpointScheduleDecision,
+    child_schedule_surface: _WriterActiveChildScheduleSurface,
+    choice_groups: tuple[_WriterResidualAttachmentPolicyGroup, ...],
+) -> _WriterResidualCyclicPolicyDecision:
+    if not choice_groups:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "branch-return residual cyclic policy requires choice groups",
+        )
+
+    if not all(
+        group.has_branch_return_owner_scope_closure_open_vs_cyclic_tree_entry_choice
+        for group in choice_groups
+    ):
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "branch-return residual cyclic policy received non-branch-return owner scope",
+        )
+
+    missing_evidence_groups = _missing_closure_open_support_evidence_groups(
+        closure_endpoint_decision,
+        choice_groups,
+    )
+
+    if missing_evidence_groups:
+        return _WriterResidualCyclicPolicyDecision(
+            kind=(
+                _WriterResidualCyclicPolicyDecisionKind
+                .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
+            ),
+            closure_endpoint_decision=closure_endpoint_decision,
+            child_schedule_surface=child_schedule_surface,
+            choice_groups=choice_groups,
+            missing_evidence_groups=missing_evidence_groups,
+        )
+
+    support_dead_groups = (
+        _support_dead_closure_open_vs_cyclic_tree_entry_groups(
+            closure_endpoint_decision,
+            choice_groups,
+        )
+    )
+
+    if support_dead_groups:
+        return _WriterResidualCyclicPolicyDecision(
+            kind=(
+                _WriterResidualCyclicPolicyDecisionKind
+                .BRANCH_RETURN_AFTER_DEAD_CLOSURE_OPEN
+            ),
+            closure_endpoint_decision=closure_endpoint_decision,
+            child_schedule_surface=child_schedule_surface,
+            choice_groups=choice_groups,
+            support_dead_groups=support_dead_groups,
+        )
+
+    raise SouthStarError(
+        SouthStarErrorKind.INTERNAL_INVARIANT,
+        "branch-return residual cyclic choice did not classify",
+    )
+
+
 def _residual_cyclic_policy_decision(
     closure_endpoint_decision: _WriterClosureEndpointScheduleDecision,
     child_schedule_surface: _WriterActiveChildScheduleSurface,
@@ -2999,28 +3082,35 @@ def _residual_cyclic_policy_decision(
             child_schedule_surface=child_schedule_surface,
         )
 
-    unsupported_owner_scope_groups = tuple(
-        group
+    if all(
+        group.has_active_atom_owner_scope_closure_open_vs_cyclic_tree_entry_choice
         for group in choice_groups
-        if group.has_unsupported_owner_scope_closure_open_vs_cyclic_tree_entry_choice
-    )
-
-    if unsupported_owner_scope_groups:
-        return _WriterResidualCyclicPolicyDecision(
-            kind=(
-                _WriterResidualCyclicPolicyDecisionKind
-                .UNSUPPORTED_OWNER_SCOPE
-            ),
-            closure_endpoint_decision=closure_endpoint_decision,
-            child_schedule_surface=child_schedule_surface,
-            choice_groups=choice_groups,
-            unsupported_owner_scope_groups=unsupported_owner_scope_groups,
+    ):
+        return _active_owned_residual_cyclic_policy_decision(
+            closure_endpoint_decision,
+            child_schedule_surface,
+            choice_groups,
         )
 
-    return _active_owned_residual_cyclic_policy_decision(
-        closure_endpoint_decision,
-        child_schedule_surface,
-        choice_groups,
+    if all(
+        group.has_branch_return_owner_scope_closure_open_vs_cyclic_tree_entry_choice
+        for group in choice_groups
+    ):
+        return _branch_return_owned_residual_cyclic_policy_decision(
+            closure_endpoint_decision,
+            child_schedule_surface,
+            choice_groups,
+        )
+
+    return _WriterResidualCyclicPolicyDecision(
+        kind=(
+            _WriterResidualCyclicPolicyDecisionKind
+            .UNSUPPORTED_OWNER_SCOPE
+        ),
+        closure_endpoint_decision=closure_endpoint_decision,
+        child_schedule_surface=child_schedule_surface,
+        choice_groups=choice_groups,
+        unsupported_owner_scope_groups=choice_groups,
     )
 
 
@@ -3069,7 +3159,13 @@ def _closure_open_support_dead_for_residual_attachment_policy_group(
     closure_endpoint_decision: _WriterClosureEndpointScheduleDecision,
     group: _WriterResidualAttachmentPolicyGroup,
 ) -> bool:
-    if not group.has_active_atom_owned_closure_open_vs_cyclic_tree_entry_choice:
+    if not (
+        group.has_active_atom_owned_closure_open_vs_cyclic_tree_entry_choice
+        or (
+            group
+            .has_branch_return_owner_scope_closure_open_vs_cyclic_tree_entry_choice
+        )
+    ):
         return False
 
     emission_group = _residual_attachment_policy_emission_group_for_key(
@@ -3104,7 +3200,13 @@ def _closure_open_support_evidence_missing_for_residual_attachment_policy_group(
     closure_endpoint_decision: _WriterClosureEndpointScheduleDecision,
     group: _WriterResidualAttachmentPolicyGroup,
 ) -> bool:
-    if not group.has_active_atom_owned_closure_open_vs_cyclic_tree_entry_choice:
+    if not (
+        group.has_active_atom_owned_closure_open_vs_cyclic_tree_entry_choice
+        or (
+            group
+            .has_branch_return_owner_scope_closure_open_vs_cyclic_tree_entry_choice
+        )
+    ):
         return False
 
     emission_group = _residual_attachment_policy_emission_group_for_key(

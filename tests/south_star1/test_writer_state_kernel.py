@@ -814,6 +814,12 @@ class WriterStateKernelTest(unittest.TestCase):
     def _test_active_owned_dead_closure_active_outcome(
         self,
         *,
+        closure_owner_kind: WriterBoundaryOwnerKind | None = (
+            WriterBoundaryOwnerKind.ACTIVE_ATOM
+        ),
+        child_owner_kind: WriterBoundaryOwnerKind | None = (
+            WriterBoundaryOwnerKind.ACTIVE_ATOM
+        ),
         child_attachment_action_kind: WriterResidualAttachmentActionKind = (
             WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY
         ),
@@ -827,6 +833,8 @@ class WriterStateKernelTest(unittest.TestCase):
             self._test_residual_cyclic_policy_inputs(
                 active_atom=active_atom,
                 attachment_id=7,
+                closure_owner_kind=closure_owner_kind,
+                child_owner_kind=child_owner_kind,
                 child_attachment_action_kind=child_attachment_action_kind,
             )
         )
@@ -1967,8 +1975,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
         unsupported_closure, unsupported_child = (
             self._test_residual_cyclic_policy_inputs(
-                closure_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
-                child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+                closure_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
+                child_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
             )
         )
         unsupported_decision = (
@@ -2332,8 +2340,8 @@ class WriterStateKernelTest(unittest.TestCase):
         closure_decision, child_surface = (
             self._test_residual_cyclic_policy_inputs(
                 attachment_id=7,
-                closure_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
-                child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+                closure_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
+                child_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
             )
         )
         residual_decision = writer_transitions._residual_cyclic_policy_decision(
@@ -3880,8 +3888,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_writer_frontier_schedule_outcome_exposes_residual_cyclic_group_buckets(self) -> None:
         unsupported_closure_decision, unsupported_child_surface = (
             self._test_residual_cyclic_policy_inputs(
-                closure_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
-                child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+                closure_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
+                child_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
             )
         )
         unsupported_residual = (
@@ -4161,8 +4169,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_writer_frontier_choice_snapshot_exposes_unsupported_owner_scope_choice_evidence(self) -> None:
         decision = (
             self._dead_closure_open_graph_policy_decision_for_owner_scope(
-                closure_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
-                child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+                closure_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
+                child_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
             )
         )
         active_outcome = writer_transitions._WriterActiveEmittedScheduleOutcome(
@@ -4243,7 +4251,7 @@ class WriterStateKernelTest(unittest.TestCase):
             (
                 writer_transitions
                 ._WriterResidualAttachmentOwnerScopeKind
-                .BRANCH_RETURN,
+                .PENDING_PARENT,
             ),
         )
 
@@ -19374,8 +19382,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_residual_cyclic_policy_decision_classifies_unsupported_owner_scope(self) -> None:
         closure_decision, child_surface = (
             self._test_residual_cyclic_policy_inputs(
-                closure_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
-                child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+                closure_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
+                child_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
             )
         )
 
@@ -19550,11 +19558,98 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertIs(raised.exception.kind, SouthStarErrorKind.INTERNAL_INVARIANT)
 
-    def test_residual_cyclic_policy_dispatcher_classifies_unsupported_owner_scope_before_active_owned_rule(self) -> None:
+    def test_branch_return_residual_cyclic_policy_decision_classifies_support_dead_resolution(self) -> None:
         closure_decision, child_surface = (
             self._test_residual_cyclic_policy_inputs(
                 closure_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
                 child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+            )
+        )
+        choice_groups = (
+            writer_transitions
+            ._closure_open_vs_cyclic_tree_entry_policy_groups(
+                closure_decision,
+                child_surface,
+            )
+        )
+
+        decision = (
+            writer_transitions
+            ._branch_return_owned_residual_cyclic_policy_decision(
+                closure_decision,
+                child_surface,
+                choice_groups,
+            )
+        )
+
+        self.assertIs(
+            decision.kind,
+            (
+                writer_transitions
+                ._WriterResidualCyclicPolicyDecisionKind
+                .BRANCH_RETURN_AFTER_DEAD_CLOSURE_OPEN
+            ),
+        )
+        self.assertTrue(decision.selects_active_child)
+        self.assertFalse(decision.blocks_active_emitted_policy)
+        self.assertTrue(decision.support_dead_groups)
+        self.assertIs(
+            decision.active_emitted_graph_policy_kind,
+            (
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyDecisionKind
+                .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+            ),
+        )
+
+    def test_branch_return_residual_cyclic_policy_decision_classifies_missing_evidence(self) -> None:
+        closure_decision, child_surface = (
+            self._test_residual_cyclic_policy_inputs(
+                closure_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+                child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+                include_closure_emission=False,
+            )
+        )
+        choice_groups = (
+            writer_transitions
+            ._closure_open_vs_cyclic_tree_entry_policy_groups(
+                closure_decision,
+                child_surface,
+            )
+        )
+
+        decision = (
+            writer_transitions
+            ._branch_return_owned_residual_cyclic_policy_decision(
+                closure_decision,
+                child_surface,
+                choice_groups,
+            )
+        )
+
+        self.assertIs(
+            decision.kind,
+            (
+                writer_transitions
+                ._WriterResidualCyclicPolicyDecisionKind
+                .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
+            ),
+        )
+        self.assertTrue(decision.blocks_active_emitted_policy)
+        self.assertIs(
+            decision.active_emitted_graph_policy_kind,
+            (
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyDecisionKind
+                .UNRESOLVED_RESIDUAL_ATTACHMENT_CHOICE
+            ),
+        )
+
+    def test_residual_cyclic_policy_dispatcher_classifies_unsupported_owner_scope_before_active_owned_rule(self) -> None:
+        closure_decision, child_surface = (
+            self._test_residual_cyclic_policy_inputs(
+                closure_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
+                child_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
             )
         )
 
@@ -19581,6 +19676,51 @@ class WriterStateKernelTest(unittest.TestCase):
             ),
         )
         active_owned_rule.assert_not_called()
+
+    def test_residual_cyclic_policy_dispatcher_delegates_branch_return_groups(self) -> None:
+        closure_decision, child_surface = (
+            self._test_residual_cyclic_policy_inputs(
+                closure_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+                child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+            )
+        )
+        choice_groups = (
+            writer_transitions
+            ._closure_open_vs_cyclic_tree_entry_policy_groups(
+                closure_decision,
+                child_surface,
+            )
+        )
+        returned_decision = writer_transitions._WriterResidualCyclicPolicyDecision(
+            kind=(
+                writer_transitions
+                ._WriterResidualCyclicPolicyDecisionKind
+                .BRANCH_RETURN_AFTER_DEAD_CLOSURE_OPEN
+            ),
+            closure_endpoint_decision=closure_decision,
+            child_schedule_surface=child_surface,
+            choice_groups=choice_groups,
+            support_dead_groups=choice_groups,
+        )
+
+        with patch(
+            (
+                "grimace._south_star1.writer_transitions"
+                "._branch_return_owned_residual_cyclic_policy_decision"
+            ),
+            return_value=returned_decision,
+        ) as branch_return_rule:
+            decision = writer_transitions._residual_cyclic_policy_decision(
+                closure_decision,
+                child_surface,
+            )
+
+        self.assertIs(decision, returned_decision)
+        branch_return_rule.assert_called_once_with(
+            closure_decision,
+            child_surface,
+            choice_groups,
+        )
 
     def test_residual_cyclic_policy_dispatcher_delegates_active_owned_choice(self) -> None:
         closure_decision, child_surface = self._test_residual_cyclic_policy_inputs()
@@ -19638,8 +19778,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
         unsupported_closure_decision, unsupported_child_surface = (
             self._test_residual_cyclic_policy_inputs(
-                closure_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
-                child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+                closure_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
+                child_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
             )
         )
         missing_closure_decision, missing_child_surface = (
@@ -19649,6 +19789,12 @@ class WriterStateKernelTest(unittest.TestCase):
         )
         support_dead_closure_decision, support_dead_child_surface = (
             self._test_residual_cyclic_policy_inputs()
+        )
+        branch_closure_decision, branch_child_surface = (
+            self._test_residual_cyclic_policy_inputs(
+                closure_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+                child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+            )
         )
         cases = (
             (
@@ -19721,6 +19867,27 @@ class WriterStateKernelTest(unittest.TestCase):
                     ),
                     closure_endpoint_decision=support_dead_closure_decision,
                     child_schedule_surface=support_dead_child_surface,
+                    choice_groups=(group,),
+                    support_dead_groups=(group,),
+                ),
+                (
+                    writer_transitions
+                    ._WriterActiveEmittedGraphPolicyDecisionKind
+                    .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+                ),
+                False,
+                True,
+                False,
+            ),
+            (
+                writer_transitions._WriterResidualCyclicPolicyDecision(
+                    kind=(
+                        writer_transitions
+                        ._WriterResidualCyclicPolicyDecisionKind
+                        .BRANCH_RETURN_AFTER_DEAD_CLOSURE_OPEN
+                    ),
+                    closure_endpoint_decision=branch_closure_decision,
+                    child_schedule_surface=branch_child_surface,
                     choice_groups=(group,),
                     support_dead_groups=(group,),
                 ),
@@ -19774,8 +19941,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
         unsupported_closure_decision, unsupported_child_surface = (
             self._test_residual_cyclic_policy_inputs(
-                closure_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
-                child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+                closure_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
+                child_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
             )
         )
         missing_closure_decision, missing_child_surface = (
@@ -19785,6 +19952,12 @@ class WriterStateKernelTest(unittest.TestCase):
         )
         support_dead_closure_decision, support_dead_child_surface = (
             self._test_residual_cyclic_policy_inputs()
+        )
+        branch_closure_decision, branch_child_surface = (
+            self._test_residual_cyclic_policy_inputs(
+                closure_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+                child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+            )
         )
         cases = (
             (
@@ -19861,6 +20034,25 @@ class WriterStateKernelTest(unittest.TestCase):
                 ),
                 False,
             ),
+            (
+                writer_transitions._WriterResidualCyclicPolicyDecision(
+                    kind=(
+                        writer_transitions
+                        ._WriterResidualCyclicPolicyDecisionKind
+                        .BRANCH_RETURN_AFTER_DEAD_CLOSURE_OPEN
+                    ),
+                    closure_endpoint_decision=branch_closure_decision,
+                    child_schedule_surface=branch_child_surface,
+                    choice_groups=(group,),
+                    support_dead_groups=(group,),
+                ),
+                (
+                    writer_transitions
+                    ._WriterActiveEmittedGraphPolicyDecisionKind
+                    .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+                ),
+                False,
+            ),
         )
         graph_policy_kinds = tuple(
             writer_transitions._WriterActiveEmittedGraphPolicyDecisionKind
@@ -19897,8 +20089,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
         unsupported_closure_decision, unsupported_child_surface = (
             self._test_residual_cyclic_policy_inputs(
-                closure_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
-                child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+                closure_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
+                child_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
             )
         )
         missing_closure_decision, missing_child_surface = (
@@ -19908,6 +20100,12 @@ class WriterStateKernelTest(unittest.TestCase):
         )
         support_dead_closure_decision, support_dead_child_surface = (
             self._test_residual_cyclic_policy_inputs()
+        )
+        branch_closure_decision, branch_child_surface = (
+            self._test_residual_cyclic_policy_inputs(
+                closure_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+                child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+            )
         )
         cases = (
             (
@@ -19972,6 +20170,20 @@ class WriterStateKernelTest(unittest.TestCase):
                 ),
                 None,
             ),
+            (
+                writer_transitions._WriterResidualCyclicPolicyDecision(
+                    kind=(
+                        writer_transitions
+                        ._WriterResidualCyclicPolicyDecisionKind
+                        .BRANCH_RETURN_AFTER_DEAD_CLOSURE_OPEN
+                    ),
+                    closure_endpoint_decision=branch_closure_decision,
+                    child_schedule_surface=branch_child_surface,
+                    choice_groups=(group,),
+                    support_dead_groups=(group,),
+                ),
+                None,
+            ),
         )
 
         for decision, expected_kind in cases:
@@ -19999,8 +20211,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
         unsupported_closure_decision, unsupported_child_surface = (
             self._test_residual_cyclic_policy_inputs(
-                closure_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
-                child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+                closure_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
+                child_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
             )
         )
         missing_closure_decision, missing_child_surface = (
@@ -20010,6 +20222,12 @@ class WriterStateKernelTest(unittest.TestCase):
         )
         support_dead_closure_decision, support_dead_child_surface = (
             self._test_residual_cyclic_policy_inputs()
+        )
+        branch_closure_decision, branch_child_surface = (
+            self._test_residual_cyclic_policy_inputs(
+                closure_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+                child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+            )
         )
         cases = (
             (
@@ -20066,6 +20284,20 @@ class WriterStateKernelTest(unittest.TestCase):
                 ),
                 (),
             ),
+            (
+                writer_transitions._WriterResidualCyclicPolicyDecision(
+                    kind=(
+                        writer_transitions
+                        ._WriterResidualCyclicPolicyDecisionKind
+                        .BRANCH_RETURN_AFTER_DEAD_CLOSURE_OPEN
+                    ),
+                    closure_endpoint_decision=branch_closure_decision,
+                    child_schedule_surface=branch_child_surface,
+                    choice_groups=(support_dead_group,),
+                    support_dead_groups=(support_dead_group,),
+                ),
+                (),
+            ),
         )
 
         for decision, expected_groups in cases:
@@ -20093,6 +20325,12 @@ class WriterStateKernelTest(unittest.TestCase):
             )
         )
         unsupported_closure_decision, unsupported_child_surface = (
+            self._test_residual_cyclic_policy_inputs(
+                closure_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
+                child_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
+            )
+        )
+        branch_closure_decision, branch_child_surface = (
             self._test_residual_cyclic_policy_inputs(
                 closure_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
                 child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
@@ -20185,6 +20423,26 @@ class WriterStateKernelTest(unittest.TestCase):
                     .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
                 ),
             ),
+            (
+                writer_transitions._WriterResidualCyclicPolicyDecision(
+                    kind=(
+                        writer_transitions
+                        ._WriterResidualCyclicPolicyDecisionKind
+                        .BRANCH_RETURN_AFTER_DEAD_CLOSURE_OPEN
+                    ),
+                    closure_endpoint_decision=branch_closure_decision,
+                    child_schedule_surface=branch_child_surface,
+                    choice_groups=(group,),
+                    support_dead_groups=(group,),
+                ),
+                branch_closure_decision,
+                branch_child_surface,
+                (
+                    writer_transitions
+                    ._WriterActiveEmittedGraphPolicyDecisionKind
+                    .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+                ),
+            ),
         )
 
         for residual_decision, closure_decision, child_surface, expected_kind in cases:
@@ -20234,6 +20492,12 @@ class WriterStateKernelTest(unittest.TestCase):
         )
         unsupported_closure_decision, unsupported_child_surface = (
             self._test_residual_cyclic_policy_inputs(
+                closure_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
+                child_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
+            )
+        )
+        branch_closure_decision, branch_child_surface = (
+            self._test_residual_cyclic_policy_inputs(
                 closure_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
                 child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
             )
@@ -20278,6 +20542,15 @@ class WriterStateKernelTest(unittest.TestCase):
             (
                 support_dead_closure_decision,
                 support_dead_child_surface,
+                (
+                    writer_transitions
+                    ._WriterActiveEmittedGraphPolicyDecisionKind
+                    .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+                ),
+            ),
+            (
+                branch_closure_decision,
+                branch_child_surface,
                 (
                     writer_transitions
                     ._WriterActiveEmittedGraphPolicyDecisionKind
@@ -20486,8 +20759,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_active_emitted_graph_policy_uses_retained_unsupported_owner_residual_blocker_groups(self) -> None:
         closure_decision, child_surface = (
             self._test_residual_cyclic_policy_inputs(
-                closure_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
-                child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+                closure_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
+                child_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
             )
         )
         residual_decision = writer_transitions._residual_cyclic_policy_decision(
@@ -20695,8 +20968,8 @@ class WriterStateKernelTest(unittest.TestCase):
         active_atom = AtomId(0)
         cases = (
             self._test_residual_cyclic_policy_inputs(
-                closure_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
-                child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+                closure_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
+                child_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
             ),
             self._test_residual_cyclic_policy_inputs(
                 include_closure_emission=False,
@@ -20807,8 +21080,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_active_emitted_graph_policy_retained_unsupported_owner_decision_drives_owner_scope_evidence(self) -> None:
         closure_decision, child_surface = (
             self._test_residual_cyclic_policy_inputs(
-                closure_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
-                child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+                closure_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
+                child_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
             )
         )
         residual_decision = writer_transitions._residual_cyclic_policy_decision(
@@ -20893,8 +21166,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_active_emitted_graph_policy_residual_evidence_falls_back_without_retained_decision(self) -> None:
         unsupported_closure_decision, unsupported_child_surface = (
             self._test_residual_cyclic_policy_inputs(
-                closure_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
-                child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+                closure_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
+                child_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
             )
         )
         unsupported_policy = (
@@ -21376,7 +21649,7 @@ class WriterStateKernelTest(unittest.TestCase):
             policy.support_dead_closure_open_vs_cyclic_tree_entry_groups
         )
 
-    def test_active_emitted_graph_policy_records_branch_return_owned_dead_closure_choice_as_unsupported_owner_scope(self) -> None:
+    def test_active_emitted_graph_policy_allows_branch_return_dead_closure_open_support(self) -> None:
         prepared = object()
         state = object()
         context = object()
@@ -21459,27 +21732,36 @@ class WriterStateKernelTest(unittest.TestCase):
             (
                 writer_transitions
                 ._WriterActiveEmittedGraphPolicyDecisionKind
-                .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+                .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
             ),
         )
-        self.assertEqual(decision.resolved_residual_attachment_policy_groups, ())
+        self.assertIs(
+            decision.residual_cyclic_policy_kind,
+            (
+                writer_transitions
+                ._WriterResidualCyclicPolicyDecisionKind
+                .BRANCH_RETURN_AFTER_DEAD_CLOSURE_OPEN
+            ),
+        )
+        self.assertTrue(decision.emits_child_actions)
+        self.assertTrue(decision.resolved_residual_attachment_policy_groups)
+        self.assertEqual(decision.graph_policy_blockers, ())
         self.assertTrue(
             (
                 decision
-                .unsupported_owner_scope_closure_open_vs_cyclic_tree_entry_groups
+                .support_dead_closure_open_vs_cyclic_tree_entry_groups
             )
-        )
-        self.assertTrue(
-            decision.unsupported_owner_scope_residual_attachment_policy_groups
         )
         self.assertEqual(
             decision.missing_closure_open_support_evidence_groups,
             (),
         )
         self.assertEqual(decision.unresolved_residual_attachment_policy_groups, ())
-        self.assertTrue(decision.graph_policy_blocked)
-        self.assertEqual(decision.blocked, decision.graph_policy_blocked)
-        self.assertEqual(decision.child_scheduled_actions, ())
+        self.assertFalse(decision.graph_policy_blocked)
+        self.assertEqual(
+            decision.child_scheduled_actions,
+            child_surface.scheduled_actions,
+        )
 
     def test_active_emitted_graph_policy_records_mixed_owner_dead_closure_choice_as_unsupported_owner_scope(self) -> None:
         prepared = object()
@@ -21584,15 +21866,6 @@ class WriterStateKernelTest(unittest.TestCase):
 
     def test_active_emitted_graph_policy_reports_unsupported_owner_scope_kind(self) -> None:
         cases = (
-            (
-                WriterBoundaryOwnerKind.BRANCH_RETURN,
-                WriterBoundaryOwnerKind.BRANCH_RETURN,
-                (
-                    writer_transitions
-                    ._WriterResidualAttachmentOwnerScopeKind
-                    .BRANCH_RETURN
-                ),
-            ),
             (
                 WriterBoundaryOwnerKind.PENDING_PARENT,
                 WriterBoundaryOwnerKind.PENDING_PARENT,
@@ -21923,6 +22196,29 @@ class WriterStateKernelTest(unittest.TestCase):
             writer_transitions._WriterActiveChildSelectionKind.CYCLIC_TREE_ENTRY,
         )
 
+    def test_active_emitted_schedule_outcome_emits_child_for_branch_return_dead_closure_open_support(self) -> None:
+        outcome = self._test_active_owned_dead_closure_active_outcome(
+            closure_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+            child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+        )
+
+        self.assertIs(
+            outcome.kind,
+            writer_transitions._WriterActiveEmittedScheduleOutcomeKind.SCHEDULED,
+        )
+        self.assertIs(
+            outcome.graph_policy_decision.residual_cyclic_policy_kind,
+            (
+                writer_transitions
+                ._WriterResidualCyclicPolicyDecisionKind
+                .BRANCH_RETURN_AFTER_DEAD_CLOSURE_OPEN
+            ),
+        )
+        self.assertIs(
+            outcome.schedule_decision.kind,
+            writer_transitions._WriterActiveEmittedScheduleDecisionKind.ACTIVE_CHILD,
+        )
+
     def test_active_owned_dead_closure_policy_reaches_top_level_schedule_outcome(self) -> None:
         outcome = self._test_top_level_active_owned_dead_closure_outcome()
 
@@ -22052,6 +22348,41 @@ class WriterStateKernelTest(unittest.TestCase):
                 .replayed_dead_closure_open_resolved_cyclic_tree_entry_evidence
             )
         )
+
+    def test_branch_return_dead_closure_open_support_reaches_prefix_read_evidence(self) -> None:
+        outcome = self._test_active_owned_dead_closure_active_outcome(
+            closure_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+            child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+        )
+        residual = outcome.graph_policy_decision.residual_cyclic_policy_decision
+        self.assertIsNotNone(residual)
+        key = residual.choice_groups[0].key  # type: ignore[union-attr]
+        choice_snapshot = self._test_frontier_choice_snapshot_for_active_outcome(
+            outcome,
+            support_family=(
+                writer_transitions
+                ._WriterGraphPolicyActionFamily
+                .CYCLIC_TREE_ENTRY
+            ),
+            residual_key=key,
+        )
+        prefix_outcome = self._test_readable_prefix_outcome(choice_snapshot)
+
+        self.assertIn(
+            (
+                writer_transitions
+                ._WriterResidualCyclicPolicyDecisionKind
+                .BRANCH_RETURN_AFTER_DEAD_CLOSURE_OPEN
+            ),
+            prefix_outcome.residual_cyclic_policy_kinds,
+        )
+        self.assertTrue(
+            (
+                prefix_outcome
+                .final_choice_dead_closure_open_resolved_cyclic_tree_entry_evidence
+            )
+        )
+        self.assertEqual(prefix_outcome.blocker_owner_scope_kinds, ())
 
     def test_active_owned_dead_closure_evidence_does_not_mark_acyclic_child_as_cyclic(self) -> None:
         outcome = self._test_active_owned_dead_closure_active_outcome(
@@ -22437,8 +22768,8 @@ class WriterStateKernelTest(unittest.TestCase):
 
     def test_unsupported_owner_scope_residual_policy_reaches_frontier_blocker_evidence(self) -> None:
         active_outcome = self._test_residual_cyclic_blocked_active_outcome(
-            closure_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
-            child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+            closure_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
+            child_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
         )
         policy = active_outcome.graph_policy_decision
         top_outcome = self._test_residual_cyclic_blocked_top_level_outcome(
@@ -22479,7 +22810,7 @@ class WriterStateKernelTest(unittest.TestCase):
             (
                 writer_transitions
                 ._WriterResidualAttachmentOwnerScopeKind
-                .BRANCH_RETURN
+                .PENDING_PARENT
             ),
         )
 
@@ -22528,8 +22859,8 @@ class WriterStateKernelTest(unittest.TestCase):
 
     def test_unsupported_owner_scope_residual_policy_checked_frontier_apis_raise(self) -> None:
         active_outcome = self._test_residual_cyclic_blocked_active_outcome(
-            closure_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
-            child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+            closure_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
+            child_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
         )
         choice_snapshot = self._test_residual_cyclic_blocked_choice_snapshot(
             active_outcome,
@@ -22647,8 +22978,8 @@ class WriterStateKernelTest(unittest.TestCase):
 
     def test_residual_cyclic_blocker_prefix_read_preserves_final_blocked_frontier(self) -> None:
         active_outcome = self._test_residual_cyclic_blocked_active_outcome(
-            closure_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
-            child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+            closure_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
+            child_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
         )
         choice_snapshot = self._test_residual_cyclic_blocked_choice_snapshot(
             active_outcome,
@@ -22883,8 +23214,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_prepared_non_active_owned_cycle_remains_unsupported_owner_scope(self) -> None:
         closure_decision, child_surface = (
             self._test_residual_cyclic_policy_inputs(
-                closure_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
-                child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+                closure_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
+                child_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
             )
         )
 
@@ -23268,8 +23599,8 @@ class WriterStateKernelTest(unittest.TestCase):
 
     def test_prepared_unsupported_owner_scope_prefix_read_exposes_owner_scope(self) -> None:
         active_outcome = self._test_residual_cyclic_blocked_active_outcome(
-            closure_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
-            child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+            closure_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
+            child_owner_kind=WriterBoundaryOwnerKind.PENDING_PARENT,
         )
         choice_snapshot = self._test_residual_cyclic_blocked_choice_snapshot(
             active_outcome,

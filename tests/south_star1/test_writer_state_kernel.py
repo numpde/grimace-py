@@ -811,6 +811,81 @@ class WriterStateKernelTest(unittest.TestCase):
             surviving_emissions=emissions,
         )
 
+    def _test_supported_owner_scope_policy_matrix(self):
+        return (
+            (
+                WriterBoundaryOwnerKind.ACTIVE_ATOM,
+                (
+                    writer_transitions
+                    ._WriterResidualAttachmentOwnerScopeKind
+                    .ACTIVE_ATOM
+                ),
+                (
+                    writer_transitions
+                    ._WriterResidualCyclicPolicyDecisionKind
+                    .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+                ),
+            ),
+            (
+                WriterBoundaryOwnerKind.BRANCH_RETURN,
+                (
+                    writer_transitions
+                    ._WriterResidualAttachmentOwnerScopeKind
+                    .BRANCH_RETURN
+                ),
+                (
+                    writer_transitions
+                    ._WriterResidualCyclicPolicyDecisionKind
+                    .BRANCH_RETURN_AFTER_DEAD_CLOSURE_OPEN
+                ),
+            ),
+            (
+                WriterBoundaryOwnerKind.PENDING_PARENT,
+                (
+                    writer_transitions
+                    ._WriterResidualAttachmentOwnerScopeKind
+                    .PENDING_PARENT
+                ),
+                (
+                    writer_transitions
+                    ._WriterResidualCyclicPolicyDecisionKind
+                    .PENDING_PARENT_AFTER_DEAD_CLOSURE_OPEN
+                ),
+            ),
+            (
+                WriterBoundaryOwnerKind.OPEN_RING_ENDPOINT,
+                (
+                    writer_transitions
+                    ._WriterResidualAttachmentOwnerScopeKind
+                    .OPEN_RING_ENDPOINT
+                ),
+                (
+                    writer_transitions
+                    ._WriterResidualCyclicPolicyDecisionKind
+                    .OPEN_RING_ENDPOINT_AFTER_DEAD_CLOSURE_OPEN
+                ),
+            ),
+        )
+
+    def _test_unsupported_owner_scope_policy_matrix(self):
+        return (
+            (
+                WriterBoundaryOwnerKind.UNOWNED,
+                WriterBoundaryOwnerKind.UNOWNED,
+                writer_transitions._WriterResidualAttachmentOwnerScopeKind.UNOWNED,
+            ),
+            (
+                None,
+                None,
+                writer_transitions._WriterResidualAttachmentOwnerScopeKind.MISSING,
+            ),
+            (
+                WriterBoundaryOwnerKind.ACTIVE_ATOM,
+                WriterBoundaryOwnerKind.BRANCH_RETURN,
+                writer_transitions._WriterResidualAttachmentOwnerScopeKind.MIXED,
+            ),
+        )
+
     def _test_active_owned_dead_closure_active_outcome(
         self,
         *,
@@ -19591,6 +19666,548 @@ class WriterStateKernelTest(unittest.TestCase):
             decision.resolved_residual_attachment_policy_groups,
             decision.support_dead_groups,
         )
+
+    def test_supported_owner_scopes_resolve_dead_closure_open_policy_matrix(self) -> None:
+        for owner_kind, _owner_scope_kind, expected_residual_kind in (
+            self._test_supported_owner_scope_policy_matrix()
+        ):
+            with self.subTest(owner_kind=owner_kind):
+                closure_decision, child_surface = (
+                    self._test_residual_cyclic_policy_inputs(
+                        closure_owner_kind=owner_kind,
+                        child_owner_kind=owner_kind,
+                    )
+                )
+                decision = writer_transitions._residual_cyclic_policy_decision(
+                    closure_decision,
+                    child_surface,
+                )
+                active_outcome = (
+                    self._test_active_owned_dead_closure_active_outcome(
+                        closure_owner_kind=owner_kind,
+                        child_owner_kind=owner_kind,
+                    )
+                )
+                policy = active_outcome.graph_policy_decision
+
+                self.assertIs(decision.kind, expected_residual_kind)
+                self.assertTrue(decision.selects_active_child)
+                self.assertFalse(decision.blocks_active_emitted_policy)
+                self.assertIs(
+                    decision.active_emitted_graph_policy_kind,
+                    (
+                        writer_transitions
+                        ._WriterActiveEmittedGraphPolicyDecisionKind
+                        .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+                    ),
+                )
+                self.assertIsNone(
+                    decision.active_emitted_graph_policy_blocker_kind
+                )
+                self.assertTrue(decision.support_dead_groups)
+                self.assertIs(
+                    policy.kind,
+                    (
+                        writer_transitions
+                        ._WriterActiveEmittedGraphPolicyDecisionKind
+                        .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+                    ),
+                )
+                self.assertIs(
+                    policy.residual_cyclic_policy_kind,
+                    expected_residual_kind,
+                )
+                self.assertTrue(policy.emits_child_actions)
+                self.assertEqual(policy.graph_policy_blockers, ())
+
+    def test_supported_owner_scopes_reach_frontier_evidence_matrix(self) -> None:
+        for owner_kind, _owner_scope_kind, expected_residual_kind in (
+            self._test_supported_owner_scope_policy_matrix()
+        ):
+            with self.subTest(owner_kind=owner_kind):
+                active_outcome = (
+                    self._test_active_owned_dead_closure_active_outcome(
+                        closure_owner_kind=owner_kind,
+                        child_owner_kind=owner_kind,
+                    )
+                )
+                residual = (
+                    active_outcome
+                    .graph_policy_decision
+                    .residual_cyclic_policy_decision
+                )
+                self.assertIsNotNone(residual)
+                key = residual.choice_groups[0].key  # type: ignore[union-attr]
+                choice_snapshot = (
+                    self._test_frontier_choice_snapshot_for_active_outcome(
+                        active_outcome,
+                        support_family=(
+                            writer_transitions
+                            ._WriterGraphPolicyActionFamily
+                            .CYCLIC_TREE_ENTRY
+                        ),
+                        residual_key=key,
+                    )
+                )
+                top_level_outcome = (
+                    choice_snapshot
+                    .schedule_outcome
+                    .state_outcomes[0]
+                    .schedule_outcome
+                )
+                retained = (
+                    choice_snapshot
+                    .retained_dead_closure_open_resolved_cyclic_tree_entry_choice_evidence
+                )
+
+                self.assertIs(
+                    active_outcome.kind,
+                    (
+                        writer_transitions
+                        ._WriterActiveEmittedScheduleOutcomeKind
+                        .SCHEDULED
+                    ),
+                )
+                self.assertIs(
+                    top_level_outcome.kind,
+                    (
+                        writer_transitions
+                        ._WriterTopLevelScheduleOutcomeKind
+                        .SCHEDULED
+                    ),
+                )
+                self.assertFalse(choice_snapshot.blocked)
+                self.assertIn(
+                    expected_residual_kind,
+                    choice_snapshot.residual_cyclic_policy_kinds,
+                )
+                self.assertIn(
+                    (
+                        writer_transitions
+                        ._WriterActiveChildSelectionKind
+                        .CYCLIC_TREE_ENTRY
+                    ),
+                    choice_snapshot.selected_active_child_selection_kinds,
+                )
+                self.assertTrue(retained)
+                evidence = retained[0]
+                self.assertTrue(
+                    (
+                        evidence
+                        .has_retained_dead_closure_open_resolved_cyclic_tree_entry_support
+                    )
+                )
+                self.assertIn(
+                    expected_residual_kind,
+                    evidence.residual_cyclic_policy_kinds,
+                )
+                self.assertIn(
+                    (
+                        writer_transitions
+                        ._WriterGraphPolicyActionFamily
+                        .CYCLIC_TREE_ENTRY
+                    ),
+                    evidence.selected_policy_families,
+                )
+
+    def test_supported_owner_scopes_reach_prefix_count_stream_matrix(self) -> None:
+        for owner_kind, _owner_scope_kind, expected_residual_kind in (
+            self._test_supported_owner_scope_policy_matrix()
+        ):
+            with self.subTest(owner_kind=owner_kind):
+                active_outcome = (
+                    self._test_active_owned_dead_closure_active_outcome(
+                        closure_owner_kind=owner_kind,
+                        child_owner_kind=owner_kind,
+                    )
+                )
+                residual = (
+                    active_outcome
+                    .graph_policy_decision
+                    .residual_cyclic_policy_decision
+                )
+                self.assertIsNotNone(residual)
+                key = residual.choice_groups[0].key  # type: ignore[union-attr]
+                choice_snapshot = (
+                    self._test_frontier_choice_snapshot_for_active_outcome(
+                        active_outcome,
+                        support_family=(
+                            writer_transitions
+                            ._WriterGraphPolicyActionFamily
+                            .CYCLIC_TREE_ENTRY
+                        ),
+                        residual_key=key,
+                        support_count=3,
+                        completion_count=5,
+                    )
+                )
+                replay_outcome = (
+                    self
+                    ._test_replay_choice_snapshot_outcome_for_choice_snapshot(
+                        choice_snapshot,
+                    )
+                )
+
+                with patch(
+                    (
+                        "grimace._south_star1.writer_snapshot"
+                        "._writer_frontier_choice_snapshot_after_emitted_texts"
+                    ),
+                    return_value=replay_outcome,
+                ), patch(
+                    (
+                        "grimace._south_star1.writer_snapshot"
+                        ".iter_writer_frontier_support"
+                    ),
+                    return_value=iter(("tail",)),
+                ):
+                    outcome = (
+                        writer_snapshot
+                        ._writer_snapshot_prefix_read_outcome_after_emitted_texts(
+                            self._test_writer_search_snapshot(),
+                            prepared=object(),  # type: ignore[arg-type]
+                            emitted_texts=(),
+                            include_counts=True,
+                        )
+                    )
+                    suffixes = tuple(
+                        writer_snapshot
+                        ._iter_writer_frontier_support_suffixes_after_emitted_texts(
+                            self._test_writer_search_snapshot(),
+                            prepared=object(),  # type: ignore[arg-type]
+                            emitted_texts=(),
+                        )
+                    )
+
+                self.assertIs(
+                    outcome.kind,
+                    writer_snapshot._WriterSnapshotPrefixReadOutcomeKind.READABLE,
+                )
+                self.assertFalse(outcome.blocked)
+                self.assertIn(
+                    expected_residual_kind,
+                    outcome.residual_cyclic_policy_kinds,
+                )
+                self.assertTrue(
+                    (
+                        outcome
+                        .final_choice_dead_closure_open_resolved_cyclic_tree_entry_evidence
+                    )
+                )
+                self.assertIsNotNone(outcome.support_count)
+                self.assertIsNotNone(outcome.completion_count)
+                self.assertGreater(outcome.support_count, 0)
+                self.assertGreater(outcome.completion_count, 0)
+                self.assertEqual(
+                    outcome.final_choice_unsupported_owner_scope_kinds,
+                    (),
+                )
+                self.assertTrue(suffixes)
+
+    def test_supported_owner_scopes_missing_closure_evidence_become_unresolved_matrix(self) -> None:
+        for owner_kind, _owner_scope_kind, _expected_residual_kind in (
+            self._test_supported_owner_scope_policy_matrix()
+        ):
+            with self.subTest(owner_kind=owner_kind):
+                active_outcome = self._test_residual_cyclic_blocked_active_outcome(
+                    closure_owner_kind=owner_kind,
+                    child_owner_kind=owner_kind,
+                    include_closure_emission=False,
+                )
+                policy = active_outcome.graph_policy_decision
+                choice_snapshot = (
+                    self._test_residual_cyclic_blocked_choice_snapshot(
+                        active_outcome,
+                    )
+                )
+                replay_outcome = (
+                    self
+                    ._test_replay_choice_snapshot_outcome_for_choice_snapshot(
+                        choice_snapshot,
+                    )
+                )
+
+                with patch(
+                    (
+                        "grimace._south_star1.writer_frontier"
+                        "._writer_frontier_choice_snapshot"
+                    ),
+                    return_value=choice_snapshot,
+                ):
+                    with self.assertRaises(SouthStarError) as choices_raised:
+                        writer_frontier_choices(
+                            object(),  # type: ignore[arg-type]
+                            WriterFrontierCursor(weighted_states=()),
+                        )
+
+                with patch(
+                    (
+                        "grimace._south_star1.writer_snapshot"
+                        "._writer_frontier_choice_snapshot_after_emitted_texts"
+                    ),
+                    return_value=replay_outcome,
+                ):
+                    outcome = (
+                        writer_snapshot
+                        ._writer_snapshot_prefix_read_outcome_after_emitted_texts(
+                            self._test_writer_search_snapshot(),
+                            prepared=object(),  # type: ignore[arg-type]
+                            emitted_texts=(),
+                            include_counts=False,
+                        )
+                    )
+                    with self.assertRaises(SouthStarError) as support_raised:
+                        (
+                            writer_snapshot
+                            ._count_writer_frontier_support_after_emitted_texts(
+                                self._test_writer_search_snapshot(),
+                                prepared=object(),  # type: ignore[arg-type]
+                                emitted_texts=(),
+                            )
+                        )
+                    with self.assertRaises(SouthStarError) as completions_raised:
+                        (
+                            writer_snapshot
+                            ._count_writer_completions_after_emitted_texts(
+                                self._test_writer_search_snapshot(),
+                                prepared=object(),  # type: ignore[arg-type]
+                                emitted_texts=(),
+                            )
+                        )
+
+                self.assertIs(
+                    policy.kind,
+                    (
+                        writer_transitions
+                        ._WriterActiveEmittedGraphPolicyDecisionKind
+                        .UNRESOLVED_RESIDUAL_ATTACHMENT_CHOICE
+                    ),
+                )
+                self.assertIs(
+                    policy.residual_cyclic_policy_kind,
+                    (
+                        writer_transitions
+                        ._WriterResidualCyclicPolicyDecisionKind
+                        .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
+                    ),
+                )
+                self.assertEqual(policy.unsupported_owner_scope_kinds, ())
+                self.assertTrue(policy.graph_policy_blockers)
+                self.assertIs(
+                    policy.graph_policy_blockers[0].kind,
+                    (
+                        writer_transitions
+                        ._WriterActiveEmittedGraphPolicyBlockerKind
+                        .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
+                    ),
+                )
+                self.assertIs(
+                    outcome.kind,
+                    (
+                        writer_snapshot
+                        ._WriterSnapshotPrefixReadOutcomeKind
+                        .FINAL_FRONTIER_BLOCKED
+                    ),
+                )
+                self.assertTrue(outcome.blocked)
+                self.assertIn(
+                    (
+                        writer_transitions
+                        ._WriterResidualCyclicPolicyDecisionKind
+                        .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
+                    ),
+                    outcome.residual_cyclic_policy_kinds,
+                )
+                self.assertEqual(
+                    outcome.final_choice_unsupported_owner_scope_kinds,
+                    (),
+                )
+                for raised in (
+                    choices_raised,
+                    support_raised,
+                    completions_raised,
+                ):
+                    self.assertIs(
+                        raised.exception.kind,
+                        SouthStarErrorKind.UNSUPPORTED_POLICY,
+                    )
+
+    def test_unsupported_owner_scopes_remain_blocked_matrix(self) -> None:
+        for closure_owner, child_owner, expected_owner_scope in (
+            self._test_unsupported_owner_scope_policy_matrix()
+        ):
+            with self.subTest(
+                closure_owner=closure_owner,
+                child_owner=child_owner,
+            ):
+                closure_decision, child_surface = (
+                    self._test_residual_cyclic_policy_inputs(
+                        closure_owner_kind=closure_owner,
+                        child_owner_kind=child_owner,
+                    )
+                )
+                decision = writer_transitions._residual_cyclic_policy_decision(
+                    closure_decision,
+                    child_surface,
+                )
+                active_outcome = self._test_residual_cyclic_blocked_active_outcome(
+                    closure_owner_kind=closure_owner,
+                    child_owner_kind=child_owner,
+                )
+                policy = active_outcome.graph_policy_decision
+                choice_snapshot = (
+                    self._test_residual_cyclic_blocked_choice_snapshot(
+                        active_outcome,
+                    )
+                )
+                replay_outcome = (
+                    self
+                    ._test_replay_choice_snapshot_outcome_for_choice_snapshot(
+                        choice_snapshot,
+                    )
+                )
+
+                with patch(
+                    (
+                        "grimace._south_star1.writer_frontier"
+                        "._writer_frontier_choice_snapshot"
+                    ),
+                    return_value=choice_snapshot,
+                ):
+                    with self.assertRaises(SouthStarError) as choices_raised:
+                        writer_frontier_choices(
+                            object(),  # type: ignore[arg-type]
+                            WriterFrontierCursor(weighted_states=()),
+                        )
+
+                with patch(
+                    (
+                        "grimace._south_star1.writer_snapshot"
+                        "._writer_frontier_choice_snapshot_after_emitted_texts"
+                    ),
+                    return_value=replay_outcome,
+                ):
+                    outcome = (
+                        writer_snapshot
+                        ._writer_snapshot_prefix_read_outcome_after_emitted_texts(
+                            self._test_writer_search_snapshot(),
+                            prepared=object(),  # type: ignore[arg-type]
+                            emitted_texts=(),
+                            include_counts=False,
+                        )
+                    )
+                    with self.assertRaises(SouthStarError) as support_raised:
+                        (
+                            writer_snapshot
+                            ._count_writer_frontier_support_after_emitted_texts(
+                                self._test_writer_search_snapshot(),
+                                prepared=object(),  # type: ignore[arg-type]
+                                emitted_texts=(),
+                            )
+                        )
+                    with self.assertRaises(SouthStarError) as completions_raised:
+                        (
+                            writer_snapshot
+                            ._count_writer_completions_after_emitted_texts(
+                                self._test_writer_search_snapshot(),
+                                prepared=object(),  # type: ignore[arg-type]
+                                emitted_texts=(),
+                            )
+                        )
+
+                self.assertIs(
+                    decision.kind,
+                    (
+                        writer_transitions
+                        ._WriterResidualCyclicPolicyDecisionKind
+                        .UNSUPPORTED_OWNER_SCOPE
+                    ),
+                )
+                self.assertIs(
+                    policy.kind,
+                    (
+                        writer_transitions
+                        ._WriterActiveEmittedGraphPolicyDecisionKind
+                        .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+                    ),
+                )
+                self.assertIs(
+                    policy.residual_cyclic_policy_kind,
+                    (
+                        writer_transitions
+                        ._WriterResidualCyclicPolicyDecisionKind
+                        .UNSUPPORTED_OWNER_SCOPE
+                    ),
+                )
+                self.assertTrue(policy.graph_policy_blockers)
+                self.assertIs(
+                    policy.graph_policy_blockers[0].kind,
+                    (
+                        writer_transitions
+                        ._WriterActiveEmittedGraphPolicyBlockerKind
+                        .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+                    ),
+                )
+                self.assertEqual(
+                    policy.unsupported_owner_scope_kinds,
+                    (expected_owner_scope,),
+                )
+                self.assertIs(
+                    outcome.kind,
+                    (
+                        writer_snapshot
+                        ._WriterSnapshotPrefixReadOutcomeKind
+                        .FINAL_FRONTIER_BLOCKED
+                    ),
+                )
+                self.assertTrue(outcome.blocked)
+                self.assertIn(
+                    (
+                        writer_transitions
+                        ._WriterResidualCyclicPolicyDecisionKind
+                        .UNSUPPORTED_OWNER_SCOPE
+                    ),
+                    outcome.residual_cyclic_policy_kinds,
+                )
+                self.assertEqual(
+                    outcome.blocker_owner_scope_kinds,
+                    (expected_owner_scope,),
+                )
+                for raised in (
+                    choices_raised,
+                    support_raised,
+                    completions_raised,
+                ):
+                    self.assertIs(
+                        raised.exception.kind,
+                        SouthStarErrorKind.UNSUPPORTED_POLICY,
+                    )
+
+    def test_supported_owner_scope_policy_matrix_matches_supported_owner_map(self) -> None:
+        matrix = {
+            owner_scope_kind: expected_residual_kind
+            for _owner_kind, owner_scope_kind, expected_residual_kind in (
+                self._test_supported_owner_scope_policy_matrix()
+            )
+        }
+        production_map = (
+            writer_transitions
+            ._SUPPORTED_DEAD_CLOSURE_OWNER_SCOPE_TO_DECISION_KIND
+        )
+
+        self.assertEqual(set(matrix), set(production_map))
+
+        for owner_scope_kind, expected_residual_kind in matrix.items():
+            with self.subTest(owner_scope_kind=owner_scope_kind):
+                self.assertIs(
+                    (
+                        writer_transitions
+                        ._supported_dead_closure_owner_scope_decision_kind(
+                            owner_scope_kind
+                        )
+                    ),
+                    expected_residual_kind,
+                )
 
     def test_supported_dead_closure_owner_scope_decision_kind_maps_supported_scopes(self) -> None:
         supported_cases = (

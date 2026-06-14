@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "grimace-py"
-version = "0.1.17"
+version = "0.1.18"
 description = "Rust-first SMILES enumeration and next-token decoding with Python bindings."
 readme = "README.md"
 license = "PolyForm-Noncommercial-1.0.0"

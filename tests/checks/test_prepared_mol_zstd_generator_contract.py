@@ -11,6 +11,11 @@ import tempfile
 from types import ModuleType, SimpleNamespace
 import unittest
 
+from tests.checks.build_dependency_pins import (
+    ZSTANDARD_VERSION,
+    rdkit_runtime_version,
+)
+
 
 ROOT = Path(__file__).resolve().parents[2]
 GENERATOR_PATH = ROOT / "scripts" / "prepared_mol_zstd_dictionary_generate.py"
@@ -152,8 +157,14 @@ class PreparedMolZstdGeneratorContractTests(unittest.TestCase):
     def test_training_environment_is_pinned_beyond_python_package_name(
         self,
     ) -> None:
-        self.assertEqual("2026.03.1", literal_constant("EXPECTED_RDKIT_VERSION"))
-        self.assertEqual("0.25.0", literal_constant("EXPECTED_ZSTANDARD_VERSION"))
+        self.assertEqual(
+            rdkit_runtime_version(),
+            literal_constant("EXPECTED_RDKIT_VERSION"),
+        )
+        self.assertEqual(
+            ZSTANDARD_VERSION,
+            literal_constant("EXPECTED_ZSTANDARD_VERSION"),
+        )
         self.assertEqual("cext", literal_constant("EXPECTED_ZSTANDARD_BACKEND"))
         self.assertEqual((1, 5, 7), literal_constant("EXPECTED_ZSTD_LIBRARY_VERSION"))
 

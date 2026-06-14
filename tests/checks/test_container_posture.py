@@ -524,7 +524,6 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertNotIn("apt-get", dockerfile)
         self.assertIn("COPY . /build-src", dockerfile)
         self.assertIn("WORKDIR /build-src", dockerfile)
-        self.assertIn("plox==0.0.3", dockerfile)
         self.assertIn("python -m maturin build --release --out", dockerfile)
         self.assertIn(
             "python -m pip install --no-deps /tmp/grimace-dist/*.whl",

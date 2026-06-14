@@ -1199,6 +1199,12 @@ class _WriterResidualCyclicPolicyDecision:
             f"unknown residual cyclic policy kind: {self.kind!r}",
         )
 
+    def maps_to_active_emitted_graph_policy_kind(
+        self,
+        kind: _WriterActiveEmittedGraphPolicyDecisionKind,
+    ) -> bool:
+        return self.active_emitted_graph_policy_kind is kind
+
     @property
     def selects_plain_active_child(self) -> bool:
         return self.kind is _WriterResidualCyclicPolicyDecisionKind.NONE
@@ -1273,6 +1279,10 @@ class _WriterResidualCyclicPolicyDecision:
             return self.missing_evidence_groups
 
         return ()
+
+    @property
+    def requires_active_emitted_blocker(self) -> bool:
+        return self.active_emitted_graph_policy_blocker_kind is not None
 
     @property
     def blocks_active_child(self) -> bool:
@@ -1393,65 +1403,15 @@ class _WriterActiveEmittedGraphPolicyDecision:
 
         residual_decision = self.residual_cyclic_policy_decision
         if valid and residual_decision is not None:
-            if (
-                self.kind
-                is _WriterActiveEmittedGraphPolicyDecisionKind.ACTIVE_CHILD
-            ):
-                valid = (
-                    residual_decision.kind
-                    is _WriterResidualCyclicPolicyDecisionKind.NONE
-                )
-            elif (
-                self.kind
-                is (
-                    _WriterActiveEmittedGraphPolicyDecisionKind
-                    .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
-                )
-            ):
-                valid = (
-                    residual_decision.kind
-                    is (
-                        _WriterResidualCyclicPolicyDecisionKind
-                        .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
-                    )
-                )
-            elif (
-                self.kind
-                is (
-                    _WriterActiveEmittedGraphPolicyDecisionKind
-                    .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
-                )
-            ):
-                valid = (
-                    residual_decision.kind
-                    is (
-                        _WriterResidualCyclicPolicyDecisionKind
-                        .UNSUPPORTED_OWNER_SCOPE
-                    )
-                )
-            elif (
-                self.kind
-                is (
-                    _WriterActiveEmittedGraphPolicyDecisionKind
-                    .UNRESOLVED_RESIDUAL_ATTACHMENT_CHOICE
-                )
-            ):
-                valid = (
-                    residual_decision.kind
-                    is (
-                        _WriterResidualCyclicPolicyDecisionKind
-                        .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
-                    )
-                )
-            else:
-                valid = False
-
             valid = (
-                valid
-                and residual_decision.closure_endpoint_decision
+                residual_decision.closure_endpoint_decision
                 is self.closure_endpoint_decision
                 and residual_decision.child_schedule_surface
                 is self.child_schedule_surface
+                and (
+                    residual_decision
+                    .maps_to_active_emitted_graph_policy_kind(self.kind)
+                )
             )
 
         if not valid:

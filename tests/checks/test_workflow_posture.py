@@ -7,7 +7,12 @@ from scripts.validate_release_artifacts import (
     PYTHON_TAGS,
     expected_artifact_names,
 )
-from tests.checks.posture_helpers import assert_before, line_count
+from tests.checks.posture_helpers import (
+    assert_before,
+    line_count,
+    yaml_scalar_count,
+    yaml_scalar_line,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -22,10 +27,6 @@ PINNED_CHECKOUT_USES_LINE = re.compile(
 
 def read_text(relative_path: str) -> str:
     return (ROOT / relative_path).read_text(encoding="utf-8")
-
-
-def yaml_scalar_line(key: str, value: str) -> str:
-    return rf"(?m)^[ \t]+{re.escape(key)}:[ \t]+{re.escape(value)}[ \t]*$"
 
 
 def job_section(workflow: str, job_name: str) -> str:
@@ -241,7 +242,7 @@ jobs:
         )
         self.assertIn('"maturin==$MATURIN_PIP_VERSION"', workflow)
         self.assertEqual(
-            line_count(workflow, r"\s+run: .*\"twine==\$TWINE_PIP_VERSION\".*"),
+            line_count(workflow, r'[ \t]+run: .*"twine==\$TWINE_PIP_VERSION".*'),
             4,
         )
         self.assertEqual(
@@ -275,7 +276,7 @@ jobs:
         )
         self.assertIn("path: dist/*.whl", workflow)
         self.assertIn("path: dist/*.tar.gz", workflow)
-        self.assertEqual(line_count(workflow, r"\s+if-no-files-found:\s+error"), 2)
+        self.assertEqual(yaml_scalar_count(workflow, "if-no-files-found", "error"), 2)
         self.assertEqual(
             line_count(
                 workflow,

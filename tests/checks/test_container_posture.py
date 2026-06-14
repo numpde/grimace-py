@@ -2,7 +2,7 @@ from pathlib import Path
 import re
 import unittest
 
-from tests.checks.posture_helpers import assert_before, line_count
+from tests.checks.posture_helpers import assert_before, line_count, yaml_scalar_count
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -62,7 +62,7 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertRegex(compose, r"(?ms)^\s+volumes:\n\s+- type: bind")
         self.assertRegex(compose, r"(?m)^\s+target:\s+/work\s*$")
         self.assertIn("create_host_path: false", compose)
-        self.assertGreaterEqual(line_count(compose, r"\s+read_only:\s+true"), 2)
+        self.assertGreaterEqual(yaml_scalar_count(compose, "read_only", "true"), 2)
         self.assertNotIn("docker.sock", compose)
         self.assertNotIn("privileged: true", compose)
 
@@ -174,7 +174,7 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertIn("target: /build-src/docs/timings-enum-plots", compose)
         self.assertIn("source: ../notes/004_perf_history.jsonl", compose)
         self.assertIn("target: /build-src/notes/004_perf_history.jsonl", compose)
-        self.assertEqual(line_count(compose, r"\s+create_host_path:\s+false"), 4)
+        self.assertEqual(yaml_scalar_count(compose, "create_host_path", "false"), 4)
         self.assertNotIn("source: ..\n", compose)
         self.assertNotIn("target: /src", compose)
         self.assertNotIn(".venv", compose)
@@ -252,7 +252,7 @@ class ContainerPostureTests(unittest.TestCase):
             "python scripts/prepared_mol_zstd_dictionary_generate.py",
             "python -m unittest tests.prepared_mol_zstd_dictionary_rates",
         )
-        self.assertEqual(line_count(compose, r"\s+-\s+type:\s+bind"), 1)
+        self.assertEqual(line_count(compose, r"[ \t]+-[ \t]+type:[ \t]+bind"), 1)
         self.assertNotIn("source: ..\n", compose)
         self.assertNotIn(".venv", compose)
         self.assertNotIn("docker.sock", compose)
@@ -318,7 +318,7 @@ class ContainerPostureTests(unittest.TestCase):
             "python scripts/timings_prepared_mol_zstd_measure.py",
             "python scripts/timings_prepared_mol_zstd_plot.py",
         )
-        self.assertEqual(line_count(compose, r"\s+create_host_path:\s+false"), 2)
+        self.assertEqual(yaml_scalar_count(compose, "create_host_path", "false"), 2)
         self.assertNotIn("source: ..\n", compose)
         self.assertNotIn("target: /src", compose)
         self.assertNotIn(".venv", compose)
@@ -383,7 +383,7 @@ class ContainerPostureTests(unittest.TestCase):
             compose,
             r"(?ms)source: ../build/docs-site\n\s+target: /site\n\s+read_only: true",
         )
-        self.assertEqual(line_count(compose, r"\s+create_host_path:\s+false"), 3)
+        self.assertEqual(yaml_scalar_count(compose, "create_host_path", "false"), 3)
         self.assertNotRegex(compose, r"(?m)^\s+network_mode:\s*[\"']?host[\"']?\s*$")
         self.assertNotIn("target: /src", compose)
         self.assertNotIn(".venv", compose)

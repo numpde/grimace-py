@@ -12,3 +12,11 @@ def assert_before(test: unittest.TestCase, text: str, earlier: str, later: str) 
 
 def line_count(text: str, pattern: str) -> int:
     return len(re.findall(rf"(?m)^{pattern}$", text))
+
+
+def yaml_scalar_line(key: str, value: str) -> str:
+    return rf"(?m)^[ \t]+{re.escape(key)}:[ \t]+{re.escape(value)}[ \t]*$"
+
+
+def yaml_scalar_count(text: str, key: str, value: str) -> int:
+    return len(re.findall(yaml_scalar_line(key, value), text))

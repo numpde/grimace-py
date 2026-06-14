@@ -42,7 +42,7 @@ def checkout_steps(text: str) -> tuple[str, ...]:
     pattern = (
         r"(?ms)^      - (?:uses: actions/checkout|name: [^\n]+\n"
         r"        uses: actions/checkout)@[0-9a-f]{40}[^\n]*\n"
-        r"(?P<body>.*?)(?=^      - (?:name|uses|run):|\Z)"
+        r"(?P<body>.*?)(?=^      - |\Z)"
     )
     return tuple(match.group("body") for match in re.finditer(pattern, text))
 
@@ -81,6 +81,8 @@ jobs:
           persist-credentials: false
       - name: Publish
         uses: example/action@1111111111111111111111111111111111111111
+      - if: always()
+        run: true
 """
 
         uses_count = len(ACTION_USES_LINE.findall(workflow))
@@ -89,6 +91,7 @@ jobs:
         self.assertEqual(uses_count, 2)
         self.assertEqual(pinned_count, 2)
         assert_checkouts_do_not_persist_credentials(self, workflow)
+        self.assertNotIn("if: always()", checkout_step(workflow))
 
     def test_workflows_pin_github_hosted_runner_image(self) -> None:
         for workflow_path in sorted((ROOT / ".github" / "workflows").glob("*.yml")):

@@ -1,8 +1,9 @@
-import importlib.util
 from pathlib import Path
 import re
 import tomllib
 import unittest
+
+from scripts.validate_release_artifacts import PYTHON_TAGS
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -138,19 +139,9 @@ class BuildDependencyPinTests(unittest.TestCase):
 
     def test_python_classifiers_match_release_wheel_tags(self) -> None:
         pyproject = tomllib.loads(read_text("pyproject.toml"))
-        validator_path = ROOT / "scripts" / "validate_release_artifacts.py"
-        spec = importlib.util.spec_from_file_location(
-            "validate_release_artifacts",
-            validator_path,
-        )
-        if spec is None or spec.loader is None:
-            raise AssertionError(f"Could not load {validator_path}")
-        validator = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(validator)
-
         wheel_versions = tuple(
             f"{tag[2]}.{tag[3:]}"
-            for tag in validator.PYTHON_TAGS
+            for tag in PYTHON_TAGS
         )
         self.assertEqual(
             tuple(sorted(wheel_versions, key=python_version_key)),

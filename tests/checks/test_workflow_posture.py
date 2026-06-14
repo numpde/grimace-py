@@ -1,13 +1,16 @@
 from pathlib import Path
-import importlib.util
 import re
 import unittest
 
+from scripts.validate_release_artifacts import (
+    PLATFORM_TAG,
+    PYTHON_TAGS,
+    expected_artifact_names,
+)
 from tests.checks.posture_helpers import assert_before, line_count
 
 
 ROOT = Path(__file__).resolve().parents[2]
-RELEASE_VALIDATOR = ROOT / "scripts" / "validate_release_artifacts.py"
 ACTION_USES_LINE = re.compile(r"(?m)^\s*(?:-\s+)?uses:\s+")
 PINNED_ACTION_USES_LINE = re.compile(
     r"(?m)^\s*(?:-\s+)?uses:\s+[^@\s]+@[0-9a-f]{40}(?:\s+#\s+\S+)?\s*$"
@@ -53,18 +56,6 @@ def assert_checkouts_do_not_persist_credentials(
     for step in steps:
         test.assertRegex(step, r"(?m)^          persist-credentials: false$")
         test.assertNotRegex(step, r"(?m)^          persist-credentials: true$")
-
-
-def load_release_validator():
-    spec = importlib.util.spec_from_file_location(
-        "validate_release_artifacts",
-        RELEASE_VALIDATOR,
-    )
-    if spec is None or spec.loader is None:
-        raise AssertionError("could not load release artifact validator")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
 
 
 def matrix_values(job: str, key: str) -> tuple[str, ...]:
@@ -335,7 +326,6 @@ jobs:
     def test_release_workflow_wheel_matrix_matches_artifact_validator(self) -> None:
         workflow = read_text(".github/workflows/release.yml")
         wheel = job_section(workflow, "wheel")
-        validator = load_release_validator()
 
         python_versions = matrix_values(wheel, "python-version")
         python_tags = tuple(
@@ -348,17 +338,17 @@ jobs:
             for target in matrix_values(wheel, "target")
         )
 
-        self.assertEqual(validator.PYTHON_TAGS, python_tags)
-        self.assertEqual((validator.PLATFORM_TAG,), platform_tags)
+        self.assertEqual(PYTHON_TAGS, python_tags)
+        self.assertEqual((PLATFORM_TAG,), platform_tags)
         self.assertEqual(("linux-x86_64",), matrix_values(wheel, "name"))
         self.assertEqual(("ubuntu-24.04",), matrix_values(wheel, "os"))
         self.assertEqual(
-            validator.expected_artifact_names("0.0.0"),
+            expected_artifact_names("0.0.0"),
             tuple(
                 sorted(
                     (
                         *(
-                            f"grimace_py-0.0.0-{tag}-{tag}-{validator.PLATFORM_TAG}.whl"
+                            f"grimace_py-0.0.0-{tag}-{tag}-{PLATFORM_TAG}.whl"
                             for tag in python_tags
                         ),
                         "grimace_py-0.0.0.tar.gz",

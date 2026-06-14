@@ -21,9 +21,13 @@ PINNED_ACTION_USES_LINE = re.compile(
     r"(?m)^(?:uses:| {8}uses:)[ \t]+[^@\s]+@[0-9a-f]{40}(?:[ \t]+#[ \t]*\S+)?[ \t]*$"
 )
 PINNED_CHECKOUT_USES_LINE = re.compile(
-    r"(?m)^(?:uses:| {8}uses:)[ \t]+actions/checkout@[0-9a-f]{40}(?:[ \t]+#[ \t]*\S+)?[ \t]*$"
+    r"(?m)^(?:uses:| {8}uses:)[ \t]+actions/checkout@[0-9a-f]{40}"
+    r"(?:[ \t]+#[ \t]*\S+)?[ \t]*$"
 )
-WORKFLOW_STEP_BLOCKS = re.compile(r"(?ms)^      - (?P<body>.*?)(?=^      - |\Z)")
+WORKFLOW_ACTION_STEP_BLOCKS = re.compile(
+    r"(?ms)^      - (?P<body>(?:uses:|name:|if:|run:).*?)"
+    r"(?=^      - (?:uses:|name:|if:|run:)|\Z)"
+)
 
 
 def read_text(relative_path: str) -> str:
@@ -51,7 +55,7 @@ def checkout_steps(text: str) -> tuple[str, ...]:
     # order inside the YAML step.
     return tuple(
         match.group("body")
-        for match in WORKFLOW_STEP_BLOCKS.finditer(text)
+        for match in WORKFLOW_ACTION_STEP_BLOCKS.finditer(text)
         if PINNED_CHECKOUT_USES_LINE.search(match.group("body"))
     )
 
@@ -59,7 +63,7 @@ def checkout_steps(text: str) -> tuple[str, ...]:
 def workflow_action_uses_lines(workflow: str) -> tuple[str, ...]:
     return tuple(
         line
-        for step in WORKFLOW_STEP_BLOCKS.finditer(workflow)
+        for step in WORKFLOW_ACTION_STEP_BLOCKS.finditer(workflow)
         for line in ACTION_USES_LINE.findall(step.group("body"))
     )
 
@@ -67,7 +71,7 @@ def workflow_action_uses_lines(workflow: str) -> tuple[str, ...]:
 def workflow_pinned_action_uses_lines(workflow: str) -> tuple[str, ...]:
     return tuple(
         line
-        for step in WORKFLOW_STEP_BLOCKS.finditer(workflow)
+        for step in WORKFLOW_ACTION_STEP_BLOCKS.finditer(workflow)
         for line in PINNED_ACTION_USES_LINE.findall(step.group("body"))
     )
 
@@ -110,6 +114,7 @@ jobs:
       - name: Script with action-like text
         run: |
           uses: not/an/action@2222222222222222222222222222222222222222
+          - uses: not/a/step@3333333333333333333333333333333333333333
       - if: always()
         run: true
 """

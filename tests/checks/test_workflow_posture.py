@@ -68,13 +68,13 @@ def assert_checkouts_do_not_persist_credentials(
 
 
 def matrix_values(job: str, key: str) -> tuple[str, ...]:
-    pattern = rf"(?m)^\s{{8}}{re.escape(key)}:\n(?P<body>(?:^\s{{10}}- [^\n]+\n)+)"
+    pattern = rf"(?m)^ {{8}}{re.escape(key)}:\n(?P<body>(?:^ {{10}}- [^\n]+\n)+)"
     match = re.search(pattern, job)
     if match is None:
         raise AssertionError(f"missing matrix axis {key!r}")
     return tuple(
         item.strip().strip('"')
-        for item in re.findall(r"(?m)^\s{10}- ([^\n]+)$", match.group("body"))
+        for item in re.findall(r"(?m)^ {10}- ([^\n]+)$", match.group("body"))
     )
 
 
@@ -218,14 +218,14 @@ jobs:
         self.assertEqual(
             line_count(
                 workflow,
-                r"\s+maturin-version:\s+\$\{\{ env\.MATURIN_ACTION_VERSION \}\}",
+                r"[ \t]+maturin-version:[ \t]+\$\{\{ env\.MATURIN_ACTION_VERSION \}\}",
             ),
             2,
         )
         self.assertEqual(
             line_count(
                 workflow,
-                r"\s+container:\s+\$\{\{ env\.MANYLINUX_2_28_X86_64_IMAGE \}\}",
+                r"[ \t]+container:[ \t]+\$\{\{ env\.MANYLINUX_2_28_X86_64_IMAGE \}\}",
             ),
             1,
         )
@@ -236,7 +236,7 @@ jobs:
         self.assertEqual(
             line_count(
                 workflow,
-                r"\s+run: python -m pip install --constraint requirements/container-build-constraints\.txt .*",
+                r"[ \t]+run: python -m pip install --constraint requirements/container-build-constraints\.txt .*",
             ),
             4,
         )
@@ -248,14 +248,14 @@ jobs:
         self.assertEqual(
             line_count(
                 workflow,
-                r"\s+run: .*\"zstandard==\$ZSTANDARD_FIXTURE_PIP_VERSION\".*",
+                r'[ \t]+run: .*"zstandard==\$ZSTANDARD_FIXTURE_PIP_VERSION".*',
             ),
             2,
         )
         self.assertIn("python -m twine check dist/*.whl", workflow)
         self.assertIn("python -m twine check dist/*.tar.gz", workflow)
         self.assertEqual(
-            len(re.findall(r"(?m)^\s+run: python -m twine check dist/\*$", workflow)),
+            line_count(workflow, r"[ \t]+run: python -m twine check dist/\*"),
             2,
         )
         self.assertIn("python -m pip install --no-deps dist/*.whl", workflow)
@@ -263,14 +263,14 @@ jobs:
         self.assertEqual(
             line_count(
                 workflow,
-                r"\s+run: python scripts/validate_release_artifacts\.py dist/\*\.whl --wheel-only",
+                r"[ \t]+run: python scripts/validate_release_artifacts\.py dist/\*\.whl --wheel-only",
             ),
             1,
         )
         self.assertEqual(
             line_count(
                 workflow,
-                r"\s+run: python scripts/validate_release_artifacts\.py dist/\*\.tar\.gz --sdist-only",
+                r"[ \t]+run: python scripts/validate_release_artifacts\.py dist/\*\.tar\.gz --sdist-only",
             ),
             1,
         )
@@ -280,7 +280,7 @@ jobs:
         self.assertEqual(
             line_count(
                 workflow,
-                r'\s+run: python scripts/validate_release_artifacts\.py dist --tag "\$GITHUB_REF_NAME"',
+                r'[ \t]+run: python scripts/validate_release_artifacts\.py dist --tag "\$GITHUB_REF_NAME"',
             ),
             2,
         )

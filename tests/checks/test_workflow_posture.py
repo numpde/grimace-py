@@ -25,6 +25,9 @@ PINNED_CHECKOUT_USES_LINE = re.compile(
     r"(?:[ \t]+#[ \t]*\S+)?[ \t]*$"
 )
 WORKFLOW_ACTION_STEP_BLOCKS = re.compile(
+    # Match real workflow step starts, not action-like text inside run: |
+    # blocks. This keeps the pinning posture check tied to GitHub's step
+    # surface without pulling in a YAML dependency for source-only checks.
     r"(?ms)^      - (?P<body>(?:uses:|name:|if:|run:).*?)"
     r"(?=^      - (?:uses:|name:|if:|run:)|\Z)"
 )
@@ -60,19 +63,11 @@ def checkout_steps(text: str) -> tuple[str, ...]:
     )
 
 
-def workflow_action_uses_lines(workflow: str) -> tuple[str, ...]:
+def workflow_uses_lines(workflow: str, pattern: re.Pattern[str]) -> tuple[str, ...]:
     return tuple(
         line
         for step in WORKFLOW_ACTION_STEP_BLOCKS.finditer(workflow)
-        for line in ACTION_USES_LINE.findall(step.group("body"))
-    )
-
-
-def workflow_pinned_action_uses_lines(workflow: str) -> tuple[str, ...]:
-    return tuple(
-        line
-        for step in WORKFLOW_ACTION_STEP_BLOCKS.finditer(workflow)
-        for line in PINNED_ACTION_USES_LINE.findall(step.group("body"))
+        for line in pattern.findall(step.group("body"))
     )
 
 
@@ -119,8 +114,8 @@ jobs:
         run: true
 """
 
-        uses_count = len(workflow_action_uses_lines(workflow))
-        pinned_count = len(workflow_pinned_action_uses_lines(workflow))
+        uses_count = len(workflow_uses_lines(workflow, ACTION_USES_LINE))
+        pinned_count = len(workflow_uses_lines(workflow, PINNED_ACTION_USES_LINE))
 
         self.assertEqual(uses_count, 2)
         self.assertEqual(pinned_count, 2)
@@ -146,8 +141,8 @@ jobs:
     def test_workflow_actions_are_pinned_to_commit_sha(self) -> None:
         for workflow_path in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
             workflow = workflow_path.read_text(encoding="utf-8")
-            uses_count = len(workflow_action_uses_lines(workflow))
-            pinned_count = len(workflow_pinned_action_uses_lines(workflow))
+            uses_count = len(workflow_uses_lines(workflow, ACTION_USES_LINE))
+            pinned_count = len(workflow_uses_lines(workflow, PINNED_ACTION_USES_LINE))
             with self.subTest(workflow=workflow_path.name):
                 self.assertEqual(uses_count, pinned_count)
 

@@ -16,6 +16,37 @@ def read_text(relative_path: str) -> str:
     return (ROOT / relative_path).read_text(encoding="utf-8")
 
 
+def compose_service_block(compose: str, service: str) -> str:
+    pattern = (
+        rf"(?ms)^  {re.escape(service)}:\n"
+        r"(?P<body>.*?)(?=^  [A-Za-z0-9_-]+:\n|\Z)"
+    )
+    match = re.search(pattern, compose)
+    if match is None:
+        raise AssertionError(f"missing compose service {service!r}")
+    return match.group("body")
+
+
+def assert_compose_hardening(
+    test: unittest.TestCase,
+    block: str,
+    *,
+    network_none: bool,
+) -> None:
+    # `docs-serve` intentionally publishes a localhost port; other compose
+    # lanes should remain network-disabled after image build.
+    if network_none:
+        test.assertRegex(block, r'(?m)^\s+network_mode:\s+"none"\s*$')
+    test.assertRegex(block, r"(?m)^\s+read_only:\s+true\s*$")
+    test.assertRegex(block, r"(?ms)^\s+cap_drop:\n\s+- ALL\s*$")
+    test.assertRegex(
+        block,
+        r"(?ms)^\s+security_opt:\n\s+- no-new-privileges:true\s*$",
+    )
+    test.assertNotIn("docker.sock", block)
+    test.assertNotIn("privileged: true", block)
+
+
 class ContainerPostureTests(unittest.TestCase):
     def test_compose_files_do_not_set_project_name(self) -> None:
         compose_files = sorted((ROOT / "compose").glob("*.yml"))
@@ -48,14 +79,8 @@ class ContainerPostureTests(unittest.TestCase):
 
     def test_checks_compose_has_strict_runtime_posture(self) -> None:
         compose = read_text("compose/checks.yml")
+        assert_compose_hardening(self, compose, network_none=True)
         self.assertRegex(compose, r'(?m)^\s+user:\s+"65532:65532"\s*$')
-        self.assertRegex(compose, r'(?m)^\s+network_mode:\s+"none"\s*$')
-        self.assertRegex(compose, r"(?m)^\s+read_only:\s+true\s*$")
-        self.assertRegex(compose, r"(?ms)^\s+cap_drop:\n\s+- ALL\s*$")
-        self.assertRegex(
-            compose,
-            r"(?ms)^\s+security_opt:\n\s+- no-new-privileges:true\s*$",
-        )
         self.assertRegex(compose, r"(?m)^\s+pids_limit:\s+64\s*$")
         self.assertRegex(compose, r"(?m)^\s+mem_limit:\s+128m\s*$")
         self.assertRegex(compose, r"(?ms)^\s+tmpfs:\n\s+- /tmp:")
@@ -63,8 +88,6 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertRegex(compose, r"(?m)^\s+target:\s+/work\s*$")
         self.assertIn("create_host_path: false", compose)
         self.assertGreaterEqual(yaml_scalar_count(compose, "read_only", "true"), 2)
-        self.assertNotIn("docker.sock", compose)
-        self.assertNotIn("privileged: true", compose)
 
     def test_test_compose_has_strict_copied_context_posture(self) -> None:
         compose = read_text("compose/test.yml")
@@ -80,18 +103,10 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertIn("- tests/contract", compose)
         self.assertIn("dockerfile: containers/test/Dockerfile", compose)
         self.assertIn("- --offline\n      - --locked", compose)
+        assert_compose_hardening(self, compose, network_none=True)
         self.assertRegex(compose, r'(?m)^  user:\s+"65532:65532"\s*$')
-        self.assertRegex(compose, r'(?m)^  network_mode:\s+"none"\s*$')
-        self.assertRegex(compose, r"(?m)^  read_only:\s+true\s*$")
-        self.assertRegex(compose, r"(?ms)^  cap_drop:\n    - ALL\s*$")
-        self.assertRegex(
-            compose,
-            r"(?ms)^  security_opt:\n    - no-new-privileges:true\s*$",
-        )
         self.assertNotIn("volumes:", compose)
         self.assertNotIn(".venv", compose)
-        self.assertNotIn("docker.sock", compose)
-        self.assertNotIn("privileged: true", compose)
 
     def test_rust_sources_do_not_import_host_rdkit(self) -> None:
         forbidden_patterns = {
@@ -113,13 +128,7 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertRegex(compose, r"(?m)^  test-package:$")
         self.assertIn("dockerfile: containers/test-package/Dockerfile", compose)
         self.assertIn(REQUIRED_WRITE_USER, compose)
-        self.assertRegex(compose, r'(?m)^\s+network_mode:\s+"none"\s*$')
-        self.assertRegex(compose, r"(?m)^\s+read_only:\s+true\s*$")
-        self.assertRegex(compose, r"(?ms)^\s+cap_drop:\n\s+- ALL\s*$")
-        self.assertRegex(
-            compose,
-            r"(?ms)^\s+security_opt:\n\s+- no-new-privileges:true\s*$",
-        )
+        assert_compose_hardening(self, compose, network_none=True)
         self.assertNotIn("volumes:", compose)
         self.assertIn('dist_dir="$$(mktemp -d /tmp/grimace-dist.XXXXXX)"', compose)
         self.assertIn('python -m maturin build --release --out "$$dist_dir"', compose)
@@ -150,21 +159,13 @@ class ContainerPostureTests(unittest.TestCase):
         )
         self.assertNotIn("source: ..\n", compose)
         self.assertNotIn(".venv", compose)
-        self.assertNotIn("docker.sock", compose)
-        self.assertNotIn("privileged: true", compose)
 
     def test_timings_enum_compose_is_explicit_write_enabled_lane(self) -> None:
         compose = read_text("compose/timings-enum.yml")
         self.assertRegex(compose, r"(?m)^  timings-enum:$")
         self.assertIn("dockerfile: containers/timings-enum/Dockerfile", compose)
         self.assertIn(REQUIRED_WRITE_USER, compose)
-        self.assertRegex(compose, r'(?m)^\s+network_mode:\s+"none"\s*$')
-        self.assertRegex(compose, r"(?m)^\s+read_only:\s+true\s*$")
-        self.assertRegex(compose, r"(?ms)^\s+cap_drop:\n\s+- ALL\s*$")
-        self.assertRegex(
-            compose,
-            r"(?ms)^\s+security_opt:\n\s+- no-new-privileges:true\s*$",
-        )
+        assert_compose_hardening(self, compose, network_none=True)
         self.assertIn("MPLCONFIGDIR: /tmp/matplotlib", compose)
         self.assertIn("source: ../docs/timings-enum.tsv", compose)
         self.assertIn("target: /build-src/docs/timings-enum.tsv", compose)
@@ -178,8 +179,6 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertNotIn("source: ..\n", compose)
         self.assertNotIn("target: /src", compose)
         self.assertNotIn(".venv", compose)
-        self.assertNotIn("docker.sock", compose)
-        self.assertNotIn("privileged: true", compose)
 
     def test_prepared_mol_zstd_dictionary_compose_writes_only_package_data(self) -> None:
         compose = read_text("compose/prepared-mol-zstd-dictionary.yml")
@@ -189,13 +188,7 @@ class ContainerPostureTests(unittest.TestCase):
             compose,
         )
         self.assertIn(REQUIRED_WRITE_USER, compose)
-        self.assertRegex(compose, r'(?m)^\s+network_mode:\s+"none"\s*$')
-        self.assertRegex(compose, r"(?m)^\s+read_only:\s+true\s*$")
-        self.assertRegex(compose, r"(?ms)^\s+cap_drop:\n\s+- ALL\s*$")
-        self.assertRegex(
-            compose,
-            r"(?ms)^\s+security_opt:\n\s+- no-new-privileges:true\s*$",
-        )
+        assert_compose_hardening(self, compose, network_none=True)
         self.assertIn("PREPARED_MOL_ZSTD_CREATED_DATE", compose)
         self.assertIn("PREPARED_MOL_ZSTD_REPLACE_ARTIFACT", compose)
         self.assertIn("PREPARED_MOL_ZSTD_TRAINING_LEVEL", compose)
@@ -255,8 +248,6 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertEqual(full_line_count(compose, r"[ \t]+-[ \t]+type:[ \t]+bind"), 1)
         self.assertNotIn("source: ..\n", compose)
         self.assertNotIn(".venv", compose)
-        self.assertNotIn("docker.sock", compose)
-        self.assertNotIn("privileged: true", compose)
 
     def test_timings_prepared_mol_zstd_compose_writes_only_timing_artifacts(self) -> None:
         compose = read_text("compose/timings-prepared-mol-zstd.yml")
@@ -266,13 +257,7 @@ class ContainerPostureTests(unittest.TestCase):
             compose,
         )
         self.assertIn(REQUIRED_WRITE_USER, compose)
-        self.assertRegex(compose, r'(?m)^\s+network_mode:\s+"none"\s*$')
-        self.assertRegex(compose, r"(?m)^\s+read_only:\s+true\s*$")
-        self.assertRegex(compose, r"(?ms)^\s+cap_drop:\n\s+- ALL\s*$")
-        self.assertRegex(
-            compose,
-            r"(?ms)^\s+security_opt:\n\s+- no-new-privileges:true\s*$",
-        )
+        assert_compose_hardening(self, compose, network_none=True)
         self.assertIn(
             'GRIMACE_PERF_GIT_COMMIT: "${GRIMACE_PERF_GIT_COMMIT:-}"',
             compose,
@@ -322,8 +307,6 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertNotIn("source: ..\n", compose)
         self.assertNotIn("target: /src", compose)
         self.assertNotIn(".venv", compose)
-        self.assertNotIn("docker.sock", compose)
-        self.assertNotIn("privileged: true", compose)
 
     def test_docs_compose_builds_pages_site_strictly(self) -> None:
         compose = read_text("compose/docs.yml")
@@ -349,12 +332,10 @@ class ContainerPostureTests(unittest.TestCase):
             compose,
         )
         self.assertIn(REQUIRED_WRITE_USER, compose)
-        self.assertRegex(compose, r'(?m)^\s+network_mode:\s+"none"\s*$')
-        self.assertRegex(compose, r"(?m)^\s+read_only:\s+true\s*$")
-        self.assertRegex(compose, r"(?ms)^\s+cap_drop:\n\s+- ALL\s*$")
-        self.assertRegex(
-            compose,
-            r"(?ms)^\s+security_opt:\n\s+- no-new-privileges:true\s*$",
+        assert_compose_hardening(
+            self,
+            compose_service_block(compose, "docs"),
+            network_none=True,
         )
         self.assertIn("JEKYLL_ENV: production", compose)
         self.assertIn("SASS_CACHE_LOCATION: /tmp/sass-cache", compose)
@@ -373,11 +354,10 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertRegex(compose, r"(?m)^\s+image: python:.+@sha256:")
         self.assertNotIn("ports:", compose)
         self.assertIn("- http.server", compose)
-        self.assertRegex(compose, r"(?ms)^  docs-serve:\n(?:.*\n)*?    read_only: true")
-        self.assertRegex(compose, r"(?ms)^  docs-serve:\n(?:.*\n)*?    cap_drop:\n      - ALL")
-        self.assertRegex(
-            compose,
-            r"(?ms)^  docs-serve:\n(?:.*\n)*?    security_opt:\n      - no-new-privileges:true",
+        assert_compose_hardening(
+            self,
+            compose_service_block(compose, "docs-serve"),
+            network_none=False,
         )
         self.assertRegex(
             compose,
@@ -387,8 +367,6 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertNotRegex(compose, r"(?m)^\s+network_mode:\s*[\"']?host[\"']?\s*$")
         self.assertNotIn("target: /src", compose)
         self.assertNotIn(".venv", compose)
-        self.assertNotIn("docker.sock", compose)
-        self.assertNotIn("privileged: true", compose)
 
     def test_checks_dockerfile_is_pinned_and_does_not_embed_repo(self) -> None:
         dockerfile = read_text("containers/checks/Dockerfile")

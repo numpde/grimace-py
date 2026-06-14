@@ -145,7 +145,7 @@ until the dependency surface is large enough to justify the extra object.
   - Assert `checks.yml` is offline, read-only, non-root, and capability-free.
   - Assert Makefile refuses root Docker lanes.
   - Assert `.dockerignore` excludes dangerous, local, and generated paths.
-  - Assert every `v0.1.*` tag has `notes/releases/<tag>.md`.
+  - Assert every `vX.Y.Z` tag has `notes/releases/<tag>.md`.
   - Assert release workflow checks and uses `notes/releases/<tag>.md` from the
     tag ref.
 
@@ -258,7 +258,7 @@ until the dependency surface is large enough to justify the extra object.
   CI and release workflow token permissions and non-persistent checkout
   credentials.
   The `make ci` checkout fetches tag metadata because release-note checks need
-  local `v0.1.*` tags.
+  local `vX.Y.Z` tags.
   Added release artifact allowlist validation before GitHub release and PyPI
   publish. Pinned workflow action refs to commit SHAs and GitHub-hosted runner
   labels to `ubuntu-24.04`. Tag-triggered release builds now require `vX.Y.Z`

@@ -15,6 +15,9 @@ ACTION_USES_LINE = re.compile(r"(?m)^\s*(?:-\s+)?uses:\s+")
 PINNED_ACTION_USES_LINE = re.compile(
     r"(?m)^\s*(?:-\s+)?uses:\s+[^@\s]+@[0-9a-f]{40}(?:\s+#\s+\S+)?\s*$"
 )
+PINNED_CHECKOUT_USES_LINE = re.compile(
+    r"(?m)^(?:uses:|        uses:) actions/checkout@[0-9a-f]{40}(?:\s+#\s+\S+)?\s*$"
+)
 
 
 def read_text(relative_path: str) -> str:
@@ -40,14 +43,11 @@ def checkout_steps(text: str) -> tuple[str, ...]:
     # Select whole step blocks before checking checkout options. That keeps the
     # security assertion tied to the checkout step without depending on key
     # order inside the YAML step.
-    checkout_uses = re.compile(
-        r"(?m)^(?:uses:|        uses:) actions/checkout@[0-9a-f]{40}(?:\s+#\s+\S+)?\s*$"
-    )
     step_blocks = re.finditer(r"(?ms)^      - (?P<body>.*?)(?=^      - |\Z)", text)
     return tuple(
         match.group("body")
         for match in step_blocks
-        if checkout_uses.search(match.group("body"))
+        if PINNED_CHECKOUT_USES_LINE.search(match.group("body"))
     )
 
 

@@ -16,13 +16,14 @@ from tests.checks.posture_helpers import (
 
 
 ROOT = Path(__file__).resolve().parents[2]
-ACTION_USES_LINE = re.compile(r"(?m)^[ \t]*(?:-[ \t]+)?uses:[ \t]+")
+ACTION_USES_LINE = re.compile(r"(?m)^(?:uses:| {8}uses:)[ \t]+[^\n]+$")
 PINNED_ACTION_USES_LINE = re.compile(
-    r"(?m)^[ \t]*(?:-[ \t]+)?uses:[ \t]+[^@\s]+@[0-9a-f]{40}(?:[ \t]+#[ \t]*\S+)?[ \t]*$"
+    r"(?m)^(?:uses:| {8}uses:)[ \t]+[^@\s]+@[0-9a-f]{40}(?:[ \t]+#[ \t]*\S+)?[ \t]*$"
 )
 PINNED_CHECKOUT_USES_LINE = re.compile(
-    r"(?m)^[ \t]*uses:[ \t]+actions/checkout@[0-9a-f]{40}(?:[ \t]+#[ \t]*\S+)?[ \t]*$"
+    r"(?m)^(?:uses:| {8}uses:)[ \t]+actions/checkout@[0-9a-f]{40}(?:[ \t]+#[ \t]*\S+)?[ \t]*$"
 )
+WORKFLOW_STEP_BLOCKS = re.compile(r"(?ms)^      - (?P<body>.*?)(?=^      - |\Z)")
 
 
 def read_text(relative_path: str) -> str:
@@ -48,11 +49,26 @@ def checkout_steps(text: str) -> tuple[str, ...]:
     # Select whole step blocks before checking checkout options. That keeps the
     # security assertion tied to the checkout step without depending on key
     # order inside the YAML step.
-    step_blocks = re.finditer(r"(?ms)^      - (?P<body>.*?)(?=^      - |\Z)", text)
     return tuple(
         match.group("body")
-        for match in step_blocks
+        for match in WORKFLOW_STEP_BLOCKS.finditer(text)
         if PINNED_CHECKOUT_USES_LINE.search(match.group("body"))
+    )
+
+
+def workflow_action_uses_lines(workflow: str) -> tuple[str, ...]:
+    return tuple(
+        line
+        for step in WORKFLOW_STEP_BLOCKS.finditer(workflow)
+        for line in ACTION_USES_LINE.findall(step.group("body"))
+    )
+
+
+def workflow_pinned_action_uses_lines(workflow: str) -> tuple[str, ...]:
+    return tuple(
+        line
+        for step in WORKFLOW_STEP_BLOCKS.finditer(workflow)
+        for line in PINNED_ACTION_USES_LINE.findall(step.group("body"))
     )
 
 
@@ -91,12 +107,15 @@ jobs:
           persist-credentials: false
       - name: Publish
         uses: example/action@1111111111111111111111111111111111111111
+      - name: Script with action-like text
+        run: |
+          uses: not/an/action@2222222222222222222222222222222222222222
       - if: always()
         run: true
 """
 
-        uses_count = len(ACTION_USES_LINE.findall(workflow))
-        pinned_count = len(PINNED_ACTION_USES_LINE.findall(workflow))
+        uses_count = len(workflow_action_uses_lines(workflow))
+        pinned_count = len(workflow_pinned_action_uses_lines(workflow))
 
         self.assertEqual(uses_count, 2)
         self.assertEqual(pinned_count, 2)
@@ -122,8 +141,8 @@ jobs:
     def test_workflow_actions_are_pinned_to_commit_sha(self) -> None:
         for workflow_path in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
             workflow = workflow_path.read_text(encoding="utf-8")
-            uses_count = len(ACTION_USES_LINE.findall(workflow))
-            pinned_count = len(PINNED_ACTION_USES_LINE.findall(workflow))
+            uses_count = len(workflow_action_uses_lines(workflow))
+            pinned_count = len(workflow_pinned_action_uses_lines(workflow))
             with self.subTest(workflow=workflow_path.name):
                 self.assertEqual(uses_count, pinned_count)
 

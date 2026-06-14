@@ -7,6 +7,13 @@ RDKIT_VERSION = "2026.3.1"
 TWINE_VERSION = "6.2.0"
 ZSTANDARD_VERSION = "0.25.0"
 PLOX_VERSION = "0.0.3"
+DIRECT_CONTAINER_TOOL_PINS = {
+    "maturin": MATURIN_VERSION,
+    "plox": PLOX_VERSION,
+    "rdkit": RDKIT_VERSION,
+    "twine": TWINE_VERSION,
+    "zstandard": ZSTANDARD_VERSION,
+}
 
 
 def rdkit_runtime_version() -> str:

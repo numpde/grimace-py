@@ -4,6 +4,7 @@ import tomllib
 import unittest
 
 from tests.checks.build_dependency_pins import (
+    DIRECT_CONTAINER_TOOL_PINS,
     MATURIN_ACTION_VERSION,
     MATURIN_VERSION,
     PLOX_VERSION,
@@ -70,11 +71,9 @@ class BuildDependencyPinTests(unittest.TestCase):
 
     def test_container_and_release_lanes_use_same_direct_pins(self) -> None:
         constraints = pinned_constraints()
-        self.assertEqual(MATURIN_VERSION, constraints["maturin"])
-        self.assertEqual(PLOX_VERSION, constraints["plox"])
-        self.assertEqual(RDKIT_VERSION, constraints["rdkit"])
-        self.assertEqual(TWINE_VERSION, constraints["twine"])
-        self.assertEqual(ZSTANDARD_VERSION, constraints["zstandard"])
+        for name, version in DIRECT_CONTAINER_TOOL_PINS.items():
+            with self.subTest(constraint=name):
+                self.assertEqual(version, constraints[name])
 
         checked_files = (
             ".github/workflows/release.yml",
@@ -128,12 +127,6 @@ class BuildDependencyPinTests(unittest.TestCase):
                             text,
                             rf"\bzstandard=={re.escape(ZSTANDARD_VERSION)}\b",
                         )
-
-    def test_container_constraints_pin_direct_fixture_tools(self) -> None:
-        constraints = pinned_constraints()
-        self.assertEqual(RDKIT_VERSION, constraints["rdkit"])
-        self.assertEqual(TWINE_VERSION, constraints["twine"])
-        self.assertEqual(ZSTANDARD_VERSION, constraints["zstandard"])
 
     def test_dev_dependencies_include_dictionary_generator_tool(self) -> None:
         pyproject = tomllib.loads(read_text("pyproject.toml"))

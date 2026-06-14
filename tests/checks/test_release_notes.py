@@ -1,10 +1,10 @@
 from pathlib import Path
-import re
 import unittest
+
+from scripts.validate_release_artifacts import TAG_PATTERN
 
 
 ROOT = Path(__file__).resolve().parents[2]
-RELEASE_TAG_PATTERN = re.compile(r"^v\d+\.\d+\.\d+$")
 
 
 def read_text(relative_path: str) -> str:
@@ -17,7 +17,7 @@ def release_tags() -> tuple[str, ...]:
     refs_tags = ROOT / ".git" / "refs" / "tags"
     if refs_tags.is_dir():
         for path in refs_tags.iterdir():
-            if RELEASE_TAG_PATTERN.fullmatch(path.name):
+            if TAG_PATTERN.fullmatch(path.name):
                 tags.add(path.name)
 
     packed_refs = ROOT / ".git" / "packed-refs"
@@ -32,7 +32,7 @@ def release_tags() -> tuple[str, ...]:
             if not ref.startswith("refs/tags/"):
                 continue
             tag = ref.rsplit("/", 1)[-1]
-            if RELEASE_TAG_PATTERN.fullmatch(tag):
+            if TAG_PATTERN.fullmatch(tag):
                 tags.add(tag)
 
     return tuple(sorted(tags))

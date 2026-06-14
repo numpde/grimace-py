@@ -101,7 +101,7 @@ def matrix_values(job: str, key: str) -> tuple[str, ...]:
 
 
 class WorkflowPostureTests(unittest.TestCase):
-    def test_workflow_posture_helpers_cover_named_action_steps(self) -> None:
+    def test_workflow_posture_helpers_cover_uses_ref_shapes(self) -> None:
         workflow = """\
 jobs:
   example:
@@ -129,6 +129,15 @@ jobs:
         self.assertEqual(pinned_count, 3)
         assert_checkouts_do_not_persist_credentials(self, workflow)
         self.assertNotIn("if: always()", checkout_step(workflow))
+
+        unpinned_reusable = (
+            workflow
+            + "  unpinned:\n"
+            + "    uses: example/workflow/.github/workflows/build.yml@v1\n"
+        )
+        uses_count, pinned_count = pinned_workflow_uses_counts(unpinned_reusable)
+        self.assertEqual(uses_count, 4)
+        self.assertEqual(pinned_count, 3)
 
     def test_workflows_pin_github_hosted_runner_image(self) -> None:
         for workflow_path in sorted((ROOT / ".github" / "workflows").glob("*.yml")):

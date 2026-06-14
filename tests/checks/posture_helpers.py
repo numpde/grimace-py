@@ -10,7 +10,7 @@ def assert_before(test: unittest.TestCase, text: str, earlier: str, later: str) 
     test.assertLess(earlier_index, later_index)
 
 
-def line_count(text: str, pattern: str) -> int:
+def full_line_count(text: str, pattern: str) -> int:
     return len(re.findall(rf"(?m)^{pattern}$", text))
 
 

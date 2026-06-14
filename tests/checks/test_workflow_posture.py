@@ -9,7 +9,7 @@ from scripts.validate_release_artifacts import (
 )
 from tests.checks.posture_helpers import (
     assert_before,
-    line_count,
+    full_line_count,
     yaml_scalar_count,
     yaml_scalar_line,
 )
@@ -229,14 +229,14 @@ jobs:
             r'MANYLINUX_2_28_X86_64_IMAGE: "quay\.io/pypa/manylinux_2_28_x86_64@sha256:[0-9a-f]{64}"',
         )
         self.assertEqual(
-            line_count(
+            full_line_count(
                 workflow,
                 r"[ \t]+maturin-version:[ \t]+\$\{\{ env\.MATURIN_ACTION_VERSION \}\}",
             ),
             2,
         )
         self.assertEqual(
-            line_count(
+            full_line_count(
                 workflow,
                 r"[ \t]+container:[ \t]+\$\{\{ env\.MANYLINUX_2_28_X86_64_IMAGE \}\}",
             ),
@@ -247,7 +247,7 @@ jobs:
             workflow,
         )
         self.assertEqual(
-            line_count(
+            full_line_count(
                 workflow,
                 r"[ \t]+run: python -m pip install --constraint requirements/container-build-constraints\.txt .*",
             ),
@@ -255,11 +255,11 @@ jobs:
         )
         self.assertIn('"maturin==$MATURIN_PIP_VERSION"', workflow)
         self.assertEqual(
-            line_count(workflow, r'[ \t]+run: .*"twine==\$TWINE_PIP_VERSION".*'),
+            full_line_count(workflow, r'[ \t]+run: .*"twine==\$TWINE_PIP_VERSION".*'),
             4,
         )
         self.assertEqual(
-            line_count(
+            full_line_count(
                 workflow,
                 r'[ \t]+run: .*"zstandard==\$ZSTANDARD_FIXTURE_PIP_VERSION".*',
             ),
@@ -268,20 +268,20 @@ jobs:
         self.assertIn("python -m twine check dist/*.whl", workflow)
         self.assertIn("python -m twine check dist/*.tar.gz", workflow)
         self.assertEqual(
-            line_count(workflow, r"[ \t]+run: python -m twine check dist/\*"),
+            full_line_count(workflow, r"[ \t]+run: python -m twine check dist/\*"),
             2,
         )
         self.assertIn("python -m pip install --no-deps dist/*.whl", workflow)
         self.assertIn("python -m pip install --no-deps --no-build-isolation dist/*.tar.gz", workflow)
         self.assertEqual(
-            line_count(
+            full_line_count(
                 workflow,
                 r"[ \t]+run: python scripts/validate_release_artifacts\.py dist/\*\.whl --wheel-only",
             ),
             1,
         )
         self.assertEqual(
-            line_count(
+            full_line_count(
                 workflow,
                 r"[ \t]+run: python scripts/validate_release_artifacts\.py dist/\*\.tar\.gz --sdist-only",
             ),
@@ -291,7 +291,7 @@ jobs:
         self.assertIn("path: dist/*.tar.gz", workflow)
         self.assertEqual(yaml_scalar_count(workflow, "if-no-files-found", "error"), 2)
         self.assertEqual(
-            line_count(
+            full_line_count(
                 workflow,
                 r'[ \t]+run: python scripts/validate_release_artifacts\.py dist --tag "\$GITHUB_REF_NAME"',
             ),

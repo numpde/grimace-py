@@ -2,7 +2,7 @@ from pathlib import Path
 import re
 import unittest
 
-from tests.checks.posture_helpers import assert_before, line_count, yaml_scalar_count
+from tests.checks.posture_helpers import assert_before, full_line_count, yaml_scalar_count
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -252,7 +252,7 @@ class ContainerPostureTests(unittest.TestCase):
             "python scripts/prepared_mol_zstd_dictionary_generate.py",
             "python -m unittest tests.prepared_mol_zstd_dictionary_rates",
         )
-        self.assertEqual(line_count(compose, r"[ \t]+-[ \t]+type:[ \t]+bind"), 1)
+        self.assertEqual(full_line_count(compose, r"[ \t]+-[ \t]+type:[ \t]+bind"), 1)
         self.assertNotIn("source: ..\n", compose)
         self.assertNotIn(".venv", compose)
         self.assertNotIn("docker.sock", compose)

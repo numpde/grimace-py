@@ -22,7 +22,8 @@ PINNED_ACTION_USES_LINE = re.compile(
 )
 JOB_USES_LINE = re.compile(r"(?m)^    uses:[ \t]+[^\n]+$")
 LOCAL_JOB_USES_LINE = re.compile(
-    r"(?m)^    uses:[ \t]+\./\.github/workflows/[^\n]+\.ya?ml[ \t]*$"
+    r"(?m)^    uses:[ \t]+\./\.github/workflows/[^\n]+\.ya?ml"
+    r"(?:[ \t]+#[^\n]*)?[ \t]*$"
 )
 PINNED_JOB_USES_LINE = re.compile(
     r"(?m)^    uses:[ \t]+[^@\s]+@[0-9a-f]{40}(?:[ \t]+#[ \t]*\S+)?[ \t]*$"
@@ -135,6 +136,8 @@ jobs:
     uses: example/workflow/.github/workflows/build.yml@1111111111111111111111111111111111111111
   local-reusable:
     uses: ./.github/workflows/local.yml
+  commented-local-reusable:
+    uses: ./.github/workflows/commented.yml # same-repo workflow
 """
 
         self.assertEqual((), unpinned_workflow_uses_lines(workflow))

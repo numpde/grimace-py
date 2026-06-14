@@ -37,14 +37,18 @@ def checkout_step(job: str) -> str:
 
 
 def checkout_steps(text: str) -> tuple[str, ...]:
-    # Match the whole checkout step body so security-sensitive options are
-    # verified on that checkout, not merely somewhere else in the workflow.
-    pattern = (
-        r"(?ms)^      - (?:uses: actions/checkout|name: [^\n]+\n"
-        r"        uses: actions/checkout)@[0-9a-f]{40}[^\n]*\n"
-        r"(?P<body>.*?)(?=^      - |\Z)"
+    # Select whole step blocks before checking checkout options. That keeps the
+    # security assertion tied to the checkout step without depending on key
+    # order inside the YAML step.
+    checkout_uses = re.compile(
+        r"(?m)^(?:uses:|        uses:) actions/checkout@[0-9a-f]{40}(?:\s+#\s+\S+)?\s*$"
     )
-    return tuple(match.group("body") for match in re.finditer(pattern, text))
+    step_blocks = re.finditer(r"(?ms)^      - (?P<body>.*?)(?=^      - |\Z)", text)
+    return tuple(
+        match.group("body")
+        for match in step_blocks
+        if checkout_uses.search(match.group("body"))
+    )
 
 
 def assert_checkouts_do_not_persist_credentials(
@@ -76,6 +80,7 @@ jobs:
   example:
     steps:
       - name: Checkout source
+        id: checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false

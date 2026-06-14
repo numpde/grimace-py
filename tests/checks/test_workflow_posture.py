@@ -21,6 +21,9 @@ PINNED_ACTION_USES_LINE = re.compile(
     r"(?m)^(?:uses:| {8}uses:)[ \t]+[^@\s]+@[0-9a-f]{40}(?:[ \t]+#[ \t]*\S+)?[ \t]*$"
 )
 JOB_USES_LINE = re.compile(r"(?m)^    uses:[ \t]+[^\n]+$")
+LOCAL_JOB_USES_LINE = re.compile(
+    r"(?m)^    uses:[ \t]+\./\.github/workflows/[^\n]+\.ya?ml[ \t]*$"
+)
 PINNED_JOB_USES_LINE = re.compile(
     r"(?m)^    uses:[ \t]+[^@\s]+@[0-9a-f]{40}(?:[ \t]+#[ \t]*\S+)?[ \t]*$"
 )
@@ -73,7 +76,11 @@ def pinned_workflow_uses_counts(workflow: str) -> tuple[int, int]:
     step_uses = workflow_uses_lines(workflow, ACTION_USES_LINE)
     pinned_step_uses = workflow_uses_lines(workflow, PINNED_ACTION_USES_LINE)
     # Reusable workflow jobs are `jobs.<id>.uses`, outside any step block.
-    job_uses = JOB_USES_LINE.findall(workflow)
+    job_uses = tuple(
+        line
+        for line in JOB_USES_LINE.findall(workflow)
+        if not LOCAL_JOB_USES_LINE.fullmatch(line)
+    )
     pinned_job_uses = PINNED_JOB_USES_LINE.findall(workflow)
     return len(step_uses) + len(job_uses), len(pinned_step_uses) + len(pinned_job_uses)
 
@@ -121,6 +128,8 @@ jobs:
         run: true
   reusable:
     uses: example/workflow/.github/workflows/build.yml@1111111111111111111111111111111111111111
+  local-reusable:
+    uses: ./.github/workflows/local.yml
 """
 
         uses_count, pinned_count = pinned_workflow_uses_counts(workflow)

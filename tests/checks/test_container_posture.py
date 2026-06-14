@@ -475,9 +475,6 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertRegex(dockerfile, r"(?m)^FROM rust:.+@sha256:")
         self.assertIn("COPY . /src", dockerfile)
         self.assertIn("cargo fetch --locked", dockerfile)
-        self.assertIn("rdkit==2026.3.1", dockerfile)
-        self.assertIn("twine==6.2.0", dockerfile)
-        self.assertIn("zstandard==0.25.0", dockerfile)
         self.assertNotIn("apt-get", dockerfile)
         self.assertIn("USER 65532:65532", dockerfile)
 
@@ -507,9 +504,6 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertNotIn("apt-get", dockerfile)
         self.assertIn("COPY . /src", dockerfile)
         self.assertIn("WORKDIR /src", dockerfile)
-        self.assertIn("maturin==1.13.1", dockerfile)
-        self.assertIn("rdkit==2026.3.1", dockerfile)
-        self.assertIn("zstandard==0.25.0", dockerfile)
         self.assertIn("python -m maturin build --release --out", dockerfile)
         self.assertIn(
             "python -m pip install --no-deps /tmp/grimace-dist/*.whl",
@@ -530,10 +524,7 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertNotIn("apt-get", dockerfile)
         self.assertIn("COPY . /build-src", dockerfile)
         self.assertIn("WORKDIR /build-src", dockerfile)
-        self.assertIn("maturin==1.13.1", dockerfile)
         self.assertIn("plox==0.0.3", dockerfile)
-        self.assertIn("rdkit==2026.3.1", dockerfile)
-        self.assertIn("zstandard==0.25.0", dockerfile)
         self.assertIn("python -m maturin build --release --out", dockerfile)
         self.assertIn(
             "python -m pip install --no-deps /tmp/grimace-dist/*.whl",

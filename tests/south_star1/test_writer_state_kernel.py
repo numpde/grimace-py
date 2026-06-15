@@ -303,6 +303,158 @@ def _assert_checked_prefix_frontier_stream_decomposition(
     return outcome
 
 
+def _writer_public_choices_signature(public_choices: object) -> object:
+    if public_choices is None:
+        return None
+
+    terminal = public_choices.terminal
+    terminal_signature = (
+        None
+        if terminal is None
+        else (
+            terminal.support_count,
+            terminal.completion_count,
+            terminal.multiplicity,
+            terminal.finalized_cursor,
+        )
+    )
+
+    choice_signatures = tuple(
+        (
+            choice.emitted_text,
+            choice.successor,
+            choice.immediate_multiplicity,
+            choice.support_count,
+            choice.completion_count,
+        )
+        for choice in public_choices.choices
+    )
+
+    return terminal_signature, choice_signatures
+
+
+def _assert_prefix_read_outcomes_equivalent(
+    test_case: unittest.TestCase,
+    left: writer_snapshot._WriterSnapshotPrefixReadOutcome,
+    right: writer_snapshot._WriterSnapshotPrefixReadOutcome,
+) -> None:
+    test_case.assertIs(left.kind, right.kind)
+    test_case.assertEqual(left.support_count, right.support_count)
+    test_case.assertEqual(left.completion_count, right.completion_count)
+    test_case.assertEqual(
+        _writer_public_choices_signature(left.public_choices),
+        _writer_public_choices_signature(right.public_choices),
+    )
+
+
+def _assert_checked_prefix_successor_snapshot_resume_equivalence(
+    test_case: unittest.TestCase,
+    *,
+    snapshot: writer_snapshot.WriterSearchSnapshot,
+    prepared: SouthStarPreparedMol,
+    emitted_texts: tuple[str, ...],
+) -> writer_snapshot._WriterSnapshotPrefixReadOutcome:
+    direct = _assert_checked_prefix_frontier_stream_decomposition(
+        test_case,
+        snapshot=snapshot,
+        prepared=prepared,
+        emitted_texts=emitted_texts,
+    )
+
+    advanced_snapshot = direct.replay_outcome.advanced_snapshot
+    test_case.assertIsNotNone(advanced_snapshot)
+    assert advanced_snapshot is not None
+
+    resumed = (
+        writer_snapshot
+        ._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
+            advanced_snapshot,
+            prepared=prepared,
+            emitted_texts=(),
+            include_counts=True,
+        )
+    )
+
+    _assert_prefix_read_outcomes_equivalent(test_case, direct, resumed)
+
+    direct_suffixes = tuple(
+        writer_snapshot
+        ._iter_writer_frontier_support_suffixes_after_emitted_texts(
+            snapshot,
+            prepared=prepared,
+            emitted_texts=emitted_texts,
+        )
+    )
+    resumed_suffixes = tuple(
+        writer_snapshot
+        ._iter_writer_frontier_support_suffixes_after_emitted_texts(
+            advanced_snapshot,
+            prepared=prepared,
+            emitted_texts=(),
+        )
+    )
+    test_case.assertEqual(direct_suffixes, resumed_suffixes)
+
+    test_case.assertIsNotNone(direct.public_choices)
+    assert direct.public_choices is not None
+
+    for choice in direct.public_choices.choices:
+        child_direct = (
+            writer_snapshot
+            ._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
+                snapshot,
+                prepared=prepared,
+                emitted_texts=emitted_texts + (choice.emitted_text,),
+                include_counts=True,
+            )
+        )
+
+        child_snapshot = child_direct.replay_outcome.advanced_snapshot
+        test_case.assertIsNotNone(child_snapshot)
+        assert child_snapshot is not None
+
+        test_case.assertEqual(child_snapshot.cursor, choice.successor)
+
+        child_resumed = (
+            writer_snapshot
+            ._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
+                child_snapshot,
+                prepared=prepared,
+                emitted_texts=(),
+                include_counts=True,
+            )
+        )
+
+        _assert_prefix_read_outcomes_equivalent(
+            test_case,
+            child_direct,
+            child_resumed,
+        )
+
+        child_direct_suffixes = tuple(
+            writer_snapshot
+            ._iter_writer_frontier_support_suffixes_after_emitted_texts(
+                snapshot,
+                prepared=prepared,
+                emitted_texts=emitted_texts + (choice.emitted_text,),
+            )
+        )
+        child_resumed_suffixes = tuple(
+            writer_snapshot
+            ._iter_writer_frontier_support_suffixes_after_emitted_texts(
+                child_snapshot,
+                prepared=prepared,
+                emitted_texts=(),
+            )
+        )
+        test_case.assertEqual(
+            child_direct_suffixes,
+            child_resumed_suffixes,
+        )
+
+    return direct
+
+
 class WriterStateKernelTest(unittest.TestCase):
     def _closure_policy_for_outcome(
         self,
@@ -12803,6 +12955,63 @@ class WriterStateKernelTest(unittest.TestCase):
                 )
 
                 _assert_checked_prefix_frontier_stream_decomposition(
+                    self,
+                    snapshot=snapshot,
+                    prepared=prepared,
+                    emitted_texts=emitted_texts,
+                )
+
+    def test_checked_prefix_successor_snapshots_resume_equivalently(self) -> None:
+        cases = (
+            (
+                "acyclic initial root frontier",
+                _prepare(chain_facts(("C", "C"))),
+                _writer_options(rooted_at_atom=0),
+                (),
+                False,
+            ),
+            (
+                "acyclic after emitted atom",
+                _prepare(chain_facts(("C", "C"))),
+                _writer_options(rooted_at_atom=0),
+                ("C",),
+                False,
+            ),
+            (
+                "internal cyclic open ring endpoint",
+                _prepare(cyclopropane_facts()),
+                _writer_options(rooted_at_atom=0),
+                ("C", "1", "C", "C"),
+                True,
+            ),
+            (
+                "internal cyclic closed terminal",
+                _prepare(cyclopropane_facts()),
+                _writer_options(rooted_at_atom=0),
+                ("C", "1", "C", "C", "1"),
+                True,
+            ),
+        )
+
+        for name, prepared, options, emitted_texts, internal in cases:
+            with self.subTest(case=name):
+                if internal:
+                    cursor = initial_writer_transition_frontier_cursor(
+                        prepared,
+                        options,
+                    )
+                else:
+                    cursor = initial_writer_frontier_cursor(
+                        prepared,
+                        options,
+                    )
+                snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+                    prepared=prepared,
+                    runtime_options=options,
+                    cursor=cursor,
+                )
+
+                _assert_checked_prefix_successor_snapshot_resume_equivalence(
                     self,
                     snapshot=snapshot,
                     prepared=prepared,

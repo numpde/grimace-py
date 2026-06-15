@@ -12384,6 +12384,68 @@ class WriterStateKernelTest(unittest.TestCase):
             )
         )
 
+    def test_state_is_terminal_shape_rejects_open_ring_endpoints(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        open_state = _cyclopropane_terminal_open_closure_state()
+        closed_state = _cyclopropane_terminal_closed_closure_state()
+        open_context = writer_transitions.build_writer_transition_expansion_context(
+            prepared,
+            open_state,
+        )
+        closed_context = writer_transitions.build_writer_transition_expansion_context(
+            prepared,
+            closed_state,
+        )
+
+        self.assertFalse(
+            writer_snapshot._state_is_terminal_shape(
+                prepared,
+                open_context.state_key,
+                open_context.graph,
+            )
+        )
+        self.assertTrue(
+            writer_snapshot._state_is_terminal_shape(
+                prepared,
+                closed_context.state_key,
+                closed_context.graph,
+            )
+        )
+
+    def test_open_ring_endpoint_snapshot_does_not_report_ready_terminal(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = initial_writer_transition_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        open_prefix = ("C", "1", "C", "C")
+        outcome = (
+            writer_snapshot
+            ._writer_snapshot_prefix_read_outcome_after_emitted_texts(
+                snapshot,
+                prepared=prepared,
+                emitted_texts=open_prefix,
+                include_counts=True,
+            )
+        )
+
+        self.assertIs(
+            outcome.kind,
+            writer_snapshot._WriterSnapshotPrefixReadOutcomeKind.READABLE,
+        )
+        self.assertIsNotNone(outcome.public_choices)
+        assert outcome.public_choices is not None
+        self.assertIsNone(outcome.public_choices.terminal)
+        self.assertEqual(
+            tuple(choice.emitted_text for choice in outcome.public_choices.choices),
+            ("1",),
+        )
+        self.assertEqual(outcome.support_count, 1)
+        self.assertEqual(outcome.completion_count, 2)
+
     def test_raw_closure_label_allocator_uses_least_free_not_reusable_first(self) -> None:
         prepared = _prepare_with_policy(
             cyclopropane_facts(),

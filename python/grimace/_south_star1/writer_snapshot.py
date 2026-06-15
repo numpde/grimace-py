@@ -996,6 +996,82 @@ class _WriterSnapshotPrefixReadOutcome:
         )
 
 
+class _WriterResidualCyclicReadinessAuditKind(Enum):
+    READY = "ready"
+    BLOCKED = "blocked"
+    TRUNCATED = "truncated"
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterResidualCyclicReadinessBlockedPrefix:
+    emitted_texts: tuple[str, ...]
+    prefix_read_outcome: _WriterSnapshotPrefixReadOutcome
+
+    @property
+    def readiness_report(self):
+        return self.prefix_read_outcome.residual_cyclic_policy_readiness_report
+
+    @property
+    def graph_policy_blockers(self):
+        return self.prefix_read_outcome.graph_policy_blockers
+
+    @property
+    def residual_cyclic_policy_coverage_kinds(self):
+        return self.prefix_read_outcome.residual_cyclic_policy_coverage_kinds
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterResidualCyclicReadinessAudit:
+    kind: _WriterResidualCyclicReadinessAuditKind
+    visited_prefixes: tuple[tuple[str, ...], ...]
+    blocked_prefixes: tuple[
+        _WriterResidualCyclicReadinessBlockedPrefix,
+        ...,
+    ] = ()
+    truncated_at_prefix: tuple[str, ...] | None = None
+
+    def __post_init__(self) -> None:
+        if self.kind is _WriterResidualCyclicReadinessAuditKind.READY:
+            valid = (
+                not self.blocked_prefixes
+                and self.truncated_at_prefix is None
+            )
+        elif self.kind is _WriterResidualCyclicReadinessAuditKind.BLOCKED:
+            valid = (
+                bool(self.blocked_prefixes)
+                and self.truncated_at_prefix is None
+            )
+        elif self.kind is _WriterResidualCyclicReadinessAuditKind.TRUNCATED:
+            valid = self.truncated_at_prefix is not None
+        else:
+            valid = False
+
+        if not valid:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                f"invalid residual cyclic readiness audit: {self.kind!r}",
+            )
+
+    @property
+    def ready(self) -> bool:
+        return self.kind is _WriterResidualCyclicReadinessAuditKind.READY
+
+    @property
+    def blocked(self) -> bool:
+        return self.kind is _WriterResidualCyclicReadinessAuditKind.BLOCKED
+
+    @property
+    def truncated(self) -> bool:
+        return self.kind is _WriterResidualCyclicReadinessAuditKind.TRUNCATED
+
+    @property
+    def blocked_emitted_texts(self) -> tuple[tuple[str, ...], ...]:
+        return tuple(
+            blocked.emitted_texts
+            for blocked in self.blocked_prefixes
+        )
+
+
 def _maybe_writer_frontier_choice_snapshot_entry_for_emitted_text(
     choice_snapshot: _WriterFrontierChoiceSnapshot,
     emitted_text: str,
@@ -1537,6 +1613,105 @@ def _writer_snapshot_prefix_read_outcome_after_emitted_texts(
         support_count=support_count,
         completion_count=completion_count,
     )
+
+
+def _audit_residual_cyclic_readiness_from_snapshot(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    max_depth: int | None = None,
+    max_prefixes: int | None = None,
+) -> _WriterResidualCyclicReadinessAudit:
+    visited: list[tuple[str, ...]] = []
+    blocked: list[_WriterResidualCyclicReadinessBlockedPrefix] = []
+    seen: set[tuple[str, ...]] = set()
+
+    def rec(prefix: tuple[str, ...]) -> tuple[bool, tuple[str, ...] | None]:
+        if prefix in seen:
+            return False, None
+
+        seen.add(prefix)
+        visited.append(prefix)
+
+        if max_prefixes is not None and len(visited) > max_prefixes:
+            return True, prefix
+
+        if max_depth is not None and len(prefix) > max_depth:
+            return True, prefix
+
+        outcome = _writer_snapshot_prefix_read_outcome_after_emitted_texts(
+            snapshot,
+            prepared=prepared,
+            emitted_texts=prefix,
+            include_counts=False,
+            stop_after_first_blocked=True,
+        )
+        report = outcome.residual_cyclic_policy_readiness_report
+
+        if report.blocked:
+            blocked.append(
+                _WriterResidualCyclicReadinessBlockedPrefix(
+                    emitted_texts=prefix,
+                    prefix_read_outcome=outcome,
+                )
+            )
+            return False, None
+
+        if outcome.choice_snapshot is None:
+            return False, None
+
+        for choice in outcome.choice_snapshot.choices:
+            stopped, stopped_prefix = rec((*prefix, choice.emitted_text))
+
+            if stopped:
+                return True, stopped_prefix
+
+        return False, None
+
+    truncated, truncated_prefix = rec(())
+
+    if truncated:
+        return _WriterResidualCyclicReadinessAudit(
+            kind=_WriterResidualCyclicReadinessAuditKind.TRUNCATED,
+            visited_prefixes=tuple(visited),
+            blocked_prefixes=tuple(blocked),
+            truncated_at_prefix=truncated_prefix,
+        )
+
+    if blocked:
+        return _WriterResidualCyclicReadinessAudit(
+            kind=_WriterResidualCyclicReadinessAuditKind.BLOCKED,
+            visited_prefixes=tuple(visited),
+            blocked_prefixes=tuple(blocked),
+        )
+
+    return _WriterResidualCyclicReadinessAudit(
+        kind=_WriterResidualCyclicReadinessAuditKind.READY,
+        visited_prefixes=tuple(visited),
+    )
+
+
+def _assert_residual_cyclic_readiness_from_snapshot(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    max_depth: int | None = None,
+    max_prefixes: int | None = None,
+) -> _WriterResidualCyclicReadinessAudit:
+    audit = _audit_residual_cyclic_readiness_from_snapshot(
+        snapshot,
+        prepared=prepared,
+        max_depth=max_depth,
+        max_prefixes=max_prefixes,
+    )
+
+    if not audit.ready:
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            f"residual cyclic readiness audit failed: {audit.kind!r}",
+        )
+
+    return audit
 
 
 def _checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(

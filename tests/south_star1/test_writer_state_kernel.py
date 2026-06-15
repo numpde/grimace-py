@@ -1617,6 +1617,49 @@ class WriterStateKernelTest(unittest.TestCase):
             completion_count=1,
         )
 
+    def _test_final_blocked_prefix_outcome(
+        self,
+        choice_snapshot: writer_frontier_module._WriterFrontierChoiceSnapshot,
+    ) -> writer_snapshot._WriterSnapshotPrefixReadOutcome:
+        replay_outcome = (
+            self._test_replay_choice_snapshot_outcome_for_choice_snapshot(
+                choice_snapshot,
+            )
+        )
+
+        return writer_snapshot._WriterSnapshotPrefixReadOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotPrefixReadOutcomeKind
+                .FINAL_FRONTIER_BLOCKED
+            ),
+            replay_outcome=replay_outcome,
+        )
+
+    def _test_residual_cyclic_readiness_ready_prefix_outcomes(
+        self,
+    ) -> dict[tuple[str, ...], writer_snapshot._WriterSnapshotPrefixReadOutcome]:
+        active_outcome = self._test_active_owned_dead_closure_active_outcome()
+        residual = active_outcome.graph_policy_decision.residual_cyclic_policy_decision
+        self.assertIsNotNone(residual)
+        root_snapshot = self._test_frontier_choice_snapshot_for_active_outcome(
+            active_outcome,
+            support_family=(
+                writer_transitions
+                ._WriterGraphPolicyActionFamily
+                .CYCLIC_TREE_ENTRY
+            ),
+            residual_key=residual.choice_groups[0].key,  # type: ignore[union-attr]
+            emitted_text="C",
+        )
+
+        return {
+            (): self._test_readable_prefix_outcome(root_snapshot),
+            ("C",): self._test_readable_prefix_outcome(
+                self._test_frontier_choice_snapshot(()),
+            ),
+        }
+
     def _test_active_outcome_for_graph_policy(
         self,
         policy: writer_transitions._WriterActiveEmittedGraphPolicyDecision,
@@ -20883,6 +20926,246 @@ class WriterStateKernelTest(unittest.TestCase):
                 .INVALID_REPLAY_OR_NO_FRONTIER
             ),
         )
+
+    def test_residual_cyclic_readiness_audit_validates_payload_shape(self) -> None:
+        active_outcome = self._test_residual_cyclic_blocked_active_outcome(
+            include_closure_emission=False,
+        )
+        choice_snapshot = self._test_residual_cyclic_blocked_choice_snapshot(
+            active_outcome,
+        )
+        blocked_prefix = writer_snapshot._WriterResidualCyclicReadinessBlockedPrefix(
+            emitted_texts=("C",),
+            prefix_read_outcome=self._test_final_blocked_prefix_outcome(
+                choice_snapshot,
+            ),
+        )
+
+        writer_snapshot._WriterResidualCyclicReadinessAudit(
+            kind=writer_snapshot._WriterResidualCyclicReadinessAuditKind.READY,
+            visited_prefixes=((),),
+        )
+        writer_snapshot._WriterResidualCyclicReadinessAudit(
+            kind=(
+                writer_snapshot
+                ._WriterResidualCyclicReadinessAuditKind
+                .BLOCKED
+            ),
+            visited_prefixes=((), ("C",)),
+            blocked_prefixes=(blocked_prefix,),
+        )
+        writer_snapshot._WriterResidualCyclicReadinessAudit(
+            kind=(
+                writer_snapshot
+                ._WriterResidualCyclicReadinessAuditKind
+                .TRUNCATED
+            ),
+            visited_prefixes=((), ("C",)),
+            truncated_at_prefix=("C",),
+        )
+
+        invalid_cases = (
+            dict(
+                kind=(
+                    writer_snapshot
+                    ._WriterResidualCyclicReadinessAuditKind
+                    .READY
+                ),
+                visited_prefixes=((),),
+                blocked_prefixes=(blocked_prefix,),
+            ),
+            dict(
+                kind=(
+                    writer_snapshot
+                    ._WriterResidualCyclicReadinessAuditKind
+                    .BLOCKED
+                ),
+                visited_prefixes=((),),
+            ),
+            dict(
+                kind=(
+                    writer_snapshot
+                    ._WriterResidualCyclicReadinessAuditKind
+                    .TRUNCATED
+                ),
+                visited_prefixes=((),),
+            ),
+        )
+
+        for kwargs in invalid_cases:
+            with self.subTest(kwargs=kwargs):
+                with self.assertRaises(SouthStarError) as cm:
+                    writer_snapshot._WriterResidualCyclicReadinessAudit(
+                        **kwargs,
+                    )
+
+                self.assertIs(
+                    cm.exception.kind,
+                    SouthStarErrorKind.INTERNAL_INVARIANT,
+                )
+
+    def test_residual_cyclic_readiness_audit_reports_ready_for_supported_owner_fixture(self) -> None:
+        outcomes = self._test_residual_cyclic_readiness_ready_prefix_outcomes()
+
+        def prefix_read(
+            _snapshot,
+            *,
+            prepared,
+            emitted_texts,
+            include_counts=True,
+            stop_after_first_blocked=False,
+        ):
+            self.assertIs(prepared, prepared_fixture)
+            self.assertFalse(include_counts)
+            self.assertTrue(stop_after_first_blocked)
+            return outcomes[emitted_texts]
+
+        prepared_fixture = object()
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._writer_snapshot_prefix_read_outcome_after_emitted_texts"
+            ),
+            side_effect=prefix_read,
+        ):
+            audit = writer_snapshot._audit_residual_cyclic_readiness_from_snapshot(
+                self._test_writer_search_snapshot(),
+                prepared=prepared_fixture,  # type: ignore[arg-type]
+                max_depth=2,
+            )
+
+        self.assertTrue(audit.ready)
+        self.assertFalse(audit.blocked)
+        self.assertFalse(audit.truncated)
+        self.assertEqual(audit.blocked_prefixes, ())
+        self.assertIn((), audit.visited_prefixes)
+        self.assertIn(("C",), audit.visited_prefixes)
+
+    def test_residual_cyclic_readiness_audit_reports_blocked_for_missing_evidence(self) -> None:
+        active_outcome = self._test_residual_cyclic_blocked_active_outcome(
+            include_closure_emission=False,
+        )
+        choice_snapshot = self._test_residual_cyclic_blocked_choice_snapshot(
+            active_outcome,
+        )
+        blocked_outcome = self._test_final_blocked_prefix_outcome(
+            choice_snapshot,
+        )
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._writer_snapshot_prefix_read_outcome_after_emitted_texts"
+            ),
+            return_value=blocked_outcome,
+        ):
+            audit = writer_snapshot._audit_residual_cyclic_readiness_from_snapshot(
+                self._test_writer_search_snapshot(),
+                prepared=object(),  # type: ignore[arg-type]
+            )
+
+        self.assertTrue(audit.blocked)
+        self.assertEqual(audit.blocked_emitted_texts, ((),))
+        self.assertIn(
+            (
+                writer_transitions
+                ._WriterResidualCyclicPolicyCoverageKind
+                .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
+            ),
+            audit.blocked_prefixes[0].residual_cyclic_policy_coverage_kinds,
+        )
+
+    def test_residual_cyclic_readiness_audit_reports_blocked_for_unsupported_owner_scope(self) -> None:
+        active_outcome = self._test_residual_cyclic_blocked_active_outcome(
+            closure_owner_kind=WriterBoundaryOwnerKind.UNOWNED,
+            child_owner_kind=WriterBoundaryOwnerKind.UNOWNED,
+        )
+        choice_snapshot = self._test_residual_cyclic_blocked_choice_snapshot(
+            active_outcome,
+        )
+        blocked_outcome = self._test_final_blocked_prefix_outcome(
+            choice_snapshot,
+        )
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._writer_snapshot_prefix_read_outcome_after_emitted_texts"
+            ),
+            return_value=blocked_outcome,
+        ):
+            audit = writer_snapshot._audit_residual_cyclic_readiness_from_snapshot(
+                self._test_writer_search_snapshot(),
+                prepared=object(),  # type: ignore[arg-type]
+            )
+
+        self.assertTrue(audit.blocked)
+        self.assertIn(
+            (
+                writer_transitions
+                ._WriterResidualCyclicPolicyCoverageKind
+                .UNSUPPORTED_OWNER_SCOPE
+            ),
+            audit.blocked_prefixes[0].residual_cyclic_policy_coverage_kinds,
+        )
+
+    def test_residual_cyclic_readiness_audit_can_truncate_by_depth(self) -> None:
+        outcomes = self._test_residual_cyclic_readiness_ready_prefix_outcomes()
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._writer_snapshot_prefix_read_outcome_after_emitted_texts"
+            ),
+            side_effect=lambda _snapshot, **kwargs: outcomes[
+                kwargs["emitted_texts"]
+            ],
+        ):
+            audit = writer_snapshot._audit_residual_cyclic_readiness_from_snapshot(
+                self._test_writer_search_snapshot(),
+                prepared=object(),  # type: ignore[arg-type]
+                max_depth=0,
+            )
+
+        self.assertTrue(audit.truncated)
+        self.assertEqual(audit.truncated_at_prefix, ("C",))
+        self.assertIn((), audit.visited_prefixes)
+        self.assertIn(("C",), audit.visited_prefixes)
+
+    def test_residual_cyclic_readiness_audit_uses_uncounted_prefix_reads(self) -> None:
+        outcomes = self._test_residual_cyclic_readiness_ready_prefix_outcomes()
+
+        def prefix_read(_snapshot, *, emitted_texts, include_counts=True, **_kwargs):
+            self.assertFalse(include_counts)
+            return outcomes[emitted_texts]
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._writer_snapshot_prefix_read_outcome_after_emitted_texts"
+            ),
+            side_effect=prefix_read,
+        ), patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._count_writer_frontier_choice_snapshot_supports"
+            ),
+            side_effect=AssertionError("audit should not count supports"),
+        ), patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._count_writer_frontier_choice_snapshot_completions"
+            ),
+            side_effect=AssertionError("audit should not count completions"),
+        ):
+            audit = writer_snapshot._audit_residual_cyclic_readiness_from_snapshot(
+                self._test_writer_search_snapshot(),
+                prepared=object(),  # type: ignore[arg-type]
+                max_depth=2,
+            )
+
+        self.assertTrue(audit.ready)
 
     def test_supported_dead_closure_owner_scope_decision_kind_maps_supported_scopes(self) -> None:
         supported_cases = (

@@ -239,6 +239,70 @@ def _assert_checked_prefix_frontier_count_decomposition(
     return outcome
 
 
+def _assert_checked_prefix_frontier_stream_decomposition(
+    test_case: unittest.TestCase,
+    *,
+    snapshot: writer_snapshot.WriterSearchSnapshot,
+    prepared: SouthStarPreparedMol,
+    emitted_texts: tuple[str, ...],
+) -> writer_snapshot._WriterSnapshotPrefixReadOutcome:
+    outcome = _assert_checked_prefix_frontier_count_decomposition(
+        test_case,
+        snapshot=snapshot,
+        prepared=prepared,
+        emitted_texts=emitted_texts,
+    )
+
+    test_case.assertIsNotNone(outcome.support_count)
+    test_case.assertIsNotNone(outcome.public_choices)
+    assert outcome.support_count is not None
+    assert outcome.public_choices is not None
+
+    suffixes = tuple(
+        writer_snapshot
+        ._iter_writer_frontier_support_suffixes_after_emitted_texts(
+            snapshot,
+            prepared=prepared,
+            emitted_texts=emitted_texts,
+        )
+    )
+
+    test_case.assertEqual(len(suffixes), outcome.support_count)
+    test_case.assertEqual(
+        len(suffixes),
+        len(set(suffixes)),
+        "writer support stream must not duplicate support suffixes",
+    )
+
+    expected: list[str] = []
+
+    if outcome.public_choices.terminal is not None:
+        expected.append("")
+
+    for choice in outcome.public_choices.choices:
+        test_case.assertIsNotNone(choice.support_count)
+        assert choice.support_count is not None
+
+        child_suffixes = tuple(
+            writer_snapshot
+            ._iter_writer_frontier_support_suffixes_after_emitted_texts(
+                snapshot,
+                prepared=prepared,
+                emitted_texts=emitted_texts + (choice.emitted_text,),
+            )
+        )
+
+        test_case.assertEqual(len(child_suffixes), choice.support_count)
+        expected.extend(
+            choice.emitted_text + suffix
+            for suffix in child_suffixes
+        )
+
+    test_case.assertEqual(suffixes, tuple(expected))
+
+    return outcome
+
+
 class WriterStateKernelTest(unittest.TestCase):
     def _closure_policy_for_outcome(
         self,
@@ -12682,6 +12746,63 @@ class WriterStateKernelTest(unittest.TestCase):
                 )
 
                 _assert_checked_prefix_frontier_count_decomposition(
+                    self,
+                    snapshot=snapshot,
+                    prepared=prepared,
+                    emitted_texts=emitted_texts,
+                )
+
+    def test_checked_prefix_stream_decomposes_over_terminal_and_choices(self) -> None:
+        cases = (
+            (
+                "acyclic initial root frontier",
+                _prepare(chain_facts(("C", "C"))),
+                _writer_options(rooted_at_atom=0),
+                (),
+                False,
+            ),
+            (
+                "acyclic after emitted atom",
+                _prepare(chain_facts(("C", "C"))),
+                _writer_options(rooted_at_atom=0),
+                ("C",),
+                False,
+            ),
+            (
+                "internal cyclic open ring endpoint",
+                _prepare(cyclopropane_facts()),
+                _writer_options(rooted_at_atom=0),
+                ("C", "1", "C", "C"),
+                True,
+            ),
+            (
+                "internal cyclic closed terminal",
+                _prepare(cyclopropane_facts()),
+                _writer_options(rooted_at_atom=0),
+                ("C", "1", "C", "C", "1"),
+                True,
+            ),
+        )
+
+        for name, prepared, options, emitted_texts, internal in cases:
+            with self.subTest(case=name):
+                if internal:
+                    cursor = initial_writer_transition_frontier_cursor(
+                        prepared,
+                        options,
+                    )
+                else:
+                    cursor = initial_writer_frontier_cursor(
+                        prepared,
+                        options,
+                    )
+                snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+                    prepared=prepared,
+                    runtime_options=options,
+                    cursor=cursor,
+                )
+
+                _assert_checked_prefix_frontier_stream_decomposition(
                     self,
                     snapshot=snapshot,
                     prepared=prepared,

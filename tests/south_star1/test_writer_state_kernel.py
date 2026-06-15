@@ -12501,6 +12501,69 @@ class WriterStateKernelTest(unittest.TestCase):
                     SouthStarErrorKind.INVALID_FACTS,
                 )
 
+    def test_open_ring_endpoint_prefix_replay_closing_token_reaches_terminal_eos(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = initial_writer_transition_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        closed_prefix = ("C", "1", "C", "C", "1")
+        outcome = (
+            writer_snapshot
+            ._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
+                snapshot,
+                prepared=prepared,
+                emitted_texts=closed_prefix,
+                include_counts=True,
+            )
+        )
+
+        self.assertIs(
+            outcome.kind,
+            writer_snapshot._WriterSnapshotPrefixReadOutcomeKind.READABLE,
+        )
+        self.assertIsNotNone(outcome.public_choices)
+        assert outcome.public_choices is not None
+        self.assertIsNotNone(outcome.public_choices.terminal)
+        self.assertEqual(tuple(outcome.public_choices.choices), ())
+        self.assertEqual(outcome.support_count, 1)
+        self.assertEqual(outcome.completion_count, 2)
+
+    def test_closed_cyclic_terminal_prefix_rejects_extra_tokens_as_invalid_facts(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = initial_writer_transition_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        bad_prefixes = (
+            ("C", "1", "C", "C", "1", "C"),
+            ("C", "1", "C", "C", "1", "1"),
+        )
+
+        for bad_prefix in bad_prefixes:
+            with self.subTest(bad_prefix=bad_prefix):
+                with self.assertRaises(SouthStarError) as caught:
+                    (
+                        writer_snapshot
+                        ._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
+                            snapshot,
+                            prepared=prepared,
+                            emitted_texts=bad_prefix,
+                            include_counts=True,
+                        )
+                    )
+
+                self.assertIs(
+                    caught.exception.kind,
+                    SouthStarErrorKind.INVALID_FACTS,
+                )
+
     def test_raw_closure_label_allocator_uses_least_free_not_reusable_first(self) -> None:
         prepared = _prepare_with_policy(
             cyclopropane_facts(),

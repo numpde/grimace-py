@@ -34,6 +34,7 @@ from grimace._south_star1.policy import RingLabel
 from grimace._south_star1.policy import SerializationLanguageMode
 from grimace._south_star1.policy import SmilesPolicy
 from grimace._south_star1.policy import TetraToken
+from grimace._south_star1.prepared_runtime import SouthStarPreparedMol
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import enumerate_prepared_stereo_support
@@ -75,6 +76,97 @@ from tests.south_star1.helpers import tetrahedral_facts
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SOUTH_STAR1_ROOT = REPO_ROOT / "python" / "grimace" / "_south_star1"
+
+_WRITER_REPLAY_PROBE_TOKENS = (
+    "C",
+    "O",
+    "N",
+    "(",
+    ")",
+    "1",
+    "2",
+    "=",
+    "#",
+    "/",
+    "\\",
+    ".",
+    "[C]",
+    "Cl",
+)
+
+
+def _assert_checked_prefix_frontier_replay_contract(
+    test_case: unittest.TestCase,
+    *,
+    snapshot: writer_snapshot.WriterSearchSnapshot,
+    prepared: SouthStarPreparedMol,
+    emitted_texts: tuple[str, ...],
+    probe_tokens: tuple[str, ...] = _WRITER_REPLAY_PROBE_TOKENS,
+    include_counts: bool = True,
+) -> writer_snapshot._WriterSnapshotPrefixReadOutcome:
+    outcome = (
+        writer_snapshot
+        ._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
+            snapshot,
+            prepared=prepared,
+            emitted_texts=emitted_texts,
+            include_counts=include_counts,
+        )
+    )
+
+    test_case.assertIs(
+        outcome.kind,
+        writer_snapshot._WriterSnapshotPrefixReadOutcomeKind.READABLE,
+    )
+    test_case.assertIsNotNone(outcome.public_choices)
+    assert outcome.public_choices is not None
+    legal_texts = tuple(
+        choice.emitted_text
+        for choice in outcome.public_choices.choices
+    )
+
+    test_case.assertEqual(
+        len(legal_texts),
+        len(set(legal_texts)),
+        "frontier emitted_text choices must be unique",
+    )
+
+    for emitted_text in legal_texts:
+        advanced = (
+            writer_snapshot
+            ._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
+                snapshot,
+                prepared=prepared,
+                emitted_texts=emitted_texts + (emitted_text,),
+                include_counts=False,
+            )
+        )
+        test_case.assertIs(
+            advanced.kind,
+            writer_snapshot._WriterSnapshotPrefixReadOutcomeKind.READABLE,
+        )
+
+    for emitted_text in probe_tokens:
+        if emitted_text in legal_texts:
+            continue
+
+        with test_case.assertRaises(SouthStarError) as caught:
+            (
+                writer_snapshot
+                ._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
+                    snapshot,
+                    prepared=prepared,
+                    emitted_texts=emitted_texts + (emitted_text,),
+                    include_counts=False,
+                )
+            )
+
+        test_case.assertIs(
+            caught.exception.kind,
+            SouthStarErrorKind.INVALID_FACTS,
+        )
+
+    return outcome
 
 
 class WriterStateKernelTest(unittest.TestCase):
@@ -12412,6 +12504,63 @@ class WriterStateKernelTest(unittest.TestCase):
             )
         )
 
+    def test_checked_prefix_replay_accepts_exactly_frontier_tokens(self) -> None:
+        cases = (
+            (
+                "acyclic initial root frontier",
+                _prepare(chain_facts(("C", "C"))),
+                _writer_options(rooted_at_atom=0),
+                (),
+                False,
+            ),
+            (
+                "acyclic after emitted atom",
+                _prepare(chain_facts(("C", "C"))),
+                _writer_options(rooted_at_atom=0),
+                ("C",),
+                False,
+            ),
+            (
+                "internal cyclic open ring endpoint",
+                _prepare(cyclopropane_facts()),
+                _writer_options(rooted_at_atom=0),
+                ("C", "1", "C", "C"),
+                True,
+            ),
+            (
+                "internal cyclic closed terminal",
+                _prepare(cyclopropane_facts()),
+                _writer_options(rooted_at_atom=0),
+                ("C", "1", "C", "C", "1"),
+                True,
+            ),
+        )
+
+        for name, prepared, options, emitted_texts, internal in cases:
+            with self.subTest(case=name):
+                if internal:
+                    cursor = initial_writer_transition_frontier_cursor(
+                        prepared,
+                        options,
+                    )
+                else:
+                    cursor = initial_writer_frontier_cursor(
+                        prepared,
+                        options,
+                    )
+                snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+                    prepared=prepared,
+                    runtime_options=options,
+                    cursor=cursor,
+                )
+
+                _assert_checked_prefix_frontier_replay_contract(
+                    self,
+                    snapshot=snapshot,
+                    prepared=prepared,
+                    emitted_texts=emitted_texts,
+                )
+
     def test_open_ring_endpoint_snapshot_does_not_report_ready_terminal(self) -> None:
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
@@ -12422,21 +12571,13 @@ class WriterStateKernelTest(unittest.TestCase):
             cursor=cursor,
         )
         open_prefix = ("C", "1", "C", "C")
-        outcome = (
-            writer_snapshot
-            ._writer_snapshot_prefix_read_outcome_after_emitted_texts(
-                snapshot,
-                prepared=prepared,
-                emitted_texts=open_prefix,
-                include_counts=True,
-            )
+        outcome = _assert_checked_prefix_frontier_replay_contract(
+            self,
+            snapshot=snapshot,
+            prepared=prepared,
+            emitted_texts=open_prefix,
         )
 
-        self.assertIs(
-            outcome.kind,
-            writer_snapshot._WriterSnapshotPrefixReadOutcomeKind.READABLE,
-        )
-        self.assertIsNotNone(outcome.public_choices)
         assert outcome.public_choices is not None
         self.assertIsNone(outcome.public_choices.terminal)
         self.assertEqual(
@@ -12456,50 +12597,20 @@ class WriterStateKernelTest(unittest.TestCase):
             cursor=cursor,
         )
         open_prefix = ("C", "1", "C", "C")
-        outcome = (
-            writer_snapshot
-            ._writer_snapshot_prefix_read_outcome_after_emitted_texts(
-                snapshot,
-                prepared=prepared,
-                emitted_texts=open_prefix,
-                include_counts=True,
-            )
+        outcome = _assert_checked_prefix_frontier_replay_contract(
+            self,
+            snapshot=snapshot,
+            prepared=prepared,
+            emitted_texts=open_prefix,
+            probe_tokens=("2", "C"),
         )
 
-        self.assertIs(
-            outcome.kind,
-            writer_snapshot._WriterSnapshotPrefixReadOutcomeKind.READABLE,
-        )
-        self.assertIsNotNone(outcome.public_choices)
         assert outcome.public_choices is not None
         self.assertIsNone(outcome.public_choices.terminal)
         self.assertEqual(
             tuple(choice.emitted_text for choice in outcome.public_choices.choices),
             ("1",),
         )
-
-        bad_prefixes = (
-            ("C", "1", "C", "C", "2"),
-            ("C", "1", "C", "C", "C"),
-        )
-
-        for bad_prefix in bad_prefixes:
-            with self.subTest(bad_prefix=bad_prefix):
-                with self.assertRaises(SouthStarError) as caught:
-                    (
-                        writer_snapshot
-                        ._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
-                            snapshot,
-                            prepared=prepared,
-                            emitted_texts=bad_prefix,
-                            include_counts=True,
-                        )
-                    )
-
-                self.assertIs(
-                    caught.exception.kind,
-                    SouthStarErrorKind.INVALID_FACTS,
-                )
 
     def test_open_ring_endpoint_prefix_replay_closing_token_reaches_terminal_eos(self) -> None:
         prepared = _prepare(cyclopropane_facts())
@@ -12511,21 +12622,13 @@ class WriterStateKernelTest(unittest.TestCase):
             cursor=cursor,
         )
         closed_prefix = ("C", "1", "C", "C", "1")
-        outcome = (
-            writer_snapshot
-            ._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
-                snapshot,
-                prepared=prepared,
-                emitted_texts=closed_prefix,
-                include_counts=True,
-            )
+        outcome = _assert_checked_prefix_frontier_replay_contract(
+            self,
+            snapshot=snapshot,
+            prepared=prepared,
+            emitted_texts=closed_prefix,
         )
 
-        self.assertIs(
-            outcome.kind,
-            writer_snapshot._WriterSnapshotPrefixReadOutcomeKind.READABLE,
-        )
-        self.assertIsNotNone(outcome.public_choices)
         assert outcome.public_choices is not None
         self.assertIsNotNone(outcome.public_choices.terminal)
         self.assertEqual(tuple(outcome.public_choices.choices), ())
@@ -12541,28 +12644,17 @@ class WriterStateKernelTest(unittest.TestCase):
             runtime_options=options,
             cursor=cursor,
         )
-        bad_prefixes = (
-            ("C", "1", "C", "C", "1", "C"),
-            ("C", "1", "C", "C", "1", "1"),
+        outcome = _assert_checked_prefix_frontier_replay_contract(
+            self,
+            snapshot=snapshot,
+            prepared=prepared,
+            emitted_texts=("C", "1", "C", "C", "1"),
+            probe_tokens=("C", "1"),
         )
 
-        for bad_prefix in bad_prefixes:
-            with self.subTest(bad_prefix=bad_prefix):
-                with self.assertRaises(SouthStarError) as caught:
-                    (
-                        writer_snapshot
-                        ._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
-                            snapshot,
-                            prepared=prepared,
-                            emitted_texts=bad_prefix,
-                            include_counts=True,
-                        )
-                    )
-
-                self.assertIs(
-                    caught.exception.kind,
-                    SouthStarErrorKind.INVALID_FACTS,
-                )
+        assert outcome.public_choices is not None
+        self.assertIsNotNone(outcome.public_choices.terminal)
+        self.assertEqual(tuple(outcome.public_choices.choices), ())
 
     def test_raw_closure_label_allocator_uses_least_free_not_reusable_first(self) -> None:
         prepared = _prepare_with_policy(

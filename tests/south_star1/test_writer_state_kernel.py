@@ -12113,6 +12113,34 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
 
+    def test_writer_shaped_cyclic_public_support_rejects_before_count_or_stream(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+
+        with patch(
+            "grimace._south_star1.writer_support.count_writer_frontier_support",
+            side_effect=AssertionError(
+                "cyclic public support reached support count",
+            ),
+        ), patch(
+            (
+                "grimace._south_star1.writer_support"
+                ".count_writer_cursor_completions"
+            ),
+            side_effect=AssertionError(
+                "cyclic public support reached completion count",
+            ),
+        ), patch(
+            "grimace._south_star1.writer_support.iter_writer_frontier_support",
+            side_effect=AssertionError("cyclic public support reached stream"),
+        ):
+            with self.assertRaises(SouthStarError) as caught:
+                enumerate_prepared_stereo_support(
+                    prepared=prepared,
+                    runtime_options=_writer_options(rooted_at_atom=0),
+                )
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+
     def test_public_initial_frontier_still_rejects_cyclic_prepared(self) -> None:
         prepared = _prepare(cyclopropane_facts())
 
@@ -21876,6 +21904,56 @@ class WriterStateKernelTest(unittest.TestCase):
             options,
         )
         self.assertIs(decision.kind, direct_decision.kind)
+
+    def test_real_cyclic_transition_cursor_admission_is_ready_but_public_closed(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = initial_writer_transition_frontier_cursor(prepared, options)
+
+        cursor_decision = (
+            writer_snapshot
+            ._cyclic_writer_admission_decision_from_cursor(
+                prepared=prepared,
+                runtime_options=options,
+                cursor=cursor,
+            )
+        )
+
+        self.assertIs(
+            cursor_decision.kind,
+            (
+                writer_snapshot
+                ._WriterCyclicAdmissionDecisionKind
+                .READY_BUT_PUBLIC_CLOSED
+            ),
+        )
+        self.assertTrue(cursor_decision.internally_ready)
+        self.assertFalse(cursor_decision.public_enabled)
+        self.assertFalse(cursor_decision.admitted_publicly)
+        self.assertTrue(cursor_decision.readiness_gate.ready)
+        self.assertEqual(cursor_decision.readiness_gate.snapshot.cursor, cursor)
+        self.assertEqual(
+            cursor_decision.readiness_gate.snapshot.runtime_options,
+            options,
+        )
+
+        snapshot_decision = (
+            writer_snapshot
+            ._cyclic_writer_admission_decision_from_snapshot(
+                cursor_decision.readiness_gate.snapshot,
+                prepared=prepared,
+            )
+        )
+
+        self.assertIs(snapshot_decision.kind, cursor_decision.kind)
+
+        with self.assertRaises(SouthStarError) as caught:
+            writer_snapshot._assert_cyclic_writer_admission_decision(
+                cursor_decision,
+            )
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+        self.assertIn("public support is closed", str(caught.exception))
 
     def test_assert_cyclic_writer_admission_decision_raises_for_ready_but_public_closed(self) -> None:
         ready_gate, _blocked_gate, _truncated_gate = (

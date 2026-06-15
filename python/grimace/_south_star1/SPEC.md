@@ -328,10 +328,6 @@ prepared graphs. `initial_writer_transition_frontier_cursor(...)` is an
 internal test harness for running those raw transition-surface states through
 the same weighted frontier, count, streaming, and snapshot machinery without
 changing the public support adapter.
-Private cyclic writer readiness may classify an internally ready cursor or
-snapshot. Public cyclic `WRITER_SHAPED` remains closed, and public
-support/frontier entrypoints must reject cyclic prepared inputs before count or
-stream support can materialize.
 `WriterRingState` now owns explicit open and closed closure records plus ring
 label state, and the edge partition classifies open and closed closure bonds
 before residual attachments are derived. Initial writer support still requires

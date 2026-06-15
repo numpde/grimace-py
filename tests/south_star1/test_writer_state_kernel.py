@@ -455,6 +455,81 @@ def _assert_checked_prefix_successor_snapshot_resume_equivalence(
     return direct
 
 
+def _assert_writer_snapshot_contract_closed_under_replay(
+    test_case: unittest.TestCase,
+    *,
+    snapshot: writer_snapshot.WriterSearchSnapshot,
+    prepared: SouthStarPreparedMol,
+    max_prefixes: int,
+) -> tuple[tuple[str, ...], ...]:
+    visited: list[tuple[str, ...]] = []
+    seen: set[tuple[str, ...]] = set()
+    terminal_prefixes: list[tuple[str, ...]] = []
+
+    def rec(prefix: tuple[str, ...]) -> None:
+        if prefix in seen:
+            test_case.fail(
+                f"writer contract recursion revisited prefix {prefix!r}"
+            )
+
+        seen.add(prefix)
+        visited.append(prefix)
+
+        if len(visited) > max_prefixes:
+            test_case.fail(
+                (
+                    "writer contract recursion exceeded max_prefixes="
+                    f"{max_prefixes}"
+                )
+            )
+
+        outcome = _assert_checked_prefix_successor_snapshot_resume_equivalence(
+            test_case,
+            snapshot=snapshot,
+            prepared=prepared,
+            emitted_texts=prefix,
+        )
+
+        test_case.assertIsNotNone(outcome.public_choices)
+        assert outcome.public_choices is not None
+
+        if outcome.public_choices.terminal is not None:
+            terminal_prefixes.append(prefix)
+
+        for choice in outcome.public_choices.choices:
+            rec((*prefix, choice.emitted_text))
+
+    rec(())
+
+    streamed_suffixes = tuple(
+        writer_snapshot
+        ._iter_writer_frontier_support_suffixes_after_emitted_texts(
+            snapshot,
+            prepared=prepared,
+            emitted_texts=(),
+        )
+    )
+    terminal_suffixes = tuple(
+        "".join(prefix)
+        for prefix in terminal_prefixes
+    )
+
+    test_case.assertEqual(terminal_suffixes, streamed_suffixes)
+
+    root = (
+        writer_snapshot
+        ._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
+            snapshot,
+            prepared=prepared,
+            emitted_texts=(),
+            include_counts=True,
+        )
+    )
+    test_case.assertEqual(len(terminal_prefixes), root.support_count)
+
+    return tuple(visited)
+
+
 class WriterStateKernelTest(unittest.TestCase):
     def _closure_policy_for_outcome(
         self,
@@ -13017,6 +13092,52 @@ class WriterStateKernelTest(unittest.TestCase):
                     prepared=prepared,
                     emitted_texts=emitted_texts,
                 )
+
+    def test_writer_snapshot_contract_is_closed_under_replay_until_eos(self) -> None:
+        cases = (
+            (
+                "acyclic branched writer state space",
+                _prepare(cco_facts()),
+                _writer_options(rooted_at_atom=1),
+                False,
+                128,
+            ),
+            (
+                "internal cyclic ring-close state space",
+                _prepare(cyclopropane_facts()),
+                _writer_options(rooted_at_atom=0),
+                True,
+                64,
+            ),
+        )
+
+        for name, prepared, options, internal, max_prefixes in cases:
+            with self.subTest(case=name):
+                if internal:
+                    cursor = initial_writer_transition_frontier_cursor(
+                        prepared,
+                        options,
+                    )
+                else:
+                    cursor = initial_writer_frontier_cursor(
+                        prepared,
+                        options,
+                    )
+
+                snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+                    prepared=prepared,
+                    runtime_options=options,
+                    cursor=cursor,
+                )
+
+                visited = _assert_writer_snapshot_contract_closed_under_replay(
+                    self,
+                    snapshot=snapshot,
+                    prepared=prepared,
+                    max_prefixes=max_prefixes,
+                )
+
+                self.assertGreater(len(visited), 1)
 
     def test_open_ring_endpoint_snapshot_does_not_report_ready_terminal(self) -> None:
         prepared = _prepare(cyclopropane_facts())

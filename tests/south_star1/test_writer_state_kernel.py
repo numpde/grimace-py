@@ -12446,6 +12446,61 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(outcome.support_count, 1)
         self.assertEqual(outcome.completion_count, 2)
 
+    def test_open_ring_endpoint_prefix_replay_rejects_non_closing_tokens_as_invalid_facts(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = initial_writer_transition_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        open_prefix = ("C", "1", "C", "C")
+        outcome = (
+            writer_snapshot
+            ._writer_snapshot_prefix_read_outcome_after_emitted_texts(
+                snapshot,
+                prepared=prepared,
+                emitted_texts=open_prefix,
+                include_counts=True,
+            )
+        )
+
+        self.assertIs(
+            outcome.kind,
+            writer_snapshot._WriterSnapshotPrefixReadOutcomeKind.READABLE,
+        )
+        self.assertIsNotNone(outcome.public_choices)
+        assert outcome.public_choices is not None
+        self.assertIsNone(outcome.public_choices.terminal)
+        self.assertEqual(
+            tuple(choice.emitted_text for choice in outcome.public_choices.choices),
+            ("1",),
+        )
+
+        bad_prefixes = (
+            ("C", "1", "C", "C", "2"),
+            ("C", "1", "C", "C", "C"),
+        )
+
+        for bad_prefix in bad_prefixes:
+            with self.subTest(bad_prefix=bad_prefix):
+                with self.assertRaises(SouthStarError) as caught:
+                    (
+                        writer_snapshot
+                        ._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
+                            snapshot,
+                            prepared=prepared,
+                            emitted_texts=bad_prefix,
+                            include_counts=True,
+                        )
+                    )
+
+                self.assertIs(
+                    caught.exception.kind,
+                    SouthStarErrorKind.INVALID_FACTS,
+                )
+
     def test_raw_closure_label_allocator_uses_least_free_not_reusable_first(self) -> None:
         prepared = _prepare_with_policy(
             cyclopropane_facts(),

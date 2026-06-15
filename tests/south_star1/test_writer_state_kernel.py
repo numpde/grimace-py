@@ -169,6 +169,76 @@ def _assert_checked_prefix_frontier_replay_contract(
     return outcome
 
 
+def _assert_checked_prefix_frontier_count_decomposition(
+    test_case: unittest.TestCase,
+    *,
+    snapshot: writer_snapshot.WriterSearchSnapshot,
+    prepared: SouthStarPreparedMol,
+    emitted_texts: tuple[str, ...],
+) -> writer_snapshot._WriterSnapshotPrefixReadOutcome:
+    outcome = _assert_checked_prefix_frontier_replay_contract(
+        test_case,
+        snapshot=snapshot,
+        prepared=prepared,
+        emitted_texts=emitted_texts,
+        include_counts=True,
+    )
+
+    test_case.assertIsNotNone(outcome.support_count)
+    test_case.assertIsNotNone(outcome.completion_count)
+    test_case.assertIsNotNone(outcome.public_choices)
+    assert outcome.support_count is not None
+    assert outcome.completion_count is not None
+    assert outcome.public_choices is not None
+
+    terminal = outcome.public_choices.terminal
+    terminal_support_count = 0 if terminal is None else terminal.support_count
+    terminal_completion_count = (
+        0 if terminal is None else terminal.completion_count
+    )
+    choice_support_count = 0
+    choice_completion_count = 0
+
+    for choice in outcome.public_choices.choices:
+        test_case.assertIsNotNone(choice.support_count)
+        test_case.assertIsNotNone(choice.completion_count)
+        assert choice.support_count is not None
+        assert choice.completion_count is not None
+        choice_support_count += choice.support_count
+        choice_completion_count += choice.completion_count
+
+        advanced = (
+            writer_snapshot
+            ._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
+                snapshot,
+                prepared=prepared,
+                emitted_texts=emitted_texts + (choice.emitted_text,),
+                include_counts=True,
+            )
+        )
+
+        test_case.assertIs(
+            advanced.kind,
+            writer_snapshot._WriterSnapshotPrefixReadOutcomeKind.READABLE,
+        )
+        test_case.assertEqual(advanced.support_count, choice.support_count)
+        test_case.assertEqual(
+            advanced.completion_count,
+            choice.completion_count,
+        )
+
+    test_case.assertEqual(
+        outcome.support_count,
+        terminal_support_count + choice_support_count,
+    )
+    test_case.assertEqual(
+        outcome.completion_count,
+        terminal_completion_count + choice_completion_count,
+    )
+
+    return outcome
+
+
 class WriterStateKernelTest(unittest.TestCase):
     def _closure_policy_for_outcome(
         self,
@@ -12555,6 +12625,63 @@ class WriterStateKernelTest(unittest.TestCase):
                 )
 
                 _assert_checked_prefix_frontier_replay_contract(
+                    self,
+                    snapshot=snapshot,
+                    prepared=prepared,
+                    emitted_texts=emitted_texts,
+                )
+
+    def test_checked_prefix_counts_decompose_over_terminal_and_choices(self) -> None:
+        cases = (
+            (
+                "acyclic initial root frontier",
+                _prepare(chain_facts(("C", "C"))),
+                _writer_options(rooted_at_atom=0),
+                (),
+                False,
+            ),
+            (
+                "acyclic after emitted atom",
+                _prepare(chain_facts(("C", "C"))),
+                _writer_options(rooted_at_atom=0),
+                ("C",),
+                False,
+            ),
+            (
+                "internal cyclic open ring endpoint",
+                _prepare(cyclopropane_facts()),
+                _writer_options(rooted_at_atom=0),
+                ("C", "1", "C", "C"),
+                True,
+            ),
+            (
+                "internal cyclic closed terminal",
+                _prepare(cyclopropane_facts()),
+                _writer_options(rooted_at_atom=0),
+                ("C", "1", "C", "C", "1"),
+                True,
+            ),
+        )
+
+        for name, prepared, options, emitted_texts, internal in cases:
+            with self.subTest(case=name):
+                if internal:
+                    cursor = initial_writer_transition_frontier_cursor(
+                        prepared,
+                        options,
+                    )
+                else:
+                    cursor = initial_writer_frontier_cursor(
+                        prepared,
+                        options,
+                    )
+                snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+                    prepared=prepared,
+                    runtime_options=options,
+                    cursor=cursor,
+                )
+
+                _assert_checked_prefix_frontier_count_decomposition(
                     self,
                     snapshot=snapshot,
                     prepared=prepared,

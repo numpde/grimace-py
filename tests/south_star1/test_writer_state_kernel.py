@@ -21167,6 +21167,326 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertTrue(audit.ready)
 
+    def test_residual_cyclic_readiness_gate_validates_payload_shape(self) -> None:
+        snapshot = self._test_writer_search_snapshot()
+        active_outcome = self._test_residual_cyclic_blocked_active_outcome(
+            include_closure_emission=False,
+        )
+        choice_snapshot = self._test_residual_cyclic_blocked_choice_snapshot(
+            active_outcome,
+        )
+        blocked_prefix = writer_snapshot._WriterResidualCyclicReadinessBlockedPrefix(
+            emitted_texts=(),
+            prefix_read_outcome=self._test_final_blocked_prefix_outcome(
+                choice_snapshot,
+            ),
+        )
+        ready_audit = writer_snapshot._WriterResidualCyclicReadinessAudit(
+            kind=writer_snapshot._WriterResidualCyclicReadinessAuditKind.READY,
+            visited_prefixes=((),),
+        )
+        blocked_audit = writer_snapshot._WriterResidualCyclicReadinessAudit(
+            kind=(
+                writer_snapshot
+                ._WriterResidualCyclicReadinessAuditKind
+                .BLOCKED
+            ),
+            visited_prefixes=((),),
+            blocked_prefixes=(blocked_prefix,),
+        )
+        truncated_audit = writer_snapshot._WriterResidualCyclicReadinessAudit(
+            kind=(
+                writer_snapshot
+                ._WriterResidualCyclicReadinessAuditKind
+                .TRUNCATED
+            ),
+            visited_prefixes=((), ("C",)),
+            truncated_at_prefix=("C",),
+        )
+
+        writer_snapshot._WriterResidualCyclicReadinessGate(
+            kind=writer_snapshot._WriterResidualCyclicReadinessGateKind.READY,
+            snapshot=snapshot,
+            audit=ready_audit,
+        )
+        writer_snapshot._WriterResidualCyclicReadinessGate(
+            kind=(
+                writer_snapshot
+                ._WriterResidualCyclicReadinessGateKind
+                .BLOCKED
+            ),
+            snapshot=snapshot,
+            audit=blocked_audit,
+        )
+        writer_snapshot._WriterResidualCyclicReadinessGate(
+            kind=(
+                writer_snapshot
+                ._WriterResidualCyclicReadinessGateKind
+                .TRUNCATED
+            ),
+            snapshot=snapshot,
+            audit=truncated_audit,
+        )
+
+        invalid_cases = (
+            (
+                writer_snapshot._WriterResidualCyclicReadinessGateKind.READY,
+                blocked_audit,
+            ),
+            (
+                writer_snapshot._WriterResidualCyclicReadinessGateKind.BLOCKED,
+                ready_audit,
+            ),
+            (
+                writer_snapshot._WriterResidualCyclicReadinessGateKind.TRUNCATED,
+                ready_audit,
+            ),
+        )
+
+        for kind, audit in invalid_cases:
+            with self.subTest(kind=kind):
+                with self.assertRaises(SouthStarError) as cm:
+                    writer_snapshot._WriterResidualCyclicReadinessGate(
+                        kind=kind,
+                        snapshot=snapshot,
+                        audit=audit,
+                    )
+
+                self.assertIs(
+                    cm.exception.kind,
+                    SouthStarErrorKind.INTERNAL_INVARIANT,
+                )
+
+    def test_residual_cyclic_readiness_gate_from_snapshot_reports_ready_supported_owner(self) -> None:
+        outcomes = self._test_residual_cyclic_readiness_ready_prefix_outcomes()
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._writer_snapshot_prefix_read_outcome_after_emitted_texts"
+            ),
+            side_effect=lambda _snapshot, **kwargs: outcomes[
+                kwargs["emitted_texts"]
+            ],
+        ):
+            gate = writer_snapshot._residual_cyclic_readiness_gate_from_snapshot(
+                self._test_writer_search_snapshot(),
+                prepared=object(),  # type: ignore[arg-type]
+                max_depth=2,
+            )
+
+        self.assertTrue(gate.ready)
+        self.assertFalse(gate.blocked)
+        self.assertFalse(gate.truncated)
+        self.assertTrue(gate.audit.ready)
+        self.assertIsNone(gate.first_blocked_prefix)
+
+    def test_residual_cyclic_readiness_gate_from_snapshot_reports_missing_evidence_blocker(self) -> None:
+        active_outcome = self._test_residual_cyclic_blocked_active_outcome(
+            include_closure_emission=False,
+        )
+        choice_snapshot = self._test_residual_cyclic_blocked_choice_snapshot(
+            active_outcome,
+        )
+        blocked_outcome = self._test_final_blocked_prefix_outcome(
+            choice_snapshot,
+        )
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._writer_snapshot_prefix_read_outcome_after_emitted_texts"
+            ),
+            return_value=blocked_outcome,
+        ):
+            gate = writer_snapshot._residual_cyclic_readiness_gate_from_snapshot(
+                self._test_writer_search_snapshot(),
+                prepared=object(),  # type: ignore[arg-type]
+            )
+
+        self.assertTrue(gate.blocked)
+        self.assertIsNotNone(gate.first_blocked_prefix)
+        self.assertTrue(
+            (
+                gate
+                .first_blocked_prefix
+                .readiness_report
+                .missing_closure_open_support_evidence_blocked
+            )
+        )
+
+    def test_residual_cyclic_readiness_gate_from_snapshot_reports_unsupported_owner_blocker(self) -> None:
+        active_outcome = self._test_residual_cyclic_blocked_active_outcome(
+            closure_owner_kind=WriterBoundaryOwnerKind.UNOWNED,
+            child_owner_kind=WriterBoundaryOwnerKind.UNOWNED,
+        )
+        choice_snapshot = self._test_residual_cyclic_blocked_choice_snapshot(
+            active_outcome,
+        )
+        blocked_outcome = self._test_final_blocked_prefix_outcome(
+            choice_snapshot,
+        )
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._writer_snapshot_prefix_read_outcome_after_emitted_texts"
+            ),
+            return_value=blocked_outcome,
+        ):
+            gate = writer_snapshot._residual_cyclic_readiness_gate_from_snapshot(
+                self._test_writer_search_snapshot(),
+                prepared=object(),  # type: ignore[arg-type]
+            )
+
+        self.assertTrue(gate.blocked)
+        self.assertIsNotNone(gate.first_blocked_prefix)
+        self.assertTrue(
+            (
+                gate
+                .first_blocked_prefix
+                .readiness_report
+                .unsupported_owner_scope_blocked
+            )
+        )
+
+    def test_residual_cyclic_readiness_gate_from_snapshot_reports_truncation(self) -> None:
+        outcomes = self._test_residual_cyclic_readiness_ready_prefix_outcomes()
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._writer_snapshot_prefix_read_outcome_after_emitted_texts"
+            ),
+            side_effect=lambda _snapshot, **kwargs: outcomes[
+                kwargs["emitted_texts"]
+            ],
+        ):
+            gate = writer_snapshot._residual_cyclic_readiness_gate_from_snapshot(
+                self._test_writer_search_snapshot(),
+                prepared=object(),  # type: ignore[arg-type]
+                max_depth=0,
+            )
+
+        self.assertTrue(gate.truncated)
+        self.assertEqual(gate.truncated_at_prefix, ("C",))
+
+    def test_residual_cyclic_readiness_gate_from_cursor_captures_snapshot(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        ready_audit = writer_snapshot._WriterResidualCyclicReadinessAudit(
+            kind=writer_snapshot._WriterResidualCyclicReadinessAuditKind.READY,
+            visited_prefixes=((),),
+        )
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._audit_residual_cyclic_readiness_from_snapshot"
+            ),
+            return_value=ready_audit,
+        ):
+            gate = writer_snapshot._residual_cyclic_readiness_gate_from_cursor(
+                prepared=prepared,
+                runtime_options=options,
+                cursor=cursor,
+                max_depth=0,
+            )
+            direct_gate = (
+                writer_snapshot
+                ._residual_cyclic_readiness_gate_from_snapshot(
+                    gate.snapshot,
+                    prepared=prepared,
+                    max_depth=0,
+                )
+            )
+
+        self.assertEqual(gate.snapshot.cursor, cursor)
+        self.assertEqual(gate.snapshot.runtime_options, options)
+        self.assertEqual(gate.audit.visited_prefixes, ((),))
+        self.assertIs(gate.kind, direct_gate.kind)
+
+    def test_assert_residual_cyclic_readiness_gate_returns_ready_gate(self) -> None:
+        gate = writer_snapshot._WriterResidualCyclicReadinessGate(
+            kind=writer_snapshot._WriterResidualCyclicReadinessGateKind.READY,
+            snapshot=self._test_writer_search_snapshot(),
+            audit=writer_snapshot._WriterResidualCyclicReadinessAudit(
+                kind=(
+                    writer_snapshot
+                    ._WriterResidualCyclicReadinessAuditKind
+                    .READY
+                ),
+                visited_prefixes=((),),
+            ),
+        )
+
+        self.assertIs(
+            writer_snapshot._assert_residual_cyclic_readiness_gate(gate),
+            gate,
+        )
+
+    def test_assert_residual_cyclic_readiness_gate_raises_for_blocked_or_truncated_gate(self) -> None:
+        snapshot = self._test_writer_search_snapshot()
+        active_outcome = self._test_residual_cyclic_blocked_active_outcome(
+            include_closure_emission=False,
+        )
+        choice_snapshot = self._test_residual_cyclic_blocked_choice_snapshot(
+            active_outcome,
+        )
+        blocked_prefix = writer_snapshot._WriterResidualCyclicReadinessBlockedPrefix(
+            emitted_texts=(),
+            prefix_read_outcome=self._test_final_blocked_prefix_outcome(
+                choice_snapshot,
+            ),
+        )
+        blocked_gate = writer_snapshot._WriterResidualCyclicReadinessGate(
+            kind=(
+                writer_snapshot
+                ._WriterResidualCyclicReadinessGateKind
+                .BLOCKED
+            ),
+            snapshot=snapshot,
+            audit=writer_snapshot._WriterResidualCyclicReadinessAudit(
+                kind=(
+                    writer_snapshot
+                    ._WriterResidualCyclicReadinessAuditKind
+                    .BLOCKED
+                ),
+                visited_prefixes=((),),
+                blocked_prefixes=(blocked_prefix,),
+            ),
+        )
+        truncated_gate = writer_snapshot._WriterResidualCyclicReadinessGate(
+            kind=(
+                writer_snapshot
+                ._WriterResidualCyclicReadinessGateKind
+                .TRUNCATED
+            ),
+            snapshot=snapshot,
+            audit=writer_snapshot._WriterResidualCyclicReadinessAudit(
+                kind=(
+                    writer_snapshot
+                    ._WriterResidualCyclicReadinessAuditKind
+                    .TRUNCATED
+                ),
+                visited_prefixes=((), ("C",)),
+                truncated_at_prefix=("C",),
+            ),
+        )
+
+        for gate in (blocked_gate, truncated_gate):
+            with self.subTest(kind=gate.kind):
+                with self.assertRaises(SouthStarError) as cm:
+                    writer_snapshot._assert_residual_cyclic_readiness_gate(
+                        gate,
+                    )
+
+                self.assertIs(
+                    cm.exception.kind,
+                    SouthStarErrorKind.UNSUPPORTED_POLICY,
+                )
+
     def test_supported_dead_closure_owner_scope_decision_kind_maps_supported_scopes(self) -> None:
         supported_cases = (
             (

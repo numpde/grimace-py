@@ -1072,6 +1072,70 @@ class _WriterResidualCyclicReadinessAudit:
         )
 
 
+class _WriterResidualCyclicReadinessGateKind(Enum):
+    READY = "ready"
+    BLOCKED = "blocked"
+    TRUNCATED = "truncated"
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterResidualCyclicReadinessGate:
+    kind: _WriterResidualCyclicReadinessGateKind
+    snapshot: WriterSearchSnapshot
+    audit: _WriterResidualCyclicReadinessAudit
+
+    def __post_init__(self) -> None:
+        if self.kind is _WriterResidualCyclicReadinessGateKind.READY:
+            valid = self.audit.ready
+        elif self.kind is _WriterResidualCyclicReadinessGateKind.BLOCKED:
+            valid = self.audit.blocked
+        elif self.kind is _WriterResidualCyclicReadinessGateKind.TRUNCATED:
+            valid = self.audit.truncated
+        else:
+            valid = False
+
+        if not valid:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                f"invalid residual cyclic readiness gate: {self.kind!r}",
+            )
+
+    @property
+    def ready(self) -> bool:
+        return self.kind is _WriterResidualCyclicReadinessGateKind.READY
+
+    @property
+    def blocked(self) -> bool:
+        return self.kind is _WriterResidualCyclicReadinessGateKind.BLOCKED
+
+    @property
+    def truncated(self) -> bool:
+        return self.kind is _WriterResidualCyclicReadinessGateKind.TRUNCATED
+
+    @property
+    def blocked_prefixes(
+        self,
+    ) -> tuple[_WriterResidualCyclicReadinessBlockedPrefix, ...]:
+        return self.audit.blocked_prefixes
+
+    @property
+    def first_blocked_prefix(
+        self,
+    ) -> _WriterResidualCyclicReadinessBlockedPrefix | None:
+        if not self.blocked_prefixes:
+            return None
+
+        return self.blocked_prefixes[0]
+
+    @property
+    def blocked_emitted_texts(self) -> tuple[tuple[str, ...], ...]:
+        return self.audit.blocked_emitted_texts
+
+    @property
+    def truncated_at_prefix(self) -> tuple[str, ...] | None:
+        return self.audit.truncated_at_prefix
+
+
 def _maybe_writer_frontier_choice_snapshot_entry_for_emitted_text(
     choice_snapshot: _WriterFrontierChoiceSnapshot,
     emitted_text: str,
@@ -1712,6 +1776,96 @@ def _assert_residual_cyclic_readiness_from_snapshot(
         )
 
     return audit
+
+
+def _residual_cyclic_readiness_gate_from_snapshot(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    max_depth: int | None = None,
+    max_prefixes: int | None = None,
+) -> _WriterResidualCyclicReadinessGate:
+    audit = _audit_residual_cyclic_readiness_from_snapshot(
+        snapshot,
+        prepared=prepared,
+        max_depth=max_depth,
+        max_prefixes=max_prefixes,
+    )
+
+    if audit.ready:
+        kind = _WriterResidualCyclicReadinessGateKind.READY
+    elif audit.blocked:
+        kind = _WriterResidualCyclicReadinessGateKind.BLOCKED
+    elif audit.truncated:
+        kind = _WriterResidualCyclicReadinessGateKind.TRUNCATED
+    else:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            f"unknown residual cyclic readiness audit state: {audit.kind!r}",
+        )
+
+    return _WriterResidualCyclicReadinessGate(
+        kind=kind,
+        snapshot=snapshot,
+        audit=audit,
+    )
+
+
+def _residual_cyclic_readiness_gate_from_cursor(
+    *,
+    prepared: SouthStarPreparedMol,
+    runtime_options: SouthStarRuntimeOptions,
+    cursor: WriterFrontierCursor,
+    max_depth: int | None = None,
+    max_prefixes: int | None = None,
+) -> _WriterResidualCyclicReadinessGate:
+    snapshot = capture_writer_frontier_snapshot(
+        prepared=prepared,
+        runtime_options=runtime_options,
+        cursor=cursor,
+    )
+
+    return _residual_cyclic_readiness_gate_from_snapshot(
+        snapshot,
+        prepared=prepared,
+        max_depth=max_depth,
+        max_prefixes=max_prefixes,
+    )
+
+
+def _assert_residual_cyclic_readiness_gate(
+    gate: _WriterResidualCyclicReadinessGate,
+) -> _WriterResidualCyclicReadinessGate:
+    if gate.ready:
+        return gate
+
+    if gate.blocked:
+        first = gate.first_blocked_prefix
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            (
+                "residual cyclic readiness gate blocked"
+                if first is None
+                else (
+                    "residual cyclic readiness gate blocked at prefix "
+                    f"{first.emitted_texts!r}"
+                )
+            ),
+        )
+
+    if gate.truncated:
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            (
+                "residual cyclic readiness gate truncated at prefix "
+                f"{gate.truncated_at_prefix!r}"
+            ),
+        )
+
+    raise SouthStarError(
+        SouthStarErrorKind.INTERNAL_INVARIANT,
+        f"unknown residual cyclic readiness gate state: {gate.kind!r}",
+    )
 
 
 def _checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(

@@ -1660,6 +1660,76 @@ class WriterStateKernelTest(unittest.TestCase):
             ),
         }
 
+    def _test_residual_cyclic_readiness_gate_cases(
+        self,
+    ) -> tuple[
+        writer_snapshot._WriterResidualCyclicReadinessGate,
+        writer_snapshot._WriterResidualCyclicReadinessGate,
+        writer_snapshot._WriterResidualCyclicReadinessGate,
+    ]:
+        snapshot = self._test_writer_search_snapshot()
+        active_outcome = self._test_residual_cyclic_blocked_active_outcome(
+            include_closure_emission=False,
+        )
+        choice_snapshot = self._test_residual_cyclic_blocked_choice_snapshot(
+            active_outcome,
+        )
+        blocked_prefix = writer_snapshot._WriterResidualCyclicReadinessBlockedPrefix(
+            emitted_texts=(),
+            prefix_read_outcome=self._test_final_blocked_prefix_outcome(
+                choice_snapshot,
+            ),
+        )
+
+        ready_gate = writer_snapshot._WriterResidualCyclicReadinessGate(
+            kind=writer_snapshot._WriterResidualCyclicReadinessGateKind.READY,
+            snapshot=snapshot,
+            audit=writer_snapshot._WriterResidualCyclicReadinessAudit(
+                kind=(
+                    writer_snapshot
+                    ._WriterResidualCyclicReadinessAuditKind
+                    .READY
+                ),
+                visited_prefixes=((),),
+            ),
+        )
+        blocked_gate = writer_snapshot._WriterResidualCyclicReadinessGate(
+            kind=(
+                writer_snapshot
+                ._WriterResidualCyclicReadinessGateKind
+                .BLOCKED
+            ),
+            snapshot=snapshot,
+            audit=writer_snapshot._WriterResidualCyclicReadinessAudit(
+                kind=(
+                    writer_snapshot
+                    ._WriterResidualCyclicReadinessAuditKind
+                    .BLOCKED
+                ),
+                visited_prefixes=((),),
+                blocked_prefixes=(blocked_prefix,),
+            ),
+        )
+        truncated_gate = writer_snapshot._WriterResidualCyclicReadinessGate(
+            kind=(
+                writer_snapshot
+                ._WriterResidualCyclicReadinessGateKind
+                .TRUNCATED
+            ),
+            snapshot=snapshot,
+            audit=writer_snapshot._WriterResidualCyclicReadinessAudit(
+                kind=(
+                    writer_snapshot
+                    ._WriterResidualCyclicReadinessAuditKind
+                    .TRUNCATED
+                ),
+                visited_prefixes=((), ("C",)),
+                truncated_at_prefix=("C",),
+            ),
+        )
+
+        return ready_gate, blocked_gate, truncated_gate
+
     def _test_active_outcome_for_graph_policy(
         self,
         policy: writer_transitions._WriterActiveEmittedGraphPolicyDecision,
@@ -21480,6 +21550,371 @@ class WriterStateKernelTest(unittest.TestCase):
                 with self.assertRaises(SouthStarError) as cm:
                     writer_snapshot._assert_residual_cyclic_readiness_gate(
                         gate,
+                    )
+
+                self.assertIs(
+                    cm.exception.kind,
+                    SouthStarErrorKind.UNSUPPORTED_POLICY,
+                )
+
+    def test_cyclic_writer_admission_decision_validates_payload_shape(self) -> None:
+        ready_gate, blocked_gate, truncated_gate = (
+            self._test_residual_cyclic_readiness_gate_cases()
+        )
+
+        writer_snapshot._WriterCyclicAdmissionDecision(
+            kind=(
+                writer_snapshot
+                ._WriterCyclicAdmissionDecisionKind
+                .READY_BUT_PUBLIC_CLOSED
+            ),
+            readiness_gate=ready_gate,
+        )
+        writer_snapshot._WriterCyclicAdmissionDecision(
+            kind=(
+                writer_snapshot
+                ._WriterCyclicAdmissionDecisionKind
+                .BLOCKED_RESIDUAL_CYCLIC_POLICY
+            ),
+            readiness_gate=blocked_gate,
+        )
+        writer_snapshot._WriterCyclicAdmissionDecision(
+            kind=(
+                writer_snapshot
+                ._WriterCyclicAdmissionDecisionKind
+                .TRUNCATED_READINESS_AUDIT
+            ),
+            readiness_gate=truncated_gate,
+        )
+
+        invalid_cases = (
+            (
+                (
+                    writer_snapshot
+                    ._WriterCyclicAdmissionDecisionKind
+                    .READY_BUT_PUBLIC_CLOSED
+                ),
+                blocked_gate,
+            ),
+            (
+                (
+                    writer_snapshot
+                    ._WriterCyclicAdmissionDecisionKind
+                    .BLOCKED_RESIDUAL_CYCLIC_POLICY
+                ),
+                ready_gate,
+            ),
+            (
+                (
+                    writer_snapshot
+                    ._WriterCyclicAdmissionDecisionKind
+                    .TRUNCATED_READINESS_AUDIT
+                ),
+                ready_gate,
+            ),
+        )
+
+        for kind, gate in invalid_cases:
+            with self.subTest(kind=kind):
+                with self.assertRaises(SouthStarError) as cm:
+                    writer_snapshot._WriterCyclicAdmissionDecision(
+                        kind=kind,
+                        readiness_gate=gate,
+                    )
+
+                self.assertIs(
+                    cm.exception.kind,
+                    SouthStarErrorKind.INTERNAL_INVARIANT,
+                )
+
+    def test_cyclic_writer_admission_decision_from_readiness_gate_maps_gate_states(self) -> None:
+        ready_gate, blocked_gate, truncated_gate = (
+            self._test_residual_cyclic_readiness_gate_cases()
+        )
+        cases = (
+            (
+                ready_gate,
+                (
+                    writer_snapshot
+                    ._WriterCyclicAdmissionDecisionKind
+                    .READY_BUT_PUBLIC_CLOSED
+                ),
+            ),
+            (
+                blocked_gate,
+                (
+                    writer_snapshot
+                    ._WriterCyclicAdmissionDecisionKind
+                    .BLOCKED_RESIDUAL_CYCLIC_POLICY
+                ),
+            ),
+            (
+                truncated_gate,
+                (
+                    writer_snapshot
+                    ._WriterCyclicAdmissionDecisionKind
+                    .TRUNCATED_READINESS_AUDIT
+                ),
+            ),
+        )
+
+        for gate, expected_kind in cases:
+            with self.subTest(expected_kind=expected_kind):
+                decision = (
+                    writer_snapshot
+                    ._cyclic_writer_admission_decision_from_readiness_gate(
+                        gate,
+                    )
+                )
+
+                self.assertIs(decision.kind, expected_kind)
+                self.assertIs(decision.readiness_gate, gate)
+
+        ready_decision = (
+            writer_snapshot
+            ._cyclic_writer_admission_decision_from_readiness_gate(
+                ready_gate,
+            )
+        )
+
+        self.assertTrue(ready_decision.internally_ready)
+        self.assertFalse(ready_decision.public_enabled)
+        self.assertFalse(ready_decision.admitted_publicly)
+
+    def test_cyclic_writer_admission_decision_from_snapshot_reports_ready_but_public_closed(self) -> None:
+        outcomes = self._test_residual_cyclic_readiness_ready_prefix_outcomes()
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._writer_snapshot_prefix_read_outcome_after_emitted_texts"
+            ),
+            side_effect=lambda _snapshot, **kwargs: outcomes[
+                kwargs["emitted_texts"]
+            ],
+        ):
+            decision = (
+                writer_snapshot
+                ._cyclic_writer_admission_decision_from_snapshot(
+                    self._test_writer_search_snapshot(),
+                    prepared=object(),  # type: ignore[arg-type]
+                    max_depth=2,
+                )
+            )
+
+        self.assertIs(
+            decision.kind,
+            (
+                writer_snapshot
+                ._WriterCyclicAdmissionDecisionKind
+                .READY_BUT_PUBLIC_CLOSED
+            ),
+        )
+        self.assertTrue(decision.internally_ready)
+        self.assertFalse(decision.public_enabled)
+        self.assertFalse(decision.admitted_publicly)
+        self.assertTrue(decision.readiness_gate.ready)
+
+    def test_cyclic_writer_admission_decision_from_snapshot_reports_missing_evidence_blocker(self) -> None:
+        active_outcome = self._test_residual_cyclic_blocked_active_outcome(
+            include_closure_emission=False,
+        )
+        choice_snapshot = self._test_residual_cyclic_blocked_choice_snapshot(
+            active_outcome,
+        )
+        blocked_outcome = self._test_final_blocked_prefix_outcome(
+            choice_snapshot,
+        )
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._writer_snapshot_prefix_read_outcome_after_emitted_texts"
+            ),
+            return_value=blocked_outcome,
+        ):
+            decision = (
+                writer_snapshot
+                ._cyclic_writer_admission_decision_from_snapshot(
+                    self._test_writer_search_snapshot(),
+                    prepared=object(),  # type: ignore[arg-type]
+                )
+            )
+
+        self.assertIs(
+            decision.kind,
+            (
+                writer_snapshot
+                ._WriterCyclicAdmissionDecisionKind
+                .BLOCKED_RESIDUAL_CYCLIC_POLICY
+            ),
+        )
+        self.assertTrue(decision.blocked)
+        self.assertIsNotNone(decision.first_blocked_prefix)
+        self.assertTrue(
+            (
+                decision
+                .first_blocked_prefix
+                .readiness_report
+                .missing_closure_open_support_evidence_blocked
+            )
+        )
+
+    def test_cyclic_writer_admission_decision_from_snapshot_reports_unsupported_owner_blocker(self) -> None:
+        active_outcome = self._test_residual_cyclic_blocked_active_outcome(
+            closure_owner_kind=WriterBoundaryOwnerKind.UNOWNED,
+            child_owner_kind=WriterBoundaryOwnerKind.UNOWNED,
+        )
+        choice_snapshot = self._test_residual_cyclic_blocked_choice_snapshot(
+            active_outcome,
+        )
+        blocked_outcome = self._test_final_blocked_prefix_outcome(
+            choice_snapshot,
+        )
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._writer_snapshot_prefix_read_outcome_after_emitted_texts"
+            ),
+            return_value=blocked_outcome,
+        ):
+            decision = (
+                writer_snapshot
+                ._cyclic_writer_admission_decision_from_snapshot(
+                    self._test_writer_search_snapshot(),
+                    prepared=object(),  # type: ignore[arg-type]
+                )
+            )
+
+        self.assertIs(
+            decision.kind,
+            (
+                writer_snapshot
+                ._WriterCyclicAdmissionDecisionKind
+                .BLOCKED_RESIDUAL_CYCLIC_POLICY
+            ),
+        )
+        self.assertIsNotNone(decision.first_blocked_prefix)
+        self.assertTrue(
+            (
+                decision
+                .first_blocked_prefix
+                .readiness_report
+                .unsupported_owner_scope_blocked
+            )
+        )
+
+    def test_cyclic_writer_admission_decision_from_snapshot_reports_truncation(self) -> None:
+        outcomes = self._test_residual_cyclic_readiness_ready_prefix_outcomes()
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._writer_snapshot_prefix_read_outcome_after_emitted_texts"
+            ),
+            side_effect=lambda _snapshot, **kwargs: outcomes[
+                kwargs["emitted_texts"]
+            ],
+        ):
+            decision = (
+                writer_snapshot
+                ._cyclic_writer_admission_decision_from_snapshot(
+                    self._test_writer_search_snapshot(),
+                    prepared=object(),  # type: ignore[arg-type]
+                    max_depth=0,
+                )
+            )
+
+        self.assertIs(
+            decision.kind,
+            (
+                writer_snapshot
+                ._WriterCyclicAdmissionDecisionKind
+                .TRUNCATED_READINESS_AUDIT
+            ),
+        )
+        self.assertTrue(decision.truncated)
+
+    def test_cyclic_writer_admission_decision_from_cursor_captures_snapshot(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        ready_audit = writer_snapshot._WriterResidualCyclicReadinessAudit(
+            kind=writer_snapshot._WriterResidualCyclicReadinessAuditKind.READY,
+            visited_prefixes=((),),
+        )
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._audit_residual_cyclic_readiness_from_snapshot"
+            ),
+            return_value=ready_audit,
+        ):
+            decision = (
+                writer_snapshot
+                ._cyclic_writer_admission_decision_from_cursor(
+                    prepared=prepared,
+                    runtime_options=options,
+                    cursor=cursor,
+                    max_depth=0,
+                )
+            )
+            direct_decision = (
+                writer_snapshot
+                ._cyclic_writer_admission_decision_from_snapshot(
+                    decision.readiness_gate.snapshot,
+                    prepared=prepared,
+                    max_depth=0,
+                )
+            )
+
+        self.assertEqual(decision.readiness_gate.snapshot.cursor, cursor)
+        self.assertEqual(
+            decision.readiness_gate.snapshot.runtime_options,
+            options,
+        )
+        self.assertIs(decision.kind, direct_decision.kind)
+
+    def test_assert_cyclic_writer_admission_decision_raises_for_ready_but_public_closed(self) -> None:
+        ready_gate, _blocked_gate, _truncated_gate = (
+            self._test_residual_cyclic_readiness_gate_cases()
+        )
+        decision = (
+            writer_snapshot
+            ._cyclic_writer_admission_decision_from_readiness_gate(
+                ready_gate,
+            )
+        )
+
+        with self.assertRaises(SouthStarError) as cm:
+            writer_snapshot._assert_cyclic_writer_admission_decision(
+                decision,
+            )
+
+        self.assertIs(cm.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+        self.assertTrue(decision.internally_ready)
+        self.assertFalse(decision.public_enabled)
+
+    def test_assert_cyclic_writer_admission_decision_raises_for_blocked_or_truncated(self) -> None:
+        _ready_gate, blocked_gate, truncated_gate = (
+            self._test_residual_cyclic_readiness_gate_cases()
+        )
+        decisions = (
+            writer_snapshot._cyclic_writer_admission_decision_from_readiness_gate(
+                blocked_gate,
+            ),
+            writer_snapshot._cyclic_writer_admission_decision_from_readiness_gate(
+                truncated_gate,
+            ),
+        )
+
+        for decision in decisions:
+            with self.subTest(kind=decision.kind):
+                with self.assertRaises(SouthStarError) as cm:
+                    writer_snapshot._assert_cyclic_writer_admission_decision(
+                        decision,
                     )
 
                 self.assertIs(

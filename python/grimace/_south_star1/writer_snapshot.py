@@ -1136,6 +1136,85 @@ class _WriterResidualCyclicReadinessGate:
         return self.audit.truncated_at_prefix
 
 
+class _WriterCyclicAdmissionDecisionKind(Enum):
+    READY_BUT_PUBLIC_CLOSED = "ready_but_public_closed"
+    BLOCKED_RESIDUAL_CYCLIC_POLICY = "blocked_residual_cyclic_policy"
+    TRUNCATED_READINESS_AUDIT = "truncated_readiness_audit"
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterCyclicAdmissionDecision:
+    kind: _WriterCyclicAdmissionDecisionKind
+    readiness_gate: _WriterResidualCyclicReadinessGate
+
+    def __post_init__(self) -> None:
+        if self.kind is _WriterCyclicAdmissionDecisionKind.READY_BUT_PUBLIC_CLOSED:
+            valid = self.readiness_gate.ready
+        elif (
+            self.kind
+            is (
+                _WriterCyclicAdmissionDecisionKind
+                .BLOCKED_RESIDUAL_CYCLIC_POLICY
+            )
+        ):
+            valid = self.readiness_gate.blocked
+        elif (
+            self.kind
+            is _WriterCyclicAdmissionDecisionKind.TRUNCATED_READINESS_AUDIT
+        ):
+            valid = self.readiness_gate.truncated
+        else:
+            valid = False
+
+        if not valid:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                f"invalid cyclic writer admission decision: {self.kind!r}",
+            )
+
+    @property
+    def internally_ready(self) -> bool:
+        return (
+            self.kind
+            is _WriterCyclicAdmissionDecisionKind.READY_BUT_PUBLIC_CLOSED
+        )
+
+    @property
+    def public_enabled(self) -> bool:
+        return False
+
+    @property
+    def admitted_publicly(self) -> bool:
+        return self.internally_ready and self.public_enabled
+
+    @property
+    def blocked(self) -> bool:
+        return (
+            self.kind
+            is (
+                _WriterCyclicAdmissionDecisionKind
+                .BLOCKED_RESIDUAL_CYCLIC_POLICY
+            )
+        )
+
+    @property
+    def truncated(self) -> bool:
+        return (
+            self.kind
+            is _WriterCyclicAdmissionDecisionKind.TRUNCATED_READINESS_AUDIT
+        )
+
+    @property
+    def first_blocked_prefix(
+        self,
+    ) -> _WriterResidualCyclicReadinessBlockedPrefix | None:
+        return self.readiness_gate.first_blocked_prefix
+
+    @property
+    def blocked_emitted_texts(self) -> tuple[tuple[str, ...], ...]:
+        return self.readiness_gate.blocked_emitted_texts
+
+
 def _maybe_writer_frontier_choice_snapshot_entry_for_emitted_text(
     choice_snapshot: _WriterFrontierChoiceSnapshot,
     emitted_text: str,
@@ -1865,6 +1944,122 @@ def _assert_residual_cyclic_readiness_gate(
     raise SouthStarError(
         SouthStarErrorKind.INTERNAL_INVARIANT,
         f"unknown residual cyclic readiness gate state: {gate.kind!r}",
+    )
+
+
+def _cyclic_writer_admission_decision_from_readiness_gate(
+    gate: _WriterResidualCyclicReadinessGate,
+) -> _WriterCyclicAdmissionDecision:
+    if gate.ready:
+        return _WriterCyclicAdmissionDecision(
+            kind=(
+                _WriterCyclicAdmissionDecisionKind
+                .READY_BUT_PUBLIC_CLOSED
+            ),
+            readiness_gate=gate,
+        )
+
+    if gate.blocked:
+        return _WriterCyclicAdmissionDecision(
+            kind=(
+                _WriterCyclicAdmissionDecisionKind
+                .BLOCKED_RESIDUAL_CYCLIC_POLICY
+            ),
+            readiness_gate=gate,
+        )
+
+    if gate.truncated:
+        return _WriterCyclicAdmissionDecision(
+            kind=(
+                _WriterCyclicAdmissionDecisionKind
+                .TRUNCATED_READINESS_AUDIT
+            ),
+            readiness_gate=gate,
+        )
+
+    raise SouthStarError(
+        SouthStarErrorKind.INTERNAL_INVARIANT,
+        f"unknown residual cyclic readiness gate state: {gate.kind!r}",
+    )
+
+
+def _cyclic_writer_admission_decision_from_snapshot(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    max_depth: int | None = None,
+    max_prefixes: int | None = None,
+) -> _WriterCyclicAdmissionDecision:
+    gate = _residual_cyclic_readiness_gate_from_snapshot(
+        snapshot,
+        prepared=prepared,
+        max_depth=max_depth,
+        max_prefixes=max_prefixes,
+    )
+
+    return _cyclic_writer_admission_decision_from_readiness_gate(gate)
+
+
+def _cyclic_writer_admission_decision_from_cursor(
+    *,
+    prepared: SouthStarPreparedMol,
+    runtime_options: SouthStarRuntimeOptions,
+    cursor: WriterFrontierCursor,
+    max_depth: int | None = None,
+    max_prefixes: int | None = None,
+) -> _WriterCyclicAdmissionDecision:
+    gate = _residual_cyclic_readiness_gate_from_cursor(
+        prepared=prepared,
+        runtime_options=runtime_options,
+        cursor=cursor,
+        max_depth=max_depth,
+        max_prefixes=max_prefixes,
+    )
+
+    return _cyclic_writer_admission_decision_from_readiness_gate(gate)
+
+
+def _assert_cyclic_writer_admission_decision(
+    decision: _WriterCyclicAdmissionDecision,
+) -> _WriterCyclicAdmissionDecision:
+    if decision.admitted_publicly:
+        return decision
+
+    if decision.internally_ready and not decision.public_enabled:
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            (
+                "cyclic WRITER_SHAPED is internally ready but public "
+                "support is closed"
+            ),
+        )
+
+    if decision.blocked:
+        first = decision.first_blocked_prefix
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            (
+                "cyclic WRITER_SHAPED blocked by residual cyclic policy"
+                if first is None
+                else (
+                    "cyclic WRITER_SHAPED blocked by residual cyclic policy "
+                    f"at prefix {first.emitted_texts!r}"
+                )
+            ),
+        )
+
+    if decision.truncated:
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            (
+                "cyclic WRITER_SHAPED readiness audit truncated at prefix "
+                f"{decision.readiness_gate.truncated_at_prefix!r}"
+            ),
+        )
+
+    raise SouthStarError(
+        SouthStarErrorKind.INTERNAL_INVARIANT,
+        f"unknown cyclic writer admission decision: {decision.kind!r}",
     )
 
 

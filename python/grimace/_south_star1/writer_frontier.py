@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Iterator
 from dataclasses import dataclass
+from enum import Enum
 from itertools import product
 from typing import TYPE_CHECKING
 
@@ -49,6 +50,138 @@ if TYPE_CHECKING:
 @dataclass(frozen=True, slots=True)
 class WriterFrontierState:
     states: frozenset[WriterStateKey]
+
+
+class _WriterResidualCyclicPolicyReadinessKind(Enum):
+    READY = "ready"
+    BLOCKED_MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE = (
+        "blocked_missing_closure_open_support_evidence"
+    )
+    BLOCKED_UNSUPPORTED_OWNER_SCOPE = "blocked_unsupported_owner_scope"
+    BLOCKED_GRAPH_POLICY = "blocked_graph_policy"
+    INVALID_REPLAY_OR_NO_FRONTIER = "invalid_replay_or_no_frontier"
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterResidualCyclicPolicyReadinessReport:
+    kind: _WriterResidualCyclicPolicyReadinessKind
+    coverage_kinds: tuple[_WriterResidualCyclicPolicyCoverageKind, ...]
+    graph_policy_blockers: tuple[
+        _WriterActiveEmittedGraphPolicyBlocker,
+        ...,
+    ] = ()
+    residual_cyclic_policy_decisions: tuple[
+        _WriterResidualCyclicPolicyDecision,
+        ...,
+    ] = ()
+
+    @property
+    def ready(self) -> bool:
+        return self.kind is _WriterResidualCyclicPolicyReadinessKind.READY
+
+    @property
+    def blocked(self) -> bool:
+        return not self.ready
+
+    @property
+    def missing_closure_open_support_evidence_blocked(self) -> bool:
+        return (
+            self.kind
+            is (
+                _WriterResidualCyclicPolicyReadinessKind
+                .BLOCKED_MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
+            )
+        )
+
+    @property
+    def unsupported_owner_scope_blocked(self) -> bool:
+        return (
+            self.kind
+            is (
+                _WriterResidualCyclicPolicyReadinessKind
+                .BLOCKED_UNSUPPORTED_OWNER_SCOPE
+            )
+        )
+
+    @property
+    def supported_dead_closure_resolution_present(self) -> bool:
+        return any(
+            coverage
+            is (
+                _WriterResidualCyclicPolicyCoverageKind
+                .SUPPORTED_DEAD_CLOSURE_RESOLUTION
+            )
+            for coverage in self.coverage_kinds
+        )
+
+
+def _residual_cyclic_policy_readiness_report(
+    *,
+    coverage_kinds: tuple[_WriterResidualCyclicPolicyCoverageKind, ...],
+    graph_policy_blockers: tuple[
+        _WriterActiveEmittedGraphPolicyBlocker,
+        ...,
+    ],
+    residual_cyclic_policy_decisions: tuple[
+        _WriterResidualCyclicPolicyDecision,
+        ...,
+    ],
+    has_frontier: bool = True,
+) -> _WriterResidualCyclicPolicyReadinessReport:
+    if not has_frontier:
+        return _WriterResidualCyclicPolicyReadinessReport(
+            kind=(
+                _WriterResidualCyclicPolicyReadinessKind
+                .INVALID_REPLAY_OR_NO_FRONTIER
+            ),
+            coverage_kinds=coverage_kinds,
+            graph_policy_blockers=graph_policy_blockers,
+            residual_cyclic_policy_decisions=residual_cyclic_policy_decisions,
+        )
+
+    if (
+        _WriterResidualCyclicPolicyCoverageKind
+        .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
+        in coverage_kinds
+    ):
+        return _WriterResidualCyclicPolicyReadinessReport(
+            kind=(
+                _WriterResidualCyclicPolicyReadinessKind
+                .BLOCKED_MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
+            ),
+            coverage_kinds=coverage_kinds,
+            graph_policy_blockers=graph_policy_blockers,
+            residual_cyclic_policy_decisions=residual_cyclic_policy_decisions,
+        )
+
+    if (
+        _WriterResidualCyclicPolicyCoverageKind.UNSUPPORTED_OWNER_SCOPE
+        in coverage_kinds
+    ):
+        return _WriterResidualCyclicPolicyReadinessReport(
+            kind=(
+                _WriterResidualCyclicPolicyReadinessKind
+                .BLOCKED_UNSUPPORTED_OWNER_SCOPE
+            ),
+            coverage_kinds=coverage_kinds,
+            graph_policy_blockers=graph_policy_blockers,
+            residual_cyclic_policy_decisions=residual_cyclic_policy_decisions,
+        )
+
+    if graph_policy_blockers:
+        return _WriterResidualCyclicPolicyReadinessReport(
+            kind=_WriterResidualCyclicPolicyReadinessKind.BLOCKED_GRAPH_POLICY,
+            coverage_kinds=coverage_kinds,
+            graph_policy_blockers=graph_policy_blockers,
+            residual_cyclic_policy_decisions=residual_cyclic_policy_decisions,
+        )
+
+    return _WriterResidualCyclicPolicyReadinessReport(
+        kind=_WriterResidualCyclicPolicyReadinessKind.READY,
+        coverage_kinds=coverage_kinds,
+        graph_policy_blockers=graph_policy_blockers,
+        residual_cyclic_policy_decisions=residual_cyclic_policy_decisions,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -1144,6 +1277,19 @@ class _WriterFrontierChoiceSnapshot:
     @property
     def residual_cyclic_policy_is_blocked(self) -> bool:
         return self.schedule_outcome.residual_cyclic_policy_is_blocked
+
+    @property
+    def residual_cyclic_policy_readiness_report(
+        self,
+    ) -> _WriterResidualCyclicPolicyReadinessReport:
+        return _residual_cyclic_policy_readiness_report(
+            coverage_kinds=self.residual_cyclic_policy_coverage_kinds,
+            graph_policy_blockers=self.graph_policy_blockers,
+            residual_cyclic_policy_decisions=(
+                self.residual_cyclic_policy_decisions
+            ),
+            has_frontier=True,
+        )
 
     @property
     def residual_cyclic_choice_groups(self):

@@ -20547,6 +20547,343 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertFalse(outcome.residual_cyclic_policy_is_covered)
         self.assertFalse(outcome.residual_cyclic_policy_is_blocked)
 
+    def test_residual_cyclic_policy_readiness_report_classifies_ready(self) -> None:
+        cases = (
+            (
+                (),
+                False,
+            ),
+            (
+                (
+                    writer_transitions
+                    ._WriterResidualCyclicPolicyCoverageKind
+                    .NO_RESIDUAL_CYCLIC_CHOICE,
+                ),
+                False,
+            ),
+            (
+                (
+                    writer_transitions
+                    ._WriterResidualCyclicPolicyCoverageKind
+                    .SUPPORTED_DEAD_CLOSURE_RESOLUTION,
+                ),
+                True,
+            ),
+        )
+
+        for coverage_kinds, has_resolution in cases:
+            with self.subTest(coverage_kinds=coverage_kinds):
+                report = (
+                    writer_frontier_module
+                    ._residual_cyclic_policy_readiness_report(
+                        coverage_kinds=coverage_kinds,
+                        graph_policy_blockers=(),
+                        residual_cyclic_policy_decisions=(),
+                    )
+                )
+
+                self.assertIs(
+                    report.kind,
+                    (
+                        writer_frontier_module
+                        ._WriterResidualCyclicPolicyReadinessKind
+                        .READY
+                    ),
+                )
+                self.assertTrue(report.ready)
+                self.assertFalse(report.blocked)
+                self.assertIs(
+                    report.supported_dead_closure_resolution_present,
+                    has_resolution,
+                )
+
+    def test_residual_cyclic_policy_readiness_report_classifies_residual_blockers(self) -> None:
+        cases = (
+            (
+                (
+                    writer_transitions
+                    ._WriterResidualCyclicPolicyCoverageKind
+                    .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE,
+                ),
+                (
+                    writer_frontier_module
+                    ._WriterResidualCyclicPolicyReadinessKind
+                    .BLOCKED_MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
+                ),
+                "missing_closure_open_support_evidence_blocked",
+            ),
+            (
+                (
+                    writer_transitions
+                    ._WriterResidualCyclicPolicyCoverageKind
+                    .UNSUPPORTED_OWNER_SCOPE,
+                ),
+                (
+                    writer_frontier_module
+                    ._WriterResidualCyclicPolicyReadinessKind
+                    .BLOCKED_UNSUPPORTED_OWNER_SCOPE
+                ),
+                "unsupported_owner_scope_blocked",
+            ),
+        )
+
+        for coverage_kinds, expected_kind, predicate in cases:
+            with self.subTest(coverage_kinds=coverage_kinds):
+                report = (
+                    writer_frontier_module
+                    ._residual_cyclic_policy_readiness_report(
+                        coverage_kinds=coverage_kinds,
+                        graph_policy_blockers=(),
+                        residual_cyclic_policy_decisions=(),
+                    )
+                )
+
+                self.assertIs(report.kind, expected_kind)
+                self.assertFalse(report.ready)
+                self.assertTrue(report.blocked)
+                self.assertTrue(getattr(report, predicate))
+
+    def test_residual_cyclic_policy_readiness_report_classifies_other_graph_policy_blockers(self) -> None:
+        child_blocker = writer_transitions._WriterChildObligationBlocker(
+            kind=(
+                writer_transitions
+                ._WriterChildObligationBlockerKind
+                .MULTI_INCIDENCE_RESIDUAL_ATTACHMENT
+            ),
+            atom=AtomId(0),
+            attachment_id=7,
+            attachment_action_kind=(
+                WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY
+            ),
+        )
+        graph_blocker = writer_transitions._WriterActiveEmittedGraphPolicyBlocker(
+            kind=(
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyBlockerKind
+                .CHILD_OBLIGATION
+            ),
+            child_blocker=child_blocker,
+        )
+        report = (
+            writer_frontier_module
+            ._residual_cyclic_policy_readiness_report(
+                coverage_kinds=(),
+                graph_policy_blockers=(graph_blocker,),
+                residual_cyclic_policy_decisions=(),
+            )
+        )
+
+        self.assertIs(
+            report.kind,
+            (
+                writer_frontier_module
+                ._WriterResidualCyclicPolicyReadinessKind
+                .BLOCKED_GRAPH_POLICY
+            ),
+        )
+        self.assertEqual(report.graph_policy_blockers, (graph_blocker,))
+        self.assertFalse(report.ready)
+        self.assertTrue(report.blocked)
+
+    def test_residual_cyclic_policy_readiness_report_classifies_no_frontier(self) -> None:
+        report = (
+            writer_frontier_module
+            ._residual_cyclic_policy_readiness_report(
+                coverage_kinds=(),
+                graph_policy_blockers=(),
+                residual_cyclic_policy_decisions=(),
+                has_frontier=False,
+            )
+        )
+
+        self.assertIs(
+            report.kind,
+            (
+                writer_frontier_module
+                ._WriterResidualCyclicPolicyReadinessKind
+                .INVALID_REPLAY_OR_NO_FRONTIER
+            ),
+        )
+        self.assertFalse(report.ready)
+        self.assertTrue(report.blocked)
+
+    def test_writer_frontier_choice_snapshot_exposes_residual_cyclic_policy_readiness_report(self) -> None:
+        active_outcome = self._test_active_owned_dead_closure_active_outcome()
+        residual = active_outcome.graph_policy_decision.residual_cyclic_policy_decision
+        self.assertIsNotNone(residual)
+        choice_snapshot = self._test_frontier_choice_snapshot_for_active_outcome(
+            active_outcome,
+            support_family=(
+                writer_transitions
+                ._WriterGraphPolicyActionFamily
+                .CYCLIC_TREE_ENTRY
+            ),
+            residual_key=residual.choice_groups[0].key,  # type: ignore[union-attr]
+        )
+        ready_report = choice_snapshot.residual_cyclic_policy_readiness_report
+
+        self.assertIs(
+            ready_report.kind,
+            (
+                writer_frontier_module
+                ._WriterResidualCyclicPolicyReadinessKind
+                .READY
+            ),
+        )
+        self.assertTrue(
+            ready_report.supported_dead_closure_resolution_present
+        )
+        self.assertEqual(
+            ready_report.residual_cyclic_policy_decisions,
+            choice_snapshot.residual_cyclic_policy_decisions,
+        )
+
+        blocked_outcome = self._test_residual_cyclic_blocked_active_outcome(
+            include_closure_emission=False,
+        )
+        blocked_snapshot = self._test_residual_cyclic_blocked_choice_snapshot(
+            blocked_outcome,
+        )
+        blocked_report = (
+            blocked_snapshot.residual_cyclic_policy_readiness_report
+        )
+
+        self.assertIs(
+            blocked_report.kind,
+            (
+                writer_frontier_module
+                ._WriterResidualCyclicPolicyReadinessKind
+                .BLOCKED_MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
+            ),
+        )
+        self.assertTrue(blocked_report.blocked)
+
+    def test_supported_owner_prefix_read_exposes_ready_residual_cyclic_policy_report(self) -> None:
+        for owner_kind, _owner_scope_kind, _expected_residual_kind in (
+            self._test_supported_owner_scope_policy_matrix()
+        ):
+            with self.subTest(owner_kind=owner_kind):
+                active_outcome = (
+                    self._test_active_owned_dead_closure_active_outcome(
+                        closure_owner_kind=owner_kind,
+                        child_owner_kind=owner_kind,
+                    )
+                )
+                residual = (
+                    active_outcome
+                    .graph_policy_decision
+                    .residual_cyclic_policy_decision
+                )
+                self.assertIsNotNone(residual)
+                choice_snapshot = (
+                    self._test_frontier_choice_snapshot_for_active_outcome(
+                        active_outcome,
+                        support_family=(
+                            writer_transitions
+                            ._WriterGraphPolicyActionFamily
+                            .CYCLIC_TREE_ENTRY
+                        ),
+                        residual_key=(
+                            residual.choice_groups[0].key  # type: ignore[union-attr]
+                        ),
+                    )
+                )
+                outcome = self._test_readable_prefix_outcome(choice_snapshot)
+                report = outcome.residual_cyclic_policy_readiness_report
+
+                self.assertIs(
+                    outcome.kind,
+                    (
+                        writer_snapshot
+                        ._WriterSnapshotPrefixReadOutcomeKind
+                        .READABLE
+                    ),
+                )
+                self.assertIs(
+                    report.kind,
+                    (
+                        writer_frontier_module
+                        ._WriterResidualCyclicPolicyReadinessKind
+                        .READY
+                    ),
+                )
+                self.assertTrue(
+                    report.supported_dead_closure_resolution_present
+                )
+
+    def test_blocked_prefix_read_exposes_residual_cyclic_policy_readiness_report(self) -> None:
+        cases = (
+            (
+                self._test_residual_cyclic_blocked_active_outcome(
+                    include_closure_emission=False,
+                ),
+                (
+                    writer_frontier_module
+                    ._WriterResidualCyclicPolicyReadinessKind
+                    .BLOCKED_MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
+                ),
+            ),
+            (
+                self._test_residual_cyclic_blocked_active_outcome(
+                    closure_owner_kind=WriterBoundaryOwnerKind.UNOWNED,
+                    child_owner_kind=WriterBoundaryOwnerKind.UNOWNED,
+                ),
+                (
+                    writer_frontier_module
+                    ._WriterResidualCyclicPolicyReadinessKind
+                    .BLOCKED_UNSUPPORTED_OWNER_SCOPE
+                ),
+            ),
+        )
+
+        for active_outcome, expected_kind in cases:
+            with self.subTest(expected_kind=expected_kind):
+                choice_snapshot = (
+                    self._test_residual_cyclic_blocked_choice_snapshot(
+                        active_outcome,
+                    )
+                )
+                replay_outcome = (
+                    self
+                    ._test_replay_choice_snapshot_outcome_for_choice_snapshot(
+                        choice_snapshot,
+                    )
+                )
+                outcome = writer_snapshot._WriterSnapshotPrefixReadOutcome(
+                    kind=(
+                        writer_snapshot
+                        ._WriterSnapshotPrefixReadOutcomeKind
+                        .FINAL_FRONTIER_BLOCKED
+                    ),
+                    replay_outcome=replay_outcome,
+                )
+
+                self.assertIs(
+                    outcome.residual_cyclic_policy_readiness_report.kind,
+                    expected_kind,
+                )
+                self.assertTrue(
+                    outcome.residual_cyclic_policy_readiness_report.blocked
+                )
+
+        invalid_outcome = writer_snapshot._WriterSnapshotPrefixReadOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotPrefixReadOutcomeKind
+                .INVALID_EMITTED_TEXT
+            ),
+            replay_outcome=self._test_invalid_replay_choice_snapshot_outcome(),
+        )
+
+        self.assertIs(
+            invalid_outcome.residual_cyclic_policy_readiness_report.kind,
+            (
+                writer_frontier_module
+                ._WriterResidualCyclicPolicyReadinessKind
+                .INVALID_REPLAY_OR_NO_FRONTIER
+            ),
+        )
+
     def test_supported_dead_closure_owner_scope_decision_kind_maps_supported_scopes(self) -> None:
         supported_cases = (
             (

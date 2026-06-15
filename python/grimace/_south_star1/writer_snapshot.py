@@ -47,6 +47,7 @@ from .writer_frontier import _WriterFrontierChoiceSnapshot
 from .writer_frontier import _WriterFrontierChoiceSnapshotEntry
 from .writer_frontier import _checked_writer_frontier_choice_snapshot
 from .writer_frontier import _raise_for_writer_frontier_schedule_outcome_blockers
+from .writer_frontier import _residual_cyclic_policy_readiness_report
 from .writer_frontier import _writer_frontier_choice_snapshot
 from .writer_frontier import iter_writer_frontier_support
 from .writer_state import ComponentCursor
@@ -741,6 +742,20 @@ class _WriterSnapshotPrefixReadOutcome:
             return self.blocked
 
         return self.choice_snapshot.residual_cyclic_policy_is_blocked
+
+    @property
+    def residual_cyclic_policy_readiness_report(self):
+        if self.choice_snapshot is None:
+            return _residual_cyclic_policy_readiness_report(
+                coverage_kinds=self.residual_cyclic_policy_coverage_kinds,
+                graph_policy_blockers=self.graph_policy_blockers,
+                residual_cyclic_policy_decisions=(
+                    self.residual_cyclic_policy_decisions
+                ),
+                has_frontier=False,
+            )
+
+        return self.choice_snapshot.residual_cyclic_policy_readiness_report
 
     @property
     def residual_cyclic_choice_groups(self):

@@ -3000,6 +3000,8 @@ def _state_is_terminal_shape(
 ) -> bool:
     if key.obligations.pending_entry is not None or key.branch_stack:
         return False
+    if key.ring_state.open_endpoints:
+        return False
     if _active_owns_live_attachment_action(key, context):
         return False
     if key.component_cursor.component_index + 1 < len(key.component_cursor.component_roots):

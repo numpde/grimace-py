@@ -19,6 +19,7 @@ from .policy import DirectionMark
 from .policy import TetraToken
 from .prepared_runtime import SouthStarPreparedMol
 from .prepared_runtime import SouthStarRuntimeOptions
+from .prepared_runtime import _prepared_has_cyclic_writer_graph_surface
 from .prepared_runtime import require_writer_shaped_runtime_options
 from .residual_constraints import DirectionalCarrierResidual
 from .residual_constraints import DirectionalResidualFactor
@@ -2178,11 +2179,29 @@ def _iter_writer_frontier_support_suffixes_after_emitted_texts(
     )
 
 
+def _assert_public_writer_snapshot_cyclic_admission(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+) -> None:
+    if not _prepared_has_cyclic_writer_graph_surface(prepared):
+        return
+    decision = _cyclic_writer_admission_decision_from_snapshot(
+        snapshot,
+        prepared=prepared,
+    )
+    _assert_cyclic_writer_admission_decision(decision)
+
+
 def resume_writer_frontier_choices_from_snapshot(
     snapshot: WriterSearchSnapshot,
     *,
     prepared: SouthStarPreparedMol,
 ) -> WriterFrontierChoices:
+    _assert_public_writer_snapshot_cyclic_admission(
+        snapshot,
+        prepared=prepared,
+    )
     return _writer_frontier_choices_after_emitted_texts(
         snapshot,
         prepared=prepared,

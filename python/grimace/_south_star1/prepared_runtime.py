@@ -150,6 +150,17 @@ def prepare_south_star_mol_from_facts(
     )
 
 
+def _prepared_has_cyclic_writer_graph_surface(
+    prepared: SouthStarPreparedMol,
+) -> bool:
+    return any(
+        surface.connected
+        and not surface.tree
+        and (surface.cyclic_rank > 0 or surface.cyclic_block_ids)
+        for surface in prepared.writer_graph_metadata.component_surfaces
+    )
+
+
 def prepare_south_star_mol_from_rdkit(
     mol: object,
     *,

@@ -6,6 +6,7 @@ from . import writer_snapshot
 from .enumerate import SupportImage
 from .prepared_runtime import SouthStarPreparedMol
 from .prepared_runtime import SouthStarRuntimeOptions
+from .prepared_runtime import _prepared_has_cyclic_writer_graph_surface
 from .prepared_runtime import require_writer_shaped_runtime_options
 from .prepared_runtime import runtime_root_atom_for_prepared
 from .writer_frontier import count_writer_cursor_completions
@@ -13,17 +14,6 @@ from .writer_frontier import count_writer_frontier_support
 from .writer_frontier import initial_writer_frontier_cursor
 from .writer_frontier import initial_writer_transition_frontier_cursor
 from .writer_frontier import iter_writer_frontier_support
-
-
-def _prepared_has_cyclic_writer_graph_surface(
-    prepared: SouthStarPreparedMol,
-) -> bool:
-    return any(
-        surface.connected
-        and not surface.tree
-        and (surface.cyclic_rank > 0 or surface.cyclic_block_ids)
-        for surface in prepared.writer_graph_metadata.component_surfaces
-    )
 
 
 def _initial_public_writer_shaped_frontier_cursor_after_admission(

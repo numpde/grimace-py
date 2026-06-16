@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+
 from . import writer_snapshot
 from .enumerate import SupportImage
 from .prepared_runtime import SouthStarPreparedMol
@@ -12,6 +14,17 @@ from .writer_frontier import count_writer_cursor_completions
 from .writer_frontier import count_writer_frontier_support
 from .writer_frontier import iter_writer_frontier_support
 from .writer_frontier import WriterFrontierCursor
+
+
+def _writer_snapshot_cursor_after_public_admission(
+    *,
+    snapshot: writer_snapshot.WriterSearchSnapshot,
+    prepared: SouthStarPreparedMol,
+) -> WriterFrontierCursor:
+    return writer_snapshot.writer_frontier_cursor_from_snapshot(
+        snapshot,
+        prepared=prepared,
+    )
 
 
 def enumerate_prepared_writer_shaped_support(
@@ -53,8 +66,8 @@ def enumerate_writer_snapshot_writer_shaped_support(
     snapshot: writer_snapshot.WriterSearchSnapshot,
     prepared: SouthStarPreparedMol,
 ) -> SupportImage:
-    cursor = writer_snapshot.writer_frontier_cursor_from_snapshot(
-        snapshot,
+    cursor = _writer_snapshot_cursor_after_public_admission(
+        snapshot=snapshot,
         prepared=prepared,
     )
     return _writer_support_image_from_cursor(
@@ -63,7 +76,46 @@ def enumerate_writer_snapshot_writer_shaped_support(
     )
 
 
+def count_writer_snapshot_writer_shaped_support(
+    *,
+    snapshot: writer_snapshot.WriterSearchSnapshot,
+    prepared: SouthStarPreparedMol,
+) -> int:
+    cursor = _writer_snapshot_cursor_after_public_admission(
+        snapshot=snapshot,
+        prepared=prepared,
+    )
+    return count_writer_frontier_support(prepared, cursor.support_state)
+
+
+def count_writer_snapshot_writer_shaped_completions(
+    *,
+    snapshot: writer_snapshot.WriterSearchSnapshot,
+    prepared: SouthStarPreparedMol,
+) -> int:
+    cursor = _writer_snapshot_cursor_after_public_admission(
+        snapshot=snapshot,
+        prepared=prepared,
+    )
+    return count_writer_cursor_completions(prepared, cursor)
+
+
+def iter_writer_snapshot_writer_shaped_support(
+    *,
+    snapshot: writer_snapshot.WriterSearchSnapshot,
+    prepared: SouthStarPreparedMol,
+) -> Iterator[str]:
+    cursor = _writer_snapshot_cursor_after_public_admission(
+        snapshot=snapshot,
+        prepared=prepared,
+    )
+    return iter_writer_frontier_support(prepared, cursor)
+
+
 __all__ = (
     "enumerate_prepared_writer_shaped_support",
     "enumerate_writer_snapshot_writer_shaped_support",
+    "count_writer_snapshot_writer_shaped_support",
+    "count_writer_snapshot_writer_shaped_completions",
+    "iter_writer_snapshot_writer_shaped_support",
 )

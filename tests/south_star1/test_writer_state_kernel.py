@@ -7493,6 +7493,94 @@ class WriterStateKernelTest(unittest.TestCase):
             tuple(iter_writer_frontier_support(prepared, advanced.cursor)),
         )
 
+    def test_public_snapshot_count_and_stream_acyclic_match_support_image(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options(rooted_at_atom=0)
+
+        snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+        )
+        image = writer_support.enumerate_writer_snapshot_writer_shaped_support(
+            snapshot=snapshot,
+            prepared=prepared,
+        )
+
+        self.assertEqual(
+            writer_support.count_writer_snapshot_writer_shaped_support(
+                snapshot=snapshot,
+                prepared=prepared,
+            ),
+            image.distinct_count,
+        )
+        self.assertEqual(
+            writer_support.count_writer_snapshot_writer_shaped_completions(
+                snapshot=snapshot,
+                prepared=prepared,
+            ),
+            image.witness_count,
+        )
+        self.assertEqual(
+            tuple(
+                writer_support.iter_writer_snapshot_writer_shaped_support(
+                    snapshot=snapshot,
+                    prepared=prepared,
+                )
+            ),
+            image.strings,
+        )
+
+    def test_public_snapshot_count_and_stream_acyclic_after_advance_are_state_local(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options(rooted_at_atom=0)
+
+        snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+        )
+        choices = writer_snapshot.resume_writer_frontier_choices_from_snapshot(
+            snapshot,
+            prepared=prepared,
+        )
+        choice = choices.choices[0]
+
+        advanced = writer_snapshot.advance_writer_frontier_snapshot(
+            snapshot,
+            prepared=prepared,
+            emitted_text=choice.emitted_text,
+        )
+
+        image = writer_support.enumerate_writer_snapshot_writer_shaped_support(
+            snapshot=advanced,
+            prepared=prepared,
+        )
+
+        self.assertEqual(
+            image.distinct_count,
+            writer_support.count_writer_snapshot_writer_shaped_support(
+                snapshot=advanced,
+                prepared=prepared,
+            ),
+        )
+        self.assertEqual(
+            image.witness_count,
+            writer_support.count_writer_snapshot_writer_shaped_completions(
+                snapshot=advanced,
+                prepared=prepared,
+            ),
+        )
+        self.assertEqual(
+            image.strings,
+            tuple(
+                writer_support.iter_writer_snapshot_writer_shaped_support(
+                    snapshot=advanced,
+                    prepared=prepared,
+                )
+            ),
+        )
+
     def test_public_snapshot_support_cyclic_defaults_closed_before_count_or_stream(
         self,
     ) -> None:
@@ -7530,6 +7618,62 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
         self.assertIn("public support is closed", str(caught.exception))
 
+    def test_public_snapshot_count_and_stream_cyclic_defaults_closed_before_materialization(
+        self,
+    ) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+
+        with patch(
+            "grimace._south_star1.writer_support.count_writer_frontier_support",
+            side_effect=AssertionError(
+                "cyclic snapshot reached support count",
+            ),
+        ):
+            with self.assertRaises(SouthStarError) as caught:
+                writer_support.count_writer_snapshot_writer_shaped_support(
+                    snapshot=snapshot,
+                    prepared=prepared,
+                )
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+
+        with patch(
+            "grimace._south_star1.writer_support.count_writer_cursor_completions",
+            side_effect=AssertionError(
+                "cyclic snapshot reached completion count",
+            ),
+        ):
+            with self.assertRaises(SouthStarError) as caught:
+                writer_support.count_writer_snapshot_writer_shaped_completions(
+                    snapshot=snapshot,
+                    prepared=prepared,
+                )
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+
+        with patch(
+            "grimace._south_star1.writer_support.iter_writer_frontier_support",
+            side_effect=AssertionError(
+                "cyclic snapshot reached stream",
+            ),
+        ):
+            with self.assertRaises(SouthStarError) as caught:
+                tuple(
+                    writer_support.iter_writer_snapshot_writer_shaped_support(
+                        snapshot=snapshot,
+                        prepared=prepared,
+                    )
+                )
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+
     def test_public_snapshot_support_cyclic_enabled_matches_snapshot_cursor_support(
         self,
     ) -> None:
@@ -7562,6 +7706,50 @@ class WriterStateKernelTest(unittest.TestCase):
             image.strings,
             tuple(iter_writer_frontier_support(prepared, snapshot.cursor)),
         )
+
+    def test_public_snapshot_count_and_stream_cyclic_enabled_match_support_image(
+        self,
+    ) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+
+        with patch(
+            "grimace._south_star1.writer_snapshot._PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED",
+            True,
+        ):
+            snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
+                prepared=prepared,
+                runtime_options=options,
+            )
+
+            image = writer_support.enumerate_writer_snapshot_writer_shaped_support(
+                snapshot=snapshot,
+                prepared=prepared,
+            )
+
+            self.assertEqual(
+                writer_support.count_writer_snapshot_writer_shaped_support(
+                    snapshot=snapshot,
+                    prepared=prepared,
+                ),
+                image.distinct_count,
+            )
+            self.assertEqual(
+                writer_support.count_writer_snapshot_writer_shaped_completions(
+                    snapshot=snapshot,
+                    prepared=prepared,
+                ),
+                image.witness_count,
+            )
+            self.assertEqual(
+                tuple(
+                    writer_support.iter_writer_snapshot_writer_shaped_support(
+                        snapshot=snapshot,
+                        prepared=prepared,
+                    )
+                ),
+                image.strings,
+            )
 
     def test_public_snapshot_support_cyclic_enabled_terminal_is_empty_suffix(self) -> None:
         prepared = _prepare(cyclopropane_facts())
@@ -7597,6 +7785,60 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(image.distinct_count, 1)
         self.assertEqual(image.strings, ("",))
         self.assertGreaterEqual(image.witness_count, image.distinct_count)
+
+    def test_public_snapshot_stream_cyclic_enabled_terminal_is_empty_suffix(
+        self,
+    ) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+
+        with patch(
+            "grimace._south_star1.writer_snapshot._PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED",
+            True,
+        ):
+            snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
+                prepared=prepared,
+                runtime_options=options,
+            )
+
+            for emitted_text in ("C", "1", "C", "C", "1"):
+                snapshot = writer_snapshot.advance_writer_frontier_snapshot(
+                    snapshot,
+                    prepared=prepared,
+                    emitted_text=emitted_text,
+                )
+
+            choices = writer_snapshot.resume_writer_frontier_choices_from_snapshot(
+                snapshot,
+                prepared=prepared,
+            )
+
+            self.assertIsNotNone(choices.terminal)
+            self.assertEqual(tuple(choices.choices), ())
+
+            self.assertEqual(
+                writer_support.count_writer_snapshot_writer_shaped_support(
+                    snapshot=snapshot,
+                    prepared=prepared,
+                ),
+                1,
+            )
+            self.assertEqual(
+                tuple(
+                    writer_support.iter_writer_snapshot_writer_shaped_support(
+                        snapshot=snapshot,
+                        prepared=prepared,
+                    )
+                ),
+                ("",),
+            )
+            self.assertEqual(
+                writer_support.count_writer_snapshot_writer_shaped_completions(
+                    snapshot=snapshot,
+                    prepared=prepared,
+                ),
+                choices.terminal.completion_count,
+            )
 
     def test_public_online_loop_support_contract_closes_for_acyclic_state_space(
         self,

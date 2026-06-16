@@ -6989,6 +6989,143 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertEqual(snapshot, expected_snapshot)
 
+    def test_public_initial_snapshot_acyclic_uses_tree_cursor_not_transition_harness(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options(rooted_at_atom=0)
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._initial_writer_transition_frontier_cursor"
+            ),
+            side_effect=AssertionError(
+                "acyclic initial snapshot must not use transition harness",
+            ),
+        ):
+            snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
+                prepared=prepared,
+                runtime_options=options,
+            )
+
+        expected_cursor = initial_writer_frontier_cursor(prepared, options)
+        self.assertEqual(snapshot.cursor, expected_cursor)
+
+    def test_public_initial_snapshot_cyclic_defaults_closed(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+
+        with self.assertRaises(SouthStarError) as caught:
+            writer_snapshot.capture_initial_writer_frontier_snapshot(
+                prepared=prepared,
+                runtime_options=options,
+            )
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+        self.assertIn("public support is closed", str(caught.exception))
+
+    def test_public_initial_snapshot_cyclic_uses_admission_gate(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+        seen: list[writer_snapshot._WriterCyclicAdmissionDecisionKind] = []
+        original = writer_snapshot._cyclic_writer_admission_decision_from_cursor
+
+        def wrapped(
+            *,
+            prepared,
+            runtime_options,
+            cursor,
+            max_depth=None,
+            max_prefixes=None,
+        ):
+            decision = original(
+                prepared=prepared,
+                runtime_options=runtime_options,
+                cursor=cursor,
+                max_depth=max_depth,
+                max_prefixes=max_prefixes,
+            )
+            seen.append(decision.kind)
+            return decision
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._cyclic_writer_admission_decision_from_cursor"
+            ),
+            side_effect=wrapped,
+        ):
+            with self.assertRaises(SouthStarError):
+                writer_snapshot.capture_initial_writer_frontier_snapshot(
+                    prepared=prepared,
+                    runtime_options=options,
+                )
+
+        self.assertEqual(
+            seen,
+            [
+                writer_snapshot
+                ._WriterCyclicAdmissionDecisionKind
+                .READY_BUT_PUBLIC_CLOSED,
+            ],
+        )
+
+    def test_public_initial_snapshot_cyclic_enabled_returns_transition_cursor_snapshot(
+        self,
+    ) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+        expected_cursor = _initial_writer_transition_frontier_cursor(
+            prepared,
+            options,
+        )
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED"
+            ),
+            True,
+        ):
+            snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
+                prepared=prepared,
+                runtime_options=options,
+            )
+
+        self.assertEqual(snapshot.cursor, expected_cursor)
+
+    def test_public_initial_snapshot_cyclic_enabled_resumes_to_private_choices(
+        self,
+    ) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED"
+            ),
+            True,
+        ):
+            snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
+                prepared=prepared,
+                runtime_options=options,
+            )
+            choices = writer_snapshot.resume_writer_frontier_choices_from_snapshot(
+                snapshot,
+                prepared=prepared,
+            )
+
+        expected_cursor = _initial_writer_transition_frontier_cursor(
+            prepared,
+            options,
+        )
+        self.assertEqual(
+            choices,
+            writer_frontier_choices(prepared, expected_cursor),
+        )
+
     def test_cyclic_admission_from_cursor_uses_private_snapshot_capture(self) -> None:
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
@@ -13589,7 +13726,10 @@ class WriterStateKernelTest(unittest.TestCase):
         prepared = _prepare(cco_facts())
 
         with patch(
-            "grimace._south_star1.writer_support._initial_writer_transition_frontier_cursor",
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._initial_writer_transition_frontier_cursor"
+            ),
             side_effect=AssertionError(
                 "acyclic public support must not use transition cursor",
             ),
@@ -13602,20 +13742,58 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertGreater(image.distinct_count, 0)
         self.assertEqual(len(image.strings), image.distinct_count)
 
+    def test_public_writer_support_uses_shared_initial_cursor_admission_helper(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options(rooted_at_atom=0)
+
+        calls: list[writer_snapshot.WriterFrontierCursor] = []
+        original = (
+            writer_snapshot
+            ._initial_public_writer_shaped_frontier_cursor_after_admission
+        )
+
+        def wrapped(*, prepared, runtime_options):
+            cursor = original(
+                prepared=prepared,
+                runtime_options=runtime_options,
+            )
+            calls.append(cursor)
+            return cursor
+
+        with patch(
+            (
+                "grimace._south_star1.writer_support.writer_snapshot"
+                "._initial_public_writer_shaped_frontier_cursor_after_admission"
+            ),
+            side_effect=wrapped,
+        ):
+            image = enumerate_prepared_stereo_support(
+                prepared=prepared,
+                runtime_options=options,
+            )
+
+        self.assertEqual(len(calls), 1)
+        self.assertGreater(image.distinct_count, 0)
+
     def test_admitted_public_cyclic_support_would_use_transition_cursor_not_tree_cursor(
         self,
     ) -> None:
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
 
-        transition_calls: list[writer_frontier_module.WriterFrontierCursor] = []
-        original_transition = (
-            writer_support._initial_writer_transition_frontier_cursor
+        helper_calls: list[writer_frontier_module.WriterFrontierCursor] = []
+        original_helper = (
+            writer_snapshot._initial_public_writer_shaped_frontier_cursor_after_admission
         )
 
-        def wrapped_transition(prepared_arg, runtime_options_arg):
-            cursor = original_transition(prepared_arg, runtime_options_arg)
-            transition_calls.append(cursor)
+        def wrapped_helper(*, prepared, runtime_options):
+            cursor = original_helper(
+                prepared=prepared,
+                runtime_options=runtime_options,
+            )
+            helper_calls.append(cursor)
             return cursor
 
         with patch(
@@ -13623,8 +13801,9 @@ class WriterStateKernelTest(unittest.TestCase):
             "._PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED",
             True,
         ), patch(
-            "grimace._south_star1.writer_support._initial_writer_transition_frontier_cursor",
-            side_effect=wrapped_transition,
+            "grimace._south_star1.writer_support.writer_snapshot"
+            "._initial_public_writer_shaped_frontier_cursor_after_admission",
+            side_effect=wrapped_helper,
         ), patch(
             (
                 "grimace._south_star1.writer_support"
@@ -13639,8 +13818,8 @@ class WriterStateKernelTest(unittest.TestCase):
                 runtime_options=options,
             )
 
-        self.assertEqual(len(transition_calls), 1)
-        transition_cursor = transition_calls[0]
+        self.assertEqual(len(helper_calls), 1)
+        transition_cursor = helper_calls[0]
         expected_distinct = count_writer_frontier_support(
             prepared,
             transition_cursor.support_state,

@@ -21,6 +21,7 @@ from .prepared_runtime import SouthStarPreparedMol
 from .prepared_runtime import SouthStarRuntimeOptions
 from .prepared_runtime import _prepared_has_cyclic_writer_graph_surface
 from .prepared_runtime import require_writer_shaped_runtime_options
+from .prepared_runtime import runtime_root_atom_for_prepared
 from .residual_constraints import DirectionalCarrierResidual
 from .residual_constraints import DirectionalResidualFactor
 from .residual_constraints import DirectionalResidualFactorValueSnapshot
@@ -49,7 +50,9 @@ from .writer_frontier import _WriterFrontierChoiceSnapshotEntry
 from .writer_frontier import _checked_writer_frontier_choice_snapshot
 from .writer_frontier import _raise_for_writer_frontier_schedule_outcome_blockers
 from .writer_frontier import _residual_cyclic_policy_readiness_report
+from .writer_frontier import _initial_writer_transition_frontier_cursor
 from .writer_frontier import _writer_frontier_choice_snapshot
+from .writer_frontier import initial_writer_frontier_cursor
 from .writer_frontier import iter_writer_frontier_support
 from .writer_state import ComponentCursor
 from .writer_state import ObligationStateKey
@@ -137,6 +140,48 @@ def capture_writer_frontier_snapshot(
         prepared=prepared,
     )
     return snapshot
+
+
+def _initial_public_writer_shaped_frontier_cursor_after_admission(
+    *,
+    prepared: SouthStarPreparedMol,
+    runtime_options: SouthStarRuntimeOptions,
+) -> WriterFrontierCursor:
+    require_writer_shaped_runtime_options(runtime_options)
+    runtime_root_atom_for_prepared(runtime_options, prepared=prepared)
+
+    if _prepared_has_cyclic_writer_graph_surface(prepared):
+        cursor = _initial_writer_transition_frontier_cursor(
+            prepared,
+            runtime_options,
+        )
+        decision = _cyclic_writer_admission_decision_from_cursor(
+            prepared=prepared,
+            runtime_options=runtime_options,
+            cursor=cursor,
+        )
+        _assert_cyclic_writer_admission_decision(decision)
+        return cursor
+
+    return initial_writer_frontier_cursor(prepared, runtime_options)
+
+
+def capture_initial_writer_frontier_snapshot(
+    *,
+    prepared: SouthStarPreparedMol,
+    runtime_options: SouthStarRuntimeOptions,
+    decoder_boundary: WriterDecoderBoundary = WriterDecoderBoundary(),
+) -> WriterSearchSnapshot:
+    cursor = _initial_public_writer_shaped_frontier_cursor_after_admission(
+        prepared=prepared,
+        runtime_options=runtime_options,
+    )
+    return capture_writer_frontier_snapshot(
+        prepared=prepared,
+        runtime_options=runtime_options,
+        cursor=cursor,
+        decoder_boundary=decoder_boundary,
+    )
 
 
 def writer_frontier_cursor_from_snapshot(
@@ -3897,6 +3942,7 @@ __all__ = (
     "WriterSearchSnapshot",
     "WriterSnapshotFrame",
     "capture_writer_frontier_snapshot",
+    "capture_initial_writer_frontier_snapshot",
     "resume_writer_frontier_choices_from_snapshot",
     "validate_writer_cursor_against_prepared",
     "validate_writer_search_snapshot",

@@ -530,6 +530,68 @@ def _assert_writer_snapshot_contract_closed_under_replay(
     return tuple(visited)
 
 
+def _assert_blocked_prefix_diagnostic_contract(
+    test_case: unittest.TestCase,
+    *,
+    snapshot: writer_snapshot.WriterSearchSnapshot,
+    prepared: SouthStarPreparedMol,
+    emitted_texts: tuple[str, ...],
+    expected_kind: writer_snapshot._WriterSnapshotPrefixReadOutcomeKind,
+) -> writer_snapshot._WriterSnapshotPrefixReadOutcome:
+    outcome = (
+        writer_snapshot
+        ._writer_snapshot_prefix_read_outcome_after_emitted_texts(
+            snapshot,
+            prepared=prepared,
+            emitted_texts=emitted_texts,
+            include_counts=True,
+        )
+    )
+
+    test_case.assertIs(outcome.kind, expected_kind)
+    test_case.assertTrue(outcome.blocked)
+    test_case.assertFalse(outcome.invalid_emitted_text)
+    test_case.assertIsNone(outcome.support_count)
+    test_case.assertIsNone(outcome.completion_count)
+    test_case.assertTrue(outcome.residual_cyclic_policy_is_blocked)
+
+    report = outcome.residual_cyclic_policy_readiness_report
+    test_case.assertFalse(report.ready)
+
+    with test_case.assertRaises(SouthStarError) as caught:
+        (
+            writer_snapshot
+            ._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
+                snapshot,
+                prepared=prepared,
+                emitted_texts=emitted_texts,
+                include_counts=True,
+            )
+        )
+
+    test_case.assertIs(
+        caught.exception.kind,
+        SouthStarErrorKind.UNSUPPORTED_POLICY,
+    )
+
+    with test_case.assertRaises(SouthStarError) as caught:
+        tuple(
+            writer_snapshot
+            ._iter_writer_frontier_support_suffixes_after_emitted_texts(
+                snapshot,
+                prepared=prepared,
+                emitted_texts=emitted_texts,
+            )
+        )
+
+    test_case.assertIs(
+        caught.exception.kind,
+        SouthStarErrorKind.UNSUPPORTED_POLICY,
+    )
+
+    return outcome
+
+
 class WriterStateKernelTest(unittest.TestCase):
     def _closure_policy_for_outcome(
         self,
@@ -21251,6 +21313,112 @@ class WriterStateKernelTest(unittest.TestCase):
                         raised.exception.kind,
                         SouthStarErrorKind.UNSUPPORTED_POLICY,
                     )
+
+    def test_blocked_prefix_reports_missing_closure_open_support_evidence(self) -> None:
+        active_outcome = self._test_residual_cyclic_blocked_active_outcome(
+            include_closure_emission=False,
+        )
+        choice_snapshot = self._test_residual_cyclic_blocked_choice_snapshot(
+            active_outcome,
+        )
+        replay_outcome = (
+            self._test_replay_choice_snapshot_outcome_for_choice_snapshot(
+                choice_snapshot,
+            )
+        )
+        snapshot = self._test_writer_search_snapshot()
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._writer_frontier_choice_snapshot_after_emitted_texts"
+            ),
+            return_value=replay_outcome,
+        ):
+            outcome = _assert_blocked_prefix_diagnostic_contract(
+                self,
+                snapshot=snapshot,
+                prepared=object(),  # type: ignore[arg-type]
+                emitted_texts=(),
+                expected_kind=(
+                    writer_snapshot
+                    ._WriterSnapshotPrefixReadOutcomeKind
+                    .FINAL_FRONTIER_BLOCKED
+                ),
+            )
+
+            with self.assertRaises(SouthStarError) as caught:
+                (
+                    writer_snapshot
+                    ._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
+                        snapshot,
+                        prepared=object(),  # type: ignore[arg-type]
+                        emitted_texts=("C",),
+                        include_counts=True,
+                    )
+                )
+
+        self.assertIs(
+            caught.exception.kind,
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+        )
+        self.assertTrue(outcome.residual_cyclic_missing_evidence_groups)
+        self.assertFalse(
+            outcome.residual_cyclic_unsupported_owner_scope_groups
+        )
+        self.assertIn(
+            (
+                writer_transitions
+                ._WriterResidualCyclicPolicyCoverageKind
+                .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
+            ),
+            outcome.residual_cyclic_policy_coverage_kinds,
+        )
+
+    def test_blocked_prefix_reports_unsupported_owner_scope(self) -> None:
+        active_outcome = self._test_residual_cyclic_blocked_active_outcome(
+            closure_owner_kind=WriterBoundaryOwnerKind.UNOWNED,
+            child_owner_kind=WriterBoundaryOwnerKind.UNOWNED,
+        )
+        choice_snapshot = self._test_residual_cyclic_blocked_choice_snapshot(
+            active_outcome,
+        )
+        replay_outcome = (
+            self._test_replay_choice_snapshot_outcome_for_choice_snapshot(
+                choice_snapshot,
+            )
+        )
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._writer_frontier_choice_snapshot_after_emitted_texts"
+            ),
+            return_value=replay_outcome,
+        ):
+            outcome = _assert_blocked_prefix_diagnostic_contract(
+                self,
+                snapshot=self._test_writer_search_snapshot(),
+                prepared=object(),  # type: ignore[arg-type]
+                emitted_texts=(),
+                expected_kind=(
+                    writer_snapshot
+                    ._WriterSnapshotPrefixReadOutcomeKind
+                    .FINAL_FRONTIER_BLOCKED
+                ),
+            )
+
+        self.assertTrue(outcome.residual_cyclic_unsupported_owner_scope_groups)
+        self.assertFalse(outcome.residual_cyclic_missing_evidence_groups)
+        self.assertTrue(outcome.blocker_owner_scope_kinds)
+        self.assertIn(
+            (
+                writer_transitions
+                ._WriterResidualCyclicPolicyCoverageKind
+                .UNSUPPORTED_OWNER_SCOPE
+            ),
+            outcome.residual_cyclic_policy_coverage_kinds,
+        )
 
     def test_supported_owner_scope_policy_matrix_matches_supported_owner_map(self) -> None:
         matrix = {

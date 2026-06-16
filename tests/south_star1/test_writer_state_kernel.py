@@ -13,6 +13,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import grimace._south_star1.writer_frontier as writer_frontier_module
+import grimace._south_star1.writer_graph_obligations as writer_graph_obligations
 import grimace._south_star1.writer_snapshot as writer_snapshot
 import grimace._south_star1.writer_state as writer_state_module
 import grimace._south_star1.writer_transitions as writer_transitions
@@ -747,6 +748,135 @@ def _assert_cyclic_admission_ready_but_public_closed_for_snapshot(
     )
 
     return decision
+
+
+def _writer_cursor_graph_obligation_signatures(
+    *,
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+) -> tuple[tuple[object, ...], ...]:
+    signatures: list[tuple[object, ...]] = []
+
+    for key, weight in cursor.weighted_states:
+        context = (
+            writer_graph_obligations
+            .build_writer_graph_obligation_context(prepared, key)
+        )
+        completion = (
+            writer_graph_obligations
+            .writer_graph_completion_status(prepared, key, context)
+        )
+        edge_obligations = tuple(
+            (
+                int(obligation.bond),
+                obligation.kind,
+                int(obligation.a),
+                int(obligation.b),
+            )
+            for obligation in context.edge_partition.obligations
+        )
+        attachment_actions = tuple(
+            (
+                action.attachment_id,
+                action.kind,
+                tuple(int(atom) for atom in action.owner_atoms),
+                tuple(int(bond) for bond in action.boundary_bonds),
+            )
+            for action in context.residual_summary.attachment_actions
+        )
+        open_endpoints = tuple(
+            (
+                int(endpoint.bond),
+                int(endpoint.first_atom),
+                int(endpoint.second_atom),
+                endpoint.label.value,
+                endpoint.label.text,
+                endpoint.first_endpoint_text,
+                endpoint.first_endpoint_bond_text,
+            )
+            for endpoint in key.ring_state.open_endpoints
+        )
+        closed_closures = tuple(
+            (
+                int(closure.bond),
+                int(closure.first_atom),
+                int(closure.second_atom),
+                closure.label.value,
+                closure.label.text,
+                closure.first_endpoint_text,
+                closure.second_endpoint_text,
+                closure.first_endpoint_bond_text,
+                closure.second_endpoint_bond_text,
+            )
+            for closure in key.ring_state.closed_closures
+        )
+        signatures.append(
+            (
+                weight,
+                edge_obligations,
+                attachment_actions,
+                open_endpoints,
+                closed_closures,
+                completion.complete,
+                completion.unresolved_kinds,
+                tuple(int(bond) for bond in completion.unresolved_bonds),
+            )
+        )
+
+    return tuple(signatures)
+
+
+def _assert_cursor_graph_complete(
+    test_case: unittest.TestCase,
+    *,
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+) -> None:
+    for key, _weight in cursor.weighted_states:
+        context = (
+            writer_graph_obligations
+            .build_writer_graph_obligation_context(prepared, key)
+        )
+        completion = (
+            writer_graph_obligations
+            .writer_graph_completion_status(prepared, key, context)
+        )
+
+        test_case.assertTrue(completion.complete)
+        test_case.assertEqual(completion.unresolved_kinds, ())
+        test_case.assertEqual(completion.unresolved_bonds, ())
+        test_case.assertEqual(context.residual_summary.attachment_actions, ())
+        test_case.assertEqual(key.ring_state.open_endpoints, ())
+
+
+def _writer_graph_signature_edge_kinds(
+    signatures: tuple[tuple[object, ...], ...],
+) -> tuple[WriterEdgeObligationKind, ...]:
+    return tuple(
+        edge[1]
+        for signature in signatures
+        for edge in signature[1]
+    )
+
+
+def _writer_graph_signature_open_endpoint_records(
+    signatures: tuple[tuple[object, ...], ...],
+) -> tuple[object, ...]:
+    return tuple(
+        endpoint
+        for signature in signatures
+        for endpoint in signature[3]
+    )
+
+
+def _writer_graph_signature_closed_closure_records(
+    signatures: tuple[tuple[object, ...], ...],
+) -> tuple[object, ...]:
+    return tuple(
+        closure
+        for signature in signatures
+        for closure in signature[4]
+    )
 
 
 class WriterStateKernelTest(unittest.TestCase):
@@ -13385,6 +13515,235 @@ class WriterStateKernelTest(unittest.TestCase):
                 )
 
                 self.assertGreater(len(visited), 1)
+
+    def test_terminal_frontier_evidence_is_graph_obligation_complete(self) -> None:
+        cases = (
+            (
+                "acyclic branched writer state space",
+                _prepare(cco_facts()),
+                _writer_options(rooted_at_atom=1),
+                False,
+                128,
+            ),
+            (
+                "internal cyclic ring-close state space",
+                _prepare(cyclopropane_facts()),
+                _writer_options(rooted_at_atom=0),
+                True,
+                64,
+            ),
+        )
+
+        for name, prepared, options, internal, max_prefixes in cases:
+            with self.subTest(case=name):
+                if internal:
+                    cursor = initial_writer_transition_frontier_cursor(
+                        prepared,
+                        options,
+                    )
+                else:
+                    cursor = initial_writer_frontier_cursor(
+                        prepared,
+                        options,
+                    )
+
+                snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+                    prepared=prepared,
+                    runtime_options=options,
+                    cursor=cursor,
+                )
+                seen: set[tuple[str, ...]] = set()
+                terminal_count = 0
+
+                def rec(prefix: tuple[str, ...]) -> None:
+                    nonlocal terminal_count
+
+                    if prefix in seen:
+                        self.fail(f"revisited writer prefix {prefix!r}")
+
+                    seen.add(prefix)
+
+                    if len(seen) > max_prefixes:
+                        self.fail(
+                            "graph obligation terminal audit exceeded "
+                            f"max_prefixes={max_prefixes}"
+                        )
+
+                    outcome = (
+                        _assert_checked_prefix_successor_snapshot_resume_equivalence(
+                            self,
+                            snapshot=snapshot,
+                            prepared=prepared,
+                            emitted_texts=prefix,
+                        )
+                    )
+
+                    assert outcome.public_choices is not None
+                    terminal = outcome.public_choices.terminal
+
+                    if terminal is not None:
+                        terminal_count += 1
+                        _assert_cursor_graph_complete(
+                            self,
+                            prepared=prepared,
+                            cursor=terminal.finalized_cursor,
+                        )
+
+                    for choice in outcome.public_choices.choices:
+                        rec((*prefix, choice.emitted_text))
+
+                rec(())
+                self.assertGreater(terminal_count, 0)
+
+    def test_cyclic_ring_lifecycle_obligation_signature_tracks_open_to_closed(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = initial_writer_transition_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        open_prefix = ("C", "1", "C", "C")
+        open_outcome = (
+            writer_snapshot
+            ._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
+                snapshot,
+                prepared=prepared,
+                emitted_texts=open_prefix,
+                include_counts=True,
+            )
+        )
+        open_snapshot = open_outcome.replay_outcome.advanced_snapshot
+        self.assertIsNotNone(open_snapshot)
+        assert open_snapshot is not None
+        open_signatures = _writer_cursor_graph_obligation_signatures(
+            prepared=prepared,
+            cursor=open_snapshot.cursor,
+        )
+
+        assert open_outcome.public_choices is not None
+        self.assertEqual(
+            tuple(choice.emitted_text for choice in open_outcome.public_choices.choices),
+            ("1",),
+        )
+        self.assertIsNone(open_outcome.public_choices.terminal)
+        self.assertTrue(open_signatures)
+        self.assertTrue(
+            all(len(signature[3]) == 1 for signature in open_signatures)
+        )
+        self.assertEqual(
+            _writer_graph_signature_closed_closure_records(open_signatures),
+            (),
+        )
+        self.assertIn(
+            WriterEdgeObligationKind.OPEN_CLOSURE_ENDPOINT,
+            _writer_graph_signature_edge_kinds(open_signatures),
+        )
+        self.assertTrue(
+            any(not signature[5] for signature in open_signatures)
+        )
+
+        closed_prefix = ("C", "1", "C", "C", "1")
+        closed_outcome = (
+            writer_snapshot
+            ._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
+                snapshot,
+                prepared=prepared,
+                emitted_texts=closed_prefix,
+                include_counts=True,
+            )
+        )
+        assert closed_outcome.public_choices is not None
+        terminal = closed_outcome.public_choices.terminal
+        self.assertIsNotNone(terminal)
+        assert terminal is not None
+        self.assertEqual(closed_outcome.public_choices.choices, ())
+        closed_signatures = _writer_cursor_graph_obligation_signatures(
+            prepared=prepared,
+            cursor=terminal.finalized_cursor,
+        )
+
+        self.assertEqual(
+            _writer_graph_signature_open_endpoint_records(closed_signatures),
+            (),
+        )
+        self.assertTrue(closed_signatures)
+        self.assertTrue(
+            all(len(signature[4]) == 1 for signature in closed_signatures)
+        )
+        self.assertIn(
+            WriterEdgeObligationKind.CLOSED_CLOSURE,
+            _writer_graph_signature_edge_kinds(closed_signatures),
+        )
+        self.assertTrue(
+            all(signature[5] for signature in closed_signatures)
+        )
+
+    def test_open_ring_endpoint_close_choice_successor_matches_obligation_delta(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = initial_writer_transition_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        prefix = ("C", "1", "C", "C")
+        open_outcome = _assert_checked_prefix_choice_diagnostics_replay_aligned(
+            self,
+            snapshot=snapshot,
+            prepared=prepared,
+            emitted_texts=prefix,
+        )
+
+        assert open_outcome.public_choices is not None
+        self.assertTrue(open_outcome.selected_closure_pair_graph_action_surfaces)
+        self.assertFalse(open_outcome.selected_closure_open_graph_action_surfaces)
+        choices = open_outcome.public_choices.choices
+        self.assertEqual(tuple(choice.emitted_text for choice in choices), ("1",))
+        close_choice = choices[0]
+        child = (
+            writer_snapshot
+            ._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
+                snapshot,
+                prepared=prepared,
+                emitted_texts=(*prefix, close_choice.emitted_text),
+                include_counts=True,
+            )
+        )
+        child_snapshot = child.replay_outcome.advanced_snapshot
+        self.assertIsNotNone(child_snapshot)
+        assert child_snapshot is not None
+        self.assertEqual(child_snapshot.cursor, close_choice.successor)
+        self.assertEqual(
+            _writer_cursor_graph_obligation_signatures(
+                prepared=prepared,
+                cursor=close_choice.successor,
+            ),
+            _writer_cursor_graph_obligation_signatures(
+                prepared=prepared,
+                cursor=child_snapshot.cursor,
+            ),
+        )
+        self.assertEqual(
+            _writer_graph_signature_open_endpoint_records(
+                _writer_cursor_graph_obligation_signatures(
+                    prepared=prepared,
+                    cursor=child_snapshot.cursor,
+                )
+            ),
+            (),
+        )
+        self.assertIn(
+            WriterEdgeObligationKind.CLOSED_CLOSURE,
+            _writer_graph_signature_edge_kinds(
+                _writer_cursor_graph_obligation_signatures(
+                    prepared=prepared,
+                    cursor=child_snapshot.cursor,
+                )
+            ),
+        )
 
     def test_legal_choice_diagnostics_are_replay_aligned_until_eos(self) -> None:
         cases = (

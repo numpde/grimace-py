@@ -99,7 +99,7 @@ class WriterSearchSnapshot:
     frame_stack: tuple[WriterSnapshotFrame, ...]
 
 
-def capture_writer_frontier_snapshot(
+def _capture_writer_frontier_snapshot_unchecked(
     *,
     prepared: SouthStarPreparedMol,
     runtime_options: SouthStarRuntimeOptions,
@@ -116,6 +116,26 @@ def capture_writer_frontier_snapshot(
         frame_stack=(WriterFrontierFrame(cursor),),
     )
     validate_writer_search_snapshot(snapshot, prepared=prepared)
+    return snapshot
+
+
+def capture_writer_frontier_snapshot(
+    *,
+    prepared: SouthStarPreparedMol,
+    runtime_options: SouthStarRuntimeOptions,
+    cursor: WriterFrontierCursor,
+    decoder_boundary: WriterDecoderBoundary = WriterDecoderBoundary(),
+) -> WriterSearchSnapshot:
+    snapshot = _capture_writer_frontier_snapshot_unchecked(
+        prepared=prepared,
+        runtime_options=runtime_options,
+        cursor=cursor,
+        decoder_boundary=decoder_boundary,
+    )
+    _assert_public_writer_snapshot_cyclic_admission(
+        snapshot,
+        prepared=prepared,
+    )
     return snapshot
 
 
@@ -1923,7 +1943,7 @@ def _residual_cyclic_readiness_gate_from_cursor(
     max_depth: int | None = None,
     max_prefixes: int | None = None,
 ) -> _WriterResidualCyclicReadinessGate:
-    snapshot = capture_writer_frontier_snapshot(
+    snapshot = _capture_writer_frontier_snapshot_unchecked(
         prepared=prepared,
         runtime_options=runtime_options,
         cursor=cursor,

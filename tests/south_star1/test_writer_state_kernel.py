@@ -2204,7 +2204,7 @@ class WriterStateKernelTest(unittest.TestCase):
         cursor = WriterFrontierCursor(
             weighted_states=((writer_state_key(selected_state), 1),)
         )
-        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+        snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
             prepared=prepared,
             runtime_options=_writer_options(rooted_at_atom=0),
             cursor=cursor,
@@ -6877,6 +6877,148 @@ class WriterStateKernelTest(unittest.TestCase):
             emitted_texts=(),
         )
 
+    def test_public_snapshot_capture_acyclic_does_not_use_cyclic_admission(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._cyclic_writer_admission_decision_from_snapshot"
+            ),
+            side_effect=AssertionError(
+                "acyclic capture used cyclic admission",
+            ),
+        ):
+            snapshot_again = writer_snapshot.capture_writer_frontier_snapshot(
+                prepared=prepared,
+                runtime_options=options,
+                cursor=cursor,
+            )
+
+        self.assertEqual(snapshot_again, snapshot)
+
+    def test_public_snapshot_capture_cyclic_defaults_closed(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+
+        with self.assertRaises(SouthStarError) as caught:
+            writer_snapshot.capture_writer_frontier_snapshot(
+                prepared=prepared,
+                runtime_options=options,
+                cursor=cursor,
+            )
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+        self.assertIn("public support is closed", str(caught.exception))
+
+    def test_public_snapshot_capture_cyclic_uses_admission_gate(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+        _ = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        seen: list[writer_snapshot._WriterCyclicAdmissionDecisionKind] = []
+        original = writer_snapshot._cyclic_writer_admission_decision_from_snapshot
+
+        def wrapped(snapshot_arg, *, prepared, max_depth=None, max_prefixes=None):
+            decision = original(
+                snapshot_arg,
+                prepared=prepared,
+                max_depth=max_depth,
+                max_prefixes=max_prefixes,
+            )
+            seen.append(decision.kind)
+            return decision
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._cyclic_writer_admission_decision_from_snapshot"
+            ),
+            side_effect=wrapped,
+        ):
+            with self.assertRaises(SouthStarError):
+                writer_snapshot.capture_writer_frontier_snapshot(
+                    prepared=prepared,
+                    runtime_options=options,
+                    cursor=cursor,
+                )
+
+        self.assertEqual(
+            seen,
+            [
+                writer_snapshot
+                ._WriterCyclicAdmissionDecisionKind
+                .READY_BUT_PUBLIC_CLOSED,
+            ],
+        )
+
+    def test_public_snapshot_capture_cyclic_enabled_returns_snapshot(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+        expected_snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED"
+            ),
+            True,
+        ):
+            snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+                prepared=prepared,
+                runtime_options=options,
+                cursor=cursor,
+            )
+
+        self.assertEqual(snapshot, expected_snapshot)
+
+    def test_cyclic_admission_from_cursor_uses_private_snapshot_capture(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+        writer_snapshot._capture_writer_frontier_snapshot_unchecked(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+
+        with self.assertRaises(SouthStarError):
+            writer_snapshot.capture_writer_frontier_snapshot(
+                prepared=prepared,
+                runtime_options=options,
+                cursor=cursor,
+            )
+
+        decision = writer_snapshot._cyclic_writer_admission_decision_from_cursor(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+
+        self.assertIs(
+            decision.kind,
+            writer_snapshot
+            ._WriterCyclicAdmissionDecisionKind
+            .READY_BUT_PUBLIC_CLOSED,
+        )
+
     def test_public_snapshot_resume_acyclic_does_not_use_cyclic_admission(self) -> None:
         prepared = _prepare(cco_facts())
         options = _writer_options(rooted_at_atom=0)
@@ -6910,7 +7052,7 @@ class WriterStateKernelTest(unittest.TestCase):
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
-        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+        snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
             prepared=prepared,
             runtime_options=options,
             cursor=cursor,
@@ -6929,7 +7071,7 @@ class WriterStateKernelTest(unittest.TestCase):
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
-        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+        snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
             prepared=prepared,
             runtime_options=options,
             cursor=cursor,
@@ -6973,7 +7115,7 @@ class WriterStateKernelTest(unittest.TestCase):
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
-        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+        snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
             prepared=prepared,
             runtime_options=options,
             cursor=cursor,
@@ -7025,7 +7167,7 @@ class WriterStateKernelTest(unittest.TestCase):
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
-        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+        snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
             prepared=prepared,
             runtime_options=options,
             cursor=cursor,
@@ -7046,7 +7188,7 @@ class WriterStateKernelTest(unittest.TestCase):
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
-        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+        snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
             prepared=prepared,
             runtime_options=options,
             cursor=cursor,
@@ -7092,7 +7234,7 @@ class WriterStateKernelTest(unittest.TestCase):
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
-        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+        snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
             prepared=prepared,
             runtime_options=options,
             cursor=cursor,
@@ -7118,7 +7260,7 @@ class WriterStateKernelTest(unittest.TestCase):
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
-        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+        snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
             prepared=prepared,
             runtime_options=options,
             cursor=cursor,
@@ -13826,16 +13968,24 @@ class WriterStateKernelTest(unittest.TestCase):
                         prepared,
                         options,
                     )
+                    snapshot = (
+                        writer_snapshot
+                        ._capture_writer_frontier_snapshot_unchecked(
+                            prepared=prepared,
+                            runtime_options=options,
+                            cursor=cursor,
+                        )
+                    )
                 else:
                     cursor = initial_writer_frontier_cursor(
                         prepared,
                         options,
                     )
-                snapshot = writer_snapshot.capture_writer_frontier_snapshot(
-                    prepared=prepared,
-                    runtime_options=options,
-                    cursor=cursor,
-                )
+                    snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+                        prepared=prepared,
+                        runtime_options=options,
+                        cursor=cursor,
+                    )
 
                 _assert_checked_prefix_frontier_replay_contract(
                     self,
@@ -13883,16 +14033,24 @@ class WriterStateKernelTest(unittest.TestCase):
                         prepared,
                         options,
                     )
+                    snapshot = (
+                        writer_snapshot
+                        ._capture_writer_frontier_snapshot_unchecked(
+                            prepared=prepared,
+                            runtime_options=options,
+                            cursor=cursor,
+                        )
+                    )
                 else:
                     cursor = initial_writer_frontier_cursor(
                         prepared,
                         options,
                     )
-                snapshot = writer_snapshot.capture_writer_frontier_snapshot(
-                    prepared=prepared,
-                    runtime_options=options,
-                    cursor=cursor,
-                )
+                    snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+                        prepared=prepared,
+                        runtime_options=options,
+                        cursor=cursor,
+                    )
 
                 _assert_checked_prefix_frontier_count_decomposition(
                     self,
@@ -13940,16 +14098,24 @@ class WriterStateKernelTest(unittest.TestCase):
                         prepared,
                         options,
                     )
+                    snapshot = (
+                        writer_snapshot
+                        ._capture_writer_frontier_snapshot_unchecked(
+                            prepared=prepared,
+                            runtime_options=options,
+                            cursor=cursor,
+                        )
+                    )
                 else:
                     cursor = initial_writer_frontier_cursor(
                         prepared,
                         options,
                     )
-                snapshot = writer_snapshot.capture_writer_frontier_snapshot(
-                    prepared=prepared,
-                    runtime_options=options,
-                    cursor=cursor,
-                )
+                    snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+                        prepared=prepared,
+                        runtime_options=options,
+                        cursor=cursor,
+                    )
 
                 _assert_checked_prefix_frontier_stream_decomposition(
                     self,
@@ -13997,16 +14163,24 @@ class WriterStateKernelTest(unittest.TestCase):
                         prepared,
                         options,
                     )
+                    snapshot = (
+                        writer_snapshot
+                        ._capture_writer_frontier_snapshot_unchecked(
+                            prepared=prepared,
+                            runtime_options=options,
+                            cursor=cursor,
+                        )
+                    )
                 else:
                     cursor = initial_writer_frontier_cursor(
                         prepared,
                         options,
                     )
-                snapshot = writer_snapshot.capture_writer_frontier_snapshot(
-                    prepared=prepared,
-                    runtime_options=options,
-                    cursor=cursor,
-                )
+                    snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+                        prepared=prepared,
+                        runtime_options=options,
+                        cursor=cursor,
+                    )
 
                 _assert_checked_prefix_successor_snapshot_resume_equivalence(
                     self,
@@ -14040,17 +14214,24 @@ class WriterStateKernelTest(unittest.TestCase):
                         prepared,
                         options,
                     )
+                    snapshot = (
+                        writer_snapshot
+                        ._capture_writer_frontier_snapshot_unchecked(
+                            prepared=prepared,
+                            runtime_options=options,
+                            cursor=cursor,
+                        )
+                    )
                 else:
                     cursor = initial_writer_frontier_cursor(
                         prepared,
                         options,
                     )
-
-                snapshot = writer_snapshot.capture_writer_frontier_snapshot(
-                    prepared=prepared,
-                    runtime_options=options,
-                    cursor=cursor,
-                )
+                    snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+                        prepared=prepared,
+                        runtime_options=options,
+                        cursor=cursor,
+                    )
 
                 visited = _assert_writer_snapshot_contract_closed_under_replay(
                     self,
@@ -14086,17 +14267,24 @@ class WriterStateKernelTest(unittest.TestCase):
                         prepared,
                         options,
                     )
+                    snapshot = (
+                        writer_snapshot
+                        ._capture_writer_frontier_snapshot_unchecked(
+                            prepared=prepared,
+                            runtime_options=options,
+                            cursor=cursor,
+                        )
+                    )
                 else:
                     cursor = initial_writer_frontier_cursor(
                         prepared,
                         options,
                     )
-
-                snapshot = writer_snapshot.capture_writer_frontier_snapshot(
-                    prepared=prepared,
-                    runtime_options=options,
-                    cursor=cursor,
-                )
+                    snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+                        prepared=prepared,
+                        runtime_options=options,
+                        cursor=cursor,
+                    )
                 seen: set[tuple[str, ...]] = set()
                 terminal_count = 0
 
@@ -14144,7 +14332,7 @@ class WriterStateKernelTest(unittest.TestCase):
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
-        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+        snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
             prepared=prepared,
             runtime_options=options,
             cursor=cursor,
@@ -14229,7 +14417,7 @@ class WriterStateKernelTest(unittest.TestCase):
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
-        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+        snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
             prepared=prepared,
             runtime_options=options,
             cursor=cursor,
@@ -14315,17 +14503,24 @@ class WriterStateKernelTest(unittest.TestCase):
                         prepared,
                         options,
                     )
+                    snapshot = (
+                        writer_snapshot
+                        ._capture_writer_frontier_snapshot_unchecked(
+                            prepared=prepared,
+                            runtime_options=options,
+                            cursor=cursor,
+                        )
+                    )
                 else:
                     cursor = initial_writer_frontier_cursor(
                         prepared,
                         options,
                     )
-
-                snapshot = writer_snapshot.capture_writer_frontier_snapshot(
-                    prepared=prepared,
-                    runtime_options=options,
-                    cursor=cursor,
-                )
+                    snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+                        prepared=prepared,
+                        runtime_options=options,
+                        cursor=cursor,
+                    )
                 seen: set[tuple[str, ...]] = set()
                 terminal_count = 0
 
@@ -14379,7 +14574,7 @@ class WriterStateKernelTest(unittest.TestCase):
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
-        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+        snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
             prepared=prepared,
             runtime_options=options,
             cursor=cursor,
@@ -14428,7 +14623,7 @@ class WriterStateKernelTest(unittest.TestCase):
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
-        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+        snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
             prepared=prepared,
             runtime_options=options,
             cursor=cursor,
@@ -14470,7 +14665,7 @@ class WriterStateKernelTest(unittest.TestCase):
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
-        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+        snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
             prepared=prepared,
             runtime_options=options,
             cursor=cursor,
@@ -14539,17 +14734,24 @@ class WriterStateKernelTest(unittest.TestCase):
                         prepared,
                         options,
                     )
+                    snapshot = (
+                        writer_snapshot
+                        ._capture_writer_frontier_snapshot_unchecked(
+                            prepared=prepared,
+                            runtime_options=options,
+                            cursor=cursor,
+                        )
+                    )
                 else:
                     cursor = initial_writer_frontier_cursor(
                         prepared,
                         options,
                     )
-
-                snapshot = writer_snapshot.capture_writer_frontier_snapshot(
-                    prepared=prepared,
-                    runtime_options=options,
-                    cursor=cursor,
-                )
+                    snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+                        prepared=prepared,
+                        runtime_options=options,
+                        cursor=cursor,
+                    )
                 seen: set[tuple[str, ...]] = set()
 
                 def rec(prefix: tuple[str, ...]) -> None:
@@ -14584,7 +14786,7 @@ class WriterStateKernelTest(unittest.TestCase):
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
-        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+        snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
             prepared=prepared,
             runtime_options=options,
             cursor=cursor,
@@ -14608,7 +14810,7 @@ class WriterStateKernelTest(unittest.TestCase):
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
-        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+        snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
             prepared=prepared,
             runtime_options=options,
             cursor=cursor,
@@ -14634,7 +14836,7 @@ class WriterStateKernelTest(unittest.TestCase):
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
-        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+        snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
             prepared=prepared,
             runtime_options=options,
             cursor=cursor,
@@ -14659,7 +14861,7 @@ class WriterStateKernelTest(unittest.TestCase):
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
-        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+        snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
             prepared=prepared,
             runtime_options=options,
             cursor=cursor,
@@ -14682,7 +14884,7 @@ class WriterStateKernelTest(unittest.TestCase):
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
-        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+        snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
             prepared=prepared,
             runtime_options=options,
             cursor=cursor,
@@ -24891,7 +25093,7 @@ class WriterStateKernelTest(unittest.TestCase):
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
-        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+        snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
             prepared=prepared,
             runtime_options=options,
             cursor=cursor,

@@ -12994,6 +12994,50 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
 
+    def test_public_writer_shaped_cyclic_rejection_uses_admission_gate(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+        seen: list[writer_snapshot._WriterCyclicAdmissionDecisionKind] = []
+        original = (
+            writer_snapshot
+            ._cyclic_writer_admission_decision_from_cursor
+        )
+
+        def wrapped(*, prepared, runtime_options, cursor):
+            decision = original(
+                prepared=prepared,
+                runtime_options=runtime_options,
+                cursor=cursor,
+            )
+            seen.append(decision.kind)
+            return decision
+
+        with patch(
+            (
+                "grimace._south_star1.writer_support.writer_snapshot"
+                "._cyclic_writer_admission_decision_from_cursor"
+            ),
+            side_effect=wrapped,
+        ):
+            with self.assertRaises(SouthStarError) as caught:
+                enumerate_prepared_stereo_support(
+                    prepared=prepared,
+                    runtime_options=options,
+                )
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+        self.assertEqual(
+            seen,
+            [
+                (
+                    writer_snapshot
+                    ._WriterCyclicAdmissionDecisionKind
+                    .READY_BUT_PUBLIC_CLOSED
+                )
+            ],
+        )
+        self.assertIn("public support is closed", str(caught.exception))
+
     def test_writer_shaped_cyclic_public_support_rejects_before_count_or_stream(self) -> None:
         prepared = _prepare(cyclopropane_facts())
 
@@ -13021,6 +13065,8 @@ class WriterStateKernelTest(unittest.TestCase):
                 )
 
         self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+        message = str(caught.exception)
+        self.assertTrue("public" in message and "closed" in message)
 
     def test_public_initial_frontier_still_rejects_cyclic_prepared(self) -> None:
         prepared = _prepare(cyclopropane_facts())

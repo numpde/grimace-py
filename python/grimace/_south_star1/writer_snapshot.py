@@ -2289,6 +2289,39 @@ def resume_writer_frontier_choices_from_snapshot(
     )
 
 
+def advance_writer_frontier_snapshot(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    emitted_text: str,
+) -> WriterSearchSnapshot:
+    _assert_public_writer_snapshot_cyclic_admission(
+        snapshot,
+        prepared=prepared,
+    )
+
+    outcome = (
+        _checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
+            snapshot,
+            prepared=prepared,
+            emitted_texts=(emitted_text,),
+            include_counts=False,
+        )
+    )
+
+    advanced_snapshot = outcome.replay_outcome.advanced_snapshot
+    if advanced_snapshot is None:
+        raise AssertionError(
+            "checked writer snapshot advance did not produce snapshot"
+        )
+
+    _assert_public_writer_snapshot_cyclic_admission(
+        advanced_snapshot,
+        prepared=prepared,
+    )
+    return advanced_snapshot
+
+
 def validate_writer_search_snapshot(
     snapshot: WriterSearchSnapshot,
     *,
@@ -3943,6 +3976,7 @@ __all__ = (
     "WriterSnapshotFrame",
     "capture_writer_frontier_snapshot",
     "capture_initial_writer_frontier_snapshot",
+    "advance_writer_frontier_snapshot",
     "resume_writer_frontier_choices_from_snapshot",
     "validate_writer_cursor_against_prepared",
     "validate_writer_search_snapshot",

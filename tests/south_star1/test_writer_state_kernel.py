@@ -7126,6 +7126,218 @@ class WriterStateKernelTest(unittest.TestCase):
             writer_frontier_choices(prepared, expected_cursor),
         )
 
+    def test_public_snapshot_advance_acyclic_legal_choice_returns_successor_snapshot(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options(rooted_at_atom=0)
+
+        snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+        )
+        choices = writer_snapshot.resume_writer_frontier_choices_from_snapshot(
+            snapshot,
+            prepared=prepared,
+        )
+
+        self.assertGreater(len(choices.choices), 0)
+        choice = choices.choices[0]
+
+        advanced = writer_snapshot.advance_writer_frontier_snapshot(
+            snapshot,
+            prepared=prepared,
+            emitted_text=choice.emitted_text,
+        )
+
+        self.assertEqual(advanced.cursor, choice.successor)
+
+        advanced_choices = writer_snapshot.resume_writer_frontier_choices_from_snapshot(
+            advanced,
+            prepared=prepared,
+        )
+        self.assertEqual(
+            advanced_choices,
+            writer_frontier_choices(prepared, choice.successor),
+        )
+
+    def test_public_snapshot_advance_acyclic_rejects_non_frontier_token_as_invalid_facts(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options(rooted_at_atom=0)
+
+        snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+        )
+        choices = writer_snapshot.resume_writer_frontier_choices_from_snapshot(
+            snapshot,
+            prepared=prepared,
+        )
+
+        legal = {choice.emitted_text for choice in choices.choices}
+        bad_token = next(
+            (
+                token
+                for token in _WRITER_REPLAY_PROBE_TOKENS
+                if token not in legal
+            ),
+            None,
+        )
+        self.assertIsNotNone(bad_token)
+        if bad_token is None:
+            return
+
+        with self.assertRaises(SouthStarError) as caught:
+            writer_snapshot.advance_writer_frontier_snapshot(
+                snapshot,
+                prepared=prepared,
+                emitted_text=bad_token,
+            )
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.INVALID_FACTS)
+
+    def test_public_snapshot_advance_cyclic_defaults_closed_before_replay(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts"
+            ),
+            side_effect=AssertionError(
+                "public cyclic advance must gate before replay",
+            ),
+        ):
+            with self.assertRaises(SouthStarError) as caught:
+                writer_snapshot.advance_writer_frontier_snapshot(
+                    snapshot,
+                    prepared=prepared,
+                    emitted_text="C",
+                )
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+        self.assertIn("public support is closed", str(caught.exception))
+
+    def test_public_snapshot_advance_cyclic_enabled_returns_successor_snapshot(
+        self,
+    ) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+
+        with patch(
+            "grimace._south_star1.writer_snapshot._PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED",
+            True,
+        ):
+            snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
+                prepared=prepared,
+                runtime_options=options,
+            )
+            choices = writer_snapshot.resume_writer_frontier_choices_from_snapshot(
+                snapshot,
+                prepared=prepared,
+            )
+
+            self.assertGreater(len(choices.choices), 0)
+            choice = choices.choices[0]
+
+            advanced = writer_snapshot.advance_writer_frontier_snapshot(
+                snapshot,
+                prepared=prepared,
+                emitted_text=choice.emitted_text,
+            )
+
+            resumed = writer_snapshot.resume_writer_frontier_choices_from_snapshot(
+                advanced,
+                prepared=prepared,
+            )
+
+        self.assertEqual(advanced.cursor, choice.successor)
+        self.assertEqual(
+            resumed,
+            writer_frontier_choices(prepared, choice.successor),
+        )
+
+    def test_public_snapshot_advance_cyclic_enabled_rejects_non_frontier_token_as_invalid_facts(
+        self,
+    ) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+
+        with patch(
+            "grimace._south_star1.writer_snapshot._PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED",
+            True,
+        ):
+            snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
+                prepared=prepared,
+                runtime_options=options,
+            )
+
+            for emitted_text in ("C", "1", "C", "C"):
+                snapshot = writer_snapshot.advance_writer_frontier_snapshot(
+                    snapshot,
+                    prepared=prepared,
+                    emitted_text=emitted_text,
+                )
+
+            choices = writer_snapshot.resume_writer_frontier_choices_from_snapshot(
+                snapshot,
+                prepared=prepared,
+            )
+
+            self.assertEqual(
+                tuple(choice.emitted_text for choice in choices.choices),
+                ("1",),
+            )
+            self.assertIsNone(choices.terminal)
+
+            with self.assertRaises(SouthStarError) as caught:
+                writer_snapshot.advance_writer_frontier_snapshot(
+                    snapshot,
+                    prepared=prepared,
+                    emitted_text="2",
+                )
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.INVALID_FACTS)
+
+    def test_public_snapshot_advance_cyclic_enabled_close_token_reaches_terminal(
+        self,
+    ) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+
+        with patch(
+            "grimace._south_star1.writer_snapshot._PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED",
+            True,
+        ):
+            snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
+                prepared=prepared,
+                runtime_options=options,
+            )
+
+            for emitted_text in ("C", "1", "C", "C", "1"):
+                snapshot = writer_snapshot.advance_writer_frontier_snapshot(
+                    snapshot,
+                    prepared=prepared,
+                    emitted_text=emitted_text,
+                )
+
+            choices = writer_snapshot.resume_writer_frontier_choices_from_snapshot(
+                snapshot,
+                prepared=prepared,
+            )
+
+        self.assertIsNotNone(choices.terminal)
+        self.assertEqual(tuple(choices.choices), ())
+
     def test_cyclic_admission_from_cursor_uses_private_snapshot_capture(self) -> None:
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)

@@ -931,6 +931,98 @@ def _writer_stereo_signature_unclosed_delayed_factors(
     )
 
 
+def _assert_public_online_loop_support_contract(
+    test_case: unittest.TestCase,
+    *,
+    prepared: SouthStarPreparedMol,
+    snapshot: writer_snapshot.WriterSearchSnapshot,
+    max_prefixes: int,
+) -> writer_support.SupportImage:
+    seen: set[tuple[str, ...]] = set()
+
+    def rec(
+        current_snapshot: writer_snapshot.WriterSearchSnapshot,
+        prefix: tuple[str, ...],
+    ) -> writer_support.SupportImage:
+        if prefix in seen:
+            test_case.fail(f"public online loop revisited prefix {prefix!r}")
+        seen.add(prefix)
+
+        if len(seen) > max_prefixes:
+            test_case.fail(
+                "public online loop exceeded "
+                f"max_prefixes={max_prefixes}"
+            )
+
+        choices = writer_snapshot.resume_writer_frontier_choices_from_snapshot(
+            current_snapshot,
+            prepared=prepared,
+        )
+        image = writer_support.enumerate_writer_snapshot_writer_shaped_support(
+            snapshot=current_snapshot,
+            prepared=prepared,
+        )
+
+        test_case.assertEqual(image.distinct_count, len(image.strings))
+        test_case.assertEqual(
+            len(image.strings),
+            len(set(image.strings)),
+            "public snapshot support image must not duplicate suffixes",
+        )
+
+        expected_strings: list[str] = []
+        expected_witness_count = 0
+
+        if choices.terminal is not None:
+            expected_strings.append("")
+            test_case.assertIsNotNone(choices.terminal.completion_count)
+            assert choices.terminal.completion_count is not None
+            expected_witness_count += choices.terminal.completion_count
+
+        for choice in choices.choices:
+            child_snapshot = writer_snapshot.advance_writer_frontier_snapshot(
+                current_snapshot,
+                prepared=prepared,
+                emitted_text=choice.emitted_text,
+            )
+
+            test_case.assertEqual(child_snapshot.cursor, choice.successor)
+
+            child_image = rec(
+                child_snapshot,
+                (*prefix, choice.emitted_text),
+            )
+
+            test_case.assertIsNotNone(choice.support_count)
+            test_case.assertIsNotNone(choice.completion_count)
+            assert choice.support_count is not None
+            assert choice.completion_count is not None
+
+            test_case.assertEqual(
+                choice.support_count,
+                child_image.distinct_count,
+            )
+            test_case.assertEqual(
+                choice.completion_count,
+                child_image.witness_count,
+            )
+
+            expected_strings.extend(
+                choice.emitted_text + suffix
+                for suffix in child_image.strings
+            )
+            expected_witness_count += child_image.witness_count
+
+        test_case.assertEqual(image.strings, tuple(expected_strings))
+        test_case.assertEqual(image.witness_count, expected_witness_count)
+
+        return image
+
+    root_image = rec(snapshot, ())
+    test_case.assertGreater(len(seen), 1)
+    return root_image
+
+
 class WriterStateKernelTest(unittest.TestCase):
     def _closure_policy_for_outcome(
         self,
@@ -7505,6 +7597,52 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(image.distinct_count, 1)
         self.assertEqual(image.strings, ("",))
         self.assertGreaterEqual(image.witness_count, image.distinct_count)
+
+    def test_public_online_loop_support_contract_closes_for_acyclic_state_space(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options(rooted_at_atom=0)
+
+        snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+        )
+        root_image = _assert_public_online_loop_support_contract(
+            self,
+            prepared=prepared,
+            snapshot=snapshot,
+            max_prefixes=128,
+        )
+        prepared_image = enumerate_prepared_stereo_support(
+            prepared=prepared,
+            runtime_options=options,
+        )
+        self.assertEqual(root_image, prepared_image)
+
+    def test_public_online_loop_support_contract_closes_for_enabled_cyclic_state_space(
+        self,
+    ) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+
+        with patch(
+            "grimace._south_star1.writer_snapshot._PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED",
+            True,
+        ):
+            snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
+                prepared=prepared,
+                runtime_options=options,
+            )
+            root_image = _assert_public_online_loop_support_contract(
+                self,
+                prepared=prepared,
+                snapshot=snapshot,
+                max_prefixes=64,
+            )
+
+        self.assertGreater(root_image.distinct_count, 0)
+        self.assertEqual(len(root_image.strings), root_image.distinct_count)
 
     def test_cyclic_admission_from_cursor_uses_private_snapshot_capture(self) -> None:
         prepared = _prepare(cyclopropane_facts())

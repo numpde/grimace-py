@@ -592,6 +592,123 @@ def _assert_blocked_prefix_diagnostic_contract(
     return outcome
 
 
+def _choice_residual_attachment_evidence_tuple(
+    value: object,
+) -> tuple[object, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, tuple):
+        return value
+    return (value,)
+
+
+def _choice_residual_attachment_evidence_signature(
+    evidence: object,
+) -> object:
+    return (
+        evidence.emitted_text,
+        evidence.successor,
+        evidence.choice.immediate_multiplicity,
+        evidence.residual_attachment_policy_keys,
+        evidence.selected_policy_families,
+        evidence.policy_owner_scope_kinds,
+        evidence.unsupported_owner_scope_kinds,
+        evidence.residual_cyclic_policy_kinds,
+        evidence.has_retained_dead_closure_open_resolved_cyclic_tree_entry_support,
+        evidence.has_retained_residual_cyclic_blocker_evidence,
+    )
+
+
+def _choice_residual_attachment_evidence_signatures(
+    evidence: tuple[object, ...],
+) -> tuple[object, ...]:
+    return tuple(
+        _choice_residual_attachment_evidence_signature(item)
+        for item in evidence
+    )
+
+
+def _assert_checked_prefix_choice_diagnostics_replay_aligned(
+    test_case: unittest.TestCase,
+    *,
+    snapshot: writer_snapshot.WriterSearchSnapshot,
+    prepared: SouthStarPreparedMol,
+    emitted_texts: tuple[str, ...],
+) -> writer_snapshot._WriterSnapshotPrefixReadOutcome:
+    outcome = _assert_checked_prefix_successor_snapshot_resume_equivalence(
+        test_case,
+        snapshot=snapshot,
+        prepared=prepared,
+        emitted_texts=emitted_texts,
+    )
+
+    test_case.assertIsNotNone(outcome.public_choices)
+    assert outcome.public_choices is not None
+
+    parent_replayed_evidence = tuple(
+        outcome.replayed_choice_residual_attachment_evidence
+    )
+
+    for choice in outcome.public_choices.choices:
+        parent_choice_evidence = (
+            _choice_residual_attachment_evidence_tuple(
+                outcome.choice_residual_attachment_evidence_for_emitted_text(
+                    choice.emitted_text,
+                )
+            )
+        )
+        child = (
+            writer_snapshot
+            ._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
+                snapshot,
+                prepared=prepared,
+                emitted_texts=emitted_texts + (choice.emitted_text,),
+                include_counts=True,
+            )
+        )
+        child_replayed_evidence = tuple(
+            child.replayed_choice_residual_attachment_evidence
+        )
+
+        test_case.assertEqual(
+            _choice_residual_attachment_evidence_signatures(
+                child_replayed_evidence
+            ),
+            _choice_residual_attachment_evidence_signatures(
+                parent_replayed_evidence + parent_choice_evidence
+            ),
+        )
+        test_case.assertEqual(
+            child.replayed_residual_cyclic_policy_kinds,
+            tuple(
+                kind
+                for evidence in child_replayed_evidence
+                for kind in evidence.residual_cyclic_policy_kinds
+            ),
+        )
+
+    legal_texts = {
+        choice.emitted_text
+        for choice in outcome.public_choices.choices
+    }
+
+    for probe_text in _WRITER_REPLAY_PROBE_TOKENS:
+        if probe_text in legal_texts:
+            continue
+
+        probe_evidence = (
+            outcome.choice_residual_attachment_evidence_for_emitted_text(
+                probe_text,
+            )
+        )
+        test_case.assertEqual(
+            _choice_residual_attachment_evidence_tuple(probe_evidence),
+            (),
+        )
+
+    return outcome
+
+
 class WriterStateKernelTest(unittest.TestCase):
     def _closure_policy_for_outcome(
         self,
@@ -13200,6 +13317,96 @@ class WriterStateKernelTest(unittest.TestCase):
                 )
 
                 self.assertGreater(len(visited), 1)
+
+    def test_legal_choice_diagnostics_are_replay_aligned_until_eos(self) -> None:
+        cases = (
+            (
+                "acyclic branched writer state space",
+                _prepare(cco_facts()),
+                _writer_options(rooted_at_atom=1),
+                False,
+                128,
+            ),
+            (
+                "internal cyclic ring-close state space",
+                _prepare(cyclopropane_facts()),
+                _writer_options(rooted_at_atom=0),
+                True,
+                64,
+            ),
+        )
+
+        for name, prepared, options, internal, max_prefixes in cases:
+            with self.subTest(case=name):
+                if internal:
+                    cursor = initial_writer_transition_frontier_cursor(
+                        prepared,
+                        options,
+                    )
+                else:
+                    cursor = initial_writer_frontier_cursor(
+                        prepared,
+                        options,
+                    )
+
+                snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+                    prepared=prepared,
+                    runtime_options=options,
+                    cursor=cursor,
+                )
+                seen: set[tuple[str, ...]] = set()
+
+                def rec(prefix: tuple[str, ...]) -> None:
+                    if prefix in seen:
+                        self.fail(f"revisited writer prefix {prefix!r}")
+
+                    seen.add(prefix)
+
+                    if len(seen) > max_prefixes:
+                        self.fail(
+                            "choice diagnostic replay audit exceeded "
+                            f"max_prefixes={max_prefixes}"
+                        )
+
+                    outcome = (
+                        _assert_checked_prefix_choice_diagnostics_replay_aligned(
+                            self,
+                            snapshot=snapshot,
+                            prepared=prepared,
+                            emitted_texts=prefix,
+                        )
+                    )
+
+                    assert outcome.public_choices is not None
+                    for choice in outcome.public_choices.choices:
+                        rec((*prefix, choice.emitted_text))
+
+                rec(())
+                self.assertGreater(len(seen), 1)
+
+    def test_open_ring_endpoint_close_choice_has_closure_pair_diagnostics(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = initial_writer_transition_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        outcome = _assert_checked_prefix_choice_diagnostics_replay_aligned(
+            self,
+            snapshot=snapshot,
+            prepared=prepared,
+            emitted_texts=("C", "1", "C", "C"),
+        )
+
+        assert outcome.public_choices is not None
+        self.assertEqual(
+            tuple(choice.emitted_text for choice in outcome.public_choices.choices),
+            ("1",),
+        )
+        self.assertTrue(outcome.selected_closure_pair_graph_action_surfaces)
+        self.assertFalse(outcome.selected_closure_open_graph_action_surfaces)
 
     def test_open_ring_endpoint_snapshot_does_not_report_ready_terminal(self) -> None:
         prepared = _prepare(cyclopropane_facts())

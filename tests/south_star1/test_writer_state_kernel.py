@@ -709,6 +709,46 @@ def _assert_checked_prefix_choice_diagnostics_replay_aligned(
     return outcome
 
 
+def _assert_cyclic_admission_ready_but_public_closed_for_snapshot(
+    test_case: unittest.TestCase,
+    *,
+    snapshot: writer_snapshot.WriterSearchSnapshot,
+    prepared: SouthStarPreparedMol,
+) -> writer_snapshot._WriterCyclicAdmissionDecision:
+    decision = writer_snapshot._cyclic_writer_admission_decision_from_snapshot(
+        snapshot,
+        prepared=prepared,
+    )
+
+    test_case.assertIs(
+        decision.kind,
+        (
+            writer_snapshot
+            ._WriterCyclicAdmissionDecisionKind
+            .READY_BUT_PUBLIC_CLOSED
+        ),
+    )
+    test_case.assertTrue(decision.internally_ready)
+    test_case.assertFalse(decision.public_enabled)
+    test_case.assertFalse(decision.admitted_publicly)
+    test_case.assertTrue(decision.readiness_gate.ready)
+    test_case.assertEqual(decision.readiness_gate.snapshot.cursor, snapshot.cursor)
+    test_case.assertEqual(
+        decision.readiness_gate.snapshot.runtime_options,
+        snapshot.runtime_options,
+    )
+
+    with test_case.assertRaises(SouthStarError) as caught:
+        writer_snapshot._assert_cyclic_writer_admission_decision(decision)
+
+    test_case.assertIs(
+        caught.exception.kind,
+        SouthStarErrorKind.UNSUPPORTED_POLICY,
+    )
+
+    return decision
+
+
 class WriterStateKernelTest(unittest.TestCase):
     def _closure_policy_for_outcome(
         self,
@@ -23058,6 +23098,68 @@ class WriterStateKernelTest(unittest.TestCase):
             )
         )
 
+    def test_blocked_cyclic_snapshot_admission_does_not_become_ready_under_replay(self) -> None:
+        active_outcome = self._test_residual_cyclic_blocked_active_outcome(
+            include_closure_emission=False,
+        )
+        choice_snapshot = self._test_residual_cyclic_blocked_choice_snapshot(
+            active_outcome,
+        )
+        blocked_outcome = self._test_final_blocked_prefix_outcome(
+            choice_snapshot,
+        )
+        snapshot = self._test_writer_search_snapshot()
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._writer_snapshot_prefix_read_outcome_after_emitted_texts"
+            ),
+            return_value=blocked_outcome,
+        ):
+            decision = (
+                writer_snapshot
+                ._cyclic_writer_admission_decision_from_snapshot(
+                    snapshot,
+                    prepared=object(),  # type: ignore[arg-type]
+                )
+            )
+
+            with self.assertRaises(SouthStarError) as assertion:
+                writer_snapshot._assert_cyclic_writer_admission_decision(
+                    decision,
+                )
+
+            with self.assertRaises(SouthStarError) as replay:
+                (
+                    writer_snapshot
+                    ._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
+                        snapshot,
+                        prepared=object(),  # type: ignore[arg-type]
+                        emitted_texts=("C",),
+                        include_counts=True,
+                    )
+                )
+
+        self.assertIs(
+            decision.kind,
+            (
+                writer_snapshot
+                ._WriterCyclicAdmissionDecisionKind
+                .BLOCKED_RESIDUAL_CYCLIC_POLICY
+            ),
+        )
+        self.assertFalse(decision.internally_ready)
+        self.assertFalse(decision.admitted_publicly)
+        self.assertIs(
+            assertion.exception.kind,
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+        )
+        self.assertIs(
+            replay.exception.kind,
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+        )
+
     def test_cyclic_writer_admission_decision_from_snapshot_reports_truncation(self) -> None:
         outcomes = self._test_residual_cyclic_readiness_ready_prefix_outcomes()
 
@@ -23179,6 +23281,68 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
         self.assertIn("public support is closed", str(caught.exception))
+
+    def test_cyclic_admission_ready_but_public_closed_is_stable_under_replay(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = initial_writer_transition_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        seen: set[tuple[str, ...]] = set()
+        max_prefixes = 64
+
+        def rec(
+            current_snapshot: writer_snapshot.WriterSearchSnapshot,
+            prefix: tuple[str, ...],
+        ) -> None:
+            if prefix in seen:
+                self.fail(f"revisited cyclic prefix {prefix!r}")
+
+            seen.add(prefix)
+
+            if len(seen) > max_prefixes:
+                self.fail(
+                    "cyclic admission replay audit exceeded "
+                    f"max_prefixes={max_prefixes}"
+                )
+
+            _assert_cyclic_admission_ready_but_public_closed_for_snapshot(
+                self,
+                snapshot=current_snapshot,
+                prepared=prepared,
+            )
+
+            outcome = _assert_checked_prefix_choice_diagnostics_replay_aligned(
+                self,
+                snapshot=current_snapshot,
+                prepared=prepared,
+                emitted_texts=(),
+            )
+
+            assert outcome.public_choices is not None
+
+            for choice in outcome.public_choices.choices:
+                child = (
+                    writer_snapshot
+                    ._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
+                        current_snapshot,
+                        prepared=prepared,
+                        emitted_texts=(choice.emitted_text,),
+                        include_counts=True,
+                    )
+                )
+                child_snapshot = child.replay_outcome.advanced_snapshot
+                self.assertIsNotNone(child_snapshot)
+                assert child_snapshot is not None
+                self.assertEqual(child_snapshot.cursor, choice.successor)
+
+                rec(child_snapshot, (*prefix, choice.emitted_text))
+
+        rec(snapshot, ())
+        self.assertGreater(len(seen), 1)
 
     def test_assert_cyclic_writer_admission_decision_raises_for_ready_but_public_closed(self) -> None:
         ready_gate, _blocked_gate, _truncated_gate = (

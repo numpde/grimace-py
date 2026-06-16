@@ -1512,7 +1512,7 @@ def initial_writer_frontier_cursor(
     )
 
 
-def initial_writer_transition_frontier_cursor(
+def _initial_writer_transition_frontier_cursor(
     prepared: SouthStarPreparedMol,
     runtime_options: SouthStarRuntimeOptions,
 ) -> WriterFrontierCursor:
@@ -2269,7 +2269,6 @@ __all__ = (
     "count_writer_cursor_completions",
     "count_writer_frontier_support",
     "initial_writer_frontier_cursor",
-    "initial_writer_transition_frontier_cursor",
     "iter_writer_frontier_support",
     "writer_frontier_choices",
 )

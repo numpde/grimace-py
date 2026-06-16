@@ -12,7 +12,7 @@ from .prepared_runtime import runtime_root_atom_for_prepared
 from .writer_frontier import count_writer_cursor_completions
 from .writer_frontier import count_writer_frontier_support
 from .writer_frontier import initial_writer_frontier_cursor
-from .writer_frontier import initial_writer_transition_frontier_cursor
+from .writer_frontier import _initial_writer_transition_frontier_cursor
 from .writer_frontier import iter_writer_frontier_support
 
 
@@ -21,7 +21,7 @@ def _initial_public_writer_shaped_frontier_cursor_after_admission(
     prepared: SouthStarPreparedMol,
     runtime_options: SouthStarRuntimeOptions,
 ):
-    cursor = initial_writer_transition_frontier_cursor(prepared, runtime_options)
+    cursor = _initial_writer_transition_frontier_cursor(prepared, runtime_options)
     decision = writer_snapshot._cyclic_writer_admission_decision_from_cursor(
         prepared=prepared,
         runtime_options=runtime_options,

@@ -45,7 +45,7 @@ from grimace._south_star1.writer_frontier import WriterFrontierCursor
 from grimace._south_star1.writer_frontier import count_writer_cursor_completions
 from grimace._south_star1.writer_frontier import count_writer_frontier_support
 from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
-from grimace._south_star1.writer_frontier import initial_writer_transition_frontier_cursor
+from grimace._south_star1.writer_frontier import _initial_writer_transition_frontier_cursor
 from grimace._south_star1.writer_frontier import iter_writer_frontier_support
 from grimace._south_star1.writer_frontier import writer_frontier_choices
 from grimace._south_star1.writer_graph_obligations import WriterBoundaryOwnerKind
@@ -6909,7 +6909,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_public_snapshot_resume_cyclic_defaults_closed(self) -> None:
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
-        cursor = initial_writer_transition_frontier_cursor(prepared, options)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
@@ -6928,7 +6928,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_public_snapshot_resume_cyclic_uses_admission_gate(self) -> None:
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
-        cursor = initial_writer_transition_frontier_cursor(prepared, options)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
@@ -6972,7 +6972,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_public_snapshot_resume_cyclic_enabled_returns_private_choices(self) -> None:
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
-        cursor = initial_writer_transition_frontier_cursor(prepared, options)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
@@ -7024,7 +7024,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_public_snapshot_cursor_extraction_cyclic_defaults_closed(self) -> None:
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
-        cursor = initial_writer_transition_frontier_cursor(prepared, options)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
@@ -7045,7 +7045,7 @@ class WriterStateKernelTest(unittest.TestCase):
     ) -> None:
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
-        cursor = initial_writer_transition_frontier_cursor(prepared, options)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
@@ -7091,7 +7091,7 @@ class WriterStateKernelTest(unittest.TestCase):
     ) -> None:
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
-        cursor = initial_writer_transition_frontier_cursor(prepared, options)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
@@ -7117,7 +7117,7 @@ class WriterStateKernelTest(unittest.TestCase):
     ) -> None:
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
-        cursor = initial_writer_transition_frontier_cursor(prepared, options)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
@@ -13313,6 +13313,48 @@ class WriterStateKernelTest(unittest.TestCase):
         )
         self.assertIn("public support is closed", str(caught.exception))
 
+    def test_transition_frontier_cursor_is_private_harness_not_exported(self) -> None:
+        self.assertNotIn(
+            "initial_writer_transition_frontier_cursor",
+            writer_frontier_module.__all__,
+        )
+        self.assertIn(
+            "initial_writer_frontier_cursor",
+            writer_frontier_module.__all__,
+        )
+        self.assertTrue(
+            hasattr(
+                writer_frontier_module,
+                "_initial_writer_transition_frontier_cursor",
+            ),
+        )
+        self.assertFalse(
+            hasattr(
+                writer_frontier_module,
+                "initial_writer_transition_frontier_cursor",
+            ),
+        )
+
+    def test_public_initial_frontier_cursor_does_not_use_transition_harness_for_cyclic_input(
+        self,
+    ) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+
+        with patch(
+            (
+                "grimace._south_star1.writer_frontier"
+                "._initial_writer_transition_frontier_cursor"
+            ),
+            side_effect=AssertionError(
+                "public initial cursor must not use transition harness",
+            ),
+        ):
+            with self.assertRaises(SouthStarError) as caught:
+                initial_writer_frontier_cursor(prepared, options)
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+
     def test_writer_shaped_cyclic_public_support_rejects_before_count_or_stream(self) -> None:
         prepared = _prepare(cyclopropane_facts())
 
@@ -13346,7 +13388,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_cyclic_public_gate_defaults_closed(self) -> None:
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
-        cursor = initial_writer_transition_frontier_cursor(prepared, options)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         decision = (
             writer_snapshot
             ._cyclic_writer_admission_decision_from_cursor(
@@ -13374,7 +13416,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_cyclic_public_gate_enabled_under_test_yields_ready_public(self) -> None:
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
-        cursor = initial_writer_transition_frontier_cursor(prepared, options)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
 
         with patch(
             "grimace._south_star1.writer_snapshot"
@@ -13405,7 +13447,7 @@ class WriterStateKernelTest(unittest.TestCase):
         prepared = _prepare(cco_facts())
 
         with patch(
-            "grimace._south_star1.writer_support.initial_writer_transition_frontier_cursor",
+            "grimace._south_star1.writer_support._initial_writer_transition_frontier_cursor",
             side_effect=AssertionError(
                 "acyclic public support must not use transition cursor",
             ),
@@ -13426,7 +13468,7 @@ class WriterStateKernelTest(unittest.TestCase):
 
         transition_calls: list[writer_frontier_module.WriterFrontierCursor] = []
         original_transition = (
-            writer_support.initial_writer_transition_frontier_cursor
+            writer_support._initial_writer_transition_frontier_cursor
         )
 
         def wrapped_transition(prepared_arg, runtime_options_arg):
@@ -13439,7 +13481,7 @@ class WriterStateKernelTest(unittest.TestCase):
             "._PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED",
             True,
         ), patch(
-            "grimace._south_star1.writer_support.initial_writer_transition_frontier_cursor",
+            "grimace._south_star1.writer_support._initial_writer_transition_frontier_cursor",
             side_effect=wrapped_transition,
         ), patch(
             (
@@ -13485,7 +13527,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_internal_transition_frontier_accepts_cyclic_prepared(self) -> None:
         prepared = _prepare(cyclopropane_facts())
 
-        cursor = initial_writer_transition_frontier_cursor(
+        cursor = _initial_writer_transition_frontier_cursor(
             prepared,
             _writer_options(rooted_at_atom=0),
         )
@@ -13496,7 +13538,7 @@ class WriterStateKernelTest(unittest.TestCase):
         prepared = _prepare(cycle_plus_isolate_component_facts())
 
         with self.assertRaises(SouthStarError) as caught:
-            initial_writer_transition_frontier_cursor(
+            _initial_writer_transition_frontier_cursor(
                 prepared,
                 _writer_options(rooted_at_atom=0),
             )
@@ -13507,7 +13549,7 @@ class WriterStateKernelTest(unittest.TestCase):
         prepared = _prepare(unsupported_directional_implicit_h_facts())
 
         with self.assertRaises(SouthStarError) as caught:
-            initial_writer_transition_frontier_cursor(
+            _initial_writer_transition_frontier_cursor(
                 prepared,
                 _writer_options(rooted_at_atom=0),
             )
@@ -13647,7 +13689,7 @@ class WriterStateKernelTest(unittest.TestCase):
 
     def test_internal_transition_frontier_steps_cyclic_closure_lifecycle(self) -> None:
         prepared = _prepare(cyclopropane_facts())
-        cursor = initial_writer_transition_frontier_cursor(
+        cursor = _initial_writer_transition_frontier_cursor(
             prepared,
             _writer_options(rooted_at_atom=0),
         )
@@ -13684,7 +13726,7 @@ class WriterStateKernelTest(unittest.TestCase):
 
     def test_internal_cyclic_frontier_counts_and_streams_finitely(self) -> None:
         prepared = _prepare(cyclopropane_facts())
-        cursor = initial_writer_transition_frontier_cursor(
+        cursor = _initial_writer_transition_frontier_cursor(
             prepared,
             _writer_options(rooted_at_atom=0),
         )
@@ -13701,7 +13743,7 @@ class WriterStateKernelTest(unittest.TestCase):
 
     def test_internal_cyclic_frontier_terminal_paths_close_closures(self) -> None:
         prepared = _prepare(cyclopropane_facts())
-        cursor = initial_writer_transition_frontier_cursor(
+        cursor = _initial_writer_transition_frontier_cursor(
             prepared,
             _writer_options(rooted_at_atom=0),
         )
@@ -13780,7 +13822,7 @@ class WriterStateKernelTest(unittest.TestCase):
         for name, prepared, options, emitted_texts, internal in cases:
             with self.subTest(case=name):
                 if internal:
-                    cursor = initial_writer_transition_frontier_cursor(
+                    cursor = _initial_writer_transition_frontier_cursor(
                         prepared,
                         options,
                     )
@@ -13837,7 +13879,7 @@ class WriterStateKernelTest(unittest.TestCase):
         for name, prepared, options, emitted_texts, internal in cases:
             with self.subTest(case=name):
                 if internal:
-                    cursor = initial_writer_transition_frontier_cursor(
+                    cursor = _initial_writer_transition_frontier_cursor(
                         prepared,
                         options,
                     )
@@ -13894,7 +13936,7 @@ class WriterStateKernelTest(unittest.TestCase):
         for name, prepared, options, emitted_texts, internal in cases:
             with self.subTest(case=name):
                 if internal:
-                    cursor = initial_writer_transition_frontier_cursor(
+                    cursor = _initial_writer_transition_frontier_cursor(
                         prepared,
                         options,
                     )
@@ -13951,7 +13993,7 @@ class WriterStateKernelTest(unittest.TestCase):
         for name, prepared, options, emitted_texts, internal in cases:
             with self.subTest(case=name):
                 if internal:
-                    cursor = initial_writer_transition_frontier_cursor(
+                    cursor = _initial_writer_transition_frontier_cursor(
                         prepared,
                         options,
                     )
@@ -13994,7 +14036,7 @@ class WriterStateKernelTest(unittest.TestCase):
         for name, prepared, options, internal, max_prefixes in cases:
             with self.subTest(case=name):
                 if internal:
-                    cursor = initial_writer_transition_frontier_cursor(
+                    cursor = _initial_writer_transition_frontier_cursor(
                         prepared,
                         options,
                     )
@@ -14040,7 +14082,7 @@ class WriterStateKernelTest(unittest.TestCase):
         for name, prepared, options, internal, max_prefixes in cases:
             with self.subTest(case=name):
                 if internal:
-                    cursor = initial_writer_transition_frontier_cursor(
+                    cursor = _initial_writer_transition_frontier_cursor(
                         prepared,
                         options,
                     )
@@ -14101,7 +14143,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_cyclic_ring_lifecycle_obligation_signature_tracks_open_to_closed(self) -> None:
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
-        cursor = initial_writer_transition_frontier_cursor(prepared, options)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
@@ -14186,7 +14228,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_open_ring_endpoint_close_choice_successor_matches_obligation_delta(self) -> None:
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
-        cursor = initial_writer_transition_frontier_cursor(prepared, options)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
@@ -14269,7 +14311,7 @@ class WriterStateKernelTest(unittest.TestCase):
         for name, prepared, options, internal, max_prefixes in cases:
             with self.subTest(case=name):
                 if internal:
-                    cursor = initial_writer_transition_frontier_cursor(
+                    cursor = _initial_writer_transition_frontier_cursor(
                         prepared,
                         options,
                     )
@@ -14336,7 +14378,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_cyclic_open_ring_endpoint_creates_pending_ring_pair_stereo_factor(self) -> None:
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
-        cursor = initial_writer_transition_frontier_cursor(prepared, options)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
@@ -14385,7 +14427,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_cyclic_close_ring_endpoint_closes_ring_pair_stereo_factor(self) -> None:
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
-        cursor = initial_writer_transition_frontier_cursor(prepared, options)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
@@ -14427,7 +14469,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_open_ring_endpoint_close_choice_successor_matches_stereo_delta(self) -> None:
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
-        cursor = initial_writer_transition_frontier_cursor(prepared, options)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
@@ -14493,7 +14535,7 @@ class WriterStateKernelTest(unittest.TestCase):
         for name, prepared, options, internal, max_prefixes in cases:
             with self.subTest(case=name):
                 if internal:
-                    cursor = initial_writer_transition_frontier_cursor(
+                    cursor = _initial_writer_transition_frontier_cursor(
                         prepared,
                         options,
                     )
@@ -14541,7 +14583,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_open_ring_endpoint_close_choice_has_closure_pair_diagnostics(self) -> None:
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
-        cursor = initial_writer_transition_frontier_cursor(prepared, options)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
@@ -14565,7 +14607,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_open_ring_endpoint_snapshot_does_not_report_ready_terminal(self) -> None:
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
-        cursor = initial_writer_transition_frontier_cursor(prepared, options)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
@@ -14591,7 +14633,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_open_ring_endpoint_prefix_replay_rejects_non_closing_tokens_as_invalid_facts(self) -> None:
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
-        cursor = initial_writer_transition_frontier_cursor(prepared, options)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
@@ -14616,7 +14658,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_open_ring_endpoint_prefix_replay_closing_token_reaches_terminal_eos(self) -> None:
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
-        cursor = initial_writer_transition_frontier_cursor(prepared, options)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
@@ -14639,7 +14681,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_closed_cyclic_terminal_prefix_rejects_extra_tokens_as_invalid_facts(self) -> None:
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
-        cursor = initial_writer_transition_frontier_cursor(prepared, options)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
@@ -24798,7 +24840,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_real_cyclic_transition_cursor_admission_is_ready_but_public_closed(self) -> None:
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
-        cursor = initial_writer_transition_frontier_cursor(prepared, options)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
 
         cursor_decision = (
             writer_snapshot
@@ -24848,7 +24890,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_cyclic_admission_ready_but_public_closed_is_stable_under_replay(self) -> None:
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
-        cursor = initial_writer_transition_frontier_cursor(prepared, options)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,

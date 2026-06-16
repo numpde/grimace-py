@@ -7163,6 +7163,45 @@ class WriterStateKernelTest(unittest.TestCase):
             ],
         )
 
+    def test_public_initial_snapshot_enabled_but_profile_blocked_does_not_capture_snapshot(
+        self,
+    ) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+        blocked_profile = writer_snapshot._WriterPublicCyclicOpeningProfileReport(
+            kind=(
+                writer_snapshot
+                ._WriterPublicCyclicOpeningProfileKind
+                .BLOCKED_UNSUPPORTED_CYCLIC_RANK
+            ),
+            component_count=1,
+            cyclic_component_count=1,
+            cyclic_ranks=(2,),
+        )
+
+        with patch(
+            "grimace._south_star1.writer_snapshot"
+            "._PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED",
+            True,
+        ), patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._writer_public_cyclic_opening_profile_report"
+            ),
+            return_value=blocked_profile,
+        ):
+            with self.assertRaises(SouthStarError) as caught:
+                writer_snapshot.capture_initial_writer_frontier_snapshot(
+                    prepared=prepared,
+                    runtime_options=options,
+                )
+
+        self.assertIs(
+            caught.exception.kind,
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+        )
+        self.assertIn("profile", str(caught.exception).lower())
+
     def test_public_initial_snapshot_cyclic_enabled_returns_transition_cursor_snapshot(
         self,
     ) -> None:
@@ -14352,6 +14391,63 @@ class WriterStateKernelTest(unittest.TestCase):
         )
         self.assertIn("public support is closed", str(caught.exception))
 
+    def test_public_cyclic_support_enabled_but_profile_blocked_stops_before_count_stream(
+        self,
+    ) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+        blocked_profile = writer_snapshot._WriterPublicCyclicOpeningProfileReport(
+            kind=(
+                writer_snapshot
+                ._WriterPublicCyclicOpeningProfileKind
+                .BLOCKED_NOT_SINGLE_COMPONENT
+            ),
+            component_count=2,
+            cyclic_component_count=1,
+            cyclic_ranks=(1,),
+        )
+
+        with patch(
+            "grimace._south_star1.writer_snapshot"
+            "._PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED",
+            True,
+        ), patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._writer_public_cyclic_opening_profile_report"
+            ),
+            return_value=blocked_profile,
+        ), patch(
+            "grimace._south_star1.writer_support.count_writer_frontier_support",
+            side_effect=AssertionError(
+                "cyclic public support reached support count",
+            ),
+        ), patch(
+            (
+                "grimace._south_star1.writer_support"
+                ".count_writer_cursor_completions"
+            ),
+            side_effect=AssertionError(
+                "cyclic public support reached completion count",
+            ),
+        ), patch(
+            "grimace._south_star1.writer_support.iter_writer_frontier_support",
+            side_effect=AssertionError(
+                "cyclic public support reached stream",
+            ),
+        ):
+            with self.assertRaises(SouthStarError) as caught:
+                enumerate_prepared_stereo_support(
+                    prepared=prepared,
+                    runtime_options=options,
+                )
+
+        self.assertIs(
+            caught.exception.kind,
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+        )
+        self.assertIn("profile", str(caught.exception).lower())
+
     def test_transition_frontier_cursor_is_private_harness_not_exported(self) -> None:
         self.assertNotIn(
             "initial_writer_transition_frontier_cursor",
@@ -14475,10 +14571,84 @@ class WriterStateKernelTest(unittest.TestCase):
             decision.kind,
             writer_snapshot._WriterCyclicAdmissionDecisionKind.READY_PUBLIC,
         )
+        self.assertIsNotNone(decision.public_profile)
+        assert decision.public_profile is not None
         self.assertTrue(decision.internally_ready)
         self.assertTrue(decision.public_enabled)
         self.assertTrue(decision.admitted_publicly)
+        self.assertTrue(decision.public_profile.supported)
         writer_snapshot._assert_cyclic_writer_admission_decision(decision)
+
+    def test_cyclic_public_gate_enabled_blocks_unsupported_public_profile(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+        blocked_profile = writer_snapshot._WriterPublicCyclicOpeningProfileReport(
+            kind=(
+                writer_snapshot
+                ._WriterPublicCyclicOpeningProfileKind
+                .BLOCKED_UNSUPPORTED_CYCLIC_RANK
+            ),
+            component_count=1,
+            cyclic_component_count=1,
+            cyclic_ranks=(2,),
+        )
+
+        with patch(
+            "grimace._south_star1.writer_snapshot"
+            "._PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED",
+            True,
+        ), patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._writer_public_cyclic_opening_profile_report"
+            ),
+            return_value=blocked_profile,
+        ):
+            decision = (
+                writer_snapshot
+                ._cyclic_writer_admission_decision_from_cursor(
+                    prepared=prepared,
+                    runtime_options=options,
+                    cursor=cursor,
+                )
+            )
+
+        self.assertIs(
+            decision.kind,
+            writer_snapshot._WriterCyclicAdmissionDecisionKind
+            .BLOCKED_PUBLIC_CYCLIC_PROFILE,
+        )
+        self.assertTrue(decision.internally_ready)
+        self.assertFalse(decision.public_enabled)
+        self.assertFalse(decision.admitted_publicly)
+
+        with self.assertRaises(SouthStarError) as caught:
+            writer_snapshot._assert_cyclic_writer_admission_decision(
+                decision,
+            )
+
+        self.assertIs(
+            caught.exception.kind,
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+        )
+        self.assertIn("profile", str(caught.exception).lower())
+
+    def test_public_cyclic_opening_profile_accepts_single_rank_one_component(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        report = writer_snapshot._writer_public_cyclic_opening_profile_report(
+            prepared=prepared,
+        )
+
+        self.assertIs(
+            report.kind,
+            writer_snapshot._WriterPublicCyclicOpeningProfileKind
+            .SUPPORTED_SINGLE_CYCLIC_COMPONENT,
+        )
+        self.assertTrue(report.supported)
+        self.assertEqual(report.component_count, 1)
+        self.assertEqual(report.cyclic_component_count, 1)
+        self.assertEqual(report.cyclic_ranks, (1,))
 
     def test_public_writer_shaped_acyclic_support_uses_tree_cursor_not_transition_cursor(
         self,
@@ -25489,6 +25659,22 @@ class WriterStateKernelTest(unittest.TestCase):
         ready_gate, blocked_gate, truncated_gate = (
             self._test_residual_cyclic_readiness_gate_cases()
         )
+        prepared = _prepare(cyclopropane_facts())
+        public_profile = (
+            writer_snapshot
+            ._writer_public_cyclic_opening_profile_report(prepared=prepared)
+        )
+        blocked_profile = (
+            writer_snapshot
+            ._WriterPublicCyclicOpeningProfileReport(
+                kind=writer_snapshot
+                ._WriterPublicCyclicOpeningProfileKind
+                .BLOCKED_UNSUPPORTED_CYCLIC_RANK,
+                component_count=1,
+                cyclic_component_count=1,
+                cyclic_ranks=(2,),
+            )
+        )
 
         writer_snapshot._WriterCyclicAdmissionDecision(
             kind=(
@@ -25526,6 +25712,7 @@ class WriterStateKernelTest(unittest.TestCase):
                     .READY_PUBLIC
                 ),
                 readiness_gate=ready_gate,
+                public_profile=public_profile,
             )
 
         invalid_cases = (
@@ -25536,12 +25723,16 @@ class WriterStateKernelTest(unittest.TestCase):
                     .READY_BUT_PUBLIC_CLOSED
                 ),
                 blocked_gate,
+                None,
             ),
             (
-                writer_snapshot
-                ._WriterCyclicAdmissionDecisionKind
-                .READY_PUBLIC,
+                (
+                    writer_snapshot
+                    ._WriterCyclicAdmissionDecisionKind
+                    .READY_PUBLIC
+                ),
                 blocked_gate,
+                None,
             ),
             (
                 (
@@ -25550,6 +25741,7 @@ class WriterStateKernelTest(unittest.TestCase):
                     .BLOCKED_RESIDUAL_CYCLIC_POLICY
                 ),
                 ready_gate,
+                None,
             ),
             (
                 (
@@ -25558,15 +25750,26 @@ class WriterStateKernelTest(unittest.TestCase):
                     .TRUNCATED_READINESS_AUDIT
                 ),
                 ready_gate,
+                None,
+            ),
+            (
+                (
+                    writer_snapshot
+                    ._WriterCyclicAdmissionDecisionKind
+                    .BLOCKED_PUBLIC_CYCLIC_PROFILE
+                ),
+                ready_gate,
+                None,
             ),
         )
 
-        for kind, gate in invalid_cases:
+        for kind, gate, profile in invalid_cases:
             with self.subTest(kind=kind):
                 with self.assertRaises(SouthStarError) as cm:
                     writer_snapshot._WriterCyclicAdmissionDecision(
                         kind=kind,
                         readiness_gate=gate,
+                        public_profile=profile,
                     )
 
                 self.assertIs(
@@ -25578,6 +25781,7 @@ class WriterStateKernelTest(unittest.TestCase):
         ready_gate, blocked_gate, truncated_gate = (
             self._test_residual_cyclic_readiness_gate_cases()
         )
+        prepared = _prepare(cyclopropane_facts())
         cases = (
             (
                 ready_gate,
@@ -25611,6 +25815,7 @@ class WriterStateKernelTest(unittest.TestCase):
                     writer_snapshot
                     ._cyclic_writer_admission_decision_from_readiness_gate(
                         gate,
+                        prepared=prepared,
                     )
                 )
 
@@ -25621,6 +25826,7 @@ class WriterStateKernelTest(unittest.TestCase):
             writer_snapshot
             ._cyclic_writer_admission_decision_from_readiness_gate(
                 ready_gate,
+                prepared=prepared,
             )
         )
 
@@ -25637,6 +25843,7 @@ class WriterStateKernelTest(unittest.TestCase):
                 writer_snapshot
                 ._cyclic_writer_admission_decision_from_readiness_gate(
                     ready_gate,
+                    prepared=prepared,
                 )
             )
 
@@ -25661,6 +25868,9 @@ class WriterStateKernelTest(unittest.TestCase):
                 writer_snapshot
                 ._WriterCyclicAdmissionDecisionKind
                 .TRUNCATED_READINESS_AUDIT,
+                writer_snapshot
+                ._WriterCyclicAdmissionDecisionKind
+                .BLOCKED_PUBLIC_CYCLIC_PROFILE,
             },
         )
 
@@ -25668,7 +25878,18 @@ class WriterStateKernelTest(unittest.TestCase):
         ready_gate, blocked_gate, truncated_gate = (
             self._test_residual_cyclic_readiness_gate_cases()
         )
+        prepared = _prepare(cyclopropane_facts())
+        profile = (
+            writer_snapshot
+            ._writer_public_cyclic_opening_profile_report(prepared=prepared)
+        )
         with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._writer_public_cyclic_opening_profile_report"
+            ),
+            return_value=profile,
+        ), patch(
             "grimace._south_star1.writer_snapshot"
             "._PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED",
             True,
@@ -25677,12 +25898,14 @@ class WriterStateKernelTest(unittest.TestCase):
                 writer_snapshot
                 ._cyclic_writer_admission_decision_from_readiness_gate(
                     blocked_gate,
+                    prepared=prepared,
                 )
             )
             truncated_decision = (
                 writer_snapshot
                 ._cyclic_writer_admission_decision_from_readiness_gate(
                     truncated_gate,
+                    prepared=prepared,
                 )
             )
 
@@ -25719,6 +25942,7 @@ class WriterStateKernelTest(unittest.TestCase):
 
     def test_cyclic_writer_admission_decision_from_snapshot_reports_ready_but_public_closed(self) -> None:
         outcomes = self._test_residual_cyclic_readiness_ready_prefix_outcomes()
+        prepared = _prepare(cyclopropane_facts())
 
         with patch(
             (
@@ -25733,7 +25957,7 @@ class WriterStateKernelTest(unittest.TestCase):
                 writer_snapshot
                 ._cyclic_writer_admission_decision_from_snapshot(
                     self._test_writer_search_snapshot(),
-                    prepared=object(),  # type: ignore[arg-type]
+                    prepared=prepared,
                     max_depth=2,
                 )
             )
@@ -25752,6 +25976,7 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertTrue(decision.readiness_gate.ready)
 
     def test_cyclic_writer_admission_decision_from_snapshot_reports_missing_evidence_blocker(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
         active_outcome = self._test_residual_cyclic_blocked_active_outcome(
             include_closure_emission=False,
         )
@@ -25773,7 +25998,7 @@ class WriterStateKernelTest(unittest.TestCase):
                 writer_snapshot
                 ._cyclic_writer_admission_decision_from_snapshot(
                     self._test_writer_search_snapshot(),
-                    prepared=object(),  # type: ignore[arg-type]
+                    prepared=prepared,
                 )
             )
 
@@ -25797,6 +26022,7 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_cyclic_writer_admission_decision_from_snapshot_reports_unsupported_owner_blocker(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
         active_outcome = self._test_residual_cyclic_blocked_active_outcome(
             closure_owner_kind=WriterBoundaryOwnerKind.UNOWNED,
             child_owner_kind=WriterBoundaryOwnerKind.UNOWNED,
@@ -25819,7 +26045,7 @@ class WriterStateKernelTest(unittest.TestCase):
                 writer_snapshot
                 ._cyclic_writer_admission_decision_from_snapshot(
                     self._test_writer_search_snapshot(),
-                    prepared=object(),  # type: ignore[arg-type]
+                    prepared=prepared,
                 )
             )
 
@@ -25842,6 +26068,7 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_blocked_cyclic_snapshot_admission_does_not_become_ready_under_replay(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
         active_outcome = self._test_residual_cyclic_blocked_active_outcome(
             include_closure_emission=False,
         )
@@ -25864,7 +26091,7 @@ class WriterStateKernelTest(unittest.TestCase):
                 writer_snapshot
                 ._cyclic_writer_admission_decision_from_snapshot(
                     snapshot,
-                    prepared=object(),  # type: ignore[arg-type]
+                    prepared=prepared,
                 )
             )
 
@@ -25875,14 +26102,14 @@ class WriterStateKernelTest(unittest.TestCase):
 
             with self.assertRaises(SouthStarError) as replay:
                 (
-                    writer_snapshot
-                    ._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
-                        snapshot,
-                        prepared=object(),  # type: ignore[arg-type]
-                        emitted_texts=("C",),
-                        include_counts=True,
+                        writer_snapshot
+                        ._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
+                            snapshot,
+                            prepared=prepared,
+                            emitted_texts=("C",),
+                            include_counts=True,
+                        )
                     )
-                )
 
         self.assertIs(
             decision.kind,
@@ -25905,6 +26132,7 @@ class WriterStateKernelTest(unittest.TestCase):
 
     def test_cyclic_writer_admission_decision_from_snapshot_reports_truncation(self) -> None:
         outcomes = self._test_residual_cyclic_readiness_ready_prefix_outcomes()
+        prepared = _prepare(cyclopropane_facts())
 
         with patch(
             (
@@ -25919,7 +26147,7 @@ class WriterStateKernelTest(unittest.TestCase):
                 writer_snapshot
                 ._cyclic_writer_admission_decision_from_snapshot(
                     self._test_writer_search_snapshot(),
-                    prepared=object(),  # type: ignore[arg-type]
+                    prepared=prepared,
                     max_depth=0,
                 )
             )
@@ -26091,10 +26319,12 @@ class WriterStateKernelTest(unittest.TestCase):
         ready_gate, _blocked_gate, _truncated_gate = (
             self._test_residual_cyclic_readiness_gate_cases()
         )
+        prepared = _prepare(cyclopropane_facts())
         decision = (
             writer_snapshot
             ._cyclic_writer_admission_decision_from_readiness_gate(
                 ready_gate,
+                prepared=prepared,
             )
         )
 
@@ -26111,12 +26341,15 @@ class WriterStateKernelTest(unittest.TestCase):
         _ready_gate, blocked_gate, truncated_gate = (
             self._test_residual_cyclic_readiness_gate_cases()
         )
+        prepared = _prepare(cyclopropane_facts())
         decisions = (
             writer_snapshot._cyclic_writer_admission_decision_from_readiness_gate(
                 blocked_gate,
+                prepared=prepared,
             ),
             writer_snapshot._cyclic_writer_admission_decision_from_readiness_gate(
                 truncated_gate,
+                prepared=prepared,
             ),
         )
 

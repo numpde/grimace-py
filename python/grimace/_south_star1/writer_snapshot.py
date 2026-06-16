@@ -1223,21 +1223,55 @@ class _WriterResidualCyclicReadinessGate:
 class _WriterCyclicAdmissionDecisionKind(Enum):
     READY_PUBLIC = "ready_public"
     READY_BUT_PUBLIC_CLOSED = "ready_but_public_closed"
+    BLOCKED_PUBLIC_CYCLIC_PROFILE = "blocked_public_cyclic_profile"
     BLOCKED_RESIDUAL_CYCLIC_POLICY = "blocked_residual_cyclic_policy"
     TRUNCATED_READINESS_AUDIT = "truncated_readiness_audit"
+
+
+class _WriterPublicCyclicOpeningProfileKind(Enum):
+    SUPPORTED_SINGLE_CYCLIC_COMPONENT = "supported_single_cyclic_component"
+    BLOCKED_NOT_SINGLE_COMPONENT = "blocked_not_single_component"
+    BLOCKED_NOT_CONNECTED_COMPONENT = "blocked_not_connected_component"
+    BLOCKED_NOT_CYCLIC_COMPONENT = "blocked_not_cyclic_component"
+    BLOCKED_UNSUPPORTED_CYCLIC_RANK = "blocked_unsupported_cyclic_rank"
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterPublicCyclicOpeningProfileReport:
+    kind: _WriterPublicCyclicOpeningProfileKind
+    component_count: int
+    cyclic_component_count: int
+    cyclic_ranks: tuple[int, ...]
+
+    @property
+    def supported(self) -> bool:
+        return (
+            self.kind
+            is _WriterPublicCyclicOpeningProfileKind
+            .SUPPORTED_SINGLE_CYCLIC_COMPONENT
+        )
 
 
 @dataclass(frozen=True, slots=True)
 class _WriterCyclicAdmissionDecision:
     kind: _WriterCyclicAdmissionDecisionKind
     readiness_gate: _WriterResidualCyclicReadinessGate
+    public_profile: _WriterPublicCyclicOpeningProfileReport | None = None
 
     def __post_init__(self) -> None:
         if (
             self.kind
             is _WriterCyclicAdmissionDecisionKind.READY_PUBLIC
-            or self.kind
-            is _WriterCyclicAdmissionDecisionKind.READY_BUT_PUBLIC_CLOSED
+        ):
+            valid = self.readiness_gate.ready and bool(
+                self.public_profile is not None and self.public_profile.supported
+            )
+        elif (
+            self.kind
+            is (
+                _WriterCyclicAdmissionDecisionKind
+                .READY_BUT_PUBLIC_CLOSED
+            )
         ):
             valid = self.readiness_gate.ready
         elif (
@@ -1253,6 +1287,18 @@ class _WriterCyclicAdmissionDecision:
             is _WriterCyclicAdmissionDecisionKind.TRUNCATED_READINESS_AUDIT
         ):
             valid = self.readiness_gate.truncated
+        elif (
+            self.kind
+            is (
+                _WriterCyclicAdmissionDecisionKind
+                .BLOCKED_PUBLIC_CYCLIC_PROFILE
+            )
+        ):
+            valid = (
+                self.readiness_gate.ready
+                and self.public_profile is not None
+                and not self.public_profile.supported
+            )
         else:
             valid = False
 
@@ -1267,6 +1313,7 @@ class _WriterCyclicAdmissionDecision:
         return self.kind in {
             _WriterCyclicAdmissionDecisionKind.READY_PUBLIC,
             _WriterCyclicAdmissionDecisionKind.READY_BUT_PUBLIC_CLOSED,
+            _WriterCyclicAdmissionDecisionKind.BLOCKED_PUBLIC_CYCLIC_PROFILE,
         }
 
     @property
@@ -2037,22 +2084,92 @@ def _assert_residual_cyclic_readiness_gate(
     )
 
 
+def _writer_public_cyclic_opening_profile_report(
+    *,
+    prepared: SouthStarPreparedMol,
+) -> _WriterPublicCyclicOpeningProfileReport:
+    surfaces = tuple(prepared.writer_graph_metadata.component_surfaces)
+
+    cyclic_surfaces = tuple(
+        surface
+        for surface in surfaces
+        if (
+            surface.connected
+            and not surface.tree
+            and (
+                surface.cyclic_rank > 0
+                or surface.cyclic_block_ids
+            )
+        )
+    )
+
+    cyclic_ranks = tuple(int(surface.cyclic_rank) for surface in cyclic_surfaces)
+
+    if len(surfaces) != 1:
+        kind = (
+            _WriterPublicCyclicOpeningProfileKind
+            .BLOCKED_NOT_SINGLE_COMPONENT
+        )
+    elif not surfaces[0].connected:
+        kind = (
+            _WriterPublicCyclicOpeningProfileKind
+            .BLOCKED_NOT_CONNECTED_COMPONENT
+        )
+    elif not cyclic_surfaces:
+        kind = (
+            _WriterPublicCyclicOpeningProfileKind
+            .BLOCKED_NOT_CYCLIC_COMPONENT
+        )
+    elif cyclic_ranks != (1,):
+        kind = (
+            _WriterPublicCyclicOpeningProfileKind
+            .BLOCKED_UNSUPPORTED_CYCLIC_RANK
+        )
+    else:
+        kind = (
+            _WriterPublicCyclicOpeningProfileKind
+            .SUPPORTED_SINGLE_CYCLIC_COMPONENT
+        )
+
+    return _WriterPublicCyclicOpeningProfileReport(
+        kind=kind,
+        component_count=len(surfaces),
+        cyclic_component_count=len(cyclic_surfaces),
+        cyclic_ranks=cyclic_ranks,
+    )
+
+
 def _cyclic_writer_admission_decision_from_readiness_gate(
     gate: _WriterResidualCyclicReadinessGate,
+    *,
+    prepared: SouthStarPreparedMol,
 ) -> _WriterCyclicAdmissionDecision:
     if gate.ready:
-        if _PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED:
+        profile = _writer_public_cyclic_opening_profile_report(
+            prepared=prepared,
+        )
+        if _PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED and profile.supported:
             return _WriterCyclicAdmissionDecision(
                 kind=_WriterCyclicAdmissionDecisionKind.READY_PUBLIC,
                 readiness_gate=gate,
+                public_profile=profile,
             )
-
+        if _PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED:
+            return _WriterCyclicAdmissionDecision(
+                kind=(
+                    _WriterCyclicAdmissionDecisionKind
+                    .BLOCKED_PUBLIC_CYCLIC_PROFILE
+                ),
+                readiness_gate=gate,
+                public_profile=profile,
+            )
         return _WriterCyclicAdmissionDecision(
             kind=(
                 _WriterCyclicAdmissionDecisionKind
                 .READY_BUT_PUBLIC_CLOSED
             ),
             readiness_gate=gate,
+            public_profile=profile,
         )
 
     if gate.blocked:
@@ -2067,8 +2184,7 @@ def _cyclic_writer_admission_decision_from_readiness_gate(
     if gate.truncated:
         return _WriterCyclicAdmissionDecision(
             kind=(
-                _WriterCyclicAdmissionDecisionKind
-                .TRUNCATED_READINESS_AUDIT
+                _WriterCyclicAdmissionDecisionKind.TRUNCATED_READINESS_AUDIT
             ),
             readiness_gate=gate,
         )
@@ -2093,7 +2209,10 @@ def _cyclic_writer_admission_decision_from_snapshot(
         max_prefixes=max_prefixes,
     )
 
-    return _cyclic_writer_admission_decision_from_readiness_gate(gate)
+    return _cyclic_writer_admission_decision_from_readiness_gate(
+        gate,
+        prepared=prepared,
+    )
 
 
 def _cyclic_writer_admission_decision_from_cursor(
@@ -2112,7 +2231,10 @@ def _cyclic_writer_admission_decision_from_cursor(
         max_prefixes=max_prefixes,
     )
 
-    return _cyclic_writer_admission_decision_from_readiness_gate(gate)
+    return _cyclic_writer_admission_decision_from_readiness_gate(
+        gate,
+        prepared=prepared,
+    )
 
 
 def _assert_cyclic_writer_admission_decision(
@@ -2120,6 +2242,17 @@ def _assert_cyclic_writer_admission_decision(
 ) -> _WriterCyclicAdmissionDecision:
     if decision.admitted_publicly:
         return decision
+
+    if decision.kind is (
+        _WriterCyclicAdmissionDecisionKind.BLOCKED_PUBLIC_CYCLIC_PROFILE
+    ):
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            (
+                "cyclic WRITER_SHAPED blocked by public opening profile: "
+                f"{decision.public_profile.kind.value!r}"
+            ),
+        )
 
     if decision.internally_ready and not decision.public_enabled:
         raise SouthStarError(

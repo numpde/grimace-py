@@ -879,6 +879,57 @@ def _writer_graph_signature_closed_closure_records(
     )
 
 
+def _writer_cursor_stereo_obligation_signatures(
+    *,
+    cursor: WriterFrontierCursor,
+) -> tuple[tuple[object, ...], ...]:
+    signatures: list[tuple[object, ...]] = []
+
+    for key, weight in cursor.weighted_states:
+        delayed_factors = tuple(
+            (
+                factor.kind,
+                factor.site,
+                factor.scope,
+                factor.evidence,
+                factor.closed,
+            )
+            for factor in key.stereo_state.delayed_factors
+        )
+        signatures.append(
+            (
+                weight,
+                key.stereo_state.residual_snapshot,
+                key.stereo_state.atom_occurrences,
+                key.stereo_state.bond_occurrences,
+                key.stereo_state.local_orders,
+                delayed_factors,
+            )
+        )
+
+    return tuple(signatures)
+
+
+def _writer_stereo_signature_delayed_factors(
+    signatures: tuple[tuple[object, ...], ...],
+) -> tuple[object, ...]:
+    return tuple(
+        factor
+        for signature in signatures
+        for factor in signature[-1]
+    )
+
+
+def _writer_stereo_signature_unclosed_delayed_factors(
+    signatures: tuple[tuple[object, ...], ...],
+) -> tuple[object, ...]:
+    return tuple(
+        factor
+        for factor in _writer_stereo_signature_delayed_factors(signatures)
+        if not factor[-1]
+    )
+
+
 class WriterStateKernelTest(unittest.TestCase):
     def _closure_policy_for_outcome(
         self,
@@ -13743,6 +13794,230 @@ class WriterStateKernelTest(unittest.TestCase):
                     cursor=child_snapshot.cursor,
                 )
             ),
+        )
+
+    def test_terminal_frontier_evidence_has_no_unclosed_delayed_stereo_factors(self) -> None:
+        cases = (
+            (
+                "acyclic branched writer state space",
+                _prepare(cco_facts()),
+                _writer_options(rooted_at_atom=1),
+                False,
+                128,
+            ),
+            (
+                "internal cyclic ring-close state space",
+                _prepare(cyclopropane_facts()),
+                _writer_options(rooted_at_atom=0),
+                True,
+                64,
+            ),
+        )
+
+        for name, prepared, options, internal, max_prefixes in cases:
+            with self.subTest(case=name):
+                if internal:
+                    cursor = initial_writer_transition_frontier_cursor(
+                        prepared,
+                        options,
+                    )
+                else:
+                    cursor = initial_writer_frontier_cursor(
+                        prepared,
+                        options,
+                    )
+
+                snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+                    prepared=prepared,
+                    runtime_options=options,
+                    cursor=cursor,
+                )
+                seen: set[tuple[str, ...]] = set()
+                terminal_count = 0
+
+                def rec(prefix: tuple[str, ...]) -> None:
+                    nonlocal terminal_count
+
+                    if prefix in seen:
+                        self.fail(f"revisited writer prefix {prefix!r}")
+
+                    seen.add(prefix)
+
+                    if len(seen) > max_prefixes:
+                        self.fail(
+                            "stereo obligation terminal audit exceeded "
+                            f"max_prefixes={max_prefixes}"
+                        )
+
+                    outcome = (
+                        _assert_checked_prefix_successor_snapshot_resume_equivalence(
+                            self,
+                            snapshot=snapshot,
+                            prepared=prepared,
+                            emitted_texts=prefix,
+                        )
+                    )
+
+                    assert outcome.public_choices is not None
+                    terminal = outcome.public_choices.terminal
+
+                    if terminal is not None:
+                        terminal_count += 1
+                        signatures = _writer_cursor_stereo_obligation_signatures(
+                            cursor=terminal.finalized_cursor,
+                        )
+                        self.assertEqual(
+                            (
+                                _writer_stereo_signature_unclosed_delayed_factors(
+                                    signatures
+                                )
+                            ),
+                            (),
+                        )
+
+                    for choice in outcome.public_choices.choices:
+                        rec((*prefix, choice.emitted_text))
+
+                rec(())
+                self.assertGreater(terminal_count, 0)
+
+    def test_cyclic_open_ring_endpoint_creates_pending_ring_pair_stereo_factor(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = initial_writer_transition_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        open_outcome = (
+            writer_snapshot
+            ._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
+                snapshot,
+                prepared=prepared,
+                emitted_texts=("C", "1", "C", "C"),
+                include_counts=True,
+            )
+        )
+
+        assert open_outcome.public_choices is not None
+        self.assertEqual(
+            tuple(choice.emitted_text for choice in open_outcome.public_choices.choices),
+            ("1",),
+        )
+        self.assertIsNone(open_outcome.public_choices.terminal)
+        open_snapshot = open_outcome.replay_outcome.advanced_snapshot
+        self.assertIsNotNone(open_snapshot)
+        assert open_snapshot is not None
+        open_stereo = _writer_cursor_stereo_obligation_signatures(
+            cursor=open_snapshot.cursor,
+        )
+        open_factors = _writer_stereo_signature_delayed_factors(open_stereo)
+
+        self.assertTrue(
+            any(
+                factor[0] == "ring_pair"
+                and factor[-1] is False
+                for factor in open_factors
+            )
+        )
+        self.assertEqual(
+            tuple(
+                factor
+                for factor in open_factors
+                if factor[0] == "ring_pair" and factor[-1] is True
+            ),
+            (),
+        )
+
+    def test_cyclic_close_ring_endpoint_closes_ring_pair_stereo_factor(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = initial_writer_transition_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        closed_outcome = (
+            writer_snapshot
+            ._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
+                snapshot,
+                prepared=prepared,
+                emitted_texts=("C", "1", "C", "C", "1"),
+                include_counts=True,
+            )
+        )
+
+        assert closed_outcome.public_choices is not None
+        self.assertIsNotNone(closed_outcome.public_choices.terminal)
+        self.assertEqual(closed_outcome.public_choices.choices, ())
+        closed_snapshot = closed_outcome.replay_outcome.advanced_snapshot
+        self.assertIsNotNone(closed_snapshot)
+        assert closed_snapshot is not None
+        closed_stereo = _writer_cursor_stereo_obligation_signatures(
+            cursor=closed_snapshot.cursor,
+        )
+        closed_factors = _writer_stereo_signature_delayed_factors(closed_stereo)
+
+        self.assertTrue(
+            any(
+                factor[0] == "ring_pair"
+                and factor[-1] is True
+                for factor in closed_factors
+            )
+        )
+        self.assertEqual(
+            _writer_stereo_signature_unclosed_delayed_factors(closed_stereo),
+            (),
+        )
+
+    def test_open_ring_endpoint_close_choice_successor_matches_stereo_delta(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = initial_writer_transition_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        open_outcome = (
+            writer_snapshot
+            ._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
+                snapshot,
+                prepared=prepared,
+                emitted_texts=("C", "1", "C", "C"),
+                include_counts=True,
+            )
+        )
+
+        assert open_outcome.public_choices is not None
+        choice = open_outcome.public_choices.choices[0]
+        self.assertEqual(choice.emitted_text, "1")
+        child = (
+            writer_snapshot
+            ._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
+                snapshot,
+                prepared=prepared,
+                emitted_texts=("C", "1", "C", "C", "1"),
+                include_counts=True,
+            )
+        )
+        child_snapshot = child.replay_outcome.advanced_snapshot
+        self.assertIsNotNone(child_snapshot)
+        assert child_snapshot is not None
+        self.assertEqual(child_snapshot.cursor, choice.successor)
+        choice_stereo = _writer_cursor_stereo_obligation_signatures(
+            cursor=choice.successor,
+        )
+        replay_stereo = _writer_cursor_stereo_obligation_signatures(
+            cursor=child_snapshot.cursor,
+        )
+
+        self.assertEqual(choice_stereo, replay_stereo)
+        self.assertEqual(
+            _writer_stereo_signature_unclosed_delayed_factors(choice_stereo),
+            (),
         )
 
     def test_legal_choice_diagnostics_are_replay_aligned_until_eos(self) -> None:

@@ -124,6 +124,21 @@ def writer_frontier_cursor_from_snapshot(
     *,
     prepared: SouthStarPreparedMol,
 ) -> WriterFrontierCursor:
+    _assert_public_writer_snapshot_cyclic_admission(
+        snapshot,
+        prepared=prepared,
+    )
+    return _validated_writer_frontier_cursor_from_snapshot(
+        snapshot,
+        prepared=prepared,
+    )
+
+
+def _validated_writer_frontier_cursor_from_snapshot(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+) -> WriterFrontierCursor:
     validate_writer_search_snapshot(snapshot, prepared=prepared)
     return snapshot.cursor
 
@@ -135,7 +150,7 @@ def _writer_frontier_choice_snapshot_from_snapshot(
     include_counts: bool = True,
     stop_after_first_blocked: bool = False,
 ) -> _WriterFrontierChoiceSnapshot:
-    cursor = writer_frontier_cursor_from_snapshot(
+    cursor = _validated_writer_frontier_cursor_from_snapshot(
         snapshot,
         prepared=prepared,
     )
@@ -154,7 +169,7 @@ def _checked_writer_frontier_choice_snapshot_from_snapshot(
     prepared: SouthStarPreparedMol,
     include_counts: bool = True,
 ) -> _WriterFrontierChoiceSnapshot:
-    cursor = writer_frontier_cursor_from_snapshot(
+    cursor = _validated_writer_frontier_cursor_from_snapshot(
         snapshot,
         prepared=prepared,
     )

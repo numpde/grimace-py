@@ -14,6 +14,7 @@ from unittest.mock import patch
 
 import grimace._south_star1.writer_frontier as writer_frontier_module
 import grimace._south_star1.writer_graph_obligations as writer_graph_obligations
+import grimace._south_star1.writer_support as writer_support
 import grimace._south_star1.writer_snapshot as writer_snapshot
 import grimace._south_star1.writer_state as writer_state_module
 import grimace._south_star1.writer_transitions as writer_transitions
@@ -13067,6 +13068,67 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
         message = str(caught.exception)
         self.assertTrue("public" in message and "closed" in message)
+
+    def test_public_writer_shaped_acyclic_support_uses_tree_cursor_not_transition_cursor(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+
+        with patch(
+            "grimace._south_star1.writer_support.initial_writer_transition_frontier_cursor",
+            side_effect=AssertionError(
+                "acyclic public support must not use transition cursor",
+            ),
+        ):
+            image = enumerate_prepared_stereo_support(
+                prepared=prepared,
+                runtime_options=_writer_options(rooted_at_atom=0),
+            )
+
+        self.assertGreater(image.distinct_count, 0)
+        self.assertEqual(len(image.strings), image.distinct_count)
+
+    def test_admitted_public_cyclic_support_would_use_transition_cursor_not_tree_cursor(
+        self,
+    ) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+
+        transition_calls: list[object] = []
+        original_transition = (
+            writer_support.initial_writer_transition_frontier_cursor
+        )
+
+        def wrapped_transition(prepared_arg, runtime_options_arg):
+            cursor = original_transition(prepared_arg, runtime_options_arg)
+            transition_calls.append(cursor)
+            return cursor
+
+        with patch(
+            "grimace._south_star1.writer_support.initial_writer_transition_frontier_cursor",
+            side_effect=wrapped_transition,
+        ), patch(
+            (
+                "grimace._south_star1.writer_support"
+                ".initial_writer_frontier_cursor"
+            ),
+            side_effect=AssertionError(
+                "admitted cyclic support must not use tree-only cursor",
+            ),
+        ), patch(
+            "grimace._south_star1.writer_support.writer_snapshot"
+            "._assert_cyclic_writer_admission_decision",
+            return_value=None,
+        ):
+            image = enumerate_prepared_stereo_support(
+                prepared=prepared,
+                runtime_options=options,
+            )
+
+        self.assertEqual(len(transition_calls), 1)
+        self.assertGreater(image.distinct_count, 0)
+        self.assertEqual(len(image.strings), image.distinct_count)
+        self.assertGreaterEqual(image.witness_count, image.distinct_count)
 
     def test_public_initial_frontier_still_rejects_cyclic_prepared(self) -> None:
         prepared = _prepare(cyclopropane_facts())

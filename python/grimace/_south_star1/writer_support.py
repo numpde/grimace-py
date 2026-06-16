@@ -10,8 +10,8 @@ from .prepared_runtime import require_writer_shaped_runtime_options
 from .prepared_runtime import runtime_root_atom_for_prepared
 from .writer_frontier import count_writer_cursor_completions
 from .writer_frontier import count_writer_frontier_support
-from .writer_frontier import initial_writer_frontier_cursor
 from .writer_frontier import iter_writer_frontier_support
+from .writer_frontier import WriterFrontierCursor
 
 
 def enumerate_prepared_writer_shaped_support(
@@ -25,6 +25,17 @@ def enumerate_prepared_writer_shaped_support(
         prepared=prepared,
         runtime_options=runtime_options,
     )
+    return _writer_support_image_from_cursor(
+        prepared=prepared,
+        cursor=cursor,
+    )
+
+
+def _writer_support_image_from_cursor(
+    *,
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+) -> SupportImage:
     support_count = count_writer_frontier_support(prepared, cursor.support_state)
     completion_count = count_writer_cursor_completions(prepared, cursor)
     strings = tuple(iter_writer_frontier_support(prepared, cursor))
@@ -37,4 +48,22 @@ def enumerate_prepared_writer_shaped_support(
     )
 
 
-__all__ = ("enumerate_prepared_writer_shaped_support",)
+def enumerate_writer_snapshot_writer_shaped_support(
+    *,
+    snapshot: writer_snapshot.WriterSearchSnapshot,
+    prepared: SouthStarPreparedMol,
+) -> SupportImage:
+    cursor = writer_snapshot.writer_frontier_cursor_from_snapshot(
+        snapshot,
+        prepared=prepared,
+    )
+    return _writer_support_image_from_cursor(
+        prepared=prepared,
+        cursor=cursor,
+    )
+
+
+__all__ = (
+    "enumerate_prepared_writer_shaped_support",
+    "enumerate_writer_snapshot_writer_shaped_support",
+)

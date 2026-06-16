@@ -60,6 +60,9 @@ from .writer_state import WriterStateKey
 from .writer_state import WriterStereoStateKey
 
 
+_PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED = False
+
+
 @dataclass(frozen=True, slots=True)
 class WriterPreparedIdentity:
     runtime: tuple[object, ...]
@@ -1137,6 +1140,7 @@ class _WriterResidualCyclicReadinessGate:
 
 
 class _WriterCyclicAdmissionDecisionKind(Enum):
+    READY_PUBLIC = "ready_public"
     READY_BUT_PUBLIC_CLOSED = "ready_but_public_closed"
     BLOCKED_RESIDUAL_CYCLIC_POLICY = "blocked_residual_cyclic_policy"
     TRUNCATED_READINESS_AUDIT = "truncated_readiness_audit"
@@ -1148,7 +1152,12 @@ class _WriterCyclicAdmissionDecision:
     readiness_gate: _WriterResidualCyclicReadinessGate
 
     def __post_init__(self) -> None:
-        if self.kind is _WriterCyclicAdmissionDecisionKind.READY_BUT_PUBLIC_CLOSED:
+        if (
+            self.kind
+            is _WriterCyclicAdmissionDecisionKind.READY_PUBLIC
+            or self.kind
+            is _WriterCyclicAdmissionDecisionKind.READY_BUT_PUBLIC_CLOSED
+        ):
             valid = self.readiness_gate.ready
         elif (
             self.kind
@@ -1174,14 +1183,14 @@ class _WriterCyclicAdmissionDecision:
 
     @property
     def internally_ready(self) -> bool:
-        return (
-            self.kind
-            is _WriterCyclicAdmissionDecisionKind.READY_BUT_PUBLIC_CLOSED
-        )
+        return self.kind in {
+            _WriterCyclicAdmissionDecisionKind.READY_PUBLIC,
+            _WriterCyclicAdmissionDecisionKind.READY_BUT_PUBLIC_CLOSED,
+        }
 
     @property
     def public_enabled(self) -> bool:
-        return False
+        return self.kind is _WriterCyclicAdmissionDecisionKind.READY_PUBLIC
 
     @property
     def admitted_publicly(self) -> bool:
@@ -1951,6 +1960,12 @@ def _cyclic_writer_admission_decision_from_readiness_gate(
     gate: _WriterResidualCyclicReadinessGate,
 ) -> _WriterCyclicAdmissionDecision:
     if gate.ready:
+        if _PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED:
+            return _WriterCyclicAdmissionDecision(
+                kind=_WriterCyclicAdmissionDecisionKind.READY_PUBLIC,
+                readiness_gate=gate,
+            )
+
         return _WriterCyclicAdmissionDecision(
             kind=(
                 _WriterCyclicAdmissionDecisionKind

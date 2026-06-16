@@ -13069,6 +13069,62 @@ class WriterStateKernelTest(unittest.TestCase):
         message = str(caught.exception)
         self.assertTrue("public" in message and "closed" in message)
 
+    def test_cyclic_public_gate_defaults_closed(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = initial_writer_transition_frontier_cursor(prepared, options)
+        decision = (
+            writer_snapshot
+            ._cyclic_writer_admission_decision_from_cursor(
+                prepared=prepared,
+                runtime_options=options,
+                cursor=cursor,
+            )
+        )
+
+        self.assertIs(
+            decision.kind,
+            writer_snapshot._WriterCyclicAdmissionDecisionKind
+            .READY_BUT_PUBLIC_CLOSED,
+        )
+        self.assertTrue(decision.internally_ready)
+        self.assertFalse(decision.public_enabled)
+        self.assertFalse(decision.admitted_publicly)
+
+        with self.assertRaises(SouthStarError) as caught:
+            writer_snapshot._assert_cyclic_writer_admission_decision(decision)
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+        self.assertIn("public support is closed", str(caught.exception))
+
+    def test_cyclic_public_gate_enabled_under_test_yields_ready_public(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = initial_writer_transition_frontier_cursor(prepared, options)
+
+        with patch(
+            "grimace._south_star1.writer_snapshot"
+            "._PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED",
+            True,
+        ):
+            decision = (
+                writer_snapshot
+                ._cyclic_writer_admission_decision_from_cursor(
+                    prepared=prepared,
+                    runtime_options=options,
+                    cursor=cursor,
+                )
+            )
+
+        self.assertIs(
+            decision.kind,
+            writer_snapshot._WriterCyclicAdmissionDecisionKind.READY_PUBLIC,
+        )
+        self.assertTrue(decision.internally_ready)
+        self.assertTrue(decision.public_enabled)
+        self.assertTrue(decision.admitted_publicly)
+        writer_snapshot._assert_cyclic_writer_admission_decision(decision)
+
     def test_public_writer_shaped_acyclic_support_uses_tree_cursor_not_transition_cursor(
         self,
     ) -> None:
@@ -13094,7 +13150,7 @@ class WriterStateKernelTest(unittest.TestCase):
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
 
-        transition_calls: list[object] = []
+        transition_calls: list[writer_frontier_module.WriterFrontierCursor] = []
         original_transition = (
             writer_support.initial_writer_transition_frontier_cursor
         )
@@ -13105,6 +13161,10 @@ class WriterStateKernelTest(unittest.TestCase):
             return cursor
 
         with patch(
+            "grimace._south_star1.writer_snapshot"
+            "._PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED",
+            True,
+        ), patch(
             "grimace._south_star1.writer_support.initial_writer_transition_frontier_cursor",
             side_effect=wrapped_transition,
         ), patch(
@@ -13115,10 +13175,6 @@ class WriterStateKernelTest(unittest.TestCase):
             side_effect=AssertionError(
                 "admitted cyclic support must not use tree-only cursor",
             ),
-        ), patch(
-            "grimace._south_star1.writer_support.writer_snapshot"
-            "._assert_cyclic_writer_admission_decision",
-            return_value=None,
         ):
             image = enumerate_prepared_stereo_support(
                 prepared=prepared,
@@ -13126,7 +13182,21 @@ class WriterStateKernelTest(unittest.TestCase):
             )
 
         self.assertEqual(len(transition_calls), 1)
-        self.assertGreater(image.distinct_count, 0)
+        transition_cursor = transition_calls[0]
+        expected_distinct = count_writer_frontier_support(
+            prepared,
+            transition_cursor.support_state,
+        )
+        expected_witness = count_writer_cursor_completions(
+            prepared,
+            transition_cursor,
+        )
+        expected_strings = tuple(
+            iter_writer_frontier_support(prepared, transition_cursor)
+        )
+        self.assertEqual(image.distinct_count, expected_distinct)
+        self.assertEqual(image.witness_count, expected_witness)
+        self.assertEqual(image.strings, expected_strings)
         self.assertEqual(len(image.strings), image.distinct_count)
         self.assertGreaterEqual(image.witness_count, image.distinct_count)
 
@@ -23990,6 +24060,19 @@ class WriterStateKernelTest(unittest.TestCase):
             ),
             readiness_gate=truncated_gate,
         )
+        with patch(
+            "grimace._south_star1.writer_snapshot"
+            "._PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED",
+            True,
+        ):
+            writer_snapshot._WriterCyclicAdmissionDecision(
+                kind=(
+                    writer_snapshot
+                    ._WriterCyclicAdmissionDecisionKind
+                    .READY_PUBLIC
+                ),
+                readiness_gate=ready_gate,
+            )
 
         invalid_cases = (
             (
@@ -23998,6 +24081,12 @@ class WriterStateKernelTest(unittest.TestCase):
                     ._WriterCyclicAdmissionDecisionKind
                     .READY_BUT_PUBLIC_CLOSED
                 ),
+                blocked_gate,
+            ),
+            (
+                writer_snapshot
+                ._WriterCyclicAdmissionDecisionKind
+                .READY_PUBLIC,
                 blocked_gate,
             ),
             (
@@ -24084,6 +24173,95 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertTrue(ready_decision.internally_ready)
         self.assertFalse(ready_decision.public_enabled)
         self.assertFalse(ready_decision.admitted_publicly)
+
+        with patch(
+            "grimace._south_star1.writer_snapshot"
+            "._PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED",
+            True,
+        ):
+            ready_public_decision = (
+                writer_snapshot
+                ._cyclic_writer_admission_decision_from_readiness_gate(
+                    ready_gate,
+                )
+            )
+
+        self.assertIs(
+            ready_public_decision.kind,
+            writer_snapshot._WriterCyclicAdmissionDecisionKind.READY_PUBLIC,
+        )
+        self.assertTrue(ready_public_decision.internally_ready)
+        self.assertTrue(ready_public_decision.public_enabled)
+        self.assertTrue(ready_public_decision.admitted_publicly)
+
+        self.assertEqual(
+            set(writer_snapshot._WriterCyclicAdmissionDecisionKind),
+            {
+                writer_snapshot._WriterCyclicAdmissionDecisionKind.READY_PUBLIC,
+                writer_snapshot
+                ._WriterCyclicAdmissionDecisionKind
+                .READY_BUT_PUBLIC_CLOSED,
+                writer_snapshot
+                ._WriterCyclicAdmissionDecisionKind
+                .BLOCKED_RESIDUAL_CYCLIC_POLICY,
+                writer_snapshot
+                ._WriterCyclicAdmissionDecisionKind
+                .TRUNCATED_READINESS_AUDIT,
+            },
+        )
+
+    def test_cyclic_public_gate_enabled_does_not_admit_blocked_or_truncated_policy(self) -> None:
+        ready_gate, blocked_gate, truncated_gate = (
+            self._test_residual_cyclic_readiness_gate_cases()
+        )
+        with patch(
+            "grimace._south_star1.writer_snapshot"
+            "._PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED",
+            True,
+        ):
+            blocked_decision = (
+                writer_snapshot
+                ._cyclic_writer_admission_decision_from_readiness_gate(
+                    blocked_gate,
+                )
+            )
+            truncated_decision = (
+                writer_snapshot
+                ._cyclic_writer_admission_decision_from_readiness_gate(
+                    truncated_gate,
+                )
+            )
+
+        self.assertIs(
+            blocked_decision.kind,
+            writer_snapshot
+            ._WriterCyclicAdmissionDecisionKind
+            .BLOCKED_RESIDUAL_CYCLIC_POLICY,
+        )
+        self.assertFalse(blocked_decision.internally_ready)
+        self.assertFalse(blocked_decision.public_enabled)
+        self.assertFalse(blocked_decision.admitted_publicly)
+
+        self.assertIs(
+            truncated_decision.kind,
+            writer_snapshot
+            ._WriterCyclicAdmissionDecisionKind
+            .TRUNCATED_READINESS_AUDIT,
+        )
+        self.assertFalse(truncated_decision.internally_ready)
+        self.assertFalse(truncated_decision.public_enabled)
+        self.assertFalse(truncated_decision.admitted_publicly)
+
+        for decision in (blocked_decision, truncated_decision):
+            with self.subTest(decision=decision.kind):
+                with self.assertRaises(SouthStarError) as caught:
+                    writer_snapshot._assert_cyclic_writer_admission_decision(
+                        decision,
+                    )
+                self.assertIs(
+                    caught.exception.kind,
+                    SouthStarErrorKind.UNSUPPORTED_POLICY,
+                )
 
     def test_cyclic_writer_admission_decision_from_snapshot_reports_ready_but_public_closed(self) -> None:
         outcomes = self._test_residual_cyclic_readiness_ready_prefix_outcomes()

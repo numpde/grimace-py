@@ -10,6 +10,7 @@ from enum import Enum
 from .errors import SouthStarError
 from .errors import SouthStarErrorKind
 from .facts import LigandKind
+from .facts import BondOrder
 from .ids import AtomId
 from .ids import BondId
 from .ids import OccurrenceId
@@ -64,7 +65,7 @@ from .writer_state import WriterStateKey
 from .writer_state import WriterStereoStateKey
 
 
-_PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED = False
+_PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -1229,11 +1230,20 @@ class _WriterCyclicAdmissionDecisionKind(Enum):
 
 
 class _WriterPublicCyclicOpeningProfileKind(Enum):
-    SUPPORTED_SINGLE_CYCLIC_COMPONENT = "supported_single_cyclic_component"
+    SUPPORTED_SIMPLE_MONOCYCLE_COMPONENT = (
+        "supported_simple_monocycle_component"
+    )
     BLOCKED_NOT_SINGLE_COMPONENT = "blocked_not_single_component"
     BLOCKED_NOT_CONNECTED_COMPONENT = "blocked_not_connected_component"
     BLOCKED_NOT_CYCLIC_COMPONENT = "blocked_not_cyclic_component"
     BLOCKED_UNSUPPORTED_CYCLIC_RANK = "blocked_unsupported_cyclic_rank"
+    BLOCKED_UNSUPPORTED_BRANCHING = "blocked_unsupported_branching"
+    BLOCKED_UNSUPPORTED_CLOSURE_BOND_SURFACE = (
+        "blocked_unsupported_closure_bond_surface"
+    )
+    BLOCKED_UNSUPPORTED_CYCLIC_STEREO_SURFACE = (
+        "blocked_unsupported_cyclic_stereo_surface"
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -1242,13 +1252,19 @@ class _WriterPublicCyclicOpeningProfileReport:
     component_count: int
     cyclic_component_count: int
     cyclic_ranks: tuple[int, ...]
+    component_atom_count: int
+    component_bond_count: int
+    max_component_degree: int
+    branch_atom_count: int
+    unsupported_bond_count: int
+    unsupported_stereo_surface_count: int
 
     @property
     def supported(self) -> bool:
         return (
             self.kind
             is _WriterPublicCyclicOpeningProfileKind
-            .SUPPORTED_SINGLE_CYCLIC_COMPONENT
+            .SUPPORTED_SIMPLE_MONOCYCLE_COMPONENT
         )
 
 
@@ -2090,9 +2106,55 @@ def _writer_public_cyclic_opening_profile_report(
 ) -> _WriterPublicCyclicOpeningProfileReport:
     surfaces = tuple(prepared.writer_graph_metadata.component_surfaces)
 
+    if len(surfaces) != 1:
+        return _WriterPublicCyclicOpeningProfileReport(
+            kind=(
+                _WriterPublicCyclicOpeningProfileKind
+                .BLOCKED_NOT_SINGLE_COMPONENT
+            ),
+            component_count=len(surfaces),
+            cyclic_component_count=0,
+            cyclic_ranks=(),
+            component_atom_count=0,
+            component_bond_count=0,
+            max_component_degree=0,
+            branch_atom_count=0,
+            unsupported_bond_count=0,
+            unsupported_stereo_surface_count=0,
+        )
+
+    surface = surfaces[0]
+    component_atom_count = len(surface.atoms)
+    component_bond_count = len(surface.bonds)
+    component_bond_order_index = prepared.graph_index.bond_by_id
+    component_atom_degrees = tuple(
+        len(prepared.graph_index.incident_bonds[atom])
+        for atom in surface.atoms
+        if atom in prepared.graph_index.incident_bonds
+    )
+    max_component_degree = max(component_atom_degrees, default=0)
+    branch_atom_count = sum(
+        1 for degree in component_atom_degrees if degree > 2
+    )
+
+    unsupported_bond_count = sum(
+        1
+        for bond_id in surface.bonds
+        if (
+            bond := component_bond_order_index.get(bond_id)
+        ) is not None
+        and bond.order is not BondOrder.SINGLE
+    )
+
+    unsupported_stereo_surface_count = sum(
+        1
+        for template in prepared.directional_templates
+        if template.center_bond in surface.bonds
+    )
+
     cyclic_surfaces = tuple(
         surface
-        for surface in surfaces
+        for surface in (surface,)
         if (
             surface.connected
             and not surface.tree
@@ -2105,12 +2167,7 @@ def _writer_public_cyclic_opening_profile_report(
 
     cyclic_ranks = tuple(int(surface.cyclic_rank) for surface in cyclic_surfaces)
 
-    if len(surfaces) != 1:
-        kind = (
-            _WriterPublicCyclicOpeningProfileKind
-            .BLOCKED_NOT_SINGLE_COMPONENT
-        )
-    elif not surfaces[0].connected:
+    if not surface.connected:
         kind = (
             _WriterPublicCyclicOpeningProfileKind
             .BLOCKED_NOT_CONNECTED_COMPONENT
@@ -2125,17 +2182,50 @@ def _writer_public_cyclic_opening_profile_report(
             _WriterPublicCyclicOpeningProfileKind
             .BLOCKED_UNSUPPORTED_CYCLIC_RANK
         )
+    elif branch_atom_count:
+        kind = (
+            _WriterPublicCyclicOpeningProfileKind
+            .BLOCKED_UNSUPPORTED_BRANCHING
+        )
+    elif unsupported_bond_count:
+        kind = (
+            _WriterPublicCyclicOpeningProfileKind
+            .BLOCKED_UNSUPPORTED_CLOSURE_BOND_SURFACE
+        )
+    elif unsupported_stereo_surface_count:
+        kind = (
+            _WriterPublicCyclicOpeningProfileKind
+            .BLOCKED_UNSUPPORTED_CYCLIC_STEREO_SURFACE
+        )
     else:
         kind = (
             _WriterPublicCyclicOpeningProfileKind
-            .SUPPORTED_SINGLE_CYCLIC_COMPONENT
+            .SUPPORTED_SIMPLE_MONOCYCLE_COMPONENT
         )
+
+    if kind is _WriterPublicCyclicOpeningProfileKind.SUPPORTED_SIMPLE_MONOCYCLE_COMPONENT:
+        if component_atom_count != component_bond_count:
+            kind = (
+                _WriterPublicCyclicOpeningProfileKind
+                .BLOCKED_UNSUPPORTED_CYCLIC_RANK
+            )
+        elif max_component_degree != 2:
+            kind = (
+                _WriterPublicCyclicOpeningProfileKind
+                .BLOCKED_UNSUPPORTED_BRANCHING
+            )
 
     return _WriterPublicCyclicOpeningProfileReport(
         kind=kind,
         component_count=len(surfaces),
         cyclic_component_count=len(cyclic_surfaces),
         cyclic_ranks=cyclic_ranks,
+        component_atom_count=component_atom_count,
+        component_bond_count=component_bond_count,
+        max_component_degree=max_component_degree,
+        branch_atom_count=branch_atom_count,
+        unsupported_bond_count=unsupported_bond_count,
+        unsupported_stereo_surface_count=unsupported_stereo_surface_count,
     )
 
 

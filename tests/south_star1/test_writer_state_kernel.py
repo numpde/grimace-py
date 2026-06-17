@@ -71,6 +71,7 @@ from tests.south_star1.helpers import atom
 from tests.south_star1.helpers import bond
 from tests.south_star1.helpers import cco_facts
 from tests.south_star1.helpers import cyclopropane_facts
+from tests.south_star1.helpers import methylcyclopropane_facts
 from tests.south_star1.helpers import directional_facts
 from tests.south_star1.helpers import single_bond
 from tests.south_star1.helpers import tetrahedral_facts
@@ -7171,6 +7172,11 @@ class WriterStateKernelTest(unittest.TestCase):
             component_count=1,
             cyclic_component_count=1,
             cyclic_ranks=(2,),
+            ring_core_atom_count=0,
+            ring_core_bond_count=0,
+            ring_core_max_degree=0,
+            pendant_atom_count=3,
+            pendant_bond_count=3,
             component_atom_count=3,
             component_bond_count=3,
             max_component_degree=2,
@@ -7414,6 +7420,21 @@ class WriterStateKernelTest(unittest.TestCase):
             )
 
         self.assertIs(caught.exception.kind, SouthStarErrorKind.INVALID_FACTS)
+
+    def test_public_snapshot_advance_simple_monocycle_with_attachment_rejects_non_frontier_token_as_invalid_facts(
+        self,
+    ) -> None:
+        prepared = _prepare(methylcyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+
+        with self.assertRaises(SouthStarError) as caught:
+            writer_snapshot.capture_initial_writer_frontier_snapshot(
+                prepared=prepared,
+                runtime_options=options,
+            )
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+        self.assertIn("profile", str(caught.exception).lower())
 
     def test_public_snapshot_advance_simple_monocycle_close_token_reaches_terminal(
         self,
@@ -7891,6 +7912,21 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertGreater(root_image.distinct_count, 0)
         self.assertEqual(len(root_image.strings), root_image.distinct_count)
+
+    def test_public_online_loop_support_contract_closes_for_simple_monocycle_with_attachment_state_space(
+        self,
+    ) -> None:
+        prepared = _prepare(methylcyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+
+        with self.assertRaises(SouthStarError) as caught:
+            writer_snapshot.capture_initial_writer_frontier_snapshot(
+                prepared=prepared,
+                runtime_options=options,
+            )
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+        self.assertIn("profile", str(caught.exception).lower())
 
     def test_cyclic_admission_from_cursor_uses_private_snapshot_capture(self) -> None:
         prepared = _prepare(cyclopropane_facts())
@@ -14410,6 +14446,37 @@ class WriterStateKernelTest(unittest.TestCase):
         )
         self.assertGreater(image.distinct_count, 0)
 
+    def test_public_writer_shaped_simple_monocycle_with_attachment_support_succeeds(self) -> None:
+        prepared = _prepare(methylcyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+
+        with patch(
+            "grimace._south_star1.writer_support.count_writer_frontier_support",
+            side_effect=AssertionError("attachment profile reached support"),
+        ), patch(
+            (
+                "grimace._south_star1.writer_support"
+                ".count_writer_cursor_completions"
+            ),
+            side_effect=AssertionError(
+                "attachment profile reached completion count",
+            ),
+        ), patch(
+            "grimace._south_star1.writer_support.iter_writer_frontier_support",
+            side_effect=AssertionError("attachment profile reached stream"),
+        ):
+            with self.assertRaises(SouthStarError) as caught:
+                enumerate_prepared_stereo_support(
+                    prepared=prepared,
+                    runtime_options=options,
+                )
+
+        self.assertIs(
+            caught.exception.kind,
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+        )
+        self.assertIn("profile", str(caught.exception).lower())
+
     def test_public_cyclic_support_profile_blocked_stops_before_count_stream(
         self,
     ) -> None:
@@ -14424,6 +14491,11 @@ class WriterStateKernelTest(unittest.TestCase):
             component_count=2,
             cyclic_component_count=1,
             cyclic_ranks=(1,),
+            ring_core_atom_count=0,
+            ring_core_bond_count=0,
+            ring_core_max_degree=0,
+            pendant_atom_count=0,
+            pendant_bond_count=0,
             component_atom_count=1,
             component_bond_count=0,
             max_component_degree=1,
@@ -14618,6 +14690,11 @@ class WriterStateKernelTest(unittest.TestCase):
             component_count=1,
             cyclic_component_count=1,
             cyclic_ranks=(1,),
+            ring_core_atom_count=3,
+            ring_core_bond_count=3,
+            ring_core_max_degree=2,
+            pendant_atom_count=0,
+            pendant_bond_count=0,
             component_atom_count=3,
             component_bond_count=3,
             max_component_degree=2,
@@ -14642,6 +14719,11 @@ class WriterStateKernelTest(unittest.TestCase):
             component_count=blocked_profile.component_count,
             cyclic_component_count=blocked_profile.cyclic_component_count,
             cyclic_ranks=blocked_profile.cyclic_ranks,
+            ring_core_atom_count=blocked_profile.ring_core_atom_count,
+            ring_core_bond_count=blocked_profile.ring_core_bond_count,
+            ring_core_max_degree=blocked_profile.ring_core_max_degree,
+            pendant_atom_count=blocked_profile.pendant_atom_count,
+            pendant_bond_count=blocked_profile.pendant_bond_count,
             component_atom_count=blocked_profile.component_atom_count,
             component_bond_count=blocked_profile.component_bond_count,
             max_component_degree=blocked_profile.max_component_degree,
@@ -14686,6 +14768,41 @@ class WriterStateKernelTest(unittest.TestCase):
             caught.exception.kind,
             SouthStarErrorKind.UNSUPPORTED_POLICY,
         )
+
+    def test_public_admission_accepts_simple_monocycle_with_acyclic_attachment(self) -> None:
+        prepared = _prepare(methylcyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+        decision = (
+            writer_snapshot
+            ._cyclic_writer_admission_decision_from_cursor(
+                prepared=prepared,
+                runtime_options=options,
+                cursor=cursor,
+            )
+        )
+
+        self.assertIs(
+            decision.kind,
+            writer_snapshot._WriterCyclicAdmissionDecisionKind
+            .BLOCKED_PUBLIC_CYCLIC_PROFILE,
+        )
+        self.assertIsNotNone(decision.public_profile)
+        assert decision.public_profile is not None
+        self.assertFalse(decision.public_profile.supported)
+        self.assertTrue(decision.internally_ready)
+        self.assertFalse(decision.public_enabled)
+        self.assertFalse(decision.admitted_publicly)
+        self.assertIs(
+            decision.public_profile.kind,
+            writer_snapshot._WriterPublicCyclicOpeningProfileKind
+            .BLOCKED_UNSUPPORTED_BRANCHING,
+        )
+
+        with self.assertRaises(SouthStarError) as caught:
+            writer_snapshot._assert_cyclic_writer_admission_decision(decision)
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
         self.assertIn("profile", str(caught.exception).lower())
 
     def test_public_cyclic_opening_profile_blocks_unsupported_closure_bond_surface(self) -> None:
@@ -14706,6 +14823,11 @@ class WriterStateKernelTest(unittest.TestCase):
             component_count=blocked_profile.component_count,
             cyclic_component_count=blocked_profile.cyclic_component_count,
             cyclic_ranks=blocked_profile.cyclic_ranks,
+            ring_core_atom_count=blocked_profile.ring_core_atom_count,
+            ring_core_bond_count=blocked_profile.ring_core_bond_count,
+            ring_core_max_degree=blocked_profile.ring_core_max_degree,
+            pendant_atom_count=blocked_profile.pendant_atom_count,
+            pendant_bond_count=blocked_profile.pendant_bond_count,
             component_atom_count=blocked_profile.component_atom_count,
             component_bond_count=blocked_profile.component_bond_count,
             max_component_degree=blocked_profile.max_component_degree,
@@ -14763,6 +14885,11 @@ class WriterStateKernelTest(unittest.TestCase):
             component_count=blocked_profile.component_count,
             cyclic_component_count=blocked_profile.cyclic_component_count,
             cyclic_ranks=blocked_profile.cyclic_ranks,
+            ring_core_atom_count=blocked_profile.ring_core_atom_count,
+            ring_core_bond_count=blocked_profile.ring_core_bond_count,
+            ring_core_max_degree=blocked_profile.ring_core_max_degree,
+            pendant_atom_count=blocked_profile.pendant_atom_count,
+            pendant_bond_count=blocked_profile.pendant_bond_count,
             component_atom_count=blocked_profile.component_atom_count,
             component_bond_count=blocked_profile.component_bond_count,
             max_component_degree=blocked_profile.max_component_degree,
@@ -14822,6 +14949,11 @@ class WriterStateKernelTest(unittest.TestCase):
             component_count=1,
             cyclic_component_count=1,
             cyclic_ranks=(2,),
+            ring_core_atom_count=0,
+            ring_core_bond_count=0,
+            ring_core_max_degree=0,
+            pendant_atom_count=3,
+            pendant_bond_count=3,
             component_atom_count=3,
             component_bond_count=3,
             max_component_degree=2,
@@ -14881,11 +15013,45 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(report.component_count, 1)
         self.assertEqual(report.cyclic_component_count, 1)
         self.assertEqual(report.cyclic_ranks, (1,))
+        self.assertEqual(report.ring_core_atom_count, 3)
+        self.assertEqual(report.ring_core_bond_count, 3)
+        self.assertEqual(report.ring_core_max_degree, 2)
+        self.assertEqual(report.pendant_atom_count, 0)
+        self.assertEqual(report.pendant_bond_count, 0)
         self.assertEqual(report.component_atom_count, report.component_bond_count)
         self.assertEqual(report.max_component_degree, 2)
         self.assertEqual(report.branch_atom_count, 0)
         self.assertEqual(report.unsupported_bond_count, 0)
         self.assertEqual(report.unsupported_stereo_surface_count, 0)
+
+    def test_public_cyclic_opening_profile_accepts_simple_monocycle_with_acyclic_attachment(
+        self,
+    ) -> None:
+        prepared = _prepare(methylcyclopropane_facts())
+        report = writer_snapshot._writer_public_cyclic_opening_profile_report(
+            prepared=prepared,
+        )
+
+        self.assertIs(
+            report.kind,
+            writer_snapshot._WriterPublicCyclicOpeningProfileKind
+            .BLOCKED_UNSUPPORTED_BRANCHING,
+        )
+        self.assertFalse(report.supported)
+        self.assertEqual(report.component_count, 1)
+        self.assertEqual(report.cyclic_component_count, 1)
+        self.assertEqual(report.cyclic_ranks, (1,))
+        self.assertEqual(report.ring_core_atom_count, 3)
+        self.assertEqual(report.ring_core_bond_count, 3)
+        self.assertEqual(report.ring_core_max_degree, 2)
+        self.assertEqual(report.pendant_atom_count, 1)
+        self.assertEqual(report.pendant_bond_count, 1)
+        self.assertEqual(report.component_atom_count, report.component_bond_count)
+        self.assertEqual(report.max_component_degree, 3)
+        self.assertEqual(report.branch_atom_count, 1)
+        self.assertEqual(report.unsupported_bond_count, 0)
+        self.assertEqual(report.unsupported_stereo_surface_count, 0)
+        self.assertEqual(report.cyclic_component_count, 1)
 
     def test_public_writer_shaped_acyclic_support_uses_tree_cursor_not_transition_cursor(
         self,
@@ -25906,6 +26072,11 @@ class WriterStateKernelTest(unittest.TestCase):
                 component_count=1,
                 cyclic_component_count=1,
                 cyclic_ranks=(2,),
+                ring_core_atom_count=0,
+                ring_core_bond_count=0,
+                ring_core_max_degree=0,
+                pendant_atom_count=0,
+                pendant_bond_count=0,
                 component_atom_count=3,
                 component_bond_count=3,
                 max_component_degree=2,

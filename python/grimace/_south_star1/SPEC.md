@@ -324,10 +324,11 @@ can be classified structurally. Raw writer transitions can now enter
 single-boundary cyclic attachments and can open and pair closure endpoints for
 internally constructed cyclic states when successor graph obligations remain
 actionable. Public cyclic WRITER_SHAPED is open only for the minimal
-simple-monocycle profile: a single connected rank-one cyclic component with
-no branches, no unsupported closure-bond surface, and no unsupported cyclic
-stereo surface. All other cyclic prepared graphs still fail closed through
-the same profile/readiness gate. `initial_writer_transition_frontier_cursor(...)`
+simple-monocycle profile: a single connected rank-one cyclic component whose
+cycle core is a simple cycle with no acyclic attachments, and no
+unsupported closure-bond surface or unsupported cyclic stereo surface. All other
+cyclic prepared graphs (including fused, bridged, and multi-cycle cases) still
+fail closed through the same profile/readiness gate. `initial_writer_transition_frontier_cursor(...)`
 is an internal test harness for running those raw transition-surface states
 through the same weighted frontier, count, streaming, and snapshot machinery
 without

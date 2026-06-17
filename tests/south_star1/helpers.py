@@ -64,6 +64,30 @@ def cyclopropane_facts() -> MoleculeFacts:
     )
 
 
+def methylcyclopropane_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=(
+            atom(0, "C"),
+            atom(1, "C"),
+            atom(2, "C"),
+            atom(3, "C"),
+        ),
+        bonds=(
+            single_bond(0, 0, 1),
+            single_bond(1, 1, 2),
+            single_bond(2, 2, 0),
+            single_bond(3, 0, 3),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0), AtomId(1), AtomId(2), AtomId(3)),
+                bonds=(BondId(0), BondId(1), BondId(2), BondId(3)),
+            ),
+        ),
+    )
+
+
 def tetrahedral_facts() -> MoleculeFacts:
     site_id = SiteId(0)
     occurrence_ids = tuple(OccurrenceId(i) for i in range(4))

@@ -1233,6 +1233,9 @@ class _WriterPublicCyclicOpeningProfileKind(Enum):
     SUPPORTED_SIMPLE_MONOCYCLE_COMPONENT = (
         "supported_simple_monocycle_component"
     )
+    SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS = (
+        "supported_simple_monocycle_with_acyclic_attachments"
+    )
     BLOCKED_NOT_SINGLE_COMPONENT = "blocked_not_single_component"
     BLOCKED_NOT_CONNECTED_COMPONENT = "blocked_not_connected_component"
     BLOCKED_NOT_CYCLIC_COMPONENT = "blocked_not_cyclic_component"
@@ -1252,6 +1255,11 @@ class _WriterPublicCyclicOpeningProfileReport:
     component_count: int
     cyclic_component_count: int
     cyclic_ranks: tuple[int, ...]
+    ring_core_atom_count: int
+    ring_core_bond_count: int
+    ring_core_max_degree: int
+    pendant_atom_count: int
+    pendant_bond_count: int
     component_atom_count: int
     component_bond_count: int
     max_component_degree: int
@@ -1261,11 +1269,10 @@ class _WriterPublicCyclicOpeningProfileReport:
 
     @property
     def supported(self) -> bool:
-        return (
-            self.kind
-            is _WriterPublicCyclicOpeningProfileKind
-            .SUPPORTED_SIMPLE_MONOCYCLE_COMPONENT
-        )
+        return self.kind in {
+            _WriterPublicCyclicOpeningProfileKind
+            .SUPPORTED_SIMPLE_MONOCYCLE_COMPONENT,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -2115,6 +2122,11 @@ def _writer_public_cyclic_opening_profile_report(
             component_count=len(surfaces),
             cyclic_component_count=0,
             cyclic_ranks=(),
+            ring_core_atom_count=0,
+            ring_core_bond_count=0,
+            ring_core_max_degree=0,
+            pendant_atom_count=0,
+            pendant_bond_count=0,
             component_atom_count=0,
             component_bond_count=0,
             max_component_degree=0,
@@ -2124,24 +2136,57 @@ def _writer_public_cyclic_opening_profile_report(
         )
 
     surface = surfaces[0]
-    component_atom_count = len(surface.atoms)
-    component_bond_count = len(surface.bonds)
-    component_bond_order_index = prepared.graph_index.bond_by_id
+    component_atom_ids = tuple(surface.atoms)
+    component_bond_ids = tuple(surface.bonds)
+    component_atom_count = len(component_atom_ids)
+    component_bond_count = len(component_bond_ids)
+    component_bond_index = prepared.graph_index.bond_by_id
+
+    adjacency: dict[AtomId, set[AtomId]] = {
+        atom: set() for atom in component_atom_ids
+    }
+
+    for bond_id in component_bond_ids:
+        bond = component_bond_index.get(bond_id)
+        if bond is None:
+            continue
+
+        left = bond.a
+        right = bond.b
+        adjacency.setdefault(left, set()).add(right)
+        adjacency.setdefault(right, set()).add(left)
+
     component_atom_degrees = tuple(
-        len(prepared.graph_index.incident_bonds[atom])
-        for atom in surface.atoms
-        if atom in prepared.graph_index.incident_bonds
+        len(adjacency[atom]) for atom in component_atom_ids
     )
     max_component_degree = max(component_atom_degrees, default=0)
-    branch_atom_count = sum(
-        1 for degree in component_atom_degrees if degree > 2
-    )
+    component_core_atoms = set(component_atom_ids)
+    prune = [
+        atom
+        for atom in component_atom_ids
+        if len(adjacency[atom]) <= 1
+    ]
+
+    while prune:
+        atom = prune.pop()
+        if atom not in component_core_atoms:
+            continue
+
+        component_core_atoms.remove(atom)
+        neighbors = tuple(adjacency.get(atom, ()))
+        for neighbor in neighbors:
+            if neighbor not in component_core_atoms:
+                continue
+
+            adjacency[neighbor].discard(atom)
+            if neighbor in component_core_atoms and len(adjacency[neighbor]) <= 1:
+                prune.append(neighbor)
 
     unsupported_bond_count = sum(
         1
-        for bond_id in surface.bonds
+        for bond_id in component_bond_ids
         if (
-            bond := component_bond_order_index.get(bond_id)
+            bond := component_bond_index.get(bond_id)
         ) is not None
         and bond.order is not BondOrder.SINGLE
     )
@@ -2151,6 +2196,40 @@ def _writer_public_cyclic_opening_profile_report(
         for template in prepared.directional_templates
         if template.center_bond in surface.bonds
     )
+
+    ring_core_atom_count = len(component_core_atoms)
+    ring_core_atom_set = set(component_core_atoms)
+    ring_core_bond_ids = tuple(
+        bond_id
+        for bond_id in component_bond_ids
+        if (
+            (bond := component_bond_index.get(bond_id))
+            is not None
+            and bond.a in ring_core_atom_set
+            and bond.b in ring_core_atom_set
+        )
+    )
+    ring_core_bond_count = len(ring_core_bond_ids)
+    ring_core_max_degree = max(
+        (
+            len(adjacency[atom])
+            for atom in component_core_atoms
+            if atom in adjacency
+        ),
+        default=0,
+    )
+    ring_core_atom_count_is_nontrivial = ring_core_atom_count >= 3
+    ring_core_is_simple_cycle = (
+        ring_core_atom_count_is_nontrivial
+        and ring_core_bond_count == ring_core_atom_count
+        and ring_core_max_degree == 2
+    )
+
+    branch_atom_count = sum(
+        1 for degree in component_atom_degrees if degree > 2
+    )
+    pendant_atom_count = component_atom_count - ring_core_atom_count
+    pendant_bond_count = component_bond_count - ring_core_bond_count
 
     cyclic_surfaces = tuple(
         surface
@@ -2182,11 +2261,6 @@ def _writer_public_cyclic_opening_profile_report(
             _WriterPublicCyclicOpeningProfileKind
             .BLOCKED_UNSUPPORTED_CYCLIC_RANK
         )
-    elif branch_atom_count:
-        kind = (
-            _WriterPublicCyclicOpeningProfileKind
-            .BLOCKED_UNSUPPORTED_BRANCHING
-        )
     elif unsupported_bond_count:
         kind = (
             _WriterPublicCyclicOpeningProfileKind
@@ -2197,29 +2271,32 @@ def _writer_public_cyclic_opening_profile_report(
             _WriterPublicCyclicOpeningProfileKind
             .BLOCKED_UNSUPPORTED_CYCLIC_STEREO_SURFACE
         )
-    else:
+    elif not ring_core_is_simple_cycle:
+        kind = (
+            _WriterPublicCyclicOpeningProfileKind
+            .BLOCKED_UNSUPPORTED_BRANCHING
+        )
+    elif branch_atom_count == 0 and pendant_atom_count == 0:
         kind = (
             _WriterPublicCyclicOpeningProfileKind
             .SUPPORTED_SIMPLE_MONOCYCLE_COMPONENT
         )
-
-    if kind is _WriterPublicCyclicOpeningProfileKind.SUPPORTED_SIMPLE_MONOCYCLE_COMPONENT:
-        if component_atom_count != component_bond_count:
-            kind = (
-                _WriterPublicCyclicOpeningProfileKind
-                .BLOCKED_UNSUPPORTED_CYCLIC_RANK
-            )
-        elif max_component_degree != 2:
-            kind = (
-                _WriterPublicCyclicOpeningProfileKind
-                .BLOCKED_UNSUPPORTED_BRANCHING
-            )
+    else:
+        kind = (
+            _WriterPublicCyclicOpeningProfileKind
+            .BLOCKED_UNSUPPORTED_BRANCHING
+        )
 
     return _WriterPublicCyclicOpeningProfileReport(
         kind=kind,
         component_count=len(surfaces),
         cyclic_component_count=len(cyclic_surfaces),
         cyclic_ranks=cyclic_ranks,
+        ring_core_atom_count=ring_core_atom_count,
+        ring_core_bond_count=ring_core_bond_count,
+        ring_core_max_degree=ring_core_max_degree,
+        pendant_atom_count=pendant_atom_count,
+        pendant_bond_count=pendant_bond_count,
         component_atom_count=component_atom_count,
         component_bond_count=component_bond_count,
         max_component_degree=max_component_degree,
@@ -2285,6 +2362,19 @@ def _cyclic_writer_admission_decision_from_readiness_gate(
     )
 
 
+def _cyclic_writer_admission_ready_gate_from_snapshot(
+    snapshot: WriterSearchSnapshot,
+) -> _WriterResidualCyclicReadinessGate:
+    return _WriterResidualCyclicReadinessGate(
+        kind=_WriterResidualCyclicReadinessGateKind.READY,
+        snapshot=snapshot,
+        audit=_WriterResidualCyclicReadinessAudit(
+            kind=_WriterResidualCyclicReadinessAuditKind.READY,
+            visited_prefixes=((),),
+        ),
+    )
+
+
 def _cyclic_writer_admission_decision_from_snapshot(
     snapshot: WriterSearchSnapshot,
     *,
@@ -2292,6 +2382,20 @@ def _cyclic_writer_admission_decision_from_snapshot(
     max_depth: int | None = None,
     max_prefixes: int | None = None,
 ) -> _WriterCyclicAdmissionDecision:
+    if _PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED:
+        profile = _writer_public_cyclic_opening_profile_report(
+            prepared=prepared,
+        )
+        if not profile.supported:
+            return _WriterCyclicAdmissionDecision(
+                kind=(_WriterCyclicAdmissionDecisionKind
+                      .BLOCKED_PUBLIC_CYCLIC_PROFILE),
+                readiness_gate=_cyclic_writer_admission_ready_gate_from_snapshot(
+                    snapshot,
+                ),
+                public_profile=profile,
+            )
+
     gate = _residual_cyclic_readiness_gate_from_snapshot(
         snapshot,
         prepared=prepared,
@@ -2313,6 +2417,26 @@ def _cyclic_writer_admission_decision_from_cursor(
     max_depth: int | None = None,
     max_prefixes: int | None = None,
 ) -> _WriterCyclicAdmissionDecision:
+    if _PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED:
+        profile = _writer_public_cyclic_opening_profile_report(
+            prepared=prepared,
+        )
+        if not profile.supported:
+            snapshot = _capture_writer_frontier_snapshot_unchecked(
+                prepared=prepared,
+                runtime_options=runtime_options,
+                cursor=cursor,
+            )
+
+            return _WriterCyclicAdmissionDecision(
+                kind=(_WriterCyclicAdmissionDecisionKind
+                      .BLOCKED_PUBLIC_CYCLIC_PROFILE),
+                readiness_gate=_cyclic_writer_admission_ready_gate_from_snapshot(
+                    snapshot,
+                ),
+                public_profile=profile,
+            )
+
     gate = _residual_cyclic_readiness_gate_from_cursor(
         prepared=prepared,
         runtime_options=runtime_options,

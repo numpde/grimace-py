@@ -7,6 +7,7 @@ import contextlib
 import inspect
 import unittest
 from collections import Counter
+from dataclasses import dataclass
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -74,6 +75,7 @@ from tests.south_star1.helpers import cyclopropane_facts
 from tests.south_star1.helpers import dimethylcyclopropane_facts
 from tests.south_star1.helpers import ethylcyclopropane_facts
 from tests.south_star1.helpers import methylcyclopropane_facts
+from tests.south_star1.helpers import simple_monocycle_with_pendant_forest_facts
 from tests.south_star1.helpers import directional_facts
 from tests.south_star1.helpers import single_bond
 from tests.south_star1.helpers import tetrahedral_facts
@@ -98,6 +100,131 @@ _WRITER_REPLAY_PROBE_TOKENS = (
     "[C]",
     "Cl",
 )
+
+
+@dataclass(frozen=True)
+class _CyclicProfileMatrixCase:
+    name: str
+    facts: MoleculeFacts
+    expected_kind: writer_snapshot._WriterPublicCyclicOpeningProfileKind
+    expected_supported: bool
+    expected_ring_core_atom_count: int
+    expected_pendant_atom_count: int
+    expected_pendant_component_atom_counts: tuple[int, ...]
+    expected_pendant_component_boundary_counts: tuple[int, ...]
+    max_prefixes: int
+
+
+def _cyclic_profile_matrix_cases() -> tuple[_CyclicProfileMatrixCase, ...]:
+    # Future public cyclic widening should add or flip rows in this matrix.
+    # A supported row must pass the public recursive online-loop contract.
+    # A blocked row must fail before public count/stream materialization.
+    return (
+        _CyclicProfileMatrixCase(
+            name="ring3 bare",
+            facts=simple_monocycle_with_pendant_forest_facts(
+                ring_size=3,
+                pendant_paths=(),
+            ),
+            expected_kind=writer_snapshot._WriterPublicCyclicOpeningProfileKind
+            .SUPPORTED_SIMPLE_MONOCYCLE_COMPONENT,
+            expected_supported=True,
+            expected_ring_core_atom_count=3,
+            expected_pendant_atom_count=0,
+            expected_pendant_component_atom_counts=(),
+            expected_pendant_component_boundary_counts=(),
+            max_prefixes=256,
+        ),
+        _CyclicProfileMatrixCase(
+            name="ring3 + one pendant atom",
+            facts=simple_monocycle_with_pendant_forest_facts(
+                ring_size=3,
+                pendant_paths=(1,),
+            ),
+            expected_kind=writer_snapshot._WriterPublicCyclicOpeningProfileKind
+            .SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS,
+            expected_supported=True,
+            expected_ring_core_atom_count=3,
+            expected_pendant_atom_count=1,
+            expected_pendant_component_atom_counts=(1,),
+            expected_pendant_component_boundary_counts=(1,),
+            max_prefixes=256,
+        ),
+        _CyclicProfileMatrixCase(
+            name="ring3 + one pendant chain depth 2",
+            facts=simple_monocycle_with_pendant_forest_facts(
+                ring_size=3,
+                pendant_paths=(2,),
+            ),
+            expected_kind=writer_snapshot._WriterPublicCyclicOpeningProfileKind
+            .SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS,
+            expected_supported=True,
+            expected_ring_core_atom_count=3,
+            expected_pendant_atom_count=2,
+            expected_pendant_component_atom_counts=(2,),
+            expected_pendant_component_boundary_counts=(1,),
+            max_prefixes=1024,
+        ),
+        _CyclicProfileMatrixCase(
+            name="ring3 + two pendant atoms",
+            facts=simple_monocycle_with_pendant_forest_facts(
+                ring_size=3,
+                pendant_paths=(1, 1),
+            ),
+            expected_kind=writer_snapshot._WriterPublicCyclicOpeningProfileKind
+            .SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS,
+            expected_supported=True,
+            expected_ring_core_atom_count=3,
+            expected_pendant_atom_count=2,
+            expected_pendant_component_atom_counts=(1, 1),
+            expected_pendant_component_boundary_counts=(1, 1),
+            max_prefixes=1024,
+        ),
+        _CyclicProfileMatrixCase(
+            name="ring3 + one pendant chain depth 3",
+            facts=simple_monocycle_with_pendant_forest_facts(
+                ring_size=3,
+                pendant_paths=(3,),
+            ),
+            expected_kind=writer_snapshot._WriterPublicCyclicOpeningProfileKind
+            .BLOCKED_UNSUPPORTED_BRANCHING,
+            expected_supported=False,
+            expected_ring_core_atom_count=3,
+            expected_pendant_atom_count=3,
+            expected_pendant_component_atom_counts=(3,),
+            expected_pendant_component_boundary_counts=(1,),
+            max_prefixes=1024,
+        ),
+        _CyclicProfileMatrixCase(
+            name="ring3 + three pendant atoms",
+            facts=simple_monocycle_with_pendant_forest_facts(
+                ring_size=3,
+                pendant_paths=(1, 1, 1),
+            ),
+            expected_kind=writer_snapshot._WriterPublicCyclicOpeningProfileKind
+            .BLOCKED_UNSUPPORTED_BRANCHING,
+            expected_supported=False,
+            expected_ring_core_atom_count=3,
+            expected_pendant_atom_count=3,
+            expected_pendant_component_atom_counts=(1, 1, 1),
+            expected_pendant_component_boundary_counts=(1, 1, 1),
+            max_prefixes=1024,
+        ),
+        _CyclicProfileMatrixCase(
+            name="ring4 bare",
+            facts=simple_monocycle_with_pendant_forest_facts(
+                ring_size=4,
+            ),
+            expected_kind=writer_snapshot._WriterPublicCyclicOpeningProfileKind
+            .SUPPORTED_SIMPLE_MONOCYCLE_COMPONENT,
+            expected_supported=True,
+            expected_ring_core_atom_count=4,
+            expected_pendant_atom_count=0,
+            expected_pendant_component_atom_counts=(),
+            expected_pendant_component_boundary_counts=(),
+            max_prefixes=256,
+        ),
+    )
 
 
 def _assert_checked_prefix_frontier_replay_contract(
@@ -15183,323 +15310,175 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
         self.assertIn("public support is closed", str(caught.exception))
 
-    def _public_cyclic_profile_blocked_by(self, *, kind) -> writer_snapshot._WriterPublicCyclicOpeningProfileReport:
-        return writer_snapshot._WriterPublicCyclicOpeningProfileReport(
-            kind=kind,
-            component_count=1,
-            cyclic_component_count=1,
-            cyclic_ranks=(1,),
-            ring_core_atom_count=3,
-            ring_core_bond_count=3,
-            ring_core_max_degree=2,
-            pendant_atom_count=0,
-            pendant_bond_count=0,
-            component_atom_count=3,
-            component_bond_count=3,
-            max_component_degree=2,
-            branch_atom_count=0,
-            unsupported_bond_count=0,
-            unsupported_stereo_surface_count=0,
-        )
+    def test_public_cyclic_profile_matrix_classifies_structural_cases(self) -> None:
+        for case in _cyclic_profile_matrix_cases():
+            with self.subTest(name=case.name):
+                prepared = _prepare(case.facts)
 
-    def test_public_cyclic_opening_profile_blocks_unsupported_branching(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
-        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
-        blocked_profile = self._public_cyclic_profile_blocked_by(
-            kind=(
-                writer_snapshot
-                ._WriterPublicCyclicOpeningProfileKind
-                .BLOCKED_UNSUPPORTED_BRANCHING
-            )
-        )
-        blocked_profile = writer_snapshot._WriterPublicCyclicOpeningProfileReport(
-            kind=blocked_profile.kind,
-            component_count=blocked_profile.component_count,
-            cyclic_component_count=blocked_profile.cyclic_component_count,
-            cyclic_ranks=blocked_profile.cyclic_ranks,
-            ring_core_atom_count=blocked_profile.ring_core_atom_count,
-            ring_core_bond_count=blocked_profile.ring_core_bond_count,
-            ring_core_max_degree=blocked_profile.ring_core_max_degree,
-            pendant_atom_count=blocked_profile.pendant_atom_count,
-            pendant_bond_count=blocked_profile.pendant_bond_count,
-            component_atom_count=blocked_profile.component_atom_count,
-            component_bond_count=blocked_profile.component_bond_count,
-            max_component_degree=blocked_profile.max_component_degree,
-            branch_atom_count=1,
-            unsupported_bond_count=0,
-            unsupported_stereo_surface_count=0,
-        )
-
-        self.assertIs(blocked_profile.kind, writer_snapshot._WriterPublicCyclicOpeningProfileKind.BLOCKED_UNSUPPORTED_BRANCHING)
-        self.assertFalse(blocked_profile.supported)
-        self.assertEqual(blocked_profile.cyclic_ranks, (1,))
-        self.assertGreater(blocked_profile.branch_atom_count, 0)
-
-        with patch(
-            (
-                "grimace._south_star1.writer_snapshot"
-                "._writer_public_cyclic_opening_profile_report"
-            ),
-            return_value=blocked_profile,
-        ):
-            decision = (
-                writer_snapshot
-                ._cyclic_writer_admission_decision_from_cursor(
+                report = writer_snapshot._writer_public_cyclic_opening_profile_report(
                     prepared=prepared,
-                    runtime_options=options,
-                    cursor=cursor,
                 )
-            )
 
-        self.assertIs(
-            decision.kind,
-            writer_snapshot._WriterCyclicAdmissionDecisionKind
-            .BLOCKED_PUBLIC_CYCLIC_PROFILE,
-        )
-        self.assertFalse(decision.public_enabled)
-        self.assertFalse(decision.admitted_publicly)
+                self.assertIs(report.kind, case.expected_kind)
+                self.assertEqual(report.supported, case.expected_supported)
+                self.assertEqual(
+                    report.ring_core_atom_count,
+                    case.expected_ring_core_atom_count,
+                )
+                self.assertEqual(
+                    report.ring_core_bond_count,
+                    case.expected_ring_core_atom_count,
+                )
+                self.assertEqual(report.ring_core_max_degree, 2)
+                self.assertEqual(report.pendant_atom_count, case.expected_pendant_atom_count)
+                self.assertEqual(
+                    report.pendant_component_atom_counts,
+                    case.expected_pendant_component_atom_counts,
+                )
+                self.assertEqual(
+                    report.pendant_component_boundary_counts,
+                    case.expected_pendant_component_boundary_counts,
+                )
+                self.assertEqual(report.unsupported_bond_count, 0)
+                self.assertEqual(report.unsupported_stereo_surface_count, 0)
 
-        with self.assertRaises(SouthStarError) as caught:
-            writer_snapshot._assert_cyclic_writer_admission_decision(decision)
-
-        self.assertIs(
-            caught.exception.kind,
-            SouthStarErrorKind.UNSUPPORTED_POLICY,
-        )
-
-    def test_public_cyclic_profile_accepts_deeper_pendant_chain_within_cap(
+    def test_public_cyclic_profile_matrix_supported_rows_close_public_online_loop(
         self,
     ) -> None:
-        prepared = _prepare(ethylcyclopropane_facts())
-        report = writer_snapshot._writer_public_cyclic_opening_profile_report(
-            prepared=prepared,
-        )
+        for case in _cyclic_profile_matrix_cases():
+            if not case.expected_supported:
+                continue
 
-        self.assertIs(
-            report.kind,
-            writer_snapshot._WriterPublicCyclicOpeningProfileKind
-            .SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS,
-        )
-        self.assertTrue(report.supported)
-        self.assertEqual(report.ring_core_atom_count, 3)
-        self.assertEqual(report.ring_core_bond_count, 3)
-        self.assertEqual(report.pendant_atom_count, 2)
-        self.assertEqual(report.pendant_bond_count, 2)
-        self.assertEqual(report.pendant_component_count, 1)
-        self.assertEqual(report.pendant_component_atom_counts, (2,))
-        self.assertEqual(report.pendant_component_boundary_counts, (1,))
-
-    def test_public_cyclic_profile_accepts_multiple_pendant_atoms_within_cap(
-        self,
-    ) -> None:
-        prepared = _prepare(dimethylcyclopropane_facts())
-        report = writer_snapshot._writer_public_cyclic_opening_profile_report(
-            prepared=prepared,
-        )
-
-        self.assertIs(
-            report.kind,
-            writer_snapshot._WriterPublicCyclicOpeningProfileKind
-            .SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS,
-        )
-        self.assertTrue(report.supported)
-        self.assertEqual(report.pendant_atom_count, 2)
-        self.assertEqual(report.pendant_bond_count, 2)
-        self.assertEqual(report.pendant_component_count, 2)
-        self.assertEqual(report.pendant_component_atom_counts, (1, 1))
-        self.assertEqual(report.pendant_component_boundary_counts, (1, 1))
-
-    def test_public_bounded_pendant_forest_monocycle_support_succeeds(self) -> None:
-        cases = (
-            ("ethylcyclopropane", ethylcyclopropane_facts()),
-            ("dimethylcyclopropane", dimethylcyclopropane_facts()),
-        )
-
-        for name, facts in cases:
-            prepared = _prepare(facts)
+            prepared = _prepare(case.facts)
             options = _writer_options(rooted_at_atom=0)
 
-            with self.subTest(name=name):
-                image = enumerate_prepared_stereo_support(
+            with self.subTest(name=case.name):
+                snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
                     prepared=prepared,
                     runtime_options=options,
                 )
-                expected_cursor = _initial_writer_transition_frontier_cursor(
-                    prepared,
-                    options,
-                )
-                self.assertEqual(
-                    image.distinct_count,
-                    count_writer_frontier_support(prepared, expected_cursor.support_state),
-                )
-                self.assertEqual(
-                    image.witness_count,
-                    count_writer_cursor_completions(prepared, expected_cursor),
-                )
-                self.assertEqual(
-                    image.strings,
-                    tuple(iter_writer_frontier_support(prepared, expected_cursor)),
-                )
-                self.assertGreater(image.distinct_count, 0)
 
-    def test_public_admission_accepts_bounded_pendant_forest_monocycles(self) -> None:
-        cases = (
-            ("ethylcyclopropane", ethylcyclopropane_facts()),
-            ("dimethylcyclopropane", dimethylcyclopropane_facts()),
-        )
+                root_image = _assert_public_online_loop_support_contract(
+                    self,
+                    prepared=prepared,
+                    snapshot=snapshot,
+                    max_prefixes=case.max_prefixes,
+                )
 
-        for name, facts in cases:
-            prepared = _prepare(facts)
+                self.assertGreater(root_image.distinct_count, 0)
+
+    def test_public_cyclic_profile_matrix_blocked_rows_fail_before_materialization(
+        self,
+    ) -> None:
+        for case in _cyclic_profile_matrix_cases():
+            if case.expected_supported:
+                continue
+
+            prepared = _prepare(case.facts)
+            options = _writer_options(rooted_at_atom=0)
+
+            with self.subTest(name=case.name):
+                with patch(
+                    "grimace._south_star1.writer_support.count_writer_frontier_support",
+                    side_effect=AssertionError("public blocked profile reached support count"),
+                ), patch(
+                    (
+                        "grimace._south_star1.writer_support"
+                        ".count_writer_cursor_completions"
+                    ),
+                    side_effect=AssertionError("public blocked profile reached completion count"),
+                ), patch(
+                    "grimace._south_star1.writer_support.iter_writer_frontier_support",
+                    side_effect=AssertionError("public blocked profile reached stream"),
+                ):
+                    with self.assertRaises(SouthStarError) as caught:
+                        enumerate_prepared_stereo_support(
+                            prepared=prepared,
+                            runtime_options=options,
+                        )
+
+                self.assertIs(
+                    caught.exception.kind,
+                    SouthStarErrorKind.UNSUPPORTED_POLICY,
+                )
+                self.assertIn("profile", str(caught.exception).lower())
+
+                with self.assertRaises(SouthStarError) as caught:
+                    writer_snapshot.capture_initial_writer_frontier_snapshot(
+                        prepared=prepared,
+                        runtime_options=options,
+                    )
+
+                self.assertIs(
+                    caught.exception.kind,
+                    SouthStarErrorKind.UNSUPPORTED_POLICY,
+                )
+                self.assertIn("profile", str(caught.exception).lower())
+
+    def test_public_cyclic_profile_matrix_blocked_neighbor_private_status_is_explicit(
+        self,
+    ) -> None:
+        for case in _cyclic_profile_matrix_cases():
+            if case.name not in {
+                "ring3 + one pendant chain depth 3",
+                "ring3 + three pendant atoms",
+            }:
+                continue
+
+            prepared = _prepare(case.facts)
             options = _writer_options(rooted_at_atom=0)
             cursor = _initial_writer_transition_frontier_cursor(prepared, options)
-            decision = writer_snapshot._cyclic_writer_admission_decision_from_cursor(
+            snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
                 prepared=prepared,
                 runtime_options=options,
                 cursor=cursor,
             )
 
-            with self.subTest(name=name):
-                self.assertIs(
-                    decision.kind,
-                    writer_snapshot._WriterCyclicAdmissionDecisionKind.READY_PUBLIC,
-                )
-                self.assertTrue(decision.public_enabled)
-                self.assertTrue(decision.admitted_publicly)
-                self.assertTrue(decision.internally_ready)
-                self.assertIsNotNone(decision.public_profile)
-                assert decision.public_profile is not None
-                self.assertTrue(decision.public_profile.supported)
-                self.assertIs(
-                    decision.public_profile.kind,
-                    writer_snapshot._WriterPublicCyclicOpeningProfileKind
-                    .SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS,
-                )
-
-                writer_snapshot._assert_cyclic_writer_admission_decision(decision)
-
-    def test_public_cyclic_profile_still_blocks_pendant_forest_over_cap(self) -> None:
-        prepared = _prepare(ethylcyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
-        blocked_profile = writer_snapshot._WriterPublicCyclicOpeningProfileReport(
-            kind=(
-                writer_snapshot
-                ._WriterPublicCyclicOpeningProfileKind
-                .BLOCKED_UNSUPPORTED_BRANCHING
-            ),
-            component_count=1,
-            cyclic_component_count=1,
-            cyclic_ranks=(1,),
-            ring_core_atom_count=3,
-            ring_core_bond_count=3,
-            ring_core_max_degree=2,
-            pendant_atom_count=3,
-            pendant_bond_count=3,
-            component_atom_count=6,
-            component_bond_count=6,
-            max_component_degree=2,
-            branch_atom_count=0,
-            unsupported_bond_count=0,
-            unsupported_stereo_surface_count=0,
-            pendant_component_count=1,
-            pendant_component_atom_counts=(3,),
-            pendant_component_boundary_counts=(1,),
-        )
-
-        with patch(
-            (
-                "grimace._south_star1.writer_snapshot"
-                "._writer_public_cyclic_opening_profile_report"
-            ),
-            return_value=blocked_profile,
-        ), patch(
-            "grimace._south_star1.writer_support.count_writer_frontier_support",
-            side_effect=AssertionError(
-                "over-cap pendant forest profile reached support count",
-            ),
-        ), patch(
-            (
-                "grimace._south_star1.writer_support"
-                ".count_writer_cursor_completions"
-            ),
-            side_effect=AssertionError(
-                "over-cap pendant forest profile reached completion count",
-            ),
-        ), patch(
-            "grimace._south_star1.writer_support.iter_writer_frontier_support",
-            side_effect=AssertionError(
-                "over-cap pendant forest profile reached stream",
-            ),
-        ):
-            with self.assertRaises(SouthStarError) as caught:
-                enumerate_prepared_stereo_support(
-                    prepared=prepared,
-                    runtime_options=options,
-                )
-
-        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
-        self.assertIn("profile", str(caught.exception).lower())
-
-    def test_public_admission_accepts_simple_monocycle_with_acyclic_attachment(self) -> None:
-        prepared = _prepare(methylcyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
-        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
-        decision = (
-            writer_snapshot
-            ._cyclic_writer_admission_decision_from_cursor(
-                prepared=prepared,
-                runtime_options=options,
-                cursor=cursor,
-            )
-        )
-
-        self.assertIs(
-            decision.kind,
-            writer_snapshot._WriterCyclicAdmissionDecisionKind.READY_PUBLIC,
-        )
-        self.assertIsNotNone(decision.public_profile)
-        assert decision.public_profile is not None
-        self.assertTrue(decision.internally_ready)
-        self.assertTrue(decision.public_enabled)
-        self.assertTrue(decision.admitted_publicly)
-        self.assertTrue(decision.public_profile.supported)
-        self.assertIs(
-            decision.public_profile.kind,
-            writer_snapshot._WriterPublicCyclicOpeningProfileKind
-            .SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS,
-        )
-
-        writer_snapshot._assert_cyclic_writer_admission_decision(decision)
+            with self.subTest(name=case.name):
+                try:
+                    visited = _assert_writer_snapshot_contract_closed_under_replay(
+                        self,
+                        snapshot=snapshot,
+                        prepared=prepared,
+                        max_prefixes=case.max_prefixes,
+                    )
+                    self.assertGreater(len(visited), 1)
+                except SouthStarError as caught:
+                    self.assertIn(
+                        str(caught.exception.kind),
+                        (
+                            SouthStarErrorKind.INTERNAL_INVARIANT,
+                            SouthStarErrorKind.UNSUPPORTED_POLICY,
+                        ),
+                    )
 
     def test_public_cyclic_opening_profile_blocks_unsupported_closure_bond_surface(self) -> None:
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
-        blocked_profile = (
-            self._public_cyclic_profile_blocked_by(
-                kind=(
-                    writer_snapshot
-                    ._WriterPublicCyclicOpeningProfileKind
-                    .BLOCKED_UNSUPPORTED_CLOSURE_BOND_SURFACE
-                ),
-            )
+        raw_profile = writer_snapshot._writer_public_cyclic_opening_profile_report(
+            prepared=prepared,
         )
         blocked_profile = writer_snapshot._WriterPublicCyclicOpeningProfileReport(
-            kind=blocked_profile.kind,
-            component_count=blocked_profile.component_count,
-            cyclic_component_count=blocked_profile.cyclic_component_count,
-            cyclic_ranks=blocked_profile.cyclic_ranks,
-            ring_core_atom_count=blocked_profile.ring_core_atom_count,
-            ring_core_bond_count=blocked_profile.ring_core_bond_count,
-            ring_core_max_degree=blocked_profile.ring_core_max_degree,
-            pendant_atom_count=blocked_profile.pendant_atom_count,
-            pendant_bond_count=blocked_profile.pendant_bond_count,
-            component_atom_count=blocked_profile.component_atom_count,
-            component_bond_count=blocked_profile.component_bond_count,
-            max_component_degree=blocked_profile.max_component_degree,
+            kind=writer_snapshot._WriterPublicCyclicOpeningProfileKind
+            .BLOCKED_UNSUPPORTED_CLOSURE_BOND_SURFACE,
+            component_count=raw_profile.component_count,
+            cyclic_component_count=raw_profile.cyclic_component_count,
+            cyclic_ranks=raw_profile.cyclic_ranks,
+            ring_core_atom_count=raw_profile.ring_core_atom_count,
+            ring_core_bond_count=raw_profile.ring_core_bond_count,
+            ring_core_max_degree=raw_profile.ring_core_max_degree,
+            pendant_atom_count=raw_profile.pendant_atom_count,
+            pendant_bond_count=raw_profile.pendant_bond_count,
+            component_atom_count=raw_profile.component_atom_count,
+            component_bond_count=raw_profile.component_bond_count,
+            max_component_degree=raw_profile.max_component_degree,
             branch_atom_count=0,
             unsupported_bond_count=1,
             unsupported_stereo_surface_count=0,
+            pendant_component_count=raw_profile.pendant_component_count,
+            pendant_component_atom_counts=raw_profile.pendant_component_atom_counts,
+            pendant_component_boundary_counts=raw_profile.pendant_component_boundary_counts,
         )
 
         self.assertIs(
@@ -15537,31 +15516,29 @@ class WriterStateKernelTest(unittest.TestCase):
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
-        blocked_profile = (
-            self._public_cyclic_profile_blocked_by(
-                kind=(
-                    writer_snapshot
-                    ._WriterPublicCyclicOpeningProfileKind
-                    .BLOCKED_UNSUPPORTED_CYCLIC_STEREO_SURFACE
-                ),
-            )
+        raw_profile = writer_snapshot._writer_public_cyclic_opening_profile_report(
+            prepared=prepared,
         )
         blocked_profile = writer_snapshot._WriterPublicCyclicOpeningProfileReport(
-            kind=blocked_profile.kind,
-            component_count=blocked_profile.component_count,
-            cyclic_component_count=blocked_profile.cyclic_component_count,
-            cyclic_ranks=blocked_profile.cyclic_ranks,
-            ring_core_atom_count=blocked_profile.ring_core_atom_count,
-            ring_core_bond_count=blocked_profile.ring_core_bond_count,
-            ring_core_max_degree=blocked_profile.ring_core_max_degree,
-            pendant_atom_count=blocked_profile.pendant_atom_count,
-            pendant_bond_count=blocked_profile.pendant_bond_count,
-            component_atom_count=blocked_profile.component_atom_count,
-            component_bond_count=blocked_profile.component_bond_count,
-            max_component_degree=blocked_profile.max_component_degree,
+            kind=writer_snapshot._WriterPublicCyclicOpeningProfileKind
+            .BLOCKED_UNSUPPORTED_CYCLIC_STEREO_SURFACE,
+            component_count=raw_profile.component_count,
+            cyclic_component_count=raw_profile.cyclic_component_count,
+            cyclic_ranks=raw_profile.cyclic_ranks,
+            ring_core_atom_count=raw_profile.ring_core_atom_count,
+            ring_core_bond_count=raw_profile.ring_core_bond_count,
+            ring_core_max_degree=raw_profile.ring_core_max_degree,
+            pendant_atom_count=raw_profile.pendant_atom_count,
+            pendant_bond_count=raw_profile.pendant_bond_count,
+            component_atom_count=raw_profile.component_atom_count,
+            component_bond_count=raw_profile.component_bond_count,
+            max_component_degree=raw_profile.max_component_degree,
             branch_atom_count=0,
             unsupported_bond_count=0,
             unsupported_stereo_surface_count=1,
+            pendant_component_count=raw_profile.pendant_component_count,
+            pendant_component_atom_counts=raw_profile.pendant_component_atom_counts,
+            pendant_component_boundary_counts=raw_profile.pendant_component_boundary_counts,
         )
 
         self.assertIs(

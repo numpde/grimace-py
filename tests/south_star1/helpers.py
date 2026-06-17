@@ -46,97 +46,80 @@ def cco_facts() -> MoleculeFacts:
     )
 
 
-def cyclopropane_facts() -> MoleculeFacts:
+def simple_monocycle_with_pendant_forest_facts(
+    *,
+    ring_size: int,
+    pendant_paths: tuple[int, ...] = (),
+) -> MoleculeFacts:
+    ring_atoms = tuple(range(ring_size))
+    atoms = tuple(atom(atom_id, "C") for atom_id in ring_atoms)
+    bonds: tuple[BondFacts, ...] = ()
+
+    next_atom_id = len(atoms)
+    next_bond_id = 0
+
+    def next_bond(left: int, right: int) -> None:
+        nonlocal next_bond_id, bonds
+        bonds = (
+            *bonds,
+            single_bond(next_bond_id, left, right),
+        )
+        next_bond_id += 1
+
+    for left in range(ring_size):
+        right = (left + 1) % ring_size
+        next_bond(left, right)
+
+    for pendant_index, length in enumerate(pendant_paths):
+        current_atom = ring_atoms[pendant_index % ring_size]
+
+        for _step in range(length):
+            new_atom_id = next_atom_id
+            next_atom_id += 1
+            atoms = (*atoms, atom(new_atom_id, "C"))
+            next_bond(current_atom, new_atom_id)
+            current_atom = new_atom_id
+
+    component_atom_ids = tuple(AtomId(atom_id) for atom_id in range(next_atom_id))
+    component_bond_ids = tuple(BondId(index) for index in range(next_bond_id))
+
     return MoleculeFacts(
-        atoms=(atom(0, "C"), atom(1, "C"), atom(2, "C")),
-        bonds=(
-            single_bond(0, 0, 1),
-            single_bond(1, 1, 2),
-            single_bond(2, 2, 0),
-        ),
+        atoms=atoms,
+        bonds=tuple(bonds),
         components=(
             ComponentFacts(
                 id=ComponentId(0),
-                atoms=(AtomId(0), AtomId(1), AtomId(2)),
-                bonds=(BondId(0), BondId(1), BondId(2)),
+                atoms=component_atom_ids,
+                bonds=component_bond_ids,
             ),
         ),
+    )
+
+
+def cyclopropane_facts() -> MoleculeFacts:
+    return simple_monocycle_with_pendant_forest_facts(
+        ring_size=3,
     )
 
 
 def methylcyclopropane_facts() -> MoleculeFacts:
-    return MoleculeFacts(
-        atoms=(
-            atom(0, "C"),
-            atom(1, "C"),
-            atom(2, "C"),
-            atom(3, "C"),
-        ),
-        bonds=(
-            single_bond(0, 0, 1),
-            single_bond(1, 1, 2),
-            single_bond(2, 2, 0),
-            single_bond(3, 0, 3),
-        ),
-        components=(
-            ComponentFacts(
-                id=ComponentId(0),
-                atoms=(AtomId(0), AtomId(1), AtomId(2), AtomId(3)),
-                bonds=(BondId(0), BondId(1), BondId(2), BondId(3)),
-            ),
-        ),
+    return simple_monocycle_with_pendant_forest_facts(
+        ring_size=3,
+        pendant_paths=(1,),
     )
 
 
 def ethylcyclopropane_facts() -> MoleculeFacts:
-    return MoleculeFacts(
-        atoms=(
-            atom(0, "C"),
-            atom(1, "C"),
-            atom(2, "C"),
-            atom(3, "C"),
-            atom(4, "C"),
-        ),
-        bonds=(
-            single_bond(0, 0, 1),
-            single_bond(1, 1, 2),
-            single_bond(2, 2, 0),
-            single_bond(3, 0, 3),
-            single_bond(4, 3, 4),
-        ),
-        components=(
-            ComponentFacts(
-                id=ComponentId(0),
-                atoms=(AtomId(0), AtomId(1), AtomId(2), AtomId(3), AtomId(4)),
-                bonds=(BondId(0), BondId(1), BondId(2), BondId(3), BondId(4)),
-            ),
-        ),
+    return simple_monocycle_with_pendant_forest_facts(
+        ring_size=3,
+        pendant_paths=(2,),
     )
 
 
 def dimethylcyclopropane_facts() -> MoleculeFacts:
-    return MoleculeFacts(
-        atoms=(
-            atom(0, "C"),
-            atom(1, "C"),
-            atom(2, "C"),
-            atom(3, "C"),
-            atom(4, "C"),
-        ),
-        bonds=(
-            single_bond(0, 0, 1),
-            single_bond(1, 1, 2),
-            single_bond(2, 2, 0),
-            single_bond(3, 0, 3),
-            single_bond(4, 1, 4),
-        ),
-        components=(
-            ComponentFacts(
-                id=ComponentId(0),
-                atoms=(AtomId(0), AtomId(1), AtomId(2), AtomId(3), AtomId(4)),
-                bonds=(BondId(0), BondId(1), BondId(2), BondId(3), BondId(4)),
-            ),
-        ),
+    return simple_monocycle_with_pendant_forest_facts(
+        ring_size=3,
+        pendant_paths=(1, 1),
     )
 
 

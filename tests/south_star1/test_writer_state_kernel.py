@@ -126,6 +126,25 @@ class _CyclicProfileMatrixCase:
     expected_private_error_text: str | None = None
 
 
+@dataclass(frozen=True)
+class _PendantForestGeneralizationAuditCase:
+    name: str
+    pendant_paths: tuple[int, ...]
+    expected_private_status: _CyclicProfileMatrixPrivateStatus
+    max_prefixes: int
+    expected_private_error_text: str | None = None
+
+
+@dataclass(frozen=True)
+class _SimpleRingSizeAuditCase:
+    name: str
+    ring_size: int
+    expected_profile_supported: bool
+    expected_private_status: _CyclicProfileMatrixPrivateStatus
+    max_prefixes: int
+    expected_private_error_text: str | None = None
+
+
 def _cyclic_profile_matrix_cases() -> tuple[_CyclicProfileMatrixCase, ...]:
     # Future public cyclic widening should add or flip rows in this matrix.
     # A supported row must pass the public recursive online-loop contract.
@@ -327,6 +346,99 @@ def _cyclic_profile_matrix_cases() -> tuple[_CyclicProfileMatrixCase, ...]:
             expected_private_status=(
                 _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
             ),
+        ),
+    )
+
+
+def _pendant_forest_generalization_audit_cases(
+) -> tuple[_PendantForestGeneralizationAuditCase, ...]:
+    return (
+        _PendantForestGeneralizationAuditCase(
+            name="ring3 + single chain depth 4",
+            pendant_paths=(4,),
+            expected_private_status=(
+                _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
+            ),
+            max_prefixes=2048,
+        ),
+        _PendantForestGeneralizationAuditCase(
+            name="ring3 + single chain depth 5",
+            pendant_paths=(5,),
+            expected_private_status=(
+                _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
+            ),
+            max_prefixes=2048,
+        ),
+        _PendantForestGeneralizationAuditCase(
+            name="ring3 + single chain depth 6",
+            pendant_paths=(6,),
+            expected_private_status=(
+                _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
+            ),
+            max_prefixes=2048,
+        ),
+        _PendantForestGeneralizationAuditCase(
+            name="ring3 + balanced two components",
+            pendant_paths=(2, 2),
+            expected_private_status=(
+                _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
+            ),
+            max_prefixes=2048,
+        ),
+        _PendantForestGeneralizationAuditCase(
+            name="ring3 + mixed two components",
+            pendant_paths=(3, 1),
+            expected_private_status=(
+                _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
+            ),
+            max_prefixes=2048,
+        ),
+        _PendantForestGeneralizationAuditCase(
+            name="ring3 + mixed three components",
+            pendant_paths=(2, 1, 1),
+            expected_private_status=(
+                _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
+            ),
+            max_prefixes=2048,
+        ),
+        _PendantForestGeneralizationAuditCase(
+            name="ring3 + four singleton components",
+            pendant_paths=(1, 1, 1, 1),
+            expected_private_status=(
+                _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
+            ),
+            max_prefixes=2048,
+        ),
+        _PendantForestGeneralizationAuditCase(
+            name="ring3 + larger mixed forest",
+            pendant_paths=(3, 2, 1),
+            expected_private_status=(
+                _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
+            ),
+            max_prefixes=2048,
+        ),
+    )
+
+
+def _simple_ring_size_audit_cases() -> tuple[_SimpleRingSizeAuditCase, ...]:
+    return (
+        _SimpleRingSizeAuditCase(
+            name="ring4 bare",
+            ring_size=4,
+            expected_profile_supported=True,
+            expected_private_status=(
+                _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
+            ),
+            max_prefixes=256,
+        ),
+        _SimpleRingSizeAuditCase(
+            name="ring5 bare",
+            ring_size=5,
+            expected_profile_supported=True,
+            expected_private_status=(
+                _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
+            ),
+            max_prefixes=256,
         ),
     )
 
@@ -15648,6 +15760,240 @@ class WriterStateKernelTest(unittest.TestCase):
             with self.subTest(name=case.name):
                 rec(())
                 self.assertGreater(len(seen), 1)
+
+    def test_pendant_forest_generalization_window_private_status_is_explicit(
+        self,
+    ) -> None:
+        for case in _pendant_forest_generalization_audit_cases():
+            with self.subTest(name=case.name):
+                facts = simple_monocycle_with_pendant_forest_facts(
+                    ring_size=3,
+                    pendant_paths=case.pendant_paths,
+                )
+
+                profile_case = _CyclicProfileMatrixCase(
+                    name=case.name,
+                    facts=facts,
+                    expected_kind=writer_snapshot
+                    ._WriterPublicCyclicOpeningProfileKind
+                    .BLOCKED_UNSUPPORTED_BRANCHING,
+                    expected_supported=False,
+                    expected_ring_core_atom_count=3,
+                    expected_pendant_atom_count=sum(case.pendant_paths),
+                    expected_pendant_component_atom_counts=tuple(
+                        sorted(case.pendant_paths)
+                    ),
+                    expected_pendant_component_boundary_counts=(1,)
+                    * len(case.pendant_paths),
+                    max_prefixes=case.max_prefixes,
+                    expected_private_status=case.expected_private_status,
+                    expected_private_error_text=case.expected_private_error_text,
+                )
+
+                report = writer_snapshot._writer_public_cyclic_opening_profile_report(
+                    prepared=_prepare(profile_case.facts),
+                )
+                self.assertFalse(report.supported)
+                self.assertIs(
+                    report.kind,
+                    writer_snapshot
+                    ._WriterPublicCyclicOpeningProfileKind
+                    .BLOCKED_UNSUPPORTED_BRANCHING,
+                )
+
+                _assert_private_contract_status_for_cyclic_profile_case(
+                    self,
+                    case=profile_case,
+                )
+
+    def test_pendant_forest_generalization_window_private_diagnostics_align_when_contract_closes(
+        self,
+    ) -> None:
+        for case in _pendant_forest_generalization_audit_cases():
+            if (
+                case.expected_private_status
+                is not _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
+            ):
+                continue
+
+            prepared = _prepare(
+                simple_monocycle_with_pendant_forest_facts(
+                    ring_size=3,
+                    pendant_paths=case.pendant_paths,
+                )
+            )
+            options = _writer_options(rooted_at_atom=0)
+            cursor = _initial_writer_transition_frontier_cursor(
+                prepared,
+                options,
+            )
+            snapshot = (
+                writer_snapshot
+                ._capture_writer_frontier_snapshot_unchecked(
+                    prepared=prepared,
+                    runtime_options=options,
+                    cursor=cursor,
+                )
+            )
+
+            seen: set[tuple[str, ...]] = set()
+
+            def rec(prefix: tuple[str, ...]) -> None:
+                if prefix in seen:
+                    self.fail(f"revisited prefix {prefix!r}")
+                seen.add(prefix)
+
+                if len(seen) > case.max_prefixes:
+                    self.fail(
+                        "generalization audit exceeded "
+                        f"max_prefixes={case.max_prefixes}"
+                    )
+
+                outcome = _assert_checked_prefix_choice_diagnostics_replay_aligned(
+                    self,
+                    snapshot=snapshot,
+                    prepared=prepared,
+                    emitted_texts=prefix,
+                )
+
+                assert outcome.public_choices is not None
+                for choice in outcome.public_choices.choices:
+                    rec((*prefix, choice.emitted_text))
+
+            with self.subTest(name=case.name):
+                rec(())
+                self.assertGreater(len(seen), 1)
+
+    def test_pendant_forest_generalization_window_public_still_blocks_over_cap_rows(
+        self,
+    ) -> None:
+        for case in _pendant_forest_generalization_audit_cases():
+            prepared = _prepare(
+                simple_monocycle_with_pendant_forest_facts(
+                    ring_size=3,
+                    pendant_paths=case.pendant_paths,
+                )
+            )
+            options = _writer_options(rooted_at_atom=0)
+
+            report = writer_snapshot._writer_public_cyclic_opening_profile_report(
+                prepared=prepared,
+            )
+            self.assertFalse(report.supported)
+            self.assertIs(
+                report.kind,
+                writer_snapshot
+                ._WriterPublicCyclicOpeningProfileKind
+                .BLOCKED_UNSUPPORTED_BRANCHING,
+            )
+
+            with self.subTest(name=case.name):
+                with patch(
+                    "grimace._south_star1.writer_support.count_writer_frontier_support",
+                    side_effect=AssertionError(
+                        "generalization audit over-cap reached support count",
+                    ),
+                ), patch(
+                    (
+                        "grimace._south_star1.writer_support"
+                        ".count_writer_cursor_completions"
+                    ),
+                    side_effect=AssertionError(
+                        "generalization audit over-cap reached completion count",
+                    ),
+                ), patch(
+                    "grimace._south_star1.writer_support.iter_writer_frontier_support",
+                    side_effect=AssertionError(
+                        "generalization audit over-cap reached stream",
+                    ),
+                ):
+                    with self.assertRaises(SouthStarError) as caught:
+                        enumerate_prepared_stereo_support(
+                            prepared=prepared,
+                            runtime_options=options,
+                        )
+
+                self.assertIs(
+                    caught.exception.kind,
+                    SouthStarErrorKind.UNSUPPORTED_POLICY,
+                )
+                self.assertIn("profile", str(caught.exception).lower())
+
+                with self.assertRaises(SouthStarError) as caught:
+                    writer_snapshot.capture_initial_writer_frontier_snapshot(
+                        prepared=prepared,
+                        runtime_options=options,
+                    )
+
+                self.assertIs(
+                    caught.exception.kind,
+                    SouthStarErrorKind.UNSUPPORTED_POLICY,
+                )
+                self.assertIn("profile", str(caught.exception).lower())
+
+    def test_simple_ring_size_profile_rows_match_public_online_contract(self) -> None:
+        for case in _simple_ring_size_audit_cases():
+            prepared = _prepare(
+                simple_monocycle_with_pendant_forest_facts(
+                    ring_size=case.ring_size,
+                    pendant_paths=(),
+                )
+            )
+            options = _writer_options(rooted_at_atom=0)
+
+            report = writer_snapshot._writer_public_cyclic_opening_profile_report(
+                prepared=prepared,
+            )
+            self.assertEqual(report.supported, case.expected_profile_supported)
+
+            with self.subTest(name=case.name):
+                if not report.supported:
+                    snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
+                        prepared=prepared,
+                        runtime_options=options,
+                        cursor=_initial_writer_transition_frontier_cursor(
+                            prepared,
+                            options,
+                        ),
+                    )
+
+                    profile_case = _CyclicProfileMatrixCase(
+                        name=case.name,
+                        facts=simple_monocycle_with_pendant_forest_facts(
+                            ring_size=case.ring_size,
+                            pendant_paths=(),
+                        ),
+                        expected_kind=writer_snapshot
+                        ._WriterPublicCyclicOpeningProfileKind
+                        .BLOCKED_UNSUPPORTED_BRANCHING,
+                        expected_supported=False,
+                        expected_ring_core_atom_count=case.ring_size,
+                        expected_pendant_atom_count=0,
+                        expected_pendant_component_atom_counts=(),
+                        expected_pendant_component_boundary_counts=(),
+                        max_prefixes=case.max_prefixes,
+                        expected_private_status=case.expected_private_status,
+                        expected_private_error_text=case.expected_private_error_text,
+                    )
+
+                    _assert_private_contract_status_for_cyclic_profile_case(
+                        self,
+                        case=profile_case,
+                    )
+                    continue
+
+                snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
+                    prepared=prepared,
+                    runtime_options=options,
+                )
+
+                root_image = _assert_public_online_loop_support_contract(
+                    self,
+                    prepared=prepared,
+                    snapshot=snapshot,
+                    max_prefixes=case.max_prefixes,
+                )
+                self.assertGreater(root_image.distinct_count, 0)
 
     def test_public_cyclic_opening_profile_blocks_unsupported_closure_bond_surface(self) -> None:
         prepared = _prepare(cyclopropane_facts())

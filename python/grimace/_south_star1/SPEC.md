@@ -323,13 +323,14 @@ cut, or render program. Cyclic residual attachments and closure-candidate edges
 can be classified structurally. Raw writer transitions can now enter
 single-boundary cyclic attachments and can open and pair closure endpoints for
 internally constructed cyclic states when successor graph obligations remain
-actionable. Public cyclic WRITER_SHAPED is open only for the minimal
-simple-monocycle profile and its first pendant-attachment extension: a single
-connected rank-one cyclic component whose cycle core is a simple cycle, with
-either no pendant atoms or exactly one single-bond pendant atom, and no
-unsupported closure-bond surface or unsupported cyclic stereo surface. Deeper,
-multiple, fused, bridged, multi-cycle, and unsupported closure-bond or cyclic
-stereo cases still fail closed through the same profile/readiness gate.
+actionable. Public cyclic WRITER_SHAPED is open only for one connected rank-one
+cyclic component whose 2-core is a simple cycle and whose non-core material is
+either absent or a bounded acyclic pendant forest with at most two pendant
+atoms. Each pendant component must attach through exactly one cycle-core boundary
+bond, and all core closure-bond and cyclic-stereo obligations must remain
+supported. Deeper, multiple, fused, bridged, multi-cycle, unsupported
+closure-bond, or unsupported cyclic-stereo cases still fail closed through the
+same profile/readiness gate.
 `initial_writer_transition_frontier_cursor(...)`
 is an internal test harness for running those raw transition-surface states
 through the same weighted frontier, count, streaming, and snapshot machinery

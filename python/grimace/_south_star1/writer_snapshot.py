@@ -66,6 +66,7 @@ from .writer_state import WriterStereoStateKey
 
 
 _PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED = True
+_PUBLIC_CYCLIC_MAX_PENDANT_ATTACHMENT_ATOMS = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -1266,6 +1267,9 @@ class _WriterPublicCyclicOpeningProfileReport:
     branch_atom_count: int
     unsupported_bond_count: int
     unsupported_stereo_surface_count: int
+    pendant_component_count: int = 0
+    pendant_component_atom_counts: tuple[int, ...] = ()
+    pendant_component_boundary_counts: tuple[int, ...] = ()
 
     @property
     def supported(self) -> bool:
@@ -2129,6 +2133,9 @@ def _writer_public_cyclic_opening_profile_report(
             ring_core_max_degree=0,
             pendant_atom_count=0,
             pendant_bond_count=0,
+            pendant_component_count=0,
+            pendant_component_atom_counts=(),
+            pendant_component_boundary_counts=(),
             component_atom_count=0,
             component_bond_count=0,
             max_component_degree=0,
@@ -2144,7 +2151,7 @@ def _writer_public_cyclic_opening_profile_report(
     component_bond_count = len(component_bond_ids)
     component_bond_index = prepared.graph_index.bond_by_id
 
-    adjacency: dict[AtomId, set[AtomId]] = {
+    component_adjacency: dict[AtomId, set[AtomId]] = {
         atom: set() for atom in component_atom_ids
     }
 
@@ -2155,11 +2162,16 @@ def _writer_public_cyclic_opening_profile_report(
 
         left = bond.a
         right = bond.b
-        adjacency.setdefault(left, set()).add(right)
-        adjacency.setdefault(right, set()).add(left)
+        component_adjacency.setdefault(left, set()).add(right)
+        component_adjacency.setdefault(right, set()).add(left)
+
+    adjacency: dict[AtomId, set[AtomId]] = {
+        atom: set(neighbors)
+        for atom, neighbors in component_adjacency.items()
+    }
 
     component_atom_degrees = tuple(
-        len(adjacency[atom]) for atom in component_atom_ids
+        len(component_adjacency[atom]) for atom in component_atom_ids
     )
     max_component_degree = max(component_atom_degrees, default=0)
     component_core_atoms = set(component_atom_ids)
@@ -2233,6 +2245,59 @@ def _writer_public_cyclic_opening_profile_report(
     pendant_atom_count = component_atom_count - ring_core_atom_count
     pendant_bond_count = component_bond_count - ring_core_bond_count
 
+    pendant_component_atom_counts: tuple[int, ...] = ()
+    pendant_component_boundary_counts: tuple[int, ...] = ()
+    pendant_atom_set = set(component_atom_ids) - ring_core_atom_set
+    if pendant_atom_set:
+        pendant_components: list[tuple[frozenset[AtomId], int]] = []
+        seen_pendant_atoms: set[AtomId] = set()
+
+        for atom in sorted(pendant_atom_set):
+            if atom in seen_pendant_atoms:
+                continue
+
+            component_atoms: set[AtomId] = set()
+            frontier = [atom]
+            seen_pendant_atoms.add(atom)
+
+            while frontier:
+                current = frontier.pop()
+                component_atoms.add(current)
+                for next_atom in component_adjacency[current]:
+                    if (
+                        next_atom not in pendant_atom_set
+                        or next_atom in seen_pendant_atoms
+                    ):
+                        continue
+
+                    seen_pendant_atoms.add(next_atom)
+                    frontier.append(next_atom)
+
+            boundary_count = 0
+            for component_atom in component_atoms:
+                for adjacent_atom in component_adjacency[component_atom]:
+                    if adjacent_atom not in component_atoms:
+                        boundary_count += 1
+
+            pendant_components.append(
+                (frozenset(component_atoms), boundary_count),
+            )
+
+        pendant_components.sort(
+            key=lambda entry: (
+                len(entry[0]),
+                tuple(sorted(entry[0])),
+            )
+        )
+        pendant_component_atom_counts = tuple(
+            len(entry[0]) for entry in pendant_components
+        )
+        pendant_component_boundary_counts = tuple(
+            entry[1] for entry in pendant_components
+        )
+
+    pendant_component_count = len(pendant_component_atom_counts)
+
     cyclic_surfaces = tuple(
         surface
         for surface in (surface,)
@@ -2284,8 +2349,12 @@ def _writer_public_cyclic_opening_profile_report(
             .SUPPORTED_SIMPLE_MONOCYCLE_COMPONENT
         )
     elif (
-        pendant_atom_count == 1
-        and pendant_bond_count == 1
+        1 <= pendant_atom_count <= _PUBLIC_CYCLIC_MAX_PENDANT_ATTACHMENT_ATOMS
+        and pendant_bond_count == pendant_atom_count
+        and all(
+            boundary_count == 1
+            for boundary_count in pendant_component_boundary_counts
+        )
     ):
         kind = (
             _WriterPublicCyclicOpeningProfileKind
@@ -2307,6 +2376,9 @@ def _writer_public_cyclic_opening_profile_report(
         ring_core_max_degree=ring_core_max_degree,
         pendant_atom_count=pendant_atom_count,
         pendant_bond_count=pendant_bond_count,
+        pendant_component_count=pendant_component_count,
+        pendant_component_atom_counts=pendant_component_atom_counts,
+        pendant_component_boundary_counts=pendant_component_boundary_counts,
         component_atom_count=component_atom_count,
         component_bond_count=component_bond_count,
         max_component_degree=max_component_degree,

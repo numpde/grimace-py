@@ -780,19 +780,19 @@ def _assert_private_monocycle_attachment_audit_outcome(
         decision.kind,
         writer_snapshot
         ._WriterCyclicAdmissionDecisionKind
-        .BLOCKED_PUBLIC_CYCLIC_PROFILE,
+        .READY_PUBLIC,
     )
     test_case.assertTrue(decision.internally_ready)
-    test_case.assertFalse(decision.public_enabled)
-    test_case.assertFalse(decision.admitted_publicly)
+    test_case.assertTrue(decision.public_enabled)
+    test_case.assertTrue(decision.admitted_publicly)
     test_case.assertIsNotNone(decision.public_profile)
     assert decision.public_profile is not None
-    test_case.assertFalse(decision.public_profile.supported)
+    test_case.assertTrue(decision.public_profile.supported)
     test_case.assertIs(
         decision.public_profile.kind,
         writer_snapshot
         ._WriterPublicCyclicOpeningProfileKind
-        .BLOCKED_UNSUPPORTED_BRANCHING,
+        .SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS,
     )
 
     snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
@@ -7615,6 +7615,43 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertIs(caught.exception.kind, SouthStarErrorKind.INVALID_FACTS)
 
+    def test_public_snapshot_advance_bounded_pendant_forest_monocycles_reject_non_frontier_token(
+        self,
+    ) -> None:
+        cases = (
+            ("ethylcyclopropane", ethylcyclopropane_facts()),
+            ("dimethylcyclopropane", dimethylcyclopropane_facts()),
+        )
+
+        for name, facts in cases:
+            with self.subTest(name=name):
+                prepared = _prepare(facts)
+                options = _writer_options(rooted_at_atom=0)
+                snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
+                    prepared=prepared,
+                    runtime_options=options,
+                )
+                choices = writer_snapshot.resume_writer_frontier_choices_from_snapshot(
+                    snapshot,
+                    prepared=prepared,
+                )
+
+                legal = {choice.emitted_text for choice in choices.choices}
+                bad = next(
+                    token
+                    for token in _WRITER_REPLAY_PROBE_TOKENS
+                    if token not in legal
+                )
+
+                with self.assertRaises(SouthStarError) as caught:
+                    writer_snapshot.advance_writer_frontier_snapshot(
+                        snapshot,
+                        prepared=prepared,
+                        emitted_text=bad,
+                    )
+
+                self.assertIs(caught.exception.kind, SouthStarErrorKind.INVALID_FACTS)
+
     def test_public_snapshot_advance_simple_monocycle_close_token_reaches_terminal(
         self,
     ) -> None:
@@ -8092,25 +8129,36 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertGreater(root_image.distinct_count, 0)
         self.assertEqual(len(root_image.strings), root_image.distinct_count)
 
-    def test_public_online_loop_support_contract_closes_for_single_pendant_simple_monocycle(
+    def test_public_online_loop_support_contract_closes_for_bounded_pendant_forest_monocycles(
         self,
     ) -> None:
-        prepared = _prepare(methylcyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
-
-        snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
-            prepared=prepared,
-            runtime_options=options,
-        )
-        root_image = _assert_public_online_loop_support_contract(
-            self,
-            prepared=prepared,
-            snapshot=snapshot,
-            max_prefixes=512,
+        cases = (
+            ("methylcyclopropane", methylcyclopropane_facts()),
+            ("ethylcyclopropane", ethylcyclopropane_facts()),
+            ("dimethylcyclopropane", dimethylcyclopropane_facts()),
         )
 
-        self.assertGreater(root_image.distinct_count, 0)
-        self.assertEqual(len(root_image.strings), root_image.distinct_count)
+        for name, facts in cases:
+            with self.subTest(name=name):
+                prepared = _prepare(facts)
+                options = _writer_options(rooted_at_atom=0)
+
+                snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
+                    prepared=prepared,
+                    runtime_options=options,
+                )
+                root_image = _assert_public_online_loop_support_contract(
+                    self,
+                    prepared=prepared,
+                    snapshot=snapshot,
+                    max_prefixes=1024,
+                )
+
+                self.assertGreater(root_image.distinct_count, 0)
+                self.assertEqual(
+                    len(root_image.strings),
+                    root_image.distinct_count,
+                )
 
     def test_single_pendant_simple_monocycle_admission_is_ready_public(
         self,
@@ -14797,109 +14845,136 @@ class WriterStateKernelTest(unittest.TestCase):
         )
         self.assertGreater(image.distinct_count, 0)
 
-    def test_public_initial_snapshot_single_pendant_simple_monocycle_resumes_and_advances(self) -> None:
-        prepared = _prepare(methylcyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
-
-        snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
-            prepared=prepared,
-            runtime_options=options,
-        )
-        choices = writer_snapshot.resume_writer_frontier_choices_from_snapshot(
-            snapshot,
-            prepared=prepared,
+    def test_public_initial_snapshot_bounded_pendant_forest_monocycles_resumes_and_advances(
+        self,
+    ) -> None:
+        cases = (
+            ("methylcyclopropane", methylcyclopropane_facts()),
+            ("ethylcyclopropane", ethylcyclopropane_facts()),
+            ("dimethylcyclopropane", dimethylcyclopropane_facts()),
         )
 
-        self.assertGreater(len(choices.choices), 0)
-        choice = choices.choices[0]
-        advanced = writer_snapshot.advance_writer_frontier_snapshot(
-            snapshot,
-            prepared=prepared,
-            emitted_text=choice.emitted_text,
-        )
+        for name, facts in cases:
+            with self.subTest(name=name):
+                prepared = _prepare(facts)
+                options = _writer_options(rooted_at_atom=0)
 
-        self.assertEqual(advanced.cursor, choice.successor)
+                snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
+                    prepared=prepared,
+                    runtime_options=options,
+                )
+                choices = writer_snapshot.resume_writer_frontier_choices_from_snapshot(
+                    snapshot,
+                    prepared=prepared,
+                )
 
-        image = writer_support.enumerate_writer_snapshot_writer_shaped_support(
-            snapshot=advanced,
-            prepared=prepared,
-        )
-        self.assertEqual(
-            image.distinct_count,
-            writer_support.count_writer_snapshot_writer_shaped_support(
-                snapshot=advanced,
-                prepared=prepared,
-            ),
-        )
-        self.assertEqual(
-            image.strings,
-            tuple(
-                writer_support.iter_writer_snapshot_writer_shaped_support(
+                self.assertGreater(len(choices.choices), 0)
+                choice = choices.choices[0]
+                advanced = writer_snapshot.advance_writer_frontier_snapshot(
+                    snapshot,
+                    prepared=prepared,
+                    emitted_text=choice.emitted_text,
+                )
+
+                self.assertEqual(advanced.cursor, choice.successor)
+
+                image = writer_support.enumerate_writer_snapshot_writer_shaped_support(
                     snapshot=advanced,
                     prepared=prepared,
                 )
-            ),
-        )
+                self.assertEqual(
+                    image.distinct_count,
+                    writer_support.count_writer_snapshot_writer_shaped_support(
+                        snapshot=advanced,
+                        prepared=prepared,
+                    ),
+                )
+                self.assertEqual(
+                    image.strings,
+                    tuple(
+                        writer_support.iter_writer_snapshot_writer_shaped_support(
+                            snapshot=advanced,
+                            prepared=prepared,
+                        )
+                    ),
+                )
 
     def test_public_monocycle_with_attachment_remains_profile_blocked(self) -> None:
         prepared = _prepare(methylcyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
+        blocked_profile = writer_snapshot._WriterPublicCyclicOpeningProfileReport(
+            kind=(
+                writer_snapshot
+                ._WriterPublicCyclicOpeningProfileKind
+                .BLOCKED_UNSUPPORTED_BRANCHING
+            ),
+            component_count=1,
+            cyclic_component_count=1,
+            cyclic_ranks=(1,),
+            ring_core_atom_count=3,
+            ring_core_bond_count=3,
+            ring_core_max_degree=2,
+            pendant_atom_count=3,
+            pendant_bond_count=3,
+            component_atom_count=6,
+            component_bond_count=6,
+            max_component_degree=2,
+            branch_atom_count=0,
+            unsupported_bond_count=0,
+            unsupported_stereo_surface_count=0,
+            pendant_component_count=1,
+            pendant_component_atom_counts=(3,),
+            pendant_component_boundary_counts=(1,),
+        )
 
-        with self.assertRaises(SouthStarError) as caught:
-            blocked_profile = writer_snapshot._WriterPublicCyclicOpeningProfileReport(
-                kind=(
-                    writer_snapshot
-                    ._WriterPublicCyclicOpeningProfileKind
-                    .BLOCKED_UNSUPPORTED_BRANCHING
-                ),
-                component_count=1,
-                cyclic_component_count=1,
-                cyclic_ranks=(1,),
-                ring_core_atom_count=3,
-                ring_core_bond_count=3,
-                ring_core_max_degree=2,
-                pendant_atom_count=2,
-                pendant_bond_count=2,
-                component_atom_count=5,
-                component_bond_count=5,
-                max_component_degree=3,
-                branch_atom_count=2,
-                unsupported_bond_count=0,
-                unsupported_stereo_surface_count=0,
-            )
-
-            with patch(
-                (
-                    "grimace._south_star1.writer_snapshot"
-                    "._writer_public_cyclic_opening_profile_report"
-                ),
-                return_value=blocked_profile,
-            ), patch(
-                "grimace._south_star1.writer_support.count_writer_frontier_support",
-                side_effect=AssertionError(
-                    "deeper attachment profile reached support count",
-                ),
-            ), patch(
-                (
-                    "grimace._south_star1.writer_support"
-                    ".count_writer_cursor_completions"
-                ),
-                side_effect=AssertionError(
-                    "deeper attachment profile reached completion count",
-                ),
-            ), patch(
-                "grimace._south_star1.writer_support.iter_writer_frontier_support",
-                side_effect=AssertionError(
-                    "deeper attachment profile reached stream",
-                ),
-            ):
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._writer_public_cyclic_opening_profile_report"
+            ),
+            return_value=blocked_profile,
+        ), patch(
+            "grimace._south_star1.writer_support.count_writer_frontier_support",
+            side_effect=AssertionError(
+                "profile-blocked attachment should not reach support count",
+            ),
+        ), patch(
+            (
+                "grimace._south_star1.writer_support"
+                ".count_writer_cursor_completions"
+            ),
+            side_effect=AssertionError(
+                "profile-blocked attachment should not reach completion count",
+            ),
+        ), patch(
+            "grimace._south_star1.writer_support.iter_writer_frontier_support",
+            side_effect=AssertionError(
+                "profile-blocked attachment should not reach stream",
+            ),
+        ):
+            with self.assertRaises(SouthStarError) as caught:
                 enumerate_prepared_stereo_support(
                     prepared=prepared,
                     runtime_options=options,
                 )
 
-        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
-        self.assertIn("profile", str(caught.exception).lower())
+            self.assertIs(
+                caught.exception.kind,
+                SouthStarErrorKind.UNSUPPORTED_POLICY,
+            )
+            self.assertIn("profile", str(caught.exception).lower())
+
+            with self.assertRaises(SouthStarError) as caught:
+                writer_snapshot.capture_initial_writer_frontier_snapshot(
+                    prepared=prepared,
+                    runtime_options=options,
+                )
+
+            self.assertIs(
+                caught.exception.kind,
+                SouthStarErrorKind.UNSUPPORTED_POLICY,
+            )
+            self.assertIn("profile", str(caught.exception).lower())
 
     def test_public_cyclic_support_profile_blocked_stops_before_count_stream(
         self,
@@ -15193,72 +15268,177 @@ class WriterStateKernelTest(unittest.TestCase):
             SouthStarErrorKind.UNSUPPORTED_POLICY,
         )
 
-    def test_public_cyclic_profile_blocks_deeper_pendant_chain(self) -> None:
+    def test_public_cyclic_profile_accepts_deeper_pendant_chain_within_cap(
+        self,
+    ) -> None:
         prepared = _prepare(ethylcyclopropane_facts())
         report = writer_snapshot._writer_public_cyclic_opening_profile_report(
             prepared=prepared,
         )
 
-        self.assertFalse(report.supported)
         self.assertIs(
             report.kind,
             writer_snapshot._WriterPublicCyclicOpeningProfileKind
-            .BLOCKED_UNSUPPORTED_BRANCHING,
+            .SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS,
         )
+        self.assertTrue(report.supported)
         self.assertEqual(report.ring_core_atom_count, 3)
         self.assertEqual(report.ring_core_bond_count, 3)
         self.assertEqual(report.pendant_atom_count, 2)
         self.assertEqual(report.pendant_bond_count, 2)
+        self.assertEqual(report.pendant_component_count, 1)
+        self.assertEqual(report.pendant_component_atom_counts, (2,))
+        self.assertEqual(report.pendant_component_boundary_counts, (1,))
 
-    def test_public_cyclic_profile_blocks_multiple_pendant_atoms(self) -> None:
+    def test_public_cyclic_profile_accepts_multiple_pendant_atoms_within_cap(
+        self,
+    ) -> None:
         prepared = _prepare(dimethylcyclopropane_facts())
         report = writer_snapshot._writer_public_cyclic_opening_profile_report(
             prepared=prepared,
         )
 
-        self.assertFalse(report.supported)
         self.assertIs(
             report.kind,
             writer_snapshot._WriterPublicCyclicOpeningProfileKind
-            .BLOCKED_UNSUPPORTED_BRANCHING,
+            .SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS,
         )
+        self.assertTrue(report.supported)
         self.assertEqual(report.pendant_atom_count, 2)
         self.assertEqual(report.pendant_bond_count, 2)
+        self.assertEqual(report.pendant_component_count, 2)
+        self.assertEqual(report.pendant_component_atom_counts, (1, 1))
+        self.assertEqual(report.pendant_component_boundary_counts, (1, 1))
 
-    def test_public_broader_monocycle_attachments_remain_profile_blocked(self) -> None:
+    def test_public_bounded_pendant_forest_monocycle_support_succeeds(self) -> None:
         cases = (
             ("ethylcyclopropane", ethylcyclopropane_facts()),
             ("dimethylcyclopropane", dimethylcyclopropane_facts()),
         )
 
-        for _name, facts in cases:
+        for name, facts in cases:
             prepared = _prepare(facts)
             options = _writer_options(rooted_at_atom=0)
 
-            with self.subTest():
-                with self.assertRaises(SouthStarError) as caught:
-                    enumerate_prepared_stereo_support(
-                        prepared=prepared,
-                        runtime_options=options,
-                    )
-
-                self.assertIs(
-                    caught.exception.kind,
-                    SouthStarErrorKind.UNSUPPORTED_POLICY,
+            with self.subTest(name=name):
+                image = enumerate_prepared_stereo_support(
+                    prepared=prepared,
+                    runtime_options=options,
                 )
-                self.assertIn("profile", str(caught.exception).lower())
-
-                with self.assertRaises(SouthStarError) as caught:
-                    writer_snapshot.capture_initial_writer_frontier_snapshot(
-                        prepared=prepared,
-                        runtime_options=options,
-                    )
-
-                self.assertIs(
-                    caught.exception.kind,
-                    SouthStarErrorKind.UNSUPPORTED_POLICY,
+                expected_cursor = _initial_writer_transition_frontier_cursor(
+                    prepared,
+                    options,
                 )
-                self.assertIn("profile", str(caught.exception).lower())
+                self.assertEqual(
+                    image.distinct_count,
+                    count_writer_frontier_support(prepared, expected_cursor.support_state),
+                )
+                self.assertEqual(
+                    image.witness_count,
+                    count_writer_cursor_completions(prepared, expected_cursor),
+                )
+                self.assertEqual(
+                    image.strings,
+                    tuple(iter_writer_frontier_support(prepared, expected_cursor)),
+                )
+                self.assertGreater(image.distinct_count, 0)
+
+    def test_public_admission_accepts_bounded_pendant_forest_monocycles(self) -> None:
+        cases = (
+            ("ethylcyclopropane", ethylcyclopropane_facts()),
+            ("dimethylcyclopropane", dimethylcyclopropane_facts()),
+        )
+
+        for name, facts in cases:
+            prepared = _prepare(facts)
+            options = _writer_options(rooted_at_atom=0)
+            cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+            decision = writer_snapshot._cyclic_writer_admission_decision_from_cursor(
+                prepared=prepared,
+                runtime_options=options,
+                cursor=cursor,
+            )
+
+            with self.subTest(name=name):
+                self.assertIs(
+                    decision.kind,
+                    writer_snapshot._WriterCyclicAdmissionDecisionKind.READY_PUBLIC,
+                )
+                self.assertTrue(decision.public_enabled)
+                self.assertTrue(decision.admitted_publicly)
+                self.assertTrue(decision.internally_ready)
+                self.assertIsNotNone(decision.public_profile)
+                assert decision.public_profile is not None
+                self.assertTrue(decision.public_profile.supported)
+                self.assertIs(
+                    decision.public_profile.kind,
+                    writer_snapshot._WriterPublicCyclicOpeningProfileKind
+                    .SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS,
+                )
+
+                writer_snapshot._assert_cyclic_writer_admission_decision(decision)
+
+    def test_public_cyclic_profile_still_blocks_pendant_forest_over_cap(self) -> None:
+        prepared = _prepare(ethylcyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+        blocked_profile = writer_snapshot._WriterPublicCyclicOpeningProfileReport(
+            kind=(
+                writer_snapshot
+                ._WriterPublicCyclicOpeningProfileKind
+                .BLOCKED_UNSUPPORTED_BRANCHING
+            ),
+            component_count=1,
+            cyclic_component_count=1,
+            cyclic_ranks=(1,),
+            ring_core_atom_count=3,
+            ring_core_bond_count=3,
+            ring_core_max_degree=2,
+            pendant_atom_count=3,
+            pendant_bond_count=3,
+            component_atom_count=6,
+            component_bond_count=6,
+            max_component_degree=2,
+            branch_atom_count=0,
+            unsupported_bond_count=0,
+            unsupported_stereo_surface_count=0,
+            pendant_component_count=1,
+            pendant_component_atom_counts=(3,),
+            pendant_component_boundary_counts=(1,),
+        )
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._writer_public_cyclic_opening_profile_report"
+            ),
+            return_value=blocked_profile,
+        ), patch(
+            "grimace._south_star1.writer_support.count_writer_frontier_support",
+            side_effect=AssertionError(
+                "over-cap pendant forest profile reached support count",
+            ),
+        ), patch(
+            (
+                "grimace._south_star1.writer_support"
+                ".count_writer_cursor_completions"
+            ),
+            side_effect=AssertionError(
+                "over-cap pendant forest profile reached completion count",
+            ),
+        ), patch(
+            "grimace._south_star1.writer_support.iter_writer_frontier_support",
+            side_effect=AssertionError(
+                "over-cap pendant forest profile reached stream",
+            ),
+        ):
+            with self.assertRaises(SouthStarError) as caught:
+                enumerate_prepared_stereo_support(
+                    prepared=prepared,
+                    runtime_options=options,
+                )
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+        self.assertIn("profile", str(caught.exception).lower())
 
     def test_public_admission_accepts_simple_monocycle_with_acyclic_attachment(self) -> None:
         prepared = _prepare(methylcyclopropane_facts())

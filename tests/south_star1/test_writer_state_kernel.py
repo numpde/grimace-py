@@ -7,6 +7,8 @@ import contextlib
 import inspect
 import unittest
 from collections import Counter
+from enum import Enum
+from enum import auto
 from dataclasses import dataclass
 from dataclasses import replace
 from pathlib import Path
@@ -103,6 +105,13 @@ _WRITER_REPLAY_PROBE_TOKENS = (
 
 
 @dataclass(frozen=True)
+class _CyclicProfileMatrixPrivateStatus(Enum):
+    CONTRACT_CLOSES = auto()
+    INTERNAL_INVARIANT = auto()
+    UNSUPPORTED_POLICY = auto()
+
+
+@dataclass(frozen=True)
 class _CyclicProfileMatrixCase:
     name: str
     facts: MoleculeFacts
@@ -113,6 +122,8 @@ class _CyclicProfileMatrixCase:
     expected_pendant_component_atom_counts: tuple[int, ...]
     expected_pendant_component_boundary_counts: tuple[int, ...]
     max_prefixes: int
+    expected_private_status: _CyclicProfileMatrixPrivateStatus
+    expected_private_error_text: str | None = None
 
 
 def _cyclic_profile_matrix_cases() -> tuple[_CyclicProfileMatrixCase, ...]:
@@ -134,6 +145,9 @@ def _cyclic_profile_matrix_cases() -> tuple[_CyclicProfileMatrixCase, ...]:
             expected_pendant_component_atom_counts=(),
             expected_pendant_component_boundary_counts=(),
             max_prefixes=256,
+            expected_private_status=(
+                _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
+            ),
         ),
         _CyclicProfileMatrixCase(
             name="ring3 + one pendant atom",
@@ -149,6 +163,9 @@ def _cyclic_profile_matrix_cases() -> tuple[_CyclicProfileMatrixCase, ...]:
             expected_pendant_component_atom_counts=(1,),
             expected_pendant_component_boundary_counts=(1,),
             max_prefixes=256,
+            expected_private_status=(
+                _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
+            ),
         ),
         _CyclicProfileMatrixCase(
             name="ring3 + one pendant chain depth 2",
@@ -164,6 +181,9 @@ def _cyclic_profile_matrix_cases() -> tuple[_CyclicProfileMatrixCase, ...]:
             expected_pendant_component_atom_counts=(2,),
             expected_pendant_component_boundary_counts=(1,),
             max_prefixes=1024,
+            expected_private_status=(
+                _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
+            ),
         ),
         _CyclicProfileMatrixCase(
             name="ring3 + two pendant atoms",
@@ -179,6 +199,9 @@ def _cyclic_profile_matrix_cases() -> tuple[_CyclicProfileMatrixCase, ...]:
             expected_pendant_component_atom_counts=(1, 1),
             expected_pendant_component_boundary_counts=(1, 1),
             max_prefixes=1024,
+            expected_private_status=(
+                _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
+            ),
         ),
         _CyclicProfileMatrixCase(
             name="ring3 + one pendant chain depth 3",
@@ -194,6 +217,9 @@ def _cyclic_profile_matrix_cases() -> tuple[_CyclicProfileMatrixCase, ...]:
             expected_pendant_component_atom_counts=(3,),
             expected_pendant_component_boundary_counts=(1,),
             max_prefixes=1024,
+            expected_private_status=(
+                _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
+            ),
         ),
         _CyclicProfileMatrixCase(
             name="ring3 + three pendant atoms",
@@ -209,6 +235,9 @@ def _cyclic_profile_matrix_cases() -> tuple[_CyclicProfileMatrixCase, ...]:
             expected_pendant_component_atom_counts=(1, 1, 1),
             expected_pendant_component_boundary_counts=(1, 1, 1),
             max_prefixes=1024,
+            expected_private_status=(
+                _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
+            ),
         ),
         _CyclicProfileMatrixCase(
             name="ring4 bare",
@@ -223,6 +252,9 @@ def _cyclic_profile_matrix_cases() -> tuple[_CyclicProfileMatrixCase, ...]:
             expected_pendant_component_atom_counts=(),
             expected_pendant_component_boundary_counts=(),
             max_prefixes=256,
+            expected_private_status=(
+                _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
+            ),
         ),
     )
 
@@ -885,6 +917,65 @@ def _assert_no_unreachable_open_closure_partners_under_private_replay(
             rec((*prefix, choice.emitted_text))
 
     rec(())
+
+
+def _assert_private_contract_status_for_cyclic_profile_case(
+    test_case: unittest.TestCase,
+    *,
+    case: _CyclicProfileMatrixCase,
+) -> None:
+    prepared = _prepare(case.facts)
+    options = _writer_options(rooted_at_atom=0)
+    cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+
+    snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
+        prepared=prepared,
+        runtime_options=options,
+        cursor=cursor,
+    )
+
+    if (
+        case.expected_private_status
+        is _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
+    ):
+        visited = _assert_writer_snapshot_contract_closed_under_replay(
+            test_case,
+            snapshot=snapshot,
+            prepared=prepared,
+            max_prefixes=case.max_prefixes,
+        )
+        test_case.assertGreater(len(visited), 1)
+
+        _assert_no_unreachable_open_closure_partners_under_private_replay(
+            test_case,
+            snapshot=snapshot,
+            prepared=prepared,
+            max_prefixes=case.max_prefixes,
+        )
+        return
+
+    expected_kind = {
+        _CyclicProfileMatrixPrivateStatus.INTERNAL_INVARIANT:
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+        _CyclicProfileMatrixPrivateStatus.UNSUPPORTED_POLICY:
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+    }[case.expected_private_status]
+
+    with test_case.assertRaises(SouthStarError) as caught:
+        _assert_writer_snapshot_contract_closed_under_replay(
+            test_case,
+            snapshot=snapshot,
+            prepared=prepared,
+            max_prefixes=case.max_prefixes,
+        )
+
+    test_case.assertIs(caught.exception.kind, expected_kind)
+
+    if case.expected_private_error_text is not None:
+        test_case.assertIn(
+            case.expected_private_error_text,
+            str(caught.exception),
+        )
 
 
 def _assert_private_monocycle_attachment_audit_outcome(
@@ -15378,6 +15469,12 @@ class WriterStateKernelTest(unittest.TestCase):
             options = _writer_options(rooted_at_atom=0)
 
             with self.subTest(name=case.name):
+                report = writer_snapshot._writer_public_cyclic_opening_profile_report(
+                    prepared=prepared,
+                )
+                self.assertFalse(report.supported)
+                self.assertIs(report.kind, case.expected_kind)
+
                 with patch(
                     "grimace._south_star1.writer_support.count_writer_frontier_support",
                     side_effect=AssertionError("public blocked profile reached support count"),
@@ -15415,42 +15512,70 @@ class WriterStateKernelTest(unittest.TestCase):
                 )
                 self.assertIn("profile", str(caught.exception).lower())
 
-    def test_public_cyclic_profile_matrix_blocked_neighbor_private_status_is_explicit(
+    def test_public_cyclic_profile_matrix_private_status_is_explicit(
         self,
     ) -> None:
         for case in _cyclic_profile_matrix_cases():
-            if case.name not in {
-                "ring3 + one pendant chain depth 3",
-                "ring3 + three pendant atoms",
-            }:
+            with self.subTest(name=case.name):
+                _assert_private_contract_status_for_cyclic_profile_case(
+                    self,
+                    case=case,
+                )
+
+    def test_public_cyclic_profile_matrix_private_diagnostics_align_when_contract_closes(
+        self,
+    ) -> None:
+        for case in _cyclic_profile_matrix_cases():
+            if (
+                case.expected_private_status
+                is not _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
+            ):
                 continue
 
             prepared = _prepare(case.facts)
             options = _writer_options(rooted_at_atom=0)
-            cursor = _initial_writer_transition_frontier_cursor(prepared, options)
-            snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
-                prepared=prepared,
-                runtime_options=options,
-                cursor=cursor,
+            cursor = _initial_writer_transition_frontier_cursor(
+                prepared,
+                options,
+            )
+            snapshot = (
+                writer_snapshot
+                ._capture_writer_frontier_snapshot_unchecked(
+                    prepared=prepared,
+                    runtime_options=options,
+                    cursor=cursor,
+                )
             )
 
-            with self.subTest(name=case.name):
-                try:
-                    visited = _assert_writer_snapshot_contract_closed_under_replay(
+            seen: set[tuple[str, ...]] = set()
+
+            def rec(prefix: tuple[str, ...]) -> None:
+                if prefix in seen:
+                    self.fail(f"revisited prefix {prefix!r}")
+                seen.add(prefix)
+
+                if len(seen) > case.max_prefixes:
+                    self.fail(
+                        "private diagnostic matrix audit exceeded "
+                        f"max_prefixes={case.max_prefixes}"
+                    )
+
+                outcome = (
+                    _assert_checked_prefix_choice_diagnostics_replay_aligned(
                         self,
                         snapshot=snapshot,
                         prepared=prepared,
-                        max_prefixes=case.max_prefixes,
+                        emitted_texts=prefix,
                     )
-                    self.assertGreater(len(visited), 1)
-                except SouthStarError as caught:
-                    self.assertIn(
-                        str(caught.exception.kind),
-                        (
-                            SouthStarErrorKind.INTERNAL_INVARIANT,
-                            SouthStarErrorKind.UNSUPPORTED_POLICY,
-                        ),
-                    )
+                )
+
+                assert outcome.public_choices is not None
+                for choice in outcome.public_choices.choices:
+                    rec((*prefix, choice.emitted_text))
+
+            with self.subTest(name=case.name):
+                rec(())
+                self.assertGreater(len(seen), 1)
 
     def test_public_cyclic_opening_profile_blocks_unsupported_closure_bond_surface(self) -> None:
         prepared = _prepare(cyclopropane_facts())

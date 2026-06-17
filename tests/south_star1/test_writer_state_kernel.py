@@ -7928,6 +7928,136 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
         self.assertIn("profile", str(caught.exception).lower())
 
+    def test_monocycle_with_attachment_admission_is_internally_ready_but_profile_blocked(
+        self,
+    ) -> None:
+        prepared = _prepare(methylcyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+
+        decision = writer_snapshot._cyclic_writer_admission_decision_from_cursor(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+
+        self.assertIs(
+            decision.kind,
+            writer_snapshot._WriterCyclicAdmissionDecisionKind
+            .BLOCKED_PUBLIC_CYCLIC_PROFILE,
+        )
+        self.assertTrue(decision.internally_ready)
+        self.assertFalse(decision.public_enabled)
+        self.assertFalse(decision.admitted_publicly)
+        self.assertTrue(decision.readiness_gate.ready)
+        self.assertIsNotNone(decision.public_profile)
+        assert decision.public_profile is not None
+        self.assertFalse(decision.public_profile.supported)
+        self.assertIs(
+            decision.public_profile.kind,
+            writer_snapshot._WriterPublicCyclicOpeningProfileKind
+            .BLOCKED_UNSUPPORTED_BRANCHING,
+        )
+
+    def test_private_writer_contract_closes_for_monocycle_with_attachment(
+        self,
+    ) -> None:
+        prepared = _prepare(methylcyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+
+        with self.assertRaises(SouthStarError) as caught:
+            _assert_writer_snapshot_contract_closed_under_replay(
+                self,
+                snapshot=snapshot,
+                prepared=prepared,
+                max_prefixes=512,
+            )
+
+        self.assertIs(
+            caught.exception.kind,
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+        )
+        self.assertIn(
+            "open closure partner atom is unreachable",
+            str(caught.exception).lower(),
+        )
+
+    def test_private_choice_diagnostics_replay_align_for_monocycle_with_attachment(
+        self,
+    ) -> None:
+        prepared = _prepare(methylcyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+
+        seen: set[tuple[str, ...]] = set()
+
+        def rec(prefix: tuple[str, ...]) -> None:
+            if prefix in seen:
+                self.fail(f"revisited writer prefix {prefix!r}")
+            seen.add(prefix)
+
+            if len(seen) > 512:
+                self.fail(
+                    "attachment diagnostic replay audit exceeded "
+                    "max_prefixes=512"
+                )
+
+            outcome = _assert_checked_prefix_choice_diagnostics_replay_aligned(
+                self,
+                snapshot=snapshot,
+                prepared=prepared,
+                emitted_texts=prefix,
+            )
+            assert outcome.public_choices is not None
+
+            for choice in outcome.public_choices.choices:
+                rec((*prefix, choice.emitted_text))
+
+        with self.assertRaises(SouthStarError) as caught:
+            rec(())
+
+        self.assertIs(
+            caught.exception.kind,
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+        )
+        self.assertIn(
+            "open closure partner atom is unreachable",
+            str(caught.exception).lower(),
+        )
+
+    def test_private_monocycle_with_attachment_support_is_finite_and_nonempty(
+        self,
+    ) -> None:
+        prepared = _prepare(methylcyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+
+        support_count = count_writer_frontier_support(
+            prepared,
+            cursor.support_state,
+        )
+        completion_count = count_writer_cursor_completions(
+            prepared,
+            cursor,
+        )
+        strings = tuple(iter_writer_frontier_support(prepared, cursor))
+
+        self.assertGreater(support_count, 0)
+        self.assertGreaterEqual(completion_count, support_count)
+        self.assertEqual(len(strings), support_count)
+        self.assertEqual(len(strings), len(set(strings)))
+
     def test_cyclic_admission_from_cursor_uses_private_snapshot_capture(self) -> None:
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
@@ -14475,6 +14605,28 @@ class WriterStateKernelTest(unittest.TestCase):
             caught.exception.kind,
             SouthStarErrorKind.UNSUPPORTED_POLICY,
         )
+        self.assertIn("profile", str(caught.exception).lower())
+
+    def test_public_monocycle_with_attachment_remains_profile_blocked(self) -> None:
+        prepared = _prepare(methylcyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+
+        with self.assertRaises(SouthStarError) as caught:
+            enumerate_prepared_stereo_support(
+                prepared=prepared,
+                runtime_options=options,
+            )
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+        self.assertIn("profile", str(caught.exception).lower())
+
+        with self.assertRaises(SouthStarError) as caught:
+            writer_snapshot.capture_initial_writer_frontier_snapshot(
+                prepared=prepared,
+                runtime_options=options,
+            )
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
         self.assertIn("profile", str(caught.exception).lower())
 
     def test_public_cyclic_support_profile_blocked_stops_before_count_stream(

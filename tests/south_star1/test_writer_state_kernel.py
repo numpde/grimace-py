@@ -712,6 +712,52 @@ def _assert_checked_prefix_choice_diagnostics_replay_aligned(
     return outcome
 
 
+def _assert_no_unreachable_open_closure_partners_under_private_replay(
+    test_case: unittest.TestCase,
+    *,
+    snapshot: writer_snapshot.WriterSearchSnapshot,
+    prepared: SouthStarPreparedMol,
+    max_prefixes: int,
+) -> None:
+    seen: set[tuple[str, ...]] = set()
+
+    def rec(prefix: tuple[str, ...]) -> None:
+        if prefix in seen:
+            test_case.fail(f"revisited prefix {prefix!r}")
+        seen.add(prefix)
+
+        if len(seen) > max_prefixes:
+            test_case.fail(
+                "open-closure liveness audit exceeded "
+                f"max_prefixes={max_prefixes}"
+            )
+
+        outcome = (
+            writer_snapshot
+            ._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
+                snapshot,
+                prepared=prepared,
+                emitted_texts=prefix,
+                include_counts=True,
+            )
+        )
+
+        advanced_snapshot = outcome.replay_outcome.advanced_snapshot
+        test_case.assertIsNotNone(advanced_snapshot)
+        assert advanced_snapshot is not None
+
+        writer_snapshot.validate_writer_search_snapshot(
+            advanced_snapshot,
+            prepared=prepared,
+        )
+
+        assert outcome.public_choices is not None
+        for choice in outcome.public_choices.choices:
+            rec((*prefix, choice.emitted_text))
+
+    rec(())
+
+
 def _assert_cyclic_admission_ready_public_for_snapshot(
     test_case: unittest.TestCase,
     *,
@@ -7971,22 +8017,14 @@ class WriterStateKernelTest(unittest.TestCase):
             cursor=cursor,
         )
 
-        with self.assertRaises(SouthStarError) as caught:
-            _assert_writer_snapshot_contract_closed_under_replay(
-                self,
-                snapshot=snapshot,
-                prepared=prepared,
-                max_prefixes=512,
-            )
+        visited = _assert_writer_snapshot_contract_closed_under_replay(
+            self,
+            snapshot=snapshot,
+            prepared=prepared,
+            max_prefixes=512,
+        )
 
-        self.assertIs(
-            caught.exception.kind,
-            SouthStarErrorKind.INTERNAL_INVARIANT,
-        )
-        self.assertIn(
-            "open closure partner atom is unreachable",
-            str(caught.exception).lower(),
-        )
+        self.assertGreater(len(visited), 1)
 
     def test_private_choice_diagnostics_replay_align_for_monocycle_with_attachment(
         self,
@@ -8024,17 +8062,8 @@ class WriterStateKernelTest(unittest.TestCase):
             for choice in outcome.public_choices.choices:
                 rec((*prefix, choice.emitted_text))
 
-        with self.assertRaises(SouthStarError) as caught:
-            rec(())
-
-        self.assertIs(
-            caught.exception.kind,
-            SouthStarErrorKind.INTERNAL_INVARIANT,
-        )
-        self.assertIn(
-            "open closure partner atom is unreachable",
-            str(caught.exception).lower(),
-        )
+        rec(())
+        self.assertGreater(len(seen), 1)
 
     def test_private_monocycle_with_attachment_support_is_finite_and_nonempty(
         self,
@@ -8057,6 +8086,25 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertGreaterEqual(completion_count, support_count)
         self.assertEqual(len(strings), support_count)
         self.assertEqual(len(strings), len(set(strings)))
+
+    def test_private_monocycle_with_attachment_has_no_unreachable_open_closure_partners(
+        self,
+    ) -> None:
+        prepared = _prepare(methylcyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+        snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+
+        _assert_no_unreachable_open_closure_partners_under_private_replay(
+            self,
+            snapshot=snapshot,
+            prepared=prepared,
+            max_prefixes=512,
+        )
 
     def test_cyclic_admission_from_cursor_uses_private_snapshot_capture(self) -> None:
         prepared = _prepare(cyclopropane_facts())

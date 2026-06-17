@@ -852,6 +852,34 @@ def _validate_open_endpoint_partner_liveness(
         if endpoint.second_atom not in _open_writer_atoms(key):
             _invalid_edge_partition("writer open closure partner atom is frozen")
         return
+
+    open_writer_atoms = _open_writer_atoms(key)
+    if any(
+        (
+            endpoint.second_atom == open_endpoint.second_atom
+            and open_endpoint.first_atom in open_writer_atoms
+        )
+        or (
+            endpoint.second_atom == open_endpoint.first_atom
+            and open_endpoint.second_atom in open_writer_atoms
+        )
+        for open_endpoint in key.ring_state.open_endpoints
+    ):
+        return
+
+    pending = key.obligations.pending_entry
+    if pending is not None:
+        if (
+            endpoint.second_atom == pending.child
+            and pending.parent in open_writer_atoms
+        ):
+            return
+        if (
+            endpoint.second_atom == pending.parent
+            and pending.child in open_writer_atoms
+        ):
+            return
+
     if not any(
         endpoint.second_atom in attachment.atoms and attachment.boundary
         for attachment in context.residual_summary.attachments.attachments

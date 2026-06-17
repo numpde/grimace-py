@@ -104,7 +104,6 @@ _WRITER_REPLAY_PROBE_TOKENS = (
 )
 
 
-@dataclass(frozen=True)
 class _CyclicProfileMatrixPrivateStatus(Enum):
     CONTRACT_CLOSES = auto()
     INTERNAL_INVARIANT = auto()
@@ -124,15 +123,33 @@ class _CyclicProfileMatrixCase:
     max_prefixes: int
     expected_private_status: _CyclicProfileMatrixPrivateStatus
     expected_private_error_text: str | None = None
+    expected_ring_core_bond_count: int | None = None
+    expected_ring_core_max_degree: int | None = None
 
 
-@dataclass(frozen=True)
-class _PendantForestGeneralizationAuditCase:
-    name: str
-    pendant_paths: tuple[int, ...]
-    expected_private_status: _CyclicProfileMatrixPrivateStatus
-    max_prefixes: int
-    expected_private_error_text: str | None = None
+def _integer_partitions(
+    total: int,
+    *,
+    max_part: int | None = None,
+) -> tuple[tuple[int, ...], ...]:
+    if total == 0:
+        return ((),)
+
+    if max_part is None:
+        max_part = total
+
+    def rec(remaining: int, min_part: int) -> tuple[tuple[int, ...], ...]:
+        if remaining == 0:
+            return ((),)
+
+        parts: list[tuple[int, ...]] = []
+        for part in range(min_part, min(remaining, max_part) + 1):
+            for tail in rec(remaining - part, part):
+                parts.append((part, *tail))
+
+        return tuple(parts)
+
+    return rec(total, 1)
 
 
 @dataclass(frozen=True)
@@ -143,6 +160,29 @@ class _SimpleRingSizeAuditCase:
     expected_private_status: _CyclicProfileMatrixPrivateStatus
     max_prefixes: int
     expected_private_error_text: str | None = None
+
+
+def _simple_ring_size_audit_cases() -> tuple[_SimpleRingSizeAuditCase, ...]:
+    return (
+        _SimpleRingSizeAuditCase(
+            name="ring4 bare",
+            ring_size=4,
+            expected_profile_supported=True,
+            expected_private_status=(
+                _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
+            ),
+            max_prefixes=2048,
+        ),
+        _SimpleRingSizeAuditCase(
+            name="ring5 bare",
+            ring_size=5,
+            expected_profile_supported=True,
+            expected_private_status=(
+                _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
+            ),
+            max_prefixes=2048,
+        ),
+    )
 
 
 def _cyclic_profile_matrix_cases() -> tuple[_CyclicProfileMatrixCase, ...]:
@@ -283,8 +323,8 @@ def _cyclic_profile_matrix_cases() -> tuple[_CyclicProfileMatrixCase, ...]:
                 pendant_paths=(4,),
             ),
             expected_kind=writer_snapshot._WriterPublicCyclicOpeningProfileKind
-            .BLOCKED_UNSUPPORTED_BRANCHING,
-            expected_supported=False,
+            .SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS,
+            expected_supported=True,
             expected_ring_core_atom_count=3,
             expected_pendant_atom_count=4,
             expected_pendant_component_atom_counts=(4,),
@@ -295,18 +335,72 @@ def _cyclic_profile_matrix_cases() -> tuple[_CyclicProfileMatrixCase, ...]:
             ),
         ),
         _CyclicProfileMatrixCase(
-            name="ring3 + mixed depth 2 chain and depth 2 chain pendants",
+            name="ring3 + two pendants of depth 2",
             facts=simple_monocycle_with_pendant_forest_facts(
                 ring_size=3,
                 pendant_paths=(2, 2),
             ),
             expected_kind=writer_snapshot._WriterPublicCyclicOpeningProfileKind
-            .BLOCKED_UNSUPPORTED_BRANCHING,
-            expected_supported=False,
+            .SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS,
+            expected_supported=True,
             expected_ring_core_atom_count=3,
             expected_pendant_atom_count=4,
             expected_pendant_component_atom_counts=(2, 2),
             expected_pendant_component_boundary_counts=(1, 1),
+            max_prefixes=2048,
+            expected_private_status=(
+                _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
+            ),
+        ),
+        _CyclicProfileMatrixCase(
+            name="ring3 + one pendant chain depth 5",
+            facts=simple_monocycle_with_pendant_forest_facts(
+                ring_size=3,
+                pendant_paths=(5,),
+            ),
+            expected_kind=writer_snapshot._WriterPublicCyclicOpeningProfileKind
+            .SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS,
+            expected_supported=True,
+            expected_ring_core_atom_count=3,
+            expected_pendant_atom_count=5,
+            expected_pendant_component_atom_counts=(5,),
+            expected_pendant_component_boundary_counts=(1,),
+            max_prefixes=2048,
+            expected_private_status=(
+                _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
+            ),
+        ),
+        _CyclicProfileMatrixCase(
+            name="ring3 + mixed two components",
+            facts=simple_monocycle_with_pendant_forest_facts(
+                ring_size=3,
+                pendant_paths=(3, 1),
+            ),
+            expected_kind=writer_snapshot._WriterPublicCyclicOpeningProfileKind
+            .SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS,
+            expected_supported=True,
+            expected_ring_core_atom_count=3,
+            expected_pendant_atom_count=4,
+            expected_pendant_component_atom_counts=(1, 3),
+            expected_pendant_component_boundary_counts=(1, 1),
+            max_prefixes=2048,
+            expected_private_status=(
+                _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
+            ),
+        ),
+        _CyclicProfileMatrixCase(
+            name="ring3 + mixed three components",
+            facts=simple_monocycle_with_pendant_forest_facts(
+                ring_size=3,
+                pendant_paths=(2, 1, 1),
+            ),
+            expected_kind=writer_snapshot._WriterPublicCyclicOpeningProfileKind
+            .SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS,
+            expected_supported=True,
+            expected_ring_core_atom_count=3,
+            expected_pendant_atom_count=4,
+            expected_pendant_component_atom_counts=(1, 1, 2),
+            expected_pendant_component_boundary_counts=(1, 1, 1),
             max_prefixes=2048,
             expected_private_status=(
                 _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
@@ -319,8 +413,8 @@ def _cyclic_profile_matrix_cases() -> tuple[_CyclicProfileMatrixCase, ...]:
                 pendant_paths=(1, 1, 1, 1),
             ),
             expected_kind=writer_snapshot._WriterPublicCyclicOpeningProfileKind
-            .BLOCKED_UNSUPPORTED_BRANCHING,
-            expected_supported=False,
+            .SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS,
+            expected_supported=True,
             expected_ring_core_atom_count=3,
             expected_pendant_atom_count=4,
             expected_pendant_component_atom_counts=(1, 1, 1, 1),
@@ -342,103 +436,108 @@ def _cyclic_profile_matrix_cases() -> tuple[_CyclicProfileMatrixCase, ...]:
             expected_pendant_atom_count=0,
             expected_pendant_component_atom_counts=(),
             expected_pendant_component_boundary_counts=(),
-            max_prefixes=256,
-            expected_private_status=(
-                _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
-            ),
-        ),
-    )
-
-
-def _pendant_forest_generalization_audit_cases(
-) -> tuple[_PendantForestGeneralizationAuditCase, ...]:
-    return (
-        _PendantForestGeneralizationAuditCase(
-            name="ring3 + single chain depth 4",
-            pendant_paths=(4,),
-            expected_private_status=(
-                _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
-            ),
             max_prefixes=2048,
-        ),
-        _PendantForestGeneralizationAuditCase(
-            name="ring3 + single chain depth 5",
-            pendant_paths=(5,),
             expected_private_status=(
                 _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
             ),
-            max_prefixes=2048,
         ),
-        _PendantForestGeneralizationAuditCase(
-            name="ring3 + single chain depth 6",
-            pendant_paths=(6,),
-            expected_private_status=(
-                _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
-            ),
-            max_prefixes=2048,
-        ),
-        _PendantForestGeneralizationAuditCase(
-            name="ring3 + balanced two components",
-            pendant_paths=(2, 2),
-            expected_private_status=(
-                _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
-            ),
-            max_prefixes=2048,
-        ),
-        _PendantForestGeneralizationAuditCase(
-            name="ring3 + mixed two components",
-            pendant_paths=(3, 1),
-            expected_private_status=(
-                _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
-            ),
-            max_prefixes=2048,
-        ),
-        _PendantForestGeneralizationAuditCase(
-            name="ring3 + mixed three components",
-            pendant_paths=(2, 1, 1),
-            expected_private_status=(
-                _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
-            ),
-            max_prefixes=2048,
-        ),
-        _PendantForestGeneralizationAuditCase(
-            name="ring3 + four singleton components",
-            pendant_paths=(1, 1, 1, 1),
-            expected_private_status=(
-                _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
-            ),
-            max_prefixes=2048,
-        ),
-        _PendantForestGeneralizationAuditCase(
-            name="ring3 + larger mixed forest",
-            pendant_paths=(3, 2, 1),
-            expected_private_status=(
-                _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
-            ),
-            max_prefixes=2048,
-        ),
-    )
-
-
-def _simple_ring_size_audit_cases() -> tuple[_SimpleRingSizeAuditCase, ...]:
-    return (
-        _SimpleRingSizeAuditCase(
-            name="ring4 bare",
-            ring_size=4,
-            expected_profile_supported=True,
-            expected_private_status=(
-                _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
-            ),
-            max_prefixes=256,
-        ),
-        _SimpleRingSizeAuditCase(
+        _CyclicProfileMatrixCase(
             name="ring5 bare",
-            ring_size=5,
-            expected_profile_supported=True,
+            facts=simple_monocycle_with_pendant_forest_facts(
+                ring_size=5,
+            ),
+            expected_kind=writer_snapshot._WriterPublicCyclicOpeningProfileKind
+            .SUPPORTED_SIMPLE_MONOCYCLE_COMPONENT,
+            expected_supported=True,
+            expected_ring_core_atom_count=5,
+            expected_pendant_atom_count=0,
+            expected_pendant_component_atom_counts=(),
+            expected_pendant_component_boundary_counts=(),
+            max_prefixes=2048,
             expected_private_status=(
                 _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
             ),
-            max_prefixes=256,
+        ),
+        _CyclicProfileMatrixCase(
+            name="ring3 + one pendant chain depth 6",
+            facts=simple_monocycle_with_pendant_forest_facts(
+                ring_size=3,
+                pendant_paths=(6,),
+            ),
+            expected_kind=writer_snapshot._WriterPublicCyclicOpeningProfileKind
+            .SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS,
+            expected_supported=True,
+            expected_ring_core_atom_count=3,
+            expected_pendant_atom_count=6,
+            expected_pendant_component_atom_counts=(6,),
+            expected_pendant_component_boundary_counts=(1,),
+            max_prefixes=4096,
+            expected_private_status=(
+                _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
+            ),
+        ),
+        _CyclicProfileMatrixCase(
+            name="ring3 with two-boundary non-core path",
+            facts=_ring3_with_two_boundary_noncore_path_facts(),
+            expected_kind=writer_snapshot._WriterPublicCyclicOpeningProfileKind
+            .BLOCKED_UNSUPPORTED_CYCLIC_RANK,
+            expected_supported=False,
+            expected_ring_core_atom_count=5,
+            expected_ring_core_bond_count=6,
+            expected_ring_core_max_degree=3,
+            expected_pendant_atom_count=0,
+            expected_pendant_component_atom_counts=(),
+            expected_pendant_component_boundary_counts=(),
+            max_prefixes=128,
+            expected_private_status=(
+                _CyclicProfileMatrixPrivateStatus.INTERNAL_INVARIANT
+            ),
+            expected_private_error_text="open closure partner atom is unreachable",
+        ),
+        _CyclicProfileMatrixCase(
+            name="ring3 + larger mixed forest",
+            facts=simple_monocycle_with_pendant_forest_facts(
+                ring_size=3,
+                pendant_paths=(3, 2, 1),
+            ),
+            expected_kind=writer_snapshot._WriterPublicCyclicOpeningProfileKind
+            .SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS,
+            expected_supported=True,
+            expected_ring_core_atom_count=3,
+            expected_pendant_atom_count=6,
+            expected_pendant_component_atom_counts=(1, 2, 3),
+            expected_pendant_component_boundary_counts=(1, 1, 1),
+            max_prefixes=4096,
+            expected_private_status=(
+                _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
+            ),
+        ),
+    )
+
+
+def _ring3_with_two_boundary_noncore_path_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=(
+            atom(0, "C"),
+            atom(1, "C"),
+            atom(2, "C"),
+            atom(3, "C"),
+            atom(4, "C"),
+        ),
+        bonds=(
+            single_bond(0, 0, 1),
+            single_bond(1, 1, 2),
+            single_bond(2, 2, 0),
+            single_bond(3, 0, 3),
+            single_bond(4, 3, 4),
+            single_bond(5, 4, 1),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0), AtomId(1), AtomId(2), AtomId(3), AtomId(4)),
+                bonds=(BondId(0), BondId(1), BondId(2), BondId(3), BondId(4), BondId(5)),
+            ),
         ),
     )
 
@@ -15600,11 +15699,23 @@ class WriterStateKernelTest(unittest.TestCase):
                     report.ring_core_atom_count,
                     case.expected_ring_core_atom_count,
                 )
-                self.assertEqual(
-                    report.ring_core_bond_count,
-                    case.expected_ring_core_atom_count,
-                )
-                self.assertEqual(report.ring_core_max_degree, 2)
+                if case.expected_ring_core_bond_count is None:
+                    self.assertEqual(
+                        report.ring_core_bond_count,
+                        case.expected_ring_core_atom_count,
+                    )
+                else:
+                    self.assertEqual(
+                        report.ring_core_bond_count,
+                        case.expected_ring_core_bond_count,
+                    )
+                if case.expected_ring_core_max_degree is None:
+                    self.assertEqual(report.ring_core_max_degree, 2)
+                else:
+                    self.assertEqual(
+                        report.ring_core_max_degree,
+                        case.expected_ring_core_max_degree,
+                    )
                 self.assertEqual(report.pendant_atom_count, case.expected_pendant_atom_count)
                 self.assertEqual(
                     report.pendant_component_atom_counts,
@@ -15761,175 +15872,57 @@ class WriterStateKernelTest(unittest.TestCase):
                 rec(())
                 self.assertGreater(len(seen), 1)
 
-    def test_pendant_forest_generalization_window_private_status_is_explicit(
+    def test_public_cyclic_profile_accepts_pendant_forest_partitions_through_budget(
         self,
     ) -> None:
-        for case in _pendant_forest_generalization_audit_cases():
-            with self.subTest(name=case.name):
-                facts = simple_monocycle_with_pendant_forest_facts(
-                    ring_size=3,
-                    pendant_paths=case.pendant_paths,
-                )
+        max_pendant_atoms = 6
+        ring_sizes = (3, 4, 5)
 
-                profile_case = _CyclicProfileMatrixCase(
-                    name=case.name,
-                    facts=facts,
-                    expected_kind=writer_snapshot
-                    ._WriterPublicCyclicOpeningProfileKind
-                    .BLOCKED_UNSUPPORTED_BRANCHING,
-                    expected_supported=False,
-                    expected_ring_core_atom_count=3,
-                    expected_pendant_atom_count=sum(case.pendant_paths),
-                    expected_pendant_component_atom_counts=tuple(
-                        sorted(case.pendant_paths)
-                    ),
-                    expected_pendant_component_boundary_counts=(1,)
-                    * len(case.pendant_paths),
-                    max_prefixes=case.max_prefixes,
-                    expected_private_status=case.expected_private_status,
-                    expected_private_error_text=case.expected_private_error_text,
-                )
+        for ring_size in ring_sizes:
+            for pendant_atom_count in range(max_pendant_atoms + 1):
+                for pendant_paths in _integer_partitions(pendant_atom_count):
+                    with self.subTest(
+                        ring_size=ring_size,
+                        pendant_paths=pendant_paths,
+                    ):
+                        facts = simple_monocycle_with_pendant_forest_facts(
+                            ring_size=ring_size,
+                            pendant_paths=pendant_paths,
+                        )
+                        prepared = _prepare(facts)
 
-                report = writer_snapshot._writer_public_cyclic_opening_profile_report(
-                    prepared=_prepare(profile_case.facts),
-                )
-                self.assertFalse(report.supported)
-                self.assertIs(
-                    report.kind,
-                    writer_snapshot
-                    ._WriterPublicCyclicOpeningProfileKind
-                    .BLOCKED_UNSUPPORTED_BRANCHING,
-                )
-
-                _assert_private_contract_status_for_cyclic_profile_case(
-                    self,
-                    case=profile_case,
-                )
-
-    def test_pendant_forest_generalization_window_private_diagnostics_align_when_contract_closes(
-        self,
-    ) -> None:
-        for case in _pendant_forest_generalization_audit_cases():
-            if (
-                case.expected_private_status
-                is not _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
-            ):
-                continue
-
-            prepared = _prepare(
-                simple_monocycle_with_pendant_forest_facts(
-                    ring_size=3,
-                    pendant_paths=case.pendant_paths,
-                )
-            )
-            options = _writer_options(rooted_at_atom=0)
-            cursor = _initial_writer_transition_frontier_cursor(
-                prepared,
-                options,
-            )
-            snapshot = (
-                writer_snapshot
-                ._capture_writer_frontier_snapshot_unchecked(
-                    prepared=prepared,
-                    runtime_options=options,
-                    cursor=cursor,
-                )
-            )
-
-            seen: set[tuple[str, ...]] = set()
-
-            def rec(prefix: tuple[str, ...]) -> None:
-                if prefix in seen:
-                    self.fail(f"revisited prefix {prefix!r}")
-                seen.add(prefix)
-
-                if len(seen) > case.max_prefixes:
-                    self.fail(
-                        "generalization audit exceeded "
-                        f"max_prefixes={case.max_prefixes}"
-                    )
-
-                outcome = _assert_checked_prefix_choice_diagnostics_replay_aligned(
-                    self,
-                    snapshot=snapshot,
-                    prepared=prepared,
-                    emitted_texts=prefix,
-                )
-
-                assert outcome.public_choices is not None
-                for choice in outcome.public_choices.choices:
-                    rec((*prefix, choice.emitted_text))
-
-            with self.subTest(name=case.name):
-                rec(())
-                self.assertGreater(len(seen), 1)
-
-    def test_pendant_forest_generalization_window_public_still_blocks_over_cap_rows(
-        self,
-    ) -> None:
-        for case in _pendant_forest_generalization_audit_cases():
-            prepared = _prepare(
-                simple_monocycle_with_pendant_forest_facts(
-                    ring_size=3,
-                    pendant_paths=case.pendant_paths,
-                )
-            )
-            options = _writer_options(rooted_at_atom=0)
-
-            report = writer_snapshot._writer_public_cyclic_opening_profile_report(
-                prepared=prepared,
-            )
-            self.assertFalse(report.supported)
-            self.assertIs(
-                report.kind,
-                writer_snapshot
-                ._WriterPublicCyclicOpeningProfileKind
-                .BLOCKED_UNSUPPORTED_BRANCHING,
-            )
-
-            with self.subTest(name=case.name):
-                with patch(
-                    "grimace._south_star1.writer_support.count_writer_frontier_support",
-                    side_effect=AssertionError(
-                        "generalization audit over-cap reached support count",
-                    ),
-                ), patch(
-                    (
-                        "grimace._south_star1.writer_support"
-                        ".count_writer_cursor_completions"
-                    ),
-                    side_effect=AssertionError(
-                        "generalization audit over-cap reached completion count",
-                    ),
-                ), patch(
-                    "grimace._south_star1.writer_support.iter_writer_frontier_support",
-                    side_effect=AssertionError(
-                        "generalization audit over-cap reached stream",
-                    ),
-                ):
-                    with self.assertRaises(SouthStarError) as caught:
-                        enumerate_prepared_stereo_support(
+                        report = writer_snapshot._writer_public_cyclic_opening_profile_report(
                             prepared=prepared,
-                            runtime_options=options,
                         )
 
-                self.assertIs(
-                    caught.exception.kind,
-                    SouthStarErrorKind.UNSUPPORTED_POLICY,
-                )
-                self.assertIn("profile", str(caught.exception).lower())
+                        self.assertTrue(report.supported)
+                        if pendant_atom_count == 0:
+                            self.assertIs(
+                                report.kind,
+                                writer_snapshot
+                                ._WriterPublicCyclicOpeningProfileKind
+                                .SUPPORTED_SIMPLE_MONOCYCLE_COMPONENT,
+                            )
+                        else:
+                            self.assertIs(
+                                report.kind,
+                                writer_snapshot
+                                ._WriterPublicCyclicOpeningProfileKind
+                                .SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS,
+                            )
 
-                with self.assertRaises(SouthStarError) as caught:
-                    writer_snapshot.capture_initial_writer_frontier_snapshot(
-                        prepared=prepared,
-                        runtime_options=options,
-                    )
-
-                self.assertIs(
-                    caught.exception.kind,
-                    SouthStarErrorKind.UNSUPPORTED_POLICY,
-                )
-                self.assertIn("profile", str(caught.exception).lower())
+                        self.assertEqual(
+                            report.pendant_atom_count,
+                            pendant_atom_count,
+                        )
+                        self.assertEqual(
+                            report.pendant_component_atom_counts,
+                            tuple(sorted(pendant_paths)),
+                        )
+                        self.assertEqual(
+                            report.pendant_component_boundary_counts,
+                            (1,) * len(pendant_paths),
+                        )
 
     def test_simple_ring_size_profile_rows_match_public_online_contract(self) -> None:
         for case in _simple_ring_size_audit_cases():

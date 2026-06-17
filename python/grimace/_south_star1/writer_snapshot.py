@@ -66,7 +66,6 @@ from .writer_state import WriterStereoStateKey
 
 
 _PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED = True
-_PUBLIC_CYCLIC_MAX_PENDANT_ATTACHMENT_ATOMS = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -2349,7 +2348,7 @@ def _writer_public_cyclic_opening_profile_report(
             .SUPPORTED_SIMPLE_MONOCYCLE_COMPONENT
         )
     elif (
-        1 <= pendant_atom_count <= _PUBLIC_CYCLIC_MAX_PENDANT_ATTACHMENT_ATOMS
+        pendant_atom_count > 0
         and pendant_bond_count == pendant_atom_count
         and all(
             boundary_count == 1

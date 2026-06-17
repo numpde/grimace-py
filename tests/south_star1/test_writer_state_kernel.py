@@ -71,6 +71,8 @@ from tests.south_star1.helpers import atom
 from tests.south_star1.helpers import bond
 from tests.south_star1.helpers import cco_facts
 from tests.south_star1.helpers import cyclopropane_facts
+from tests.south_star1.helpers import dimethylcyclopropane_facts
+from tests.south_star1.helpers import ethylcyclopropane_facts
 from tests.south_star1.helpers import methylcyclopropane_facts
 from tests.south_star1.helpers import directional_facts
 from tests.south_star1.helpers import single_bond
@@ -756,6 +758,121 @@ def _assert_no_unreachable_open_closure_partners_under_private_replay(
             rec((*prefix, choice.emitted_text))
 
     rec(())
+
+
+def _assert_private_monocycle_attachment_audit_outcome(
+    test_case: unittest.TestCase,
+    *,
+    facts: MoleculeFacts,
+    max_prefixes: int,
+) -> None:
+    prepared = _prepare(facts)
+    options = _writer_options(rooted_at_atom=0)
+    cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+
+    decision = writer_snapshot._cyclic_writer_admission_decision_from_cursor(
+        prepared=prepared,
+        runtime_options=options,
+        cursor=cursor,
+    )
+
+    test_case.assertIs(
+        decision.kind,
+        writer_snapshot
+        ._WriterCyclicAdmissionDecisionKind
+        .BLOCKED_PUBLIC_CYCLIC_PROFILE,
+    )
+    test_case.assertTrue(decision.internally_ready)
+    test_case.assertFalse(decision.public_enabled)
+    test_case.assertFalse(decision.admitted_publicly)
+    test_case.assertIsNotNone(decision.public_profile)
+    assert decision.public_profile is not None
+    test_case.assertFalse(decision.public_profile.supported)
+    test_case.assertIs(
+        decision.public_profile.kind,
+        writer_snapshot
+        ._WriterPublicCyclicOpeningProfileKind
+        .BLOCKED_UNSUPPORTED_BRANCHING,
+    )
+
+    snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
+        prepared=prepared,
+        runtime_options=options,
+        cursor=cursor,
+    )
+
+    support_count = count_writer_frontier_support(
+        prepared,
+        cursor.support_state,
+    )
+    completion_count = count_writer_cursor_completions(
+        prepared,
+        cursor,
+    )
+    strings = tuple(iter_writer_frontier_support(prepared, cursor))
+
+    test_case.assertGreater(support_count, 0)
+    test_case.assertGreaterEqual(completion_count, support_count)
+    test_case.assertEqual(len(strings), support_count)
+    test_case.assertEqual(len(strings), len(set(strings)))
+
+    visited = _assert_writer_snapshot_contract_closed_under_replay(
+        test_case,
+        snapshot=snapshot,
+        prepared=prepared,
+        max_prefixes=max_prefixes,
+    )
+    test_case.assertGreater(len(visited), 1)
+
+    _assert_no_unreachable_open_closure_partners_under_private_replay(
+        test_case,
+        snapshot=snapshot,
+        prepared=prepared,
+        max_prefixes=max_prefixes,
+    )
+
+
+def _assert_private_monocycle_attachment_diagnostics_align(
+    test_case: unittest.TestCase,
+    *,
+    facts: MoleculeFacts,
+    max_prefixes: int,
+) -> None:
+    prepared = _prepare(facts)
+    options = _writer_options(rooted_at_atom=0)
+    cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+    snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
+        prepared=prepared,
+        runtime_options=options,
+        cursor=cursor,
+    )
+
+    seen: set[tuple[str, ...]] = set()
+
+    def rec(prefix: tuple[str, ...]) -> None:
+        if prefix in seen:
+            test_case.fail(f"revisited writer prefix {prefix!r}")
+        seen.add(prefix)
+
+        if len(seen) > max_prefixes:
+            test_case.fail(
+                "broader attachment diagnostic audit exceeded "
+                f"max_prefixes={max_prefixes}"
+            )
+
+        outcome = _assert_checked_prefix_choice_diagnostics_replay_aligned(
+            test_case,
+            snapshot=snapshot,
+            prepared=prepared,
+            emitted_texts=prefix,
+        )
+
+        assert outcome.public_choices is not None
+        for choice in outcome.public_choices.choices:
+            rec((*prefix, choice.emitted_text))
+
+    rec(())
+    test_case.assertGreater(len(seen), 1)
 
 
 def _assert_cyclic_admission_ready_public_for_snapshot(
@@ -8049,44 +8166,50 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertGreater(len(visited), 1)
 
+    def test_private_writer_contract_closes_for_deeper_pendant_chain_monocycle(
+        self,
+    ) -> None:
+        _assert_private_monocycle_attachment_audit_outcome(
+            self,
+            facts=ethylcyclopropane_facts(),
+            max_prefixes=1024,
+        )
+
+    def test_private_writer_contract_closes_for_multiple_pendant_monocycle(
+        self,
+    ) -> None:
+        _assert_private_monocycle_attachment_audit_outcome(
+            self,
+            facts=dimethylcyclopropane_facts(),
+            max_prefixes=1024,
+        )
+
     def test_private_choice_diagnostics_replay_align_for_monocycle_with_attachment(
         self,
     ) -> None:
-        prepared = _prepare(methylcyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
-        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
-        snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
-            prepared=prepared,
-            runtime_options=options,
-            cursor=cursor,
+        _assert_private_monocycle_attachment_diagnostics_align(
+            self,
+            facts=methylcyclopropane_facts(),
+            max_prefixes=1024,
         )
 
-        seen: set[tuple[str, ...]] = set()
+    def test_private_choice_diagnostics_replay_align_for_deeper_pendant_chain_monocycle(
+        self,
+    ) -> None:
+        _assert_private_monocycle_attachment_diagnostics_align(
+            self,
+            facts=ethylcyclopropane_facts(),
+            max_prefixes=1024,
+        )
 
-        def rec(prefix: tuple[str, ...]) -> None:
-            if prefix in seen:
-                self.fail(f"revisited writer prefix {prefix!r}")
-            seen.add(prefix)
-
-            if len(seen) > 512:
-                self.fail(
-                    "attachment diagnostic replay audit exceeded "
-                    "max_prefixes=512"
-                )
-
-            outcome = _assert_checked_prefix_choice_diagnostics_replay_aligned(
-                self,
-                snapshot=snapshot,
-                prepared=prepared,
-                emitted_texts=prefix,
-            )
-            assert outcome.public_choices is not None
-
-            for choice in outcome.public_choices.choices:
-                rec((*prefix, choice.emitted_text))
-
-        rec(())
-        self.assertGreater(len(seen), 1)
+    def test_private_choice_diagnostics_replay_align_for_multiple_pendant_monocycle(
+        self,
+    ) -> None:
+        _assert_private_monocycle_attachment_diagnostics_align(
+            self,
+            facts=dimethylcyclopropane_facts(),
+            max_prefixes=1024,
+        )
 
     def test_private_monocycle_with_attachment_support_is_finite_and_nonempty(
         self,
@@ -15069,6 +15192,73 @@ class WriterStateKernelTest(unittest.TestCase):
             caught.exception.kind,
             SouthStarErrorKind.UNSUPPORTED_POLICY,
         )
+
+    def test_public_cyclic_profile_blocks_deeper_pendant_chain(self) -> None:
+        prepared = _prepare(ethylcyclopropane_facts())
+        report = writer_snapshot._writer_public_cyclic_opening_profile_report(
+            prepared=prepared,
+        )
+
+        self.assertFalse(report.supported)
+        self.assertIs(
+            report.kind,
+            writer_snapshot._WriterPublicCyclicOpeningProfileKind
+            .BLOCKED_UNSUPPORTED_BRANCHING,
+        )
+        self.assertEqual(report.ring_core_atom_count, 3)
+        self.assertEqual(report.ring_core_bond_count, 3)
+        self.assertEqual(report.pendant_atom_count, 2)
+        self.assertEqual(report.pendant_bond_count, 2)
+
+    def test_public_cyclic_profile_blocks_multiple_pendant_atoms(self) -> None:
+        prepared = _prepare(dimethylcyclopropane_facts())
+        report = writer_snapshot._writer_public_cyclic_opening_profile_report(
+            prepared=prepared,
+        )
+
+        self.assertFalse(report.supported)
+        self.assertIs(
+            report.kind,
+            writer_snapshot._WriterPublicCyclicOpeningProfileKind
+            .BLOCKED_UNSUPPORTED_BRANCHING,
+        )
+        self.assertEqual(report.pendant_atom_count, 2)
+        self.assertEqual(report.pendant_bond_count, 2)
+
+    def test_public_broader_monocycle_attachments_remain_profile_blocked(self) -> None:
+        cases = (
+            ("ethylcyclopropane", ethylcyclopropane_facts()),
+            ("dimethylcyclopropane", dimethylcyclopropane_facts()),
+        )
+
+        for _name, facts in cases:
+            prepared = _prepare(facts)
+            options = _writer_options(rooted_at_atom=0)
+
+            with self.subTest():
+                with self.assertRaises(SouthStarError) as caught:
+                    enumerate_prepared_stereo_support(
+                        prepared=prepared,
+                        runtime_options=options,
+                    )
+
+                self.assertIs(
+                    caught.exception.kind,
+                    SouthStarErrorKind.UNSUPPORTED_POLICY,
+                )
+                self.assertIn("profile", str(caught.exception).lower())
+
+                with self.assertRaises(SouthStarError) as caught:
+                    writer_snapshot.capture_initial_writer_frontier_snapshot(
+                        prepared=prepared,
+                        runtime_options=options,
+                    )
+
+                self.assertIs(
+                    caught.exception.kind,
+                    SouthStarErrorKind.UNSUPPORTED_POLICY,
+                )
+                self.assertIn("profile", str(caught.exception).lower())
 
     def test_public_admission_accepts_simple_monocycle_with_acyclic_attachment(self) -> None:
         prepared = _prepare(methylcyclopropane_facts())

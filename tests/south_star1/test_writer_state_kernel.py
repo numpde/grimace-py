@@ -210,8 +210,8 @@ def _cyclic_profile_matrix_cases() -> tuple[_CyclicProfileMatrixCase, ...]:
                 pendant_paths=(3,),
             ),
             expected_kind=writer_snapshot._WriterPublicCyclicOpeningProfileKind
-            .BLOCKED_UNSUPPORTED_BRANCHING,
-            expected_supported=False,
+            .SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS,
+            expected_supported=True,
             expected_ring_core_atom_count=3,
             expected_pendant_atom_count=3,
             expected_pendant_component_atom_counts=(3,),
@@ -228,13 +228,85 @@ def _cyclic_profile_matrix_cases() -> tuple[_CyclicProfileMatrixCase, ...]:
                 pendant_paths=(1, 1, 1),
             ),
             expected_kind=writer_snapshot._WriterPublicCyclicOpeningProfileKind
-            .BLOCKED_UNSUPPORTED_BRANCHING,
-            expected_supported=False,
+            .SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS,
+            expected_supported=True,
             expected_ring_core_atom_count=3,
             expected_pendant_atom_count=3,
             expected_pendant_component_atom_counts=(1, 1, 1),
             expected_pendant_component_boundary_counts=(1, 1, 1),
             max_prefixes=1024,
+            expected_private_status=(
+                _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
+            ),
+        ),
+        _CyclicProfileMatrixCase(
+            name="ring3 + mixed depth 2 and singleton pendants",
+            facts=simple_monocycle_with_pendant_forest_facts(
+                ring_size=3,
+                pendant_paths=(2, 1),
+            ),
+            expected_kind=writer_snapshot._WriterPublicCyclicOpeningProfileKind
+            .SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS,
+            expected_supported=True,
+            expected_ring_core_atom_count=3,
+            expected_pendant_atom_count=3,
+            expected_pendant_component_atom_counts=(1, 2),
+            expected_pendant_component_boundary_counts=(1, 1),
+            max_prefixes=1024,
+            expected_private_status=(
+                _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
+            ),
+        ),
+        _CyclicProfileMatrixCase(
+            name="ring3 + one pendant chain depth 4",
+            facts=simple_monocycle_with_pendant_forest_facts(
+                ring_size=3,
+                pendant_paths=(4,),
+            ),
+            expected_kind=writer_snapshot._WriterPublicCyclicOpeningProfileKind
+            .BLOCKED_UNSUPPORTED_BRANCHING,
+            expected_supported=False,
+            expected_ring_core_atom_count=3,
+            expected_pendant_atom_count=4,
+            expected_pendant_component_atom_counts=(4,),
+            expected_pendant_component_boundary_counts=(1,),
+            max_prefixes=2048,
+            expected_private_status=(
+                _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
+            ),
+        ),
+        _CyclicProfileMatrixCase(
+            name="ring3 + mixed depth 2 chain and depth 2 chain pendants",
+            facts=simple_monocycle_with_pendant_forest_facts(
+                ring_size=3,
+                pendant_paths=(2, 2),
+            ),
+            expected_kind=writer_snapshot._WriterPublicCyclicOpeningProfileKind
+            .BLOCKED_UNSUPPORTED_BRANCHING,
+            expected_supported=False,
+            expected_ring_core_atom_count=3,
+            expected_pendant_atom_count=4,
+            expected_pendant_component_atom_counts=(2, 2),
+            expected_pendant_component_boundary_counts=(1, 1),
+            max_prefixes=2048,
+            expected_private_status=(
+                _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
+            ),
+        ),
+        _CyclicProfileMatrixCase(
+            name="ring3 + four singleton pendants",
+            facts=simple_monocycle_with_pendant_forest_facts(
+                ring_size=3,
+                pendant_paths=(1, 1, 1, 1),
+            ),
+            expected_kind=writer_snapshot._WriterPublicCyclicOpeningProfileKind
+            .BLOCKED_UNSUPPORTED_BRANCHING,
+            expected_supported=False,
+            expected_ring_core_atom_count=3,
+            expected_pendant_atom_count=4,
+            expected_pendant_component_atom_counts=(1, 1, 1, 1),
+            expected_pendant_component_boundary_counts=(1, 1, 1, 1),
+            max_prefixes=2048,
             expected_private_status=(
                 _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
             ),

@@ -325,7 +325,7 @@ single-boundary cyclic attachments and can open and pair closure endpoints for
 internally constructed cyclic states when successor graph obligations remain
 actionable. Public cyclic WRITER_SHAPED is open only for one connected rank-one
 cyclic component whose 2-core is a simple cycle and whose non-core material is
-either absent or a bounded acyclic pendant forest with at most two pendant
+either absent or a bounded acyclic pendant forest with at most three pendant
 atoms. Each pendant component must attach through exactly one cycle-core boundary
 bond, and all core closure-bond and cyclic-stereo obligations must remain
 supported. Deeper, multiple, fused, bridged, multi-cycle, unsupported

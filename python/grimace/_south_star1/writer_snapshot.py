@@ -66,7 +66,7 @@ from .writer_state import WriterStereoStateKey
 
 
 _PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED = True
-_PUBLIC_CYCLIC_MAX_PENDANT_ATTACHMENT_ATOMS = 2
+_PUBLIC_CYCLIC_MAX_PENDANT_ATTACHMENT_ATOMS = 3
 
 
 @dataclass(frozen=True, slots=True)

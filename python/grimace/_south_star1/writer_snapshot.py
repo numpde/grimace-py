@@ -1272,6 +1272,8 @@ class _WriterPublicCyclicOpeningProfileReport:
         return self.kind in {
             _WriterPublicCyclicOpeningProfileKind
             .SUPPORTED_SIMPLE_MONOCYCLE_COMPONENT,
+            _WriterPublicCyclicOpeningProfileKind
+            .SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS,
         }
 
 
@@ -2276,10 +2278,18 @@ def _writer_public_cyclic_opening_profile_report(
             _WriterPublicCyclicOpeningProfileKind
             .BLOCKED_UNSUPPORTED_BRANCHING
         )
-    elif branch_atom_count == 0 and pendant_atom_count == 0:
+    elif pendant_atom_count == 0:
         kind = (
             _WriterPublicCyclicOpeningProfileKind
             .SUPPORTED_SIMPLE_MONOCYCLE_COMPONENT
+        )
+    elif (
+        pendant_atom_count == 1
+        and pendant_bond_count == 1
+    ):
+        kind = (
+            _WriterPublicCyclicOpeningProfileKind
+            .SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS
         )
     else:
         kind = (

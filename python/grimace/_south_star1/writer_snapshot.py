@@ -47,6 +47,7 @@ from .writer_frontier import _initial_writer_transition_frontier_cursor
 from .writer_frontier import _writer_frontier_choice_snapshot
 from .writer_frontier import initial_writer_frontier_cursor
 from .writer_frontier import iter_writer_frontier_support
+from .writer_stereo import reconstruct_writer_local_order_records
 from .writer_stereo import reconstruct_writer_stereo_residual_snapshot
 from .writer_state import ComponentCursor
 from .writer_state import ObligationStateKey
@@ -3127,7 +3128,7 @@ def validate_writer_cursor_against_prepared(
         )
         _validate_live_frontier_ownership(prepared, key, context)
         _validate_terminal_graph_completion(prepared, key, context)
-        _validate_stereo_occurrences_bound_to_graph_state(prepared, key)
+        _validate_stereo_occurrences_bound_to_graph_state(prepared, key, context)
         _validate_ring_state(prepared, key, context)
         _validate_policy_state(key, atom_ids, bond_ids)
         _validate_stereo_state(
@@ -3684,6 +3685,7 @@ def _active_is_terminal_leaf(
 def _validate_stereo_occurrences_bound_to_graph_state(
     prepared: SouthStarPreparedMol,
     key: WriterStateKey,
+    context: WriterGraphObligationContext,
 ) -> None:
     atom_occurrence_atoms = frozenset(
         record.atom for record in key.stereo_state.atom_occurrences
@@ -3699,7 +3701,11 @@ def _validate_stereo_occurrences_bound_to_graph_state(
     )
     if bond_occurrence_bonds != frozenset(expected_bonds):
         _invalid_snapshot("writer bond occurrences do not cover emitted bonds")
-    parent_by_child = _written_tree_parent_links(prepared, key)
+    parent_links = _written_tree_parent_links(prepared, key)
+    parent_by_child = {
+        child: parent
+        for child, (parent, _bond) in parent_links.items()
+    }
     for record in key.stereo_state.atom_occurrences:
         if record.atom not in key.visited_atoms:
             _invalid_snapshot("writer atom occurrence is not backed by visited atom")
@@ -3710,7 +3716,7 @@ def _validate_stereo_occurrences_bound_to_graph_state(
         if record.bond in key.written_bonds:
             if record.parent not in key.visited_atoms or record.child not in key.visited_atoms:
                 _invalid_snapshot("writer bond occurrence has unvisited written endpoint")
-            expected = parent_by_child.get(record.child)
+            expected = parent_links.get(record.child)
             if expected != (record.parent, record.bond):
                 _invalid_snapshot("writer bond occurrence has wrong writer orientation")
             continue
@@ -3726,6 +3732,53 @@ def _validate_stereo_occurrences_bound_to_graph_state(
                 _invalid_snapshot("writer pending bond occurrence is already materialized")
             continue
         _invalid_snapshot("writer bond occurrence is not backed by emitted graph state")
+
+    if key.stereo_state.local_orders or prepared.tetra_templates:
+        actual_by_atom = {
+            record.atom: record
+            for record in key.stereo_state.local_orders
+        }
+        open_frame_atoms = {
+            frame.return_atom.atom
+            for frame in key.branch_stack
+        }
+        if key.active.atom_emitted:
+            open_frame_atoms.add(key.active.atom)
+
+        closed_atoms = set(key.visited_atoms) - open_frame_atoms
+        active_record = actual_by_atom.get(key.active.atom)
+        active_is_closed = active_record is not None and active_record.closed
+        if active_is_closed:
+            if not _state_is_terminal_shape(prepared, key, context):
+                _invalid_snapshot(
+                    "writer active local order is closed before terminal shape"
+                )
+            closed_atoms.add(key.active.atom)
+
+        for atom in {
+            frame.return_atom.atom
+            for frame in key.branch_stack
+        }:
+            record = actual_by_atom.get(atom)
+            if record is not None and record.closed:
+                _invalid_snapshot(
+                    "writer branch-return local order is prematurely closed"
+                )
+
+        expected_records = reconstruct_writer_local_order_records(
+            prepared,
+            atom_occurrences=key.stereo_state.atom_occurrences,
+            parent_by_child=parent_by_child,
+            closed_atoms=frozenset(closed_atoms),
+        )
+        expected_by_atom = {
+            record.atom: record
+            for record in expected_records
+        }
+        if actual_by_atom != expected_by_atom:
+            _invalid_snapshot(
+                "writer local-order history does not match emitted tree history"
+            )
 
 
 def _pending_post_bond_edge(key: WriterStateKey) -> PendingWriterEntry | None:

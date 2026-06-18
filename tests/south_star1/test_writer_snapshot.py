@@ -1530,6 +1530,190 @@ class WriterSnapshotTest(unittest.TestCase):
                 runtime_options=options,
             )
 
+    def test_cursor_audit_rejects_premature_tetra_local_order_closure(self) -> None:
+        prepared = _prepare(tetrahedral_facts())
+        options = _writer_options(rooted_at_atom=1)
+        key = _tetra_center_key(prepared, options)
+        record = _local_order_for_atom(key, AtomId(0))
+        forged_order = record.order + (
+            OccurrenceId(2),
+            OccurrenceId(1),
+            OccurrenceId(3),
+        )
+        tampered_key = _key_with_reconstructed_residual(
+            prepared,
+            replace(
+                key,
+                stereo_state=replace(
+                    key.stereo_state,
+                    local_orders=_replace_local_order_record(
+                        key.stereo_state.local_orders,
+                        replace(record, order=forged_order, closed=True),
+                    ),
+                ),
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_future_occurrence_in_open_local_order(self) -> None:
+        prepared = _prepare(tetrahedral_facts())
+        options = _writer_options(rooted_at_atom=1)
+        key = _tetra_center_key(prepared, options)
+        record = _local_order_for_atom(key, AtomId(0))
+        tampered_key = replace(
+            key,
+            stereo_state=replace(
+                key.stereo_state,
+                local_orders=_replace_local_order_record(
+                    key.stereo_state.local_orders,
+                    replace(record, order=record.order + (OccurrenceId(1),)),
+                ),
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_missing_written_local_order_occurrence(self) -> None:
+        prepared = _prepare(tetrahedral_facts())
+        options = _writer_options(rooted_at_atom=1)
+        key = _tetra_center_key(prepared, options)
+        record = _local_order_for_atom(key, AtomId(0))
+        tampered_key = replace(
+            key,
+            stereo_state=replace(
+                key.stereo_state,
+                local_orders=_replace_local_order_record(
+                    key.stereo_state.local_orders,
+                    replace(record, order=()),
+                ),
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_implicit_h_before_local_order_closure(self) -> None:
+        prepared = _prepare(tetrahedral_facts())
+        options = _writer_options(rooted_at_atom=1)
+        key = _tetra_center_key(prepared, options)
+        record = _local_order_for_atom(key, AtomId(0))
+        tampered_key = replace(
+            key,
+            stereo_state=replace(
+                key.stereo_state,
+                local_orders=_replace_local_order_record(
+                    key.stereo_state.local_orders,
+                    replace(record, order=record.order + (OccurrenceId(3),)),
+                ),
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_closed_branch_return_local_order(self) -> None:
+        prepared = _prepare(tetrahedral_facts())
+        options = _writer_options(rooted_at_atom=1)
+        key = _tetra_branch_child_key(prepared, options)
+        record = _local_order_for_atom(key, AtomId(0))
+        forged_order = record.order + (
+            OccurrenceId(1),
+            OccurrenceId(3),
+        )
+        tampered_key = _key_with_reconstructed_residual(
+            prepared,
+            replace(
+                key,
+                stereo_state=replace(
+                    key.stereo_state,
+                    local_orders=_replace_local_order_record(
+                        key.stereo_state.local_orders,
+                        replace(record, order=forged_order, closed=True),
+                    ),
+                ),
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_completed_branch_child_left_open(self) -> None:
+        prepared = _prepare(tetrahedral_facts())
+        options = _writer_options(rooted_at_atom=1)
+        key = _tetra_after_branch_return_key(prepared, options)
+        record = _local_order_for_atom(key, AtomId(3))
+        tampered_key = replace(
+            key,
+            stereo_state=replace(
+                key.stereo_state,
+                local_orders=_replace_local_order_record(
+                    key.stereo_state.local_orders,
+                    replace(record, closed=False),
+                ),
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_accepts_reachable_tetra_traversal_states(self) -> None:
+        prepared = _prepare(tetrahedral_facts())
+        options = _writer_options(rooted_at_atom=1)
+        pending = [initial_writer_frontier_cursor(prepared, options)]
+        seen = set()
+        visited = 0
+
+        while pending:
+            cursor = pending.pop(0)
+            if cursor in seen:
+                continue
+            seen.add(cursor)
+            visited += 1
+
+            validate_writer_cursor_against_prepared(
+                prepared,
+                cursor,
+                runtime_options=options,
+            )
+
+            choices = writer_frontier_choices(prepared, cursor)
+            if choices.terminal is not None:
+                validate_writer_cursor_against_prepared(
+                    prepared,
+                    choices.terminal.finalized_cursor,
+                    runtime_options=options,
+                )
+            pending.extend(choice.successor for choice in choices.choices)
+
+        self.assertGreaterEqual(visited, 7)
+
     def test_cursor_audit_rejects_duplicate_atom_occurrence(self) -> None:
         prepared = _prepare(tetrahedral_facts())
         options = _writer_options(rooted_at_atom=1)
@@ -2470,6 +2654,71 @@ def _tetra_center_key(prepared, options):
     after_f = writer_frontier_choices(prepared, cursor).choices[0].successor
     after_center = writer_frontier_choices(prepared, after_f).choices[0].successor
     return after_center.weighted_states[0][0]
+
+
+def _tetra_branch_child_key(prepared, options):
+    cursor = initial_writer_frontier_cursor(prepared, options)
+    after_f = writer_frontier_choices(prepared, cursor).choices[0].successor
+    after_center = writer_frontier_choices(prepared, after_f).choices[0].successor
+    after_branch_open = writer_frontier_choices(
+        prepared,
+        after_center,
+    ).choices[0].successor
+    after_branch_child = writer_frontier_choices(
+        prepared,
+        after_branch_open,
+    ).choices[0].successor
+    return after_branch_child.weighted_states[0][0]
+
+
+def _tetra_after_branch_return_key(prepared, options):
+    cursor = initial_writer_frontier_cursor(prepared, options)
+    after_f = writer_frontier_choices(prepared, cursor).choices[0].successor
+    after_center = writer_frontier_choices(prepared, after_f).choices[0].successor
+    after_branch_open = writer_frontier_choices(
+        prepared,
+        after_center,
+    ).choices[0].successor
+    after_branch_child = writer_frontier_choices(
+        prepared,
+        after_branch_open,
+    ).choices[0].successor
+    after_branch_close = writer_frontier_choices(
+        prepared,
+        after_branch_child,
+    ).choices[0].successor
+    return after_branch_close.weighted_states[0][0]
+
+
+def _local_order_for_atom(key, atom: AtomId) -> WriterLocalOrderRecord:
+    for record in key.stereo_state.local_orders:
+        if record.atom == atom:
+            return record
+    raise AssertionError(f"missing local-order record for atom {atom!r}")
+
+
+def _replace_local_order_record(
+    records: tuple[WriterLocalOrderRecord, ...],
+    replacement: WriterLocalOrderRecord,
+) -> tuple[WriterLocalOrderRecord, ...]:
+    return tuple(
+        replacement if record.atom == replacement.atom else record
+        for record in records
+    )
+
+
+def _key_with_reconstructed_residual(prepared, key):
+    stereo_state = key.stereo_state
+    return replace(
+        key,
+        stereo_state=replace(
+            stereo_state,
+            residual_snapshot=reconstruct_writer_stereo_residual_snapshot(
+                prepared,
+                stereo_state,
+            ),
+        ),
+    )
 
 
 def _cco_after_second_atom_key(prepared, options):

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from typing import Literal
@@ -261,6 +262,47 @@ def reconstruct_writer_stereo_residual_snapshot(
             store.discharge_satisfied_factors((_tetra_factor_key(template.site),))
 
     return store.value_snapshot()
+
+
+def reconstruct_writer_local_order_records(
+    prepared: SouthStarPreparedMol,
+    *,
+    atom_occurrences: tuple[WriterAtomOccurrenceRecord, ...],
+    parent_by_child: Mapping[AtomId, AtomId],
+    closed_atoms: frozenset[AtomId],
+) -> tuple[WriterLocalOrderRecord, ...]:
+    records: tuple[WriterLocalOrderRecord, ...] = ()
+
+    for occurrence in atom_occurrences:
+        parent = parent_by_child.get(occurrence.atom)
+        if parent is None:
+            continue
+
+        records = _record_parent_occurrence(
+            prepared,
+            records,
+            atom=occurrence.atom,
+            parent=parent,
+        )
+        records = _record_child_occurrence(
+            prepared,
+            records,
+            parent=parent,
+            child=occurrence.atom,
+        )
+
+    for atom in sorted(closed_atoms, key=int):
+        record = _local_order_record(records, atom)
+        records = _replace_local_order(
+            records,
+            _close_local_order(
+                prepared,
+                record,
+                atom=atom,
+            ),
+        )
+
+    return records
 
 
 def advance_writer_stereo_state(
@@ -1275,6 +1317,7 @@ __all__ = (
     "empty_writer_stereo_state",
     "initial_writer_stereo_state",
     "_writer_stereo_relation_definitions",
+    "reconstruct_writer_local_order_records",
     "reconstruct_writer_stereo_residual_snapshot",
     "terminal_writer_stereo_state",
     "validate_writer_stereo_supported_prepared",

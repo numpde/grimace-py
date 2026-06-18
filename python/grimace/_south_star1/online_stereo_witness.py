@@ -45,7 +45,9 @@ from .online_render_sink import OnlineRenderSink
 from .online_render_sink import OnlineStringBuffer
 from .residual_constraints import DirectionalCarrierResidual
 from .residual_constraints import DirectionalResidualFactor
+from .residual_constraints import ResidualPropagationKind
 from .residual_constraints import ResidualStore
+from .residual_constraints import residual_store_assignments_have_support
 from .residual_constraints import direction_var
 from .semantics import ParserSemantics
 from .stereo_templates import DirectionalTemplate
@@ -506,7 +508,6 @@ def _iter_directional_candidates(
     store = ResidualStore()
     for carrier_id in carriers:
         store.add_var(direction_var(carrier_id), domains[carrier_id])
-    factor_ids = []
     for template in templates.directional:
         scope_models = carrier_models_by_site[template.site]
         factor = DirectionalResidualFactor(
@@ -515,7 +516,7 @@ def _iter_directional_candidates(
             target=template.target,
             carrier_models=scope_models,
         )
-        factor_ids.append(store.add_factor(factor))
+        store.add_factor(factor)
 
     marks: dict[int, DirectionMark] = {}
 
@@ -529,7 +530,7 @@ def _iter_directional_candidates(
                 marks=marks,
             ):
                 return
-            if not all(store.close_factor(factor_id) for factor_id in factor_ids):
+            if not residual_store_assignments_have_support(store.value_snapshot(), ()):
                 return
             support = frozenset(
                 carrier_id
@@ -556,7 +557,8 @@ def _iter_directional_candidates(
                 continue
             checkpoint = store.checkpoint()
             try:
-                if store.assign(var, mark):
+                result = store.restrict_to_value(var, mark)
+                if result.kind is ResidualPropagationKind.CONSISTENT:
                     marks[carrier_id] = mark
                     yield from rec(index + 1)
                     del marks[carrier_id]

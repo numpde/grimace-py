@@ -24,16 +24,16 @@ from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
 from grimace._south_star1.residual_constraints import DirectionalCarrierResidual
 from grimace._south_star1.residual_constraints import DirectionalResidualFactor
+from grimace._south_star1.residual_constraints import ResidualPropagationKind
 from grimace._south_star1.residual_constraints import ResidualStore
-from grimace._south_star1.residual_constraints import TetraResidualFactorValueSnapshot
-from grimace._south_star1.residual_constraints import add_factor_checked
+from grimace._south_star1.residual_constraints import add_factor_and_propagate
 from grimace._south_star1.residual_constraints import direction_var
 from grimace._south_star1.residual_constraints import tetra_var
 from grimace._south_star1.writer_frontier import count_writer_cursor_completions
 from grimace._south_star1.writer_frontier import count_writer_frontier_support
 from grimace._south_star1.writer_frontier import WriterFrontierCursor
 from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
-from grimace._south_star1.writer_frontier import initial_writer_transition_frontier_cursor
+from grimace._south_star1.writer_frontier import _initial_writer_transition_frontier_cursor as initial_writer_transition_frontier_cursor
 from grimace._south_star1.writer_frontier import writer_frontier_choices
 from grimace._south_star1.writer_snapshot import WriterDecoderBoundary
 from grimace._south_star1.writer_snapshot import WriterFrontierFrame
@@ -1900,7 +1900,7 @@ class WriterSnapshotTest(unittest.TestCase):
                 runtime_options=options,
             )
 
-    def test_cursor_audit_rejects_zero_support_stereo_residual_snapshot(self) -> None:
+    def test_residual_factor_addition_rejects_zero_support_snapshot_source(self) -> None:
         left = direction_var(("left", 0))
         right = direction_var(("right", 0))
         store = ResidualStore()
@@ -1915,25 +1915,14 @@ class WriterSnapshotTest(unittest.TestCase):
                 right: DirectionalCarrierResidual(right, "right", 1, 1),
             },
         )
-        self.assertTrue(add_factor_checked(store, factor))
-        prepared = _prepare(cco_facts())
-        options = _writer_options()
-        cursor = initial_writer_frontier_cursor(prepared, options)
-        key = cursor.weighted_states[0][0]
-        tampered_key = replace(
-            key,
-            stereo_state=replace(
-                key.stereo_state,
-                residual_snapshot=store.value_snapshot(),
-            ),
-        )
+        before = store.value_snapshot()
 
-        with self.assertRaises(SouthStarError):
-            validate_writer_cursor_against_prepared(
-                prepared,
-                _cursor_with_key(tampered_key),
-                runtime_options=options,
-            )
+        self.assertIs(
+            add_factor_and_propagate(store, factor).kind,
+            ResidualPropagationKind.CONTRADICTION,
+        )
+        self.assertEqual(store.value_snapshot(), before)
+
 
     def test_cursor_audit_wraps_invalid_residual_snapshot_round_trip(self) -> None:
         var = tetra_var(("test", 0))
@@ -1941,17 +1930,8 @@ class WriterSnapshotTest(unittest.TestCase):
         residual_snapshot = replace(
             residual_snapshot,
             domains=((var, (TetraToken.AT, TetraToken.ATAT)),),
-            assignments=(),
-            factors=(
-                TetraResidualFactorValueSnapshot(
-                    scope=(var,),
-                    status=SiteStatus.SPECIFIED,
-                    target=TetraValue.PLUS,
-                    reference_order=(OccurrenceId(0), OccurrenceId(1), OccurrenceId(2), OccurrenceId(3)),
-                    local_order=(OccurrenceId(0), OccurrenceId(1), OccurrenceId(2), OccurrenceId(3)),
-                    assigned=TetraToken.AT,
-                ),
-            ),
+            assignments=((var, TetraToken.AT),),
+            factors=(),
         )
         prepared = _prepare(cco_facts())
         options = _writer_options()

@@ -20,14 +20,15 @@ from .policy import TetraToken
 from .residual_constraints import DirectionalCarrierResidual
 from .residual_constraints import DirectionalResidualFactor
 from .residual_constraints import DirectionalResidualFactorValueSnapshot
+from .residual_constraints import ResidualPropagationKind
+from .residual_constraints import ResidualPropagationResult
 from .residual_constraints import ResidualStore
 from .residual_constraints import ResidualStoreValueSnapshot
 from .residual_constraints import TetraResidualFactor
 from .residual_constraints import TetraResidualFactorValueSnapshot
 from .residual_constraints import VarId
-from .residual_constraints import add_factor_checked
+from .residual_constraints import add_factor_and_propagate
 from .residual_constraints import direction_var
-from .residual_constraints import residual_store_assignments_have_support
 from .residual_constraints import tetra_var
 from .stereo_templates import DirectionalTemplate
 from .stereo_templates import TetraTemplate
@@ -112,8 +113,6 @@ def advance_writer_stereo_state(
     events: tuple[WriterEvent, ...],
 ) -> "WriterStereoState | None":
     state = stereo_state
-    if not _writer_stereo_state_has_residual_support(state):
-        return None
     for event in events:
         if isinstance(event, WriterAtomEmitted):
             state = _on_atom_emitted(prepared, state, event)
@@ -129,18 +128,7 @@ def advance_writer_stereo_state(
             continue
         if state is None:
             return None
-        if not _writer_stereo_state_has_residual_support(state):
-            return None
     return state
-
-
-def _writer_stereo_state_has_residual_support(
-    stereo_state: "WriterStereoState",
-) -> bool:
-    return residual_store_assignments_have_support(
-        stereo_state.residual_snapshot,
-        (),
-    )
 
 
 def terminal_writer_stereo_state(
@@ -152,6 +140,29 @@ def terminal_writer_stereo_state(
         prepared,
         stereo_state,
         (WriterLocalOrderClosed(atom=atom),),
+    )
+
+
+def _writer_residual_mutation_is_legal(
+    result: ResidualPropagationResult,
+    *,
+    operation: str,
+) -> bool:
+    if result.kind is ResidualPropagationKind.CONSISTENT:
+        return True
+
+    if result.kind is ResidualPropagationKind.CONTRADICTION:
+        return False
+
+    stats = result.stats
+    raise SouthStarError(
+        SouthStarErrorKind.UNSUPPORTED_STEREO,
+        "WRITER_SHAPED residual propagation exceeded the supported "
+        f"complexity envelope during {operation}: "
+        f"variables={len(stats.component_variables)}, "
+        f"factors={len(stats.component_factor_indexes)}, "
+        f"largest_scope={stats.largest_factor_scope}, "
+        f"largest_candidate_rows={stats.largest_candidate_row_count}",
     )
 
 
@@ -282,9 +293,13 @@ def _on_atom_emitted(
     delayed = stereo_state.delayed_factors
     if template is not None:
         var = tetra_var(("writer", int(template.site)))
-        if store.assignment(var) is None:
+        if not store.contains_var(var):
             store.add_var(var, _tetra_domain(template))
-        if not store.assign(var, event.tetra_token):
+        result = store.restrict_to_value(var, event.tetra_token)
+        if not _writer_residual_mutation_is_legal(
+            result,
+            operation="tetrahedral atom-token restriction",
+        ):
             return None
         delayed = _mark_factor_pending(
             delayed,
@@ -321,9 +336,13 @@ def _on_bond_emitted(
     delayed = stereo_state.delayed_factors
     if eligible:
         var = direction_var(("writer", int(event.bond)))
-        if store.assignment(var) is None:
+        if not store.contains_var(var):
             store.add_var(var, _direction_domain(prepared, eligible))
-        if not store.assign(var, event.direction_mark):
+        result = store.restrict_to_value(var, event.direction_mark)
+        if not _writer_residual_mutation_is_legal(
+            result,
+            operation="directional carrier-mark restriction",
+        ):
             return None
         for site in eligible:
             delayed = _mark_factor_pending(
@@ -382,9 +401,11 @@ def _on_local_order_closed(
             reference_order=template.reference_order,
             local_order=closed_order.order,
         )
-        if not add_factor_checked(store, factor):
-            return None
-        if not factor.close():
+        result = add_factor_and_propagate(store, factor)
+        if not _writer_residual_mutation_is_legal(
+            result,
+            operation="tetrahedral local-order factor closure",
+        ):
             return None
         delayed = _mark_factor_closed(
             delayed,
@@ -584,9 +605,13 @@ def _close_ready_directional_factors(
             target=template.target,
             carrier_models=models,
         )
-        if not add_factor_checked(store, factor):
+        if any(store.assignment(var) is None for var in factor.scope):
             return None
-        if not factor.close():
+        result = add_factor_and_propagate(store, factor)
+        if not _writer_residual_mutation_is_legal(
+            result,
+            operation="directional carrier factor closure",
+        ):
             return None
         delayed = _mark_factor_closed(
             delayed,
@@ -981,7 +1006,6 @@ def _factor_snapshot_sort_tuple(factor: object) -> tuple[object, ...]:
             factor.target.value,
             tuple(int(item) for item in factor.reference_order),
             tuple(int(item) for item in factor.local_order),
-            _value_sort_tuple(factor.assigned),
         )
     if isinstance(factor, DirectionalResidualFactorValueSnapshot):
         return (
@@ -997,10 +1021,6 @@ def _factor_snapshot_sort_tuple(factor: object) -> tuple[object, ...]:
                     model.ligand_factor,
                 )
                 for var, model in factor.carrier_models
-            ),
-            tuple(
-                (_var_sort_tuple(var), _value_sort_tuple(value))
-                for var, value in factor.marks
             ),
         )
     raise TypeError(f"unknown residual factor snapshot: {factor!r}")

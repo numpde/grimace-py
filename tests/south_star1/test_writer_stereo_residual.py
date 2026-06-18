@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import inspect
 import unittest
 
 from grimace._south_star1.errors import SouthStarError
@@ -28,8 +29,9 @@ from grimace._south_star1.policy import DirectionMark
 from grimace._south_star1.residual_constraints import ResidualStore
 from grimace._south_star1.residual_constraints import DirectionalCarrierResidual
 from grimace._south_star1.residual_constraints import DirectionalResidualFactor
+from grimace._south_star1.residual_constraints import ResidualPropagationKind
 from grimace._south_star1.residual_constraints import TetraResidualFactor
-from grimace._south_star1.residual_constraints import add_factor_checked
+from grimace._south_star1.residual_constraints import add_factor_and_propagate
 from grimace._south_star1.residual_constraints import direction_var
 from grimace._south_star1.residual_constraints import tetra_var
 from grimace._south_star1.facts import SiteStatus
@@ -51,6 +53,7 @@ from grimace._south_star1.writer_state import WriterStereoState
 from grimace._south_star1.writer_stereo import advance_writer_stereo_state
 from grimace._south_star1.writer_stereo import empty_writer_stereo_state
 from grimace._south_star1.writer_stereo import terminal_writer_stereo_state
+import grimace._south_star1.writer_stereo as writer_stereo_module
 from grimace._south_star1.writer_stereo import WriterDelayedStereoFactor
 from tests.south_star1.helpers import atom
 from tests.south_star1.helpers import directional_facts
@@ -574,41 +577,53 @@ class WriterStereoResidualTest(unittest.TestCase):
             )
         )
 
-    def test_add_factor_checked_rolls_back_rejected_factor(self) -> None:
+    def test_add_factor_and_propagate_rolls_back_rejected_factor(self) -> None:
         store = ResidualStore()
         var = tetra_var(("test", 0))
         store.add_var(var, (TetraToken.AT, TetraToken.ATAT))
-        self.assertTrue(store.assign(var, TetraToken.ATAT))
+        self.assertIs(
+            store.restrict_to_value(var, TetraToken.ATAT).kind,
+            ResidualPropagationKind.CONSISTENT,
+        )
         factor = TetraResidualFactor(
             scope=(var,),
             status=SiteStatus.SPECIFIED,
             target=TetraValue.PLUS,
-            reference_order=(0, 1, 2, 3),
-            local_order=(0, 1, 2, 3),
+            reference_order=_occurrences(0, 1, 2, 3),
+            local_order=_occurrences(0, 1, 2, 3),
         )
 
-        self.assertFalse(add_factor_checked(store, factor))
+        self.assertIs(
+            add_factor_and_propagate(store, factor).kind,
+            ResidualPropagationKind.CONTRADICTION,
+        )
         self.assertEqual(store.value_snapshot().factors, ())
         self.assertEqual(
             ResidualStore.from_value_snapshot(store.value_snapshot()).value_snapshot(),
             store.value_snapshot(),
         )
 
-    def test_add_factor_checked_accepted_factor_rolls_back_to_checkpoint(self) -> None:
+    def test_add_factor_and_propagate_accepted_factor_rolls_back_to_checkpoint(self) -> None:
         store = ResidualStore()
         var = tetra_var(("test", 1))
         store.add_var(var, (TetraToken.AT, TetraToken.ATAT))
-        self.assertTrue(store.assign(var, TetraToken.AT))
+        self.assertIs(
+            store.restrict_to_value(var, TetraToken.AT).kind,
+            ResidualPropagationKind.CONSISTENT,
+        )
         checkpoint = store.checkpoint()
         factor = TetraResidualFactor(
             scope=(var,),
             status=SiteStatus.SPECIFIED,
             target=TetraValue.PLUS,
-            reference_order=(0, 1, 2, 3),
-            local_order=(0, 1, 2, 3),
+            reference_order=_occurrences(0, 1, 2, 3),
+            local_order=_occurrences(0, 1, 2, 3),
         )
 
-        self.assertTrue(add_factor_checked(store, factor))
+        self.assertIs(
+            add_factor_and_propagate(store, factor).kind,
+            ResidualPropagationKind.CONSISTENT,
+        )
         self.assertEqual(len(store.value_snapshot().factors), 1)
         store.rollback(checkpoint)
 
@@ -623,8 +638,14 @@ class WriterStereoResidualTest(unittest.TestCase):
             state,
         )
 
-    def test_empty_event_batch_rejects_unsupported_residual_snapshot(self) -> None:
-        prepared = _prepare(triangle_no_stereo_facts())
+    def test_writer_stereo_does_not_call_global_residual_support_query(self) -> None:
+        source = inspect.getsource(writer_stereo_module)
+        self.assertNotIn(
+            "residual_store_assignments_have_support",
+            source,
+        )
+
+    def test_residual_contradiction_is_detected_by_propagation(self) -> None:
         left = direction_var(("left", 0))
         right = direction_var(("right", 0))
         store = ResidualStore()
@@ -639,16 +660,11 @@ class WriterStereoResidualTest(unittest.TestCase):
                 right: DirectionalCarrierResidual(right, "right", 1, 1),
             },
         )
-        self.assertTrue(add_factor_checked(store, factor))
-        state = WriterStereoState(
-            residual_snapshot=store.value_snapshot(),
-            atom_occurrences=(),
-            bond_occurrences=(),
-            local_orders=(),
-            delayed_factors=(),
-        )
 
-        self.assertIsNone(advance_writer_stereo_state(prepared, state, ()))
+        self.assertIs(
+            add_factor_and_propagate(store, factor).kind,
+            ResidualPropagationKind.CONTRADICTION,
+        )
 
     def test_terminal_stereo_closure_accepts_supported_residual_state(self) -> None:
         prepared = _prepare(triangle_no_stereo_facts())
@@ -661,13 +677,13 @@ class WriterStereoResidualTest(unittest.TestCase):
             )
         )
 
-    def test_terminal_stereo_closure_rejects_unsupported_residual_snapshot(self) -> None:
+    def test_empty_event_batch_is_identity_for_residual_snapshot(self) -> None:
         prepared = _prepare(triangle_no_stereo_facts())
         left = direction_var(("left", 0))
         right = direction_var(("right", 0))
         store = ResidualStore()
         store.add_var(left, (DirectionMark.FWD,))
-        store.add_var(right, (DirectionMark.ABSENT,))
+        store.add_var(right, (DirectionMark.REV,))
         factor = DirectionalResidualFactor(
             scope=(left, right),
             status=SiteStatus.SPECIFIED,
@@ -677,7 +693,10 @@ class WriterStereoResidualTest(unittest.TestCase):
                 right: DirectionalCarrierResidual(right, "right", 1, 1),
             },
         )
-        self.assertTrue(add_factor_checked(store, factor))
+        self.assertIs(
+            add_factor_and_propagate(store, factor).kind,
+            ResidualPropagationKind.CONSISTENT,
+        )
         state = WriterStereoState(
             residual_snapshot=store.value_snapshot(),
             atom_occurrences=(),
@@ -686,8 +705,9 @@ class WriterStereoResidualTest(unittest.TestCase):
             delayed_factors=(),
         )
 
-        self.assertIsNone(
-            terminal_writer_stereo_state(prepared, state, AtomId(0))
+        self.assertEqual(
+            advance_writer_stereo_state(prepared, state, ()),
+            state,
         )
 
 
@@ -813,6 +833,10 @@ def terminal_tetra_center_policy() -> SmilesPolicy:
             ),
         ),
     )
+
+
+def _occurrences(*values: int) -> tuple[OccurrenceId, ...]:
+    return tuple(OccurrenceId(value) for value in values)
 
 
 if __name__ == "__main__":

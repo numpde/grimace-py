@@ -32,7 +32,6 @@ from .residual_constraints import TetraResidualFactor
 from .residual_constraints import TetraResidualFactorValueSnapshot
 from .residual_constraints import VarId
 from .residual_constraints import direction_var
-from .residual_constraints import residual_store_assignments_have_support
 from .residual_constraints import tetra_var
 from .writer_graph_obligations import WriterBoundaryOwnerKind
 from .writer_graph_obligations import WriterEdgeObligationKind
@@ -3902,15 +3901,6 @@ def _validate_stereo_state(
     stereo_state: WriterStereoStateKey,
 ) -> None:
     _round_trip_residual_snapshot(stereo_state.residual_snapshot)
-    try:
-        has_support = residual_store_assignments_have_support(
-            stereo_state.residual_snapshot,
-            (),
-        )
-    except ValueError as exc:
-        _invalid_snapshot(f"writer stereo residual snapshot is invalid: {exc}")
-    if not has_support:
-        _invalid_snapshot("writer stereo residual snapshot has no support")
     _validate_unique_stereo_records(stereo_state)
     occurrence_by_id = {item.id: item for item in prepared.facts.ligand_occurrences}
     atom_ids = frozenset(prepared.atom_ids)
@@ -4305,10 +4295,9 @@ def _expected_residual_factor_snapshot(
             reference_order=template.reference_order,
             local_order=record.order,
         )
-        if not expected.assign(expected_var, assignments.get(expected_var)):
+        assigned = assignments.get(expected_var)
+        if assigned is None or not expected.accepts((assigned,)):
             _invalid_snapshot("writer tetra residual assignment is invalid")
-        if not expected.close():
-            _invalid_snapshot("writer tetra residual factor is not closed")
         return expected.value_snapshot()
     if factor.kind == "directional":
         template = {item.site: item for item in prepared.directional_templates}.get(
@@ -4323,11 +4312,9 @@ def _expected_residual_factor_snapshot(
             target=template.target,
             carrier_models=models,
         )
-        for var in expected.scope:
-            if not expected.assign(var, assignments.get(var)):
-                _invalid_snapshot("writer directional residual assignment is invalid")
-        if not expected.close():
-            _invalid_snapshot("writer directional residual factor is not closed")
+        row = tuple(assignments.get(var) for var in expected.scope)
+        if any(value is None for value in row) or not expected.accepts(row):
+            _invalid_snapshot("writer directional residual assignment is invalid")
         return expected.value_snapshot()
     if factor.kind == "ring_pair":
         _invalid_snapshot("writer ring-pair delayed factor has no residual factor yet")

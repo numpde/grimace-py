@@ -47,10 +47,12 @@ from .policy import SmilesPolicy
 from .policy import TetraToken
 from .residual_constraints import DirectionalCarrierResidual
 from .residual_constraints import DirectionalResidualFactor
+from .residual_constraints import ResidualPropagationKind
 from .residual_constraints import ResidualStore
 from .residual_constraints import ResidualStoreValueSnapshot
 from .residual_constraints import VarId
 from .residual_constraints import direction_var
+from .residual_constraints import residual_store_assignments_have_support
 from .root_domains import component_root_domains_for_facts
 from .semantics import ParserSemantics
 from .skeleton import ChildRole
@@ -1731,7 +1733,8 @@ def _resume_direction_candidate_frame(
     choices = domains[direction_var(carrier_id)]
     for mark in choices:
         store = ResidualStore.from_value_snapshot(frame.residual_snapshot)
-        if not store.assign(direction_var(carrier_id), mark):
+        result = store.restrict_to_value(direction_var(carrier_id), mark)
+        if result.kind is not ResidualPropagationKind.CONSISTENT:
             continue
         next_decisions = OnlineDecisionRecorder()
         next_decisions.restore_path(frame.decision_path)
@@ -1781,10 +1784,7 @@ def _complete_direction_frame(
     ):
         return
     store = ResidualStore.from_value_snapshot(frame.residual_snapshot)
-    if not all(
-        store.close_factor(factor_id)
-        for factor_id in range(len(frame.residual_snapshot.factors))
-    ):
+    if not residual_store_assignments_have_support(store.value_snapshot(), ()):
         return
     direction_frame = OnlineSearchFrame(
         frame if retained_frame is None else retained_frame

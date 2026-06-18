@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from collections import deque
 from collections.abc import Mapping
 from dataclasses import dataclass
-from dataclasses import field
+from enum import Enum
+from itertools import product
+from math import prod
 from typing import Literal
 from typing import Protocol
 
@@ -18,6 +21,8 @@ from .policy import TetraToken
 
 _UNASSIGNED = object()
 _INVALID = object()
+_MAX_RESIDUAL_FACTOR_SCOPE = 4
+_MAX_RESIDUAL_FACTOR_CANDIDATE_ROWS = 81
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,10 +40,7 @@ class ResidualVariable:
 class ResidualFactor(Protocol):
     scope: tuple[VarId, ...]
 
-    def assign(self, var: VarId, value: object) -> bool: ...
-    def close(self) -> bool: ...
-    def checkpoint(self) -> object: ...
-    def rollback(self, token: object) -> None: ...
+    def accepts(self, row: tuple[object, ...]) -> bool: ...
     def value_snapshot(self) -> object: ...
 
 
@@ -49,7 +51,6 @@ class TetraResidualFactorValueSnapshot:
     target: TetraValue
     reference_order: tuple[OccurrenceId, ...]
     local_order: tuple[OccurrenceId, ...]
-    assigned: object
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,7 +59,6 @@ class DirectionalResidualFactorValueSnapshot:
     status: SiteStatus
     target: DirectionalValue
     carrier_models: tuple[tuple[VarId, DirectionalCarrierResidual], ...]
-    marks: tuple[tuple[VarId, object], ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,6 +75,41 @@ class ResidualConstraintComponentSnapshot:
     assigned_variables: tuple[VarId, ...]
 
 
+class ResidualPropagationKind(Enum):
+    CONSISTENT = "consistent"
+    CONTRADICTION = "contradiction"
+    UNSUPPORTED_COMPLEXITY = "unsupported_complexity"
+
+
+@dataclass(frozen=True, slots=True)
+class ResidualPropagationStats:
+    component_variables: tuple[VarId, ...] = ()
+    component_factor_indexes: tuple[int, ...] = ()
+    checked_candidate_rows: int = 0
+    largest_factor_scope: int = 0
+    largest_candidate_row_count: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class ResidualPropagationResult:
+    kind: ResidualPropagationKind
+    stats: ResidualPropagationStats
+
+
+class ResidualPropagationComplexityError(RuntimeError):
+    def __init__(self, stats: ResidualPropagationStats) -> None:
+        super().__init__(
+            "residual propagation exceeded the supported complexity envelope"
+        )
+        self.stats = stats
+
+
+@dataclass(frozen=True, slots=True)
+class _ResidualLiveComponent:
+    variables: tuple[VarId, ...]
+    factor_indexes: tuple[int, ...]
+
+
 class ResidualStore:
     """Trail-based reversible store for online DFS branches."""
 
@@ -83,7 +118,7 @@ class ResidualStore:
         self._assignments: dict[VarId, object] = {}
         self._factors: list[ResidualFactor] = []
         self._factor_by_id: dict[int, ResidualFactor] = {}
-        self._factors_by_var: dict[VarId, list[ResidualFactor]] = {}
+        self._factors_by_var: dict[VarId, list[int]] = {}
         self._trail: list[tuple[object, ...]] = []
 
     def add_var(self, var: VarId, domain: tuple[object, ...]) -> None:
@@ -96,37 +131,58 @@ class ResidualStore:
         self._domains[var] = domain
 
     def add_factor(self, factor: ResidualFactor) -> int:
+        if len(set(factor.scope)) != len(factor.scope):
+            raise ValueError("residual factor scope contains duplicates")
         for var in factor.scope:
             if var not in self._domains:
                 raise ValueError(f"factor references unknown variable: {var!r}")
-        factor_token = factor.checkpoint()
         factor_id = len(self._factors)
         self._factors.append(factor)
         self._factor_by_id[factor_id] = factor
         for var in factor.scope:
-            self._factors_by_var.setdefault(var, []).append(factor)
-        self._trail.append(("factor_add", factor_id, factor, factor_token))
+            self._factors_by_var.setdefault(var, []).append(factor_id)
+        self._trail.append(("factor_add", factor_id))
         return factor_id
 
     def assign(self, var: VarId, value: object) -> bool:
+        result = self.restrict_to_value(var, value)
+        if result.kind is ResidualPropagationKind.UNSUPPORTED_COMPLEXITY:
+            raise ResidualPropagationComplexityError(result.stats)
+        return result.kind is ResidualPropagationKind.CONSISTENT
+
+    def restrict_to_value(
+        self,
+        var: VarId,
+        value: object,
+    ) -> ResidualPropagationResult:
         if var not in self._domains:
             raise ValueError(f"unknown residual variable: {var!r}")
         if value not in self._domains[var]:
-            return False
+            return ResidualPropagationResult(
+                ResidualPropagationKind.CONTRADICTION,
+                ResidualPropagationStats(component_variables=(var,)),
+            )
         existing = self._assignments.get(var, _UNASSIGNED)
         if existing is not _UNASSIGNED:
-            return existing == value
+            return ResidualPropagationResult(
+                (
+                    ResidualPropagationKind.CONSISTENT
+                    if existing == value
+                    else ResidualPropagationKind.CONTRADICTION
+                ),
+                ResidualPropagationStats(component_variables=(var,)),
+            )
 
         checkpoint = self.checkpoint()
         self._assignments[var] = value
         self._trail.append(("assignment", var))
-        for factor in self._factors_by_var.get(var, ()):
-            token = factor.checkpoint()
-            self._trail.append(("factor", factor, token))
-            if not factor.assign(var, value):
-                self.rollback(checkpoint)
-                return False
-        return True
+        self._replace_domain(var, (value,))
+
+        component = self._component_from_variables((var,))
+        result = self._propagate_component(component)
+        if result.kind is not ResidualPropagationKind.CONSISTENT:
+            self.rollback(checkpoint)
+        return result
 
     def checkpoint(self) -> int:
         return len(self._trail)
@@ -140,25 +196,24 @@ class ResidualStore:
                 _, var = entry
                 del self._assignments[var]
                 continue
-            if entry[0] == "factor":
-                _, factor, token = entry
-                factor.rollback(token)
+            if entry[0] == "domain":
+                _, var, old_domain = entry
+                self._domains[var] = old_domain
                 continue
             if entry[0] == "factor_add":
-                _, factor_id, factor, factor_token = entry
-                factor.rollback(factor_token)
-                _remove_factor(self, factor, factor_id)
+                _, factor_id = entry
+                _remove_factor(self, factor_id)
                 continue
             raise AssertionError(f"unknown residual trail entry: {entry!r}")
 
-    def close_factor(self, factor_id: object) -> bool:
-        if isinstance(factor_id, int):
-            factor = self._factor_by_id.get(factor_id)
-        else:
-            factor = factor_id if factor_id in self._factors else None
-        if factor is None:
-            raise ValueError(f"unknown residual factor: {factor_id!r}")
-        return factor.close()
+    def contains_var(self, var: VarId) -> bool:
+        return var in self._domains
+
+    def domain(self, var: VarId) -> tuple[object, ...]:
+        try:
+            return self._domains[var]
+        except KeyError as exc:
+            raise ValueError(f"unknown residual variable: {var!r}") from exc
 
     def assignment(self, var: VarId) -> object | None:
         return self._assignments.get(var)
@@ -192,27 +247,208 @@ class ResidualStore:
             for factor_id, factor in enumerate(store._factors)
         }
         store._factors_by_var = {}
-        for factor in store._factors:
+        for factor_id, factor in enumerate(store._factors):
             for var in factor.scope:
                 if var not in store._domains:
                     raise ValueError(f"factor snapshot references unknown variable: {var!r}")
-                store._factors_by_var.setdefault(var, []).append(factor)
+                store._factors_by_var.setdefault(var, []).append(factor_id)
         store._trail = []
         return store
 
+    def _replace_domain(
+        self,
+        var: VarId,
+        domain: tuple[object, ...],
+    ) -> None:
+        if not domain:
+            raise ValueError("cannot install an empty residual domain")
+        old_domain = self._domains[var]
+        if domain == old_domain:
+            return
+        self._trail.append(("domain", var, old_domain))
+        self._domains[var] = domain
 
-def add_factor_checked(store: ResidualStore, factor: ResidualFactor) -> bool:
+    def _component_from_variables(
+        self,
+        seed_variables: tuple[VarId, ...],
+    ) -> _ResidualLiveComponent:
+        pending_variables = list(seed_variables)
+        seen_variables: set[VarId] = set()
+        seen_factors: set[int] = set()
+
+        while pending_variables:
+            var = pending_variables.pop()
+            if var in seen_variables:
+                continue
+            if var not in self._domains:
+                raise ValueError(f"unknown residual variable: {var!r}")
+
+            seen_variables.add(var)
+            for factor_id in self._factors_by_var.get(var, ()):
+                if factor_id in seen_factors:
+                    continue
+                seen_factors.add(factor_id)
+                pending_variables.extend(self._factor_by_id[factor_id].scope)
+
+        return _ResidualLiveComponent(
+            variables=tuple(sorted(seen_variables, key=_var_sort_key)),
+            factor_indexes=tuple(sorted(seen_factors)),
+        )
+
+    def _supported_factor_rows(
+        self,
+        factor: ResidualFactor,
+    ) -> tuple[tuple[tuple[object, ...], ...], int] | None:
+        if len(factor.scope) > _MAX_RESIDUAL_FACTOR_SCOPE:
+            return None
+
+        domains = tuple(self._domains[var] for var in factor.scope)
+        candidate_count = prod(len(domain) for domain in domains)
+        if candidate_count > _MAX_RESIDUAL_FACTOR_CANDIDATE_ROWS:
+            return None
+
+        rows = tuple(
+            row
+            for row in product(*domains)
+            if factor.accepts(row)
+        )
+        return rows, candidate_count
+
+    def _propagate_component(
+        self,
+        component: _ResidualLiveComponent,
+    ) -> ResidualPropagationResult:
+        queue = deque(component.factor_indexes)
+        queued = set(component.factor_indexes)
+        checked_rows = 0
+        largest_scope = 0
+        largest_candidate_count = 0
+
+        while queue:
+            factor_id = queue.popleft()
+            queued.remove(factor_id)
+            factor = self._factor_by_id[factor_id]
+
+            largest_scope = max(largest_scope, len(factor.scope))
+            supported = self._supported_factor_rows(factor)
+            if supported is None:
+                return ResidualPropagationResult(
+                    ResidualPropagationKind.UNSUPPORTED_COMPLEXITY,
+                    ResidualPropagationStats(
+                        component.variables,
+                        component.factor_indexes,
+                        checked_rows,
+                        largest_scope,
+                        largest_candidate_count,
+                    ),
+                )
+
+            rows, candidate_count = supported
+            checked_rows += candidate_count
+            largest_candidate_count = max(
+                largest_candidate_count,
+                candidate_count,
+            )
+
+            if not rows:
+                return ResidualPropagationResult(
+                    ResidualPropagationKind.CONTRADICTION,
+                    ResidualPropagationStats(
+                        component.variables,
+                        component.factor_indexes,
+                        checked_rows,
+                        largest_scope,
+                        largest_candidate_count,
+                    ),
+                )
+
+            for position, var in enumerate(factor.scope):
+                old_domain = self._domains[var]
+                supported_values = tuple(row[position] for row in rows)
+                new_domain = tuple(
+                    value
+                    for value in old_domain
+                    if any(value == supported for supported in supported_values)
+                )
+
+                if not new_domain:
+                    return ResidualPropagationResult(
+                        ResidualPropagationKind.CONTRADICTION,
+                        ResidualPropagationStats(
+                            component.variables,
+                            component.factor_indexes,
+                            checked_rows,
+                            largest_scope,
+                            largest_candidate_count,
+                        ),
+                    )
+
+                if new_domain == old_domain:
+                    continue
+
+                self._replace_domain(var, new_domain)
+                for neighbour_id in self._factors_by_var.get(var, ()):
+                    if neighbour_id != factor_id and neighbour_id not in queued:
+                        queue.append(neighbour_id)
+                        queued.add(neighbour_id)
+
+        unresolved = any(
+            len(self._domains[var]) > 1
+            for var in component.variables
+        )
+        if unresolved and not self._component_incidence_is_acyclic(component):
+            return ResidualPropagationResult(
+                ResidualPropagationKind.UNSUPPORTED_COMPLEXITY,
+                ResidualPropagationStats(
+                    component.variables,
+                    component.factor_indexes,
+                    checked_rows,
+                    largest_scope,
+                    largest_candidate_count,
+                ),
+            )
+
+        return ResidualPropagationResult(
+            ResidualPropagationKind.CONSISTENT,
+            ResidualPropagationStats(
+                component.variables,
+                component.factor_indexes,
+                checked_rows,
+                largest_scope,
+                largest_candidate_count,
+            ),
+        )
+
+    def _component_incidence_is_acyclic(
+        self,
+        component: _ResidualLiveComponent,
+    ) -> bool:
+        node_count = len(component.variables) + len(component.factor_indexes)
+        edge_count = sum(
+            len(self._factor_by_id[factor_id].scope)
+            for factor_id in component.factor_indexes
+        )
+        return edge_count == max(0, node_count - 1)
+
+
+def add_factor_and_propagate(
+    store: ResidualStore,
+    factor: ResidualFactor,
+) -> ResidualPropagationResult:
     checkpoint = store.checkpoint()
     try:
-        store.add_factor(factor)
-        for var in factor.scope:
-            assigned = store._assignments.get(var, _UNASSIGNED)
-            if assigned is _UNASSIGNED:
-                continue
-            if not factor.assign(var, assigned):
-                store.rollback(checkpoint)
-                return False
-        return True
+        factor_id = store.add_factor(factor)
+        if factor.scope:
+            component = store._component_from_variables(factor.scope)
+        else:
+            component = _ResidualLiveComponent(
+                variables=(),
+                factor_indexes=(factor_id,),
+            )
+        result = store._propagate_component(component)
+        if result.kind is not ResidualPropagationKind.CONSISTENT:
+            store.rollback(checkpoint)
+        return result
     except Exception:
         store.rollback(checkpoint)
         raise
@@ -335,104 +571,47 @@ def residual_store_projected_values(
     snapshot: ResidualStoreValueSnapshot,
     var: VarId,
 ) -> tuple[object, ...]:
-    domains = _residual_snapshot_domain_map(snapshot)
-    if var not in domains:
+    store = ResidualStore.from_value_snapshot(snapshot)
+    if not store.contains_var(var):
         raise ValueError(f"unknown residual variable: {var!r}")
-    component = next(
-        component
-        for component in residual_store_constraint_components(snapshot)
-        if var in component.variables
-    )
-    assigned = dict(snapshot.assignments)
-    candidates = (assigned[var],) if var in assigned else domains[var]
-    return tuple(
-        value
-        for value in candidates
-        if _residual_component_has_solution(
-            snapshot,
-            component,
-            ((var, value),),
-        )
-    )
+    component = store._component_from_variables((var,))
+    result = store._propagate_component(component)
+
+    if result.kind is ResidualPropagationKind.CONTRADICTION:
+        return ()
+    if result.kind is ResidualPropagationKind.UNSUPPORTED_COMPLEXITY:
+        raise ResidualPropagationComplexityError(result.stats)
+
+    return store.domain(var)
 
 
 def residual_store_assignments_have_support(
     snapshot: ResidualStoreValueSnapshot,
     assignments: tuple[tuple[VarId, object], ...],
 ) -> bool:
-    domains = _residual_snapshot_domain_map(snapshot)
-    required: dict[VarId, object] = {}
-    for var, value in assignments:
-        if var not in domains:
-            raise ValueError(f"unknown residual variable: {var!r}")
-        if value not in domains[var]:
-            return False
-        existing = required.get(var, _UNASSIGNED)
-        if existing is not _UNASSIGNED and existing != value:
-            return False
-        required[var] = value
-
-    existing_assignments = dict(snapshot.assignments)
-    for var, value in required.items():
-        existing = existing_assignments.get(var, _UNASSIGNED)
-        if existing is not _UNASSIGNED and existing != value:
-            return False
-
-    for component in residual_store_constraint_components(snapshot):
-        component_required = tuple(
-            (var, value)
-            for var, value in required.items()
-            if var in component.variables
-        )
-        if not _residual_component_has_solution(
-            snapshot,
-            component,
-            component_required,
-        ):
-            return False
-    return True
-
-
-def _residual_component_has_solution(
-    snapshot: ResidualStoreValueSnapshot,
-    component: ResidualConstraintComponentSnapshot,
-    required_assignments: tuple[tuple[VarId, object], ...],
-) -> bool:
-    domains = _residual_snapshot_domain_map(snapshot)
-    fixed = dict(snapshot.assignments)
-    for var, value in required_assignments:
-        if var not in domains:
-            raise ValueError(f"unknown residual variable: {var!r}")
-        if value not in domains[var]:
-            return False
-        existing = fixed.get(var, _UNASSIGNED)
-        if existing is not _UNASSIGNED and existing != value:
-            return False
-        fixed[var] = value
-
     store = ResidualStore.from_value_snapshot(snapshot)
-    ordered_choices = tuple(
-        (var, (fixed[var],) if var in fixed else domains[var])
-        for var in component.variables
-    )
-
-    def search(index: int) -> bool:
-        if index == len(ordered_choices):
-            return all(
-                store.close_factor(factor_index)
-                for factor_index in component.factor_indexes
+    for var, value in assignments:
+        if not store.contains_var(var):
+            raise ValueError(f"unknown residual variable: {var!r}")
+        result = store.restrict_to_value(var, value)
+        if result.kind is ResidualPropagationKind.CONTRADICTION:
+            return False
+        if result.kind is ResidualPropagationKind.UNSUPPORTED_COMPLEXITY:
+            raise ResidualPropagationComplexityError(result.stats)
+    for component in residual_store_constraint_components(store.value_snapshot()):
+        if component.variables:
+            live_component = store._component_from_variables(component.variables)
+        else:
+            live_component = _ResidualLiveComponent(
+                variables=(),
+                factor_indexes=component.factor_indexes,
             )
-        current_var, values = ordered_choices[index]
-        for value in values:
-            checkpoint = store.checkpoint()
-            try:
-                if store.assign(current_var, value) and search(index + 1):
-                    return True
-            finally:
-                store.rollback(checkpoint)
-        return False
-
-    return search(0)
+        result = store._propagate_component(live_component)
+        if result.kind is ResidualPropagationKind.CONTRADICTION:
+            return False
+        if result.kind is ResidualPropagationKind.UNSUPPORTED_COMPLEXITY:
+            raise ResidualPropagationComplexityError(result.stats)
+    return True
 
 
 def _validate_residual_snapshot_assignment_consistency(
@@ -447,6 +626,11 @@ def _validate_residual_snapshot_assignment_consistency(
         if var not in domains:
             raise ValueError(
                 f"residual assignment references unknown variable: {var!r}"
+            )
+        if domains[var] != (value,):
+            raise ValueError(
+                "explicit residual assignment must have singleton domain: "
+                f"{var!r}={value!r}, domain={domains[var]!r}"
             )
         if value not in domains[var]:
             raise ValueError(
@@ -466,93 +650,26 @@ def _validate_residual_snapshot_assignment_consistency(
                 raise ValueError(
                     "tetra residual factor snapshot must have unary scope"
                 )
-            var = scope[0]
-            factor_value = factor_snapshot.assigned
-            top_value = assignments.get(var, _UNASSIGNED)
-            if factor_value is _UNASSIGNED:
-                if top_value is not _UNASSIGNED:
-                    raise ValueError(
-                        "tetra factor missing assigned value for assigned "
-                        f"variable: {var!r}"
-                    )
-                continue
-            if factor_value not in domains[var]:
-                raise ValueError(
-                    "tetra factor assigned value outside domain: "
-                    f"{var!r}={factor_value!r}"
-                )
-            if top_value is _UNASSIGNED:
-                raise ValueError(
-                    f"tetra factor assignment missing from residual snapshot: {var!r}"
-                )
-            if top_value != factor_value:
-                raise ValueError(
-                    "tetra factor assignment disagrees with residual "
-                    f"snapshot: {var!r}"
-                )
             continue
 
         if isinstance(factor_snapshot, DirectionalResidualFactorValueSnapshot):
-            marks = dict(factor_snapshot.marks)
-            if len(marks) != len(factor_snapshot.marks):
-                raise ValueError("duplicate directional residual factor mark")
-            for var, value in factor_snapshot.marks:
-                if var not in scope:
-                    raise ValueError(
-                        "directional factor mark references out-of-scope "
-                        f"variable: {var!r}"
-                    )
-                if var not in domains:
-                    raise ValueError(
-                        "directional factor mark references unknown "
-                        f"variable: {var!r}"
-                    )
-                if value not in domains[var]:
-                    raise ValueError(
-                        "directional factor mark outside domain: "
-                        f"{var!r}={value!r}"
-                    )
-            for var in scope:
-                top_value = assignments.get(var, _UNASSIGNED)
-                mark_value = marks.get(var, _UNASSIGNED)
-                if top_value is _UNASSIGNED and mark_value is _UNASSIGNED:
-                    continue
-                if top_value is _UNASSIGNED:
-                    raise ValueError(
-                        "directional factor mark missing from residual "
-                        f"snapshot: {var!r}"
-                    )
-                if mark_value is _UNASSIGNED:
-                    raise ValueError(
-                        "directional factor missing mark for assigned "
-                        f"variable: {var!r}"
-                    )
-                if top_value != mark_value:
-                    raise ValueError(
-                        "directional factor mark disagrees with residual "
-                        f"snapshot: {var!r}"
-                    )
             continue
 
         raise ValueError(f"unknown residual factor snapshot: {factor_snapshot!r}")
 
 
-def _remove_factor(
-    store: ResidualStore,
-    factor: ResidualFactor,
-    factor_id: int,
-) -> None:
+def _remove_factor(store: ResidualStore, factor_id: int) -> None:
+    if factor_id != len(store._factors) - 1:
+        raise AssertionError("residual factor rollback is not LIFO")
+    factor = store._factors[factor_id]
     if factor_id in store._factor_by_id:
         del store._factor_by_id[factor_id]
-    if factor_id == len(store._factors) - 1 and store._factors[factor_id] is factor:
-        store._factors.pop()
-    elif factor in store._factors:
-        store._factors.remove(factor)
+    store._factors.pop()
     for var in factor.scope:
         factors = store._factors_by_var.get(var)
         if factors is None:
             continue
-        store._factors_by_var[var] = [item for item in factors if item is not factor]
+        store._factors_by_var[var] = [item for item in factors if item != factor_id]
         if not store._factors_by_var[var]:
             del store._factors_by_var[var]
 
@@ -564,38 +681,17 @@ class TetraResidualFactor:
     target: TetraValue
     reference_order: tuple[OccurrenceId, ...]
     local_order: tuple[OccurrenceId, ...]
-    _assigned: object = field(default=_UNASSIGNED, init=False, compare=False, repr=False)
 
     def __post_init__(self) -> None:
         if len(self.scope) != 1:
             raise ValueError("tetra residual factor must have unary scope")
-        object.__setattr__(self, "_assigned", _UNASSIGNED)
 
     @property
     def token_var(self) -> VarId:
         return self.scope[0]
 
-    def assign(self, var: VarId, value: object) -> bool:
-        if var != self.token_var:
-            return True
-        if value not in _TETRA_TOKENS:
-            return False
-        existing = self._assigned
-        if existing is not _UNASSIGNED:
-            return existing is value
-        if value not in self.allowed_tokens():
-            return False
-        object.__setattr__(self, "_assigned", value)
-        return True
-
-    def close(self) -> bool:
-        return self._assigned is not _UNASSIGNED and self._assigned in self.allowed_tokens()
-
-    def checkpoint(self) -> object:
-        return self._assigned
-
-    def rollback(self, token: object) -> None:
-        object.__setattr__(self, "_assigned", token)
+    def accepts(self, row: tuple[object, ...]) -> bool:
+        return len(row) == 1 and row[0] in self.allowed_tokens()
 
     def value_snapshot(self) -> TetraResidualFactorValueSnapshot:
         return TetraResidualFactorValueSnapshot(
@@ -604,7 +700,6 @@ class TetraResidualFactor:
             target=self.target,
             reference_order=self.reference_order,
             local_order=self.local_order,
-            assigned=self._assigned,
         )
 
     def allowed_tokens(self) -> frozenset[TetraToken]:
@@ -640,51 +735,28 @@ class DirectionalResidualFactor:
     status: SiteStatus
     target: DirectionalValue
     carrier_models: Mapping[VarId, DirectionalCarrierResidual]
-    _marks: dict[VarId, object] = field(
-        default_factory=dict,
-        init=False,
-        compare=False,
-        repr=False,
-    )
 
     def __post_init__(self) -> None:
+        if len(set(self.scope)) != len(self.scope):
+            raise ValueError("directional residual scope contains duplicates")
         if set(self.scope) != set(self.carrier_models):
             raise ValueError("directional residual scope/model mismatch")
-        object.__setattr__(self, "_marks", {})
 
-    def assign(self, var: VarId, value: object) -> bool:
-        if var not in self.carrier_models:
-            return True
-        if value not in _DIRECTION_MARKS:
+    def accepts(self, row: tuple[object, ...]) -> bool:
+        if len(row) != len(self.scope):
             return False
-        marks = dict(self._marks)
-        existing = marks.get(var, _UNASSIGNED)
-        if existing is not _UNASSIGNED:
-            return existing is value
-        marks[var] = value
-        if _directional_value(marks, self.carrier_models) is _INVALID:
+        if any(mark not in _DIRECTION_MARKS for mark in row):
             return False
-        object.__setattr__(self, "_marks", marks)
-        return True
 
-    def close(self) -> bool:
-        if set(self._marks) != set(self.scope):
-            return False
-        value = self.value()
+        marks = dict(zip(self.scope, row))
+        value = _directional_value(marks, self.carrier_models)
         if value is _INVALID:
             return False
+
         if self.status is SiteStatus.UNSPECIFIED:
             return value is DirectionalValue.NONE
+
         return value is self.target
-
-    def checkpoint(self) -> object:
-        return dict(self._marks)
-
-    def rollback(self, token: object) -> None:
-        object.__setattr__(self, "_marks", dict(token))
-
-    def value(self) -> DirectionalValue | object:
-        return _directional_value(self._marks, self.carrier_models)
 
     def value_snapshot(self) -> DirectionalResidualFactorValueSnapshot:
         return DirectionalResidualFactorValueSnapshot(
@@ -694,7 +766,6 @@ class DirectionalResidualFactor:
             carrier_models=tuple(
                 sorted(self.carrier_models.items(), key=lambda item: _var_sort_key(item[0]))
             ),
-            marks=tuple(sorted(self._marks.items(), key=lambda item: _var_sort_key(item[0]))),
         )
 
 
@@ -754,24 +825,20 @@ def _is_even_permutation(indices: tuple[int, ...]) -> bool:
 
 def _factor_from_value_snapshot(snapshot: object) -> ResidualFactor:
     if isinstance(snapshot, TetraResidualFactorValueSnapshot):
-        factor = TetraResidualFactor(
+        return TetraResidualFactor(
             scope=snapshot.scope,
             status=snapshot.status,
             target=snapshot.target,
             reference_order=snapshot.reference_order,
             local_order=snapshot.local_order,
         )
-        factor.rollback(snapshot.assigned)
-        return factor
     if isinstance(snapshot, DirectionalResidualFactorValueSnapshot):
-        factor = DirectionalResidualFactor(
+        return DirectionalResidualFactor(
             scope=snapshot.scope,
             status=snapshot.status,
             target=snapshot.target,
             carrier_models=dict(snapshot.carrier_models),
         )
-        factor.rollback(dict(snapshot.marks))
-        return factor
     raise ValueError(f"unknown residual factor snapshot: {snapshot!r}")
 
 
@@ -785,13 +852,17 @@ __all__ = (
     "DirectionalResidualFactorValueSnapshot",
     "ResidualConstraintComponentSnapshot",
     "ResidualFactor",
+    "ResidualPropagationComplexityError",
+    "ResidualPropagationKind",
+    "ResidualPropagationResult",
+    "ResidualPropagationStats",
     "ResidualStore",
     "ResidualStoreValueSnapshot",
     "ResidualVariable",
     "TetraResidualFactor",
     "TetraResidualFactorValueSnapshot",
     "VarId",
-    "add_factor_checked",
+    "add_factor_and_propagate",
     "direction_var",
     "residual_store_assignments_have_support",
     "residual_store_constraint_components",

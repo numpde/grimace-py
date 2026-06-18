@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from dataclasses import replace
+from itertools import product
+import inspect
 import unittest
 
+import grimace._south_star1.residual_constraints as residual_constraints_module
 from grimace._south_star1.facts import DirectionalValue
 from grimace._south_star1.facts import SiteStatus
 from grimace._south_star1.facts import TetraValue
@@ -16,12 +18,14 @@ from grimace._south_star1.residual_constraints import DirectionalCarrierResidual
 from grimace._south_star1.residual_constraints import DirectionalResidualFactor
 from grimace._south_star1.residual_constraints import DirectionalResidualFactorValueSnapshot
 from grimace._south_star1.residual_constraints import ResidualConstraintComponentSnapshot
+from grimace._south_star1.residual_constraints import ResidualFactor
+from grimace._south_star1.residual_constraints import ResidualPropagationKind
 from grimace._south_star1.residual_constraints import ResidualStore
 from grimace._south_star1.residual_constraints import ResidualStoreValueSnapshot
 from grimace._south_star1.residual_constraints import TetraResidualFactor
 from grimace._south_star1.residual_constraints import TetraResidualFactorValueSnapshot
 from grimace._south_star1.residual_constraints import VarId
-from grimace._south_star1.residual_constraints import add_factor_checked
+from grimace._south_star1.residual_constraints import add_factor_and_propagate
 from grimace._south_star1.residual_constraints import direction_var
 from grimace._south_star1.residual_constraints import residual_store_assignments_have_support
 from grimace._south_star1.residual_constraints import residual_store_constraint_components
@@ -35,27 +39,17 @@ class _DummyFactorSnapshot:
 
 
 class ResidualConstraintTest(unittest.TestCase):
-    def test_tetra_specified_factor_forces_one_token_for_local_order(self) -> None:
+    def test_tetra_factor_relation_accepts_only_required_token(self) -> None:
         factor = _tetra_factor(
             target=TetraValue.PLUS,
             local_order=(0, 1, 2, 3),
         )
 
         self.assertEqual(factor.allowed_tokens(), frozenset((TetraToken.AT,)))
-        self.assertTrue(factor.assign(tetra_var(0), TetraToken.AT))
-        self.assertTrue(factor.close())
+        self.assertTrue(factor.accepts((TetraToken.AT,)))
+        self.assertFalse(factor.accepts((TetraToken.ATAT,)))
 
-    def test_tetra_swap_flips_forced_token(self) -> None:
-        factor = _tetra_factor(
-            target=TetraValue.PLUS,
-            local_order=(1, 0, 2, 3),
-        )
-
-        self.assertEqual(factor.allowed_tokens(), frozenset((TetraToken.ATAT,)))
-        self.assertFalse(factor.assign(tetra_var(0), TetraToken.AT))
-        self.assertTrue(factor.assign(tetra_var(0), TetraToken.ATAT))
-
-    def test_tetra_unspecified_rejects_at_tokens(self) -> None:
+    def test_tetra_unspecified_relation_accepts_none_only(self) -> None:
         factor = TetraResidualFactor(
             scope=(tetra_var(0),),
             status=SiteStatus.UNSPECIFIED,
@@ -64,19 +58,20 @@ class ResidualConstraintTest(unittest.TestCase):
             local_order=_occurrences(0, 1, 2, 3),
         )
 
-        self.assertFalse(factor.assign(tetra_var(0), TetraToken.AT))
-        self.assertTrue(factor.assign(tetra_var(0), TetraToken.NONE))
-        self.assertTrue(factor.close())
+        self.assertTrue(factor.accepts((TetraToken.NONE,)))
+        self.assertFalse(factor.accepts((TetraToken.AT,)))
 
-    def test_directional_factor_accepts_exact_specified_pair(self) -> None:
+    def test_directional_factor_relation_accepts_exact_pair(self) -> None:
         factor = _directional_factor(DirectionalValue.OPPOSITE)
 
-        self.assertTrue(factor.assign(direction_var(1), DirectionMark.FWD))
-        self.assertTrue(factor.assign(direction_var(2), DirectionMark.REV))
-        self.assertEqual(factor.value(), DirectionalValue.OPPOSITE)
-        self.assertTrue(factor.close())
+        self.assertTrue(
+            factor.accepts((DirectionMark.FWD, DirectionMark.REV))
+        )
+        self.assertFalse(
+            factor.accepts((DirectionMark.FWD, DirectionMark.FWD))
+        )
 
-    def test_directional_factor_rejects_same_endpoint_inconsistent_signs(
+    def test_directional_relation_rejects_same_endpoint_inconsistent_signs(
         self,
     ) -> None:
         left_a = direction_var("left-a")
@@ -93,49 +88,220 @@ class ResidualConstraintTest(unittest.TestCase):
             },
         )
 
-        self.assertTrue(factor.assign(left_a, DirectionMark.FWD))
-        self.assertFalse(factor.assign(left_b, DirectionMark.REV))
-
-    def test_directional_factor_returns_none_for_one_sided_marks(self) -> None:
-        factor = _directional_factor(DirectionalValue.OPPOSITE)
-
-        self.assertTrue(factor.assign(direction_var(1), DirectionMark.FWD))
-
-        self.assertEqual(factor.value(), DirectionalValue.NONE)
-
-    def test_directional_unspecified_rejects_accidental_two_sided_stereo(
-        self,
-    ) -> None:
-        factor = _directional_factor(
-            DirectionalValue.NONE,
-            status=SiteStatus.UNSPECIFIED,
+        self.assertFalse(
+            factor.accepts(
+                (
+                    DirectionMark.FWD,
+                    DirectionMark.REV,
+                    DirectionMark.FWD,
+                )
+            )
         )
 
-        self.assertTrue(factor.assign(direction_var(1), DirectionMark.FWD))
-        self.assertTrue(factor.assign(direction_var(2), DirectionMark.FWD))
-        self.assertEqual(factor.value(), DirectionalValue.TOGETHER)
-        self.assertFalse(factor.close())
-
-    def test_checkpoint_rollback_restores_store_and_factor_state(self) -> None:
+    def test_tetra_factor_propagation_reduces_domain(self) -> None:
         store = ResidualStore()
-        left = direction_var(1)
-        right = direction_var(2)
-        store.add_var(left, (DirectionMark.ABSENT, DirectionMark.FWD, DirectionMark.REV))
-        store.add_var(right, (DirectionMark.ABSENT, DirectionMark.FWD, DirectionMark.REV))
-        factor_id = store.add_factor(_directional_factor(DirectionalValue.OPPOSITE))
-        checkpoint = store.checkpoint()
+        var = tetra_var(("test", 0))
+        store.add_var(var, (TetraToken.AT, TetraToken.ATAT))
 
-        self.assertTrue(store.assign(left, DirectionMark.FWD))
-        self.assertTrue(store.assign(right, DirectionMark.REV))
-        self.assertTrue(store.close_factor(factor_id))
+        result = add_factor_and_propagate(
+            store,
+            TetraResidualFactor(
+                scope=(var,),
+                status=SiteStatus.SPECIFIED,
+                target=TetraValue.PLUS,
+                reference_order=_occurrences(0, 1, 2, 3),
+                local_order=_occurrences(0, 1, 2, 3),
+            ),
+        )
 
-        store.rollback(checkpoint)
-        self.assertIsNone(store.assignment(left))
+        self.assertIs(result.kind, ResidualPropagationKind.CONSISTENT)
+        self.assertEqual(store.domain(var), (TetraToken.AT,))
+        self.assertIsNone(store.assignment(var))
+
+    def test_directional_propagation_reduces_coupled_domain(self) -> None:
+        store = ResidualStore()
+        left = direction_var(("left", 0))
+        right = direction_var(("right", 0))
+        domain = (DirectionMark.FWD, DirectionMark.REV)
+        store.add_var(left, domain)
+        store.add_var(right, domain)
+        self.assertIs(
+            add_factor_and_propagate(
+                store,
+                _directional_factor_between(
+                    left,
+                    right,
+                    DirectionalValue.TOGETHER,
+                ),
+            ).kind,
+            ResidualPropagationKind.CONSISTENT,
+        )
+
+        result = store.restrict_to_value(left, DirectionMark.FWD)
+
+        self.assertIs(result.kind, ResidualPropagationKind.CONSISTENT)
+        self.assertEqual(store.domain(left), (DirectionMark.FWD,))
+        self.assertEqual(store.domain(right), (DirectionMark.FWD,))
+        self.assertIs(store.assignment(left), DirectionMark.FWD)
         self.assertIsNone(store.assignment(right))
-        self.assertFalse(store.close_factor(factor_id))
-        self.assertTrue(store.assign(left, DirectionMark.FWD))
-        self.assertTrue(store.assign(right, DirectionMark.REV))
-        self.assertTrue(store.close_factor(factor_id))
+
+    def test_propagation_through_two_shared_factors(self) -> None:
+        store = ResidualStore()
+        a = direction_var(("a",))
+        b = direction_var(("b",))
+        c = direction_var(("c",))
+        domain = (DirectionMark.FWD, DirectionMark.REV)
+        for var in (a, b, c):
+            store.add_var(var, domain)
+        self.assertIs(
+            add_factor_and_propagate(
+                store,
+                _directional_factor_between(a, b, DirectionalValue.TOGETHER),
+            ).kind,
+            ResidualPropagationKind.CONSISTENT,
+        )
+        self.assertIs(
+            add_factor_and_propagate(
+                store,
+                _directional_factor_between(b, c, DirectionalValue.OPPOSITE),
+            ).kind,
+            ResidualPropagationKind.CONSISTENT,
+        )
+
+        result = store.restrict_to_value(a, DirectionMark.FWD)
+
+        self.assertIs(result.kind, ResidualPropagationKind.CONSISTENT)
+        self.assertEqual(store.domain(a), (DirectionMark.FWD,))
+        self.assertEqual(store.domain(b), (DirectionMark.FWD,))
+        self.assertEqual(store.domain(c), (DirectionMark.REV,))
+        self.assertIs(store.assignment(a), DirectionMark.FWD)
+        self.assertIsNone(store.assignment(b))
+        self.assertIsNone(store.assignment(c))
+
+    def test_component_locality(self) -> None:
+        store = ResidualStore()
+        domain = (DirectionMark.FWD, DirectionMark.REV)
+        pairs: list[tuple[VarId, VarId]] = []
+        for index in range(20):
+            left = direction_var(("left", index))
+            right = direction_var(("right", index))
+            pairs.append((left, right))
+            store.add_var(left, domain)
+            store.add_var(right, domain)
+            result = add_factor_and_propagate(
+                store,
+                _directional_factor_between(
+                    left,
+                    right,
+                    DirectionalValue.TOGETHER,
+                ),
+            )
+            self.assertIs(result.kind, ResidualPropagationKind.CONSISTENT)
+
+        result = store.restrict_to_value(pairs[7][0], DirectionMark.FWD)
+
+        self.assertIs(result.kind, ResidualPropagationKind.CONSISTENT)
+        self.assertEqual(result.stats.component_factor_indexes, (7,))
+        self.assertEqual(len(result.stats.component_variables), 2)
+        for index, (left, right) in enumerate(pairs):
+            if index == 7:
+                continue
+            self.assertEqual(store.domain(left), domain)
+            self.assertEqual(store.domain(right), domain)
+
+    def test_factor_addition_rolls_back_on_contradiction(self) -> None:
+        store = ResidualStore()
+        left = direction_var(("left",))
+        right = direction_var(("right",))
+        store.add_var(left, (DirectionMark.FWD,))
+        store.add_var(right, (DirectionMark.ABSENT,))
+        before = store.value_snapshot()
+
+        result = add_factor_and_propagate(
+            store,
+            _directional_factor_between(left, right, DirectionalValue.OPPOSITE),
+        )
+
+        self.assertIs(result.kind, ResidualPropagationKind.CONTRADICTION)
+        self.assertEqual(store.value_snapshot(), before)
+
+    def test_value_restriction_rolls_back_on_contradiction(self) -> None:
+        store = ResidualStore()
+        left = direction_var(("left",))
+        right = direction_var(("right",))
+        domain = (DirectionMark.FWD, DirectionMark.REV)
+        store.add_var(left, domain)
+        store.add_var(right, domain)
+        self.assertIs(
+            add_factor_and_propagate(
+                store,
+                _directional_factor_between(
+                    left,
+                    right,
+                    DirectionalValue.TOGETHER,
+                ),
+            ).kind,
+            ResidualPropagationKind.CONSISTENT,
+        )
+        before = store.value_snapshot()
+
+        result = store.restrict_to_value(left, DirectionMark.ABSENT)
+
+        self.assertIs(result.kind, ResidualPropagationKind.CONTRADICTION)
+        self.assertEqual(store.value_snapshot(), before)
+
+    def test_unresolved_cyclic_components_fail_closed(self) -> None:
+        store = ResidualStore()
+        a = direction_var(("a",))
+        b = direction_var(("b",))
+        c = direction_var(("c",))
+        domain = (DirectionMark.FWD, DirectionMark.REV)
+        for var in (a, b, c):
+            store.add_var(var, domain)
+
+        for left, right in ((a, b), (b, c)):
+            self.assertIs(
+                add_factor_and_propagate(
+                    store,
+                    _directional_factor_between(
+                        left,
+                        right,
+                        DirectionalValue.TOGETHER,
+                    ),
+                ).kind,
+                ResidualPropagationKind.CONSISTENT,
+            )
+        before = store.value_snapshot()
+
+        result = add_factor_and_propagate(
+            store,
+            _directional_factor_between(c, a, DirectionalValue.TOGETHER),
+        )
+
+        self.assertIs(
+            result.kind,
+            ResidualPropagationKind.UNSUPPORTED_COMPLEXITY,
+        )
+        self.assertEqual(store.value_snapshot(), before)
+
+    def test_singleton_cyclic_component_is_accepted(self) -> None:
+        store = ResidualStore()
+        a = direction_var(("a",))
+        b = direction_var(("b",))
+        c = direction_var(("c",))
+        for var in (a, b, c):
+            store.add_var(var, (DirectionMark.FWD,))
+
+        for left, right in ((a, b), (b, c), (c, a)):
+            result = add_factor_and_propagate(
+                store,
+                _directional_factor_between(
+                    left,
+                    right,
+                    DirectionalValue.TOGETHER,
+                ),
+            )
+            self.assertIs(result.kind, ResidualPropagationKind.CONSISTENT)
 
     def test_residual_store_value_snapshot_is_canonical_by_var_order(self) -> None:
         left = ResidualStore()
@@ -309,7 +475,7 @@ class ResidualConstraintTest(unittest.TestCase):
     def test_residual_projected_values_assigned_variable_returns_assignment(self) -> None:
         var = tetra_var(("test", 0))
         snapshot = ResidualStoreValueSnapshot(
-            domains=((var, (TetraToken.AT, TetraToken.ATAT)),),
+            domains=((var, (TetraToken.AT,)),),
             assignments=((var, TetraToken.AT),),
             factors=(),
         )
@@ -323,15 +489,18 @@ class ResidualConstraintTest(unittest.TestCase):
         store = ResidualStore()
         var = tetra_var(("test", 0))
         store.add_var(var, (TetraToken.AT, TetraToken.ATAT))
-        factor = TetraResidualFactor(
-            scope=(var,),
-            status=SiteStatus.SPECIFIED,
-            target=TetraValue.PLUS,
-            reference_order=_occurrences(0, 1, 2, 3),
-            local_order=_occurrences(0, 1, 2, 3),
+        result = add_factor_and_propagate(
+            store,
+            TetraResidualFactor(
+                scope=(var,),
+                status=SiteStatus.SPECIFIED,
+                target=TetraValue.PLUS,
+                reference_order=_occurrences(0, 1, 2, 3),
+                local_order=_occurrences(0, 1, 2, 3),
+            ),
         )
 
-        self.assertTrue(add_factor_checked(store, factor))
+        self.assertIs(result.kind, ResidualPropagationKind.CONSISTENT)
         self.assertEqual(
             residual_store_projected_values(store.value_snapshot(), var),
             (TetraToken.AT,),
@@ -343,21 +512,15 @@ class ResidualConstraintTest(unittest.TestCase):
         right = direction_var(("right", 0))
         store.add_var(left, (DirectionMark.FWD,))
         store.add_var(right, (DirectionMark.ABSENT,))
-        factor = DirectionalResidualFactor(
-            scope=(left, right),
-            status=SiteStatus.SPECIFIED,
-            target=DirectionalValue.OPPOSITE,
-            carrier_models={
-                left: DirectionalCarrierResidual(left, "left", 1, 1),
-                right: DirectionalCarrierResidual(right, "right", 1, 1),
-            },
+        result = add_factor_and_propagate(
+            store,
+            _directional_factor_between(left, right, DirectionalValue.OPPOSITE),
         )
 
-        self.assertTrue(add_factor_checked(store, factor))
-        self.assertTrue(store.assign(left, DirectionMark.FWD))
+        self.assertIs(result.kind, ResidualPropagationKind.CONTRADICTION)
         self.assertEqual(
             residual_store_projected_values(store.value_snapshot(), left),
-            (),
+            (DirectionMark.FWD,),
         )
 
     def test_residual_projected_values_rejects_unknown_variable(self) -> None:
@@ -419,7 +582,7 @@ class ResidualConstraintTest(unittest.TestCase):
     def test_residual_assignment_support_rejects_existing_assignment_conflict(self) -> None:
         var = tetra_var(("test", 0))
         snapshot = ResidualStoreValueSnapshot(
-            domains=((var, (TetraToken.AT, TetraToken.ATAT)),),
+            domains=((var, (TetraToken.AT,)),),
             assignments=((var, TetraToken.AT),),
             factors=(),
         )
@@ -435,8 +598,8 @@ class ResidualConstraintTest(unittest.TestCase):
         store = ResidualStore()
         var = tetra_var(("test", 0))
         store.add_var(var, (TetraToken.AT, TetraToken.ATAT))
-        self.assertTrue(
-            add_factor_checked(
+        self.assertIs(
+            add_factor_and_propagate(
                 store,
                 TetraResidualFactor(
                     scope=(var,),
@@ -445,7 +608,8 @@ class ResidualConstraintTest(unittest.TestCase):
                     reference_order=_occurrences(0, 1, 2, 3),
                     local_order=_occurrences(0, 1, 2, 3),
                 ),
-            )
+            ).kind,
+            ResidualPropagationKind.CONSISTENT,
         )
 
         self.assertTrue(
@@ -461,38 +625,14 @@ class ResidualConstraintTest(unittest.TestCase):
             )
         )
 
-    def test_residual_assignment_support_detects_no_coupled_directional_completion(self) -> None:
-        store = ResidualStore()
-        left = direction_var(("left", 0))
-        right = direction_var(("right", 0))
-        store.add_var(left, (DirectionMark.FWD,))
-        store.add_var(right, (DirectionMark.ABSENT,))
-        factor = DirectionalResidualFactor(
-            scope=(left, right),
-            status=SiteStatus.SPECIFIED,
-            target=DirectionalValue.OPPOSITE,
-            carrier_models={
-                left: DirectionalCarrierResidual(left, "left", 1, 1),
-                right: DirectionalCarrierResidual(right, "right", 1, 1),
-            },
-        )
-
-        self.assertTrue(add_factor_checked(store, factor))
-        self.assertFalse(
-            residual_store_assignments_have_support(
-                store.value_snapshot(),
-                ((left, DirectionMark.FWD),),
-            )
-        )
-
     def test_residual_assignment_support_conjoins_independent_components(self) -> None:
         store = ResidualStore()
         tetra = tetra_var(("test", 0))
         direction = direction_var(("direction", 0))
         store.add_var(tetra, (TetraToken.AT, TetraToken.ATAT))
         store.add_var(direction, (DirectionMark.FWD, DirectionMark.REV))
-        self.assertTrue(
-            add_factor_checked(
+        self.assertIs(
+            add_factor_and_propagate(
                 store,
                 TetraResidualFactor(
                     scope=(tetra,),
@@ -501,7 +641,8 @@ class ResidualConstraintTest(unittest.TestCase):
                     reference_order=_occurrences(0, 1, 2, 3),
                     local_order=_occurrences(0, 1, 2, 3),
                 ),
-            )
+            ).kind,
+            ResidualPropagationKind.CONSISTENT,
         )
         snapshot = store.value_snapshot()
 
@@ -522,8 +663,8 @@ class ResidualConstraintTest(unittest.TestCase):
         store = ResidualStore()
         var = tetra_var(("test", 0))
         store.add_var(var, (TetraToken.AT, TetraToken.ATAT))
-        self.assertTrue(
-            add_factor_checked(
+        self.assertIs(
+            add_factor_and_propagate(
                 store,
                 TetraResidualFactor(
                     scope=(var,),
@@ -532,43 +673,52 @@ class ResidualConstraintTest(unittest.TestCase):
                     reference_order=_occurrences(0, 1, 2, 3),
                     local_order=_occurrences(0, 1, 2, 3),
                 ),
-            )
+            ).kind,
+            ResidualPropagationKind.CONSISTENT,
         )
-        self.assertTrue(store.assign(var, TetraToken.AT))
+        self.assertIs(
+            store.restrict_to_value(var, TetraToken.AT).kind,
+            ResidualPropagationKind.CONSISTENT,
+        )
         snapshot = store.value_snapshot()
 
         restored = ResidualStore.from_value_snapshot(snapshot)
 
         self.assertEqual(restored.value_snapshot(), snapshot)
 
-    def test_tetra_factor_assignment_missing_from_top_level_rejects(self) -> None:
+    def test_factor_snapshots_contain_no_assignment_or_marks(self) -> None:
+        tetra_snapshot = TetraResidualFactor(
+            scope=(tetra_var(("test", 0)),),
+            status=SiteStatus.SPECIFIED,
+            target=TetraValue.PLUS,
+            reference_order=_occurrences(0, 1, 2, 3),
+            local_order=_occurrences(0, 1, 2, 3),
+        ).value_snapshot()
+        directional_snapshot = _directional_factor(
+            DirectionalValue.TOGETHER,
+        ).value_snapshot()
+
+        self.assertFalse(hasattr(tetra_snapshot, "assigned"))
+        self.assertFalse(hasattr(directional_snapshot, "marks"))
+
+    def test_explicit_assignments_require_singleton_domains(self) -> None:
         var = tetra_var(("test", 0))
         snapshot = ResidualStoreValueSnapshot(
             domains=((var, (TetraToken.AT, TetraToken.ATAT)),),
-            assignments=(),
-            factors=(
-                TetraResidualFactorValueSnapshot(
-                    scope=(var,),
-                    status=SiteStatus.SPECIFIED,
-                    target=TetraValue.PLUS,
-                    reference_order=_occurrences(0, 1, 2, 3),
-                    local_order=_occurrences(0, 1, 2, 3),
-                    assigned=TetraToken.AT,
-                ),
-            ),
+            assignments=((var, TetraToken.AT),),
+            factors=(),
         )
 
         with self.assertRaises(ValueError):
             ResidualStore.from_value_snapshot(snapshot)
-        with self.assertRaises(ValueError):
-            residual_store_assignments_have_support(snapshot, ())
 
-    def test_top_level_tetra_assignment_missing_from_factor_rejects(self) -> None:
+    def test_inferred_singleton_domain_is_not_assignment(self) -> None:
         store = ResidualStore()
         var = tetra_var(("test", 0))
         store.add_var(var, (TetraToken.AT, TetraToken.ATAT))
-        self.assertTrue(
-            add_factor_checked(
+
+        self.assertIs(
+            add_factor_and_propagate(
                 store,
                 TetraResidualFactor(
                     scope=(var,),
@@ -577,52 +727,187 @@ class ResidualConstraintTest(unittest.TestCase):
                     reference_order=_occurrences(0, 1, 2, 3),
                     local_order=_occurrences(0, 1, 2, 3),
                 ),
-            )
+            ).kind,
+            ResidualPropagationKind.CONSISTENT,
+        )
+
+        snapshot = store.value_snapshot()
+        self.assertEqual(snapshot.domains, ((var, (TetraToken.AT,)),))
+        self.assertEqual(snapshot.assignments, ())
+
+    def test_snapshot_reconstruction_rebuilds_factor_indexes(self) -> None:
+        store = ResidualStore()
+        left = direction_var(("left",))
+        right = direction_var(("right",))
+        for var in (left, right):
+            store.add_var(var, (DirectionMark.FWD, DirectionMark.REV))
+        self.assertIs(
+            add_factor_and_propagate(
+                store,
+                _directional_factor_between(
+                    left,
+                    right,
+                    DirectionalValue.TOGETHER,
+                ),
+            ).kind,
+            ResidualPropagationKind.CONSISTENT,
         )
         snapshot = store.value_snapshot()
-        tampered = replace(
-            snapshot,
-            assignments=((var, TetraToken.AT),),
+        restored = ResidualStore.from_value_snapshot(snapshot)
+
+        result = restored.restrict_to_value(left, DirectionMark.FWD)
+
+        self.assertIs(result.kind, ResidualPropagationKind.CONSISTENT)
+        self.assertEqual(restored.domain(right), (DirectionMark.FWD,))
+
+    def test_oracle_matches_unary_tetra_projection(self) -> None:
+        store = ResidualStore()
+        var = tetra_var(("test", 0))
+        domain = (TetraToken.AT, TetraToken.ATAT)
+        store.add_var(var, domain)
+        factor = TetraResidualFactor(
+            scope=(var,),
+            status=SiteStatus.SPECIFIED,
+            target=TetraValue.PLUS,
+            reference_order=_occurrences(0, 1, 2, 3),
+            local_order=_occurrences(0, 1, 2, 3),
+        )
+        self.assertIs(
+            add_factor_and_propagate(store, factor).kind,
+            ResidualPropagationKind.CONSISTENT,
         )
 
-        with self.assertRaises(ValueError):
-            ResidualStore.from_value_snapshot(tampered)
-        with self.assertRaises(ValueError):
-            residual_store_assignments_have_support(tampered, ())
-
-    def test_directional_factor_mark_disagreement_rejects(self) -> None:
-        left = direction_var(("left", 0))
-        right = direction_var(("right", 0))
-        snapshot = ResidualStoreValueSnapshot(
-            domains=(
-                (left, (DirectionMark.ABSENT, DirectionMark.FWD, DirectionMark.REV)),
-                (right, (DirectionMark.ABSENT, DirectionMark.FWD, DirectionMark.REV)),
-            ),
-            assignments=((left, DirectionMark.FWD),),
-            factors=(
-                DirectionalResidualFactorValueSnapshot(
-                    scope=(left, right),
-                    status=SiteStatus.SPECIFIED,
-                    target=DirectionalValue.OPPOSITE,
-                    carrier_models=(
-                        (
-                            left,
-                            DirectionalCarrierResidual(left, "left", 1, 1),
-                        ),
-                        (
-                            right,
-                            DirectionalCarrierResidual(right, "right", 1, 1),
-                        ),
-                    ),
-                    marks=((left, DirectionMark.REV),),
-                ),
+        self.assertEqual(
+            store.domain(var),
+            _oracle_projection(
+                var,
+                (var,),
+                {var: domain},
+                (factor,),
             ),
         )
 
-        with self.assertRaises(ValueError):
-            ResidualStore.from_value_snapshot(snapshot)
-        with self.assertRaises(ValueError):
-            residual_store_assignments_have_support(snapshot, ())
+    def test_oracle_matches_two_factor_chain_projection(self) -> None:
+        store = ResidualStore()
+        a = direction_var(("a",))
+        b = direction_var(("b",))
+        c = direction_var(("c",))
+        domain = (DirectionMark.FWD, DirectionMark.REV)
+        for var in (a, b, c):
+            store.add_var(var, domain)
+        factors = (
+            _directional_factor_between(a, b, DirectionalValue.TOGETHER),
+            _directional_factor_between(b, c, DirectionalValue.OPPOSITE),
+        )
+        for factor in factors:
+            self.assertIs(
+                add_factor_and_propagate(store, factor).kind,
+                ResidualPropagationKind.CONSISTENT,
+            )
+        self.assertIs(
+            store.restrict_to_value(a, DirectionMark.FWD).kind,
+            ResidualPropagationKind.CONSISTENT,
+        )
+        domains = {
+            a: (DirectionMark.FWD,),
+            b: domain,
+            c: domain,
+        }
+
+        for var in (a, b, c):
+            self.assertEqual(
+                store.domain(var),
+                _oracle_projection(var, (a, b, c), domains, factors),
+            )
+
+    def test_oracle_matches_independent_components(self) -> None:
+        store = ResidualStore()
+        left = direction_var(("left",))
+        right = direction_var(("right",))
+        tetra = tetra_var(("tetra",))
+        direction_domain = (DirectionMark.FWD, DirectionMark.REV)
+        tetra_domain = (TetraToken.AT, TetraToken.ATAT)
+        store.add_var(left, direction_domain)
+        store.add_var(right, direction_domain)
+        store.add_var(tetra, tetra_domain)
+        factors = (
+            _directional_factor_between(
+                left,
+                right,
+                DirectionalValue.TOGETHER,
+            ),
+            TetraResidualFactor(
+                scope=(tetra,),
+                status=SiteStatus.SPECIFIED,
+                target=TetraValue.PLUS,
+                reference_order=_occurrences(0, 1, 2, 3),
+                local_order=_occurrences(0, 1, 2, 3),
+            ),
+        )
+        for factor in factors:
+            self.assertIs(
+                add_factor_and_propagate(store, factor).kind,
+                ResidualPropagationKind.CONSISTENT,
+            )
+
+        self.assertEqual(
+            store.domain(tetra),
+            _oracle_projection(
+                tetra,
+                (tetra,),
+                {tetra: tetra_domain},
+                (factors[1],),
+            ),
+        )
+        self.assertEqual(
+            store.domain(left),
+            _oracle_projection(
+                left,
+                (left, right),
+                {left: direction_domain, right: direction_domain},
+                (factors[0],),
+            ),
+        )
+
+    def test_production_residual_module_has_no_component_assignment_search(
+        self,
+    ) -> None:
+        source = inspect.getsource(residual_constraints_module)
+        self.assertNotIn("_residual_component_has_solution", source)
+
+
+def _oracle_solutions(
+    variables: tuple[VarId, ...],
+    domains: dict[VarId, tuple[object, ...]],
+    factors: tuple[ResidualFactor, ...],
+) -> tuple[dict[VarId, object], ...]:
+    solutions: list[dict[VarId, object]] = []
+
+    for values in product(*(domains[var] for var in variables)):
+        assignment = dict(zip(variables, values))
+        if all(
+            factor.accepts(
+                tuple(assignment[var] for var in factor.scope)
+            )
+            for factor in factors
+        ):
+            solutions.append(assignment)
+
+    return tuple(solutions)
+
+
+def _oracle_projection(
+    var: VarId,
+    variables: tuple[VarId, ...],
+    domains: dict[VarId, tuple[object, ...]],
+    factors: tuple[ResidualFactor, ...],
+) -> tuple[object, ...]:
+    solutions = _oracle_solutions(variables, domains, factors)
+    return tuple(
+        value
+        for value in domains[var]
+        if any(solution[var] == value for solution in solutions)
+    )
 
 
 def _tetra_factor(
@@ -646,6 +931,16 @@ def _directional_factor(
 ) -> DirectionalResidualFactor:
     left = direction_var(1)
     right = direction_var(2)
+    return _directional_factor_between(left, right, target, status=status)
+
+
+def _directional_factor_between(
+    left: VarId,
+    right: VarId,
+    target: DirectionalValue,
+    *,
+    status: SiteStatus = SiteStatus.SPECIFIED,
+) -> DirectionalResidualFactor:
     return DirectionalResidualFactor(
         scope=(left, right),
         status=status,

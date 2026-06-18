@@ -1733,8 +1733,10 @@ def _resume_direction_candidate_frame(
     choices = domains[direction_var(carrier_id)]
     for mark in choices:
         store = ResidualStore.from_value_snapshot(frame.residual_snapshot)
-        result = store.restrict_to_value(direction_var(carrier_id), mark)
-        if result.kind is not ResidualPropagationKind.CONSISTENT:
+        result = store.restrict_many_and_propagate(
+            ((direction_var(carrier_id), mark),)
+        )
+        if result.kind is ResidualPropagationKind.CONTRADICTION:
             continue
         next_decisions = OnlineDecisionRecorder()
         next_decisions.restore_path(frame.decision_path)

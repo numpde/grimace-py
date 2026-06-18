@@ -22,7 +22,7 @@ from .writer_state import WriterStateKey
 from .writer_state import writer_state_from_key
 from .writer_state import writer_state_key
 from .writer_state import writer_state_key_sort_tuple
-from .writer_stereo import empty_writer_stereo_state
+from .writer_stereo import initial_writer_stereo_state
 from .writer_transitions import finalize_writer_terminal_state
 from .writer_transitions import _WriterActiveEmittedGraphPolicyBlocker
 from .writer_transitions import _WriterActiveEmittedGraphPolicyDecision
@@ -1591,7 +1591,7 @@ def _initial_writer_frontier_cursor(
                         written_bonds=frozenset(),
                         obligations=ObligationState(),
                         ring_state=WriterRingState(),
-                        stereo_state=empty_writer_stereo_state(),
+                        stereo_state=initial_writer_stereo_state(prepared),
                         policy_state=WriterPolicyState(),
                     )
                 ),

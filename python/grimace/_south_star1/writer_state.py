@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from dataclasses import field
+from dataclasses import InitVar
 from enum import Enum
 
 from .ids import AtomId
@@ -12,7 +13,6 @@ from .residual_constraints import ResidualStoreValueSnapshot
 from .writer_stereo import EMPTY_RESIDUAL_SNAPSHOT
 from .writer_stereo import WriterAtomOccurrenceRecord
 from .writer_stereo import WriterBondOccurrenceRecord
-from .writer_stereo import WriterDelayedStereoFactor
 from .writer_stereo import WriterLocalOrderRecord
 from .writer_stereo import writer_stereo_state_sort_tuple
 
@@ -102,7 +102,7 @@ class WriterStereoState:
     atom_occurrences: tuple[WriterAtomOccurrenceRecord, ...] = ()
     bond_occurrences: tuple[WriterBondOccurrenceRecord, ...] = ()
     local_orders: tuple[WriterLocalOrderRecord, ...] = ()
-    delayed_factors: tuple[WriterDelayedStereoFactor, ...] = ()
+    delayed_factors: InitVar[tuple[object, ...]] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,7 +142,7 @@ class WriterStereoStateKey:
     atom_occurrences: tuple[WriterAtomOccurrenceRecord, ...] = ()
     bond_occurrences: tuple[WriterBondOccurrenceRecord, ...] = ()
     local_orders: tuple[WriterLocalOrderRecord, ...] = ()
-    delayed_factors: tuple[WriterDelayedStereoFactor, ...] = ()
+    delayed_factors: InitVar[tuple[object, ...]] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,7 +184,6 @@ def writer_state_key(state: WriterState) -> WriterStateKey:
             atom_occurrences=state.stereo_state.atom_occurrences,
             bond_occurrences=state.stereo_state.bond_occurrences,
             local_orders=state.stereo_state.local_orders,
-            delayed_factors=state.stereo_state.delayed_factors,
         ),
         policy_state=WriterPolicyStateKey(
             atom_text=state.policy_state.atom_text,
@@ -213,7 +212,6 @@ def writer_state_from_key(key: WriterStateKey) -> WriterState:
             atom_occurrences=key.stereo_state.atom_occurrences,
             bond_occurrences=key.stereo_state.bond_occurrences,
             local_orders=key.stereo_state.local_orders,
-            delayed_factors=key.stereo_state.delayed_factors,
         ),
         policy_state=WriterPolicyState(
             atom_text=key.policy_state.atom_text,
@@ -238,7 +236,6 @@ def writer_state_key_sort_tuple(key: WriterStateKey) -> tuple[object, ...]:
                 atom_occurrences=key.stereo_state.atom_occurrences,
                 bond_occurrences=key.stereo_state.bond_occurrences,
                 local_orders=key.stereo_state.local_orders,
-                delayed_factors=key.stereo_state.delayed_factors,
             )
         ),
         (

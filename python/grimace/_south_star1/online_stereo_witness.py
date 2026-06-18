@@ -557,8 +557,8 @@ def _iter_directional_candidates(
                 continue
             checkpoint = store.checkpoint()
             try:
-                result = store.restrict_to_value(var, mark)
-                if result.kind is ResidualPropagationKind.CONSISTENT:
+                result = store.restrict_many_and_propagate(((var, mark),))
+                if result.kind is not ResidualPropagationKind.CONTRADICTION:
                     marks[carrier_id] = mark
                     yield from rec(index + 1)
                     del marks[carrier_id]

@@ -19,6 +19,7 @@ from grimace._south_star1.residual_constraints import DirectionalResidualFactor
 from grimace._south_star1.residual_constraints import DirectionalResidualFactorValueSnapshot
 from grimace._south_star1.residual_constraints import ResidualConstraintComponentSnapshot
 from grimace._south_star1.residual_constraints import ResidualFactor
+from grimace._south_star1.residual_constraints import ResidualFactorKey
 from grimace._south_star1.residual_constraints import ResidualPropagationKind
 from grimace._south_star1.residual_constraints import ResidualStore
 from grimace._south_star1.residual_constraints import ResidualStoreValueSnapshot
@@ -36,6 +37,7 @@ from grimace._south_star1.residual_constraints import tetra_var
 @dataclass(frozen=True, slots=True)
 class _DummyFactorSnapshot:
     scope: tuple[VarId, ...]
+    key: ResidualFactorKey = ResidualFactorKey("dummy", ())
 
 
 class ResidualConstraintTest(unittest.TestCase):
@@ -201,7 +203,16 @@ class ResidualConstraintTest(unittest.TestCase):
         result = store.restrict_to_value(pairs[7][0], DirectionMark.FWD)
 
         self.assertIs(result.kind, ResidualPropagationKind.CONSISTENT)
-        self.assertEqual(result.stats.component_factor_indexes, (7,))
+        self.assertEqual(
+            result.stats.component_factor_keys,
+            (
+                _directional_factor_between(
+                    pairs[7][0],
+                    pairs[7][1],
+                    DirectionalValue.TOGETHER,
+                ).key,
+            ),
+        )
         self.assertEqual(len(result.stats.component_variables), 2)
         for index, (left, right) in enumerate(pairs):
             if index == 7:
@@ -280,9 +291,9 @@ class ResidualConstraintTest(unittest.TestCase):
 
         self.assertIs(
             result.kind,
-            ResidualPropagationKind.UNSUPPORTED_COMPLEXITY,
+            ResidualPropagationKind.LOCALLY_CONSISTENT_UNCERTIFIED,
         )
-        self.assertEqual(store.value_snapshot(), before)
+        self.assertNotEqual(store.value_snapshot(), before)
 
     def test_singleton_cyclic_component_is_accepted(self) -> None:
         store = ResidualStore()
@@ -400,12 +411,12 @@ class ResidualConstraintTest(unittest.TestCase):
             (
                 ResidualConstraintComponentSnapshot(
                     variables=(first,),
-                    factor_indexes=(),
+                    factor_keys=(),
                     assigned_variables=(),
                 ),
                 ResidualConstraintComponentSnapshot(
                     variables=(second,),
-                    factor_indexes=(),
+                    factor_keys=(),
                     assigned_variables=(),
                 ),
             ),
@@ -419,8 +430,14 @@ class ResidualConstraintTest(unittest.TestCase):
             domains=((first, ("a",)), (second, ("b",)), (third, ("c",))),
             assignments=((second, "b"),),
             factors=(
-                _DummyFactorSnapshot(scope=(first, second)),
-                _DummyFactorSnapshot(scope=(third,)),
+                _DummyFactorSnapshot(
+                    scope=(first, second),
+                    key=ResidualFactorKey("dummy", (0,)),
+                ),
+                _DummyFactorSnapshot(
+                    scope=(third,),
+                    key=ResidualFactorKey("dummy", (1,)),
+                ),
             ),
         )
 
@@ -429,12 +446,12 @@ class ResidualConstraintTest(unittest.TestCase):
             (
                 ResidualConstraintComponentSnapshot(
                     variables=(first, second),
-                    factor_indexes=(0,),
+                    factor_keys=(ResidualFactorKey("dummy", (0,)),),
                     assigned_variables=(second,),
                 ),
                 ResidualConstraintComponentSnapshot(
                     variables=(third,),
-                    factor_indexes=(1,),
+                    factor_keys=(ResidualFactorKey("dummy", (1,)),),
                     assigned_variables=(),
                 ),
             ),

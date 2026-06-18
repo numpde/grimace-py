@@ -17,19 +17,28 @@ from .ids import SiteId
 from .policy import DirectionMark
 from .policy import RingLabel
 from .policy import TetraToken
-from .residual_constraints import DirectionalCarrierResidual
-from .residual_constraints import DirectionalResidualFactor
+from .residual_constraints import DirectionalBondEmissionFactor
+from .residual_constraints import DirectionalBondEmissionFactorValueSnapshot
+from .residual_constraints import DirectionalNormalizedSign
 from .residual_constraints import DirectionalResidualFactorValueSnapshot
+from .residual_constraints import DirectionalSiteCarrierModel
+from .residual_constraints import DirectionalSiteFactor
+from .residual_constraints import DirectionalSiteFactorValueSnapshot
+from .residual_constraints import ResidualFactorKey
 from .residual_constraints import ResidualPropagationKind
 from .residual_constraints import ResidualPropagationResult
 from .residual_constraints import ResidualStore
 from .residual_constraints import ResidualStoreValueSnapshot
-from .residual_constraints import TetraResidualFactor
+from .residual_constraints import TetraLocalParity
 from .residual_constraints import TetraResidualFactorValueSnapshot
+from .residual_constraints import TetraTokenParityFactor
+from .residual_constraints import TetraTokenParityFactorValueSnapshot
 from .residual_constraints import VarId
-from .residual_constraints import add_factor_and_propagate
-from .residual_constraints import direction_var
-from .residual_constraints import tetra_var
+from .residual_constraints import add_factors_and_propagate
+from .residual_constraints import directional_site_carrier_var
+from .residual_constraints import normalized_sign_from_mark
+from .residual_constraints import tetra_parity_var
+from .residual_constraints import tetra_token_var
 from .stereo_templates import DirectionalTemplate
 from .stereo_templates import TetraTemplate
 from .writer_events import WriterAtomEmitted
@@ -47,35 +56,53 @@ if TYPE_CHECKING:
 EMPTY_RESIDUAL_SNAPSHOT = ResidualStore().value_snapshot()
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class WriterAtomOccurrenceRecord:
     atom: AtomId
     token: TetraToken
-    var: VarId | None
 
+    def __init__(
+        self,
+        atom: AtomId,
+        token: TetraToken,
+        var: object | None = None,
+    ) -> None:
+        object.__setattr__(self, "atom", atom)
+        object.__setattr__(self, "token", token)
 
-@dataclass(frozen=True, slots=True)
+    @property
+    def var(self) -> None:
+        return None
+
+@dataclass(frozen=True, slots=True, init=False)
 class WriterBondOccurrenceRecord:
     bond: BondId
     parent: AtomId
     child: AtomId
     mark: DirectionMark
-    var: VarId | None
+
+    def __init__(
+        self,
+        bond: BondId,
+        parent: AtomId,
+        child: AtomId,
+        mark: DirectionMark,
+        var: object | None = None,
+    ) -> None:
+        object.__setattr__(self, "bond", bond)
+        object.__setattr__(self, "parent", parent)
+        object.__setattr__(self, "child", child)
+        object.__setattr__(self, "mark", mark)
+
+    @property
+    def var(self) -> None:
+        return None
 
 
 @dataclass(frozen=True, slots=True)
 class WriterLocalOrderRecord:
     atom: AtomId
     order: tuple[OccurrenceId, ...]
-    closed: bool = False
-
-
-@dataclass(frozen=True, slots=True)
-class WriterDelayedStereoFactor:
-    kind: Literal["tetra", "directional", "ring_pair"]
-    site: SiteId
-    scope: tuple[VarId, ...] = ()
-    evidence: tuple[tuple[object, ...], ...] = ()
     closed: bool = False
 
 
@@ -103,7 +130,73 @@ def empty_writer_stereo_state() -> "WriterStereoState":
         atom_occurrences=(),
         bond_occurrences=(),
         local_orders=(),
-        delayed_factors=(),
+    )
+
+
+def initial_writer_stereo_state(prepared: SouthStarPreparedMol) -> "WriterStereoState":
+    from .writer_state import WriterStereoState
+
+    store = ResidualStore()
+    factors = []
+
+    for template in prepared.tetra_templates:
+        token = tetra_token_var(template.site)
+        parity = tetra_parity_var(template.site)
+        store.add_var(token, _tetra_domain(template))
+        store.add_var(parity, (TetraLocalParity.EVEN, TetraLocalParity.ODD))
+        factors.append(
+            TetraTokenParityFactor(
+                key=_tetra_factor_key(template.site),
+                scope=(token, parity),
+                status=template.status,
+                target=template.target,
+            )
+        )
+
+    bond_models: dict[BondId, list[tuple[VarId, DirectionalSiteCarrierModel]]] = {}
+    for template in prepared.directional_templates:
+        site_models = _directional_site_carrier_models(prepared, template)
+        scope = tuple(var for var, _ in site_models)
+        for var in scope:
+            if not store.contains_var(var):
+                store.add_var(var, _directional_normalized_domain())
+        factors.append(
+            DirectionalSiteFactor(
+                key=_directional_site_factor_key(template.site),
+                scope=scope,
+                sides=tuple((var, model.side) for var, model in site_models),
+                status=template.status,
+                target=template.target,
+            )
+        )
+        for var, model in site_models:
+            bond_models.setdefault(model.bond, []).append((var, model))
+
+    for bond, entries in bond_models.items():
+        factors.append(
+            DirectionalBondEmissionFactor(
+                key=_directional_bond_factor_key(bond),
+                scope=tuple(var for var, _ in entries),
+                models=tuple(model for _, model in entries),
+                allowed_marks=_allowed_direction_marks(prepared, bond),
+            )
+        )
+
+    result = add_factors_and_propagate(store, tuple(factors))
+    if not _writer_residual_mutation_is_legal(
+        result,
+        operation="initial stereo relation construction",
+    ):
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_STEREO,
+            "initial stereo relation is contradictory",
+        )
+
+    return WriterStereoState(
+        residual_snapshot=store.value_snapshot(),
+        atom_occurrences=(),
+        bond_occurrences=(),
+        local_orders=(),
     )
 
 
@@ -136,11 +229,16 @@ def terminal_writer_stereo_state(
     stereo_state: "WriterStereoState",
     atom: AtomId,
 ) -> "WriterStereoState | None":
-    return advance_writer_stereo_state(
+    state = advance_writer_stereo_state(
         prepared,
         stereo_state,
         (WriterLocalOrderClosed(atom=atom),),
     )
+    if state is None:
+        return None
+    if state.residual_snapshot != EMPTY_RESIDUAL_SNAPSHOT:
+        return None
+    return state
 
 
 def _writer_residual_mutation_is_legal(
@@ -251,7 +349,6 @@ def writer_stereo_state_sort_tuple(state: "WriterStereoState") -> tuple[object, 
         tuple(_atom_record_sort_tuple(record) for record in state.atom_occurrences),
         tuple(_bond_record_sort_tuple(record) for record in state.bond_occurrences),
         tuple(_local_order_sort_tuple(record) for record in state.local_orders),
-        tuple(_delayed_factor_sort_tuple(factor) for factor in state.delayed_factors),
     )
 
 
@@ -289,37 +386,25 @@ def _on_atom_emitted(
         child=event.atom,
     )
     template = _tetra_template_by_center(prepared).get(event.atom)
-    var = None
-    delayed = stereo_state.delayed_factors
+    checkpoint = store.checkpoint()
     if template is not None:
-        var = tetra_var(("writer", int(template.site)))
-        if not store.contains_var(var):
-            store.add_var(var, _tetra_domain(template))
-        result = store.restrict_to_value(var, event.tetra_token)
+        result = store.restrict_many_and_propagate(
+            ((tetra_token_var(template.site), event.tetra_token),)
+        )
         if not _writer_residual_mutation_is_legal(
             result,
             operation="tetrahedral atom-token restriction",
         ):
+            store.rollback(checkpoint)
             return None
-        delayed = _mark_factor_pending(
-            delayed,
-            WriterDelayedStereoFactor(
-                kind="tetra",
-                site=template.site,
-                scope=(var,),
-                evidence=(("atom", int(event.atom)),),
-                closed=False,
-            ),
-        )
     elif event.tetra_token is not TetraToken.NONE:
         return None
     return WriterStereoState(
         residual_snapshot=store.value_snapshot(),
         atom_occurrences=stereo_state.atom_occurrences
-        + (WriterAtomOccurrenceRecord(event.atom, event.tetra_token, var),),
+        + (WriterAtomOccurrenceRecord(event.atom, event.tetra_token),),
         bond_occurrences=stereo_state.bond_occurrences,
         local_orders=local_orders,
-        delayed_factors=delayed,
     )
 
 
@@ -331,32 +416,53 @@ def _on_bond_emitted(
     from .writer_state import WriterStereoState
 
     store = ResidualStore.from_value_snapshot(stereo_state.residual_snapshot)
-    eligible = _directional_sites_for_carrier_bond(prepared, event.bond)
-    var = None
-    delayed = stereo_state.delayed_factors
-    if eligible:
-        var = direction_var(("writer", int(event.bond)))
-        if not store.contains_var(var):
-            store.add_var(var, _direction_domain(prepared, eligible))
-        result = store.restrict_to_value(var, event.direction_mark)
+    models = _directional_models_for_bond(prepared, event.bond)
+    checkpoint = store.checkpoint()
+    if models:
+        restrictions = tuple(
+            (
+                directional_site_carrier_var(model.site, event.bond),
+                normalized_sign_from_mark(
+                    mark=event.direction_mark,
+                    canonical_orientation=_canonical_bond_orientation(
+                        prepared,
+                        event,
+                    ),
+                    model=model,
+                ),
+            )
+            for model in models
+        )
+        result = store.restrict_many_and_propagate(restrictions)
         if not _writer_residual_mutation_is_legal(
             result,
             operation="directional carrier-mark restriction",
         ):
+            store.rollback(checkpoint)
             return None
-        for site in eligible:
-            delayed = _mark_factor_pending(
-                delayed,
-                _updated_directional_pending(
-                    delayed,
-                    site=site,
-                    var=var,
-                    bond=event.bond,
-                ),
-            )
     elif event.direction_mark is not DirectionMark.ABSENT:
         return None
-    next_state = WriterStereoState(
+    if models:
+        try:
+            store.discharge_satisfied_factors((_directional_bond_factor_key(event.bond),))
+            emitted_bonds = {
+                record.bond
+                for record in stereo_state.bond_occurrences
+            } | {event.bond}
+            for site in sorted({model.site for model in models}, key=int):
+                template = _directional_template_by_site(prepared)[site]
+                if _directional_template_substituent_bonds(
+                    prepared,
+                    template,
+                ).issubset(emitted_bonds):
+                    store.discharge_satisfied_factors(
+                        (_directional_site_factor_key(site),)
+                    )
+        except ValueError:
+            store.rollback(checkpoint)
+            return None
+
+    return WriterStereoState(
         residual_snapshot=store.value_snapshot(),
         atom_occurrences=stereo_state.atom_occurrences,
         bond_occurrences=stereo_state.bond_occurrences
@@ -366,13 +472,10 @@ def _on_bond_emitted(
                 event.parent,
                 event.child,
                 event.direction_mark,
-                var,
             ),
         ),
         local_orders=stereo_state.local_orders,
-        delayed_factors=delayed,
     )
-    return _close_ready_directional_factors(prepared, next_state)
 
 
 def _on_local_order_closed(
@@ -389,40 +492,32 @@ def _on_local_order_closed(
     closed_order = _close_local_order(prepared, record, atom=atom)
     local_orders = _replace_local_order(stereo_state.local_orders, closed_order)
     store = ResidualStore.from_value_snapshot(stereo_state.residual_snapshot)
-    delayed = stereo_state.delayed_factors
     if template is not None:
-        var = tetra_var(("writer", int(template.site)))
-        if store.assignment(var) is None:
-            return None
-        factor = TetraResidualFactor(
-            scope=(var,),
-            status=template.status,
-            target=template.target,
-            reference_order=template.reference_order,
-            local_order=closed_order.order,
+        checkpoint = store.checkpoint()
+        result = store.restrict_many_and_propagate(
+            (
+                (
+                    tetra_parity_var(template.site),
+                    _tetra_local_parity(template, closed_order.order),
+                ),
+            )
         )
-        result = add_factor_and_propagate(store, factor)
         if not _writer_residual_mutation_is_legal(
             result,
             operation="tetrahedral local-order factor closure",
         ):
+            store.rollback(checkpoint)
             return None
-        delayed = _mark_factor_closed(
-            delayed,
-            WriterDelayedStereoFactor(
-                kind="tetra",
-                site=template.site,
-                scope=(var,),
-                evidence=(("atom", int(atom)),),
-                closed=True,
-            ),
-        )
+        try:
+            store.discharge_satisfied_factors((_tetra_factor_key(template.site),))
+        except ValueError:
+            store.rollback(checkpoint)
+            return None
     return WriterStereoState(
         residual_snapshot=store.value_snapshot(),
         atom_occurrences=stereo_state.atom_occurrences,
         bond_occurrences=stereo_state.bond_occurrences,
         local_orders=local_orders,
-        delayed_factors=delayed,
     )
 
 
@@ -441,16 +536,6 @@ def _on_ring_endpoint_emitted(
         atom_occurrences=stereo_state.atom_occurrences,
         bond_occurrences=stereo_state.bond_occurrences,
         local_orders=stereo_state.local_orders,
-        delayed_factors=_mark_factor_pending(
-            stereo_state.delayed_factors,
-            WriterDelayedStereoFactor(
-                kind="ring_pair",
-                site=SiteId(int(event.bond)),
-                scope=(),
-                evidence=(_ring_endpoint_evidence(event),),
-                closed=False,
-            ),
-        ),
     )
 
 
@@ -464,45 +549,11 @@ def _on_ring_endpoint_paired(
         return None
     from .writer_state import WriterStereoState
 
-    pending = next(
-        (
-            factor
-            for factor in stereo_state.delayed_factors
-            if factor.kind == "ring_pair"
-            and factor.site == SiteId(int(event.bond))
-            and not factor.closed
-        ),
-        None,
-    )
-    if pending is None or len(pending.evidence) != 1:
-        return None
-    first_evidence = pending.evidence[0]
-    if (
-        len(first_evidence) != 9
-        or first_evidence[0] != "ring_endpoint"
-        or first_evidence[1] != int(event.bond)
-        or first_evidence[2] != "open"
-        or first_evidence[3] != int(event.partner_atom)
-        or first_evidence[4] != int(event.endpoint_atom)
-        or first_evidence[5] != event.label.value
-        or first_evidence[6] != event.label.text
-    ):
-        return None
     return WriterStereoState(
         residual_snapshot=stereo_state.residual_snapshot,
         atom_occurrences=stereo_state.atom_occurrences,
         bond_occurrences=stereo_state.bond_occurrences,
         local_orders=stereo_state.local_orders,
-        delayed_factors=_mark_factor_closed(
-            stereo_state.delayed_factors,
-            WriterDelayedStereoFactor(
-                kind="ring_pair",
-                site=SiteId(int(event.bond)),
-                scope=(),
-                evidence=(_ring_pair_evidence(first_evidence, event),),
-                closed=True,
-            ),
-        ),
     )
 
 
@@ -548,96 +599,6 @@ def _reject_supported_ring_pair_stereo(
             SouthStarErrorKind.UNSUPPORTED_STEREO,
             "WRITER_SHAPED ring-pair directional stereo is not supported yet",
         )
-
-
-def _ring_endpoint_evidence(event: WriterRingEndpointEmitted) -> tuple[object, ...]:
-    return (
-        "ring_endpoint",
-        int(event.bond),
-        event.side,
-        int(event.endpoint_atom),
-        int(event.partner_atom),
-        event.label.value,
-        event.label.text,
-        event.endpoint_text,
-        event.bond_text,
-    )
-
-
-def _ring_pair_evidence(
-    first_evidence: tuple[object, ...],
-    event: WriterRingEndpointPaired,
-) -> tuple[object, ...]:
-    return (
-        "ring_pair",
-        int(event.bond),
-        int(event.partner_atom),
-        int(event.endpoint_atom),
-        event.label.value,
-        event.label.text,
-        first_evidence[7],
-        event.endpoint_text,
-        first_evidence[8],
-        event.bond_text,
-    )
-
-
-def _close_ready_directional_factors(
-    prepared: SouthStarPreparedMol,
-    stereo_state: "WriterStereoState",
-) -> "WriterStereoState | None":
-    from .writer_state import WriterStereoState
-
-    store = ResidualStore.from_value_snapshot(stereo_state.residual_snapshot)
-    bond_records = {record.bond: record for record in stereo_state.bond_occurrences}
-    delayed = stereo_state.delayed_factors
-    changed = False
-    for template in prepared.directional_templates:
-        if _factor_already_closed(delayed, "directional", template.site):
-            continue
-        carrier_bonds = _directional_template_substituent_bonds(prepared, template)
-        if not carrier_bonds.issubset(bond_records):
-            continue
-        models = _directional_models(prepared, template, bond_records)
-        factor = DirectionalResidualFactor(
-            scope=tuple(sorted(models, key=_var_sort_tuple)),
-            status=template.status,
-            target=template.target,
-            carrier_models=models,
-        )
-        if any(store.assignment(var) is None for var in factor.scope):
-            return None
-        result = add_factor_and_propagate(store, factor)
-        if not _writer_residual_mutation_is_legal(
-            result,
-            operation="directional carrier factor closure",
-        ):
-            return None
-        delayed = _mark_factor_closed(
-            delayed,
-            WriterDelayedStereoFactor(
-                kind="directional",
-                site=template.site,
-                scope=tuple(sorted(models, key=_var_sort_tuple)),
-                evidence=tuple(
-                    sorted(
-                        ("bond", int(bond))
-                        for bond in carrier_bonds
-                    )
-                ),
-                closed=True,
-            ),
-        )
-        changed = True
-    if not changed:
-        return stereo_state
-    return WriterStereoState(
-        residual_snapshot=store.value_snapshot(),
-        atom_occurrences=stereo_state.atom_occurrences,
-        bond_occurrences=stereo_state.bond_occurrences,
-        local_orders=stereo_state.local_orders,
-        delayed_factors=delayed,
-    )
 
 
 def _record_parent_occurrence(
@@ -796,57 +757,174 @@ def _directional_template_substituent_bonds(
     return frozenset(bonds)
 
 
-def _directional_models(
+def _tetra_factor_key(site: SiteId) -> ResidualFactorKey:
+    return ResidualFactorKey("tetra_site", (int(site),))
+
+
+def _directional_site_factor_key(site: SiteId) -> ResidualFactorKey:
+    return ResidualFactorKey("directional_site", (int(site),))
+
+
+def _directional_bond_factor_key(bond: BondId) -> ResidualFactorKey:
+    return ResidualFactorKey("directional_bond_emission", (int(bond),))
+
+
+def _directional_normalized_domain() -> tuple[DirectionalNormalizedSign, ...]:
+    return (
+        DirectionalNormalizedSign.ABSENT,
+        DirectionalNormalizedSign.POSITIVE,
+        DirectionalNormalizedSign.NEGATIVE,
+    )
+
+
+def _directional_site_carrier_models(
     prepared: SouthStarPreparedMol,
     template: DirectionalTemplate,
-    bond_records: dict[BondId, WriterBondOccurrenceRecord],
-) -> dict[VarId, DirectionalCarrierResidual]:
+) -> tuple[tuple[VarId, DirectionalSiteCarrierModel], ...]:
     occurrence_by_id = _occurrence_by_id(prepared)
     left_reference, right_reference = _directional_reference_pair(template)
     left_by_bond = _neighbor_ligands_by_bond(occurrence_by_id, template.left_ligands)
     right_by_bond = _neighbor_ligands_by_bond(occurrence_by_id, template.right_ligands)
-    models: dict[VarId, DirectionalCarrierResidual] = {}
+    entries: list[tuple[VarId, DirectionalSiteCarrierModel]] = []
     for bond, occurrence in left_by_bond.items():
-        record = bond_records[bond]
-        var = direction_var(("writer", int(bond)))
-        models[var] = DirectionalCarrierResidual(
-            var=var,
+        model = DirectionalSiteCarrierModel(
+            site=template.site,
+            bond=bond,
             side="left",
-            orientation=_carrier_orientation(record, template.left_endpoint),
+            endpoint_orientation_factor=_bond_endpoint_orientation_factor(
+                prepared,
+                bond,
+                template.left_endpoint,
+            ),
             ligand_factor=_ligand_factor(
                 occurrence,
                 reference=left_reference,
                 side_ligands=template.left_ligands,
             ),
         )
+        entries.append((directional_site_carrier_var(template.site, bond), model))
     for bond, occurrence in right_by_bond.items():
-        record = bond_records[bond]
-        var = direction_var(("writer", int(bond)))
-        models[var] = DirectionalCarrierResidual(
-            var=var,
+        model = DirectionalSiteCarrierModel(
+            site=template.site,
+            bond=bond,
             side="right",
-            orientation=_carrier_orientation(record, template.right_endpoint),
+            endpoint_orientation_factor=_bond_endpoint_orientation_factor(
+                prepared,
+                bond,
+                template.right_endpoint,
+            ),
             ligand_factor=_ligand_factor(
                 occurrence,
                 reference=right_reference,
                 side_ligands=template.right_ligands,
             ),
         )
-    return models
+        entries.append((directional_site_carrier_var(template.site, bond), model))
+    return tuple(sorted(entries, key=lambda item: _var_sort_tuple(item[0])))
 
 
-def _carrier_orientation(
-    record: WriterBondOccurrenceRecord,
+def _directional_models_for_bond(
+    prepared: SouthStarPreparedMol,
+    bond: BondId,
+) -> tuple[DirectionalSiteCarrierModel, ...]:
+    models = []
+    for template in prepared.directional_templates:
+        for _, model in _directional_site_carrier_models(prepared, template):
+            if model.bond == bond:
+                models.append(model)
+    return tuple(
+        sorted(
+            models,
+            key=lambda model: (
+                int(model.site),
+                int(model.bond),
+                model.side,
+                model.endpoint_orientation_factor,
+                model.ligand_factor,
+            ),
+        )
+    )
+
+
+def _allowed_direction_marks(
+    prepared: SouthStarPreparedMol,
+    bond: BondId,
+) -> tuple[DirectionMark, ...]:
+    try:
+        choices = prepared.policy.bond_text_domain_unchecked(
+            bond,
+            slot_kind="tree",
+        )
+    except KeyError as exc:
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            f"WRITER_SHAPED has no acyclic writer bond text for {bond!r}",
+        ) from exc
+    allowed = [DirectionMark.ABSENT]
+    if any(choice.permits_direction for choice in choices):
+        allowed.extend((DirectionMark.FWD, DirectionMark.REV))
+    return tuple(allowed)
+
+
+def _canonical_bond_orientation(
+    prepared: SouthStarPreparedMol,
+    event: WriterBondEmitted,
+) -> Literal[-1, 1]:
+    bond = prepared.graph_index.bond_by_id[event.bond]
+    if event.parent == bond.a and event.child == bond.b:
+        return 1
+    if event.parent == bond.b and event.child == bond.a:
+        return -1
+    raise SouthStarError(
+        SouthStarErrorKind.UNSUPPORTED_STEREO,
+        "writer bond event is not oriented along its graph bond",
+    )
+
+
+def _bond_endpoint_orientation_factor(
+    prepared: SouthStarPreparedMol,
+    bond: BondId,
     endpoint: AtomId,
 ) -> Literal[-1, 1]:
-    if record.parent == endpoint:
+    graph_bond = prepared.graph_index.bond_by_id[bond]
+    if graph_bond.a == endpoint:
         return 1
-    if record.child == endpoint:
+    if graph_bond.b == endpoint:
         return -1
     raise SouthStarError(
         SouthStarErrorKind.UNSUPPORTED_STEREO,
         "directional carrier is not incident to its alkene endpoint",
     )
+
+
+def _tetra_local_parity(
+    template: TetraTemplate,
+    local_order: tuple[OccurrenceId, ...],
+) -> TetraLocalParity:
+    return (
+        TetraLocalParity.EVEN
+        if _is_even_permutation(template.reference_order, local_order)
+        else TetraLocalParity.ODD
+    )
+
+
+def _is_even_permutation(
+    reference_order: tuple[OccurrenceId, ...],
+    local_order: tuple[OccurrenceId, ...],
+) -> bool:
+    if set(reference_order) != set(local_order):
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_STEREO,
+            "tetrahedral local order does not match the template reference order",
+        )
+    positions = {item: index for index, item in enumerate(reference_order)}
+    indices = tuple(positions[item] for item in local_order)
+    inversions = 0
+    for index, left in enumerate(indices):
+        for right in indices[index + 1:]:
+            if left > right:
+                inversions += 1
+    return inversions % 2 == 0
 
 
 def _ligand_factor(
@@ -911,73 +989,6 @@ def _occurrence_by_id(prepared: SouthStarPreparedMol):
     return {occurrence.id: occurrence for occurrence in prepared.facts.ligand_occurrences}
 
 
-def _mark_factor_closed(
-    factors: tuple[WriterDelayedStereoFactor, ...],
-    replacement: WriterDelayedStereoFactor,
-) -> tuple[WriterDelayedStereoFactor, ...]:
-    out = tuple(
-        factor
-        for factor in factors
-        if not (factor.kind == replacement.kind and factor.site == replacement.site)
-    )
-    return tuple(sorted(out + (replacement,), key=_delayed_factor_sort_tuple))
-
-
-def _mark_factor_pending(
-    factors: tuple[WriterDelayedStereoFactor, ...],
-    replacement: WriterDelayedStereoFactor,
-) -> tuple[WriterDelayedStereoFactor, ...]:
-    if _factor_already_closed(factors, replacement.kind, replacement.site):
-        return factors
-    out = tuple(
-        factor
-        for factor in factors
-        if not (factor.kind == replacement.kind and factor.site == replacement.site)
-    )
-    return tuple(sorted(out + (replacement,), key=_delayed_factor_sort_tuple))
-
-
-def _updated_directional_pending(
-    factors: tuple[WriterDelayedStereoFactor, ...],
-    *,
-    site: SiteId,
-    var: VarId,
-    bond: BondId,
-) -> WriterDelayedStereoFactor:
-    existing = next(
-        (
-            factor
-            for factor in factors
-            if factor.kind == "directional" and factor.site == site
-        ),
-        None,
-    )
-    scope = (var,) if existing is None else existing.scope + (var,)
-    evidence = (
-        (("bond", int(bond)),)
-        if existing is None
-        else existing.evidence + (("bond", int(bond)),)
-    )
-    return WriterDelayedStereoFactor(
-        kind="directional",
-        site=site,
-        scope=tuple(sorted(set(scope), key=_var_sort_tuple)),
-        evidence=tuple(sorted(set(evidence))),
-        closed=False,
-    )
-
-
-def _factor_already_closed(
-    factors: tuple[WriterDelayedStereoFactor, ...],
-    kind: Literal["tetra", "directional", "ring_pair"],
-    site: SiteId,
-) -> bool:
-    return any(
-        factor.kind == kind and factor.site == site and factor.closed
-        for factor in factors
-    )
-
-
 def _residual_snapshot_sort_tuple(
     snapshot: ResidualStoreValueSnapshot,
 ) -> tuple[object, ...]:
@@ -1001,6 +1012,7 @@ def _factor_snapshot_sort_tuple(factor: object) -> tuple[object, ...]:
     if isinstance(factor, TetraResidualFactorValueSnapshot):
         return (
             "tetra",
+            _factor_key_sort_tuple(factor.key),
             tuple(_var_sort_tuple(var) for var in factor.scope),
             factor.status.value,
             factor.target.value,
@@ -1010,6 +1022,7 @@ def _factor_snapshot_sort_tuple(factor: object) -> tuple[object, ...]:
     if isinstance(factor, DirectionalResidualFactorValueSnapshot):
         return (
             "directional",
+            _factor_key_sort_tuple(factor.key),
             tuple(_var_sort_tuple(var) for var in factor.scope),
             factor.status.value,
             factor.target.value,
@@ -1023,7 +1036,45 @@ def _factor_snapshot_sort_tuple(factor: object) -> tuple[object, ...]:
                 for var, model in factor.carrier_models
             ),
         )
+    if isinstance(factor, TetraTokenParityFactorValueSnapshot):
+        return (
+            "tetra_token_parity",
+            _factor_key_sort_tuple(factor.key),
+            tuple(_var_sort_tuple(var) for var in factor.scope),
+            factor.status.value,
+            factor.target.value,
+        )
+    if isinstance(factor, DirectionalSiteFactorValueSnapshot):
+        return (
+            "directional_site",
+            _factor_key_sort_tuple(factor.key),
+            tuple(_var_sort_tuple(var) for var in factor.scope),
+            tuple((_var_sort_tuple(var), side) for var, side in factor.sides),
+            factor.status.value,
+            factor.target.value,
+        )
+    if isinstance(factor, DirectionalBondEmissionFactorValueSnapshot):
+        return (
+            "directional_bond_emission",
+            _factor_key_sort_tuple(factor.key),
+            tuple(_var_sort_tuple(var) for var in factor.scope),
+            tuple(
+                (
+                    int(model.site),
+                    int(model.bond),
+                    model.side,
+                    model.endpoint_orientation_factor,
+                    model.ligand_factor,
+                )
+                for model in factor.models
+            ),
+            tuple(mark.value for mark in factor.allowed_marks),
+        )
     raise TypeError(f"unknown residual factor snapshot: {factor!r}")
+
+
+def _factor_key_sort_tuple(key: ResidualFactorKey) -> tuple[object, ...]:
+    return (key.kind, tuple(_value_sort_tuple(item) for item in key.key))
 
 
 def _var_sort_tuple(var: VarId) -> tuple[object, ...]:
@@ -1033,8 +1084,13 @@ def _var_sort_tuple(var: VarId) -> tuple[object, ...]:
 def _value_sort_tuple(value: object) -> tuple[object, ...]:
     if isinstance(value, (int, str)):
         return (type(value).__name__, value)
-    if isinstance(value, (TetraToken, DirectionMark)):
+    if isinstance(
+        value,
+        (TetraToken, DirectionMark, TetraLocalParity, DirectionalNormalizedSign),
+    ):
         return (value.__class__.__name__, value.value)
+    if isinstance(value, ResidualFactorKey):
+        return ("ResidualFactorKey", _factor_key_sort_tuple(value))
     if isinstance(value, tuple):
         return ("tuple", tuple(_value_sort_tuple(item) for item in value))
     return (value.__class__.__name__, str(value))
@@ -1044,7 +1100,6 @@ def _atom_record_sort_tuple(record: WriterAtomOccurrenceRecord) -> tuple[object,
     return (
         int(record.atom),
         record.token.value,
-        None if record.var is None else _var_sort_tuple(record.var),
     )
 
 
@@ -1054,22 +1109,11 @@ def _bond_record_sort_tuple(record: WriterBondOccurrenceRecord) -> tuple[object,
         int(record.parent),
         int(record.child),
         record.mark.value,
-        None if record.var is None else _var_sort_tuple(record.var),
     )
 
 
 def _local_order_sort_tuple(record: WriterLocalOrderRecord) -> tuple[object, ...]:
     return (int(record.atom), tuple(int(item) for item in record.order), record.closed)
-
-
-def _delayed_factor_sort_tuple(factor: WriterDelayedStereoFactor) -> tuple[object, ...]:
-    return (
-        factor.kind,
-        int(factor.site),
-        tuple(_var_sort_tuple(var) for var in factor.scope),
-        factor.evidence,
-        factor.closed,
-    )
 
 
 __all__ = (
@@ -1078,10 +1122,10 @@ __all__ = (
     "WriterAtomTextChoice",
     "WriterBondOccurrenceRecord",
     "WriterBondTextChoice",
-    "WriterDelayedStereoFactor",
     "WriterLocalOrderRecord",
     "advance_writer_stereo_state",
     "empty_writer_stereo_state",
+    "initial_writer_stereo_state",
     "terminal_writer_stereo_state",
     "validate_writer_stereo_supported_prepared",
     "writer_atom_text_choices",

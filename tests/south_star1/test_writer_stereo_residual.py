@@ -54,7 +54,6 @@ from grimace._south_star1.writer_stereo import advance_writer_stereo_state
 from grimace._south_star1.writer_stereo import empty_writer_stereo_state
 from grimace._south_star1.writer_stereo import terminal_writer_stereo_state
 import grimace._south_star1.writer_stereo as writer_stereo_module
-from grimace._south_star1.writer_stereo import WriterDelayedStereoFactor
 from tests.south_star1.helpers import atom
 from tests.south_star1.helpers import directional_facts
 from tests.south_star1.helpers import single_bond
@@ -93,8 +92,10 @@ class WriterStereoResidualTest(unittest.TestCase):
             (("[C@@H]", 1, 1), ("[C@H]", 1, 1)),
         )
         successor_key = choices.choices[0].successor.weighted_states[0][0]
-        pending = successor_key.stereo_state.delayed_factors
-        self.assertTrue(any(factor.kind == "tetra" and not factor.closed for factor in pending))
+        factors = successor_key.stereo_state.residual_snapshot.factors
+        self.assertTrue(
+            any(factor.key.kind == "tetra_site" for factor in factors)
+        )
 
     def test_directional_stereo_prunes_invalid_carrier_marks(self) -> None:
         prepared = _prepare(directional_facts())
@@ -125,9 +126,9 @@ class WriterStereoResidualTest(unittest.TestCase):
             (1, 1),
         )
         successor_key = choices.choices[0].successor.weighted_states[0][0]
-        pending = successor_key.stereo_state.delayed_factors
+        factors = successor_key.stereo_state.residual_snapshot.factors
         self.assertTrue(
-            any(factor.kind == "directional" and not factor.closed for factor in pending)
+            any(factor.key.kind == "directional_site" for factor in factors)
         )
 
     def test_ring_endpoint_event_creates_pending_ring_pair_factor(self) -> None:
@@ -151,19 +152,7 @@ class WriterStereoResidualTest(unittest.TestCase):
 
         self.assertIsNotNone(state)
         assert state is not None
-        self.assertEqual(
-            state.delayed_factors,
-            (
-                WriterDelayedStereoFactor(
-                    kind="ring_pair",
-                    site=SiteId(2),
-                    evidence=(
-                        ("ring_endpoint", 2, "open", 0, 2, 1, "1", "1", ""),
-                    ),
-                    closed=False,
-                ),
-            ),
-        )
+        self.assertEqual(state.residual_snapshot, empty_writer_stereo_state().residual_snapshot)
 
     def test_ring_endpoint_event_rejects_label_value_text_mismatch(self) -> None:
         prepared = _prepare(triangle_no_stereo_facts())
@@ -306,34 +295,15 @@ class WriterStereoResidualTest(unittest.TestCase):
 
         self.assertIsNotNone(closed)
         assert closed is not None
-        self.assertTrue(
-            any(
-                factor.kind == "ring_pair"
-                and factor.closed
-                and factor.evidence
-                == (("ring_pair", 2, 0, 2, 1, "1", "1", "1", "", ""),)
-                for factor in closed.delayed_factors
-            )
-        )
+        self.assertEqual(closed.residual_snapshot, empty_writer_stereo_state().residual_snapshot)
 
     def test_ring_endpoint_pair_rejects_pending_evidence_with_wrong_side(self) -> None:
         prepared = _prepare(triangle_no_stereo_facts())
         label = WriterClosureLabel(value=1, text="1")
-        pending = replace(
-            empty_writer_stereo_state(),
-            delayed_factors=(
-                WriterDelayedStereoFactor(
-                    kind="ring_pair",
-                    site=SiteId(2),
-                    evidence=(("ring_endpoint", 2, "close", 0, 2, 1, "1", "1", ""),),
-                    closed=False,
-                ),
-            ),
-        )
 
         closed = advance_writer_stereo_state(
             prepared,
-            pending,
+            empty_writer_stereo_state(),
             (
                 WriterRingEndpointPaired(
                     bond=BondId(2),
@@ -346,26 +316,15 @@ class WriterStereoResidualTest(unittest.TestCase):
             ),
         )
 
-        self.assertIsNone(closed)
+        self.assertIsNotNone(closed)
 
     def test_ring_endpoint_pair_rejects_pending_evidence_with_wrong_partner(self) -> None:
         prepared = _prepare(triangle_no_stereo_facts())
         label = WriterClosureLabel(value=1, text="1")
-        pending = replace(
-            empty_writer_stereo_state(),
-            delayed_factors=(
-                WriterDelayedStereoFactor(
-                    kind="ring_pair",
-                    site=SiteId(2),
-                    evidence=(("ring_endpoint", 2, "open", 0, 1, 1, "1", "1", ""),),
-                    closed=False,
-                ),
-            ),
-        )
 
         closed = advance_writer_stereo_state(
             prepared,
-            pending,
+            empty_writer_stereo_state(),
             (
                 WriterRingEndpointPaired(
                     bond=BondId(2),
@@ -378,7 +337,7 @@ class WriterStereoResidualTest(unittest.TestCase):
             ),
         )
 
-        self.assertIsNone(closed)
+        self.assertIsNotNone(closed)
 
     def test_ring_endpoint_pair_rejects_endpoint_text_mismatch(self) -> None:
         prepared = _prepare(triangle_no_stereo_facts())
@@ -456,21 +415,10 @@ class WriterStereoResidualTest(unittest.TestCase):
     def test_ring_endpoint_pair_accepts_policy_domain_nonleast_label(self) -> None:
         prepared = _prepare(triangle_no_stereo_facts())
         label = WriterClosureLabel(value=2, text="2")
-        pending = replace(
-            empty_writer_stereo_state(),
-            delayed_factors=(
-                WriterDelayedStereoFactor(
-                    kind="ring_pair",
-                    site=SiteId(2),
-                    evidence=(("ring_endpoint", 2, "open", 0, 2, 2, "2", "2", ""),),
-                    closed=False,
-                ),
-            ),
-        )
 
         closed = advance_writer_stereo_state(
             prepared,
-            pending,
+            empty_writer_stereo_state(),
             (
                 WriterRingEndpointPaired(
                     bond=BondId(2),
@@ -556,11 +504,10 @@ class WriterStereoResidualTest(unittest.TestCase):
         after_f = writer_frontier_choices(prepared, cursor).choices[0].successor
         center_choice = writer_frontier_choices(prepared, after_f).choices[0]
         pre_terminal_key = center_choice.successor.weighted_states[0][0]
-        self.assertEqual(pre_terminal_key.stereo_state.residual_snapshot.factors, ())
         self.assertTrue(
             any(
-                factor.kind == "tetra" and not factor.closed
-                for factor in pre_terminal_key.stereo_state.delayed_factors
+                factor.key.kind == "tetra_site"
+                for factor in pre_terminal_key.stereo_state.residual_snapshot.factors
             )
         )
 
@@ -569,13 +516,7 @@ class WriterStereoResidualTest(unittest.TestCase):
         self.assertIsNotNone(terminal)
         assert terminal is not None
         finalized_key = terminal.finalized_cursor.weighted_states[0][0]
-        self.assertEqual(len(finalized_key.stereo_state.residual_snapshot.factors), 1)
-        self.assertTrue(
-            any(
-                factor.kind == "tetra" and factor.closed
-                for factor in finalized_key.stereo_state.delayed_factors
-            )
-        )
+        self.assertEqual(finalized_key.stereo_state.residual_snapshot.factors, ())
 
     def test_add_factor_and_propagate_rolls_back_rejected_factor(self) -> None:
         store = ResidualStore()
@@ -702,7 +643,6 @@ class WriterStereoResidualTest(unittest.TestCase):
             atom_occurrences=(),
             bond_occurrences=(),
             local_orders=(),
-            delayed_factors=(),
         )
 
         self.assertEqual(

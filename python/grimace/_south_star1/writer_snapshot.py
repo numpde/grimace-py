@@ -11,6 +11,7 @@ from .errors import SouthStarError
 from .errors import SouthStarErrorKind
 from .facts import LigandKind
 from .facts import BondOrder
+from .facts import SiteStatus
 from .ids import AtomId
 from .ids import BondId
 from .ids import OccurrenceId
@@ -23,16 +24,12 @@ from .prepared_runtime import SouthStarRuntimeOptions
 from .prepared_runtime import _prepared_has_cyclic_writer_graph_surface
 from .prepared_runtime import require_writer_shaped_runtime_options
 from .prepared_runtime import runtime_root_atom_for_prepared
-from .residual_constraints import DirectionalCarrierResidual
-from .residual_constraints import DirectionalResidualFactor
-from .residual_constraints import DirectionalResidualFactorValueSnapshot
 from .residual_constraints import ResidualStore
 from .residual_constraints import ResidualStoreValueSnapshot
-from .residual_constraints import TetraResidualFactor
-from .residual_constraints import TetraResidualFactorValueSnapshot
 from .residual_constraints import VarId
-from .residual_constraints import direction_var
-from .residual_constraints import tetra_var
+from .residual_constraints import directional_site_carrier_var
+from .residual_constraints import tetra_parity_var
+from .residual_constraints import tetra_token_var
 from .writer_graph_obligations import WriterBoundaryOwnerKind
 from .writer_graph_obligations import WriterEdgeObligationKind
 from .writer_graph_obligations import WriterGraphObligationContext
@@ -3775,83 +3772,6 @@ def _validate_ring_state(
             _invalid_snapshot("writer closed closure endpoint is not visited")
     if key.ring_state.open_endpoints and _state_is_terminal_shape(prepared, key, context):
         _invalid_snapshot("writer terminal snapshot has open closure endpoints")
-    _validate_ring_pair_delayed_factors(key)
-
-
-def _validate_ring_pair_delayed_factors(key: WriterStateKey) -> None:
-    factors = tuple(
-        factor
-        for factor in key.stereo_state.delayed_factors
-        if factor.kind == "ring_pair"
-    )
-    expected_pending = {
-        _pending_ring_pair_evidence(endpoint): endpoint
-        for endpoint in key.ring_state.open_endpoints
-    }
-    expected_closed = {
-        _closed_ring_pair_evidence(closure): closure
-        for closure in key.ring_state.closed_closures
-    }
-    for endpoint in key.ring_state.open_endpoints:
-        expected = _pending_ring_pair_evidence(endpoint)
-        matches = tuple(
-            factor
-            for factor in factors
-            if not factor.closed
-            and factor.site == SiteId(int(endpoint.bond))
-            and factor.evidence == (expected,)
-        )
-        if len(matches) != 1:
-            _invalid_snapshot("writer open closure lacks matching pending ring-pair factor")
-    for closure in key.ring_state.closed_closures:
-        expected = _closed_ring_pair_evidence(closure)
-        matches = tuple(
-            factor
-            for factor in factors
-            if factor.closed
-            and factor.site == SiteId(int(closure.bond))
-            and factor.evidence == (expected,)
-        )
-        if len(matches) != 1:
-            _invalid_snapshot("writer closed closure lacks matching closed ring-pair factor")
-    for factor in factors:
-        if len(factor.evidence) != 1:
-            _invalid_snapshot("writer ring-pair factor has unexpected evidence shape")
-        evidence = factor.evidence[0]
-        if factor.closed:
-            if evidence not in expected_closed:
-                _invalid_snapshot("writer closed ring-pair factor lacks closure state")
-        elif evidence not in expected_pending:
-            _invalid_snapshot("writer pending ring-pair factor lacks open closure state")
-
-
-def _pending_ring_pair_evidence(endpoint) -> tuple[object, ...]:
-    return (
-        "ring_endpoint",
-        int(endpoint.bond),
-        "open",
-        int(endpoint.first_atom),
-        int(endpoint.second_atom),
-        endpoint.label.value,
-        endpoint.label.text,
-        endpoint.first_endpoint_text,
-        endpoint.first_endpoint_bond_text,
-    )
-
-
-def _closed_ring_pair_evidence(closure) -> tuple[object, ...]:
-    return (
-        "ring_pair",
-        int(closure.bond),
-        int(closure.first_atom),
-        int(closure.second_atom),
-        closure.label.value,
-        closure.label.text,
-        closure.first_endpoint_text,
-        closure.second_endpoint_text,
-        closure.first_endpoint_bond_text,
-        closure.second_endpoint_bond_text,
-    )
 
 
 def _state_is_terminal_shape(
@@ -3905,14 +3825,12 @@ def _validate_stereo_state(
     occurrence_by_id = {item.id: item for item in prepared.facts.ligand_occurrences}
     atom_ids = frozenset(prepared.atom_ids)
     bond_ids = frozenset(bond.id for bond in prepared.facts.bonds)
-    assignments = dict(stereo_state.residual_snapshot.assignments)
     tetra_by_center = {template.center: template for template in prepared.tetra_templates}
     directional_sites_by_bond = _directional_sites_by_carrier_bond(prepared)
     _validate_atom_occurrence_records(
         stereo_state,
         atom_ids,
         tetra_by_center,
-        assignments,
     )
     _validate_bond_occurrence_records(
         stereo_state,
@@ -3920,7 +3838,6 @@ def _validate_stereo_state(
         bond_ids,
         prepared,
         directional_sites_by_bond,
-        assignments,
     )
     _validate_local_order_records(
         prepared,
@@ -3929,8 +3846,7 @@ def _validate_stereo_state(
         atom_ids,
         tetra_by_center,
     )
-    _validate_delayed_factor_records(prepared, stereo_state)
-    _validate_reverse_stereo_coverage(
+    _validate_live_residual_stereo_coverage(
         prepared,
         stereo_state,
         tetra_by_center,
@@ -3940,12 +3856,7 @@ def _validate_stereo_state(
 
 def _validate_unique_stereo_records(stereo_state: WriterStereoStateKey) -> None:
     _reject_duplicate_items(
-        (
-            ("tetra", record.var)
-            if record.var is not None
-            else ("atom", record.atom)
-            for record in stereo_state.atom_occurrences
-        ),
+        (record.atom for record in stereo_state.atom_occurrences),
         "writer atom occurrence records contain duplicates",
     )
     _reject_duplicate_items(
@@ -3959,13 +3870,6 @@ def _validate_unique_stereo_records(stereo_state: WriterStereoStateKey) -> None:
     _reject_duplicate_items(
         (record.atom for record in stereo_state.local_orders),
         "writer local-order records contain duplicate atoms",
-    )
-    _reject_duplicate_items(
-        (
-            (factor.kind, factor.site)
-            for factor in stereo_state.delayed_factors
-        ),
-        "writer delayed factors contain duplicates",
     )
     _reject_duplicate_items(
         stereo_state.residual_snapshot.factors,
@@ -3985,26 +3889,22 @@ def _validate_atom_occurrence_records(
     stereo_state: WriterStereoStateKey,
     atom_ids: frozenset[AtomId],
     tetra_by_center,
-    assignments: dict[VarId, object],
 ) -> None:
-    domain_vars = _residual_domain_vars(stereo_state)
     for record in stereo_state.atom_occurrences:
         if record.atom not in atom_ids:
             _invalid_snapshot("writer atom occurrence references unknown atom")
         template = tetra_by_center.get(record.atom)
         if template is None:
-            if record.var is not None:
-                _invalid_snapshot("writer atom occurrence has unexpected tetra variable")
             if record.token is not TetraToken.NONE:
                 _invalid_snapshot("writer atom occurrence has unexpected tetra token")
             continue
-        expected_var = tetra_var(("writer", int(template.site)))
-        if record.var != expected_var:
-            _invalid_snapshot("writer atom occurrence has wrong tetra variable")
-        if expected_var not in domain_vars:
-            _invalid_snapshot("writer atom occurrence variable is missing from residual store")
-        if assignments.get(expected_var) is not record.token:
-            _invalid_snapshot("writer atom occurrence token does not match residual assignment")
+        if template.status is SiteStatus.UNSPECIFIED and record.token is not TetraToken.NONE:
+            _invalid_snapshot("writer unspecified tetra occurrence has token")
+        if template.status is SiteStatus.SPECIFIED and record.token not in {
+            TetraToken.AT,
+            TetraToken.ATAT,
+        }:
+            _invalid_snapshot("writer specified tetra occurrence lacks token")
 
 
 def _validate_bond_occurrence_records(
@@ -4013,27 +3913,14 @@ def _validate_bond_occurrence_records(
     bond_ids: frozenset[BondId],
     prepared: SouthStarPreparedMol,
     directional_sites_by_bond: dict[BondId, tuple[SiteId, ...]],
-    assignments: dict[VarId, object],
 ) -> None:
-    domain_vars = _residual_domain_vars(stereo_state)
     for record in stereo_state.bond_occurrences:
         if record.bond not in bond_ids or record.parent not in atom_ids or record.child not in atom_ids:
             _invalid_snapshot("writer bond occurrence references unknown graph item")
         _require_graph_bond(prepared, record.parent, record.child, record.bond)
         eligible_sites = directional_sites_by_bond.get(record.bond, ())
-        if not eligible_sites:
-            if record.var is not None:
-                _invalid_snapshot("writer bond occurrence has unexpected directional variable")
-            if record.mark is not DirectionMark.ABSENT:
-                _invalid_snapshot("writer bond occurrence has unexpected direction mark")
-            continue
-        expected_var = direction_var(("writer", int(record.bond)))
-        if record.var != expected_var:
-            _invalid_snapshot("writer bond occurrence has wrong directional variable")
-        if expected_var not in domain_vars:
-            _invalid_snapshot("writer bond occurrence variable is missing from residual store")
-        if assignments.get(expected_var) is not record.mark:
-            _invalid_snapshot("writer bond occurrence mark does not match residual assignment")
+        if not eligible_sites and record.mark is not DirectionMark.ABSENT:
+            _invalid_snapshot("writer bond occurrence has unexpected direction mark")
 
 
 def _validate_local_order_records(
@@ -4070,341 +3957,56 @@ def _validate_local_order_records(
                 _invalid_snapshot("writer closed tetra local order is incomplete")
 
 
-def _validate_delayed_factor_records(
-    prepared: SouthStarPreparedMol,
-    stereo_state: WriterStereoStateKey,
-) -> None:
-    domain_vars = _residual_domain_vars(stereo_state)
-    assignment_vars = _residual_assignment_vars(stereo_state)
-    factor_snapshots = stereo_state.residual_snapshot.factors
-    tetra_by_site = {template.site: template for template in prepared.tetra_templates}
-    directional_by_site = {
-        template.site: template for template in prepared.directional_templates
-    }
-    for factor in stereo_state.delayed_factors:
-        if not factor.scope and factor.kind != "ring_pair":
-            _invalid_snapshot("writer delayed factor has empty scope")
-        for var in factor.scope:
-            if var not in domain_vars:
-                _invalid_snapshot("writer delayed factor variable is missing from residual store")
-            if var not in assignment_vars:
-                _invalid_snapshot("writer delayed factor variable is unassigned")
-        _validate_delayed_factor_shape(
-            prepared,
-            stereo_state,
-            factor,
-            tetra_by_site,
-            directional_by_site,
-        )
-        if factor.closed and factor.kind != "ring_pair":
-            expected = _expected_residual_factor_snapshot(prepared, stereo_state, factor)
-            if expected not in factor_snapshots:
-                _invalid_snapshot("writer closed delayed factor lacks matching residual factor")
-    for snapshot in factor_snapshots:
-        if not _has_matching_closed_delayed_factor(
-            prepared,
-            stereo_state,
-            snapshot,
-            stereo_state.delayed_factors,
-        ):
-            _invalid_snapshot("writer residual factor snapshot lacks closed delayed factor")
-
-
-def _has_matching_closed_delayed_factor(
-    prepared: SouthStarPreparedMol,
-    stereo_state: WriterStereoStateKey,
-    snapshot: object,
-    factors,
-) -> bool:
-    if isinstance(snapshot, TetraResidualFactorValueSnapshot):
-        kind = "tetra"
-    elif isinstance(snapshot, DirectionalResidualFactorValueSnapshot):
-        kind = "directional"
-    else:
-        _invalid_snapshot("writer residual snapshot has unknown factor type")
-    for factor in factors:
-        if factor.kind != kind or not factor.closed:
-            continue
-        if _expected_residual_factor_snapshot(prepared, stereo_state, factor) == snapshot:
-            return True
-    return False
-
-
-def _validate_reverse_stereo_coverage(
+def _validate_live_residual_stereo_coverage(
     prepared: SouthStarPreparedMol,
     stereo_state: WriterStereoStateKey,
     tetra_by_center,
     directional_sites_by_bond: dict[BondId, tuple[SiteId, ...]],
 ) -> None:
-    occurrence_vars: set[VarId] = set()
-    delayed_vars: set[VarId] = set()
-    for record in stereo_state.atom_occurrences:
-        if record.var is None:
-            continue
-        occurrence_vars.add(record.var)
-        template = tetra_by_center.get(record.atom)
-        if template is None:
-            _invalid_snapshot("writer tetra occurrence lacks prepared template")
-        if not _has_delayed_factor(
-            stereo_state,
-            kind="tetra",
-            site=template.site,
-            var=record.var,
-        ):
-            _invalid_snapshot("writer tetra occurrence lacks delayed factor")
-    for record in stereo_state.bond_occurrences:
-        if record.var is None:
-            continue
-        occurrence_vars.add(record.var)
-        for site in directional_sites_by_bond.get(record.bond, ()):
-            if not _has_delayed_factor(
-                stereo_state,
-                kind="directional",
-                site=site,
-                var=record.var,
-            ):
-                _invalid_snapshot("writer directional occurrence lacks delayed factor")
-    for factor in stereo_state.delayed_factors:
-        for var in factor.scope:
-            delayed_vars.add(var)
-            if var not in occurrence_vars:
-                _invalid_snapshot("writer delayed factor variable lacks occurrence record")
     assignment_vars = _residual_assignment_vars(stereo_state)
     domain_vars = _residual_domain_vars(stereo_state)
-    if not assignment_vars.issubset(occurrence_vars):
-        _invalid_snapshot("writer residual assignment lacks occurrence record")
-    if not domain_vars.issubset(occurrence_vars):
-        _invalid_snapshot("writer residual domain lacks occurrence record")
-    if not occurrence_vars.issubset(delayed_vars):
-        _invalid_snapshot("writer occurrence variable lacks delayed factor")
     factor_vars = frozenset(
         var
         for snapshot in stereo_state.residual_snapshot.factors
         for var in snapshot.scope
     )
-    closed_delayed_vars = frozenset(
-        var
-        for factor in stereo_state.delayed_factors
-        if factor.closed
-        for var in factor.scope
-    )
-    if not factor_vars.issubset(closed_delayed_vars):
-        _invalid_snapshot("writer residual factor variable lacks closed delayed factor")
-
-
-def _has_delayed_factor(
-    stereo_state: WriterStereoStateKey,
-    *,
-    kind: str,
-    site: SiteId,
-    var: VarId,
-) -> bool:
-    return any(
-        factor.kind == kind
-        and factor.site == site
-        and var in factor.scope
-        for factor in stereo_state.delayed_factors
-    )
-
-
-def _validate_delayed_factor_shape(
-    prepared: SouthStarPreparedMol,
-    stereo_state: WriterStereoStateKey,
-    factor,
-    tetra_by_site,
-    directional_by_site,
-) -> None:
-    if factor.kind == "tetra":
-        template = tetra_by_site.get(factor.site)
-        if template is None:
-            _invalid_snapshot("writer tetra delayed factor references unknown site")
-        expected_var = tetra_var(("writer", int(template.site)))
-        if factor.scope != (expected_var,):
-            _invalid_snapshot("writer tetra delayed factor has unexpected scope")
-        if factor.evidence != (("atom", int(template.center)),):
-            _invalid_snapshot("writer tetra delayed factor has unexpected evidence")
-        if factor.closed:
-            record = _local_order_record(stereo_state, template.center)
-            if record is None or not record.closed:
-                _invalid_snapshot("writer closed tetra delayed factor lacks closed local order")
-        else:
+    if domain_vars != factor_vars:
+        _invalid_snapshot("writer residual domains must be exactly covered by live factors")
+    if not assignment_vars.issubset(domain_vars):
+        _invalid_snapshot("writer residual assignment lacks live residual domain")
+    for var in domain_vars:
+        if var.kind == "tetra_token":
+            site = SiteId(int(var.key[0]))
+            template = next((item for item in prepared.tetra_templates if item.site == site), None)
+            if template is None:
+                _invalid_snapshot("writer live tetra token variable references unknown site")
+            if _local_order_record(stereo_state, template.center) is not None and _local_order_record(stereo_state, template.center).closed:
+                _invalid_snapshot("writer closed tetra site still has live token variable")
+            if var in assignment_vars and not any(
+                record.atom == template.center
+                for record in stereo_state.atom_occurrences
+            ):
+                _invalid_snapshot("writer tetra token assignment lacks atom occurrence")
+        elif var.kind == "tetra_local_parity":
+            site = SiteId(int(var.key[0]))
+            template = next((item for item in prepared.tetra_templates if item.site == site), None)
+            if template is None:
+                _invalid_snapshot("writer live tetra parity variable references unknown site")
             record = _local_order_record(stereo_state, template.center)
             if record is not None and record.closed:
-                _invalid_snapshot("writer pending tetra delayed factor is already complete")
-        return
-    if factor.kind == "directional":
-        template = directional_by_site.get(factor.site)
-        if template is None:
-            _invalid_snapshot("writer directional delayed factor references unknown site")
-        expected_scope, expected_evidence = _expected_directional_scope_and_evidence(
-            prepared,
-            stereo_state,
-            template,
-        )
-        carrier_bonds = _directional_template_substituent_bonds(prepared, template)
-        emitted_bonds = frozenset(bond for _, bond in expected_evidence)
-        if factor.scope != expected_scope or factor.evidence != expected_evidence:
-            _invalid_snapshot("writer directional delayed factor has unexpected scope/evidence")
-        if factor.closed:
-            if emitted_bonds != carrier_bonds:
-                _invalid_snapshot("writer closed directional delayed factor is incomplete")
-        elif emitted_bonds == carrier_bonds:
-            _invalid_snapshot("writer pending directional delayed factor is already complete")
-        return
-    if factor.kind == "ring_pair":
-        bond = BondId(int(factor.site))
-        if bond not in prepared.graph_index.bond_by_id:
-            _invalid_snapshot("writer ring-pair delayed factor references unknown bond")
-        if factor.scope:
-            _invalid_snapshot("writer ring-pair delayed factor has unexpected scope")
-        if len(factor.evidence) != 1:
-            _invalid_snapshot("writer ring-pair delayed factor has unexpected evidence")
-        evidence = factor.evidence[0]
-        if factor.closed:
-            if len(evidence) != 10 or evidence[0] != "ring_pair" or evidence[1] != int(bond):
-                _invalid_snapshot("writer closed ring-pair delayed factor has unexpected evidence")
-        elif (
-            len(evidence) != 9
-            or evidence[0] != "ring_endpoint"
-            or evidence[1] != int(bond)
-            or evidence[2] != "open"
-        ):
-            _invalid_snapshot("writer pending ring-pair delayed factor has unexpected evidence")
-        return
-    _invalid_snapshot("writer delayed factor has unknown kind")
-
-
-def _expected_residual_factor_snapshot(
-    prepared: SouthStarPreparedMol,
-    stereo_state: WriterStereoStateKey,
-    factor,
-) -> object:
-    assignments = dict(stereo_state.residual_snapshot.assignments)
-    if factor.kind == "tetra":
-        template = {item.site: item for item in prepared.tetra_templates}.get(factor.site)
-        if template is None:
-            _invalid_snapshot("writer tetra delayed factor references unknown site")
-        record = _local_order_record(stereo_state, template.center)
-        if record is None or not record.closed:
-            _invalid_snapshot("writer closed tetra delayed factor lacks closed local order")
-        expected_var = tetra_var(("writer", int(template.site)))
-        expected = TetraResidualFactor(
-            scope=(expected_var,),
-            status=template.status,
-            target=template.target,
-            reference_order=template.reference_order,
-            local_order=record.order,
-        )
-        assigned = assignments.get(expected_var)
-        if assigned is None or not expected.accepts((assigned,)):
-            _invalid_snapshot("writer tetra residual assignment is invalid")
-        return expected.value_snapshot()
-    if factor.kind == "directional":
-        template = {item.site: item for item in prepared.directional_templates}.get(
-            factor.site
-        )
-        if template is None:
-            _invalid_snapshot("writer directional delayed factor references unknown site")
-        models = _directional_models(prepared, template, stereo_state)
-        expected = DirectionalResidualFactor(
-            scope=tuple(sorted(models, key=_var_sort_tuple)),
-            status=template.status,
-            target=template.target,
-            carrier_models=models,
-        )
-        row = tuple(assignments.get(var) for var in expected.scope)
-        if any(value is None for value in row) or not expected.accepts(row):
-            _invalid_snapshot("writer directional residual assignment is invalid")
-        return expected.value_snapshot()
-    if factor.kind == "ring_pair":
-        _invalid_snapshot("writer ring-pair delayed factor has no residual factor yet")
-    _invalid_snapshot("writer delayed factor has unknown kind")
-
-
-def _expected_directional_scope_and_evidence(
-    prepared: SouthStarPreparedMol,
-    stereo_state: WriterStereoStateKey,
-    template,
-) -> tuple[tuple[VarId, ...], tuple[tuple[str, int], ...]]:
-    carrier_bonds = _directional_template_substituent_bonds(prepared, template)
-    emitted_bonds = tuple(
-        record.bond
-        for record in stereo_state.bond_occurrences
-        if record.bond in carrier_bonds
-    )
-    scope = tuple(
-        sorted(
-            (direction_var(("writer", int(bond))) for bond in set(emitted_bonds)),
-            key=_var_sort_tuple,
-        )
-    )
-    evidence = tuple(sorted(("bond", int(bond)) for bond in set(emitted_bonds)))
-    return scope, evidence
-
-
-def _directional_models(
-    prepared: SouthStarPreparedMol,
-    template,
-    stereo_state: WriterStereoStateKey,
-) -> dict[VarId, DirectionalCarrierResidual]:
-    bond_records = {record.bond: record for record in stereo_state.bond_occurrences}
-    occurrence_by_id = {item.id: item for item in prepared.facts.ligand_occurrences}
-    left_reference, right_reference = _directional_reference_pair(template)
-    left_by_bond = _neighbor_ligands_by_bond(occurrence_by_id, template.left_ligands)
-    right_by_bond = _neighbor_ligands_by_bond(occurrence_by_id, template.right_ligands)
-    models: dict[VarId, DirectionalCarrierResidual] = {}
-    for bond, occurrence in left_by_bond.items():
-        record = bond_records.get(bond)
-        if record is None:
-            _invalid_snapshot("writer directional residual factor lacks carrier record")
-        var = direction_var(("writer", int(bond)))
-        models[var] = DirectionalCarrierResidual(
-            var=var,
-            side="left",
-            orientation=_carrier_orientation(record, template.left_endpoint),
-            ligand_factor=_ligand_factor(
-                occurrence,
-                reference=left_reference,
-                side_ligands=template.left_ligands,
-            ),
-        )
-    for bond, occurrence in right_by_bond.items():
-        record = bond_records.get(bond)
-        if record is None:
-            _invalid_snapshot("writer directional residual factor lacks carrier record")
-        var = direction_var(("writer", int(bond)))
-        models[var] = DirectionalCarrierResidual(
-            var=var,
-            side="right",
-            orientation=_carrier_orientation(record, template.right_endpoint),
-            ligand_factor=_ligand_factor(
-                occurrence,
-                reference=right_reference,
-                side_ligands=template.right_ligands,
-            ),
-        )
-    return models
-
-
-def _carrier_orientation(record, endpoint: AtomId) -> int:
-    if record.parent == endpoint:
-        return 1
-    if record.child == endpoint:
-        return -1
-    _invalid_snapshot("writer directional carrier is not incident to endpoint")
-
-
-def _ligand_factor(
-    occurrence: OccurrenceId,
-    *,
-    reference: OccurrenceId,
-    side_ligands: tuple[OccurrenceId, ...],
-) -> int:
-    if occurrence == reference:
-        return 1
-    if occurrence not in side_ligands:
-        _invalid_snapshot("writer directional occurrence is not on template side")
-    return -1
+                _invalid_snapshot("writer closed tetra site still has live parity variable")
+        elif var.kind == "directional_site_carrier":
+            site = SiteId(int(var.key[0]))
+            bond = BondId(int(var.key[1]))
+            if site not in directional_sites_by_bond.get(bond, ()):
+                _invalid_snapshot("writer directional carrier variable has wrong site/bond")
+            if var in assignment_vars and not any(
+                record.bond == bond
+                for record in stereo_state.bond_occurrences
+            ):
+                _invalid_snapshot("writer directional assignment lacks bond occurrence")
+        else:
+            _invalid_snapshot("writer residual variable has unknown live stereo kind")
 
 
 def _directional_reference_pair(template) -> tuple[OccurrenceId, OccurrenceId]:

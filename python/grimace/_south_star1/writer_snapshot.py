@@ -1249,6 +1249,28 @@ class _WriterPublicCyclicOpeningProfileKind(Enum):
     )
 
 
+class _WriterPublicCyclicRequiredCapability(Enum):
+    SIMPLE_CYCLE_CORE_CLOSURE = "simple_cycle_core_closure"
+    ACYCLIC_PENDANT_TREE_TRAVERSAL = "acyclic_pendant_tree_traversal"
+    TREE_BOND_TEXT_EMISSION = "tree_bond_text_emission"
+    RING_CORE_NON_SINGLE_CLOSURE_BOND = "ring_core_non_single_closure_bond"
+    CYCLIC_DIRECTIONAL_STEREO = "cyclic_directional_stereo"
+    CYCLIC_RING_PAIR_STEREO = "cyclic_ring_pair_stereo"
+    MULTI_CYCLE_TOPOLOGY = "multi_cycle_topology"
+    FUSED_OR_BRIDGED_TOPOLOGY = "fused_or_bridged_topology"
+    NON_FOREST_PENDANT_MATERIAL = "non_forest_pendant_material"
+    MULTI_BOUNDARY_PENDANT_COMPONENT = "multi_boundary_pendant_component"
+
+
+_PUBLIC_CYCLIC_SUPPORTED_CAPABILITIES = frozenset(
+    {
+        _WriterPublicCyclicRequiredCapability.SIMPLE_CYCLE_CORE_CLOSURE,
+        _WriterPublicCyclicRequiredCapability.ACYCLIC_PENDANT_TREE_TRAVERSAL,
+        _WriterPublicCyclicRequiredCapability.TREE_BOND_TEXT_EMISSION,
+    }
+)
+
+
 @dataclass(frozen=True, slots=True)
 class _WriterPublicCyclicOpeningProfileReport:
     kind: _WriterPublicCyclicOpeningProfileKind
@@ -1266,18 +1288,32 @@ class _WriterPublicCyclicOpeningProfileReport:
     branch_atom_count: int
     unsupported_bond_count: int
     unsupported_stereo_surface_count: int
+    ring_core_unsupported_bond_count: int = 0
+    pendant_unsupported_bond_count: int = 0
+    required_capabilities: frozenset[
+        _WriterPublicCyclicRequiredCapability
+    ] = frozenset()
+    unsupported_capabilities: frozenset[
+        _WriterPublicCyclicRequiredCapability
+    ] = frozenset()
     pendant_component_count: int = 0
     pendant_component_atom_counts: tuple[int, ...] = ()
     pendant_component_boundary_counts: tuple[int, ...] = ()
 
     @property
     def supported(self) -> bool:
-        return self.kind in {
-            _WriterPublicCyclicOpeningProfileKind
-            .SUPPORTED_SIMPLE_MONOCYCLE_COMPONENT,
-            _WriterPublicCyclicOpeningProfileKind
-            .SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS,
-        }
+        return (
+            self.kind in {
+                _WriterPublicCyclicOpeningProfileKind
+                .SUPPORTED_SIMPLE_MONOCYCLE_COMPONENT,
+                _WriterPublicCyclicOpeningProfileKind
+                .SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS,
+            }
+            and not self.unsupported_capabilities
+            and self.required_capabilities.issubset(
+                _PUBLIC_CYCLIC_SUPPORTED_CAPABILITIES
+            )
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -2118,29 +2154,62 @@ def _writer_public_cyclic_opening_profile_report(
 ) -> _WriterPublicCyclicOpeningProfileReport:
     surfaces = tuple(prepared.writer_graph_metadata.component_surfaces)
 
-    if len(surfaces) != 1:
-        return _WriterPublicCyclicOpeningProfileReport(
-            kind=(
-                _WriterPublicCyclicOpeningProfileKind
-                .BLOCKED_NOT_SINGLE_COMPONENT
-            ),
+    def blocked_profile(
+        *,
+        kind: _WriterPublicCyclicOpeningProfileKind,
+        **extra: object,
+    ) -> _WriterPublicCyclicOpeningProfileReport:
+        defaults = _WriterPublicCyclicOpeningProfileReport(
+            kind=kind,
             component_count=len(surfaces),
-            cyclic_component_count=0,
-            cyclic_ranks=(),
+            cyclic_component_count=len(tuple(
+                surface
+                for surface in surfaces
+                if (
+                    surface.connected
+                    and not surface.tree
+                    and (
+                        surface.cyclic_rank > 0
+                        or surface.cyclic_block_ids
+                    )
+                )
+            )),
+            cyclic_ranks=tuple(
+                int(surface.cyclic_rank)
+                for surface in surfaces
+                if (
+                    surface.connected
+                    and not surface.tree
+                    and (
+                        surface.cyclic_rank > 0
+                        or surface.cyclic_block_ids
+                    )
+                )
+            ),
             ring_core_atom_count=0,
             ring_core_bond_count=0,
             ring_core_max_degree=0,
             pendant_atom_count=0,
             pendant_bond_count=0,
-            pendant_component_count=0,
-            pendant_component_atom_counts=(),
-            pendant_component_boundary_counts=(),
             component_atom_count=0,
             component_bond_count=0,
             max_component_degree=0,
             branch_atom_count=0,
             unsupported_bond_count=0,
             unsupported_stereo_surface_count=0,
+            pendant_component_count=0,
+            pendant_component_atom_counts=(),
+            pendant_component_boundary_counts=(),
+        )
+
+        return replace(
+            defaults,
+            **extra,
+        )
+
+    if len(surfaces) != 1:
+        return blocked_profile(
+            kind=_WriterPublicCyclicOpeningProfileKind.BLOCKED_NOT_SINGLE_COMPONENT,
         )
 
     surface = surfaces[0]
@@ -2195,15 +2264,6 @@ def _writer_public_cyclic_opening_profile_report(
             if neighbor in component_core_atoms and len(adjacency[neighbor]) <= 1:
                 prune.append(neighbor)
 
-    unsupported_bond_count = sum(
-        1
-        for bond_id in component_bond_ids
-        if (
-            bond := component_bond_index.get(bond_id)
-        ) is not None
-        and bond.order is not BondOrder.SINGLE
-    )
-
     unsupported_stereo_surface_count = sum(
         1
         for template in prepared.directional_templates
@@ -2231,6 +2291,42 @@ def _writer_public_cyclic_opening_profile_report(
         ),
         default=0,
     )
+    ring_core_unsupported_bond_count = sum(
+        1
+        for bond_id in ring_core_bond_ids
+        if (
+            (bond := component_bond_index.get(bond_id))
+            is not None
+            and bond.order is not BondOrder.SINGLE
+        )
+    )
+    ring_core_bond_id_set = frozenset(ring_core_bond_ids)
+    pendant_bond_ids = tuple(
+        bond_id for bond_id in component_bond_ids if bond_id not in ring_core_bond_id_set
+    )
+    pendant_unsupported_bond_count = 0
+    for bond_id in pendant_bond_ids:
+        if bond_id not in component_bond_index:
+            pendant_unsupported_bond_count += 1
+            continue
+
+        try:
+            bond_text_domain = prepared.policy.bond_text_domain_unchecked(
+                bond_id,
+                slot_kind="tree",
+            )
+        except KeyError:
+            # Missing tree-domain registration is treated as unsupported.
+            pendant_unsupported_bond_count += 1
+        else:
+            if not bond_text_domain:
+                pendant_unsupported_bond_count += 1
+
+    unsupported_bond_count = (
+        ring_core_unsupported_bond_count
+        + pendant_unsupported_bond_count
+    )
+
     ring_core_atom_count_is_nontrivial = ring_core_atom_count >= 3
     ring_core_is_simple_cycle = (
         ring_core_atom_count_is_nontrivial
@@ -2311,59 +2407,182 @@ def _writer_public_cyclic_opening_profile_report(
     )
 
     cyclic_ranks = tuple(int(surface.cyclic_rank) for surface in cyclic_surfaces)
+    required_capabilities: set[
+        _WriterPublicCyclicRequiredCapability
+    ] = set()
+    unsupported_capabilities: set[
+        _WriterPublicCyclicRequiredCapability
+    ] = set()
 
     if not surface.connected:
-        kind = (
-            _WriterPublicCyclicOpeningProfileKind
-            .BLOCKED_NOT_CONNECTED_COMPONENT
+        return blocked_profile(
+            kind=_WriterPublicCyclicOpeningProfileKind.BLOCKED_NOT_CONNECTED_COMPONENT,
+            component_atom_count=component_atom_count,
+            component_bond_count=component_bond_count,
+            max_component_degree=max_component_degree,
+            branch_atom_count=branch_atom_count,
+            ring_core_bond_count=ring_core_bond_count,
+            ring_core_atom_count=ring_core_atom_count,
+            ring_core_max_degree=ring_core_max_degree,
+            pendant_atom_count=pendant_atom_count,
+            pendant_bond_count=pendant_bond_count,
+            pendant_component_count=pendant_component_count,
+            pendant_component_atom_counts=pendant_component_atom_counts,
+            pendant_component_boundary_counts=pendant_component_boundary_counts,
+            cyclic_ranks=cyclic_ranks,
+            cyclic_component_count=len(cyclic_surfaces),
+            unsupported_bond_count=unsupported_bond_count,
+            ring_core_unsupported_bond_count=ring_core_unsupported_bond_count,
+            pendant_unsupported_bond_count=pendant_unsupported_bond_count,
+            unsupported_stereo_surface_count=unsupported_stereo_surface_count,
+            required_capabilities=frozenset(required_capabilities),
+            unsupported_capabilities=frozenset(unsupported_capabilities),
         )
-    elif not cyclic_surfaces:
-        kind = (
-            _WriterPublicCyclicOpeningProfileKind
-            .BLOCKED_NOT_CYCLIC_COMPONENT
+
+    if not cyclic_surfaces:
+        return blocked_profile(
+            kind=_WriterPublicCyclicOpeningProfileKind.BLOCKED_NOT_CYCLIC_COMPONENT,
+            component_atom_count=component_atom_count,
+            component_bond_count=component_bond_count,
+            max_component_degree=max_component_degree,
+            branch_atom_count=branch_atom_count,
+            ring_core_bond_count=ring_core_bond_count,
+            ring_core_atom_count=ring_core_atom_count,
+            ring_core_max_degree=ring_core_max_degree,
+            pendant_atom_count=pendant_atom_count,
+            pendant_bond_count=pendant_bond_count,
+            pendant_component_count=pendant_component_count,
+            pendant_component_atom_counts=pendant_component_atom_counts,
+            pendant_component_boundary_counts=pendant_component_boundary_counts,
+            cyclic_ranks=cyclic_ranks,
+            cyclic_component_count=len(cyclic_surfaces),
+            unsupported_bond_count=unsupported_bond_count,
+            ring_core_unsupported_bond_count=ring_core_unsupported_bond_count,
+            pendant_unsupported_bond_count=pendant_unsupported_bond_count,
+            unsupported_stereo_surface_count=unsupported_stereo_surface_count,
+            required_capabilities=frozenset(required_capabilities),
+            unsupported_capabilities=frozenset(unsupported_capabilities),
         )
-    elif cyclic_ranks != (1,):
-        kind = (
-            _WriterPublicCyclicOpeningProfileKind
-            .BLOCKED_UNSUPPORTED_CYCLIC_RANK
+
+    required_capabilities.add(
+        _WriterPublicCyclicRequiredCapability.SIMPLE_CYCLE_CORE_CLOSURE,
+    )
+
+    if cyclic_ranks != (1,):
+        unsupported_capabilities.add(
+            _WriterPublicCyclicRequiredCapability.MULTI_CYCLE_TOPOLOGY,
         )
-    elif unsupported_bond_count:
+        return _WriterPublicCyclicOpeningProfileReport(
+            kind=_WriterPublicCyclicOpeningProfileKind.BLOCKED_UNSUPPORTED_CYCLIC_RANK,
+            component_count=1,
+            cyclic_component_count=len(cyclic_surfaces),
+            cyclic_ranks=cyclic_ranks,
+            ring_core_atom_count=ring_core_atom_count,
+            ring_core_bond_count=ring_core_bond_count,
+            ring_core_max_degree=ring_core_max_degree,
+            pendant_atom_count=pendant_atom_count,
+            pendant_bond_count=pendant_bond_count,
+            pendant_component_count=pendant_component_count,
+            pendant_component_atom_counts=pendant_component_atom_counts,
+            pendant_component_boundary_counts=pendant_component_boundary_counts,
+            component_atom_count=component_atom_count,
+            component_bond_count=component_bond_count,
+            max_component_degree=max_component_degree,
+            branch_atom_count=branch_atom_count,
+            unsupported_bond_count=unsupported_bond_count,
+            unsupported_stereo_surface_count=unsupported_stereo_surface_count,
+            ring_core_unsupported_bond_count=ring_core_unsupported_bond_count,
+            pendant_unsupported_bond_count=pendant_unsupported_bond_count,
+            required_capabilities=frozenset(required_capabilities),
+            unsupported_capabilities=frozenset(unsupported_capabilities),
+        )
+
+    if ring_core_unsupported_bond_count:
+        unsupported_capabilities.add(
+            _WriterPublicCyclicRequiredCapability.RING_CORE_NON_SINGLE_CLOSURE_BOND,
+        )
         kind = (
-            _WriterPublicCyclicOpeningProfileKind
-            .BLOCKED_UNSUPPORTED_CLOSURE_BOND_SURFACE
+            _WriterPublicCyclicOpeningProfileKind.BLOCKED_UNSUPPORTED_CLOSURE_BOND_SURFACE
+        )
+    elif pendant_unsupported_bond_count:
+        unsupported_capabilities.add(
+            _WriterPublicCyclicRequiredCapability.RING_CORE_NON_SINGLE_CLOSURE_BOND,
+        )
+        kind = (
+            _WriterPublicCyclicOpeningProfileKind.BLOCKED_UNSUPPORTED_CLOSURE_BOND_SURFACE
         )
     elif unsupported_stereo_surface_count:
-        kind = (
-            _WriterPublicCyclicOpeningProfileKind
-            .BLOCKED_UNSUPPORTED_CYCLIC_STEREO_SURFACE
+        unsupported_capabilities.add(
+            _WriterPublicCyclicRequiredCapability.CYCLIC_DIRECTIONAL_STEREO,
         )
-    elif not ring_core_is_simple_cycle:
         kind = (
-            _WriterPublicCyclicOpeningProfileKind
-            .BLOCKED_UNSUPPORTED_BRANCHING
-        )
-    elif pendant_atom_count == 0:
-        kind = (
-            _WriterPublicCyclicOpeningProfileKind
-            .SUPPORTED_SIMPLE_MONOCYCLE_COMPONENT
-        )
-    elif (
-        pendant_atom_count > 0
-        and pendant_bond_count == pendant_atom_count
-        and all(
-            boundary_count == 1
-            for boundary_count in pendant_component_boundary_counts
-        )
-    ):
-        kind = (
-            _WriterPublicCyclicOpeningProfileKind
-            .SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS
+            _WriterPublicCyclicOpeningProfileKind.BLOCKED_UNSUPPORTED_CYCLIC_STEREO_SURFACE
         )
     else:
-        kind = (
-            _WriterPublicCyclicOpeningProfileKind
-            .BLOCKED_UNSUPPORTED_BRANCHING
+        pendant_multi_boundary = any(
+            boundary_count != 1
+            for boundary_count in pendant_component_boundary_counts
         )
+        pendant_non_tree = False
+        if pendant_atom_count > 0:
+            for component_atoms, _boundary_count in (
+                pendant_components
+                if pendant_atom_set
+                else ()
+            ):
+                internal_bond_count = 0
+                for bond_id in component_bond_ids:
+                    bond = component_bond_index.get(bond_id)
+                    if bond is None:
+                        continue
+                    if bond.a in component_atoms and bond.b in component_atoms:
+                        internal_bond_count += 1
+
+                if internal_bond_count != len(component_atoms) - 1:
+                    pendant_non_tree = True
+                    break
+
+            if pendant_multi_boundary:
+                unsupported_capabilities.add(
+                    _WriterPublicCyclicRequiredCapability.MULTI_BOUNDARY_PENDANT_COMPONENT,
+                )
+            if pendant_non_tree:
+                unsupported_capabilities.add(
+                    _WriterPublicCyclicRequiredCapability.NON_FOREST_PENDANT_MATERIAL,
+                )
+
+        if ring_core_is_simple_cycle and pendant_atom_count == 0:
+            kind = (
+                _WriterPublicCyclicOpeningProfileKind
+                .SUPPORTED_SIMPLE_MONOCYCLE_COMPONENT
+            )
+        elif (
+            ring_core_is_simple_cycle
+            and pendant_atom_count > 0
+            and not pendant_multi_boundary
+            and not pendant_non_tree
+        ):
+            kind = (
+                _WriterPublicCyclicOpeningProfileKind
+                .SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS
+            )
+            required_capabilities.update(
+                (
+                    _WriterPublicCyclicRequiredCapability
+                    .ACYCLIC_PENDANT_TREE_TRAVERSAL,
+                    _WriterPublicCyclicRequiredCapability
+                    .TREE_BOND_TEXT_EMISSION,
+                )
+            )
+        else:
+            kind = (
+                _WriterPublicCyclicOpeningProfileKind
+                .BLOCKED_UNSUPPORTED_BRANCHING
+            )
+            if not ring_core_is_simple_cycle:
+                unsupported_capabilities.add(
+                    _WriterPublicCyclicRequiredCapability.MULTI_CYCLE_TOPOLOGY,
+                )
 
     return _WriterPublicCyclicOpeningProfileReport(
         kind=kind,
@@ -2383,7 +2602,11 @@ def _writer_public_cyclic_opening_profile_report(
         max_component_degree=max_component_degree,
         branch_atom_count=branch_atom_count,
         unsupported_bond_count=unsupported_bond_count,
+        ring_core_unsupported_bond_count=ring_core_unsupported_bond_count,
+        pendant_unsupported_bond_count=pendant_unsupported_bond_count,
         unsupported_stereo_surface_count=unsupported_stereo_surface_count,
+        required_capabilities=frozenset(required_capabilities),
+        unsupported_capabilities=frozenset(unsupported_capabilities),
     )
 
 
@@ -2541,11 +2764,24 @@ def _assert_cyclic_writer_admission_decision(
     if decision.kind is (
         _WriterCyclicAdmissionDecisionKind.BLOCKED_PUBLIC_CYCLIC_PROFILE
     ):
+        unsupported = ""
+        if decision.public_profile is not None:
+            unsupported = ", ".join(
+                sorted(
+                    capability.value
+                    for capability in (
+                        decision.public_profile.unsupported_capabilities
+                    )
+                )
+            )
+            if unsupported:
+                unsupported = f" unsupported_capabilities=[{unsupported}]"
+
         raise SouthStarError(
             SouthStarErrorKind.UNSUPPORTED_POLICY,
             (
                 "cyclic WRITER_SHAPED blocked by public opening profile: "
-                f"{decision.public_profile.kind.value!r}"
+                f"{decision.public_profile.kind.value!r}{unsupported}"
             ),
         )
 

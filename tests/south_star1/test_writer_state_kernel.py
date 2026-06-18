@@ -125,6 +125,8 @@ class _CyclicProfileMatrixCase:
     expected_private_error_text: str | None = None
     expected_ring_core_bond_count: int | None = None
     expected_ring_core_max_degree: int | None = None
+    expected_ring_core_unsupported_bond_count: int = 0
+    expected_pendant_unsupported_bond_count: int = 0
 
 
 def _integer_partitions(
@@ -221,6 +223,71 @@ def _cyclic_profile_matrix_cases() -> tuple[_CyclicProfileMatrixCase, ...]:
             expected_pendant_atom_count=1,
             expected_pendant_component_atom_counts=(1,),
             expected_pendant_component_boundary_counts=(1,),
+            max_prefixes=256,
+            expected_private_status=(
+                _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
+            ),
+        ),
+        _CyclicProfileMatrixCase(
+            name="ring3 + one pendant boundary double bond",
+            facts=simple_monocycle_with_pendant_forest_facts(
+                ring_size=3,
+                pendant_paths=(1,),
+                pendant_path_bond_orders=((BondOrder.DOUBLE,),),
+            ),
+            expected_kind=writer_snapshot._WriterPublicCyclicOpeningProfileKind
+            .SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS,
+            expected_supported=True,
+            expected_ring_core_atom_count=3,
+            expected_pendant_atom_count=1,
+            expected_pendant_component_atom_counts=(1,),
+            expected_pendant_component_boundary_counts=(1,),
+            expected_ring_core_unsupported_bond_count=0,
+            expected_pendant_unsupported_bond_count=0,
+            max_prefixes=256,
+            expected_private_status=(
+                _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
+            ),
+        ),
+        _CyclicProfileMatrixCase(
+            name="ring3 + one pendant boundary single with internal double",
+            facts=simple_monocycle_with_pendant_forest_facts(
+                ring_size=3,
+                pendant_paths=(2,),
+                pendant_path_bond_orders=(
+                    (BondOrder.SINGLE, BondOrder.DOUBLE),
+                ),
+            ),
+            expected_kind=writer_snapshot._WriterPublicCyclicOpeningProfileKind
+            .SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS,
+            expected_supported=True,
+            expected_ring_core_atom_count=3,
+            expected_pendant_atom_count=2,
+            expected_pendant_component_atom_counts=(2,),
+            expected_pendant_component_boundary_counts=(1,),
+            expected_ring_core_unsupported_bond_count=0,
+            expected_pendant_unsupported_bond_count=0,
+            max_prefixes=512,
+            expected_private_status=(
+                _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
+            ),
+        ),
+        _CyclicProfileMatrixCase(
+            name="ring3 + one pendant boundary triple bond",
+            facts=simple_monocycle_with_pendant_forest_facts(
+                ring_size=3,
+                pendant_paths=(1,),
+                pendant_path_bond_orders=((BondOrder.TRIPLE,),),
+            ),
+            expected_kind=writer_snapshot._WriterPublicCyclicOpeningProfileKind
+            .SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS,
+            expected_supported=True,
+            expected_ring_core_atom_count=3,
+            expected_pendant_atom_count=1,
+            expected_pendant_component_atom_counts=(1,),
+            expected_pendant_component_boundary_counts=(1,),
+            expected_ring_core_unsupported_bond_count=0,
+            expected_pendant_unsupported_bond_count=0,
             max_prefixes=256,
             expected_private_status=(
                 _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
@@ -15725,8 +15792,99 @@ class WriterStateKernelTest(unittest.TestCase):
                     report.pendant_component_boundary_counts,
                     case.expected_pendant_component_boundary_counts,
                 )
-                self.assertEqual(report.unsupported_bond_count, 0)
+                self.assertEqual(
+                    report.unsupported_bond_count,
+                    (
+                        case.expected_ring_core_unsupported_bond_count
+                        + case.expected_pendant_unsupported_bond_count
+                    ),
+                )
+                self.assertEqual(
+                    report.ring_core_unsupported_bond_count,
+                    case.expected_ring_core_unsupported_bond_count,
+                )
+                self.assertEqual(
+                    report.pendant_unsupported_bond_count,
+                    case.expected_pendant_unsupported_bond_count,
+                )
                 self.assertEqual(report.unsupported_stereo_surface_count, 0)
+                self.assertIn(
+                    writer_snapshot
+                    ._WriterPublicCyclicRequiredCapability
+                    .SIMPLE_CYCLE_CORE_CLOSURE,
+                    report.required_capabilities,
+                )
+
+                if case.expected_pendant_atom_count == 0:
+                    self.assertNotIn(
+                        writer_snapshot
+                        ._WriterPublicCyclicRequiredCapability
+                        .ACYCLIC_PENDANT_TREE_TRAVERSAL,
+                        report.required_capabilities,
+                    )
+                    self.assertNotIn(
+                        writer_snapshot
+                        ._WriterPublicCyclicRequiredCapability
+                        .TREE_BOND_TEXT_EMISSION,
+                        report.required_capabilities,
+                    )
+                else:
+                    self.assertIn(
+                        writer_snapshot
+                        ._WriterPublicCyclicRequiredCapability
+                        .ACYCLIC_PENDANT_TREE_TRAVERSAL,
+                        report.required_capabilities,
+                    )
+                    self.assertIn(
+                        writer_snapshot
+                        ._WriterPublicCyclicRequiredCapability
+                        .TREE_BOND_TEXT_EMISSION,
+                        report.required_capabilities,
+                    )
+
+                if case.expected_supported:
+                    self.assertFalse(report.unsupported_capabilities)
+                elif (
+                    report.kind
+                    is writer_snapshot
+                    ._WriterPublicCyclicOpeningProfileKind
+                    .BLOCKED_UNSUPPORTED_CLOSURE_BOND_SURFACE
+                ):
+                    self.assertIn(
+                        writer_snapshot
+                        ._WriterPublicCyclicRequiredCapability
+                        .RING_CORE_NON_SINGLE_CLOSURE_BOND,
+                        report.unsupported_capabilities,
+                    )
+                elif (
+                    report.kind
+                    is writer_snapshot
+                    ._WriterPublicCyclicOpeningProfileKind
+                    .BLOCKED_UNSUPPORTED_CYCLIC_RANK
+                ):
+                    self.assertIn(
+                        writer_snapshot
+                        ._WriterPublicCyclicRequiredCapability
+                        .MULTI_CYCLE_TOPOLOGY,
+                        report.unsupported_capabilities,
+                    )
+                elif (
+                    report.kind
+                    is writer_snapshot
+                    ._WriterPublicCyclicOpeningProfileKind
+                    .BLOCKED_UNSUPPORTED_CYCLIC_STEREO_SURFACE
+                ):
+                    self.assertTrue(
+                        {
+                            writer_snapshot
+                            ._WriterPublicCyclicRequiredCapability
+                            .CYCLIC_DIRECTIONAL_STEREO,
+                            writer_snapshot
+                            ._WriterPublicCyclicRequiredCapability
+                            .CYCLIC_RING_PAIR_STEREO,
+                        }
+                        & report.unsupported_capabilities
+                    )
 
     def test_public_cyclic_profile_matrix_supported_rows_close_public_online_loop(
         self,
@@ -15752,6 +15910,62 @@ class WriterStateKernelTest(unittest.TestCase):
                 )
 
                 self.assertGreater(root_image.distinct_count, 0)
+
+    def test_public_cyclic_bond_surface_rows_emit_expected_tree_tokens(self) -> None:
+        token_rows = (
+            ("ring3 + one pendant boundary double bond", "="),
+            ("ring3 + one pendant boundary single with internal double", "="),
+            ("ring3 + one pendant boundary triple bond", "#"),
+        )
+
+        case_by_name = {
+            case.name: case for case in _cyclic_profile_matrix_cases()
+        }
+
+        for name, required_token in token_rows:
+            with self.subTest(name=name, token=required_token):
+                case = case_by_name[name]
+                self.assertTrue(case.expected_supported)
+                prepared = _prepare(case.facts)
+                options = _writer_options(rooted_at_atom=0)
+
+                image = enumerate_prepared_stereo_support(
+                    prepared=prepared,
+                    runtime_options=options,
+                )
+                expected_cursor = _initial_writer_transition_frontier_cursor(
+                    prepared,
+                    options,
+                )
+
+                self.assertEqual(
+                    image.strings,
+                    tuple(iter_writer_frontier_support(prepared, expected_cursor)),
+                )
+                self.assertEqual(
+                    image.distinct_count,
+                    count_writer_frontier_support(
+                        prepared,
+                        expected_cursor.support_state,
+                    ),
+                )
+                self.assertEqual(
+                    image.witness_count,
+                    count_writer_cursor_completions(
+                        prepared,
+                        expected_cursor,
+                    ),
+                )
+                self.assertTrue(
+                    any(
+                        required_token in suffix
+                        for suffix in image.strings
+                    ),
+                    (
+                        f"{name} support strings do not contain "
+                        f"required token {required_token!r}"
+                    ),
+                )
 
     def test_public_cyclic_profile_matrix_blocked_rows_fail_before_materialization(
         self,
@@ -15794,6 +16008,14 @@ class WriterStateKernelTest(unittest.TestCase):
                     SouthStarErrorKind.UNSUPPORTED_POLICY,
                 )
                 self.assertIn("profile", str(caught.exception).lower())
+                if report.unsupported_capabilities:
+                    unsupported_token = next(
+                        iter(report.unsupported_capabilities),
+                    ).value
+                    self.assertIn(
+                        unsupported_token,
+                        str(caught.exception),
+                    )
 
                 with self.assertRaises(SouthStarError) as caught:
                     writer_snapshot.capture_initial_writer_frontier_snapshot(

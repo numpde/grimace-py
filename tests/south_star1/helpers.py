@@ -50,6 +50,9 @@ def simple_monocycle_with_pendant_forest_facts(
     *,
     ring_size: int,
     pendant_paths: tuple[int, ...] = (),
+    ring_bond_orders: tuple[BondOrder, ...] | None = None,
+    pendant_path_bond_orders:
+        tuple[tuple[BondOrder, ...], ...] | None = None,
 ) -> MoleculeFacts:
     ring_atoms = tuple(range(ring_size))
     atoms = tuple(atom(atom_id, "C") for atom_id in ring_atoms)
@@ -58,26 +61,58 @@ def simple_monocycle_with_pendant_forest_facts(
     next_atom_id = len(atoms)
     next_bond_id = 0
 
-    def next_bond(left: int, right: int) -> None:
+    if ring_bond_orders is None:
+        ring_bond_orders = (BondOrder.SINGLE,) * ring_size
+
+    if len(ring_bond_orders) != ring_size:
+        raise AssertionError("ring_bond_orders must match ring_size")
+
+    if pendant_path_bond_orders is None:
+        pendant_path_bond_orders = tuple(
+            () for _ in range(len(pendant_paths))
+        )
+
+    if len(pendant_path_bond_orders) != len(pendant_paths):
+        raise AssertionError(
+            "pendant_path_bond_orders must match pendant_paths length",
+        )
+
+    def next_bond(left: int, right: int, *, order: BondOrder) -> None:
         nonlocal next_bond_id, bonds
         bonds = (
             *bonds,
-            single_bond(next_bond_id, left, right),
+            bond(next_bond_id, left, right, order),
         )
         next_bond_id += 1
 
     for left in range(ring_size):
         right = (left + 1) % ring_size
-        next_bond(left, right)
+        next_bond(left, right, order=ring_bond_orders[left])
 
     for pendant_index, length in enumerate(pendant_paths):
         current_atom = ring_atoms[pendant_index % ring_size]
+        pendant_orders = (
+            pendant_path_bond_orders[pendant_index]
+            if pendant_path_bond_orders
+            else ()
+        )
+        if not pendant_orders:
+            pendant_orders = (BondOrder.SINGLE,) * length
+
+        if len(pendant_orders) != length:
+            raise AssertionError(
+                "pendant_path_bond_orders must match pendant path lengths",
+            )
 
         for _step in range(length):
             new_atom_id = next_atom_id
             next_atom_id += 1
             atoms = (*atoms, atom(new_atom_id, "C"))
-            next_bond(current_atom, new_atom_id)
+            next_bond(
+                current_atom,
+                new_atom_id,
+                order=pendant_orders[_step],
+            )
             current_atom = new_atom_id
 
     component_atom_ids = tuple(AtomId(atom_id) for atom_id in range(next_atom_id))

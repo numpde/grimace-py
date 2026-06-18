@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from collections.abc import Mapping
 from dataclasses import dataclass
 from dataclasses import replace
 from enum import Enum
@@ -3706,6 +3707,7 @@ def _validate_stereo_occurrences_bound_to_graph_state(
         child: parent
         for child, (parent, _bond) in parent_links.items()
     }
+    _validate_atom_occurrence_traversal_order(prepared, key, parent_links)
     for record in key.stereo_state.atom_occurrences:
         if record.atom not in key.visited_atoms:
             _invalid_snapshot("writer atom occurrence is not backed by visited atom")
@@ -3778,6 +3780,117 @@ def _validate_stereo_occurrences_bound_to_graph_state(
         _invalid_snapshot(
             "writer local-order history does not match emitted tree history"
         )
+
+
+def _validate_atom_occurrence_traversal_order(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+    parent_links: Mapping[AtomId, tuple[AtomId, BondId]],
+) -> None:
+    occurrence_atoms = tuple(
+        record.atom
+        for record in key.stereo_state.atom_occurrences
+    )
+    position = {
+        atom: index
+        for index, atom in enumerate(occurrence_atoms)
+    }
+
+    for child, (parent, _bond) in parent_links.items():
+        if position[parent] >= position[child]:
+            _invalid_snapshot(
+                "writer atom occurrence precedes its tree parent"
+            )
+
+    children_by_parent: dict[AtomId, list[AtomId]] = {}
+    for child, (parent, _bond) in parent_links.items():
+        children_by_parent.setdefault(parent, []).append(child)
+    for children in children_by_parent.values():
+        children.sort(key=position.__getitem__)
+
+    component_by_atom = _atom_component_index(prepared)
+    component_sequence = tuple(
+        component_by_atom[atom]
+        for atom in occurrence_atoms
+    )
+    if any(
+        left > right
+        for left, right in zip(component_sequence, component_sequence[1:])
+    ):
+        _invalid_snapshot(
+            "writer atom occurrence component order is not depth-first"
+        )
+
+    for index in range(key.component_cursor.component_index + 1):
+        root = key.component_cursor.component_roots[index]
+        component_occurrences = tuple(
+            atom
+            for atom in occurrence_atoms
+            if component_by_atom.get(atom) == index
+        )
+        if not component_occurrences:
+            continue
+        if component_occurrences[0] != root:
+            _invalid_snapshot(
+                "writer atom occurrence component does not start at root"
+            )
+
+        expected: list[AtomId] = []
+
+        def visit(atom: AtomId) -> None:
+            expected.append(atom)
+            for child in children_by_parent.get(atom, ()):
+                visit(child)
+
+        visit(root)
+        expected_seen = tuple(
+            atom
+            for atom in expected
+            if atom in position and component_by_atom.get(atom) == index
+        )
+        if component_occurrences != expected_seen:
+            _invalid_snapshot(
+                "writer atom occurrence order is not depth-first"
+            )
+
+    current_index = key.component_cursor.component_index
+    current_component_occurrences = tuple(
+        atom
+        for atom in occurrence_atoms
+        if component_by_atom.get(atom) == current_index
+    )
+    if key.active.atom_emitted:
+        if not current_component_occurrences:
+            _invalid_snapshot(
+                "writer emitted active frame lacks atom occurrence"
+            )
+        if not _is_tree_ancestor_or_self(
+            key.active.atom,
+            current_component_occurrences[-1],
+            parent_links,
+        ):
+            _invalid_snapshot(
+                "writer active frame is inconsistent with atom occurrence order"
+            )
+    elif current_component_occurrences:
+        _invalid_snapshot(
+            "writer unemitted active frame has atom occurrence history"
+        )
+
+
+def _is_tree_ancestor_or_self(
+    ancestor: AtomId,
+    atom: AtomId,
+    parent_links: Mapping[AtomId, tuple[AtomId, BondId]],
+) -> bool:
+    current = atom
+    while True:
+        if current == ancestor:
+            return True
+        link = parent_links.get(current)
+        if link is None:
+            return False
+        current = link[0]
 
 
 def _pending_post_bond_edge(key: WriterStateKey) -> PendingWriterEntry | None:

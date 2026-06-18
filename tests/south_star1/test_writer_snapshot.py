@@ -1811,6 +1811,116 @@ class WriterSnapshotTest(unittest.TestCase):
 
         self.assertGreaterEqual(visited, 5)
 
+    def test_cursor_audit_rejects_child_atom_occurrence_before_tree_parent(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options(rooted_at_atom=1)
+        key = _first_terminal_key(prepared, options)
+        tampered_key = _key_with_rebuilt_stereo_history(
+            prepared,
+            key,
+            atom_occurrences=(
+                key.stereo_state.atom_occurrences[1],
+                key.stereo_state.atom_occurrences[0],
+                key.stereo_state.atom_occurrences[2],
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_non_depth_first_subtree_interleaving(self) -> None:
+        prepared = _prepare(depth_first_interleaving_facts())
+        options = _writer_options(rooted_at_atom=0)
+        key = _manual_depth_first_interleaving_key()
+        tampered_key = _key_with_rebuilt_stereo_history(
+            prepared,
+            key,
+            atom_occurrences=key.stereo_state.atom_occurrences,
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_swapped_child_order_with_original_active_child(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options(rooted_at_atom=1)
+        key = _first_terminal_key(prepared, options)
+        tampered_key = _key_with_rebuilt_stereo_history(
+            prepared,
+            key,
+            atom_occurrences=(
+                key.stereo_state.atom_occurrences[0],
+                key.stereo_state.atom_occurrences[2],
+                key.stereo_state.atom_occurrences[1],
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_reordered_disconnected_component_roots(self) -> None:
+        prepared = _prepare(two_singletons_facts())
+        options = _writer_options(rooted_at_atom=0)
+        key = _manual_two_singletons_key()
+        tampered_key = _key_with_rebuilt_stereo_history(
+            prepared,
+            key,
+            atom_occurrences=(
+                key.stereo_state.atom_occurrences[1],
+                key.stereo_state.atom_occurrences[0],
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_tetra_sibling_swap_recomputed_from_forgery(self) -> None:
+        prepared = _prepare(tetrahedral_facts())
+        options = _writer_options(rooted_at_atom=1)
+        key = _first_terminal_key(prepared, options)
+        center = key.stereo_state.atom_occurrences[1]
+        flipped_center = replace(
+            center,
+            token=(
+                TetraToken.AT
+                if center.token is TetraToken.ATAT
+                else TetraToken.ATAT
+            ),
+        )
+        tampered_key = _key_with_rebuilt_stereo_history(
+            prepared,
+            key,
+            atom_occurrences=(
+                key.stereo_state.atom_occurrences[0],
+                flipped_center,
+                key.stereo_state.atom_occurrences[3],
+                key.stereo_state.atom_occurrences[2],
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
     def test_cursor_audit_rejects_duplicate_atom_occurrence(self) -> None:
         prepared = _prepare(tetrahedral_facts())
         options = _writer_options(rooted_at_atom=1)
@@ -2822,6 +2932,23 @@ def _key_with_reconstructed_residual(prepared, key):
     )
 
 
+def _key_with_rebuilt_stereo_history(
+    prepared,
+    key,
+    *,
+    atom_occurrences: tuple[WriterAtomOccurrenceRecord, ...],
+):
+    rebuilt = replace(
+        key,
+        stereo_state=replace(
+            key.stereo_state,
+            atom_occurrences=atom_occurrences,
+        ),
+    )
+    rebuilt = _key_with_reconstructed_local_orders(prepared, rebuilt)
+    return _key_with_reconstructed_residual(prepared, rebuilt)
+
+
 def _key_with_reconstructed_local_orders(prepared, key):
     parent_by_child = {
         child: parent
@@ -2969,6 +3096,90 @@ def _first_terminal_key(prepared, options):
         if not choices.choices:
             raise AssertionError("frontier cursor has no terminal path")
         cursor = choices.choices[0].successor
+
+
+def _manual_depth_first_interleaving_key():
+    key = writer_state_key(
+        WriterState(
+            component_cursor=ComponentCursor(
+                component_index=0,
+                component_roots=(AtomId(0),),
+            ),
+            active=WriterAtomFrame(
+                atom=AtomId(3),
+                parent=AtomId(1),
+                incoming_bond=BondId(2),
+                atom_emitted=True,
+            ),
+            branch_stack=(),
+            visited_atoms=frozenset((AtomId(0), AtomId(1), AtomId(2), AtomId(3))),
+            written_bonds=frozenset((BondId(0), BondId(1), BondId(2))),
+            obligations=ObligationState(),
+            ring_state=WriterRingState(),
+            stereo_state=replace(
+                empty_writer_stereo_state(),
+                atom_occurrences=(
+                    WriterAtomOccurrenceRecord(AtomId(0), TetraToken.NONE),
+                    WriterAtomOccurrenceRecord(AtomId(1), TetraToken.NONE),
+                    WriterAtomOccurrenceRecord(AtomId(2), TetraToken.NONE),
+                    WriterAtomOccurrenceRecord(AtomId(3), TetraToken.NONE),
+                ),
+                bond_occurrences=(
+                    WriterBondOccurrenceRecord(
+                        BondId(0),
+                        AtomId(0),
+                        AtomId(1),
+                        DirectionMark.ABSENT,
+                    ),
+                    WriterBondOccurrenceRecord(
+                        BondId(1),
+                        AtomId(0),
+                        AtomId(2),
+                        DirectionMark.ABSENT,
+                    ),
+                    WriterBondOccurrenceRecord(
+                        BondId(2),
+                        AtomId(1),
+                        AtomId(3),
+                        DirectionMark.ABSENT,
+                    ),
+                ),
+            ),
+            policy_state=WriterPolicyState(),
+        )
+    )
+    return key
+
+
+def _manual_two_singletons_key():
+    key = writer_state_key(
+        WriterState(
+            component_cursor=ComponentCursor(
+                component_index=1,
+                component_roots=(AtomId(0), AtomId(1)),
+            ),
+            active=WriterAtomFrame(
+                atom=AtomId(1),
+                parent=None,
+                incoming_bond=None,
+                atom_emitted=True,
+            ),
+            branch_stack=(),
+            visited_atoms=frozenset((AtomId(0), AtomId(1))),
+            written_bonds=frozenset(),
+            obligations=ObligationState(),
+            ring_state=WriterRingState(),
+            stereo_state=replace(
+                empty_writer_stereo_state(),
+                atom_occurrences=(
+                    WriterAtomOccurrenceRecord(AtomId(0), TetraToken.NONE),
+                    WriterAtomOccurrenceRecord(AtomId(1), TetraToken.NONE),
+                ),
+            ),
+            policy_state=WriterPolicyState(),
+        )
+    )
+    return key
 
 
 def _assert_residual_reconstructs(self, prepared, key) -> None:
@@ -3194,6 +3405,43 @@ def triangle_plus_singleton_facts() -> MoleculeFacts:
             ComponentFacts(
                 id=ComponentId(1),
                 atoms=(AtomId(3),),
+                bonds=(),
+            ),
+        ),
+    )
+
+
+def depth_first_interleaving_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=(atom(0, "C"), atom(1, "C"), atom(2, "O"), atom(3, "Br")),
+        bonds=(
+            single_bond(0, 0, 1),
+            single_bond(1, 0, 2),
+            single_bond(2, 1, 3),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0), AtomId(1), AtomId(2), AtomId(3)),
+                bonds=(BondId(0), BondId(1), BondId(2)),
+            ),
+        ),
+    )
+
+
+def two_singletons_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=(atom(0, "C"), atom(1, "O")),
+        bonds=(),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0),),
+                bonds=(),
+            ),
+            ComponentFacts(
+                id=ComponentId(1),
+                atoms=(AtomId(1),),
                 bonds=(),
             ),
         ),

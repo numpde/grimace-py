@@ -3733,52 +3733,51 @@ def _validate_stereo_occurrences_bound_to_graph_state(
             continue
         _invalid_snapshot("writer bond occurrence is not backed by emitted graph state")
 
-    if key.stereo_state.local_orders or prepared.tetra_templates:
-        actual_by_atom = {
-            record.atom: record
-            for record in key.stereo_state.local_orders
-        }
-        open_frame_atoms = {
-            frame.return_atom.atom
-            for frame in key.branch_stack
-        }
-        if key.active.atom_emitted:
-            open_frame_atoms.add(key.active.atom)
+    actual_by_atom = {
+        record.atom: record
+        for record in key.stereo_state.local_orders
+    }
+    open_frame_atoms = {
+        frame.return_atom.atom
+        for frame in key.branch_stack
+    }
+    if key.active.atom_emitted:
+        open_frame_atoms.add(key.active.atom)
 
-        closed_atoms = set(key.visited_atoms) - open_frame_atoms
-        active_record = actual_by_atom.get(key.active.atom)
-        active_is_closed = active_record is not None and active_record.closed
-        if active_is_closed:
-            if not _state_is_terminal_shape(prepared, key, context):
-                _invalid_snapshot(
-                    "writer active local order is closed before terminal shape"
-                )
-            closed_atoms.add(key.active.atom)
-
-        for atom in {
-            frame.return_atom.atom
-            for frame in key.branch_stack
-        }:
-            record = actual_by_atom.get(atom)
-            if record is not None and record.closed:
-                _invalid_snapshot(
-                    "writer branch-return local order is prematurely closed"
-                )
-
-        expected_records = reconstruct_writer_local_order_records(
-            prepared,
-            atom_occurrences=key.stereo_state.atom_occurrences,
-            parent_by_child=parent_by_child,
-            closed_atoms=frozenset(closed_atoms),
-        )
-        expected_by_atom = {
-            record.atom: record
-            for record in expected_records
-        }
-        if actual_by_atom != expected_by_atom:
+    closed_atoms = set(key.visited_atoms) - open_frame_atoms
+    active_record = actual_by_atom.get(key.active.atom)
+    active_is_closed = active_record is not None and active_record.closed
+    if active_is_closed:
+        if not _state_is_terminal_shape(prepared, key, context):
             _invalid_snapshot(
-                "writer local-order history does not match emitted tree history"
+                "writer active local order is closed before terminal shape"
             )
+        closed_atoms.add(key.active.atom)
+
+    for atom in {
+        frame.return_atom.atom
+        for frame in key.branch_stack
+    }:
+        record = actual_by_atom.get(atom)
+        if record is not None and record.closed:
+            _invalid_snapshot(
+                "writer branch-return local order is prematurely closed"
+            )
+
+    expected_records = reconstruct_writer_local_order_records(
+        prepared,
+        atom_occurrences=key.stereo_state.atom_occurrences,
+        parent_by_child=parent_by_child,
+        closed_atoms=frozenset(closed_atoms),
+    )
+    expected_by_atom = {
+        record.atom: record
+        for record in expected_records
+    }
+    if actual_by_atom != expected_by_atom:
+        _invalid_snapshot(
+            "writer local-order history does not match emitted tree history"
+        )
 
 
 def _pending_post_bond_edge(key: WriterStateKey) -> PendingWriterEntry | None:

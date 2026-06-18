@@ -63,6 +63,7 @@ from grimace._south_star1.writer_state import WriterRingStateKey
 from grimace._south_star1.writer_state import WriterState
 from grimace._south_star1.writer_state import writer_state_key
 from grimace._south_star1.writer_stereo import empty_writer_stereo_state
+from grimace._south_star1.writer_stereo import reconstruct_writer_local_order_records
 from grimace._south_star1.writer_stereo import _writer_stereo_relation_definitions
 from grimace._south_star1.writer_stereo import reconstruct_writer_stereo_residual_snapshot
 from grimace._south_star1.writer_stereo import WriterAtomOccurrenceRecord
@@ -1714,6 +1715,102 @@ class WriterSnapshotTest(unittest.TestCase):
 
         self.assertGreaterEqual(visited, 7)
 
+    def test_cursor_audit_rejects_missing_non_stereo_history_mid_traversal(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options(rooted_at_atom=1)
+        key = _cco_after_branch_return_key(prepared, options)
+        self.assertTrue(key.stereo_state.local_orders)
+        self.assertTrue(
+            any(record.closed for record in key.stereo_state.local_orders)
+        )
+        tampered_key = replace(
+            key,
+            stereo_state=replace(
+                key.stereo_state,
+                local_orders=(),
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_missing_non_stereo_history_at_terminal(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options(rooted_at_atom=1)
+        key = _first_terminal_key(prepared, options)
+        self.assertTrue(key.stereo_state.local_orders)
+        self.assertTrue(
+            any(record.closed for record in key.stereo_state.local_orders)
+        )
+        tampered_key = replace(
+            key,
+            stereo_state=replace(
+                key.stereo_state,
+                local_orders=(),
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_accepts_legitimately_empty_non_stereo_history(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options(rooted_at_atom=1)
+        initial = initial_writer_frontier_cursor(prepared, options)
+        root_emitted = writer_frontier_choices(
+            prepared,
+            initial,
+        ).choices[0].successor
+
+        for cursor in (initial, root_emitted):
+            with self.subTest(cursor=cursor):
+                for key, _weight in cursor.weighted_states:
+                    self.assertFalse(key.stereo_state.local_orders)
+                validate_writer_cursor_against_prepared(
+                    prepared,
+                    cursor,
+                    runtime_options=options,
+                )
+
+    def test_cursor_audit_accepts_reachable_non_stereo_traversal_states(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options(rooted_at_atom=1)
+        pending = [initial_writer_frontier_cursor(prepared, options)]
+        seen = set()
+        visited = 0
+
+        while pending:
+            cursor = pending.pop(0)
+            if cursor in seen:
+                continue
+            seen.add(cursor)
+            visited += 1
+
+            validate_writer_cursor_against_prepared(
+                prepared,
+                cursor,
+                runtime_options=options,
+            )
+
+            choices = writer_frontier_choices(prepared, cursor)
+            if choices.terminal is not None:
+                validate_writer_cursor_against_prepared(
+                    prepared,
+                    choices.terminal.finalized_cursor,
+                    runtime_options=options,
+                )
+            pending.extend(choice.successor for choice in choices.choices)
+
+        self.assertGreaterEqual(visited, 5)
+
     def test_cursor_audit_rejects_duplicate_atom_occurrence(self) -> None:
         prepared = _prepare(tetrahedral_facts())
         options = _writer_options(rooted_at_atom=1)
@@ -2531,6 +2628,7 @@ def _triangle_root_with_open_closure_key():
 
 
 def _triangle_closed_closure_key():
+    prepared = _prepare(triangle_facts())
     label = _closure_label()
     closure = WriterClosedClosure(
         bond=BondId(2),
@@ -2542,7 +2640,7 @@ def _triangle_closed_closure_key():
         first_endpoint_bond_text="",
         second_endpoint_bond_text="",
     )
-    return replace(
+    key = replace(
         _triangle_closure_candidate_key(),
         ring_state=WriterRingStateKey(
             closed_closures=(closure,),
@@ -2571,6 +2669,7 @@ def _triangle_closed_closure_key():
             ),
         ),
     )
+    return _key_with_reconstructed_local_orders(prepared, key)
 
 
 def _triangle_terminal_open_closure_key():
@@ -2593,6 +2692,7 @@ def _triangle_terminal_open_closure_key():
 
 
 def _triangle_tail_open_to_active_key():
+    prepared = _prepare(triangle_tail_facts())
     label = _closure_label()
     endpoint = WriterOpenClosureEndpoint(
         bond=BondId(2),
@@ -2602,7 +2702,7 @@ def _triangle_tail_open_to_active_key():
         first_endpoint_text="1",
         first_endpoint_bond_text="",
     )
-    return writer_state_key(
+    key = writer_state_key(
         WriterState(
             component_cursor=ComponentCursor(
                 component_index=0,
@@ -2647,6 +2747,7 @@ def _triangle_tail_open_to_active_key():
             policy_state=WriterPolicyState(),
         )
     )
+    return _key_with_reconstructed_local_orders(prepared, key)
 
 
 def _tetra_center_key(prepared, options):
@@ -2721,6 +2822,59 @@ def _key_with_reconstructed_residual(prepared, key):
     )
 
 
+def _key_with_reconstructed_local_orders(prepared, key):
+    parent_by_child = {
+        child: parent
+        for child, (parent, _bond) in _snapshot_parent_links(prepared, key).items()
+    }
+    open_frame_atoms = {
+        frame.return_atom.atom
+        for frame in key.branch_stack
+    }
+    if key.active.atom_emitted:
+        open_frame_atoms.add(key.active.atom)
+    closed_atoms = frozenset(set(key.visited_atoms) - open_frame_atoms)
+    return replace(
+        key,
+        stereo_state=replace(
+            key.stereo_state,
+            local_orders=reconstruct_writer_local_order_records(
+                prepared,
+                atom_occurrences=key.stereo_state.atom_occurrences,
+                parent_by_child=parent_by_child,
+                closed_atoms=closed_atoms,
+            ),
+        ),
+    )
+
+
+def _snapshot_parent_links(prepared, key):
+    parent_by_child = {}
+    for index in range(key.component_cursor.component_index + 1):
+        component = prepared.facts.components[index]
+        component_bonds = frozenset(component.bonds)
+        written = frozenset(
+            bond for bond in key.written_bonds if bond in component_bonds
+        )
+        root = key.component_cursor.component_roots[index]
+        adjacency = {}
+        for bond in written:
+            fact = prepared.graph_index.bond_by_id[bond]
+            adjacency.setdefault(fact.a, []).append((fact.b, bond))
+            adjacency.setdefault(fact.b, []).append((fact.a, bond))
+        seen = {root}
+        stack = [root]
+        while stack:
+            parent = stack.pop()
+            for child, bond in adjacency.get(parent, ()):
+                if child in seen:
+                    continue
+                seen.add(child)
+                parent_by_child[child] = (parent, bond)
+                stack.append(child)
+    return parent_by_child
+
+
 def _cco_after_second_atom_key(prepared, options):
     cursor = initial_writer_frontier_cursor(prepared, options)
     after_root = writer_frontier_choices(prepared, cursor).choices[0].successor
@@ -2745,6 +2899,21 @@ def _cco_branch_child_key(prepared, options):
         after_branch_open,
     ).choices[0].successor
     return after_branch_child.weighted_states[0][0]
+
+
+def _cco_after_branch_return_key(prepared, options):
+    cursor = initial_writer_frontier_cursor(prepared, options)
+    after_root = writer_frontier_choices(prepared, cursor).choices[0].successor
+    after_branch_open = writer_frontier_choices(prepared, after_root).choices[0].successor
+    after_branch_child = writer_frontier_choices(
+        prepared,
+        after_branch_open,
+    ).choices[0].successor
+    after_branch_close = writer_frontier_choices(
+        prepared,
+        after_branch_child,
+    ).choices[0].successor
+    return after_branch_close.weighted_states[0][0]
 
 
 def _directional_double_branch_post_bond_key(prepared, options):

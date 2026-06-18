@@ -75,6 +75,22 @@ class WriterStereoResidualTest(unittest.TestCase):
         self.assertEqual(support.distinct_count, 2)
         self.assertEqual(support.witness_count, 2)
 
+    def test_initial_writer_state_accepts_independent_tetra_sites(self) -> None:
+        prepared = _prepare(_two_independent_tetra_facts())
+        cursor = initial_writer_frontier_cursor(
+            prepared,
+            _writer_options(rooted_at_atom=0),
+        )
+        key = cursor.weighted_states[0][0]
+
+        self.assertEqual(
+            sum(
+                factor.key.kind == "tetra_site"
+                for factor in key.stereo_state.residual_snapshot.factors
+            ),
+            2,
+        )
+
     def test_tetra_frontier_counts_are_pruned_per_token(self) -> None:
         prepared = _prepare(tetrahedral_facts())
         cursor = initial_writer_frontier_cursor(
@@ -678,6 +694,113 @@ def triangle_no_stereo_facts() -> MoleculeFacts:
                 id=ComponentId(0),
                 atoms=(AtomId(0), AtomId(1), AtomId(2)),
                 bonds=(BondId(0), BondId(1), BondId(2)),
+            ),
+        ),
+    )
+
+
+def _two_independent_tetra_facts() -> MoleculeFacts:
+    left_site = SiteId(0)
+    right_site = SiteId(1)
+    return MoleculeFacts(
+        atoms=(
+            atom(0, "C"),
+            atom(1, "C"),
+            atom(2, "F"),
+            atom(3, "Cl"),
+            atom(4, "Br"),
+            atom(5, "O"),
+        ),
+        bonds=(
+            single_bond(0, 0, 1),
+            single_bond(1, 0, 2),
+            single_bond(2, 0, 3),
+            single_bond(3, 1, 4),
+            single_bond(4, 1, 5),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=tuple(AtomId(index) for index in range(6)),
+                bonds=tuple(BondId(index) for index in range(5)),
+            ),
+        ),
+        stereo=StereoFacts(
+            tetrahedral=(
+                TetrahedralSiteFacts(
+                    id=left_site,
+                    center=AtomId(0),
+                    status=SiteStatus.SPECIFIED,
+                    target=TetraValue.PLUS,
+                    ligand_occurrences=_occurrences(0, 1, 2, 3),
+                    reference_order=_occurrences(0, 1, 2, 3),
+                ),
+                TetrahedralSiteFacts(
+                    id=right_site,
+                    center=AtomId(1),
+                    status=SiteStatus.SPECIFIED,
+                    target=TetraValue.PLUS,
+                    ligand_occurrences=_occurrences(4, 5, 6, 7),
+                    reference_order=_occurrences(4, 5, 6, 7),
+                ),
+            ),
+        ),
+        ligand_occurrences=(
+            LigandOccurrence(
+                id=OccurrenceId(0),
+                site=left_site,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(1),
+                bond=BondId(0),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(1),
+                site=left_site,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(2),
+                bond=BondId(1),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(2),
+                site=left_site,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(3),
+                bond=BondId(2),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(3),
+                site=left_site,
+                kind=LigandKind.IMPLICIT_H,
+                atom=AtomId(0),
+                bond=None,
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(4),
+                site=right_site,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(0),
+                bond=BondId(0),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(5),
+                site=right_site,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(4),
+                bond=BondId(3),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(6),
+                site=right_site,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(5),
+                bond=BondId(4),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(7),
+                site=right_site,
+                kind=LigandKind.IMPLICIT_H,
+                atom=AtomId(1),
+                bond=None,
             ),
         ),
     )

@@ -27,6 +27,7 @@ from grimace._south_star1.residual_constraints import TetraResidualFactor
 from grimace._south_star1.residual_constraints import TetraResidualFactorValueSnapshot
 from grimace._south_star1.residual_constraints import VarId
 from grimace._south_star1.residual_constraints import add_factor_and_propagate
+from grimace._south_star1.residual_constraints import add_factors_and_propagate
 from grimace._south_star1.residual_constraints import direction_var
 from grimace._south_star1.residual_constraints import residual_store_constraint_components
 from grimace._south_star1.residual_constraints import residual_store_projected_values
@@ -218,6 +219,118 @@ class ResidualConstraintTest(unittest.TestCase):
                 continue
             self.assertEqual(store.domain(left), domain)
             self.assertEqual(store.domain(right), domain)
+
+    def test_bulk_factor_addition_preserves_independent_tetra_components(self) -> None:
+        store = ResidualStore()
+        left = tetra_var(("left",))
+        right = tetra_var(("right",))
+        domain = (TetraToken.AT, TetraToken.ATAT)
+        store.add_var(left, domain)
+        store.add_var(right, domain)
+
+        result = add_factors_and_propagate(
+            store,
+            (
+                _tetra_factor_for_var(left, target=TetraValue.PLUS),
+                _tetra_factor_for_var(right, target=TetraValue.PLUS),
+            ),
+        )
+
+        self.assertIs(result.kind, ResidualPropagationKind.CERTIFIED_CONSISTENT)
+        self.assertEqual(store.domain(left), (TetraToken.AT,))
+        self.assertEqual(store.domain(right), (TetraToken.AT,))
+        self.assertEqual(len(result.stats.component_variables), 2)
+        self.assertEqual(len(result.stats.component_factor_keys), 2)
+
+    def test_bulk_factor_addition_preserves_tetra_and_directional_components(self) -> None:
+        store = ResidualStore()
+        tetra = tetra_var(("tetra",))
+        left = direction_var(("left",))
+        right = direction_var(("right",))
+        store.add_var(tetra, (TetraToken.AT, TetraToken.ATAT))
+        for var in (left, right):
+            store.add_var(var, (DirectionMark.FWD, DirectionMark.REV))
+
+        result = add_factors_and_propagate(
+            store,
+            (
+                _tetra_factor_for_var(tetra, target=TetraValue.PLUS),
+                _directional_factor_between(
+                    left,
+                    right,
+                    DirectionalValue.TOGETHER,
+                ),
+            ),
+        )
+
+        self.assertIs(result.kind, ResidualPropagationKind.CERTIFIED_CONSISTENT)
+        self.assertEqual(store.domain(tetra), (TetraToken.AT,))
+        self.assertEqual(store.domain(left), (DirectionMark.FWD, DirectionMark.REV))
+        self.assertEqual(store.domain(right), (DirectionMark.FWD, DirectionMark.REV))
+
+    def test_atomic_restrictions_preserve_independent_components(self) -> None:
+        store = ResidualStore()
+        first_left = direction_var(("first-left",))
+        first_right = direction_var(("first-right",))
+        second_left = direction_var(("second-left",))
+        second_right = direction_var(("second-right",))
+        domain = (DirectionMark.FWD, DirectionMark.REV)
+        for var in (first_left, first_right, second_left, second_right):
+            store.add_var(var, domain)
+        self.assertIs(
+            add_factors_and_propagate(
+                store,
+                (
+                    _directional_factor_between(
+                        first_left,
+                        first_right,
+                        DirectionalValue.TOGETHER,
+                    ),
+                    _directional_factor_between(
+                        second_left,
+                        second_right,
+                        DirectionalValue.OPPOSITE,
+                    ),
+                ),
+            ).kind,
+            ResidualPropagationKind.CERTIFIED_CONSISTENT,
+        )
+
+        result = store.restrict_many_and_propagate(
+            (
+                (first_left, DirectionMark.FWD),
+                (second_left, DirectionMark.FWD),
+            )
+        )
+
+        self.assertIs(result.kind, ResidualPropagationKind.CERTIFIED_CONSISTENT)
+        self.assertEqual(store.domain(first_right), (DirectionMark.FWD,))
+        self.assertEqual(store.domain(second_right), (DirectionMark.REV,))
+
+    def test_bulk_factor_addition_rolls_back_when_one_component_contradicts(self) -> None:
+        store = ResidualStore()
+        good = tetra_var(("good",))
+        left = direction_var(("left",))
+        right = direction_var(("right",))
+        store.add_var(good, (TetraToken.AT, TetraToken.ATAT))
+        store.add_var(left, (DirectionMark.FWD,))
+        store.add_var(right, (DirectionMark.ABSENT,))
+        before = store.value_snapshot()
+
+        result = add_factors_and_propagate(
+            store,
+            (
+                _tetra_factor_for_var(good, target=TetraValue.PLUS),
+                _directional_factor_between(
+                    left,
+                    right,
+                    DirectionalValue.OPPOSITE,
+                ),
+            ),
+        )
+
+        self.assertIs(result.kind, ResidualPropagationKind.CONTRADICTION)
+        self.assertEqual(store.value_snapshot(), before)
 
     def test_factor_addition_rolls_back_on_contradiction(self) -> None:
         store = ResidualStore()
@@ -949,6 +1062,20 @@ def _tetra_factor(
         target=target,
         reference_order=_occurrences(0, 1, 2, 3),
         local_order=_occurrences(*local_order),
+    )
+
+
+def _tetra_factor_for_var(
+    var: VarId,
+    *,
+    target: TetraValue,
+) -> TetraResidualFactor:
+    return TetraResidualFactor(
+        scope=(var,),
+        status=SiteStatus.SPECIFIED,
+        target=target,
+        reference_order=_occurrences(0, 1, 2, 3),
+        local_order=_occurrences(0, 1, 2, 3),
     )
 
 

@@ -51,6 +51,7 @@ from .writer_frontier import _initial_writer_transition_frontier_cursor
 from .writer_frontier import _writer_frontier_choice_snapshot
 from .writer_frontier import initial_writer_frontier_cursor
 from .writer_frontier import iter_writer_frontier_support
+from .writer_stereo import _writer_stereo_relation_definitions
 from .writer_state import ComponentCursor
 from .writer_state import ObligationStateKey
 from .writer_state import PendingEntryPhase
@@ -3978,6 +3979,17 @@ def _validate_live_residual_stereo_coverage(
     tetra_by_center,
     directional_sites_by_bond: dict[BondId, tuple[SiteId, ...]],
 ) -> None:
+    expected_factors = _expected_live_residual_stereo_factor_snapshots(
+        prepared,
+        stereo_state,
+    )
+    actual_factors = {
+        snapshot.key: snapshot
+        for snapshot in stereo_state.residual_snapshot.factors
+    }
+    if actual_factors != expected_factors:
+        _invalid_snapshot("writer live residual factors do not match obligations")
+
     assignment_vars = _residual_assignment_vars(stereo_state)
     domain_vars = _residual_domain_vars(stereo_state)
     factor_vars = frozenset(
@@ -4022,6 +4034,44 @@ def _validate_live_residual_stereo_coverage(
                 _invalid_snapshot("writer directional assignment lacks bond occurrence")
         else:
             _invalid_snapshot("writer residual variable has unknown live stereo kind")
+
+
+def _expected_live_residual_stereo_factor_snapshots(
+    prepared: SouthStarPreparedMol,
+    stereo_state: WriterStereoStateKey,
+) -> dict[object, object]:
+    _domains, factors = _writer_stereo_relation_definitions(prepared)
+    emitted_bonds = frozenset(record.bond for record in stereo_state.bond_occurrences)
+    tetra_by_site = {template.site: template for template in prepared.tetra_templates}
+
+    expected: dict[object, object] = {}
+    for factor in factors:
+        key = factor.key
+        if key.kind == "tetra_site":
+            site = SiteId(int(key.key[0]))
+            template = tetra_by_site.get(site)
+            if template is None:
+                _invalid_snapshot("writer tetra factor references unknown site")
+            record = _local_order_record(stereo_state, template.center)
+            if record is not None and record.closed:
+                continue
+        elif key.kind == "directional_bond_emission":
+            bond = BondId(int(key.key[0]))
+            if bond in emitted_bonds:
+                continue
+        elif key.kind == "directional_site":
+            carrier_bonds = frozenset(
+                BondId(int(var.key[1]))
+                for var in factor.scope
+            )
+            if carrier_bonds.issubset(emitted_bonds):
+                continue
+        else:
+            _invalid_snapshot("writer residual factor has unknown live stereo kind")
+
+        expected[key] = factor.value_snapshot()
+
+    return expected
 
 
 def _directional_reference_pair(template) -> tuple[OccurrenceId, OccurrenceId]:

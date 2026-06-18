@@ -1358,20 +1358,21 @@ def _assert_replay_succeeds_for_execution_capability_uses(
     prepared: SouthStarPreparedMol,
 ) -> None:
     for use in audit.execution_capability_uses:
-        outcome = (
+        choices = writer_snapshot._writer_frontier_choice_snapshot(
+            prepared,
+            use.source_cursor,
+            include_counts=False,
+        )
+        choice = (
             writer_snapshot
-            ._writer_snapshot_prefix_read_outcome_after_emitted_texts(
-                snapshot,
-                prepared=prepared,
-                emitted_texts=(*use.emitted_texts, use.next_emitted_text),
-                include_counts=False,
+            ._writer_frontier_choice_snapshot_entry_for_emitted_text(
+                choices,
+                use.next_emitted_text,
             )
         )
 
-        test_case.assertIs(
-            outcome.kind,
-            writer_snapshot._WriterSnapshotPrefixReadOutcomeKind.READABLE,
-        )
+        test_case.assertIn(use.kind, choice.execution_capabilities)
+        test_case.assertEqual(choice.successor, use.successor_cursor)
 
 
 def _assert_private_monocycle_attachment_audit_outcome(

@@ -104,17 +104,24 @@ def empty_writer_stereo_state() -> "WriterStereoState":
     )
 
 
-def initial_writer_stereo_state(prepared: SouthStarPreparedMol) -> "WriterStereoState":
-    from .writer_state import WriterStereoState
+def _writer_stereo_relation_definitions(
+    prepared: SouthStarPreparedMol,
+) -> tuple[tuple[tuple[VarId, tuple[object, ...]], ...], tuple[object, ...]]:
+    domains: list[tuple[VarId, tuple[object, ...]]] = []
+    factors: list[object] = []
+    seen_vars: set[VarId] = set()
 
-    store = ResidualStore()
-    factors = []
+    def add_var(var: VarId, domain: tuple[object, ...]) -> None:
+        if var in seen_vars:
+            return
+        seen_vars.add(var)
+        domains.append((var, domain))
 
     for template in prepared.tetra_templates:
         token = tetra_token_var(template.site)
         parity = tetra_parity_var(template.site)
-        store.add_var(token, _tetra_domain(template))
-        store.add_var(parity, (TetraLocalParity.EVEN, TetraLocalParity.ODD))
+        add_var(token, _tetra_domain(template))
+        add_var(parity, (TetraLocalParity.EVEN, TetraLocalParity.ODD))
         factors.append(
             TetraTokenParityFactor(
                 key=_tetra_factor_key(template.site),
@@ -129,8 +136,7 @@ def initial_writer_stereo_state(prepared: SouthStarPreparedMol) -> "WriterStereo
         site_models = _directional_site_carrier_models(prepared, template)
         scope = tuple(var for var, _ in site_models)
         for var in scope:
-            if not store.contains_var(var):
-                store.add_var(var, _directional_normalized_domain())
+            add_var(var, _directional_normalized_domain())
         factors.append(
             DirectionalSiteFactor(
                 key=_directional_site_factor_key(template.site),
@@ -152,6 +158,17 @@ def initial_writer_stereo_state(prepared: SouthStarPreparedMol) -> "WriterStereo
                 allowed_marks=_allowed_direction_marks(prepared, bond),
             )
         )
+
+    return tuple(domains), tuple(factors)
+
+
+def initial_writer_stereo_state(prepared: SouthStarPreparedMol) -> "WriterStereoState":
+    from .writer_state import WriterStereoState
+
+    store = ResidualStore()
+    domains, factors = _writer_stereo_relation_definitions(prepared)
+    for var, domain in domains:
+        store.add_var(var, domain)
 
     result = add_factors_and_propagate(store, tuple(factors))
     if not _writer_residual_mutation_is_legal(
@@ -1100,6 +1117,7 @@ __all__ = (
     "advance_writer_stereo_state",
     "empty_writer_stereo_state",
     "initial_writer_stereo_state",
+    "_writer_stereo_relation_definitions",
     "terminal_writer_stereo_state",
     "validate_writer_stereo_supported_prepared",
     "writer_atom_text_choices",

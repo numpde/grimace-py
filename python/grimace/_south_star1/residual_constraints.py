@@ -247,8 +247,9 @@ class ResidualStore:
                 return result
             affected.append(var)
 
-        component = self._component_from_variables(tuple(affected))
-        return self._propagate_component(component)
+        return self._propagate_components(
+            self._components_from_variables(tuple(affected)),
+        )
 
     def _install_restriction(
         self,
@@ -401,6 +402,22 @@ class ResidualStore:
             factor_keys=tuple(sorted(seen_factors, key=_factor_key_sort_key)),
         )
 
+    def _components_from_variables(
+        self,
+        seed_variables: tuple[VarId, ...],
+    ) -> tuple[_ResidualLiveComponent, ...]:
+        seen_variables: set[VarId] = set()
+        components: list[_ResidualLiveComponent] = []
+
+        for var in seed_variables:
+            if var in seen_variables:
+                continue
+            component = self._component_from_variables((var,))
+            seen_variables.update(component.variables)
+            components.append(component)
+
+        return tuple(components)
+
     def _component_from_factor_key(
         self,
         factor_key: ResidualFactorKey,
@@ -534,6 +551,68 @@ class ResidualStore:
             ),
         )
 
+    def _propagate_components(
+        self,
+        components: tuple[_ResidualLiveComponent, ...],
+    ) -> ResidualPropagationResult:
+        results = tuple(self._propagate_component(component) for component in components)
+        if not results:
+            return ResidualPropagationResult(
+                ResidualPropagationKind.CERTIFIED_CONSISTENT,
+                ResidualPropagationStats(),
+            )
+
+        for result in results:
+            if result.kind is ResidualPropagationKind.CONTRADICTION:
+                return result
+
+        for result in results:
+            if (
+                result.kind
+                is ResidualPropagationKind.LOCALLY_CONSISTENT_UNCERTIFIED
+            ):
+                return result
+
+        variables = tuple(
+            sorted(
+                {
+                    var
+                    for result in results
+                    for var in result.stats.component_variables
+                },
+                key=_var_sort_key,
+            )
+        )
+        factor_keys = tuple(
+            sorted(
+                {
+                    key
+                    for result in results
+                    for key in result.stats.component_factor_keys
+                },
+                key=_factor_key_sort_key,
+            )
+        )
+        return ResidualPropagationResult(
+            ResidualPropagationKind.CERTIFIED_CONSISTENT,
+            ResidualPropagationStats(
+                component_variables=variables,
+                component_factor_keys=factor_keys,
+                checked_candidate_rows=sum(
+                    result.stats.checked_candidate_rows
+                    for result in results
+                ),
+                largest_factor_scope=max(
+                    result.stats.largest_factor_scope
+                    for result in results
+                ),
+                largest_candidate_row_count=max(
+                    result.stats.largest_candidate_row_count
+                    for result in results
+                ),
+            ),
+        )
+
     def _component_incidence_is_acyclic(
         self,
         component: _ResidualLiveComponent,
@@ -654,14 +733,15 @@ def add_factors_and_propagate(
             for factor in factors
             for var in factor.scope
         )
-        if affected_variables:
-            component = store._component_from_variables(affected_variables)
-        else:
-            component = _ResidualLiveComponent(
-                variables=(),
-                factor_keys=factor_keys,
-            )
-        result = store._propagate_component(component)
+        components = store._components_from_variables(affected_variables)
+        zero_scope_components = tuple(
+            _ResidualLiveComponent(variables=(), factor_keys=(factor_key,))
+            for factor_key in factor_keys
+            if not store._factors[factor_key].scope
+        )
+        result = store._propagate_components(
+            components + zero_scope_components,
+        )
         if result.kind is ResidualPropagationKind.CONTRADICTION:
             store.rollback(checkpoint)
         return result

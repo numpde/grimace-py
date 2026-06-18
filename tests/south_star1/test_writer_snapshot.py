@@ -26,6 +26,7 @@ from grimace._south_star1.residual_constraints import DirectionalCarrierResidual
 from grimace._south_star1.residual_constraints import DirectionalResidualFactor
 from grimace._south_star1.residual_constraints import ResidualPropagationKind
 from grimace._south_star1.residual_constraints import ResidualStore
+from grimace._south_star1.residual_constraints import ResidualStoreValueSnapshot
 from grimace._south_star1.residual_constraints import add_factor_and_propagate
 from grimace._south_star1.residual_constraints import direction_var
 from grimace._south_star1.residual_constraints import tetra_var
@@ -61,6 +62,7 @@ from grimace._south_star1.writer_state import WriterRingStateKey
 from grimace._south_star1.writer_state import WriterState
 from grimace._south_star1.writer_state import writer_state_key
 from grimace._south_star1.writer_stereo import empty_writer_stereo_state
+from grimace._south_star1.writer_stereo import _writer_stereo_relation_definitions
 from grimace._south_star1.writer_stereo import WriterAtomOccurrenceRecord
 from grimace._south_star1.writer_stereo import WriterBondOccurrenceRecord
 from grimace._south_star1.writer_stereo import WriterLocalOrderRecord
@@ -1594,6 +1596,140 @@ class WriterSnapshotTest(unittest.TestCase):
             stereo_state=replace(
                 key.stereo_state,
                 residual_snapshot=residual_snapshot,
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_missing_initial_tetra_factor(self) -> None:
+        prepared = _prepare(tetrahedral_facts())
+        options = _writer_options(rooted_at_atom=1)
+        key = initial_writer_frontier_cursor(prepared, options).weighted_states[0][0]
+        tampered_key = replace(
+            key,
+            stereo_state=replace(
+                key.stereo_state,
+                residual_snapshot=empty_writer_stereo_state().residual_snapshot,
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_missing_directional_site_factor(self) -> None:
+        prepared = _prepare(directional_facts())
+        options = _writer_options(rooted_at_atom=2)
+        key = initial_writer_frontier_cursor(prepared, options).weighted_states[0][0]
+        snapshot = key.stereo_state.residual_snapshot
+        tampered_snapshot = replace(
+            snapshot,
+            factors=tuple(
+                factor
+                for factor in snapshot.factors
+                if factor.key.kind != "directional_site"
+            ),
+        )
+        tampered_key = replace(
+            key,
+            stereo_state=replace(
+                key.stereo_state,
+                residual_snapshot=tampered_snapshot,
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_missing_directional_bond_factor(self) -> None:
+        prepared = _prepare(directional_facts())
+        options = _writer_options(rooted_at_atom=2)
+        key = initial_writer_frontier_cursor(prepared, options).weighted_states[0][0]
+        snapshot = key.stereo_state.residual_snapshot
+        tampered_snapshot = replace(
+            snapshot,
+            factors=tuple(
+                factor
+                for factor in snapshot.factors
+                if factor.key.kind != "directional_bond_emission"
+            ),
+        )
+        tampered_key = replace(
+            key,
+            stereo_state=replace(
+                key.stereo_state,
+                residual_snapshot=tampered_snapshot,
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_altered_live_factor_definition(self) -> None:
+        prepared = _prepare(directional_facts())
+        options = _writer_options(rooted_at_atom=2)
+        key = initial_writer_frontier_cursor(prepared, options).weighted_states[0][0]
+        snapshot = key.stereo_state.residual_snapshot
+        tampered_factors = tuple(
+            replace(factor, allowed_marks=(DirectionMark.ABSENT,))
+            if factor.key.kind == "directional_bond_emission"
+            else factor
+            for factor in snapshot.factors
+        )
+        tampered_key = replace(
+            key,
+            stereo_state=replace(
+                key.stereo_state,
+                residual_snapshot=replace(snapshot, factors=tampered_factors),
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_extra_tetra_factor_after_closure(self) -> None:
+        prepared, options, key = _terminal_tetra_key()
+        domains, factors = _writer_stereo_relation_definitions(prepared)
+        factor = next(
+            item
+            for item in factors
+            if item.key.kind == "tetra_site"
+        )
+        factor_vars = frozenset(factor.scope)
+        tampered_snapshot = ResidualStoreValueSnapshot(
+            domains=tuple(
+                (var, domain)
+                for var, domain in domains
+                if var in factor_vars
+            ),
+            assignments=(),
+            factors=(factor.value_snapshot(),),
+        )
+        tampered_key = replace(
+            key,
+            stereo_state=replace(
+                key.stereo_state,
+                residual_snapshot=tampered_snapshot,
             ),
         )
 

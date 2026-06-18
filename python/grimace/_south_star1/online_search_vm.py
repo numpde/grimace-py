@@ -52,7 +52,6 @@ from .residual_constraints import ResidualStore
 from .residual_constraints import ResidualStoreValueSnapshot
 from .residual_constraints import VarId
 from .residual_constraints import direction_var
-from .residual_constraints import residual_store_assignments_have_support
 from .root_domains import component_root_domains_for_facts
 from .semantics import ParserSemantics
 from .skeleton import ChildRole
@@ -1786,8 +1785,27 @@ def _complete_direction_frame(
     ):
         return
     store = ResidualStore.from_value_snapshot(frame.residual_snapshot)
-    if not residual_store_assignments_have_support(store.value_snapshot(), ()):
+    result = store.restrict_many_and_propagate(
+        tuple(
+            (direction_var(carrier_id), mark)
+            for carrier_id, mark in frame.marks
+        )
+    )
+    if result.kind is ResidualPropagationKind.CONTRADICTION:
         return
+    if result.kind is ResidualPropagationKind.LOCALLY_CONSISTENT_UNCERTIFIED:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "complete directional assignment remained uncertified",
+        )
+    result = store.propagate_all_components()
+    if result.kind is ResidualPropagationKind.CONTRADICTION:
+        return
+    if result.kind is ResidualPropagationKind.LOCALLY_CONSISTENT_UNCERTIFIED:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "complete directional assignment remained uncertified",
+        )
     direction_frame = OnlineSearchFrame(
         frame if retained_frame is None else retained_frame
     )

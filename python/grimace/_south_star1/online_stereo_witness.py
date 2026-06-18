@@ -47,7 +47,6 @@ from .residual_constraints import DirectionalCarrierResidual
 from .residual_constraints import DirectionalResidualFactor
 from .residual_constraints import ResidualPropagationKind
 from .residual_constraints import ResidualStore
-from .residual_constraints import residual_store_assignments_have_support
 from .residual_constraints import direction_var
 from .semantics import ParserSemantics
 from .stereo_templates import DirectionalTemplate
@@ -530,8 +529,14 @@ def _iter_directional_candidates(
                 marks=marks,
             ):
                 return
-            if not residual_store_assignments_have_support(store.value_snapshot(), ()):
+            result = store.propagate_all_components()
+            if result.kind is ResidualPropagationKind.CONTRADICTION:
                 return
+            if result.kind is ResidualPropagationKind.LOCALLY_CONSISTENT_UNCERTIFIED:
+                raise SouthStarError(
+                    SouthStarErrorKind.INTERNAL_INVARIANT,
+                    "complete directional assignment remained uncertified",
+                )
             support = frozenset(
                 carrier_id
                 for carrier_id, mark in marks.items()

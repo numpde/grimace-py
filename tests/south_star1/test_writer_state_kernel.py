@@ -582,6 +582,28 @@ def _cyclic_profile_matrix_cases() -> tuple[_CyclicProfileMatrixCase, ...]:
     )
 
 
+_CYCLIC_PROFILE_MATRIX_PRIVATE_REPLAY_CASE_NAMES = frozenset(
+    (
+        "ring3 bare",
+        "ring3 + one pendant boundary double bond",
+        "ring3 + one pendant chain depth 3",
+        "ring3 + mixed depth 2 and singleton pendants",
+        "ring4 bare",
+        "ring5 bare",
+        "ring3 with two-boundary non-core path",
+    )
+)
+
+
+def _cyclic_profile_matrix_private_replay_cases(
+) -> tuple[_CyclicProfileMatrixCase, ...]:
+    return tuple(
+        case
+        for case in _cyclic_profile_matrix_cases()
+        if case.name in _CYCLIC_PROFILE_MATRIX_PRIVATE_REPLAY_CASE_NAMES
+    )
+
+
 def _ring3_with_two_boundary_noncore_path_facts() -> MoleculeFacts:
     return MoleculeFacts(
         atoms=(
@@ -1640,16 +1662,6 @@ def _writer_cursor_stereo_obligation_signatures(
     signatures: list[tuple[object, ...]] = []
 
     for key, weight in cursor.weighted_states:
-        delayed_factors = tuple(
-            (
-                factor.kind,
-                factor.site,
-                factor.scope,
-                factor.evidence,
-                factor.closed,
-            )
-            for factor in getattr(key.stereo_state, "delayed_factors", ())
-        )
         signatures.append(
             (
                 weight,
@@ -1657,31 +1669,10 @@ def _writer_cursor_stereo_obligation_signatures(
                 key.stereo_state.atom_occurrences,
                 key.stereo_state.bond_occurrences,
                 key.stereo_state.local_orders,
-                delayed_factors,
             )
         )
 
     return tuple(signatures)
-
-
-def _writer_stereo_signature_delayed_factors(
-    signatures: tuple[tuple[object, ...], ...],
-) -> tuple[object, ...]:
-    return tuple(
-        factor
-        for signature in signatures
-        for factor in signature[-1]
-    )
-
-
-def _writer_stereo_signature_unclosed_delayed_factors(
-    signatures: tuple[tuple[object, ...], ...],
-) -> tuple[object, ...]:
-    return tuple(
-        factor
-        for factor in _writer_stereo_signature_delayed_factors(signatures)
-        if not factor[-1]
-    )
 
 
 def _assert_public_online_loop_support_contract(
@@ -3403,9 +3394,7 @@ class WriterStateKernelTest(unittest.TestCase):
         )
         blocked_prefix = writer_snapshot._WriterResidualCyclicReadinessBlockedPrefix(
             emitted_texts=(),
-            prefix_read_outcome=self._test_final_blocked_prefix_outcome(
-                choice_snapshot,
-            ),
+            choice_snapshot=choice_snapshot,
         )
 
         ready_gate = writer_snapshot._WriterResidualCyclicReadinessGate(
@@ -3456,6 +3445,35 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
         return ready_gate, blocked_gate, truncated_gate
+
+    def _test_blocked_residual_cyclic_readiness_gate(
+        self,
+        *,
+        snapshot: writer_snapshot.WriterSearchSnapshot,
+        choice_snapshot: writer_frontier_module._WriterFrontierChoiceSnapshot,
+        emitted_texts: tuple[str, ...] = (),
+    ) -> writer_snapshot._WriterResidualCyclicReadinessGate:
+        blocked_prefix = writer_snapshot._WriterResidualCyclicReadinessBlockedPrefix(
+            emitted_texts=emitted_texts,
+            choice_snapshot=choice_snapshot,
+        )
+        return writer_snapshot._WriterResidualCyclicReadinessGate(
+            kind=(
+                writer_snapshot
+                ._WriterResidualCyclicReadinessGateKind
+                .BLOCKED
+            ),
+            snapshot=snapshot,
+            audit=writer_snapshot._WriterResidualCyclicReadinessAudit(
+                kind=(
+                    writer_snapshot
+                    ._WriterResidualCyclicReadinessAuditKind
+                    .BLOCKED
+                ),
+                visited_prefixes=(emitted_texts,),
+                blocked_prefixes=(blocked_prefix,),
+            ),
+        )
 
     def _test_active_outcome_for_graph_policy(
         self,
@@ -16089,7 +16107,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_public_cyclic_profile_matrix_supported_rows_close_public_online_loop(
         self,
     ) -> None:
-        for case in _cyclic_profile_matrix_cases():
+        for case in _cyclic_profile_matrix_private_replay_cases():
             if not case.expected_supported:
                 continue
 
@@ -16312,6 +16330,13 @@ class WriterStateKernelTest(unittest.TestCase):
     ) -> None:
         for case in _cyclic_profile_matrix_cases():
             with self.subTest(name=case.name):
+                self.assertIsInstance(
+                    case.expected_private_status,
+                    _CyclicProfileMatrixPrivateStatus,
+                )
+
+        for case in _cyclic_profile_matrix_private_replay_cases():
+            with self.subTest(name=case.name, replay=True):
                 _assert_private_contract_status_for_cyclic_profile_case(
                     self,
                     case=case,
@@ -16320,7 +16345,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_public_cyclic_profile_matrix_private_diagnostics_align_when_contract_closes(
         self,
     ) -> None:
-        for case in _cyclic_profile_matrix_cases():
+        for case in _cyclic_profile_matrix_private_replay_cases():
             if (
                 case.expected_private_status
                 is not _CyclicProfileMatrixPrivateStatus.CONTRACT_CLOSES
@@ -16961,12 +16986,7 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(endpoint.label, WriterClosureLabel(value=1, text="1"))
         self.assertEqual(endpoint.first_endpoint_text, "1")
         self.assertEqual(endpoint.first_endpoint_bond_text, "")
-        self.assertTrue(
-            any(
-                factor.kind == "ring_pair" and not factor.closed
-                for factor in opened.stereo_state.delayed_factors
-            )
-        )
+        self.assertEqual(opened.stereo_state.residual_snapshot.factors, ())
 
     def test_raw_closure_endpoint_transition_pairs_ring_label(self) -> None:
         prepared = _prepare(cyclopropane_facts())
@@ -17006,12 +17026,7 @@ class WriterStateKernelTest(unittest.TestCase):
             closed.ring_state.label_state.reusable,
             (WriterClosureLabel(value=1, text="1"),),
         )
-        self.assertTrue(
-            any(
-                factor.kind == "ring_pair" and factor.closed
-                for factor in closed.stereo_state.delayed_factors
-            )
-        )
+        self.assertEqual(closed.stereo_state.residual_snapshot.factors, ())
 
     def test_internal_transition_frontier_steps_cyclic_closure_lifecycle(self) -> None:
         prepared = _prepare(cyclopropane_facts())
@@ -17739,13 +17754,13 @@ class WriterStateKernelTest(unittest.TestCase):
                         signatures = _writer_cursor_stereo_obligation_signatures(
                             cursor=terminal.finalized_cursor,
                         )
-                        self.assertEqual(
-                            (
-                                _writer_stereo_signature_unclosed_delayed_factors(
-                                    signatures
-                                )
-                            ),
-                            (),
+                        self.assertTrue(
+                            all(
+                                not signature[1].domains
+                                and not signature[1].assignments
+                                and not signature[1].factors
+                                for signature in signatures
+                            )
                         )
 
                     for choice in outcome.public_choices.choices:
@@ -17753,99 +17768,6 @@ class WriterStateKernelTest(unittest.TestCase):
 
                 rec(())
                 self.assertGreater(terminal_count, 0)
-
-    @unittest.skip("ring-pair delayed stereo mirror was removed")
-    def test_cyclic_open_ring_endpoint_creates_pending_ring_pair_stereo_factor(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
-        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
-        snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
-            prepared=prepared,
-            runtime_options=options,
-            cursor=cursor,
-        )
-        open_outcome = (
-            writer_snapshot
-            ._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
-                snapshot,
-                prepared=prepared,
-                emitted_texts=("C", "1", "C", "C"),
-                include_counts=True,
-            )
-        )
-
-        assert open_outcome.public_choices is not None
-        self.assertEqual(
-            tuple(choice.emitted_text for choice in open_outcome.public_choices.choices),
-            ("1",),
-        )
-        self.assertIsNone(open_outcome.public_choices.terminal)
-        open_snapshot = open_outcome.replay_outcome.advanced_snapshot
-        self.assertIsNotNone(open_snapshot)
-        assert open_snapshot is not None
-        open_stereo = _writer_cursor_stereo_obligation_signatures(
-            cursor=open_snapshot.cursor,
-        )
-        open_factors = _writer_stereo_signature_delayed_factors(open_stereo)
-
-        self.assertTrue(
-            any(
-                factor[0] == "ring_pair"
-                and factor[-1] is False
-                for factor in open_factors
-            )
-        )
-        self.assertEqual(
-            tuple(
-                factor
-                for factor in open_factors
-                if factor[0] == "ring_pair" and factor[-1] is True
-            ),
-            (),
-        )
-
-    @unittest.skip("ring-pair delayed stereo mirror was removed")
-    def test_cyclic_close_ring_endpoint_closes_ring_pair_stereo_factor(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
-        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
-        snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
-            prepared=prepared,
-            runtime_options=options,
-            cursor=cursor,
-        )
-        closed_outcome = (
-            writer_snapshot
-            ._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
-                snapshot,
-                prepared=prepared,
-                emitted_texts=("C", "1", "C", "C", "1"),
-                include_counts=True,
-            )
-        )
-
-        assert closed_outcome.public_choices is not None
-        self.assertIsNotNone(closed_outcome.public_choices.terminal)
-        self.assertEqual(closed_outcome.public_choices.choices, ())
-        closed_snapshot = closed_outcome.replay_outcome.advanced_snapshot
-        self.assertIsNotNone(closed_snapshot)
-        assert closed_snapshot is not None
-        closed_stereo = _writer_cursor_stereo_obligation_signatures(
-            cursor=closed_snapshot.cursor,
-        )
-        closed_factors = _writer_stereo_signature_delayed_factors(closed_stereo)
-
-        self.assertTrue(
-            any(
-                factor[0] == "ring_pair"
-                and factor[-1] is True
-                for factor in closed_factors
-            )
-        )
-        self.assertEqual(
-            _writer_stereo_signature_unclosed_delayed_factors(closed_stereo),
-            (),
-        )
 
     def test_open_ring_endpoint_close_choice_successor_matches_stereo_delta(self) -> None:
         prepared = _prepare(cyclopropane_facts())
@@ -17890,9 +17812,13 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
         self.assertEqual(choice_stereo, replay_stereo)
-        self.assertEqual(
-            _writer_stereo_signature_unclosed_delayed_factors(choice_stereo),
-            (),
+        self.assertTrue(
+            all(
+                not signature[1].domains
+                and not signature[1].assignments
+                and not signature[1].factors
+                for signature in choice_stereo
+            )
         )
 
     def test_legal_choice_diagnostics_are_replay_aligned_until_eos(self) -> None:
@@ -27184,9 +27110,7 @@ class WriterStateKernelTest(unittest.TestCase):
         )
         blocked_prefix = writer_snapshot._WriterResidualCyclicReadinessBlockedPrefix(
             emitted_texts=("C",),
-            prefix_read_outcome=self._test_final_blocked_prefix_outcome(
-                choice_snapshot,
-            ),
+            choice_snapshot=choice_snapshot,
         )
 
         writer_snapshot._WriterResidualCyclicReadinessAudit(
@@ -27254,28 +27178,39 @@ class WriterStateKernelTest(unittest.TestCase):
 
     def test_residual_cyclic_readiness_audit_reports_ready_for_supported_owner_fixture(self) -> None:
         outcomes = self._test_residual_cyclic_readiness_ready_prefix_outcomes()
+        root_choices = outcomes[()].replay_outcome.choice_snapshot
+        leaf_choices = outcomes[("C",)].replay_outcome.choice_snapshot
 
-        def prefix_read(
+        def choice_snapshot(
             _snapshot,
             *,
             prepared,
-            emitted_texts,
             include_counts=True,
             stop_after_first_blocked=False,
         ):
             self.assertIs(prepared, prepared_fixture)
             self.assertFalse(include_counts)
             self.assertTrue(stop_after_first_blocked)
-            return outcomes[emitted_texts]
+            return next(choice_snapshots)
 
         prepared_fixture = object()
+        choice_snapshots = iter((root_choices, leaf_choices))
 
         with patch(
             (
                 "grimace._south_star1.writer_snapshot"
-                "._writer_snapshot_prefix_read_outcome_after_emitted_texts"
+                "._writer_frontier_choice_snapshot_from_snapshot"
             ),
-            side_effect=prefix_read,
+            side_effect=choice_snapshot,
+        ), patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._writer_search_snapshot_with_cursor_after_emitted_text"
+            ),
+            side_effect=lambda current, *, prepared, cursor: replace(
+                current,
+                cursor=cursor,
+            ),
         ):
             audit = writer_snapshot._audit_residual_cyclic_readiness_from_snapshot(
                 self._test_writer_search_snapshot(),
@@ -27297,16 +27232,13 @@ class WriterStateKernelTest(unittest.TestCase):
         choice_snapshot = self._test_residual_cyclic_blocked_choice_snapshot(
             active_outcome,
         )
-        blocked_outcome = self._test_final_blocked_prefix_outcome(
-            choice_snapshot,
-        )
 
         with patch(
             (
                 "grimace._south_star1.writer_snapshot"
-                "._writer_snapshot_prefix_read_outcome_after_emitted_texts"
+                "._writer_frontier_choice_snapshot_from_snapshot"
             ),
-            return_value=blocked_outcome,
+            return_value=choice_snapshot,
         ):
             audit = writer_snapshot._audit_residual_cyclic_readiness_from_snapshot(
                 self._test_writer_search_snapshot(),
@@ -27332,16 +27264,13 @@ class WriterStateKernelTest(unittest.TestCase):
         choice_snapshot = self._test_residual_cyclic_blocked_choice_snapshot(
             active_outcome,
         )
-        blocked_outcome = self._test_final_blocked_prefix_outcome(
-            choice_snapshot,
-        )
 
         with patch(
             (
                 "grimace._south_star1.writer_snapshot"
-                "._writer_snapshot_prefix_read_outcome_after_emitted_texts"
+                "._writer_frontier_choice_snapshot_from_snapshot"
             ),
-            return_value=blocked_outcome,
+            return_value=choice_snapshot,
         ):
             audit = writer_snapshot._audit_residual_cyclic_readiness_from_snapshot(
                 self._test_writer_search_snapshot(),
@@ -27360,15 +27289,23 @@ class WriterStateKernelTest(unittest.TestCase):
 
     def test_residual_cyclic_readiness_audit_can_truncate_by_depth(self) -> None:
         outcomes = self._test_residual_cyclic_readiness_ready_prefix_outcomes()
+        root_choices = outcomes[()].replay_outcome.choice_snapshot
 
         with patch(
             (
                 "grimace._south_star1.writer_snapshot"
-                "._writer_snapshot_prefix_read_outcome_after_emitted_texts"
+                "._writer_frontier_choice_snapshot_from_snapshot"
             ),
-            side_effect=lambda _snapshot, **kwargs: outcomes[
-                kwargs["emitted_texts"]
-            ],
+            return_value=root_choices,
+        ), patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._writer_search_snapshot_with_cursor_after_emitted_text"
+            ),
+            side_effect=lambda current, *, prepared, cursor: replace(
+                current,
+                cursor=cursor,
+            ),
         ):
             audit = writer_snapshot._audit_residual_cyclic_readiness_from_snapshot(
                 self._test_writer_search_snapshot(),
@@ -27383,17 +27320,30 @@ class WriterStateKernelTest(unittest.TestCase):
 
     def test_residual_cyclic_readiness_audit_uses_uncounted_prefix_reads(self) -> None:
         outcomes = self._test_residual_cyclic_readiness_ready_prefix_outcomes()
+        root_choices = outcomes[()].replay_outcome.choice_snapshot
+        leaf_choices = outcomes[("C",)].replay_outcome.choice_snapshot
 
-        def prefix_read(_snapshot, *, emitted_texts, include_counts=True, **_kwargs):
+        def choice_snapshot(_snapshot, *, include_counts=True, **_kwargs):
             self.assertFalse(include_counts)
-            return outcomes[emitted_texts]
+            return next(choice_snapshots)
+
+        choice_snapshots = iter((root_choices, leaf_choices))
 
         with patch(
             (
                 "grimace._south_star1.writer_snapshot"
-                "._writer_snapshot_prefix_read_outcome_after_emitted_texts"
+                "._writer_frontier_choice_snapshot_from_snapshot"
             ),
-            side_effect=prefix_read,
+            side_effect=choice_snapshot,
+        ), patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._writer_search_snapshot_with_cursor_after_emitted_text"
+            ),
+            side_effect=lambda current, *, prepared, cursor: replace(
+                current,
+                cursor=cursor,
+            ),
         ), patch(
             (
                 "grimace._south_star1.writer_snapshot"
@@ -27425,9 +27375,7 @@ class WriterStateKernelTest(unittest.TestCase):
         )
         blocked_prefix = writer_snapshot._WriterResidualCyclicReadinessBlockedPrefix(
             emitted_texts=(),
-            prefix_read_outcome=self._test_final_blocked_prefix_outcome(
-                choice_snapshot,
-            ),
+            choice_snapshot=choice_snapshot,
         )
         ready_audit = writer_snapshot._WriterResidualCyclicReadinessAudit(
             kind=writer_snapshot._WriterResidualCyclicReadinessAuditKind.READY,
@@ -27506,16 +27454,17 @@ class WriterStateKernelTest(unittest.TestCase):
                 )
 
     def test_residual_cyclic_readiness_gate_from_snapshot_reports_ready_supported_owner(self) -> None:
-        outcomes = self._test_residual_cyclic_readiness_ready_prefix_outcomes()
+        ready_audit = writer_snapshot._WriterResidualCyclicReadinessAudit(
+            kind=writer_snapshot._WriterResidualCyclicReadinessAuditKind.READY,
+            visited_prefixes=((),),
+        )
 
         with patch(
             (
                 "grimace._south_star1.writer_snapshot"
-                "._writer_snapshot_prefix_read_outcome_after_emitted_texts"
+                "._audit_residual_cyclic_readiness_from_snapshot"
             ),
-            side_effect=lambda _snapshot, **kwargs: outcomes[
-                kwargs["emitted_texts"]
-            ],
+            return_value=ready_audit,
         ):
             gate = writer_snapshot._residual_cyclic_readiness_gate_from_snapshot(
                 self._test_writer_search_snapshot(),
@@ -27536,16 +27485,17 @@ class WriterStateKernelTest(unittest.TestCase):
         choice_snapshot = self._test_residual_cyclic_blocked_choice_snapshot(
             active_outcome,
         )
-        blocked_outcome = self._test_final_blocked_prefix_outcome(
-            choice_snapshot,
+        blocked_gate = self._test_blocked_residual_cyclic_readiness_gate(
+            snapshot=self._test_writer_search_snapshot(),
+            choice_snapshot=choice_snapshot,
         )
 
         with patch(
             (
                 "grimace._south_star1.writer_snapshot"
-                "._writer_snapshot_prefix_read_outcome_after_emitted_texts"
+                "._audit_residual_cyclic_readiness_from_snapshot"
             ),
-            return_value=blocked_outcome,
+            return_value=blocked_gate.audit,
         ):
             gate = writer_snapshot._residual_cyclic_readiness_gate_from_snapshot(
                 self._test_writer_search_snapshot(),
@@ -27571,16 +27521,17 @@ class WriterStateKernelTest(unittest.TestCase):
         choice_snapshot = self._test_residual_cyclic_blocked_choice_snapshot(
             active_outcome,
         )
-        blocked_outcome = self._test_final_blocked_prefix_outcome(
-            choice_snapshot,
+        blocked_gate = self._test_blocked_residual_cyclic_readiness_gate(
+            snapshot=self._test_writer_search_snapshot(),
+            choice_snapshot=choice_snapshot,
         )
 
         with patch(
             (
                 "grimace._south_star1.writer_snapshot"
-                "._writer_snapshot_prefix_read_outcome_after_emitted_texts"
+                "._audit_residual_cyclic_readiness_from_snapshot"
             ),
-            return_value=blocked_outcome,
+            return_value=blocked_gate.audit,
         ):
             gate = writer_snapshot._residual_cyclic_readiness_gate_from_snapshot(
                 self._test_writer_search_snapshot(),
@@ -27599,16 +27550,22 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_residual_cyclic_readiness_gate_from_snapshot_reports_truncation(self) -> None:
-        outcomes = self._test_residual_cyclic_readiness_ready_prefix_outcomes()
+        truncated_audit = writer_snapshot._WriterResidualCyclicReadinessAudit(
+            kind=(
+                writer_snapshot
+                ._WriterResidualCyclicReadinessAuditKind
+                .TRUNCATED
+            ),
+            visited_prefixes=((), ("C",)),
+            truncated_at_prefix=("C",),
+        )
 
         with patch(
             (
                 "grimace._south_star1.writer_snapshot"
-                "._writer_snapshot_prefix_read_outcome_after_emitted_texts"
+                "._audit_residual_cyclic_readiness_from_snapshot"
             ),
-            side_effect=lambda _snapshot, **kwargs: outcomes[
-                kwargs["emitted_texts"]
-            ],
+            return_value=truncated_audit,
         ):
             gate = writer_snapshot._residual_cyclic_readiness_gate_from_snapshot(
                 self._test_writer_search_snapshot(),
@@ -27684,9 +27641,7 @@ class WriterStateKernelTest(unittest.TestCase):
         )
         blocked_prefix = writer_snapshot._WriterResidualCyclicReadinessBlockedPrefix(
             emitted_texts=(),
-            prefix_read_outcome=self._test_final_blocked_prefix_outcome(
-                choice_snapshot,
-            ),
+            choice_snapshot=choice_snapshot,
         )
         blocked_gate = writer_snapshot._WriterResidualCyclicReadinessGate(
             kind=(
@@ -28038,17 +27993,15 @@ class WriterStateKernelTest(unittest.TestCase):
                 )
 
     def test_cyclic_writer_admission_decision_from_snapshot_reports_ready_public(self) -> None:
-        outcomes = self._test_residual_cyclic_readiness_ready_prefix_outcomes()
         prepared = _prepare(cyclopropane_facts())
+        ready_gate, _, _ = self._test_residual_cyclic_readiness_gate_cases()
 
         with patch(
             (
                 "grimace._south_star1.writer_snapshot"
-                "._writer_snapshot_prefix_read_outcome_after_emitted_texts"
+                "._residual_cyclic_readiness_gate_from_snapshot"
             ),
-            side_effect=lambda _snapshot, **kwargs: outcomes[
-                kwargs["emitted_texts"]
-            ],
+            return_value=ready_gate,
         ):
             decision = (
                 writer_snapshot
@@ -28083,21 +28036,23 @@ class WriterStateKernelTest(unittest.TestCase):
         choice_snapshot = self._test_residual_cyclic_blocked_choice_snapshot(
             active_outcome,
         )
-        blocked_outcome = self._test_final_blocked_prefix_outcome(
-            choice_snapshot,
+        snapshot = self._test_writer_search_snapshot()
+        blocked_gate = self._test_blocked_residual_cyclic_readiness_gate(
+            snapshot=snapshot,
+            choice_snapshot=choice_snapshot,
         )
 
         with patch(
             (
                 "grimace._south_star1.writer_snapshot"
-                "._writer_snapshot_prefix_read_outcome_after_emitted_texts"
+                "._residual_cyclic_readiness_gate_from_snapshot"
             ),
-            return_value=blocked_outcome,
+            return_value=blocked_gate,
         ):
             decision = (
                 writer_snapshot
                 ._cyclic_writer_admission_decision_from_snapshot(
-                    self._test_writer_search_snapshot(),
+                    snapshot,
                     prepared=prepared,
                 )
             )
@@ -28130,21 +28085,23 @@ class WriterStateKernelTest(unittest.TestCase):
         choice_snapshot = self._test_residual_cyclic_blocked_choice_snapshot(
             active_outcome,
         )
-        blocked_outcome = self._test_final_blocked_prefix_outcome(
-            choice_snapshot,
+        snapshot = self._test_writer_search_snapshot()
+        blocked_gate = self._test_blocked_residual_cyclic_readiness_gate(
+            snapshot=snapshot,
+            choice_snapshot=choice_snapshot,
         )
 
         with patch(
             (
                 "grimace._south_star1.writer_snapshot"
-                "._writer_snapshot_prefix_read_outcome_after_emitted_texts"
+                "._residual_cyclic_readiness_gate_from_snapshot"
             ),
-            return_value=blocked_outcome,
+            return_value=blocked_gate,
         ):
             decision = (
                 writer_snapshot
                 ._cyclic_writer_admission_decision_from_snapshot(
-                    self._test_writer_search_snapshot(),
+                    snapshot,
                     prepared=prepared,
                 )
             )
@@ -28175,17 +28132,28 @@ class WriterStateKernelTest(unittest.TestCase):
         choice_snapshot = self._test_residual_cyclic_blocked_choice_snapshot(
             active_outcome,
         )
-        blocked_outcome = self._test_final_blocked_prefix_outcome(
-            choice_snapshot,
-        )
         snapshot = self._test_writer_search_snapshot()
+        blocked_gate = self._test_blocked_residual_cyclic_readiness_gate(
+            snapshot=snapshot,
+            choice_snapshot=choice_snapshot,
+        )
+        unsupported = SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            "residual cyclic readiness audit failed",
+        )
 
         with patch(
             (
                 "grimace._south_star1.writer_snapshot"
-                "._writer_snapshot_prefix_read_outcome_after_emitted_texts"
+                "._residual_cyclic_readiness_gate_from_snapshot"
             ),
-            return_value=blocked_outcome,
+            return_value=blocked_gate,
+        ), patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts"
+            ),
+            side_effect=unsupported,
         ):
             decision = (
                 writer_snapshot
@@ -28231,17 +28199,15 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_cyclic_writer_admission_decision_from_snapshot_reports_truncation(self) -> None:
-        outcomes = self._test_residual_cyclic_readiness_ready_prefix_outcomes()
         prepared = _prepare(cyclopropane_facts())
+        _, _, truncated_gate = self._test_residual_cyclic_readiness_gate_cases()
 
         with patch(
             (
                 "grimace._south_star1.writer_snapshot"
-                "._writer_snapshot_prefix_read_outcome_after_emitted_texts"
+                "._residual_cyclic_readiness_gate_from_snapshot"
             ),
-            side_effect=lambda _snapshot, **kwargs: outcomes[
-                kwargs["emitted_texts"]
-            ],
+            return_value=truncated_gate,
         ):
             decision = (
                 writer_snapshot

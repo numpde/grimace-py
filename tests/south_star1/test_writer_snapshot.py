@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from dataclasses import replace
 import unittest
 
@@ -27,7 +26,6 @@ from grimace._south_star1.residual_constraints import DirectionalCarrierResidual
 from grimace._south_star1.residual_constraints import DirectionalResidualFactor
 from grimace._south_star1.residual_constraints import ResidualPropagationKind
 from grimace._south_star1.residual_constraints import ResidualStore
-from grimace._south_star1.residual_constraints import VarId
 from grimace._south_star1.residual_constraints import add_factor_and_propagate
 from grimace._south_star1.residual_constraints import direction_var
 from grimace._south_star1.residual_constraints import tetra_var
@@ -71,15 +69,6 @@ from tests.south_star1.helpers import cco_facts
 from tests.south_star1.helpers import directional_facts
 from tests.south_star1.helpers import single_bond
 from tests.south_star1.helpers import tetrahedral_facts
-
-
-@dataclass(frozen=True, slots=True)
-class _DeletedDelayedStereoFactorFixture:
-    kind: str
-    site: SiteId
-    scope: tuple[VarId, ...] = ()
-    evidence: tuple[tuple[object, ...], ...] = ()
-    closed: bool = False
 
 
 class WriterSnapshotTest(unittest.TestCase):
@@ -548,10 +537,6 @@ class WriterSnapshotTest(unittest.TestCase):
                 open_endpoints=(endpoint,),
                 label_state=key.ring_state.label_state,
             ),
-            stereo_state=replace(
-                key.stereo_state,
-                delayed_factors=(_pending_ring_pair_factor(endpoint),),
-            ),
         )
 
         with self.assertRaises(SouthStarError):
@@ -576,10 +561,6 @@ class WriterSnapshotTest(unittest.TestCase):
             ring_state=WriterRingStateKey(
                 open_endpoints=(endpoint,),
                 label_state=WriterRingLabelState(allocated=(label,)),
-            ),
-            stereo_state=replace(
-                key.stereo_state,
-                delayed_factors=(_pending_ring_pair_factor(endpoint),),
             ),
         )
 
@@ -606,10 +587,6 @@ class WriterSnapshotTest(unittest.TestCase):
                 open_endpoints=(endpoint,),
                 label_state=WriterRingLabelState(allocated=(label,)),
             ),
-            stereo_state=replace(
-                key.stereo_state,
-                delayed_factors=(_pending_ring_pair_factor(endpoint),),
-            ),
         )
 
         with self.assertRaises(SouthStarError):
@@ -635,10 +612,6 @@ class WriterSnapshotTest(unittest.TestCase):
                 open_endpoints=(endpoint,),
                 label_state=WriterRingLabelState(allocated=(label,)),
             ),
-            stereo_state=replace(
-                key.stereo_state,
-                delayed_factors=(_pending_ring_pair_factor(endpoint),),
-            ),
         )
 
         validate_writer_cursor_against_prepared(
@@ -657,10 +630,6 @@ class WriterSnapshotTest(unittest.TestCase):
             ring_state=WriterRingStateKey(
                 open_endpoints=(endpoint,),
                 label_state=key.ring_state.label_state,
-            ),
-            stereo_state=replace(
-                key.stereo_state,
-                delayed_factors=(_pending_ring_pair_factor(endpoint),),
             ),
         )
 
@@ -681,10 +650,6 @@ class WriterSnapshotTest(unittest.TestCase):
             ring_state=WriterRingStateKey(
                 open_endpoints=(endpoint,),
                 label_state=key.ring_state.label_state,
-            ),
-            stereo_state=replace(
-                key.stereo_state,
-                delayed_factors=(_pending_ring_pair_factor(endpoint),),
             ),
         )
 
@@ -723,18 +688,6 @@ class WriterSnapshotTest(unittest.TestCase):
                 ),
                 label_state=key.ring_state.label_state,
             ),
-            stereo_state=replace(
-                key.stereo_state,
-                delayed_factors=(
-                    _pending_ring_pair_factor(
-                        replace(
-                            endpoint,
-                            first_atom=endpoint.second_atom,
-                            second_atom=endpoint.first_atom,
-                        )
-                    ),
-                ),
-            ),
         )
 
         with self.assertRaises(SouthStarError):
@@ -765,9 +718,8 @@ class WriterSnapshotTest(unittest.TestCase):
             stereo_state=replace(
                 empty_writer_stereo_state(),
                 atom_occurrences=(
-                    WriterAtomOccurrenceRecord(AtomId(0), TetraToken.NONE, None),
+                    WriterAtomOccurrenceRecord(AtomId(0), TetraToken.NONE),
                 ),
-                delayed_factors=(_pending_ring_pair_factor(endpoint),),
             ),
         )
 
@@ -800,10 +752,6 @@ class WriterSnapshotTest(unittest.TestCase):
                 closed_closures=(closure,),
                 label_state=key.ring_state.label_state,
             ),
-            stereo_state=replace(
-                key.stereo_state,
-                delayed_factors=(_closed_ring_pair_factor(closure),),
-            ),
         )
 
         with self.assertRaises(SouthStarError):
@@ -829,10 +777,6 @@ class WriterSnapshotTest(unittest.TestCase):
             ring_state=WriterRingStateKey(
                 closed_closures=(closure,),
                 label_state=WriterRingLabelState(reusable=(label,)),
-            ),
-            stereo_state=replace(
-                key.stereo_state,
-                delayed_factors=(_closed_ring_pair_factor(closure),),
             ),
         )
 
@@ -860,10 +804,6 @@ class WriterSnapshotTest(unittest.TestCase):
                 closed_closures=(closure,),
                 label_state=WriterRingLabelState(reusable=(label,)),
             ),
-            stereo_state=replace(
-                key.stereo_state,
-                delayed_factors=(_closed_ring_pair_factor(closure),),
-            ),
         )
 
         with self.assertRaises(SouthStarError):
@@ -884,10 +824,6 @@ class WriterSnapshotTest(unittest.TestCase):
                 closed_closures=(closure,),
                 label_state=key.ring_state.label_state,
             ),
-            stereo_state=replace(
-                key.stereo_state,
-                delayed_factors=(_closed_ring_pair_factor(closure),),
-            ),
         )
 
         with self.assertRaises(SouthStarError):
@@ -907,133 +843,6 @@ class WriterSnapshotTest(unittest.TestCase):
             ring_state=WriterRingStateKey(
                 closed_closures=(closure,),
                 label_state=key.ring_state.label_state,
-            ),
-            stereo_state=replace(
-                key.stereo_state,
-                delayed_factors=(_closed_ring_pair_factor(closure),),
-            ),
-        )
-
-        with self.assertRaises(SouthStarError):
-            validate_writer_cursor_against_prepared(
-                prepared,
-                _cursor_with_key(tampered_key),
-                runtime_options=options,
-            )
-
-    @unittest.skip("delayed ring-pair mirror was removed; ring state owns this lifecycle")
-    def test_cursor_audit_rejects_terminal_open_closure_state(self) -> None:
-        prepared = _prepare(triangle_facts())
-        options = _writer_options(rooted_at_atom=0)
-        key = _triangle_terminal_open_closure_key()
-
-        with self.assertRaises(SouthStarError):
-            validate_writer_cursor_against_prepared(
-                prepared,
-                _cursor_with_key(key),
-                runtime_options=options,
-            )
-
-    @unittest.skip("delayed ring-pair mirror was removed")
-    def test_cursor_audit_rejects_open_endpoint_without_ring_pair_factor(self) -> None:
-        prepared = _prepare(triangle_facts())
-        options = _writer_options(rooted_at_atom=0)
-        key = replace(
-            _triangle_root_with_open_closure_key(),
-            stereo_state=replace(
-                _triangle_root_with_open_closure_key().stereo_state,
-                delayed_factors=(),
-            ),
-        )
-
-        with self.assertRaises(SouthStarError):
-            validate_writer_cursor_against_prepared(
-                prepared,
-                _cursor_with_key(key),
-                runtime_options=options,
-            )
-
-    @unittest.skip("delayed ring-pair mirror was removed")
-    def test_cursor_audit_rejects_wrong_pending_ring_pair_evidence(self) -> None:
-        prepared = _prepare(triangle_facts())
-        options = _writer_options(rooted_at_atom=0)
-        key = _triangle_root_with_open_closure_key()
-        factor = key.stereo_state.delayed_factors[0]
-        tampered_key = replace(
-            key,
-            stereo_state=replace(
-                key.stereo_state,
-                delayed_factors=(replace(factor, evidence=(("ring_endpoint", 2, "open", 0, 2, 9, "9", "1", ""),)),),
-            ),
-        )
-
-        with self.assertRaises(SouthStarError):
-            validate_writer_cursor_against_prepared(
-                prepared,
-                _cursor_with_key(tampered_key),
-                runtime_options=options,
-            )
-
-    @unittest.skip("delayed ring-pair mirror was removed")
-    def test_cursor_audit_rejects_closed_closure_without_ring_pair_factor(self) -> None:
-        prepared = _prepare(triangle_facts())
-        options = _writer_options(rooted_at_atom=0)
-        key = replace(
-            _triangle_closed_closure_key(),
-            stereo_state=replace(
-                _triangle_closed_closure_key().stereo_state,
-                delayed_factors=(),
-            ),
-        )
-
-        with self.assertRaises(SouthStarError):
-            validate_writer_cursor_against_prepared(
-                prepared,
-                _cursor_with_key(key),
-                runtime_options=options,
-            )
-
-    @unittest.skip("delayed ring-pair mirror was removed")
-    def test_cursor_audit_rejects_wrong_closed_ring_pair_evidence(self) -> None:
-        prepared = _prepare(triangle_facts())
-        options = _writer_options(rooted_at_atom=0)
-        key = _triangle_closed_closure_key()
-        factor = key.stereo_state.delayed_factors[0]
-        tampered_key = replace(
-            key,
-            stereo_state=replace(
-                key.stereo_state,
-                delayed_factors=(replace(factor, evidence=(("ring_pair", 2, 0, 2, 9, "9", "1", "1", "", ""),)),),
-            ),
-        )
-
-        with self.assertRaises(SouthStarError):
-            validate_writer_cursor_against_prepared(
-                prepared,
-                _cursor_with_key(tampered_key),
-                runtime_options=options,
-            )
-
-    @unittest.skip("delayed ring-pair mirror was removed")
-    def test_cursor_audit_rejects_ring_pair_factor_without_closure_state(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options(rooted_at_atom=0)
-        cursor = initial_writer_frontier_cursor(prepared, options)
-        key = cursor.weighted_states[0][0]
-        label = _closure_label()
-        endpoint = WriterOpenClosureEndpoint(
-            bond=BondId(0),
-            first_atom=AtomId(0),
-            second_atom=AtomId(1),
-            label=label,
-            first_endpoint_text="1",
-            first_endpoint_bond_text="",
-        )
-        tampered_key = replace(
-            key,
-            stereo_state=replace(
-                key.stereo_state,
-                delayed_factors=(_pending_ring_pair_factor(endpoint),),
             ),
         )
 
@@ -1490,7 +1299,6 @@ class WriterSnapshotTest(unittest.TestCase):
                         parent=AtomId(1),
                         child=AtomId(2),
                         mark=DirectionMark.ABSENT,
-                        var=None,
                     ),
                 ),
             ),
@@ -1518,7 +1326,6 @@ class WriterSnapshotTest(unittest.TestCase):
                     WriterAtomOccurrenceRecord(
                         atom=AtomId(2),
                         token=TetraToken.NONE,
-                        var=None,
                     ),
                 ),
             ),
@@ -1669,58 +1476,6 @@ class WriterSnapshotTest(unittest.TestCase):
                 runtime_options=options,
             )
 
-    @unittest.skip("occurrence records no longer store residual variable references")
-    def test_cursor_audit_rejects_atom_occurrence_assignment_mismatch(self) -> None:
-        prepared = _prepare(tetrahedral_facts())
-        options = _writer_options(rooted_at_atom=1)
-        cursor = initial_writer_frontier_cursor(prepared, options)
-        after_f = writer_frontier_choices(prepared, cursor).choices[0].successor
-        after_center = writer_frontier_choices(prepared, after_f).choices[0].successor
-        key = after_center.weighted_states[0][0]
-        records = tuple(
-            replace(record, token=TetraToken.NONE)
-            if record.var is not None
-            else record
-            for record in key.stereo_state.atom_occurrences
-        )
-        tampered_key = replace(
-            key,
-            stereo_state=replace(key.stereo_state, atom_occurrences=records),
-        )
-
-        with self.assertRaises(SouthStarError):
-            validate_writer_cursor_against_prepared(
-                prepared,
-                _cursor_with_key(tampered_key),
-                runtime_options=options,
-            )
-
-    @unittest.skip("occurrence records no longer store residual variable references")
-    def test_cursor_audit_rejects_bond_occurrence_assignment_mismatch(self) -> None:
-        prepared = _prepare(directional_facts())
-        options = _writer_options(rooted_at_atom=2)
-        cursor = initial_writer_frontier_cursor(prepared, options)
-        after_f = writer_frontier_choices(prepared, cursor).choices[0].successor
-        after_slash = writer_frontier_choices(prepared, after_f).choices[0].successor
-        key = after_slash.weighted_states[0][0]
-        records = tuple(
-            replace(record, mark=DirectionMark.ABSENT)
-            if record.var is not None
-            else record
-            for record in key.stereo_state.bond_occurrences
-        )
-        tampered_key = replace(
-            key,
-            stereo_state=replace(key.stereo_state, bond_occurrences=records),
-        )
-
-        with self.assertRaises(SouthStarError):
-            validate_writer_cursor_against_prepared(
-                prepared,
-                _cursor_with_key(tampered_key),
-                runtime_options=options,
-            )
-
     def test_cursor_audit_rejects_duplicate_atom_occurrence(self) -> None:
         prepared = _prepare(tetrahedral_facts())
         options = _writer_options(rooted_at_atom=1)
@@ -1784,99 +1539,6 @@ class WriterSnapshotTest(unittest.TestCase):
                 runtime_options=options,
             )
 
-    @unittest.skip("delayed stereo factors were removed")
-    def test_cursor_audit_rejects_duplicate_delayed_factor(self) -> None:
-        prepared = _prepare(tetrahedral_facts())
-        options = _writer_options(rooted_at_atom=1)
-        key = _tetra_center_key(prepared, options)
-        tampered_key = replace(
-            key,
-            stereo_state=replace(
-                key.stereo_state,
-                delayed_factors=key.stereo_state.delayed_factors
-                + (key.stereo_state.delayed_factors[-1],),
-            ),
-        )
-
-        with self.assertRaises(SouthStarError):
-            validate_writer_cursor_against_prepared(
-                prepared,
-                _cursor_with_key(tampered_key),
-                runtime_options=options,
-            )
-
-    @unittest.skip("delayed stereo factors were removed")
-    def test_snapshot_rejects_pending_and_closed_delayed_factor_for_same_site(self) -> None:
-        prepared, options, key = _terminal_tetra_key()
-        closed_factor = key.stereo_state.delayed_factors[0]
-        pending_factor = _DeletedDelayedStereoFactorFixture(
-            kind=closed_factor.kind,
-            site=closed_factor.site,
-            scope=closed_factor.scope,
-            evidence=closed_factor.evidence,
-            closed=False,
-        )
-        tampered_key = replace(
-            key,
-            stereo_state=replace(
-                key.stereo_state,
-                delayed_factors=key.stereo_state.delayed_factors + (pending_factor,),
-            ),
-        )
-        valid_cursor = _cursor_with_key(key)
-        tampered_cursor = _cursor_with_key(tampered_key)
-        snapshot = capture_writer_frontier_snapshot(
-            prepared=prepared,
-            runtime_options=options,
-            cursor=valid_cursor,
-        )
-        tampered_snapshot = replace(
-            snapshot,
-            cursor=tampered_cursor,
-            frame_stack=(WriterFrontierFrame(tampered_cursor),),
-        )
-
-        with self.assertRaises(SouthStarError):
-            validate_writer_search_snapshot(tampered_snapshot, prepared=prepared)
-
-    @unittest.skip("delayed stereo factors were removed")
-    def test_snapshot_rejects_pending_tetra_factor_with_closed_local_order(self) -> None:
-        prepared, options, key = _terminal_tetra_key()
-        closed_factor = key.stereo_state.delayed_factors[0]
-        pending_factor = _DeletedDelayedStereoFactorFixture(
-            kind=closed_factor.kind,
-            site=closed_factor.site,
-            scope=closed_factor.scope,
-            evidence=closed_factor.evidence,
-            closed=False,
-        )
-        tampered_key = replace(
-            key,
-            stereo_state=replace(
-                key.stereo_state,
-                delayed_factors=(pending_factor,),
-                residual_snapshot=replace(
-                    key.stereo_state.residual_snapshot,
-                    factors=(),
-                ),
-            ),
-        )
-        valid_cursor = _cursor_with_key(key)
-        tampered_cursor = _cursor_with_key(tampered_key)
-        snapshot = capture_writer_frontier_snapshot(
-            prepared=prepared,
-            runtime_options=options,
-            cursor=valid_cursor,
-        )
-        tampered_snapshot = replace(
-            snapshot,
-            cursor=tampered_cursor,
-            frame_stack=(WriterFrontierFrame(tampered_cursor),),
-        )
-
-        with self.assertRaises(SouthStarError):
-            validate_writer_search_snapshot(tampered_snapshot, prepared=prepared)
-
     def test_terminal_snapshot_retains_active_final_atom(self) -> None:
         prepared, options, key = _terminal_tetra_key()
         cursor = _cursor_with_key(key)
@@ -1889,38 +1551,6 @@ class WriterSnapshotTest(unittest.TestCase):
 
         self.assertIsNotNone(retained.active)
         self.assertEqual(retained.active.atom, key.active.atom)
-
-    @unittest.skip("closed residual factors are discharged")
-    def test_cursor_audit_rejects_closed_delay_without_residual_factor(self) -> None:
-        from tests.south_star1.test_writer_stereo_residual import terminal_tetra_center_facts
-        from tests.south_star1.test_writer_stereo_residual import terminal_tetra_center_policy
-
-        prepared = prepare_south_star_mol_from_facts(
-            terminal_tetra_center_facts(),
-            writer_surface=SouthStarWriterSurface(),
-            policy=terminal_tetra_center_policy(),
-        )
-        options = _writer_options(rooted_at_atom=0)
-        cursor = initial_writer_frontier_cursor(prepared, options)
-        after_f = writer_frontier_choices(prepared, cursor).choices[0].successor
-        after_center = writer_frontier_choices(prepared, after_f).choices[0].successor
-        terminal = writer_frontier_choices(prepared, after_center).terminal
-        assert terminal is not None
-        key = terminal.finalized_cursor.weighted_states[0][0]
-        tampered_key = replace(
-            key,
-            stereo_state=replace(
-                key.stereo_state,
-                residual_snapshot=ResidualStore().value_snapshot(),
-            ),
-        )
-
-        with self.assertRaises(SouthStarError):
-            validate_writer_cursor_against_prepared(
-                prepared,
-                _cursor_with_key(tampered_key),
-                runtime_options=options,
-            )
 
     def test_residual_factor_addition_rejects_zero_support_snapshot_source(self) -> None:
         left = direction_var(("left", 0))
@@ -1974,52 +1604,6 @@ class WriterSnapshotTest(unittest.TestCase):
                 runtime_options=options,
             )
 
-    @unittest.skip("terminal stereo factors are discharged")
-    def test_cursor_audit_rejects_duplicate_residual_factor_snapshot(self) -> None:
-        prepared, options, key = _terminal_tetra_key()
-        factor = key.stereo_state.residual_snapshot.factors[0]
-        tampered_snapshot = replace(
-            key.stereo_state.residual_snapshot,
-            factors=key.stereo_state.residual_snapshot.factors + (factor,),
-        )
-        tampered_key = replace(
-            key,
-            stereo_state=replace(
-                key.stereo_state,
-                residual_snapshot=tampered_snapshot,
-            ),
-        )
-
-        with self.assertRaises(SouthStarError):
-            validate_writer_cursor_against_prepared(
-                prepared,
-                _cursor_with_key(tampered_key),
-                runtime_options=options,
-            )
-
-    @unittest.skip("terminal stereo factors are discharged")
-    def test_cursor_audit_rejects_closed_factor_semantic_mismatch(self) -> None:
-        prepared, options, key = _terminal_tetra_key()
-        factor = key.stereo_state.residual_snapshot.factors[0]
-        tampered_snapshot = replace(
-            key.stereo_state.residual_snapshot,
-            factors=(replace(factor, local_order=tuple(reversed(factor.local_order))),),
-        )
-        tampered_key = replace(
-            key,
-            stereo_state=replace(
-                key.stereo_state,
-                residual_snapshot=tampered_snapshot,
-            ),
-        )
-
-        with self.assertRaises(SouthStarError):
-            validate_writer_cursor_against_prepared(
-                prepared,
-                _cursor_with_key(tampered_key),
-                runtime_options=options,
-            )
-
     def test_cursor_audit_rejects_residual_assignment_without_occurrence(self) -> None:
         prepared = _prepare(tetrahedral_facts())
         options = _writer_options(rooted_at_atom=1)
@@ -2038,23 +1622,6 @@ class WriterSnapshotTest(unittest.TestCase):
                 key.stereo_state,
                 residual_snapshot=tampered_snapshot,
             ),
-        )
-
-        with self.assertRaises(SouthStarError):
-            validate_writer_cursor_against_prepared(
-                prepared,
-                _cursor_with_key(tampered_key),
-                runtime_options=options,
-            )
-
-    @unittest.skip("delayed stereo factors were removed")
-    def test_cursor_audit_rejects_occurrence_without_delayed_factor(self) -> None:
-        prepared = _prepare(tetrahedral_facts())
-        options = _writer_options(rooted_at_atom=1)
-        key = _tetra_center_key(prepared, options)
-        tampered_key = replace(
-            key,
-            stereo_state=replace(key.stereo_state, delayed_factors=()),
         )
 
         with self.assertRaises(SouthStarError):
@@ -2192,7 +1759,6 @@ def _manual_emitted_root_key(
                     WriterAtomOccurrenceRecord(
                         atom=atom_id,
                         token=TetraToken.NONE,
-                        var=None,
                     )
                     for atom_id in visited_atoms
                 ),
@@ -2247,8 +1813,8 @@ def _triangle_two_visited_key():
             stereo_state=replace(
                 empty_writer_stereo_state(),
                 atom_occurrences=(
-                    WriterAtomOccurrenceRecord(AtomId(0), TetraToken.NONE, None),
-                    WriterAtomOccurrenceRecord(AtomId(1), TetraToken.NONE, None),
+                    WriterAtomOccurrenceRecord(AtomId(0), TetraToken.NONE),
+                    WriterAtomOccurrenceRecord(AtomId(1), TetraToken.NONE),
                 ),
                 bond_occurrences=(
                     WriterBondOccurrenceRecord(
@@ -2256,7 +1822,6 @@ def _triangle_two_visited_key():
                         AtomId(0),
                         AtomId(1),
                         DirectionMark.ABSENT,
-                        None,
                     ),
                 ),
             ),
@@ -2286,8 +1851,8 @@ def _cco_frozen_single_boundary_key():
             stereo_state=replace(
                 empty_writer_stereo_state(),
                 atom_occurrences=(
-                    WriterAtomOccurrenceRecord(AtomId(0), TetraToken.NONE, None),
-                    WriterAtomOccurrenceRecord(AtomId(1), TetraToken.NONE, None),
+                    WriterAtomOccurrenceRecord(AtomId(0), TetraToken.NONE),
+                    WriterAtomOccurrenceRecord(AtomId(1), TetraToken.NONE),
                 ),
                 bond_occurrences=(
                     WriterBondOccurrenceRecord(
@@ -2295,7 +1860,6 @@ def _cco_frozen_single_boundary_key():
                         AtomId(0),
                         AtomId(1),
                         DirectionMark.ABSENT,
-                        None,
                     ),
                 ),
             ),
@@ -2325,9 +1889,9 @@ def _triangle_with_frozen_tail_key():
             stereo_state=replace(
                 empty_writer_stereo_state(),
                 atom_occurrences=(
-                    WriterAtomOccurrenceRecord(AtomId(0), TetraToken.NONE, None),
-                    WriterAtomOccurrenceRecord(AtomId(1), TetraToken.NONE, None),
-                    WriterAtomOccurrenceRecord(AtomId(3), TetraToken.NONE, None),
+                    WriterAtomOccurrenceRecord(AtomId(0), TetraToken.NONE),
+                    WriterAtomOccurrenceRecord(AtomId(1), TetraToken.NONE),
+                    WriterAtomOccurrenceRecord(AtomId(3), TetraToken.NONE),
                 ),
                 bond_occurrences=(
                     WriterBondOccurrenceRecord(
@@ -2335,14 +1899,12 @@ def _triangle_with_frozen_tail_key():
                         AtomId(0),
                         AtomId(1),
                         DirectionMark.ABSENT,
-                        None,
                     ),
                     WriterBondOccurrenceRecord(
                         BondId(3),
                         AtomId(1),
                         AtomId(3),
                         DirectionMark.ABSENT,
-                        None,
                     ),
                 ),
             ),
@@ -2374,9 +1936,8 @@ def _triangle_root_with_open_closure_key():
         stereo_state=replace(
             empty_writer_stereo_state(),
             atom_occurrences=(
-                WriterAtomOccurrenceRecord(AtomId(0), TetraToken.NONE, None),
+                WriterAtomOccurrenceRecord(AtomId(0), TetraToken.NONE),
             ),
-            delayed_factors=(_pending_ring_pair_factor(endpoint),),
         ),
     )
 
@@ -2402,9 +1963,9 @@ def _triangle_closed_closure_key():
         stereo_state=replace(
             empty_writer_stereo_state(),
             atom_occurrences=(
-                WriterAtomOccurrenceRecord(AtomId(0), TetraToken.NONE, None),
-                WriterAtomOccurrenceRecord(AtomId(1), TetraToken.NONE, None),
-                WriterAtomOccurrenceRecord(AtomId(2), TetraToken.NONE, None),
+                WriterAtomOccurrenceRecord(AtomId(0), TetraToken.NONE),
+                WriterAtomOccurrenceRecord(AtomId(1), TetraToken.NONE),
+                WriterAtomOccurrenceRecord(AtomId(2), TetraToken.NONE),
             ),
             bond_occurrences=(
                 WriterBondOccurrenceRecord(
@@ -2412,17 +1973,14 @@ def _triangle_closed_closure_key():
                     AtomId(0),
                     AtomId(1),
                     DirectionMark.ABSENT,
-                    None,
                 ),
                 WriterBondOccurrenceRecord(
                     BondId(1),
                     AtomId(1),
                     AtomId(2),
                     DirectionMark.ABSENT,
-                    None,
                 ),
             ),
-            delayed_factors=(_closed_ring_pair_factor(closure),),
         ),
     )
 
@@ -2442,10 +2000,6 @@ def _triangle_terminal_open_closure_key():
         ring_state=WriterRingStateKey(
             open_endpoints=(endpoint,),
             label_state=WriterRingLabelState(allocated=(label,)),
-        ),
-        stereo_state=replace(
-            _triangle_closed_closure_key().stereo_state,
-            delayed_factors=(_pending_ring_pair_factor(endpoint),),
         ),
     )
 
@@ -2483,9 +2037,9 @@ def _triangle_tail_open_to_active_key():
             stereo_state=replace(
                 empty_writer_stereo_state(),
                 atom_occurrences=(
-                    WriterAtomOccurrenceRecord(AtomId(0), TetraToken.NONE, None),
-                    WriterAtomOccurrenceRecord(AtomId(1), TetraToken.NONE, None),
-                    WriterAtomOccurrenceRecord(AtomId(2), TetraToken.NONE, None),
+                    WriterAtomOccurrenceRecord(AtomId(0), TetraToken.NONE),
+                    WriterAtomOccurrenceRecord(AtomId(1), TetraToken.NONE),
+                    WriterAtomOccurrenceRecord(AtomId(2), TetraToken.NONE),
                 ),
                 bond_occurrences=(
                     WriterBondOccurrenceRecord(
@@ -2493,63 +2047,17 @@ def _triangle_tail_open_to_active_key():
                         AtomId(0),
                         AtomId(1),
                         DirectionMark.ABSENT,
-                        None,
                     ),
                     WriterBondOccurrenceRecord(
                         BondId(1),
                         AtomId(1),
                         AtomId(2),
                         DirectionMark.ABSENT,
-                        None,
                     ),
                 ),
-                delayed_factors=(_pending_ring_pair_factor(endpoint),),
             ),
             policy_state=WriterPolicyState(),
         )
-    )
-
-
-def _pending_ring_pair_factor(endpoint: WriterOpenClosureEndpoint) -> _DeletedDelayedStereoFactorFixture:
-    return _DeletedDelayedStereoFactorFixture(
-        kind="ring_pair",
-        site=SiteId(int(endpoint.bond)),
-        evidence=(
-            (
-                "ring_endpoint",
-                int(endpoint.bond),
-                "open",
-                int(endpoint.first_atom),
-                int(endpoint.second_atom),
-                endpoint.label.value,
-                endpoint.label.text,
-                endpoint.first_endpoint_text,
-                endpoint.first_endpoint_bond_text,
-            ),
-        ),
-        closed=False,
-    )
-
-
-def _closed_ring_pair_factor(closure: WriterClosedClosure) -> _DeletedDelayedStereoFactorFixture:
-    return _DeletedDelayedStereoFactorFixture(
-        kind="ring_pair",
-        site=SiteId(int(closure.bond)),
-        evidence=(
-            (
-                "ring_pair",
-                int(closure.bond),
-                int(closure.first_atom),
-                int(closure.second_atom),
-                closure.label.value,
-                closure.label.text,
-                closure.first_endpoint_text,
-                closure.second_endpoint_text,
-                closure.first_endpoint_bond_text,
-                closure.second_endpoint_bond_text,
-            ),
-        ),
-        closed=True,
     )
 
 
@@ -2689,8 +2197,8 @@ def _terminal_looking_orphan_chain_key():
             stereo_state=replace(
                 empty_writer_stereo_state(),
                 atom_occurrences=(
-                    WriterAtomOccurrenceRecord(AtomId(0), TetraToken.NONE, None),
-                    WriterAtomOccurrenceRecord(AtomId(1), TetraToken.NONE, None),
+                    WriterAtomOccurrenceRecord(AtomId(0), TetraToken.NONE),
+                    WriterAtomOccurrenceRecord(AtomId(1), TetraToken.NONE),
                 ),
                 bond_occurrences=(
                     WriterBondOccurrenceRecord(
@@ -2698,7 +2206,6 @@ def _terminal_looking_orphan_chain_key():
                         AtomId(0),
                         AtomId(1),
                         DirectionMark.ABSENT,
-                        None,
                     ),
                 ),
             ),

@@ -28,7 +28,6 @@ from grimace._south_star1.residual_constraints import TetraResidualFactorValueSn
 from grimace._south_star1.residual_constraints import VarId
 from grimace._south_star1.residual_constraints import add_factor_and_propagate
 from grimace._south_star1.residual_constraints import direction_var
-from grimace._south_star1.residual_constraints import residual_store_assignments_have_support
 from grimace._south_star1.residual_constraints import residual_store_constraint_components
 from grimace._south_star1.residual_constraints import residual_store_projected_values
 from grimace._south_star1.residual_constraints import tetra_var
@@ -116,7 +115,7 @@ class ResidualConstraintTest(unittest.TestCase):
             ),
         )
 
-        self.assertIs(result.kind, ResidualPropagationKind.CONSISTENT)
+        self.assertIs(result.kind, ResidualPropagationKind.CERTIFIED_CONSISTENT)
         self.assertEqual(store.domain(var), (TetraToken.AT,))
         self.assertIsNone(store.assignment(var))
 
@@ -136,12 +135,12 @@ class ResidualConstraintTest(unittest.TestCase):
                     DirectionalValue.TOGETHER,
                 ),
             ).kind,
-            ResidualPropagationKind.CONSISTENT,
+            ResidualPropagationKind.CERTIFIED_CONSISTENT,
         )
 
         result = store.restrict_to_value(left, DirectionMark.FWD)
 
-        self.assertIs(result.kind, ResidualPropagationKind.CONSISTENT)
+        self.assertIs(result.kind, ResidualPropagationKind.CERTIFIED_CONSISTENT)
         self.assertEqual(store.domain(left), (DirectionMark.FWD,))
         self.assertEqual(store.domain(right), (DirectionMark.FWD,))
         self.assertIs(store.assignment(left), DirectionMark.FWD)
@@ -160,19 +159,19 @@ class ResidualConstraintTest(unittest.TestCase):
                 store,
                 _directional_factor_between(a, b, DirectionalValue.TOGETHER),
             ).kind,
-            ResidualPropagationKind.CONSISTENT,
+            ResidualPropagationKind.CERTIFIED_CONSISTENT,
         )
         self.assertIs(
             add_factor_and_propagate(
                 store,
                 _directional_factor_between(b, c, DirectionalValue.OPPOSITE),
             ).kind,
-            ResidualPropagationKind.CONSISTENT,
+            ResidualPropagationKind.CERTIFIED_CONSISTENT,
         )
 
         result = store.restrict_to_value(a, DirectionMark.FWD)
 
-        self.assertIs(result.kind, ResidualPropagationKind.CONSISTENT)
+        self.assertIs(result.kind, ResidualPropagationKind.CERTIFIED_CONSISTENT)
         self.assertEqual(store.domain(a), (DirectionMark.FWD,))
         self.assertEqual(store.domain(b), (DirectionMark.FWD,))
         self.assertEqual(store.domain(c), (DirectionMark.REV,))
@@ -198,11 +197,11 @@ class ResidualConstraintTest(unittest.TestCase):
                     DirectionalValue.TOGETHER,
                 ),
             )
-            self.assertIs(result.kind, ResidualPropagationKind.CONSISTENT)
+            self.assertIs(result.kind, ResidualPropagationKind.CERTIFIED_CONSISTENT)
 
         result = store.restrict_to_value(pairs[7][0], DirectionMark.FWD)
 
-        self.assertIs(result.kind, ResidualPropagationKind.CONSISTENT)
+        self.assertIs(result.kind, ResidualPropagationKind.CERTIFIED_CONSISTENT)
         self.assertEqual(
             result.stats.component_factor_keys,
             (
@@ -252,7 +251,7 @@ class ResidualConstraintTest(unittest.TestCase):
                     DirectionalValue.TOGETHER,
                 ),
             ).kind,
-            ResidualPropagationKind.CONSISTENT,
+            ResidualPropagationKind.CERTIFIED_CONSISTENT,
         )
         before = store.value_snapshot()
 
@@ -280,7 +279,7 @@ class ResidualConstraintTest(unittest.TestCase):
                         DirectionalValue.TOGETHER,
                     ),
                 ).kind,
-                ResidualPropagationKind.CONSISTENT,
+                ResidualPropagationKind.CERTIFIED_CONSISTENT,
             )
         before = store.value_snapshot()
 
@@ -312,7 +311,7 @@ class ResidualConstraintTest(unittest.TestCase):
                     DirectionalValue.TOGETHER,
                 ),
             )
-            self.assertIs(result.kind, ResidualPropagationKind.CONSISTENT)
+            self.assertIs(result.kind, ResidualPropagationKind.CERTIFIED_CONSISTENT)
 
     def test_residual_store_value_snapshot_is_canonical_by_var_order(self) -> None:
         left = ResidualStore()
@@ -324,10 +323,22 @@ class ResidualConstraintTest(unittest.TestCase):
             left.add_var(var, ("a", "b"))
         for var in (first, second):
             right.add_var(var, ("a", "b"))
-        self.assertTrue(left.assign(first, "a"))
-        self.assertTrue(left.assign(second, "b"))
-        self.assertTrue(right.assign(second, "b"))
-        self.assertTrue(right.assign(first, "a"))
+        self.assertIs(
+            left.restrict_many_and_propagate(((first, "a"),)).kind,
+            ResidualPropagationKind.CERTIFIED_CONSISTENT,
+        )
+        self.assertIs(
+            left.restrict_many_and_propagate(((second, "b"),)).kind,
+            ResidualPropagationKind.CERTIFIED_CONSISTENT,
+        )
+        self.assertIs(
+            right.restrict_many_and_propagate(((second, "b"),)).kind,
+            ResidualPropagationKind.CERTIFIED_CONSISTENT,
+        )
+        self.assertIs(
+            right.restrict_many_and_propagate(((first, "a"),)).kind,
+            ResidualPropagationKind.CERTIFIED_CONSISTENT,
+        )
 
         self.assertEqual(left.value_snapshot(), right.value_snapshot())
 
@@ -356,7 +367,7 @@ class ResidualConstraintTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             residual_store_projected_values(snapshot, var)
         with self.assertRaises(ValueError):
-            residual_store_assignments_have_support(snapshot, ())
+            _snapshot_accepts_restrictions(snapshot, ())
 
     def test_residual_snapshot_rejects_duplicate_domain_values(self) -> None:
         var = tetra_var(("center", 0))
@@ -373,7 +384,7 @@ class ResidualConstraintTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             residual_store_projected_values(snapshot, var)
         with self.assertRaises(ValueError):
-            residual_store_assignments_have_support(snapshot, ())
+            _snapshot_accepts_restrictions(snapshot, ())
 
     def test_residual_snapshot_rejects_empty_domain(self) -> None:
         var = tetra_var(("center", 0))
@@ -390,7 +401,7 @@ class ResidualConstraintTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             residual_store_projected_values(snapshot, var)
         with self.assertRaises(ValueError):
-            residual_store_assignments_have_support(snapshot, ())
+            _snapshot_accepts_restrictions(snapshot, ())
 
     def test_residual_constraint_components_empty_snapshot(self) -> None:
         snapshot = ResidualStoreValueSnapshot(domains=(), assignments=(), factors=())
@@ -517,7 +528,7 @@ class ResidualConstraintTest(unittest.TestCase):
             ),
         )
 
-        self.assertIs(result.kind, ResidualPropagationKind.CONSISTENT)
+        self.assertIs(result.kind, ResidualPropagationKind.CERTIFIED_CONSISTENT)
         self.assertEqual(
             residual_store_projected_values(store.value_snapshot(), var),
             (TetraToken.AT,),
@@ -549,13 +560,13 @@ class ResidualConstraintTest(unittest.TestCase):
     def test_residual_assignment_support_empty_snapshot(self) -> None:
         snapshot = ResidualStoreValueSnapshot(domains=(), assignments=(), factors=())
 
-        self.assertTrue(residual_store_assignments_have_support(snapshot, ()))
+        self.assertTrue(_snapshot_accepts_restrictions(snapshot, ()))
 
     def test_residual_assignment_support_rejects_unknown_variable(self) -> None:
         snapshot = ResidualStoreValueSnapshot(domains=(), assignments=(), factors=())
 
         with self.assertRaises(ValueError):
-            residual_store_assignments_have_support(
+            _snapshot_accepts_restrictions(
                 snapshot,
                 ((tetra_var(("missing", 0)), TetraToken.AT),),
             )
@@ -569,7 +580,7 @@ class ResidualConstraintTest(unittest.TestCase):
         )
 
         self.assertFalse(
-            residual_store_assignments_have_support(
+            _snapshot_accepts_restrictions(
                 snapshot,
                 ((var, TetraToken.ATAT),),
             )
@@ -584,13 +595,13 @@ class ResidualConstraintTest(unittest.TestCase):
         )
 
         self.assertTrue(
-            residual_store_assignments_have_support(
+            _snapshot_accepts_restrictions(
                 snapshot,
                 ((var, TetraToken.AT), (var, TetraToken.AT)),
             )
         )
         self.assertFalse(
-            residual_store_assignments_have_support(
+            _snapshot_accepts_restrictions(
                 snapshot,
                 ((var, TetraToken.AT), (var, TetraToken.ATAT)),
             )
@@ -605,7 +616,7 @@ class ResidualConstraintTest(unittest.TestCase):
         )
 
         self.assertFalse(
-            residual_store_assignments_have_support(
+            _snapshot_accepts_restrictions(
                 snapshot,
                 ((var, TetraToken.ATAT),),
             )
@@ -626,17 +637,17 @@ class ResidualConstraintTest(unittest.TestCase):
                     local_order=_occurrences(0, 1, 2, 3),
                 ),
             ).kind,
-            ResidualPropagationKind.CONSISTENT,
+            ResidualPropagationKind.CERTIFIED_CONSISTENT,
         )
 
         self.assertTrue(
-            residual_store_assignments_have_support(
+            _snapshot_accepts_restrictions(
                 store.value_snapshot(),
                 ((var, TetraToken.AT),),
             )
         )
         self.assertFalse(
-            residual_store_assignments_have_support(
+            _snapshot_accepts_restrictions(
                 store.value_snapshot(),
                 ((var, TetraToken.ATAT),),
             )
@@ -659,18 +670,18 @@ class ResidualConstraintTest(unittest.TestCase):
                     local_order=_occurrences(0, 1, 2, 3),
                 ),
             ).kind,
-            ResidualPropagationKind.CONSISTENT,
+            ResidualPropagationKind.CERTIFIED_CONSISTENT,
         )
         snapshot = store.value_snapshot()
 
         self.assertTrue(
-            residual_store_assignments_have_support(
+            _snapshot_accepts_restrictions(
                 snapshot,
                 ((tetra, TetraToken.AT), (direction, DirectionMark.REV)),
             )
         )
         self.assertFalse(
-            residual_store_assignments_have_support(
+            _snapshot_accepts_restrictions(
                 snapshot,
                 ((tetra, TetraToken.ATAT), (direction, DirectionMark.REV)),
             )
@@ -691,11 +702,11 @@ class ResidualConstraintTest(unittest.TestCase):
                     local_order=_occurrences(0, 1, 2, 3),
                 ),
             ).kind,
-            ResidualPropagationKind.CONSISTENT,
+            ResidualPropagationKind.CERTIFIED_CONSISTENT,
         )
         self.assertIs(
             store.restrict_to_value(var, TetraToken.AT).kind,
-            ResidualPropagationKind.CONSISTENT,
+            ResidualPropagationKind.CERTIFIED_CONSISTENT,
         )
         snapshot = store.value_snapshot()
 
@@ -745,7 +756,7 @@ class ResidualConstraintTest(unittest.TestCase):
                     local_order=_occurrences(0, 1, 2, 3),
                 ),
             ).kind,
-            ResidualPropagationKind.CONSISTENT,
+            ResidualPropagationKind.CERTIFIED_CONSISTENT,
         )
 
         snapshot = store.value_snapshot()
@@ -767,14 +778,14 @@ class ResidualConstraintTest(unittest.TestCase):
                     DirectionalValue.TOGETHER,
                 ),
             ).kind,
-            ResidualPropagationKind.CONSISTENT,
+            ResidualPropagationKind.CERTIFIED_CONSISTENT,
         )
         snapshot = store.value_snapshot()
         restored = ResidualStore.from_value_snapshot(snapshot)
 
         result = restored.restrict_to_value(left, DirectionMark.FWD)
 
-        self.assertIs(result.kind, ResidualPropagationKind.CONSISTENT)
+        self.assertIs(result.kind, ResidualPropagationKind.CERTIFIED_CONSISTENT)
         self.assertEqual(restored.domain(right), (DirectionMark.FWD,))
 
     def test_oracle_matches_unary_tetra_projection(self) -> None:
@@ -791,7 +802,7 @@ class ResidualConstraintTest(unittest.TestCase):
         )
         self.assertIs(
             add_factor_and_propagate(store, factor).kind,
-            ResidualPropagationKind.CONSISTENT,
+            ResidualPropagationKind.CERTIFIED_CONSISTENT,
         )
 
         self.assertEqual(
@@ -819,11 +830,11 @@ class ResidualConstraintTest(unittest.TestCase):
         for factor in factors:
             self.assertIs(
                 add_factor_and_propagate(store, factor).kind,
-                ResidualPropagationKind.CONSISTENT,
+                ResidualPropagationKind.CERTIFIED_CONSISTENT,
             )
         self.assertIs(
             store.restrict_to_value(a, DirectionMark.FWD).kind,
-            ResidualPropagationKind.CONSISTENT,
+            ResidualPropagationKind.CERTIFIED_CONSISTENT,
         )
         domains = {
             a: (DirectionMark.FWD,),
@@ -864,7 +875,7 @@ class ResidualConstraintTest(unittest.TestCase):
         for factor in factors:
             self.assertIs(
                 add_factor_and_propagate(store, factor).kind,
-                ResidualPropagationKind.CONSISTENT,
+                ResidualPropagationKind.CERTIFIED_CONSISTENT,
             )
 
         self.assertEqual(
@@ -967,6 +978,24 @@ def _directional_factor_between(
             right: DirectionalCarrierResidual(right, "right", 1, 1),
         },
     )
+
+
+def _snapshot_accepts_restrictions(
+    snapshot: ResidualStoreValueSnapshot,
+    restrictions: tuple[tuple[VarId, object], ...],
+) -> bool:
+    store = ResidualStore.from_value_snapshot(snapshot)
+    result = store.restrict_many_and_propagate(restrictions)
+    if result.kind is ResidualPropagationKind.CONTRADICTION:
+        return False
+    if result.kind is ResidualPropagationKind.LOCALLY_CONSISTENT_UNCERTIFIED:
+        raise AssertionError("test restriction remained uncertified")
+    result = store.propagate_all_components()
+    if result.kind is ResidualPropagationKind.CONTRADICTION:
+        return False
+    if result.kind is ResidualPropagationKind.LOCALLY_CONSISTENT_UNCERTIFIED:
+        raise AssertionError("test snapshot remained uncertified")
+    return True
 
 
 def _occurrences(*values: int) -> tuple[OccurrenceId, ...]:

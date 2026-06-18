@@ -56,47 +56,18 @@ if TYPE_CHECKING:
 EMPTY_RESIDUAL_SNAPSHOT = ResidualStore().value_snapshot()
 
 
-@dataclass(frozen=True, slots=True, init=False)
+@dataclass(frozen=True, slots=True)
 class WriterAtomOccurrenceRecord:
     atom: AtomId
     token: TetraToken
 
-    def __init__(
-        self,
-        atom: AtomId,
-        token: TetraToken,
-        var: object | None = None,
-    ) -> None:
-        object.__setattr__(self, "atom", atom)
-        object.__setattr__(self, "token", token)
 
-    @property
-    def var(self) -> None:
-        return None
-
-@dataclass(frozen=True, slots=True, init=False)
+@dataclass(frozen=True, slots=True)
 class WriterBondOccurrenceRecord:
     bond: BondId
     parent: AtomId
     child: AtomId
     mark: DirectionMark
-
-    def __init__(
-        self,
-        bond: BondId,
-        parent: AtomId,
-        child: AtomId,
-        mark: DirectionMark,
-        var: object | None = None,
-    ) -> None:
-        object.__setattr__(self, "bond", bond)
-        object.__setattr__(self, "parent", parent)
-        object.__setattr__(self, "child", child)
-        object.__setattr__(self, "mark", mark)
-
-    @property
-    def var(self) -> None:
-        return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -246,22 +217,25 @@ def _writer_residual_mutation_is_legal(
     *,
     operation: str,
 ) -> bool:
-    if result.kind is ResidualPropagationKind.CONSISTENT:
+    if result.kind is ResidualPropagationKind.CERTIFIED_CONSISTENT:
         return True
 
     if result.kind is ResidualPropagationKind.CONTRADICTION:
         return False
 
-    stats = result.stats
-    raise SouthStarError(
-        SouthStarErrorKind.UNSUPPORTED_STEREO,
-        "WRITER_SHAPED residual propagation exceeded the supported "
-        f"complexity envelope during {operation}: "
-        f"variables={len(stats.component_variables)}, "
-        f"factors={len(stats.component_factor_indexes)}, "
-        f"largest_scope={stats.largest_factor_scope}, "
-        f"largest_candidate_rows={stats.largest_candidate_row_count}",
-    )
+    if result.kind is ResidualPropagationKind.LOCALLY_CONSISTENT_UNCERTIFIED:
+        stats = result.stats
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_STEREO,
+            "WRITER_SHAPED residual propagation exceeded the supported "
+            f"complexity envelope during {operation}: "
+            f"variables={len(stats.component_variables)}, "
+            f"factors={len(stats.component_factor_keys)}, "
+            f"largest_scope={stats.largest_factor_scope}, "
+            f"largest_candidate_rows={stats.largest_candidate_row_count}",
+        )
+
+    raise AssertionError(f"unknown propagation result: {result.kind!r}")
 
 
 def writer_atom_text_choices(

@@ -1567,6 +1567,7 @@ def _initial_writer_frontier_cursor(
     runtime_root_atom_for_prepared(runtime_options, prepared=prepared)
     validate_prepared(prepared)
     root_domains = _root_domains_for_runtime(prepared, runtime_options)
+    initial_stereo = initial_writer_stereo_state(prepared)
     weighted_states = []
     for roots in product(*(atoms for _, atoms in root_domains)):
         root_tuple = tuple(roots)
@@ -1591,7 +1592,7 @@ def _initial_writer_frontier_cursor(
                         written_bonds=frozenset(),
                         obligations=ObligationState(),
                         ring_state=WriterRingState(),
-                        stereo_state=initial_writer_stereo_state(prepared),
+                        stereo_state=initial_stereo,
                         policy_state=WriterPolicyState(),
                     )
                 ),

@@ -1087,19 +1087,19 @@ class _WriterResidualCyclicReadinessAuditKind(Enum):
 @dataclass(frozen=True, slots=True)
 class _WriterResidualCyclicReadinessBlockedPrefix:
     emitted_texts: tuple[str, ...]
-    prefix_read_outcome: _WriterSnapshotPrefixReadOutcome
+    choice_snapshot: _WriterFrontierChoiceSnapshot
 
     @property
     def readiness_report(self):
-        return self.prefix_read_outcome.residual_cyclic_policy_readiness_report
+        return self.choice_snapshot.residual_cyclic_policy_readiness_report
 
     @property
     def graph_policy_blockers(self):
-        return self.prefix_read_outcome.graph_policy_blockers
+        return self.choice_snapshot.graph_policy_blockers
 
     @property
     def residual_cyclic_policy_coverage_kinds(self):
-        return self.prefix_read_outcome.residual_cyclic_policy_coverage_kinds
+        return self.choice_snapshot.residual_cyclic_policy_coverage_kinds
 
 
 @dataclass(frozen=True, slots=True)
@@ -1107,6 +1107,8 @@ class _WriterExecutionCapabilityUse:
     kind: _WriterExecutionCapabilityKind
     emitted_texts: tuple[str, ...]
     next_emitted_text: str
+    source_cursor: WriterFrontierCursor
+    successor_cursor: WriterFrontierCursor
 
 
 @dataclass(frozen=True, slots=True)
@@ -1991,15 +1993,20 @@ def _audit_residual_cyclic_readiness_from_snapshot(
             _WriterExecutionCapabilityKind,
             tuple[str, ...],
             str,
+            WriterFrontierCursor,
+            WriterFrontierCursor,
         ]
     ] = set()
-    seen: set[tuple[str, ...]] = set()
+    seen_cursors: set[WriterFrontierCursor] = set()
 
-    def rec(prefix: tuple[str, ...]) -> tuple[bool, tuple[str, ...] | None]:
-        if prefix in seen:
+    def rec(
+        current: WriterSearchSnapshot,
+        prefix: tuple[str, ...],
+    ) -> tuple[bool, tuple[str, ...] | None]:
+        if current.cursor in seen_cursors:
             return False, None
 
-        seen.add(prefix)
+        seen_cursors.add(current.cursor)
         visited.append(prefix)
 
         if max_prefixes is not None and len(visited) > max_prefixes:
@@ -2008,39 +2015,39 @@ def _audit_residual_cyclic_readiness_from_snapshot(
         if max_depth is not None and len(prefix) > max_depth:
             return True, prefix
 
-        outcome = _writer_snapshot_prefix_read_outcome_after_emitted_texts(
-            snapshot,
+        choice_snapshot = _writer_frontier_choice_snapshot_from_snapshot(
+            current,
             prepared=prepared,
-            emitted_texts=prefix,
             include_counts=False,
             stop_after_first_blocked=True,
         )
-        report = outcome.residual_cyclic_policy_readiness_report
+        report = choice_snapshot.residual_cyclic_policy_readiness_report
 
         if report.blocked:
             blocked.append(
                 _WriterResidualCyclicReadinessBlockedPrefix(
                     emitted_texts=prefix,
-                    prefix_read_outcome=outcome,
+                    choice_snapshot=choice_snapshot,
                 )
             )
             return False, None
 
-        if outcome.choice_snapshot is None:
-            return False, None
-
-        for choice in outcome.choice_snapshot.choices:
+        for choice in choice_snapshot.choices:
             for capability in choice.execution_capabilities:
                 use = _WriterExecutionCapabilityUse(
                     kind=capability,
                     emitted_texts=prefix,
                     next_emitted_text=choice.emitted_text,
+                    source_cursor=current.cursor,
+                    successor_cursor=choice.successor,
                 )
 
                 signature = (
                     use.kind,
                     use.emitted_texts,
                     use.next_emitted_text,
+                    use.source_cursor,
+                    use.successor_cursor,
                 )
 
                 if signature in observed_execution_capability_use_signatures:
@@ -2049,14 +2056,22 @@ def _audit_residual_cyclic_readiness_from_snapshot(
                 observed_execution_capability_use_signatures.add(signature)
                 execution_capability_uses.append(use)
 
-            stopped, stopped_prefix = rec((*prefix, choice.emitted_text))
+            successor = _writer_search_snapshot_with_cursor_after_emitted_text(
+                current,
+                prepared=prepared,
+                cursor=choice.successor,
+            )
+            stopped, stopped_prefix = rec(
+                successor,
+                (*prefix, choice.emitted_text),
+            )
 
             if stopped:
                 return True, stopped_prefix
 
         return False, None
 
-    truncated, truncated_prefix = rec(())
+    truncated, truncated_prefix = rec(snapshot, ())
 
     if truncated:
         return _WriterResidualCyclicReadinessAudit(

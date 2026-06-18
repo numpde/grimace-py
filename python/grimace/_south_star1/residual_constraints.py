@@ -140,8 +140,6 @@ class ResidualPropagationKind(Enum):
     CERTIFIED_CONSISTENT = "certified_consistent"
     CONTRADICTION = "contradiction"
     LOCALLY_CONSISTENT_UNCERTIFIED = "locally_consistent_uncertified"
-    CONSISTENT = "certified_consistent"
-    UNSUPPORTED_COMPLEXITY = "locally_consistent_uncertified"
 
 
 @dataclass(frozen=True, slots=True)
@@ -214,12 +212,6 @@ class ResidualStore:
             self._factors_by_var.setdefault(var, set()).add(factor_key)
         self._trail.append(("factor_add", factor_key))
         return factor_key
-
-    def assign(self, var: VarId, value: object) -> bool:
-        result = self.restrict_many_and_propagate(((var, value),))
-        if result.kind is ResidualPropagationKind.LOCALLY_CONSISTENT_UNCERTIFIED:
-            raise ResidualPropagationComplexityError(result.stats)
-        return result.kind is ResidualPropagationKind.CERTIFIED_CONSISTENT
 
     def restrict_to_value(
         self,
@@ -813,39 +805,10 @@ def residual_store_projected_values(
 
     if result.kind is ResidualPropagationKind.CONTRADICTION:
         return ()
-    if result.kind is ResidualPropagationKind.UNSUPPORTED_COMPLEXITY:
+    if result.kind is ResidualPropagationKind.LOCALLY_CONSISTENT_UNCERTIFIED:
         raise ResidualPropagationComplexityError(result.stats)
 
     return store.domain(var)
-
-
-def residual_store_assignments_have_support(
-    snapshot: ResidualStoreValueSnapshot,
-    assignments: tuple[tuple[VarId, object], ...],
-) -> bool:
-    store = ResidualStore.from_value_snapshot(snapshot)
-    for var, value in assignments:
-        if not store.contains_var(var):
-            raise ValueError(f"unknown residual variable: {var!r}")
-        result = store.restrict_to_value(var, value)
-        if result.kind is ResidualPropagationKind.CONTRADICTION:
-            return False
-        if result.kind is ResidualPropagationKind.UNSUPPORTED_COMPLEXITY:
-            raise ResidualPropagationComplexityError(result.stats)
-    for component in residual_store_constraint_components(store.value_snapshot()):
-        if component.variables:
-            live_component = store._component_from_variables(component.variables)
-        else:
-            live_component = _ResidualLiveComponent(
-                variables=(),
-                factor_keys=component.factor_keys,
-            )
-        result = store._propagate_component(live_component)
-        if result.kind is ResidualPropagationKind.CONTRADICTION:
-            return False
-        if result.kind is ResidualPropagationKind.LOCALLY_CONSISTENT_UNCERTIFIED:
-            raise ResidualPropagationComplexityError(result.stats)
-    return True
 
 
 def _validate_residual_snapshot_assignment_consistency(
@@ -1386,7 +1349,6 @@ __all__ = (
     "direction_var",
     "directional_site_carrier_var",
     "normalized_sign_from_mark",
-    "residual_store_assignments_have_support",
     "residual_store_constraint_components",
     "residual_store_projected_values",
     "tetra_var",

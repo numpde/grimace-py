@@ -524,7 +524,7 @@ class WriterStereoResidualTest(unittest.TestCase):
         store.add_var(var, (TetraToken.AT, TetraToken.ATAT))
         self.assertIs(
             store.restrict_to_value(var, TetraToken.ATAT).kind,
-            ResidualPropagationKind.CONSISTENT,
+            ResidualPropagationKind.CERTIFIED_CONSISTENT,
         )
         factor = TetraResidualFactor(
             scope=(var,),
@@ -550,7 +550,7 @@ class WriterStereoResidualTest(unittest.TestCase):
         store.add_var(var, (TetraToken.AT, TetraToken.ATAT))
         self.assertIs(
             store.restrict_to_value(var, TetraToken.AT).kind,
-            ResidualPropagationKind.CONSISTENT,
+            ResidualPropagationKind.CERTIFIED_CONSISTENT,
         )
         checkpoint = store.checkpoint()
         factor = TetraResidualFactor(
@@ -563,7 +563,7 @@ class WriterStereoResidualTest(unittest.TestCase):
 
         self.assertIs(
             add_factor_and_propagate(store, factor).kind,
-            ResidualPropagationKind.CONSISTENT,
+            ResidualPropagationKind.CERTIFIED_CONSISTENT,
         )
         self.assertEqual(len(store.value_snapshot().factors), 1)
         store.rollback(checkpoint)
@@ -636,7 +636,7 @@ class WriterStereoResidualTest(unittest.TestCase):
         )
         self.assertIs(
             add_factor_and_propagate(store, factor).kind,
-            ResidualPropagationKind.CONSISTENT,
+            ResidualPropagationKind.CERTIFIED_CONSISTENT,
         )
         state = WriterStereoState(
             residual_snapshot=store.value_snapshot(),

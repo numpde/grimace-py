@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from dataclasses import field
-from dataclasses import InitVar
 from enum import Enum
 
 from .ids import AtomId
@@ -102,7 +101,6 @@ class WriterStereoState:
     atom_occurrences: tuple[WriterAtomOccurrenceRecord, ...] = ()
     bond_occurrences: tuple[WriterBondOccurrenceRecord, ...] = ()
     local_orders: tuple[WriterLocalOrderRecord, ...] = ()
-    delayed_factors: InitVar[tuple[object, ...]] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,7 +140,6 @@ class WriterStereoStateKey:
     atom_occurrences: tuple[WriterAtomOccurrenceRecord, ...] = ()
     bond_occurrences: tuple[WriterBondOccurrenceRecord, ...] = ()
     local_orders: tuple[WriterLocalOrderRecord, ...] = ()
-    delayed_factors: InitVar[tuple[object, ...]] = ()
 
 
 @dataclass(frozen=True, slots=True)

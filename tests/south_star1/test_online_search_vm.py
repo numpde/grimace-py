@@ -44,6 +44,7 @@ from grimace._south_star1.online_stereo_witness import iter_exhaustive_online_st
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.ordinary_semantics import OrdinarySmilesSemantics
 from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_smiles
+from grimace._south_star1.residual_constraints import ResidualPropagationKind
 from grimace._south_star1.residual_constraints import VarId
 from grimace._south_star1.residual_constraints import direction_var
 from grimace._south_star1.policy import DirectionMark
@@ -92,7 +93,10 @@ class OnlineSearchVmTest(unittest.TestCase):
         state.residual.add_var(var, ("a", "b"))
         snapshot = state.checkpoint()
 
-        self.assertTrue(state.residual.assign(var, "a"))
+        self.assertIs(
+            state.residual.restrict_many_and_propagate(((var, "a"),)).kind,
+            ResidualPropagationKind.CERTIFIED_CONSISTENT,
+        )
         state.rollback(snapshot)
 
         self.assertIsNone(state.residual.assignment(var))
@@ -180,7 +184,12 @@ class OnlineSearchVmTest(unittest.TestCase):
         state.residual.add_var(var, (DirectionMark.ABSENT, DirectionMark.FWD))
         snapshot = state.checkpoint()
 
-        self.assertTrue(state.residual.assign(var, DirectionMark.FWD))
+        self.assertIs(
+            state.residual.restrict_many_and_propagate(
+                ((var, DirectionMark.FWD),)
+            ).kind,
+            ResidualPropagationKind.CERTIFIED_CONSISTENT,
+        )
         state.rollback(snapshot)
 
         self.assertIsNone(state.residual.assignment(var))
@@ -197,7 +206,12 @@ class OnlineSearchVmTest(unittest.TestCase):
         )
         var = direction_var(0)
         state.residual.add_var(var, (DirectionMark.ABSENT, DirectionMark.FWD))
-        self.assertTrue(state.residual.assign(var, DirectionMark.FWD))
+        self.assertIs(
+            state.residual.restrict_many_and_propagate(
+                ((var, DirectionMark.FWD),)
+            ).kind,
+            ResidualPropagationKind.CERTIFIED_CONSISTENT,
+        )
         snapshot = replace(
             state.checkpoint(),
             frame_stack=(
@@ -228,7 +242,12 @@ class OnlineSearchVmTest(unittest.TestCase):
         )
         var = direction_var(0)
         state.residual.add_var(var, (DirectionMark.ABSENT, DirectionMark.FWD))
-        self.assertTrue(state.residual.assign(var, DirectionMark.FWD))
+        self.assertIs(
+            state.residual.restrict_many_and_propagate(
+                ((var, DirectionMark.FWD),)
+            ).kind,
+            ResidualPropagationKind.CERTIFIED_CONSISTENT,
+        )
         snapshot = replace(
             state.checkpoint(),
             frame_stack=(
@@ -245,10 +264,13 @@ class OnlineSearchVmTest(unittest.TestCase):
             sink=OnlineStringBuffer(),
         )
         vm.state.residual.add_var(extra, ("x",))
-        self.assertTrue(vm.state.residual.assign(extra, "x"))
+        self.assertIs(
+            vm.state.residual.restrict_many_and_propagate(((extra, "x"),)).kind,
+            ResidualPropagationKind.CERTIFIED_CONSISTENT,
+        )
 
         with self.assertRaises(ValueError):
-            state.residual.assign(extra, "x")
+            state.residual.restrict_many_and_propagate(((extra, "x"),))
         self.assertIs(vm.state.residual.assignment(var), DirectionMark.FWD)
         self.assertIs(state.residual.assignment(var), DirectionMark.FWD)
 
@@ -1246,6 +1268,19 @@ def _initial_direction_frame_from(
         marks=(),
         residual_snapshot=replace(
             frame.residual_snapshot,
+            domains=tuple(
+                (
+                    var,
+                    (
+                        DirectionMark.ABSENT,
+                        DirectionMark.FWD,
+                        DirectionMark.REV,
+                    ),
+                )
+                if var.kind == "direction"
+                else (var, domain)
+                for var, domain in frame.residual_snapshot.domains
+            ),
             assignments=(),
             factors=tuple(
                 replace(factor, marks=())

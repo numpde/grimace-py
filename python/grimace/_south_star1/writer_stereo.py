@@ -51,6 +51,7 @@ from .writer_events import WriterRingEndpointPaired
 if TYPE_CHECKING:
     from .prepared_runtime import SouthStarPreparedMol
     from .writer_state import WriterStereoState
+    from .writer_state import WriterStereoStateKey
 
 
 EMPTY_RESIDUAL_SNAPSHOT = ResidualStore().value_snapshot()
@@ -188,6 +189,80 @@ def initial_writer_stereo_state(prepared: SouthStarPreparedMol) -> "WriterStereo
     )
 
 
+def reconstruct_writer_stereo_residual_snapshot(
+    prepared: SouthStarPreparedMol,
+    stereo_state: "WriterStereoStateKey",
+) -> ResidualStoreValueSnapshot:
+    store = ResidualStore()
+    domains, factors = _writer_stereo_relation_definitions(prepared)
+    for var, domain in domains:
+        store.add_var(var, domain)
+
+    result = add_factors_and_propagate(store, tuple(factors))
+    _require_certified_reconstruction(result, "initial relation")
+
+    restrictions: list[tuple[VarId, object]] = []
+    for record in stereo_state.atom_occurrences:
+        restriction = _tetra_token_restriction(
+            prepared,
+            atom=record.atom,
+            token=record.token,
+        )
+        if restriction is not None:
+            restrictions.append(restriction)
+
+    for record in stereo_state.bond_occurrences:
+        restrictions.extend(
+            _directional_bond_restrictions(
+                prepared,
+                bond=record.bond,
+                parent=record.parent,
+                child=record.child,
+                mark=record.mark,
+            )
+        )
+
+    for record in stereo_state.local_orders:
+        if not record.closed:
+            continue
+        restriction = _tetra_parity_restriction(
+            prepared,
+            atom=record.atom,
+            order=record.order,
+        )
+        if restriction is not None:
+            restrictions.append(restriction)
+
+    result = store.restrict_many_and_propagate(tuple(restrictions))
+    _require_certified_reconstruction(result, "recorded stereo history")
+
+    emitted_directional_bonds = tuple(
+        record.bond
+        for record in stereo_state.bond_occurrences
+        if _directional_models_for_bond(prepared, record.bond)
+    )
+    for bond in emitted_directional_bonds:
+        store.discharge_satisfied_factors((_directional_bond_factor_key(bond),))
+
+    emitted_bond_set = frozenset(record.bond for record in stereo_state.bond_occurrences)
+    for template in sorted(prepared.directional_templates, key=lambda item: int(item.site)):
+        if _directional_template_substituent_bonds(prepared, template).issubset(
+            emitted_bond_set,
+        ):
+            store.discharge_satisfied_factors(
+                (_directional_site_factor_key(template.site),)
+            )
+
+    for record in stereo_state.local_orders:
+        if not record.closed:
+            continue
+        template = _tetra_template_by_center(prepared).get(record.atom)
+        if template is not None:
+            store.discharge_satisfied_factors((_tetra_factor_key(template.site),))
+
+    return store.value_snapshot()
+
+
 def advance_writer_stereo_state(
     prepared: SouthStarPreparedMol,
     stereo_state: "WriterStereoState",
@@ -253,6 +328,91 @@ def _writer_residual_mutation_is_legal(
         )
 
     raise AssertionError(f"unknown propagation result: {result.kind!r}")
+
+
+def _require_certified_reconstruction(
+    result: ResidualPropagationResult,
+    operation: str,
+) -> None:
+    if result.kind is ResidualPropagationKind.CERTIFIED_CONSISTENT:
+        return
+    if result.kind is ResidualPropagationKind.CONTRADICTION:
+        raise ValueError(f"writer stereo reconstruction contradicted: {operation}")
+    if result.kind is ResidualPropagationKind.LOCALLY_CONSISTENT_UNCERTIFIED:
+        stats = result.stats
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_STEREO,
+            "WRITER_SHAPED residual propagation exceeded the supported "
+            f"complexity envelope during {operation}: "
+            f"variables={len(stats.component_variables)}, "
+            f"factors={len(stats.component_factor_keys)}, "
+            f"largest_scope={stats.largest_factor_scope}, "
+            f"largest_candidate_rows={stats.largest_candidate_row_count}",
+        )
+    raise AssertionError(f"unknown propagation result: {result.kind!r}")
+
+
+def _tetra_token_restriction(
+    prepared: SouthStarPreparedMol,
+    *,
+    atom: AtomId,
+    token: TetraToken,
+) -> tuple[VarId, object] | None:
+    template = _tetra_template_by_center(prepared).get(atom)
+    if template is None:
+        if token is not TetraToken.NONE:
+            raise ValueError("non-tetra atom occurrence carries tetra token")
+        return None
+    return (tetra_token_var(template.site), token)
+
+
+def _directional_bond_restrictions(
+    prepared: SouthStarPreparedMol,
+    *,
+    bond: BondId,
+    parent: AtomId,
+    child: AtomId,
+    mark: DirectionMark,
+) -> tuple[tuple[VarId, object], ...]:
+    models = _directional_models_for_bond(prepared, bond)
+    if not models:
+        if mark is not DirectionMark.ABSENT:
+            raise ValueError("non-directional bond occurrence carries direction mark")
+        return ()
+    event = WriterBondEmitted(
+        bond=bond,
+        parent=parent,
+        child=child,
+        text="",
+        direction_mark=mark,
+    )
+    orientation = _canonical_bond_orientation(prepared, event)
+    return tuple(
+        (
+            directional_site_carrier_var(model.site, bond),
+            normalized_sign_from_mark(
+                mark=mark,
+                canonical_orientation=orientation,
+                model=model,
+            ),
+        )
+        for model in models
+    )
+
+
+def _tetra_parity_restriction(
+    prepared: SouthStarPreparedMol,
+    *,
+    atom: AtomId,
+    order: tuple[OccurrenceId, ...],
+) -> tuple[VarId, object] | None:
+    template = _tetra_template_by_center(prepared).get(atom)
+    if template is None:
+        return None
+    return (
+        tetra_parity_var(template.site),
+        _tetra_local_parity(template, order),
+    )
 
 
 def writer_atom_text_choices(
@@ -376,11 +536,18 @@ def _on_atom_emitted(
         parent=event.parent,
         child=event.atom,
     )
-    template = _tetra_template_by_center(prepared).get(event.atom)
     checkpoint = store.checkpoint()
-    if template is not None:
+    try:
+        restriction = _tetra_token_restriction(
+            prepared,
+            atom=event.atom,
+            token=event.tetra_token,
+        )
+    except ValueError:
+        return None
+    if restriction is not None:
         result = store.restrict_many_and_propagate(
-            ((tetra_token_var(template.site), event.tetra_token),)
+            (restriction,)
         )
         if not _writer_residual_mutation_is_legal(
             result,
@@ -388,8 +555,6 @@ def _on_atom_emitted(
         ):
             store.rollback(checkpoint)
             return None
-    elif event.tetra_token is not TetraToken.NONE:
-        return None
     return WriterStereoState(
         residual_snapshot=store.value_snapshot(),
         atom_occurrences=stereo_state.atom_occurrences
@@ -410,19 +575,12 @@ def _on_bond_emitted(
     models = _directional_models_for_bond(prepared, event.bond)
     checkpoint = store.checkpoint()
     if models:
-        restrictions = tuple(
-            (
-                directional_site_carrier_var(model.site, event.bond),
-                normalized_sign_from_mark(
-                    mark=event.direction_mark,
-                    canonical_orientation=_canonical_bond_orientation(
-                        prepared,
-                        event,
-                    ),
-                    model=model,
-                ),
-            )
-            for model in models
+        restrictions = _directional_bond_restrictions(
+            prepared,
+            bond=event.bond,
+            parent=event.parent,
+            child=event.child,
+            mark=event.direction_mark,
         )
         result = store.restrict_many_and_propagate(restrictions)
         if not _writer_residual_mutation_is_legal(
@@ -485,14 +643,13 @@ def _on_local_order_closed(
     store = ResidualStore.from_value_snapshot(stereo_state.residual_snapshot)
     if template is not None:
         checkpoint = store.checkpoint()
-        result = store.restrict_many_and_propagate(
-            (
-                (
-                    tetra_parity_var(template.site),
-                    _tetra_local_parity(template, closed_order.order),
-                ),
-            )
+        restriction = _tetra_parity_restriction(
+            prepared,
+            atom=atom,
+            order=closed_order.order,
         )
+        assert restriction is not None
+        result = store.restrict_many_and_propagate((restriction,))
         if not _writer_residual_mutation_is_legal(
             result,
             operation="tetrahedral local-order factor closure",
@@ -1118,6 +1275,7 @@ __all__ = (
     "empty_writer_stereo_state",
     "initial_writer_stereo_state",
     "_writer_stereo_relation_definitions",
+    "reconstruct_writer_stereo_residual_snapshot",
     "terminal_writer_stereo_state",
     "validate_writer_stereo_supported_prepared",
     "writer_atom_text_choices",

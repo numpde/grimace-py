@@ -26,10 +26,6 @@ from .prepared_runtime import require_writer_shaped_runtime_options
 from .prepared_runtime import runtime_root_atom_for_prepared
 from .residual_constraints import ResidualStore
 from .residual_constraints import ResidualStoreValueSnapshot
-from .residual_constraints import VarId
-from .residual_constraints import directional_site_carrier_var
-from .residual_constraints import tetra_parity_var
-from .residual_constraints import tetra_token_var
 from .writer_graph_obligations import WriterBoundaryOwnerKind
 from .writer_graph_obligations import WriterEdgeObligationKind
 from .writer_graph_obligations import WriterGraphObligationContext
@@ -51,7 +47,7 @@ from .writer_frontier import _initial_writer_transition_frontier_cursor
 from .writer_frontier import _writer_frontier_choice_snapshot
 from .writer_frontier import initial_writer_frontier_cursor
 from .writer_frontier import iter_writer_frontier_support
-from .writer_stereo import _writer_stereo_relation_definitions
+from .writer_stereo import reconstruct_writer_stereo_residual_snapshot
 from .writer_state import ComponentCursor
 from .writer_state import ObligationStateKey
 from .writer_state import PendingEntryPhase
@@ -3075,10 +3071,15 @@ def validate_writer_search_snapshot(
             "writer snapshot cursor is not canonical",
         )
     _validate_frames(snapshot.frame_stack, snapshot.cursor)
+    stereo_residual_cache: dict[
+        WriterStereoStateKey,
+        ResidualStoreValueSnapshot,
+    ] = {}
     validate_writer_cursor_against_prepared(
         prepared,
         snapshot.cursor,
         runtime_options=snapshot.runtime_options,
+        stereo_residual_cache=stereo_residual_cache,
     )
 
 
@@ -3087,6 +3088,10 @@ def validate_writer_cursor_against_prepared(
     cursor: WriterFrontierCursor,
     *,
     runtime_options: SouthStarRuntimeOptions | None = None,
+    stereo_residual_cache: dict[
+        WriterStereoStateKey,
+        ResidualStoreValueSnapshot,
+    ] | None = None,
 ) -> None:
     _validate_cursor_active_frames(cursor)
     atom_ids = frozenset(prepared.atom_ids)
@@ -3125,7 +3130,11 @@ def validate_writer_cursor_against_prepared(
         _validate_stereo_occurrences_bound_to_graph_state(prepared, key)
         _validate_ring_state(prepared, key, context)
         _validate_policy_state(key, atom_ids, bond_ids)
-        _validate_stereo_state(prepared, key.stereo_state)
+        _validate_stereo_state(
+            prepared,
+            key.stereo_state,
+            stereo_residual_cache=stereo_residual_cache,
+        )
 
 
 def _validate_cursor_active_frames(cursor: WriterFrontierCursor) -> None:
@@ -3835,6 +3844,11 @@ def _validate_policy_state(
 def _validate_stereo_state(
     prepared: SouthStarPreparedMol,
     stereo_state: WriterStereoStateKey,
+    *,
+    stereo_residual_cache: dict[
+        WriterStereoStateKey,
+        ResidualStoreValueSnapshot,
+    ] | None = None,
 ) -> None:
     _round_trip_residual_snapshot(stereo_state.residual_snapshot)
     _validate_unique_stereo_records(stereo_state)
@@ -3862,12 +3876,26 @@ def _validate_stereo_state(
         atom_ids,
         tetra_by_center,
     )
-    _validate_live_residual_stereo_coverage(
-        prepared,
-        stereo_state,
-        tetra_by_center,
-        directional_sites_by_bond,
-    )
+    try:
+        if stereo_residual_cache is not None and stereo_state in stereo_residual_cache:
+            expected_residual = stereo_residual_cache[stereo_state]
+        else:
+            expected_residual = reconstruct_writer_stereo_residual_snapshot(
+                prepared,
+                stereo_state,
+            )
+            if stereo_residual_cache is not None:
+                stereo_residual_cache[stereo_state] = expected_residual
+    except (ValueError, SouthStarError) as exc:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "writer stereo history does not define a valid residual state",
+        ) from exc
+
+    if stereo_state.residual_snapshot != expected_residual:
+        _invalid_snapshot(
+            "writer residual snapshot does not match stereo event history"
+        )
 
 
 def _validate_unique_stereo_records(stereo_state: WriterStereoStateKey) -> None:
@@ -3973,107 +4001,6 @@ def _validate_local_order_records(
                 _invalid_snapshot("writer closed tetra local order is incomplete")
 
 
-def _validate_live_residual_stereo_coverage(
-    prepared: SouthStarPreparedMol,
-    stereo_state: WriterStereoStateKey,
-    tetra_by_center,
-    directional_sites_by_bond: dict[BondId, tuple[SiteId, ...]],
-) -> None:
-    expected_factors = _expected_live_residual_stereo_factor_snapshots(
-        prepared,
-        stereo_state,
-    )
-    actual_factors = {
-        snapshot.key: snapshot
-        for snapshot in stereo_state.residual_snapshot.factors
-    }
-    if actual_factors != expected_factors:
-        _invalid_snapshot("writer live residual factors do not match obligations")
-
-    assignment_vars = _residual_assignment_vars(stereo_state)
-    domain_vars = _residual_domain_vars(stereo_state)
-    factor_vars = frozenset(
-        var
-        for snapshot in stereo_state.residual_snapshot.factors
-        for var in snapshot.scope
-    )
-    if domain_vars != factor_vars:
-        _invalid_snapshot("writer residual domains must be exactly covered by live factors")
-    if not assignment_vars.issubset(domain_vars):
-        _invalid_snapshot("writer residual assignment lacks live residual domain")
-    for var in domain_vars:
-        if var.kind == "tetra_token":
-            site = SiteId(int(var.key[0]))
-            template = next((item for item in prepared.tetra_templates if item.site == site), None)
-            if template is None:
-                _invalid_snapshot("writer live tetra token variable references unknown site")
-            if _local_order_record(stereo_state, template.center) is not None and _local_order_record(stereo_state, template.center).closed:
-                _invalid_snapshot("writer closed tetra site still has live token variable")
-            if var in assignment_vars and not any(
-                record.atom == template.center
-                for record in stereo_state.atom_occurrences
-            ):
-                _invalid_snapshot("writer tetra token assignment lacks atom occurrence")
-        elif var.kind == "tetra_local_parity":
-            site = SiteId(int(var.key[0]))
-            template = next((item for item in prepared.tetra_templates if item.site == site), None)
-            if template is None:
-                _invalid_snapshot("writer live tetra parity variable references unknown site")
-            record = _local_order_record(stereo_state, template.center)
-            if record is not None and record.closed:
-                _invalid_snapshot("writer closed tetra site still has live parity variable")
-        elif var.kind == "directional_site_carrier":
-            site = SiteId(int(var.key[0]))
-            bond = BondId(int(var.key[1]))
-            if site not in directional_sites_by_bond.get(bond, ()):
-                _invalid_snapshot("writer directional carrier variable has wrong site/bond")
-            if var in assignment_vars and not any(
-                record.bond == bond
-                for record in stereo_state.bond_occurrences
-            ):
-                _invalid_snapshot("writer directional assignment lacks bond occurrence")
-        else:
-            _invalid_snapshot("writer residual variable has unknown live stereo kind")
-
-
-def _expected_live_residual_stereo_factor_snapshots(
-    prepared: SouthStarPreparedMol,
-    stereo_state: WriterStereoStateKey,
-) -> dict[object, object]:
-    _domains, factors = _writer_stereo_relation_definitions(prepared)
-    emitted_bonds = frozenset(record.bond for record in stereo_state.bond_occurrences)
-    tetra_by_site = {template.site: template for template in prepared.tetra_templates}
-
-    expected: dict[object, object] = {}
-    for factor in factors:
-        key = factor.key
-        if key.kind == "tetra_site":
-            site = SiteId(int(key.key[0]))
-            template = tetra_by_site.get(site)
-            if template is None:
-                _invalid_snapshot("writer tetra factor references unknown site")
-            record = _local_order_record(stereo_state, template.center)
-            if record is not None and record.closed:
-                continue
-        elif key.kind == "directional_bond_emission":
-            bond = BondId(int(key.key[0]))
-            if bond in emitted_bonds:
-                continue
-        elif key.kind == "directional_site":
-            carrier_bonds = frozenset(
-                BondId(int(var.key[1]))
-                for var in factor.scope
-            )
-            if carrier_bonds.issubset(emitted_bonds):
-                continue
-        else:
-            _invalid_snapshot("writer residual factor has unknown live stereo kind")
-
-        expected[key] = factor.value_snapshot()
-
-    return expected
-
-
 def _directional_reference_pair(template) -> tuple[OccurrenceId, OccurrenceId]:
     if template.reference_pair is not None:
         return template.reference_pair
@@ -4168,28 +4095,6 @@ def _reject_duplicate_items(items, message: str) -> None:
         if item in seen:
             _invalid_snapshot(message)
         seen.add(item)
-
-
-def _var_sort_tuple(var: VarId) -> tuple[object, ...]:
-    return (var.kind, tuple(_value_sort_tuple(item) for item in var.key))
-
-
-def _value_sort_tuple(value: object) -> tuple[object, ...]:
-    if isinstance(value, (int, str)):
-        return (type(value).__name__, value)
-    if isinstance(value, (TetraToken, DirectionMark)):
-        return (value.__class__.__name__, value.value)
-    if isinstance(value, tuple):
-        return ("tuple", tuple(_value_sort_tuple(item) for item in value))
-    return (value.__class__.__name__, str(value))
-
-
-def _residual_domain_vars(stereo_state: WriterStereoStateKey) -> frozenset[VarId]:
-    return frozenset(var for var, _ in stereo_state.residual_snapshot.domains)
-
-
-def _residual_assignment_vars(stereo_state: WriterStereoStateKey) -> frozenset[VarId]:
-    return frozenset(var for var, _ in stereo_state.residual_snapshot.assignments)
 
 
 def _require_graph_bond(

@@ -23,6 +23,7 @@ from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
 from grimace._south_star1.residual_constraints import DirectionalCarrierResidual
+from grimace._south_star1.residual_constraints import DirectionalNormalizedSign
 from grimace._south_star1.residual_constraints import DirectionalResidualFactor
 from grimace._south_star1.residual_constraints import ResidualPropagationKind
 from grimace._south_star1.residual_constraints import ResidualStore
@@ -63,6 +64,7 @@ from grimace._south_star1.writer_state import WriterState
 from grimace._south_star1.writer_state import writer_state_key
 from grimace._south_star1.writer_stereo import empty_writer_stereo_state
 from grimace._south_star1.writer_stereo import _writer_stereo_relation_definitions
+from grimace._south_star1.writer_stereo import reconstruct_writer_stereo_residual_snapshot
 from grimace._south_star1.writer_stereo import WriterAtomOccurrenceRecord
 from grimace._south_star1.writer_stereo import WriterBondOccurrenceRecord
 from grimace._south_star1.writer_stereo import WriterLocalOrderRecord
@@ -150,6 +152,56 @@ class WriterSnapshotTest(unittest.TestCase):
             writer_frontier_cursor_from_snapshot(snapshot, prepared=prepared),
             after_center,
         )
+
+    def test_stereo_residual_reconstruction_matches_representative_states(self) -> None:
+        tetra_prepared = _prepare(tetrahedral_facts())
+        tetra_options = _writer_options(rooted_at_atom=1)
+        tetra_cursor = initial_writer_frontier_cursor(tetra_prepared, tetra_options)
+        tetra_initial = tetra_cursor.weighted_states[0][0]
+        after_f = writer_frontier_choices(tetra_prepared, tetra_cursor).choices[0].successor
+        after_center = writer_frontier_choices(tetra_prepared, after_f).choices[0].successor
+        tetra_partial = after_center.weighted_states[0][0]
+        _terminal_prepared, _terminal_options, tetra_terminal = _terminal_tetra_key()
+
+        directional_prepared = _prepare(directional_facts())
+        directional_options = _writer_options(rooted_at_atom=2)
+        directional_cursor = initial_writer_frontier_cursor(
+            directional_prepared,
+            directional_options,
+        )
+        directional_initial = directional_cursor.weighted_states[0][0]
+        after_f = writer_frontier_choices(
+            directional_prepared,
+            directional_cursor,
+        ).choices[0].successor
+        directional_partial = after_f.weighted_states[0][0]
+        directional_terminal = _first_terminal_key(
+            directional_prepared,
+            directional_options,
+        )
+
+        from tests.south_star1.test_writer_stereo_residual import _two_independent_tetra_facts
+
+        mixed_prepared = _prepare(_two_independent_tetra_facts())
+        mixed_options = _writer_options(rooted_at_atom=0)
+        mixed_initial = initial_writer_frontier_cursor(
+            mixed_prepared,
+            mixed_options,
+        ).weighted_states[0][0]
+
+        cases = (
+            (tetra_prepared, tetra_initial),
+            (tetra_prepared, tetra_partial),
+            (_terminal_prepared, tetra_terminal),
+            (directional_prepared, directional_initial),
+            (directional_prepared, directional_partial),
+            (directional_prepared, directional_terminal),
+            (mixed_prepared, mixed_initial),
+        )
+
+        for prepared, key in cases:
+            with self.subTest(key=key.active.atom):
+                _assert_residual_reconstructs(self, prepared, key)
 
     def test_tampered_mode_is_rejected(self) -> None:
         prepared = _prepare(cco_facts())
@@ -1740,6 +1792,222 @@ class WriterSnapshotTest(unittest.TestCase):
                 runtime_options=options,
             )
 
+    def test_cursor_audit_rejects_initial_tetra_domain_narrowed_without_atom_event(self) -> None:
+        prepared = _prepare(tetrahedral_facts())
+        options = _writer_options(rooted_at_atom=1)
+        key = initial_writer_frontier_cursor(prepared, options).weighted_states[0][0]
+        token_var = next(
+            var
+            for var, _domain in key.stereo_state.residual_snapshot.domains
+            if var.kind == "tetra_token"
+        )
+        tampered_snapshot = replace(
+            key.stereo_state.residual_snapshot,
+            domains=tuple(
+                (var, (TetraToken.AT,))
+                if var == token_var
+                else (var, domain)
+                for var, domain in key.stereo_state.residual_snapshot.domains
+            ),
+        )
+        tampered_key = replace(
+            key,
+            stereo_state=replace(
+                key.stereo_state,
+                residual_snapshot=tampered_snapshot,
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_missing_tetra_assignment_after_atom_event(self) -> None:
+        prepared = _prepare(tetrahedral_facts())
+        options = _writer_options(rooted_at_atom=1)
+        key = _tetra_center_key(prepared, options)
+        tampered_snapshot = replace(
+            key.stereo_state.residual_snapshot,
+            assignments=(),
+        )
+        tampered_key = replace(
+            key,
+            stereo_state=replace(
+                key.stereo_state,
+                residual_snapshot=tampered_snapshot,
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_tetra_assignment_disagreeing_with_atom_event(self) -> None:
+        prepared = _prepare(tetrahedral_facts())
+        options = _writer_options(rooted_at_atom=1)
+        key = _tetra_center_key(prepared, options)
+        var, value = key.stereo_state.residual_snapshot.assignments[0]
+        other = TetraToken.ATAT if value is TetraToken.AT else TetraToken.AT
+        tampered_snapshot = replace(
+            key.stereo_state.residual_snapshot,
+            domains=tuple(
+                (domain_var, (other,))
+                if domain_var == var
+                else (domain_var, domain)
+                for domain_var, domain in key.stereo_state.residual_snapshot.domains
+            ),
+            assignments=((var, other),),
+        )
+        tampered_key = replace(
+            key,
+            stereo_state=replace(
+                key.stereo_state,
+                residual_snapshot=tampered_snapshot,
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_missing_directional_assignment_after_bond_event(self) -> None:
+        prepared = _prepare(directional_facts())
+        options = _writer_options(rooted_at_atom=0)
+        key = _directional_live_after_bond_key(prepared, options)
+        tampered_snapshot = replace(
+            key.stereo_state.residual_snapshot,
+            assignments=(),
+        )
+        tampered_key = replace(
+            key,
+            stereo_state=replace(
+                key.stereo_state,
+                residual_snapshot=tampered_snapshot,
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_directional_assignment_disagreeing_with_bond_event(self) -> None:
+        prepared = _prepare(directional_facts())
+        options = _writer_options(rooted_at_atom=0)
+        key = _directional_live_after_bond_key(prepared, options)
+        var, value = key.stereo_state.residual_snapshot.assignments[0]
+        other = (
+            DirectionalNormalizedSign.NEGATIVE
+            if value is DirectionalNormalizedSign.POSITIVE
+            else DirectionalNormalizedSign.POSITIVE
+        )
+        tampered_snapshot = replace(
+            key.stereo_state.residual_snapshot,
+            domains=tuple(
+                (domain_var, (other,))
+                if domain_var == var
+                else (domain_var, domain)
+                for domain_var, domain in key.stereo_state.residual_snapshot.domains
+            ),
+            assignments=tuple(
+                (assigned_var, other)
+                if assigned_var == var
+                else (assigned_var, assigned_value)
+                for assigned_var, assigned_value in key.stereo_state.residual_snapshot.assignments
+            ),
+        )
+        tampered_key = replace(
+            key,
+            stereo_state=replace(
+                key.stereo_state,
+                residual_snapshot=tampered_snapshot,
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_tampered_tetra_token_after_factor_discharge(self) -> None:
+        prepared, options, key = _terminal_tetra_key()
+        record = key.stereo_state.atom_occurrences[-1]
+        other = TetraToken.ATAT if record.token is TetraToken.AT else TetraToken.AT
+        tampered_key = replace(
+            key,
+            stereo_state=replace(
+                key.stereo_state,
+                atom_occurrences=key.stereo_state.atom_occurrences[:-1]
+                + (replace(record, token=other),),
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_tampered_closed_local_order_parity(self) -> None:
+        prepared, options, key = _terminal_tetra_key()
+        record = key.stereo_state.local_orders[-1]
+        tampered_order = (
+            record.order[1],
+            record.order[0],
+            *record.order[2:],
+        )
+        tampered_key = replace(
+            key,
+            stereo_state=replace(
+                key.stereo_state,
+                local_orders=key.stereo_state.local_orders[:-1]
+                + (replace(record, order=tampered_order),),
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_tampered_directional_mark_after_factor_discharge(self) -> None:
+        prepared = _prepare(directional_facts())
+        options = _writer_options(rooted_at_atom=2)
+        key = _first_terminal_key(prepared, options)
+        record = key.stereo_state.bond_occurrences[-1]
+        other = DirectionMark.REV if record.mark is DirectionMark.FWD else DirectionMark.FWD
+        tampered_key = replace(
+            key,
+            stereo_state=replace(
+                key.stereo_state,
+                bond_occurrences=key.stereo_state.bond_occurrences[:-1]
+                + (replace(record, mark=other),),
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
     def test_cursor_audit_rejects_residual_assignment_without_occurrence(self) -> None:
         prepared = _prepare(tetrahedral_facts())
         options = _writer_options(rooted_at_atom=1)
@@ -2245,6 +2513,54 @@ def _directional_double_branch_post_bond_key(prepared, options):
         _cursor_with_key(double_branch_key),
     ).choices[0].successor
     return post_bond.weighted_states[0][0]
+
+
+def _directional_live_after_bond_key(prepared, options):
+    pending = [initial_writer_frontier_cursor(prepared, options)]
+    seen = set()
+
+    while pending:
+        cursor = pending.pop(0)
+        if cursor in seen:
+            continue
+        seen.add(cursor)
+
+        for key, _ in cursor.weighted_states:
+            if (
+                key.stereo_state.bond_occurrences
+                and key.stereo_state.residual_snapshot.assignments
+            ):
+                return key
+
+        choices = writer_frontier_choices(prepared, cursor)
+        pending.extend(choice.successor for choice in choices.choices)
+
+    raise AssertionError("no live directional state after bond emission")
+
+
+def _first_terminal_key(prepared, options):
+    cursor = initial_writer_frontier_cursor(prepared, options)
+    seen = set()
+    while True:
+        if cursor in seen:
+            raise AssertionError("frontier cursor cycle while seeking terminal")
+        seen.add(cursor)
+        choices = writer_frontier_choices(prepared, cursor)
+        if choices.terminal is not None:
+            return choices.terminal.finalized_cursor.weighted_states[0][0]
+        if not choices.choices:
+            raise AssertionError("frontier cursor has no terminal path")
+        cursor = choices.choices[0].successor
+
+
+def _assert_residual_reconstructs(self, prepared, key) -> None:
+    self.assertEqual(
+        key.stereo_state.residual_snapshot,
+        reconstruct_writer_stereo_residual_snapshot(
+            prepared,
+            key.stereo_state,
+        ),
+    )
 
 
 def _terminal_tetra_key():

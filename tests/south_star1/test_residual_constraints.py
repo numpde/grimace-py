@@ -40,6 +40,18 @@ class _DummyFactorSnapshot:
     key: ResidualFactorKey = ResidualFactorKey("dummy", ())
 
 
+@dataclass(frozen=True, slots=True)
+class _AcceptAllFactor:
+    key: ResidualFactorKey
+    scope: tuple[VarId, ...]
+
+    def accepts(self, row: tuple[object, ...]) -> bool:
+        return len(row) == len(self.scope)
+
+    def value_snapshot(self) -> _DummyFactorSnapshot:
+        return _DummyFactorSnapshot(scope=self.scope, key=self.key)
+
+
 class ResidualConstraintTest(unittest.TestCase):
     def test_tetra_factor_relation_accepts_only_required_token(self) -> None:
         factor = _tetra_factor(
@@ -331,6 +343,35 @@ class ResidualConstraintTest(unittest.TestCase):
 
         self.assertIs(result.kind, ResidualPropagationKind.CONTRADICTION)
         self.assertEqual(store.value_snapshot(), before)
+
+    def test_propagate_all_components_reports_contradiction_before_uncertified(self) -> None:
+        store = ResidualStore()
+        uncertain_vars = tuple(VarId("wide", (index,)) for index in range(5))
+        for var in uncertain_vars:
+            store.add_var(var, ("x", "y"))
+        store.add_factor(
+            _AcceptAllFactor(
+                key=ResidualFactorKey("wide", ()),
+                scope=uncertain_vars,
+            )
+        )
+
+        left = direction_var(("left",))
+        right = direction_var(("right",))
+        store.add_var(left, (DirectionMark.FWD,))
+        store.add_var(right, (DirectionMark.ABSENT,))
+        store.add_factor(
+            _directional_factor_between(
+                left,
+                right,
+                DirectionalValue.OPPOSITE,
+            )
+        )
+
+        self.assertIs(
+            store.propagate_all_components().kind,
+            ResidualPropagationKind.CONTRADICTION,
+        )
 
     def test_factor_addition_rolls_back_on_contradiction(self) -> None:
         store = ResidualStore()

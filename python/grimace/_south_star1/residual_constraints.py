@@ -625,42 +625,16 @@ class ResidualStore:
         return edge_count == max(0, node_count - 1)
 
     def propagate_all_components(self) -> ResidualPropagationResult:
-        seen_variables: set[VarId] = set()
-        checked_rows = 0
-        largest_scope = 0
-        largest_candidate_count = 0
-        for var in tuple(sorted(self._domains, key=_var_sort_key)):
-            if var in seen_variables:
-                continue
-            component = self._component_from_variables((var,))
-            seen_variables.update(component.variables)
-            result = self._propagate_component(component)
-            checked_rows += result.stats.checked_candidate_rows
-            largest_scope = max(largest_scope, result.stats.largest_factor_scope)
-            largest_candidate_count = max(
-                largest_candidate_count,
-                result.stats.largest_candidate_row_count,
-            )
-            if result.kind is not ResidualPropagationKind.CERTIFIED_CONSISTENT:
-                return result
-        for factor_key, factor in tuple(self._factors.items()):
-            if factor.scope:
-                continue
-            result = self._propagate_component(
-                _ResidualLiveComponent(variables=(), factor_keys=(factor_key,))
-            )
-            checked_rows += result.stats.checked_candidate_rows
-            if result.kind is not ResidualPropagationKind.CERTIFIED_CONSISTENT:
-                return result
-        return ResidualPropagationResult(
-            ResidualPropagationKind.CERTIFIED_CONSISTENT,
-            ResidualPropagationStats(
-                tuple(sorted(self._domains, key=_var_sort_key)),
-                tuple(sorted(self._factors, key=_factor_key_sort_key)),
-                checked_rows,
-                largest_scope,
-                largest_candidate_count,
-            ),
+        components = self._components_from_variables(
+            tuple(sorted(self._domains, key=_var_sort_key)),
+        )
+        zero_scope_components = tuple(
+            _ResidualLiveComponent(variables=(), factor_keys=(factor_key,))
+            for factor_key, factor in self._factors.items()
+            if not factor.scope
+        )
+        return self._propagate_components(
+            components + zero_scope_components,
         )
 
     def discharge_satisfied_factors(

@@ -28,6 +28,7 @@ from .writer_transitions import _WriterActiveEmittedGraphPolicyBlocker
 from .writer_transitions import _WriterActiveEmittedGraphPolicyDecision
 from .writer_transitions import _WriterActiveChildSelectionKind
 from .writer_transitions import _WriterClosureEndpointSelectionKind
+from .writer_transitions import _WriterExecutionCapabilityKind
 from .writer_transitions import _WriterGraphPolicyActionFamily
 from .writer_transitions import _WriterNextTokenFrontierSupport
 from .writer_transitions import _WriterResidualAttachmentOwnerScopeKind
@@ -297,6 +298,15 @@ class _WriterFrontierNextTokenSupport:
     @property
     def policy_family(self):
         return self.schedule_support.policy_family
+
+    @property
+    def execution_capabilities(
+        self,
+    ) -> frozenset[_WriterExecutionCapabilityKind]:
+        if hasattr(self.schedule_support, "execution_capabilities"):
+            return self.schedule_support.execution_capabilities
+
+        return frozenset()
 
 
 @dataclass(frozen=True, slots=True)
@@ -898,6 +908,16 @@ class _WriterFrontierChoiceSnapshotEntry:
     ) -> tuple[_WriterFrontierResidualAttachmentSupportGroup, ...]:
         return self.next_token_entry.residual_attachment_support_groups
 
+    @property
+    def execution_capabilities(
+        self,
+    ) -> frozenset[_WriterExecutionCapabilityKind]:
+        capabilities: set[_WriterExecutionCapabilityKind] = set()
+        for support in self.supports:
+            capabilities.update(support.execution_capabilities)
+
+        return frozenset(capabilities)
+
     def to_public_choice(self) -> WriterFrontierChoice:
         return WriterFrontierChoice(
             emitted_text=self.emitted_text,
@@ -1269,6 +1289,17 @@ class _WriterFrontierChoiceSnapshot:
         self,
     ) -> tuple[_WriterResidualCyclicPolicyCoverageKind, ...]:
         return self.schedule_outcome.residual_cyclic_policy_coverage_kinds
+
+    @property
+    def execution_capabilities(
+        self,
+    ) -> frozenset[_WriterExecutionCapabilityKind]:
+        capabilities: set[_WriterExecutionCapabilityKind] = set()
+
+        for choice in self.choices:
+            capabilities.update(choice.execution_capabilities)
+
+        return frozenset(capabilities)
 
     @property
     def residual_cyclic_policy_is_covered(self) -> bool:

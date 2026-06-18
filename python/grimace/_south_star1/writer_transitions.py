@@ -70,6 +70,16 @@ class WriterTransitionKind(Enum):
     PAIR_CLOSURE_ENDPOINT = "pair_closure_endpoint"
 
 
+class _WriterExecutionCapabilityKind(Enum):
+    TREE_CHILD_ENTRY = "tree_child_entry"
+    CYCLIC_TREE_ENTRY = "cyclic_tree_entry"
+    TREE_BOND_SLOT = "tree_bond_slot"
+    VISIBLE_TREE_BOND_TEXT = "visible_tree_bond_text"
+    CLOSURE_ENDPOINT_OPEN = "closure_endpoint_open"
+    CLOSURE_ENDPOINT_PAIR = "closure_endpoint_pair"
+    VISIBLE_CLOSURE_BOND_TEXT = "visible_closure_bond_text"
+
+
 @dataclass(frozen=True, slots=True)
 class WriterTransitionEvidence:
     atom: AtomId | None = None
@@ -702,6 +712,63 @@ class _WriterNextTokenFrontierSupport:
     @property
     def policy_family(self) -> _WriterGraphPolicyActionFamily:
         return self.graph_action_surface.policy_family
+
+    @property
+    def execution_capabilities(
+        self,
+    ) -> frozenset[_WriterExecutionCapabilityKind]:
+        capabilities: set[_WriterExecutionCapabilityKind] = set()
+
+        if self.policy_family in (
+            _WriterGraphPolicyActionFamily.TREE_ENTRY,
+            _WriterGraphPolicyActionFamily.ACYCLIC_TREE_ENTRY,
+        ):
+            capabilities.add(
+                _WriterExecutionCapabilityKind.TREE_CHILD_ENTRY,
+            )
+        elif self.policy_family is _WriterGraphPolicyActionFamily.CYCLIC_TREE_ENTRY:
+            capabilities.add(
+                _WriterExecutionCapabilityKind.CYCLIC_TREE_ENTRY,
+            )
+        elif self.policy_family is _WriterGraphPolicyActionFamily.CLOSURE_OPEN:
+            capabilities.add(
+                _WriterExecutionCapabilityKind.CLOSURE_ENDPOINT_OPEN,
+            )
+        elif self.policy_family is _WriterGraphPolicyActionFamily.CLOSURE_PAIR:
+            capabilities.add(
+                _WriterExecutionCapabilityKind.CLOSURE_ENDPOINT_PAIR,
+            )
+
+        for event in self.transition.events:
+            if isinstance(event, WriterBondEmitted):
+                capabilities.add(
+                    _WriterExecutionCapabilityKind.TREE_BOND_SLOT,
+                )
+                if event.text:
+                    capabilities.add(
+                        _WriterExecutionCapabilityKind
+                        .VISIBLE_TREE_BOND_TEXT,
+                    )
+            elif isinstance(event, WriterRingEndpointEmitted):
+                capabilities.add(
+                    _WriterExecutionCapabilityKind.CLOSURE_ENDPOINT_OPEN,
+                )
+                if event.bond_text:
+                    capabilities.add(
+                        _WriterExecutionCapabilityKind
+                        .VISIBLE_CLOSURE_BOND_TEXT,
+                    )
+            elif isinstance(event, WriterRingEndpointPaired):
+                capabilities.add(
+                    _WriterExecutionCapabilityKind.CLOSURE_ENDPOINT_PAIR,
+                )
+                if event.bond_text:
+                    capabilities.add(
+                        _WriterExecutionCapabilityKind
+                        .VISIBLE_CLOSURE_BOND_TEXT,
+                    )
+
+        return frozenset(capabilities)
 
 
 @dataclass(frozen=True, slots=True)

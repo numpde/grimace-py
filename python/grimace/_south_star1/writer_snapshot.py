@@ -63,6 +63,7 @@ from .writer_state import WriterAtomFrame
 from .writer_state import WriterBranchFrame
 from .writer_state import WriterStateKey
 from .writer_state import WriterStereoStateKey
+from .writer_transitions import _WriterExecutionCapabilityKind
 
 
 _PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED = True
@@ -1106,9 +1107,20 @@ class _WriterResidualCyclicReadinessBlockedPrefix:
 
 
 @dataclass(frozen=True, slots=True)
+class _WriterExecutionCapabilityUse:
+    kind: _WriterExecutionCapabilityKind
+    emitted_texts: tuple[str, ...]
+    next_emitted_text: str
+
+
+@dataclass(frozen=True, slots=True)
 class _WriterResidualCyclicReadinessAudit:
     kind: _WriterResidualCyclicReadinessAuditKind
     visited_prefixes: tuple[tuple[str, ...], ...]
+    execution_capability_uses: tuple[
+        _WriterExecutionCapabilityUse,
+        ...,
+    ] = ()
     blocked_prefixes: tuple[
         _WriterResidualCyclicReadinessBlockedPrefix,
         ...,
@@ -1154,6 +1166,15 @@ class _WriterResidualCyclicReadinessAudit:
         return tuple(
             blocked.emitted_texts
             for blocked in self.blocked_prefixes
+        )
+
+    @property
+    def required_execution_capabilities(self) -> frozenset[
+        _WriterExecutionCapabilityKind
+    ]:
+        return frozenset(
+            use.kind
+            for use in self.execution_capability_uses
         )
 
 
@@ -1968,6 +1989,14 @@ def _audit_residual_cyclic_readiness_from_snapshot(
 ) -> _WriterResidualCyclicReadinessAudit:
     visited: list[tuple[str, ...]] = []
     blocked: list[_WriterResidualCyclicReadinessBlockedPrefix] = []
+    execution_capability_uses: list[_WriterExecutionCapabilityUse] = []
+    observed_execution_capability_use_signatures: set[
+        tuple[
+            _WriterExecutionCapabilityKind,
+            tuple[str, ...],
+            str,
+        ]
+    ] = set()
     seen: set[tuple[str, ...]] = set()
 
     def rec(prefix: tuple[str, ...]) -> tuple[bool, tuple[str, ...] | None]:
@@ -2005,6 +2034,25 @@ def _audit_residual_cyclic_readiness_from_snapshot(
             return False, None
 
         for choice in outcome.choice_snapshot.choices:
+            for capability in choice.execution_capabilities:
+                use = _WriterExecutionCapabilityUse(
+                    kind=capability,
+                    emitted_texts=prefix,
+                    next_emitted_text=choice.emitted_text,
+                )
+
+                signature = (
+                    use.kind,
+                    use.emitted_texts,
+                    use.next_emitted_text,
+                )
+
+                if signature in observed_execution_capability_use_signatures:
+                    continue
+
+                observed_execution_capability_use_signatures.add(signature)
+                execution_capability_uses.append(use)
+
             stopped, stopped_prefix = rec((*prefix, choice.emitted_text))
 
             if stopped:
@@ -2020,6 +2068,7 @@ def _audit_residual_cyclic_readiness_from_snapshot(
             visited_prefixes=tuple(visited),
             blocked_prefixes=tuple(blocked),
             truncated_at_prefix=truncated_prefix,
+            execution_capability_uses=tuple(execution_capability_uses),
         )
 
     if blocked:
@@ -2027,11 +2076,13 @@ def _audit_residual_cyclic_readiness_from_snapshot(
             kind=_WriterResidualCyclicReadinessAuditKind.BLOCKED,
             visited_prefixes=tuple(visited),
             blocked_prefixes=tuple(blocked),
+            execution_capability_uses=tuple(execution_capability_uses),
         )
 
     return _WriterResidualCyclicReadinessAudit(
         kind=_WriterResidualCyclicReadinessAuditKind.READY,
         visited_prefixes=tuple(visited),
+        execution_capability_uses=tuple(execution_capability_uses),
     )
 
 
@@ -2506,7 +2557,7 @@ def _writer_public_cyclic_opening_profile_report(
         )
     elif pendant_unsupported_bond_count:
         unsupported_capabilities.add(
-            _WriterPublicCyclicRequiredCapability.RING_CORE_NON_SINGLE_CLOSURE_BOND,
+            _WriterPublicCyclicRequiredCapability.TREE_BOND_TEXT_EMISSION,
         )
         kind = (
             _WriterPublicCyclicOpeningProfileKind.BLOCKED_UNSUPPORTED_CLOSURE_BOND_SURFACE

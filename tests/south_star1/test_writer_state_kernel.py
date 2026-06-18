@@ -1328,6 +1328,30 @@ def _assert_private_contract_status_for_cyclic_profile_case(
         )
 
 
+def _assert_replay_succeeds_for_execution_capability_uses(
+    test_case: unittest.TestCase,
+    *,
+    audit: writer_snapshot._WriterResidualCyclicReadinessAudit,
+    snapshot: writer_snapshot.WriterSearchSnapshot,
+    prepared: SouthStarPreparedMol,
+) -> None:
+    for use in audit.execution_capability_uses:
+        outcome = (
+            writer_snapshot
+            ._writer_snapshot_prefix_read_outcome_after_emitted_texts(
+                snapshot,
+                prepared=prepared,
+                emitted_texts=(*use.emitted_texts, use.next_emitted_text),
+                include_counts=False,
+            )
+        )
+
+        test_case.assertIs(
+            outcome.kind,
+            writer_snapshot._WriterSnapshotPrefixReadOutcomeKind.READABLE,
+        )
+
+
 def _assert_private_monocycle_attachment_audit_outcome(
     test_case: unittest.TestCase,
     *,
@@ -15886,6 +15910,182 @@ class WriterStateKernelTest(unittest.TestCase):
                         & report.unsupported_capabilities
                     )
 
+    def test_cyclic_profile_rows_have_replay_derived_execution_capabilities(
+        self,
+    ) -> None:
+        for case in _cyclic_profile_matrix_cases():
+            if not case.expected_supported:
+                continue
+
+            prepared = _prepare(case.facts)
+            options = _writer_options(rooted_at_atom=0)
+
+            with self.subTest(name=case.name):
+                snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
+                    prepared=prepared,
+                    runtime_options=options,
+                )
+                audit = writer_snapshot._audit_residual_cyclic_readiness_from_snapshot(
+                    snapshot,
+                    prepared=prepared,
+                    max_prefixes=case.max_prefixes,
+                )
+
+                self.assertIs(
+                    audit.kind,
+                    writer_snapshot
+                    ._WriterResidualCyclicReadinessAuditKind.READY,
+                )
+
+                _assert_replay_succeeds_for_execution_capability_uses(
+                    self,
+                    audit=audit,
+                    snapshot=snapshot,
+                    prepared=prepared,
+                )
+
+                execution_capabilities = audit.required_execution_capabilities
+
+                if case.expected_pendant_atom_count == 0:
+                    self.assertIn(
+                        writer_snapshot
+                        ._WriterExecutionCapabilityKind.CLOSURE_ENDPOINT_OPEN,
+                        execution_capabilities,
+                    )
+                    self.assertIn(
+                        writer_snapshot
+                        ._WriterExecutionCapabilityKind.CLOSURE_ENDPOINT_PAIR,
+                        execution_capabilities,
+                    )
+                    self.assertNotIn(
+                        writer_snapshot
+                        ._WriterExecutionCapabilityKind.TREE_CHILD_ENTRY,
+                        execution_capabilities,
+                    )
+                else:
+                    self.assertIn(
+                        writer_snapshot
+                        ._WriterExecutionCapabilityKind.TREE_CHILD_ENTRY,
+                        execution_capabilities,
+                    )
+                    self.assertIn(
+                        writer_snapshot
+                        ._WriterExecutionCapabilityKind.TREE_BOND_SLOT,
+                        execution_capabilities,
+                    )
+
+                if case.name in (
+                    "ring3 + one pendant boundary double bond",
+                    "ring3 + one pendant boundary single with internal double",
+                    "ring3 + one pendant boundary triple bond",
+                ):
+                    self.assertIn(
+                        writer_snapshot
+                        ._WriterExecutionCapabilityKind
+                        .VISIBLE_TREE_BOND_TEXT,
+                        execution_capabilities,
+                    )
+                    self.assertNotIn(
+                        writer_snapshot
+                        ._WriterExecutionCapabilityKind
+                        .VISIBLE_CLOSURE_BOND_TEXT,
+                        execution_capabilities,
+                    )
+
+    def test_public_profile_capabilities_map_to_execution_capabilities(self) -> None:
+        case_checks = (
+            (
+                "ring3 bare",
+                frozenset((
+                    writer_snapshot
+                    ._WriterPublicCyclicRequiredCapability
+                    .SIMPLE_CYCLE_CORE_CLOSURE,
+                )),
+                frozenset((
+                    writer_snapshot
+                    ._WriterExecutionCapabilityKind.CLOSURE_ENDPOINT_OPEN,
+                    writer_snapshot
+                    ._WriterExecutionCapabilityKind.CLOSURE_ENDPOINT_PAIR,
+                )),
+                frozenset(),
+            ),
+            (
+                "ring3 + one pendant atom",
+                frozenset((
+                    writer_snapshot
+                    ._WriterPublicCyclicRequiredCapability
+                    .ACYCLIC_PENDANT_TREE_TRAVERSAL,
+                    writer_snapshot
+                    ._WriterPublicCyclicRequiredCapability
+                    .TREE_BOND_TEXT_EMISSION,
+                )),
+                frozenset((
+                    writer_snapshot
+                    ._WriterExecutionCapabilityKind.TREE_CHILD_ENTRY,
+                    writer_snapshot
+                    ._WriterExecutionCapabilityKind.TREE_BOND_SLOT,
+                )),
+                frozenset(),
+            ),
+            (
+                "ring3 + one pendant boundary double bond",
+                frozenset((
+                    writer_snapshot
+                    ._WriterPublicCyclicRequiredCapability
+                    .TREE_BOND_TEXT_EMISSION,
+                )),
+                frozenset((
+                    writer_snapshot
+                    ._WriterExecutionCapabilityKind.TREE_BOND_SLOT,
+                )),
+                frozenset((
+                    writer_snapshot
+                    ._WriterExecutionCapabilityKind.VISIBLE_TREE_BOND_TEXT,
+                )),
+            ),
+        )
+
+        for case in _cyclic_profile_matrix_cases():
+            if not case.expected_supported:
+                continue
+
+            try:
+                _, required_capability_set, execution_capability_set, execution_visibility = next(
+                    expectation
+                    for expectation in case_checks
+                    if expectation[0] == case.name
+                )
+            except StopIteration:
+                continue
+
+            prepared = _prepare(case.facts)
+            options = _writer_options(rooted_at_atom=0)
+            snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
+                prepared=prepared,
+                runtime_options=options,
+            )
+            audit = writer_snapshot._audit_residual_cyclic_readiness_from_snapshot(
+                snapshot,
+                prepared=prepared,
+                max_prefixes=case.max_prefixes,
+            )
+
+            report = writer_snapshot._writer_public_cyclic_opening_profile_report(
+                prepared=prepared,
+            )
+
+            with self.subTest(name=case.name):
+                self.assertTrue(
+                    required_capability_set.issubset(report.required_capabilities),
+                )
+                self.assertGreater(len(audit.required_execution_capabilities), 0)
+
+                for capability in execution_capability_set:
+                    self.assertIn(capability, audit.required_execution_capabilities)
+
+                for capability in execution_visibility:
+                    self.assertIn(capability, audit.required_execution_capabilities)
+
     def test_public_cyclic_profile_matrix_supported_rows_close_public_online_loop(
         self,
     ) -> None:
@@ -16008,26 +16208,104 @@ class WriterStateKernelTest(unittest.TestCase):
                     SouthStarErrorKind.UNSUPPORTED_POLICY,
                 )
                 self.assertIn("profile", str(caught.exception).lower())
-                if report.unsupported_capabilities:
-                    unsupported_token = next(
-                        iter(report.unsupported_capabilities),
-                    ).value
-                    self.assertIn(
-                        unsupported_token,
-                        str(caught.exception),
-                    )
 
-                with self.assertRaises(SouthStarError) as caught:
-                    writer_snapshot.capture_initial_writer_frontier_snapshot(
-                        prepared=prepared,
-                        runtime_options=options,
-                    )
-
-                self.assertIs(
-                    caught.exception.kind,
-                    SouthStarErrorKind.UNSUPPORTED_POLICY,
+    def test_cyclic_profile_unsupported_pendant_tree_bond_domain_is_tree_bond_text_capability(
+        self,
+    ) -> None:
+        prepared = _prepare(
+            simple_monocycle_with_pendant_forest_facts(
+                ring_size=3,
+                pendant_paths=(1,),
+            )
+        )
+        options = _writer_options(rooted_at_atom=0)
+        mutated_policy = replace(
+            prepared.policy,
+            bond_text_domains=tuple(
+                domain
+                for domain in prepared.policy.bond_text_domains
+                if not (
+                    domain.bond == BondId(3)
+                    and domain.slot_kind == "tree"
                 )
-                self.assertIn("profile", str(caught.exception).lower())
+            ),
+        )
+        prepared_with_mutated_policy = replace(
+            prepared,
+            policy=mutated_policy,
+        )
+        cursor = _initial_writer_transition_frontier_cursor(
+            prepared_with_mutated_policy,
+            options,
+        )
+
+        report = writer_snapshot._writer_public_cyclic_opening_profile_report(
+            prepared=prepared_with_mutated_policy,
+        )
+
+        self.assertIs(
+            report.kind,
+            writer_snapshot
+            ._WriterPublicCyclicOpeningProfileKind
+            .BLOCKED_UNSUPPORTED_CLOSURE_BOND_SURFACE,
+        )
+        self.assertIn(
+            writer_snapshot
+            ._WriterPublicCyclicRequiredCapability
+            .TREE_BOND_TEXT_EMISSION,
+            report.unsupported_capabilities,
+        )
+        self.assertNotIn(
+            writer_snapshot
+            ._WriterPublicCyclicRequiredCapability
+            .RING_CORE_NON_SINGLE_CLOSURE_BOND,
+            report.unsupported_capabilities,
+        )
+
+        decision = (
+            writer_snapshot
+            ._cyclic_writer_admission_decision_from_cursor(
+                prepared=prepared_with_mutated_policy,
+                runtime_options=options,
+                cursor=cursor,
+            )
+        )
+
+        self.assertIs(
+            decision.kind,
+            writer_snapshot
+            ._WriterCyclicAdmissionDecisionKind
+            .BLOCKED_PUBLIC_CYCLIC_PROFILE,
+        )
+        self.assertIsNotNone(decision.public_profile)
+        assert decision.public_profile is not None
+        self.assertIn(
+            writer_snapshot
+            ._WriterPublicCyclicRequiredCapability
+            .TREE_BOND_TEXT_EMISSION,
+            decision.public_profile.unsupported_capabilities,
+        )
+
+        with self.assertRaises(SouthStarError) as caught:
+            writer_snapshot._assert_cyclic_writer_admission_decision(decision)
+
+        self.assertIs(
+            caught.exception.kind,
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+        )
+        self.assertIn("profile", str(caught.exception).lower())
+
+        with self.assertRaises(SouthStarError) as blocked:
+            writer_snapshot.capture_initial_writer_frontier_snapshot(
+                prepared=prepared_with_mutated_policy,
+                runtime_options=options,
+            )
+
+        self.assertIs(
+            blocked.exception.kind,
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+        )
+        self.assertIn("profile", str(blocked.exception).lower())
 
     def test_public_cyclic_profile_matrix_private_status_is_explicit(
         self,

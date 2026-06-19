@@ -112,4 +112,5 @@ The determinized decoder merges same-text continuations. Use
 ## Continue
 
 Read [Concepts](concepts.html) for the terms used above, [Runtime](runtime.html)
-for flags and roots, and [API](api/python.html) for signatures.
+for flags and roots, [Known gaps](known-gaps.html) for pinned RDKit parity
+cases, and [API](api/python.html) for signatures.

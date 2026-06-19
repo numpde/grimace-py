@@ -36,7 +36,9 @@ use is not permitted under the current license.
 
 This example uses the currently supported runtime mode. See
 [Runtime](docs/runtime.md) for flags and roots, and
-[Limitations](docs/current-limitations.md) for scope and known gaps.
+[Limitations](docs/current-limitations.md) for runtime scope. See
+[Known gaps](docs/known-gaps.md) for pinned RDKit parity cases that are not yet
+in the passing corpus.
 
 ```python
 from rdkit import Chem

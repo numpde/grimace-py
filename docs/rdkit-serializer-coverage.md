@@ -20,6 +20,9 @@ Use it to answer two questions:
 The ledger is the traceability map. The tests enforce the claims by loading the
 linked fixtures.
 
+For a reader-facing explanation of the current failing parity cases, see
+[Known gaps](known-gaps.html).
+
 Ledger:
 
 - `tests/fixtures/rdkit_upstream_serializer_coverage/2026.03.1.json`
@@ -106,7 +109,8 @@ materialization is too large.
 
 `known-gap` means the RDKit claim is relevant and has executable pinned
 fixture coverage, but at least one parity assertion intentionally fails against
-the current implementation.
+the current implementation. The current case groups are explained in
+[Known gaps](known-gaps.html).
 
 `out-of-scope` means the RDKit test does not map to Grimace's current public
 surface. Common examples are CXSMILES extension serialization, wrapper API
@@ -119,8 +123,8 @@ ledger should keep both at zero.
 
 ## Known gaps
 
-The six `known-gap` entries are concentrated in RDKit's #4582 and manual
-bond-stereo regressions:
+The six `known-gap` ledger entries are concentrated in RDKit's #4582 and
+manual bond-stereo regressions:
 
 - GitHub #4582 bulk random double-bond/ring-closure outputs for CHEMBL409450.
 - GitHub #4582 continued / #3967 part 2 directional ring-closure output.
@@ -129,6 +133,9 @@ bond-stereo regressions:
 
 These point at RDKit-equivalent traversal-order state for coupled directional
 stereo tokens.
+
+The fixture-level case groups and diagnostic runner are described in
+[Known gaps](known-gaps.html).
 
 ## Maintenance workflow
 

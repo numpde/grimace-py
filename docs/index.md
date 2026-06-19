@@ -47,8 +47,12 @@ Repository: [github.com/numpde/grimace-py](https://github.com/numpde/grimace-py)
       <td><a href="runtime.html">Runtime</a></td>
     </tr>
     <tr>
-      <td>Check current gaps and supported release assets</td>
+      <td>Check runtime limits and supported release assets</td>
       <td><a href="current-limitations.html">Limitations</a></td>
+    </tr>
+    <tr>
+      <td>Understand pinned RDKit parity gaps</td>
+      <td><a href="known-gaps.html">Known gaps</a></td>
     </tr>
     <tr>
       <td>Use prepared molecules, deviation diagnostics, or token inventories</td>

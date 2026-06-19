@@ -56,8 +56,8 @@ can still make directional bond markers writer-visible.
 For the difference between writer parity and chemical equivalence, see
 [Correctness contracts](correctness-contracts.html).
 
-For current runtime scope and known gaps, see
-[Limitations](current-limitations.html).
+For current runtime scope, see [Limitations](current-limitations.html). For
+pinned RDKit writer-parity failures, see [Known gaps](known-gaps.html).
 
 ## All-roots behavior
 

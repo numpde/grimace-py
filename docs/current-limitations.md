@@ -28,8 +28,9 @@ python scripts/report_rdkit_serializer_coverage.py
 ```
 
 Known gaps are concentrated in coupled directional double-bond and ring-closure
-stereo cases. They are pinned as executable known-gap fixtures and summarized
-in [RDKit serializer coverage](rdkit-serializer-coverage.html).
+stereo cases. They are explained in [Known gaps](known-gaps.html), pinned as
+executable fixtures, and traced back to RDKit source-tree cases in
+[RDKit serializer coverage](rdkit-serializer-coverage.html).
 
 ## PreparedMol bytes
 

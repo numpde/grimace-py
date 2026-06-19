@@ -35,7 +35,7 @@ python scripts/report_correctness_coverage.py
 | `rdkit_deterministic_unobserved` | 1 | Deterministic RDKit writer outputs not observed in bounded random-writer sampling. |
 | `rdkit_writer_support_counts` | 30 | Count-only RDKit random-writer support evidence. |
 | `rdkit_rooted_random` | 1 | Version-pinned rooted random-writer output. |
-| `rdkit_known_stereo_gaps` | 16 | Executable parity debt, outside the passing parity lane. |
+| `rdkit_known_stereo_gaps` | 16 | Executable parity debt, explained in [Known gaps](known-gaps.html). |
 | `rdkit_known_quirks` | 1 | Isolated RDKit behavior observation. |
 
 By source class:
@@ -76,7 +76,7 @@ Documentation explains intent; loaders and tests enforce it.
 | `tests/fixtures/rdkit_deterministic_unobserved/` | Diagnostic deterministic RDKit outputs outside bounded random-writer observations. |
 | `tests/fixtures/rdkit_writer_support_counts/` | Count-only RDKit random-writer support evidence. |
 | `tests/fixtures/rdkit_rooted_random/` | Passing rooted random-writer observations. |
-| `tests/fixtures/rdkit_known_stereo_gaps/` | Failing opt-in diagnostics for known stereo gaps. |
+| `tests/fixtures/rdkit_known_stereo_gaps/` | Failing opt-in diagnostics for [known stereo gaps](known-gaps.html). |
 | `tests/fixtures/rdkit_known_quirks/` | Isolated RDKit behavior observations. |
 | `tests/fixtures/rdkit_disconnected_sampling/` | Compatibility sampling inputs, not exact-version parity claims. |
 | `tests/fixtures/rdkit_stereo_regressions/` | Reusable stereo members and rejected members. |
@@ -97,7 +97,8 @@ writer membership when exact support is too large and the deterministic writer
 output is in Grimace support. Keep deterministic outputs that are not observed
 in bounded random-writer sampling in `rdkit_deterministic_unobserved`; that
 family is diagnostic evidence, not passing membership parity. Keep `rdkit_only`
-cases as known gaps while they fail. Do not promote `uncertain` mined cases.
+cases as [known gaps](known-gaps.html) while they fail. Do not promote
+`uncertain` mined cases.
 
 Prefer exact-support fixtures whenever the full support set is small enough to
 keep. Use writer support-count fixtures only when storing every support string

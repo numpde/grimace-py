@@ -20,7 +20,8 @@ structure match the supported writer language.
 
 The current public runtime scope is documented in
 [Runtime](runtime.html), and active limitations are documented in
-[Limitations](current-limitations.html).
+[Limitations](current-limitations.html). The current pinned parity failures are
+explained in [Known gaps](known-gaps.html).
 
 RDKit string support remains the oracle for public parity tests. Parsed-object
 equivalence may be added as a separate evidence layer, but it must not replace
@@ -38,7 +39,8 @@ When a case differs from RDKit, classify it explicitly:
   assignment
 - `rdkit-quirk`: RDKit behavior is unusual but intentionally mirrored for
   parity
-- `known-rdkit-gap`: `grimace` does not yet mirror a pinned RDKit writer case
+- `known-rdkit-gap`: `grimace` does not yet mirror a pinned RDKit writer case;
+  see [Known gaps](known-gaps.html)
 
 Tests and fixtures should use these labels instead of implying that every
 RDKit mismatch is chemically wrong or that every semantically valid alternative

@@ -81,7 +81,9 @@ still being outside that writer language.
 
 Use [Correctness contracts](correctness-contracts.html) for the detailed
 boundary between chemical semantics and writer parity. Use
-[Limitations](current-limitations.html) for the current supported scope.
+[Limitations](current-limitations.html) for the current supported scope, and
+[Known gaps](known-gaps.html) for pinned RDKit parity cases that are not yet
+covered by the passing corpus.
 
 ## API choices
 

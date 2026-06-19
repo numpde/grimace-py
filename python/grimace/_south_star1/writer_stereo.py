@@ -285,26 +285,40 @@ def reconstruct_writer_local_order_records(
     atom_occurrences: tuple[WriterAtomOccurrenceRecord, ...],
     parent_by_child: Mapping[AtomId, AtomId],
     closed_atoms: frozenset[AtomId],
+    ring_incidences_by_atom: (
+        Mapping[AtomId, tuple[tuple[BondId, AtomId], ...]] | None
+    ) = None,
 ) -> tuple[WriterLocalOrderRecord, ...]:
     records: tuple[WriterLocalOrderRecord, ...] = ()
+    ring_incidences_by_atom = ring_incidences_by_atom or {}
 
     for occurrence in atom_occurrences:
         parent = parent_by_child.get(occurrence.atom)
-        if parent is None:
-            continue
 
-        records = _record_parent_occurrence(
-            prepared,
-            records,
-            atom=occurrence.atom,
-            parent=parent,
-        )
-        records = _record_child_occurrence(
-            prepared,
-            records,
-            parent=parent,
-            child=occurrence.atom,
-        )
+        if parent is not None:
+            records = _record_parent_occurrence(
+                prepared,
+                records,
+                atom=occurrence.atom,
+                parent=parent,
+            )
+            records = _record_child_occurrence(
+                prepared,
+                records,
+                parent=parent,
+                child=occurrence.atom,
+            )
+
+        for bond, partner in ring_incidences_by_atom.get(occurrence.atom, ()):
+            occurrence_id = _tetra_ring_endpoint_occurrence_id(
+                prepared,
+                endpoint_atom=occurrence.atom,
+                partner_atom=partner,
+                bond=bond,
+            )
+            if occurrence_id is None:
+                continue
+            records = _append_local_order(records, occurrence.atom, occurrence_id)
 
     for atom in sorted(closed_atoms, key=int):
         record = _local_order_record(records, atom)
@@ -802,16 +816,7 @@ def _on_ring_endpoint_emitted(
     _reject_supported_ring_pair_stereo(prepared, event.bond)
     if not _ring_event_text_ok(prepared, event):
         return _WriterStereoMutation(state=None)
-    from .writer_state import WriterStereoState
-
-    return _WriterStereoMutation(
-        state=WriterStereoState(
-            residual_snapshot=stereo_state.residual_snapshot,
-            atom_occurrences=stereo_state.atom_occurrences,
-            bond_occurrences=stereo_state.bond_occurrences,
-            local_orders=stereo_state.local_orders,
-        ),
-    )
+    return _record_tetra_ring_endpoint(prepared, stereo_state, event)
 
 
 def _on_ring_endpoint_paired(
@@ -822,19 +827,12 @@ def _on_ring_endpoint_paired(
     _reject_supported_ring_pair_stereo(prepared, event.bond)
     if not _ring_event_text_ok(prepared, event):
         return _WriterStereoMutation(state=None)
-    from .writer_state import WriterStereoState
-
-    return _WriterStereoMutation(
-        state=WriterStereoState(
-            residual_snapshot=stereo_state.residual_snapshot,
-            atom_occurrences=stereo_state.atom_occurrences,
-            bond_occurrences=stereo_state.bond_occurrences,
-            local_orders=stereo_state.local_orders,
-        ),
-    )
+    return _record_tetra_ring_endpoint(prepared, stereo_state, event)
 
 
 def _ring_event_text_ok(prepared: SouthStarPreparedMol, event) -> bool:
+    from .writer_graph_obligations import writer_closure_bond_text_relation
+
     try:
         policy_label = RingLabel(event.label.value)
         expected_label = policy_label.text()
@@ -846,24 +844,47 @@ def _ring_event_text_ok(prepared: SouthStarPreparedMol, event) -> bool:
         return False
     if event.endpoint_text != event.label.text:
         return False
-    return event.bond_text in _ring_endpoint_bond_texts(prepared, event.bond)
-
-
-def _ring_endpoint_bond_texts(
-    prepared: SouthStarPreparedMol,
-    bond: BondId,
-) -> frozenset[str]:
     try:
-        choices = prepared.policy.bond_text_domain_unchecked(
-            bond,
-            slot_kind="ring_endpoint",
-        )
-    except KeyError:
-        return frozenset()
-    return frozenset(
-        choice.base_text
-        for choice in choices
-        if choice.base_text not in {"/", "\\"}
+        relation = writer_closure_bond_text_relation(prepared, event.bond)
+    except SouthStarError:
+        return False
+    return event.bond_text in relation.texts
+
+
+def _record_tetra_ring_endpoint(
+    prepared: SouthStarPreparedMol,
+    stereo_state: "WriterStereoState",
+    event: WriterRingEndpointEmitted | WriterRingEndpointPaired,
+) -> _WriterStereoMutation:
+    from .writer_state import WriterStereoState
+
+    occurrence_id = _tetra_ring_endpoint_occurrence_id(
+        prepared,
+        endpoint_atom=event.endpoint_atom,
+        partner_atom=event.partner_atom,
+        bond=event.bond,
+    )
+    if occurrence_id is None:
+        return _WriterStereoMutation(state=stereo_state)
+
+    record = _local_order_record(stereo_state.local_orders, event.endpoint_atom)
+    if record is not None and (record.closed or occurrence_id in record.order):
+        return _WriterStereoMutation(state=None)
+
+    return _WriterStereoMutation(
+        state=WriterStereoState(
+            residual_snapshot=stereo_state.residual_snapshot,
+            atom_occurrences=stereo_state.atom_occurrences,
+            bond_occurrences=stereo_state.bond_occurrences,
+            local_orders=_append_local_order(
+                stereo_state.local_orders,
+                event.endpoint_atom,
+                occurrence_id,
+            ),
+        ),
+        capabilities=frozenset((
+            _WriterExecutionCapabilityKind.TETRA_RING_ENDPOINT_ORDER_OCCURRENCE,
+        )),
     )
 
 
@@ -997,6 +1018,38 @@ def _tetra_template_by_center(
     prepared: SouthStarPreparedMol,
 ) -> dict[AtomId, TetraTemplate]:
     return {template.center: template for template in prepared.tetra_templates}
+
+
+def _tetra_ring_endpoint_occurrence_id(
+    prepared: SouthStarPreparedMol,
+    *,
+    endpoint_atom: AtomId,
+    partner_atom: AtomId,
+    bond: BondId,
+) -> OccurrenceId | None:
+    template = _tetra_template_by_center(prepared).get(endpoint_atom)
+    if template is None:
+        return None
+
+    occurrence_by_id = _occurrence_by_id(prepared)
+    occurrence_id = _neighbor_ligands_by_bond(
+        occurrence_by_id,
+        template.ligand_occurrences,
+    ).get(bond)
+    if occurrence_id is None:
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_STEREO,
+            "tetrahedral ring endpoint is not a ligand occurrence",
+        )
+
+    occurrence = occurrence_by_id[occurrence_id]
+    if occurrence.atom != partner_atom:
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_STEREO,
+            "tetrahedral ring endpoint has the wrong partner atom",
+        )
+
+    return occurrence_id
 
 
 def _directional_template_by_site(

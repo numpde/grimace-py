@@ -619,6 +619,100 @@ class WriterStereoResidualTest(unittest.TestCase):
 
         self.assertIsNone(closed)
 
+    def test_tetra_ring_endpoint_open_records_local_order_occurrence(self) -> None:
+        prepared = _prepare(ring_core_tetra_facts())
+        label = WriterClosureLabel(value=1, text="1")
+
+        outcome = advance_writer_stereo_state_with_evidence(
+            prepared,
+            initial_writer_stereo_state(prepared),
+            (
+                WriterRingEndpointEmitted(
+                    bond=BondId(2),
+                    endpoint_atom=AtomId(0),
+                    partner_atom=AtomId(2),
+                    label=label,
+                    endpoint_text="1",
+                    bond_text="",
+                ),
+            ),
+        )
+
+        self.assertIsNotNone(outcome.state)
+        assert outcome.state is not None
+        self.assertIn(
+            _WriterExecutionCapabilityKind
+            .TETRA_RING_ENDPOINT_ORDER_OCCURRENCE,
+            outcome.execution_capabilities,
+        )
+        self.assertEqual(
+            outcome.state.local_orders,
+            (
+                writer_stereo_module.WriterLocalOrderRecord(
+                    atom=AtomId(0),
+                    order=(OccurrenceId(1),),
+                ),
+            ),
+        )
+
+    def test_tetra_ring_endpoint_pair_records_local_order_occurrence(self) -> None:
+        prepared = _prepare(ring_core_tetra_facts())
+        label = WriterClosureLabel(value=1, text="1")
+
+        outcome = advance_writer_stereo_state_with_evidence(
+            prepared,
+            initial_writer_stereo_state(prepared),
+            (
+                WriterRingEndpointPaired(
+                    bond=BondId(0),
+                    endpoint_atom=AtomId(0),
+                    partner_atom=AtomId(1),
+                    label=label,
+                    endpoint_text="1",
+                    bond_text="",
+                ),
+            ),
+        )
+
+        self.assertIsNotNone(outcome.state)
+        assert outcome.state is not None
+        self.assertIn(
+            _WriterExecutionCapabilityKind
+            .TETRA_RING_ENDPOINT_ORDER_OCCURRENCE,
+            outcome.execution_capabilities,
+        )
+        self.assertEqual(
+            outcome.state.local_orders,
+            (
+                writer_stereo_module.WriterLocalOrderRecord(
+                    atom=AtomId(0),
+                    order=(OccurrenceId(0),),
+                ),
+            ),
+        )
+
+    def test_tetra_ring_endpoint_rejects_wrong_partner(self) -> None:
+        prepared = _prepare(ring_core_tetra_facts())
+        label = WriterClosureLabel(value=1, text="1")
+
+        with self.assertRaises(SouthStarError) as caught:
+            advance_writer_stereo_state_with_evidence(
+                prepared,
+                initial_writer_stereo_state(prepared),
+                (
+                    WriterRingEndpointEmitted(
+                        bond=BondId(2),
+                        endpoint_atom=AtomId(0),
+                        partner_atom=AtomId(1),
+                        label=label,
+                        endpoint_text="1",
+                        bond_text="",
+                    ),
+                ),
+            )
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_STEREO)
+
     def test_ring_endpoint_event_on_directional_carrier_fails_closed(self) -> None:
         prepared = _prepare(directional_facts())
         label = WriterClosureLabel(value=1, text="1")
@@ -1041,6 +1135,77 @@ def terminal_tetra_center_facts() -> MoleculeFacts:
                 site=site,
                 kind=LigandKind.IMPLICIT_H,
                 atom=AtomId(1),
+                bond=None,
+            ),
+        ),
+    )
+
+
+def ring_core_tetra_facts() -> MoleculeFacts:
+    site = SiteId(0)
+    return MoleculeFacts(
+        atoms=(
+            replace(atom(0, "C"), implicit_h_count=1),
+            atom(1, "C"),
+            atom(2, "C"),
+            atom(3, "F"),
+        ),
+        bonds=(
+            single_bond(0, 0, 1),
+            single_bond(1, 1, 2),
+            single_bond(2, 2, 0),
+            single_bond(3, 0, 3),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=tuple(AtomId(index) for index in range(4)),
+                bonds=tuple(BondId(index) for index in range(4)),
+            ),
+        ),
+        stereo=StereoFacts(
+            tetrahedral=(
+                TetrahedralSiteFacts(
+                    id=site,
+                    center=AtomId(0),
+                    status=SiteStatus.SPECIFIED,
+                    target=TetraValue.PLUS,
+                    ligand_occurrences=tuple(
+                        OccurrenceId(index) for index in range(4)
+                    ),
+                    reference_order=tuple(
+                        OccurrenceId(index) for index in range(4)
+                    ),
+                ),
+            ),
+        ),
+        ligand_occurrences=(
+            LigandOccurrence(
+                id=OccurrenceId(0),
+                site=site,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(1),
+                bond=BondId(0),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(1),
+                site=site,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(2),
+                bond=BondId(2),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(2),
+                site=site,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(3),
+                bond=BondId(3),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(3),
+                site=site,
+                kind=LigandKind.IMPLICIT_H,
+                atom=AtomId(0),
                 bond=None,
             ),
         ),

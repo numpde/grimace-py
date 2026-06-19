@@ -17,6 +17,9 @@ class _WriterExecutionCapabilityKind(Enum):
 
     TETRA_TOKEN_RESTRICTION = "tetra_token_restriction"
     TETRA_LOCAL_ORDER_RESTRICTION = "tetra_local_order_restriction"
+    TETRA_RING_ENDPOINT_ORDER_OCCURRENCE = (
+        "tetra_ring_endpoint_order_occurrence"
+    )
 
     DIRECTIONAL_CARRIER_RESTRICTION = "directional_carrier_restriction"
     DIRECTIONAL_SITE_COMPATIBILITY = "directional_site_compatibility"
@@ -36,6 +39,7 @@ _PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES = frozenset(
         _WriterExecutionCapabilityKind.VISIBLE_CLOSURE_BOND_TEXT,
         _WriterExecutionCapabilityKind.TETRA_TOKEN_RESTRICTION,
         _WriterExecutionCapabilityKind.TETRA_LOCAL_ORDER_RESTRICTION,
+        _WriterExecutionCapabilityKind.TETRA_RING_ENDPOINT_ORDER_OCCURRENCE,
         _WriterExecutionCapabilityKind.DIRECTIONAL_CARRIER_RESTRICTION,
         _WriterExecutionCapabilityKind.DIRECTIONAL_SITE_COMPATIBILITY,
         _WriterExecutionCapabilityKind.RESIDUAL_PROPAGATION,

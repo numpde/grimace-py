@@ -1762,7 +1762,7 @@ class WriterSnapshotTest(unittest.TestCase):
     def test_cursor_audit_accepts_reachable_tetra_traversal_states(self) -> None:
         prepared = _prepare(tetrahedral_facts())
         options = _writer_options(rooted_at_atom=1)
-        pending = [initial_writer_frontier_cursor(prepared, options)]
+        pending = [initial_writer_transition_frontier_cursor(prepared, options)]
         seen = set()
         visited = 0
 
@@ -1789,6 +1789,89 @@ class WriterSnapshotTest(unittest.TestCase):
             pending.extend(choice.successor for choice in choices.choices)
 
         self.assertGreaterEqual(visited, 7)
+
+    def test_cursor_audit_rejects_missing_tetra_ring_endpoint_occurrence(self) -> None:
+        from tests.south_star1.test_writer_stereo_residual import ring_core_tetra_facts
+
+        prepared = _prepare(ring_core_tetra_facts())
+        options = _writer_options(rooted_at_atom=0)
+        key = _first_key_with_ring_core_tetra_open_endpoint(prepared, options)
+        record = _local_order_for_atom(key, AtomId(0))
+        tampered_key = replace(
+            key,
+            stereo_state=replace(
+                key.stereo_state,
+                local_orders=_replace_local_order_record(
+                    key.stereo_state.local_orders,
+                    replace(record, order=()),
+                ),
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_duplicated_tetra_ring_endpoint_occurrence(self) -> None:
+        from tests.south_star1.test_writer_stereo_residual import ring_core_tetra_facts
+
+        prepared = _prepare(ring_core_tetra_facts())
+        options = _writer_options(rooted_at_atom=0)
+        key = _first_key_with_ring_core_tetra_open_endpoint(prepared, options)
+        record = _local_order_for_atom(key, AtomId(0))
+        tampered_key = replace(
+            key,
+            stereo_state=replace(
+                key.stereo_state,
+                local_orders=_replace_local_order_record(
+                    key.stereo_state.local_orders,
+                    replace(record, order=record.order + record.order),
+                ),
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_accepts_reachable_ring_core_tetra_traversal_states(self) -> None:
+        from tests.south_star1.test_writer_stereo_residual import ring_core_tetra_facts
+
+        prepared = _prepare(ring_core_tetra_facts())
+        options = _writer_options(rooted_at_atom=0)
+        pending = [initial_writer_transition_frontier_cursor(prepared, options)]
+        seen = set()
+        visited = 0
+
+        while pending:
+            cursor = pending.pop(0)
+            if cursor in seen:
+                continue
+            seen.add(cursor)
+            visited += 1
+
+            validate_writer_cursor_against_prepared(
+                prepared,
+                cursor,
+                runtime_options=options,
+            )
+
+            choices = writer_frontier_choices(prepared, cursor)
+            if choices.terminal is not None:
+                validate_writer_cursor_against_prepared(
+                    prepared,
+                    choices.terminal.finalized_cursor,
+                    runtime_options=options,
+                )
+            pending.extend(choice.successor for choice in choices.choices)
+
+        self.assertGreater(visited, 1)
 
     def test_cursor_audit_rejects_missing_non_stereo_history_mid_traversal(self) -> None:
         prepared = _prepare(cco_facts())
@@ -3215,6 +3298,22 @@ def _first_terminal_key(prepared, options):
         if not choices.choices:
             raise AssertionError("frontier cursor has no terminal path")
         cursor = choices.choices[0].successor
+
+
+def _first_key_with_ring_core_tetra_open_endpoint(prepared, options):
+    pending = [initial_writer_transition_frontier_cursor(prepared, options)]
+    seen = set()
+    while pending:
+        cursor = pending.pop(0)
+        if cursor in seen:
+            continue
+        seen.add(cursor)
+        for key, _weight in cursor.weighted_states:
+            if key.ring_state.open_endpoints and key.stereo_state.local_orders:
+                return key
+        choices = writer_frontier_choices(prepared, cursor)
+        pending.extend(choice.successor for choice in choices.choices)
+    raise AssertionError("no ring-core tetra open endpoint state")
 
 
 def _manual_depth_first_interleaving_key():

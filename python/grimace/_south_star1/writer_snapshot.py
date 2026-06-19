@@ -1303,6 +1303,7 @@ class _WriterPublicCyclicRequiredCapability(Enum):
     ACYCLIC_PENDANT_TREE_TRAVERSAL = "acyclic_pendant_tree_traversal"
     TREE_BOND_TEXT_EMISSION = "tree_bond_text_emission"
     RING_CORE_NON_SINGLE_CLOSURE_BOND = "ring_core_non_single_closure_bond"
+    RING_CORE_TETRAHEDRAL_STEREO = "ring_core_tetrahedral_stereo"
     CYCLIC_DIRECTIONAL_STEREO = "cyclic_directional_stereo"
     CYCLIC_RING_PAIR_STEREO = "cyclic_ring_pair_stereo"
     MULTI_CYCLE_TOPOLOGY = "multi_cycle_topology"
@@ -1317,6 +1318,7 @@ _PUBLIC_CYCLIC_SUPPORTED_CAPABILITIES = frozenset(
         _WriterPublicCyclicRequiredCapability.ACYCLIC_PENDANT_TREE_TRAVERSAL,
         _WriterPublicCyclicRequiredCapability.TREE_BOND_TEXT_EMISSION,
         _WriterPublicCyclicRequiredCapability.RING_CORE_NON_SINGLE_CLOSURE_BOND,
+        _WriterPublicCyclicRequiredCapability.RING_CORE_TETRAHEDRAL_STEREO,
     }
 )
 
@@ -2440,6 +2442,20 @@ def _writer_public_cyclic_opening_profile_report(
             and bond.order is not BondOrder.SINGLE
         )
     )
+    ring_core_tetra_template_count = sum(
+        1
+        for template in prepared.tetra_templates
+        if template.center in ring_core_atom_set
+    )
+    ring_core_tetra_is_supported = (
+        ring_core_tetra_template_count > 0
+        and _writer_public_ring_core_tetrahedral_stereo_is_supported(
+            prepared=prepared,
+            ring_core_atom_set=frozenset(ring_core_atom_set),
+            ring_core_bond_id_set=frozenset(ring_core_bond_ids),
+            ring_core_non_single_bond_ids=ring_core_non_single_bond_ids,
+        )
+    )
     ring_core_has_supported_non_single_closure_bond = (
         len(ring_core_non_single_bond_ids) == 1
         and (
@@ -2637,6 +2653,10 @@ def _writer_public_cyclic_opening_profile_report(
             _WriterPublicCyclicRequiredCapability.
             RING_CORE_NON_SINGLE_CLOSURE_BOND,
         )
+    if ring_core_tetra_template_count:
+        required_capabilities.add(
+            _WriterPublicCyclicRequiredCapability.RING_CORE_TETRAHEDRAL_STEREO,
+        )
 
     if cyclic_ranks != (1,):
         unsupported_capabilities.add(
@@ -2684,6 +2704,16 @@ def _writer_public_cyclic_opening_profile_report(
     elif unsupported_stereo_surface_count:
         unsupported_capabilities.add(
             _WriterPublicCyclicRequiredCapability.CYCLIC_DIRECTIONAL_STEREO,
+        )
+        kind = (
+            _WriterPublicCyclicOpeningProfileKind.BLOCKED_UNSUPPORTED_CYCLIC_STEREO_SURFACE
+        )
+    elif (
+        ring_core_tetra_template_count
+        and not ring_core_tetra_is_supported
+    ):
+        unsupported_capabilities.add(
+            _WriterPublicCyclicRequiredCapability.RING_CORE_TETRAHEDRAL_STEREO,
         )
         kind = (
             _WriterPublicCyclicOpeningProfileKind.BLOCKED_UNSUPPORTED_CYCLIC_STEREO_SURFACE
@@ -2805,6 +2835,63 @@ def _writer_public_non_single_closure_bond_is_supported(
         and frozenset(relation.compatible_pairs)
         == frozenset((("", marker), (marker, "")))
     )
+
+
+def _writer_public_ring_core_tetrahedral_stereo_is_supported(
+    *,
+    prepared: SouthStarPreparedMol,
+    ring_core_atom_set: frozenset[AtomId],
+    ring_core_bond_id_set: frozenset[BondId],
+    ring_core_non_single_bond_ids: tuple[BondId, ...],
+) -> bool:
+    if prepared.directional_templates:
+        return False
+    if ring_core_non_single_bond_ids:
+        return False
+    if len(prepared.tetra_templates) != 1:
+        return False
+
+    template = prepared.tetra_templates[0]
+    if template.status is not SiteStatus.SPECIFIED:
+        return False
+    if template.center not in ring_core_atom_set:
+        return False
+
+    occurrence_by_id = {
+        occurrence.id: occurrence
+        for occurrence in prepared.facts.ligand_occurrences
+    }
+    try:
+        occurrences = tuple(
+            occurrence_by_id[occurrence_id]
+            for occurrence_id in template.ligand_occurrences
+        )
+    except KeyError:
+        return False
+
+    neighbor_occurrences = tuple(
+        occurrence
+        for occurrence in occurrences
+        if occurrence.kind is LigandKind.NEIGHBOR_ATOM
+    )
+    implicit_h_occurrences = tuple(
+        occurrence
+        for occurrence in occurrences
+        if occurrence.kind is LigandKind.IMPLICIT_H
+    )
+    if len(neighbor_occurrences) != 3 or len(implicit_h_occurrences) != 1:
+        return False
+    if any(occurrence.atom is None for occurrence in neighbor_occurrences):
+        return False
+    if any(occurrence.bond is None for occurrence in neighbor_occurrences):
+        return False
+
+    ring_neighbor_bonds = tuple(
+        occurrence.bond
+        for occurrence in neighbor_occurrences
+        if occurrence.bond in ring_core_bond_id_set
+    )
+    return len(ring_neighbor_bonds) == 2
 
 
 def _cyclic_writer_admission_decision_from_readiness_gate(
@@ -3981,6 +4068,7 @@ def _validate_stereo_occurrences_bound_to_graph_state(
         atom_occurrences=key.stereo_state.atom_occurrences,
         parent_by_child=parent_by_child,
         closed_atoms=frozenset(closed_atoms),
+        ring_incidences_by_atom=_ring_incidences_by_atom(key),
     )
     expected_by_atom = {
         record.atom: record
@@ -3990,6 +4078,27 @@ def _validate_stereo_occurrences_bound_to_graph_state(
         _invalid_snapshot(
             "writer local-order history does not match emitted tree history"
         )
+
+
+def _ring_incidences_by_atom(
+    key: WriterStateKey,
+) -> dict[AtomId, tuple[tuple[BondId, AtomId], ...]]:
+    incidences: dict[AtomId, list[tuple[BondId, AtomId]]] = {}
+    for endpoint in key.ring_state.open_endpoints:
+        incidences.setdefault(endpoint.first_atom, []).append(
+            (endpoint.bond, endpoint.second_atom),
+        )
+    for closure in key.ring_state.closed_closures:
+        incidences.setdefault(closure.first_atom, []).append(
+            (closure.bond, closure.second_atom),
+        )
+        incidences.setdefault(closure.second_atom, []).append(
+            (closure.bond, closure.first_atom),
+        )
+    return {
+        atom: tuple(entries)
+        for atom, entries in incidences.items()
+    }
 
 
 def _validate_atom_occurrence_traversal_order(

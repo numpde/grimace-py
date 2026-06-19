@@ -16995,6 +16995,144 @@ class WriterStateKernelTest(unittest.TestCase):
             .BLOCKED_PUBLIC_CYCLIC_PROFILE,
         )
 
+    def test_public_ring_core_tetrahedral_closure_incidence_is_supported(
+        self,
+    ) -> None:
+        from tests.south_star1.test_writer_stereo_residual import ring_core_tetra_facts
+
+        prepared = _prepare(ring_core_tetra_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+
+        report = writer_snapshot._writer_public_cyclic_opening_profile_report(
+            prepared=prepared,
+        )
+        self.assertTrue(report.supported)
+        self.assertIn(
+            writer_snapshot
+            ._WriterPublicCyclicRequiredCapability
+            .RING_CORE_TETRAHEDRAL_STEREO,
+            report.required_capabilities,
+        )
+
+        decision = writer_snapshot._cyclic_writer_admission_decision_from_cursor(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        self.assertIs(
+            decision.kind,
+            writer_snapshot._WriterCyclicAdmissionDecisionKind.READY_PUBLIC,
+        )
+        self.assertIsNotNone(decision.execution_capability_certificate)
+        assert decision.execution_capability_certificate is not None
+        self.assertIn(
+            writer_snapshot
+            ._WriterExecutionCapabilityKind
+            .TETRA_RING_ENDPOINT_ORDER_OCCURRENCE,
+            decision.execution_capability_certificate.required_capabilities,
+        )
+
+        uses = tuple(
+            use
+            for use in decision.readiness_gate.audit.execution_capability_uses
+            if (
+                use.kind
+                is writer_snapshot
+                ._WriterExecutionCapabilityKind
+                .TETRA_RING_ENDPOINT_ORDER_OCCURRENCE
+            )
+        )
+        self.assertTrue(uses)
+        _assert_replay_succeeds_for_execution_capability_uses(
+            self,
+            audit=decision.readiness_gate.audit,
+            snapshot=(
+                writer_snapshot
+                ._capture_writer_frontier_snapshot_unchecked(
+                    prepared=prepared,
+                    runtime_options=options,
+                    cursor=cursor,
+                )
+            ),
+            prepared=prepared,
+        )
+
+    def test_public_ring_core_tetrahedral_profile_is_static_capability_gated(
+        self,
+    ) -> None:
+        from tests.south_star1.test_writer_stereo_residual import ring_core_tetra_facts
+
+        prepared = _prepare(ring_core_tetra_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+
+        with patch(
+            "grimace._south_star1.writer_snapshot"
+            "._PUBLIC_CYCLIC_SUPPORTED_CAPABILITIES",
+            writer_snapshot._PUBLIC_CYCLIC_SUPPORTED_CAPABILITIES
+            - {
+                writer_snapshot
+                ._WriterPublicCyclicRequiredCapability
+                .RING_CORE_TETRAHEDRAL_STEREO,
+            },
+        ):
+            decision = writer_snapshot._cyclic_writer_admission_decision_from_cursor(
+                prepared=prepared,
+                runtime_options=options,
+                cursor=cursor,
+            )
+
+        self.assertIs(
+            decision.kind,
+            writer_snapshot._WriterCyclicAdmissionDecisionKind
+            .BLOCKED_PUBLIC_CYCLIC_PROFILE,
+        )
+
+    def test_public_ring_core_tetrahedral_live_capability_is_certificate_gated(
+        self,
+    ) -> None:
+        from tests.south_star1.test_writer_stereo_residual import ring_core_tetra_facts
+
+        prepared = _prepare(ring_core_tetra_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+
+        with patch(
+            "grimace._south_star1.writer_snapshot"
+            "._PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES",
+            writer_snapshot._PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES
+            - {
+                writer_snapshot
+                ._WriterExecutionCapabilityKind
+                .TETRA_RING_ENDPOINT_ORDER_OCCURRENCE,
+            },
+        ):
+            decision = writer_snapshot._cyclic_writer_admission_decision_from_cursor(
+                prepared=prepared,
+                runtime_options=options,
+                cursor=cursor,
+            )
+
+        self.assertIs(
+            decision.kind,
+            writer_snapshot._WriterCyclicAdmissionDecisionKind
+            .BLOCKED_PUBLIC_EXECUTION_CAPABILITY,
+        )
+        self.assertIsNotNone(decision.execution_capability_certificate)
+        assert decision.execution_capability_certificate is not None
+        self.assertEqual(
+            decision.execution_capability_certificate.unsupported_capabilities,
+            frozenset((
+                writer_snapshot
+                ._WriterExecutionCapabilityKind
+                .TETRA_RING_ENDPOINT_ORDER_OCCURRENCE,
+            )),
+        )
+        self.assertTrue(
+            decision.execution_capability_certificate.first_unsupported_uses,
+        )
+
     def test_partnerless_non_single_closure_text_is_not_live_openable(self) -> None:
         prepared = _prepare_non_single_closure_triangle_with_ring_endpoint_choices(
             order=BondOrder.DOUBLE,

@@ -12,6 +12,7 @@ from .errors import SouthStarError
 from .errors import SouthStarErrorKind
 from .ids import AtomId
 from .ids import BondId
+from .writer_capabilities import _WriterExecutionCapabilityKind
 from .writer_graph_obligations import WriterBoundaryOwnerKind
 from .writer_graph_obligations import WriterEdgeObligationKind
 from .writer_graph_obligations import WriterGraphObligationContext
@@ -48,7 +49,7 @@ from .writer_events import WriterRingEndpointEmitted
 from .writer_events import WriterRingEndpointPaired
 from .writer_stereo import WriterAtomTextChoice
 from .writer_stereo import WriterBondTextChoice
-from .writer_stereo import advance_writer_stereo_state
+from .writer_stereo import advance_writer_stereo_state_with_evidence
 from .writer_stereo import terminal_writer_stereo_state
 from .writer_stereo import validate_writer_stereo_supported_prepared
 from .writer_stereo import writer_atom_text_choices
@@ -70,16 +71,6 @@ class WriterTransitionKind(Enum):
     PAIR_CLOSURE_ENDPOINT = "pair_closure_endpoint"
 
 
-class _WriterExecutionCapabilityKind(Enum):
-    TREE_CHILD_ENTRY = "tree_child_entry"
-    CYCLIC_TREE_ENTRY = "cyclic_tree_entry"
-    TREE_BOND_SLOT = "tree_bond_slot"
-    VISIBLE_TREE_BOND_TEXT = "visible_tree_bond_text"
-    CLOSURE_ENDPOINT_OPEN = "closure_endpoint_open"
-    CLOSURE_ENDPOINT_PAIR = "closure_endpoint_pair"
-    VISIBLE_CLOSURE_BOND_TEXT = "visible_closure_bond_text"
-
-
 @dataclass(frozen=True, slots=True)
 class WriterTransitionEvidence:
     atom: AtomId | None = None
@@ -95,6 +86,9 @@ class WriterTransition:
     kind: WriterTransitionKind
     events: tuple[WriterEvent, ...]
     evidence: WriterTransitionEvidence
+    semantic_execution_capabilities: frozenset[
+        _WriterExecutionCapabilityKind
+    ] = frozenset()
 
     def __post_init__(self) -> None:
         if not self.emitted_text:
@@ -717,7 +711,9 @@ class _WriterNextTokenFrontierSupport:
     def execution_capabilities(
         self,
     ) -> frozenset[_WriterExecutionCapabilityKind]:
-        capabilities: set[_WriterExecutionCapabilityKind] = set()
+        capabilities: set[_WriterExecutionCapabilityKind] = set(
+            self.transition.semantic_execution_capabilities
+        )
 
         if self.policy_family in (
             _WriterGraphPolicyActionFamily.TREE_ENTRY,
@@ -5155,19 +5151,20 @@ def _transition(
     events: tuple[WriterEvent, ...],
     evidence: WriterTransitionEvidence,
 ) -> WriterTransition | None:
-    stereo_state = advance_writer_stereo_state(
+    stereo_outcome = advance_writer_stereo_state_with_evidence(
         prepared,
         state.stereo_state,
         events,
     )
-    if stereo_state is None:
+    if stereo_outcome.state is None:
         return None
     return WriterTransition(
         emitted_text=emitted_text,
-        successor=replace(successor, stereo_state=stereo_state),
+        successor=replace(successor, stereo_state=stereo_outcome.state),
         kind=kind,
         events=events,
         evidence=evidence,
+        semantic_execution_capabilities=stereo_outcome.execution_capabilities,
     )
 
 

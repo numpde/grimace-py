@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from .errors import SouthStarError
 from .errors import SouthStarErrorKind
 from .ids import AtomId
+from .writer_capabilities import _WriterExecutionCapabilityKind
 from .writer_state import ComponentCursor
 from .writer_state import ObligationState
 from .writer_state import WriterAtomFrame
@@ -28,7 +29,6 @@ from .writer_transitions import _WriterActiveEmittedGraphPolicyBlocker
 from .writer_transitions import _WriterActiveEmittedGraphPolicyDecision
 from .writer_transitions import _WriterActiveChildSelectionKind
 from .writer_transitions import _WriterClosureEndpointSelectionKind
-from .writer_transitions import _WriterExecutionCapabilityKind
 from .writer_transitions import _WriterGraphPolicyActionFamily
 from .writer_transitions import _WriterNextTokenFrontierSupport
 from .writer_transitions import _WriterResidualAttachmentOwnerScopeKind

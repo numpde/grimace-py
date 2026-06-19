@@ -27,6 +27,8 @@ from .prepared_runtime import require_writer_shaped_runtime_options
 from .prepared_runtime import runtime_root_atom_for_prepared
 from .residual_constraints import ResidualStore
 from .residual_constraints import ResidualStoreValueSnapshot
+from .writer_capabilities import _PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES
+from .writer_capabilities import _WriterExecutionCapabilityKind
 from .writer_graph_obligations import WriterBoundaryOwnerKind
 from .writer_graph_obligations import WriterEdgeObligationKind
 from .writer_graph_obligations import WriterGraphObligationContext
@@ -58,7 +60,6 @@ from .writer_state import WriterAtomFrame
 from .writer_state import WriterBranchFrame
 from .writer_state import WriterStateKey
 from .writer_state import WriterStereoStateKey
-from .writer_transitions import _WriterExecutionCapabilityKind
 
 
 _PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED = True
@@ -1239,10 +1240,35 @@ class _WriterResidualCyclicReadinessGate:
         return self.audit.truncated_at_prefix
 
 
+@dataclass(frozen=True, slots=True)
+class _WriterPublicExecutionCapabilityCertificate:
+    required_capabilities: frozenset[_WriterExecutionCapabilityKind]
+    supported_capabilities: frozenset[_WriterExecutionCapabilityKind]
+    unsupported_capabilities: frozenset[_WriterExecutionCapabilityKind]
+    first_unsupported_uses: tuple[_WriterExecutionCapabilityUse, ...] = ()
+
+    def __post_init__(self) -> None:
+        expected = self.required_capabilities - self.supported_capabilities
+        if self.unsupported_capabilities != expected:
+            raise ValueError(
+                "writer execution capability certificate has wrong unsupported set"
+            )
+        use_kinds = frozenset(use.kind for use in self.first_unsupported_uses)
+        if use_kinds != self.unsupported_capabilities:
+            raise ValueError(
+                "writer execution capability certificate missing unsupported uses"
+            )
+
+    @property
+    def ready(self) -> bool:
+        return not self.unsupported_capabilities
+
+
 class _WriterCyclicAdmissionDecisionKind(Enum):
     READY_PUBLIC = "ready_public"
     READY_BUT_PUBLIC_CLOSED = "ready_but_public_closed"
     BLOCKED_PUBLIC_CYCLIC_PROFILE = "blocked_public_cyclic_profile"
+    BLOCKED_PUBLIC_EXECUTION_CAPABILITY = "blocked_public_execution_capability"
     BLOCKED_RESIDUAL_CYCLIC_POLICY = "blocked_residual_cyclic_policy"
     TRUNCATED_READINESS_AUDIT = "truncated_readiness_audit"
 
@@ -1339,14 +1365,25 @@ class _WriterCyclicAdmissionDecision:
     kind: _WriterCyclicAdmissionDecisionKind
     readiness_gate: _WriterResidualCyclicReadinessGate
     public_profile: _WriterPublicCyclicOpeningProfileReport | None = None
+    execution_capability_certificate: (
+        _WriterPublicExecutionCapabilityCertificate | None
+    ) = None
 
     def __post_init__(self) -> None:
         if (
             self.kind
             is _WriterCyclicAdmissionDecisionKind.READY_PUBLIC
         ):
-            valid = self.readiness_gate.ready and bool(
-                self.public_profile is not None and self.public_profile.supported
+            valid = (
+                self.readiness_gate.ready
+                and self.public_profile is not None
+                and self.public_profile.supported
+                and self.execution_capability_certificate is not None
+                and self.execution_capability_certificate.ready
+                and (
+                    self.execution_capability_certificate.required_capabilities
+                    <= self.execution_capability_certificate.supported_capabilities
+                )
             )
         elif (
             self.kind
@@ -1381,6 +1418,20 @@ class _WriterCyclicAdmissionDecision:
                 and self.public_profile is not None
                 and not self.public_profile.supported
             )
+        elif (
+            self.kind
+            is (
+                _WriterCyclicAdmissionDecisionKind
+                .BLOCKED_PUBLIC_EXECUTION_CAPABILITY
+            )
+        ):
+            valid = (
+                self.readiness_gate.ready
+                and self.public_profile is not None
+                and self.public_profile.supported
+                and self.execution_capability_certificate is not None
+                and not self.execution_capability_certificate.ready
+            )
         else:
             valid = False
 
@@ -1396,6 +1447,8 @@ class _WriterCyclicAdmissionDecision:
             _WriterCyclicAdmissionDecisionKind.READY_PUBLIC,
             _WriterCyclicAdmissionDecisionKind.READY_BUT_PUBLIC_CLOSED,
             _WriterCyclicAdmissionDecisionKind.BLOCKED_PUBLIC_CYCLIC_PROFILE,
+            _WriterCyclicAdmissionDecisionKind
+            .BLOCKED_PUBLIC_EXECUTION_CAPABILITY,
         }
 
     @property
@@ -2681,10 +2734,24 @@ def _cyclic_writer_admission_decision_from_readiness_gate(
             prepared=prepared,
         )
         if _PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED and profile.supported:
+            certificate = _writer_public_execution_capability_certificate(
+                gate.audit,
+            )
+            if not certificate.ready:
+                return _WriterCyclicAdmissionDecision(
+                    kind=(
+                        _WriterCyclicAdmissionDecisionKind
+                        .BLOCKED_PUBLIC_EXECUTION_CAPABILITY
+                    ),
+                    readiness_gate=gate,
+                    public_profile=profile,
+                    execution_capability_certificate=certificate,
+                )
             return _WriterCyclicAdmissionDecision(
                 kind=_WriterCyclicAdmissionDecisionKind.READY_PUBLIC,
                 readiness_gate=gate,
                 public_profile=profile,
+                execution_capability_certificate=certificate,
             )
         if _PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED:
             return _WriterCyclicAdmissionDecision(
@@ -2724,6 +2791,33 @@ def _cyclic_writer_admission_decision_from_readiness_gate(
     raise SouthStarError(
         SouthStarErrorKind.INTERNAL_INVARIANT,
         f"unknown residual cyclic readiness gate state: {gate.kind!r}",
+    )
+
+
+def _writer_public_execution_capability_certificate(
+    audit: _WriterResidualCyclicReadinessAudit,
+) -> _WriterPublicExecutionCapabilityCertificate:
+    required = audit.required_execution_capabilities
+    supported = _PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES
+    unsupported = required - supported
+
+    first_by_kind: dict[
+        _WriterExecutionCapabilityKind,
+        _WriterExecutionCapabilityUse,
+    ] = {}
+    for use in audit.execution_capability_uses:
+        if use.kind not in unsupported:
+            continue
+        first_by_kind.setdefault(use.kind, use)
+
+    return _WriterPublicExecutionCapabilityCertificate(
+        required_capabilities=required,
+        supported_capabilities=supported,
+        unsupported_capabilities=unsupported,
+        first_unsupported_uses=tuple(
+            first_by_kind[kind]
+            for kind in sorted(first_by_kind, key=lambda item: item.value)
+        ),
     )
 
 
@@ -2846,6 +2940,20 @@ def _assert_cyclic_writer_admission_decision(
             ),
         )
 
+    if decision.kind is (
+        _WriterCyclicAdmissionDecisionKind.BLOCKED_PUBLIC_EXECUTION_CAPABILITY
+    ):
+        certificate = decision.execution_capability_certificate
+        if certificate is None:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "missing writer execution capability certificate",
+            )
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            _writer_execution_capability_block_message(certificate),
+        )
+
     if decision.internally_ready and not decision.public_enabled:
         raise SouthStarError(
             SouthStarErrorKind.UNSUPPORTED_POLICY,
@@ -2881,6 +2989,19 @@ def _assert_cyclic_writer_admission_decision(
     raise SouthStarError(
         SouthStarErrorKind.INTERNAL_INVARIANT,
         f"unknown cyclic writer admission decision: {decision.kind!r}",
+    )
+
+
+def _writer_execution_capability_block_message(
+    certificate: _WriterPublicExecutionCapabilityCertificate,
+) -> str:
+    use = certificate.first_unsupported_uses[0]
+    return (
+        "WRITER_SHAPED requires an unsupported South Star "
+        "execution capability: "
+        f"{use.kind.value}; "
+        f"prefix={use.emitted_texts!r}; "
+        f"next={use.next_emitted_text!r}"
     )
 
 

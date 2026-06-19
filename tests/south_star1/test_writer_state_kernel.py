@@ -15752,6 +15752,13 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertTrue(decision.public_enabled)
         self.assertTrue(decision.admitted_publicly)
         self.assertTrue(decision.public_profile.supported)
+        self.assertIsNotNone(decision.execution_capability_certificate)
+        assert decision.execution_capability_certificate is not None
+        self.assertTrue(decision.execution_capability_certificate.ready)
+        self.assertLessEqual(
+            decision.execution_capability_certificate.required_capabilities,
+            decision.execution_capability_certificate.supported_capabilities,
+        )
         self.assertIs(
             decision.public_profile.kind,
             writer_snapshot._WriterPublicCyclicOpeningProfileKind
@@ -15759,6 +15766,57 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
         writer_snapshot._assert_cyclic_writer_admission_decision(decision)
+
+    def test_public_admission_blocks_when_required_live_capability_is_disabled(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+        baseline = writer_snapshot._cyclic_writer_admission_decision_from_cursor(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        assert baseline.execution_capability_certificate is not None
+        required = baseline.execution_capability_certificate.required_capabilities
+        disabled = writer_snapshot._WriterExecutionCapabilityKind.CLOSURE_ENDPOINT_OPEN
+        self.assertIn(disabled, required)
+
+        with patch(
+            "grimace._south_star1.writer_snapshot"
+            "._PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES",
+            baseline.execution_capability_certificate.supported_capabilities
+            - {disabled},
+        ):
+            decision = writer_snapshot._cyclic_writer_admission_decision_from_cursor(
+                prepared=prepared,
+                runtime_options=options,
+                cursor=cursor,
+            )
+
+        self.assertIs(
+            decision.kind,
+            writer_snapshot._WriterCyclicAdmissionDecisionKind
+            .BLOCKED_PUBLIC_EXECUTION_CAPABILITY,
+        )
+        self.assertIsNotNone(decision.execution_capability_certificate)
+        assert decision.execution_capability_certificate is not None
+        self.assertIn(
+            disabled,
+            decision.execution_capability_certificate.unsupported_capabilities,
+        )
+        self.assertEqual(
+            tuple(
+                use.kind
+                for use in decision
+                .execution_capability_certificate
+                .first_unsupported_uses
+            ),
+            (disabled,),
+        )
+        with self.assertRaises(SouthStarError) as caught:
+            writer_snapshot._assert_cyclic_writer_admission_decision(decision)
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+        self.assertIn(disabled.value, str(caught.exception))
 
     def test_simple_monocycle_public_admission_can_still_be_forced_closed(self) -> None:
         prepared = _prepare(cyclopropane_facts())
@@ -27752,6 +27810,12 @@ class WriterStateKernelTest(unittest.TestCase):
             "._PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED",
             True,
         ):
+            certificate = (
+                writer_snapshot
+                ._writer_public_execution_capability_certificate(
+                    ready_gate.audit,
+                )
+            )
             writer_snapshot._WriterCyclicAdmissionDecision(
                 kind=(
                     writer_snapshot
@@ -27760,6 +27824,7 @@ class WriterStateKernelTest(unittest.TestCase):
                 ),
                 readiness_gate=ready_gate,
                 public_profile=public_profile,
+                execution_capability_certificate=certificate,
             )
 
         invalid_cases = (
@@ -27924,6 +27989,9 @@ class WriterStateKernelTest(unittest.TestCase):
                 writer_snapshot
                 ._WriterCyclicAdmissionDecisionKind
                 .BLOCKED_PUBLIC_CYCLIC_PROFILE,
+                writer_snapshot
+                ._WriterCyclicAdmissionDecisionKind
+                .BLOCKED_PUBLIC_EXECUTION_CAPABILITY,
             },
         )
 

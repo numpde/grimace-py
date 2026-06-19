@@ -26,6 +26,7 @@ from grimace._south_star1.policy import BondTextDomain
 from grimace._south_star1.policy import RingLabel
 from grimace._south_star1.policy import SmilesPolicy
 from grimace._south_star1.policy import DirectionMark
+from grimace._south_star1.writer_capabilities import _WriterExecutionCapabilityKind
 from grimace._south_star1.residual_constraints import ResidualStore
 from grimace._south_star1.residual_constraints import DirectionalCarrierResidual
 from grimace._south_star1.residual_constraints import DirectionalResidualFactor
@@ -45,16 +46,22 @@ from grimace._south_star1.ids import OccurrenceId
 from grimace._south_star1.ids import SiteId
 from grimace._south_star1.policy import TetraToken
 from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
+from grimace._south_star1.writer_frontier import _initial_writer_transition_frontier_cursor
+from grimace._south_star1.writer_frontier import _writer_frontier_choice_snapshot
 from grimace._south_star1.writer_frontier import writer_frontier_choices
 from grimace._south_star1.writer_events import WriterRingEndpointEmitted
 from grimace._south_star1.writer_events import WriterRingEndpointPaired
+from grimace._south_star1.writer_events import WriterAtomEmitted
 from grimace._south_star1.writer_state import WriterClosureLabel
 from grimace._south_star1.writer_state import WriterStereoState
 from grimace._south_star1.writer_stereo import advance_writer_stereo_state
+from grimace._south_star1.writer_stereo import advance_writer_stereo_state_with_evidence
 from grimace._south_star1.writer_stereo import empty_writer_stereo_state
+from grimace._south_star1.writer_stereo import initial_writer_stereo_state
 from grimace._south_star1.writer_stereo import terminal_writer_stereo_state
 import grimace._south_star1.writer_stereo as writer_stereo_module
 from tests.south_star1.helpers import atom
+from tests.south_star1.helpers import cco_facts
 from tests.south_star1.helpers import directional_facts
 from tests.south_star1.helpers import single_bond
 from tests.south_star1.helpers import tetrahedral_facts
@@ -74,6 +81,133 @@ class WriterStereoResidualTest(unittest.TestCase):
         )
         self.assertEqual(support.distinct_count, 2)
         self.assertEqual(support.witness_count, 2)
+
+    def test_tetra_token_emission_reports_residual_capabilities(self) -> None:
+        prepared = _prepare(tetrahedral_facts())
+        state = initial_writer_stereo_state(prepared)
+
+        outcome = advance_writer_stereo_state_with_evidence(
+            prepared,
+            state,
+            (
+                WriterAtomEmitted(
+                    atom=AtomId(0),
+                    text="[C@H]",
+                    parent=AtomId(1),
+                    tetra_token=TetraToken.AT,
+                ),
+            ),
+        )
+
+        self.assertIsNotNone(outcome.state)
+        self.assertIn(
+            _WriterExecutionCapabilityKind.TETRA_TOKEN_RESTRICTION,
+            outcome.execution_capabilities,
+        )
+        self.assertIn(
+            _WriterExecutionCapabilityKind.RESIDUAL_PROPAGATION,
+            outcome.execution_capabilities,
+        )
+
+    def test_tetra_local_order_closure_reports_residual_capabilities(self) -> None:
+        prepared = _prepare(tetrahedral_facts())
+        cursor = _initial_writer_transition_frontier_cursor(
+            prepared,
+            _writer_options(rooted_at_atom=1),
+        )
+        for emitted_text in ("F", "[C@@H]", "(", "Br", ")"):
+            choices = _writer_frontier_choice_snapshot(
+                prepared,
+                cursor,
+                include_counts=False,
+            )
+            cursor = next(
+                choice.successor
+                for choice in choices.choices
+                if choice.emitted_text == emitted_text
+            )
+        choices = _writer_frontier_choice_snapshot(
+            prepared,
+            cursor,
+            include_counts=False,
+        )
+        choice = next(
+            choice for choice in choices.choices if choice.emitted_text == "Cl"
+        )
+
+        self.assertIn(
+            _WriterExecutionCapabilityKind.TETRA_LOCAL_ORDER_RESTRICTION,
+            choice.execution_capabilities,
+        )
+        self.assertIn(
+            _WriterExecutionCapabilityKind.RESIDUAL_PROPAGATION,
+            choice.execution_capabilities,
+        )
+        self.assertIn(
+            _WriterExecutionCapabilityKind.RESIDUAL_FACTOR_DISCHARGE,
+            choice.execution_capabilities,
+        )
+
+    def test_ordinary_atom_emission_reports_no_residual_capabilities(self) -> None:
+        prepared = _prepare(cco_facts())
+
+        outcome = advance_writer_stereo_state_with_evidence(
+            prepared,
+            initial_writer_stereo_state(prepared),
+            (
+                WriterAtomEmitted(
+                    atom=AtomId(1),
+                    text="C",
+                    parent=None,
+                    tetra_token=TetraToken.NONE,
+                ),
+            ),
+        )
+
+        self.assertIsNotNone(outcome.state)
+        self.assertFalse(outcome.execution_capabilities)
+
+    def test_directional_carrier_emission_reports_residual_capabilities(self) -> None:
+        prepared = _prepare(directional_facts())
+        cursor = _initial_writer_transition_frontier_cursor(
+            prepared,
+            _writer_options(rooted_at_atom=2),
+        )
+        choices = _writer_frontier_choice_snapshot(
+            prepared,
+            cursor,
+            include_counts=False,
+        )
+        cursor = next(
+            choice.successor
+            for choice in choices.choices
+            if choice.emitted_text == "F"
+        )
+        choices = _writer_frontier_choice_snapshot(
+            prepared,
+            cursor,
+            include_counts=False,
+        )
+        choice = next(
+            choice for choice in choices.choices if choice.emitted_text == "/"
+        )
+
+        self.assertIn(
+            _WriterExecutionCapabilityKind.DIRECTIONAL_CARRIER_RESTRICTION,
+            choice.execution_capabilities,
+        )
+        self.assertIn(
+            _WriterExecutionCapabilityKind.DIRECTIONAL_SITE_COMPATIBILITY,
+            choice.execution_capabilities,
+        )
+        self.assertIn(
+            _WriterExecutionCapabilityKind.RESIDUAL_PROPAGATION,
+            choice.execution_capabilities,
+        )
+        self.assertIn(
+            _WriterExecutionCapabilityKind.RESIDUAL_FACTOR_DISCHARGE,
+            choice.execution_capabilities,
+        )
 
     def test_initial_writer_state_accepts_independent_tetra_sites(self) -> None:
         prepared = _prepare(_two_independent_tetra_facts())

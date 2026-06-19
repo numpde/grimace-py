@@ -11,6 +11,7 @@ from .errors import SouthStarError
 from .errors import SouthStarErrorKind
 from .facts import LigandKind
 from .facts import SiteStatus
+from .writer_capabilities import _WriterExecutionCapabilityKind
 from .ids import AtomId
 from .ids import BondId
 from .ids import OccurrenceId
@@ -93,6 +94,20 @@ class WriterBondTextChoice:
     direction_mark: DirectionMark
     bond: BondId
     carrier_sites: tuple[SiteId, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterStereoMutation:
+    state: "WriterStereoState | None"
+    capabilities: frozenset[_WriterExecutionCapabilityKind] = frozenset()
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterStereoAdvanceOutcome:
+    state: "WriterStereoState | None"
+    execution_capabilities: frozenset[
+        _WriterExecutionCapabilityKind
+    ] = frozenset()
 
 
 def empty_writer_stereo_state() -> "WriterStereoState":
@@ -310,23 +325,41 @@ def advance_writer_stereo_state(
     stereo_state: "WriterStereoState",
     events: tuple[WriterEvent, ...],
 ) -> "WriterStereoState | None":
+    return advance_writer_stereo_state_with_evidence(
+        prepared,
+        stereo_state,
+        events,
+    ).state
+
+
+def advance_writer_stereo_state_with_evidence(
+    prepared: SouthStarPreparedMol,
+    stereo_state: "WriterStereoState",
+    events: tuple[WriterEvent, ...],
+) -> _WriterStereoAdvanceOutcome:
     state = stereo_state
+    capabilities: set[_WriterExecutionCapabilityKind] = set()
     for event in events:
         if isinstance(event, WriterAtomEmitted):
-            state = _on_atom_emitted(prepared, state, event)
+            mutation = _on_atom_emitted(prepared, state, event)
         elif isinstance(event, WriterBondEmitted):
-            state = _on_bond_emitted(prepared, state, event)
+            mutation = _on_bond_emitted(prepared, state, event)
         elif isinstance(event, WriterLocalOrderClosed):
-            state = _on_local_order_closed(prepared, state, event.atom)
+            mutation = _on_local_order_closed(prepared, state, event.atom)
         elif isinstance(event, WriterRingEndpointEmitted):
-            state = _on_ring_endpoint_emitted(prepared, state, event)
+            mutation = _on_ring_endpoint_emitted(prepared, state, event)
         elif isinstance(event, WriterRingEndpointPaired):
-            state = _on_ring_endpoint_paired(prepared, state, event)
+            mutation = _on_ring_endpoint_paired(prepared, state, event)
         else:
             continue
-        if state is None:
-            return None
-    return state
+        if mutation.state is None:
+            return _WriterStereoAdvanceOutcome(state=None)
+        state = mutation.state
+        capabilities.update(mutation.capabilities)
+    return _WriterStereoAdvanceOutcome(
+        state=state,
+        execution_capabilities=frozenset(capabilities),
+    )
 
 
 def terminal_writer_stereo_state(
@@ -562,7 +595,7 @@ def _on_atom_emitted(
     prepared: SouthStarPreparedMol,
     stereo_state: "WriterStereoState",
     event: WriterAtomEmitted,
-) -> "WriterStereoState | None":
+) -> _WriterStereoMutation:
     from .writer_state import WriterStereoState
 
     store = ResidualStore.from_value_snapshot(stereo_state.residual_snapshot)
@@ -586,7 +619,8 @@ def _on_atom_emitted(
             token=event.tetra_token,
         )
     except ValueError:
-        return None
+        return _WriterStereoMutation(state=None)
+    capabilities: set[_WriterExecutionCapabilityKind] = set()
     if restriction is not None:
         result = store.restrict_many_and_propagate(
             (restriction,)
@@ -596,13 +630,22 @@ def _on_atom_emitted(
             operation="tetrahedral atom-token restriction",
         ):
             store.rollback(checkpoint)
-            return None
-    return WriterStereoState(
-        residual_snapshot=store.value_snapshot(),
-        atom_occurrences=stereo_state.atom_occurrences
-        + (WriterAtomOccurrenceRecord(event.atom, event.tetra_token),),
-        bond_occurrences=stereo_state.bond_occurrences,
-        local_orders=local_orders,
+            return _WriterStereoMutation(state=None)
+        capabilities.update(
+            {
+                _WriterExecutionCapabilityKind.TETRA_TOKEN_RESTRICTION,
+                _WriterExecutionCapabilityKind.RESIDUAL_PROPAGATION,
+            }
+        )
+    return _WriterStereoMutation(
+        state=WriterStereoState(
+            residual_snapshot=store.value_snapshot(),
+            atom_occurrences=stereo_state.atom_occurrences
+            + (WriterAtomOccurrenceRecord(event.atom, event.tetra_token),),
+            bond_occurrences=stereo_state.bond_occurrences,
+            local_orders=local_orders,
+        ),
+        capabilities=frozenset(capabilities),
     )
 
 
@@ -610,12 +653,13 @@ def _on_bond_emitted(
     prepared: SouthStarPreparedMol,
     stereo_state: "WriterStereoState",
     event: WriterBondEmitted,
-) -> "WriterStereoState | None":
+) -> _WriterStereoMutation:
     from .writer_state import WriterStereoState
 
     store = ResidualStore.from_value_snapshot(stereo_state.residual_snapshot)
     models = _directional_models_for_bond(prepared, event.bond)
     checkpoint = store.checkpoint()
+    capabilities: set[_WriterExecutionCapabilityKind] = set()
     if models:
         restrictions = _directional_bond_restrictions(
             prepared,
@@ -630,12 +674,20 @@ def _on_bond_emitted(
             operation="directional carrier-mark restriction",
         ):
             store.rollback(checkpoint)
-            return None
+            return _WriterStereoMutation(state=None)
+        capabilities.update(
+            {
+                _WriterExecutionCapabilityKind.DIRECTIONAL_CARRIER_RESTRICTION,
+                _WriterExecutionCapabilityKind.DIRECTIONAL_SITE_COMPATIBILITY,
+                _WriterExecutionCapabilityKind.RESIDUAL_PROPAGATION,
+            }
+        )
     elif event.direction_mark is not DirectionMark.ABSENT:
-        return None
+        return _WriterStereoMutation(state=None)
     if models:
         try:
             store.discharge_satisfied_factors((_directional_bond_factor_key(event.bond),))
+            capabilities.add(_WriterExecutionCapabilityKind.RESIDUAL_FACTOR_DISCHARGE)
             emitted_bonds = {
                 record.bond
                 for record in stereo_state.bond_occurrences
@@ -649,23 +701,29 @@ def _on_bond_emitted(
                     store.discharge_satisfied_factors(
                         (_directional_site_factor_key(site),)
                     )
+                    capabilities.add(
+                        _WriterExecutionCapabilityKind.RESIDUAL_FACTOR_DISCHARGE
+                    )
         except ValueError:
             store.rollback(checkpoint)
-            return None
+            return _WriterStereoMutation(state=None)
 
-    return WriterStereoState(
-        residual_snapshot=store.value_snapshot(),
-        atom_occurrences=stereo_state.atom_occurrences,
-        bond_occurrences=stereo_state.bond_occurrences
-        + (
-            WriterBondOccurrenceRecord(
-                event.bond,
-                event.parent,
-                event.child,
-                event.direction_mark,
+    return _WriterStereoMutation(
+        state=WriterStereoState(
+            residual_snapshot=store.value_snapshot(),
+            atom_occurrences=stereo_state.atom_occurrences,
+            bond_occurrences=stereo_state.bond_occurrences
+            + (
+                WriterBondOccurrenceRecord(
+                    event.bond,
+                    event.parent,
+                    event.child,
+                    event.direction_mark,
+                ),
             ),
+            local_orders=stereo_state.local_orders,
         ),
-        local_orders=stereo_state.local_orders,
+        capabilities=frozenset(capabilities),
     )
 
 
@@ -673,18 +731,19 @@ def _on_local_order_closed(
     prepared: SouthStarPreparedMol,
     stereo_state: "WriterStereoState",
     atom: AtomId,
-) -> "WriterStereoState | None":
+) -> _WriterStereoMutation:
     from .writer_state import WriterStereoState
 
     template = _tetra_template_by_center(prepared).get(atom)
     record = _local_order_record(stereo_state.local_orders, atom)
     if record is not None and record.closed:
-        return stereo_state
+        return _WriterStereoMutation(state=stereo_state)
     closed_order = _close_local_order(prepared, record, atom=atom)
     local_orders = _replace_local_order(stereo_state.local_orders, closed_order)
     store = ResidualStore.from_value_snapshot(stereo_state.residual_snapshot)
     if template is not None:
         checkpoint = store.checkpoint()
+        capabilities: set[_WriterExecutionCapabilityKind] = set()
         restriction = _tetra_parity_restriction(
             prepared,
             atom=atom,
@@ -697,17 +756,29 @@ def _on_local_order_closed(
             operation="tetrahedral local-order factor closure",
         ):
             store.rollback(checkpoint)
-            return None
+            return _WriterStereoMutation(state=None)
+        capabilities.update(
+            {
+                _WriterExecutionCapabilityKind.TETRA_LOCAL_ORDER_RESTRICTION,
+                _WriterExecutionCapabilityKind.RESIDUAL_PROPAGATION,
+            }
+        )
         try:
             store.discharge_satisfied_factors((_tetra_factor_key(template.site),))
+            capabilities.add(_WriterExecutionCapabilityKind.RESIDUAL_FACTOR_DISCHARGE)
         except ValueError:
             store.rollback(checkpoint)
-            return None
-    return WriterStereoState(
-        residual_snapshot=store.value_snapshot(),
-        atom_occurrences=stereo_state.atom_occurrences,
-        bond_occurrences=stereo_state.bond_occurrences,
-        local_orders=local_orders,
+            return _WriterStereoMutation(state=None)
+    else:
+        capabilities = set()
+    return _WriterStereoMutation(
+        state=WriterStereoState(
+            residual_snapshot=store.value_snapshot(),
+            atom_occurrences=stereo_state.atom_occurrences,
+            bond_occurrences=stereo_state.bond_occurrences,
+            local_orders=local_orders,
+        ),
+        capabilities=frozenset(capabilities),
     )
 
 
@@ -715,17 +786,19 @@ def _on_ring_endpoint_emitted(
     prepared: SouthStarPreparedMol,
     stereo_state: "WriterStereoState",
     event: WriterRingEndpointEmitted,
-) -> "WriterStereoState | None":
+) -> _WriterStereoMutation:
     _reject_supported_ring_pair_stereo(prepared, event.bond)
     if not _ring_event_text_ok(prepared, event):
-        return None
+        return _WriterStereoMutation(state=None)
     from .writer_state import WriterStereoState
 
-    return WriterStereoState(
-        residual_snapshot=stereo_state.residual_snapshot,
-        atom_occurrences=stereo_state.atom_occurrences,
-        bond_occurrences=stereo_state.bond_occurrences,
-        local_orders=stereo_state.local_orders,
+    return _WriterStereoMutation(
+        state=WriterStereoState(
+            residual_snapshot=stereo_state.residual_snapshot,
+            atom_occurrences=stereo_state.atom_occurrences,
+            bond_occurrences=stereo_state.bond_occurrences,
+            local_orders=stereo_state.local_orders,
+        ),
     )
 
 
@@ -733,17 +806,19 @@ def _on_ring_endpoint_paired(
     prepared: SouthStarPreparedMol,
     stereo_state: "WriterStereoState",
     event: WriterRingEndpointPaired,
-) -> "WriterStereoState | None":
+) -> _WriterStereoMutation:
     _reject_supported_ring_pair_stereo(prepared, event.bond)
     if not _ring_event_text_ok(prepared, event):
-        return None
+        return _WriterStereoMutation(state=None)
     from .writer_state import WriterStereoState
 
-    return WriterStereoState(
-        residual_snapshot=stereo_state.residual_snapshot,
-        atom_occurrences=stereo_state.atom_occurrences,
-        bond_occurrences=stereo_state.bond_occurrences,
-        local_orders=stereo_state.local_orders,
+    return _WriterStereoMutation(
+        state=WriterStereoState(
+            residual_snapshot=stereo_state.residual_snapshot,
+            atom_occurrences=stereo_state.atom_occurrences,
+            bond_occurrences=stereo_state.bond_occurrences,
+            local_orders=stereo_state.local_orders,
+        ),
     )
 
 
@@ -1313,7 +1388,9 @@ __all__ = (
     "WriterBondOccurrenceRecord",
     "WriterBondTextChoice",
     "WriterLocalOrderRecord",
+    "_WriterStereoAdvanceOutcome",
     "advance_writer_stereo_state",
+    "advance_writer_stereo_state_with_evidence",
     "empty_writer_stereo_state",
     "initial_writer_stereo_state",
     "_writer_stereo_relation_definitions",

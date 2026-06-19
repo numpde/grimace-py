@@ -2846,7 +2846,7 @@ def _writer_public_ring_core_tetrahedral_stereo_is_supported(
 ) -> bool:
     if prepared.directional_templates:
         return False
-    if ring_core_non_single_bond_ids:
+    if len(ring_core_non_single_bond_ids) > 1:
         return False
     if len(prepared.tetra_templates) != 1:
         return False
@@ -2886,12 +2886,15 @@ def _writer_public_ring_core_tetrahedral_stereo_is_supported(
     if any(occurrence.bond is None for occurrence in neighbor_occurrences):
         return False
 
-    ring_neighbor_bonds = tuple(
+    ring_neighbor_bonds = frozenset(
         occurrence.bond
         for occurrence in neighbor_occurrences
         if occurrence.bond in ring_core_bond_id_set
     )
-    return len(ring_neighbor_bonds) == 2
+    if len(ring_neighbor_bonds) != 2:
+        return False
+
+    return ring_neighbor_bonds.isdisjoint(ring_core_non_single_bond_ids)
 
 
 def _cyclic_writer_admission_decision_from_readiness_gate(

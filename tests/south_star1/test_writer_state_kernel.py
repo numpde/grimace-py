@@ -17195,6 +17195,246 @@ class WriterStateKernelTest(unittest.TestCase):
             decision.execution_capability_certificate.first_unsupported_uses,
         )
 
+    def test_public_remote_non_single_ring_core_bond_composes_with_ring_tetra(
+        self,
+    ) -> None:
+        from tests.south_star1.test_writer_stereo_residual import (
+            ring_core_tetra_with_remote_non_single_facts,
+        )
+
+        rows = (
+            (BondOrder.DOUBLE, "="),
+            (BondOrder.TRIPLE, "#"),
+        )
+        for order, marker in rows:
+            with self.subTest(order=order):
+                prepared = _prepare_with_ordinary_policy_options(
+                    ring_core_tetra_with_remote_non_single_facts(order),
+                    options=OrdinaryPolicyOptions(
+                        non_single_ring_closures="joint",
+                    ),
+                )
+                options = _writer_options(rooted_at_atom=1)
+                cursor = _initial_writer_transition_frontier_cursor(
+                    prepared,
+                    options,
+                )
+
+                report = (
+                    writer_snapshot
+                    ._writer_public_cyclic_opening_profile_report(
+                        prepared=prepared,
+                    )
+                )
+                self.assertTrue(report.supported)
+                self.assertIn(
+                    writer_snapshot
+                    ._WriterPublicCyclicRequiredCapability
+                    .RING_CORE_TETRAHEDRAL_STEREO,
+                    report.required_capabilities,
+                )
+                self.assertIn(
+                    writer_snapshot
+                    ._WriterPublicCyclicRequiredCapability
+                    .RING_CORE_NON_SINGLE_CLOSURE_BOND,
+                    report.required_capabilities,
+                )
+
+                decision = (
+                    writer_snapshot
+                    ._cyclic_writer_admission_decision_from_cursor(
+                        prepared=prepared,
+                        runtime_options=options,
+                        cursor=cursor,
+                    )
+                )
+                self.assertIs(
+                    decision.kind,
+                    writer_snapshot
+                    ._WriterCyclicAdmissionDecisionKind.READY_PUBLIC,
+                )
+                self.assertIsNotNone(
+                    decision.execution_capability_certificate,
+                )
+                assert decision.execution_capability_certificate is not None
+                required = (
+                    decision
+                    .execution_capability_certificate
+                    .required_capabilities
+                )
+                for capability in (
+                    writer_snapshot
+                    ._WriterExecutionCapabilityKind
+                    .TETRA_RING_ENDPOINT_ORDER_OCCURRENCE,
+                    writer_snapshot
+                    ._WriterExecutionCapabilityKind
+                    .VISIBLE_TREE_BOND_TEXT,
+                    writer_snapshot
+                    ._WriterExecutionCapabilityKind
+                    .VISIBLE_CLOSURE_BOND_TEXT,
+                ):
+                    self.assertIn(capability, required)
+
+                _assert_replay_succeeds_for_execution_capability_uses(
+                    self,
+                    audit=decision.readiness_gate.audit,
+                    snapshot=(
+                        writer_snapshot
+                        ._capture_writer_frontier_snapshot_unchecked(
+                            prepared=prepared,
+                            runtime_options=options,
+                            cursor=cursor,
+                        )
+                    ),
+                    prepared=prepared,
+                )
+
+                image = enumerate_prepared_stereo_support(
+                    prepared=prepared,
+                    runtime_options=options,
+                )
+                self.assertTrue(image.strings)
+                for text in image.strings:
+                    self.assertEqual(text.count(marker), 1)
+                self.assertEqual(
+                    image.distinct_count,
+                    count_writer_frontier_support(
+                        prepared,
+                        cursor.support_state,
+                    ),
+                )
+                self.assertEqual(
+                    image.witness_count,
+                    count_writer_cursor_completions(prepared, cursor),
+                )
+                self.assertEqual(
+                    image.strings,
+                    tuple(iter_writer_frontier_support(prepared, cursor)),
+                )
+
+                for static_capability in (
+                    writer_snapshot
+                    ._WriterPublicCyclicRequiredCapability
+                    .RING_CORE_TETRAHEDRAL_STEREO,
+                    writer_snapshot
+                    ._WriterPublicCyclicRequiredCapability
+                    .RING_CORE_NON_SINGLE_CLOSURE_BOND,
+                ):
+                    with patch(
+                        "grimace._south_star1.writer_snapshot"
+                        "._PUBLIC_CYCLIC_SUPPORTED_CAPABILITIES",
+                        (
+                            writer_snapshot
+                            ._PUBLIC_CYCLIC_SUPPORTED_CAPABILITIES
+                            - {static_capability}
+                        ),
+                    ):
+                        blocked = (
+                            writer_snapshot
+                            ._cyclic_writer_admission_decision_from_cursor(
+                                prepared=prepared,
+                                runtime_options=options,
+                                cursor=cursor,
+                            )
+                        )
+                    self.assertIs(
+                        blocked.kind,
+                        writer_snapshot
+                        ._WriterCyclicAdmissionDecisionKind
+                        .BLOCKED_PUBLIC_CYCLIC_PROFILE,
+                    )
+
+                for live_capability in (
+                    writer_snapshot
+                    ._WriterExecutionCapabilityKind
+                    .TETRA_RING_ENDPOINT_ORDER_OCCURRENCE,
+                    writer_snapshot
+                    ._WriterExecutionCapabilityKind
+                    .VISIBLE_TREE_BOND_TEXT,
+                    writer_snapshot
+                    ._WriterExecutionCapabilityKind
+                    .VISIBLE_CLOSURE_BOND_TEXT,
+                ):
+                    with patch(
+                        "grimace._south_star1.writer_snapshot"
+                        "._PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES",
+                        (
+                            writer_snapshot
+                            ._PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES
+                            - {live_capability}
+                        ),
+                    ):
+                        blocked = (
+                            writer_snapshot
+                            ._cyclic_writer_admission_decision_from_cursor(
+                                prepared=prepared,
+                                runtime_options=options,
+                                cursor=cursor,
+                            )
+                        )
+                    self.assertIs(
+                        blocked.kind,
+                        writer_snapshot
+                        ._WriterCyclicAdmissionDecisionKind
+                        .BLOCKED_PUBLIC_EXECUTION_CAPABILITY,
+                    )
+                    self.assertIsNotNone(
+                        blocked.execution_capability_certificate,
+                    )
+                    assert blocked.execution_capability_certificate is not None
+                    self.assertIn(
+                        live_capability,
+                        (
+                            blocked
+                            .execution_capability_certificate
+                            .unsupported_capabilities
+                        ),
+                    )
+
+    def test_public_incident_non_single_ring_core_bond_with_ring_tetra_remains_blocked(
+        self,
+    ) -> None:
+        from tests.south_star1.test_writer_stereo_residual import ring_core_tetra_facts
+
+        base = ring_core_tetra_facts()
+        for bond_id in (BondId(0), BondId(2)):
+            with self.subTest(bond=bond_id):
+                facts = replace(
+                    base,
+                    bonds=tuple(
+                        replace(bond, order=BondOrder.DOUBLE)
+                        if bond.id == bond_id
+                        else bond
+                        for bond in base.bonds
+                    ),
+                )
+                prepared = _prepare_with_ordinary_policy_options(
+                    facts,
+                    options=OrdinaryPolicyOptions(
+                        non_single_ring_closures="joint",
+                    ),
+                )
+
+                report = (
+                    writer_snapshot
+                    ._writer_public_cyclic_opening_profile_report(
+                        prepared=prepared,
+                    )
+                )
+                self.assertFalse(report.supported)
+                self.assertIs(
+                    report.kind,
+                    writer_snapshot
+                    ._WriterPublicCyclicOpeningProfileKind
+                    .BLOCKED_UNSUPPORTED_CYCLIC_STEREO_SURFACE,
+                )
+                self.assertIn(
+                    writer_snapshot
+                    ._WriterPublicCyclicRequiredCapability
+                    .RING_CORE_TETRAHEDRAL_STEREO,
+                    report.unsupported_capabilities,
+                )
+
     def test_partnerless_non_single_closure_text_is_not_live_openable(self) -> None:
         prepared = _prepare_non_single_closure_triangle_with_ring_endpoint_choices(
             order=BondOrder.DOUBLE,

@@ -8,6 +8,7 @@ import unittest
 
 from grimace._south_star1.errors import SouthStarError
 from grimace._south_star1.errors import SouthStarErrorKind
+from grimace._south_star1.facts import BondOrder
 from grimace._south_star1.facts import ComponentFacts
 from grimace._south_star1.facts import DirectionalValue
 from grimace._south_star1.facts import LigandKind
@@ -1245,6 +1246,22 @@ def ring_core_tetra_facts() -> MoleculeFacts:
                 atom=AtomId(0),
                 bond=None,
             ),
+        ),
+    )
+
+
+def ring_core_tetra_with_remote_non_single_facts(
+    order: BondOrder,
+) -> MoleculeFacts:
+    assert order in {BondOrder.DOUBLE, BondOrder.TRIPLE}
+    facts = ring_core_tetra_facts()
+    return replace(
+        facts,
+        bonds=tuple(
+            replace(bond, order=order)
+            if bond.id == BondId(1)
+            else bond
+            for bond in facts.bonds
         ),
     )
 

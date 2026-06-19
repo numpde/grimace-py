@@ -33,6 +33,7 @@ _PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES = frozenset(
         _WriterExecutionCapabilityKind.VISIBLE_TREE_BOND_TEXT,
         _WriterExecutionCapabilityKind.CLOSURE_ENDPOINT_OPEN,
         _WriterExecutionCapabilityKind.CLOSURE_ENDPOINT_PAIR,
+        _WriterExecutionCapabilityKind.VISIBLE_CLOSURE_BOND_TEXT,
         _WriterExecutionCapabilityKind.TETRA_TOKEN_RESTRICTION,
         _WriterExecutionCapabilityKind.TETRA_LOCAL_ORDER_RESTRICTION,
         _WriterExecutionCapabilityKind.DIRECTIONAL_CARRIER_RESTRICTION,

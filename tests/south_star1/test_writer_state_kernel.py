@@ -46,6 +46,8 @@ from grimace._south_star1.policy import RingLabel
 from grimace._south_star1.policy import SerializationLanguageMode
 from grimace._south_star1.policy import SmilesPolicy
 from grimace._south_star1.policy import TetraToken
+from grimace._south_star1.ordinary_policy import OrdinaryPolicyOptions
+from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.prepared_runtime import SouthStarPreparedMol
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
@@ -16531,6 +16533,198 @@ class WriterStateKernelTest(unittest.TestCase):
                     ),
                 )
 
+    def test_public_non_single_closure_bond_text_is_supported_for_simple_monocycle(
+        self,
+    ) -> None:
+        rows = (
+            (
+                "double",
+                BondOrder.DOUBLE,
+                "=",
+                frozenset(("C=1CC1", "C1CC=1")),
+            ),
+            (
+                "triple",
+                BondOrder.TRIPLE,
+                "#",
+                frozenset(("C#1CC1", "C1CC#1")),
+            ),
+        )
+
+        for name, bond_order, marker, expected_marker_placements in rows:
+            with self.subTest(name=name):
+                facts = simple_monocycle_with_pendant_forest_facts(
+                    ring_size=3,
+                    ring_bond_orders=(
+                        BondOrder.SINGLE,
+                        BondOrder.SINGLE,
+                        bond_order,
+                    ),
+                )
+                prepared = _prepare_with_ordinary_policy_options(
+                    facts,
+                    options=OrdinaryPolicyOptions(
+                        non_single_ring_closures="joint",
+                    ),
+                )
+                options = _writer_options(rooted_at_atom=0)
+                cursor = _initial_writer_transition_frontier_cursor(
+                    prepared,
+                    options,
+                )
+
+                report = (
+                    writer_snapshot
+                    ._writer_public_cyclic_opening_profile_report(
+                        prepared=prepared,
+                    )
+                )
+                self.assertTrue(report.supported)
+                self.assertEqual(report.ring_core_unsupported_bond_count, 0)
+                self.assertEqual(report.unsupported_bond_count, 0)
+
+                decision = (
+                    writer_snapshot
+                    ._cyclic_writer_admission_decision_from_cursor(
+                        prepared=prepared,
+                        runtime_options=options,
+                        cursor=cursor,
+                    )
+                )
+                self.assertIs(
+                    decision.kind,
+                    writer_snapshot
+                    ._WriterCyclicAdmissionDecisionKind.READY_PUBLIC,
+                )
+                self.assertIsNotNone(
+                    decision.execution_capability_certificate,
+                )
+                assert decision.execution_capability_certificate is not None
+                self.assertIn(
+                    writer_snapshot
+                    ._WriterExecutionCapabilityKind
+                    .VISIBLE_CLOSURE_BOND_TEXT,
+                    decision
+                    .execution_capability_certificate
+                    .required_capabilities,
+                )
+
+                visible_uses = tuple(
+                    use
+                    for use in (
+                        decision
+                        .readiness_gate
+                        .audit
+                        .execution_capability_uses
+                    )
+                    if (
+                        use.kind
+                        is writer_snapshot
+                        ._WriterExecutionCapabilityKind
+                        .VISIBLE_CLOSURE_BOND_TEXT
+                    )
+                )
+                self.assertTrue(visible_uses)
+                for use in visible_uses:
+                    self.assertFalse(use.terminal)
+                    assert use.next_emitted_text is not None
+                    self.assertIn(marker, use.next_emitted_text)
+
+                _assert_replay_succeeds_for_execution_capability_uses(
+                    self,
+                    audit=decision.readiness_gate.audit,
+                    snapshot=(
+                        writer_snapshot
+                        ._capture_writer_frontier_snapshot_unchecked(
+                            prepared=prepared,
+                            runtime_options=options,
+                            cursor=cursor,
+                        )
+                    ),
+                    prepared=prepared,
+                )
+
+                image = enumerate_prepared_stereo_support(
+                    prepared=prepared,
+                    runtime_options=options,
+                )
+                self.assertLessEqual(
+                    expected_marker_placements,
+                    frozenset(image.strings),
+                )
+                for text in expected_marker_placements:
+                    self.assertEqual(text.count(marker), 1)
+
+                self.assertEqual(
+                    image.distinct_count,
+                    count_writer_frontier_support(
+                        prepared,
+                        cursor.support_state,
+                    ),
+                )
+                self.assertEqual(
+                    image.witness_count,
+                    count_writer_cursor_completions(prepared, cursor),
+                )
+                self.assertEqual(
+                    image.strings,
+                    tuple(iter_writer_frontier_support(prepared, cursor)),
+                )
+
+                snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
+                    prepared=prepared,
+                    runtime_options=options,
+                )
+                root_image = _assert_public_online_loop_support_contract(
+                    self,
+                    prepared=prepared,
+                    snapshot=snapshot,
+                    max_prefixes=512,
+                )
+                self.assertEqual(root_image.strings, image.strings)
+
+    def test_public_non_single_closure_bond_profile_blocks_multiple_ring_core_non_single_bonds(
+        self,
+    ) -> None:
+        facts = simple_monocycle_with_pendant_forest_facts(
+            ring_size=3,
+            ring_bond_orders=(
+                BondOrder.DOUBLE,
+                BondOrder.TRIPLE,
+                BondOrder.SINGLE,
+            ),
+        )
+        prepared = _prepare_with_ordinary_policy_options(
+            facts,
+            options=OrdinaryPolicyOptions(non_single_ring_closures="joint"),
+        )
+        options = _writer_options(rooted_at_atom=0)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+
+        report = writer_snapshot._writer_public_cyclic_opening_profile_report(
+            prepared=prepared,
+        )
+        self.assertFalse(report.supported)
+        self.assertIs(
+            report.kind,
+            writer_snapshot
+            ._WriterPublicCyclicOpeningProfileKind
+            .BLOCKED_UNSUPPORTED_CLOSURE_BOND_SURFACE,
+        )
+        self.assertEqual(report.ring_core_unsupported_bond_count, 2)
+
+        decision = writer_snapshot._cyclic_writer_admission_decision_from_cursor(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        self.assertIs(
+            decision.kind,
+            writer_snapshot
+            ._WriterCyclicAdmissionDecisionKind
+            .BLOCKED_PUBLIC_CYCLIC_PROFILE,
+        )
+
     def test_public_cyclic_profile_matrix_blocked_rows_fail_before_materialization(
         self,
     ) -> None:
@@ -21727,7 +21921,7 @@ class WriterStateKernelTest(unittest.TestCase):
             decision.surviving_emissions,
             (pair_emission, open_emission),
         )
-        pair_actions.assert_called_once_with(state, AtomId(0))
+        pair_actions.assert_called_once_with(prepared, state, AtomId(0))
         available_labels.assert_called_once_with(prepared, state.ring_state)
         open_actions.assert_called_once_with(context, AtomId(0), (label,))
         self.assertEqual(emission_batch.call_count, 2)
@@ -36419,6 +36613,18 @@ def _prepare_with_policy(
             ring_labels=ring_labels,
             least_free_ring_labels=least_free_ring_labels,
         ),
+    )
+
+
+def _prepare_with_ordinary_policy_options(
+    facts: MoleculeFacts,
+    *,
+    options: OrdinaryPolicyOptions,
+) -> SouthStarPreparedMol:
+    return prepare_south_star_mol_from_facts(
+        facts,
+        writer_surface=SouthStarWriterSurface(),
+        policy=ordinary_policy_for_facts(facts, options=options),
     )
 
 

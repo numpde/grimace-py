@@ -8,8 +8,10 @@ from typing import TYPE_CHECKING
 
 from .errors import SouthStarError
 from .errors import SouthStarErrorKind
+from .facts import BondOrder
 from .ids import AtomId
 from .ids import BondId
+from .policy import DirectionMark
 from .policy import RingLabel
 from .writer_state import WriterStateKey
 
@@ -918,12 +920,77 @@ def _validate_closed_closure_text(prepared: SouthStarPreparedMol, closure) -> No
         _invalid_edge_partition("writer closed closure first bond text is outside policy domain")
     if closure.second_endpoint_bond_text not in choices:
         _invalid_edge_partition("writer closed closure second bond text is outside policy domain")
+    if not writer_closure_bond_text_pair_decode_ok(
+        prepared,
+        closure.bond,
+        closure.first_endpoint_bond_text,
+        closure.second_endpoint_bond_text,
+    ):
+        _invalid_edge_partition("writer closed closure bond texts do not decode")
+
+
+def writer_closure_bond_texts(
+    prepared: SouthStarPreparedMol,
+    bond: BondId,
+) -> tuple[str, ...]:
+    return tuple(sorted(_closure_bond_texts(prepared, bond)))
+
+
+def writer_closure_bond_text_pair_decode_ok(
+    prepared: SouthStarPreparedMol,
+    bond: BondId,
+    first_text: str,
+    second_text: str,
+) -> bool:
+    first_choices = _closure_bond_text_choices_by_text(prepared, bond).get(
+        first_text,
+        (),
+    )
+    second_choices = _closure_bond_text_choices_by_text(prepared, bond).get(
+        second_text,
+        (),
+    )
+    return any(
+        prepared.semantics.ring_pair_decode_ok(
+            prepared.facts,
+            bond,
+            first_choice,
+            DirectionMark.ABSENT,
+            second_choice,
+            DirectionMark.ABSENT,
+        )
+        for first_choice in first_choices
+        for second_choice in second_choices
+    )
+
+
+def writer_closure_bond_text_has_compatible_partner(
+    prepared: SouthStarPreparedMol,
+    bond: BondId,
+    first_text: str,
+) -> bool:
+    return any(
+        writer_closure_bond_text_pair_decode_ok(
+            prepared,
+            bond,
+            first_text,
+            second_text,
+        )
+        for second_text in _closure_bond_texts(prepared, bond)
+    )
 
 
 def _closure_bond_texts(
     prepared: SouthStarPreparedMol,
     bond: BondId,
 ) -> frozenset[str]:
+    return frozenset(_closure_bond_text_choices_by_text(prepared, bond))
+
+
+def _closure_bond_text_choices_by_text(
+    prepared: SouthStarPreparedMol,
+    bond: BondId,
+):
     try:
         choices = prepared.policy.bond_text_domain_unchecked(
             bond,
@@ -934,12 +1001,30 @@ def _closure_bond_texts(
             SouthStarErrorKind.INTERNAL_INVARIANT,
             f"writer closure bond lacks ring-endpoint policy domain: {bond!r}",
         ) from exc
-    texts = {choice.base_text for choice in choices}
-    texts.discard("/")
-    texts.discard("\\")
-    if not texts:
+    by_text = {}
+    bond_order = _closure_bond_order(prepared, bond)
+    for choice in choices:
+        if choice.base_text in {"/", "\\"}:
+            continue
+        if bond_order not in {BondOrder.DOUBLE, BondOrder.TRIPLE} and choice.base_text:
+            continue
+        by_text.setdefault(choice.base_text, []).append(choice)
+    if not by_text:
         _invalid_edge_partition("writer closure bond text policy domain is empty")
-    return frozenset(texts)
+    return {
+        text: tuple(text_choices)
+        for text, text_choices in by_text.items()
+    }
+
+
+def _closure_bond_order(prepared: SouthStarPreparedMol, bond: BondId) -> BondOrder:
+    try:
+        return prepared.graph_index.bond_by_id[bond].order
+    except KeyError as exc:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            f"writer closure bond is unknown: {bond!r}",
+        ) from exc
 
 
 def _validate_closure_label(prepared: SouthStarPreparedMol, label) -> None:

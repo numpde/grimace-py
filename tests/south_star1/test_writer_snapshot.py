@@ -6,6 +6,8 @@ from dataclasses import replace
 import unittest
 
 from grimace._south_star1.errors import SouthStarError
+from grimace._south_star1.facts import BondOrder
+from grimace._south_star1.facts import BondFacts
 from grimace._south_star1.facts import ComponentFacts
 from grimace._south_star1.facts import DirectionalValue
 from grimace._south_star1.facts import MoleculeFacts
@@ -19,6 +21,8 @@ from grimace._south_star1.ids import SiteId
 from grimace._south_star1.policy import DirectionMark
 from grimace._south_star1.policy import SerializationLanguageMode
 from grimace._south_star1.policy import TetraToken
+from grimace._south_star1.ordinary_policy import OrdinaryPolicyOptions
+from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
@@ -907,6 +911,43 @@ class WriterSnapshotTest(unittest.TestCase):
                 _cursor_with_key(tampered_key),
                 runtime_options=options,
             )
+
+    def test_cursor_audit_rejects_invalid_non_single_closed_closure_bond_text_pairs(
+        self,
+    ) -> None:
+        rows = (
+            (BondOrder.DOUBLE, "", ""),
+            (BondOrder.DOUBLE, "=", "="),
+            (BondOrder.TRIPLE, "", ""),
+            (BondOrder.TRIPLE, "#", "#"),
+        )
+
+        for order, first_text, second_text in rows:
+            with self.subTest(order=order, first=first_text, second=second_text):
+                prepared = _prepare_with_joint_non_single_ring_closures(
+                    non_single_closure_triangle_facts(order),
+                )
+                options = _writer_options(rooted_at_atom=0)
+                key = _triangle_closed_closure_key()
+                closure = replace(
+                    key.ring_state.closed_closures[0],
+                    first_endpoint_bond_text=first_text,
+                    second_endpoint_bond_text=second_text,
+                )
+                tampered_key = replace(
+                    key,
+                    ring_state=WriterRingStateKey(
+                        closed_closures=(closure,),
+                        label_state=key.ring_state.label_state,
+                    ),
+                )
+
+                with self.assertRaises(SouthStarError):
+                    validate_writer_cursor_against_prepared(
+                        prepared,
+                        _cursor_with_key(tampered_key),
+                        runtime_options=options,
+                    )
 
     def test_cursor_audit_rejects_orphan_allocated_ring_label(self) -> None:
         prepared = _prepare(triangle_facts())
@@ -2452,6 +2493,17 @@ def _prepare(facts):
     )
 
 
+def _prepare_with_joint_non_single_ring_closures(facts):
+    return prepare_south_star_mol_from_facts(
+        facts,
+        writer_surface=SouthStarWriterSurface(),
+        policy=ordinary_policy_for_facts(
+            facts,
+            options=OrdinaryPolicyOptions(non_single_ring_closures="joint"),
+        ),
+    )
+
+
 def _writer_options(*, rooted_at_atom: int = -1) -> SouthStarRuntimeOptions:
     return SouthStarRuntimeOptions(
         rooted_at_atom=rooted_at_atom,
@@ -3302,6 +3354,31 @@ def triangle_facts() -> MoleculeFacts:
             single_bond(0, 0, 1),
             single_bond(1, 1, 2),
             single_bond(2, 2, 0),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0), AtomId(1), AtomId(2)),
+                bonds=(BondId(0), BondId(1), BondId(2)),
+            ),
+        ),
+    )
+
+
+def non_single_closure_triangle_facts(order: BondOrder) -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=(atom(0, "C"), atom(1, "C"), atom(2, "C")),
+        bonds=(
+            single_bond(0, 0, 1),
+            single_bond(1, 1, 2),
+            BondFacts(
+                id=BondId(2),
+                a=AtomId(2),
+                b=AtomId(0),
+                order=order,
+                is_aromatic=False,
+                is_conjugated=False,
+            ),
         ),
         components=(
             ComponentFacts(

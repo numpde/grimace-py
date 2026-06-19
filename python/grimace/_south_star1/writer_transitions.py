@@ -22,6 +22,9 @@ from .writer_graph_obligations import validate_writer_initial_support_graph_surf
 from .writer_graph_obligations import validate_writer_snapshot_graph_surface
 from .writer_graph_obligations import validate_writer_transition_graph_surface
 from .writer_graph_obligations import writer_graph_completion_status
+from .writer_graph_obligations import writer_closure_bond_text_has_compatible_partner
+from .writer_graph_obligations import writer_closure_bond_text_pair_decode_ok
+from .writer_graph_obligations import writer_closure_bond_texts
 from .writer_graph_obligations import writer_residual_attachment_action_is_blocked
 from .writer_graph_obligations import writer_residual_attachment_action_incidences_for_atom
 from .writer_state import ComponentCursor
@@ -4411,6 +4414,7 @@ def _closure_endpoint_scheduled_actions(
 
     actions.extend(
         _closure_pair_scheduled_actions(
+            prepared,
             state,
             active_atom,
         )
@@ -4441,6 +4445,7 @@ def _closure_endpoint_schedule_decision(
     active_atom = state.active.atom
 
     pair_actions = _closure_pair_scheduled_actions(
+        prepared,
         state,
         active_atom,
     )
@@ -4684,6 +4689,7 @@ def _open_closure_endpoint_transition_from_obligation(
     context: WriterTransitionExpansionContext,
     closure_obligation: _WriterClosureOpenObligation,
     label: WriterClosureLabel,
+    first_endpoint_bond_text: str,
 ) -> WriterTransition | None:
     endpoint = WriterOpenClosureEndpoint(
         bond=closure_obligation.bond,
@@ -4691,13 +4697,13 @@ def _open_closure_endpoint_transition_from_obligation(
         second_atom=closure_obligation.second_atom,
         label=label,
         first_endpoint_text=label.text,
-        first_endpoint_bond_text="",
+        first_endpoint_bond_text=first_endpoint_bond_text,
     )
 
     transition = _transition(
         prepared,
         state,
-        emitted_text=label.text,
+        emitted_text=f"{endpoint.first_endpoint_bond_text}{label.text}",
         successor=replace(
             state,
             ring_state=_ring_state_after_open_endpoint(
@@ -4764,18 +4770,29 @@ def _closure_open_transitions_from_scheduled_action(
             "scheduled closure-open action requires a closure label",
         )
 
-    transition = _open_closure_endpoint_transition_from_obligation(
+    transitions = []
+    for first_endpoint_bond_text in writer_closure_bond_texts(
         prepared,
-        state,
-        context,
-        closure_obligation,
-        label,
-    )
+        closure_obligation.bond,
+    ):
+        if not writer_closure_bond_text_has_compatible_partner(
+            prepared,
+            closure_obligation.bond,
+            first_endpoint_bond_text,
+        ):
+            continue
+        transition = _open_closure_endpoint_transition_from_obligation(
+            prepared,
+            state,
+            context,
+            closure_obligation,
+            label,
+            first_endpoint_bond_text,
+        )
+        if transition is not None:
+            transitions.append(transition)
 
-    if transition is None:
-        return ()
-
-    return (transition,)
+    return tuple(transitions)
 
 
 def _closure_open_obligations_from_context(
@@ -4833,6 +4850,7 @@ def _closure_open_scheduled_actions(
 
 
 def _closure_pair_obligations_from_state(
+    prepared: SouthStarPreparedMol,
     state: WriterState,
     atom: AtomId,
 ) -> tuple[_WriterClosurePairObligation, ...]:
@@ -4842,34 +4860,47 @@ def _closure_pair_obligations_from_state(
         if endpoint.second_atom != atom:
             continue
 
-        closure = WriterClosedClosure(
-            bond=endpoint.bond,
-            first_atom=endpoint.first_atom,
-            second_atom=endpoint.second_atom,
-            label=endpoint.label,
-            first_endpoint_text=endpoint.first_endpoint_text,
-            second_endpoint_text=endpoint.label.text,
-            first_endpoint_bond_text=endpoint.first_endpoint_bond_text,
-            second_endpoint_bond_text="",
-        )
-
-        obligations.append(
-            _WriterClosurePairObligation(
-                endpoint=endpoint,
-                closure=closure,
+        for second_endpoint_bond_text in writer_closure_bond_texts(
+            prepared,
+            endpoint.bond,
+        ):
+            if not writer_closure_bond_text_pair_decode_ok(
+                prepared,
+                endpoint.bond,
+                endpoint.first_endpoint_bond_text,
+                second_endpoint_bond_text,
+            ):
+                continue
+            closure = WriterClosedClosure(
+                bond=endpoint.bond,
+                first_atom=endpoint.first_atom,
+                second_atom=endpoint.second_atom,
+                label=endpoint.label,
+                first_endpoint_text=endpoint.first_endpoint_text,
+                second_endpoint_text=endpoint.label.text,
+                first_endpoint_bond_text=endpoint.first_endpoint_bond_text,
+                second_endpoint_bond_text=second_endpoint_bond_text,
             )
-        )
+
+            obligations.append(
+                _WriterClosurePairObligation(
+                    endpoint=endpoint,
+                    closure=closure,
+                )
+            )
 
     return tuple(obligations)
 
 
 def _closure_pair_scheduled_actions(
+    prepared: SouthStarPreparedMol,
     state: WriterState,
     active_atom: AtomId,
 ) -> tuple[_WriterScheduledAction, ...]:
     return tuple(
         _pair_closure_endpoint_action(active_atom, pair_obligation)
         for pair_obligation in _closure_pair_obligations_from_state(
+            prepared,
             state,
             active_atom,
         )
@@ -4888,7 +4919,9 @@ def _pair_closure_endpoint_transition_from_obligation(
     transition = _transition(
         prepared,
         state,
-        emitted_text=endpoint.label.text,
+        emitted_text=(
+            f"{closure.second_endpoint_bond_text}{endpoint.label.text}"
+        ),
         successor=replace(
             state,
             ring_state=_ring_state_after_pair_endpoint(

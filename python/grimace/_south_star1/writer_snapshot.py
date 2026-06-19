@@ -36,6 +36,8 @@ from .writer_graph_obligations import WriterGraphObligationSummary
 from .writer_graph_obligations import WriterResidualAttachmentActionKind
 from .writer_graph_obligations import build_writer_graph_obligation_context
 from .writer_graph_obligations import validate_writer_snapshot_graph_surface
+from .writer_graph_obligations import writer_closure_bond_text_pair_decode_ok
+from .writer_graph_obligations import writer_closure_bond_texts
 from .writer_graph_obligations import writer_graph_completion_status
 from .writer_graph_obligations import writer_residual_attachment_action_is_blocked
 from .writer_frontier import WriterFrontierChoices
@@ -2429,14 +2431,38 @@ def _writer_public_cyclic_opening_profile_report(
         ),
         default=0,
     )
-    ring_core_unsupported_bond_count = sum(
-        1
+    ring_core_non_single_bond_ids = tuple(
+        bond_id
         for bond_id in ring_core_bond_ids
         if (
             (bond := component_bond_index.get(bond_id))
             is not None
             and bond.order is not BondOrder.SINGLE
         )
+    )
+    ring_core_has_supported_non_single_closure_bond = (
+        len(ring_core_non_single_bond_ids) == 1
+        and (
+            (
+                bond := component_bond_index.get(
+                    ring_core_non_single_bond_ids[0],
+                )
+            )
+            is not None
+        )
+        and bond.order in {BondOrder.DOUBLE, BondOrder.TRIPLE}
+        and _writer_public_non_single_closure_bond_is_supported(
+            prepared,
+            ring_core_non_single_bond_ids[0],
+        )
+    )
+    ring_core_unsupported_bond_count = (
+        0
+        if (
+            not ring_core_non_single_bond_ids
+            or ring_core_has_supported_non_single_closure_bond
+        )
+        else len(ring_core_non_single_bond_ids)
     )
     ring_core_bond_id_set = frozenset(ring_core_bond_ids)
     pendant_bond_ids = tuple(
@@ -2745,6 +2771,27 @@ def _writer_public_cyclic_opening_profile_report(
         unsupported_stereo_surface_count=unsupported_stereo_surface_count,
         required_capabilities=frozenset(required_capabilities),
         unsupported_capabilities=frozenset(unsupported_capabilities),
+    )
+
+
+def _writer_public_non_single_closure_bond_is_supported(
+    prepared: SouthStarPreparedMol,
+    bond_id: BondId,
+) -> bool:
+    try:
+        texts = writer_closure_bond_texts(prepared, bond_id)
+    except SouthStarError:
+        return False
+    return any(
+        writer_closure_bond_text_pair_decode_ok(
+            prepared,
+            bond_id,
+            first_text,
+            second_text,
+        )
+        for first_text in texts
+        for second_text in texts
+        if first_text or second_text
     )
 
 

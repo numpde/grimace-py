@@ -36,8 +36,7 @@ from .writer_graph_obligations import WriterGraphObligationSummary
 from .writer_graph_obligations import WriterResidualAttachmentActionKind
 from .writer_graph_obligations import build_writer_graph_obligation_context
 from .writer_graph_obligations import validate_writer_snapshot_graph_surface
-from .writer_graph_obligations import writer_closure_bond_text_pair_decode_ok
-from .writer_graph_obligations import writer_closure_bond_texts
+from .writer_graph_obligations import writer_closure_bond_text_relation
 from .writer_graph_obligations import writer_graph_completion_status
 from .writer_graph_obligations import writer_residual_attachment_action_is_blocked
 from .writer_frontier import WriterFrontierChoices
@@ -2778,20 +2777,22 @@ def _writer_public_non_single_closure_bond_is_supported(
     prepared: SouthStarPreparedMol,
     bond_id: BondId,
 ) -> bool:
+    order = prepared.graph_index.bond_by_id[bond_id].order
+    marker = {
+        BondOrder.DOUBLE: "=",
+        BondOrder.TRIPLE: "#",
+    }.get(order)
+    if marker is None:
+        return False
     try:
-        texts = writer_closure_bond_texts(prepared, bond_id)
+        relation = writer_closure_bond_text_relation(prepared, bond_id)
     except SouthStarError:
         return False
-    return any(
-        writer_closure_bond_text_pair_decode_ok(
-            prepared,
-            bond_id,
-            first_text,
-            second_text,
-        )
-        for first_text in texts
-        for second_text in texts
-        if first_text or second_text
+    return (
+        len(relation.texts) == 2
+        and frozenset(relation.texts) == frozenset(("", marker))
+        and frozenset(relation.compatible_pairs)
+        == frozenset((("", marker), (marker, "")))
     )
 
 

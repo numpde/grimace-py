@@ -37,6 +37,40 @@ class WriterEdgeObligationKind(Enum):
     CLOSED_CLOSURE = "closed_closure"
 
 
+@dataclass(frozen=True, slots=True)
+class WriterClosureBondTextRelation:
+    rows: tuple[tuple[str, tuple[str, ...]], ...]
+
+    @property
+    def texts(self) -> tuple[str, ...]:
+        return tuple(first_text for first_text, _ in self.rows)
+
+    @property
+    def openable_first_texts(self) -> tuple[str, ...]:
+        return tuple(
+            first_text
+            for first_text, second_texts in self.rows
+            if second_texts
+        )
+
+    @property
+    def compatible_pairs(self) -> tuple[tuple[str, str], ...]:
+        return tuple(
+            (first_text, second_text)
+            for first_text, second_texts in self.rows
+            for second_text in second_texts
+        )
+
+    def compatible_seconds(self, first_text: str) -> tuple[str, ...]:
+        for candidate, second_texts in self.rows:
+            if candidate == first_text:
+                return second_texts
+        return ()
+
+    def pair_ok(self, first_text: str, second_text: str) -> bool:
+        return second_text in self.compatible_seconds(first_text)
+
+
 class WriterResidualAttachmentActionKind(Enum):
     ACYCLIC_TREE_ENTRY = "acyclic_tree_entry"
     CYCLIC_TREE_ENTRY = "cyclic_tree_entry"
@@ -902,11 +936,13 @@ def _validate_open_endpoint_text(prepared: SouthStarPreparedMol, endpoint) -> No
     _validate_closure_label(prepared, endpoint.label)
     if endpoint.first_endpoint_text != endpoint.label.text:
         _invalid_edge_partition("writer open closure endpoint text does not match label")
-    if endpoint.first_endpoint_bond_text not in _closure_bond_texts(
-        prepared,
-        endpoint.bond,
-    ):
+    relation = writer_closure_bond_text_relation(prepared, endpoint.bond)
+    if endpoint.first_endpoint_bond_text not in relation.texts:
         _invalid_edge_partition("writer open closure bond text is outside policy domain")
+    if endpoint.first_endpoint_bond_text not in relation.openable_first_texts:
+        _invalid_edge_partition(
+            "writer open closure bond text has no compatible partner"
+        )
 
 
 def _validate_closed_closure_text(prepared: SouthStarPreparedMol, closure) -> None:
@@ -915,79 +951,45 @@ def _validate_closed_closure_text(prepared: SouthStarPreparedMol, closure) -> No
         _invalid_edge_partition("writer closed closure first endpoint text does not match label")
     if closure.second_endpoint_text != closure.label.text:
         _invalid_edge_partition("writer closed closure second endpoint text does not match label")
-    choices = _closure_bond_texts(prepared, closure.bond)
-    if closure.first_endpoint_bond_text not in choices:
+    relation = writer_closure_bond_text_relation(prepared, closure.bond)
+    if closure.first_endpoint_bond_text not in relation.texts:
         _invalid_edge_partition("writer closed closure first bond text is outside policy domain")
-    if closure.second_endpoint_bond_text not in choices:
+    if closure.second_endpoint_bond_text not in relation.texts:
         _invalid_edge_partition("writer closed closure second bond text is outside policy domain")
-    if not writer_closure_bond_text_pair_decode_ok(
-        prepared,
-        closure.bond,
+    if not relation.pair_ok(
         closure.first_endpoint_bond_text,
         closure.second_endpoint_bond_text,
     ):
         _invalid_edge_partition("writer closed closure bond texts do not decode")
 
 
-def writer_closure_bond_texts(
+def writer_closure_bond_text_relation(
     prepared: SouthStarPreparedMol,
     bond: BondId,
-) -> tuple[str, ...]:
-    return tuple(sorted(_closure_bond_texts(prepared, bond)))
-
-
-def writer_closure_bond_text_pair_decode_ok(
-    prepared: SouthStarPreparedMol,
-    bond: BondId,
-    first_text: str,
-    second_text: str,
-) -> bool:
-    first_choices = _closure_bond_text_choices_by_text(prepared, bond).get(
-        first_text,
-        (),
-    )
-    second_choices = _closure_bond_text_choices_by_text(prepared, bond).get(
-        second_text,
-        (),
-    )
-    return any(
-        prepared.semantics.ring_pair_decode_ok(
-            prepared.facts,
-            bond,
-            first_choice,
-            DirectionMark.ABSENT,
-            second_choice,
-            DirectionMark.ABSENT,
+) -> WriterClosureBondTextRelation:
+    eligible = _closure_bond_text_choices(prepared, bond)
+    rows = tuple(
+        (
+            first.base_text,
+            tuple(
+                second.base_text
+                for second in eligible
+                if prepared.semantics.ring_pair_decode_ok(
+                    prepared.facts,
+                    bond,
+                    first,
+                    DirectionMark.ABSENT,
+                    second,
+                    DirectionMark.ABSENT,
+                )
+            ),
         )
-        for first_choice in first_choices
-        for second_choice in second_choices
+        for first in eligible
     )
+    return WriterClosureBondTextRelation(rows=rows)
 
 
-def writer_closure_bond_text_has_compatible_partner(
-    prepared: SouthStarPreparedMol,
-    bond: BondId,
-    first_text: str,
-) -> bool:
-    return any(
-        writer_closure_bond_text_pair_decode_ok(
-            prepared,
-            bond,
-            first_text,
-            second_text,
-        )
-        for second_text in _closure_bond_texts(prepared, bond)
-    )
-
-
-def _closure_bond_texts(
-    prepared: SouthStarPreparedMol,
-    bond: BondId,
-) -> frozenset[str]:
-    return frozenset(_closure_bond_text_choices_by_text(prepared, bond))
-
-
-def _closure_bond_text_choices_by_text(
+def _closure_bond_text_choices(
     prepared: SouthStarPreparedMol,
     bond: BondId,
 ):
@@ -1001,20 +1003,28 @@ def _closure_bond_text_choices_by_text(
             SouthStarErrorKind.INTERNAL_INVARIANT,
             f"writer closure bond lacks ring-endpoint policy domain: {bond!r}",
         ) from exc
-    by_text = {}
     bond_order = _closure_bond_order(prepared, bond)
-    for choice in choices:
-        if choice.base_text in {"/", "\\"}:
-            continue
-        if bond_order not in {BondOrder.DOUBLE, BondOrder.TRIPLE} and choice.base_text:
-            continue
-        by_text.setdefault(choice.base_text, []).append(choice)
-    if not by_text:
+    eligible = tuple(
+        choice
+        for choice in choices
+        if (
+            choice.base_text not in {"/", "\\"}
+            and (
+                bond_order in {BondOrder.DOUBLE, BondOrder.TRIPLE}
+                or choice.base_text == ""
+            )
+        )
+    )
+    texts = tuple(choice.base_text for choice in eligible)
+    if len(set(texts)) != len(texts):
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            "writer closure bond domain has ambiguous rendered choices "
+            f"for {bond!r}",
+        )
+    if not eligible:
         _invalid_edge_partition("writer closure bond text policy domain is empty")
-    return {
-        text: tuple(text_choices)
-        for text, text_choices in by_text.items()
-    }
+    return eligible
 
 
 def _closure_bond_order(prepared: SouthStarPreparedMol, bond: BondId) -> BondOrder:

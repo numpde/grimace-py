@@ -22,9 +22,7 @@ from .writer_graph_obligations import validate_writer_initial_support_graph_surf
 from .writer_graph_obligations import validate_writer_snapshot_graph_surface
 from .writer_graph_obligations import validate_writer_transition_graph_surface
 from .writer_graph_obligations import writer_graph_completion_status
-from .writer_graph_obligations import writer_closure_bond_text_has_compatible_partner
-from .writer_graph_obligations import writer_closure_bond_text_pair_decode_ok
-from .writer_graph_obligations import writer_closure_bond_texts
+from .writer_graph_obligations import writer_closure_bond_text_relation
 from .writer_graph_obligations import writer_residual_attachment_action_is_blocked
 from .writer_graph_obligations import writer_residual_attachment_action_incidences_for_atom
 from .writer_state import ComponentCursor
@@ -4770,17 +4768,12 @@ def _closure_open_transitions_from_scheduled_action(
             "scheduled closure-open action requires a closure label",
         )
 
-    transitions = []
-    for first_endpoint_bond_text in writer_closure_bond_texts(
+    relation = writer_closure_bond_text_relation(
         prepared,
         closure_obligation.bond,
-    ):
-        if not writer_closure_bond_text_has_compatible_partner(
-            prepared,
-            closure_obligation.bond,
-            first_endpoint_bond_text,
-        ):
-            continue
+    )
+    transitions = []
+    for first_endpoint_bond_text in relation.openable_first_texts:
         transition = _open_closure_endpoint_transition_from_obligation(
             prepared,
             state,
@@ -4860,17 +4853,13 @@ def _closure_pair_obligations_from_state(
         if endpoint.second_atom != atom:
             continue
 
-        for second_endpoint_bond_text in writer_closure_bond_texts(
+        relation = writer_closure_bond_text_relation(
             prepared,
             endpoint.bond,
+        )
+        for second_endpoint_bond_text in relation.compatible_seconds(
+            endpoint.first_endpoint_bond_text,
         ):
-            if not writer_closure_bond_text_pair_decode_ok(
-                prepared,
-                endpoint.bond,
-                endpoint.first_endpoint_bond_text,
-                second_endpoint_bond_text,
-            ):
-                continue
             closure = WriterClosedClosure(
                 bond=endpoint.bond,
                 first_atom=endpoint.first_atom,

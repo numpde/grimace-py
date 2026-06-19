@@ -16725,6 +16725,153 @@ class WriterStateKernelTest(unittest.TestCase):
             .BLOCKED_PUBLIC_CYCLIC_PROFILE,
         )
 
+    def test_partnerless_non_single_closure_text_is_not_live_openable(self) -> None:
+        prepared = _prepare_non_single_closure_triangle_with_ring_endpoint_choices(
+            order=BondOrder.DOUBLE,
+            choices=(
+                BondTextChoice("absent", "", False),
+                BondTextChoice("order", "=", False),
+                BondTextChoice("partnerless", "~", False),
+            ),
+        )
+        options = _writer_options(rooted_at_atom=0)
+        pending = ((
+            (),
+            _initial_writer_transition_frontier_cursor(prepared, options),
+        ),)
+        seen: set[WriterFrontierCursor] = set()
+
+        while pending:
+            prefix, cursor = pending[0]
+            pending = pending[1:]
+            if cursor in seen:
+                continue
+            seen.add(cursor)
+            choices = writer_snapshot._writer_frontier_choice_snapshot(
+                prepared,
+                cursor,
+                include_counts=False,
+            )
+            self.assertNotIn("~1", tuple(choice.emitted_text for choice in choices.choices))
+            pending = (
+                *pending,
+                *(
+                    ((*prefix, choice.emitted_text), choice.successor)
+                    for choice in choices.choices
+                ),
+            )
+
+    def test_duplicate_non_single_closure_rendered_text_is_unsupported_policy(
+        self,
+    ) -> None:
+        prepared = _prepare_non_single_closure_triangle_with_ring_endpoint_choices(
+            order=BondOrder.DOUBLE,
+            choices=(
+                BondTextChoice("absent_a", "", False),
+                BondTextChoice("absent_b", "", False),
+                BondTextChoice("order", "=", False),
+            ),
+        )
+
+        with self.assertRaises(SouthStarError) as caught:
+            writer_graph_obligations.writer_closure_bond_text_relation(
+                prepared,
+                BondId(2),
+            )
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+
+    def test_three_text_non_single_closure_domain_is_profile_blocked(self) -> None:
+        prepared = _prepare_non_single_closure_triangle_with_ring_endpoint_choices(
+            order=BondOrder.DOUBLE,
+            choices=(
+                BondTextChoice("absent", "", False),
+                BondTextChoice("order", "=", False),
+                BondTextChoice("extra", "~", False),
+            ),
+        )
+
+        report = writer_snapshot._writer_public_cyclic_opening_profile_report(
+            prepared=prepared,
+        )
+        self.assertFalse(report.supported)
+        self.assertIs(
+            report.kind,
+            writer_snapshot
+            ._WriterPublicCyclicOpeningProfileKind
+            .BLOCKED_UNSUPPORTED_CLOSURE_BOND_SURFACE,
+        )
+        self.assertEqual(report.ring_core_unsupported_bond_count, 1)
+
+    def test_non_single_closure_closed_rows_are_exact_legal_marker_placements(
+        self,
+    ) -> None:
+        rows = (
+            (BondOrder.DOUBLE, "="),
+            (BondOrder.TRIPLE, "#"),
+        )
+
+        for order, marker in rows:
+            with self.subTest(order=order):
+                facts = simple_monocycle_with_pendant_forest_facts(
+                    ring_size=3,
+                    ring_bond_orders=(
+                        BondOrder.SINGLE,
+                        BondOrder.SINGLE,
+                        order,
+                    ),
+                )
+                prepared = _prepare_with_ordinary_policy_options(
+                    facts,
+                    options=OrdinaryPolicyOptions(
+                        non_single_ring_closures="joint",
+                    ),
+                )
+                options = _writer_options(rooted_at_atom=0)
+                pending = (
+                    _initial_writer_transition_frontier_cursor(
+                        prepared,
+                        options,
+                    ),
+                )
+                seen: set[WriterFrontierCursor] = set()
+                observed_pairs: set[tuple[str, str]] = set()
+
+                while pending:
+                    cursor = pending[0]
+                    pending = pending[1:]
+                    if cursor in seen:
+                        continue
+                    seen.add(cursor)
+
+                    for key, _weight in cursor.weighted_states:
+                        for closure in key.ring_state.closed_closures:
+                            if closure.bond == BondId(2):
+                                pair = (
+                                    closure.first_endpoint_bond_text,
+                                    closure.second_endpoint_bond_text,
+                                )
+                                observed_pairs.add(pair)
+                                self.assertIn(
+                                    pair,
+                                    (("", marker), (marker, "")),
+                                )
+
+                    choices = writer_snapshot._writer_frontier_choice_snapshot(
+                        prepared,
+                        cursor,
+                        include_counts=False,
+                    )
+                    pending = (
+                        *pending,
+                        *(choice.successor for choice in choices.choices),
+                    )
+
+                self.assertEqual(
+                    observed_pairs,
+                    {("", marker), (marker, "")},
+                )
+
     def test_public_cyclic_profile_matrix_blocked_rows_fail_before_materialization(
         self,
     ) -> None:
@@ -36625,6 +36772,47 @@ def _prepare_with_ordinary_policy_options(
         facts,
         writer_surface=SouthStarWriterSurface(),
         policy=ordinary_policy_for_facts(facts, options=options),
+    )
+
+
+def _prepare_non_single_closure_triangle_with_ring_endpoint_choices(
+    *,
+    order: BondOrder,
+    choices: tuple[BondTextChoice, ...],
+) -> SouthStarPreparedMol:
+    facts = simple_monocycle_with_pendant_forest_facts(
+        ring_size=3,
+        ring_bond_orders=(
+            BondOrder.SINGLE,
+            BondOrder.SINGLE,
+            order,
+        ),
+    )
+    policy = ordinary_policy_for_facts(
+        facts,
+        options=OrdinaryPolicyOptions(non_single_ring_closures="joint"),
+    )
+    return prepare_south_star_mol_from_facts(
+        facts,
+        writer_surface=SouthStarWriterSurface(),
+        policy=replace(
+            policy,
+            bond_text_domains=tuple(
+                (
+                    BondTextDomain(
+                        bond=domain.bond,
+                        slot_kind=domain.slot_kind,
+                        choices=choices,
+                    )
+                    if (
+                        domain.bond == BondId(2)
+                        and domain.slot_kind == "ring_endpoint"
+                    )
+                    else domain
+                )
+                for domain in policy.bond_text_domains
+            ),
+        ),
     )
 
 

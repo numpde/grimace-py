@@ -19,6 +19,8 @@ from grimace._south_star1.ids import BondId
 from grimace._south_star1.ids import OccurrenceId
 from grimace._south_star1.ids import SiteId
 from grimace._south_star1.policy import DirectionMark
+from grimace._south_star1.policy import BondTextChoice
+from grimace._south_star1.policy import BondTextDomain
 from grimace._south_star1.policy import SerializationLanguageMode
 from grimace._south_star1.policy import TetraToken
 from grimace._south_star1.ordinary_policy import OrdinaryPolicyOptions
@@ -704,6 +706,38 @@ class WriterSnapshotTest(unittest.TestCase):
         options = _writer_options(rooted_at_atom=0)
         key = _triangle_root_with_open_closure_key()
         endpoint = replace(key.ring_state.open_endpoints[0], first_endpoint_bond_text="/")
+        tampered_key = replace(
+            key,
+            ring_state=WriterRingStateKey(
+                open_endpoints=(endpoint,),
+                label_state=key.ring_state.label_state,
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_open_closure_bond_text_without_compatible_partner(
+        self,
+    ) -> None:
+        prepared = _prepare_with_non_single_closure_ring_endpoint_choices(
+            BondOrder.DOUBLE,
+            (
+                BondTextChoice("absent", "", False),
+                BondTextChoice("order", "=", False),
+                BondTextChoice("partnerless", "~", False),
+            ),
+        )
+        options = _writer_options(rooted_at_atom=0)
+        key = _triangle_root_with_open_closure_key()
+        endpoint = replace(
+            key.ring_state.open_endpoints[0],
+            first_endpoint_bond_text="~",
+        )
         tampered_key = replace(
             key,
             ring_state=WriterRingStateKey(
@@ -2500,6 +2534,39 @@ def _prepare_with_joint_non_single_ring_closures(facts):
         policy=ordinary_policy_for_facts(
             facts,
             options=OrdinaryPolicyOptions(non_single_ring_closures="joint"),
+        ),
+    )
+
+
+def _prepare_with_non_single_closure_ring_endpoint_choices(
+    order: BondOrder,
+    choices: tuple[BondTextChoice, ...],
+):
+    facts = non_single_closure_triangle_facts(order)
+    policy = ordinary_policy_for_facts(
+        facts,
+        options=OrdinaryPolicyOptions(non_single_ring_closures="joint"),
+    )
+    return prepare_south_star_mol_from_facts(
+        facts,
+        writer_surface=SouthStarWriterSurface(),
+        policy=replace(
+            policy,
+            bond_text_domains=tuple(
+                (
+                    BondTextDomain(
+                        bond=domain.bond,
+                        slot_kind=domain.slot_kind,
+                        choices=choices,
+                    )
+                    if (
+                        domain.bond == BondId(2)
+                        and domain.slot_kind == "ring_endpoint"
+                    )
+                    else domain
+                )
+                for domain in policy.bond_text_domains
+            ),
         ),
     )
 

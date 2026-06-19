@@ -57,6 +57,7 @@ if TYPE_CHECKING:
 
 
 EMPTY_RESIDUAL_SNAPSHOT = ResidualStore().value_snapshot()
+_MAX_TETRA_RING_ENDPOINT_OCCURRENCES = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -309,15 +310,11 @@ def reconstruct_writer_local_order_records(
                 child=occurrence.atom,
             )
 
-        for bond, partner in ring_incidences_by_atom.get(occurrence.atom, ()):
-            occurrence_id = _tetra_ring_endpoint_occurrence_id(
-                prepared,
-                endpoint_atom=occurrence.atom,
-                partner_atom=partner,
-                bond=bond,
-            )
-            if occurrence_id is None:
-                continue
+        for occurrence_id in _resolved_tetra_ring_endpoint_occurrences(
+            prepared,
+            endpoint_atom=occurrence.atom,
+            incidences=ring_incidences_by_atom.get(occurrence.atom, ()),
+        ):
             records = _append_local_order(records, occurrence.atom, occurrence_id)
 
     for atom in sorted(closed_atoms, key=int):
@@ -870,6 +867,15 @@ def _record_tetra_ring_endpoint(
     record = _local_order_record(stereo_state.local_orders, event.endpoint_atom)
     if record is not None and (record.closed or occurrence_id in record.order):
         return _WriterStereoMutation(state=None)
+    if _recorded_tetra_ring_endpoint_occurrences(
+        prepared,
+        stereo_state,
+        event.endpoint_atom,
+    ):
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_STEREO,
+            "multiple tetrahedral ring-endpoint incidences are unsupported",
+        )
 
     return _WriterStereoMutation(
         state=WriterStereoState(
@@ -1050,6 +1056,57 @@ def _tetra_ring_endpoint_occurrence_id(
         )
 
     return occurrence_id
+
+
+def _resolved_tetra_ring_endpoint_occurrences(
+    prepared: SouthStarPreparedMol,
+    *,
+    endpoint_atom: AtomId,
+    incidences: tuple[tuple[BondId, AtomId], ...],
+) -> tuple[OccurrenceId, ...]:
+    resolved = tuple(
+        occurrence_id
+        for bond, partner in incidences
+        if (
+            occurrence_id := _tetra_ring_endpoint_occurrence_id(
+                prepared,
+                endpoint_atom=endpoint_atom,
+                partner_atom=partner,
+                bond=bond,
+            )
+        )
+        is not None
+    )
+    if len(frozenset(resolved)) > _MAX_TETRA_RING_ENDPOINT_OCCURRENCES:
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_STEREO,
+            "multiple tetrahedral ring-endpoint incidences are unsupported",
+        )
+    return resolved
+
+
+def _recorded_tetra_ring_endpoint_occurrences(
+    prepared: SouthStarPreparedMol,
+    stereo_state: "WriterStereoState",
+    atom: AtomId,
+) -> tuple[OccurrenceId, ...]:
+    record = _local_order_record(stereo_state.local_orders, atom)
+    if record is None:
+        return ()
+
+    occurrence_by_id = _occurrence_by_id(prepared)
+    emitted_tree_bonds = frozenset(
+        item.bond for item in stereo_state.bond_occurrences
+    )
+    return tuple(
+        occurrence_id
+        for occurrence_id in record.order
+        if (
+            (occurrence := occurrence_by_id[occurrence_id]).kind
+            is LigandKind.NEIGHBOR_ATOM
+            and occurrence.bond not in emitted_tree_bonds
+        )
+    )
 
 
 def _directional_template_by_site(

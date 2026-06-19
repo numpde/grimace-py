@@ -17058,6 +17058,68 @@ class WriterStateKernelTest(unittest.TestCase):
             prepared=prepared,
         )
 
+    def test_ring_core_tetra_closure_roles_are_reachable_and_terminally_valid(
+        self,
+    ) -> None:
+        from tests.south_star1.test_writer_stereo_residual import ring_core_tetra_facts
+
+        prepared = _prepare(ring_core_tetra_facts())
+        roles: set[str] = set()
+        terminal_orders: list[tuple[OccurrenceId, ...]] = []
+
+        for root_atom in (0, 1, 2):
+            options = _writer_options(rooted_at_atom=root_atom)
+            root = _initial_writer_transition_frontier_cursor(prepared, options)
+            pending = (root,)
+            seen: set[WriterFrontierCursor] = set()
+
+            while pending:
+                cursor = pending[0]
+                pending = pending[1:]
+                if cursor in seen:
+                    continue
+                seen.add(cursor)
+
+                choices = writer_snapshot._writer_frontier_choice_snapshot(
+                    prepared,
+                    cursor,
+                    include_counts=False,
+                )
+                if choices.terminal is not None:
+                    for key, _weight in choices.terminal.finalized_cursor.weighted_states:
+                        for closure in key.ring_state.closed_closures:
+                            if (
+                                closure.first_atom == AtomId(0)
+                                or closure.second_atom == AtomId(0)
+                            ):
+                                roles.add(
+                                    "opening"
+                                    if closure.first_atom == AtomId(0)
+                                    else "pairing"
+                                )
+                            else:
+                                roles.add("nonincident")
+                        for record in key.stereo_state.local_orders:
+                            if record.atom == AtomId(0) and record.closed:
+                                terminal_orders.append(record.order)
+
+                pending = (
+                    *pending,
+                    *(choice.successor for choice in choices.choices),
+                )
+
+        self.assertEqual(roles, {"opening", "pairing", "nonincident"})
+        self.assertTrue(terminal_orders)
+        for order in terminal_orders:
+            self.assertEqual(
+                frozenset(order),
+                frozenset(
+                    OccurrenceId(index)
+                    for index in range(4)
+                ),
+            )
+            self.assertEqual(len(order), 4)
+
     def test_public_ring_core_tetrahedral_profile_is_static_capability_gated(
         self,
     ) -> None:

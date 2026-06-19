@@ -713,6 +713,43 @@ class WriterStereoResidualTest(unittest.TestCase):
 
         self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_STEREO)
 
+    def test_tetra_ring_endpoint_rejects_second_distinct_incidence(self) -> None:
+        prepared = _prepare(ring_core_tetra_facts())
+        label = WriterClosureLabel(value=1, text="1")
+        pending = advance_writer_stereo_state(
+            prepared,
+            initial_writer_stereo_state(prepared),
+            (
+                WriterRingEndpointEmitted(
+                    bond=BondId(2),
+                    endpoint_atom=AtomId(0),
+                    partner_atom=AtomId(2),
+                    label=label,
+                    endpoint_text="1",
+                    bond_text="",
+                ),
+            ),
+        )
+        assert pending is not None
+
+        with self.assertRaises(SouthStarError) as caught:
+            advance_writer_stereo_state(
+                prepared,
+                pending,
+                (
+                    WriterRingEndpointPaired(
+                        bond=BondId(0),
+                        endpoint_atom=AtomId(0),
+                        partner_atom=AtomId(1),
+                        label=label,
+                        endpoint_text="1",
+                        bond_text="",
+                    ),
+                ),
+            )
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_STEREO)
+
     def test_ring_endpoint_event_on_directional_carrier_fails_closed(self) -> None:
         prepared = _prepare(directional_facts())
         label = WriterClosureLabel(value=1, text="1")

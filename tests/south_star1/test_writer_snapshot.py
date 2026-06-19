@@ -6,6 +6,7 @@ from dataclasses import replace
 import unittest
 
 from grimace._south_star1.errors import SouthStarError
+from grimace._south_star1.errors import SouthStarErrorKind
 from grimace._south_star1.facts import BondOrder
 from grimace._south_star1.facts import BondFacts
 from grimace._south_star1.facts import ComponentFacts
@@ -1839,6 +1840,38 @@ class WriterSnapshotTest(unittest.TestCase):
                 _cursor_with_key(tampered_key),
                 runtime_options=options,
             )
+
+    def test_local_order_reconstruction_rejects_multiple_tetra_ring_incidences(
+        self,
+    ) -> None:
+        from tests.south_star1.test_writer_stereo_residual import ring_core_tetra_facts
+
+        prepared = _prepare(ring_core_tetra_facts())
+        rows = (
+            ((BondId(2), AtomId(2)), (BondId(0), AtomId(1))),
+            ((BondId(0), AtomId(1)), (BondId(2), AtomId(2))),
+        )
+
+        for incidences in rows:
+            with self.subTest(incidences=incidences):
+                with self.assertRaises(SouthStarError) as caught:
+                    reconstruct_writer_local_order_records(
+                        prepared,
+                        atom_occurrences=(
+                            WriterAtomOccurrenceRecord(
+                                AtomId(0),
+                                TetraToken.AT,
+                            ),
+                        ),
+                        parent_by_child={},
+                        closed_atoms=frozenset(),
+                        ring_incidences_by_atom={AtomId(0): incidences},
+                    )
+
+                self.assertIs(
+                    caught.exception.kind,
+                    SouthStarErrorKind.UNSUPPORTED_STEREO,
+                )
 
     def test_cursor_audit_accepts_reachable_ring_core_tetra_traversal_states(self) -> None:
         from tests.south_star1.test_writer_stereo_residual import ring_core_tetra_facts

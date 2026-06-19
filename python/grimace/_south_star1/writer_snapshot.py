@@ -1316,6 +1316,7 @@ _PUBLIC_CYCLIC_SUPPORTED_CAPABILITIES = frozenset(
         _WriterPublicCyclicRequiredCapability.SIMPLE_CYCLE_CORE_CLOSURE,
         _WriterPublicCyclicRequiredCapability.ACYCLIC_PENDANT_TREE_TRAVERSAL,
         _WriterPublicCyclicRequiredCapability.TREE_BOND_TEXT_EMISSION,
+        _WriterPublicCyclicRequiredCapability.RING_CORE_NON_SINGLE_CLOSURE_BOND,
     }
 )
 
@@ -2631,6 +2632,12 @@ def _writer_public_cyclic_opening_profile_report(
         _WriterPublicCyclicRequiredCapability.SIMPLE_CYCLE_CORE_CLOSURE,
     )
 
+    if ring_core_non_single_bond_ids:
+        required_capabilities.add(
+            _WriterPublicCyclicRequiredCapability.
+            RING_CORE_NON_SINGLE_CLOSURE_BOND,
+        )
+
     if cyclic_ranks != (1,):
         unsupported_capabilities.add(
             _WriterPublicCyclicRequiredCapability.MULTI_CYCLE_TOPOLOGY,
@@ -2785,7 +2792,11 @@ def _writer_public_non_single_closure_bond_is_supported(
     if marker is None:
         return False
     try:
-        relation = writer_closure_bond_text_relation(prepared, bond_id)
+        relation = writer_closure_bond_text_relation(
+            prepared,
+            bond_id,
+            max_choice_count=2,
+        )
     except SouthStarError:
         return False
     return (

@@ -966,8 +966,21 @@ def _validate_closed_closure_text(prepared: SouthStarPreparedMol, closure) -> No
 def writer_closure_bond_text_relation(
     prepared: SouthStarPreparedMol,
     bond: BondId,
+    *,
+    max_choice_count: int | None = None,
 ) -> WriterClosureBondTextRelation:
     eligible = _closure_bond_text_choices(prepared, bond)
+
+    if (
+        max_choice_count is not None
+        and len(eligible) > max_choice_count
+    ):
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            "writer closure bond-text domain exceeds bounded relation envelope "
+            f"for {bond!r}",
+        )
+
     rows = tuple(
         (
             first.base_text,

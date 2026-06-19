@@ -16582,6 +16582,12 @@ class WriterStateKernelTest(unittest.TestCase):
                 self.assertTrue(report.supported)
                 self.assertEqual(report.ring_core_unsupported_bond_count, 0)
                 self.assertEqual(report.unsupported_bond_count, 0)
+                self.assertIn(
+                    writer_snapshot
+                    ._WriterPublicCyclicRequiredCapability
+                    .RING_CORE_NON_SINGLE_CLOSURE_BOND,
+                    report.required_capabilities,
+                )
 
                 decision = (
                     writer_snapshot
@@ -16683,6 +16689,258 @@ class WriterStateKernelTest(unittest.TestCase):
                 )
                 self.assertEqual(root_image.strings, image.strings)
 
+    def test_non_single_closure_domain_relation_build_is_bounded(self) -> None:
+        prepared = _prepare_non_single_closure_triangle_with_ring_endpoint_choices(
+            order=BondOrder.DOUBLE,
+            choices=(
+                BondTextChoice("absent", "", False),
+                BondTextChoice("order", "=", False),
+                BondTextChoice("extra", "~", False),
+            ),
+        )
+        calls: list[tuple[str, str]] = []
+
+        original_decode = prepared.semantics.ring_pair_decode_ok
+
+        def _counting_decode(
+            facts,
+            bond,
+            first,
+            first_mark,
+            second,
+            second_mark,
+        ):
+            calls.append((first.base_text, second.base_text))
+            return original_decode(
+                facts,
+                bond,
+                first,
+                first_mark,
+                second,
+                second_mark,
+            )
+
+        with patch.object(
+            prepared.semantics,
+            "ring_pair_decode_ok",
+            side_effect=_counting_decode,
+        ):
+            report = writer_snapshot._writer_public_cyclic_opening_profile_report(
+                prepared=prepared,
+            )
+
+        self.assertFalse(report.supported)
+        self.assertEqual(calls, [])
+
+    def test_two_choice_non_single_closure_relation_checks_are_bounded_and_exact(self) -> None:
+        prepared = _prepare_non_single_closure_triangle_with_ring_endpoint_choices(
+            order=BondOrder.DOUBLE,
+            choices=(
+                BondTextChoice("order", "=", False),
+                BondTextChoice("absent", "", False),
+            ),
+        )
+        calls: list[tuple[str, str]] = []
+
+        original_decode = prepared.semantics.ring_pair_decode_ok
+
+        def _counting_decode(
+            facts,
+            bond,
+            first,
+            first_mark,
+            second,
+            second_mark,
+        ):
+            calls.append((first.base_text, second.base_text))
+            return original_decode(
+                facts,
+                bond,
+                first,
+                first_mark,
+                second,
+                second_mark,
+            )
+
+        with patch.object(
+            prepared.semantics,
+            "ring_pair_decode_ok",
+            side_effect=_counting_decode,
+        ):
+            relation = writer_graph_obligations.writer_closure_bond_text_relation(
+                prepared,
+                BondId(2),
+            )
+
+        self.assertEqual(len(calls), 4)
+        self.assertEqual(relation.texts, ("=", ""))
+        self.assertEqual(
+            relation.compatible_pairs,
+            (("=", ""), ("", "=")),
+        )
+
+    def test_non_single_closure_profile_kill_switched_by_static_capability_set(
+        self,
+    ) -> None:
+        facts = simple_monocycle_with_pendant_forest_facts(
+            ring_size=3,
+            ring_bond_orders=(
+                BondOrder.SINGLE,
+                BondOrder.SINGLE,
+                BondOrder.DOUBLE,
+            ),
+        )
+        prepared = _prepare_with_ordinary_policy_options(
+            facts,
+            options=OrdinaryPolicyOptions(non_single_ring_closures="joint"),
+        )
+        options = _writer_options(rooted_at_atom=0)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+
+        baseline = (
+            writer_snapshot
+            ._cyclic_writer_admission_decision_from_cursor(
+                prepared=prepared,
+                runtime_options=options,
+                cursor=cursor,
+            )
+        )
+        self.assertIs(
+            baseline.kind,
+            writer_snapshot
+            ._WriterCyclicAdmissionDecisionKind.READY_PUBLIC,
+        )
+        self.assertIsNotNone(baseline.public_profile)
+        assert baseline.public_profile is not None
+        self.assertIn(
+            writer_snapshot
+            ._WriterPublicCyclicRequiredCapability
+            .RING_CORE_NON_SINGLE_CLOSURE_BOND,
+            baseline.public_profile.required_capabilities,
+        )
+
+        with patch(
+            "grimace._south_star1.writer_snapshot"
+            "._PUBLIC_CYCLIC_SUPPORTED_CAPABILITIES",
+            writer_snapshot
+            ._PUBLIC_CYCLIC_SUPPORTED_CAPABILITIES
+            - {
+                writer_snapshot
+                ._WriterPublicCyclicRequiredCapability
+                .RING_CORE_NON_SINGLE_CLOSURE_BOND,
+            },
+        ):
+            decision = writer_snapshot._cyclic_writer_admission_decision_from_cursor(
+                prepared=prepared,
+                runtime_options=options,
+                cursor=cursor,
+            )
+
+        self.assertIs(
+            decision.kind,
+            writer_snapshot._WriterCyclicAdmissionDecisionKind
+            .BLOCKED_PUBLIC_CYCLIC_PROFILE,
+        )
+
+    def test_reversed_non_single_closure_policy_order_preserves_frontier_rows(self) -> None:
+        prepared = _prepare_non_single_closure_triangle_with_ring_endpoint_choices(
+            order=BondOrder.DOUBLE,
+            choices=(
+                BondTextChoice("order", "=", False),
+                BondTextChoice("absent", "", False),
+            ),
+        )
+
+        relation = writer_graph_obligations.writer_closure_bond_text_relation(
+            prepared,
+            BondId(2),
+        )
+        self.assertEqual(
+            relation.openable_first_texts,
+            ("=", ""),
+        )
+
+        options = _writer_options(rooted_at_atom=0)
+        pending = (_initial_writer_transition_frontier_cursor(prepared, options),)
+        seen: set[WriterFrontierCursor] = set()
+        found = False
+
+        while pending:
+            cursor = pending[0]
+            pending = pending[1:]
+            if cursor in seen:
+                continue
+            seen.add(cursor)
+
+            if len(cursor.weighted_states) != 1:
+                continue
+
+            (current_key, _) = cursor.weighted_states[0]
+            choices = writer_snapshot._writer_frontier_choice_snapshot(
+                prepared,
+                cursor,
+                include_counts=False,
+            )
+            state = writer_state_from_key(current_key)
+            context = writer_transitions.build_writer_transition_expansion_context(
+                prepared,
+                state,
+            )
+            labels = writer_transitions._available_closure_labels_for_open(
+                prepared,
+                state.ring_state,
+            )
+            if labels:
+                target_actions = tuple(
+                    action
+                    for action in writer_transitions._closure_open_scheduled_actions(
+                        context,
+                        state.active.atom,
+                        labels,
+                    )
+                    if (
+                        action.closure_open_obligation is not None
+                        and action.closure_open_obligation.bond == BondId(2)
+                    )
+                )
+
+                for action in target_actions:
+                    transitions = (
+                        writer_transitions
+                        ._closure_open_transitions_from_scheduled_action(
+                            prepared,
+                            state,
+                            context,
+                            action,
+                        )
+                    )
+                    if not transitions:
+                        continue
+                    if action.closure_open_label is None:
+                        continue
+
+                    emitted_texts = tuple(
+                        transition.emitted_text
+                        for transition in transitions
+                    )
+                    expected_openings = tuple(
+                        f"{first_text}{action.closure_open_label.text}"
+                        for first_text in relation.openable_first_texts
+                    )
+                    self.assertEqual(emitted_texts, expected_openings)
+                    found = True
+                    break
+
+            if found:
+                break
+
+            pending = (
+                *pending,
+                *(choice.successor for choice in choices.choices),
+            )
+
+        self.assertTrue(found)
+
     def test_public_non_single_closure_bond_profile_blocks_multiple_ring_core_non_single_bonds(
         self,
     ) -> None:
@@ -16712,6 +16970,18 @@ class WriterStateKernelTest(unittest.TestCase):
             .BLOCKED_UNSUPPORTED_CLOSURE_BOND_SURFACE,
         )
         self.assertEqual(report.ring_core_unsupported_bond_count, 2)
+        self.assertIn(
+            writer_snapshot
+            ._WriterPublicCyclicRequiredCapability
+            .RING_CORE_NON_SINGLE_CLOSURE_BOND,
+            report.required_capabilities,
+        )
+        self.assertIn(
+            writer_snapshot
+            ._WriterPublicCyclicRequiredCapability
+            .RING_CORE_NON_SINGLE_CLOSURE_BOND,
+            report.unsupported_capabilities,
+        )
 
         decision = writer_snapshot._cyclic_writer_admission_decision_from_cursor(
             prepared=prepared,

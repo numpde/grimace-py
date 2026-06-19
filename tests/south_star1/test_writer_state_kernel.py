@@ -1127,6 +1127,85 @@ def _assert_checked_prefix_successor_snapshot_resume_equivalence(
     return direct
 
 
+@dataclass(frozen=True)
+class _BranchTerminalPath:
+    emissions: tuple[str, ...]
+    states: tuple[WriterState, ...]
+    terminal_state: WriterState
+    capabilities: frozenset[writer_snapshot._WriterExecutionCapabilityKind]
+
+
+def _branch_terminal_paths(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+) -> tuple[_BranchTerminalPath, ...]:
+    paths: list[_BranchTerminalPath] = []
+
+    def rec(
+        state: WriterState,
+        emissions: tuple[str, ...],
+        states: tuple[WriterState, ...],
+        capabilities: frozenset[
+            writer_snapshot._WriterExecutionCapabilityKind
+        ],
+    ) -> None:
+        terminal = (
+            writer_transitions
+            .finalize_writer_terminal_state_with_evidence(
+                prepared,
+                state,
+            )
+        )
+        if terminal.state is not None:
+            paths.append(
+                _BranchTerminalPath(
+                    emissions=emissions,
+                    states=states,
+                    terminal_state=terminal.state,
+                    capabilities=(
+                        capabilities
+                        | terminal.execution_capabilities
+                    ),
+                )
+            )
+            return
+
+        for entry in writer_transitions._legal_writer_next_token_frontier(
+            prepared,
+            state,
+        ):
+            for support in entry.supports:
+                transition = support.transition
+                rec(
+                    transition.successor,
+                    emissions + (transition.emitted_text,),
+                    states + (transition.successor,),
+                    capabilities | support.execution_capabilities,
+                )
+
+    for key, _weight in cursor.weighted_states:
+        state = writer_state_from_key(key)
+        rec(state, (), (state,), frozenset())
+
+    return tuple(paths)
+
+
+def _ring_tetra_non_single_composition_role(
+    path: _BranchTerminalPath,
+) -> str:
+    closures = path.terminal_state.ring_state.closed_closures
+    assert len(closures) == 1
+    closure = closures[0]
+
+    if closure.bond == BondId(1):
+        return "nonincident"
+    if closure.first_atom == AtomId(0):
+        return "opening"
+    if closure.second_atom == AtomId(0):
+        return "pairing"
+    raise AssertionError(closure)
+
+
 def _assert_writer_snapshot_contract_closed_under_replay(
     test_case: unittest.TestCase,
     *,
@@ -17390,6 +17469,147 @@ class WriterStateKernelTest(unittest.TestCase):
                             .unsupported_capabilities
                         ),
                     )
+
+    def test_ring_tetra_non_single_composition_capabilities_are_branch_local(
+        self,
+    ) -> None:
+        from tests.south_star1.test_writer_stereo_residual import (
+            ring_core_tetra_with_remote_non_single_facts,
+        )
+
+        visible_closure = (
+            writer_snapshot
+            ._WriterExecutionCapabilityKind
+            .VISIBLE_CLOSURE_BOND_TEXT
+        )
+        visible_tree = (
+            writer_snapshot
+            ._WriterExecutionCapabilityKind
+            .VISIBLE_TREE_BOND_TEXT
+        )
+        tetra_ring = (
+            writer_snapshot
+            ._WriterExecutionCapabilityKind
+            .TETRA_RING_ENDPOINT_ORDER_OCCURRENCE
+        )
+
+        for order, marker in (
+            (BondOrder.DOUBLE, "="),
+            (BondOrder.TRIPLE, "#"),
+        ):
+            with self.subTest(order=order):
+                prepared = _prepare_with_ordinary_policy_options(
+                    ring_core_tetra_with_remote_non_single_facts(order),
+                    options=OrdinaryPolicyOptions(
+                        non_single_ring_closures="joint",
+                    ),
+                )
+                paths_by_role: dict[str, _BranchTerminalPath] = {}
+
+                for root_atom in (0, 1, 2):
+                    options = _writer_options(rooted_at_atom=root_atom)
+                    cursor = _initial_writer_transition_frontier_cursor(
+                        prepared,
+                        options,
+                    )
+                    for path in _branch_terminal_paths(prepared, cursor):
+                        role = _ring_tetra_non_single_composition_role(path)
+                        paths_by_role.setdefault(role, path)
+
+                self.assertEqual(
+                    frozenset(paths_by_role),
+                    frozenset(("opening", "pairing", "nonincident")),
+                )
+
+                for role, path in paths_by_role.items():
+                    closure = path.terminal_state.ring_state.closed_closures[0]
+                    text = "".join(path.emissions)
+                    self.assertEqual(text.count(marker), 1)
+
+                    terminal_record = next(
+                        record
+                        for record in path.terminal_state.stereo_state.local_orders
+                        if record.atom == AtomId(0)
+                    )
+                    self.assertTrue(terminal_record.closed)
+                    self.assertEqual(
+                        frozenset(terminal_record.order),
+                        frozenset(
+                            OccurrenceId(index)
+                            for index in range(4)
+                        ),
+                    )
+                    self.assertEqual(len(terminal_record.order), 4)
+
+                    if role == "nonincident":
+                        self.assertEqual(closure.bond, BondId(1))
+                        self.assertIn(
+                            (
+                                closure.first_endpoint_bond_text,
+                                closure.second_endpoint_bond_text,
+                            ),
+                            (("", marker), (marker, "")),
+                        )
+                        self.assertIn(visible_closure, path.capabilities)
+                        self.assertNotIn(visible_tree, path.capabilities)
+                        self.assertNotIn(tetra_ring, path.capabilities)
+                    else:
+                        self.assertIn(closure.bond, (BondId(0), BondId(2)))
+                        self.assertEqual(
+                            (
+                                closure.first_endpoint_bond_text,
+                                closure.second_endpoint_bond_text,
+                            ),
+                            ("", ""),
+                        )
+                        self.assertIn(visible_tree, path.capabilities)
+                        self.assertIn(tetra_ring, path.capabilities)
+                        self.assertNotIn(visible_closure, path.capabilities)
+
+                for role, path in paths_by_role.items():
+                    with self.subTest(order=order, role=role, snapshot=True):
+                        open_index = next(
+                            index
+                            for index, state in enumerate(path.states)
+                            if state.ring_state.open_endpoints
+                        )
+                        prefix = path.emissions[:open_index]
+                        options = _writer_options(
+                            rooted_at_atom=int(path.states[0].active.atom),
+                        )
+                        initial_snapshot = (
+                            writer_snapshot
+                            ._capture_writer_frontier_snapshot_unchecked(
+                                prepared=prepared,
+                                runtime_options=options,
+                                cursor=(
+                                    WriterFrontierCursor(
+                                        weighted_states=(
+                                            (
+                                                writer_state_key(path.states[0]),
+                                                1,
+                                            ),
+                                        ),
+                                    )
+                                ),
+                            )
+                        )
+
+                        outcome = (
+                            _assert_checked_prefix_successor_snapshot_resume_equivalence(
+                                self,
+                                snapshot=initial_snapshot,
+                                prepared=prepared,
+                                emitted_texts=prefix,
+                            )
+                        )
+                        advanced = outcome.replay_outcome.advanced_snapshot
+                        self.assertIsNotNone(advanced)
+                        assert advanced is not None
+                        self.assertIn(
+                            writer_state_key(path.states[open_index]),
+                            dict(advanced.cursor.weighted_states),
+                        )
 
     def test_public_incident_non_single_ring_core_bond_with_ring_tetra_remains_blocked(
         self,

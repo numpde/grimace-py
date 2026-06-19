@@ -50,7 +50,7 @@ from .writer_events import WriterRingEndpointPaired
 from .writer_stereo import WriterAtomTextChoice
 from .writer_stereo import WriterBondTextChoice
 from .writer_stereo import advance_writer_stereo_state_with_evidence
-from .writer_stereo import terminal_writer_stereo_state
+from .writer_stereo import terminal_writer_stereo_state_with_evidence
 from .writer_stereo import validate_writer_stereo_supported_prepared
 from .writer_stereo import writer_atom_text_choices
 from .writer_stereo import writer_bond_text_choices
@@ -95,6 +95,14 @@ class WriterTransition:
             raise ValueError("writer transitions must emit nonempty text")
         if not self.events:
             raise ValueError("writer transitions must carry semantic events")
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterTerminalizationOutcome:
+    state: WriterState | None
+    execution_capabilities: frozenset[
+        _WriterExecutionCapabilityKind
+    ] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)
@@ -5115,30 +5123,43 @@ def finalize_writer_terminal_state(
     prepared: SouthStarPreparedMol,
     state: WriterState,
 ) -> WriterState | None:
+    return finalize_writer_terminal_state_with_evidence(
+        prepared,
+        state,
+    ).state
+
+
+def finalize_writer_terminal_state_with_evidence(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+) -> _WriterTerminalizationOutcome:
     context = build_writer_transition_expansion_context(prepared, state)
     if state.obligations.pending_entry is not None or state.branch_stack:
-        return None
+        return _WriterTerminalizationOutcome(state=None)
     if state.ring_state.open_endpoints:
-        return None
+        return _WriterTerminalizationOutcome(state=None)
     if not state.active.atom_emitted:
-        return None
+        return _WriterTerminalizationOutcome(state=None)
     completion = writer_graph_completion_status(prepared, context.state_key, context.graph)
     if not completion.complete:
-        return None
+        return _WriterTerminalizationOutcome(state=None)
     if _child_obligations_from_context(context, state, state.active.atom):
-        return None
+        return _WriterTerminalizationOutcome(state=None)
     if state.component_cursor.component_index + 1 < len(
         state.component_cursor.component_roots
     ):
-        return None
-    stereo_state = terminal_writer_stereo_state(
+        return _WriterTerminalizationOutcome(state=None)
+    stereo_outcome = terminal_writer_stereo_state_with_evidence(
         prepared,
         state.stereo_state,
         state.active.atom,
     )
-    if stereo_state is None:
-        return None
-    return replace(state, stereo_state=stereo_state)
+    if stereo_outcome.state is None:
+        return _WriterTerminalizationOutcome(state=None)
+    return _WriterTerminalizationOutcome(
+        state=replace(state, stereo_state=stereo_outcome.state),
+        execution_capabilities=stereo_outcome.execution_capabilities,
+    )
 
 
 def _transition(
@@ -5417,6 +5438,7 @@ __all__ = (
     "WriterTransitionKind",
     "build_writer_transition_expansion_context",
     "finalize_writer_terminal_state",
+    "finalize_writer_terminal_state_with_evidence",
     "legal_writer_transitions",
     "validate_writer_supported_prepared",
     "validate_writer_transition_prepared",

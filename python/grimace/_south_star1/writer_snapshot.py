@@ -1106,9 +1106,13 @@ class _WriterResidualCyclicReadinessBlockedPrefix:
 class _WriterExecutionCapabilityUse:
     kind: _WriterExecutionCapabilityKind
     emitted_texts: tuple[str, ...]
-    next_emitted_text: str
     source_cursor: WriterFrontierCursor
     successor_cursor: WriterFrontierCursor
+    next_emitted_text: str | None = None
+
+    @property
+    def terminal(self) -> bool:
+        return self.next_emitted_text is None
 
 
 @dataclass(frozen=True, slots=True)
@@ -2044,7 +2048,7 @@ def _audit_residual_cyclic_readiness_from_snapshot(
         tuple[
             _WriterExecutionCapabilityKind,
             tuple[str, ...],
-            str,
+            str | None,
             WriterFrontierCursor,
             WriterFrontierCursor,
         ]
@@ -2084,14 +2088,34 @@ def _audit_residual_cyclic_readiness_from_snapshot(
             )
             return False, None
 
+        if choice_snapshot.terminal is not None:
+            for capability in choice_snapshot.terminal_execution_capabilities:
+                use = _WriterExecutionCapabilityUse(
+                    kind=capability,
+                    emitted_texts=prefix,
+                    source_cursor=current.cursor,
+                    successor_cursor=choice_snapshot.terminal.finalized_cursor,
+                    next_emitted_text=None,
+                )
+                signature = (
+                    use.kind,
+                    use.emitted_texts,
+                    use.next_emitted_text,
+                    use.source_cursor,
+                    use.successor_cursor,
+                )
+                if signature not in observed_execution_capability_use_signatures:
+                    observed_execution_capability_use_signatures.add(signature)
+                    execution_capability_uses.append(use)
+
         for choice in choice_snapshot.choices:
             for capability in choice.execution_capabilities:
                 use = _WriterExecutionCapabilityUse(
                     kind=capability,
                     emitted_texts=prefix,
-                    next_emitted_text=choice.emitted_text,
                     source_cursor=current.cursor,
                     successor_cursor=choice.successor,
+                    next_emitted_text=choice.emitted_text,
                 )
 
                 signature = (
@@ -2996,12 +3020,18 @@ def _writer_execution_capability_block_message(
     certificate: _WriterPublicExecutionCapabilityCertificate,
 ) -> str:
     use = certificate.first_unsupported_uses[0]
+    if use.terminal:
+        location = f"prefix={use.emitted_texts!r}; at EOS"
+    else:
+        location = (
+            f"prefix={use.emitted_texts!r}; "
+            f"next={use.next_emitted_text!r}"
+        )
     return (
         "WRITER_SHAPED requires an unsupported South Star "
         "execution capability: "
         f"{use.kind.value}; "
-        f"prefix={use.emitted_texts!r}; "
-        f"next={use.next_emitted_text!r}"
+        f"{location}"
     )
 
 

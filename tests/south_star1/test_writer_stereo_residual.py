@@ -662,11 +662,58 @@ class WriterStereoResidualTest(unittest.TestCase):
         )
 
         terminal = writer_frontier_choices(prepared, center_choice.successor).terminal
+        choices = _writer_frontier_choice_snapshot(
+            prepared,
+            center_choice.successor,
+            include_counts=False,
+        )
 
         self.assertIsNotNone(terminal)
         assert terminal is not None
+        self.assertEqual(
+            choices.terminal_execution_capabilities,
+            frozenset((
+                _WriterExecutionCapabilityKind
+                .TETRA_LOCAL_ORDER_RESTRICTION,
+                _WriterExecutionCapabilityKind.RESIDUAL_PROPAGATION,
+                _WriterExecutionCapabilityKind.RESIDUAL_FACTOR_DISCHARGE,
+            )),
+        )
         finalized_key = terminal.finalized_cursor.weighted_states[0][0]
         self.assertEqual(finalized_key.stereo_state.residual_snapshot.factors, ())
+
+    def test_non_stereo_terminal_eos_reports_no_execution_capabilities(self) -> None:
+        prepared = _prepare(cco_facts())
+        cursor = _initial_writer_transition_frontier_cursor(
+            prepared,
+            _writer_options(rooted_at_atom=0),
+        )
+        pending = (cursor,)
+        seen = set()
+        terminal_count = 0
+
+        while pending:
+            current = pending[0]
+            pending = pending[1:]
+            if current in seen:
+                continue
+            seen.add(current)
+
+            choices = _writer_frontier_choice_snapshot(
+                prepared,
+                current,
+                include_counts=False,
+            )
+            if choices.terminal is not None:
+                terminal_count += 1
+                self.assertFalse(choices.terminal_execution_capabilities)
+
+            pending = (
+                *pending,
+                *(choice.successor for choice in choices.choices),
+            )
+
+        self.assertGreater(terminal_count, 0)
 
     def test_add_factor_and_propagate_rolls_back_rejected_factor(self) -> None:
         store = ResidualStore()

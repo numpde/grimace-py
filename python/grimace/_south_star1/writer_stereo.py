@@ -367,16 +367,28 @@ def terminal_writer_stereo_state(
     stereo_state: "WriterStereoState",
     atom: AtomId,
 ) -> "WriterStereoState | None":
-    state = advance_writer_stereo_state(
+    return terminal_writer_stereo_state_with_evidence(
+        prepared,
+        stereo_state,
+        atom,
+    ).state
+
+
+def terminal_writer_stereo_state_with_evidence(
+    prepared: SouthStarPreparedMol,
+    stereo_state: "WriterStereoState",
+    atom: AtomId,
+) -> _WriterStereoAdvanceOutcome:
+    outcome = advance_writer_stereo_state_with_evidence(
         prepared,
         stereo_state,
         (WriterLocalOrderClosed(atom=atom),),
     )
-    if state is None:
-        return None
-    if state.residual_snapshot != EMPTY_RESIDUAL_SNAPSHOT:
-        return None
-    return state
+    if outcome.state is None:
+        return _WriterStereoAdvanceOutcome(state=None)
+    if outcome.state.residual_snapshot != EMPTY_RESIDUAL_SNAPSHOT:
+        return _WriterStereoAdvanceOutcome(state=None)
+    return outcome
 
 
 def _writer_residual_mutation_is_legal(
@@ -1397,6 +1409,7 @@ __all__ = (
     "reconstruct_writer_local_order_records",
     "reconstruct_writer_stereo_residual_snapshot",
     "terminal_writer_stereo_state",
+    "terminal_writer_stereo_state_with_evidence",
     "validate_writer_stereo_supported_prepared",
     "writer_atom_text_choices",
     "writer_bond_text_choices",

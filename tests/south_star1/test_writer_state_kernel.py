@@ -28,13 +28,20 @@ from grimace._south_star1.facts import ComponentFacts
 from grimace._south_star1.facts import LigandKind
 from grimace._south_star1.facts import LigandOccurrence
 from grimace._south_star1.facts import MoleculeFacts
+from grimace._south_star1.facts import SiteStatus
+from grimace._south_star1.facts import StereoFacts
+from grimace._south_star1.facts import TetraValue
+from grimace._south_star1.facts import TetrahedralSiteFacts
 from grimace._south_star1.ids import AtomId
 from grimace._south_star1.ids import BondId
 from grimace._south_star1.ids import ComponentId
 from grimace._south_star1.ids import OccurrenceId
+from grimace._south_star1.ids import SiteId
 from grimace._south_star1.policy import AnnotationMode
 from grimace._south_star1.policy import AtomTextChoice
 from grimace._south_star1.policy import AtomTextDomain
+from grimace._south_star1.policy import BondTextChoice
+from grimace._south_star1.policy import BondTextDomain
 from grimace._south_star1.policy import RingLabel
 from grimace._south_star1.policy import SerializationLanguageMode
 from grimace._south_star1.policy import SmilesPolicy
@@ -152,6 +159,133 @@ def _integer_partitions(
         return tuple(parts)
 
     return rec(total, 1)
+
+
+def _cyclopropane_with_terminal_tetra_pendant_facts() -> MoleculeFacts:
+    site = SiteId(0)
+    return MoleculeFacts(
+        atoms=(
+            atom(0, "C"),
+            atom(1, "C"),
+            atom(2, "C"),
+            replace(atom(3, "C"), implicit_h_count=3),
+        ),
+        bonds=(
+            single_bond(0, 0, 1),
+            single_bond(1, 1, 2),
+            single_bond(2, 2, 0),
+            single_bond(3, 0, 3),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=tuple(AtomId(index) for index in range(4)),
+                bonds=tuple(BondId(index) for index in range(4)),
+            ),
+        ),
+        stereo=StereoFacts(
+            tetrahedral=(
+                TetrahedralSiteFacts(
+                    id=site,
+                    center=AtomId(3),
+                    status=SiteStatus.SPECIFIED,
+                    target=TetraValue.PLUS,
+                    ligand_occurrences=tuple(
+                        OccurrenceId(index) for index in range(4)
+                    ),
+                    reference_order=tuple(
+                        OccurrenceId(index) for index in range(4)
+                    ),
+                ),
+            ),
+        ),
+        ligand_occurrences=(
+            LigandOccurrence(
+                id=OccurrenceId(0),
+                site=site,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(0),
+                bond=BondId(3),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(1),
+                site=site,
+                kind=LigandKind.IMPLICIT_H,
+                atom=AtomId(3),
+                bond=None,
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(2),
+                site=site,
+                kind=LigandKind.IMPLICIT_H,
+                atom=AtomId(3),
+                bond=None,
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(3),
+                site=site,
+                kind=LigandKind.IMPLICIT_H,
+                atom=AtomId(3),
+                bond=None,
+            ),
+        ),
+    )
+
+
+def _cyclopropane_with_terminal_tetra_pendant_policy() -> SmilesPolicy:
+    single_bond_choices = (
+        BondTextChoice(
+            "single_elided_or_directional",
+            "",
+            True,
+        ),
+    )
+    return SmilesPolicy(
+        ring_labels=(RingLabel(1), RingLabel(2)),
+        annotation_mode=AnnotationMode.HARD,
+        atom_text_domains=(
+            AtomTextDomain(
+                atom=AtomId(0),
+                choices=(AtomTextChoice("carbon", ((TetraToken.NONE, "C"),)),),
+            ),
+            AtomTextDomain(
+                atom=AtomId(1),
+                choices=(AtomTextChoice("carbon", ((TetraToken.NONE, "C"),)),),
+            ),
+            AtomTextDomain(
+                atom=AtomId(2),
+                choices=(AtomTextChoice("carbon", ((TetraToken.NONE, "C"),)),),
+            ),
+            AtomTextDomain(
+                atom=AtomId(3),
+                choices=(
+                    AtomTextChoice(
+                        "terminal_tetra_carbon",
+                        (
+                            (TetraToken.AT, "[C@H3]"),
+                            (TetraToken.ATAT, "[C@@H3]"),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+        bond_text_domains=tuple(
+            domain
+            for bond_id in range(4)
+            for domain in (
+                BondTextDomain(
+                    bond=BondId(bond_id),
+                    slot_kind="tree",
+                    choices=single_bond_choices,
+                ),
+                BondTextDomain(
+                    bond=BondId(bond_id),
+                    slot_kind="ring_endpoint",
+                    choices=single_bond_choices,
+                ),
+            )
+        ),
+    )
 
 
 @dataclass(frozen=True)
@@ -1363,6 +1497,20 @@ def _assert_replay_succeeds_for_execution_capability_uses(
             use.source_cursor,
             include_counts=False,
         )
+        if use.terminal:
+            test_case.assertIsNotNone(choices.terminal)
+            assert choices.terminal is not None
+            test_case.assertIn(
+                use.kind,
+                choices.terminal_execution_capabilities,
+            )
+            test_case.assertEqual(
+                use.successor_cursor,
+                choices.terminal.finalized_cursor,
+            )
+            continue
+
+        assert use.next_emitted_text is not None
         choice = (
             writer_snapshot
             ._writer_frontier_choice_snapshot_entry_for_emitted_text(
@@ -15817,6 +15965,145 @@ class WriterStateKernelTest(unittest.TestCase):
             writer_snapshot._assert_cyclic_writer_admission_decision(decision)
         self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
         self.assertIn(disabled.value, str(caught.exception))
+
+    def test_public_admission_certificate_includes_terminal_stereo_capabilities(
+        self,
+    ) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            _cyclopropane_with_terminal_tetra_pendant_facts(),
+            writer_surface=SouthStarWriterSurface(),
+            policy=_cyclopropane_with_terminal_tetra_pendant_policy(),
+        )
+        options = _writer_options(rooted_at_atom=0)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+        baseline = writer_snapshot._cyclic_writer_admission_decision_from_cursor(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+
+        self.assertIs(
+            baseline.kind,
+            writer_snapshot
+            ._WriterCyclicAdmissionDecisionKind.READY_PUBLIC,
+        )
+        self.assertIsNotNone(baseline.execution_capability_certificate)
+        assert baseline.execution_capability_certificate is not None
+        terminal_capabilities = frozenset((
+            writer_snapshot
+            ._WriterExecutionCapabilityKind
+            .TETRA_LOCAL_ORDER_RESTRICTION,
+            writer_snapshot
+            ._WriterExecutionCapabilityKind
+            .RESIDUAL_PROPAGATION,
+            writer_snapshot
+            ._WriterExecutionCapabilityKind
+            .RESIDUAL_FACTOR_DISCHARGE,
+        ))
+        self.assertLessEqual(
+            terminal_capabilities,
+            baseline
+            .execution_capability_certificate
+            .required_capabilities,
+        )
+
+        terminal_uses = tuple(
+            use
+            for use in baseline
+            .readiness_gate
+            .audit
+            .execution_capability_uses
+            if use.terminal
+        )
+        self.assertTrue(terminal_uses)
+        for capability in terminal_capabilities:
+            self.assertTrue(
+                any(use.kind is capability for use in terminal_uses),
+            )
+
+        for capability in terminal_capabilities:
+            with self.subTest(capability=capability.value):
+                supported = (
+                    baseline
+                    .execution_capability_certificate
+                    .supported_capabilities
+                    - {capability}
+                )
+                with patch(
+                    "grimace._south_star1.writer_snapshot"
+                    "._PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES",
+                    supported,
+                ):
+                    decision = (
+                        writer_snapshot
+                        ._cyclic_writer_admission_decision_from_cursor(
+                            prepared=prepared,
+                            runtime_options=options,
+                            cursor=cursor,
+                        )
+                    )
+
+                self.assertIs(
+                    decision.kind,
+                    writer_snapshot
+                    ._WriterCyclicAdmissionDecisionKind
+                    .BLOCKED_PUBLIC_EXECUTION_CAPABILITY,
+                )
+                self.assertIsNotNone(
+                    decision.execution_capability_certificate,
+                )
+                assert decision.execution_capability_certificate is not None
+                first_uses = (
+                    decision
+                    .execution_capability_certificate
+                    .first_unsupported_uses
+                )
+                self.assertEqual(len(first_uses), 1)
+                use = first_uses[0]
+                self.assertIs(use.kind, capability)
+                if (
+                    capability
+                    is writer_snapshot
+                    ._WriterExecutionCapabilityKind
+                    .RESIDUAL_PROPAGATION
+                ):
+                    self.assertFalse(use.terminal)
+                    self.assertIsNotNone(use.next_emitted_text)
+                    self.assertTrue(
+                        any(
+                            terminal_use.kind is capability
+                            for terminal_use in terminal_uses
+                        ),
+                    )
+                else:
+                    self.assertTrue(use.terminal)
+                    self.assertIsNone(use.next_emitted_text)
+
+                choices = writer_snapshot._writer_frontier_choice_snapshot(
+                    prepared,
+                    use.source_cursor,
+                    include_counts=False,
+                )
+                if use.terminal:
+                    self.assertIsNotNone(choices.terminal)
+                    assert choices.terminal is not None
+                    self.assertEqual(
+                        use.successor_cursor,
+                        choices.terminal.finalized_cursor,
+                    )
+
+                with self.assertRaises(SouthStarError) as caught:
+                    writer_snapshot._assert_cyclic_writer_admission_decision(
+                        decision,
+                    )
+
+                self.assertIs(
+                    caught.exception.kind,
+                    SouthStarErrorKind.UNSUPPORTED_POLICY,
+                )
+                self.assertIn(capability.value, str(caught.exception))
+                if use.terminal:
+                    self.assertIn("at EOS", str(caught.exception))
 
     def test_simple_monocycle_public_admission_can_still_be_forced_closed(self) -> None:
         prepared = _prepare(cyclopropane_facts())

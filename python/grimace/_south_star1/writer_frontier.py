@@ -24,7 +24,7 @@ from .writer_state import writer_state_from_key
 from .writer_state import writer_state_key
 from .writer_state import writer_state_key_sort_tuple
 from .writer_stereo import initial_writer_stereo_state
-from .writer_transitions import finalize_writer_terminal_state
+from .writer_transitions import finalize_writer_terminal_state_with_evidence
 from .writer_transitions import _WriterActiveEmittedGraphPolicyBlocker
 from .writer_transitions import _WriterActiveEmittedGraphPolicyDecision
 from .writer_transitions import _WriterActiveChildSelectionKind
@@ -250,6 +250,18 @@ class _WriterFrontierStateScheduleOutcome:
     parent_weight: int
     finalized_state_key: WriterStateKey | None
     schedule_outcome: _WriterTopLevelScheduleOutcome
+    terminal_execution_capabilities: frozenset[
+        _WriterExecutionCapabilityKind
+    ] = frozenset()
+
+    def __post_init__(self) -> None:
+        if (
+            self.finalized_state_key is None
+            and self.terminal_execution_capabilities
+        ):
+            raise ValueError(
+                "terminal execution capabilities require finalized state"
+            )
 
     @property
     def blocked(self) -> bool:
@@ -961,6 +973,17 @@ class _WriterFrontierScheduleOutcome:
         return bool(self.graph_policy_blockers)
 
     @property
+    def terminal_execution_capabilities(
+        self,
+    ) -> frozenset[_WriterExecutionCapabilityKind]:
+        return frozenset(
+            capability
+            for outcome in self.state_outcomes
+            if outcome.finalized_state_key is not None
+            for capability in outcome.terminal_execution_capabilities
+        )
+
+    @property
     def graph_policy_decisions(
         self,
     ) -> tuple[_WriterActiveEmittedGraphPolicyDecision, ...]:
@@ -1300,6 +1323,12 @@ class _WriterFrontierChoiceSnapshot:
             capabilities.update(choice.execution_capabilities)
 
         return frozenset(capabilities)
+
+    @property
+    def terminal_execution_capabilities(
+        self,
+    ) -> frozenset[_WriterExecutionCapabilityKind]:
+        return self.schedule_outcome.terminal_execution_capabilities
 
     @property
     def residual_cyclic_policy_is_covered(self) -> bool:
@@ -2061,7 +2090,11 @@ def _writer_frontier_schedule_outcome(
     for key, parent_weight in cursor.weighted_states:
         state = writer_state_from_key(key)
 
-        finalized = finalize_writer_terminal_state(prepared, state)
+        terminal_outcome = finalize_writer_terminal_state_with_evidence(
+            prepared,
+            state,
+        )
+        finalized = terminal_outcome.state
         finalized_key = None
 
         if finalized is not None:
@@ -2074,6 +2107,9 @@ def _writer_frontier_schedule_outcome(
             state_key=key,
             parent_weight=parent_weight,
             finalized_state_key=finalized_key,
+            terminal_execution_capabilities=(
+                terminal_outcome.execution_capabilities
+            ),
             schedule_outcome=schedule_outcome,
         )
         state_outcomes.append(state_outcome)

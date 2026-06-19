@@ -16777,7 +16777,7 @@ class WriterStateKernelTest(unittest.TestCase):
                 BondTextChoice("extra", "~", False),
             ),
         )
-        calls: list[tuple[str, str]] = []
+        calls: list[tuple[BondId, str, str]] = []
 
         original_decode = prepared.semantics.ring_pair_decode_ok
 
@@ -16789,7 +16789,7 @@ class WriterStateKernelTest(unittest.TestCase):
             second,
             second_mark,
         ):
-            calls.append((first.base_text, second.base_text))
+            calls.append((bond, first.base_text, second.base_text))
             return original_decode(
                 facts,
                 bond,
@@ -16809,7 +16809,9 @@ class WriterStateKernelTest(unittest.TestCase):
             )
 
         self.assertFalse(report.supported)
-        self.assertEqual(calls, [])
+        self.assertFalse(
+            any(bond == BondId(2) for bond, _first, _second in calls),
+        )
 
     def test_two_choice_non_single_closure_relation_checks_are_bounded_and_exact(self) -> None:
         prepared = _prepare_non_single_closure_triangle_with_ring_endpoint_choices(
@@ -16819,7 +16821,7 @@ class WriterStateKernelTest(unittest.TestCase):
                 BondTextChoice("absent", "", False),
             ),
         )
-        calls: list[tuple[str, str]] = []
+        calls: list[tuple[BondId, str, str]] = []
 
         original_decode = prepared.semantics.ring_pair_decode_ok
 
@@ -16831,7 +16833,7 @@ class WriterStateKernelTest(unittest.TestCase):
             second,
             second_mark,
         ):
-            calls.append((first.base_text, second.base_text))
+            calls.append((bond, first.base_text, second.base_text))
             return original_decode(
                 facts,
                 bond,
@@ -17801,6 +17803,487 @@ class WriterStateKernelTest(unittest.TestCase):
                     observed_pairs,
                     {("", marker), (marker, "")},
                 )
+
+    def test_single_closure_bond_text_relation_matrix(self) -> None:
+        rows = (
+            (
+                "elide",
+                OrdinaryPolicyOptions(single_bond_mode="elide"),
+                ("",),
+                (("", ""),),
+            ),
+            (
+                "explicit",
+                OrdinaryPolicyOptions(single_bond_mode="explicit"),
+                ("-",),
+                (("-", "-"),),
+            ),
+            (
+                "both",
+                OrdinaryPolicyOptions(single_bond_mode="both"),
+                ("", "-"),
+                (
+                    ("", ""),
+                    ("", "-"),
+                    ("-", ""),
+                    ("-", "-"),
+                ),
+            ),
+        )
+
+        for name, policy_options, texts, pairs in rows:
+            with self.subTest(name=name):
+                prepared = _prepare_with_ordinary_policy_options(
+                    simple_monocycle_with_pendant_forest_facts(ring_size=3),
+                    options=policy_options,
+                )
+                relation = (
+                    writer_graph_obligations
+                    .writer_closure_bond_text_relation(
+                        prepared,
+                        BondId(2),
+                    )
+                )
+                self.assertEqual(relation.texts, texts)
+                self.assertEqual(relation.compatible_pairs, pairs)
+
+    def test_reversed_single_closure_policy_order_preserves_frontier_rows(self) -> None:
+        prepared = _prepare_single_closure_triangle_with_ring_endpoint_choices(
+            choices=(
+                BondTextChoice("explicit", "-", False),
+                BondTextChoice("elide", "", False),
+            ),
+        )
+        relation = writer_graph_obligations.writer_closure_bond_text_relation(
+            prepared,
+            BondId(2),
+        )
+        self.assertEqual(relation.texts, ("-", ""))
+        self.assertEqual(relation.openable_first_texts, ("-", ""))
+
+        options = _writer_options(rooted_at_atom=0)
+        pending = (_initial_writer_transition_frontier_cursor(prepared, options),)
+        seen: set[WriterFrontierCursor] = set()
+        found_open = False
+        found_pair = False
+
+        while pending:
+            cursor = pending[0]
+            pending = pending[1:]
+            if cursor in seen:
+                continue
+            seen.add(cursor)
+
+            choices = writer_snapshot._writer_frontier_choice_snapshot(
+                prepared,
+                cursor,
+                include_counts=False,
+            )
+            for key, _weight in cursor.weighted_states:
+                state = writer_state_from_key(key)
+                context = (
+                    writer_transitions
+                    .build_writer_transition_expansion_context(
+                        prepared,
+                        state,
+                    )
+                )
+                labels = writer_transitions._available_closure_labels_for_open(
+                    prepared,
+                    state.ring_state,
+                )
+                for action in (
+                    writer_transitions
+                    ._closure_open_scheduled_actions(
+                        context,
+                        state.active.atom,
+                        labels,
+                    )
+                ):
+                    if (
+                        action.closure_open_obligation is None
+                        or action.closure_open_obligation.bond != BondId(2)
+                        or action.closure_open_label is None
+                    ):
+                        continue
+                    transitions = (
+                        writer_transitions
+                        ._closure_open_transitions_from_scheduled_action(
+                            prepared,
+                            state,
+                            context,
+                            action,
+                        )
+                    )
+                    self.assertEqual(
+                        tuple(
+                            transition.emitted_text
+                            for transition in transitions
+                        ),
+                        tuple(
+                            f"{text}{action.closure_open_label.text}"
+                            for text in relation.openable_first_texts
+                        ),
+                    )
+                    found_open = True
+
+                pair_obligations = (
+                    writer_transitions
+                    ._closure_pair_obligations_from_state(
+                        prepared,
+                        state,
+                        state.active.atom,
+                    )
+                )
+                for obligation in pair_obligations:
+                    if obligation.closure.bond != BondId(2):
+                        continue
+                    expected_seconds = relation.compatible_seconds(
+                        obligation.endpoint.first_endpoint_bond_text,
+                    )
+                    self.assertIn(
+                        obligation.closure.second_endpoint_bond_text,
+                        expected_seconds,
+                    )
+                    found_pair = True
+
+            pending = (
+                *pending,
+                *(choice.successor for choice in choices.choices),
+            )
+
+        self.assertTrue(found_open)
+        self.assertTrue(found_pair)
+
+    def test_single_closure_domain_relation_build_is_bounded(self) -> None:
+        prepared = _prepare_single_closure_triangle_with_ring_endpoint_choices(
+            choices=(
+                BondTextChoice("elide", "", False),
+                BondTextChoice("explicit", "-", False),
+                BondTextChoice("extra", "~", False),
+            ),
+        )
+        calls: list[tuple[str, str]] = []
+
+        original_decode = prepared.semantics.ring_pair_decode_ok
+
+        def _counting_decode(
+            facts,
+            bond,
+            first,
+            first_mark,
+            second,
+            second_mark,
+        ):
+            calls.append((bond, first.base_text, second.base_text))
+            return original_decode(
+                facts,
+                bond,
+                first,
+                first_mark,
+                second,
+                second_mark,
+            )
+
+        with patch.object(
+            prepared.semantics,
+            "ring_pair_decode_ok",
+            side_effect=_counting_decode,
+        ):
+            report = writer_snapshot._writer_public_cyclic_opening_profile_report(
+                prepared=prepared,
+            )
+
+        self.assertFalse(report.supported)
+        self.assertFalse(
+            any(bond == BondId(2) for bond, _first, _second in calls),
+        )
+        self.assertIn(
+            (
+                writer_snapshot
+                ._WriterPublicCyclicRequiredCapability
+                .RING_CORE_VISIBLE_SINGLE_CLOSURE_BOND_TEXT
+            ),
+            report.unsupported_capabilities,
+        )
+
+    def test_public_explicit_single_closure_bond_text_is_supported(
+        self,
+    ) -> None:
+        rows = (
+            (
+                "explicit",
+                OrdinaryPolicyOptions(single_bond_mode="explicit"),
+                frozenset((("-", "-"),)),
+            ),
+            (
+                "both",
+                OrdinaryPolicyOptions(single_bond_mode="both"),
+                frozenset((
+                    ("", ""),
+                    ("", "-"),
+                    ("-", ""),
+                    ("-", "-"),
+                )),
+            ),
+        )
+        for name, policy_options, expected_pairs in rows:
+            with self.subTest(name=name):
+                prepared = _prepare_with_ordinary_policy_options(
+                    simple_monocycle_with_pendant_forest_facts(ring_size=3),
+                    options=policy_options,
+                )
+                options = _writer_options(rooted_at_atom=0)
+                cursor = _initial_writer_transition_frontier_cursor(
+                    prepared,
+                    options,
+                )
+                report = (
+                    writer_snapshot
+                    ._writer_public_cyclic_opening_profile_report(
+                        prepared=prepared,
+                    )
+                )
+                self.assertTrue(report.supported)
+                self.assertIn(
+                    (
+                        writer_snapshot
+                        ._WriterPublicCyclicRequiredCapability
+                        .RING_CORE_VISIBLE_SINGLE_CLOSURE_BOND_TEXT
+                    ),
+                    report.required_capabilities,
+                )
+
+                decision = (
+                    writer_snapshot
+                    ._cyclic_writer_admission_decision_from_cursor(
+                        prepared=prepared,
+                        runtime_options=options,
+                        cursor=cursor,
+                    )
+                )
+                self.assertIs(
+                    decision.kind,
+                    writer_snapshot
+                    ._WriterCyclicAdmissionDecisionKind.READY_PUBLIC,
+                )
+                assert decision.execution_capability_certificate is not None
+                self.assertIn(
+                    (
+                        writer_snapshot
+                        ._WriterExecutionCapabilityKind
+                        .VISIBLE_CLOSURE_BOND_TEXT
+                    ),
+                    (
+                        decision
+                        .execution_capability_certificate
+                        .required_capabilities
+                    ),
+                )
+
+                paths = _branch_terminal_paths(prepared, cursor)
+                observed_pairs = frozenset(
+                    (
+                        path
+                        .terminal_state
+                        .ring_state
+                        .closed_closures[0]
+                        .first_endpoint_bond_text,
+                        path
+                        .terminal_state
+                        .ring_state
+                        .closed_closures[0]
+                        .second_endpoint_bond_text,
+                    )
+                    for path in paths
+                )
+                self.assertEqual(observed_pairs, expected_pairs)
+
+                visible = (
+                    writer_snapshot
+                    ._WriterExecutionCapabilityKind
+                    .VISIBLE_CLOSURE_BOND_TEXT
+                )
+                for path in paths:
+                    closure = path.terminal_state.ring_state.closed_closures[0]
+                    pair = (
+                        closure.first_endpoint_bond_text,
+                        closure.second_endpoint_bond_text,
+                    )
+                    has_visible = any(pair)
+                    self.assertEqual(
+                        visible in path.capabilities,
+                        has_visible,
+                    )
+
+                image = enumerate_prepared_stereo_support(
+                    prepared=prepared,
+                    runtime_options=options,
+                )
+                self.assertEqual(
+                    image.distinct_count,
+                    count_writer_frontier_support(
+                        prepared,
+                        cursor.support_state,
+                    ),
+                )
+                self.assertEqual(
+                    image.witness_count,
+                    count_writer_cursor_completions(prepared, cursor),
+                )
+                self.assertEqual(
+                    image.strings,
+                    tuple(iter_writer_frontier_support(prepared, cursor)),
+                )
+
+                with patch(
+                    "grimace._south_star1.writer_snapshot"
+                    "._PUBLIC_CYCLIC_SUPPORTED_CAPABILITIES",
+                    (
+                        writer_snapshot
+                        ._PUBLIC_CYCLIC_SUPPORTED_CAPABILITIES
+                        - {
+                            (
+                                writer_snapshot
+                                ._WriterPublicCyclicRequiredCapability
+                                .RING_CORE_VISIBLE_SINGLE_CLOSURE_BOND_TEXT
+                            ),
+                        }
+                    ),
+                ):
+                    blocked = (
+                        writer_snapshot
+                        ._cyclic_writer_admission_decision_from_cursor(
+                            prepared=prepared,
+                            runtime_options=options,
+                            cursor=cursor,
+                        )
+                    )
+                self.assertIs(
+                    blocked.kind,
+                    writer_snapshot
+                    ._WriterCyclicAdmissionDecisionKind
+                    .BLOCKED_PUBLIC_CYCLIC_PROFILE,
+                )
+
+                with patch(
+                    "grimace._south_star1.writer_snapshot"
+                    "._PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES",
+                    (
+                        writer_snapshot
+                        ._PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES
+                        - {visible}
+                    ),
+                ):
+                    blocked = (
+                        writer_snapshot
+                        ._cyclic_writer_admission_decision_from_cursor(
+                            prepared=prepared,
+                            runtime_options=options,
+                            cursor=cursor,
+                        )
+                    )
+                self.assertIs(
+                    blocked.kind,
+                    writer_snapshot
+                    ._WriterCyclicAdmissionDecisionKind
+                    .BLOCKED_PUBLIC_EXECUTION_CAPABILITY,
+                )
+
+    def test_elided_single_closure_profile_does_not_require_visible_single_capability(
+        self,
+    ) -> None:
+        prepared = _prepare_with_ordinary_policy_options(
+            simple_monocycle_with_pendant_forest_facts(ring_size=3),
+            options=OrdinaryPolicyOptions(single_bond_mode="elide"),
+        )
+        report = writer_snapshot._writer_public_cyclic_opening_profile_report(
+            prepared=prepared,
+        )
+        self.assertTrue(report.supported)
+        self.assertNotIn(
+            (
+                writer_snapshot
+                ._WriterPublicCyclicRequiredCapability
+                .RING_CORE_VISIBLE_SINGLE_CLOSURE_BOND_TEXT
+            ),
+            report.required_capabilities,
+        )
+
+    def test_explicit_single_closure_text_composes_with_ring_tetra_and_remote_non_single(
+        self,
+    ) -> None:
+        from tests.south_star1.test_writer_stereo_residual import (
+            ring_core_tetra_with_remote_non_single_facts,
+        )
+
+        prepared = _prepare_with_ordinary_policy_options(
+            ring_core_tetra_with_remote_non_single_facts(BondOrder.DOUBLE),
+            options=OrdinaryPolicyOptions(
+                single_bond_mode="both",
+                non_single_ring_closures="joint",
+            ),
+        )
+        options = _writer_options(rooted_at_atom=1)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+
+        report = writer_snapshot._writer_public_cyclic_opening_profile_report(
+            prepared=prepared,
+        )
+        self.assertTrue(report.supported)
+        for capability in (
+            writer_snapshot
+            ._WriterPublicCyclicRequiredCapability
+            .RING_CORE_VISIBLE_SINGLE_CLOSURE_BOND_TEXT,
+            writer_snapshot
+            ._WriterPublicCyclicRequiredCapability
+            .RING_CORE_NON_SINGLE_CLOSURE_BOND,
+            writer_snapshot
+            ._WriterPublicCyclicRequiredCapability
+            .RING_CORE_TETRAHEDRAL_STEREO,
+        ):
+            self.assertIn(capability, report.required_capabilities)
+
+        decision = writer_snapshot._cyclic_writer_admission_decision_from_cursor(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        self.assertIs(
+            decision.kind,
+            writer_snapshot._WriterCyclicAdmissionDecisionKind.READY_PUBLIC,
+        )
+        assert decision.execution_capability_certificate is not None
+        for capability in (
+            writer_snapshot
+            ._WriterExecutionCapabilityKind
+            .TETRA_RING_ENDPOINT_ORDER_OCCURRENCE,
+            writer_snapshot
+            ._WriterExecutionCapabilityKind
+            .VISIBLE_TREE_BOND_TEXT,
+            writer_snapshot
+            ._WriterExecutionCapabilityKind
+            .VISIBLE_CLOSURE_BOND_TEXT,
+        ):
+            self.assertIn(
+                capability,
+                (
+                    decision
+                    .execution_capability_certificate
+                    .required_capabilities
+                ),
+            )
+
+        image = enumerate_prepared_stereo_support(
+            prepared=prepared,
+            runtime_options=options,
+        )
+        self.assertTrue(any("-" in text for text in image.strings))
+        self.assertTrue(any("=" in text for text in image.strings))
+        self.assertEqual(
+            image.strings,
+            tuple(iter_writer_frontier_support(prepared, cursor)),
+        )
 
     def test_public_cyclic_profile_matrix_blocked_rows_fail_before_materialization(
         self,
@@ -37722,6 +38205,36 @@ def _prepare_non_single_closure_triangle_with_ring_endpoint_choices(
         facts,
         options=OrdinaryPolicyOptions(non_single_ring_closures="joint"),
     )
+    return prepare_south_star_mol_from_facts(
+        facts,
+        writer_surface=SouthStarWriterSurface(),
+        policy=replace(
+            policy,
+            bond_text_domains=tuple(
+                (
+                    BondTextDomain(
+                        bond=domain.bond,
+                        slot_kind=domain.slot_kind,
+                        choices=choices,
+                    )
+                    if (
+                        domain.bond == BondId(2)
+                        and domain.slot_kind == "ring_endpoint"
+                    )
+                    else domain
+                )
+                for domain in policy.bond_text_domains
+            ),
+        ),
+    )
+
+
+def _prepare_single_closure_triangle_with_ring_endpoint_choices(
+    *,
+    choices: tuple[BondTextChoice, ...],
+) -> SouthStarPreparedMol:
+    facts = simple_monocycle_with_pendant_forest_facts(ring_size=3)
+    policy = ordinary_policy_for_facts(facts)
     return prepare_south_star_mol_from_facts(
         facts,
         writer_surface=SouthStarWriterSurface(),

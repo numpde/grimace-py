@@ -1020,12 +1020,9 @@ def _closure_bond_text_choices(
     eligible = tuple(
         choice
         for choice in choices
-        if (
-            choice.base_text not in {"/", "\\"}
-            and (
-                bond_order in {BondOrder.DOUBLE, BondOrder.TRIPLE}
-                or choice.base_text == ""
-            )
+        if _closure_bond_text_choice_is_eligible(
+            bond_order,
+            choice.base_text,
         )
     )
     texts = tuple(choice.base_text for choice in eligible)
@@ -1038,6 +1035,21 @@ def _closure_bond_text_choices(
     if not eligible:
         _invalid_edge_partition("writer closure bond text policy domain is empty")
     return eligible
+
+
+def _closure_bond_text_choice_is_eligible(
+    bond_order: BondOrder,
+    base_text: str,
+) -> bool:
+    if base_text in {"/", "\\"}:
+        return False
+    if bond_order in {
+        BondOrder.SINGLE,
+        BondOrder.DOUBLE,
+        BondOrder.TRIPLE,
+    }:
+        return True
+    return base_text == ""
 
 
 def _closure_bond_order(prepared: SouthStarPreparedMol, bond: BondId) -> BondOrder:

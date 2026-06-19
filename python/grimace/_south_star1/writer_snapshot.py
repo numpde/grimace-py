@@ -1303,6 +1303,9 @@ class _WriterPublicCyclicRequiredCapability(Enum):
     ACYCLIC_PENDANT_TREE_TRAVERSAL = "acyclic_pendant_tree_traversal"
     TREE_BOND_TEXT_EMISSION = "tree_bond_text_emission"
     RING_CORE_NON_SINGLE_CLOSURE_BOND = "ring_core_non_single_closure_bond"
+    RING_CORE_VISIBLE_SINGLE_CLOSURE_BOND_TEXT = (
+        "ring_core_visible_single_closure_bond_text"
+    )
     RING_CORE_TETRAHEDRAL_STEREO = "ring_core_tetrahedral_stereo"
     CYCLIC_DIRECTIONAL_STEREO = "cyclic_directional_stereo"
     CYCLIC_RING_PAIR_STEREO = "cyclic_ring_pair_stereo"
@@ -1318,6 +1321,10 @@ _PUBLIC_CYCLIC_SUPPORTED_CAPABILITIES = frozenset(
         _WriterPublicCyclicRequiredCapability.ACYCLIC_PENDANT_TREE_TRAVERSAL,
         _WriterPublicCyclicRequiredCapability.TREE_BOND_TEXT_EMISSION,
         _WriterPublicCyclicRequiredCapability.RING_CORE_NON_SINGLE_CLOSURE_BOND,
+        (
+            _WriterPublicCyclicRequiredCapability
+            .RING_CORE_VISIBLE_SINGLE_CLOSURE_BOND_TEXT
+        ),
         _WriterPublicCyclicRequiredCapability.RING_CORE_TETRAHEDRAL_STEREO,
     }
 )
@@ -2442,6 +2449,39 @@ def _writer_public_cyclic_opening_profile_report(
             and bond.order is not BondOrder.SINGLE
         )
     )
+    ring_core_single_closure_relations = tuple(
+        relation
+        for bond_id in ring_core_bond_ids
+        if (
+            (bond := component_bond_index.get(bond_id))
+            is not None
+            and bond.order is BondOrder.SINGLE
+            and (
+                relation := _writer_public_single_closure_relation(
+                    prepared,
+                    bond_id,
+                )
+            )
+            is not None
+        )
+    )
+    ring_core_single_bond_ids = tuple(
+        bond_id
+        for bond_id in ring_core_bond_ids
+        if (
+            (bond := component_bond_index.get(bond_id))
+            is not None
+            and bond.order is BondOrder.SINGLE
+        )
+    )
+    ring_core_unsupported_single_closure_bond_count = (
+        len(ring_core_single_bond_ids)
+        - len(ring_core_single_closure_relations)
+    )
+    ring_core_has_visible_single_closure_bond_text = any(
+        "-" in relation.texts
+        for relation in ring_core_single_closure_relations
+    )
     ring_core_tetra_template_count = sum(
         1
         for template in prepared.tetra_templates
@@ -2479,7 +2519,7 @@ def _writer_public_cyclic_opening_profile_report(
             or ring_core_has_supported_non_single_closure_bond
         )
         else len(ring_core_non_single_bond_ids)
-    )
+    ) + ring_core_unsupported_single_closure_bond_count
     ring_core_bond_id_set = frozenset(ring_core_bond_ids)
     pendant_bond_ids = tuple(
         bond_id for bond_id in component_bond_ids if bond_id not in ring_core_bond_id_set
@@ -2653,6 +2693,13 @@ def _writer_public_cyclic_opening_profile_report(
             _WriterPublicCyclicRequiredCapability.
             RING_CORE_NON_SINGLE_CLOSURE_BOND,
         )
+    if ring_core_has_visible_single_closure_bond_text:
+        required_capabilities.add(
+            (
+                _WriterPublicCyclicRequiredCapability
+                .RING_CORE_VISIBLE_SINGLE_CLOSURE_BOND_TEXT
+            ),
+        )
     if ring_core_tetra_template_count:
         required_capabilities.add(
             _WriterPublicCyclicRequiredCapability.RING_CORE_TETRAHEDRAL_STEREO,
@@ -2688,9 +2735,23 @@ def _writer_public_cyclic_opening_profile_report(
         )
 
     if ring_core_unsupported_bond_count:
-        unsupported_capabilities.add(
-            _WriterPublicCyclicRequiredCapability.RING_CORE_NON_SINGLE_CLOSURE_BOND,
-        )
+        if ring_core_unsupported_single_closure_bond_count:
+            unsupported_capabilities.add(
+                (
+                    _WriterPublicCyclicRequiredCapability
+                    .RING_CORE_VISIBLE_SINGLE_CLOSURE_BOND_TEXT
+                ),
+            )
+        if (
+            ring_core_unsupported_bond_count
+            > ring_core_unsupported_single_closure_bond_count
+        ):
+            unsupported_capabilities.add(
+                (
+                    _WriterPublicCyclicRequiredCapability
+                    .RING_CORE_NON_SINGLE_CLOSURE_BOND
+                ),
+            )
         kind = (
             _WriterPublicCyclicOpeningProfileKind.BLOCKED_UNSUPPORTED_CLOSURE_BOND_SURFACE
         )
@@ -2835,6 +2896,51 @@ def _writer_public_non_single_closure_bond_is_supported(
         and frozenset(relation.compatible_pairs)
         == frozenset((("", marker), (marker, "")))
     )
+
+
+def _writer_public_single_closure_relation(
+    prepared: SouthStarPreparedMol,
+    bond_id: BondId,
+):
+    if prepared.graph_index.bond_by_id[bond_id].order is not BondOrder.SINGLE:
+        return None
+
+    try:
+        raw_choices = prepared.policy.bond_text_domain_unchecked(
+            bond_id,
+            slot_kind="ring_endpoint",
+        )
+    except KeyError:
+        return None
+
+    if not 1 <= len(raw_choices) <= 2:
+        return None
+
+    raw_texts = tuple(choice.base_text for choice in raw_choices)
+    if any(text not in {"", "-"} for text in raw_texts):
+        return None
+
+    try:
+        relation = writer_closure_bond_text_relation(
+            prepared,
+            bond_id,
+            max_choice_count=2,
+        )
+    except SouthStarError:
+        return None
+
+    if relation.texts != raw_texts:
+        return None
+
+    expected_pairs = tuple(
+        (first_text, second_text)
+        for first_text in relation.texts
+        for second_text in relation.texts
+    )
+    if relation.compatible_pairs != expected_pairs:
+        return None
+
+    return relation
 
 
 def _writer_public_ring_core_tetrahedral_stereo_is_supported(

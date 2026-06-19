@@ -722,6 +722,59 @@ class WriterSnapshotTest(unittest.TestCase):
                 runtime_options=options,
             )
 
+    def test_cursor_audit_accepts_explicit_single_open_closure_bond_text(self) -> None:
+        prepared = _prepare_with_single_bond_mode(
+            triangle_facts(),
+            single_bond_mode="explicit",
+        )
+        options = _writer_options(rooted_at_atom=0)
+        key = _triangle_root_with_open_closure_key()
+        endpoint = replace(
+            key.ring_state.open_endpoints[0],
+            first_endpoint_bond_text="-",
+        )
+        tampered_key = replace(
+            key,
+            ring_state=WriterRingStateKey(
+                open_endpoints=(endpoint,),
+                label_state=key.ring_state.label_state,
+            ),
+        )
+
+        validate_writer_cursor_against_prepared(
+            prepared,
+            _cursor_with_key(tampered_key),
+            runtime_options=options,
+        )
+
+    def test_cursor_audit_rejects_explicit_single_open_closure_bond_text_under_elide_policy(
+        self,
+    ) -> None:
+        prepared = _prepare_with_single_bond_mode(
+            triangle_facts(),
+            single_bond_mode="elide",
+        )
+        options = _writer_options(rooted_at_atom=0)
+        key = _triangle_root_with_open_closure_key()
+        endpoint = replace(
+            key.ring_state.open_endpoints[0],
+            first_endpoint_bond_text="-",
+        )
+        tampered_key = replace(
+            key,
+            ring_state=WriterRingStateKey(
+                open_endpoints=(endpoint,),
+                label_state=key.ring_state.label_state,
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
     def test_cursor_audit_rejects_open_closure_bond_text_without_compatible_partner(
         self,
     ) -> None:
@@ -2650,6 +2703,17 @@ def _prepare_with_joint_non_single_ring_closures(facts):
         policy=ordinary_policy_for_facts(
             facts,
             options=OrdinaryPolicyOptions(non_single_ring_closures="joint"),
+        ),
+    )
+
+
+def _prepare_with_single_bond_mode(facts, *, single_bond_mode: str):
+    return prepare_south_star_mol_from_facts(
+        facts,
+        writer_surface=SouthStarWriterSurface(),
+        policy=ordinary_policy_for_facts(
+            facts,
+            options=OrdinaryPolicyOptions(single_bond_mode=single_bond_mode),
         ),
     )
 

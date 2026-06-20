@@ -2997,9 +2997,11 @@ def _writer_public_single_closure_relation(
 
 
 def _bounded_aromatic_texts(choices) -> tuple[str, ...] | None:
-    texts = tuple(choice.base_text for choice in choices)
-    if not 1 <= len(texts) <= 2:
+    if not 1 <= len(choices) <= 2:
         return None
+    if any(choice.permits_direction for choice in choices):
+        return None
+    texts = tuple(choice.base_text for choice in choices)
     if len(set(texts)) != len(texts):
         return None
     if any(text not in {"", ":"} for text in texts):

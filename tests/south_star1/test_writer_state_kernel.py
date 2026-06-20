@@ -18662,12 +18662,134 @@ class WriterStateKernelTest(unittest.TestCase):
             report.unsupported_capabilities,
         )
 
+    def test_invalid_aromatic_domains_are_profile_blocked_before_semantics(
+        self,
+    ) -> None:
+        invalid_domains = (
+            (
+                "duplicate",
+                (
+                    BondTextChoice("first", ":", False),
+                    BondTextChoice("second", ":", False),
+                ),
+            ),
+            (
+                "foreign",
+                (BondTextChoice("foreign", "~", False),),
+            ),
+            (
+                "direction_capable_elided",
+                (BondTextChoice("directional", "", True),),
+            ),
+            (
+                "direction_capable_explicit",
+                (BondTextChoice("directional", ":", True),),
+            ),
+        )
+
+        for name, choices in invalid_domains:
+            for slot_kind in ("tree", "ring_endpoint"):
+                with self.subTest(name=name, slot_kind=slot_kind):
+                    prepared = _prepare_aromatic_triangle_with_bond_text_choices(
+                        choices=choices,
+                        slot_kind=slot_kind,
+                    )
+                    bond_decode_calls: list[BondId] = []
+                    pair_decode_calls: list[BondId] = []
+
+                    original_bond_decode = prepared.semantics.bond_decode_ok
+                    original_pair_decode = (
+                        prepared.semantics.ring_pair_decode_ok
+                    )
+
+                    def _counting_bond_decode(
+                        facts,
+                        bond_id,
+                        choice,
+                        mark,
+                    ):
+                        bond_decode_calls.append(bond_id)
+                        return original_bond_decode(
+                            facts,
+                            bond_id,
+                            choice,
+                            mark,
+                        )
+
+                    def _counting_pair_decode(
+                        facts,
+                        bond_id,
+                        first,
+                        first_mark,
+                        second,
+                        second_mark,
+                    ):
+                        pair_decode_calls.append(bond_id)
+                        return original_pair_decode(
+                            facts,
+                            bond_id,
+                            first,
+                            first_mark,
+                            second,
+                            second_mark,
+                        )
+
+                    with patch.object(
+                        prepared.semantics,
+                        "bond_decode_ok",
+                        side_effect=_counting_bond_decode,
+                    ), patch.object(
+                        prepared.semantics,
+                        "ring_pair_decode_ok",
+                        side_effect=_counting_pair_decode,
+                    ):
+                        report = (
+                            writer_snapshot
+                            ._writer_public_cyclic_opening_profile_report(
+                                prepared=prepared,
+                            )
+                        )
+
+                    self.assertFalse(report.supported)
+                    self.assertIs(
+                        report.kind,
+                        (
+                            writer_snapshot
+                            ._WriterPublicCyclicOpeningProfileKind
+                            .BLOCKED_UNSUPPORTED_CLOSURE_BOND_SURFACE
+                        ),
+                    )
+                    self.assertIn(
+                        (
+                            writer_snapshot
+                            ._WriterPublicCyclicRequiredCapability
+                            .RING_CORE_AROMATIC_BOND_TEXT
+                        ),
+                        report.unsupported_capabilities,
+                    )
+                    self.assertNotIn(BondId(2), bond_decode_calls)
+                    self.assertNotIn(BondId(2), pair_decode_calls)
+
     def test_public_aromatic_closure_bond_text_is_supported(self) -> None:
         rows = (
+            (
+                "elide",
+                OrdinaryPolicyOptions(aromatic_bond_mode="elide"),
+                frozenset((("", ""),)),
+                frozenset(),
+            ),
             (
                 "explicit",
                 OrdinaryPolicyOptions(aromatic_bond_mode="explicit"),
                 frozenset(((":", ":"),)),
+                frozenset((
+                    writer_snapshot
+                    ._WriterExecutionCapabilityKind
+                    .VISIBLE_TREE_BOND_TEXT,
+                    writer_snapshot
+                    ._WriterExecutionCapabilityKind
+                    .VISIBLE_CLOSURE_BOND_TEXT,
+                )),
             ),
             (
                 "both",
@@ -18677,6 +18799,14 @@ class WriterStateKernelTest(unittest.TestCase):
                     ("", ":"),
                     (":", ""),
                     (":", ":"),
+                )),
+                frozenset((
+                    writer_snapshot
+                    ._WriterExecutionCapabilityKind
+                    .VISIBLE_TREE_BOND_TEXT,
+                    writer_snapshot
+                    ._WriterExecutionCapabilityKind
+                    .VISIBLE_CLOSURE_BOND_TEXT,
                 )),
             ),
         )
@@ -18691,7 +18821,14 @@ class WriterStateKernelTest(unittest.TestCase):
             .VISIBLE_CLOSURE_BOND_TEXT
         )
 
-        for name, policy_options, expected_pairs in rows:
+        visible_capabilities = frozenset((visible_tree, visible_closure))
+
+        for (
+            name,
+            policy_options,
+            expected_pairs,
+            expected_visible_capabilities,
+        ) in rows:
             with self.subTest(name=name):
                 prepared = _prepare_with_ordinary_policy_options(
                     _aromatic_triangle_facts(),
@@ -18740,15 +18877,15 @@ class WriterStateKernelTest(unittest.TestCase):
                     ._WriterCyclicAdmissionDecisionKind.READY_PUBLIC,
                 )
                 assert decision.execution_capability_certificate is not None
-                for capability in (visible_tree, visible_closure):
-                    self.assertIn(
-                        capability,
-                        (
-                            decision
-                            .execution_capability_certificate
-                            .required_capabilities
-                        ),
-                    )
+                self.assertEqual(
+                    (
+                        decision
+                        .execution_capability_certificate
+                        .required_capabilities
+                        & visible_capabilities
+                    ),
+                    expected_visible_capabilities,
+                )
 
                 _assert_replay_succeeds_for_execution_capability_uses(
                     self,
@@ -18780,6 +18917,8 @@ class WriterStateKernelTest(unittest.TestCase):
                         visible_tree in path.capabilities,
                         emitted_colons > closure_colons,
                     )
+                    if not expected_visible_capabilities:
+                        self.assertNotIn(":", "".join(path.emissions))
 
                 for pair, path in paths_by_pair.items():
                     with self.subTest(name=name, pair=pair, snapshot=True):
@@ -18886,6 +19025,11 @@ class WriterStateKernelTest(unittest.TestCase):
                                 writer_snapshot
                                 ._WriterCyclicAdmissionDecisionKind
                                 .BLOCKED_PUBLIC_EXECUTION_CAPABILITY
+                                if capability
+                                in expected_visible_capabilities
+                                else writer_snapshot
+                                ._WriterCyclicAdmissionDecisionKind
+                                .READY_PUBLIC
                             ),
                         )
 
@@ -38916,6 +39060,8 @@ def _aromatic_triangle_facts() -> MoleculeFacts:
 def _prepare_aromatic_triangle_with_bond_text_choices(
     *,
     choices: tuple[BondTextChoice, ...],
+    bond: BondId = BondId(2),
+    slot_kind: str = "ring_endpoint",
 ) -> SouthStarPreparedMol:
     facts = _aromatic_triangle_facts()
     policy = ordinary_policy_for_facts(
@@ -38935,8 +39081,8 @@ def _prepare_aromatic_triangle_with_bond_text_choices(
                         choices=choices,
                     )
                     if (
-                        domain.bond == BondId(2)
-                        and domain.slot_kind == "ring_endpoint"
+                        domain.bond == bond
+                        and domain.slot_kind == slot_kind
                     )
                     else domain
                 )

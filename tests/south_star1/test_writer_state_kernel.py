@@ -1206,6 +1206,14 @@ def _ring_tetra_non_single_composition_role(
     raise AssertionError(closure)
 
 
+def _closure_pair(path: _BranchTerminalPath) -> tuple[str, str]:
+    closure = path.terminal_state.ring_state.closed_closures[0]
+    return (
+        closure.first_endpoint_bond_text,
+        closure.second_endpoint_bond_text,
+    )
+
+
 def _assert_writer_snapshot_contract_closed_under_replay(
     test_case: unittest.TestCase,
     *,
@@ -17927,23 +17935,31 @@ class WriterStateKernelTest(unittest.TestCase):
                     )
                     found_open = True
 
-                pair_obligations = (
-                    writer_transitions
-                    ._closure_pair_obligations_from_state(
-                        prepared,
-                        state,
-                        state.active.atom,
-                    )
-                )
-                for obligation in pair_obligations:
-                    if obligation.closure.bond != BondId(2):
+                for endpoint in state.ring_state.open_endpoints:
+                    if endpoint.bond != BondId(2):
                         continue
-                    expected_seconds = relation.compatible_seconds(
-                        obligation.endpoint.first_endpoint_bond_text,
+                    obligations = tuple(
+                        obligation
+                        for obligation in (
+                            writer_transitions
+                            ._closure_pair_obligations_from_state(
+                                prepared,
+                                state,
+                                state.active.atom,
+                            )
+                        )
+                        if obligation.endpoint == endpoint
                     )
-                    self.assertIn(
-                        obligation.closure.second_endpoint_bond_text,
-                        expected_seconds,
+                    if not obligations:
+                        continue
+                    self.assertEqual(
+                        tuple(
+                            obligation.closure.second_endpoint_bond_text
+                            for obligation in obligations
+                        ),
+                        relation.compatible_seconds(
+                            endpoint.first_endpoint_bond_text,
+                        ),
                     )
                     found_pair = True
 
@@ -18038,6 +18054,14 @@ class WriterStateKernelTest(unittest.TestCase):
                     prepared,
                     options,
                 )
+                initial_snapshot = (
+                    writer_snapshot
+                    ._capture_writer_frontier_snapshot_unchecked(
+                        prepared=prepared,
+                        runtime_options=options,
+                        cursor=cursor,
+                    )
+                )
                 report = (
                     writer_snapshot
                     ._writer_public_cyclic_opening_profile_report(
@@ -18080,24 +18104,41 @@ class WriterStateKernelTest(unittest.TestCase):
                         .required_capabilities
                     ),
                 )
+                visible_uses = tuple(
+                    use
+                    for use in (
+                        decision
+                        .readiness_gate
+                        .audit
+                        .execution_capability_uses
+                    )
+                    if (
+                        use.kind
+                        is writer_snapshot
+                        ._WriterExecutionCapabilityKind
+                        .VISIBLE_CLOSURE_BOND_TEXT
+                    )
+                )
+                self.assertTrue(visible_uses)
+                for use in visible_uses:
+                    self.assertFalse(use.terminal)
+                    self.assertIsNotNone(use.next_emitted_text)
+                    assert use.next_emitted_text is not None
+                    self.assertIn("-", use.next_emitted_text)
+
+                _assert_replay_succeeds_for_execution_capability_uses(
+                    self,
+                    audit=decision.readiness_gate.audit,
+                    snapshot=initial_snapshot,
+                    prepared=prepared,
+                )
 
                 paths = _branch_terminal_paths(prepared, cursor)
-                observed_pairs = frozenset(
-                    (
-                        path
-                        .terminal_state
-                        .ring_state
-                        .closed_closures[0]
-                        .first_endpoint_bond_text,
-                        path
-                        .terminal_state
-                        .ring_state
-                        .closed_closures[0]
-                        .second_endpoint_bond_text,
-                    )
+                paths_by_pair = {
+                    _closure_pair(path): path
                     for path in paths
-                )
-                self.assertEqual(observed_pairs, expected_pairs)
+                }
+                self.assertEqual(frozenset(paths_by_pair), expected_pairs)
 
                 visible = (
                     writer_snapshot
@@ -18105,16 +18146,42 @@ class WriterStateKernelTest(unittest.TestCase):
                     .VISIBLE_CLOSURE_BOND_TEXT
                 )
                 for path in paths:
-                    closure = path.terminal_state.ring_state.closed_closures[0]
-                    pair = (
-                        closure.first_endpoint_bond_text,
-                        closure.second_endpoint_bond_text,
-                    )
+                    pair = _closure_pair(path)
                     has_visible = any(pair)
                     self.assertEqual(
                         visible in path.capabilities,
                         has_visible,
                     )
+
+                for pair, path in paths_by_pair.items():
+                    with self.subTest(name=name, pair=pair, snapshot=True):
+                        open_index = next(
+                            index
+                            for index, state in enumerate(path.states)
+                            if state.ring_state.open_endpoints
+                        )
+                        outcome = (
+                            _assert_checked_prefix_successor_snapshot_resume_equivalence(
+                                self,
+                                snapshot=initial_snapshot,
+                                prepared=prepared,
+                                emitted_texts=path.emissions[:open_index],
+                            )
+                        )
+                        advanced = outcome.replay_outcome.advanced_snapshot
+                        self.assertIsNotNone(advanced)
+                        assert advanced is not None
+                        self.assertIn(
+                            writer_state_key(path.states[open_index]),
+                            dict(advanced.cursor.weighted_states),
+                        )
+
+                _assert_writer_snapshot_contract_closed_under_replay(
+                    self,
+                    snapshot=initial_snapshot,
+                    prepared=prepared,
+                    max_prefixes=128,
+                )
 
                 image = enumerate_prepared_stereo_support(
                     prepared=prepared,
@@ -18226,6 +18293,14 @@ class WriterStateKernelTest(unittest.TestCase):
         )
         options = _writer_options(rooted_at_atom=1)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+        initial_snapshot = (
+            writer_snapshot
+            ._capture_writer_frontier_snapshot_unchecked(
+                prepared=prepared,
+                runtime_options=options,
+                cursor=cursor,
+            )
+        )
 
         report = writer_snapshot._writer_public_cyclic_opening_profile_report(
             prepared=prepared,
@@ -18283,6 +18358,89 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(
             image.strings,
             tuple(iter_writer_frontier_support(prepared, cursor)),
+        )
+
+        composed_path = next(
+            path
+            for path in _branch_terminal_paths(prepared, cursor)
+            if (
+                (
+                    closure := path
+                    .terminal_state
+                    .ring_state
+                    .closed_closures[0]
+                )
+                and (
+                    prepared
+                    .graph_index
+                    .bond_by_id[closure.bond]
+                    .order
+                    is BondOrder.SINGLE
+                )
+                and any(_closure_pair(path))
+            )
+        )
+        closure = composed_path.terminal_state.ring_state.closed_closures[0]
+        self.assertIn(
+            _closure_pair(composed_path),
+            (("", "-"), ("-", ""), ("-", "-")),
+        )
+        self.assertIn("=", "".join(composed_path.emissions))
+        self.assertIn(closure.bond, (BondId(0), BondId(2)))
+
+        self.assertIn(
+            (
+                writer_snapshot
+                ._WriterExecutionCapabilityKind
+                .VISIBLE_CLOSURE_BOND_TEXT
+            ),
+            composed_path.capabilities,
+        )
+        self.assertIn(
+            (
+                writer_snapshot
+                ._WriterExecutionCapabilityKind
+                .VISIBLE_TREE_BOND_TEXT
+            ),
+            composed_path.capabilities,
+        )
+        self.assertIn(
+            (
+                writer_snapshot
+                ._WriterExecutionCapabilityKind
+                .TETRA_RING_ENDPOINT_ORDER_OCCURRENCE
+            ),
+            composed_path.capabilities,
+        )
+
+        terminal_record = next(
+            record
+            for record in composed_path.terminal_state.stereo_state.local_orders
+            if record.atom == AtomId(0)
+        )
+        self.assertEqual(
+            frozenset(terminal_record.order),
+            frozenset(OccurrenceId(index) for index in range(4)),
+        )
+        self.assertEqual(len(terminal_record.order), 4)
+
+        open_index = next(
+            index
+            for index, state in enumerate(composed_path.states)
+            if state.ring_state.open_endpoints
+        )
+        outcome = _assert_checked_prefix_successor_snapshot_resume_equivalence(
+            self,
+            snapshot=initial_snapshot,
+            prepared=prepared,
+            emitted_texts=composed_path.emissions[:open_index],
+        )
+        advanced = outcome.replay_outcome.advanced_snapshot
+        self.assertIsNotNone(advanced)
+        assert advanced is not None
+        self.assertIn(
+            writer_state_key(composed_path.states[open_index]),
+            dict(advanced.cursor.weighted_states),
         )
 
     def test_public_cyclic_profile_matrix_blocked_rows_fail_before_materialization(

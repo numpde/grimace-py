@@ -18443,6 +18443,480 @@ class WriterStateKernelTest(unittest.TestCase):
             dict(advanced.cursor.weighted_states),
         )
 
+    def test_aromatic_closure_bond_text_relation_matrix(self) -> None:
+        rows = (
+            (
+                "elide",
+                OrdinaryPolicyOptions(aromatic_bond_mode="elide"),
+                ("",),
+                (("", ""),),
+            ),
+            (
+                "explicit",
+                OrdinaryPolicyOptions(aromatic_bond_mode="explicit"),
+                (":",),
+                ((":", ":"),),
+            ),
+            (
+                "both",
+                OrdinaryPolicyOptions(aromatic_bond_mode="both"),
+                ("", ":"),
+                (
+                    ("", ""),
+                    ("", ":"),
+                    (":", ""),
+                    (":", ":"),
+                ),
+            ),
+        )
+
+        for name, policy_options, texts, pairs in rows:
+            with self.subTest(name=name):
+                prepared = _prepare_with_ordinary_policy_options(
+                    _aromatic_triangle_facts(),
+                    options=policy_options,
+                )
+                relation = (
+                    writer_graph_obligations
+                    .writer_closure_bond_text_relation(
+                        prepared,
+                        BondId(2),
+                    )
+                )
+                tree_domain = prepared.policy.bond_text_domain_unchecked(
+                    BondId(2),
+                    slot_kind="tree",
+                )
+                self.assertEqual(
+                    tuple(choice.base_text for choice in tree_domain),
+                    texts,
+                )
+                self.assertEqual(relation.texts, texts)
+                self.assertEqual(relation.compatible_pairs, pairs)
+
+    def test_reversed_aromatic_policy_order_preserves_frontier_rows(self) -> None:
+        prepared = _prepare_aromatic_triangle_with_bond_text_choices(
+            choices=(
+                BondTextChoice("explicit", ":", False),
+                BondTextChoice("elide", "", False),
+            ),
+        )
+        relation = writer_graph_obligations.writer_closure_bond_text_relation(
+            prepared,
+            BondId(2),
+        )
+        self.assertEqual(relation.texts, (":", ""))
+        self.assertEqual(relation.openable_first_texts, (":", ""))
+
+        options = _writer_options(rooted_at_atom=0)
+        pending = (_initial_writer_transition_frontier_cursor(prepared, options),)
+        seen: set[WriterFrontierCursor] = set()
+        found_open = False
+        found_pair = False
+
+        while pending:
+            cursor = pending[0]
+            pending = pending[1:]
+            if cursor in seen:
+                continue
+            seen.add(cursor)
+
+            choices = writer_snapshot._writer_frontier_choice_snapshot(
+                prepared,
+                cursor,
+                include_counts=False,
+            )
+            for key, _weight in cursor.weighted_states:
+                state = writer_state_from_key(key)
+                context = (
+                    writer_transitions
+                    .build_writer_transition_expansion_context(
+                        prepared,
+                        state,
+                    )
+                )
+                labels = writer_transitions._available_closure_labels_for_open(
+                    prepared,
+                    state.ring_state,
+                )
+                for action in (
+                    writer_transitions
+                    ._closure_open_scheduled_actions(
+                        context,
+                        state.active.atom,
+                        labels,
+                    )
+                ):
+                    if (
+                        action.closure_open_obligation is None
+                        or action.closure_open_obligation.bond != BondId(2)
+                        or action.closure_open_label is None
+                    ):
+                        continue
+                    transitions = (
+                        writer_transitions
+                        ._closure_open_transitions_from_scheduled_action(
+                            prepared,
+                            state,
+                            context,
+                            action,
+                        )
+                    )
+                    self.assertEqual(
+                        tuple(
+                            transition.emitted_text
+                            for transition in transitions
+                        ),
+                        tuple(
+                            f"{text}{action.closure_open_label.text}"
+                            for text in relation.openable_first_texts
+                        ),
+                    )
+                    found_open = True
+
+                for endpoint in state.ring_state.open_endpoints:
+                    if endpoint.bond != BondId(2):
+                        continue
+                    obligations = tuple(
+                        obligation
+                        for obligation in (
+                            writer_transitions
+                            ._closure_pair_obligations_from_state(
+                                prepared,
+                                state,
+                                state.active.atom,
+                            )
+                        )
+                        if obligation.endpoint == endpoint
+                    )
+                    if not obligations:
+                        continue
+                    self.assertEqual(
+                        tuple(
+                            obligation.closure.second_endpoint_bond_text
+                            for obligation in obligations
+                        ),
+                        relation.compatible_seconds(
+                            endpoint.first_endpoint_bond_text,
+                        ),
+                    )
+                    found_pair = True
+
+            pending = (
+                *pending,
+                *(choice.successor for choice in choices.choices),
+            )
+
+        self.assertTrue(found_open)
+        self.assertTrue(found_pair)
+
+    def test_aromatic_closure_domain_relation_build_is_bounded(self) -> None:
+        prepared = _prepare_aromatic_triangle_with_bond_text_choices(
+            choices=(
+                BondTextChoice("elide", "", False),
+                BondTextChoice("explicit", ":", False),
+                BondTextChoice("extra", "~", False),
+            ),
+        )
+        calls: list[tuple[BondId, str, str]] = []
+
+        original_decode = prepared.semantics.ring_pair_decode_ok
+
+        def _counting_decode(
+            facts,
+            bond_id,
+            first,
+            first_mark,
+            second,
+            second_mark,
+        ):
+            calls.append((bond_id, first.base_text, second.base_text))
+            return original_decode(
+                facts,
+                bond_id,
+                first,
+                first_mark,
+                second,
+                second_mark,
+            )
+
+        with patch.object(
+            prepared.semantics,
+            "ring_pair_decode_ok",
+            side_effect=_counting_decode,
+        ):
+            report = writer_snapshot._writer_public_cyclic_opening_profile_report(
+                prepared=prepared,
+            )
+
+        self.assertFalse(report.supported)
+        self.assertFalse(
+            any(bond_id == BondId(2) for bond_id, _first, _second in calls),
+        )
+        self.assertIn(
+            (
+                writer_snapshot
+                ._WriterPublicCyclicRequiredCapability
+                .RING_CORE_AROMATIC_BOND_TEXT
+            ),
+            report.unsupported_capabilities,
+        )
+
+    def test_public_aromatic_closure_bond_text_is_supported(self) -> None:
+        rows = (
+            (
+                "explicit",
+                OrdinaryPolicyOptions(aromatic_bond_mode="explicit"),
+                frozenset(((":", ":"),)),
+            ),
+            (
+                "both",
+                OrdinaryPolicyOptions(aromatic_bond_mode="both"),
+                frozenset((
+                    ("", ""),
+                    ("", ":"),
+                    (":", ""),
+                    (":", ":"),
+                )),
+            ),
+        )
+        visible_tree = (
+            writer_snapshot
+            ._WriterExecutionCapabilityKind
+            .VISIBLE_TREE_BOND_TEXT
+        )
+        visible_closure = (
+            writer_snapshot
+            ._WriterExecutionCapabilityKind
+            .VISIBLE_CLOSURE_BOND_TEXT
+        )
+
+        for name, policy_options, expected_pairs in rows:
+            with self.subTest(name=name):
+                prepared = _prepare_with_ordinary_policy_options(
+                    _aromatic_triangle_facts(),
+                    options=policy_options,
+                )
+                options = _writer_options(rooted_at_atom=0)
+                cursor = _initial_writer_transition_frontier_cursor(
+                    prepared,
+                    options,
+                )
+                initial_snapshot = (
+                    writer_snapshot
+                    ._capture_writer_frontier_snapshot_unchecked(
+                        prepared=prepared,
+                        runtime_options=options,
+                        cursor=cursor,
+                    )
+                )
+                report = (
+                    writer_snapshot
+                    ._writer_public_cyclic_opening_profile_report(
+                        prepared=prepared,
+                    )
+                )
+                self.assertTrue(report.supported)
+                self.assertIn(
+                    (
+                        writer_snapshot
+                        ._WriterPublicCyclicRequiredCapability
+                        .RING_CORE_AROMATIC_BOND_TEXT
+                    ),
+                    report.required_capabilities,
+                )
+
+                decision = (
+                    writer_snapshot
+                    ._cyclic_writer_admission_decision_from_cursor(
+                        prepared=prepared,
+                        runtime_options=options,
+                        cursor=cursor,
+                    )
+                )
+                self.assertIs(
+                    decision.kind,
+                    writer_snapshot
+                    ._WriterCyclicAdmissionDecisionKind.READY_PUBLIC,
+                )
+                assert decision.execution_capability_certificate is not None
+                for capability in (visible_tree, visible_closure):
+                    self.assertIn(
+                        capability,
+                        (
+                            decision
+                            .execution_capability_certificate
+                            .required_capabilities
+                        ),
+                    )
+
+                _assert_replay_succeeds_for_execution_capability_uses(
+                    self,
+                    audit=decision.readiness_gate.audit,
+                    snapshot=initial_snapshot,
+                    prepared=prepared,
+                )
+
+                paths = _branch_terminal_paths(prepared, cursor)
+                paths_by_pair = {
+                    _closure_pair(path): path
+                    for path in paths
+                }
+                self.assertEqual(frozenset(paths_by_pair), expected_pairs)
+
+                for path in paths:
+                    pair = _closure_pair(path)
+                    emitted_colons = sum(
+                        text.count(":") for text in path.emissions
+                    )
+                    closure_colons = sum(
+                        1 for text in pair if text == ":"
+                    )
+                    self.assertEqual(
+                        visible_closure in path.capabilities,
+                        ":" in pair,
+                    )
+                    self.assertEqual(
+                        visible_tree in path.capabilities,
+                        emitted_colons > closure_colons,
+                    )
+
+                for pair, path in paths_by_pair.items():
+                    with self.subTest(name=name, pair=pair, snapshot=True):
+                        open_index = next(
+                            index
+                            for index, state in enumerate(path.states)
+                            if state.ring_state.open_endpoints
+                        )
+                        outcome = (
+                            _assert_checked_prefix_successor_snapshot_resume_equivalence(
+                                self,
+                                snapshot=initial_snapshot,
+                                prepared=prepared,
+                                emitted_texts=path.emissions[:open_index],
+                            )
+                        )
+                        advanced = outcome.replay_outcome.advanced_snapshot
+                        self.assertIsNotNone(advanced)
+                        assert advanced is not None
+                        self.assertIn(
+                            writer_state_key(path.states[open_index]),
+                            dict(advanced.cursor.weighted_states),
+                        )
+
+                _assert_writer_snapshot_contract_closed_under_replay(
+                    self,
+                    snapshot=initial_snapshot,
+                    prepared=prepared,
+                    max_prefixes=128,
+                )
+
+                image = enumerate_prepared_stereo_support(
+                    prepared=prepared,
+                    runtime_options=options,
+                )
+                self.assertEqual(
+                    image.distinct_count,
+                    count_writer_frontier_support(
+                        prepared,
+                        cursor.support_state,
+                    ),
+                )
+                self.assertEqual(
+                    image.witness_count,
+                    count_writer_cursor_completions(prepared, cursor),
+                )
+                self.assertEqual(
+                    image.strings,
+                    tuple(iter_writer_frontier_support(prepared, cursor)),
+                )
+
+                with patch(
+                    "grimace._south_star1.writer_snapshot"
+                    "._PUBLIC_CYCLIC_SUPPORTED_CAPABILITIES",
+                    (
+                        writer_snapshot
+                        ._PUBLIC_CYCLIC_SUPPORTED_CAPABILITIES
+                        - {
+                            (
+                                writer_snapshot
+                                ._WriterPublicCyclicRequiredCapability
+                                .RING_CORE_AROMATIC_BOND_TEXT
+                            ),
+                        }
+                    ),
+                ):
+                    blocked = (
+                        writer_snapshot
+                        ._cyclic_writer_admission_decision_from_cursor(
+                            prepared=prepared,
+                            runtime_options=options,
+                            cursor=cursor,
+                        )
+                    )
+                self.assertIs(
+                    blocked.kind,
+                    writer_snapshot
+                    ._WriterCyclicAdmissionDecisionKind
+                    .BLOCKED_PUBLIC_CYCLIC_PROFILE,
+                )
+
+                for capability in (visible_tree, visible_closure):
+                    with self.subTest(name=name, capability=capability):
+                        with patch(
+                            "grimace._south_star1.writer_snapshot"
+                            "._PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES",
+                            (
+                                writer_snapshot
+                                ._PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES
+                                - {capability}
+                            ),
+                        ):
+                            blocked = (
+                                writer_snapshot
+                                ._cyclic_writer_admission_decision_from_cursor(
+                                    prepared=prepared,
+                                    runtime_options=options,
+                                    cursor=cursor,
+                                )
+                            )
+                        self.assertIs(
+                            blocked.kind,
+                            (
+                                writer_snapshot
+                                ._WriterCyclicAdmissionDecisionKind
+                                .BLOCKED_PUBLIC_EXECUTION_CAPABILITY
+                            ),
+                        )
+
+    def test_elided_aromatic_closure_profile_requires_aromatic_capability(
+        self,
+    ) -> None:
+        prepared = _prepare_with_ordinary_policy_options(
+            _aromatic_triangle_facts(),
+            options=OrdinaryPolicyOptions(aromatic_bond_mode="elide"),
+        )
+        report = writer_snapshot._writer_public_cyclic_opening_profile_report(
+            prepared=prepared,
+        )
+        self.assertTrue(report.supported)
+        self.assertIn(
+            (
+                writer_snapshot
+                ._WriterPublicCyclicRequiredCapability
+                .RING_CORE_AROMATIC_BOND_TEXT
+            ),
+            report.required_capabilities,
+        )
+        self.assertNotIn(
+            (
+                writer_snapshot
+                ._WriterPublicCyclicRequiredCapability
+                .RING_CORE_VISIBLE_SINGLE_CLOSURE_BOND_TEXT
+            ),
+            report.required_capabilities,
+        )
+
     def test_public_cyclic_profile_matrix_blocked_rows_fail_before_materialization(
         self,
     ) -> None:
@@ -38393,6 +38867,61 @@ def _prepare_single_closure_triangle_with_ring_endpoint_choices(
 ) -> SouthStarPreparedMol:
     facts = simple_monocycle_with_pendant_forest_facts(ring_size=3)
     policy = ordinary_policy_for_facts(facts)
+    return prepare_south_star_mol_from_facts(
+        facts,
+        writer_surface=SouthStarWriterSurface(),
+        policy=replace(
+            policy,
+            bond_text_domains=tuple(
+                (
+                    BondTextDomain(
+                        bond=domain.bond,
+                        slot_kind=domain.slot_kind,
+                        choices=choices,
+                    )
+                    if (
+                        domain.bond == BondId(2)
+                        and domain.slot_kind == "ring_endpoint"
+                    )
+                    else domain
+                )
+                for domain in policy.bond_text_domains
+            ),
+        ),
+    )
+
+
+def _aromatic_triangle_facts() -> MoleculeFacts:
+    facts = simple_monocycle_with_pendant_forest_facts(
+        ring_size=3,
+        ring_bond_orders=(
+            BondOrder.AROMATIC,
+            BondOrder.AROMATIC,
+            BondOrder.AROMATIC,
+        ),
+    )
+    return replace(
+        facts,
+        atoms=tuple(
+            replace(item, is_aromatic=True)
+            for item in facts.atoms
+        ),
+        bonds=tuple(
+            replace(item, is_aromatic=True, is_conjugated=True)
+            for item in facts.bonds
+        ),
+    )
+
+
+def _prepare_aromatic_triangle_with_bond_text_choices(
+    *,
+    choices: tuple[BondTextChoice, ...],
+) -> SouthStarPreparedMol:
+    facts = _aromatic_triangle_facts()
+    policy = ordinary_policy_for_facts(
+        facts,
+        options=OrdinaryPolicyOptions(aromatic_bond_mode="both"),
+    )
     return prepare_south_star_mol_from_facts(
         facts,
         writer_surface=SouthStarWriterSurface(),

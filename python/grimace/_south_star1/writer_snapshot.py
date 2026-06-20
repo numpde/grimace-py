@@ -1306,6 +1306,7 @@ class _WriterPublicCyclicRequiredCapability(Enum):
     RING_CORE_VISIBLE_SINGLE_CLOSURE_BOND_TEXT = (
         "ring_core_visible_single_closure_bond_text"
     )
+    RING_CORE_AROMATIC_BOND_TEXT = "ring_core_aromatic_bond_text"
     RING_CORE_TETRAHEDRAL_STEREO = "ring_core_tetrahedral_stereo"
     CYCLIC_DIRECTIONAL_STEREO = "cyclic_directional_stereo"
     CYCLIC_RING_PAIR_STEREO = "cyclic_ring_pair_stereo"
@@ -1325,6 +1326,7 @@ _PUBLIC_CYCLIC_SUPPORTED_CAPABILITIES = frozenset(
             _WriterPublicCyclicRequiredCapability
             .RING_CORE_VISIBLE_SINGLE_CLOSURE_BOND_TEXT
         ),
+        _WriterPublicCyclicRequiredCapability.RING_CORE_AROMATIC_BOND_TEXT,
         _WriterPublicCyclicRequiredCapability.RING_CORE_TETRAHEDRAL_STEREO,
     }
 )
@@ -2440,13 +2442,22 @@ def _writer_public_cyclic_opening_profile_report(
         ),
         default=0,
     )
+    ring_core_aromatic_bond_ids = tuple(
+        bond_id
+        for bond_id in ring_core_bond_ids
+        if (
+            (bond := component_bond_index.get(bond_id))
+            is not None
+            and bond.order is BondOrder.AROMATIC
+        )
+    )
     ring_core_non_single_bond_ids = tuple(
         bond_id
         for bond_id in ring_core_bond_ids
         if (
             (bond := component_bond_index.get(bond_id))
             is not None
-            and bond.order is not BondOrder.SINGLE
+            and bond.order not in {BondOrder.SINGLE, BondOrder.AROMATIC}
         )
     )
     ring_core_single_closure_relations = tuple(
@@ -2481,6 +2492,23 @@ def _writer_public_cyclic_opening_profile_report(
     ring_core_has_visible_single_closure_bond_text = any(
         "-" in relation.texts
         for relation in ring_core_single_closure_relations
+    )
+    ring_core_aromatic_is_supported = (
+        bool(ring_core_aromatic_bond_ids)
+        and len(ring_core_aromatic_bond_ids) == len(ring_core_bond_ids)
+        and not prepared.tetra_templates
+        and not prepared.directional_templates
+        and all(
+            prepared.graph_index.atom_by_id[atom_id].is_aromatic
+            for atom_id in ring_core_atom_set
+        )
+        and all(
+            _writer_public_aromatic_ring_bond_is_supported(
+                prepared,
+                bond_id,
+            )
+            for bond_id in ring_core_aromatic_bond_ids
+        )
     )
     ring_core_tetra_template_count = sum(
         1
@@ -2519,7 +2547,14 @@ def _writer_public_cyclic_opening_profile_report(
             or ring_core_has_supported_non_single_closure_bond
         )
         else len(ring_core_non_single_bond_ids)
-    ) + ring_core_unsupported_single_closure_bond_count
+    ) + ring_core_unsupported_single_closure_bond_count + (
+        0
+        if (
+            not ring_core_aromatic_bond_ids
+            or ring_core_aromatic_is_supported
+        )
+        else len(ring_core_aromatic_bond_ids)
+    )
     ring_core_bond_id_set = frozenset(ring_core_bond_ids)
     pendant_bond_ids = tuple(
         bond_id for bond_id in component_bond_ids if bond_id not in ring_core_bond_id_set
@@ -2700,6 +2735,10 @@ def _writer_public_cyclic_opening_profile_report(
                 .RING_CORE_VISIBLE_SINGLE_CLOSURE_BOND_TEXT
             ),
         )
+    if ring_core_aromatic_bond_ids:
+        required_capabilities.add(
+            _WriterPublicCyclicRequiredCapability.RING_CORE_AROMATIC_BOND_TEXT,
+        )
     if ring_core_tetra_template_count:
         required_capabilities.add(
             _WriterPublicCyclicRequiredCapability.RING_CORE_TETRAHEDRAL_STEREO,
@@ -2742,9 +2781,23 @@ def _writer_public_cyclic_opening_profile_report(
                     .RING_CORE_VISIBLE_SINGLE_CLOSURE_BOND_TEXT
                 ),
             )
+        if ring_core_aromatic_bond_ids and not ring_core_aromatic_is_supported:
+            unsupported_capabilities.add(
+                _WriterPublicCyclicRequiredCapability.RING_CORE_AROMATIC_BOND_TEXT,
+            )
         if (
             ring_core_unsupported_bond_count
-            > ring_core_unsupported_single_closure_bond_count
+            > (
+                ring_core_unsupported_single_closure_bond_count
+                + (
+                    len(ring_core_aromatic_bond_ids)
+                    if (
+                        ring_core_aromatic_bond_ids
+                        and not ring_core_aromatic_is_supported
+                    )
+                    else 0
+                )
+            )
         ):
             unsupported_capabilities.add(
                 (
@@ -2941,6 +2994,73 @@ def _writer_public_single_closure_relation(
         return None
 
     return relation
+
+
+def _bounded_aromatic_texts(choices) -> tuple[str, ...] | None:
+    texts = tuple(choice.base_text for choice in choices)
+    if not 1 <= len(texts) <= 2:
+        return None
+    if len(set(texts)) != len(texts):
+        return None
+    if any(text not in {"", ":"} for text in texts):
+        return None
+    return texts
+
+
+def _writer_public_aromatic_ring_bond_is_supported(
+    prepared: SouthStarPreparedMol,
+    bond_id: BondId,
+) -> bool:
+    bond = prepared.graph_index.bond_by_id[bond_id]
+    if bond.order is not BondOrder.AROMATIC:
+        return False
+
+    try:
+        tree_choices = prepared.policy.bond_text_domain_unchecked(
+            bond_id,
+            slot_kind="tree",
+        )
+        ring_choices = prepared.policy.bond_text_domain_unchecked(
+            bond_id,
+            slot_kind="ring_endpoint",
+        )
+    except KeyError:
+        return False
+
+    tree_texts = _bounded_aromatic_texts(tree_choices)
+    ring_texts = _bounded_aromatic_texts(ring_choices)
+    if tree_texts is None or ring_texts is None:
+        return False
+
+    if any(
+        not prepared.semantics.bond_decode_ok(
+            prepared.facts,
+            bond_id,
+            choice,
+            DirectionMark.ABSENT,
+        )
+        for choice in tree_choices
+    ):
+        return False
+
+    try:
+        relation = writer_closure_bond_text_relation(
+            prepared,
+            bond_id,
+            max_choice_count=2,
+        )
+    except SouthStarError:
+        return False
+
+    expected_pairs = tuple(
+        (first_text, second_text)
+        for first_text in ring_texts
+        for second_text in ring_texts
+    )
+    return (
+        relation.texts == ring_texts
+        and relation.compatible_pairs == expected_pairs
+    )
 
 
 def _writer_public_ring_core_tetrahedral_stereo_is_supported(

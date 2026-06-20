@@ -1047,9 +1047,10 @@ def _closure_bond_text_choice_is_eligible(
         BondOrder.SINGLE,
         BondOrder.DOUBLE,
         BondOrder.TRIPLE,
+        BondOrder.AROMATIC,
     }:
         return True
-    return base_text == ""
+    return False
 
 
 def _closure_bond_order(prepared: SouthStarPreparedMol, bond: BondId) -> BondOrder:

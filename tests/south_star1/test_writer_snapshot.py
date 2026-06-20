@@ -1000,6 +1000,42 @@ class WriterSnapshotTest(unittest.TestCase):
                 runtime_options=options,
             )
 
+    def test_cursor_audit_validates_aromatic_open_closure_bond_text_policy(
+        self,
+    ) -> None:
+        key = _triangle_root_with_open_closure_key()
+        endpoint = replace(
+            key.ring_state.open_endpoints[0],
+            first_endpoint_bond_text=":",
+        )
+        tampered_key = replace(
+            key,
+            ring_state=WriterRingStateKey(
+                open_endpoints=(endpoint,),
+                label_state=key.ring_state.label_state,
+            ),
+        )
+        options = _writer_options(rooted_at_atom=0)
+
+        for mode in ("explicit", "both"):
+            with self.subTest(mode=mode):
+                validate_writer_cursor_against_prepared(
+                    _prepare_aromatic_triangle(
+                        OrdinaryPolicyOptions(aromatic_bond_mode=mode),
+                    ),
+                    _cursor_with_key(tampered_key),
+                    runtime_options=options,
+                )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                _prepare_aromatic_triangle(
+                    OrdinaryPolicyOptions(aromatic_bond_mode="elide"),
+                ),
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
     def test_cursor_audit_rejects_invalid_non_single_closed_closure_bond_text_pairs(
         self,
     ) -> None:
@@ -3650,6 +3686,37 @@ def non_single_closure_triangle_facts(order: BondOrder) -> MoleculeFacts:
                 bonds=(BondId(0), BondId(1), BondId(2)),
             ),
         ),
+    )
+
+
+def aromatic_triangle_facts() -> MoleculeFacts:
+    facts = triangle_facts()
+    return replace(
+        facts,
+        atoms=tuple(
+            replace(item, is_aromatic=True)
+            for item in facts.atoms
+        ),
+        bonds=tuple(
+            replace(
+                item,
+                order=BondOrder.AROMATIC,
+                is_aromatic=True,
+                is_conjugated=True,
+            )
+            for item in facts.bonds
+        ),
+    )
+
+
+def _prepare_aromatic_triangle(
+    options: OrdinaryPolicyOptions,
+):
+    facts = aromatic_triangle_facts()
+    return prepare_south_star_mol_from_facts(
+        facts,
+        writer_surface=SouthStarWriterSurface(),
+        policy=ordinary_policy_for_facts(facts, options=options),
     )
 
 

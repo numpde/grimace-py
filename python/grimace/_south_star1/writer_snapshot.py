@@ -1413,6 +1413,7 @@ class _WriterCyclicBondRoles:
 class _WriterTwoCycleBondPolicyReport:
     unsupported_tree_bonds: frozenset[BondId]
     unsupported_closure_bonds: frozenset[BondId]
+    visible_tree_bonds: frozenset[BondId]
 
     @property
     def unsupported_bonds(self) -> frozenset[BondId]:
@@ -2870,6 +2871,13 @@ def _writer_public_cyclic_opening_profile_report(
         required_capabilities.add(
             _WriterPublicCyclicRequiredCapability.MULTI_CYCLE_TOPOLOGY,
         )
+    if (
+        two_cycle_bond_policy_report is not None
+        and two_cycle_bond_policy_report.visible_tree_bonds
+    ):
+        required_capabilities.add(
+            _WriterPublicCyclicRequiredCapability.TREE_BOND_TEXT_EMISSION,
+        )
 
     if cyclic_ranks != (1,) and not two_cycle_topology_supported:
         unsupported_capabilities.add(
@@ -3236,23 +3244,31 @@ def _writer_two_cycle_elided_single_policy_report(
 ) -> _WriterTwoCycleBondPolicyReport:
     unsupported_tree: set[BondId] = set()
     unsupported_closure: set[BondId] = set()
+    visible_tree: set[BondId] = set()
 
     tree_bonds = roles.closure_candidate_bonds | roles.tree_only_bonds
     for bond_id in sorted(tree_bonds):
         bond = prepared.graph_index.bond_by_id[bond_id]
-        try:
-            tree_choices = prepared.policy.bond_text_domain_unchecked(
+        if bond.order is BondOrder.SINGLE:
+            if not _writer_elided_single_tree_slot_is_supported(
+                prepared,
                 bond_id,
-                slot_kind="tree",
+            ):
+                unsupported_tree.add(bond_id)
+        elif (
+            bond_id in roles.tree_only_bonds
+            and _writer_exact_non_single_tree_marker(
+                prepared,
+                bond_id,
             )
-        except KeyError:
-            tree_choices = ()
-        if (
-            bond.order is not BondOrder.SINGLE
-            or len(tree_choices) != 1
-            or tree_choices[0].base_text != ""
+            is not None
         ):
+            visible_tree.add(bond_id)
+        else:
             unsupported_tree.add(bond_id)
+
+    if len(visible_tree) > 1:
+        unsupported_tree.update(visible_tree)
 
     for bond_id in sorted(roles.closure_candidate_bonds):
         bond = prepared.graph_index.bond_by_id[bond_id]
@@ -3271,7 +3287,61 @@ def _writer_two_cycle_elided_single_policy_report(
     return _WriterTwoCycleBondPolicyReport(
         unsupported_tree_bonds=frozenset(unsupported_tree),
         unsupported_closure_bonds=frozenset(unsupported_closure),
+        visible_tree_bonds=frozenset(visible_tree),
     )
+
+
+def _writer_elided_single_tree_slot_is_supported(
+    prepared: SouthStarPreparedMol,
+    bond_id: BondId,
+) -> bool:
+    try:
+        choices = prepared.policy.bond_text_domain_unchecked(
+            bond_id,
+            slot_kind="tree",
+        )
+    except KeyError:
+        return False
+
+    return len(choices) == 1 and choices[0].base_text == ""
+
+
+def _writer_exact_non_single_tree_marker(
+    prepared: SouthStarPreparedMol,
+    bond_id: BondId,
+) -> str | None:
+    bond = prepared.graph_index.bond_by_id[bond_id]
+    marker = {
+        BondOrder.DOUBLE: "=",
+        BondOrder.TRIPLE: "#",
+    }.get(bond.order)
+    if marker is None:
+        return None
+
+    try:
+        choices = prepared.policy.bond_text_domain_unchecked(
+            bond_id,
+            slot_kind="tree",
+        )
+    except KeyError:
+        return None
+
+    if len(choices) != 1:
+        return None
+
+    choice = choices[0]
+    if choice.base_text != marker or choice.permits_direction:
+        return None
+
+    if not prepared.semantics.bond_decode_ok(
+        prepared.facts,
+        bond_id,
+        choice,
+        DirectionMark.ABSENT,
+    ):
+        return None
+
+    return marker
 
 
 def _writer_public_non_single_closure_bond_is_supported(

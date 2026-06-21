@@ -15778,7 +15778,7 @@ class WriterStateKernelTest(unittest.TestCase):
                     )
 
     def test_direct_bridge_two_cycle_support_matches_original_fixture(self) -> None:
-        facts = bridge_separated_triangles_facts()
+        facts = legacy_direct_bridge_separated_triangles_facts()
         prepared = _prepare(facts)
         options = _writer_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
@@ -15793,6 +15793,62 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(
             tuple(iter_writer_frontier_support(prepared, cursor)),
             tuple(iter_writer_frontier_support(path_prepared, path_cursor)),
+        )
+        self.assertEqual(
+            count_writer_frontier_support(prepared, cursor.support_state),
+            count_writer_frontier_support(
+                path_prepared,
+                path_cursor.support_state,
+            ),
+        )
+        self.assertEqual(
+            count_writer_cursor_completions(prepared, cursor),
+            count_writer_cursor_completions(path_prepared, path_cursor),
+        )
+        self.assertEqual(
+            tuple(
+                entry.emitted_text
+                for entry in writer_snapshot._writer_frontier_choice_snapshot(
+                    prepared,
+                    cursor,
+                    include_counts=False,
+                ).choices
+            ),
+            tuple(
+                entry.emitted_text
+                for entry in writer_snapshot._writer_frontier_choice_snapshot(
+                    path_prepared,
+                    path_cursor,
+                    include_counts=False,
+                ).choices
+            ),
+        )
+        decision = writer_snapshot._cyclic_writer_admission_decision_from_cursor(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        path_decision = (
+            writer_snapshot
+            ._cyclic_writer_admission_decision_from_cursor(
+                prepared=path_prepared,
+                runtime_options=options,
+                cursor=path_cursor,
+            )
+        )
+        assert decision.execution_capability_certificate is not None
+        assert path_decision.execution_capability_certificate is not None
+        self.assertEqual(
+            (
+                decision
+                .execution_capability_certificate
+                .required_capabilities
+            ),
+            (
+                path_decision
+                .execution_capability_certificate
+                .required_capabilities
+            ),
         )
 
     def test_bridge_path_snapshot_resume_while_traversing_connector(
@@ -16400,6 +16456,11 @@ class WriterStateKernelTest(unittest.TestCase):
                     slot_kind="ring_endpoint",
                     choices=None,
                 ),
+                (
+                    writer_snapshot
+                    ._WriterPublicCyclicRequiredCapability
+                    .RING_CORE_VISIBLE_SINGLE_CLOSURE_BOND_TEXT
+                ),
             ),
             (
                 "cycle_ring_endpoint_corrupt",
@@ -16407,6 +16468,37 @@ class WriterStateKernelTest(unittest.TestCase):
                     bond=BondId(2),
                     slot_kind="ring_endpoint",
                     choices=(BondTextChoice("explicit", "-", True),),
+                ),
+                (
+                    writer_snapshot
+                    ._WriterPublicCyclicRequiredCapability
+                    .RING_CORE_VISIBLE_SINGLE_CLOSURE_BOND_TEXT
+                ),
+            ),
+            (
+                "cycle_tree_missing",
+                _prepare_bridge_separated_two_cycle_with_policy_slot(
+                    bond=BondId(2),
+                    slot_kind="tree",
+                    choices=None,
+                ),
+                (
+                    writer_snapshot
+                    ._WriterPublicCyclicRequiredCapability
+                    .TREE_BOND_TEXT_EMISSION
+                ),
+            ),
+            (
+                "cycle_tree_corrupt",
+                _prepare_bridge_separated_two_cycle_with_policy_slot(
+                    bond=BondId(2),
+                    slot_kind="tree",
+                    choices=(BondTextChoice("explicit", "-", True),),
+                ),
+                (
+                    writer_snapshot
+                    ._WriterPublicCyclicRequiredCapability
+                    .TREE_BOND_TEXT_EMISSION
                 ),
             ),
             (
@@ -16416,6 +16508,11 @@ class WriterStateKernelTest(unittest.TestCase):
                     slot_kind="tree",
                     choices=None,
                 ),
+                (
+                    writer_snapshot
+                    ._WriterPublicCyclicRequiredCapability
+                    .TREE_BOND_TEXT_EMISSION
+                ),
             ),
             (
                 "connector_tree_corrupt",
@@ -16424,10 +16521,15 @@ class WriterStateKernelTest(unittest.TestCase):
                     slot_kind="tree",
                     choices=(BondTextChoice("explicit", "-", True),),
                 ),
+                (
+                    writer_snapshot
+                    ._WriterPublicCyclicRequiredCapability
+                    .TREE_BOND_TEXT_EMISSION
+                ),
             ),
         )
 
-        for name, prepared in rows:
+        for name, prepared, unsupported_capability in rows:
             with self.subTest(name=name):
                 report = (
                     writer_snapshot
@@ -16436,6 +16538,35 @@ class WriterStateKernelTest(unittest.TestCase):
                     )
                 )
                 self.assertFalse(report.supported)
+                self.assertIs(
+                    report.kind,
+                    (
+                        writer_snapshot
+                        ._WriterPublicCyclicOpeningProfileKind
+                        .BLOCKED_UNSUPPORTED_CLOSURE_BOND_SURFACE
+                    ),
+                )
+                self.assertIn(
+                    (
+                        writer_snapshot
+                        ._WriterPublicCyclicRequiredCapability
+                        .MULTI_CYCLE_TOPOLOGY
+                    ),
+                    report.required_capabilities,
+                )
+                self.assertNotIn(
+                    (
+                        writer_snapshot
+                        ._WriterPublicCyclicRequiredCapability
+                        .MULTI_CYCLE_TOPOLOGY
+                    ),
+                    report.unsupported_capabilities,
+                )
+                self.assertIn(
+                    unsupported_capability,
+                    report.unsupported_capabilities,
+                )
+                self.assertEqual(report.ring_core_unsupported_bond_count, 1)
 
     def test_bridge_separated_two_cycle_public_envelope_blocks_near_misses(
         self,
@@ -16448,6 +16579,12 @@ class WriterStateKernelTest(unittest.TestCase):
                     least_free_ring_labels=True,
                     ring_labels=(RingLabel(1),),
                 ),
+                (
+                    writer_snapshot
+                    ._WriterPublicCyclicOpeningProfileKind
+                    .BLOCKED_UNSUPPORTED_RING_LABEL_POLICY
+                ),
+                frozenset(),
             ),
             (
                 "not_least_free",
@@ -16455,11 +16592,77 @@ class WriterStateKernelTest(unittest.TestCase):
                     bridge_separated_triangles_facts(),
                     least_free_ring_labels=False,
                 ),
+                (
+                    writer_snapshot
+                    ._WriterPublicCyclicOpeningProfileKind
+                    .BLOCKED_UNSUPPORTED_RING_LABEL_POLICY
+                ),
+                frozenset(),
             ),
-            ("shared_articulation", _prepare(shared_articulation_two_cycle_facts())),
-            ("fused", _prepare(fused_rank_two_facts())),
-            ("three_blocks", _prepare(three_bridge_separated_triangles_facts())),
-            ("pendant", _prepare(bridge_separated_triangles_with_pendant_facts())),
+            (
+                "shared_articulation",
+                _prepare(shared_articulation_two_cycle_facts()),
+                (
+                    writer_snapshot
+                    ._WriterPublicCyclicOpeningProfileKind
+                    .BLOCKED_UNSUPPORTED_CYCLIC_RANK
+                ),
+                frozenset((
+                    (
+                        writer_snapshot
+                        ._WriterPublicCyclicRequiredCapability
+                        .MULTI_CYCLE_TOPOLOGY
+                    ),
+                )),
+            ),
+            (
+                "fused",
+                _prepare(fused_rank_two_facts()),
+                (
+                    writer_snapshot
+                    ._WriterPublicCyclicOpeningProfileKind
+                    .BLOCKED_UNSUPPORTED_CYCLIC_RANK
+                ),
+                frozenset((
+                    (
+                        writer_snapshot
+                        ._WriterPublicCyclicRequiredCapability
+                        .MULTI_CYCLE_TOPOLOGY
+                    ),
+                )),
+            ),
+            (
+                "three_blocks",
+                _prepare(three_bridge_separated_triangles_facts()),
+                (
+                    writer_snapshot
+                    ._WriterPublicCyclicOpeningProfileKind
+                    .BLOCKED_UNSUPPORTED_CYCLIC_RANK
+                ),
+                frozenset((
+                    (
+                        writer_snapshot
+                        ._WriterPublicCyclicRequiredCapability
+                        .MULTI_CYCLE_TOPOLOGY
+                    ),
+                )),
+            ),
+            (
+                "pendant",
+                _prepare(bridge_separated_triangles_with_pendant_facts()),
+                (
+                    writer_snapshot
+                    ._WriterPublicCyclicOpeningProfileKind
+                    .BLOCKED_UNSUPPORTED_CYCLIC_RANK
+                ),
+                frozenset((
+                    (
+                        writer_snapshot
+                        ._WriterPublicCyclicRequiredCapability
+                        .MULTI_CYCLE_TOPOLOGY
+                    ),
+                )),
+            ),
             (
                 "non_single",
                 _prepare_with_ordinary_policy_options(
@@ -16479,6 +16682,18 @@ class WriterStateKernelTest(unittest.TestCase):
                         non_single_ring_closures="joint",
                     ),
                 ),
+                (
+                    writer_snapshot
+                    ._WriterPublicCyclicOpeningProfileKind
+                    .BLOCKED_UNSUPPORTED_CLOSURE_BOND_SURFACE
+                ),
+                frozenset((
+                    (
+                        writer_snapshot
+                        ._WriterPublicCyclicRequiredCapability
+                        .TREE_BOND_TEXT_EMISSION
+                    ),
+                )),
             ),
             (
                 "explicit_single",
@@ -16486,14 +16701,33 @@ class WriterStateKernelTest(unittest.TestCase):
                     bridge_separated_triangles_facts(),
                     options=OrdinaryPolicyOptions(single_bond_mode="both"),
                 ),
+                (
+                    writer_snapshot
+                    ._WriterPublicCyclicOpeningProfileKind
+                    .BLOCKED_UNSUPPORTED_CLOSURE_BOND_SURFACE
+                ),
+                frozenset((
+                    (
+                        writer_snapshot
+                        ._WriterPublicCyclicRequiredCapability
+                        .RING_CORE_VISIBLE_SINGLE_CLOSURE_BOND_TEXT
+                    ),
+                    (
+                        writer_snapshot
+                        ._WriterPublicCyclicRequiredCapability
+                        .TREE_BOND_TEXT_EMISSION
+                    ),
+                )),
             ),
             (
                 "directional",
                 _prepare(directional_facts()),
+                None,
+                None,
             ),
         )
 
-        for name, prepared in cases:
+        for name, prepared, expected_kind, expected_unsupported in cases:
             with self.subTest(name=name):
                 report = (
                     writer_snapshot
@@ -16502,6 +16736,13 @@ class WriterStateKernelTest(unittest.TestCase):
                     )
                 )
                 self.assertFalse(report.supported)
+                if expected_kind is not None:
+                    self.assertIs(report.kind, expected_kind)
+                if expected_unsupported is not None:
+                    self.assertEqual(
+                        report.unsupported_capabilities,
+                        expected_unsupported,
+                    )
 
     def test_public_initial_snapshot_bounded_pendant_forest_monocycles_resumes_and_advances(
         self,
@@ -40456,6 +40697,28 @@ def bridge_separated_triangles_facts(
                 id=ComponentId(0),
                 atoms=tuple(AtomId(index) for index in range(atom_count)),
                 bonds=tuple(BondId(index) for index in range(bond_count)),
+            ),
+        ),
+    )
+
+
+def legacy_direct_bridge_separated_triangles_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=tuple(atom(index, "C") for index in range(6)),
+        bonds=(
+            single_bond(0, 0, 1),
+            single_bond(1, 1, 2),
+            single_bond(2, 2, 0),
+            single_bond(3, 3, 4),
+            single_bond(4, 4, 5),
+            single_bond(5, 5, 3),
+            single_bond(6, 2, 3),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=tuple(AtomId(index) for index in range(6)),
+                bonds=tuple(BondId(index) for index in range(7)),
             ),
         ),
     )

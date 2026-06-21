@@ -1296,6 +1296,9 @@ class _WriterPublicCyclicOpeningProfileKind(Enum):
     BLOCKED_UNSUPPORTED_CLOSURE_BOND_SURFACE = (
         "blocked_unsupported_closure_bond_surface"
     )
+    BLOCKED_UNSUPPORTED_RING_LABEL_POLICY = (
+        "blocked_unsupported_ring_label_policy"
+    )
     BLOCKED_UNSUPPORTED_CYCLIC_STEREO_SURFACE = (
         "blocked_unsupported_cyclic_stereo_surface"
     )
@@ -1399,6 +1402,20 @@ class _WriterTwoCycleBlockEnvelope:
 class _WriterCyclicBondRoles:
     closure_candidate_bonds: frozenset[BondId]
     tree_only_bonds: frozenset[BondId]
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterTwoCycleBondPolicyReport:
+    unsupported_tree_bonds: frozenset[BondId]
+    unsupported_closure_bonds: frozenset[BondId]
+
+    @property
+    def unsupported_bonds(self) -> frozenset[BondId]:
+        return self.unsupported_tree_bonds | self.unsupported_closure_bonds
+
+    @property
+    def supported(self) -> bool:
+        return not self.unsupported_bonds
 
 
 @dataclass(frozen=True, slots=True)
@@ -2474,6 +2491,14 @@ def _writer_public_cyclic_opening_profile_report(
         ring_core_bond_ids=ring_core_bond_ids,
         two_cycle_envelope=two_cycle_envelope,
     )
+    two_cycle_bond_policy_report = (
+        _writer_two_cycle_elided_single_policy_report(
+            prepared,
+            bond_roles,
+        )
+        if two_cycle_envelope is not None
+        else None
+    )
     closure_bond_ids = tuple(
         sorted(bond_roles.closure_candidate_bonds)
     )
@@ -2575,20 +2600,32 @@ def _writer_public_cyclic_opening_profile_report(
             ring_core_non_single_bond_ids[0],
         )
     )
-    ring_core_unsupported_bond_count = (
-        0
-        if (
-            not ring_core_non_single_bond_ids
-            or ring_core_has_supported_non_single_closure_bond
+    ring_core_unsupported_bond_ids: set[BondId] = set()
+    if (
+        ring_core_non_single_bond_ids
+        and not ring_core_has_supported_non_single_closure_bond
+    ):
+        ring_core_unsupported_bond_ids.update(ring_core_non_single_bond_ids)
+    if ring_core_unsupported_single_closure_bond_count:
+        ring_core_unsupported_bond_ids.update(
+            bond_id
+            for bond_id in ring_core_single_bond_ids
+            if (
+                _writer_public_single_closure_relation(
+                    prepared,
+                    bond_id,
+                )
+                is None
+            )
         )
-        else len(ring_core_non_single_bond_ids)
-    ) + ring_core_unsupported_single_closure_bond_count + (
-        0
-        if (
-            not ring_core_aromatic_bond_ids
-            or ring_core_aromatic_is_supported
+    if ring_core_aromatic_bond_ids and not ring_core_aromatic_is_supported:
+        ring_core_unsupported_bond_ids.update(ring_core_aromatic_bond_ids)
+    if two_cycle_bond_policy_report is not None:
+        ring_core_unsupported_bond_ids.update(
+            two_cycle_bond_policy_report.unsupported_bonds,
         )
-        else len(ring_core_aromatic_bond_ids)
+    ring_core_unsupported_bond_count = len(
+        ring_core_unsupported_bond_ids,
     )
     ring_core_bond_id_set = frozenset(ring_core_bond_ids)
     pendant_bond_ids = tuple(
@@ -2703,16 +2740,21 @@ def _writer_public_cyclic_opening_profile_report(
     unsupported_capabilities: set[
         _WriterPublicCyclicRequiredCapability
     ] = set()
-    two_cycle_supported = (
-        two_cycle_envelope is not None
-        and prepared.policy.least_free_ring_labels
+    two_cycle_topology_supported = (
+        cyclic_ranks == (2,)
+        and two_cycle_envelope is not None
+    )
+    two_cycle_label_policy_supported = (
+        prepared.policy.least_free_ring_labels
         and len(prepared.policy.ring_labels) >= 2
+    )
+    two_cycle_supported = (
+        two_cycle_topology_supported
+        and two_cycle_label_policy_supported
+        and two_cycle_bond_policy_report is not None
+        and two_cycle_bond_policy_report.supported
         and not prepared.tetra_templates
         and not prepared.directional_templates
-        and _writer_two_cycle_elided_single_policy_is_supported(
-            prepared,
-            bond_roles,
-        )
     )
 
     if not surface.connected:
@@ -2794,10 +2836,7 @@ def _writer_public_cyclic_opening_profile_report(
             _WriterPublicCyclicRequiredCapability.MULTI_CYCLE_TOPOLOGY,
         )
 
-    if cyclic_ranks != (1,) and not (
-        cyclic_ranks == (2,)
-        and two_cycle_supported
-    ):
+    if cyclic_ranks != (1,) and not two_cycle_topology_supported:
         unsupported_capabilities.add(
             _WriterPublicCyclicRequiredCapability.MULTI_CYCLE_TOPOLOGY,
         )
@@ -2826,8 +2865,41 @@ def _writer_public_cyclic_opening_profile_report(
             unsupported_capabilities=frozenset(unsupported_capabilities),
         )
 
-    if ring_core_unsupported_bond_count:
-        if ring_core_unsupported_single_closure_bond_count:
+    if (
+        two_cycle_topology_supported
+        and not two_cycle_label_policy_supported
+    ):
+        kind = (
+            _WriterPublicCyclicOpeningProfileKind
+            .BLOCKED_UNSUPPORTED_RING_LABEL_POLICY
+        )
+    elif ring_core_unsupported_bond_count:
+        two_cycle_unsupported_single_closure_bonds = frozenset(
+            bond_id
+            for bond_id in (
+                (
+                    two_cycle_bond_policy_report
+                    .unsupported_closure_bonds
+                )
+                if two_cycle_bond_policy_report is not None
+                else frozenset()
+            )
+            if (
+                prepared.graph_index.bond_by_id[bond_id].order
+                is BondOrder.SINGLE
+            )
+        )
+        if (
+            two_cycle_bond_policy_report is not None
+            and two_cycle_bond_policy_report.unsupported_tree_bonds
+        ):
+            unsupported_capabilities.add(
+                _WriterPublicCyclicRequiredCapability.TREE_BOND_TEXT_EMISSION,
+            )
+        if (
+            ring_core_unsupported_single_closure_bond_count
+            or two_cycle_unsupported_single_closure_bonds
+        ):
             unsupported_capabilities.add(
                 (
                     _WriterPublicCyclicRequiredCapability
@@ -2839,18 +2911,8 @@ def _writer_public_cyclic_opening_profile_report(
                 _WriterPublicCyclicRequiredCapability.RING_CORE_AROMATIC_BOND_TEXT,
             )
         if (
-            ring_core_unsupported_bond_count
-            > (
-                ring_core_unsupported_single_closure_bond_count
-                + (
-                    len(ring_core_aromatic_bond_ids)
-                    if (
-                        ring_core_aromatic_bond_ids
-                        and not ring_core_aromatic_is_supported
-                    )
-                    else 0
-                )
-            )
+            ring_core_non_single_bond_ids
+            and not ring_core_has_supported_non_single_closure_bond
         ):
             unsupported_capabilities.add(
                 (
@@ -3137,36 +3199,48 @@ def _writer_public_cyclic_bond_roles(
     )
 
 
-def _writer_two_cycle_elided_single_policy_is_supported(
+def _writer_two_cycle_elided_single_policy_report(
     prepared: SouthStarPreparedMol,
     roles: _WriterCyclicBondRoles,
-) -> bool:
+) -> _WriterTwoCycleBondPolicyReport:
+    unsupported_tree: set[BondId] = set()
+    unsupported_closure: set[BondId] = set()
+
     tree_bonds = roles.closure_candidate_bonds | roles.tree_only_bonds
     for bond_id in sorted(tree_bonds):
         bond = prepared.graph_index.bond_by_id[bond_id]
-        if bond.order is not BondOrder.SINGLE:
-            return False
         try:
             tree_choices = prepared.policy.bond_text_domain_unchecked(
                 bond_id,
                 slot_kind="tree",
             )
         except KeyError:
-            return False
+            tree_choices = ()
         if (
-            len(tree_choices) != 1
+            bond.order is not BondOrder.SINGLE
+            or len(tree_choices) != 1
             or tree_choices[0].base_text != ""
         ):
-            return False
+            unsupported_tree.add(bond_id)
 
     for bond_id in sorted(roles.closure_candidate_bonds):
-        relation = _writer_public_single_closure_relation(prepared, bond_id)
-        if relation is None:
-            return False
-        if relation.texts != ("",) or relation.compatible_pairs != (("", ""),):
-            return False
+        bond = prepared.graph_index.bond_by_id[bond_id]
+        relation = (
+            _writer_public_single_closure_relation(prepared, bond_id)
+            if bond.order is BondOrder.SINGLE
+            else None
+        )
+        if (
+            relation is None
+            or relation.texts != ("",)
+            or relation.compatible_pairs != (("", ""),)
+        ):
+            unsupported_closure.add(bond_id)
 
-    return True
+    return _WriterTwoCycleBondPolicyReport(
+        unsupported_tree_bonds=frozenset(unsupported_tree),
+        unsupported_closure_bonds=frozenset(unsupported_closure),
+    )
 
 
 def _writer_public_non_single_closure_bond_is_supported(

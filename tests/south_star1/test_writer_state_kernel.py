@@ -15693,6 +15693,412 @@ class WriterStateKernelTest(unittest.TestCase):
         )
         self.assertGreater(image.distinct_count, 0)
 
+    def test_public_writer_shaped_bridge_separated_two_cycles_succeeds(
+        self,
+    ) -> None:
+        facts = bridge_separated_triangles_facts()
+        for root in (*range(6), -1):
+            with self.subTest(root=root):
+                prepared = _prepare(facts)
+                options = _writer_options(rooted_at_atom=root)
+                cursor = _initial_writer_transition_frontier_cursor(
+                    prepared,
+                    options,
+                )
+                decision = (
+                    writer_snapshot
+                    ._cyclic_writer_admission_decision_from_cursor(
+                        prepared=prepared,
+                        runtime_options=options,
+                        cursor=cursor,
+                    )
+                )
+
+                self.assertIs(
+                    decision.kind,
+                    (
+                        writer_snapshot
+                        ._WriterCyclicAdmissionDecisionKind
+                        .READY_PUBLIC
+                    ),
+                )
+                assert decision.public_profile is not None
+                self.assertIs(
+                    decision.public_profile.kind,
+                    (
+                        writer_snapshot
+                        ._WriterPublicCyclicOpeningProfileKind
+                        .SUPPORTED_TWO_BRIDGE_SEPARATED_SIMPLE_CYCLES
+                    ),
+                )
+                self.assertIn(
+                    (
+                        writer_snapshot
+                        ._WriterPublicCyclicRequiredCapability
+                        .MULTI_CYCLE_TOPOLOGY
+                    ),
+                    decision.public_profile.required_capabilities,
+                )
+                assert decision.execution_capability_certificate is not None
+                self.assertIn(
+                    (
+                        writer_snapshot
+                        ._WriterExecutionCapabilityKind
+                        .CONCURRENT_CLOSURE_ENDPOINT_OPEN
+                    ),
+                    (
+                        decision
+                        .execution_capability_certificate
+                        .required_capabilities
+                    ),
+                )
+
+                image = enumerate_prepared_stereo_support(
+                    prepared=prepared,
+                    runtime_options=options,
+                )
+                self.assertEqual(
+                    image.distinct_count,
+                    count_writer_frontier_support(
+                        prepared,
+                        cursor.support_state,
+                    ),
+                )
+                self.assertEqual(
+                    image.witness_count,
+                    count_writer_cursor_completions(prepared, cursor),
+                )
+                self.assertEqual(
+                    image.strings,
+                    tuple(iter_writer_frontier_support(prepared, cursor)),
+                )
+
+    def test_bridge_separated_two_cycle_live_closure_lifecycle(
+        self,
+    ) -> None:
+        prepared = _prepare(bridge_separated_triangles_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+        paths = _branch_terminal_paths(prepared, cursor)
+        concurrent = (
+            writer_snapshot
+            ._WriterExecutionCapabilityKind
+            .CONCURRENT_CLOSURE_ENDPOINT_OPEN
+        )
+        closure_open = (
+            writer_snapshot
+            ._WriterExecutionCapabilityKind
+            .CLOSURE_ENDPOINT_OPEN
+        )
+        closure_pair = (
+            writer_snapshot
+            ._WriterExecutionCapabilityKind
+            .CLOSURE_ENDPOINT_PAIR
+        )
+
+        self.assertTrue(paths)
+        self.assertTrue(any(concurrent in path.capabilities for path in paths))
+        for path in paths:
+            for state in path.states:
+                self.assertLessEqual(len(state.ring_state.open_endpoints), 2)
+                labels = tuple(
+                    endpoint.label
+                    for endpoint in state.ring_state.open_endpoints
+                )
+                self.assertEqual(len(labels), len(frozenset(labels)))
+                self.assertEqual(
+                    frozenset(labels),
+                    frozenset(state.ring_state.label_state.allocated),
+                )
+                if len(state.ring_state.open_endpoints) == 2:
+                    self.assertEqual(
+                        len(frozenset(
+                            endpoint.bond
+                            for endpoint in state.ring_state.open_endpoints
+                        )),
+                        2,
+                    )
+
+            if any(
+                len(state.ring_state.open_endpoints) == 2
+                for state in path.states
+            ):
+                paired_after_concurrent = False
+                for previous, current in zip(path.states, path.states[1:]):
+                    if (
+                        len(previous.ring_state.open_endpoints) == 2
+                        and len(current.ring_state.open_endpoints) == 1
+                    ):
+                        previous_by_bond = {
+                            endpoint.bond: endpoint
+                            for endpoint in previous.ring_state.open_endpoints
+                        }
+                        current_endpoint = current.ring_state.open_endpoints[0]
+                        self.assertEqual(
+                            previous_by_bond[current_endpoint.bond],
+                            current_endpoint,
+                        )
+                        paired_after_concurrent = True
+                        break
+                self.assertTrue(paired_after_concurrent)
+
+            terminal = path.terminal_state
+            self.assertEqual(terminal.ring_state.open_endpoints, ())
+            self.assertEqual(len(terminal.ring_state.closed_closures), 2)
+            self.assertEqual(
+                frozenset(
+                    frozenset((BondId(0), BondId(1), BondId(2)))
+                    if closure.bond in (BondId(0), BondId(1), BondId(2))
+                    else frozenset((BondId(3), BondId(4), BondId(5)))
+                    for closure in terminal.ring_state.closed_closures
+                ),
+                frozenset((
+                    frozenset((BondId(0), BondId(1), BondId(2))),
+                    frozenset((BondId(3), BondId(4), BondId(5))),
+                )),
+            )
+            self.assertIn(closure_open, path.capabilities)
+            self.assertIn(closure_pair, path.capabilities)
+
+    def test_bridge_separated_two_cycle_concurrent_capability_is_replayable(
+        self,
+    ) -> None:
+        prepared = _prepare(bridge_separated_triangles_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+        initial_snapshot = (
+            writer_snapshot
+            ._capture_writer_frontier_snapshot_unchecked(
+                prepared=prepared,
+                runtime_options=options,
+                cursor=cursor,
+            )
+        )
+        decision = writer_snapshot._cyclic_writer_admission_decision_from_cursor(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        assert decision.execution_capability_certificate is not None
+        concurrent = (
+            writer_snapshot
+            ._WriterExecutionCapabilityKind
+            .CONCURRENT_CLOSURE_ENDPOINT_OPEN
+        )
+        uses = tuple(
+            use
+            for use in decision.readiness_gate.audit.execution_capability_uses
+            if use.kind is concurrent
+        )
+        self.assertTrue(uses)
+        for use in uses:
+            self.assertFalse(use.terminal)
+            source_keys = dict(use.source_cursor.weighted_states)
+            successor_keys = dict(use.successor_cursor.weighted_states)
+            self.assertTrue(
+                any(
+                    len(key.ring_state.open_endpoints) == 1
+                    for key in source_keys
+                )
+            )
+            self.assertTrue(
+                any(
+                    len(key.ring_state.open_endpoints) == 2
+                    for key in successor_keys
+                )
+            )
+
+        _assert_replay_succeeds_for_execution_capability_uses(
+            self,
+            audit=decision.readiness_gate.audit,
+            snapshot=initial_snapshot,
+            prepared=prepared,
+        )
+
+        with patch(
+            "grimace._south_star1.writer_snapshot"
+            "._PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES",
+            (
+                decision
+                .execution_capability_certificate
+                .supported_capabilities
+                - {concurrent}
+            ),
+        ):
+            blocked = writer_snapshot._cyclic_writer_admission_decision_from_cursor(
+                prepared=prepared,
+                runtime_options=options,
+                cursor=cursor,
+            )
+        self.assertIs(
+            blocked.kind,
+            (
+                writer_snapshot
+                ._WriterCyclicAdmissionDecisionKind
+                .BLOCKED_PUBLIC_EXECUTION_CAPABILITY
+            ),
+        )
+
+    def test_bridge_separated_two_cycle_snapshot_resume_from_concurrent_states(
+        self,
+    ) -> None:
+        prepared = _prepare(bridge_separated_triangles_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+        initial_snapshot = (
+            writer_snapshot
+            ._capture_writer_frontier_snapshot_unchecked(
+                prepared=prepared,
+                runtime_options=options,
+                cursor=cursor,
+            )
+        )
+        path = next(
+            path
+            for path in _branch_terminal_paths(prepared, cursor)
+            if any(
+                len(state.ring_state.open_endpoints) == 2
+                for state in path.states
+            )
+        )
+
+        indexes = (
+            next(
+                index
+                for index, state in enumerate(path.states)
+                if len(state.ring_state.open_endpoints) == 2
+            ),
+            next(
+                index
+                for index, state in enumerate(path.states)
+                if (
+                    len(state.ring_state.open_endpoints) == 1
+                    and len(state.ring_state.closed_closures) == 1
+                )
+            ),
+        )
+        for index in indexes:
+            with self.subTest(index=index):
+                outcome = (
+                    _assert_checked_prefix_successor_snapshot_resume_equivalence(
+                        self,
+                        snapshot=initial_snapshot,
+                        prepared=prepared,
+                        emitted_texts=path.emissions[:index],
+                    )
+                )
+                advanced = outcome.replay_outcome.advanced_snapshot
+                self.assertIsNotNone(advanced)
+                assert advanced is not None
+                self.assertIn(
+                    writer_state_key(path.states[index]),
+                    dict(advanced.cursor.weighted_states),
+                )
+
+    def test_bridge_separated_two_cycle_static_and_live_kill_switches(
+        self,
+    ) -> None:
+        prepared = _prepare(bridge_separated_triangles_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+
+        with patch(
+            "grimace._south_star1.writer_snapshot"
+            "._PUBLIC_CYCLIC_SUPPORTED_CAPABILITIES",
+            (
+                writer_snapshot
+                ._PUBLIC_CYCLIC_SUPPORTED_CAPABILITIES
+                - {
+                    (
+                        writer_snapshot
+                        ._WriterPublicCyclicRequiredCapability
+                        .MULTI_CYCLE_TOPOLOGY
+                    ),
+                }
+            ),
+        ):
+            decision = writer_snapshot._cyclic_writer_admission_decision_from_cursor(
+                prepared=prepared,
+                runtime_options=options,
+                cursor=cursor,
+            )
+
+        self.assertIs(
+            decision.kind,
+            (
+                writer_snapshot
+                ._WriterCyclicAdmissionDecisionKind
+                .BLOCKED_PUBLIC_CYCLIC_PROFILE
+            ),
+        )
+
+    def test_bridge_separated_two_cycle_public_envelope_blocks_near_misses(
+        self,
+    ) -> None:
+        cases = (
+            (
+                "one_label",
+                _prepare_with_policy(
+                    bridge_separated_triangles_facts(),
+                    least_free_ring_labels=True,
+                    ring_labels=(RingLabel(1),),
+                ),
+            ),
+            (
+                "not_least_free",
+                _prepare_with_policy(
+                    bridge_separated_triangles_facts(),
+                    least_free_ring_labels=False,
+                ),
+            ),
+            ("shared_articulation", _prepare(shared_articulation_two_cycle_facts())),
+            ("fused", _prepare(fused_rank_two_facts())),
+            ("long_bridge", _prepare(long_bridge_two_cycle_facts())),
+            ("three_blocks", _prepare(three_bridge_separated_triangles_facts())),
+            ("pendant", _prepare(bridge_separated_triangles_with_pendant_facts())),
+            (
+                "non_single",
+                _prepare_with_ordinary_policy_options(
+                    replace(
+                        bridge_separated_triangles_facts(),
+                        bonds=tuple(
+                            replace(bond, order=BondOrder.DOUBLE)
+                            if bond.id == BondId(0)
+                            else bond
+                            for bond in (
+                                bridge_separated_triangles_facts()
+                                .bonds
+                            )
+                        ),
+                    ),
+                    options=OrdinaryPolicyOptions(
+                        non_single_ring_closures="joint",
+                    ),
+                ),
+            ),
+            (
+                "explicit_single",
+                _prepare_with_ordinary_policy_options(
+                    bridge_separated_triangles_facts(),
+                    options=OrdinaryPolicyOptions(single_bond_mode="both"),
+                ),
+            ),
+            (
+                "directional",
+                _prepare(directional_facts()),
+            ),
+        )
+
+        for name, prepared in cases:
+            with self.subTest(name=name):
+                report = (
+                    writer_snapshot
+                    ._writer_public_cyclic_opening_profile_report(
+                        prepared=prepared,
+                    )
+                )
+                self.assertFalse(report.supported)
+
     def test_public_initial_snapshot_bounded_pendant_forest_monocycles_resumes_and_advances(
         self,
     ) -> None:
@@ -39605,6 +40011,134 @@ def cycle_plus_isolate_component_facts() -> MoleculeFacts:
                 id=ComponentId(0),
                 atoms=(AtomId(0), AtomId(1), AtomId(2), AtomId(3)),
                 bonds=(BondId(0), BondId(1), BondId(2)),
+            ),
+        ),
+    )
+
+
+def bridge_separated_triangles_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=tuple(atom(index, "C") for index in range(6)),
+        bonds=(
+            single_bond(0, 0, 1),
+            single_bond(1, 1, 2),
+            single_bond(2, 2, 0),
+            single_bond(3, 3, 4),
+            single_bond(4, 4, 5),
+            single_bond(5, 5, 3),
+            single_bond(6, 2, 3),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=tuple(AtomId(index) for index in range(6)),
+                bonds=tuple(BondId(index) for index in range(7)),
+            ),
+        ),
+    )
+
+
+def shared_articulation_two_cycle_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=tuple(atom(index, "C") for index in range(5)),
+        bonds=(
+            single_bond(0, 0, 1),
+            single_bond(1, 1, 2),
+            single_bond(2, 2, 0),
+            single_bond(3, 0, 3),
+            single_bond(4, 3, 4),
+            single_bond(5, 4, 0),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=tuple(AtomId(index) for index in range(5)),
+                bonds=tuple(BondId(index) for index in range(6)),
+            ),
+        ),
+    )
+
+
+def fused_rank_two_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=tuple(atom(index, "C") for index in range(4)),
+        bonds=(
+            single_bond(0, 0, 1),
+            single_bond(1, 1, 2),
+            single_bond(2, 2, 0),
+            single_bond(3, 0, 3),
+            single_bond(4, 3, 1),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=tuple(AtomId(index) for index in range(4)),
+                bonds=tuple(BondId(index) for index in range(5)),
+            ),
+        ),
+    )
+
+
+def long_bridge_two_cycle_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=tuple(atom(index, "C") for index in range(7)),
+        bonds=(
+            single_bond(0, 0, 1),
+            single_bond(1, 1, 2),
+            single_bond(2, 2, 0),
+            single_bond(3, 3, 4),
+            single_bond(4, 4, 5),
+            single_bond(5, 5, 3),
+            single_bond(6, 2, 6),
+            single_bond(7, 6, 3),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=tuple(AtomId(index) for index in range(7)),
+                bonds=tuple(BondId(index) for index in range(8)),
+            ),
+        ),
+    )
+
+
+def three_bridge_separated_triangles_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=tuple(atom(index, "C") for index in range(9)),
+        bonds=(
+            single_bond(0, 0, 1),
+            single_bond(1, 1, 2),
+            single_bond(2, 2, 0),
+            single_bond(3, 3, 4),
+            single_bond(4, 4, 5),
+            single_bond(5, 5, 3),
+            single_bond(6, 6, 7),
+            single_bond(7, 7, 8),
+            single_bond(8, 8, 6),
+            single_bond(9, 2, 3),
+            single_bond(10, 5, 6),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=tuple(AtomId(index) for index in range(9)),
+                bonds=tuple(BondId(index) for index in range(11)),
+            ),
+        ),
+    )
+
+
+def bridge_separated_triangles_with_pendant_facts() -> MoleculeFacts:
+    base = bridge_separated_triangles_facts()
+    return replace(
+        base,
+        atoms=(*base.atoms, atom(6, "C")),
+        bonds=(*base.bonds, single_bond(7, 0, 6)),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=tuple(AtomId(index) for index in range(7)),
+                bonds=tuple(BondId(index) for index in range(8)),
             ),
         ),
     )

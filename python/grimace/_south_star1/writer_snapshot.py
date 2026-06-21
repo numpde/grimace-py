@@ -1285,6 +1285,9 @@ class _WriterPublicCyclicOpeningProfileKind(Enum):
     SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS = (
         "supported_simple_monocycle_with_acyclic_attachments"
     )
+    SUPPORTED_TWO_BRIDGE_SEPARATED_SIMPLE_CYCLES = (
+        "supported_two_bridge_separated_simple_cycles"
+    )
     BLOCKED_NOT_SINGLE_COMPONENT = "blocked_not_single_component"
     BLOCKED_NOT_CONNECTED_COMPONENT = "blocked_not_connected_component"
     BLOCKED_NOT_CYCLIC_COMPONENT = "blocked_not_cyclic_component"
@@ -1322,6 +1325,7 @@ _PUBLIC_CYCLIC_SUPPORTED_CAPABILITIES = frozenset(
         _WriterPublicCyclicRequiredCapability.ACYCLIC_PENDANT_TREE_TRAVERSAL,
         _WriterPublicCyclicRequiredCapability.TREE_BOND_TEXT_EMISSION,
         _WriterPublicCyclicRequiredCapability.RING_CORE_NON_SINGLE_CLOSURE_BOND,
+        _WriterPublicCyclicRequiredCapability.MULTI_CYCLE_TOPOLOGY,
         (
             _WriterPublicCyclicRequiredCapability
             .RING_CORE_VISIBLE_SINGLE_CLOSURE_BOND_TEXT
@@ -1369,12 +1373,21 @@ class _WriterPublicCyclicOpeningProfileReport:
                 .SUPPORTED_SIMPLE_MONOCYCLE_COMPONENT,
                 _WriterPublicCyclicOpeningProfileKind
                 .SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS,
+                _WriterPublicCyclicOpeningProfileKind
+                .SUPPORTED_TWO_BRIDGE_SEPARATED_SIMPLE_CYCLES,
             }
             and not self.unsupported_capabilities
             and self.required_capabilities.issubset(
                 _PUBLIC_CYCLIC_SUPPORTED_CAPABILITIES
             )
         )
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterTwoCycleBlockEnvelope:
+    cycle_atom_sets: tuple[frozenset[AtomId], frozenset[AtomId]]
+    cycle_bond_sets: tuple[frozenset[BondId], frozenset[BondId]]
+    connector_bond: BondId
 
 
 @dataclass(frozen=True, slots=True)
@@ -2668,6 +2681,21 @@ def _writer_public_cyclic_opening_profile_report(
     unsupported_capabilities: set[
         _WriterPublicCyclicRequiredCapability
     ] = set()
+    two_cycle_envelope = _writer_two_bridge_separated_simple_cycles(
+        prepared,
+        surface,
+    )
+    two_cycle_supported = (
+        two_cycle_envelope is not None
+        and prepared.policy.least_free_ring_labels
+        and len(prepared.policy.ring_labels) >= 2
+        and not prepared.tetra_templates
+        and not prepared.directional_templates
+        and _writer_two_cycle_elided_single_policy_is_supported(
+            prepared,
+            two_cycle_envelope,
+        )
+    )
 
     if not surface.connected:
         return blocked_profile(
@@ -2743,8 +2771,15 @@ def _writer_public_cyclic_opening_profile_report(
         required_capabilities.add(
             _WriterPublicCyclicRequiredCapability.RING_CORE_TETRAHEDRAL_STEREO,
         )
+    if cyclic_ranks == (2,) and two_cycle_envelope is not None:
+        required_capabilities.add(
+            _WriterPublicCyclicRequiredCapability.MULTI_CYCLE_TOPOLOGY,
+        )
 
-    if cyclic_ranks != (1,):
+    if cyclic_ranks != (1,) and not (
+        cyclic_ranks == (2,)
+        and two_cycle_supported
+    ):
         unsupported_capabilities.add(
             _WriterPublicCyclicRequiredCapability.MULTI_CYCLE_TOPOLOGY,
         )
@@ -2865,7 +2900,12 @@ def _writer_public_cyclic_opening_profile_report(
                     _WriterPublicCyclicRequiredCapability.NON_FOREST_PENDANT_MATERIAL,
                 )
 
-        if ring_core_is_simple_cycle and pendant_atom_count == 0:
+        if two_cycle_supported:
+            kind = (
+                _WriterPublicCyclicOpeningProfileKind
+                .SUPPORTED_TWO_BRIDGE_SEPARATED_SIMPLE_CYCLES
+            )
+        elif ring_core_is_simple_cycle and pendant_atom_count == 0:
             kind = (
                 _WriterPublicCyclicOpeningProfileKind
                 .SUPPORTED_SIMPLE_MONOCYCLE_COMPONENT
@@ -2922,6 +2962,113 @@ def _writer_public_cyclic_opening_profile_report(
         required_capabilities=frozenset(required_capabilities),
         unsupported_capabilities=frozenset(unsupported_capabilities),
     )
+
+
+def _writer_two_bridge_separated_simple_cycles(
+    prepared: SouthStarPreparedMol,
+    surface,
+) -> _WriterTwoCycleBlockEnvelope | None:
+    if not surface.connected or surface.cyclic_rank != 2:
+        return None
+
+    block_cut = prepared.writer_graph_metadata.block_cut
+    block_by_bond = dict(block_cut.biconnected_block_by_bond)
+    block_ids = tuple(sorted(surface.cyclic_block_ids))
+    if len(block_ids) != 2:
+        return None
+
+    blocks: list[tuple[frozenset[AtomId], frozenset[BondId]]] = []
+    for block_id in block_ids:
+        bonds = frozenset(
+            bond_id
+            for bond_id in surface.bonds
+            if block_by_bond.get(bond_id) == block_id
+        )
+        atoms: set[AtomId] = set()
+        degrees: dict[AtomId, int] = {}
+
+        for bond_id in bonds:
+            bond = prepared.graph_index.bond_by_id[bond_id]
+            atoms.update((bond.a, bond.b))
+            degrees[bond.a] = degrees.get(bond.a, 0) + 1
+            degrees[bond.b] = degrees.get(bond.b, 0) + 1
+
+        if (
+            len(atoms) < 3
+            or len(bonds) != len(atoms)
+            or any(degrees[atom] != 2 for atom in atoms)
+        ):
+            return None
+
+        blocks.append((frozenset(atoms), bonds))
+
+    (left_atoms, left_bonds), (right_atoms, right_bonds) = blocks
+    if not left_atoms.isdisjoint(right_atoms):
+        return None
+
+    connector_bonds = frozenset(surface.bonds) - left_bonds - right_bonds
+    if len(connector_bonds) != 1:
+        return None
+
+    connector = next(iter(connector_bonds))
+    if connector not in block_cut.bridge_bonds:
+        return None
+
+    fact = prepared.graph_index.bond_by_id[connector]
+    joins_blocks = (
+        fact.a in left_atoms
+        and fact.b in right_atoms
+    ) or (
+        fact.b in left_atoms
+        and fact.a in right_atoms
+    )
+    if not joins_blocks:
+        return None
+
+    if frozenset(surface.atoms) != left_atoms | right_atoms:
+        return None
+
+    return _WriterTwoCycleBlockEnvelope(
+        cycle_atom_sets=(left_atoms, right_atoms),
+        cycle_bond_sets=(left_bonds, right_bonds),
+        connector_bond=connector,
+    )
+
+
+def _writer_two_cycle_elided_single_policy_is_supported(
+    prepared: SouthStarPreparedMol,
+    envelope: _WriterTwoCycleBlockEnvelope,
+) -> bool:
+    bond_ids = (
+        *tuple(envelope.cycle_bond_sets[0]),
+        *tuple(envelope.cycle_bond_sets[1]),
+        envelope.connector_bond,
+    )
+    for bond_id in bond_ids:
+        bond = prepared.graph_index.bond_by_id[bond_id]
+        if bond.order is not BondOrder.SINGLE:
+            return False
+        try:
+            tree_choices = prepared.policy.bond_text_domain_unchecked(
+                bond_id,
+                slot_kind="tree",
+            )
+        except KeyError:
+            return False
+        if (
+            len(tree_choices) != 1
+            or tree_choices[0].base_text != ""
+        ):
+            return False
+
+    for bond_id in envelope.cycle_bond_sets[0] | envelope.cycle_bond_sets[1]:
+        relation = _writer_public_single_closure_relation(prepared, bond_id)
+        if relation is None:
+            return False
+        if relation.texts != ("",) or relation.compatible_pairs != (("", ""),):
+            return False
+
+    return True
 
 
 def _writer_public_non_single_closure_bond_is_supported(

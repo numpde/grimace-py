@@ -13,6 +13,7 @@ class _WriterExecutionCapabilityKind(Enum):
 
     CLOSURE_ENDPOINT_OPEN = "closure_endpoint_open"
     CLOSURE_ENDPOINT_PAIR = "closure_endpoint_pair"
+    CONCURRENT_CLOSURE_ENDPOINT_OPEN = "concurrent_closure_endpoint_open"
     VISIBLE_CLOSURE_BOND_TEXT = "visible_closure_bond_text"
 
     TETRA_TOKEN_RESTRICTION = "tetra_token_restriction"
@@ -36,6 +37,7 @@ _PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES = frozenset(
         _WriterExecutionCapabilityKind.VISIBLE_TREE_BOND_TEXT,
         _WriterExecutionCapabilityKind.CLOSURE_ENDPOINT_OPEN,
         _WriterExecutionCapabilityKind.CLOSURE_ENDPOINT_PAIR,
+        _WriterExecutionCapabilityKind.CONCURRENT_CLOSURE_ENDPOINT_OPEN,
         _WriterExecutionCapabilityKind.VISIBLE_CLOSURE_BOND_TEXT,
         _WriterExecutionCapabilityKind.TETRA_TOKEN_RESTRICTION,
         _WriterExecutionCapabilityKind.TETRA_LOCAL_ORDER_RESTRICTION,

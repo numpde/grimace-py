@@ -758,6 +758,13 @@ class _WriterNextTokenFrontierSupport:
                 capabilities.add(
                     _WriterExecutionCapabilityKind.CLOSURE_ENDPOINT_OPEN,
                 )
+                if len(self.transition.successor.ring_state.open_endpoints) > 1:
+                    capabilities.add(
+                        (
+                            _WriterExecutionCapabilityKind
+                            .CONCURRENT_CLOSURE_ENDPOINT_OPEN
+                        ),
+                    )
                 if event.bond_text:
                     capabilities.add(
                         _WriterExecutionCapabilityKind

@@ -16523,11 +16523,29 @@ class WriterStateKernelTest(unittest.TestCase):
                     )
 
     def test_non_single_two_cycle_block_bond_branch_roles(self) -> None:
+        rows = (
+            (BondOrder.DOUBLE, "="),
+            (BondOrder.TRIPLE, "#"),
+        )
+
+        for order, marker in rows:
+            with self.subTest(order=order):
+                self._assert_non_single_two_cycle_block_bond_branch_roles(
+                    order=order,
+                    marker=marker,
+                )
+
+    def _assert_non_single_two_cycle_block_bond_branch_roles(
+        self,
+        *,
+        order: BondOrder,
+        marker: str,
+    ) -> None:
         prepared = _prepare_with_ordinary_policy_options(
-            bridge_path_with_non_single_block_bond_facts(BondOrder.DOUBLE),
+            bridge_path_with_non_single_block_bond_facts(order),
             options=OrdinaryPolicyOptions(
                 non_single_ring_closures="joint",
-            ),
+            )
         )
         tree_options = _writer_options(rooted_at_atom=2)
         tree_cursor = _initial_writer_transition_frontier_cursor(
@@ -16606,7 +16624,7 @@ class WriterStateKernelTest(unittest.TestCase):
         )
         self.assertEqual(
             closure_pairs,
-            frozenset((("", "="), ("=", ""))),
+            frozenset((("", marker), (marker, ""))),
         )
         self.assertTrue(
             any(
@@ -16619,7 +16637,7 @@ class WriterStateKernelTest(unittest.TestCase):
         tree_emission_index = next(
             index
             for index, emission in enumerate(tree_path.emissions)
-            if emission == "="
+            if emission == marker
         )
         closure_path = next(
             path
@@ -16810,6 +16828,190 @@ class WriterStateKernelTest(unittest.TestCase):
                     )
                 )
                 self.assertFalse(report.supported)
+
+    def test_non_single_two_cycle_block_bond_relation_classification_is_bounded(
+        self,
+    ) -> None:
+        rows = (
+            (BondOrder.DOUBLE, "="),
+            (BondOrder.TRIPLE, "#"),
+        )
+
+        for order, marker in rows:
+            with self.subTest(order=order):
+                prepared = _prepare_with_ordinary_policy_options(
+                    bridge_path_with_non_single_block_bond_facts(order),
+                    options=OrdinaryPolicyOptions(
+                        non_single_ring_closures="joint",
+                    ),
+                )
+                calls: list[tuple[BondId, str, str]] = []
+                original_decode = prepared.semantics.ring_pair_decode_ok
+
+                def _counting_decode(
+                    facts,
+                    bond_id,
+                    first,
+                    first_mark,
+                    second,
+                    second_mark,
+                ):
+                    calls.append(
+                        (bond_id, first.base_text, second.base_text),
+                    )
+                    return original_decode(
+                        facts,
+                        bond_id,
+                        first,
+                        first_mark,
+                        second,
+                        second_mark,
+                    )
+
+                with (
+                    patch.object(
+                        prepared.semantics,
+                        "ring_pair_decode_ok",
+                        side_effect=_counting_decode,
+                    ),
+                    patch(
+                        "grimace._south_star1.writer_snapshot"
+                        "._writer_public_non_single_closure_bond_is_supported",
+                        side_effect=AssertionError(
+                            "two-cycle profile must use structured report",
+                        ),
+                    ),
+                ):
+                    report = (
+                        writer_snapshot
+                        ._writer_public_cyclic_opening_profile_report(
+                            prepared=prepared,
+                        )
+                    )
+
+                self.assertTrue(report.supported)
+                self.assertEqual(
+                    [
+                        (first, second)
+                        for bond_id, first, second in calls
+                        if bond_id == BondId(0)
+                    ],
+                    [
+                        (first, second)
+                        for first in ("", marker)
+                        for second in ("", marker)
+                    ],
+                )
+
+    def test_invalid_non_single_two_cycle_relation_is_bounded(self) -> None:
+        facts = bridge_path_with_non_single_block_bond_facts(
+            BondOrder.DOUBLE,
+        )
+        rows = (
+            (
+                "semantics",
+                _prepare_with_ordinary_policy_options(
+                    facts,
+                    options=OrdinaryPolicyOptions(
+                        non_single_ring_closures="joint",
+                    ),
+                ),
+                "semantic",
+            ),
+            (
+                "raw",
+                _prepare_with_ordinary_policy_options_and_slots(
+                    facts,
+                    options=OrdinaryPolicyOptions(
+                        non_single_ring_closures="joint",
+                    ),
+                    overrides=(
+                        (
+                            BondId(0),
+                            "ring_endpoint",
+                            (
+                                BondTextChoice("absent", "", False),
+                                BondTextChoice("order", "=", False),
+                                BondTextChoice("extra", "~", False),
+                            ),
+                        ),
+                    ),
+                ),
+                "raw",
+            ),
+        )
+
+        for name, prepared, mode in rows:
+            with self.subTest(name=name):
+                calls: list[tuple[BondId, str, str]] = []
+                original_decode = prepared.semantics.ring_pair_decode_ok
+
+                def _counting_decode(
+                    facts,
+                    bond_id,
+                    first,
+                    first_mark,
+                    second,
+                    second_mark,
+                ):
+                    calls.append(
+                        (bond_id, first.base_text, second.base_text),
+                    )
+                    if (
+                        mode == "semantic"
+                        and bond_id == BondId(0)
+                        and first.base_text == ""
+                        and second.base_text == "="
+                    ):
+                        return False
+                    return original_decode(
+                        facts,
+                        bond_id,
+                        first,
+                        first_mark,
+                        second,
+                        second_mark,
+                    )
+
+                with (
+                    patch.object(
+                        prepared.semantics,
+                        "ring_pair_decode_ok",
+                        side_effect=_counting_decode,
+                    ),
+                    patch(
+                        "grimace._south_star1.writer_snapshot"
+                        "._writer_public_non_single_closure_bond_is_supported",
+                        side_effect=AssertionError(
+                            "two-cycle profile must use structured report",
+                        ),
+                    ),
+                ):
+                    report = (
+                        writer_snapshot
+                        ._writer_public_cyclic_opening_profile_report(
+                            prepared=prepared,
+                        )
+                    )
+
+                self.assertFalse(report.supported)
+                self.assertIn(
+                    (
+                        writer_snapshot
+                        ._WriterPublicCyclicRequiredCapability
+                        .RING_CORE_NON_SINGLE_CLOSURE_BOND
+                    ),
+                    report.unsupported_capabilities,
+                )
+                target_calls = [
+                    (first, second)
+                    for bond_id, first, second in calls
+                    if bond_id == BondId(0)
+                ]
+                if mode == "semantic":
+                    self.assertEqual(len(target_calls), 4)
+                else:
+                    self.assertEqual(target_calls, [])
 
     def test_direct_bridge_two_cycle_support_matches_original_fixture(self) -> None:
         facts = legacy_direct_bridge_separated_triangles_facts()

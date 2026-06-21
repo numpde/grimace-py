@@ -2593,29 +2593,29 @@ def _writer_public_cyclic_opening_profile_report(
             ring_core_non_single_bond_ids=ring_core_non_single_bond_ids,
         )
     )
-    ring_core_has_supported_non_single_closure_bond = (
-        (
-            bool(two_cycle_bond_policy_report.visible_closure_bonds)
-            if two_cycle_bond_policy_report is not None
-            else False
+    if two_cycle_bond_policy_report is not None:
+        ring_core_has_supported_non_single_closure_bond = (
+            len(ring_core_non_single_bond_ids) == 1
+            and (non_single_bond_id := ring_core_non_single_bond_ids[0])
+            in two_cycle_bond_policy_report.visible_closure_bonds
+            and non_single_bond_id
+            not in two_cycle_bond_policy_report.unsupported_closure_bonds
         )
-        or (
+    else:
+        ring_core_has_supported_non_single_closure_bond = (
             len(ring_core_non_single_bond_ids) == 1
             and (
-                (
-                    bond := component_bond_index.get(
-                        ring_core_non_single_bond_ids[0],
-                    )
+                bond := component_bond_index.get(
+                    ring_core_non_single_bond_ids[0],
                 )
-                is not None
             )
+            is not None
             and bond.order in {BondOrder.DOUBLE, BondOrder.TRIPLE}
             and _writer_public_non_single_closure_bond_is_supported(
                 prepared,
                 ring_core_non_single_bond_ids[0],
             )
         )
-    )
     ring_core_unsupported_bond_ids: set[BondId] = set()
     if (
         ring_core_non_single_bond_ids

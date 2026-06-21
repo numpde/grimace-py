@@ -1391,6 +1391,12 @@ class _WriterTwoCycleBlockEnvelope:
 
 
 @dataclass(frozen=True, slots=True)
+class _WriterCyclicBondRoles:
+    closure_candidate_bonds: frozenset[BondId]
+    tree_only_bonds: frozenset[BondId]
+
+
+@dataclass(frozen=True, slots=True)
 class _WriterCyclicAdmissionDecision:
     kind: _WriterCyclicAdmissionDecisionKind
     readiness_gate: _WriterResidualCyclicReadinessGate
@@ -2455,9 +2461,20 @@ def _writer_public_cyclic_opening_profile_report(
         ),
         default=0,
     )
+    two_cycle_envelope = _writer_two_bridge_separated_simple_cycles(
+        prepared,
+        surface,
+    )
+    bond_roles = _writer_public_cyclic_bond_roles(
+        ring_core_bond_ids=ring_core_bond_ids,
+        two_cycle_envelope=two_cycle_envelope,
+    )
+    closure_bond_ids = tuple(
+        sorted(bond_roles.closure_candidate_bonds)
+    )
     ring_core_aromatic_bond_ids = tuple(
         bond_id
-        for bond_id in ring_core_bond_ids
+        for bond_id in closure_bond_ids
         if (
             (bond := component_bond_index.get(bond_id))
             is not None
@@ -2466,7 +2483,7 @@ def _writer_public_cyclic_opening_profile_report(
     )
     ring_core_non_single_bond_ids = tuple(
         bond_id
-        for bond_id in ring_core_bond_ids
+        for bond_id in closure_bond_ids
         if (
             (bond := component_bond_index.get(bond_id))
             is not None
@@ -2475,7 +2492,7 @@ def _writer_public_cyclic_opening_profile_report(
     )
     ring_core_single_closure_relations = tuple(
         relation
-        for bond_id in ring_core_bond_ids
+        for bond_id in closure_bond_ids
         if (
             (bond := component_bond_index.get(bond_id))
             is not None
@@ -2491,7 +2508,7 @@ def _writer_public_cyclic_opening_profile_report(
     )
     ring_core_single_bond_ids = tuple(
         bond_id
-        for bond_id in ring_core_bond_ids
+        for bond_id in closure_bond_ids
         if (
             (bond := component_bond_index.get(bond_id))
             is not None
@@ -2681,10 +2698,6 @@ def _writer_public_cyclic_opening_profile_report(
     unsupported_capabilities: set[
         _WriterPublicCyclicRequiredCapability
     ] = set()
-    two_cycle_envelope = _writer_two_bridge_separated_simple_cycles(
-        prepared,
-        surface,
-    )
     two_cycle_supported = (
         two_cycle_envelope is not None
         and prepared.policy.least_free_ring_labels
@@ -2693,7 +2706,7 @@ def _writer_public_cyclic_opening_profile_report(
         and not prepared.directional_templates
         and _writer_two_cycle_elided_single_policy_is_supported(
             prepared,
-            two_cycle_envelope,
+            bond_roles,
         )
     )
 
@@ -3035,16 +3048,40 @@ def _writer_two_bridge_separated_simple_cycles(
     )
 
 
+def _writer_public_cyclic_bond_roles(
+    *,
+    ring_core_bond_ids: tuple[BondId, ...],
+    two_cycle_envelope: _WriterTwoCycleBlockEnvelope | None,
+) -> _WriterCyclicBondRoles:
+    if two_cycle_envelope is None:
+        return _WriterCyclicBondRoles(
+            closure_candidate_bonds=frozenset(ring_core_bond_ids),
+            tree_only_bonds=frozenset(),
+        )
+
+    closure_bonds = (
+        two_cycle_envelope.cycle_bond_sets[0]
+        | two_cycle_envelope.cycle_bond_sets[1]
+    )
+    tree_only = frozenset((two_cycle_envelope.connector_bond,))
+    if closure_bonds & tree_only:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "two-cycle closure and connector bond roles overlap",
+        )
+
+    return _WriterCyclicBondRoles(
+        closure_candidate_bonds=closure_bonds,
+        tree_only_bonds=tree_only,
+    )
+
+
 def _writer_two_cycle_elided_single_policy_is_supported(
     prepared: SouthStarPreparedMol,
-    envelope: _WriterTwoCycleBlockEnvelope,
+    roles: _WriterCyclicBondRoles,
 ) -> bool:
-    bond_ids = (
-        *tuple(envelope.cycle_bond_sets[0]),
-        *tuple(envelope.cycle_bond_sets[1]),
-        envelope.connector_bond,
-    )
-    for bond_id in bond_ids:
+    tree_bonds = roles.closure_candidate_bonds | roles.tree_only_bonds
+    for bond_id in sorted(tree_bonds):
         bond = prepared.graph_index.bond_by_id[bond_id]
         if bond.order is not BondOrder.SINGLE:
             return False
@@ -3061,7 +3098,7 @@ def _writer_two_cycle_elided_single_policy_is_supported(
         ):
             return False
 
-    for bond_id in envelope.cycle_bond_sets[0] | envelope.cycle_bond_sets[1]:
+    for bond_id in sorted(roles.closure_candidate_bonds):
         relation = _writer_public_single_closure_relation(prepared, bond_id)
         if relation is None:
             return False

@@ -15908,6 +15908,57 @@ class WriterStateKernelTest(unittest.TestCase):
                 )
             )
 
+        pending = tuple(
+            writer_state_from_key(key)
+            for key, _weight in cursor.weighted_states
+        )
+        seen: set[WriterStateKey] = set()
+        observed_support = False
+        while pending:
+            state = pending[0]
+            pending = pending[1:]
+            key = writer_state_key(state)
+            if key in seen:
+                continue
+            seen.add(key)
+
+            for entry in writer_transitions._legal_writer_next_token_frontier(
+                prepared,
+                state,
+            ):
+                for support in entry.supports:
+                    if concurrent not in support.execution_capabilities:
+                        pending = (*pending, support.transition.successor)
+                        continue
+
+                    self.assertTrue(
+                        any(
+                            isinstance(
+                                event,
+                                writer_transitions.WriterRingEndpointEmitted,
+                            )
+                            for event in support.transition.events
+                        )
+                    )
+                    self.assertEqual(
+                        len(state.ring_state.open_endpoints),
+                        1,
+                    )
+                    self.assertEqual(
+                        len(
+                            support
+                            .transition
+                            .successor
+                            .ring_state
+                            .open_endpoints
+                        ),
+                        2,
+                    )
+                    observed_support = True
+                    pending = (*pending, support.transition.successor)
+
+        self.assertTrue(observed_support)
+
         _assert_replay_succeeds_for_execution_capability_uses(
             self,
             audit=decision.readiness_gate.audit,
@@ -16031,6 +16082,175 @@ class WriterStateKernelTest(unittest.TestCase):
                 .BLOCKED_PUBLIC_CYCLIC_PROFILE
             ),
         )
+
+    def test_bridge_separated_two_cycle_connector_ring_endpoint_is_unreachable(
+        self,
+    ) -> None:
+        base = _prepare(bridge_separated_triangles_facts())
+        rows = (
+            ("missing", _prepare_bridge_separated_two_cycle_with_policy_slot()),
+            (
+                "explicit",
+                _prepare_bridge_separated_two_cycle_with_policy_slot(
+                    bond=BondId(6),
+                    slot_kind="ring_endpoint",
+                    choices=(
+                        BondTextChoice("explicit", "-", True),
+                    ),
+                ),
+            ),
+            (
+                "foreign",
+                _prepare_bridge_separated_two_cycle_with_policy_slot(
+                    bond=BondId(6),
+                    slot_kind="ring_endpoint",
+                    choices=(
+                        BondTextChoice("foreign", "~", False),
+                    ),
+                ),
+            ),
+        )
+        options = _writer_options(rooted_at_atom=0)
+        base_cursor = _initial_writer_transition_frontier_cursor(base, options)
+        base_image = enumerate_prepared_stereo_support(
+            prepared=base,
+            runtime_options=options,
+        )
+
+        for name, prepared in rows:
+            with self.subTest(name=name):
+                calls: list[BondId] = []
+                original = writer_snapshot.writer_closure_bond_text_relation
+
+                def _recording_relation(prepared_arg, bond_id, **kwargs):
+                    calls.append(bond_id)
+                    return original(prepared_arg, bond_id, **kwargs)
+
+                with patch(
+                    "grimace._south_star1.writer_snapshot"
+                    ".writer_closure_bond_text_relation",
+                    side_effect=_recording_relation,
+                ):
+                    report = (
+                        writer_snapshot
+                        ._writer_public_cyclic_opening_profile_report(
+                            prepared=prepared,
+                        )
+                    )
+
+                self.assertTrue(report.supported)
+                self.assertNotIn(BondId(6), calls)
+                self.assertTrue(set(calls) <= set(BondId(i) for i in range(6)))
+                self.assertNotIn(
+                    (
+                        writer_snapshot
+                        ._WriterPublicCyclicRequiredCapability
+                        .RING_CORE_VISIBLE_SINGLE_CLOSURE_BOND_TEXT
+                    ),
+                    report.required_capabilities,
+                )
+
+                cursor = _initial_writer_transition_frontier_cursor(
+                    prepared,
+                    options,
+                )
+                decision = (
+                    writer_snapshot
+                    ._cyclic_writer_admission_decision_from_cursor(
+                        prepared=prepared,
+                        runtime_options=options,
+                        cursor=cursor,
+                    )
+                )
+                self.assertIs(
+                    decision.kind,
+                    (
+                        writer_snapshot
+                        ._WriterCyclicAdmissionDecisionKind
+                        .READY_PUBLIC
+                    ),
+                )
+                assert decision.execution_capability_certificate is not None
+                self.assertNotIn(
+                    (
+                        writer_snapshot
+                        ._WriterExecutionCapabilityKind
+                        .VISIBLE_CLOSURE_BOND_TEXT
+                    ),
+                    (
+                        decision
+                        .execution_capability_certificate
+                        .required_capabilities
+                    ),
+                )
+
+                image = enumerate_prepared_stereo_support(
+                    prepared=prepared,
+                    runtime_options=options,
+                )
+                self.assertEqual(image.strings, base_image.strings)
+                self.assertEqual(
+                    count_writer_frontier_support(
+                        prepared,
+                        cursor.support_state,
+                    ),
+                    count_writer_frontier_support(
+                        base,
+                        base_cursor.support_state,
+                    ),
+                )
+                self.assertEqual(
+                    count_writer_cursor_completions(prepared, cursor),
+                    count_writer_cursor_completions(base, base_cursor),
+                )
+
+    def test_bridge_separated_two_cycle_reachable_bond_slots_are_required(
+        self,
+    ) -> None:
+        rows = (
+            (
+                "cycle_ring_endpoint_missing",
+                _prepare_bridge_separated_two_cycle_with_policy_slot(
+                    bond=BondId(2),
+                    slot_kind="ring_endpoint",
+                    choices=None,
+                ),
+            ),
+            (
+                "cycle_ring_endpoint_corrupt",
+                _prepare_bridge_separated_two_cycle_with_policy_slot(
+                    bond=BondId(2),
+                    slot_kind="ring_endpoint",
+                    choices=(BondTextChoice("explicit", "-", True),),
+                ),
+            ),
+            (
+                "connector_tree_missing",
+                _prepare_bridge_separated_two_cycle_with_policy_slot(
+                    bond=BondId(6),
+                    slot_kind="tree",
+                    choices=None,
+                ),
+            ),
+            (
+                "connector_tree_corrupt",
+                _prepare_bridge_separated_two_cycle_with_policy_slot(
+                    bond=BondId(6),
+                    slot_kind="tree",
+                    choices=(BondTextChoice("explicit", "-", True),),
+                ),
+            ),
+        )
+
+        for name, prepared in rows:
+            with self.subTest(name=name):
+                report = (
+                    writer_snapshot
+                    ._writer_public_cyclic_opening_profile_report(
+                        prepared=prepared,
+                    )
+                )
+                self.assertFalse(report.supported)
 
     def test_bridge_separated_two_cycle_public_envelope_blocks_near_misses(
         self,
@@ -40141,6 +40361,35 @@ def bridge_separated_triangles_with_pendant_facts() -> MoleculeFacts:
                 bonds=tuple(BondId(index) for index in range(8)),
             ),
         ),
+    )
+
+
+def _prepare_bridge_separated_two_cycle_with_policy_slot(
+    *,
+    bond: BondId = BondId(6),
+    slot_kind: str = "ring_endpoint",
+    choices: tuple[BondTextChoice, ...] | None = None,
+) -> SouthStarPreparedMol:
+    facts = bridge_separated_triangles_facts()
+    policy = ordinary_policy_for_facts(facts)
+    domains = tuple(
+        domain
+        for domain in policy.bond_text_domains
+        if not (domain.bond == bond and domain.slot_kind == slot_kind)
+    )
+    if choices is not None:
+        domains = (
+            *domains,
+            BondTextDomain(
+                bond=bond,
+                slot_kind=slot_kind,
+                choices=choices,
+            ),
+        )
+    return prepare_south_star_mol_from_facts(
+        facts,
+        writer_surface=SouthStarWriterSurface(),
+        policy=replace(policy, bond_text_domains=domains),
     )
 
 

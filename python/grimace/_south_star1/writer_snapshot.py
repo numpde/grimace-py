@@ -2504,6 +2504,7 @@ def _writer_public_cyclic_opening_profile_report(
         _writer_two_cycle_bond_policy_report(
             prepared,
             bond_roles,
+            two_cycle_envelope,
         )
         if two_cycle_envelope is not None
         else None
@@ -2594,12 +2595,17 @@ def _writer_public_cyclic_opening_profile_report(
         )
     )
     if two_cycle_bond_policy_report is not None:
+        expected_non_single_closure_bonds = frozenset(
+            ring_core_non_single_bond_ids,
+        )
+        supported_non_single_closure_bonds = (
+            two_cycle_bond_policy_report.visible_closure_bonds
+            - two_cycle_bond_policy_report.unsupported_closure_bonds
+        )
         ring_core_has_supported_non_single_closure_bond = (
-            len(ring_core_non_single_bond_ids) == 1
-            and (non_single_bond_id := ring_core_non_single_bond_ids[0])
-            in two_cycle_bond_policy_report.visible_closure_bonds
-            and non_single_bond_id
-            not in two_cycle_bond_policy_report.unsupported_closure_bonds
+            bool(expected_non_single_closure_bonds)
+            and expected_non_single_closure_bonds
+            == supported_non_single_closure_bonds
         )
     else:
         ring_core_has_supported_non_single_closure_bond = (
@@ -3249,6 +3255,7 @@ def _writer_public_cyclic_bond_roles(
 def _writer_two_cycle_bond_policy_report(
     prepared: SouthStarPreparedMol,
     roles: _WriterCyclicBondRoles,
+    envelope: _WriterTwoCycleBlockEnvelope,
 ) -> _WriterTwoCycleBondPolicyReport:
     unsupported_tree: set[BondId] = set()
     unsupported_closure: set[BondId] = set()
@@ -3303,7 +3310,11 @@ def _writer_two_cycle_bond_policy_report(
         else:
             visible_closure.add(bond_id)
 
-    if len(non_single_backbone) > 1:
+    if not _writer_two_cycle_non_single_shape_is_supported(
+        non_single_backbone=frozenset(non_single_backbone),
+        roles=roles,
+        envelope=envelope,
+    ):
         unsupported_tree.update(non_single_backbone)
         unsupported_closure.update(
             non_single_backbone & roles.closure_candidate_bonds,
@@ -3314,6 +3325,24 @@ def _writer_two_cycle_bond_policy_report(
         unsupported_closure_bonds=frozenset(unsupported_closure),
         visible_tree_bonds=frozenset(visible_tree),
         visible_closure_bonds=frozenset(visible_closure),
+    )
+
+
+def _writer_two_cycle_non_single_shape_is_supported(
+    *,
+    non_single_backbone: frozenset[BondId],
+    roles: _WriterCyclicBondRoles,
+    envelope: _WriterTwoCycleBlockEnvelope,
+) -> bool:
+    connector_non_single = non_single_backbone & roles.tree_only_bonds
+    cycle_non_single = non_single_backbone & roles.closure_candidate_bonds
+
+    if connector_non_single:
+        return len(connector_non_single) == 1 and not cycle_non_single
+
+    return all(
+        len(cycle_non_single & block_bonds) <= 1
+        for block_bonds in envelope.cycle_bond_sets
     )
 
 

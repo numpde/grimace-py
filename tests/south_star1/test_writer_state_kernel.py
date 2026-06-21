@@ -16829,6 +16829,350 @@ class WriterStateKernelTest(unittest.TestCase):
                 )
                 self.assertFalse(report.supported)
 
+    def test_public_writer_shaped_two_cycles_with_two_non_single_blocks_succeeds(
+        self,
+    ) -> None:
+        rows = (
+            (BondOrder.DOUBLE, "=", BondOrder.DOUBLE, "="),
+            (BondOrder.DOUBLE, "=", BondOrder.TRIPLE, "#"),
+            (BondOrder.TRIPLE, "#", BondOrder.DOUBLE, "="),
+            (BondOrder.TRIPLE, "#", BondOrder.TRIPLE, "#"),
+        )
+
+        for left_order, left_marker, right_order, right_marker in rows:
+            facts = bridge_path_with_two_non_single_block_bonds_facts(
+                left_order,
+                right_order,
+            )
+            for root in (*range(len(facts.atoms)), -1):
+                with self.subTest(
+                    left=left_order,
+                    right=right_order,
+                    root=root,
+                ):
+                    prepared = _prepare_with_ordinary_policy_options(
+                        facts,
+                        options=OrdinaryPolicyOptions(
+                            non_single_ring_closures="joint",
+                        ),
+                    )
+                    options = _writer_options(rooted_at_atom=root)
+                    cursor = _initial_writer_transition_frontier_cursor(
+                        prepared,
+                        options,
+                    )
+                    decision = (
+                        writer_snapshot
+                        ._cyclic_writer_admission_decision_from_cursor(
+                            prepared=prepared,
+                            runtime_options=options,
+                            cursor=cursor,
+                        )
+                    )
+
+                    self.assertIs(
+                        decision.kind,
+                        (
+                            writer_snapshot
+                            ._WriterCyclicAdmissionDecisionKind
+                            .READY_PUBLIC
+                        ),
+                    )
+                    assert decision.public_profile is not None
+                    self.assertTrue({
+                        (
+                            writer_snapshot
+                            ._WriterPublicCyclicRequiredCapability
+                            .MULTI_CYCLE_TOPOLOGY
+                        ),
+                        (
+                            writer_snapshot
+                            ._WriterPublicCyclicRequiredCapability
+                            .TREE_BOND_TEXT_EMISSION
+                        ),
+                        (
+                            writer_snapshot
+                            ._WriterPublicCyclicRequiredCapability
+                            .RING_CORE_NON_SINGLE_CLOSURE_BOND
+                        ),
+                    }.issubset(decision.public_profile.required_capabilities))
+
+                    image = enumerate_prepared_stereo_support(
+                        prepared=prepared,
+                        runtime_options=options,
+                    )
+                    self.assertTrue(image.strings)
+                    expected_marker_counts = Counter(
+                        (left_marker, right_marker),
+                    )
+                    for text in image.strings:
+                        for marker, count in expected_marker_counts.items():
+                            self.assertEqual(text.count(marker), count)
+                    self.assertEqual(
+                        image.distinct_count,
+                        count_writer_frontier_support(
+                            prepared,
+                            cursor.support_state,
+                        ),
+                    )
+                    self.assertEqual(
+                        image.witness_count,
+                        count_writer_cursor_completions(prepared, cursor),
+                    )
+
+    def test_two_non_single_block_bonds_branch_roles(self) -> None:
+        prepared = _prepare_with_ordinary_policy_options(
+            bridge_path_with_two_non_single_block_bonds_facts(
+                BondOrder.DOUBLE,
+                BondOrder.TRIPLE,
+            ),
+            options=OrdinaryPolicyOptions(
+                non_single_ring_closures="joint",
+            ),
+        )
+        options = _writer_options(rooted_at_atom=0)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+        initial_snapshot = (
+            writer_snapshot
+            ._capture_writer_frontier_snapshot_unchecked(
+                prepared=prepared,
+                runtime_options=options,
+                cursor=cursor,
+            )
+        )
+        visible_tree = (
+            writer_snapshot
+            ._WriterExecutionCapabilityKind
+            .VISIBLE_TREE_BOND_TEXT
+        )
+        visible_closure = (
+            writer_snapshot
+            ._WriterExecutionCapabilityKind
+            .VISIBLE_CLOSURE_BOND_TEXT
+        )
+        paths = _branch_terminal_paths(prepared, cursor)
+
+        def role(path: _BranchTerminalPath) -> tuple[str, str]:
+            tree_bonds = frozenset(
+                record.bond
+                for record in path.terminal_state.stereo_state.bond_occurrences
+            )
+            return (
+                "tree" if BondId(0) in tree_bonds else "closure",
+                "tree" if BondId(3) in tree_bonds else "closure",
+            )
+
+        paths_by_role: dict[tuple[str, str], _BranchTerminalPath] = {}
+        for path in paths:
+            paths_by_role.setdefault(role(path), path)
+        self.assertEqual(
+            frozenset(paths_by_role),
+            frozenset((
+                ("tree", "tree"),
+                ("tree", "closure"),
+                ("closure", "tree"),
+                ("closure", "closure"),
+            )),
+        )
+
+        self.assertIn(visible_tree, paths_by_role[("tree", "tree")].capabilities)
+        self.assertNotIn(
+            visible_closure,
+            paths_by_role[("tree", "tree")].capabilities,
+        )
+        self.assertIn(
+            visible_closure,
+            paths_by_role[("closure", "closure")].capabilities,
+        )
+        self.assertNotIn(
+            visible_tree,
+            paths_by_role[("closure", "closure")].capabilities,
+        )
+        for mixed_role in (("tree", "closure"), ("closure", "tree")):
+            self.assertIn(visible_tree, paths_by_role[mixed_role].capabilities)
+            self.assertIn(visible_closure, paths_by_role[mixed_role].capabilities)
+
+        pairs_by_bond = {
+            BondId(0): set(),
+            BondId(3): set(),
+        }
+        cross_pairs: set[
+            tuple[tuple[str, str], tuple[str, str]]
+        ] = set()
+        for path in paths:
+            closures = {
+                closure.bond: (
+                    closure.first_endpoint_bond_text,
+                    closure.second_endpoint_bond_text,
+                )
+                for closure in path.terminal_state.ring_state.closed_closures
+                if closure.bond in pairs_by_bond
+            }
+            for bond_id, pair in closures.items():
+                pairs_by_bond[bond_id].add(pair)
+            if set(closures) == {BondId(0), BondId(3)}:
+                cross_pairs.add((closures[BondId(0)], closures[BondId(3)]))
+        self.assertEqual(pairs_by_bond[BondId(0)], {("", "="), ("=", "")})
+        self.assertEqual(pairs_by_bond[BondId(3)], {("", "#"), ("#", "")})
+        self.assertEqual(
+            cross_pairs,
+            {
+                (left, right)
+                for left in (("", "="), ("=", ""))
+                for right in (("", "#"), ("#", ""))
+            },
+        )
+
+        closure_path = next(
+            path
+            for path in paths
+            if (
+                role(path) == ("closure", "closure")
+                and any(
+                    {
+                        endpoint.bond
+                        for endpoint in state.ring_state.open_endpoints
+                    }
+                    == {BondId(0), BondId(3)}
+                    for state in path.states
+                )
+            )
+        )
+        both_open_index = next(
+            index
+            for index, state in enumerate(closure_path.states)
+            if {
+                endpoint.bond
+                for endpoint in state.ring_state.open_endpoints
+            }
+            == {BondId(0), BondId(3)}
+        )
+        after_pair_index = next(
+            index
+            for index, state in enumerate(closure_path.states)
+            if (
+                len(state.ring_state.open_endpoints) == 1
+                and any(
+                    endpoint.bond in {BondId(0), BondId(3)}
+                    for endpoint in state.ring_state.open_endpoints
+                )
+                and state.ring_state.closed_closures
+            )
+        )
+        previous_open_by_bond = {
+            endpoint.bond: endpoint
+            for endpoint in closure_path.states[both_open_index].ring_state.open_endpoints
+        }
+        current_endpoint = (
+            closure_path
+            .states[after_pair_index]
+            .ring_state
+            .open_endpoints[0]
+        )
+        self.assertEqual(
+            previous_open_by_bond[current_endpoint.bond],
+            current_endpoint,
+        )
+
+        mixed_path = paths_by_role[("tree", "closure")]
+        mixed_tree_index = next(
+            index
+            for index, emission in enumerate(mixed_path.emissions)
+            if emission == "="
+        )
+        self.assertTrue(
+            mixed_path.states[mixed_tree_index].ring_state.open_endpoints,
+        )
+        for path, index in (
+            (closure_path, both_open_index),
+            (closure_path, after_pair_index),
+            (mixed_path, mixed_tree_index),
+            (mixed_path, mixed_tree_index + 1),
+        ):
+            with self.subTest(role=role(path), index=index):
+                outcome = (
+                    _assert_checked_prefix_successor_snapshot_resume_equivalence(
+                        self,
+                        snapshot=initial_snapshot,
+                        prepared=prepared,
+                        emitted_texts=path.emissions[:index],
+                    )
+                )
+                advanced = outcome.replay_outcome.advanced_snapshot
+                self.assertIsNotNone(advanced)
+                assert advanced is not None
+                self.assertIn(
+                    writer_state_key(path.states[index]),
+                    dict(advanced.cursor.weighted_states),
+                )
+
+    def test_two_non_single_block_bonds_relation_classification_is_bounded(
+        self,
+    ) -> None:
+        prepared = _prepare_with_ordinary_policy_options(
+            bridge_path_with_two_non_single_block_bonds_facts(
+                BondOrder.DOUBLE,
+                BondOrder.TRIPLE,
+            ),
+            options=OrdinaryPolicyOptions(
+                non_single_ring_closures="joint",
+            ),
+        )
+        calls: list[tuple[BondId, str, str]] = []
+        original_decode = prepared.semantics.ring_pair_decode_ok
+
+        def _counting_decode(
+            facts,
+            bond_id,
+            first,
+            first_mark,
+            second,
+            second_mark,
+        ):
+            calls.append((bond_id, first.base_text, second.base_text))
+            return original_decode(
+                facts,
+                bond_id,
+                first,
+                first_mark,
+                second,
+                second_mark,
+            )
+
+        with (
+            patch.object(
+                prepared.semantics,
+                "ring_pair_decode_ok",
+                side_effect=_counting_decode,
+            ),
+            patch(
+                "grimace._south_star1.writer_snapshot"
+                "._writer_public_non_single_closure_bond_is_supported",
+                side_effect=AssertionError(
+                    "two-cycle profile must use structured report",
+                ),
+            ),
+        ):
+            report = writer_snapshot._writer_public_cyclic_opening_profile_report(
+                prepared=prepared,
+            )
+
+        self.assertTrue(report.supported)
+        target_calls = [
+            (bond_id, first, second)
+            for bond_id, first, second in calls
+            if bond_id in {BondId(0), BondId(3)}
+        ]
+        self.assertEqual(len(target_calls), 8)
+        self.assertEqual(
+            sum(1 for bond_id, _first, _second in target_calls if bond_id == BondId(0)),
+            4,
+        )
+        self.assertEqual(
+            sum(1 for bond_id, _first, _second in target_calls if bond_id == BondId(3)),
+            4,
+        )
+
     def test_non_single_two_cycle_block_bond_relation_classification_is_bounded(
         self,
     ) -> None:
@@ -42085,6 +42429,32 @@ def bridge_path_with_non_single_block_bond_facts(
         bonds=tuple(
             replace(bond, order=order)
             if bond.id in visible_bonds
+            else bond
+            for bond in base.bonds
+        ),
+    )
+
+
+def bridge_path_with_two_non_single_block_bonds_facts(
+    left_order: BondOrder,
+    right_order: BondOrder,
+) -> MoleculeFacts:
+    if (
+        left_order not in {BondOrder.DOUBLE, BondOrder.TRIPLE}
+        or right_order not in {BondOrder.DOUBLE, BondOrder.TRIPLE}
+    ):
+        raise AssertionError("non-single block orders must be double or triple")
+
+    base = bridge_separated_triangles_facts(connector_length=3)
+    orders = {
+        BondId(0): left_order,
+        BondId(3): right_order,
+    }
+    return replace(
+        base,
+        bonds=tuple(
+            replace(bond, order=orders[bond.id])
+            if bond.id in orders
             else bond
             for bond in base.bonds
         ),

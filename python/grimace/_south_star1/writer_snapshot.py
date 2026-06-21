@@ -1387,7 +1387,12 @@ class _WriterPublicCyclicOpeningProfileReport:
 class _WriterTwoCycleBlockEnvelope:
     cycle_atom_sets: tuple[frozenset[AtomId], frozenset[AtomId]]
     cycle_bond_sets: tuple[frozenset[BondId], frozenset[BondId]]
-    connector_bond: BondId
+    connector_atom_path: tuple[AtomId, ...]
+    connector_bond_path: tuple[BondId, ...]
+
+    @property
+    def connector_bonds(self) -> frozenset[BondId]:
+        return frozenset(self.connector_bond_path)
 
 
 @dataclass(frozen=True, slots=True)
@@ -3020,32 +3025,88 @@ def _writer_two_bridge_separated_simple_cycles(
         return None
 
     connector_bonds = frozenset(surface.bonds) - left_bonds - right_bonds
-    if len(connector_bonds) != 1:
+    if not connector_bonds:
+        return None
+    if not connector_bonds.issubset(block_cut.bridge_bonds):
         return None
 
-    connector = next(iter(connector_bonds))
-    if connector not in block_cut.bridge_bonds:
+    adjacency: dict[AtomId, list[tuple[BondId, AtomId]]] = {}
+    for bond_id in connector_bonds:
+        bond = prepared.graph_index.bond_by_id[bond_id]
+        adjacency.setdefault(bond.a, []).append((bond_id, bond.b))
+        adjacency.setdefault(bond.b, []).append((bond_id, bond.a))
+
+    connector_atoms = frozenset(adjacency)
+    left_attachments = connector_atoms & left_atoms
+    right_attachments = connector_atoms & right_atoms
+    if len(left_attachments) != 1 or len(right_attachments) != 1:
         return None
 
-    fact = prepared.graph_index.bond_by_id[connector]
-    joins_blocks = (
-        fact.a in left_atoms
-        and fact.b in right_atoms
-    ) or (
-        fact.b in left_atoms
-        and fact.a in right_atoms
+    left_attachment = next(iter(left_attachments))
+    right_attachment = next(iter(right_attachments))
+    endpoints = frozenset(
+        atom
+        for atom, edges in adjacency.items()
+        if len(edges) == 1
     )
-    if not joins_blocks:
+    if endpoints != frozenset((left_attachment, right_attachment)):
+        return None
+    if any(
+        len(edges) != 2
+        for atom, edges in adjacency.items()
+        if atom not in endpoints
+    ):
+        return None
+    if len(connector_bonds) != len(connector_atoms) - 1:
         return None
 
-    if frozenset(surface.atoms) != left_atoms | right_atoms:
+    path_atoms, path_bonds = _ordered_writer_connector_path(
+        adjacency,
+        start=left_attachment,
+        end=right_attachment,
+    )
+    if frozenset(path_bonds) != connector_bonds:
+        return None
+
+    internal_atoms = connector_atoms - left_atoms - right_atoms
+    if frozenset(surface.atoms) != left_atoms | right_atoms | internal_atoms:
         return None
 
     return _WriterTwoCycleBlockEnvelope(
         cycle_atom_sets=(left_atoms, right_atoms),
         cycle_bond_sets=(left_bonds, right_bonds),
-        connector_bond=connector,
+        connector_atom_path=path_atoms,
+        connector_bond_path=path_bonds,
     )
+
+
+def _ordered_writer_connector_path(
+    adjacency: dict[AtomId, list[tuple[BondId, AtomId]]],
+    *,
+    start: AtomId,
+    end: AtomId,
+) -> tuple[tuple[AtomId, ...], tuple[BondId, ...]]:
+    atoms: list[AtomId] = [start]
+    bonds: list[BondId] = []
+    previous: AtomId | None = None
+    current = start
+
+    while current != end:
+        candidates = tuple(
+            (bond_id, atom)
+            for bond_id, atom in adjacency.get(current, ())
+            if atom != previous
+        )
+        if len(candidates) != 1:
+            return ((), ())
+
+        bond_id, next_atom = candidates[0]
+        bonds.append(bond_id)
+        atoms.append(next_atom)
+        previous = current
+        current = next_atom
+
+    return (tuple(atoms), tuple(bonds))
 
 
 def _writer_public_cyclic_bond_roles(
@@ -3063,7 +3124,7 @@ def _writer_public_cyclic_bond_roles(
         two_cycle_envelope.cycle_bond_sets[0]
         | two_cycle_envelope.cycle_bond_sets[1]
     )
-    tree_only = frozenset((two_cycle_envelope.connector_bond,))
+    tree_only = two_cycle_envelope.connector_bonds
     if closure_bonds & tree_only:
         raise SouthStarError(
             SouthStarErrorKind.INTERNAL_INVARIANT,

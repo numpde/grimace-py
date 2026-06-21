@@ -17052,6 +17052,257 @@ class WriterStateKernelTest(unittest.TestCase):
             any(bond_id == BondId(7) for bond_id, _first, _second in calls),
         )
 
+    def test_two_cycle_visible_bond_shape_bounds_semantic_classification(
+        self,
+    ) -> None:
+        def _with_orders(
+            orders: dict[BondId, BondOrder],
+        ) -> MoleculeFacts:
+            base = bridge_separated_triangles_facts(connector_length=3)
+            return replace(
+                base,
+                bonds=tuple(
+                    replace(bond, order=orders[bond.id])
+                    if bond.id in orders
+                    else bond
+                    for bond in base.bonds
+                ),
+            )
+
+        admitted_rows = (
+            ("none", {}, {}),
+            ("connector", {BondId(7): BondOrder.DOUBLE}, {}),
+            ("left", {BondId(0): BondOrder.DOUBLE}, {BondId(0): 4}),
+            ("right", {BondId(3): BondOrder.TRIPLE}, {BondId(3): 4}),
+            (
+                "left_right",
+                {
+                    BondId(0): BondOrder.DOUBLE,
+                    BondId(3): BondOrder.TRIPLE,
+                },
+                {BondId(0): 4, BondId(3): 4},
+            ),
+            (
+                "connector_left",
+                {
+                    BondId(7): BondOrder.DOUBLE,
+                    BondId(0): BondOrder.TRIPLE,
+                },
+                {BondId(0): 4},
+            ),
+            (
+                "connector_right",
+                {
+                    BondId(7): BondOrder.TRIPLE,
+                    BondId(3): BondOrder.DOUBLE,
+                },
+                {BondId(3): 4},
+            ),
+        )
+        for name, orders, expected_relation_calls in admitted_rows:
+            with self.subTest(name=name):
+                prepared = _prepare_with_ordinary_policy_options(
+                    _with_orders(orders),
+                    options=OrdinaryPolicyOptions(
+                        non_single_ring_closures="joint",
+                    ),
+                )
+                relation_calls: list[BondId] = []
+                tree_calls: list[BondId] = []
+                original_relation_decode = (
+                    prepared.semantics.ring_pair_decode_ok
+                )
+                original_tree_decode = prepared.semantics.bond_decode_ok
+
+                def _counting_relation_decode(
+                    facts,
+                    bond_id,
+                    first,
+                    first_mark,
+                    second,
+                    second_mark,
+                ):
+                    relation_calls.append(bond_id)
+                    return original_relation_decode(
+                        facts,
+                        bond_id,
+                        first,
+                        first_mark,
+                        second,
+                        second_mark,
+                    )
+
+                def _counting_tree_decode(
+                    facts,
+                    bond_id,
+                    choice,
+                    mark,
+                ):
+                    tree_calls.append(bond_id)
+                    return original_tree_decode(facts, bond_id, choice, mark)
+
+                with (
+                    patch.object(
+                        prepared.semantics,
+                        "ring_pair_decode_ok",
+                        side_effect=_counting_relation_decode,
+                    ),
+                    patch.object(
+                        prepared.semantics,
+                        "bond_decode_ok",
+                        side_effect=_counting_tree_decode,
+                    ),
+                ):
+                    report = (
+                        writer_snapshot
+                        ._writer_public_cyclic_opening_profile_report(
+                            prepared=prepared,
+                        )
+                    )
+
+                self.assertTrue(report.supported)
+                non_single_bonds = frozenset(orders)
+                self.assertEqual(
+                    Counter(
+                        bond_id
+                        for bond_id in relation_calls
+                        if bond_id in non_single_bonds
+                    ),
+                    Counter(expected_relation_calls),
+                )
+                expected_tree_bonds = {
+                    bond_id
+                    for bond_id in orders
+                    if bond_id in {BondId(0), BondId(3), BondId(7)}
+                }
+                self.assertEqual(
+                    {
+                        bond_id
+                        for bond_id in tree_calls
+                        if bond_id in non_single_bonds
+                    },
+                    expected_tree_bonds,
+                )
+                self.assertNotIn(BondId(7), relation_calls)
+
+        rejected_rows = (
+            (
+                "connector_both_blocks",
+                {
+                    BondId(7): BondOrder.DOUBLE,
+                    BondId(0): BondOrder.DOUBLE,
+                    BondId(3): BondOrder.TRIPLE,
+                },
+            ),
+            (
+                "two_connector_bonds",
+                {
+                    BondId(6): BondOrder.DOUBLE,
+                    BondId(7): BondOrder.TRIPLE,
+                },
+            ),
+            (
+                "same_block",
+                {
+                    BondId(0): BondOrder.DOUBLE,
+                    BondId(1): BondOrder.TRIPLE,
+                },
+            ),
+            (
+                "more_than_two",
+                {
+                    BondId(7): BondOrder.DOUBLE,
+                    BondId(0): BondOrder.DOUBLE,
+                    BondId(1): BondOrder.TRIPLE,
+                },
+            ),
+        )
+        for name, orders in rejected_rows:
+            with self.subTest(name=name):
+                prepared = _prepare_with_ordinary_policy_options(
+                    _with_orders(orders),
+                    options=OrdinaryPolicyOptions(
+                        non_single_ring_closures="joint",
+                    ),
+                )
+                relation_calls: list[BondId] = []
+                tree_calls: list[BondId] = []
+                original_relation_decode = (
+                    prepared.semantics.ring_pair_decode_ok
+                )
+                original_tree_decode = prepared.semantics.bond_decode_ok
+
+                def _counting_relation_decode(
+                    facts,
+                    bond_id,
+                    first,
+                    first_mark,
+                    second,
+                    second_mark,
+                ):
+                    relation_calls.append(bond_id)
+                    return original_relation_decode(
+                        facts,
+                        bond_id,
+                        first,
+                        first_mark,
+                        second,
+                        second_mark,
+                    )
+
+                def _counting_tree_decode(
+                    facts,
+                    bond_id,
+                    choice,
+                    mark,
+                ):
+                    tree_calls.append(bond_id)
+                    return original_tree_decode(facts, bond_id, choice, mark)
+
+                with (
+                    patch.object(
+                        prepared.semantics,
+                        "ring_pair_decode_ok",
+                        side_effect=_counting_relation_decode,
+                    ),
+                    patch.object(
+                        prepared.semantics,
+                        "bond_decode_ok",
+                        side_effect=_counting_tree_decode,
+                    ),
+                ):
+                    report = (
+                        writer_snapshot
+                        ._writer_public_cyclic_opening_profile_report(
+                            prepared=prepared,
+                        )
+                    )
+
+                self.assertFalse(report.supported)
+                non_single_bonds = frozenset(orders)
+                self.assertFalse(
+                    [
+                        bond_id
+                        for bond_id in relation_calls
+                        if bond_id in non_single_bonds
+                    ],
+                )
+                self.assertFalse(
+                    [
+                        bond_id
+                        for bond_id in tree_calls
+                        if bond_id in non_single_bonds
+                    ],
+                )
+                self.assertIn(
+                    (
+                        writer_snapshot
+                        ._WriterPublicCyclicRequiredCapability
+                        .MULTI_CYCLE_TOPOLOGY
+                    ),
+                    report.required_capabilities,
+                )
+
     def test_non_single_two_cycle_block_bond_branch_roles(self) -> None:
         rows = (
             (BondOrder.DOUBLE, "="),

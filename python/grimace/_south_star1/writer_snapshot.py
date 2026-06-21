@@ -3264,6 +3264,20 @@ def _writer_two_cycle_bond_policy_report(
     visible_closure: set[BondId] = set()
 
     tree_bonds = roles.closure_candidate_bonds | roles.tree_only_bonds
+    non_single_backbone = frozenset(
+        bond_id
+        for bond_id in tree_bonds
+        if (
+            prepared.graph_index.bond_by_id[bond_id].order
+            is not BondOrder.SINGLE
+        )
+    )
+    shape_supported = _writer_two_cycle_non_single_shape_is_supported(
+        non_single_backbone=non_single_backbone,
+        roles=roles,
+        envelope=envelope,
+    )
+
     for bond_id in sorted(tree_bonds):
         bond = prepared.graph_index.bond_by_id[bond_id]
         if bond.order is BondOrder.SINGLE:
@@ -3274,7 +3288,10 @@ def _writer_two_cycle_bond_policy_report(
                 unsupported_tree.add(bond_id)
             continue
 
-        non_single_backbone.add(bond_id)
+        if not shape_supported:
+            unsupported_tree.add(bond_id)
+            continue
+
         if (
             _writer_exact_non_single_tree_marker(
                 prepared,
@@ -3301,6 +3318,10 @@ def _writer_two_cycle_bond_policy_report(
                 unsupported_closure.add(bond_id)
             continue
 
+        if not shape_supported:
+            unsupported_closure.add(bond_id)
+            continue
+
         relation = _writer_public_non_single_closure_relation(
             prepared,
             bond_id,
@@ -3309,16 +3330,6 @@ def _writer_two_cycle_bond_policy_report(
             unsupported_closure.add(bond_id)
         else:
             visible_closure.add(bond_id)
-
-    if not _writer_two_cycle_non_single_shape_is_supported(
-        non_single_backbone=frozenset(non_single_backbone),
-        roles=roles,
-        envelope=envelope,
-    ):
-        unsupported_tree.update(non_single_backbone)
-        unsupported_closure.update(
-            non_single_backbone & roles.closure_candidate_bonds,
-        )
 
     return _WriterTwoCycleBondPolicyReport(
         unsupported_tree_bonds=frozenset(unsupported_tree),

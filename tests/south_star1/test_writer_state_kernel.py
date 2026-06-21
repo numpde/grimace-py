@@ -16421,18 +16421,6 @@ class WriterStateKernelTest(unittest.TestCase):
                     ),
                 ),
             ),
-            (
-                "connector_plus_cycle",
-                _prepare_with_ordinary_policy_options(
-                    bridge_path_with_non_single_block_bond_facts(
-                        BondOrder.DOUBLE,
-                        extra_visible_bond=BondId(7),
-                    ),
-                    options=OrdinaryPolicyOptions(
-                        non_single_ring_closures="joint",
-                    ),
-                ),
-            ),
         )
         for name, prepared in cases:
             with self.subTest(name=name):
@@ -16521,6 +16509,548 @@ class WriterStateKernelTest(unittest.TestCase):
                         image.witness_count,
                         count_writer_cursor_completions(prepared, cursor),
                     )
+
+    def test_public_writer_shaped_two_cycles_with_visible_connector_and_block_bond_succeeds(
+        self,
+    ) -> None:
+        rows = (
+            (BondOrder.DOUBLE, "=", BondOrder.DOUBLE, "="),
+            (BondOrder.DOUBLE, "=", BondOrder.TRIPLE, "#"),
+            (BondOrder.TRIPLE, "#", BondOrder.DOUBLE, "="),
+            (BondOrder.TRIPLE, "#", BondOrder.TRIPLE, "#"),
+        )
+
+        for connector_order, connector_marker, cycle_order, cycle_marker in rows:
+            facts = (
+                bridge_path_with_visible_connector_and_non_single_block_facts(
+                    connector_order,
+                    cycle_order,
+                )
+            )
+            for root in (*range(len(facts.atoms)), -1):
+                with self.subTest(
+                    connector=connector_order,
+                    cycle=cycle_order,
+                    root=root,
+                ):
+                    prepared = _prepare_with_ordinary_policy_options(
+                        facts,
+                        options=OrdinaryPolicyOptions(
+                            non_single_ring_closures="joint",
+                        ),
+                    )
+                    options = _writer_options(rooted_at_atom=root)
+                    cursor = _initial_writer_transition_frontier_cursor(
+                        prepared,
+                        options,
+                    )
+                    decision = (
+                        writer_snapshot
+                        ._cyclic_writer_admission_decision_from_cursor(
+                            prepared=prepared,
+                            runtime_options=options,
+                            cursor=cursor,
+                        )
+                    )
+
+                    self.assertIs(
+                        decision.kind,
+                        (
+                            writer_snapshot
+                            ._WriterCyclicAdmissionDecisionKind
+                            .READY_PUBLIC
+                        ),
+                    )
+                    assert decision.public_profile is not None
+                    self.assertTrue({
+                        (
+                            writer_snapshot
+                            ._WriterPublicCyclicRequiredCapability
+                            .MULTI_CYCLE_TOPOLOGY
+                        ),
+                        (
+                            writer_snapshot
+                            ._WriterPublicCyclicRequiredCapability
+                            .TREE_BOND_TEXT_EMISSION
+                        ),
+                        (
+                            writer_snapshot
+                            ._WriterPublicCyclicRequiredCapability
+                            .RING_CORE_NON_SINGLE_CLOSURE_BOND
+                        ),
+                    }.issubset(decision.public_profile.required_capabilities))
+
+                    image = enumerate_prepared_stereo_support(
+                        prepared=prepared,
+                        runtime_options=options,
+                    )
+                    self.assertTrue(image.strings)
+                    expected_marker_counts = Counter(
+                        (connector_marker, cycle_marker),
+                    )
+                    for text in image.strings:
+                        for marker, count in expected_marker_counts.items():
+                            self.assertEqual(text.count(marker), count)
+                    self.assertEqual(
+                        image.distinct_count,
+                        count_writer_frontier_support(
+                            prepared,
+                            cursor.support_state,
+                        ),
+                    )
+                    self.assertEqual(
+                        image.witness_count,
+                        count_writer_cursor_completions(prepared, cursor),
+                    )
+
+    def test_visible_connector_and_non_single_block_bond_branch_roles(
+        self,
+    ) -> None:
+        prepared = _prepare_with_ordinary_policy_options(
+            bridge_path_with_visible_connector_and_non_single_block_facts(
+                BondOrder.DOUBLE,
+                BondOrder.TRIPLE,
+            ),
+            options=OrdinaryPolicyOptions(
+                non_single_ring_closures="joint",
+            ),
+        )
+        options = _writer_options(rooted_at_atom=0)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+        initial_snapshot = (
+            writer_snapshot
+            ._capture_writer_frontier_snapshot_unchecked(
+                prepared=prepared,
+                runtime_options=options,
+                cursor=cursor,
+            )
+        )
+        visible_tree = (
+            writer_snapshot
+            ._WriterExecutionCapabilityKind
+            .VISIBLE_TREE_BOND_TEXT
+        )
+        visible_closure = (
+            writer_snapshot
+            ._WriterExecutionCapabilityKind
+            .VISIBLE_CLOSURE_BOND_TEXT
+        )
+        paths = _branch_terminal_paths(prepared, cursor)
+
+        def cycle_role(path: _BranchTerminalPath) -> str:
+            tree_bonds = frozenset(
+                record.bond
+                for record in path.terminal_state.stereo_state.bond_occurrences
+            )
+            return "tree" if BondId(0) in tree_bonds else "closure"
+
+        paths_by_role: dict[str, _BranchTerminalPath] = {}
+        for path in paths:
+            paths_by_role.setdefault(cycle_role(path), path)
+            self.assertIn(
+                BondId(7),
+                {
+                    record.bond
+                    for record in path.terminal_state.stereo_state.bond_occurrences
+                },
+            )
+            for closure in path.terminal_state.ring_state.closed_closures:
+                self.assertNotEqual(closure.bond, BondId(7))
+        self.assertEqual(frozenset(paths_by_role), frozenset(("tree", "closure")))
+
+        tree_path = paths_by_role["tree"]
+        self.assertIn(visible_tree, tree_path.capabilities)
+        self.assertNotIn(visible_closure, tree_path.capabilities)
+        for closure in tree_path.terminal_state.ring_state.closed_closures:
+            self.assertEqual(
+                (
+                    closure.first_endpoint_bond_text,
+                    closure.second_endpoint_bond_text,
+                ),
+                ("", ""),
+            )
+
+        closure_paths = tuple(
+            path
+            for path in paths
+            if cycle_role(path) == "closure"
+        )
+        self.assertTrue(closure_paths)
+        for path in closure_paths:
+            self.assertIn(visible_tree, path.capabilities)
+            self.assertIn(visible_closure, path.capabilities)
+        closure_pairs = frozenset(
+            (
+                closure.first_endpoint_bond_text,
+                closure.second_endpoint_bond_text,
+            )
+            for path in closure_paths
+            for closure in path.terminal_state.ring_state.closed_closures
+            if closure.bond == BondId(0)
+        )
+        self.assertEqual(
+            closure_pairs,
+            frozenset((("", "#"), ("#", ""))),
+        )
+
+        closure_path = next(
+            path
+            for path in closure_paths
+            if (
+                any(
+                    emission == "="
+                    and any(
+                        endpoint.bond == BondId(0)
+                        for endpoint in state.ring_state.open_endpoints
+                    )
+                    for emission, state in zip(path.emissions, path.states)
+                )
+                and any(
+                    len(state.ring_state.open_endpoints) == 2
+                    for state in path.states
+                )
+            )
+        )
+        connector_index = next(
+            index
+            for index, emission in enumerate(closure_path.emissions)
+            if emission == "="
+        )
+        self.assertTrue(
+            any(
+                endpoint.bond == BondId(0)
+                for endpoint in closure_path.states[
+                    connector_index
+                ].ring_state.open_endpoints
+            )
+        )
+        target_open_index = next(
+            index
+            for index, state in enumerate(closure_path.states)
+            if any(
+                endpoint.bond == BondId(0)
+                for endpoint in state.ring_state.open_endpoints
+            )
+        )
+        two_open_index = next(
+            index
+            for index, state in enumerate(closure_path.states)
+            if len(state.ring_state.open_endpoints) == 2
+        )
+        after_pair_index = next(
+            index
+            for index, state in enumerate(closure_path.states)
+            if (
+                len(state.ring_state.open_endpoints) == 1
+                and state.ring_state.closed_closures
+            )
+        )
+        for path, index in (
+            (closure_path, connector_index),
+            (closure_path, connector_index + 1),
+            (closure_path, target_open_index),
+            (closure_path, two_open_index),
+            (closure_path, after_pair_index),
+        ):
+            with self.subTest(role=cycle_role(path), index=index):
+                outcome = (
+                    _assert_checked_prefix_successor_snapshot_resume_equivalence(
+                        self,
+                        snapshot=initial_snapshot,
+                        prepared=prepared,
+                        emitted_texts=path.emissions[:index],
+                    )
+                )
+                advanced = outcome.replay_outcome.advanced_snapshot
+                self.assertIsNotNone(advanced)
+                assert advanced is not None
+                self.assertIn(
+                    writer_state_key(path.states[index]),
+                    dict(advanced.cursor.weighted_states),
+                )
+
+        decision = writer_snapshot._cyclic_writer_admission_decision_from_cursor(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        assert decision.execution_capability_certificate is not None
+        _assert_replay_succeeds_for_execution_capability_uses(
+            self,
+            audit=decision.readiness_gate.audit,
+            snapshot=initial_snapshot,
+            prepared=prepared,
+        )
+        for capability in (visible_tree, visible_closure):
+            with patch(
+                "grimace._south_star1.writer_snapshot"
+                "._PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES",
+                (
+                    decision
+                    .execution_capability_certificate
+                    .supported_capabilities
+                    - {capability}
+                ),
+            ):
+                blocked = (
+                    writer_snapshot
+                    ._cyclic_writer_admission_decision_from_cursor(
+                        prepared=prepared,
+                        runtime_options=options,
+                        cursor=cursor,
+                    )
+                )
+            self.assertIs(
+                blocked.kind,
+                (
+                    writer_snapshot
+                    ._WriterCyclicAdmissionDecisionKind
+                    .BLOCKED_PUBLIC_EXECUTION_CAPABILITY
+                ),
+            )
+
+    def test_visible_connector_and_non_single_block_policy_envelope(self) -> None:
+        base_facts = (
+            bridge_path_with_visible_connector_and_non_single_block_facts(
+                BondOrder.DOUBLE,
+                BondOrder.TRIPLE,
+            )
+        )
+        invalid_rows = (
+            (
+                "connector_tree",
+                _prepare_with_ordinary_policy_options_and_slots(
+                    base_facts,
+                    options=OrdinaryPolicyOptions(
+                        non_single_ring_closures="joint",
+                    ),
+                    overrides=(
+                        (
+                            BondId(7),
+                            "tree",
+                            (BondTextChoice("wrong", "#", False),),
+                        ),
+                    ),
+                ),
+                (
+                    writer_snapshot
+                    ._WriterPublicCyclicRequiredCapability
+                    .TREE_BOND_TEXT_EMISSION
+                ),
+            ),
+            (
+                "cycle_tree",
+                _prepare_with_ordinary_policy_options_and_slots(
+                    base_facts,
+                    options=OrdinaryPolicyOptions(
+                        non_single_ring_closures="joint",
+                    ),
+                    overrides=(
+                        (
+                            BondId(0),
+                            "tree",
+                            (BondTextChoice("wrong", "=", False),),
+                        ),
+                    ),
+                ),
+                (
+                    writer_snapshot
+                    ._WriterPublicCyclicRequiredCapability
+                    .TREE_BOND_TEXT_EMISSION
+                ),
+            ),
+            (
+                "cycle_closure",
+                _prepare_with_ordinary_policy_options_and_slots(
+                    base_facts,
+                    options=OrdinaryPolicyOptions(
+                        non_single_ring_closures="joint",
+                    ),
+                    overrides=(
+                        (
+                            BondId(0),
+                            "ring_endpoint",
+                            (BondTextChoice("elided", "", False),),
+                        ),
+                    ),
+                ),
+                (
+                    writer_snapshot
+                    ._WriterPublicCyclicRequiredCapability
+                    .RING_CORE_NON_SINGLE_CLOSURE_BOND
+                ),
+            ),
+        )
+        for name, prepared, capability in invalid_rows:
+            with self.subTest(name=name):
+                report = (
+                    writer_snapshot
+                    ._writer_public_cyclic_opening_profile_report(
+                        prepared=prepared,
+                    )
+                )
+                self.assertFalse(report.supported)
+                self.assertIn(capability, report.unsupported_capabilities)
+
+        endpoint_prepared = (
+            _prepare_with_ordinary_policy_options_and_slots(
+                base_facts,
+                options=OrdinaryPolicyOptions(
+                    non_single_ring_closures="joint",
+                ),
+                overrides=(
+                    (
+                        BondId(7),
+                        "ring_endpoint",
+                        (BondTextChoice("foreign", "~", False),),
+                    ),
+                ),
+            )
+        )
+        calls: list[BondId] = []
+        original = writer_snapshot.writer_closure_bond_text_relation
+
+        def _recording_relation(prepared_arg, bond_id, **kwargs):
+            calls.append(bond_id)
+            return original(prepared_arg, bond_id, **kwargs)
+
+        with patch(
+            "grimace._south_star1.writer_snapshot"
+            ".writer_closure_bond_text_relation",
+            side_effect=_recording_relation,
+        ):
+            report = (
+                writer_snapshot
+                ._writer_public_cyclic_opening_profile_report(
+                    prepared=endpoint_prepared,
+                )
+            )
+        self.assertTrue(report.supported)
+        self.assertNotIn(BondId(7), calls)
+
+        blocked_facts = (
+            (
+                "connector_plus_both_blocks",
+                bridge_path_with_visible_connector_and_non_single_block_facts(
+                    BondOrder.DOUBLE,
+                    BondOrder.DOUBLE,
+                    cycle_bond=BondId(0),
+                ),
+                BondId(3),
+            ),
+            (
+                "two_in_one_block",
+                bridge_path_with_visible_connector_and_non_single_block_facts(
+                    BondOrder.DOUBLE,
+                    BondOrder.DOUBLE,
+                    cycle_bond=BondId(0),
+                ),
+                BondId(1),
+            ),
+        )
+        for name, facts, extra_bond in blocked_facts:
+            facts = replace(
+                facts,
+                bonds=tuple(
+                    replace(bond, order=BondOrder.DOUBLE)
+                    if bond.id == extra_bond
+                    else bond
+                    for bond in facts.bonds
+                ),
+            )
+            prepared = _prepare_with_ordinary_policy_options(
+                facts,
+                options=OrdinaryPolicyOptions(
+                    non_single_ring_closures="joint",
+                ),
+            )
+            with self.subTest(name=name):
+                report = (
+                    writer_snapshot
+                    ._writer_public_cyclic_opening_profile_report(
+                        prepared=prepared,
+                    )
+                )
+                self.assertFalse(report.supported)
+
+        two_connector_prepared = _prepare(
+            bridge_path_with_visible_connector_facts(
+                BondOrder.DOUBLE,
+                extra_visible_connector=BondId(6),
+            ),
+        )
+        report = writer_snapshot._writer_public_cyclic_opening_profile_report(
+            prepared=two_connector_prepared,
+        )
+        self.assertFalse(report.supported)
+
+    def test_visible_connector_and_non_single_block_relation_is_bounded(
+        self,
+    ) -> None:
+        prepared = _prepare_with_ordinary_policy_options(
+            bridge_path_with_visible_connector_and_non_single_block_facts(
+                BondOrder.DOUBLE,
+                BondOrder.TRIPLE,
+            ),
+            options=OrdinaryPolicyOptions(
+                non_single_ring_closures="joint",
+            ),
+        )
+        calls: list[tuple[BondId, str, str]] = []
+        original_decode = prepared.semantics.ring_pair_decode_ok
+
+        def _counting_decode(
+            facts,
+            bond_id,
+            first,
+            first_mark,
+            second,
+            second_mark,
+        ):
+            calls.append((bond_id, first.base_text, second.base_text))
+            return original_decode(
+                facts,
+                bond_id,
+                first,
+                first_mark,
+                second,
+                second_mark,
+            )
+
+        with (
+            patch.object(
+                prepared.semantics,
+                "ring_pair_decode_ok",
+                side_effect=_counting_decode,
+            ),
+            patch(
+                "grimace._south_star1.writer_snapshot"
+                "._writer_public_non_single_closure_bond_is_supported",
+                side_effect=AssertionError(
+                    "two-cycle profile must use structured report",
+                ),
+            ),
+        ):
+            report = writer_snapshot._writer_public_cyclic_opening_profile_report(
+                prepared=prepared,
+            )
+
+        self.assertTrue(report.supported)
+        self.assertEqual(
+            [
+                (first, second)
+                for bond_id, first, second in calls
+                if bond_id == BondId(0)
+            ],
+            [
+                (first, second)
+                for first in ("", "#")
+                for second in ("", "#")
+            ],
+        )
+        self.assertFalse(
+            any(bond_id == BondId(7) for bond_id, _first, _second in calls),
+        )
 
     def test_non_single_two_cycle_block_bond_branch_roles(self) -> None:
         rows = (
@@ -16800,18 +17330,6 @@ class WriterStateKernelTest(unittest.TestCase):
                     bridge_path_with_non_single_block_bond_facts(
                         BondOrder.DOUBLE,
                         extra_visible_bond=BondId(1),
-                    ),
-                    options=OrdinaryPolicyOptions(
-                        non_single_ring_closures="joint",
-                    ),
-                ),
-            ),
-            (
-                "connector_plus_cycle",
-                _prepare_with_ordinary_policy_options(
-                    bridge_path_with_non_single_block_bond_facts(
-                        BondOrder.DOUBLE,
-                        extra_visible_bond=BondId(7),
                     ),
                     options=OrdinaryPolicyOptions(
                         non_single_ring_closures="joint",
@@ -42449,6 +42967,37 @@ def bridge_path_with_two_non_single_block_bonds_facts(
     orders = {
         BondId(0): left_order,
         BondId(3): right_order,
+    }
+    return replace(
+        base,
+        bonds=tuple(
+            replace(bond, order=orders[bond.id])
+            if bond.id in orders
+            else bond
+            for bond in base.bonds
+        ),
+    )
+
+
+def bridge_path_with_visible_connector_and_non_single_block_facts(
+    connector_order: BondOrder,
+    cycle_order: BondOrder,
+    *,
+    connector_bond: BondId = BondId(7),
+    cycle_bond: BondId = BondId(0),
+) -> MoleculeFacts:
+    if (
+        connector_order not in {BondOrder.DOUBLE, BondOrder.TRIPLE}
+        or cycle_order not in {BondOrder.DOUBLE, BondOrder.TRIPLE}
+    ):
+        raise AssertionError(
+            "connector and cycle orders must be double or triple",
+        )
+
+    base = bridge_separated_triangles_facts(connector_length=3)
+    orders = {
+        connector_bond: connector_order,
+        cycle_bond: cycle_order,
     }
     return replace(
         base,

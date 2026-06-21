@@ -3337,13 +3337,16 @@ def _writer_two_cycle_non_single_shape_is_supported(
     connector_non_single = non_single_backbone & roles.tree_only_bonds
     cycle_non_single = non_single_backbone & roles.closure_candidate_bonds
 
-    if connector_non_single:
-        return len(connector_non_single) == 1 and not cycle_non_single
+    if len(connector_non_single) > 1:
+        return False
 
-    return all(
-        len(cycle_non_single & block_bonds) <= 1
+    if any(
+        len(cycle_non_single & block_bonds) > 1
         for block_bonds in envelope.cycle_bond_sets
-    )
+    ):
+        return False
+
+    return len(non_single_backbone) <= 2
 
 
 def _writer_elided_single_tree_slot_is_supported(

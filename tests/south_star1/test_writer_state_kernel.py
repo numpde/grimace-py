@@ -15777,6 +15777,278 @@ class WriterStateKernelTest(unittest.TestCase):
                         tuple(iter_writer_frontier_support(prepared, cursor)),
                     )
 
+    def test_public_writer_shaped_two_cycles_with_pendant_forests_succeeds(
+        self,
+    ) -> None:
+        cases = (
+            ("leaf", bridge_separated_triangles_with_pendant_facts()),
+            ("connector_chain", bridge_path_with_connector_pendant_chain_facts()),
+            (
+                "branched",
+                bridge_separated_triangles_with_branched_pendant_facts(),
+            ),
+            (
+                "multiple",
+                bridge_separated_triangles_with_multiple_pendants_facts(),
+            ),
+        )
+
+        for name, facts in cases:
+            for root in (*range(len(facts.atoms)), -1):
+                with self.subTest(name=name, root=root):
+                    prepared = _prepare(facts)
+                    options = _writer_options(rooted_at_atom=root)
+                    cursor = _initial_writer_transition_frontier_cursor(
+                        prepared,
+                        options,
+                    )
+                    decision = (
+                        writer_snapshot
+                        ._cyclic_writer_admission_decision_from_cursor(
+                            prepared=prepared,
+                            runtime_options=options,
+                            cursor=cursor,
+                        )
+                    )
+
+                    self.assertIs(
+                        decision.kind,
+                        (
+                            writer_snapshot
+                            ._WriterCyclicAdmissionDecisionKind
+                            .READY_PUBLIC
+                        ),
+                    )
+                    assert decision.public_profile is not None
+                    self.assertIs(
+                        decision.public_profile.kind,
+                        (
+                            writer_snapshot
+                            ._WriterPublicCyclicOpeningProfileKind
+                            .SUPPORTED_TWO_BRIDGE_SEPARATED_SIMPLE_CYCLES_WITH_ACYCLIC_ATTACHMENTS
+                        ),
+                    )
+                    self.assertTrue({
+                        (
+                            writer_snapshot
+                            ._WriterPublicCyclicRequiredCapability
+                            .MULTI_CYCLE_TOPOLOGY
+                        ),
+                        (
+                            writer_snapshot
+                            ._WriterPublicCyclicRequiredCapability
+                            .ACYCLIC_PENDANT_TREE_TRAVERSAL
+                        ),
+                        (
+                            writer_snapshot
+                            ._WriterPublicCyclicRequiredCapability
+                            .TREE_BOND_TEXT_EMISSION
+                        ),
+                    }.issubset(decision.public_profile.required_capabilities))
+
+            prepared = _prepare(facts)
+            options = _writer_options(rooted_at_atom=0)
+            cursor = _initial_writer_transition_frontier_cursor(
+                prepared,
+                options,
+            )
+            for path in _branch_terminal_paths(prepared, cursor):
+                self.assertEqual(
+                    path.terminal_state.ring_state.open_endpoints,
+                    (),
+                )
+                self.assertEqual(
+                    len(path.terminal_state.ring_state.closed_closures),
+                    2,
+                )
+                for state in path.states:
+                    self.assertLessEqual(
+                        len(state.ring_state.open_endpoints),
+                        2,
+                    )
+                    self.assertLessEqual(
+                        len(state.ring_state.label_state.allocated),
+                        2,
+                    )
+
+    def test_two_cycle_pendant_branch_lifecycle_and_snapshots(
+        self,
+    ) -> None:
+        facts = bridge_path_with_connector_pendant_chain_facts()
+        prepared = _prepare(facts)
+        options = _writer_options(rooted_at_atom=0)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+        initial_snapshot = (
+            writer_snapshot
+            ._capture_writer_frontier_snapshot_unchecked(
+                prepared=prepared,
+                runtime_options=options,
+                cursor=cursor,
+            )
+        )
+        pendant_atoms = {AtomId(8), AtomId(9)}
+        path = next(
+            path
+            for path in _branch_terminal_paths(prepared, cursor)
+            if (
+                any(
+                    state.active.atom in pendant_atoms
+                    and state.ring_state.open_endpoints
+                    for state in path.states
+                )
+                and any(
+                    len(state.ring_state.open_endpoints) == 2
+                    for state in path.states
+                )
+            )
+        )
+        pendant_index = next(
+            index
+            for index, state in enumerate(path.states)
+            if (
+                state.active.atom in pendant_atoms
+                and state.ring_state.open_endpoints
+            )
+        )
+        self.assertEqual(
+            path.states[pendant_index - 1].ring_state,
+            path.states[pendant_index].ring_state,
+        )
+
+        for index in (
+            pendant_index,
+            next(
+                index
+                for index, state in enumerate(path.states)
+                if len(state.ring_state.open_endpoints) == 2
+            ),
+            next(
+                index
+                for index, state in enumerate(path.states)
+                if (
+                    len(state.ring_state.open_endpoints) == 1
+                    and len(state.ring_state.closed_closures) == 1
+                )
+            ),
+        ):
+            with self.subTest(index=index):
+                outcome = (
+                    _assert_checked_prefix_successor_snapshot_resume_equivalence(
+                        self,
+                        snapshot=initial_snapshot,
+                        prepared=prepared,
+                        emitted_texts=path.emissions[:index],
+                    )
+                )
+                advanced = outcome.replay_outcome.advanced_snapshot
+                self.assertIsNotNone(advanced)
+                assert advanced is not None
+                self.assertIn(
+                    writer_state_key(path.states[index]),
+                    dict(advanced.cursor.weighted_states),
+                )
+
+    def test_two_cycle_pendant_bond_slots_are_tree_only(
+        self,
+    ) -> None:
+        facts = bridge_path_with_connector_pendant_chain_facts()
+        pendant_bonds = (BondId(9), BondId(10))
+        base = _prepare(facts)
+        options = _writer_options(rooted_at_atom=0)
+        base_cursor = _initial_writer_transition_frontier_cursor(base, options)
+        base_image = enumerate_prepared_stereo_support(
+            prepared=base,
+            runtime_options=options,
+        )
+
+        endpoint_prepared = (
+            _prepare_bridge_separated_two_cycle_with_policy_slots(
+                facts=facts,
+                overrides=tuple(
+                    (
+                        bond_id,
+                        "ring_endpoint",
+                        (BondTextChoice("foreign", "~", False),),
+                    )
+                    for bond_id in pendant_bonds
+                ),
+            )
+        )
+        calls: list[BondId] = []
+        original = writer_snapshot.writer_closure_bond_text_relation
+
+        def _recording_relation(prepared_arg, bond_id, **kwargs):
+            calls.append(bond_id)
+            return original(prepared_arg, bond_id, **kwargs)
+
+        with patch(
+            "grimace._south_star1.writer_snapshot"
+            ".writer_closure_bond_text_relation",
+            side_effect=_recording_relation,
+        ):
+            report = (
+                writer_snapshot
+                ._writer_public_cyclic_opening_profile_report(
+                    prepared=endpoint_prepared,
+                )
+            )
+
+        self.assertTrue(report.supported)
+        self.assertFalse(set(pendant_bonds) & set(calls))
+        endpoint_cursor = _initial_writer_transition_frontier_cursor(
+            endpoint_prepared,
+            options,
+        )
+        endpoint_image = enumerate_prepared_stereo_support(
+            prepared=endpoint_prepared,
+            runtime_options=options,
+        )
+        self.assertEqual(endpoint_image.strings, base_image.strings)
+        self.assertEqual(
+            count_writer_frontier_support(
+                endpoint_prepared,
+                endpoint_cursor.support_state,
+            ),
+            count_writer_frontier_support(base, base_cursor.support_state),
+        )
+
+        for bond_id in pendant_bonds:
+            prepared = _prepare_bridge_separated_two_cycle_with_policy_slots(
+                facts=facts,
+                overrides=((bond_id, "tree", None),),
+            )
+            blocked = (
+                writer_snapshot
+                ._writer_public_cyclic_opening_profile_report(
+                    prepared=prepared,
+                )
+            )
+            self.assertFalse(blocked.supported)
+            self.assertIn(
+                (
+                    writer_snapshot
+                    ._WriterPublicCyclicRequiredCapability
+                    .TREE_BOND_TEXT_EMISSION
+                ),
+                blocked.unsupported_capabilities,
+            )
+            self.assertIn(
+                (
+                    writer_snapshot
+                    ._WriterPublicCyclicRequiredCapability
+                    .MULTI_CYCLE_TOPOLOGY
+                ),
+                blocked.required_capabilities,
+            )
+            self.assertNotIn(
+                (
+                    writer_snapshot
+                    ._WriterPublicCyclicRequiredCapability
+                    .MULTI_CYCLE_TOPOLOGY
+                ),
+                blocked.unsupported_capabilities,
+            )
+
     def test_direct_bridge_two_cycle_support_matches_original_fixture(self) -> None:
         facts = legacy_direct_bridge_separated_triangles_facts()
         prepared = _prepare(facts)
@@ -16634,22 +16906,6 @@ class WriterStateKernelTest(unittest.TestCase):
             (
                 "three_blocks",
                 _prepare(three_bridge_separated_triangles_facts()),
-                (
-                    writer_snapshot
-                    ._WriterPublicCyclicOpeningProfileKind
-                    .BLOCKED_UNSUPPORTED_CYCLIC_RANK
-                ),
-                frozenset((
-                    (
-                        writer_snapshot
-                        ._WriterPublicCyclicRequiredCapability
-                        .MULTI_CYCLE_TOPOLOGY
-                    ),
-                )),
-            ),
-            (
-                "pendant",
-                _prepare(bridge_separated_triangles_with_pendant_facts()),
                 (
                     writer_snapshot
                     ._WriterPublicCyclicOpeningProfileKind
@@ -40806,6 +41062,67 @@ def bridge_separated_triangles_with_pendant_facts() -> MoleculeFacts:
                 id=ComponentId(0),
                 atoms=tuple(AtomId(index) for index in range(7)),
                 bonds=tuple(BondId(index) for index in range(8)),
+            ),
+        ),
+    )
+
+
+def bridge_path_with_connector_pendant_chain_facts() -> MoleculeFacts:
+    base = bridge_separated_triangles_facts(connector_length=3)
+    return replace(
+        base,
+        atoms=(*base.atoms, atom(8, "C"), atom(9, "C")),
+        bonds=(
+            *base.bonds,
+            single_bond(9, 6, 8),
+            single_bond(10, 8, 9),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=tuple(AtomId(index) for index in range(10)),
+                bonds=tuple(BondId(index) for index in range(11)),
+            ),
+        ),
+    )
+
+
+def bridge_separated_triangles_with_branched_pendant_facts() -> MoleculeFacts:
+    base = bridge_separated_triangles_facts()
+    return replace(
+        base,
+        atoms=(*base.atoms, atom(6, "C"), atom(7, "C"), atom(8, "C")),
+        bonds=(
+            *base.bonds,
+            single_bond(7, 4, 6),
+            single_bond(8, 6, 7),
+            single_bond(9, 6, 8),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=tuple(AtomId(index) for index in range(9)),
+                bonds=tuple(BondId(index) for index in range(10)),
+            ),
+        ),
+    )
+
+
+def bridge_separated_triangles_with_multiple_pendants_facts() -> MoleculeFacts:
+    base = bridge_separated_triangles_facts()
+    return replace(
+        base,
+        atoms=(*base.atoms, atom(6, "C"), atom(7, "C")),
+        bonds=(
+            *base.bonds,
+            single_bond(7, 0, 6),
+            single_bond(8, 4, 7),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=tuple(AtomId(index) for index in range(8)),
+                bonds=tuple(BondId(index) for index in range(9)),
             ),
         ),
     )

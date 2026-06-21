@@ -1288,6 +1288,9 @@ class _WriterPublicCyclicOpeningProfileKind(Enum):
     SUPPORTED_TWO_BRIDGE_SEPARATED_SIMPLE_CYCLES = (
         "supported_two_bridge_separated_simple_cycles"
     )
+    SUPPORTED_TWO_BRIDGE_SEPARATED_SIMPLE_CYCLES_WITH_ACYCLIC_ATTACHMENTS = (
+        "supported_two_bridge_separated_simple_cycles_with_acyclic_attachments"
+    )
     BLOCKED_NOT_SINGLE_COMPONENT = "blocked_not_single_component"
     BLOCKED_NOT_CONNECTED_COMPONENT = "blocked_not_connected_component"
     BLOCKED_NOT_CYCLIC_COMPONENT = "blocked_not_cyclic_component"
@@ -1378,6 +1381,8 @@ class _WriterPublicCyclicOpeningProfileReport:
                 .SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS,
                 _WriterPublicCyclicOpeningProfileKind
                 .SUPPORTED_TWO_BRIDGE_SEPARATED_SIMPLE_CYCLES,
+                _WriterPublicCyclicOpeningProfileKind
+                .SUPPORTED_TWO_BRIDGE_SEPARATED_SIMPLE_CYCLES_WITH_ACYCLIC_ATTACHMENTS,
             }
             and not self.unsupported_capabilities
             and self.required_capabilities.issubset(
@@ -2486,6 +2491,8 @@ def _writer_public_cyclic_opening_profile_report(
     two_cycle_envelope = _writer_two_bridge_separated_simple_cycles(
         prepared,
         surface,
+        ring_core_atoms=frozenset(component_core_atoms),
+        ring_core_bonds=frozenset(ring_core_bond_ids),
     )
     bond_roles = _writer_public_cyclic_bond_roles(
         ring_core_bond_ids=ring_core_bond_ids,
@@ -2719,6 +2726,34 @@ def _writer_public_cyclic_opening_profile_report(
         )
 
     pendant_component_count = len(pendant_component_atom_counts)
+    pendant_multi_boundary = any(
+        boundary_count != 1
+        for boundary_count in pendant_component_boundary_counts
+    )
+    pendant_non_tree = False
+    if pendant_atom_count > 0:
+        for component_atoms, _boundary_count in (
+            pendant_components
+            if pendant_atom_set
+            else ()
+        ):
+            internal_bond_count = 0
+            for bond_id in component_bond_ids:
+                bond = component_bond_index.get(bond_id)
+                if bond is None:
+                    continue
+                if bond.a in component_atoms and bond.b in component_atoms:
+                    internal_bond_count += 1
+
+            if internal_bond_count != len(component_atoms) - 1:
+                pendant_non_tree = True
+                break
+
+    pendant_forest_supported = (
+        pendant_unsupported_bond_count == 0
+        and not pendant_multi_boundary
+        and not pendant_non_tree
+    )
 
     cyclic_surfaces = tuple(
         surface
@@ -2748,7 +2783,7 @@ def _writer_public_cyclic_opening_profile_report(
         prepared.policy.least_free_ring_labels
         and len(prepared.policy.ring_labels) >= 2
     )
-    two_cycle_supported = (
+    two_cycle_backbone_supported = (
         two_cycle_topology_supported
         and two_cycle_label_policy_supported
         and two_cycle_bond_policy_report is not None
@@ -2948,42 +2983,36 @@ def _writer_public_cyclic_opening_profile_report(
             _WriterPublicCyclicOpeningProfileKind.BLOCKED_UNSUPPORTED_CYCLIC_STEREO_SURFACE
         )
     else:
-        pendant_multi_boundary = any(
-            boundary_count != 1
-            for boundary_count in pendant_component_boundary_counts
-        )
-        pendant_non_tree = False
-        if pendant_atom_count > 0:
-            for component_atoms, _boundary_count in (
-                pendant_components
-                if pendant_atom_set
-                else ()
-            ):
-                internal_bond_count = 0
-                for bond_id in component_bond_ids:
-                    bond = component_bond_index.get(bond_id)
-                    if bond is None:
-                        continue
-                    if bond.a in component_atoms and bond.b in component_atoms:
-                        internal_bond_count += 1
+        if pendant_multi_boundary:
+            unsupported_capabilities.add(
+                _WriterPublicCyclicRequiredCapability.MULTI_BOUNDARY_PENDANT_COMPONENT,
+            )
+        if pendant_non_tree:
+            unsupported_capabilities.add(
+                _WriterPublicCyclicRequiredCapability.NON_FOREST_PENDANT_MATERIAL,
+            )
 
-                if internal_bond_count != len(component_atoms) - 1:
-                    pendant_non_tree = True
-                    break
-
-            if pendant_multi_boundary:
-                unsupported_capabilities.add(
-                    _WriterPublicCyclicRequiredCapability.MULTI_BOUNDARY_PENDANT_COMPONENT,
-                )
-            if pendant_non_tree:
-                unsupported_capabilities.add(
-                    _WriterPublicCyclicRequiredCapability.NON_FOREST_PENDANT_MATERIAL,
-                )
-
-        if two_cycle_supported:
+        if two_cycle_backbone_supported and pendant_atom_count == 0:
             kind = (
                 _WriterPublicCyclicOpeningProfileKind
                 .SUPPORTED_TWO_BRIDGE_SEPARATED_SIMPLE_CYCLES
+            )
+        elif (
+            two_cycle_backbone_supported
+            and pendant_atom_count > 0
+            and pendant_forest_supported
+        ):
+            kind = (
+                _WriterPublicCyclicOpeningProfileKind
+                .SUPPORTED_TWO_BRIDGE_SEPARATED_SIMPLE_CYCLES_WITH_ACYCLIC_ATTACHMENTS
+            )
+            required_capabilities.update(
+                (
+                    _WriterPublicCyclicRequiredCapability
+                    .ACYCLIC_PENDANT_TREE_TRAVERSAL,
+                    _WriterPublicCyclicRequiredCapability
+                    .TREE_BOND_TEXT_EMISSION,
+                )
             )
         elif ring_core_is_simple_cycle and pendant_atom_count == 0:
             kind = (
@@ -2993,8 +3022,7 @@ def _writer_public_cyclic_opening_profile_report(
         elif (
             ring_core_is_simple_cycle
             and pendant_atom_count > 0
-            and not pendant_multi_boundary
-            and not pendant_non_tree
+            and pendant_forest_supported
         ):
             kind = (
                 _WriterPublicCyclicOpeningProfileKind
@@ -3013,7 +3041,7 @@ def _writer_public_cyclic_opening_profile_report(
                 _WriterPublicCyclicOpeningProfileKind
                 .BLOCKED_UNSUPPORTED_BRANCHING
             )
-            if not ring_core_is_simple_cycle:
+            if not ring_core_is_simple_cycle and not two_cycle_topology_supported:
                 unsupported_capabilities.add(
                     _WriterPublicCyclicRequiredCapability.MULTI_CYCLE_TOPOLOGY,
                 )
@@ -3047,6 +3075,9 @@ def _writer_public_cyclic_opening_profile_report(
 def _writer_two_bridge_separated_simple_cycles(
     prepared: SouthStarPreparedMol,
     surface,
+    *,
+    ring_core_atoms: frozenset[AtomId],
+    ring_core_bonds: frozenset[BondId],
 ) -> _WriterTwoCycleBlockEnvelope | None:
     if not surface.connected or surface.cyclic_rank != 2:
         return None
@@ -3061,7 +3092,7 @@ def _writer_two_bridge_separated_simple_cycles(
     for block_id in block_ids:
         bonds = frozenset(
             bond_id
-            for bond_id in surface.bonds
+            for bond_id in ring_core_bonds
             if block_by_bond.get(bond_id) == block_id
         )
         atoms: set[AtomId] = set()
@@ -3086,7 +3117,7 @@ def _writer_two_bridge_separated_simple_cycles(
     if not left_atoms.isdisjoint(right_atoms):
         return None
 
-    connector_bonds = frozenset(surface.bonds) - left_bonds - right_bonds
+    connector_bonds = ring_core_bonds - left_bonds - right_bonds
     if not connector_bonds:
         return None
     if not connector_bonds.issubset(block_cut.bridge_bonds):
@@ -3131,7 +3162,7 @@ def _writer_two_bridge_separated_simple_cycles(
         return None
 
     internal_atoms = connector_atoms - left_atoms - right_atoms
-    if frozenset(surface.atoms) != left_atoms | right_atoms | internal_atoms:
+    if ring_core_atoms != left_atoms | right_atoms | internal_atoms:
         return None
 
     return _WriterTwoCycleBlockEnvelope(

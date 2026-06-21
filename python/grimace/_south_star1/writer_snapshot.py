@@ -2928,13 +2928,47 @@ def _writer_public_non_single_closure_bond_is_supported(
     prepared: SouthStarPreparedMol,
     bond_id: BondId,
 ) -> bool:
+    return (
+        _writer_public_non_single_closure_relation(
+            prepared,
+            bond_id,
+        )
+        is not None
+    )
+
+
+def _writer_public_non_single_closure_relation(
+    prepared: SouthStarPreparedMol,
+    bond_id: BondId,
+):
     order = prepared.graph_index.bond_by_id[bond_id].order
     marker = {
         BondOrder.DOUBLE: "=",
         BondOrder.TRIPLE: "#",
     }.get(order)
     if marker is None:
-        return False
+        return None
+
+    try:
+        raw_choices = prepared.policy.bond_text_domain_unchecked(
+            bond_id,
+            slot_kind="ring_endpoint",
+        )
+    except KeyError:
+        return None
+
+    if len(raw_choices) != 2:
+        return None
+    if any(choice.permits_direction for choice in raw_choices):
+        return None
+
+    raw_texts = tuple(choice.base_text for choice in raw_choices)
+    if (
+        len(set(raw_texts)) != 2
+        or frozenset(raw_texts) != frozenset(("", marker))
+    ):
+        return None
+
     try:
         relation = writer_closure_bond_text_relation(
             prepared,
@@ -2942,13 +2976,21 @@ def _writer_public_non_single_closure_bond_is_supported(
             max_choice_count=2,
         )
     except SouthStarError:
-        return False
-    return (
-        len(relation.texts) == 2
-        and frozenset(relation.texts) == frozenset(("", marker))
-        and frozenset(relation.compatible_pairs)
-        == frozenset((("", marker), (marker, "")))
+        return None
+
+    expected_pairs = tuple(
+        (first_text, second_text)
+        for first_text in raw_texts
+        for second_text in raw_texts
+        if first_text != second_text
     )
+    if (
+        relation.texts != raw_texts
+        or relation.compatible_pairs != expected_pairs
+    ):
+        return None
+
+    return relation
 
 
 def _writer_public_single_closure_relation(

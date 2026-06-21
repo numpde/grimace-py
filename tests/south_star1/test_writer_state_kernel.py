@@ -17743,6 +17743,208 @@ class WriterStateKernelTest(unittest.TestCase):
         )
         self.assertEqual(report.ring_core_unsupported_bond_count, 1)
 
+    def test_non_single_closure_raw_orders_are_exact_and_bounded(self) -> None:
+        rows = (
+            (BondOrder.DOUBLE, "="),
+            (BondOrder.TRIPLE, "#"),
+        )
+
+        for order, marker in rows:
+            for raw_order in (
+                ("", marker),
+                (marker, ""),
+            ):
+                with self.subTest(order=order, raw_order=raw_order):
+                    prepared = (
+                        _prepare_non_single_closure_triangle_with_ring_endpoint_choices(
+                            order=order,
+                            choices=tuple(
+                                BondTextChoice(
+                                    f"choice_{index}",
+                                    text,
+                                    False,
+                                )
+                                for index, text in enumerate(raw_order)
+                            ),
+                        )
+                    )
+                    calls: list[tuple[BondId, str, str]] = []
+                    original_decode = prepared.semantics.ring_pair_decode_ok
+
+                    def _counting_decode(
+                        facts,
+                        bond_id,
+                        first,
+                        first_mark,
+                        second,
+                        second_mark,
+                    ):
+                        calls.append(
+                            (bond_id, first.base_text, second.base_text),
+                        )
+                        return original_decode(
+                            facts,
+                            bond_id,
+                            first,
+                            first_mark,
+                            second,
+                            second_mark,
+                        )
+
+                    with patch.object(
+                        prepared.semantics,
+                        "ring_pair_decode_ok",
+                        side_effect=_counting_decode,
+                    ):
+                        relation = (
+                            writer_snapshot
+                            ._writer_public_non_single_closure_relation(
+                                prepared,
+                                BondId(2),
+                            )
+                        )
+
+                    self.assertIsNotNone(relation)
+                    assert relation is not None
+                    self.assertEqual(relation.texts, raw_order)
+                    self.assertEqual(
+                        relation.compatible_pairs,
+                        tuple(
+                            (first, second)
+                            for first in raw_order
+                            for second in raw_order
+                            if first != second
+                        ),
+                    )
+                    self.assertEqual(
+                        tuple(
+                            (first, second)
+                            for bond_id, first, second in calls
+                            if bond_id == BondId(2)
+                        ),
+                        tuple(
+                            (first, second)
+                            for first in raw_order
+                            for second in raw_order
+                        ),
+                    )
+
+    def test_invalid_non_single_closure_raw_domains_are_profile_blocked_before_semantics(
+        self,
+    ) -> None:
+        rows = (
+            (BondOrder.DOUBLE, "="),
+            (BondOrder.TRIPLE, "#"),
+        )
+
+        for order, marker in rows:
+            invalid_domains = (
+                (
+                    "directional_slash",
+                    (
+                        BondTextChoice("absent", "", False),
+                        BondTextChoice("order", marker, False),
+                        BondTextChoice("slash", "/", False),
+                    ),
+                ),
+                (
+                    "directional_backslash",
+                    (
+                        BondTextChoice("absent", "", False),
+                        BondTextChoice("order", marker, False),
+                        BondTextChoice("backslash", "\\", False),
+                    ),
+                ),
+                (
+                    "direction_capable_absent",
+                    (
+                        BondTextChoice("absent", "", True),
+                        BondTextChoice("order", marker, False),
+                    ),
+                ),
+                (
+                    "direction_capable_marker",
+                    (
+                        BondTextChoice("absent", "", False),
+                        BondTextChoice("order", marker, True),
+                    ),
+                ),
+                (
+                    "duplicate",
+                    (
+                        BondTextChoice("first", marker, False),
+                        BondTextChoice("second", marker, False),
+                    ),
+                ),
+                (
+                    "foreign",
+                    (
+                        BondTextChoice("absent", "", False),
+                        BondTextChoice("foreign", "~", False),
+                    ),
+                ),
+            )
+
+            for name, choices in invalid_domains:
+                with self.subTest(order=order, name=name):
+                    prepared = (
+                        _prepare_non_single_closure_triangle_with_ring_endpoint_choices(
+                            order=order,
+                            choices=choices,
+                        )
+                    )
+                    calls: list[BondId] = []
+                    original_decode = prepared.semantics.ring_pair_decode_ok
+
+                    def _counting_decode(
+                        facts,
+                        bond_id,
+                        first,
+                        first_mark,
+                        second,
+                        second_mark,
+                    ):
+                        calls.append(bond_id)
+                        return original_decode(
+                            facts,
+                            bond_id,
+                            first,
+                            first_mark,
+                            second,
+                            second_mark,
+                        )
+
+                    with patch.object(
+                        prepared.semantics,
+                        "ring_pair_decode_ok",
+                        side_effect=_counting_decode,
+                    ):
+                        report = (
+                            writer_snapshot
+                            ._writer_public_cyclic_opening_profile_report(
+                                prepared=prepared,
+                            )
+                        )
+
+                    self.assertFalse(report.supported)
+                    self.assertIs(
+                        report.kind,
+                        (
+                            writer_snapshot
+                            ._WriterPublicCyclicOpeningProfileKind
+                            .BLOCKED_UNSUPPORTED_CLOSURE_BOND_SURFACE
+                        ),
+                    )
+                    self.assertIn(
+                        (
+                            writer_snapshot
+                            ._WriterPublicCyclicRequiredCapability
+                            .RING_CORE_NON_SINGLE_CLOSURE_BOND
+                        ),
+                        report.unsupported_capabilities,
+                    )
+                    self.assertNotIn(BondId(2), calls)
+
     def test_non_single_closure_closed_rows_are_exact_legal_marker_placements(
         self,
     ) -> None:

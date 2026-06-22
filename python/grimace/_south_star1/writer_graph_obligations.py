@@ -1010,9 +1010,13 @@ def _pending_entry_preserves_open_partner_reachability(
     pending_bond = prepared.graph_index.bond_by_id.get(pending.bond)
     if pending_bond is None:
         return False
+    endpoint_bond = prepared.graph_index.bond_by_id.get(endpoint.bond)
+    if endpoint_bond is None:
+        return False
     if (
         endpoint.first_endpoint_direction_mark is DirectionMark.ABSENT
         and pending_bond.order is BondOrder.SINGLE
+        and endpoint_bond.order is BondOrder.SINGLE
         and endpoint.bond not in _directional_carrier_bonds(prepared)
     ):
         return False

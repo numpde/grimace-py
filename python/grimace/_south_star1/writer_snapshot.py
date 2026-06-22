@@ -1322,6 +1322,9 @@ class _WriterPublicCyclicRequiredCapability(Enum):
     RING_CORE_TETRAHEDRAL_STEREO = "ring_core_tetrahedral_stereo"
     CYCLIC_DIRECTIONAL_STEREO = "cyclic_directional_stereo"
     CYCLIC_RING_PAIR_STEREO = "cyclic_ring_pair_stereo"
+    SHARED_DIRECTIONAL_RING_CARRIER_STEREO = (
+        "shared_directional_ring_carrier_stereo"
+    )
     MULTI_CYCLE_TOPOLOGY = "multi_cycle_topology"
     FUSED_OR_BRIDGED_TOPOLOGY = "fused_or_bridged_topology"
     NON_FOREST_PENDANT_MATERIAL = "non_forest_pendant_material"
@@ -1343,6 +1346,10 @@ _PUBLIC_CYCLIC_SUPPORTED_CAPABILITIES = frozenset(
         _WriterPublicCyclicRequiredCapability.RING_CORE_TETRAHEDRAL_STEREO,
         _WriterPublicCyclicRequiredCapability.CYCLIC_DIRECTIONAL_STEREO,
         _WriterPublicCyclicRequiredCapability.CYCLIC_RING_PAIR_STEREO,
+        (
+            _WriterPublicCyclicRequiredCapability
+            .SHARED_DIRECTIONAL_RING_CARRIER_STEREO
+        ),
     }
 )
 
@@ -1415,6 +1422,16 @@ class _WriterDirectionalRingCarrierEnvelope:
     ring_carrier_bonds: tuple[BondId, BondId]
     noncarrier_ring_bond: BondId
     pendant_carrier_bonds: tuple[BondId, BondId]
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterSharedDirectionalRingCarrierEnvelope:
+    sites: tuple[SiteId, SiteId]
+    center_bonds: tuple[BondId, BondId]
+    shared_ring_carrier: BondId
+    outer_ring_carriers: tuple[BondId, BondId]
+    noncarrier_ring_bond: BondId
+    pendant_carriers: tuple[BondId, BondId, BondId, BondId]
 
 
 @dataclass(frozen=True, slots=True)
@@ -2496,6 +2513,13 @@ def _writer_public_cyclic_opening_profile_report(
         )
     )
     ring_core_bond_count = len(ring_core_bond_ids)
+    ring_core_bond_id_set = frozenset(ring_core_bond_ids)
+    pendant_bond_ids = tuple(
+        bond_id
+        for bond_id in component_bond_ids
+        if bond_id not in ring_core_bond_id_set
+    )
+    pendant_atom_set = set(component_atom_ids) - ring_core_atom_set
     ring_core_max_degree = max(
         (
             len(adjacency[atom])
@@ -2544,10 +2568,22 @@ def _writer_public_cyclic_opening_profile_report(
             and bond.order not in {BondOrder.SINGLE, BondOrder.AROMATIC}
         )
     )
+    shared_directional_ring_carrier_envelope = (
+        _writer_public_shared_directional_ring_carrier_envelope(
+            prepared=prepared,
+            ring_core_atom_ids=frozenset(ring_core_atom_set),
+            ring_core_bond_ids=frozenset(ring_core_bond_ids),
+            pendant_atom_ids=frozenset(pendant_atom_set),
+            pendant_bond_ids=frozenset(pendant_bond_ids),
+            ring_core_non_single_bond_ids=ring_core_non_single_bond_ids,
+        )
+    )
     ring_core_single_closure_relations = tuple(
         relation
         for bond_id in closure_bond_ids
         if (
+            shared_directional_ring_carrier_envelope is None
+            and
             (bond := component_bond_index.get(bond_id))
             is not None
             and bond.order is BondOrder.SINGLE
@@ -2570,7 +2606,9 @@ def _writer_public_cyclic_opening_profile_report(
         )
     )
     ring_core_unsupported_single_closure_bond_count = (
-        len(ring_core_single_bond_ids)
+        0
+        if shared_directional_ring_carrier_envelope is not None
+        else len(ring_core_single_bond_ids)
         - len(ring_core_single_closure_relations)
     )
     ring_core_has_visible_single_closure_bond_text = any(
@@ -2621,7 +2659,19 @@ def _writer_public_cyclic_opening_profile_report(
             )
         )
     )
-    if two_cycle_bond_policy_report is not None:
+    if shared_directional_ring_carrier_envelope is not None:
+        expected_non_single_closure_bonds = frozenset(
+            ring_core_non_single_bond_ids,
+        )
+        supported_non_single_closure_bonds = frozenset(
+            shared_directional_ring_carrier_envelope.center_bonds,
+        )
+        ring_core_has_supported_non_single_closure_bond = (
+            bool(expected_non_single_closure_bonds)
+            and expected_non_single_closure_bonds
+            == supported_non_single_closure_bonds
+        )
+    elif two_cycle_bond_policy_report is not None:
         expected_non_single_closure_bonds = frozenset(
             ring_core_non_single_bond_ids,
         )
@@ -2676,10 +2726,6 @@ def _writer_public_cyclic_opening_profile_report(
     ring_core_unsupported_bond_count = len(
         ring_core_unsupported_bond_ids,
     )
-    ring_core_bond_id_set = frozenset(ring_core_bond_ids)
-    pendant_bond_ids = tuple(
-        bond_id for bond_id in component_bond_ids if bond_id not in ring_core_bond_id_set
-    )
     pendant_unsupported_bond_count = 0
     for bond_id in pendant_bond_ids:
         if bond_id not in component_bond_index:
@@ -2718,7 +2764,6 @@ def _writer_public_cyclic_opening_profile_report(
 
     pendant_component_atom_counts: tuple[int, ...] = ()
     pendant_component_boundary_counts: tuple[int, ...] = ()
-    pendant_atom_set = set(component_atom_ids) - ring_core_atom_set
     directional_ring_carrier_envelope = (
         _writer_public_directional_ring_carrier_envelope(
             prepared=prepared,
@@ -2732,7 +2777,10 @@ def _writer_public_cyclic_opening_profile_report(
             ),
         )
     )
-    if directional_ring_carrier_envelope is not None:
+    if (
+        directional_ring_carrier_envelope is not None
+        or shared_directional_ring_carrier_envelope is not None
+    ):
         unsupported_stereo_surface_count = 0
     if pendant_atom_set:
         pendant_components: list[tuple[frozenset[AtomId], int]] = []
@@ -2930,6 +2978,17 @@ def _writer_public_cyclic_opening_profile_report(
                 _WriterPublicCyclicRequiredCapability.CYCLIC_RING_PAIR_STEREO,
             )
         )
+    if shared_directional_ring_carrier_envelope is not None:
+        required_capabilities.update(
+            (
+                _WriterPublicCyclicRequiredCapability.CYCLIC_DIRECTIONAL_STEREO,
+                _WriterPublicCyclicRequiredCapability.CYCLIC_RING_PAIR_STEREO,
+                (
+                    _WriterPublicCyclicRequiredCapability
+                    .SHARED_DIRECTIONAL_RING_CARRIER_STEREO
+                ),
+            )
+        )
     if cyclic_ranks == (2,) and two_cycle_envelope is not None:
         required_capabilities.add(
             _WriterPublicCyclicRequiredCapability.MULTI_CYCLE_TOPOLOGY,
@@ -3040,6 +3099,13 @@ def _writer_public_cyclic_opening_profile_report(
         unsupported_capabilities.add(
             _WriterPublicCyclicRequiredCapability.CYCLIC_DIRECTIONAL_STEREO,
         )
+        if len(prepared.directional_templates) > 1:
+            unsupported_capabilities.add(
+                (
+                    _WriterPublicCyclicRequiredCapability
+                    .SHARED_DIRECTIONAL_RING_CARRIER_STEREO
+                ),
+            )
         kind = (
             _WriterPublicCyclicOpeningProfileKind.BLOCKED_UNSUPPORTED_CYCLIC_STEREO_SURFACE
         )
@@ -3852,6 +3918,199 @@ def _writer_public_directional_ring_carrier_envelope(
         ring_carrier_bonds=(left_ring, right_ring),
         noncarrier_ring_bond=noncarrier_ring_bond,
         pendant_carrier_bonds=(left_pendant, right_pendant),
+    )
+
+
+def _writer_public_shared_directional_ring_carrier_envelope(
+    *,
+    prepared: SouthStarPreparedMol,
+    ring_core_atom_ids: frozenset[AtomId],
+    ring_core_bond_ids: frozenset[BondId],
+    pendant_atom_ids: frozenset[AtomId],
+    pendant_bond_ids: frozenset[BondId],
+    ring_core_non_single_bond_ids: tuple[BondId, ...],
+) -> _WriterSharedDirectionalRingCarrierEnvelope | None:
+    if len(prepared.directional_templates) != 2:
+        return None
+    if prepared.tetra_templates:
+        return None
+
+    templates = tuple(
+        sorted(prepared.directional_templates, key=lambda item: int(item.site))
+    )
+    if any(template.status is not SiteStatus.SPECIFIED for template in templates):
+        return None
+
+    center_bonds = tuple(template.center_bond for template in templates)
+    if len(frozenset(center_bonds)) != 2:
+        return None
+    if frozenset(ring_core_non_single_bond_ids) != frozenset(center_bonds):
+        return None
+
+    center_endpoint_sets: list[frozenset[AtomId]] = []
+    side_data: list[tuple[
+        DirectionalTemplate,
+        tuple[BondId, BondId],
+        tuple[BondId, BondId],
+    ]] = []
+    for template in templates:
+        center = prepared.graph_index.bond_by_id.get(template.center_bond)
+        if center is None or center.order is not BondOrder.DOUBLE:
+            return None
+        endpoint_set = frozenset((template.left_endpoint, template.right_endpoint))
+        if frozenset((center.a, center.b)) != endpoint_set:
+            return None
+        if not endpoint_set <= ring_core_atom_ids:
+            return None
+
+        left = _writer_public_directional_side_carriers(
+            prepared=prepared,
+            endpoint=template.left_endpoint,
+            ligand_ids=template.left_ligands,
+            ring_core_bond_ids=ring_core_bond_ids,
+            pendant_atom_ids=pendant_atom_ids,
+        )
+        right = _writer_public_directional_side_carriers(
+            prepared=prepared,
+            endpoint=template.right_endpoint,
+            ligand_ids=template.right_ligands,
+            ring_core_bond_ids=ring_core_bond_ids,
+            pendant_atom_ids=pendant_atom_ids,
+        )
+        if left is None or right is None:
+            return None
+        side_data.append((template, (left[0], right[0]), (left[1], right[1])))
+        center_endpoint_sets.append(endpoint_set)
+
+    if center_endpoint_sets[0] & center_endpoint_sets[1]:
+        return None
+
+    ring_carrier_sets = tuple(frozenset(item[1]) for item in side_data)
+    shared = ring_carrier_sets[0] & ring_carrier_sets[1]
+    if len(shared) != 1:
+        return None
+    shared_ring_carrier = next(iter(shared))
+    outer_ring_carriers = tuple(
+        sorted(
+            (ring_carrier_sets[0] | ring_carrier_sets[1]) - shared,
+            key=int,
+        )
+    )
+    if len(outer_ring_carriers) != 2:
+        return None
+
+    pendant_carriers = tuple(
+        bond_id
+        for _template, _ring_carriers, pendants in side_data
+        for bond_id in pendants
+    )
+    if (
+        len(frozenset(pendant_carriers)) != 4
+        or frozenset(pendant_bond_ids) != frozenset(pendant_carriers)
+    ):
+        return None
+
+    ring_carriers = frozenset((shared_ring_carrier, *outer_ring_carriers))
+    known_ring_bonds = frozenset(center_bonds) | ring_carriers
+    remaining_ring_bonds = ring_core_bond_ids - known_ring_bonds
+    if len(remaining_ring_bonds) != 1:
+        return None
+    noncarrier_ring_bond = next(iter(remaining_ring_bonds))
+
+    if any(
+        (bond := prepared.graph_index.bond_by_id.get(bond_id)) is None
+        or bond.order is not BondOrder.SINGLE
+        for bond_id in (
+            shared_ring_carrier,
+            *outer_ring_carriers,
+            noncarrier_ring_bond,
+            *pendant_carriers,
+        )
+    ):
+        return None
+
+    ring_atoms: set[AtomId] = set()
+    for bond_id in ring_core_bond_ids:
+        bond = prepared.graph_index.bond_by_id.get(bond_id)
+        if bond is None:
+            return None
+        ring_atoms.update((bond.a, bond.b))
+    if frozenset(ring_atoms) != ring_core_atom_ids:
+        return None
+
+    pendant_atoms = tuple(
+        _other_bond_atom(
+            prepared,
+            bond_id,
+            endpoint,
+        )
+        for template, _ring_carriers, pendants in side_data
+        for bond_id, endpoint in zip(
+            pendants,
+            (template.left_endpoint, template.right_endpoint),
+        )
+    )
+    if any(atom is None for atom in pendant_atoms):
+        return None
+    if frozenset(pendant_atoms) != pendant_atom_ids:
+        return None
+
+    for center_bond in center_bonds:
+        if _writer_exact_non_single_tree_marker(prepared, center_bond) != "=":
+            return None
+    center_relations = tuple(
+        _writer_public_non_single_closure_relation(prepared, center_bond)
+        for center_bond in center_bonds
+    )
+    if any(relation is None for relation in center_relations):
+        return None
+
+    for bond_id in (shared_ring_carrier, *outer_ring_carriers, *pendant_carriers):
+        if not _writer_public_directional_single_tree_slot_is_supported(
+            prepared,
+            bond_id,
+        ):
+            return None
+
+    noncarrier_relation = _writer_public_single_closure_relation(
+        prepared,
+        noncarrier_ring_bond,
+    )
+    if (
+        not _writer_elided_single_tree_slot_is_supported(
+            prepared,
+            noncarrier_ring_bond,
+        )
+        or noncarrier_relation is None
+        or noncarrier_relation.texts != ("",)
+        or noncarrier_relation.compatible_pairs != (("", ""),)
+    ):
+        return None
+
+    for bond_id in (shared_ring_carrier, *outer_ring_carriers):
+        bond = prepared.graph_index.bond_by_id[bond_id]
+        for first_atom, second_atom in (
+            (bond.a, bond.b),
+            (bond.b, bond.a),
+        ):
+            if (
+                _writer_public_directional_ring_endpoint_relation(
+                    prepared,
+                    bond_id,
+                    first_atom=first_atom,
+                    second_atom=second_atom,
+                )
+                is None
+            ):
+                return None
+
+    return _WriterSharedDirectionalRingCarrierEnvelope(
+        sites=tuple(template.site for template in templates),
+        center_bonds=center_bonds,
+        shared_ring_carrier=shared_ring_carrier,
+        outer_ring_carriers=outer_ring_carriers,
+        noncarrier_ring_bond=noncarrier_ring_bond,
+        pendant_carriers=pendant_carriers,
     )
 
 

@@ -55,6 +55,7 @@ from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
 from grimace._south_star1.writer_frontier import _initial_writer_transition_frontier_cursor
 from grimace._south_star1.writer_frontier import _writer_frontier_choice_snapshot
 from grimace._south_star1.writer_frontier import writer_frontier_choices
+from grimace._south_star1.writer_events import WriterBondEmitted
 from grimace._south_star1.writer_events import WriterRingEndpointEmitted
 from grimace._south_star1.writer_events import WriterRingEndpointPaired
 from grimace._south_star1.writer_events import WriterAtomEmitted
@@ -983,6 +984,351 @@ class WriterStereoResidualTest(unittest.TestCase):
                 ring_state=ring_state,
             )
 
+    def test_shared_directional_initial_residual_is_one_bounded_component(self) -> None:
+        prepared = _prepare_shared_directional_ring_carrier_facts()
+        state = initial_writer_stereo_state(prepared)
+        store = ResidualStore.from_value_snapshot(state.residual_snapshot)
+        result = store.propagate_all_components()
+
+        self.assertIs(
+            result.kind,
+            ResidualPropagationKind.CERTIFIED_CONSISTENT,
+        )
+        self.assertEqual(len(result.stats.component_variables), 8)
+        self.assertEqual(len(result.stats.component_factor_keys), 9)
+        self.assertEqual(result.stats.largest_factor_scope, 4)
+        self.assertEqual(result.stats.largest_candidate_row_count, 81)
+
+        shared_key = ("directional_bond_emission", (BondId(1),))
+        shared_factors = tuple(
+            factor
+            for factor in state.residual_snapshot.factors
+            if (factor.key.kind, factor.key.key) == shared_key
+        )
+        self.assertEqual(len(shared_factors), 1)
+        self.assertEqual(len(shared_factors[0].scope), 2)
+
+    def test_shared_directional_ring_endpoint_open_projects_both_domains(self) -> None:
+        prepared = _prepare_shared_directional_ring_carrier_facts()
+        label = WriterClosureLabel(value=1, text="1")
+
+        expected = {
+            DirectionMark.ABSENT: (
+                (
+                    DirectionalNormalizedSign.ABSENT,
+                    DirectionalNormalizedSign.POSITIVE,
+                    DirectionalNormalizedSign.NEGATIVE,
+                ),
+                (
+                    DirectionalNormalizedSign.ABSENT,
+                    DirectionalNormalizedSign.POSITIVE,
+                    DirectionalNormalizedSign.NEGATIVE,
+                ),
+            ),
+            DirectionMark.FWD: (
+                (DirectionalNormalizedSign.POSITIVE,),
+                (DirectionalNormalizedSign.NEGATIVE,),
+            ),
+            DirectionMark.REV: (
+                (DirectionalNormalizedSign.NEGATIVE,),
+                (DirectionalNormalizedSign.POSITIVE,),
+            ),
+        }
+
+        for mark, domains_by_site in expected.items():
+            with self.subTest(mark=mark):
+                outcome = advance_writer_stereo_state_with_evidence(
+                    prepared,
+                    initial_writer_stereo_state(prepared),
+                    (
+                        WriterRingEndpointEmitted(
+                            bond=BondId(1),
+                            endpoint_atom=AtomId(1),
+                            partner_atom=AtomId(2),
+                            label=label,
+                            endpoint_text="1",
+                            bond_text="",
+                            direction_mark=mark,
+                        ),
+                    ),
+                )
+
+                self.assertIsNotNone(outcome.state)
+                self.assertIn(
+                    _WriterExecutionCapabilityKind
+                    .DIRECTIONAL_RING_PAIR_COMPATIBILITY,
+                    outcome.execution_capabilities,
+                )
+                self.assertIn(
+                    _WriterExecutionCapabilityKind
+                    .SHARED_DIRECTIONAL_CARRIER_RESTRICTION,
+                    outcome.execution_capabilities,
+                )
+                self.assertIn(
+                    _WriterExecutionCapabilityKind.RESIDUAL_PROPAGATION,
+                    outcome.execution_capabilities,
+                )
+                assert outcome.state is not None
+                domains = dict(outcome.state.residual_snapshot.domains)
+                self.assertEqual(
+                    domains[directional_site_carrier_var(SiteId(0), BondId(1))],
+                    domains_by_site[0],
+                )
+                self.assertEqual(
+                    domains[directional_site_carrier_var(SiteId(1), BondId(1))],
+                    domains_by_site[1],
+                )
+                self.assertEqual(outcome.state.residual_snapshot.assignments, ())
+
+    def test_shared_directional_ring_endpoint_pair_records_one_physical_bond(self) -> None:
+        prepared = _prepare_shared_directional_ring_carrier_facts()
+        label = WriterClosureLabel(value=1, text="1")
+        opened = advance_writer_stereo_state(
+            prepared,
+            initial_writer_stereo_state(prepared),
+            (
+                WriterRingEndpointEmitted(
+                    bond=BondId(1),
+                    endpoint_atom=AtomId(1),
+                    partner_atom=AtomId(2),
+                    label=label,
+                    endpoint_text="1",
+                    bond_text="",
+                    direction_mark=DirectionMark.FWD,
+                ),
+            ),
+        )
+        assert opened is not None
+
+        outcome = advance_writer_stereo_state_with_evidence(
+            prepared,
+            opened,
+            (
+                WriterRingEndpointPaired(
+                    bond=BondId(1),
+                    endpoint_atom=AtomId(2),
+                    partner_atom=AtomId(1),
+                    label=label,
+                    endpoint_text="1",
+                    bond_text="",
+                    direction_mark=DirectionMark.REV,
+                    first_endpoint_bond_text="",
+                    first_endpoint_direction_mark=DirectionMark.FWD,
+                ),
+            ),
+        )
+
+        self.assertIsNotNone(outcome.state)
+        self.assertIn(
+            _WriterExecutionCapabilityKind
+            .SHARED_DIRECTIONAL_CARRIER_RESTRICTION,
+            outcome.execution_capabilities,
+        )
+        self.assertIn(
+            _WriterExecutionCapabilityKind.DIRECTIONAL_CARRIER_RESTRICTION,
+            outcome.execution_capabilities,
+        )
+        self.assertIn(
+            _WriterExecutionCapabilityKind
+            .DIRECTIONAL_RING_PAIR_COMPATIBILITY,
+            outcome.execution_capabilities,
+        )
+        self.assertIn(
+            _WriterExecutionCapabilityKind.RESIDUAL_FACTOR_DISCHARGE,
+            outcome.execution_capabilities,
+        )
+        assert outcome.state is not None
+        self.assertEqual(
+            outcome.state.bond_occurrences,
+            (
+                writer_stereo_module.WriterBondOccurrenceRecord(
+                    bond=BondId(1),
+                    parent=AtomId(1),
+                    child=AtomId(2),
+                    mark=DirectionMark.FWD,
+                ),
+            ),
+        )
+        assignments = dict(outcome.state.residual_snapshot.assignments)
+        self.assertEqual(
+            assignments[directional_site_carrier_var(SiteId(0), BondId(1))],
+            DirectionalNormalizedSign.POSITIVE,
+        )
+        self.assertEqual(
+            assignments[directional_site_carrier_var(SiteId(1), BondId(1))],
+            DirectionalNormalizedSign.NEGATIVE,
+        )
+        self.assertNotIn(
+            ("directional_bond_emission", (BondId(1),)),
+            tuple(
+                (factor.key.kind, factor.key.key)
+                for factor in outcome.state.residual_snapshot.factors
+            ),
+        )
+
+    def test_shared_directional_tree_emission_uses_multi_model_restriction(self) -> None:
+        prepared = _prepare_shared_directional_ring_carrier_facts()
+
+        outcome = advance_writer_stereo_state_with_evidence(
+            prepared,
+            initial_writer_stereo_state(prepared),
+            (
+                WriterBondEmitted(
+                    bond=BondId(1),
+                    parent=AtomId(1),
+                    child=AtomId(2),
+                    text="/",
+                    direction_mark=DirectionMark.FWD,
+                ),
+            ),
+        )
+
+        self.assertIsNotNone(outcome.state)
+        self.assertIn(
+            _WriterExecutionCapabilityKind
+            .SHARED_DIRECTIONAL_CARRIER_RESTRICTION,
+            outcome.execution_capabilities,
+        )
+        self.assertIn(
+            _WriterExecutionCapabilityKind.DIRECTIONAL_CARRIER_RESTRICTION,
+            outcome.execution_capabilities,
+        )
+        assert outcome.state is not None
+        assignments = dict(outcome.state.residual_snapshot.assignments)
+        self.assertEqual(
+            assignments[directional_site_carrier_var(SiteId(0), BondId(1))],
+            DirectionalNormalizedSign.POSITIVE,
+        )
+        self.assertEqual(
+            assignments[directional_site_carrier_var(SiteId(1), BondId(1))],
+            DirectionalNormalizedSign.NEGATIVE,
+        )
+
+    def test_shared_directional_open_ring_state_reconstructs_projection(self) -> None:
+        prepared = _prepare_shared_directional_ring_carrier_facts()
+        label = WriterClosureLabel(value=1, text="1")
+        outcome = advance_writer_stereo_state_with_evidence(
+            prepared,
+            initial_writer_stereo_state(prepared),
+            (
+                WriterRingEndpointEmitted(
+                    bond=BondId(1),
+                    endpoint_atom=AtomId(1),
+                    partner_atom=AtomId(2),
+                    label=label,
+                    endpoint_text="1",
+                    bond_text="",
+                    direction_mark=DirectionMark.FWD,
+                ),
+            ),
+        )
+        self.assertIsNotNone(outcome.state)
+        assert outcome.state is not None
+        ring_state = WriterRingState(
+            open_endpoints=(
+                WriterOpenClosureEndpoint(
+                    bond=BondId(1),
+                    first_atom=AtomId(1),
+                    second_atom=AtomId(2),
+                    label=label,
+                    first_endpoint_text="1",
+                    first_endpoint_bond_text="",
+                    first_endpoint_direction_mark=DirectionMark.FWD,
+                ),
+            ),
+        )
+
+        self.assertEqual(
+            reconstruct_writer_stereo_residual_snapshot(
+                prepared,
+                outcome.state,
+                ring_state=ring_state,
+            ),
+            outcome.state.residual_snapshot,
+        )
+        domains = dict(outcome.state.residual_snapshot.domains)
+        tampered_domains = tuple(
+            (
+                var,
+                (
+                    (
+                        DirectionalNormalizedSign.ABSENT,
+                        DirectionalNormalizedSign.POSITIVE,
+                        DirectionalNormalizedSign.NEGATIVE,
+                    )
+                    if var
+                    == directional_site_carrier_var(SiteId(1), BondId(1))
+                    else values
+                ),
+            )
+            for var, values in domains.items()
+        )
+        tampered = replace(
+            outcome.state,
+            residual_snapshot=replace(
+                outcome.state.residual_snapshot,
+                domains=tampered_domains,
+            ),
+        )
+        self.assertNotEqual(
+            reconstruct_writer_stereo_residual_snapshot(
+                prepared,
+                tampered,
+                ring_state=ring_state,
+            ),
+            tampered.residual_snapshot,
+        )
+
+    def test_shared_directional_ring_carrier_closure_path_remains_private(self) -> None:
+        prepared = _prepare_shared_directional_ring_carrier_facts()
+        options = _writer_options(rooted_at_atom=1)
+
+        with self.assertRaises(SouthStarError):
+            initial_writer_frontier_cursor(prepared, options)
+
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+        paths = _private_terminal_paths(prepared, cursor)
+        target_paths = tuple(
+            path
+            for path in paths
+            if any(
+                closure.bond == BondId(1)
+                and (
+                    closure.first_endpoint_direction_mark
+                    is not DirectionMark.ABSENT
+                    or closure.second_endpoint_direction_mark
+                    is not DirectionMark.ABSENT
+                )
+                for closure in path[1].ring_state.closed_closures
+            )
+        )
+
+        self.assertTrue(target_paths)
+        emissions, terminal, capabilities = target_paths[0]
+        self.assertTrue("/" in "".join(emissions) or "\\" in "".join(emissions))
+        self.assertIn(
+            _WriterExecutionCapabilityKind
+            .DIRECTIONAL_RING_PAIR_COMPATIBILITY,
+            capabilities,
+        )
+        self.assertIn(
+            _WriterExecutionCapabilityKind
+            .SHARED_DIRECTIONAL_CARRIER_RESTRICTION,
+            capabilities,
+        )
+        self.assertEqual(
+            sum(
+                occurrence.bond == BondId(1)
+                for occurrence in terminal.stereo_state.bond_occurrences
+            ),
+            1,
+        )
+        self.assertEqual(terminal.ring_state.open_endpoints, ())
+        self.assertEqual(
+            terminal.stereo_state.residual_snapshot,
+            writer_stereo_module.EMPTY_RESIDUAL_SNAPSHOT,
+        )
+
     def test_directional_ring_carrier_closure_path_is_private_only(self) -> None:
         prepared = _prepare_directional_ring_carrier_facts()
         options = _writer_options(rooted_at_atom=0)
@@ -1153,6 +1499,28 @@ class WriterStereoResidualTest(unittest.TestCase):
 
         self.assertEqual(store.value_snapshot().factors, ())
 
+    def test_multi_domain_intersection_rejects_atomically(self) -> None:
+        left = direction_var(("left", 0))
+        right = direction_var(("right", 0))
+        store = ResidualStore()
+        store.add_var(
+            left,
+            (
+                DirectionalNormalizedSign.ABSENT,
+                DirectionalNormalizedSign.POSITIVE,
+            ),
+        )
+        store.add_var(right, (DirectionalNormalizedSign.NEGATIVE,))
+        before = store.value_snapshot()
+
+        result = store.intersect_domains_and_propagate((
+            (left, (DirectionalNormalizedSign.POSITIVE,)),
+            (right, (DirectionalNormalizedSign.POSITIVE,)),
+        ))
+
+        self.assertIs(result.kind, ResidualPropagationKind.CONTRADICTION)
+        self.assertEqual(store.value_snapshot(), before)
+
     def test_empty_event_batch_accepts_supported_residual_state(self) -> None:
         prepared = _prepare(triangle_no_stereo_facts())
         state = empty_writer_stereo_state()
@@ -1243,6 +1611,18 @@ def _prepare(facts):
 
 def _prepare_directional_ring_carrier_facts():
     facts = _directional_ring_carrier_facts()
+    return prepare_south_star_mol_from_facts(
+        facts,
+        writer_surface=SouthStarWriterSurface(),
+        policy=ordinary_policy_for_facts(
+            facts,
+            OrdinaryPolicyOptions(non_single_ring_closures="joint"),
+        ),
+    )
+
+
+def _prepare_shared_directional_ring_carrier_facts():
+    facts = _shared_directional_ring_carrier_facts()
     return prepare_south_star_mol_from_facts(
         facts,
         writer_surface=SouthStarWriterSurface(),
@@ -1384,6 +1764,128 @@ def _directional_ring_carrier_facts() -> MoleculeFacts:
                 kind=LigandKind.NEIGHBOR_ATOM,
                 atom=AtomId(5),
                 bond=BondId(5),
+            ),
+        ),
+    )
+
+
+def _shared_directional_ring_carrier_facts() -> MoleculeFacts:
+    left_site = SiteId(0)
+    right_site = SiteId(1)
+    return MoleculeFacts(
+        atoms=tuple(atom(index, symbol) for index, symbol in (
+            (0, "C"),
+            (1, "C"),
+            (2, "C"),
+            (3, "C"),
+            (4, "F"),
+            (5, "Cl"),
+            (6, "Br"),
+            (7, "O"),
+            (8, "F"),
+            (9, "Cl"),
+        )),
+        bonds=(
+            bond(0, 0, 1, BondOrder.DOUBLE),
+            single_bond(1, 1, 2),
+            bond(2, 2, 3, BondOrder.DOUBLE),
+            single_bond(3, 3, 4),
+            single_bond(4, 4, 5),
+            single_bond(5, 5, 0),
+            single_bond(6, 0, 6),
+            single_bond(7, 1, 7),
+            single_bond(8, 2, 8),
+            single_bond(9, 3, 9),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=tuple(AtomId(index) for index in range(10)),
+                bonds=tuple(BondId(index) for index in range(10)),
+            ),
+        ),
+        stereo=StereoFacts(
+            directional=(
+                DirectionalSiteFacts(
+                    id=left_site,
+                    center_bond=BondId(0),
+                    left_endpoint=AtomId(0),
+                    right_endpoint=AtomId(1),
+                    status=SiteStatus.SPECIFIED,
+                    target=DirectionalValue.OPPOSITE,
+                    left_ligands=(OccurrenceId(0), OccurrenceId(1)),
+                    right_ligands=(OccurrenceId(2), OccurrenceId(3)),
+                    reference_pair=(OccurrenceId(0), OccurrenceId(2)),
+                ),
+                DirectionalSiteFacts(
+                    id=right_site,
+                    center_bond=BondId(2),
+                    left_endpoint=AtomId(2),
+                    right_endpoint=AtomId(3),
+                    status=SiteStatus.SPECIFIED,
+                    target=DirectionalValue.OPPOSITE,
+                    left_ligands=(OccurrenceId(4), OccurrenceId(5)),
+                    right_ligands=(OccurrenceId(6), OccurrenceId(7)),
+                    reference_pair=(OccurrenceId(4), OccurrenceId(6)),
+                ),
+            ),
+        ),
+        ligand_occurrences=(
+            LigandOccurrence(
+                id=OccurrenceId(0),
+                site=left_site,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(5),
+                bond=BondId(5),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(1),
+                site=left_site,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(6),
+                bond=BondId(6),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(2),
+                site=left_site,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(2),
+                bond=BondId(1),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(3),
+                site=left_site,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(7),
+                bond=BondId(7),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(4),
+                site=right_site,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(1),
+                bond=BondId(1),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(5),
+                site=right_site,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(8),
+                bond=BondId(8),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(6),
+                site=right_site,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(4),
+                bond=BondId(3),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(7),
+                site=right_site,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(9),
+                bond=BondId(9),
             ),
         ),
     )

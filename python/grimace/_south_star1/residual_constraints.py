@@ -256,27 +256,55 @@ class ResidualStore:
         var: VarId,
         allowed_values: tuple[object, ...],
     ) -> ResidualPropagationResult:
-        if var not in self._domains:
-            raise ValueError(f"unknown residual variable: {var!r}")
+        return self.intersect_domains_and_propagate(((var, allowed_values),))
 
-        allowed = frozenset(allowed_values)
-        new_domain = tuple(value for value in self._domains[var] if value in allowed)
-        if not new_domain:
-            return ResidualPropagationResult(
-                ResidualPropagationKind.CONTRADICTION,
-                ResidualPropagationStats(component_variables=(var,)),
+    def intersect_domains_and_propagate(
+        self,
+        restrictions: tuple[tuple[VarId, tuple[object, ...]], ...],
+    ) -> ResidualPropagationResult:
+        allowed_by_var: dict[VarId, tuple[object, ...]] = {}
+        for var, allowed_values in restrictions:
+            if var not in self._domains:
+                raise ValueError(f"unknown residual variable: {var!r}")
+            if var in allowed_by_var:
+                previous = allowed_by_var[var]
+                allowed_by_var[var] = tuple(
+                    value for value in previous if value in allowed_values
+                )
+            else:
+                allowed_by_var[var] = allowed_values
+
+        if not allowed_by_var:
+            return self.propagate_all_components()
+
+        updates: list[tuple[VarId, tuple[object, ...]]] = []
+        for var, allowed_values in allowed_by_var.items():
+            allowed = frozenset(allowed_values)
+            new_domain = tuple(
+                value for value in self._domains[var] if value in allowed
             )
+            if not new_domain:
+                return ResidualPropagationResult(
+                    ResidualPropagationKind.CONTRADICTION,
+                    ResidualPropagationStats(component_variables=(var,)),
+                )
 
-        existing = self._assignments.get(var, _UNASSIGNED)
-        if existing is not _UNASSIGNED and existing not in new_domain:
-            return ResidualPropagationResult(
-                ResidualPropagationKind.CONTRADICTION,
-                ResidualPropagationStats(component_variables=(var,)),
-            )
+            existing = self._assignments.get(var, _UNASSIGNED)
+            if existing is not _UNASSIGNED and existing not in new_domain:
+                return ResidualPropagationResult(
+                    ResidualPropagationKind.CONTRADICTION,
+                    ResidualPropagationStats(component_variables=(var,)),
+                )
 
-        self._replace_domain(var, new_domain)
+            updates.append((var, new_domain))
+
+        for var, new_domain in updates:
+            self._replace_domain(var, new_domain)
+
         return self._propagate_components(
-            self._components_from_variables((var,)),
+            self._components_from_variables(
+                tuple(var for var, _new_domain in updates),
+            ),
         )
 
     def _install_restriction(

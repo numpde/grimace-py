@@ -1,103 +1,72 @@
-# Grimace
+# South Star branch
 
-Grimace is a Rust-first Python package for exact SMILES generation and online
-next-token decoding.
+This branch is for South Star, a writer-state model for exact SMILES support.
 
-The vision is simple: make molecular string generation inspectable. A model,
-search procedure, or human-in-the-loop tool should be able to ask not only
-"what SMILES strings can this molecule produce?", but also "what can come next,
-right now, and why?"
+A SMILES writer is usually exposed as a procedure that returns strings. South
+Star treats it as a state machine. The state records graph traversal, branch
+returns, ring labels, closure endpoints, atom and bond text choices, stereo
+obligations, and terminal closure. A token is allowed only if applying it gives
+a valid successor state.
 
-Grimace treats SMILES serialization as a finite language problem. It builds the
-reachable writer state space, exposes exact continuations, and keeps enough
-structure to diagnose where a candidate string leaves the supported language.
+## Questions
 
-## What It Is For
+The branch is organized around these queries:
 
-- exact rooted SMILES support enumeration
-- online legal-next-token decoding
-- branch-preserving or determinized decoder states
-- token inventory construction for molecular language models
-- diagnostics for rejected SMILES candidates
+- Which complete strings can this prepared molecule emit?
+- Which tokens are legal after this prefix?
+- Which successor state does a token produce?
+- Can this stored cursor resume without replaying its prefix?
+- Which operation makes a molecule or transition unsupported?
 
-The public runtime is currently an RDKit writer-parity interface. Grimace keeps
-that layer separate from principled chemistry semantics: a string can be
-chemically valid while still not belonging to the writer language being modeled.
+It is not a parser-equivalence project. South Star keeps two checks separate:
 
-## Install
+- whether a string is meaningful for the prepared molecular facts;
+- whether the writer model can emit that string.
 
-Install the PyPI distribution named `grimace-py`:
+## Model
 
-```bash
-python -m pip install grimace-py
+The implementation is moving toward one live transition engine.
+
+Graph state records the writer traversal, pending entries, branch frames, ring
+labels, open closure endpoints, and closed closures. Stereo state is carried by
+residual factors over live variables. Snapshot validation reconstructs residual
+state from recorded writer history instead of trusting stored domains and
+assignments.
+
+The intended shape is:
+
+```text
+prepared facts
++ writer policy
++ current graph/ring/stereo state
+=> legal next transitions
+=> exact successor states
 ```
 
-Import it as `grimace`:
+Enumeration, online decoding, snapshot resumption, capability auditing, and
+diagnostics should all read the same state.
 
-```python
-import grimace
-```
+## Current Work
 
-Plain `pip install grimace` installs an unrelated package.
+Recent commits have been replacing topology-derived positive admission with
+live execution certificates. A retained transition records the writer
+capabilities it used. A public admission is positive only when the reachable
+transition set stays inside the supported capability envelope.
 
-Grimace depends on RDKit and a compiled Rust extension. The package metadata
-declares Python `>=3.11` and `rdkit>=2026.3`.
+The current phase is about shared operations. The immediate case is a
+ring-closure bond that also acts as a directional stereo carrier. That forces
+the ring syntax relation and the stereo residual relation to be updated by the
+same live transition.
 
-## Quick Taste
+## Repository Notes
 
-```python
-from rdkit import Chem
-import grimace
+The package is still distributed as `grimace-py` and imported as `grimace`.
+This branch is not written as mainline package documentation; it is a working
+branch for South Star internals.
 
-mol = Chem.MolFromSmiles("CCO")
-flags = dict(canonical=False, doRandom=True)
+Useful starting points:
 
-support = tuple(
-    grimace.MolToSmilesEnum(
-        mol,
-        rootedAtAtom=-1,
-        isomericSmiles=False,
-        **flags,
-    )
-)
-
-decoder = grimace.MolToSmilesDeterminizedDecoder(
-    mol,
-    rootedAtAtom=-1,
-    isomericSmiles=False,
-    **flags,
-)
-
-while not decoder.is_terminal:
-    choice = decoder.next_choices[0]
-    print(decoder.prefix, "->", [item.text for item in decoder.next_choices])
-    decoder = choice.next_state
-```
-
-Core public entrypoints:
-
-- `MolToSmilesEnum(...)`
-- `MolToSmilesDecoder(...)`
-- `MolToSmilesDeterminizedDecoder(...)`
-- `MolToSmilesDeviation(...)`
-- `MolToSmilesTokenInventory(...)`
-- `MolToSmilesTokenInventorySuperset(...)`
-
-## Direction
-
-Grimace is being built toward proof-carrying molecular serialization:
-
-- exact writer languages instead of sampled writer behavior
-- resumable decoder states instead of opaque string generation
-- explicit graph, ring, and stereo obligations instead of post-hoc filtering
-- diagnostics that point to the operation that made a candidate impossible
-
-The name stands for "graph representation integrating multiple alternate
-chemical equivalents", motivated by research on NMR spectroscopy with language
-transformers ([link](https://numpde.github.io/shared/msc/)).
-
-## More
-
+- [South Star developer contract](python/grimace/_south_star1/DEV-CONTRACT.md)
 - [Python API](docs/api/python.md)
 - [Correctness contracts](docs/correctness-contracts.md)
 - [Testing fixtures](docs/testing-fixtures.md)

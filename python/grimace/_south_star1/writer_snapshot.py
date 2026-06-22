@@ -2587,11 +2587,24 @@ def _writer_public_cyclic_opening_profile_report(
     )
     ring_core_tetra_is_supported = (
         ring_core_tetra_template_count > 0
-        and _writer_public_ring_core_tetrahedral_stereo_is_supported(
-            prepared=prepared,
-            ring_core_atom_set=frozenset(ring_core_atom_set),
-            ring_core_bond_id_set=frozenset(ring_core_bond_ids),
-            ring_core_non_single_bond_ids=ring_core_non_single_bond_ids,
+        and (
+            _writer_public_two_cycle_ring_tetra_is_supported(
+                prepared=prepared,
+                envelope=two_cycle_envelope,
+                ring_core_bond_ids=frozenset(ring_core_bond_ids),
+                component_bond_ids=component_bond_ids,
+                bond_policy_report=two_cycle_bond_policy_report,
+            )
+            if (
+                two_cycle_envelope is not None
+                and two_cycle_bond_policy_report is not None
+            )
+            else _writer_public_ring_core_tetrahedral_stereo_is_supported(
+                prepared=prepared,
+                ring_core_atom_set=frozenset(ring_core_atom_set),
+                ring_core_bond_id_set=frozenset(ring_core_bond_ids),
+                ring_core_non_single_bond_ids=ring_core_non_single_bond_ids,
+            )
         )
     )
     if two_cycle_bond_policy_report is not None:
@@ -2803,7 +2816,7 @@ def _writer_public_cyclic_opening_profile_report(
         and two_cycle_label_policy_supported
         and two_cycle_bond_policy_report is not None
         and two_cycle_bond_policy_report.supported
-        and not prepared.tetra_templates
+        and (not prepared.tetra_templates or ring_core_tetra_is_supported)
         and not prepared.directional_templates
     )
 
@@ -3611,9 +3624,79 @@ def _writer_public_ring_core_tetrahedral_stereo_is_supported(
         return False
 
     template = prepared.tetra_templates[0]
-    if template.status is not SiteStatus.SPECIFIED:
-        return False
     if template.center not in ring_core_atom_set:
+        return False
+
+    return _writer_public_ring_tetra_template_is_supported(
+        prepared=prepared,
+        template=template,
+        cycle_bond_ids=ring_core_bond_id_set,
+        forbidden_neighbor_bond_ids=frozenset(ring_core_non_single_bond_ids),
+    )
+
+
+def _writer_public_two_cycle_ring_tetra_is_supported(
+    *,
+    prepared: SouthStarPreparedMol,
+    envelope: _WriterTwoCycleBlockEnvelope,
+    ring_core_bond_ids: frozenset[BondId],
+    component_bond_ids: tuple[BondId, ...],
+    bond_policy_report: _WriterTwoCycleBondPolicyReport,
+) -> bool:
+    templates = prepared.tetra_templates
+    if not 1 <= len(templates) <= 2:
+        return False
+    if prepared.directional_templates:
+        return False
+    if (
+        bond_policy_report.visible_tree_bonds
+        or bond_policy_report.visible_closure_bonds
+    ):
+        return False
+
+    if any(
+        prepared.graph_index.bond_by_id[bond_id].order is not BondOrder.SINGLE
+        or not _writer_elided_single_tree_slot_is_supported(prepared, bond_id)
+        for bond_id in component_bond_ids
+    ):
+        return False
+
+    used_blocks: set[int] = set()
+    for template in templates:
+        matching_blocks = tuple(
+            index
+            for index, atoms in enumerate(envelope.cycle_atom_sets)
+            if template.center in atoms
+        )
+        if len(matching_blocks) != 1:
+            return False
+
+        block = matching_blocks[0]
+        if block in used_blocks:
+            return False
+
+        if not _writer_public_ring_tetra_template_is_supported(
+            prepared=prepared,
+            template=template,
+            cycle_bond_ids=envelope.cycle_bond_sets[block],
+            forbidden_neighbor_bond_ids=ring_core_bond_ids
+            - envelope.cycle_bond_sets[block],
+        ):
+            return False
+
+        used_blocks.add(block)
+
+    return True
+
+
+def _writer_public_ring_tetra_template_is_supported(
+    *,
+    prepared: SouthStarPreparedMol,
+    template,
+    cycle_bond_ids: frozenset[BondId],
+    forbidden_neighbor_bond_ids: frozenset[BondId],
+) -> bool:
+    if template.status is not SiteStatus.SPECIFIED:
         return False
 
     occurrence_by_id = {
@@ -3648,12 +3731,18 @@ def _writer_public_ring_core_tetrahedral_stereo_is_supported(
     ring_neighbor_bonds = frozenset(
         occurrence.bond
         for occurrence in neighbor_occurrences
-        if occurrence.bond in ring_core_bond_id_set
+        if occurrence.bond in cycle_bond_ids
     )
     if len(ring_neighbor_bonds) != 2:
         return False
 
-    return ring_neighbor_bonds.isdisjoint(ring_core_non_single_bond_ids)
+    neighbor_bonds = frozenset(
+        occurrence.bond for occurrence in neighbor_occurrences
+    )
+    if neighbor_bonds & forbidden_neighbor_bond_ids:
+        return False
+
+    return len(neighbor_bonds - cycle_bond_ids) == 1
 
 
 def _cyclic_writer_admission_decision_from_readiness_gate(

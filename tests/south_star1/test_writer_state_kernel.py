@@ -53,6 +53,7 @@ from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import enumerate_prepared_stereo_support
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
+from grimace._south_star1.residual_constraints import residual_store_constraint_components
 from grimace._south_star1.writer_frontier import WriterFrontierCursor
 from grimace._south_star1.writer_frontier import count_writer_cursor_completions
 from grimace._south_star1.writer_frontier import count_writer_frontier_support
@@ -60,6 +61,7 @@ from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
 from grimace._south_star1.writer_frontier import _initial_writer_transition_frontier_cursor
 from grimace._south_star1.writer_frontier import iter_writer_frontier_support
 from grimace._south_star1.writer_frontier import writer_frontier_choices
+from grimace._south_star1.writer_stereo import EMPTY_RESIDUAL_SNAPSHOT
 from grimace._south_star1.writer_graph_obligations import WriterBoundaryOwnerKind
 from grimace._south_star1.writer_graph_obligations import WriterEdgeObligationKind
 from grimace._south_star1.writer_graph_obligations import WriterResidualAttachmentActionKind
@@ -20560,6 +20562,579 @@ class WriterStateKernelTest(unittest.TestCase):
                 ),
             )
             self.assertEqual(len(order), 4)
+
+    def test_public_two_cycle_ring_tetra_factors_are_supported(self) -> None:
+        rows = (
+            ("left", bridge_path_with_ring_tetra_facts(left=True, right=False)),
+            ("right", bridge_path_with_ring_tetra_facts(left=False, right=True)),
+            ("both", bridge_path_with_ring_tetra_facts()),
+        )
+
+        for name, facts in rows:
+            for root in (*range(len(facts.atoms)), -1):
+                with self.subTest(name=name, root=root):
+                    prepared = _prepare(facts)
+                    options = _writer_options(rooted_at_atom=root)
+                    cursor = _initial_writer_transition_frontier_cursor(
+                        prepared,
+                        options,
+                    )
+                    decision = (
+                        writer_snapshot
+                        ._cyclic_writer_admission_decision_from_cursor(
+                            prepared=prepared,
+                            runtime_options=options,
+                            cursor=cursor,
+                        )
+                    )
+                    self.assertIs(
+                        decision.kind,
+                        (
+                            writer_snapshot
+                            ._WriterCyclicAdmissionDecisionKind
+                            .READY_PUBLIC
+                        ),
+                    )
+                    assert decision.public_profile is not None
+                    self.assertIs(
+                        decision.public_profile.kind,
+                        (
+                            writer_snapshot
+                            ._WriterPublicCyclicOpeningProfileKind
+                            .SUPPORTED_TWO_BRIDGE_SEPARATED_SIMPLE_CYCLES_WITH_ACYCLIC_ATTACHMENTS
+                        ),
+                    )
+                    self.assertIn(
+                        (
+                            writer_snapshot
+                            ._WriterPublicCyclicRequiredCapability
+                            .RING_CORE_TETRAHEDRAL_STEREO
+                        ),
+                        decision.public_profile.required_capabilities,
+                    )
+
+    def test_two_cycle_ring_tetra_factors_remain_independent(self) -> None:
+        prepared = _prepare(bridge_path_with_ring_tetra_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+        initial_snapshot = (
+            writer_snapshot
+            ._capture_writer_frontier_snapshot_unchecked(
+                prepared=prepared,
+                runtime_options=options,
+                cursor=cursor,
+            )
+        )
+        initial_state = writer_state_from_key(cursor.weighted_states[0][0])
+
+        def tetra_components(state: WriterState) -> dict[int, object]:
+            components = residual_store_constraint_components(
+                state.stereo_state.residual_snapshot,
+            )
+            result = {}
+            for component in components:
+                tetra_keys = tuple(
+                    key
+                    for key in component.factor_keys
+                    if key.kind == "tetra_site"
+                )
+                if not tetra_keys:
+                    continue
+                self.assertEqual(len(tetra_keys), 1)
+                result[int(tetra_keys[0].key[0])] = component
+            return result
+
+        def tetra_component_payload(
+            state: WriterState,
+            site: int,
+        ) -> object:
+            component = tetra_components(state)[site]
+            snapshot = state.stereo_state.residual_snapshot
+            domain_map = dict(snapshot.domains)
+            assignment_map = dict(snapshot.assignments)
+            factor_map = {factor.key: factor for factor in snapshot.factors}
+            return (
+                component,
+                tuple((var, domain_map[var]) for var in component.variables),
+                tuple(
+                    (var, assignment_map[var])
+                    for var in component.variables
+                    if var in assignment_map
+                ),
+                tuple(factor_map[key] for key in component.factor_keys),
+            )
+
+        initial_components = tetra_components(initial_state)
+        self.assertEqual(frozenset(initial_components), frozenset((0, 1)))
+        initial_domain_map = dict(
+            initial_state.stereo_state.residual_snapshot.domains,
+        )
+        factor_map = {
+            factor.key: factor
+            for factor in initial_state.stereo_state.residual_snapshot.factors
+        }
+        for site, component in initial_components.items():
+            self.assertEqual(len(component.variables), 2)
+            self.assertEqual(len(component.factor_keys), 1)
+            factor = factor_map[component.factor_keys[0]]
+            self.assertEqual(len(factor.scope), 2)
+            self.assertEqual(
+                tuple(len(initial_domain_map[var]) for var in component.variables),
+                (2, 2),
+            )
+            self.assertEqual(site, int(component.factor_keys[0].key[0]))
+
+        paths = _branch_terminal_paths(prepared, cursor)
+        self.assertTrue(paths)
+
+        left_restricted = next(
+            state
+            for path in paths
+            for state in path.states
+            if (
+                0 in tetra_components(state)
+                and 1 in tetra_components(state)
+                and tetra_components(state)[0].assigned_variables
+                and not tetra_components(state)[1].assigned_variables
+            )
+        )
+        self.assertEqual(
+            tetra_component_payload(left_restricted, 1),
+            tetra_component_payload(initial_state, 1),
+        )
+
+        left_discharged = next(
+            state
+            for path in paths
+            for state in path.states
+            if (
+                0 not in tetra_components(state)
+                and 1 in tetra_components(state)
+            )
+        )
+        self.assertEqual(
+            tetra_component_payload(left_discharged, 1),
+            tetra_component_payload(initial_state, 1),
+        )
+
+        right_options = _writer_options(rooted_at_atom=3)
+        right_cursor = _initial_writer_transition_frontier_cursor(
+            prepared,
+            right_options,
+        )
+        right_initial_state = writer_state_from_key(
+            right_cursor.weighted_states[0][0],
+        )
+        right_paths = _branch_terminal_paths(prepared, right_cursor)
+        right_restricted = next(
+            state
+            for path in right_paths
+            for state in path.states
+            if (
+                0 in tetra_components(state)
+                and 1 in tetra_components(state)
+                and not tetra_components(state)[0].assigned_variables
+                and tetra_components(state)[1].assigned_variables
+            )
+        )
+        self.assertEqual(
+            tetra_component_payload(right_restricted, 0),
+            tetra_component_payload(right_initial_state, 0),
+        )
+        right_discharged = next(
+            state
+            for path in right_paths
+            for state in path.states
+            if (
+                0 in tetra_components(state)
+                and 1 not in tetra_components(state)
+            )
+        )
+        self.assertEqual(
+            tetra_component_payload(right_discharged, 0),
+            tetra_component_payload(right_initial_state, 0),
+        )
+
+        both_live_two_open = next(
+            state
+            for path in paths
+            for state in path.states
+            if (
+                len(state.ring_state.open_endpoints) == 2
+                and frozenset(tetra_components(state)) == frozenset((0, 1))
+            )
+        )
+        self.assertEqual(len(both_live_two_open.ring_state.open_endpoints), 2)
+
+        roles_by_center = {AtomId(0): set(), AtomId(3): set()}
+        terminal_paths = tuple(paths)
+        for path in terminal_paths:
+            self.assertEqual(
+                path.terminal_state.stereo_state.residual_snapshot,
+                EMPTY_RESIDUAL_SNAPSHOT,
+            )
+            terminal_orders = {
+                record.atom: record
+                for record in path.terminal_state.stereo_state.local_orders
+                if record.atom in roles_by_center
+            }
+            self.assertEqual(frozenset(terminal_orders), frozenset(roles_by_center))
+            for record in terminal_orders.values():
+                self.assertTrue(record.closed)
+                self.assertEqual(len(record.order), 4)
+                self.assertEqual(len(frozenset(record.order)), 4)
+
+        for root_atom in range(len(prepared.facts.atoms)):
+            role_options = _writer_options(rooted_at_atom=root_atom)
+            role_cursor = _initial_writer_transition_frontier_cursor(
+                prepared,
+                role_options,
+            )
+            for path in _branch_terminal_paths(prepared, role_cursor):
+                for center in roles_by_center:
+                    for closure in path.terminal_state.ring_state.closed_closures:
+                        if closure.first_atom == center:
+                            roles_by_center[center].add("opening")
+                        elif closure.second_atom == center:
+                            roles_by_center[center].add("pairing")
+                        else:
+                            roles_by_center[center].add("nonincident")
+
+        self.assertEqual(
+            roles_by_center,
+            {
+                AtomId(0): {"opening", "pairing", "nonincident"},
+                AtomId(3): {"opening", "pairing", "nonincident"},
+            },
+        )
+
+        representative = next(
+            path
+            for path in paths
+            if any(
+                len(state.ring_state.open_endpoints) == 2
+                for state in path.states
+            )
+        )
+        one_discharged_index = next(
+            index
+            for index, state in enumerate(representative.states)
+            if (
+                len(tetra_components(state)) == 1
+                and state.stereo_state.residual_snapshot
+                != EMPTY_RESIDUAL_SNAPSHOT
+            )
+        )
+        two_open_index = next(
+            index
+            for index, state in enumerate(representative.states)
+            if len(state.ring_state.open_endpoints) == 2
+        )
+        for index in (0, one_discharged_index, two_open_index):
+            with self.subTest(index=index):
+                outcome = (
+                    _assert_checked_prefix_successor_snapshot_resume_equivalence(
+                        self,
+                        snapshot=initial_snapshot,
+                        prepared=prepared,
+                        emitted_texts=representative.emissions[:index],
+                    )
+                )
+                advanced = outcome.replay_outcome.advanced_snapshot
+                self.assertIsNotNone(advanced)
+                assert advanced is not None
+                self.assertIn(
+                    writer_state_key(representative.states[index]),
+                    dict(advanced.cursor.weighted_states),
+                )
+
+        decision = writer_snapshot._cyclic_writer_admission_decision_from_cursor(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        assert decision.execution_capability_certificate is not None
+        for capability in (
+            writer_snapshot._WriterExecutionCapabilityKind.TETRA_TOKEN_RESTRICTION,
+            writer_snapshot._WriterExecutionCapabilityKind.TETRA_LOCAL_ORDER_RESTRICTION,
+            writer_snapshot._WriterExecutionCapabilityKind.TETRA_RING_ENDPOINT_ORDER_OCCURRENCE,
+            writer_snapshot._WriterExecutionCapabilityKind.RESIDUAL_FACTOR_DISCHARGE,
+        ):
+            self.assertIn(
+                capability,
+                (
+                    decision
+                    .execution_capability_certificate
+                    .required_capabilities
+                ),
+            )
+        _assert_replay_succeeds_for_execution_capability_uses(
+            self,
+            audit=decision.readiness_gate.audit,
+            snapshot=initial_snapshot,
+            prepared=prepared,
+        )
+
+        image = enumerate_prepared_stereo_support(
+            prepared=prepared,
+            runtime_options=options,
+        )
+        self.assertTrue(image.strings)
+        self.assertEqual(
+            image.distinct_count,
+            count_writer_frontier_support(prepared, cursor.support_state),
+        )
+        self.assertEqual(
+            image.witness_count,
+            count_writer_cursor_completions(prepared, cursor),
+        )
+        self.assertEqual(
+            image.strings,
+            tuple(iter_writer_frontier_support(prepared, cursor)),
+        )
+
+    def test_two_cycle_ring_tetra_unsupported_envelope_remains_blocked(self) -> None:
+        def add_tetra_at_atom(
+            facts: MoleculeFacts,
+            *,
+            site: SiteId,
+            center: AtomId,
+            pendant_atom: AtomId,
+            pendant_bond: BondId,
+            ring_ligands: tuple[tuple[AtomId, BondId], tuple[AtomId, BondId]],
+            status: SiteStatus = SiteStatus.SPECIFIED,
+            implicit_h: bool = True,
+        ) -> MoleculeFacts:
+            atoms = list(facts.atoms)
+            atoms[int(center)] = replace(
+                atoms[int(center)],
+                implicit_h_count=1 if implicit_h else 0,
+            )
+            atoms.append(atom(int(pendant_atom), "F"))
+            bonds = (
+                *facts.bonds,
+                single_bond(int(pendant_bond), int(center), int(pendant_atom)),
+            )
+            ligand_occurrences = list(facts.ligand_occurrences)
+            start = len(ligand_occurrences)
+            for atom_id, bond_id in (*ring_ligands, (pendant_atom, pendant_bond)):
+                ligand_occurrences.append(
+                    LigandOccurrence(
+                        id=OccurrenceId(len(ligand_occurrences)),
+                        site=site,
+                        kind=LigandKind.NEIGHBOR_ATOM,
+                        atom=atom_id,
+                        bond=bond_id,
+                    ),
+                )
+            if implicit_h:
+                ligand_occurrences.append(
+                    LigandOccurrence(
+                        id=OccurrenceId(len(ligand_occurrences)),
+                        site=site,
+                        kind=LigandKind.IMPLICIT_H,
+                        atom=center,
+                        bond=None,
+                    ),
+                )
+            template_occurrences = tuple(
+                OccurrenceId(index)
+                for index in range(start, len(ligand_occurrences))
+            )
+            tetra = TetrahedralSiteFacts(
+                id=site,
+                center=center,
+                status=status,
+                target=TetraValue.PLUS,
+                ligand_occurrences=template_occurrences,
+                reference_order=template_occurrences,
+            )
+            return replace(
+                facts,
+                atoms=tuple(atoms),
+                bonds=bonds,
+                components=(
+                    ComponentFacts(
+                        id=ComponentId(0),
+                        atoms=tuple(AtomId(index) for index in range(len(atoms))),
+                        bonds=tuple(BondId(index) for index in range(len(bonds))),
+                    ),
+                ),
+                stereo=StereoFacts(
+                    tetrahedral=(*facts.stereo.tetrahedral, tetra),
+                ),
+                ligand_occurrences=tuple(ligand_occurrences),
+            )
+
+        base = bridge_path_with_ring_tetra_facts()
+        def four_neighbor_tetra_facts() -> MoleculeFacts:
+            facts = bridge_separated_triangles_facts(connector_length=3)
+            atoms = list(facts.atoms)
+            atoms[0] = replace(atoms[0], implicit_h_count=0)
+            atoms.extend((atom(8, "F"), atom(9, "Cl")))
+            bonds = (
+                *facts.bonds,
+                single_bond(9, 0, 8),
+                single_bond(10, 0, 9),
+            )
+            site = SiteId(0)
+            ligand_occurrences = (
+                LigandOccurrence(
+                    id=OccurrenceId(0),
+                    site=site,
+                    kind=LigandKind.NEIGHBOR_ATOM,
+                    atom=AtomId(1),
+                    bond=BondId(0),
+                ),
+                LigandOccurrence(
+                    id=OccurrenceId(1),
+                    site=site,
+                    kind=LigandKind.NEIGHBOR_ATOM,
+                    atom=AtomId(2),
+                    bond=BondId(2),
+                ),
+                LigandOccurrence(
+                    id=OccurrenceId(2),
+                    site=site,
+                    kind=LigandKind.NEIGHBOR_ATOM,
+                    atom=AtomId(8),
+                    bond=BondId(9),
+                ),
+                LigandOccurrence(
+                    id=OccurrenceId(3),
+                    site=site,
+                    kind=LigandKind.NEIGHBOR_ATOM,
+                    atom=AtomId(9),
+                    bond=BondId(10),
+                ),
+            )
+            return replace(
+                facts,
+                atoms=tuple(atoms),
+                bonds=bonds,
+                components=(
+                    ComponentFacts(
+                        id=ComponentId(0),
+                        atoms=tuple(AtomId(index) for index in range(len(atoms))),
+                        bonds=tuple(BondId(index) for index in range(len(bonds))),
+                    ),
+                ),
+                stereo=StereoFacts(
+                    tetrahedral=(
+                        TetrahedralSiteFacts(
+                            id=site,
+                            center=AtomId(0),
+                            status=SiteStatus.SPECIFIED,
+                            target=TetraValue.PLUS,
+                            ligand_occurrences=tuple(
+                                OccurrenceId(index) for index in range(4)
+                            ),
+                            reference_order=tuple(
+                                OccurrenceId(index) for index in range(4)
+                            ),
+                        ),
+                    ),
+                ),
+                ligand_occurrences=ligand_occurrences,
+            )
+
+        visible = replace(
+            base,
+            bonds=tuple(
+                replace(bond, order=BondOrder.DOUBLE)
+                if bond.id == BondId(7)
+                else bond
+                for bond in base.bonds
+            ),
+        )
+        cases = (
+            (
+                "two_centers_one_block",
+                add_tetra_at_atom(
+                    bridge_path_with_ring_tetra_facts(left=True, right=False),
+                    site=SiteId(2),
+                    center=AtomId(1),
+                    pendant_atom=AtomId(9),
+                    pendant_bond=BondId(10),
+                    ring_ligands=(
+                        (AtomId(0), BondId(0)),
+                        (AtomId(2), BondId(1)),
+                    ),
+                ),
+            ),
+            (
+                "connector_center",
+                add_tetra_at_atom(
+                    bridge_separated_triangles_facts(connector_length=3),
+                    site=SiteId(0),
+                    center=AtomId(6),
+                    pendant_atom=AtomId(8),
+                    pendant_bond=BondId(9),
+                    ring_ligands=(
+                        (AtomId(2), BondId(6)),
+                        (AtomId(7), BondId(7)),
+                    ),
+                ),
+            ),
+            (
+                "three_templates",
+                add_tetra_at_atom(
+                    base,
+                    site=SiteId(2),
+                    center=AtomId(1),
+                    pendant_atom=AtomId(10),
+                    pendant_bond=BondId(11),
+                    ring_ligands=(
+                        (AtomId(0), BondId(0)),
+                        (AtomId(2), BondId(1)),
+                    ),
+                ),
+            ),
+            (
+                "unspecified",
+                replace(
+                    base,
+                    stereo=StereoFacts(
+                        tetrahedral=tuple(
+                            replace(
+                                template,
+                                status=SiteStatus.UNSPECIFIED,
+                                target=TetraValue.NONE,
+                            )
+                            for template in base.stereo.tetrahedral
+                        ),
+                    ),
+                ),
+            ),
+            (
+                "four_neighbor",
+                four_neighbor_tetra_facts(),
+            ),
+            ("visible_bond_text", visible),
+        )
+        for name, facts in cases:
+            with self.subTest(name=name):
+                prepared = _prepare_with_ordinary_policy_options(
+                    facts,
+                    options=OrdinaryPolicyOptions(
+                        non_single_ring_closures="joint",
+                    ),
+                )
+                report = (
+                    writer_snapshot
+                    ._writer_public_cyclic_opening_profile_report(
+                        prepared=prepared,
+                    )
+                )
+                self.assertFalse(report.supported)
+                self.assertIn(
+                    (
+                        writer_snapshot
+                        ._WriterPublicCyclicRequiredCapability
+                        .RING_CORE_TETRAHEDRAL_STEREO
+                    ),
+                    report.unsupported_capabilities,
+                )
 
     def test_public_ring_core_tetrahedral_profile_is_static_capability_gated(
         self,
@@ -43258,6 +43833,116 @@ def bridge_path_with_visible_connector_and_non_single_block_facts(
             else bond
             for bond in base.bonds
         ),
+    )
+
+
+def bridge_path_with_ring_tetra_facts(
+    *,
+    left: bool = True,
+    right: bool = True,
+) -> MoleculeFacts:
+    if not left and not right:
+        raise AssertionError("at least one tetra center is required")
+
+    base = bridge_separated_triangles_facts(connector_length=3)
+    atoms = list(base.atoms)
+    bonds = list(base.bonds)
+    ligand_occurrences: list[LigandOccurrence] = []
+    tetrahedral: list[TetrahedralSiteFacts] = []
+
+    def add_tetra(
+        *,
+        site: SiteId,
+        center: AtomId,
+        pendant_atom: AtomId,
+        pendant_bond: BondId,
+        ring_ligands: tuple[tuple[AtomId, BondId], tuple[AtomId, BondId]],
+        target: TetraValue,
+    ) -> None:
+        atoms[int(center)] = replace(
+            atoms[int(center)],
+            implicit_h_count=1,
+        )
+        occurrence_start = len(ligand_occurrences)
+        for atom_id, bond_id in (
+            *ring_ligands,
+            (pendant_atom, pendant_bond),
+        ):
+            ligand_occurrences.append(
+                LigandOccurrence(
+                    id=OccurrenceId(len(ligand_occurrences)),
+                    site=site,
+                    kind=LigandKind.NEIGHBOR_ATOM,
+                    atom=atom_id,
+                    bond=bond_id,
+                ),
+            )
+        ligand_occurrences.append(
+            LigandOccurrence(
+                id=OccurrenceId(len(ligand_occurrences)),
+                site=site,
+                kind=LigandKind.IMPLICIT_H,
+                atom=center,
+                bond=None,
+            ),
+        )
+        tetrahedral.append(
+            TetrahedralSiteFacts(
+                id=site,
+                center=center,
+                status=SiteStatus.SPECIFIED,
+                target=target,
+                ligand_occurrences=tuple(
+                    OccurrenceId(index)
+                    for index in range(occurrence_start, occurrence_start + 4)
+                ),
+                reference_order=tuple(
+                    OccurrenceId(index)
+                    for index in range(occurrence_start, occurrence_start + 4)
+                ),
+            ),
+        )
+
+    if left:
+        pendant_atom = AtomId(len(atoms))
+        pendant_bond = BondId(len(bonds))
+        atoms.append(atom(int(pendant_atom), "F"))
+        bonds.append(single_bond(int(pendant_bond), 0, int(pendant_atom)))
+        add_tetra(
+            site=SiteId(0),
+            center=AtomId(0),
+            pendant_atom=pendant_atom,
+            pendant_bond=pendant_bond,
+            ring_ligands=((AtomId(1), BondId(0)), (AtomId(2), BondId(2))),
+            target=TetraValue.PLUS,
+        )
+    if right:
+        pendant_atom = AtomId(len(atoms))
+        pendant_bond = BondId(len(bonds))
+        atoms.append(atom(int(pendant_atom), "F"))
+        bonds.append(single_bond(int(pendant_bond), 3, int(pendant_atom)))
+        add_tetra(
+            site=SiteId(1),
+            center=AtomId(3),
+            pendant_atom=pendant_atom,
+            pendant_bond=pendant_bond,
+            ring_ligands=((AtomId(4), BondId(3)), (AtomId(5), BondId(5))),
+            target=TetraValue.MINUS,
+        )
+
+    return replace(
+        base,
+        atoms=tuple(atoms),
+        bonds=tuple(bonds),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=tuple(AtomId(index) for index in range(len(atoms))),
+                bonds=tuple(BondId(index) for index in range(len(bonds))),
+            ),
+        ),
+        stereo=StereoFacts(tetrahedral=tuple(tetrahedral)),
+        ligand_occurrences=tuple(ligand_occurrences),
     )
 
 

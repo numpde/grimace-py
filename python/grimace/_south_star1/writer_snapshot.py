@@ -1413,6 +1413,7 @@ class _WriterDirectionalRingCarrierEnvelope:
     site: SiteId
     center_bond: BondId
     ring_carrier_bonds: tuple[BondId, BondId]
+    noncarrier_ring_bond: BondId
     pendant_carrier_bonds: tuple[BondId, BondId]
 
 
@@ -2724,6 +2725,11 @@ def _writer_public_cyclic_opening_profile_report(
             ring_core_atom_ids=frozenset(ring_core_atom_set),
             ring_core_bond_ids=frozenset(ring_core_bond_ids),
             pendant_atom_ids=frozenset(pendant_atom_set),
+            pendant_bond_ids=frozenset(pendant_bond_ids),
+            ring_core_non_single_bond_ids=ring_core_non_single_bond_ids,
+            non_single_closure_supported=(
+                ring_core_has_supported_non_single_closure_bond
+            ),
         )
     )
     if directional_ring_carrier_envelope is not None:
@@ -3645,6 +3651,9 @@ def _writer_public_directional_ring_carrier_envelope(
     ring_core_atom_ids: frozenset[AtomId],
     ring_core_bond_ids: frozenset[BondId],
     pendant_atom_ids: frozenset[AtomId],
+    pendant_bond_ids: frozenset[BondId],
+    ring_core_non_single_bond_ids: tuple[BondId, ...],
+    non_single_closure_supported: bool,
 ) -> _WriterDirectionalRingCarrierEnvelope | None:
     if len(prepared.directional_templates) != 1:
         return None
@@ -3663,6 +3672,11 @@ def _writer_public_directional_ring_carrier_envelope(
     if {center.a, center.b} != {template.left_endpoint, template.right_endpoint}:
         return None
     if center.a not in ring_core_atom_ids or center.b not in ring_core_atom_ids:
+        return None
+    if (
+        ring_core_non_single_bond_ids != (template.center_bond,)
+        or not non_single_closure_supported
+    ):
         return None
 
     left = _writer_public_directional_side_carriers(
@@ -3684,6 +3698,77 @@ def _writer_public_directional_ring_carrier_envelope(
 
     left_ring, left_pendant = left
     right_ring, right_pendant = right
+    left_ring_atom = _other_bond_atom(
+        prepared,
+        left_ring,
+        template.left_endpoint,
+    )
+    right_ring_atom = _other_bond_atom(
+        prepared,
+        right_ring,
+        template.right_endpoint,
+    )
+    left_pendant_atom = _other_bond_atom(
+        prepared,
+        left_pendant,
+        template.left_endpoint,
+    )
+    right_pendant_atom = _other_bond_atom(
+        prepared,
+        right_pendant,
+        template.right_endpoint,
+    )
+    resolved_atoms = (
+        left_ring_atom,
+        right_ring_atom,
+        left_pendant_atom,
+        right_pendant_atom,
+    )
+    if any(atom is None for atom in resolved_atoms):
+        return None
+    assert left_ring_atom is not None
+    assert right_ring_atom is not None
+    assert left_pendant_atom is not None
+    assert right_pendant_atom is not None
+
+    expected_ring_atoms = frozenset((
+        template.left_endpoint,
+        template.right_endpoint,
+        left_ring_atom,
+        right_ring_atom,
+    ))
+    expected_pendant_atoms = frozenset((
+        left_pendant_atom,
+        right_pendant_atom,
+    ))
+    if (
+        len(expected_ring_atoms) != 4
+        or ring_core_atom_ids != expected_ring_atoms
+        or pendant_atom_ids != expected_pendant_atoms
+    ):
+        return None
+
+    known_ring_bonds = frozenset((
+        template.center_bond,
+        left_ring,
+        right_ring,
+    ))
+    remaining_ring_bonds = ring_core_bond_ids - known_ring_bonds
+    if len(remaining_ring_bonds) != 1:
+        return None
+
+    noncarrier_ring_bond = next(iter(remaining_ring_bonds))
+    noncarrier = prepared.graph_index.bond_by_id.get(noncarrier_ring_bond)
+    if (
+        noncarrier is None
+        or noncarrier.order is not BondOrder.SINGLE
+        or frozenset((noncarrier.a, noncarrier.b))
+        != frozenset((left_ring_atom, right_ring_atom))
+    ):
+        return None
+    if frozenset(pendant_bond_ids) != frozenset((left_pendant, right_pendant)):
+        return None
+
     all_carriers = (left_ring, right_ring, left_pendant, right_pendant)
     if len(frozenset(all_carriers)) != 4:
         return None
@@ -3697,6 +3782,26 @@ def _writer_public_directional_ring_carrier_envelope(
             bond_id,
         ):
             return None
+    if _writer_exact_non_single_tree_marker(
+        prepared,
+        template.center_bond,
+    ) != "=":
+        return None
+
+    noncarrier_relation = _writer_public_single_closure_relation(
+        prepared,
+        noncarrier_ring_bond,
+    )
+    if (
+        not _writer_elided_single_tree_slot_is_supported(
+            prepared,
+            noncarrier_ring_bond,
+        )
+        or noncarrier_relation is None
+        or noncarrier_relation.texts != ("",)
+        or noncarrier_relation.compatible_pairs != (("", ""),)
+    ):
+        return None
 
     for bond_id, first_atom, second_atom in (
         (
@@ -3741,19 +3846,11 @@ def _writer_public_directional_ring_carrier_envelope(
         ):
             return None
 
-    if (
-        _writer_public_non_single_closure_relation(
-            prepared,
-            template.center_bond,
-        )
-        is None
-    ):
-        return None
-
     return _WriterDirectionalRingCarrierEnvelope(
         site=template.site,
         center_bond=template.center_bond,
         ring_carrier_bonds=(left_ring, right_ring),
+        noncarrier_ring_bond=noncarrier_ring_bond,
         pendant_carrier_bonds=(left_pendant, right_pendant),
     )
 

@@ -20879,6 +20879,108 @@ class WriterStateKernelTest(unittest.TestCase):
             or use.next_emitted_text.endswith("1"),
         )
 
+    def test_directional_ring_carrier_public_envelope_is_exact(self) -> None:
+        cases = (
+            ("five_member_ring", _directional_ring_carrier_five_ring_facts()),
+            ("extra_pendant_leaf", _directional_ring_carrier_extra_leaf_facts()),
+            (
+                "extended_pendant_chain",
+                _directional_ring_carrier_extended_pendant_facts(),
+            ),
+            (
+                "additional_pendant_component",
+                _directional_ring_carrier_extra_component_facts(),
+            ),
+        )
+        for name, facts in cases:
+            with self.subTest(name=name):
+                prepared = _prepare_with_ordinary_policy_options(
+                    facts,
+                    options=OrdinaryPolicyOptions(
+                        non_single_ring_closures="joint",
+                    ),
+                )
+                report = (
+                    writer_snapshot
+                    ._writer_public_cyclic_opening_profile_report(
+                        prepared=prepared,
+                    )
+                )
+                self.assertFalse(report.supported)
+                self.assertIn(
+                    (
+                        writer_snapshot
+                        ._WriterPublicCyclicRequiredCapability
+                        .CYCLIC_DIRECTIONAL_STEREO
+                    ),
+                    report.unsupported_capabilities,
+                )
+
+    def test_directional_ring_carrier_public_policy_is_exact(self) -> None:
+        rows = (
+            (
+                "center_tree",
+                _prepare_directional_ring_carrier_with_bond_text_choices(
+                    bond=BondId(0),
+                    slot_kind="tree",
+                    choices=(BondTextChoice("elided", "", False),),
+                ),
+            ),
+            (
+                "noncarrier_tree",
+                _prepare_directional_ring_carrier_with_bond_text_choices(
+                    bond=BondId(2),
+                    slot_kind="tree",
+                    choices=(BondTextChoice("explicit", "-", True),),
+                ),
+            ),
+            (
+                "noncarrier_closure",
+                _prepare_directional_ring_carrier_with_bond_text_choices(
+                    bond=BondId(2),
+                    slot_kind="ring_endpoint",
+                    choices=(BondTextChoice("explicit", "-", True),),
+                ),
+            ),
+        )
+
+        for name, prepared in rows:
+            with self.subTest(name=name):
+                report = (
+                    writer_snapshot
+                    ._writer_public_cyclic_opening_profile_report(
+                        prepared=prepared,
+                    )
+                )
+                self.assertFalse(report.supported)
+                self.assertIn(
+                    (
+                        writer_snapshot
+                        ._WriterPublicCyclicRequiredCapability
+                        .CYCLIC_DIRECTIONAL_STEREO
+                    ),
+                    report.unsupported_capabilities,
+                )
+
+        prepared = _prepare_directional_ring_carrier_with_bond_text_choices(
+            bond=BondId(4),
+            slot_kind="ring_endpoint",
+            choices=(BondTextChoice("foreign", "~", False),),
+        )
+        options = _writer_options(rooted_at_atom=0)
+        snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+        )
+        decision = writer_snapshot._cyclic_writer_admission_decision_from_snapshot(
+            snapshot,
+            prepared=prepared,
+        )
+        self.assertIs(
+            decision.kind,
+            writer_snapshot._WriterCyclicAdmissionDecisionKind.READY_PUBLIC,
+        )
+
     def test_public_two_cycle_ring_tetra_factors_are_supported(self) -> None:
         rows = (
             ("left", bridge_path_with_ring_tetra_facts(left=True, right=False)),
@@ -43634,6 +43736,112 @@ def _prepare_directional_ring_carrier_monocycle() -> SouthStarPreparedMol:
     return _prepare_with_ordinary_policy_options(
         facts,
         options=OrdinaryPolicyOptions(non_single_ring_closures="joint"),
+    )
+
+
+def _directional_ring_carrier_facts_with_extra_graph_items(
+    facts: MoleculeFacts,
+    *,
+    atoms: tuple[object, ...] = (),
+    bonds: tuple[object, ...] = (),
+) -> MoleculeFacts:
+    component = facts.components[0]
+    return replace(
+        facts,
+        atoms=(*facts.atoms, *atoms),
+        bonds=(*facts.bonds, *bonds),
+        components=(
+            replace(
+                component,
+                atoms=(
+                    *component.atoms,
+                    *(AtomId(int(atom_item.id)) for atom_item in atoms),
+                ),
+                bonds=(
+                    *component.bonds,
+                    *(BondId(int(bond_item.id)) for bond_item in bonds),
+                ),
+            ),
+        ),
+    )
+
+
+def _directional_ring_carrier_five_ring_facts() -> MoleculeFacts:
+    facts = _directional_ring_carrier_monocycle_facts()
+    return replace(
+        _directional_ring_carrier_facts_with_extra_graph_items(
+            facts,
+            atoms=(atom(6, "C"),),
+            bonds=(single_bond(6, 6, 2),),
+        ),
+        bonds=tuple(
+            single_bond(2, 4, 6)
+            if bond_item.id == BondId(2)
+            else bond_item
+            for bond_item in (
+                *facts.bonds,
+                single_bond(6, 6, 2),
+            )
+        ),
+    )
+
+
+def _directional_ring_carrier_extra_leaf_facts() -> MoleculeFacts:
+    return _directional_ring_carrier_facts_with_extra_graph_items(
+        _directional_ring_carrier_monocycle_facts(),
+        atoms=(atom(6, "C"),),
+        bonds=(single_bond(6, 2, 6),),
+    )
+
+
+def _directional_ring_carrier_extended_pendant_facts() -> MoleculeFacts:
+    return _directional_ring_carrier_facts_with_extra_graph_items(
+        _directional_ring_carrier_monocycle_facts(),
+        atoms=(atom(6, "C"),),
+        bonds=(single_bond(6, 3, 6),),
+    )
+
+
+def _directional_ring_carrier_extra_component_facts() -> MoleculeFacts:
+    return _directional_ring_carrier_facts_with_extra_graph_items(
+        _directional_ring_carrier_monocycle_facts(),
+        atoms=(atom(6, "C"),),
+        bonds=(single_bond(6, 4, 6),),
+    )
+
+
+def _prepare_directional_ring_carrier_with_bond_text_choices(
+    *,
+    bond: BondId,
+    slot_kind: str,
+    choices: tuple[BondTextChoice, ...],
+) -> SouthStarPreparedMol:
+    facts = _directional_ring_carrier_monocycle_facts()
+    policy = ordinary_policy_for_facts(
+        facts,
+        options=OrdinaryPolicyOptions(non_single_ring_closures="joint"),
+    )
+    return prepare_south_star_mol_from_facts(
+        facts,
+        writer_surface=SouthStarWriterSurface(),
+        policy=replace(
+            policy,
+            bond_text_domains=tuple(
+                (
+                    BondTextDomain(
+                        bond=domain.bond,
+                        slot_kind=domain.slot_kind,
+                        choices=choices,
+                    )
+                    if (
+                        domain.bond == bond
+                        and domain.slot_kind == slot_kind
+                    )
+                    else domain
+                )
+                for domain in policy.bond_text_domains
+            ),
+        ),
     )
 
 

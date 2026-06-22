@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from .errors import SouthStarError
 from .errors import SouthStarErrorKind
 from .facts import BondOrder
+from .facts import LigandKind
 from .ids import AtomId
 from .ids import BondId
 from .policy import DirectionMark
@@ -965,19 +966,13 @@ def _validate_open_endpoint_partner_liveness(
             and pending.child in open_writer_atoms
         ):
             return
-        if prepared.directional_templates:
-            if pending.parent in open_writer_atoms and any(
-                endpoint.second_atom in attachment.atoms
-                and pending.child in attachment.atoms
-                for attachment in context.residual_summary.attachments.attachments
-            ):
-                return
-            if pending.child in open_writer_atoms and any(
-                endpoint.second_atom in attachment.atoms
-                and pending.parent in attachment.atoms
-                for attachment in context.residual_summary.attachments.attachments
-            ):
-                return
+        if _pending_entry_preserves_open_partner_reachability(
+            prepared,
+            key,
+            endpoint,
+            context,
+        ):
+            return
 
     if not any(
         endpoint.second_atom in attachment.atoms and attachment.boundary
@@ -993,6 +988,60 @@ def _open_writer_atoms(key: WriterStateKey) -> frozenset[AtomId]:
     if pending is not None:
         atoms.add(pending.parent)
     return frozenset(atoms)
+
+
+def _pending_entry_preserves_open_partner_reachability(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+    endpoint,
+    context: WriterGraphObligationContext,
+) -> bool:
+    pending = key.obligations.pending_entry
+    if pending is None:
+        return False
+
+    open_atoms = _open_writer_atoms(key)
+    if pending.parent in open_atoms:
+        entered_atom = pending.child
+    elif pending.child in open_atoms:
+        entered_atom = pending.parent
+    else:
+        return False
+    pending_bond = prepared.graph_index.bond_by_id.get(pending.bond)
+    if pending_bond is None:
+        return False
+    if (
+        endpoint.first_endpoint_direction_mark is DirectionMark.ABSENT
+        and pending_bond.order is BondOrder.SINGLE
+        and endpoint.bond not in _directional_carrier_bonds(prepared)
+    ):
+        return False
+
+    return any(
+        endpoint.second_atom in attachment.atoms
+        and entered_atom in attachment.atoms
+        for attachment in context.residual_summary.attachments.attachments
+    )
+
+
+def _directional_carrier_bonds(
+    prepared: SouthStarPreparedMol,
+) -> frozenset[BondId]:
+    occurrence_by_id = {
+        occurrence.id: occurrence
+        for occurrence in prepared.facts.ligand_occurrences
+    }
+    bonds: set[BondId] = set()
+    for template in prepared.directional_templates:
+        for occurrence_id in template.left_ligands + template.right_ligands:
+            occurrence = occurrence_by_id.get(occurrence_id)
+            if occurrence is None:
+                continue
+            if occurrence.kind is not LigandKind.NEIGHBOR_ATOM:
+                continue
+            if occurrence.bond is not None:
+                bonds.add(occurrence.bond)
+    return frozenset(bonds)
 
 
 def _validate_open_endpoint_text(prepared: SouthStarPreparedMol, endpoint) -> None:

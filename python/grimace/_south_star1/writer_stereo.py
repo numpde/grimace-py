@@ -59,6 +59,7 @@ if TYPE_CHECKING:
 
 EMPTY_RESIDUAL_SNAPSHOT = ResidualStore().value_snapshot()
 _MAX_TETRA_RING_ENDPOINT_OCCURRENCES = 1
+_MAX_DIRECTIONAL_RING_CARRIER_SITES = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -298,7 +299,7 @@ def _replay_directional_ring_state_for_reconstruction(
     ring_state: "WriterRingStateKey",
 ) -> None:
     for endpoint in ring_state.open_endpoints:
-        if not _directional_models_for_bond(prepared, endpoint.bond):
+        if not _bounded_directional_ring_models(prepared, endpoint.bond):
             continue
         if any(record.bond == endpoint.bond for record in stereo_state.bond_occurrences):
             raise ValueError("open directional ring endpoint is already recorded")
@@ -322,7 +323,7 @@ def _replay_directional_ring_state_for_reconstruction(
         )
 
     for closure in ring_state.closed_closures:
-        if not _directional_models_for_bond(prepared, closure.bond):
+        if not _bounded_directional_ring_models(prepared, closure.bond):
             continue
         expected = _directional_ring_pair_bond_occurrence(prepared, closure)
         if expected is None:
@@ -627,7 +628,7 @@ def _directional_ring_pair_restrictions(
     first_mark: DirectionMark,
     second_mark: DirectionMark,
 ) -> tuple[tuple[VarId, DirectionalNormalizedSign], ...] | None:
-    models = _directional_models_for_bond(prepared, bond)
+    models = _bounded_directional_ring_models(prepared, bond)
     if not models:
         if (
             first_mark is not DirectionMark.ABSENT
@@ -635,11 +636,6 @@ def _directional_ring_pair_restrictions(
         ):
             return None
         return ()
-    if len(models) > 2:
-        raise SouthStarError(
-            SouthStarErrorKind.UNSUPPORTED_STEREO,
-            "more than two directional sites for one ring carrier are unsupported",
-        )
 
     restrictions: list[tuple[VarId, DirectionalNormalizedSign]] = []
     for model in models:
@@ -792,7 +788,8 @@ def writer_closure_endpoint_relation(
     from .writer_graph_obligations import WriterClosureEndpointRelation
     from .writer_graph_obligations import writer_closure_endpoint_relation as base_relation
 
-    if not _directional_models_for_bond(prepared, bond):
+    models = _bounded_directional_ring_models(prepared, bond)
+    if not models:
         return base_relation(prepared, bond)
     relation = base_relation(
         prepared,
@@ -1148,7 +1145,8 @@ def _project_directional_ring_endpoint(
 ) -> _WriterStereoMutation:
     from .writer_state import WriterStereoState
 
-    if not _directional_models_for_bond(prepared, event.bond):
+    models = _bounded_directional_ring_models(prepared, event.bond)
+    if not models:
         if event.direction_mark is not DirectionMark.ABSENT:
             return _WriterStereoMutation(state=None)
         return _WriterStereoMutation(state=stereo_state)
@@ -1171,7 +1169,7 @@ def _project_directional_ring_endpoint(
         _WriterExecutionCapabilityKind.DIRECTIONAL_RING_PAIR_COMPATIBILITY,
         _WriterExecutionCapabilityKind.RESIDUAL_PROPAGATION,
     }
-    if len(_directional_models_for_bond(prepared, event.bond)) > 1:
+    if len(models) > 1:
         capabilities.add(
             _WriterExecutionCapabilityKind
             .SHARED_DIRECTIONAL_CARRIER_RESTRICTION
@@ -1194,16 +1192,11 @@ def _directional_ring_endpoint_projection(
 ) -> tuple[tuple[VarId, tuple[object, ...]], ...] | None:
     from .writer_graph_obligations import WriterClosureEndpointChoice
 
-    models = _directional_models_for_bond(prepared, event.bond)
+    models = _bounded_directional_ring_models(prepared, event.bond)
     if not models:
         if event.direction_mark is not DirectionMark.ABSENT:
             return None
         return None
-    if len(models) > 2:
-        raise SouthStarError(
-            SouthStarErrorKind.UNSUPPORTED_STEREO,
-            "more than two directional sites for one ring carrier are unsupported",
-        )
 
     relation = writer_closure_endpoint_relation(
         prepared,
@@ -1247,16 +1240,11 @@ def _restrict_directional_ring_pair(
     stereo_state: "WriterStereoState",
     event: WriterRingEndpointPaired,
 ) -> _WriterStereoMutation:
-    models = _directional_models_for_bond(prepared, event.bond)
+    models = _bounded_directional_ring_models(prepared, event.bond)
     if not models:
         if event.direction_mark is not DirectionMark.ABSENT:
             return _WriterStereoMutation(state=None)
         return _WriterStereoMutation(state=stereo_state)
-    if len(models) > 2:
-        raise SouthStarError(
-            SouthStarErrorKind.UNSUPPORTED_STEREO,
-            "more than two directional sites for one ring carrier are unsupported",
-        )
 
     restrictions = _directional_ring_pair_restrictions(
         prepared,
@@ -1728,6 +1716,19 @@ def _directional_models_for_bond(
             ),
         )
     )
+
+
+def _bounded_directional_ring_models(
+    prepared: SouthStarPreparedMol,
+    bond: BondId,
+) -> tuple[DirectionalSiteCarrierModel, ...]:
+    models = _directional_models_for_bond(prepared, bond)
+    if len(models) > _MAX_DIRECTIONAL_RING_CARRIER_SITES:
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_STEREO,
+            "more than two directional sites for one ring carrier are unsupported",
+        )
+    return models
 
 
 def _allowed_direction_marks(

@@ -8,6 +8,7 @@ from enum import Enum
 
 from .ids import AtomId
 from .ids import BondId
+from .policy import DirectionMark
 from .residual_constraints import ResidualStoreValueSnapshot
 from .writer_stereo import EMPTY_RESIDUAL_SNAPSHOT
 from .writer_stereo import WriterAtomOccurrenceRecord
@@ -68,6 +69,7 @@ class WriterOpenClosureEndpoint:
     label: WriterClosureLabel
     first_endpoint_text: str
     first_endpoint_bond_text: str
+    first_endpoint_direction_mark: DirectionMark = DirectionMark.ABSENT
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +82,8 @@ class WriterClosedClosure:
     second_endpoint_text: str
     first_endpoint_bond_text: str
     second_endpoint_bond_text: str
+    first_endpoint_direction_mark: DirectionMark = DirectionMark.ABSENT
+    second_endpoint_direction_mark: DirectionMark = DirectionMark.ABSENT
 
 
 @dataclass(frozen=True, slots=True)
@@ -272,6 +276,7 @@ def _open_closure_sort_tuple(endpoint: WriterOpenClosureEndpoint) -> tuple[objec
         _closure_label_sort_tuple(endpoint.label),
         endpoint.first_endpoint_text,
         endpoint.first_endpoint_bond_text,
+        endpoint.first_endpoint_direction_mark.value,
     )
 
 
@@ -285,6 +290,8 @@ def _closed_closure_sort_tuple(closure: WriterClosedClosure) -> tuple[object, ..
         closure.second_endpoint_text,
         closure.first_endpoint_bond_text,
         closure.second_endpoint_bond_text,
+        closure.first_endpoint_direction_mark.value,
+        closure.second_endpoint_direction_mark.value,
     )
 
 

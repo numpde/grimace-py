@@ -821,7 +821,7 @@ class WriterGraphObligationsTest(unittest.TestCase):
             writer_state_key_sort_tuple(key)[7],
             (
                 (),
-                ((2, 0, 2, (1, "1"), "1", "1", "", ""),),
+                ((2, 0, 2, (1, "1"), "1", "1", "", "", 0, 0),),
                 ((), ((1, "1"),)),
             ),
         )

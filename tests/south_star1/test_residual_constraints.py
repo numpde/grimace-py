@@ -159,6 +159,36 @@ class ResidualConstraintTest(unittest.TestCase):
         self.assertIs(store.assignment(left), DirectionMark.FWD)
         self.assertIsNone(store.assignment(right))
 
+    def test_domain_intersection_propagates_without_assignment(self) -> None:
+        store = ResidualStore()
+        left = direction_var(("left", 0))
+        right = direction_var(("right", 0))
+        domain = (DirectionMark.FWD, DirectionMark.REV)
+        store.add_var(left, domain)
+        store.add_var(right, domain)
+        self.assertIs(
+            add_factor_and_propagate(
+                store,
+                _directional_factor_between(
+                    left,
+                    right,
+                    DirectionalValue.OPPOSITE,
+                ),
+            ).kind,
+            ResidualPropagationKind.CERTIFIED_CONSISTENT,
+        )
+
+        result = store.intersect_domain_and_propagate(
+            left,
+            (DirectionMark.FWD,),
+        )
+
+        self.assertIs(result.kind, ResidualPropagationKind.CERTIFIED_CONSISTENT)
+        self.assertEqual(store.domain(left), (DirectionMark.FWD,))
+        self.assertEqual(store.domain(right), (DirectionMark.REV,))
+        self.assertIsNone(store.assignment(left))
+        self.assertIsNone(store.assignment(right))
+
     def test_propagation_through_two_shared_factors(self) -> None:
         store = ResidualStore()
         a = direction_var(("a",))

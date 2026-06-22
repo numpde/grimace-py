@@ -59,6 +59,7 @@ from .writer_state import PendingEntryPhase
 from .writer_state import PendingWriterEntry
 from .writer_state import WriterAtomFrame
 from .writer_state import WriterBranchFrame
+from .writer_state import WriterRingStateKey
 from .writer_state import WriterStateKey
 from .writer_state import WriterStereoStateKey
 
@@ -4222,7 +4223,7 @@ def validate_writer_search_snapshot(
         )
     _validate_frames(snapshot.frame_stack, snapshot.cursor)
     stereo_residual_cache: dict[
-        WriterStereoStateKey,
+        tuple[WriterStereoStateKey, WriterRingStateKey],
         ResidualStoreValueSnapshot,
     ] = {}
     validate_writer_cursor_against_prepared(
@@ -4239,7 +4240,7 @@ def validate_writer_cursor_against_prepared(
     *,
     runtime_options: SouthStarRuntimeOptions | None = None,
     stereo_residual_cache: dict[
-        WriterStereoStateKey,
+        tuple[WriterStereoStateKey, WriterRingStateKey],
         ResidualStoreValueSnapshot,
     ] | None = None,
 ) -> None:
@@ -4283,6 +4284,7 @@ def validate_writer_cursor_against_prepared(
         _validate_stereo_state(
             prepared,
             key.stereo_state,
+            ring_state=key.ring_state,
             stereo_residual_cache=stereo_residual_cache,
         )
 
@@ -5180,8 +5182,9 @@ def _validate_stereo_state(
     prepared: SouthStarPreparedMol,
     stereo_state: WriterStereoStateKey,
     *,
+    ring_state: WriterRingStateKey | None = None,
     stereo_residual_cache: dict[
-        WriterStereoStateKey,
+        tuple[WriterStereoStateKey, WriterRingStateKey],
         ResidualStoreValueSnapshot,
     ] | None = None,
 ) -> None:
@@ -5212,15 +5215,23 @@ def _validate_stereo_state(
         tetra_by_center,
     )
     try:
-        if stereo_residual_cache is not None and stereo_state in stereo_residual_cache:
-            expected_residual = stereo_residual_cache[stereo_state]
+        cache_key = None
+        if ring_state is not None:
+            cache_key = (stereo_state, ring_state)
+        if (
+            stereo_residual_cache is not None
+            and cache_key is not None
+            and cache_key in stereo_residual_cache
+        ):
+            expected_residual = stereo_residual_cache[cache_key]
         else:
             expected_residual = reconstruct_writer_stereo_residual_snapshot(
                 prepared,
                 stereo_state,
+                ring_state=ring_state,
             )
-            if stereo_residual_cache is not None:
-                stereo_residual_cache[stereo_state] = expected_residual
+            if stereo_residual_cache is not None and cache_key is not None:
+                stereo_residual_cache[cache_key] = expected_residual
     except (ValueError, SouthStarError) as exc:
         raise SouthStarError(
             SouthStarErrorKind.INTERNAL_INVARIANT,

@@ -12,8 +12,10 @@ from .errors import SouthStarError
 from .errors import SouthStarErrorKind
 from .ids import AtomId
 from .ids import BondId
+from .policy import DirectionMark
 from .writer_capabilities import _WriterExecutionCapabilityKind
 from .writer_graph_obligations import WriterBoundaryOwnerKind
+from .writer_graph_obligations import WriterClosureEndpointChoice
 from .writer_graph_obligations import WriterEdgeObligationKind
 from .writer_graph_obligations import WriterGraphObligationContext
 from .writer_graph_obligations import WriterResidualAttachmentActionKind
@@ -55,6 +57,7 @@ from .writer_stereo import terminal_writer_stereo_state_with_evidence
 from .writer_stereo import validate_writer_stereo_supported_prepared
 from .writer_stereo import writer_atom_text_choices
 from .writer_stereo import writer_bond_text_choices
+from .writer_stereo import writer_closure_endpoint_relation
 
 if TYPE_CHECKING:
     from .prepared_runtime import SouthStarPreparedMol
@@ -4694,7 +4697,7 @@ def _open_closure_endpoint_transition_from_obligation(
     context: WriterTransitionExpansionContext,
     closure_obligation: _WriterClosureOpenObligation,
     label: WriterClosureLabel,
-    first_endpoint_bond_text: str,
+    first_endpoint_choice,
 ) -> WriterTransition | None:
     endpoint = WriterOpenClosureEndpoint(
         bond=closure_obligation.bond,
@@ -4702,13 +4705,14 @@ def _open_closure_endpoint_transition_from_obligation(
         second_atom=closure_obligation.second_atom,
         label=label,
         first_endpoint_text=label.text,
-        first_endpoint_bond_text=first_endpoint_bond_text,
+        first_endpoint_bond_text=first_endpoint_choice.bond_text,
+        first_endpoint_direction_mark=first_endpoint_choice.direction_mark,
     )
 
     transition = _transition(
         prepared,
         state,
-        emitted_text=f"{endpoint.first_endpoint_bond_text}{label.text}",
+        emitted_text=f"{first_endpoint_choice.rendered_text}{label.text}",
         successor=replace(
             state,
             ring_state=_ring_state_after_open_endpoint(
@@ -4725,6 +4729,7 @@ def _open_closure_endpoint_transition_from_obligation(
                 label=endpoint.label,
                 endpoint_text=endpoint.first_endpoint_text,
                 bond_text=endpoint.first_endpoint_bond_text,
+                direction_mark=endpoint.first_endpoint_direction_mark,
             ),
         ),
         evidence=WriterTransitionEvidence(
@@ -4775,19 +4780,21 @@ def _closure_open_transitions_from_scheduled_action(
             "scheduled closure-open action requires a closure label",
         )
 
-    relation = writer_closure_bond_text_relation(
+    relation = writer_closure_endpoint_relation(
         prepared,
-        closure_obligation.bond,
+        bond=closure_obligation.bond,
+        first_atom=closure_obligation.first_atom,
+        second_atom=closure_obligation.second_atom,
     )
     transitions = []
-    for first_endpoint_bond_text in relation.openable_first_texts:
+    for first_endpoint_choice in relation.openable_first_choices:
         transition = _open_closure_endpoint_transition_from_obligation(
             prepared,
             state,
             context,
             closure_obligation,
             label,
-            first_endpoint_bond_text,
+            first_endpoint_choice,
         )
         if transition is not None:
             transitions.append(transition)
@@ -4860,13 +4867,17 @@ def _closure_pair_obligations_from_state(
         if endpoint.second_atom != atom:
             continue
 
-        relation = writer_closure_bond_text_relation(
+        relation = writer_closure_endpoint_relation(
             prepared,
-            endpoint.bond,
+            bond=endpoint.bond,
+            first_atom=endpoint.first_atom,
+            second_atom=endpoint.second_atom,
         )
-        for second_endpoint_bond_text in relation.compatible_seconds(
+        first_choice = WriterClosureEndpointChoice(
             endpoint.first_endpoint_bond_text,
-        ):
+            endpoint.first_endpoint_direction_mark,
+        )
+        for second_endpoint_choice in relation.compatible_seconds(first_choice):
             closure = WriterClosedClosure(
                 bond=endpoint.bond,
                 first_atom=endpoint.first_atom,
@@ -4875,7 +4886,9 @@ def _closure_pair_obligations_from_state(
                 first_endpoint_text=endpoint.first_endpoint_text,
                 second_endpoint_text=endpoint.label.text,
                 first_endpoint_bond_text=endpoint.first_endpoint_bond_text,
-                second_endpoint_bond_text=second_endpoint_bond_text,
+                second_endpoint_bond_text=second_endpoint_choice.bond_text,
+                first_endpoint_direction_mark=endpoint.first_endpoint_direction_mark,
+                second_endpoint_direction_mark=second_endpoint_choice.direction_mark,
             )
 
             obligations.append(
@@ -4916,7 +4929,8 @@ def _pair_closure_endpoint_transition_from_obligation(
         prepared,
         state,
         emitted_text=(
-            f"{closure.second_endpoint_bond_text}{endpoint.label.text}"
+            f"{_closure_endpoint_rendered_text(closure.second_endpoint_bond_text, closure.second_endpoint_direction_mark)}"
+            f"{endpoint.label.text}"
         ),
         successor=replace(
             state,
@@ -4935,6 +4949,9 @@ def _pair_closure_endpoint_transition_from_obligation(
                 label=closure.label,
                 endpoint_text=closure.second_endpoint_text,
                 bond_text=closure.second_endpoint_bond_text,
+                direction_mark=closure.second_endpoint_direction_mark,
+                first_endpoint_bond_text=closure.first_endpoint_bond_text,
+                first_endpoint_direction_mark=closure.first_endpoint_direction_mark,
             ),
         ),
         evidence=WriterTransitionEvidence(
@@ -5139,6 +5156,17 @@ def _sorted_closed_closures(closures) -> tuple[WriterClosedClosure, ...]:
             ),
         )
     )
+
+
+def _closure_endpoint_rendered_text(
+    bond_text: str,
+    direction_mark,
+) -> str:
+    if direction_mark is DirectionMark.FWD:
+        return "/"
+    if direction_mark is DirectionMark.REV:
+        return "\\"
+    return bond_text
 
 
 def writer_state_is_eos(

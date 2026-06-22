@@ -52,6 +52,7 @@ from .writer_events import WriterRingEndpointPaired
 
 if TYPE_CHECKING:
     from .prepared_runtime import SouthStarPreparedMol
+    from .writer_state import WriterRingStateKey
     from .writer_state import WriterStereoState
     from .writer_state import WriterStereoStateKey
 
@@ -209,6 +210,8 @@ def initial_writer_stereo_state(prepared: SouthStarPreparedMol) -> "WriterStereo
 def reconstruct_writer_stereo_residual_snapshot(
     prepared: SouthStarPreparedMol,
     stereo_state: "WriterStereoStateKey",
+    *,
+    ring_state: "WriterRingStateKey | None" = None,
 ) -> ResidualStoreValueSnapshot:
     store = ResidualStore()
     domains, factors = _writer_stereo_relation_definitions(prepared)
@@ -253,6 +256,14 @@ def reconstruct_writer_stereo_residual_snapshot(
     result = store.restrict_many_and_propagate(tuple(restrictions))
     _require_certified_reconstruction(result, "recorded stereo history")
 
+    if ring_state is not None:
+        _replay_directional_ring_state_for_reconstruction(
+            prepared,
+            store,
+            stereo_state,
+            ring_state,
+        )
+
     emitted_directional_bonds = tuple(
         record.bond
         for record in stereo_state.bond_occurrences
@@ -278,6 +289,52 @@ def reconstruct_writer_stereo_residual_snapshot(
             store.discharge_satisfied_factors((_tetra_factor_key(template.site),))
 
     return store.value_snapshot()
+
+
+def _replay_directional_ring_state_for_reconstruction(
+    prepared: SouthStarPreparedMol,
+    store: ResidualStore,
+    stereo_state: "WriterStereoStateKey",
+    ring_state: "WriterRingStateKey",
+) -> None:
+    for endpoint in ring_state.open_endpoints:
+        if not _directional_models_for_bond(prepared, endpoint.bond):
+            continue
+        if any(record.bond == endpoint.bond for record in stereo_state.bond_occurrences):
+            raise ValueError("open directional ring endpoint is already recorded")
+
+        event = WriterRingEndpointEmitted(
+            bond=endpoint.bond,
+            endpoint_atom=endpoint.first_atom,
+            partner_atom=endpoint.second_atom,
+            label=endpoint.label,
+            endpoint_text=endpoint.label.text,
+            bond_text=endpoint.first_endpoint_bond_text,
+            direction_mark=endpoint.first_endpoint_direction_mark,
+        )
+        restriction = _directional_ring_endpoint_projection(prepared, event)
+        if restriction is None:
+            raise ValueError("directional ring endpoint has no compatible partner")
+        var, values = restriction
+        result = store.intersect_domain_and_propagate(var, values)
+        _require_certified_reconstruction(
+            result,
+            "open directional ring endpoint",
+        )
+
+    for closure in ring_state.closed_closures:
+        if not _directional_models_for_bond(prepared, closure.bond):
+            continue
+        expected = _directional_ring_pair_bond_occurrence(prepared, closure)
+        if expected is None:
+            raise ValueError("directional ring closure pair is incompatible")
+        actual = tuple(
+            record
+            for record in stereo_state.bond_occurrences
+            if record.bond == closure.bond
+        )
+        if actual != (expected,):
+            raise ValueError("directional ring closure bond record mismatch")
 
 
 def reconstruct_writer_local_order_records(
@@ -498,6 +555,84 @@ def _directional_bond_restrictions(
     )
 
 
+def _normalized_directional_value(
+    prepared: SouthStarPreparedMol,
+    *,
+    bond: BondId,
+    parent: AtomId,
+    child: AtomId,
+    mark: DirectionMark,
+    model: DirectionalSiteCarrierModel,
+) -> DirectionalNormalizedSign:
+    event = WriterBondEmitted(
+        bond=bond,
+        parent=parent,
+        child=child,
+        text="",
+        direction_mark=mark,
+    )
+    return normalized_sign_from_mark(
+        mark=mark,
+        canonical_orientation=_canonical_bond_orientation(prepared, event),
+        model=model,
+    )
+
+
+def _directional_ring_pair_value(
+    prepared: SouthStarPreparedMol,
+    *,
+    bond: BondId,
+    first_atom: AtomId,
+    second_atom: AtomId,
+    first_mark: DirectionMark,
+    second_mark: DirectionMark,
+) -> DirectionalNormalizedSign | None:
+    models = _directional_models_for_bond(prepared, bond)
+    if not models:
+        if (
+            first_mark is not DirectionMark.ABSENT
+            or second_mark is not DirectionMark.ABSENT
+        ):
+            return None
+        return DirectionalNormalizedSign.ABSENT
+    if len(models) != 1:
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_STEREO,
+            "multiple directional sites for one ring carrier are unsupported",
+        )
+
+    model = models[0]
+    values = []
+    if first_mark is not DirectionMark.ABSENT:
+        values.append(
+            _normalized_directional_value(
+                prepared,
+                bond=bond,
+                parent=first_atom,
+                child=second_atom,
+                mark=first_mark,
+                model=model,
+            )
+        )
+    if second_mark is not DirectionMark.ABSENT:
+        values.append(
+            _normalized_directional_value(
+                prepared,
+                bond=bond,
+                parent=second_atom,
+                child=first_atom,
+                mark=second_mark,
+                model=model,
+            )
+        )
+
+    if not values:
+        return DirectionalNormalizedSign.ABSENT
+    if len(frozenset(values)) != 1:
+        return None
+    return values[0]
+
+
 def _tetra_parity_restriction(
     prepared: SouthStarPreparedMol,
     *,
@@ -590,6 +725,43 @@ def writer_bond_text_choices(
                 )
             )
     return tuple(out)
+
+
+def writer_closure_endpoint_relation(
+    prepared: SouthStarPreparedMol,
+    *,
+    bond: BondId,
+    first_atom: AtomId,
+    second_atom: AtomId,
+):
+    from .writer_graph_obligations import WriterClosureEndpointRelation
+    from .writer_graph_obligations import writer_closure_endpoint_relation as base_relation
+
+    if not _directional_models_for_bond(prepared, bond):
+        return base_relation(prepared, bond)
+    relation = base_relation(
+        prepared,
+        bond,
+        include_direction_marks=True,
+    )
+
+    rows = []
+    for first, seconds in relation.rows:
+        compatible_seconds = tuple(
+            second
+            for second in seconds
+            if _directional_ring_pair_value(
+                prepared,
+                bond=bond,
+                first_atom=first_atom,
+                second_atom=second_atom,
+                first_mark=first.direction_mark,
+                second_mark=second.direction_mark,
+            )
+            is not None
+        )
+        rows.append((first, compatible_seconds))
+    return WriterClosureEndpointRelation(rows=tuple(rows))
 
 
 def writer_stereo_state_sort_tuple(state: "WriterStereoState") -> tuple[object, ...]:
@@ -810,10 +982,28 @@ def _on_ring_endpoint_emitted(
     stereo_state: "WriterStereoState",
     event: WriterRingEndpointEmitted,
 ) -> _WriterStereoMutation:
-    _reject_supported_ring_pair_stereo(prepared, event.bond)
     if not _ring_event_text_ok(prepared, event):
         return _WriterStereoMutation(state=None)
-    return _record_tetra_ring_endpoint(prepared, stereo_state, event)
+    mutation = _project_directional_ring_endpoint(
+        prepared,
+        stereo_state,
+        event,
+    )
+    if mutation.state is None:
+        return mutation
+    tetra_mutation = _record_tetra_ring_endpoint(
+        prepared,
+        mutation.state,
+        event,
+    )
+    if tetra_mutation.state is None:
+        return tetra_mutation
+    return _WriterStereoMutation(
+        state=tetra_mutation.state,
+        capabilities=(
+            mutation.capabilities | tetra_mutation.capabilities
+        ),
+    )
 
 
 def _on_ring_endpoint_paired(
@@ -821,14 +1011,32 @@ def _on_ring_endpoint_paired(
     stereo_state: "WriterStereoState",
     event: WriterRingEndpointPaired,
 ) -> _WriterStereoMutation:
-    _reject_supported_ring_pair_stereo(prepared, event.bond)
     if not _ring_event_text_ok(prepared, event):
         return _WriterStereoMutation(state=None)
-    return _record_tetra_ring_endpoint(prepared, stereo_state, event)
+    mutation = _restrict_directional_ring_pair(
+        prepared,
+        stereo_state,
+        event,
+    )
+    if mutation.state is None:
+        return mutation
+    tetra_mutation = _record_tetra_ring_endpoint(
+        prepared,
+        mutation.state,
+        event,
+    )
+    if tetra_mutation.state is None:
+        return tetra_mutation
+    return _WriterStereoMutation(
+        state=tetra_mutation.state,
+        capabilities=(
+            mutation.capabilities | tetra_mutation.capabilities
+        ),
+    )
 
 
 def _ring_event_text_ok(prepared: SouthStarPreparedMol, event) -> bool:
-    from .writer_graph_obligations import writer_closure_bond_text_relation
+    from .writer_graph_obligations import WriterClosureEndpointChoice
 
     try:
         policy_label = RingLabel(event.label.value)
@@ -842,10 +1050,232 @@ def _ring_event_text_ok(prepared: SouthStarPreparedMol, event) -> bool:
     if event.endpoint_text != event.label.text:
         return False
     try:
-        relation = writer_closure_bond_text_relation(prepared, event.bond)
+        if isinstance(event, WriterRingEndpointPaired):
+            relation = writer_closure_endpoint_relation(
+                prepared,
+                bond=event.bond,
+                first_atom=event.partner_atom,
+                second_atom=event.endpoint_atom,
+            )
+            return relation.pair_ok(
+                WriterClosureEndpointChoice(
+                    event.first_endpoint_bond_text,
+                    event.first_endpoint_direction_mark,
+                ),
+                WriterClosureEndpointChoice(
+                    event.bond_text,
+                    event.direction_mark,
+                ),
+            )
+        relation = writer_closure_endpoint_relation(
+            prepared,
+            bond=event.bond,
+            first_atom=event.endpoint_atom,
+            second_atom=event.partner_atom,
+        )
     except SouthStarError:
         return False
-    return event.bond_text in relation.texts
+    return (
+        WriterClosureEndpointChoice(event.bond_text, event.direction_mark)
+        in relation.openable_first_choices
+    )
+
+
+def _project_directional_ring_endpoint(
+    prepared: SouthStarPreparedMol,
+    stereo_state: "WriterStereoState",
+    event: WriterRingEndpointEmitted,
+) -> _WriterStereoMutation:
+    from .writer_state import WriterStereoState
+
+    if not _directional_models_for_bond(prepared, event.bond):
+        if event.direction_mark is not DirectionMark.ABSENT:
+            return _WriterStereoMutation(state=None)
+        return _WriterStereoMutation(state=stereo_state)
+
+    restriction = _directional_ring_endpoint_projection(prepared, event)
+    if restriction is None:
+        return _WriterStereoMutation(state=None)
+
+    store = ResidualStore.from_value_snapshot(stereo_state.residual_snapshot)
+    checkpoint = store.checkpoint()
+    var, projected_values = restriction
+    result = store.intersect_domain_and_propagate(var, projected_values)
+    if not _writer_residual_mutation_is_legal(
+        result,
+        operation="directional ring endpoint projection",
+    ):
+        store.rollback(checkpoint)
+        return _WriterStereoMutation(state=None)
+
+    return _WriterStereoMutation(
+        state=WriterStereoState(
+            residual_snapshot=store.value_snapshot(),
+            atom_occurrences=stereo_state.atom_occurrences,
+            bond_occurrences=stereo_state.bond_occurrences,
+            local_orders=stereo_state.local_orders,
+        ),
+        capabilities=frozenset((
+            _WriterExecutionCapabilityKind.DIRECTIONAL_RING_PAIR_COMPATIBILITY,
+            _WriterExecutionCapabilityKind.RESIDUAL_PROPAGATION,
+        )),
+    )
+
+
+def _directional_ring_endpoint_projection(
+    prepared: SouthStarPreparedMol,
+    event: WriterRingEndpointEmitted,
+) -> tuple[VarId, tuple[object, ...]] | None:
+    from .writer_graph_obligations import WriterClosureEndpointChoice
+
+    models = _directional_models_for_bond(prepared, event.bond)
+    if not models:
+        if event.direction_mark is not DirectionMark.ABSENT:
+            return None
+        return None
+    if len(models) != 1:
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_STEREO,
+            "multiple directional sites for one ring carrier are unsupported",
+        )
+
+    relation = writer_closure_endpoint_relation(
+        prepared,
+        bond=event.bond,
+        first_atom=event.endpoint_atom,
+        second_atom=event.partner_atom,
+    )
+    first = WriterClosureEndpointChoice(event.bond_text, event.direction_mark)
+    projected_values = tuple(
+        value
+        for second in relation.compatible_seconds(first)
+        if (
+            value := _directional_ring_pair_value(
+                prepared,
+                bond=event.bond,
+                first_atom=event.endpoint_atom,
+                second_atom=event.partner_atom,
+                first_mark=event.direction_mark,
+                second_mark=second.direction_mark,
+            )
+        )
+        is not None
+    )
+    projected_values = tuple(dict.fromkeys(projected_values))
+    if not projected_values:
+        return None
+    return (
+        directional_site_carrier_var(models[0].site, event.bond),
+        projected_values,
+    )
+
+
+def _restrict_directional_ring_pair(
+    prepared: SouthStarPreparedMol,
+    stereo_state: "WriterStereoState",
+    event: WriterRingEndpointPaired,
+) -> _WriterStereoMutation:
+    models = _directional_models_for_bond(prepared, event.bond)
+    if not models:
+        if event.direction_mark is not DirectionMark.ABSENT:
+            return _WriterStereoMutation(state=None)
+        return _WriterStereoMutation(state=stereo_state)
+    if len(models) != 1:
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_STEREO,
+            "multiple directional sites for one ring carrier are unsupported",
+        )
+
+    value = _directional_ring_pair_value(
+        prepared,
+        bond=event.bond,
+        first_atom=event.partner_atom,
+        second_atom=event.endpoint_atom,
+        first_mark=event.first_endpoint_direction_mark,
+        second_mark=event.direction_mark,
+    )
+    if value is None:
+        return _WriterStereoMutation(state=None)
+
+    record = _directional_ring_pair_event_bond_occurrence(prepared, event)
+    if record is None:
+        return _WriterStereoMutation(state=None)
+
+    mutation = _on_bond_emitted(
+        prepared,
+        stereo_state,
+        WriterBondEmitted(
+            bond=event.bond,
+            parent=record.parent,
+            child=record.child,
+            text=event.bond_text,
+            direction_mark=record.mark,
+        ),
+    )
+    if mutation.state is None:
+        return mutation
+    return _WriterStereoMutation(
+        state=mutation.state,
+        capabilities=mutation.capabilities
+        | frozenset((
+            _WriterExecutionCapabilityKind.DIRECTIONAL_RING_PAIR_COMPATIBILITY,
+        )),
+    )
+
+
+def _directional_ring_pair_event_bond_occurrence(
+    prepared: SouthStarPreparedMol,
+    event: WriterRingEndpointPaired,
+) -> WriterBondOccurrenceRecord | None:
+    value = _directional_ring_pair_value(
+        prepared,
+        bond=event.bond,
+        first_atom=event.partner_atom,
+        second_atom=event.endpoint_atom,
+        first_mark=event.first_endpoint_direction_mark,
+        second_mark=event.direction_mark,
+    )
+    if value is None:
+        return None
+
+    if event.first_endpoint_direction_mark is not DirectionMark.ABSENT:
+        return WriterBondOccurrenceRecord(
+            bond=event.bond,
+            parent=event.partner_atom,
+            child=event.endpoint_atom,
+            mark=event.first_endpoint_direction_mark,
+        )
+    if event.direction_mark is not DirectionMark.ABSENT:
+        return WriterBondOccurrenceRecord(
+            bond=event.bond,
+            parent=event.endpoint_atom,
+            child=event.partner_atom,
+            mark=event.direction_mark,
+        )
+    return WriterBondOccurrenceRecord(
+        bond=event.bond,
+        parent=event.partner_atom,
+        child=event.endpoint_atom,
+        mark=DirectionMark.ABSENT,
+    )
+
+
+def _directional_ring_pair_bond_occurrence(
+    prepared: SouthStarPreparedMol,
+    closure,
+) -> WriterBondOccurrenceRecord | None:
+    event = WriterRingEndpointPaired(
+        bond=closure.bond,
+        endpoint_atom=closure.second_atom,
+        partner_atom=closure.first_atom,
+        label=closure.label,
+        endpoint_text=closure.label.text,
+        bond_text=closure.second_endpoint_bond_text,
+        direction_mark=closure.second_endpoint_direction_mark,
+        first_endpoint_bond_text=closure.first_endpoint_bond_text,
+        first_endpoint_direction_mark=closure.first_endpoint_direction_mark,
+    )
+    return _directional_ring_pair_event_bond_occurrence(prepared, event)
 
 
 def _record_tetra_ring_endpoint(
@@ -892,17 +1322,6 @@ def _record_tetra_ring_endpoint(
             _WriterExecutionCapabilityKind.TETRA_RING_ENDPOINT_ORDER_OCCURRENCE,
         )),
     )
-
-
-def _reject_supported_ring_pair_stereo(
-    prepared: SouthStarPreparedMol,
-    bond: BondId,
-) -> None:
-    if _directional_sites_for_carrier_bond(prepared, bond):
-        raise SouthStarError(
-            SouthStarErrorKind.UNSUPPORTED_STEREO,
-            "WRITER_SHAPED ring-pair directional stereo is not supported yet",
-        )
 
 
 def _record_parent_occurrence(
@@ -1523,5 +1942,6 @@ __all__ = (
     "validate_writer_stereo_supported_prepared",
     "writer_atom_text_choices",
     "writer_bond_text_choices",
+    "writer_closure_endpoint_relation",
     "writer_stereo_state_sort_tuple",
 )

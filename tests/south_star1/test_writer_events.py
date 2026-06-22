@@ -92,7 +92,7 @@ class WriterEventsTest(unittest.TestCase):
                     bond_text="",
                 )
             ),
-            ("ring_endpoint", 2, 0, 2, 1, "1", "1", "", "open"),
+            ("ring_endpoint", 2, 0, 2, 1, "1", "1", "", 0, "open"),
         )
         self.assertEqual(
             writer_event_sort_tuple(
@@ -105,7 +105,7 @@ class WriterEventsTest(unittest.TestCase):
                     bond_text="",
                 )
             ),
-            ("ring_pair", 2, 2, 0, 1, "1", "1", "", "close"),
+            ("ring_pair", 2, 2, 0, 1, "1", "1", "", 0, "", 0, "close"),
         )
 
 

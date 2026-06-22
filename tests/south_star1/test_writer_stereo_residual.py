@@ -10,6 +10,7 @@ from grimace._south_star1.errors import SouthStarError
 from grimace._south_star1.errors import SouthStarErrorKind
 from grimace._south_star1.facts import BondOrder
 from grimace._south_star1.facts import ComponentFacts
+from grimace._south_star1.facts import DirectionalSiteFacts
 from grimace._south_star1.facts import DirectionalValue
 from grimace._south_star1.facts import LigandKind
 from grimace._south_star1.facts import LigandOccurrence
@@ -30,8 +31,10 @@ from grimace._south_star1.policy import DirectionMark
 from grimace._south_star1.writer_capabilities import _WriterExecutionCapabilityKind
 from grimace._south_star1.residual_constraints import ResidualStore
 from grimace._south_star1.residual_constraints import DirectionalCarrierResidual
+from grimace._south_star1.residual_constraints import DirectionalNormalizedSign
 from grimace._south_star1.residual_constraints import DirectionalResidualFactor
 from grimace._south_star1.residual_constraints import ResidualPropagationKind
+from grimace._south_star1.residual_constraints import directional_site_carrier_var
 from grimace._south_star1.residual_constraints import TetraResidualFactor
 from grimace._south_star1.residual_constraints import add_factor_and_propagate
 from grimace._south_star1.residual_constraints import direction_var
@@ -46,6 +49,8 @@ from grimace._south_star1.ids import ComponentId
 from grimace._south_star1.ids import OccurrenceId
 from grimace._south_star1.ids import SiteId
 from grimace._south_star1.policy import TetraToken
+from grimace._south_star1.ordinary_policy import OrdinaryPolicyOptions
+from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
 from grimace._south_star1.writer_frontier import _initial_writer_transition_frontier_cursor
 from grimace._south_star1.writer_frontier import _writer_frontier_choice_snapshot
@@ -53,15 +58,21 @@ from grimace._south_star1.writer_frontier import writer_frontier_choices
 from grimace._south_star1.writer_events import WriterRingEndpointEmitted
 from grimace._south_star1.writer_events import WriterRingEndpointPaired
 from grimace._south_star1.writer_events import WriterAtomEmitted
+import grimace._south_star1.writer_transitions as writer_transitions
 from grimace._south_star1.writer_state import WriterClosureLabel
+from grimace._south_star1.writer_state import WriterClosedClosure
+from grimace._south_star1.writer_state import WriterOpenClosureEndpoint
+from grimace._south_star1.writer_state import WriterRingState
 from grimace._south_star1.writer_state import WriterStereoState
 from grimace._south_star1.writer_stereo import advance_writer_stereo_state
 from grimace._south_star1.writer_stereo import advance_writer_stereo_state_with_evidence
 from grimace._south_star1.writer_stereo import empty_writer_stereo_state
 from grimace._south_star1.writer_stereo import initial_writer_stereo_state
+from grimace._south_star1.writer_stereo import reconstruct_writer_stereo_residual_snapshot
 from grimace._south_star1.writer_stereo import terminal_writer_stereo_state
 import grimace._south_star1.writer_stereo as writer_stereo_module
 from tests.south_star1.helpers import atom
+from tests.south_star1.helpers import bond
 from tests.south_star1.helpers import cco_facts
 from tests.south_star1.helpers import directional_facts
 from tests.south_star1.helpers import single_bond
@@ -751,26 +762,269 @@ class WriterStereoResidualTest(unittest.TestCase):
 
         self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_STEREO)
 
-    def test_ring_endpoint_event_on_directional_carrier_fails_closed(self) -> None:
+    def test_directional_ring_endpoint_open_projects_carrier_domain(self) -> None:
         prepared = _prepare(directional_facts())
         label = WriterClosureLabel(value=1, text="1")
 
-        with self.assertRaises(SouthStarError) as caught:
-            advance_writer_stereo_state(
-                prepared,
-                empty_writer_stereo_state(),
-                (
-                    WriterRingEndpointEmitted(
-                        bond=BondId(1),
-                        endpoint_atom=AtomId(0),
-                        partner_atom=AtomId(2),
-                        label=label,
-                        endpoint_text="1",
-                        bond_text="",
-                    ),
+        outcome = advance_writer_stereo_state_with_evidence(
+            prepared,
+            initial_writer_stereo_state(prepared),
+            (
+                WriterRingEndpointEmitted(
+                    bond=BondId(1),
+                    endpoint_atom=AtomId(0),
+                    partner_atom=AtomId(2),
+                    label=label,
+                    endpoint_text="1",
+                    bond_text="",
+                    direction_mark=DirectionMark.FWD,
                 ),
+            ),
+        )
+
+        self.assertIsNotNone(outcome.state)
+        self.assertIn(
+            _WriterExecutionCapabilityKind
+            .DIRECTIONAL_RING_PAIR_COMPATIBILITY,
+            outcome.execution_capabilities,
+        )
+        self.assertIn(
+            _WriterExecutionCapabilityKind.RESIDUAL_PROPAGATION,
+            outcome.execution_capabilities,
+        )
+        assert outcome.state is not None
+        domains = dict(outcome.state.residual_snapshot.domains)
+        self.assertEqual(
+            domains[directional_site_carrier_var(SiteId(0), BondId(1))],
+            (DirectionalNormalizedSign.POSITIVE,),
+        )
+        self.assertEqual(
+            domains[directional_site_carrier_var(SiteId(0), BondId(2))],
+            (DirectionalNormalizedSign.NEGATIVE,),
+        )
+        self.assertEqual(outcome.state.residual_snapshot.assignments, ())
+
+    def test_directional_ring_endpoint_pair_records_one_carrier_bond(self) -> None:
+        prepared = _prepare(directional_facts())
+        label = WriterClosureLabel(value=1, text="1")
+        pending = advance_writer_stereo_state(
+            prepared,
+            initial_writer_stereo_state(prepared),
+            (
+                WriterRingEndpointEmitted(
+                    bond=BondId(1),
+                    endpoint_atom=AtomId(0),
+                    partner_atom=AtomId(2),
+                    label=label,
+                    endpoint_text="1",
+                    bond_text="",
+                    direction_mark=DirectionMark.FWD,
+                ),
+            ),
+        )
+        assert pending is not None
+
+        outcome = advance_writer_stereo_state_with_evidence(
+            prepared,
+            pending,
+            (
+                WriterRingEndpointPaired(
+                    bond=BondId(1),
+                    endpoint_atom=AtomId(2),
+                    partner_atom=AtomId(0),
+                    label=label,
+                    endpoint_text="1",
+                    bond_text="",
+                    direction_mark=DirectionMark.REV,
+                    first_endpoint_bond_text="",
+                    first_endpoint_direction_mark=DirectionMark.FWD,
+                ),
+            ),
+        )
+
+        self.assertIsNotNone(outcome.state)
+        self.assertIn(
+            _WriterExecutionCapabilityKind
+            .DIRECTIONAL_RING_PAIR_COMPATIBILITY,
+            outcome.execution_capabilities,
+        )
+        self.assertIn(
+            _WriterExecutionCapabilityKind
+            .DIRECTIONAL_CARRIER_RESTRICTION,
+            outcome.execution_capabilities,
+        )
+        self.assertIn(
+            _WriterExecutionCapabilityKind.RESIDUAL_FACTOR_DISCHARGE,
+            outcome.execution_capabilities,
+        )
+        assert outcome.state is not None
+        self.assertEqual(
+            outcome.state.bond_occurrences,
+            (
+                writer_stereo_module.WriterBondOccurrenceRecord(
+                    bond=BondId(1),
+                    parent=AtomId(0),
+                    child=AtomId(2),
+                    mark=DirectionMark.FWD,
+                ),
+            ),
+        )
+
+    def test_directional_open_ring_state_reconstructs_projected_residual(self) -> None:
+        prepared = _prepare(directional_facts())
+        label = WriterClosureLabel(value=1, text="1")
+        outcome = advance_writer_stereo_state_with_evidence(
+            prepared,
+            initial_writer_stereo_state(prepared),
+            (
+                WriterRingEndpointEmitted(
+                    bond=BondId(1),
+                    endpoint_atom=AtomId(0),
+                    partner_atom=AtomId(2),
+                    label=label,
+                    endpoint_text="1",
+                    bond_text="",
+                    direction_mark=DirectionMark.FWD,
+                ),
+            ),
+        )
+        self.assertIsNotNone(outcome.state)
+        assert outcome.state is not None
+        ring_state = WriterRingState(
+            open_endpoints=(
+                WriterOpenClosureEndpoint(
+                    bond=BondId(1),
+                    first_atom=AtomId(0),
+                    second_atom=AtomId(2),
+                    label=label,
+                    first_endpoint_text="1",
+                    first_endpoint_bond_text="",
+                    first_endpoint_direction_mark=DirectionMark.FWD,
+                ),
+            ),
+        )
+
+        self.assertEqual(
+            reconstruct_writer_stereo_residual_snapshot(
+                prepared,
+                outcome.state,
+                ring_state=ring_state,
+            ),
+            outcome.state.residual_snapshot,
+        )
+
+    def test_directional_closed_ring_state_requires_exact_bond_record(self) -> None:
+        prepared = _prepare(directional_facts())
+        label = WriterClosureLabel(value=1, text="1")
+        opened = advance_writer_stereo_state(
+            prepared,
+            initial_writer_stereo_state(prepared),
+            (
+                WriterRingEndpointEmitted(
+                    bond=BondId(1),
+                    endpoint_atom=AtomId(0),
+                    partner_atom=AtomId(2),
+                    label=label,
+                    endpoint_text="1",
+                    bond_text="",
+                    direction_mark=DirectionMark.FWD,
+                ),
+            ),
+        )
+        assert opened is not None
+        closed = advance_writer_stereo_state(
+            prepared,
+            opened,
+            (
+                WriterRingEndpointPaired(
+                    bond=BondId(1),
+                    endpoint_atom=AtomId(2),
+                    partner_atom=AtomId(0),
+                    label=label,
+                    endpoint_text="1",
+                    bond_text="",
+                    direction_mark=DirectionMark.REV,
+                    first_endpoint_bond_text="",
+                    first_endpoint_direction_mark=DirectionMark.FWD,
+                ),
+            ),
+        )
+        assert closed is not None
+        ring_state = WriterRingState(
+            closed_closures=(
+                WriterClosedClosure(
+                    bond=BondId(1),
+                    first_atom=AtomId(0),
+                    second_atom=AtomId(2),
+                    label=label,
+                    first_endpoint_text="1",
+                    second_endpoint_text="1",
+                    first_endpoint_bond_text="",
+                    second_endpoint_bond_text="",
+                    first_endpoint_direction_mark=DirectionMark.FWD,
+                    second_endpoint_direction_mark=DirectionMark.REV,
+                ),
+            ),
+        )
+
+        self.assertEqual(
+            reconstruct_writer_stereo_residual_snapshot(
+                prepared,
+                closed,
+                ring_state=ring_state,
+            ),
+            closed.residual_snapshot,
+        )
+        tampered = replace(closed, bond_occurrences=())
+        with self.assertRaises(ValueError):
+            reconstruct_writer_stereo_residual_snapshot(
+                prepared,
+                tampered,
+                ring_state=ring_state,
             )
-        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_STEREO)
+
+    def test_directional_ring_carrier_closure_path_is_private_only(self) -> None:
+        prepared = _prepare_directional_ring_carrier_facts()
+        options = _writer_options(rooted_at_atom=0)
+
+        with self.assertRaises(SouthStarError):
+            initial_writer_frontier_cursor(prepared, options)
+
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+        paths = _private_terminal_paths(prepared, cursor)
+        target_paths = tuple(
+            path
+            for path in paths
+            if any(
+                closure.bond == BondId(3)
+                and (
+                    closure.first_endpoint_direction_mark
+                    is not DirectionMark.ABSENT
+                    or closure.second_endpoint_direction_mark
+                    is not DirectionMark.ABSENT
+                )
+                for closure in path[1].ring_state.closed_closures
+            )
+        )
+
+        self.assertTrue(target_paths)
+        emissions, terminal, capabilities = target_paths[0]
+        self.assertTrue("/" in "".join(emissions) or "\\" in "".join(emissions))
+        self.assertIn(
+            _WriterExecutionCapabilityKind
+            .DIRECTIONAL_RING_PAIR_COMPATIBILITY,
+            capabilities,
+        )
+        self.assertIn(
+            _WriterExecutionCapabilityKind
+            .DIRECTIONAL_CARRIER_RESTRICTION,
+            capabilities,
+        )
+        self.assertEqual(terminal.ring_state.open_endpoints, ())
+        self.assertEqual(
+            terminal.stereo_state.residual_snapshot,
+            writer_stereo_module.EMPTY_RESIDUAL_SNAPSHOT,
+        )
 
     def test_terminal_eos_persists_final_stereo_closure(self) -> None:
         facts = terminal_tetra_center_facts()
@@ -987,11 +1241,60 @@ def _prepare(facts):
     )
 
 
+def _prepare_directional_ring_carrier_facts():
+    facts = _directional_ring_carrier_facts()
+    return prepare_south_star_mol_from_facts(
+        facts,
+        writer_surface=SouthStarWriterSurface(),
+        policy=ordinary_policy_for_facts(
+            facts,
+            OrdinaryPolicyOptions(non_single_ring_closures="joint"),
+        ),
+    )
+
+
 def _writer_options(*, rooted_at_atom: int = -1) -> SouthStarRuntimeOptions:
     return SouthStarRuntimeOptions(
         rooted_at_atom=rooted_at_atom,
         serialization_language=SerializationLanguageMode.WRITER_SHAPED,
     )
+
+
+def _private_terminal_paths(prepared, cursor):
+    paths = []
+
+    def rec(state, emissions, capabilities):
+        terminal = writer_transitions.finalize_writer_terminal_state_with_evidence(
+            prepared,
+            state,
+        )
+        if terminal.state is not None:
+            paths.append(
+                (
+                    emissions,
+                    terminal.state,
+                    capabilities | terminal.execution_capabilities,
+                )
+            )
+            return
+
+        for entry in writer_transitions._legal_writer_next_token_frontier(
+            prepared,
+            state,
+        ):
+            for support in entry.supports:
+                rec(
+                    support.transition.successor,
+                    emissions + (support.transition.emitted_text,),
+                    capabilities | support.execution_capabilities,
+                )
+
+    from grimace._south_star1.writer_state import writer_state_from_key
+
+    for key, _weight in cursor.weighted_states:
+        rec(writer_state_from_key(key), (), frozenset())
+
+    return tuple(paths)
 
 
 def triangle_no_stereo_facts() -> MoleculeFacts:
@@ -1007,6 +1310,80 @@ def triangle_no_stereo_facts() -> MoleculeFacts:
                 id=ComponentId(0),
                 atoms=(AtomId(0), AtomId(1), AtomId(2)),
                 bonds=(BondId(0), BondId(1), BondId(2)),
+            ),
+        ),
+    )
+
+
+def _directional_ring_carrier_facts() -> MoleculeFacts:
+    site_id = SiteId(0)
+    return MoleculeFacts(
+        atoms=(
+            atom(0, "C"),
+            atom(1, "C"),
+            atom(2, "F"),
+            atom(3, "Cl"),
+            atom(4, "Br"),
+            atom(5, "O"),
+        ),
+        bonds=(
+            bond(0, 0, 1, BondOrder.DOUBLE),
+            single_bond(1, 1, 4),
+            single_bond(2, 4, 2),
+            single_bond(3, 2, 0),
+            single_bond(4, 0, 3),
+            single_bond(5, 1, 5),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=tuple(AtomId(index) for index in range(6)),
+                bonds=tuple(BondId(index) for index in range(6)),
+            ),
+        ),
+        stereo=StereoFacts(
+            directional=(
+                DirectionalSiteFacts(
+                    id=site_id,
+                    center_bond=BondId(0),
+                    left_endpoint=AtomId(0),
+                    right_endpoint=AtomId(1),
+                    status=SiteStatus.SPECIFIED,
+                    target=DirectionalValue.OPPOSITE,
+                    left_ligands=(OccurrenceId(0), OccurrenceId(1)),
+                    right_ligands=(OccurrenceId(2), OccurrenceId(3)),
+                    reference_pair=(OccurrenceId(0), OccurrenceId(2)),
+                ),
+            ),
+        ),
+        ligand_occurrences=(
+            LigandOccurrence(
+                id=OccurrenceId(0),
+                site=site_id,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(2),
+                bond=BondId(3),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(1),
+                site=site_id,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(3),
+                bond=BondId(4),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(2),
+                site=site_id,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(4),
+                bond=BondId(1),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(3),
+                site=site_id,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(5),
+                bond=BondId(5),
             ),
         ),
     )

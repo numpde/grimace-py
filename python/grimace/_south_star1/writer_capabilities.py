@@ -24,6 +24,9 @@ class _WriterExecutionCapabilityKind(Enum):
 
     DIRECTIONAL_CARRIER_RESTRICTION = "directional_carrier_restriction"
     DIRECTIONAL_SITE_COMPATIBILITY = "directional_site_compatibility"
+    DIRECTIONAL_RING_PAIR_COMPATIBILITY = (
+        "directional_ring_pair_compatibility"
+    )
 
     RESIDUAL_PROPAGATION = "residual_propagation"
     RESIDUAL_FACTOR_DISCHARGE = "residual_factor_discharge"

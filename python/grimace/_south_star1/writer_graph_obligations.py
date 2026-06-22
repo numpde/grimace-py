@@ -71,6 +71,55 @@ class WriterClosureBondTextRelation:
         return second_text in self.compatible_seconds(first_text)
 
 
+@dataclass(frozen=True, slots=True)
+class WriterClosureEndpointChoice:
+    bond_text: str
+    direction_mark: DirectionMark
+
+    @property
+    def rendered_text(self) -> str:
+        if self.direction_mark is DirectionMark.FWD:
+            return "/"
+        if self.direction_mark is DirectionMark.REV:
+            return "\\"
+        return self.bond_text
+
+
+@dataclass(frozen=True, slots=True)
+class WriterClosureEndpointRelation:
+    rows: tuple[
+        tuple[
+            WriterClosureEndpointChoice,
+            tuple[WriterClosureEndpointChoice, ...],
+        ],
+        ...
+    ]
+
+    @property
+    def choices(self) -> tuple[WriterClosureEndpointChoice, ...]:
+        return tuple(first for first, _seconds in self.rows)
+
+    @property
+    def openable_first_choices(self) -> tuple[WriterClosureEndpointChoice, ...]:
+        return tuple(first for first, seconds in self.rows if seconds)
+
+    def compatible_seconds(
+        self,
+        first: WriterClosureEndpointChoice,
+    ) -> tuple[WriterClosureEndpointChoice, ...]:
+        for candidate, seconds in self.rows:
+            if candidate == first:
+                return seconds
+        return ()
+
+    def pair_ok(
+        self,
+        first: WriterClosureEndpointChoice,
+        second: WriterClosureEndpointChoice,
+    ) -> bool:
+        return second in self.compatible_seconds(first)
+
+
 class WriterResidualAttachmentActionKind(Enum):
     ACYCLIC_TREE_ENTRY = "acyclic_tree_entry"
     CYCLIC_TREE_ENTRY = "cyclic_tree_entry"
@@ -936,10 +985,19 @@ def _validate_open_endpoint_text(prepared: SouthStarPreparedMol, endpoint) -> No
     _validate_closure_label(prepared, endpoint.label)
     if endpoint.first_endpoint_text != endpoint.label.text:
         _invalid_edge_partition("writer open closure endpoint text does not match label")
-    relation = writer_closure_bond_text_relation(prepared, endpoint.bond)
-    if endpoint.first_endpoint_bond_text not in relation.texts:
+    relation = _writer_closure_endpoint_relation_for_validation(
+        prepared,
+        bond=endpoint.bond,
+        first_atom=endpoint.first_atom,
+        second_atom=endpoint.second_atom,
+    )
+    choice = WriterClosureEndpointChoice(
+        endpoint.first_endpoint_bond_text,
+        endpoint.first_endpoint_direction_mark,
+    )
+    if choice not in relation.choices:
         _invalid_edge_partition("writer open closure bond text is outside policy domain")
-    if endpoint.first_endpoint_bond_text not in relation.openable_first_texts:
+    if choice not in relation.openable_first_choices:
         _invalid_edge_partition(
             "writer open closure bond text has no compatible partner"
         )
@@ -951,16 +1009,43 @@ def _validate_closed_closure_text(prepared: SouthStarPreparedMol, closure) -> No
         _invalid_edge_partition("writer closed closure first endpoint text does not match label")
     if closure.second_endpoint_text != closure.label.text:
         _invalid_edge_partition("writer closed closure second endpoint text does not match label")
-    relation = writer_closure_bond_text_relation(prepared, closure.bond)
-    if closure.first_endpoint_bond_text not in relation.texts:
-        _invalid_edge_partition("writer closed closure first bond text is outside policy domain")
-    if closure.second_endpoint_bond_text not in relation.texts:
-        _invalid_edge_partition("writer closed closure second bond text is outside policy domain")
-    if not relation.pair_ok(
+    relation = _writer_closure_endpoint_relation_for_validation(
+        prepared,
+        bond=closure.bond,
+        first_atom=closure.first_atom,
+        second_atom=closure.second_atom,
+    )
+    first = WriterClosureEndpointChoice(
         closure.first_endpoint_bond_text,
+        closure.first_endpoint_direction_mark,
+    )
+    second = WriterClosureEndpointChoice(
         closure.second_endpoint_bond_text,
-    ):
+        closure.second_endpoint_direction_mark,
+    )
+    if first not in relation.choices:
+        _invalid_edge_partition("writer closed closure first bond text is outside policy domain")
+    if second not in relation.choices:
+        _invalid_edge_partition("writer closed closure second bond text is outside policy domain")
+    if not relation.pair_ok(first, second):
         _invalid_edge_partition("writer closed closure bond texts do not decode")
+
+
+def _writer_closure_endpoint_relation_for_validation(
+    prepared: SouthStarPreparedMol,
+    *,
+    bond: BondId,
+    first_atom: AtomId,
+    second_atom: AtomId,
+) -> WriterClosureEndpointRelation:
+    from .writer_stereo import writer_closure_endpoint_relation as relation
+
+    return relation(
+        prepared,
+        bond=bond,
+        first_atom=first_atom,
+        second_atom=second_atom,
+    )
 
 
 def writer_closure_bond_text_relation(
@@ -1000,6 +1085,81 @@ def writer_closure_bond_text_relation(
         for first in eligible
     )
     return WriterClosureBondTextRelation(rows=rows)
+
+
+def writer_closure_endpoint_relation(
+    prepared: SouthStarPreparedMol,
+    bond: BondId,
+    *,
+    max_choice_count: int | None = None,
+    include_direction_marks: bool = False,
+) -> WriterClosureEndpointRelation:
+    eligible = _closure_bond_text_choices(prepared, bond)
+
+    if (
+        max_choice_count is not None
+        and len(eligible) > max_choice_count
+    ):
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            "writer closure bond-text domain exceeds bounded relation envelope "
+            f"for {bond!r}",
+        )
+
+    endpoint_choices = tuple(
+        (policy_choice, endpoint_choice)
+        for policy_choice in eligible
+        for endpoint_choice in _closure_endpoint_choices(
+            policy_choice,
+            include_direction_marks=include_direction_marks,
+        )
+    )
+    rows = tuple(
+        (
+            first_choice,
+            tuple(
+                second_choice
+                for second_policy, second_choice in endpoint_choices
+                if prepared.semantics.ring_pair_decode_ok(
+                    prepared.facts,
+                    bond,
+                    first_policy,
+                    first_choice.direction_mark,
+                    second_policy,
+                    second_choice.direction_mark,
+                )
+            ),
+        )
+        for first_policy, first_choice in endpoint_choices
+    )
+    return WriterClosureEndpointRelation(rows=rows)
+
+
+def _closure_endpoint_choices(
+    choice,
+    *,
+    include_direction_marks: bool,
+) -> tuple[WriterClosureEndpointChoice, ...]:
+    out = [
+        WriterClosureEndpointChoice(
+            choice.base_text,
+            DirectionMark.ABSENT,
+        )
+    ]
+    if include_direction_marks and choice.permits_direction:
+        out.extend(
+            (
+                WriterClosureEndpointChoice(
+                    choice.base_text,
+                    DirectionMark.FWD,
+                ),
+                WriterClosureEndpointChoice(
+                    choice.base_text,
+                    DirectionMark.REV,
+                ),
+            )
+        )
+    return tuple(out)
 
 
 def _closure_bond_text_choices(

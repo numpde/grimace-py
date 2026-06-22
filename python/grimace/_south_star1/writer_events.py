@@ -64,6 +64,7 @@ class WriterRingEndpointEmitted:
     label: "WriterClosureLabel"
     endpoint_text: str
     bond_text: str
+    direction_mark: DirectionMark = DirectionMark.ABSENT
     side: Literal["open", "close"] = "open"
 
 
@@ -75,6 +76,9 @@ class WriterRingEndpointPaired:
     label: "WriterClosureLabel"
     endpoint_text: str
     bond_text: str
+    direction_mark: DirectionMark = DirectionMark.ABSENT
+    first_endpoint_bond_text: str = ""
+    first_endpoint_direction_mark: DirectionMark = DirectionMark.ABSENT
     side: Literal["close"] = "close"
 
 
@@ -127,6 +131,7 @@ def writer_event_sort_tuple(event: WriterEvent) -> tuple[object, ...]:
             event.label.text,
             event.endpoint_text,
             event.bond_text,
+            event.direction_mark.value,
             event.side,
         )
     if isinstance(event, WriterRingEndpointPaired):
@@ -139,6 +144,9 @@ def writer_event_sort_tuple(event: WriterEvent) -> tuple[object, ...]:
             event.label.text,
             event.endpoint_text,
             event.bond_text,
+            event.direction_mark.value,
+            event.first_endpoint_bond_text,
+            event.first_endpoint_direction_mark.value,
             event.side,
         )
     raise TypeError(f"unknown writer event: {event!r}")

@@ -251,6 +251,34 @@ class ResidualStore:
             self._components_from_variables(tuple(affected)),
         )
 
+    def intersect_domain_and_propagate(
+        self,
+        var: VarId,
+        allowed_values: tuple[object, ...],
+    ) -> ResidualPropagationResult:
+        if var not in self._domains:
+            raise ValueError(f"unknown residual variable: {var!r}")
+
+        allowed = frozenset(allowed_values)
+        new_domain = tuple(value for value in self._domains[var] if value in allowed)
+        if not new_domain:
+            return ResidualPropagationResult(
+                ResidualPropagationKind.CONTRADICTION,
+                ResidualPropagationStats(component_variables=(var,)),
+            )
+
+        existing = self._assignments.get(var, _UNASSIGNED)
+        if existing is not _UNASSIGNED and existing not in new_domain:
+            return ResidualPropagationResult(
+                ResidualPropagationKind.CONTRADICTION,
+                ResidualPropagationStats(component_variables=(var,)),
+            )
+
+        self._replace_domain(var, new_domain)
+        return self._propagate_components(
+            self._components_from_variables((var,)),
+        )
+
     def _install_restriction(
         self,
         var: VarId,

@@ -53,6 +53,8 @@ from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import enumerate_prepared_stereo_support
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
+from grimace._south_star1.residual_constraints import ResidualPropagationKind
+from grimace._south_star1.residual_constraints import ResidualStore
 from grimace._south_star1.residual_constraints import residual_store_constraint_components
 from grimace._south_star1.writer_frontier import WriterFrontierCursor
 from grimace._south_star1.writer_frontier import count_writer_cursor_completions
@@ -62,6 +64,8 @@ from grimace._south_star1.writer_frontier import _initial_writer_transition_fron
 from grimace._south_star1.writer_frontier import iter_writer_frontier_support
 from grimace._south_star1.writer_frontier import writer_frontier_choices
 from grimace._south_star1.writer_stereo import EMPTY_RESIDUAL_SNAPSHOT
+from grimace._south_star1.writer_stereo import tetra_parity_var
+from grimace._south_star1.writer_stereo import tetra_token_var
 from grimace._south_star1.writer_graph_obligations import WriterBoundaryOwnerKind
 from grimace._south_star1.writer_graph_obligations import WriterEdgeObligationKind
 from grimace._south_star1.writer_graph_obligations import WriterResidualAttachmentActionKind
@@ -1213,6 +1217,22 @@ def _closure_pair(path: _BranchTerminalPath) -> tuple[str, str]:
     return (
         closure.first_endpoint_bond_text,
         closure.second_endpoint_bond_text,
+    )
+
+
+def _residual_component_payload(snapshot, component) -> object:
+    domain_map = dict(snapshot.domains)
+    assignment_map = dict(snapshot.assignments)
+    factor_map = {factor.key: factor for factor in snapshot.factors}
+    return (
+        component,
+        tuple((var, domain_map[var]) for var in component.variables),
+        tuple(
+            (var, assignment_map[var])
+            for var in component.variables
+            if var in assignment_map
+        ),
+        tuple(factor_map[key] for key in component.factor_keys),
     )
 
 
@@ -20613,6 +20633,126 @@ class WriterStateKernelTest(unittest.TestCase):
                         decision.public_profile.required_capabilities,
                     )
 
+    def test_two_cycle_ring_tetra_propagation_metrics_are_additive(self) -> None:
+        def initial_residual_snapshot(facts: MoleculeFacts):
+            prepared = _prepare(facts)
+            cursor = _initial_writer_transition_frontier_cursor(
+                prepared,
+                _writer_options(rooted_at_atom=0),
+            )
+            state = writer_state_from_key(cursor.weighted_states[0][0])
+            return state.stereo_state.residual_snapshot
+
+        single_snapshot = initial_residual_snapshot(
+            bridge_path_with_ring_tetra_facts(left=True, right=False),
+        )
+        double_snapshot = initial_residual_snapshot(
+            bridge_path_with_ring_tetra_facts(),
+        )
+
+        for snapshot, expected in (
+            (
+                single_snapshot,
+                {
+                    "variables": 2,
+                    "factors": 1,
+                    "checked_rows": 4,
+                    "largest_scope": 2,
+                    "largest_rows": 4,
+                },
+            ),
+            (
+                double_snapshot,
+                {
+                    "variables": 4,
+                    "factors": 2,
+                    "checked_rows": 8,
+                    "largest_scope": 2,
+                    "largest_rows": 4,
+                },
+            ),
+        ):
+            store = ResidualStore.from_value_snapshot(snapshot)
+            result = store.propagate_all_components()
+            self.assertIs(
+                result.kind,
+                ResidualPropagationKind.CERTIFIED_CONSISTENT,
+            )
+            self.assertEqual(
+                len(result.stats.component_variables),
+                expected["variables"],
+            )
+            self.assertEqual(
+                len(result.stats.component_factor_keys),
+                expected["factors"],
+            )
+            self.assertEqual(
+                result.stats.checked_candidate_rows,
+                expected["checked_rows"],
+            )
+            self.assertEqual(
+                result.stats.largest_factor_scope,
+                expected["largest_scope"],
+            )
+            self.assertEqual(
+                result.stats.largest_candidate_row_count,
+                expected["largest_rows"],
+            )
+
+        components = {
+            int(component.factor_keys[0].key[0]): component
+            for component in residual_store_constraint_components(double_snapshot)
+        }
+        baseline_payloads = {
+            site: _residual_component_payload(double_snapshot, component)
+            for site, component in components.items()
+        }
+        domains = dict(double_snapshot.domains)
+        for site in (0, 1):
+            with self.subTest(site=site):
+                store = ResidualStore.from_value_snapshot(double_snapshot)
+                token_var = tetra_token_var(SiteId(site))
+                token = domains[token_var][0]
+                result = store.restrict_to_value(token_var, token)
+                self.assertIs(
+                    result.kind,
+                    ResidualPropagationKind.CERTIFIED_CONSISTENT,
+                )
+                self.assertEqual(result.stats.checked_candidate_rows, 2)
+                self.assertEqual(result.stats.largest_factor_scope, 2)
+                self.assertEqual(result.stats.largest_candidate_row_count, 2)
+                self.assertEqual(
+                    frozenset(result.stats.component_variables),
+                    frozenset((
+                        tetra_token_var(SiteId(site)),
+                        tetra_parity_var(SiteId(site)),
+                    )),
+                )
+                self.assertEqual(
+                    tuple(key.kind for key in result.stats.component_factor_keys),
+                    ("tetra_site",),
+                )
+                self.assertEqual(
+                    result.stats.component_factor_keys[0].key,
+                    (site,),
+                )
+
+                other_site = 1 - site
+                updated_snapshot = store.value_snapshot()
+                updated_components = {
+                    int(component.factor_keys[0].key[0]): component
+                    for component in residual_store_constraint_components(
+                        updated_snapshot,
+                    )
+                }
+                self.assertEqual(
+                    _residual_component_payload(
+                        updated_snapshot,
+                        updated_components[other_site],
+                    ),
+                    baseline_payloads[other_site],
+                )
+
     def test_two_cycle_ring_tetra_factors_remain_independent(self) -> None:
         prepared = _prepare(bridge_path_with_ring_tetra_facts())
         options = _writer_options(rooted_at_atom=0)
@@ -20766,7 +20906,34 @@ class WriterStateKernelTest(unittest.TestCase):
         )
         self.assertEqual(len(both_live_two_open.ring_state.open_endpoints), 2)
 
-        roles_by_center = {AtomId(0): set(), AtomId(3): set()}
+        block_bonds_by_center = {
+            AtomId(0): frozenset((BondId(0), BondId(1), BondId(2))),
+            AtomId(3): frozenset((BondId(3), BondId(4), BondId(5))),
+        }
+
+        def own_block_closure(
+            path: _BranchTerminalPath,
+            center: AtomId,
+        ) -> WriterClosedClosure:
+            matches = tuple(
+                closure
+                for closure in path.terminal_state.ring_state.closed_closures
+                if closure.bond in block_bonds_by_center[center]
+            )
+            self.assertEqual(len(matches), 1)
+            return matches[0]
+
+        def closure_role(
+            center: AtomId,
+            closure: WriterClosedClosure,
+        ) -> str:
+            if closure.first_atom == center:
+                return "opening"
+            if closure.second_atom == center:
+                return "pairing"
+            return "nonincident"
+
+        roles_by_center = {center: set() for center in block_bonds_by_center}
         terminal_paths = tuple(paths)
         for path in terminal_paths:
             self.assertEqual(
@@ -20792,13 +20959,12 @@ class WriterStateKernelTest(unittest.TestCase):
             )
             for path in _branch_terminal_paths(prepared, role_cursor):
                 for center in roles_by_center:
-                    for closure in path.terminal_state.ring_state.closed_closures:
-                        if closure.first_atom == center:
-                            roles_by_center[center].add("opening")
-                        elif closure.second_atom == center:
-                            roles_by_center[center].add("pairing")
-                        else:
-                            roles_by_center[center].add("nonincident")
+                    roles_by_center[center].add(
+                        closure_role(
+                            center,
+                            own_block_closure(path, center),
+                        )
+                    )
 
         self.assertEqual(
             roles_by_center,

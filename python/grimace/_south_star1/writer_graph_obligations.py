@@ -885,7 +885,7 @@ def _validate_closure_state_supported_for_snapshot(
         if endpoint.first_atom not in key.visited_atoms:
             _invalid_edge_partition("writer open closure endpoint first atom is not visited")
         _validate_open_endpoint_text(prepared, endpoint)
-        _validate_open_endpoint_partner_liveness(key, endpoint, context)
+        _validate_open_endpoint_partner_liveness(prepared, key, endpoint, context)
     for closure in key.ring_state.closed_closures:
         if partition_by_bond.get(closure.bond) is not WriterEdgeObligationKind.CLOSED_CLOSURE:
             _invalid_edge_partition("writer closed closure lacks closed edge obligation")
@@ -929,6 +929,7 @@ def _validate_ring_label_state(prepared: SouthStarPreparedMol, key: WriterStateK
 
 
 def _validate_open_endpoint_partner_liveness(
+    prepared: SouthStarPreparedMol,
     key: WriterStateKey,
     endpoint,
     context: WriterGraphObligationContext,
@@ -964,6 +965,19 @@ def _validate_open_endpoint_partner_liveness(
             and pending.child in open_writer_atoms
         ):
             return
+        if prepared.directional_templates:
+            if pending.parent in open_writer_atoms and any(
+                endpoint.second_atom in attachment.atoms
+                and pending.child in attachment.atoms
+                for attachment in context.residual_summary.attachments.attachments
+            ):
+                return
+            if pending.child in open_writer_atoms and any(
+                endpoint.second_atom in attachment.atoms
+                and pending.parent in attachment.atoms
+                for attachment in context.residual_summary.attachments.attachments
+            ):
+                return
 
     if not any(
         endpoint.second_atom in attachment.atoms and attachment.boundary

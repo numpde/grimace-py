@@ -25,6 +25,8 @@ from grimace._south_star1.errors import SouthStarError
 from grimace._south_star1.errors import SouthStarErrorKind
 from grimace._south_star1.facts import BondOrder
 from grimace._south_star1.facts import ComponentFacts
+from grimace._south_star1.facts import DirectionalSiteFacts
+from grimace._south_star1.facts import DirectionalValue
 from grimace._south_star1.facts import LigandKind
 from grimace._south_star1.facts import LigandOccurrence
 from grimace._south_star1.facts import MoleculeFacts
@@ -42,6 +44,7 @@ from grimace._south_star1.policy import AtomTextChoice
 from grimace._south_star1.policy import AtomTextDomain
 from grimace._south_star1.policy import BondTextChoice
 from grimace._south_star1.policy import BondTextDomain
+from grimace._south_star1.policy import DirectionMark
 from grimace._south_star1.policy import RingLabel
 from grimace._south_star1.policy import SerializationLanguageMode
 from grimace._south_star1.policy import SmilesPolicy
@@ -20582,6 +20585,299 @@ class WriterStateKernelTest(unittest.TestCase):
                 ),
             )
             self.assertEqual(len(order), 4)
+
+    def test_public_directional_ring_carrier_monocycle_is_admitted(self) -> None:
+        prepared = _prepare_directional_ring_carrier_monocycle()
+        static_capabilities = {
+            writer_snapshot
+            ._WriterPublicCyclicRequiredCapability
+            .SIMPLE_CYCLE_CORE_CLOSURE,
+            writer_snapshot
+            ._WriterPublicCyclicRequiredCapability
+            .ACYCLIC_PENDANT_TREE_TRAVERSAL,
+            writer_snapshot
+            ._WriterPublicCyclicRequiredCapability
+            .TREE_BOND_TEXT_EMISSION,
+            writer_snapshot
+            ._WriterPublicCyclicRequiredCapability
+            .RING_CORE_NON_SINGLE_CLOSURE_BOND,
+            writer_snapshot
+            ._WriterPublicCyclicRequiredCapability
+            .CYCLIC_DIRECTIONAL_STEREO,
+            writer_snapshot
+            ._WriterPublicCyclicRequiredCapability
+            .CYCLIC_RING_PAIR_STEREO,
+        }
+
+        for root in (*range(len(prepared.facts.atoms)), -1):
+            with self.subTest(root=root):
+                options = _writer_options(rooted_at_atom=root)
+                snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
+                    prepared=prepared,
+                    runtime_options=options,
+                )
+                decision = (
+                    writer_snapshot
+                    ._cyclic_writer_admission_decision_from_snapshot(
+                        snapshot,
+                        prepared=prepared,
+                    )
+                )
+                self.assertIs(
+                    decision.kind,
+                    (
+                        writer_snapshot
+                        ._WriterCyclicAdmissionDecisionKind
+                        .READY_PUBLIC
+                    ),
+                )
+                assert decision.public_profile is not None
+                self.assertIs(
+                    decision.public_profile.kind,
+                    (
+                        writer_snapshot
+                        ._WriterPublicCyclicOpeningProfileKind
+                        .SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS
+                    ),
+                )
+                self.assertTrue(
+                    static_capabilities
+                    <= decision.public_profile.required_capabilities,
+                )
+                self.assertFalse(
+                    static_capabilities
+                    & decision.public_profile.unsupported_capabilities,
+                )
+                assert decision.execution_capability_certificate is not None
+                self.assertIn(
+                    (
+                        writer_snapshot
+                        ._WriterExecutionCapabilityKind
+                        .DIRECTIONAL_RING_PAIR_COMPATIBILITY
+                    ),
+                    (
+                        decision
+                        .execution_capability_certificate
+                        .required_capabilities
+                    ),
+                )
+
+    def test_directional_ring_carrier_monocycle_lifecycle_is_branch_local(
+        self,
+    ) -> None:
+        prepared = _prepare_directional_ring_carrier_monocycle()
+        options = _writer_options(rooted_at_atom=0)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+        paths = _branch_terminal_paths(prepared, cursor)
+        self.assertTrue(paths)
+
+        directional_pair = (
+            writer_snapshot
+            ._WriterExecutionCapabilityKind
+            .DIRECTIONAL_RING_PAIR_COMPATIBILITY
+        )
+        ring_carriers = frozenset((BondId(1), BondId(3)))
+        non_directional_closure_bonds = frozenset((BondId(0), BondId(2)))
+        closures_by_bond: dict[BondId, list[_BranchTerminalPath]] = {}
+        rooted_paths: list[tuple[int, _BranchTerminalPath]] = []
+        for root in range(len(prepared.facts.atoms)):
+            root_options = _writer_options(rooted_at_atom=root)
+            root_cursor = _initial_writer_transition_frontier_cursor(
+                prepared,
+                root_options,
+            )
+            for path in _branch_terminal_paths(prepared, root_cursor):
+                rooted_paths.append((root, path))
+                self.assertEqual(
+                    path.terminal_state.stereo_state.residual_snapshot,
+                    EMPTY_RESIDUAL_SNAPSHOT,
+                )
+                self.assertEqual(
+                    len(path.terminal_state.ring_state.closed_closures),
+                    1,
+                )
+                closure = path.terminal_state.ring_state.closed_closures[0]
+                closures_by_bond.setdefault(closure.bond, []).append(path)
+
+        self.assertTrue(ring_carriers <= frozenset(closures_by_bond))
+        self.assertTrue(non_directional_closure_bonds <= frozenset(closures_by_bond))
+
+        for bond_id in ring_carriers:
+            carrier_paths = tuple(closures_by_bond[bond_id])
+            self.assertTrue(carrier_paths)
+            self.assertTrue(
+                any(
+                    path.terminal_state.ring_state.closed_closures[0]
+                    .first_endpoint_direction_mark
+                    is not DirectionMark.ABSENT
+                    or path.terminal_state.ring_state.closed_closures[0]
+                    .second_endpoint_direction_mark
+                    is not DirectionMark.ABSENT
+                    for path in carrier_paths
+                )
+            )
+            self.assertTrue(
+                all(directional_pair in path.capabilities for path in carrier_paths)
+            )
+
+        for bond_id in non_directional_closure_bonds:
+            self.assertTrue(
+                all(
+                    directional_pair not in path.capabilities
+                    for path in closures_by_bond[bond_id]
+                )
+            )
+
+        representative_root, representative = next(
+            (root, path)
+            for root, path in rooted_paths
+            if path.terminal_state.ring_state.closed_closures[0].bond
+            in ring_carriers
+            if any(state.ring_state.open_endpoints for state in path.states)
+        )
+        representative_options = _writer_options(rooted_at_atom=representative_root)
+        representative_cursor = _initial_writer_transition_frontier_cursor(
+            prepared,
+            representative_options,
+        )
+        initial_snapshot = (
+            writer_snapshot
+            ._capture_writer_frontier_snapshot_unchecked(
+                prepared=prepared,
+                runtime_options=representative_options,
+                cursor=representative_cursor,
+            )
+        )
+        open_index = next(
+            index
+            for index, state in enumerate(representative.states)
+            if state.ring_state.open_endpoints
+        )
+        paired_index = next(
+            index
+            for index, state in enumerate(representative.states)
+            if state.ring_state.closed_closures
+        )
+        for index in (open_index, paired_index):
+            with self.subTest(index=index):
+                outcome = (
+                    _assert_checked_prefix_successor_snapshot_resume_equivalence(
+                        self,
+                        snapshot=initial_snapshot,
+                        prepared=prepared,
+                        emitted_texts=representative.emissions[:index],
+                    )
+                )
+                advanced = outcome.replay_outcome.advanced_snapshot
+                self.assertIsNotNone(advanced)
+                assert advanced is not None
+                self.assertIn(
+                    writer_state_key(representative.states[index]),
+                    dict(advanced.cursor.weighted_states),
+                )
+
+        decision = writer_snapshot._cyclic_writer_admission_decision_from_cursor(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        _assert_replay_succeeds_for_execution_capability_uses(
+            self,
+            audit=decision.readiness_gate.audit,
+            snapshot=initial_snapshot,
+            prepared=prepared,
+        )
+
+    def test_directional_ring_carrier_monocycle_capability_gates(self) -> None:
+        prepared = _prepare_directional_ring_carrier_monocycle()
+        options = _writer_options(rooted_at_atom=0)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+
+        for static_capability in (
+            writer_snapshot
+            ._WriterPublicCyclicRequiredCapability
+            .CYCLIC_DIRECTIONAL_STEREO,
+            writer_snapshot
+            ._WriterPublicCyclicRequiredCapability
+            .CYCLIC_RING_PAIR_STEREO,
+        ):
+            with self.subTest(static_capability=static_capability):
+                with patch(
+                    "grimace._south_star1.writer_snapshot"
+                    "._PUBLIC_CYCLIC_SUPPORTED_CAPABILITIES",
+                    (
+                        writer_snapshot
+                        ._PUBLIC_CYCLIC_SUPPORTED_CAPABILITIES
+                        - {static_capability}
+                    ),
+                ):
+                    blocked = (
+                        writer_snapshot
+                        ._cyclic_writer_admission_decision_from_cursor(
+                            prepared=prepared,
+                            runtime_options=options,
+                            cursor=cursor,
+                        )
+                    )
+                self.assertIs(
+                    blocked.kind,
+                    (
+                        writer_snapshot
+                        ._WriterCyclicAdmissionDecisionKind
+                        .BLOCKED_PUBLIC_CYCLIC_PROFILE
+                    ),
+                )
+                assert blocked.public_profile is not None
+                self.assertIn(
+                    static_capability,
+                    blocked.public_profile.required_capabilities,
+                )
+
+        live_capability = (
+            writer_snapshot
+            ._WriterExecutionCapabilityKind
+            .DIRECTIONAL_RING_PAIR_COMPATIBILITY
+        )
+        with patch(
+            "grimace._south_star1.writer_snapshot"
+            "._PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES",
+            (
+                writer_snapshot
+                ._PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES
+                - {live_capability}
+            ),
+        ):
+            blocked = (
+                writer_snapshot
+                ._cyclic_writer_admission_decision_from_cursor(
+                    prepared=prepared,
+                    runtime_options=options,
+                    cursor=cursor,
+                )
+            )
+        self.assertIs(
+            blocked.kind,
+            (
+                writer_snapshot
+                ._WriterCyclicAdmissionDecisionKind
+                .BLOCKED_PUBLIC_EXECUTION_CAPABILITY
+            ),
+        )
+        self.assertIsNotNone(blocked.execution_capability_certificate)
+        assert blocked.execution_capability_certificate is not None
+        self.assertIn(
+            live_capability,
+            blocked.execution_capability_certificate.unsupported_capabilities,
+        )
+        use = blocked.execution_capability_certificate.first_unsupported_uses[0]
+        self.assertFalse(use.terminal)
+        self.assertIsNotNone(use.next_emitted_text)
+        assert use.next_emitted_text is not None
+        self.assertTrue(
+            "/" in use.next_emitted_text
+            or "\\" in use.next_emitted_text
+            or use.next_emitted_text.endswith("1"),
+        )
 
     def test_public_two_cycle_ring_tetra_factors_are_supported(self) -> None:
         rows = (
@@ -43256,6 +43552,88 @@ def _prepare_with_ordinary_policy_options(
         facts,
         writer_surface=SouthStarWriterSurface(),
         policy=ordinary_policy_for_facts(facts, options=options),
+    )
+
+
+def _directional_ring_carrier_monocycle_facts() -> MoleculeFacts:
+    site_id = SiteId(0)
+    return MoleculeFacts(
+        atoms=(
+            atom(0, "C"),
+            atom(1, "C"),
+            atom(2, "F"),
+            atom(3, "Cl"),
+            atom(4, "Br"),
+            atom(5, "O"),
+        ),
+        bonds=(
+            bond(0, 0, 1, BondOrder.DOUBLE),
+            single_bond(1, 1, 4),
+            single_bond(2, 4, 2),
+            single_bond(3, 2, 0),
+            single_bond(4, 0, 3),
+            single_bond(5, 1, 5),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=tuple(AtomId(index) for index in range(6)),
+                bonds=tuple(BondId(index) for index in range(6)),
+            ),
+        ),
+        stereo=StereoFacts(
+            directional=(
+                DirectionalSiteFacts(
+                    id=site_id,
+                    center_bond=BondId(0),
+                    left_endpoint=AtomId(0),
+                    right_endpoint=AtomId(1),
+                    status=SiteStatus.SPECIFIED,
+                    target=DirectionalValue.OPPOSITE,
+                    left_ligands=(OccurrenceId(0), OccurrenceId(1)),
+                    right_ligands=(OccurrenceId(2), OccurrenceId(3)),
+                    reference_pair=(OccurrenceId(0), OccurrenceId(2)),
+                ),
+            ),
+        ),
+        ligand_occurrences=(
+            LigandOccurrence(
+                id=OccurrenceId(0),
+                site=site_id,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(2),
+                bond=BondId(3),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(1),
+                site=site_id,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(3),
+                bond=BondId(4),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(2),
+                site=site_id,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(4),
+                bond=BondId(1),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(3),
+                site=site_id,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(5),
+                bond=BondId(5),
+            ),
+        ),
+    )
+
+
+def _prepare_directional_ring_carrier_monocycle() -> SouthStarPreparedMol:
+    facts = _directional_ring_carrier_monocycle_facts()
+    return _prepare_with_ordinary_policy_options(
+        facts,
+        options=OrdinaryPolicyOptions(non_single_ring_closures="joint"),
     )
 
 

@@ -33,6 +33,7 @@ from .writer_graph_obligations import WriterBoundaryOwnerKind
 from .writer_graph_obligations import WriterEdgeObligationKind
 from .writer_graph_obligations import WriterGraphObligationContext
 from .writer_graph_obligations import WriterGraphObligationSummary
+from .writer_graph_obligations import WriterClosureEndpointChoice
 from .writer_graph_obligations import WriterResidualAttachmentActionKind
 from .writer_graph_obligations import build_writer_graph_obligation_context
 from .writer_graph_obligations import validate_writer_snapshot_graph_surface
@@ -53,6 +54,7 @@ from .writer_frontier import initial_writer_frontier_cursor
 from .writer_frontier import iter_writer_frontier_support
 from .writer_stereo import reconstruct_writer_local_order_records
 from .writer_stereo import reconstruct_writer_stereo_residual_snapshot
+from .writer_stereo import writer_closure_endpoint_relation
 from .writer_state import ComponentCursor
 from .writer_state import ObligationStateKey
 from .writer_state import PendingEntryPhase
@@ -1339,6 +1341,8 @@ _PUBLIC_CYCLIC_SUPPORTED_CAPABILITIES = frozenset(
         ),
         _WriterPublicCyclicRequiredCapability.RING_CORE_AROMATIC_BOND_TEXT,
         _WriterPublicCyclicRequiredCapability.RING_CORE_TETRAHEDRAL_STEREO,
+        _WriterPublicCyclicRequiredCapability.CYCLIC_DIRECTIONAL_STEREO,
+        _WriterPublicCyclicRequiredCapability.CYCLIC_RING_PAIR_STEREO,
     }
 )
 
@@ -1402,6 +1406,14 @@ class _WriterTwoCycleBlockEnvelope:
     @property
     def connector_bonds(self) -> frozenset[BondId]:
         return frozenset(self.connector_bond_path)
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterDirectionalRingCarrierEnvelope:
+    site: SiteId
+    center_bond: BondId
+    ring_carrier_bonds: tuple[BondId, BondId]
+    pendant_carrier_bonds: tuple[BondId, BondId]
 
 
 @dataclass(frozen=True, slots=True)
@@ -2706,6 +2718,16 @@ def _writer_public_cyclic_opening_profile_report(
     pendant_component_atom_counts: tuple[int, ...] = ()
     pendant_component_boundary_counts: tuple[int, ...] = ()
     pendant_atom_set = set(component_atom_ids) - ring_core_atom_set
+    directional_ring_carrier_envelope = (
+        _writer_public_directional_ring_carrier_envelope(
+            prepared=prepared,
+            ring_core_atom_ids=frozenset(ring_core_atom_set),
+            ring_core_bond_ids=frozenset(ring_core_bond_ids),
+            pendant_atom_ids=frozenset(pendant_atom_set),
+        )
+    )
+    if directional_ring_carrier_envelope is not None:
+        unsupported_stereo_surface_count = 0
     if pendant_atom_set:
         pendant_components: list[tuple[frozenset[AtomId], int]] = []
         seen_pendant_atoms: set[AtomId] = set()
@@ -2894,6 +2916,13 @@ def _writer_public_cyclic_opening_profile_report(
     if ring_core_tetra_template_count:
         required_capabilities.add(
             _WriterPublicCyclicRequiredCapability.RING_CORE_TETRAHEDRAL_STEREO,
+        )
+    if directional_ring_carrier_envelope is not None:
+        required_capabilities.update(
+            (
+                _WriterPublicCyclicRequiredCapability.CYCLIC_DIRECTIONAL_STEREO,
+                _WriterPublicCyclicRequiredCapability.CYCLIC_RING_PAIR_STEREO,
+            )
         )
     if cyclic_ranks == (2,) and two_cycle_envelope is not None:
         required_capabilities.add(
@@ -3608,6 +3637,241 @@ def _writer_public_aromatic_ring_bond_is_supported(
         relation.texts == ring_texts
         and relation.compatible_pairs == expected_pairs
     )
+
+
+def _writer_public_directional_ring_carrier_envelope(
+    *,
+    prepared: SouthStarPreparedMol,
+    ring_core_atom_ids: frozenset[AtomId],
+    ring_core_bond_ids: frozenset[BondId],
+    pendant_atom_ids: frozenset[AtomId],
+) -> _WriterDirectionalRingCarrierEnvelope | None:
+    if len(prepared.directional_templates) != 1:
+        return None
+    if prepared.tetra_templates:
+        return None
+
+    template = prepared.directional_templates[0]
+    if template.status is not SiteStatus.SPECIFIED:
+        return None
+    if template.center_bond not in ring_core_bond_ids:
+        return None
+
+    center = prepared.graph_index.bond_by_id.get(template.center_bond)
+    if center is None or center.order is not BondOrder.DOUBLE:
+        return None
+    if {center.a, center.b} != {template.left_endpoint, template.right_endpoint}:
+        return None
+    if center.a not in ring_core_atom_ids or center.b not in ring_core_atom_ids:
+        return None
+
+    left = _writer_public_directional_side_carriers(
+        prepared=prepared,
+        endpoint=template.left_endpoint,
+        ligand_ids=template.left_ligands,
+        ring_core_bond_ids=ring_core_bond_ids,
+        pendant_atom_ids=pendant_atom_ids,
+    )
+    right = _writer_public_directional_side_carriers(
+        prepared=prepared,
+        endpoint=template.right_endpoint,
+        ligand_ids=template.right_ligands,
+        ring_core_bond_ids=ring_core_bond_ids,
+        pendant_atom_ids=pendant_atom_ids,
+    )
+    if left is None or right is None:
+        return None
+
+    left_ring, left_pendant = left
+    right_ring, right_pendant = right
+    all_carriers = (left_ring, right_ring, left_pendant, right_pendant)
+    if len(frozenset(all_carriers)) != 4:
+        return None
+
+    for bond_id in all_carriers:
+        bond = prepared.graph_index.bond_by_id.get(bond_id)
+        if bond is None or bond.order is not BondOrder.SINGLE:
+            return None
+        if not _writer_public_directional_single_tree_slot_is_supported(
+            prepared,
+            bond_id,
+        ):
+            return None
+
+    for bond_id, first_atom, second_atom in (
+        (
+            left_ring,
+            template.left_endpoint,
+            _other_bond_atom(
+                prepared,
+                left_ring,
+                template.left_endpoint,
+            ),
+        ),
+        (
+            right_ring,
+            template.right_endpoint,
+            _other_bond_atom(
+                prepared,
+                right_ring,
+                template.right_endpoint,
+            ),
+        ),
+    ):
+        if second_atom is None:
+            return None
+        if (
+            _writer_public_directional_ring_endpoint_relation(
+                prepared,
+                bond_id,
+                first_atom=first_atom,
+                second_atom=second_atom,
+            )
+            is None
+        ):
+            return None
+        if (
+            _writer_public_directional_ring_endpoint_relation(
+                prepared,
+                bond_id,
+                first_atom=second_atom,
+                second_atom=first_atom,
+            )
+            is None
+        ):
+            return None
+
+    if (
+        _writer_public_non_single_closure_relation(
+            prepared,
+            template.center_bond,
+        )
+        is None
+    ):
+        return None
+
+    return _WriterDirectionalRingCarrierEnvelope(
+        site=template.site,
+        center_bond=template.center_bond,
+        ring_carrier_bonds=(left_ring, right_ring),
+        pendant_carrier_bonds=(left_pendant, right_pendant),
+    )
+
+
+def _writer_public_directional_side_carriers(
+    *,
+    prepared: SouthStarPreparedMol,
+    endpoint: AtomId,
+    ligand_ids: tuple[OccurrenceId, ...],
+    ring_core_bond_ids: frozenset[BondId],
+    pendant_atom_ids: frozenset[AtomId],
+) -> tuple[BondId, BondId] | None:
+    occurrence_by_id = {
+        occurrence.id: occurrence
+        for occurrence in prepared.facts.ligand_occurrences
+    }
+    if len(ligand_ids) != 2:
+        return None
+
+    ring: list[BondId] = []
+    pendant: list[BondId] = []
+    for occurrence_id in ligand_ids:
+        occurrence = occurrence_by_id.get(occurrence_id)
+        if occurrence is None or occurrence.kind is not LigandKind.NEIGHBOR_ATOM:
+            return None
+        if occurrence.atom is None or occurrence.bond is None:
+            return None
+        bond = prepared.graph_index.bond_by_id.get(occurrence.bond)
+        if bond is None or endpoint not in {bond.a, bond.b}:
+            return None
+        if occurrence.atom != _other_bond_atom(prepared, occurrence.bond, endpoint):
+            return None
+        if occurrence.bond in ring_core_bond_ids:
+            ring.append(occurrence.bond)
+        elif occurrence.atom in pendant_atom_ids:
+            pendant.append(occurrence.bond)
+        else:
+            return None
+
+    if len(ring) != 1 or len(pendant) != 1:
+        return None
+    return (ring[0], pendant[0])
+
+
+def _other_bond_atom(
+    prepared: SouthStarPreparedMol,
+    bond_id: BondId,
+    atom_id: AtomId,
+) -> AtomId | None:
+    bond = prepared.graph_index.bond_by_id.get(bond_id)
+    if bond is None:
+        return None
+    if bond.a == atom_id:
+        return bond.b
+    if bond.b == atom_id:
+        return bond.a
+    return None
+
+
+def _writer_public_directional_single_tree_slot_is_supported(
+    prepared: SouthStarPreparedMol,
+    bond_id: BondId,
+) -> bool:
+    try:
+        choices = prepared.policy.bond_text_domain_unchecked(
+            bond_id,
+            slot_kind="tree",
+        )
+    except KeyError:
+        return False
+    return (
+        len(choices) == 1
+        and choices[0].base_text == ""
+        and choices[0].permits_direction
+    )
+
+
+def _writer_public_directional_ring_endpoint_relation(
+    prepared: SouthStarPreparedMol,
+    bond_id: BondId,
+    *,
+    first_atom: AtomId,
+    second_atom: AtomId,
+):
+    try:
+        raw = prepared.policy.bond_text_domain_unchecked(
+            bond_id,
+            slot_kind="ring_endpoint",
+        )
+    except KeyError:
+        return None
+
+    if (
+        len(raw) != 1
+        or raw[0].base_text != ""
+        or not raw[0].permits_direction
+    ):
+        return None
+
+    try:
+        relation = writer_closure_endpoint_relation(
+            prepared,
+            bond=bond_id,
+            first_atom=first_atom,
+            second_atom=second_atom,
+        )
+    except SouthStarError:
+        return None
+
+    absent = WriterClosureEndpointChoice("", DirectionMark.ABSENT)
+    fwd = WriterClosureEndpointChoice("", DirectionMark.FWD)
+    rev = WriterClosureEndpointChoice("", DirectionMark.REV)
+    expected_rows = (
+        (absent, (absent, fwd, rev)),
+        (fwd, (absent, rev)),
+        (rev, (absent, fwd)),
+    )
+    return relation if relation.rows == expected_rows else None
 
 
 def _writer_public_ring_core_tetrahedral_stereo_is_supported(
@@ -4847,6 +5111,15 @@ def _validate_stereo_occurrences_bound_to_graph_state(
     expected_bonds = set(key.written_bonds)
     if pending_bond is not None:
         expected_bonds.add(pending_bond.bond)
+    directional_carrier_bonds = frozenset(
+        _directional_sites_by_carrier_bond(prepared)
+    )
+    closed_directional_closure_bonds = frozenset(
+        closure.bond
+        for closure in key.ring_state.closed_closures
+        if closure.bond in directional_carrier_bonds
+    )
+    expected_bonds.update(closed_directional_closure_bonds)
     bond_occurrence_bonds = frozenset(
         record.bond for record in key.stereo_state.bond_occurrences
     )
@@ -4882,6 +5155,22 @@ def _validate_stereo_occurrences_bound_to_graph_state(
                 _invalid_snapshot("writer pending bond occurrence has unvisited parent")
             if record.child in key.visited_atoms or record.bond in key.written_bonds:
                 _invalid_snapshot("writer pending bond occurrence is already materialized")
+            continue
+        if record.bond in closed_directional_closure_bonds:
+            closure = next(
+                item
+                for item in key.ring_state.closed_closures
+                if item.bond == record.bond
+            )
+            if (
+                record.parent not in key.visited_atoms
+                or record.child not in key.visited_atoms
+            ):
+                _invalid_snapshot("writer closure bond occurrence has unvisited endpoint")
+            if frozenset((record.parent, record.child)) != frozenset(
+                (closure.first_atom, closure.second_atom)
+            ):
+                _invalid_snapshot("writer closure bond occurrence has wrong endpoints")
             continue
         _invalid_snapshot("writer bond occurrence is not backed by emitted graph state")
 

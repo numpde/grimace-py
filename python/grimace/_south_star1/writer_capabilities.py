@@ -47,6 +47,7 @@ _PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES = frozenset(
         _WriterExecutionCapabilityKind.TETRA_RING_ENDPOINT_ORDER_OCCURRENCE,
         _WriterExecutionCapabilityKind.DIRECTIONAL_CARRIER_RESTRICTION,
         _WriterExecutionCapabilityKind.DIRECTIONAL_SITE_COMPATIBILITY,
+        _WriterExecutionCapabilityKind.DIRECTIONAL_RING_PAIR_COMPATIBILITY,
         _WriterExecutionCapabilityKind.RESIDUAL_PROPAGATION,
         _WriterExecutionCapabilityKind.RESIDUAL_FACTOR_DISCHARGE,
     }

@@ -57,23 +57,3 @@ The current phase is about shared operations. The immediate case is a
 ring-closure bond that also acts as a directional stereo carrier. That forces
 the ring syntax relation and the stereo residual relation to be updated by the
 same live transition.
-
-## Repository Notes
-
-The package is still distributed as `grimace-py` and imported as `grimace`.
-This branch is not written as mainline package documentation; it is a working
-branch for South Star internals.
-
-Useful starting points:
-
-- [South Star developer contract](python/grimace/_south_star1/DEV-CONTRACT.md)
-- [Python API](docs/api/python.md)
-- [Correctness contracts](docs/correctness-contracts.md)
-- [Testing fixtures](docs/testing-fixtures.md)
-
-## License
-
-`grimace` is source-available under [PolyForm Noncommercial 1.0.0](LICENSE).
-Commercial use requires a separate commercial license from the author.
-Third-party components remain under their own licenses; see
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

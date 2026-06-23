@@ -1144,6 +1144,13 @@ class _BranchTerminalPath:
     capabilities: frozenset[writer_snapshot._WriterExecutionCapabilityKind]
 
 
+@dataclass(frozen=True)
+class _RetainedSupportStep:
+    prefix: tuple[str, ...]
+    source: WriterState
+    support: writer_transitions._WriterNextTokenFrontierSupport
+
+
 def _branch_terminal_paths(
     prepared: SouthStarPreparedMol,
     cursor: WriterFrontierCursor,
@@ -1197,6 +1204,47 @@ def _branch_terminal_paths(
         rec(state, (), (state,), frozenset())
 
     return tuple(paths)
+
+
+def _retained_writer_support_steps(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+) -> tuple[_RetainedSupportStep, ...]:
+    steps: list[_RetainedSupportStep] = []
+    seen: set[WriterStateKey] = set()
+    stack = [
+        ((), writer_state_from_key(key))
+        for key, _weight in cursor.weighted_states
+    ]
+
+    while stack:
+        prefix, state = stack.pop()
+        key = writer_state_key(state)
+        if key in seen:
+            continue
+
+        seen.add(key)
+
+        for entry in writer_transitions._legal_writer_next_token_frontier(
+            prepared,
+            state,
+        ):
+            for support in entry.supports:
+                steps.append(
+                    _RetainedSupportStep(
+                        prefix=prefix,
+                        source=state,
+                        support=support,
+                    )
+                )
+                stack.append(
+                    (
+                        prefix + (support.transition.emitted_text,),
+                        support.transition.successor,
+                    )
+                )
+
+    return tuple(steps)
 
 
 def _ring_tetra_non_single_composition_role(
@@ -25579,6 +25627,291 @@ class WriterStateKernelTest(unittest.TestCase):
                     prepared=prepared,
                     cursor=child_snapshot.cursor,
                 )
+            ),
+        )
+
+    def test_fused_rank_two_closure_open_restriction_is_certified(
+        self,
+    ) -> None:
+        capability = (
+            writer_snapshot._WriterExecutionCapabilityKind
+            .COUPLED_CYCLIC_ATTACHMENT_RESTRICTION
+        )
+        prepared = _prepare(fused_rank_two_facts())
+
+        for root in (-1, 0, 1, 2, 3):
+            with self.subTest(root=root):
+                cursor = _initial_writer_transition_frontier_cursor(
+                    prepared,
+                    _writer_options(rooted_at_atom=root),
+                )
+                paths = _branch_terminal_paths(prepared, cursor)
+                self.assertTrue(paths)
+
+                for path in paths:
+                    for state in path.states:
+                        self.assertLessEqual(
+                            len(state.ring_state.open_endpoints),
+                            2,
+                        )
+                        self.assertLessEqual(
+                            len(state.ring_state.label_state.allocated),
+                            2,
+                        )
+
+                    self.assertEqual(
+                        len(path.terminal_state.ring_state.closed_closures),
+                        2,
+                    )
+                    self.assertEqual(
+                        path.terminal_state.ring_state.open_endpoints,
+                        (),
+                    )
+                    terminal_context = (
+                        writer_graph_obligations
+                        .build_writer_graph_obligation_context(
+                            prepared,
+                            writer_state_key(path.terminal_state),
+                        )
+                    )
+                    terminal_completion = (
+                        writer_graph_obligations
+                        .writer_graph_completion_status(
+                            prepared,
+                            writer_state_key(path.terminal_state),
+                            terminal_context,
+                        )
+                    )
+                    self.assertTrue(terminal_completion.complete)
+                    self.assertEqual(
+                        terminal_completion.unresolved_kinds,
+                        (),
+                    )
+                    self.assertEqual(
+                        terminal_context
+                        .residual_summary
+                        .attachment_actions,
+                        (),
+                    )
+
+                steps = _retained_writer_support_steps(prepared, cursor)
+                coupled_steps = tuple(
+                    step
+                    for step in steps
+                    if capability in step.support.execution_capabilities
+                )
+                self.assertTrue(coupled_steps)
+
+                for step in steps:
+                    has_capability = (
+                        capability in step.support.execution_capabilities
+                    )
+                    action = step.support.emission.action
+                    obligation = action.closure_open_obligation
+                    if obligation is None:
+                        self.assertFalse(has_capability)
+                        continue
+
+                    source = obligation.source_attachment
+                    self.assertIsNotNone(source)
+                    assert source is not None
+
+                    successor_context = (
+                        writer_graph_obligations
+                        .build_writer_graph_obligation_context(
+                            prepared,
+                            writer_state_key(
+                                step.support.transition.successor,
+                            ),
+                        )
+                    )
+                    successor_candidates = tuple(
+                        attachment
+                        for attachment
+                        in (
+                            successor_context
+                            .residual_summary
+                            .attachments
+                            .attachments
+                        )
+                        if (
+                            attachment.atoms == source.atoms
+                            and attachment.latent_bonds
+                            == source.latent_bonds
+                            and attachment.cyclic_rank
+                            == source.cyclic_rank
+                            and attachment.block_ids
+                            == source.block_ids
+                        )
+                    )
+
+                    expected_boundary = tuple(
+                        incidence
+                        for incidence in source.boundary
+                        if incidence.bond != obligation.bond
+                    )
+
+                    if has_capability:
+                        self.assertEqual(
+                            (
+                                writer_graph_obligations
+                                .writer_residual_attachment_closure_deficit(
+                                    source,
+                                )
+                            ),
+                            2,
+                        )
+                        self.assertEqual(len(source.block_ids), 1)
+                        self.assertEqual(len(successor_candidates), 1)
+                        successor = successor_candidates[0]
+                        self.assertEqual(
+                            successor.boundary,
+                            expected_boundary,
+                        )
+                        self.assertEqual(
+                            (
+                                writer_graph_obligations
+                                .writer_residual_attachment_closure_deficit(
+                                    successor,
+                                )
+                            ),
+                            1,
+                        )
+                        self.assertEqual(
+                            len(source.boundary),
+                            len(successor.boundary) + 1,
+                        )
+                    else:
+                        if len(successor_candidates) != 1:
+                            continue
+
+                        successor = successor_candidates[0]
+                        self.assertNotEqual(
+                            (
+                                (
+                                    writer_graph_obligations
+                                    .writer_residual_attachment_closure_deficit(
+                                        source,
+                                    )
+                                ),
+                                (
+                                    writer_graph_obligations
+                                    .writer_residual_attachment_closure_deficit(
+                                        successor,
+                                    )
+                                ),
+                                len(source.block_ids),
+                            ),
+                            (2, 1, 1),
+                        )
+
+    def test_fused_rank_two_snapshot_resume_covers_coupled_states(
+        self,
+    ) -> None:
+        capability = (
+            writer_snapshot._WriterExecutionCapabilityKind
+            .COUPLED_CYCLIC_ATTACHMENT_RESTRICTION
+        )
+        prepared = _prepare(fused_rank_two_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = _initial_writer_transition_frontier_cursor(
+            prepared,
+            options,
+        )
+        snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+
+        cap_step = next(
+            step
+            for step in _retained_writer_support_steps(prepared, cursor)
+            if capability in step.support.execution_capabilities
+        )
+        _assert_checked_prefix_successor_snapshot_resume_equivalence(
+            self,
+            snapshot=snapshot,
+            prepared=prepared,
+            emitted_texts=(
+                cap_step.prefix
+                + (cap_step.support.transition.emitted_text,)
+            ),
+        )
+
+        path = _branch_terminal_paths(prepared, cursor)[0]
+        prefixes = {
+            "two_open": next(
+                path.emissions[:index]
+                for index, state in enumerate(path.states)
+                if len(state.ring_state.open_endpoints) == 2
+            ),
+            "one_paired": next(
+                path.emissions[:index]
+                for index, state in enumerate(path.states)
+                if (
+                    len(state.ring_state.open_endpoints) == 1
+                    and len(state.ring_state.closed_closures) == 1
+                )
+            ),
+            "terminal": path.emissions,
+        }
+
+        for name, prefix in prefixes.items():
+            with self.subTest(prefix=name):
+                _assert_checked_prefix_successor_snapshot_resume_equivalence(
+                    self,
+                    snapshot=snapshot,
+                    prepared=prepared,
+                    emitted_texts=prefix,
+                )
+
+    def test_coupled_attachment_capability_is_private_to_fused_rank_two(
+        self,
+    ) -> None:
+        capability = (
+            writer_snapshot._WriterExecutionCapabilityKind
+            .COUPLED_CYCLIC_ATTACHMENT_RESTRICTION
+        )
+
+        cases = (
+            (
+                "simple_monocycle",
+                _prepare(cyclopropane_facts()),
+                _writer_options(rooted_at_atom=0),
+            ),
+            (
+                "bridge_separated_two_cycle",
+                _prepare(bridge_separated_triangles_facts()),
+                _writer_options(rooted_at_atom=0),
+            ),
+        )
+
+        for name, prepared, options in cases:
+            with self.subTest(case=name):
+                cursor = _initial_writer_transition_frontier_cursor(
+                    prepared,
+                    options,
+                )
+                steps = _retained_writer_support_steps(prepared, cursor)
+                self.assertTrue(steps)
+                self.assertFalse(
+                    any(
+                        capability in step.support.execution_capabilities
+                        for step in steps
+                    )
+                )
+
+        report = writer_snapshot._writer_public_cyclic_opening_profile_report(
+            prepared=_prepare(fused_rank_two_facts()),
+        )
+        self.assertFalse(report.supported)
+        self.assertIs(
+            report.kind,
+            (
+                writer_snapshot
+                ._WriterPublicCyclicOpeningProfileKind
+                .BLOCKED_UNSUPPORTED_CYCLIC_RANK
             ),
         )
 

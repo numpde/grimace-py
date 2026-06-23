@@ -14,6 +14,9 @@ class _WriterExecutionCapabilityKind(Enum):
     CLOSURE_ENDPOINT_OPEN = "closure_endpoint_open"
     CLOSURE_ENDPOINT_PAIR = "closure_endpoint_pair"
     CONCURRENT_CLOSURE_ENDPOINT_OPEN = "concurrent_closure_endpoint_open"
+    COUPLED_CYCLIC_ATTACHMENT_RESTRICTION = (
+        "coupled_cyclic_attachment_restriction"
+    )
     VISIBLE_CLOSURE_BOND_TEXT = "visible_closure_bond_text"
 
     TETRA_TOKEN_RESTRICTION = "tetra_token_restriction"

@@ -18,6 +18,7 @@ from .writer_graph_obligations import WriterBoundaryOwnerKind
 from .writer_graph_obligations import WriterClosureEndpointChoice
 from .writer_graph_obligations import WriterEdgeObligationKind
 from .writer_graph_obligations import WriterGraphObligationContext
+from .writer_graph_obligations import WriterResidualAttachment
 from .writer_graph_obligations import WriterResidualAttachmentActionKind
 from .writer_graph_obligations import build_writer_graph_obligation_context
 from .writer_graph_obligations import validate_writer_initial_support_graph_surface
@@ -27,6 +28,7 @@ from .writer_graph_obligations import writer_graph_completion_status
 from .writer_graph_obligations import writer_closure_bond_text_relation
 from .writer_graph_obligations import writer_residual_attachment_action_is_blocked
 from .writer_graph_obligations import writer_residual_attachment_action_incidences_for_atom
+from .writer_graph_obligations import writer_residual_attachment_closure_deficit
 from .writer_state import ComponentCursor
 from .writer_state import ObligationState
 from .writer_state import PendingEntryPhase
@@ -148,6 +150,7 @@ class _WriterClosureOpenObligation:
     attachment_id: int
     attachment_action_kind: WriterResidualAttachmentActionKind
     owner_kind: WriterBoundaryOwnerKind
+    source_attachment: WriterResidualAttachment | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -4749,7 +4752,30 @@ def _open_closure_endpoint_transition_from_obligation(
     ):
         return None
 
-    return transition
+    successor_graph = build_writer_graph_obligation_context(
+        prepared,
+        writer_state_key(transition.successor),
+    )
+    if not _closure_open_attachment_restriction_is_exact(
+        obligation=closure_obligation,
+        successor_graph=successor_graph,
+    ):
+        return None
+
+    capabilities = set(transition.semantic_execution_capabilities)
+    if _closure_open_emits_coupled_attachment_capability(
+        obligation=closure_obligation,
+        successor_graph=successor_graph,
+    ):
+        capabilities.add(
+            _WriterExecutionCapabilityKind
+            .COUPLED_CYCLIC_ATTACHMENT_RESTRICTION
+        )
+
+    return replace(
+        transition,
+        semantic_execution_capabilities=frozenset(capabilities),
+    )
 
 
 def _closure_open_transitions_from_scheduled_action(
@@ -4827,6 +4853,7 @@ def _closure_open_obligations_from_context(
                 attachment_id=action.attachment_id,
                 attachment_action_kind=action.kind,
                 owner_kind=incidence.owner_kind,
+                source_attachment=action_incidence.attachment,
             )
         )
 
@@ -5080,6 +5107,74 @@ def _closure_open_successor_is_supported(
     except SouthStarError:
         return False
     return True
+
+
+def _closure_open_attachment_restriction_is_exact(
+    *,
+    obligation: _WriterClosureOpenObligation,
+    successor_graph: WriterGraphObligationContext,
+) -> bool:
+    source = obligation.source_attachment
+    if source is None:
+        return True
+
+    expected_boundary = tuple(
+        incidence
+        for incidence in source.boundary
+        if incidence.bond != obligation.bond
+    )
+    if len(expected_boundary) != len(source.boundary) - 1:
+        return False
+
+    candidates = tuple(
+        attachment
+        for attachment
+        in successor_graph.residual_summary.attachments.attachments
+        if (
+            attachment.atoms == source.atoms
+            and attachment.latent_bonds == source.latent_bonds
+            and attachment.cyclic_rank == source.cyclic_rank
+            and attachment.block_ids == source.block_ids
+        )
+    )
+    if len(candidates) != 1:
+        return False
+
+    successor = candidates[0]
+    return (
+        successor.boundary == expected_boundary
+        and writer_residual_attachment_closure_deficit(successor)
+        == writer_residual_attachment_closure_deficit(source) - 1
+    )
+
+
+def _closure_open_emits_coupled_attachment_capability(
+    *,
+    obligation: _WriterClosureOpenObligation,
+    successor_graph: WriterGraphObligationContext,
+) -> bool:
+    source = obligation.source_attachment
+    if source is None or len(source.block_ids) != 1:
+        return False
+
+    candidates = tuple(
+        attachment
+        for attachment
+        in successor_graph.residual_summary.attachments.attachments
+        if (
+            attachment.atoms == source.atoms
+            and attachment.latent_bonds == source.latent_bonds
+            and attachment.cyclic_rank == source.cyclic_rank
+            and attachment.block_ids == source.block_ids
+        )
+    )
+    if len(candidates) != 1:
+        return False
+
+    return (
+        writer_residual_attachment_closure_deficit(source) == 2
+        and writer_residual_attachment_closure_deficit(candidates[0]) == 1
+    )
 
 
 def _closure_pair_successor_is_supported(

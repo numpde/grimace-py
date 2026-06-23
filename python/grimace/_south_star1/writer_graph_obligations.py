@@ -606,6 +606,12 @@ def writer_residual_attachment_action_is_blocked(
     )
 
 
+def writer_residual_attachment_closure_deficit(
+    attachment: WriterResidualAttachment,
+) -> int:
+    return attachment.cyclic_rank + max(len(attachment.boundary) - 1, 0)
+
+
 def _residual_attachment_action(
     attachment: WriterResidualAttachment,
     block_cut: WriterBlockCutMetadata,
@@ -1567,6 +1573,7 @@ __all__ = (
     "writer_graph_completion_status",
     "writer_residual_attachment_sort_tuple",
     "writer_residual_attachment_action_is_blocked",
+    "writer_residual_attachment_closure_deficit",
     "writer_residual_attachment_action_incidences",
     "writer_residual_attachment_action_incidences_for_atom",
 )

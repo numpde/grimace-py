@@ -26076,9 +26076,25 @@ class WriterStateKernelTest(unittest.TestCase):
         base = _prepare(facts)
         spy = _RingPairSpySemantics(base.semantics)
         prepared = replace(base, semantics=spy)
-        report = writer_snapshot._writer_public_cyclic_opening_profile_report(
-            prepared=prepared,
-        )
+        with patch(
+            "grimace._south_star1.writer_snapshot"
+            "._writer_public_single_closure_relation",
+            side_effect=AssertionError("generic single closure classifier"),
+        ), patch(
+            "grimace._south_star1.writer_snapshot"
+            "._writer_public_non_single_closure_bond_is_supported",
+            side_effect=AssertionError("generic non-single classifier"),
+        ), patch(
+            "grimace._south_star1.writer_snapshot"
+            "._writer_public_aromatic_ring_bond_is_supported",
+            side_effect=AssertionError("generic aromatic classifier"),
+        ):
+            report = (
+                writer_snapshot
+                ._writer_public_cyclic_opening_profile_report(
+                    prepared=prepared,
+                )
+            )
         self.assertTrue(report.supported)
         self.assertIs(
             report.kind,
@@ -26116,13 +26132,133 @@ class WriterStateKernelTest(unittest.TestCase):
                 )
                 spy = _RingPairSpySemantics(prepared.semantics)
                 prepared = replace(prepared, semantics=spy)
-                report = (
-                    writer_snapshot
-                    ._writer_public_cyclic_opening_profile_report(
-                        prepared=prepared,
+                with patch(
+                    "grimace._south_star1.writer_snapshot"
+                    "._writer_public_single_closure_relation",
+                    side_effect=AssertionError(
+                        "generic single closure classifier",
+                    ),
+                ), patch(
+                    "grimace._south_star1.writer_snapshot"
+                    "._writer_public_non_single_closure_bond_is_supported",
+                    side_effect=AssertionError(
+                        "generic non-single classifier",
+                    ),
+                ), patch(
+                    "grimace._south_star1.writer_snapshot"
+                    "._writer_public_aromatic_ring_bond_is_supported",
+                    side_effect=AssertionError(
+                        "generic aromatic classifier",
+                    ),
+                ):
+                    report = (
+                        writer_snapshot
+                        ._writer_public_cyclic_opening_profile_report(
+                            prepared=prepared,
+                        )
                     )
-                )
                 self.assertFalse(report.supported)
+                self.assertEqual(spy.bond_decode_bonds, ())
+                self.assertEqual(spy.ring_pair_bonds, ())
+
+    def test_fused_rank_two_diamond_order_failures_are_fused_classified(
+        self,
+    ) -> None:
+        visible_single = (
+            writer_snapshot._WriterPublicCyclicRequiredCapability
+            .RING_CORE_VISIBLE_SINGLE_CLOSURE_BOND_TEXT
+        )
+        cases = (
+            (
+                "double",
+                BondOrder.DOUBLE,
+                (
+                    writer_snapshot._WriterPublicCyclicRequiredCapability
+                    .RING_CORE_NON_SINGLE_CLOSURE_BOND
+                ),
+            ),
+            (
+                "triple",
+                BondOrder.TRIPLE,
+                (
+                    writer_snapshot._WriterPublicCyclicRequiredCapability
+                    .RING_CORE_NON_SINGLE_CLOSURE_BOND
+                ),
+            ),
+            (
+                "aromatic",
+                BondOrder.AROMATIC,
+                (
+                    writer_snapshot._WriterPublicCyclicRequiredCapability
+                    .RING_CORE_AROMATIC_BOND_TEXT
+                ),
+            ),
+        )
+
+        for name, order, expected_capability in cases:
+            with self.subTest(order=name):
+                facts = fused_rank_two_facts()
+                facts = replace(
+                    facts,
+                    bonds=tuple(
+                        replace(bond, order=order)
+                        if bond.id == BondId(0)
+                        else bond
+                        for bond in facts.bonds
+                    ),
+                )
+                prepared = _prepare_with_ordinary_policy_options(
+                    facts,
+                    options=OrdinaryPolicyOptions(
+                        non_single_ring_closures="joint",
+                    ),
+                )
+                spy = _RingPairSpySemantics(prepared.semantics)
+                prepared = replace(prepared, semantics=spy)
+
+                with patch(
+                    "grimace._south_star1.writer_snapshot"
+                    "._writer_public_single_closure_relation",
+                    side_effect=AssertionError(
+                        "generic single closure classifier",
+                    ),
+                ), patch(
+                    "grimace._south_star1.writer_snapshot"
+                    "._writer_public_non_single_closure_bond_is_supported",
+                    side_effect=AssertionError(
+                        "generic non-single classifier",
+                    ),
+                ), patch(
+                    "grimace._south_star1.writer_snapshot"
+                    "._writer_public_aromatic_ring_bond_is_supported",
+                    side_effect=AssertionError(
+                        "generic aromatic classifier",
+                    ),
+                ):
+                    report = (
+                        writer_snapshot
+                        ._writer_public_cyclic_opening_profile_report(
+                            prepared=prepared,
+                        )
+                    )
+
+                self.assertFalse(report.supported)
+                self.assertIs(
+                    report.kind,
+                    (
+                        writer_snapshot
+                        ._WriterPublicCyclicOpeningProfileKind
+                        .BLOCKED_UNSUPPORTED_CLOSURE_BOND_SURFACE
+                    ),
+                )
+                self.assertIn(
+                    expected_capability,
+                    report.unsupported_capabilities,
+                )
+                self.assertNotIn(
+                    visible_single,
+                    report.unsupported_capabilities,
+                )
                 self.assertEqual(spy.bond_decode_bonds, ())
                 self.assertEqual(spy.ring_pair_bonds, ())
 

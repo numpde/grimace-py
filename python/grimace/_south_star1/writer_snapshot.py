@@ -2693,7 +2693,8 @@ def _writer_public_cyclic_opening_profile_report(
         for relation in ring_core_single_closure_relations
     )
     ring_core_aromatic_is_supported = (
-        bool(ring_core_aromatic_bond_ids)
+        fused_diamond_envelope is None
+        and bool(ring_core_aromatic_bond_ids)
         and len(ring_core_aromatic_bond_ids) == len(ring_core_bond_ids)
         and not prepared.tetra_templates
         and not prepared.directional_templates
@@ -2749,6 +2750,8 @@ def _writer_public_cyclic_opening_profile_report(
             == supported_non_single_closure_bonds
         )
     elif shared_directional_ring_carrier_shape is not None:
+        ring_core_has_supported_non_single_closure_bond = False
+    elif fused_diamond_envelope is not None:
         ring_core_has_supported_non_single_closure_bond = False
     elif two_cycle_bond_policy_report is not None:
         expected_non_single_closure_bonds = frozenset(
@@ -3152,6 +3155,43 @@ def _writer_public_cyclic_opening_profile_report(
             .BLOCKED_UNSUPPORTED_RING_LABEL_POLICY
         )
     elif ring_core_unsupported_bond_count:
+        fused_unsupported_single_closure_bonds = frozenset(
+            bond_id
+            for bond_id in (
+                (
+                    fused_diamond_policy_report
+                    .unsupported_closure_bonds
+                )
+                if fused_diamond_policy_report is not None
+                else frozenset()
+            )
+            if (
+                prepared.graph_index.bond_by_id[bond_id].order
+                is BondOrder.SINGLE
+            )
+        )
+        fused_unsupported_non_single_bonds = frozenset(
+            bond_id
+            for bond_id in (
+                fused_diamond_policy_report.unsupported_bonds
+                if fused_diamond_policy_report is not None
+                else frozenset()
+            )
+            if prepared.graph_index.bond_by_id[bond_id].order
+            in {BondOrder.DOUBLE, BondOrder.TRIPLE}
+        )
+        fused_unsupported_aromatic_bonds = frozenset(
+            bond_id
+            for bond_id in (
+                fused_diamond_policy_report.unsupported_bonds
+                if fused_diamond_policy_report is not None
+                else frozenset()
+            )
+            if (
+                prepared.graph_index.bond_by_id[bond_id].order
+                is BondOrder.AROMATIC
+            )
+        )
         if (
             fused_diamond_policy_report is not None
             and fused_diamond_policy_report.unsupported_tree_bonds
@@ -3159,14 +3199,25 @@ def _writer_public_cyclic_opening_profile_report(
             unsupported_capabilities.add(
                 _WriterPublicCyclicRequiredCapability.TREE_BOND_TEXT_EMISSION,
             )
-        if (
-            fused_diamond_policy_report is not None
-            and fused_diamond_policy_report.unsupported_closure_bonds
-        ):
+        if fused_unsupported_single_closure_bonds:
             unsupported_capabilities.add(
                 (
                     _WriterPublicCyclicRequiredCapability
                     .RING_CORE_VISIBLE_SINGLE_CLOSURE_BOND_TEXT
+                ),
+            )
+        if fused_unsupported_non_single_bonds:
+            unsupported_capabilities.add(
+                (
+                    _WriterPublicCyclicRequiredCapability
+                    .RING_CORE_NON_SINGLE_CLOSURE_BOND
+                ),
+            )
+        if fused_unsupported_aromatic_bonds:
+            unsupported_capabilities.add(
+                (
+                    _WriterPublicCyclicRequiredCapability
+                    .RING_CORE_AROMATIC_BOND_TEXT
                 ),
             )
         two_cycle_unsupported_single_closure_bonds = frozenset(
@@ -3552,10 +3603,14 @@ def _writer_fused_rank_two_diamond_policy_report(
             unsupported_tree.add(bond_id)
 
     for bond_id in sorted(envelope.bonds):
-        relation = _writer_public_single_closure_relation(
-            prepared,
-            bond_id,
-        )
+        try:
+            relation = writer_closure_bond_text_relation(
+                prepared,
+                bond_id,
+                max_choice_count=1,
+            )
+        except SouthStarError:
+            relation = None
         if (
             relation is None
             or relation.texts != ("",)

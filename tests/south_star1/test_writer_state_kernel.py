@@ -24156,9 +24156,18 @@ class WriterStateKernelTest(unittest.TestCase):
 
                 self.assertIs(
                     caught.exception.kind,
-                    SouthStarErrorKind.UNSUPPORTED_POLICY,
+                    (
+                        SouthStarErrorKind.INTERNAL_INVARIANT
+                        if case.expected_private_status
+                        is _CyclicProfileMatrixPrivateStatus.INTERNAL_INVARIANT
+                        else SouthStarErrorKind.UNSUPPORTED_POLICY
+                    ),
                 )
-                self.assertIn("profile", str(caught.exception).lower())
+                if (
+                    case.expected_private_status
+                    is not _CyclicProfileMatrixPrivateStatus.INTERNAL_INVARIANT
+                ):
+                    self.assertIn("profile", str(caught.exception).lower())
 
     def test_cyclic_profile_unsupported_pendant_tree_bond_domain_is_tree_bond_text_capability(
         self,
@@ -24213,38 +24222,18 @@ class WriterStateKernelTest(unittest.TestCase):
             report.unsupported_capabilities,
         )
 
-        decision = (
-            writer_snapshot
-            ._cyclic_writer_admission_decision_from_cursor(
+        with self.assertRaises(SouthStarError) as caught:
+            writer_snapshot._cyclic_writer_admission_decision_from_cursor(
                 prepared=prepared_with_mutated_policy,
                 runtime_options=options,
                 cursor=cursor,
             )
-        )
-
-        self.assertIs(
-            decision.kind,
-            writer_snapshot
-            ._WriterCyclicAdmissionDecisionKind
-            .BLOCKED_PUBLIC_CYCLIC_PROFILE,
-        )
-        self.assertIsNotNone(decision.public_profile)
-        assert decision.public_profile is not None
-        self.assertIn(
-            writer_snapshot
-            ._WriterPublicCyclicRequiredCapability
-            .TREE_BOND_TEXT_EMISSION,
-            decision.public_profile.unsupported_capabilities,
-        )
-
-        with self.assertRaises(SouthStarError) as caught:
-            writer_snapshot._assert_cyclic_writer_admission_decision(decision)
 
         self.assertIs(
             caught.exception.kind,
             SouthStarErrorKind.UNSUPPORTED_POLICY,
         )
-        self.assertIn("profile", str(caught.exception).lower())
+        self.assertIn("acyclic writer bond text", str(caught.exception))
 
         with self.assertRaises(SouthStarError) as blocked:
             writer_snapshot.capture_initial_writer_frontier_snapshot(
@@ -24256,7 +24245,7 @@ class WriterStateKernelTest(unittest.TestCase):
             blocked.exception.kind,
             SouthStarErrorKind.UNSUPPORTED_POLICY,
         )
-        self.assertIn("profile", str(blocked.exception).lower())
+        self.assertIn("acyclic writer bond text", str(blocked.exception))
 
     def test_public_cyclic_profile_matrix_private_status_is_explicit(
         self,
@@ -26389,6 +26378,19 @@ class WriterStateKernelTest(unittest.TestCase):
                         writer_snapshot
                         ._WriterCyclicAdmissionDecisionKind
                         .BLOCKED_PUBLIC_CYCLIC_PROFILE
+                    ),
+                )
+                self.assertTrue(decision.readiness_gate.blocked)
+                first = decision.readiness_gate.first_blocked_prefix
+                self.assertIsNotNone(first)
+                assert first is not None
+                self.assertEqual(len(first.graph_policy_blockers), 1)
+                self.assertIs(
+                    first.graph_policy_blockers[0].kind,
+                    (
+                        writer_transitions
+                        ._WriterActiveEmittedGraphPolicyBlockerKind
+                        .EMPTY_CLOSURE_BOND_TEXT_RELATION
                     ),
                 )
                 assert decision.public_profile is not None
@@ -37192,6 +37194,72 @@ class WriterStateKernelTest(unittest.TestCase):
             options,
         )
         self.assertIs(decision.kind, direct_decision.kind)
+
+    def test_cyclic_admission_entry_points_audit_before_profile(self) -> None:
+        functions = (
+            writer_snapshot._cyclic_writer_admission_decision_from_cursor,
+            writer_snapshot._cyclic_writer_admission_decision_from_snapshot,
+        )
+
+        for function in functions:
+            with self.subTest(function=function.__name__):
+                source = inspect.getsource(function)
+                self.assertNotIn(
+                    "_writer_public_cyclic_opening_profile_report",
+                    source,
+                )
+
+    def test_cyclic_profile_block_still_uses_real_ready_audit(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = _initial_writer_transition_frontier_cursor(
+            prepared,
+            options,
+        )
+        unsupported = (
+            writer_snapshot._WriterPublicCyclicRequiredCapability
+            .SIMPLE_CYCLE_CORE_CLOSURE
+        )
+
+        with patch(
+            "grimace._south_star1.writer_snapshot"
+            "._PUBLIC_CYCLIC_SUPPORTED_CAPABILITIES",
+            writer_snapshot._PUBLIC_CYCLIC_SUPPORTED_CAPABILITIES
+            - {unsupported},
+        ):
+            cursor_decision = (
+                writer_snapshot
+                ._cyclic_writer_admission_decision_from_cursor(
+                    prepared=prepared,
+                    runtime_options=options,
+                    cursor=cursor,
+                )
+            )
+            snapshot_decision = (
+                writer_snapshot
+                ._cyclic_writer_admission_decision_from_snapshot(
+                    cursor_decision.readiness_gate.snapshot,
+                    prepared=prepared,
+                )
+            )
+
+        for decision in (cursor_decision, snapshot_decision):
+            with self.subTest(kind=decision.kind):
+                self.assertIs(
+                    decision.kind,
+                    (
+                        writer_snapshot
+                        ._WriterCyclicAdmissionDecisionKind
+                        .BLOCKED_PUBLIC_CYCLIC_PROFILE
+                    ),
+                )
+                self.assertTrue(decision.readiness_gate.ready)
+                assert decision.public_profile is not None
+                self.assertTrue(decision.public_profile.supported)
+                self.assertIn(
+                    unsupported,
+                    decision.public_profile.required_capabilities,
+                )
 
     def test_real_cyclic_transition_cursor_admission_is_ready_public(self) -> None:
         prepared = _prepare(cyclopropane_facts())

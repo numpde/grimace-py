@@ -5022,19 +5022,6 @@ def _writer_public_execution_capability_certificate(
     )
 
 
-def _cyclic_writer_admission_ready_gate_from_snapshot(
-    snapshot: WriterSearchSnapshot,
-) -> _WriterResidualCyclicReadinessGate:
-    return _WriterResidualCyclicReadinessGate(
-        kind=_WriterResidualCyclicReadinessGateKind.READY,
-        snapshot=snapshot,
-        audit=_WriterResidualCyclicReadinessAudit(
-            kind=_WriterResidualCyclicReadinessAuditKind.READY,
-            visited_prefixes=((),),
-        ),
-    )
-
-
 def _cyclic_writer_admission_decision_from_snapshot(
     snapshot: WriterSearchSnapshot,
     *,
@@ -5042,20 +5029,6 @@ def _cyclic_writer_admission_decision_from_snapshot(
     max_depth: int | None = None,
     max_prefixes: int | None = None,
 ) -> _WriterCyclicAdmissionDecision:
-    if _PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED:
-        profile = _writer_public_cyclic_opening_profile_report(
-            prepared=prepared,
-        )
-        if not profile.supported:
-            return _WriterCyclicAdmissionDecision(
-                kind=(_WriterCyclicAdmissionDecisionKind
-                      .BLOCKED_PUBLIC_CYCLIC_PROFILE),
-                readiness_gate=_cyclic_writer_admission_ready_gate_from_snapshot(
-                    snapshot,
-                ),
-                public_profile=profile,
-            )
-
     gate = _residual_cyclic_readiness_gate_from_snapshot(
         snapshot,
         prepared=prepared,
@@ -5077,26 +5050,6 @@ def _cyclic_writer_admission_decision_from_cursor(
     max_depth: int | None = None,
     max_prefixes: int | None = None,
 ) -> _WriterCyclicAdmissionDecision:
-    if _PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED:
-        profile = _writer_public_cyclic_opening_profile_report(
-            prepared=prepared,
-        )
-        if not profile.supported:
-            snapshot = _capture_writer_frontier_snapshot_unchecked(
-                prepared=prepared,
-                runtime_options=runtime_options,
-                cursor=cursor,
-            )
-
-            return _WriterCyclicAdmissionDecision(
-                kind=(_WriterCyclicAdmissionDecisionKind
-                      .BLOCKED_PUBLIC_CYCLIC_PROFILE),
-                readiness_gate=_cyclic_writer_admission_ready_gate_from_snapshot(
-                    snapshot,
-                ),
-                public_profile=profile,
-            )
-
     gate = _residual_cyclic_readiness_gate_from_cursor(
         prepared=prepared,
         runtime_options=runtime_options,

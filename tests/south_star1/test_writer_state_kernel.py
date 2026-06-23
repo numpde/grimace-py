@@ -19038,22 +19038,6 @@ class WriterStateKernelTest(unittest.TestCase):
                 )),
             ),
             (
-                "fused",
-                _prepare(fused_rank_two_facts()),
-                (
-                    writer_snapshot
-                    ._WriterPublicCyclicOpeningProfileKind
-                    .BLOCKED_UNSUPPORTED_CYCLIC_RANK
-                ),
-                frozenset((
-                    (
-                        writer_snapshot
-                        ._WriterPublicCyclicRequiredCapability
-                        .MULTI_CYCLE_TOPOLOGY
-                    ),
-                )),
-            ),
-            (
                 "three_blocks",
                 _prepare(three_bridge_separated_triangles_facts()),
                 (
@@ -25866,7 +25850,7 @@ class WriterStateKernelTest(unittest.TestCase):
                     emitted_texts=prefix,
                 )
 
-    def test_coupled_attachment_capability_is_private_to_fused_rank_two(
+    def test_coupled_attachment_capability_is_specific_to_fused_rank_two(
         self,
     ) -> None:
         capability = (
@@ -25902,16 +25886,328 @@ class WriterStateKernelTest(unittest.TestCase):
                     )
                 )
 
-        report = writer_snapshot._writer_public_cyclic_opening_profile_report(
-            prepared=_prepare(fused_rank_two_facts()),
+    def test_fused_rank_two_diamond_is_publicly_admitted(self) -> None:
+        prepared = _prepare(fused_rank_two_facts())
+        expected_profile = (
+            writer_snapshot._WriterPublicCyclicOpeningProfileKind
+            .SUPPORTED_FUSED_RANK_TWO_DIAMOND
         )
-        self.assertFalse(report.supported)
+        required = {
+            (
+                writer_snapshot
+                ._WriterPublicCyclicRequiredCapability
+                .MULTI_CYCLE_TOPOLOGY
+            ),
+            (
+                writer_snapshot
+                ._WriterPublicCyclicRequiredCapability
+                .FUSED_OR_BRIDGED_TOPOLOGY
+            ),
+        }
+
+        for root in (-1, 0, 1, 2, 3):
+            with self.subTest(root=root):
+                options = _writer_options(rooted_at_atom=root)
+                cursor = _initial_writer_transition_frontier_cursor(
+                    prepared,
+                    options,
+                )
+                decision = (
+                    writer_snapshot
+                    ._cyclic_writer_admission_decision_from_cursor(
+                        prepared=prepared,
+                        runtime_options=options,
+                        cursor=cursor,
+                    )
+                )
+                self.assertIs(
+                    decision.kind,
+                    (
+                        writer_snapshot
+                        ._WriterCyclicAdmissionDecisionKind
+                        .READY_PUBLIC
+                    ),
+                )
+                assert decision.public_profile is not None
+                self.assertIs(decision.public_profile.kind, expected_profile)
+                self.assertTrue(
+                    required.issubset(
+                        decision.public_profile.required_capabilities,
+                    )
+                )
+                self.assertEqual(
+                    decision.public_profile.unsupported_capabilities,
+                    frozenset(),
+                )
+
+                assert decision.execution_capability_certificate is not None
+                self.assertTrue(
+                    decision.execution_capability_certificate.ready,
+                )
+                self.assertIn(
+                    (
+                        writer_snapshot._WriterExecutionCapabilityKind
+                        .COUPLED_CYCLIC_ATTACHMENT_RESTRICTION
+                    ),
+                    (
+                        decision
+                        .execution_capability_certificate
+                        .required_capabilities
+                    ),
+                )
+
+        options = _writer_options(rooted_at_atom=0)
+        cursor = _initial_writer_transition_frontier_cursor(
+            prepared,
+            options,
+        )
+        snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        decision = writer_snapshot._cyclic_writer_admission_decision_from_cursor(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        _assert_replay_succeeds_for_execution_capability_uses(
+            self,
+            audit=decision.readiness_gate.audit,
+            snapshot=snapshot,
+            prepared=prepared,
+        )
+        _assert_public_online_loop_support_contract(
+            self,
+            prepared=prepared,
+            snapshot=snapshot,
+            max_prefixes=128,
+        )
+
+    def test_fused_rank_two_diamond_public_kill_switches(self) -> None:
+        prepared = _prepare(fused_rank_two_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = _initial_writer_transition_frontier_cursor(
+            prepared,
+            options,
+        )
+        baseline = (
+            writer_snapshot
+            ._cyclic_writer_admission_decision_from_cursor(
+                prepared=prepared,
+                runtime_options=options,
+                cursor=cursor,
+            )
+        )
+        assert baseline.execution_capability_certificate is not None
+
+        with patch(
+            "grimace._south_star1.writer_snapshot"
+            "._PUBLIC_CYCLIC_SUPPORTED_CAPABILITIES",
+            (
+                writer_snapshot._PUBLIC_CYCLIC_SUPPORTED_CAPABILITIES
+                - {
+                    (
+                        writer_snapshot
+                        ._WriterPublicCyclicRequiredCapability
+                        .FUSED_OR_BRIDGED_TOPOLOGY
+                    )
+                }
+            ),
+        ):
+            blocked = (
+                writer_snapshot
+                ._cyclic_writer_admission_decision_from_cursor(
+                    prepared=prepared,
+                    runtime_options=options,
+                    cursor=cursor,
+                )
+            )
+        self.assertIs(
+            blocked.kind,
+            (
+                writer_snapshot
+                ._WriterCyclicAdmissionDecisionKind
+                .BLOCKED_PUBLIC_CYCLIC_PROFILE
+            ),
+        )
+
+        coupled = (
+            writer_snapshot._WriterExecutionCapabilityKind
+            .COUPLED_CYCLIC_ATTACHMENT_RESTRICTION
+        )
+        with patch(
+            "grimace._south_star1.writer_snapshot"
+            "._PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES",
+            (
+                baseline
+                .execution_capability_certificate
+                .supported_capabilities
+                - {coupled}
+            ),
+        ):
+            blocked = (
+                writer_snapshot
+                ._cyclic_writer_admission_decision_from_cursor(
+                    prepared=prepared,
+                    runtime_options=options,
+                    cursor=cursor,
+                )
+            )
+        self.assertIs(
+            blocked.kind,
+            (
+                writer_snapshot
+                ._WriterCyclicAdmissionDecisionKind
+                .BLOCKED_PUBLIC_EXECUTION_CAPABILITY
+            ),
+        )
+        assert blocked.execution_capability_certificate is not None
+        first = (
+            blocked
+            .execution_capability_certificate
+            .first_unsupported_uses[0]
+        )
+        self.assertIs(first.kind, coupled)
+        self.assertFalse(first.terminal)
+
+    def test_fused_rank_two_diamond_static_policy_is_bounded(self) -> None:
+        facts = fused_rank_two_facts()
+        base = _prepare(facts)
+        spy = _RingPairSpySemantics(base.semantics)
+        prepared = replace(base, semantics=spy)
+        report = writer_snapshot._writer_public_cyclic_opening_profile_report(
+            prepared=prepared,
+        )
+        self.assertTrue(report.supported)
         self.assertIs(
             report.kind,
             (
                 writer_snapshot
                 ._WriterPublicCyclicOpeningProfileKind
-                .BLOCKED_UNSUPPORTED_CYCLIC_RANK
+                .SUPPORTED_FUSED_RANK_TWO_DIAMOND
+            ),
+        )
+        self.assertEqual(len(spy.bond_decode_bonds), 5)
+        self.assertEqual(len(spy.ring_pair_bonds), 5)
+        expected_bonds = frozenset(facts.components[0].bonds)
+        self.assertEqual(frozenset(spy.bond_decode_bonds), expected_bonds)
+        self.assertEqual(frozenset(spy.ring_pair_bonds), expected_bonds)
+
+        invalid_cases = (
+            (
+                "tree",
+                (BondId(0), "tree", (BondTextChoice("bad", "-", True),)),
+            ),
+            (
+                "ring_endpoint",
+                (
+                    BondId(0),
+                    "ring_endpoint",
+                    (BondTextChoice("bad", "-", True),),
+                ),
+            ),
+        )
+        for name, override in invalid_cases:
+            with self.subTest(slot=name):
+                prepared = _prepare_bridge_separated_two_cycle_with_policy_slots(
+                    facts=facts,
+                    overrides=(override,),
+                )
+                spy = _RingPairSpySemantics(prepared.semantics)
+                prepared = replace(prepared, semantics=spy)
+                report = (
+                    writer_snapshot
+                    ._writer_public_cyclic_opening_profile_report(
+                        prepared=prepared,
+                    )
+                )
+                self.assertFalse(report.supported)
+                self.assertEqual(spy.bond_decode_bonds, ())
+                self.assertEqual(spy.ring_pair_bonds, ())
+
+    def test_fused_rank_two_closure_open_builds_successor_graph_once(
+        self,
+    ) -> None:
+        capability = (
+            writer_snapshot._WriterExecutionCapabilityKind
+            .COUPLED_CYCLIC_ATTACHMENT_RESTRICTION
+        )
+        prepared = _prepare(fused_rank_two_facts())
+        cursor = _initial_writer_transition_frontier_cursor(
+            prepared,
+            _writer_options(rooted_at_atom=0),
+        )
+        step = next(
+            step
+            for step in _retained_writer_support_steps(prepared, cursor)
+            if capability in step.support.execution_capabilities
+        )
+        event = step.support.transition.events[0]
+        self.assertIsInstance(
+            event,
+            writer_transitions.WriterRingEndpointEmitted,
+        )
+        assert isinstance(event, writer_transitions.WriterRingEndpointEmitted)
+
+        source_key = writer_state_key(step.source)
+        context = writer_transitions.WriterTransitionExpansionContext(
+            state_key=source_key,
+            graph=(
+                writer_graph_obligations
+                .build_writer_graph_obligation_context(
+                    prepared,
+                    source_key,
+                )
+            ),
+        )
+        obligation = step.support.emission.action.closure_open_obligation
+        self.assertIsNotNone(obligation)
+        assert obligation is not None
+
+        calls: Counter[WriterStateKey] = Counter()
+        original = writer_transitions.build_writer_graph_obligation_context
+
+        def wrapped(prepared_arg, key):
+            calls[key] += 1
+            return original(prepared_arg, key)
+
+        with patch(
+            "grimace._south_star1.writer_transitions"
+            ".build_writer_graph_obligation_context",
+            wrapped,
+        ):
+            transition = (
+                writer_transitions
+                ._open_closure_endpoint_transition_from_obligation(
+                    prepared,
+                    step.source,
+                    context,
+                    obligation,
+                    event.label,
+                    writer_graph_obligations.WriterClosureEndpointChoice(
+                        event.bond_text,
+                        event.direction_mark,
+                    ),
+                )
+            )
+        self.assertIsNotNone(transition)
+        assert transition is not None
+        self.assertEqual(
+            calls[writer_state_key(transition.successor)],
+            1,
+        )
+
+        report = writer_snapshot._writer_public_cyclic_opening_profile_report(
+            prepared=_prepare(fused_rank_two_facts()),
+        )
+        self.assertTrue(report.supported)
+        self.assertIs(
+            report.kind,
+            (
+                writer_snapshot
+                ._WriterPublicCyclicOpeningProfileKind
+                .SUPPORTED_FUSED_RANK_TWO_DIAMOND
             ),
         )
 

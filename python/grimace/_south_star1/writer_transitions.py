@@ -4745,17 +4745,14 @@ def _open_closure_endpoint_transition_from_obligation(
     if transition is None:
         return None
 
-    if not _closure_open_successor_is_supported(
+    successor_graph = _validated_closure_open_successor_graph(
         prepared,
         transition.successor,
         endpoint,
-    ):
+    )
+    if successor_graph is None:
         return None
 
-    successor_graph = build_writer_graph_obligation_context(
-        prepared,
-        writer_state_key(transition.successor),
-    )
     if not _closure_open_attachment_restriction_is_exact(
         obligation=closure_obligation,
         successor_graph=successor_graph,
@@ -5094,19 +5091,34 @@ def _closure_open_successor_is_supported(
     state: WriterState,
     endpoint: WriterOpenClosureEndpoint,
 ) -> bool:
+    return (
+        _validated_closure_open_successor_graph(
+            prepared,
+            state,
+            endpoint,
+        )
+        is not None
+    )
+
+
+def _validated_closure_open_successor_graph(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    endpoint: WriterOpenClosureEndpoint,
+) -> WriterGraphObligationContext | None:
     try:
         key = writer_state_key(state)
         graph = build_writer_graph_obligation_context(prepared, key)
         if _edge_kind(graph, endpoint.bond) is not WriterEdgeObligationKind.OPEN_CLOSURE_ENDPOINT:
-            return False
+            return None
         if _has_closure_candidate(graph):
-            return False
+            return None
         if _has_blocked_attachment_action(graph):
-            return False
+            return None
         validate_writer_snapshot_graph_surface(prepared, key, graph)
+        return graph
     except SouthStarError:
-        return False
-    return True
+        return None
 
 
 def _closure_open_attachment_restriction_is_exact(

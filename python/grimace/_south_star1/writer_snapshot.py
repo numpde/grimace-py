@@ -1294,6 +1294,9 @@ class _WriterPublicCyclicOpeningProfileKind(Enum):
     SUPPORTED_TWO_BRIDGE_SEPARATED_SIMPLE_CYCLES_WITH_ACYCLIC_ATTACHMENTS = (
         "supported_two_bridge_separated_simple_cycles_with_acyclic_attachments"
     )
+    SUPPORTED_FUSED_RANK_TWO_DIAMOND = (
+        "supported_fused_rank_two_diamond"
+    )
     BLOCKED_NOT_SINGLE_COMPONENT = "blocked_not_single_component"
     BLOCKED_NOT_CONNECTED_COMPONENT = "blocked_not_connected_component"
     BLOCKED_NOT_CYCLIC_COMPONENT = "blocked_not_cyclic_component"
@@ -1350,6 +1353,7 @@ _PUBLIC_CYCLIC_SUPPORTED_CAPABILITIES = frozenset(
             _WriterPublicCyclicRequiredCapability
             .SHARED_DIRECTIONAL_RING_CARRIER_STEREO
         ),
+        _WriterPublicCyclicRequiredCapability.FUSED_OR_BRIDGED_TOPOLOGY,
     }
 )
 
@@ -1395,6 +1399,8 @@ class _WriterPublicCyclicOpeningProfileReport:
                 .SUPPORTED_TWO_BRIDGE_SEPARATED_SIMPLE_CYCLES,
                 _WriterPublicCyclicOpeningProfileKind
                 .SUPPORTED_TWO_BRIDGE_SEPARATED_SIMPLE_CYCLES_WITH_ACYCLIC_ATTACHMENTS,
+                _WriterPublicCyclicOpeningProfileKind
+                .SUPPORTED_FUSED_RANK_TWO_DIAMOND,
             }
             and not self.unsupported_capabilities
             and self.required_capabilities.issubset(
@@ -1413,6 +1419,14 @@ class _WriterTwoCycleBlockEnvelope:
     @property
     def connector_bonds(self) -> frozenset[BondId]:
         return frozenset(self.connector_bond_path)
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterFusedRankTwoDiamondEnvelope:
+    atoms: frozenset[AtomId]
+    bonds: frozenset[BondId]
+    block_id: int
+    shared_bond: BondId
 
 
 @dataclass(frozen=True, slots=True)
@@ -1463,6 +1477,20 @@ class _WriterTwoCycleBondPolicyReport:
     unsupported_closure_bonds: frozenset[BondId]
     visible_tree_bonds: frozenset[BondId]
     visible_closure_bonds: frozenset[BondId]
+
+    @property
+    def unsupported_bonds(self) -> frozenset[BondId]:
+        return self.unsupported_tree_bonds | self.unsupported_closure_bonds
+
+    @property
+    def supported(self) -> bool:
+        return not self.unsupported_bonds
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterFusedRankTwoDiamondPolicyReport:
+    unsupported_tree_bonds: frozenset[BondId]
+    unsupported_closure_bonds: frozenset[BondId]
 
     @property
     def unsupported_bonds(self) -> frozenset[BondId]:
@@ -2551,6 +2579,20 @@ def _writer_public_cyclic_opening_profile_report(
         ring_core_atoms=frozenset(component_core_atoms),
         ring_core_bonds=frozenset(ring_core_bond_ids),
     )
+    fused_diamond_envelope = _writer_fused_rank_two_diamond(
+        prepared,
+        surface,
+        ring_core_atoms=frozenset(component_core_atoms),
+        ring_core_bonds=frozenset(ring_core_bond_ids),
+    )
+    fused_diamond_policy_report = (
+        _writer_fused_rank_two_diamond_policy_report(
+            prepared,
+            fused_diamond_envelope,
+        )
+        if fused_diamond_envelope is not None
+        else None
+    )
     bond_roles = _writer_public_cyclic_bond_roles(
         ring_core_bond_ids=ring_core_bond_ids,
         two_cycle_envelope=two_cycle_envelope,
@@ -2614,6 +2656,7 @@ def _writer_public_cyclic_opening_profile_report(
         for bond_id in closure_bond_ids
         if (
             shared_directional_ring_carrier_shape is None
+            and fused_diamond_envelope is None
             and
             (bond := component_bond_index.get(bond_id))
             is not None
@@ -2638,7 +2681,10 @@ def _writer_public_cyclic_opening_profile_report(
     )
     ring_core_unsupported_single_closure_bond_count = (
         0
-        if shared_directional_ring_carrier_shape is not None
+        if (
+            shared_directional_ring_carrier_shape is not None
+            or fused_diamond_envelope is not None
+        )
         else len(ring_core_single_bond_ids)
         - len(ring_core_single_closure_relations)
     )
@@ -2755,6 +2801,10 @@ def _writer_public_cyclic_opening_profile_report(
     if two_cycle_bond_policy_report is not None:
         ring_core_unsupported_bond_ids.update(
             two_cycle_bond_policy_report.unsupported_bonds,
+        )
+    if fused_diamond_policy_report is not None:
+        ring_core_unsupported_bond_ids.update(
+            fused_diamond_policy_report.unsupported_bonds,
         )
     ring_core_unsupported_bond_count = len(
         ring_core_unsupported_bond_ids,
@@ -2917,7 +2967,15 @@ def _writer_public_cyclic_opening_profile_report(
         cyclic_ranks == (2,)
         and two_cycle_envelope is not None
     )
+    fused_diamond_topology_supported = (
+        cyclic_ranks == (2,)
+        and fused_diamond_envelope is not None
+    )
     two_cycle_label_policy_supported = (
+        prepared.policy.least_free_ring_labels
+        and len(prepared.policy.ring_labels) >= 2
+    )
+    fused_diamond_label_policy_supported = (
         prepared.policy.least_free_ring_labels
         and len(prepared.policy.ring_labels) >= 2
     )
@@ -2927,6 +2985,14 @@ def _writer_public_cyclic_opening_profile_report(
         and two_cycle_bond_policy_report is not None
         and two_cycle_bond_policy_report.supported
         and (not prepared.tetra_templates or ring_core_tetra_is_supported)
+        and not prepared.directional_templates
+    )
+    fused_diamond_supported = (
+        fused_diamond_topology_supported
+        and fused_diamond_label_policy_supported
+        and fused_diamond_policy_report is not None
+        and fused_diamond_policy_report.supported
+        and not prepared.tetra_templates
         and not prepared.directional_templates
     )
 
@@ -3022,9 +3088,16 @@ def _writer_public_cyclic_opening_profile_report(
                 ),
             )
         )
-    if cyclic_ranks == (2,) and two_cycle_envelope is not None:
+    if (
+        cyclic_ranks == (2,)
+        and (two_cycle_envelope is not None or fused_diamond_envelope is not None)
+    ):
         required_capabilities.add(
             _WriterPublicCyclicRequiredCapability.MULTI_CYCLE_TOPOLOGY,
+        )
+    if fused_diamond_envelope is not None:
+        required_capabilities.add(
+            _WriterPublicCyclicRequiredCapability.FUSED_OR_BRIDGED_TOPOLOGY,
         )
     if (
         two_cycle_bond_policy_report is not None
@@ -3034,7 +3107,11 @@ def _writer_public_cyclic_opening_profile_report(
             _WriterPublicCyclicRequiredCapability.TREE_BOND_TEXT_EMISSION,
         )
 
-    if cyclic_ranks != (1,) and not two_cycle_topology_supported:
+    if (
+        cyclic_ranks != (1,)
+        and not two_cycle_topology_supported
+        and not fused_diamond_topology_supported
+    ):
         unsupported_capabilities.add(
             _WriterPublicCyclicRequiredCapability.MULTI_CYCLE_TOPOLOGY,
         )
@@ -3066,12 +3143,32 @@ def _writer_public_cyclic_opening_profile_report(
     if (
         two_cycle_topology_supported
         and not two_cycle_label_policy_supported
+    ) or (
+        fused_diamond_topology_supported
+        and not fused_diamond_label_policy_supported
     ):
         kind = (
             _WriterPublicCyclicOpeningProfileKind
             .BLOCKED_UNSUPPORTED_RING_LABEL_POLICY
         )
     elif ring_core_unsupported_bond_count:
+        if (
+            fused_diamond_policy_report is not None
+            and fused_diamond_policy_report.unsupported_tree_bonds
+        ):
+            unsupported_capabilities.add(
+                _WriterPublicCyclicRequiredCapability.TREE_BOND_TEXT_EMISSION,
+            )
+        if (
+            fused_diamond_policy_report is not None
+            and fused_diamond_policy_report.unsupported_closure_bonds
+        ):
+            unsupported_capabilities.add(
+                (
+                    _WriterPublicCyclicRequiredCapability
+                    .RING_CORE_VISIBLE_SINGLE_CLOSURE_BOND_TEXT
+                ),
+            )
         two_cycle_unsupported_single_closure_bonds = frozenset(
             bond_id
             for bond_id in (
@@ -3183,6 +3280,11 @@ def _writer_public_cyclic_opening_profile_report(
                     _WriterPublicCyclicRequiredCapability
                     .TREE_BOND_TEXT_EMISSION,
                 )
+            )
+        elif fused_diamond_supported:
+            kind = (
+                _WriterPublicCyclicOpeningProfileKind
+                .SUPPORTED_FUSED_RANK_TWO_DIAMOND
             )
         elif ring_core_is_simple_cycle and pendant_atom_count == 0:
             kind = (
@@ -3340,6 +3442,130 @@ def _writer_two_bridge_separated_simple_cycles(
         cycle_bond_sets=(left_bonds, right_bonds),
         connector_atom_path=path_atoms,
         connector_bond_path=path_bonds,
+    )
+
+
+def _writer_fused_rank_two_diamond(
+    prepared: SouthStarPreparedMol,
+    surface,
+    *,
+    ring_core_atoms: frozenset[AtomId],
+    ring_core_bonds: frozenset[BondId],
+) -> _WriterFusedRankTwoDiamondEnvelope | None:
+    if not surface.connected or surface.cyclic_rank != 2:
+        return None
+    if ring_core_atoms != surface.atoms or ring_core_bonds != surface.bonds:
+        return None
+    if len(ring_core_atoms) != 4 or len(ring_core_bonds) != 5:
+        return None
+
+    block_ids = tuple(sorted(surface.cyclic_block_ids))
+    if len(block_ids) != 1:
+        return None
+
+    block_id = block_ids[0]
+    block_cut = prepared.writer_graph_metadata.block_cut
+    if ring_core_bonds & block_cut.bridge_bonds:
+        return None
+
+    block_by_bond = dict(block_cut.biconnected_block_by_bond)
+    if any(block_by_bond.get(bond) != block_id for bond in ring_core_bonds):
+        return None
+
+    degrees: dict[AtomId, int] = {atom: 0 for atom in ring_core_atoms}
+    shared_bond: BondId | None = None
+    for bond_id in ring_core_bonds:
+        bond = prepared.graph_index.bond_by_id[bond_id]
+        if bond.a not in ring_core_atoms or bond.b not in ring_core_atoms:
+            return None
+        degrees[bond.a] += 1
+        degrees[bond.b] += 1
+
+    if tuple(sorted(degrees.values())) != (2, 2, 3, 3):
+        return None
+
+    degree_three_atoms = frozenset(
+        atom for atom, degree in degrees.items() if degree == 3
+    )
+    shared_bonds = tuple(
+        bond_id
+        for bond_id in ring_core_bonds
+        if (
+            (bond := prepared.graph_index.bond_by_id[bond_id])
+            is not None
+            and frozenset((bond.a, bond.b)) == degree_three_atoms
+        )
+    )
+    if len(shared_bonds) != 1:
+        return None
+
+    shared_bond = shared_bonds[0]
+    return _WriterFusedRankTwoDiamondEnvelope(
+        atoms=ring_core_atoms,
+        bonds=ring_core_bonds,
+        block_id=block_id,
+        shared_bond=shared_bond,
+    )
+
+
+def _writer_fused_rank_two_diamond_policy_report(
+    prepared: SouthStarPreparedMol,
+    envelope: _WriterFusedRankTwoDiamondEnvelope,
+) -> _WriterFusedRankTwoDiamondPolicyReport:
+    unsupported_tree: set[BondId] = set()
+    unsupported_closure: set[BondId] = set()
+
+    for bond_id in sorted(envelope.bonds):
+        bond = prepared.graph_index.bond_by_id[bond_id]
+        if (
+            bond.order is not BondOrder.SINGLE
+            or not _writer_elided_single_tree_slot_is_supported(
+                prepared,
+                bond_id,
+            )
+        ):
+            unsupported_tree.add(bond_id)
+
+        if not _writer_raw_elided_single_ring_endpoint_slot_is_supported(
+            prepared,
+            bond_id,
+        ):
+            unsupported_closure.add(bond_id)
+
+    if unsupported_tree or unsupported_closure:
+        return _WriterFusedRankTwoDiamondPolicyReport(
+            unsupported_tree_bonds=frozenset(unsupported_tree),
+            unsupported_closure_bonds=frozenset(unsupported_closure),
+        )
+
+    for bond_id in sorted(envelope.bonds):
+        choices = prepared.policy.bond_text_domain_unchecked(
+            bond_id,
+            slot_kind="tree",
+        )
+        if not prepared.semantics.bond_decode_ok(
+            prepared.facts,
+            bond_id,
+            choices[0],
+            DirectionMark.ABSENT,
+        ):
+            unsupported_tree.add(bond_id)
+
+    for bond_id in sorted(envelope.bonds):
+        relation = _writer_public_single_closure_relation(
+            prepared,
+            bond_id,
+        )
+        if (
+            relation is None
+            or relation.texts != ("",)
+            or relation.compatible_pairs != (("", ""),)
+        ):
+            unsupported_closure.add(bond_id)
+
+    return _WriterFusedRankTwoDiamondPolicyReport(
+        unsupported_tree_bonds=frozenset(unsupported_tree),
+        unsupported_closure_bonds=frozenset(unsupported_closure),
     )
 
 

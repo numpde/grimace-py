@@ -8158,27 +8158,23 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertEqual(snapshot, expected_snapshot)
 
-    def test_public_initial_snapshot_acyclic_uses_tree_cursor_not_transition_harness(
+    def test_public_initial_snapshot_acyclic_uses_transition_harness(
         self,
     ) -> None:
         prepared = _prepare(cco_facts())
         options = _writer_options(rooted_at_atom=0)
 
-        with patch(
-            (
-                "grimace._south_star1.writer_snapshot"
-                "._initial_writer_transition_frontier_cursor"
-            ),
-            side_effect=AssertionError(
-                "acyclic initial snapshot must not use transition harness",
-            ),
-        ):
-            snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
-                prepared=prepared,
-                runtime_options=options,
-            )
+        snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+        )
 
-        expected_cursor = initial_writer_frontier_cursor(prepared, options)
+        legacy_cursor = initial_writer_frontier_cursor(prepared, options)
+        expected_cursor = _initial_writer_transition_frontier_cursor(
+            prepared,
+            options,
+        )
+        self.assertEqual(expected_cursor, legacy_cursor)
         self.assertEqual(snapshot.cursor, expected_cursor)
 
     def test_public_initial_snapshot_simple_monocycle_defaults_publicly_succeeds(self) -> None:
@@ -24694,27 +24690,128 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(report.unsupported_stereo_surface_count, 0)
         self.assertEqual(report.cyclic_component_count, 1)
 
-    def test_public_writer_shaped_acyclic_support_uses_tree_cursor_not_transition_cursor(
+    def test_public_writer_shaped_acyclic_starts_use_live_transition_cursor(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-
-        with patch(
+        cases = (
             (
-                "grimace._south_star1.writer_snapshot"
-                "._initial_writer_transition_frontier_cursor"
+                "plain",
+                _prepare(cco_facts()),
+                _writer_options(rooted_at_atom=-1),
             ),
-            side_effect=AssertionError(
-                "acyclic public support must not use transition cursor",
+            (
+                "plain_rooted",
+                _prepare(cco_facts()),
+                _writer_options(rooted_at_atom=1),
             ),
-        ):
-            image = enumerate_prepared_stereo_support(
-                prepared=prepared,
-                runtime_options=_writer_options(rooted_at_atom=0),
-            )
+            (
+                "tetrahedral",
+                _prepare(tetrahedral_facts()),
+                _writer_options(rooted_at_atom=-1),
+            ),
+            (
+                "directional",
+                _prepare(directional_facts()),
+                _writer_options(rooted_at_atom=-1),
+            ),
+            (
+                "disconnected",
+                _prepare(disconnected_co_facts()),
+                _writer_options(rooted_at_atom=-1),
+            ),
+        )
 
-        self.assertGreater(image.distinct_count, 0)
-        self.assertEqual(len(image.strings), image.distinct_count)
+        for name, prepared, options in cases:
+            with self.subTest(case=name):
+                legacy = initial_writer_frontier_cursor(
+                    prepared,
+                    options,
+                )
+                live = _initial_writer_transition_frontier_cursor(
+                    prepared,
+                    options,
+                )
+                self.assertEqual(live, legacy)
+
+                public = (
+                    writer_snapshot
+                    ._initial_public_writer_shaped_frontier_cursor_after_admission(
+                        prepared=prepared,
+                        runtime_options=options,
+                    )
+                )
+                self.assertEqual(public, live)
+
+                legacy_snapshot = (
+                    writer_snapshot.capture_writer_frontier_snapshot(
+                        prepared=prepared,
+                        runtime_options=options,
+                        cursor=legacy,
+                    )
+                )
+                public_snapshot = (
+                    writer_snapshot.capture_initial_writer_frontier_snapshot(
+                        prepared=prepared,
+                        runtime_options=options,
+                    )
+                )
+                self.assertEqual(public_snapshot, legacy_snapshot)
+                self.assertEqual(
+                    count_writer_frontier_support(
+                        prepared,
+                        public.support_state,
+                    ),
+                    count_writer_frontier_support(
+                        prepared,
+                        legacy.support_state,
+                    ),
+                )
+                self.assertEqual(
+                    count_writer_cursor_completions(prepared, public),
+                    count_writer_cursor_completions(prepared, legacy),
+                )
+                self.assertEqual(
+                    tuple(iter_writer_frontier_support(prepared, public)),
+                    tuple(iter_writer_frontier_support(prepared, legacy)),
+                )
+                self.assertEqual(
+                    (
+                        writer_snapshot
+                        ._writer_frontier_choice_snapshot_after_emitted_texts(
+                            public_snapshot,
+                            prepared=prepared,
+                            emitted_texts=(),
+                            include_counts=False,
+                        )
+                        .choice_snapshot
+                    ),
+                    (
+                        writer_snapshot
+                        ._writer_frontier_choice_snapshot_after_emitted_texts(
+                            legacy_snapshot,
+                            prepared=prepared,
+                            emitted_texts=(),
+                            include_counts=False,
+                        )
+                        .choice_snapshot
+                    ),
+                )
+
+    def test_public_writer_shaped_initialization_has_single_live_start_call(
+        self,
+    ) -> None:
+        source = inspect.getsource(
+            (
+                writer_snapshot
+                ._initial_public_writer_shaped_frontier_cursor_after_admission
+            )
+        )
+
+        self.assertNotIn("initial_writer_frontier_cursor(", source)
+        self.assertEqual(
+            source.count("_initial_writer_transition_frontier_cursor("),
+            1,
+        )
 
     def test_public_writer_support_uses_shared_initial_cursor_admission_helper(
         self,

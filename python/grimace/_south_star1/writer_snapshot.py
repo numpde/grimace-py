@@ -50,7 +50,6 @@ from .writer_frontier import _raise_for_writer_frontier_schedule_outcome_blocker
 from .writer_frontier import _residual_cyclic_policy_readiness_report
 from .writer_frontier import _initial_writer_transition_frontier_cursor
 from .writer_frontier import _writer_frontier_choice_snapshot
-from .writer_frontier import initial_writer_frontier_cursor
 from .writer_frontier import iter_writer_frontier_support
 from .writer_transitions import _WriterActiveEmittedGraphPolicyBlockerKind
 from .writer_stereo import reconstruct_writer_local_order_records
@@ -153,20 +152,20 @@ def _initial_public_writer_shaped_frontier_cursor_after_admission(
     require_writer_shaped_runtime_options(runtime_options)
     runtime_root_atom_for_prepared(runtime_options, prepared=prepared)
 
+    cursor = _initial_writer_transition_frontier_cursor(
+        prepared,
+        runtime_options,
+    )
+
     if _prepared_has_cyclic_writer_graph_surface(prepared):
-        cursor = _initial_writer_transition_frontier_cursor(
-            prepared,
-            runtime_options,
-        )
         decision = _cyclic_writer_admission_decision_from_cursor(
             prepared=prepared,
             runtime_options=runtime_options,
             cursor=cursor,
         )
         _assert_cyclic_writer_admission_decision(decision)
-        return cursor
 
-    return initial_writer_frontier_cursor(prepared, runtime_options)
+    return cursor
 
 
 def capture_initial_writer_frontier_snapshot(

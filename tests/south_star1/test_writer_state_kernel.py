@@ -16048,15 +16048,15 @@ class WriterStateKernelTest(unittest.TestCase):
             )
         )
         calls: list[BondId] = []
-        original = writer_snapshot.writer_closure_bond_text_relation
+        original = writer_snapshot._writer_public_closure_bond_text_relation_from_choices
 
-        def _recording_relation(prepared_arg, bond_id, **kwargs):
+        def _recording_relation(prepared_arg, bond_id, *args, **kwargs):
             calls.append(bond_id)
-            return original(prepared_arg, bond_id, **kwargs)
+            return original(prepared_arg, bond_id, *args, **kwargs)
 
         with patch(
             "grimace._south_star1.writer_snapshot"
-            ".writer_closure_bond_text_relation",
+            "._writer_public_closure_bond_text_relation_from_choices",
             side_effect=_recording_relation,
         ):
             report = (
@@ -16462,15 +16462,15 @@ class WriterStateKernelTest(unittest.TestCase):
             )
         )
         calls: list[BondId] = []
-        original = writer_snapshot.writer_closure_bond_text_relation
+        original = writer_snapshot._writer_public_closure_bond_text_relation_from_choices
 
-        def _recording_relation(prepared_arg, bond_id, **kwargs):
+        def _recording_relation(prepared_arg, bond_id, *args, **kwargs):
             calls.append(bond_id)
-            return original(prepared_arg, bond_id, **kwargs)
+            return original(prepared_arg, bond_id, *args, **kwargs)
 
         with patch(
             "grimace._south_star1.writer_snapshot"
-            ".writer_closure_bond_text_relation",
+            "._writer_public_closure_bond_text_relation_from_choices",
             side_effect=_recording_relation,
         ):
             report = (
@@ -16981,15 +16981,15 @@ class WriterStateKernelTest(unittest.TestCase):
             )
         )
         calls: list[BondId] = []
-        original = writer_snapshot.writer_closure_bond_text_relation
+        original = writer_snapshot._writer_public_closure_bond_text_relation_from_choices
 
-        def _recording_relation(prepared_arg, bond_id, **kwargs):
+        def _recording_relation(prepared_arg, bond_id, *args, **kwargs):
             calls.append(bond_id)
-            return original(prepared_arg, bond_id, **kwargs)
+            return original(prepared_arg, bond_id, *args, **kwargs)
 
         with patch(
             "grimace._south_star1.writer_snapshot"
-            ".writer_closure_bond_text_relation",
+            "._writer_public_closure_bond_text_relation_from_choices",
             side_effect=_recording_relation,
         ):
             report = (
@@ -18362,15 +18362,15 @@ class WriterStateKernelTest(unittest.TestCase):
         for name, prepared in rows:
             with self.subTest(name=name):
                 calls: list[BondId] = []
-                original = writer_snapshot.writer_closure_bond_text_relation
+                original = writer_snapshot._writer_public_closure_bond_text_relation_from_choices
 
-                def _recording_relation(prepared_arg, bond_id, **kwargs):
+                def _recording_relation(prepared_arg, bond_id, *args, **kwargs):
                     calls.append(bond_id)
-                    return original(prepared_arg, bond_id, **kwargs)
+                    return original(prepared_arg, bond_id, *args, **kwargs)
 
                 with patch(
                     "grimace._south_star1.writer_snapshot"
-                    ".writer_closure_bond_text_relation",
+                    "._writer_public_closure_bond_text_relation_from_choices",
                     side_effect=_recording_relation,
                 ):
                     report = (
@@ -18783,15 +18783,15 @@ class WriterStateKernelTest(unittest.TestCase):
         for name, prepared in rows:
             with self.subTest(name=name):
                 calls: list[BondId] = []
-                original = writer_snapshot.writer_closure_bond_text_relation
+                original = writer_snapshot._writer_public_closure_bond_text_relation_from_choices
 
-                def _recording_relation(prepared_arg, bond_id, **kwargs):
+                def _recording_relation(prepared_arg, bond_id, *args, **kwargs):
                     calls.append(bond_id)
-                    return original(prepared_arg, bond_id, **kwargs)
+                    return original(prepared_arg, bond_id, *args, **kwargs)
 
                 with patch(
                     "grimace._south_star1.writer_snapshot"
-                    ".writer_closure_bond_text_relation",
+                    "._writer_public_closure_bond_text_relation_from_choices",
                     side_effect=_recording_relation,
                 ):
                     report = (
@@ -26105,23 +26105,14 @@ class WriterStateKernelTest(unittest.TestCase):
             ),
         )
         self.assertEqual(len(spy.bond_decode_bonds), 5)
-        self.assertEqual(len(spy.ring_pair_bonds), 5)
         expected_bonds = frozenset(facts.components[0].bonds)
         self.assertEqual(frozenset(spy.bond_decode_bonds), expected_bonds)
-        self.assertEqual(frozenset(spy.ring_pair_bonds), expected_bonds)
+        self.assertEqual(spy.ring_pair_bonds, ())
 
         invalid_cases = (
             (
                 "tree",
                 (BondId(0), "tree", (BondTextChoice("bad", "-", True),)),
-            ),
-            (
-                "ring_endpoint",
-                (
-                    BondId(0),
-                    "ring_endpoint",
-                    (BondTextChoice("bad", "-", True),),
-                ),
             ),
         )
         for name, override in invalid_cases:
@@ -26160,6 +26151,162 @@ class WriterStateKernelTest(unittest.TestCase):
                 self.assertFalse(report.supported)
                 self.assertEqual(spy.bond_decode_bonds, ())
                 self.assertEqual(spy.ring_pair_bonds, ())
+
+    def test_fused_rank_two_invalid_closure_policy_is_live_blocked(
+        self,
+    ) -> None:
+        cases = (
+            (
+                "single",
+                BondOrder.SINGLE,
+                (
+                    writer_snapshot
+                    ._WriterPublicCyclicRequiredCapability
+                    .RING_CORE_VISIBLE_SINGLE_CLOSURE_BOND_TEXT
+                ),
+            ),
+            (
+                "double",
+                BondOrder.DOUBLE,
+                (
+                    writer_snapshot
+                    ._WriterPublicCyclicRequiredCapability
+                    .RING_CORE_NON_SINGLE_CLOSURE_BOND
+                ),
+            ),
+            (
+                "triple",
+                BondOrder.TRIPLE,
+                (
+                    writer_snapshot
+                    ._WriterPublicCyclicRequiredCapability
+                    .RING_CORE_NON_SINGLE_CLOSURE_BOND
+                ),
+            ),
+            (
+                "aromatic",
+                BondOrder.AROMATIC,
+                (
+                    writer_snapshot
+                    ._WriterPublicCyclicRequiredCapability
+                    .RING_CORE_AROMATIC_BOND_TEXT
+                ),
+            ),
+        )
+
+        for name, order, expected_capability in cases:
+            with self.subTest(order=name):
+                facts = fused_rank_two_facts()
+                facts = replace(
+                    facts,
+                    bonds=tuple(
+                        replace(bond, order=order)
+                        if bond.id == BondId(0)
+                        else bond
+                        for bond in facts.bonds
+                    ),
+                )
+                prepared = _prepare_with_ordinary_policy_options_and_slots(
+                    facts,
+                    options=OrdinaryPolicyOptions(
+                        non_single_ring_closures="joint",
+                    ),
+                    overrides=(
+                        (
+                            BondId(0),
+                            "ring_endpoint",
+                            (BondTextChoice("bad", "~", False),),
+                        ),
+                    ),
+                )
+                options = _writer_options(rooted_at_atom=0)
+                cursor = _initial_writer_transition_frontier_cursor(
+                    prepared,
+                    options,
+                )
+                initial = (
+                    writer_snapshot
+                    ._capture_writer_frontier_snapshot_unchecked(
+                        prepared=prepared,
+                        runtime_options=options,
+                        cursor=cursor,
+                    )
+                )
+
+                with patch(
+                    "grimace._south_star1.writer_snapshot"
+                    "._writer_public_closure_bond_text_relation_from_choices",
+                    side_effect=AssertionError(
+                        "snapshot closure relation check",
+                    ),
+                ):
+                    outcome = (
+                        writer_snapshot
+                        ._writer_frontier_choice_snapshot_after_emitted_texts(
+                            initial,
+                            prepared=prepared,
+                            emitted_texts=("C",),
+                            include_counts=False,
+                            stop_after_first_blocked=True,
+                        )
+                    )
+
+                choice_snapshot = outcome.choice_snapshot
+                self.assertIsNotNone(choice_snapshot)
+                assert choice_snapshot is not None
+                self.assertTrue(choice_snapshot.blocked)
+                self.assertEqual(
+                    len(choice_snapshot.graph_policy_blockers),
+                    1,
+                )
+                blocker = choice_snapshot.graph_policy_blockers[0]
+                self.assertIs(
+                    blocker.kind,
+                    (
+                        writer_transitions
+                        ._WriterActiveEmittedGraphPolicyBlockerKind
+                        .EMPTY_CLOSURE_BOND_TEXT_RELATION
+                    ),
+                )
+                self.assertEqual(blocker.bond, BondId(0))
+
+                with patch(
+                    "grimace._south_star1.writer_snapshot"
+                    "._writer_public_closure_bond_text_relation_from_choices",
+                    side_effect=AssertionError(
+                        "snapshot closure relation check",
+                    ),
+                ):
+                    decision = (
+                        writer_snapshot
+                        ._cyclic_writer_admission_decision_from_cursor(
+                            prepared=prepared,
+                            runtime_options=options,
+                            cursor=cursor,
+                        )
+                    )
+
+                self.assertIs(
+                    decision.kind,
+                    (
+                        writer_snapshot
+                        ._WriterCyclicAdmissionDecisionKind
+                        .BLOCKED_PUBLIC_CYCLIC_PROFILE
+                    ),
+                )
+                assert decision.public_profile is not None
+                self.assertIs(
+                    decision.public_profile.kind,
+                    (
+                        writer_snapshot
+                        ._WriterPublicCyclicOpeningProfileKind
+                        .BLOCKED_UNSUPPORTED_CLOSURE_BOND_SURFACE
+                    ),
+                )
+                self.assertIn(
+                    expected_capability,
+                    decision.public_profile.unsupported_capabilities,
+                )
 
     def test_fused_rank_two_diamond_order_failures_are_fused_classified(
         self,

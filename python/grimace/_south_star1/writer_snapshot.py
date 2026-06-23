@@ -34,10 +34,10 @@ from .writer_graph_obligations import WriterEdgeObligationKind
 from .writer_graph_obligations import WriterGraphObligationContext
 from .writer_graph_obligations import WriterGraphObligationSummary
 from .writer_graph_obligations import WriterClosureEndpointChoice
+from .writer_graph_obligations import WriterClosureBondTextRelation
 from .writer_graph_obligations import WriterResidualAttachmentActionKind
 from .writer_graph_obligations import build_writer_graph_obligation_context
 from .writer_graph_obligations import validate_writer_snapshot_graph_surface
-from .writer_graph_obligations import writer_closure_bond_text_relation
 from .writer_graph_obligations import writer_graph_completion_status
 from .writer_graph_obligations import writer_residual_attachment_action_is_blocked
 from .writer_frontier import WriterFrontierChoices
@@ -52,6 +52,7 @@ from .writer_frontier import _initial_writer_transition_frontier_cursor
 from .writer_frontier import _writer_frontier_choice_snapshot
 from .writer_frontier import initial_writer_frontier_cursor
 from .writer_frontier import iter_writer_frontier_support
+from .writer_transitions import _WriterActiveEmittedGraphPolicyBlockerKind
 from .writer_stereo import reconstruct_writer_local_order_records
 from .writer_stereo import reconstruct_writer_stereo_residual_snapshot
 from .writer_stereo import writer_closure_endpoint_relation
@@ -1358,6 +1359,22 @@ _PUBLIC_CYCLIC_SUPPORTED_CAPABILITIES = frozenset(
 )
 
 
+def _closure_policy_blocker_capability_for_order(
+    order: BondOrder,
+) -> _WriterPublicCyclicRequiredCapability:
+    if order in {BondOrder.DOUBLE, BondOrder.TRIPLE}:
+        return (
+            _WriterPublicCyclicRequiredCapability
+            .RING_CORE_NON_SINGLE_CLOSURE_BOND
+        )
+    if order is BondOrder.AROMATIC:
+        return _WriterPublicCyclicRequiredCapability.RING_CORE_AROMATIC_BOND_TEXT
+    return (
+        _WriterPublicCyclicRequiredCapability
+        .RING_CORE_VISIBLE_SINGLE_CLOSURE_BOND_TEXT
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class _WriterPublicCyclicOpeningProfileReport:
     kind: _WriterPublicCyclicOpeningProfileKind
@@ -1555,7 +1572,7 @@ class _WriterCyclicAdmissionDecision:
             )
         ):
             valid = (
-                self.readiness_gate.ready
+                (self.readiness_gate.ready or self.readiness_gate.blocked)
                 and self.public_profile is not None
                 and not self.public_profile.supported
             )
@@ -3564,7 +3581,6 @@ def _writer_fused_rank_two_diamond_policy_report(
     envelope: _WriterFusedRankTwoDiamondEnvelope,
 ) -> _WriterFusedRankTwoDiamondPolicyReport:
     unsupported_tree: set[BondId] = set()
-    unsupported_closure: set[BondId] = set()
 
     for bond_id in sorted(envelope.bonds):
         bond = prepared.graph_index.bond_by_id[bond_id]
@@ -3577,16 +3593,10 @@ def _writer_fused_rank_two_diamond_policy_report(
         ):
             unsupported_tree.add(bond_id)
 
-        if not _writer_raw_elided_single_ring_endpoint_slot_is_supported(
-            prepared,
-            bond_id,
-        ):
-            unsupported_closure.add(bond_id)
-
-    if unsupported_tree or unsupported_closure:
+    if unsupported_tree:
         return _WriterFusedRankTwoDiamondPolicyReport(
             unsupported_tree_bonds=frozenset(unsupported_tree),
-            unsupported_closure_bonds=frozenset(unsupported_closure),
+            unsupported_closure_bonds=frozenset(),
         )
 
     for bond_id in sorted(envelope.bonds):
@@ -3602,25 +3612,9 @@ def _writer_fused_rank_two_diamond_policy_report(
         ):
             unsupported_tree.add(bond_id)
 
-    for bond_id in sorted(envelope.bonds):
-        try:
-            relation = writer_closure_bond_text_relation(
-                prepared,
-                bond_id,
-                max_choice_count=1,
-            )
-        except SouthStarError:
-            relation = None
-        if (
-            relation is None
-            or relation.texts != ("",)
-            or relation.compatible_pairs != (("", ""),)
-        ):
-            unsupported_closure.add(bond_id)
-
     return _WriterFusedRankTwoDiamondPolicyReport(
         unsupported_tree_bonds=frozenset(unsupported_tree),
-        unsupported_closure_bonds=frozenset(unsupported_closure),
+        unsupported_closure_bonds=frozenset(),
     )
 
 
@@ -3916,6 +3910,37 @@ def _writer_public_non_single_closure_bond_is_supported(
     )
 
 
+def _writer_public_closure_bond_text_relation_from_choices(
+    prepared: SouthStarPreparedMol,
+    bond_id: BondId,
+    choices,
+    *,
+    max_choice_count: int,
+) -> WriterClosureBondTextRelation | None:
+    if len(choices) > max_choice_count:
+        return None
+
+    rows = tuple(
+        (
+            first.base_text,
+            tuple(
+                second.base_text
+                for second in choices
+                if prepared.semantics.ring_pair_decode_ok(
+                    prepared.facts,
+                    bond_id,
+                    first,
+                    DirectionMark.ABSENT,
+                    second,
+                    DirectionMark.ABSENT,
+                )
+            ),
+        )
+        for first in choices
+    )
+    return WriterClosureBondTextRelation(rows=rows)
+
+
 def _writer_public_non_single_closure_relation(
     prepared: SouthStarPreparedMol,
     bond_id: BondId,
@@ -3948,13 +3973,13 @@ def _writer_public_non_single_closure_relation(
     ):
         return None
 
-    try:
-        relation = writer_closure_bond_text_relation(
-            prepared,
-            bond_id,
-            max_choice_count=2,
-        )
-    except SouthStarError:
+    relation = _writer_public_closure_bond_text_relation_from_choices(
+        prepared,
+        bond_id,
+        raw_choices,
+        max_choice_count=2,
+    )
+    if relation is None:
         return None
 
     expected_pairs = tuple(
@@ -3994,13 +4019,13 @@ def _writer_public_single_closure_relation(
     if any(text not in {"", "-"} for text in raw_texts):
         return None
 
-    try:
-        relation = writer_closure_bond_text_relation(
-            prepared,
-            bond_id,
-            max_choice_count=2,
-        )
-    except SouthStarError:
+    relation = _writer_public_closure_bond_text_relation_from_choices(
+        prepared,
+        bond_id,
+        raw_choices,
+        max_choice_count=2,
+    )
+    if relation is None:
         return None
 
     if relation.texts != raw_texts:
@@ -4066,13 +4091,13 @@ def _writer_public_aromatic_ring_bond_is_supported(
     ):
         return False
 
-    try:
-        relation = writer_closure_bond_text_relation(
-            prepared,
-            bond_id,
-            max_choice_count=2,
-        )
-    except SouthStarError:
+    relation = _writer_public_closure_bond_text_relation_from_choices(
+        prepared,
+        bond_id,
+        ring_choices,
+        max_choice_count=2,
+    )
+    if relation is None:
         return False
 
     expected_pairs = tuple(
@@ -4886,6 +4911,20 @@ def _cyclic_writer_admission_decision_from_readiness_gate(
         )
 
     if gate.blocked:
+        profile = _writer_public_profile_from_live_graph_policy_blocker(
+            prepared,
+            gate,
+        )
+        if profile is not None:
+            return _WriterCyclicAdmissionDecision(
+                kind=(
+                    _WriterCyclicAdmissionDecisionKind
+                    .BLOCKED_PUBLIC_CYCLIC_PROFILE
+                ),
+                readiness_gate=gate,
+                public_profile=profile,
+            )
+
         return _WriterCyclicAdmissionDecision(
             kind=(
                 _WriterCyclicAdmissionDecisionKind
@@ -4905,6 +4944,55 @@ def _cyclic_writer_admission_decision_from_readiness_gate(
     raise SouthStarError(
         SouthStarErrorKind.INTERNAL_INVARIANT,
         f"unknown residual cyclic readiness gate state: {gate.kind!r}",
+    )
+
+
+def _writer_public_profile_from_live_graph_policy_blocker(
+    prepared: SouthStarPreparedMol,
+    gate: _WriterResidualCyclicReadinessGate,
+) -> _WriterPublicCyclicOpeningProfileReport | None:
+    first = gate.first_blocked_prefix
+    if first is None:
+        return None
+
+    blockers = first.graph_policy_blockers
+    if not blockers:
+        return None
+
+    blocker = blockers[0]
+    if (
+        blocker.kind
+        is not (
+            _WriterActiveEmittedGraphPolicyBlockerKind
+            .EMPTY_CLOSURE_BOND_TEXT_RELATION
+        )
+    ):
+        return None
+
+    if blocker.bond is None:
+        return None
+
+    profile = _writer_public_cyclic_opening_profile_report(
+        prepared=prepared,
+    )
+    bond = prepared.graph_index.bond_by_id[blocker.bond]
+    unsupported = _closure_policy_blocker_capability_for_order(
+        bond.order,
+    )
+    return replace(
+        profile,
+        kind=(
+            _WriterPublicCyclicOpeningProfileKind
+            .BLOCKED_UNSUPPORTED_CLOSURE_BOND_SURFACE
+        ),
+        ring_core_unsupported_bond_count=max(
+            profile.ring_core_unsupported_bond_count,
+            1,
+        ),
+        unsupported_capabilities=frozenset({
+            *profile.unsupported_capabilities,
+            unsupported,
+        }),
     )
 
 

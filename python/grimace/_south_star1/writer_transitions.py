@@ -225,6 +225,7 @@ class _WriterActiveEmittedScheduleOutcomeKind(Enum):
 
 class _WriterActiveEmittedGraphPolicyDecisionKind(Enum):
     CLOSURE_ENDPOINT = "closure_endpoint"
+    BLOCKED_CLOSURE_ENDPOINT_POLICY = "blocked_closure_endpoint_policy"
     ACTIVE_CHILD = "active_child"
     ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN = (
         "active_child_after_dead_closure_open"
@@ -271,6 +272,9 @@ class _WriterResidualCyclicPolicyCoverageKind(Enum):
 
 class _WriterActiveEmittedGraphPolicyBlockerKind(Enum):
     CHILD_OBLIGATION = "child_obligation"
+    EMPTY_CLOSURE_BOND_TEXT_RELATION = (
+        "empty_closure_bond_text_relation"
+    )
     UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE = (
         "unsupported_owner_scope_residual_attachment_choice"
     )
@@ -1011,6 +1015,10 @@ class _WriterClosureEndpointScheduleDecision:
     open_batch: _WriterScheduledActionEmissionBatch
     surviving_emissions: tuple[_WriterScheduledActionEmission, ...]
     schedule_surface: _WriterClosureEndpointScheduleSurface | None = None
+    graph_policy_blockers: tuple[
+        _WriterActiveEmittedGraphPolicyBlocker,
+        ...
+    ] = ()
 
     @property
     def considered_graph_action_surfaces(
@@ -1130,10 +1138,12 @@ class _WriterClosureEndpointScheduleDecision:
 @dataclass(frozen=True, slots=True)
 class _WriterActiveEmittedGraphPolicyBlocker:
     kind: _WriterActiveEmittedGraphPolicyBlockerKind
+    bond: BondId | None = None
     child_blocker: _WriterChildObligationBlocker | None = None
     residual_group: _WriterResidualAttachmentPolicyGroup | None = None
 
     def __post_init__(self) -> None:
+        has_bond = self.bond is not None
         has_child = self.child_blocker is not None
         has_group = self.residual_group is not None
 
@@ -1141,7 +1151,15 @@ class _WriterActiveEmittedGraphPolicyBlocker:
             self.kind
             is _WriterActiveEmittedGraphPolicyBlockerKind.CHILD_OBLIGATION
         ):
-            valid = has_child and not has_group
+            valid = has_child and not has_bond and not has_group
+        elif (
+            self.kind
+            is (
+                _WriterActiveEmittedGraphPolicyBlockerKind
+                .EMPTY_CLOSURE_BOND_TEXT_RELATION
+            )
+        ):
+            valid = has_bond and not has_child and not has_group
         elif self.kind in (
             (
                 _WriterActiveEmittedGraphPolicyBlockerKind
@@ -1152,7 +1170,7 @@ class _WriterActiveEmittedGraphPolicyBlocker:
                 .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
             ),
         ):
-            valid = has_group and not has_child
+            valid = has_group and not has_bond and not has_child
         else:
             valid = False
 
@@ -1547,6 +1565,17 @@ class _WriterActiveEmittedGraphPolicyDecision:
             valid = closure_survived and not child_present
         elif (
             self.kind
+            is (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .BLOCKED_CLOSURE_ENDPOINT_POLICY
+            )
+        ):
+            valid = (
+                not child_present
+                and bool(self.closure_endpoint_decision.graph_policy_blockers)
+            )
+        elif (
+            self.kind
             is _WriterActiveEmittedGraphPolicyDecisionKind.ACTIVE_CHILD
         ):
             valid = (
@@ -1639,6 +1668,10 @@ class _WriterActiveEmittedGraphPolicyDecision:
     @property
     def blocked(self) -> bool:
         return self.kind in (
+            (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .BLOCKED_CLOSURE_ENDPOINT_POLICY
+            ),
             _WriterActiveEmittedGraphPolicyDecisionKind.BLOCKED_CHILD,
             (
                 _WriterActiveEmittedGraphPolicyDecisionKind
@@ -2109,6 +2142,15 @@ class _WriterActiveEmittedGraphPolicyDecision:
     def graph_policy_blockers(
         self,
     ) -> tuple[_WriterActiveEmittedGraphPolicyBlocker, ...]:
+        if (
+            self.kind
+            is (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .BLOCKED_CLOSURE_ENDPOINT_POLICY
+            )
+        ):
+            return self.closure_endpoint_decision.graph_policy_blockers
+
         if (
             self.kind
             is _WriterActiveEmittedGraphPolicyDecisionKind.BLOCKED_CHILD
@@ -3715,6 +3757,16 @@ def _active_emitted_graph_policy_decision(
         context,
     )
 
+    if closure_decision.graph_policy_blockers:
+        return _WriterActiveEmittedGraphPolicyDecision(
+            kind=(
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .BLOCKED_CLOSURE_ENDPOINT_POLICY
+            ),
+            active_atom=active_atom,
+            closure_endpoint_decision=closure_decision,
+        )
+
     if closure_decision.selected_closure_endpoint_survived:
         return _WriterActiveEmittedGraphPolicyDecision(
             kind=(
@@ -4493,6 +4545,12 @@ def _closure_endpoint_schedule_decision(
         context,
         schedule_surface.open_actions,
     )
+    graph_policy_blockers = (
+        _empty_closure_bond_text_relation_blockers(
+            prepared,
+            open_batch,
+        )
+    )
 
     return _WriterClosureEndpointScheduleDecision(
         pair_batch=pair_batch,
@@ -4502,6 +4560,7 @@ def _closure_endpoint_schedule_decision(
             *open_batch.surviving_emissions,
         ),
         schedule_surface=schedule_surface,
+        graph_policy_blockers=graph_policy_blockers,
     )
 
 
@@ -4803,12 +4862,15 @@ def _closure_open_transitions_from_scheduled_action(
             "scheduled closure-open action requires a closure label",
         )
 
-    relation = writer_closure_endpoint_relation(
-        prepared,
-        bond=closure_obligation.bond,
-        first_atom=closure_obligation.first_atom,
-        second_atom=closure_obligation.second_atom,
-    )
+    try:
+        relation = writer_closure_endpoint_relation(
+            prepared,
+            bond=closure_obligation.bond,
+            first_atom=closure_obligation.first_atom,
+            second_atom=closure_obligation.second_atom,
+        )
+    except (KeyError, SouthStarError):
+        return ()
     transitions = []
     for first_endpoint_choice in relation.openable_first_choices:
         transition = _open_closure_endpoint_transition_from_obligation(
@@ -4823,6 +4885,68 @@ def _closure_open_transitions_from_scheduled_action(
             transitions.append(transition)
 
     return tuple(transitions)
+
+
+def _empty_closure_bond_text_relation_blockers(
+    prepared: SouthStarPreparedMol,
+    open_batch: _WriterScheduledActionEmissionBatch,
+) -> tuple[_WriterActiveEmittedGraphPolicyBlocker, ...]:
+    if not hasattr(prepared, "policy"):
+        return ()
+
+    blockers: list[_WriterActiveEmittedGraphPolicyBlocker] = []
+    seen: set[BondId] = set()
+
+    for emission in open_batch.emissions:
+        action = emission.action
+        if action.kind is not _WriterScheduledActionKind.OPEN_CLOSURE_ENDPOINT:
+            continue
+
+        closure_obligation = action.closure_open_obligation
+        if closure_obligation is None:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "scheduled closure-open action requires an open obligation",
+            )
+
+        bond = closure_obligation.bond
+        if bond in seen:
+            continue
+
+        try:
+            relation = writer_closure_bond_text_relation(
+                prepared,
+                bond,
+            )
+        except (KeyError, SouthStarError):
+            relation = None
+        if relation is None:
+            seen.add(bond)
+            blockers.append(
+                _WriterActiveEmittedGraphPolicyBlocker(
+                    kind=(
+                        _WriterActiveEmittedGraphPolicyBlockerKind
+                        .EMPTY_CLOSURE_BOND_TEXT_RELATION
+                    ),
+                    bond=bond,
+                )
+            )
+            continue
+        if relation.openable_first_texts:
+            continue
+
+        seen.add(bond)
+        blockers.append(
+            _WriterActiveEmittedGraphPolicyBlocker(
+                kind=(
+                    _WriterActiveEmittedGraphPolicyBlockerKind
+                    .EMPTY_CLOSURE_BOND_TEXT_RELATION
+                ),
+                bond=bond,
+            )
+        )
+
+    return tuple(blockers)
 
 
 def _closure_open_obligations_from_context(
@@ -5483,6 +5607,17 @@ def _raise_for_active_emitted_graph_policy_blockers(
         message = (
             "unsupported active-emitted residual attachment policy choice: "
             f"{keys!r}"
+        )
+    elif (
+        first.kind
+        is (
+            _WriterActiveEmittedGraphPolicyBlockerKind
+            .EMPTY_CLOSURE_BOND_TEXT_RELATION
+        )
+    ):
+        message = (
+            "unsupported closure bond text relation for "
+            f"{first.bond!r}"
         )
     else:
         raise SouthStarError(

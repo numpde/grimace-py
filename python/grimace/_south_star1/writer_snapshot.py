@@ -1435,6 +1435,23 @@ class _WriterSharedDirectionalRingCarrierEnvelope:
 
 
 @dataclass(frozen=True, slots=True)
+class _WriterSharedDirectionalRingCarrierShape:
+    templates: tuple[DirectionalTemplate, DirectionalTemplate]
+    center_bonds: tuple[BondId, BondId]
+    shared_ring_carrier: BondId
+    outer_ring_carriers: tuple[BondId, BondId]
+    noncarrier_ring_bond: BondId
+    pendant_carriers: tuple[BondId, BondId, BondId, BondId]
+
+    @property
+    def ring_carriers(self) -> tuple[BondId, BondId, BondId]:
+        return (
+            self.shared_ring_carrier,
+            *self.outer_ring_carriers,
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class _WriterCyclicBondRoles:
     closure_candidate_bonds: frozenset[BondId]
     tree_only_bonds: frozenset[BondId]
@@ -2568,8 +2585,8 @@ def _writer_public_cyclic_opening_profile_report(
             and bond.order not in {BondOrder.SINGLE, BondOrder.AROMATIC}
         )
     )
-    shared_directional_ring_carrier_envelope = (
-        _writer_public_shared_directional_ring_carrier_envelope(
+    shared_directional_ring_carrier_shape = (
+        _writer_public_shared_directional_ring_carrier_shape(
             prepared=prepared,
             ring_core_atom_ids=frozenset(ring_core_atom_set),
             ring_core_bond_ids=frozenset(ring_core_bond_ids),
@@ -2578,11 +2595,25 @@ def _writer_public_cyclic_opening_profile_report(
             ring_core_non_single_bond_ids=ring_core_non_single_bond_ids,
         )
     )
+    shared_directional_ring_carrier_envelope = (
+        _writer_public_shared_directional_semantics(
+            prepared,
+            shared_directional_ring_carrier_shape,
+        )
+        if (
+            shared_directional_ring_carrier_shape is not None
+            and _writer_public_shared_directional_raw_policy_is_supported(
+                prepared,
+                shared_directional_ring_carrier_shape,
+            )
+        )
+        else None
+    )
     ring_core_single_closure_relations = tuple(
         relation
         for bond_id in closure_bond_ids
         if (
-            shared_directional_ring_carrier_envelope is None
+            shared_directional_ring_carrier_shape is None
             and
             (bond := component_bond_index.get(bond_id))
             is not None
@@ -2607,7 +2638,7 @@ def _writer_public_cyclic_opening_profile_report(
     )
     ring_core_unsupported_single_closure_bond_count = (
         0
-        if shared_directional_ring_carrier_envelope is not None
+        if shared_directional_ring_carrier_shape is not None
         else len(ring_core_single_bond_ids)
         - len(ring_core_single_closure_relations)
     )
@@ -2671,6 +2702,8 @@ def _writer_public_cyclic_opening_profile_report(
             and expected_non_single_closure_bonds
             == supported_non_single_closure_bonds
         )
+    elif shared_directional_ring_carrier_shape is not None:
+        ring_core_has_supported_non_single_closure_bond = False
     elif two_cycle_bond_policy_report is not None:
         expected_non_single_closure_bonds = frozenset(
             ring_core_non_single_bond_ids,
@@ -3490,6 +3523,67 @@ def _writer_elided_single_tree_slot_is_supported(
     return len(choices) == 1 and choices[0].base_text == ""
 
 
+def _writer_raw_double_tree_marker_slot_is_supported(
+    prepared: SouthStarPreparedMol,
+    bond_id: BondId,
+) -> bool:
+    bond = prepared.graph_index.bond_by_id.get(bond_id)
+    if bond is None or bond.order is not BondOrder.DOUBLE:
+        return False
+    try:
+        choices = prepared.policy.bond_text_domain_unchecked(
+            bond_id,
+            slot_kind="tree",
+        )
+    except KeyError:
+        return False
+    return (
+        len(choices) == 1
+        and choices[0].base_text == "="
+        and not choices[0].permits_direction
+    )
+
+
+def _writer_raw_double_joint_ring_endpoint_slot_is_supported(
+    prepared: SouthStarPreparedMol,
+    bond_id: BondId,
+) -> bool:
+    bond = prepared.graph_index.bond_by_id.get(bond_id)
+    if bond is None or bond.order is not BondOrder.DOUBLE:
+        return False
+    try:
+        choices = prepared.policy.bond_text_domain_unchecked(
+            bond_id,
+            slot_kind="ring_endpoint",
+        )
+    except KeyError:
+        return False
+    texts = tuple(choice.base_text for choice in choices)
+    return (
+        len(choices) == 2
+        and not any(choice.permits_direction for choice in choices)
+        and len(frozenset(texts)) == 2
+        and frozenset(texts) == frozenset(("", "="))
+    )
+
+
+def _writer_raw_elided_single_ring_endpoint_slot_is_supported(
+    prepared: SouthStarPreparedMol,
+    bond_id: BondId,
+) -> bool:
+    bond = prepared.graph_index.bond_by_id.get(bond_id)
+    if bond is None or bond.order is not BondOrder.SINGLE:
+        return False
+    try:
+        choices = prepared.policy.bond_text_domain_unchecked(
+            bond_id,
+            slot_kind="ring_endpoint",
+        )
+    except KeyError:
+        return False
+    return len(choices) == 1 and choices[0].base_text == ""
+
+
 def _writer_exact_non_single_tree_marker(
     prepared: SouthStarPreparedMol,
     bond_id: BondId,
@@ -3930,6 +4024,33 @@ def _writer_public_shared_directional_ring_carrier_envelope(
     pendant_bond_ids: frozenset[BondId],
     ring_core_non_single_bond_ids: tuple[BondId, ...],
 ) -> _WriterSharedDirectionalRingCarrierEnvelope | None:
+    shape = _writer_public_shared_directional_ring_carrier_shape(
+        prepared=prepared,
+        ring_core_atom_ids=ring_core_atom_ids,
+        ring_core_bond_ids=ring_core_bond_ids,
+        pendant_atom_ids=pendant_atom_ids,
+        pendant_bond_ids=pendant_bond_ids,
+        ring_core_non_single_bond_ids=ring_core_non_single_bond_ids,
+    )
+    if shape is None:
+        return None
+    if not _writer_public_shared_directional_raw_policy_is_supported(
+        prepared,
+        shape,
+    ):
+        return None
+    return _writer_public_shared_directional_semantics(prepared, shape)
+
+
+def _writer_public_shared_directional_ring_carrier_shape(
+    *,
+    prepared: SouthStarPreparedMol,
+    ring_core_atom_ids: frozenset[AtomId],
+    ring_core_bond_ids: frozenset[BondId],
+    pendant_atom_ids: frozenset[AtomId],
+    pendant_bond_ids: frozenset[BondId],
+    ring_core_non_single_bond_ids: tuple[BondId, ...],
+) -> _WriterSharedDirectionalRingCarrierShape | None:
     if len(prepared.directional_templates) != 2:
         return None
     if prepared.tetra_templates:
@@ -4055,39 +4176,88 @@ def _writer_public_shared_directional_ring_carrier_envelope(
     if frozenset(pendant_atoms) != pendant_atom_ids:
         return None
 
-    for center_bond in center_bonds:
-        if _writer_exact_non_single_tree_marker(prepared, center_bond) != "=":
-            return None
-    center_relations = tuple(
-        _writer_public_non_single_closure_relation(prepared, center_bond)
-        for center_bond in center_bonds
+    return _WriterSharedDirectionalRingCarrierShape(
+        templates=templates,
+        center_bonds=center_bonds,
+        shared_ring_carrier=shared_ring_carrier,
+        outer_ring_carriers=outer_ring_carriers,
+        noncarrier_ring_bond=noncarrier_ring_bond,
+        pendant_carriers=pendant_carriers,
     )
-    if any(relation is None for relation in center_relations):
-        return None
 
-    for bond_id in (shared_ring_carrier, *outer_ring_carriers, *pendant_carriers):
+
+def _writer_public_shared_directional_raw_policy_is_supported(
+    prepared: SouthStarPreparedMol,
+    shape: _WriterSharedDirectionalRingCarrierShape,
+) -> bool:
+    for center_bond in shape.center_bonds:
+        if not _writer_raw_double_tree_marker_slot_is_supported(
+            prepared,
+            center_bond,
+        ):
+            return False
+        if not _writer_raw_double_joint_ring_endpoint_slot_is_supported(
+            prepared,
+            center_bond,
+        ):
+            return False
+
+    for bond_id in shape.ring_carriers:
         if not _writer_public_directional_single_tree_slot_is_supported(
             prepared,
             bond_id,
         ):
-            return None
+            return False
+        if not _writer_raw_directional_ring_endpoint_slot_is_supported(
+            prepared,
+            bond_id,
+        ):
+            return False
 
-    noncarrier_relation = _writer_public_single_closure_relation(
-        prepared,
-        noncarrier_ring_bond,
-    )
     if (
         not _writer_elided_single_tree_slot_is_supported(
             prepared,
-            noncarrier_ring_bond,
+            shape.noncarrier_ring_bond,
         )
-        or noncarrier_relation is None
+        or not _writer_raw_elided_single_ring_endpoint_slot_is_supported(
+            prepared,
+            shape.noncarrier_ring_bond,
+        )
+    ):
+        return False
+
+    return all(
+        _writer_public_directional_single_tree_slot_is_supported(
+            prepared,
+            bond_id,
+        )
+        for bond_id in shape.pendant_carriers
+    )
+
+
+def _writer_public_shared_directional_semantics(
+    prepared: SouthStarPreparedMol,
+    shape: _WriterSharedDirectionalRingCarrierShape,
+) -> _WriterSharedDirectionalRingCarrierEnvelope | None:
+    center_relations = tuple(
+        _writer_public_non_single_closure_relation(prepared, center_bond)
+        for center_bond in shape.center_bonds
+    )
+    if any(relation is None for relation in center_relations):
+        return None
+
+    noncarrier_relation = _writer_public_single_closure_relation(
+        prepared,
+        shape.noncarrier_ring_bond,
+    )
+    if (
+        noncarrier_relation is None
         or noncarrier_relation.texts != ("",)
         or noncarrier_relation.compatible_pairs != (("", ""),)
     ):
         return None
 
-    for bond_id in (shared_ring_carrier, *outer_ring_carriers):
+    for bond_id in shape.ring_carriers:
         bond = prepared.graph_index.bond_by_id[bond_id]
         for first_atom, second_atom in (
             (bond.a, bond.b),
@@ -4105,12 +4275,12 @@ def _writer_public_shared_directional_ring_carrier_envelope(
                 return None
 
     return _WriterSharedDirectionalRingCarrierEnvelope(
-        sites=tuple(template.site for template in templates),
-        center_bonds=center_bonds,
-        shared_ring_carrier=shared_ring_carrier,
-        outer_ring_carriers=outer_ring_carriers,
-        noncarrier_ring_bond=noncarrier_ring_bond,
-        pendant_carriers=pendant_carriers,
+        sites=tuple(template.site for template in shape.templates),
+        center_bonds=shape.center_bonds,
+        shared_ring_carrier=shape.shared_ring_carrier,
+        outer_ring_carriers=shape.outer_ring_carriers,
+        noncarrier_ring_bond=shape.noncarrier_ring_bond,
+        pendant_carriers=shape.pendant_carriers,
     )
 
 
@@ -4177,6 +4347,27 @@ def _writer_public_directional_single_tree_slot_is_supported(
         choices = prepared.policy.bond_text_domain_unchecked(
             bond_id,
             slot_kind="tree",
+        )
+    except KeyError:
+        return False
+    return (
+        len(choices) == 1
+        and choices[0].base_text == ""
+        and choices[0].permits_direction
+    )
+
+
+def _writer_raw_directional_ring_endpoint_slot_is_supported(
+    prepared: SouthStarPreparedMol,
+    bond_id: BondId,
+) -> bool:
+    bond = prepared.graph_index.bond_by_id.get(bond_id)
+    if bond is None or bond.order is not BondOrder.SINGLE:
+        return False
+    try:
+        choices = prepared.policy.bond_text_domain_unchecked(
+            bond_id,
+            slot_kind="ring_endpoint",
         )
     except KeyError:
         return False

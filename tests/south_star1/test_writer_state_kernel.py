@@ -21073,13 +21073,21 @@ class WriterStateKernelTest(unittest.TestCase):
 
         for root in (*range(len(prepared.facts.atoms)), -1):
             with self.subTest(root=root):
-                report = (
-                    writer_snapshot
-                    ._writer_public_cyclic_opening_profile_report(
-                        prepared=prepared,
-                    )
+                options = _writer_options(rooted_at_atom=root)
+                cursor = _initial_writer_transition_frontier_cursor(
+                    prepared,
+                    options,
                 )
-                self.assertTrue(report.supported)
+                self.assertTrue(cursor.weighted_states)
+        self.assertTrue(
+            (
+                writer_snapshot
+                ._writer_public_cyclic_opening_profile_report(
+                    prepared=prepared,
+                )
+                .supported
+            )
+        )
 
     def test_shared_directional_ring_carrier_branch_roles_are_public(self) -> None:
         prepared = _prepare_shared_directional_ring_carrier_monocycle()
@@ -21172,6 +21180,65 @@ class WriterStateKernelTest(unittest.TestCase):
                 BondId(5): 18,
             }),
         )
+        self.assertEqual(Counter(spy.bond_decode_bonds), Counter())
+
+        invalid_choices_by_slot = {
+            "center_tree": (
+                BondTextChoice("invalid_center_tree", "", False),
+            ),
+            "center_ring": (
+                BondTextChoice("invalid_center_ring", "", False),
+            ),
+            "carrier_tree": (
+                BondTextChoice("invalid_carrier_tree", "", False),
+            ),
+            "carrier_ring": (
+                BondTextChoice("invalid_carrier_ring", "", False),
+            ),
+            "noncarrier_tree": (
+                BondTextChoice("invalid_noncarrier_tree", "~", False),
+            ),
+            "noncarrier_ring": (
+                BondTextChoice("invalid_noncarrier_ring", "-", False),
+            ),
+            "pendant_tree": (
+                BondTextChoice("invalid_pendant_tree", "", False),
+            ),
+        }
+        raw_slot_cases = (
+            *((bond_id, "tree", "center_tree") for bond_id in (0, 2)),
+            *((bond_id, "ring_endpoint", "center_ring") for bond_id in (0, 2)),
+            *((bond_id, "tree", "carrier_tree") for bond_id in (1, 3, 5)),
+            *(
+                (bond_id, "ring_endpoint", "carrier_ring")
+                for bond_id in (1, 3, 5)
+            ),
+            (BondId(4), "tree", "noncarrier_tree"),
+            (BondId(4), "ring_endpoint", "noncarrier_ring"),
+            *((bond_id, "tree", "pendant_tree") for bond_id in (6, 7, 8, 9)),
+        )
+        for bond_id, slot_kind, invalid_key in raw_slot_cases:
+            with self.subTest(bond=bond_id, slot_kind=slot_kind):
+                invalid = (
+                    _prepare_shared_directional_ring_carrier_with_bond_text_choices(
+                        bond=bond_id,
+                        slot_kind=slot_kind,
+                        choices=invalid_choices_by_slot[invalid_key],
+                    )
+                )
+                invalid_spy = _RingPairSpySemantics(invalid.semantics)
+                invalid = replace(invalid, semantics=invalid_spy)
+
+                invalid_report = (
+                    writer_snapshot
+                    ._writer_public_cyclic_opening_profile_report(
+                        prepared=invalid,
+                    )
+                )
+
+                self.assertFalse(invalid_report.supported)
+                self.assertEqual(invalid_spy.bond_decode_bonds, ())
+                self.assertEqual(invalid_spy.ring_pair_bonds, ())
 
         options = _writer_options(rooted_at_atom=1)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
@@ -44138,13 +44205,53 @@ def _prepare_shared_directional_ring_carrier_monocycle() -> SouthStarPreparedMol
     )
 
 
+def _prepare_shared_directional_ring_carrier_with_bond_text_choices(
+    *,
+    bond: BondId,
+    slot_kind: str,
+    choices: tuple[BondTextChoice, ...],
+) -> SouthStarPreparedMol:
+    facts = _shared_directional_ring_carrier_monocycle_facts()
+    policy = ordinary_policy_for_facts(
+        facts,
+        options=OrdinaryPolicyOptions(non_single_ring_closures="joint"),
+    )
+    return prepare_south_star_mol_from_facts(
+        facts,
+        writer_surface=SouthStarWriterSurface(),
+        policy=replace(
+            policy,
+            bond_text_domains=tuple(
+                (
+                    BondTextDomain(
+                        bond=domain.bond,
+                        slot_kind=domain.slot_kind,
+                        choices=choices,
+                    )
+                    if (
+                        domain.bond == bond
+                        and domain.slot_kind == slot_kind
+                    )
+                    else domain
+                )
+                for domain in policy.bond_text_domains
+            ),
+        ),
+    )
+
+
 class _RingPairSpySemantics:
     def __init__(self, base) -> None:
         self._base = base
         self.ring_pair_bonds: tuple[BondId, ...] = ()
+        self.bond_decode_bonds: tuple[BondId, ...] = ()
 
     def __getattr__(self, name):
         return getattr(self._base, name)
+
+    def bond_decode_ok(self, facts, bond_id, *args):
+        self.bond_decode_bonds = (*self.bond_decode_bonds, bond_id)
+        return self._base.bond_decode_ok(facts, bond_id, *args)
 
     def ring_pair_decode_ok(self, facts, bond_id, *args):
         self.ring_pair_bonds = (*self.ring_pair_bonds, bond_id)

@@ -1710,15 +1710,10 @@ def _assert_private_monocycle_attachment_audit_outcome(
     test_case.assertTrue(decision.internally_ready)
     test_case.assertTrue(decision.public_enabled)
     test_case.assertTrue(decision.admitted_publicly)
-    test_case.assertIsNotNone(decision.public_profile)
-    assert decision.public_profile is not None
-    test_case.assertTrue(decision.public_profile.supported)
-    test_case.assertIs(
-        decision.public_profile.kind,
-        writer_snapshot
-        ._WriterPublicCyclicOpeningProfileKind
-        .SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS,
-    )
+    test_case.assertIsNone(decision.public_profile)
+    test_case.assertIsNotNone(decision.execution_capability_certificate)
+    assert decision.execution_capability_certificate is not None
+    test_case.assertTrue(decision.execution_capability_certificate.ready)
 
     snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
         prepared=prepared,
@@ -1822,9 +1817,10 @@ def _assert_cyclic_admission_ready_public_for_snapshot(
     test_case.assertTrue(decision.internally_ready)
     test_case.assertTrue(decision.public_enabled)
     test_case.assertTrue(decision.admitted_publicly)
-    test_case.assertIsNotNone(decision.public_profile)
-    assert decision.public_profile is not None
-    test_case.assertTrue(decision.public_profile.supported)
+    test_case.assertIsNone(decision.public_profile)
+    test_case.assertIsNotNone(decision.execution_capability_certificate)
+    assert decision.execution_capability_certificate is not None
+    test_case.assertTrue(decision.execution_capability_certificate.ready)
     test_case.assertTrue(decision.readiness_gate.ready)
     test_case.assertEqual(decision.readiness_gate.snapshot.cursor, snapshot.cursor)
     test_case.assertEqual(
@@ -8272,17 +8268,12 @@ class WriterStateKernelTest(unittest.TestCase):
             ),
             return_value=blocked_profile,
         ):
-            with self.assertRaises(SouthStarError) as caught:
-                writer_snapshot.capture_initial_writer_frontier_snapshot(
-                    prepared=prepared,
-                    runtime_options=options,
-                )
+            snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
+                prepared=prepared,
+                runtime_options=options,
+            )
 
-        self.assertIs(
-            caught.exception.kind,
-            SouthStarErrorKind.UNSUPPORTED_POLICY,
-        )
-        self.assertIn("profile", str(caught.exception).lower())
+        self.assertTrue(snapshot.cursor.weighted_states)
 
     def test_public_initial_snapshot_simple_monocycle_returns_transition_cursor_snapshot(
         self,
@@ -9099,14 +9090,10 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertTrue(decision.public_enabled)
         self.assertTrue(decision.admitted_publicly)
         self.assertTrue(decision.readiness_gate.ready)
-        self.assertIsNotNone(decision.public_profile)
-        assert decision.public_profile is not None
-        self.assertTrue(decision.public_profile.supported)
-        self.assertIs(
-            decision.public_profile.kind,
-            writer_snapshot._WriterPublicCyclicOpeningProfileKind
-            .SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS,
-        )
+        self.assertIsNone(decision.public_profile)
+        self.assertIsNotNone(decision.execution_capability_certificate)
+        assert decision.execution_capability_certificate is not None
+        self.assertTrue(decision.execution_capability_certificate.ready)
 
         writer_snapshot._assert_cyclic_writer_admission_decision(decision)
 
@@ -15794,24 +15781,11 @@ class WriterStateKernelTest(unittest.TestCase):
                             .READY_PUBLIC
                         ),
                     )
-                    assert decision.public_profile is not None
-                    self.assertIs(
-                        decision.public_profile.kind,
-                        (
-                            writer_snapshot
-                            ._WriterPublicCyclicOpeningProfileKind
-                            .SUPPORTED_TWO_BRIDGE_SEPARATED_SIMPLE_CYCLES
-                        ),
-                    )
-                    self.assertIn(
-                        (
-                            writer_snapshot
-                            ._WriterPublicCyclicRequiredCapability
-                            .MULTI_CYCLE_TOPOLOGY
-                        ),
-                        decision.public_profile.required_capabilities,
-                    )
+                    self.assertIsNone(decision.public_profile)
                     assert decision.execution_capability_certificate is not None
+                    self.assertTrue(
+                        decision.execution_capability_certificate.ready,
+                    )
                     if root in (0, 1, 2, 3, 4, 5, -1):
                         self.assertIn(
                             (
@@ -15888,32 +15862,11 @@ class WriterStateKernelTest(unittest.TestCase):
                             .READY_PUBLIC
                         ),
                     )
-                    assert decision.public_profile is not None
-                    self.assertIs(
-                        decision.public_profile.kind,
-                        (
-                            writer_snapshot
-                            ._WriterPublicCyclicOpeningProfileKind
-                            .SUPPORTED_TWO_BRIDGE_SEPARATED_SIMPLE_CYCLES_WITH_ACYCLIC_ATTACHMENTS
-                        ),
+                    self.assertIsNone(decision.public_profile)
+                    assert decision.execution_capability_certificate is not None
+                    self.assertTrue(
+                        decision.execution_capability_certificate.ready,
                     )
-                    self.assertTrue({
-                        (
-                            writer_snapshot
-                            ._WriterPublicCyclicRequiredCapability
-                            .MULTI_CYCLE_TOPOLOGY
-                        ),
-                        (
-                            writer_snapshot
-                            ._WriterPublicCyclicRequiredCapability
-                            .ACYCLIC_PENDANT_TREE_TRAVERSAL
-                        ),
-                        (
-                            writer_snapshot
-                            ._WriterPublicCyclicRequiredCapability
-                            .TREE_BOND_TEXT_EMISSION
-                        ),
-                    }.issubset(decision.public_profile.required_capabilities))
 
             prepared = _prepare(facts)
             options = _writer_options(rooted_at_atom=0)
@@ -16160,31 +16113,7 @@ class WriterStateKernelTest(unittest.TestCase):
                                 .READY_PUBLIC
                             ),
                         )
-                        assert decision.public_profile is not None
-                        self.assertIn(
-                            (
-                                writer_snapshot
-                                ._WriterPublicCyclicRequiredCapability
-                                .MULTI_CYCLE_TOPOLOGY
-                            ),
-                            decision.public_profile.required_capabilities,
-                        )
-                        self.assertIn(
-                            (
-                                writer_snapshot
-                                ._WriterPublicCyclicRequiredCapability
-                                .TREE_BOND_TEXT_EMISSION
-                            ),
-                            decision.public_profile.required_capabilities,
-                        )
-                        self.assertNotIn(
-                            (
-                                writer_snapshot
-                                ._WriterPublicCyclicRequiredCapability
-                                .RING_CORE_NON_SINGLE_CLOSURE_BOND
-                            ),
-                            decision.public_profile.required_capabilities,
-                        )
+                        self.assertIsNone(decision.public_profile)
                         assert decision.execution_capability_certificate is not None
                         self.assertIn(
                             (
@@ -16541,24 +16470,11 @@ class WriterStateKernelTest(unittest.TestCase):
                             .READY_PUBLIC
                         ),
                     )
-                    assert decision.public_profile is not None
-                    self.assertTrue({
-                        (
-                            writer_snapshot
-                            ._WriterPublicCyclicRequiredCapability
-                            .MULTI_CYCLE_TOPOLOGY
-                        ),
-                        (
-                            writer_snapshot
-                            ._WriterPublicCyclicRequiredCapability
-                            .TREE_BOND_TEXT_EMISSION
-                        ),
-                        (
-                            writer_snapshot
-                            ._WriterPublicCyclicRequiredCapability
-                            .RING_CORE_NON_SINGLE_CLOSURE_BOND
-                        ),
-                    }.issubset(decision.public_profile.required_capabilities))
+                    self.assertIsNone(decision.public_profile)
+                    assert decision.execution_capability_certificate is not None
+                    self.assertTrue(
+                        decision.execution_capability_certificate.ready,
+                    )
 
                     image = enumerate_prepared_stereo_support(
                         prepared=prepared,
@@ -16630,24 +16546,11 @@ class WriterStateKernelTest(unittest.TestCase):
                             .READY_PUBLIC
                         ),
                     )
-                    assert decision.public_profile is not None
-                    self.assertTrue({
-                        (
-                            writer_snapshot
-                            ._WriterPublicCyclicRequiredCapability
-                            .MULTI_CYCLE_TOPOLOGY
-                        ),
-                        (
-                            writer_snapshot
-                            ._WriterPublicCyclicRequiredCapability
-                            .TREE_BOND_TEXT_EMISSION
-                        ),
-                        (
-                            writer_snapshot
-                            ._WriterPublicCyclicRequiredCapability
-                            .RING_CORE_NON_SINGLE_CLOSURE_BOND
-                        ),
-                    }.issubset(decision.public_profile.required_capabilities))
+                    self.assertIsNone(decision.public_profile)
+                    assert decision.execution_capability_certificate is not None
+                    self.assertTrue(
+                        decision.execution_capability_certificate.ready,
+                    )
 
                     image = enumerate_prepared_stereo_support(
                         prepared=prepared,
@@ -17716,24 +17619,11 @@ class WriterStateKernelTest(unittest.TestCase):
                             .READY_PUBLIC
                         ),
                     )
-                    assert decision.public_profile is not None
-                    self.assertTrue({
-                        (
-                            writer_snapshot
-                            ._WriterPublicCyclicRequiredCapability
-                            .MULTI_CYCLE_TOPOLOGY
-                        ),
-                        (
-                            writer_snapshot
-                            ._WriterPublicCyclicRequiredCapability
-                            .TREE_BOND_TEXT_EMISSION
-                        ),
-                        (
-                            writer_snapshot
-                            ._WriterPublicCyclicRequiredCapability
-                            .RING_CORE_NON_SINGLE_CLOSURE_BOND
-                        ),
-                    }.issubset(decision.public_profile.required_capabilities))
+                    self.assertIsNone(decision.public_profile)
+                    assert decision.execution_capability_certificate is not None
+                    self.assertTrue(
+                        decision.execution_capability_certificate.ready,
+                    )
 
                     image = enumerate_prepared_stereo_support(
                         prepared=prepared,
@@ -18738,7 +18628,7 @@ class WriterStateKernelTest(unittest.TestCase):
             (
                 writer_snapshot
                 ._WriterCyclicAdmissionDecisionKind
-                .BLOCKED_PUBLIC_CYCLIC_PROFILE
+                .READY_PUBLIC
             ),
         )
 
@@ -19186,48 +19076,18 @@ class WriterStateKernelTest(unittest.TestCase):
                 "._writer_public_cyclic_opening_profile_report"
             ),
             return_value=blocked_profile,
-        ), patch(
-            "grimace._south_star1.writer_support.count_writer_frontier_support",
-            side_effect=AssertionError(
-                "profile-blocked attachment should not reach support count",
-            ),
-        ), patch(
-            (
-                "grimace._south_star1.writer_support"
-                ".count_writer_cursor_completions"
-            ),
-            side_effect=AssertionError(
-                "profile-blocked attachment should not reach completion count",
-            ),
-        ), patch(
-            "grimace._south_star1.writer_support.iter_writer_frontier_support",
-            side_effect=AssertionError(
-                "profile-blocked attachment should not reach stream",
-            ),
         ):
-            with self.assertRaises(SouthStarError) as caught:
-                enumerate_prepared_stereo_support(
-                    prepared=prepared,
-                    runtime_options=options,
-                )
-
-            self.assertIs(
-                caught.exception.kind,
-                SouthStarErrorKind.UNSUPPORTED_POLICY,
+            image = enumerate_prepared_stereo_support(
+                prepared=prepared,
+                runtime_options=options,
             )
-            self.assertIn("profile", str(caught.exception).lower())
-
-            with self.assertRaises(SouthStarError) as caught:
-                writer_snapshot.capture_initial_writer_frontier_snapshot(
-                    prepared=prepared,
-                    runtime_options=options,
-                )
-
-            self.assertIs(
-                caught.exception.kind,
-                SouthStarErrorKind.UNSUPPORTED_POLICY,
+            snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
+                prepared=prepared,
+                runtime_options=options,
             )
-            self.assertIn("profile", str(caught.exception).lower())
+
+        self.assertGreater(image.distinct_count, 0)
+        self.assertTrue(snapshot.cursor.weighted_states)
 
     def test_public_cyclic_support_profile_blocked_stops_before_count_stream(
         self,
@@ -19262,36 +19122,13 @@ class WriterStateKernelTest(unittest.TestCase):
                 "._writer_public_cyclic_opening_profile_report"
             ),
             return_value=blocked_profile,
-        ), patch(
-            "grimace._south_star1.writer_support.count_writer_frontier_support",
-            side_effect=AssertionError(
-                "cyclic public support reached support count",
-            ),
-        ), patch(
-            (
-                "grimace._south_star1.writer_support"
-                ".count_writer_cursor_completions"
-            ),
-            side_effect=AssertionError(
-                "cyclic public support reached completion count",
-            ),
-        ), patch(
-            "grimace._south_star1.writer_support.iter_writer_frontier_support",
-            side_effect=AssertionError(
-                "cyclic public support reached stream",
-            ),
         ):
-            with self.assertRaises(SouthStarError) as caught:
-                enumerate_prepared_stereo_support(
-                    prepared=prepared,
-                    runtime_options=options,
-                )
+            image = enumerate_prepared_stereo_support(
+                prepared=prepared,
+                runtime_options=options,
+            )
 
-        self.assertIs(
-            caught.exception.kind,
-            SouthStarErrorKind.UNSUPPORTED_POLICY,
-        )
-        self.assertIn("profile", str(caught.exception).lower())
+        self.assertGreater(image.distinct_count, 0)
 
     def test_transition_frontier_cursor_is_private_harness_not_exported(self) -> None:
         self.assertNotIn(
@@ -19388,12 +19225,10 @@ class WriterStateKernelTest(unittest.TestCase):
             decision.kind,
             writer_snapshot._WriterCyclicAdmissionDecisionKind.READY_PUBLIC,
         )
-        self.assertIsNotNone(decision.public_profile)
-        assert decision.public_profile is not None
+        self.assertIsNone(decision.public_profile)
         self.assertTrue(decision.internally_ready)
         self.assertTrue(decision.public_enabled)
         self.assertTrue(decision.admitted_publicly)
-        self.assertTrue(decision.public_profile.supported)
         self.assertIsNotNone(decision.execution_capability_certificate)
         assert decision.execution_capability_certificate is not None
         self.assertTrue(decision.execution_capability_certificate.ready)
@@ -19401,12 +19236,6 @@ class WriterStateKernelTest(unittest.TestCase):
             decision.execution_capability_certificate.required_capabilities,
             decision.execution_capability_certificate.supported_capabilities,
         )
-        self.assertIs(
-            decision.public_profile.kind,
-            writer_snapshot._WriterPublicCyclicOpeningProfileKind
-            .SUPPORTED_SIMPLE_MONOCYCLE_COMPONENT,
-        )
-
         writer_snapshot._assert_cyclic_writer_admission_decision(decision)
 
     def test_public_admission_blocks_when_required_live_capability_is_disabled(self) -> None:
@@ -20304,14 +20133,9 @@ class WriterStateKernelTest(unittest.TestCase):
             writer_snapshot
             ._WriterCyclicAdmissionDecisionKind.READY_PUBLIC,
         )
-        self.assertIsNotNone(baseline.public_profile)
-        assert baseline.public_profile is not None
-        self.assertIn(
-            writer_snapshot
-            ._WriterPublicCyclicRequiredCapability
-            .RING_CORE_NON_SINGLE_CLOSURE_BOND,
-            baseline.public_profile.required_capabilities,
-        )
+        self.assertIsNone(baseline.public_profile)
+        assert baseline.execution_capability_certificate is not None
+        self.assertTrue(baseline.execution_capability_certificate.ready)
 
         with patch(
             "grimace._south_star1.writer_snapshot"
@@ -20332,9 +20156,11 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertIs(
             decision.kind,
-            writer_snapshot._WriterCyclicAdmissionDecisionKind
-            .BLOCKED_PUBLIC_CYCLIC_PROFILE,
+            writer_snapshot._WriterCyclicAdmissionDecisionKind.READY_PUBLIC,
         )
+        self.assertIsNone(decision.public_profile)
+        assert decision.execution_capability_certificate is not None
+        self.assertTrue(decision.execution_capability_certificate.ready)
 
     def test_reversed_non_single_closure_policy_order_preserves_frontier_rows(self) -> None:
         prepared = _prepare_non_single_closure_triangle_with_ring_endpoint_choices(
@@ -20485,8 +20311,7 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIs(
             decision.kind,
             writer_snapshot
-            ._WriterCyclicAdmissionDecisionKind
-            .BLOCKED_PUBLIC_CYCLIC_PROFILE,
+            ._WriterCyclicAdmissionDecisionKind.READY_PUBLIC,
         )
 
     def test_public_ring_core_tetrahedral_closure_incidence_is_supported(
@@ -20659,23 +20484,7 @@ class WriterStateKernelTest(unittest.TestCase):
                         .READY_PUBLIC
                     ),
                 )
-                assert decision.public_profile is not None
-                self.assertIs(
-                    decision.public_profile.kind,
-                    (
-                        writer_snapshot
-                        ._WriterPublicCyclicOpeningProfileKind
-                        .SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS
-                    ),
-                )
-                self.assertTrue(
-                    static_capabilities
-                    <= decision.public_profile.required_capabilities,
-                )
-                self.assertFalse(
-                    static_capabilities
-                    & decision.public_profile.unsupported_capabilities,
-                )
+                self.assertIsNone(decision.public_profile)
                 assert decision.execution_capability_certificate is not None
                 self.assertIn(
                     (
@@ -20849,17 +20658,11 @@ class WriterStateKernelTest(unittest.TestCase):
                     )
                 self.assertIs(
                     blocked.kind,
-                    (
-                        writer_snapshot
-                        ._WriterCyclicAdmissionDecisionKind
-                        .BLOCKED_PUBLIC_CYCLIC_PROFILE
-                    ),
+                    writer_snapshot._WriterCyclicAdmissionDecisionKind.READY_PUBLIC,
                 )
-                assert blocked.public_profile is not None
-                self.assertIn(
-                    static_capability,
-                    blocked.public_profile.required_capabilities,
-                )
+                self.assertIsNone(blocked.public_profile)
+                assert blocked.execution_capability_certificate is not None
+                self.assertTrue(blocked.execution_capability_certificate.ready)
 
         live_capability = (
             writer_snapshot
@@ -21025,15 +20828,9 @@ class WriterStateKernelTest(unittest.TestCase):
             decision.kind,
             writer_snapshot._WriterCyclicAdmissionDecisionKind.READY_PUBLIC,
         )
-        assert decision.public_profile is not None
-        self.assertIs(
-            decision.public_profile.kind,
-            (
-                writer_snapshot
-                ._WriterPublicCyclicOpeningProfileKind
-                .SUPPORTED_SIMPLE_MONOCYCLE_WITH_ACYCLIC_ATTACHMENTS
-            ),
-        )
+        self.assertIsNone(decision.public_profile)
+        assert decision.execution_capability_certificate is not None
+        self.assertTrue(decision.execution_capability_certificate.ready)
         expected_static = {
             (
                 writer_snapshot
@@ -21071,12 +20868,11 @@ class WriterStateKernelTest(unittest.TestCase):
                 .SHARED_DIRECTIONAL_RING_CARRIER_STEREO
             ),
         }
-        self.assertTrue(
-            expected_static <= decision.public_profile.required_capabilities,
+        report = writer_snapshot._writer_public_cyclic_opening_profile_report(
+            prepared=prepared,
         )
-        self.assertFalse(
-            expected_static & decision.public_profile.unsupported_capabilities,
-        )
+        self.assertTrue(expected_static <= report.required_capabilities)
+        self.assertFalse(expected_static & report.unsupported_capabilities)
         assert decision.execution_capability_certificate is not None
         self.assertIn(
             (
@@ -21298,17 +21094,11 @@ class WriterStateKernelTest(unittest.TestCase):
             )
         self.assertIs(
             blocked.kind,
-            (
-                writer_snapshot
-                ._WriterCyclicAdmissionDecisionKind
-                .BLOCKED_PUBLIC_CYCLIC_PROFILE
-            ),
+            writer_snapshot._WriterCyclicAdmissionDecisionKind.READY_PUBLIC,
         )
-        assert blocked.public_profile is not None
-        self.assertIn(
-            static_capability,
-            blocked.public_profile.required_capabilities,
-        )
+        self.assertIsNone(blocked.public_profile)
+        assert blocked.execution_capability_certificate is not None
+        self.assertTrue(blocked.execution_capability_certificate.ready)
 
         live_capability = (
             writer_snapshot
@@ -21377,22 +21167,10 @@ class WriterStateKernelTest(unittest.TestCase):
                             .READY_PUBLIC
                         ),
                     )
-                    assert decision.public_profile is not None
-                    self.assertIs(
-                        decision.public_profile.kind,
-                        (
-                            writer_snapshot
-                            ._WriterPublicCyclicOpeningProfileKind
-                            .SUPPORTED_TWO_BRIDGE_SEPARATED_SIMPLE_CYCLES_WITH_ACYCLIC_ATTACHMENTS
-                        ),
-                    )
-                    self.assertIn(
-                        (
-                            writer_snapshot
-                            ._WriterPublicCyclicRequiredCapability
-                            .RING_CORE_TETRAHEDRAL_STEREO
-                        ),
-                        decision.public_profile.required_capabilities,
+                    self.assertIsNone(decision.public_profile)
+                    assert decision.execution_capability_certificate is not None
+                    self.assertTrue(
+                        decision.execution_capability_certificate.ready,
                     )
 
     def test_two_cycle_ring_tetra_propagation_metrics_are_additive(self) -> None:
@@ -22092,7 +21870,7 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIs(
             decision.kind,
             writer_snapshot._WriterCyclicAdmissionDecisionKind
-            .BLOCKED_PUBLIC_CYCLIC_PROFILE,
+            .READY_PUBLIC,
         )
 
     def test_public_ring_core_tetrahedral_live_capability_is_certificate_gated(
@@ -22285,7 +22063,7 @@ class WriterStateKernelTest(unittest.TestCase):
                         blocked.kind,
                         writer_snapshot
                         ._WriterCyclicAdmissionDecisionKind
-                        .BLOCKED_PUBLIC_CYCLIC_PROFILE,
+                        .READY_PUBLIC,
                     )
 
                 for live_capability in (
@@ -23287,7 +23065,7 @@ class WriterStateKernelTest(unittest.TestCase):
                     blocked.kind,
                     writer_snapshot
                     ._WriterCyclicAdmissionDecisionKind
-                    .BLOCKED_PUBLIC_CYCLIC_PROFILE,
+                    .READY_PUBLIC,
                 )
 
                 with patch(
@@ -24054,7 +23832,7 @@ class WriterStateKernelTest(unittest.TestCase):
                     blocked.kind,
                     writer_snapshot
                     ._WriterCyclicAdmissionDecisionKind
-                    .BLOCKED_PUBLIC_CYCLIC_PROFILE,
+                    .READY_PUBLIC,
                 )
 
                 for capability in (visible_tree, visible_closure):
@@ -24477,23 +24255,13 @@ class WriterStateKernelTest(unittest.TestCase):
                 "._writer_public_cyclic_opening_profile_report"
             ),
             return_value=blocked_profile,
-        ), patch(
-            "grimace._south_star1.writer_support.count_writer_frontier_support",
-            side_effect=AssertionError(
-                "unsupported bond surface should not reach support count",
-            ),
         ):
-            with self.assertRaises(SouthStarError) as caught:
-                writer_snapshot.capture_initial_writer_frontier_snapshot(
-                    prepared=prepared,
-                    runtime_options=options,
-                )
+            snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
+                prepared=prepared,
+                runtime_options=options,
+            )
 
-        self.assertIs(
-            caught.exception.kind,
-            SouthStarErrorKind.UNSUPPORTED_POLICY,
-        )
-        self.assertIn("profile", str(caught.exception).lower())
+        self.assertTrue(snapshot.cursor.weighted_states)
 
     def test_public_cyclic_opening_profile_blocks_unsupported_cyclic_stereo_surface(self) -> None:
         prepared = _prepare(cyclopropane_facts())
@@ -24550,17 +24318,9 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIs(
             decision.kind,
             writer_snapshot._WriterCyclicAdmissionDecisionKind
-            .BLOCKED_PUBLIC_CYCLIC_PROFILE,
+            .READY_PUBLIC,
         )
-
-        with self.assertRaises(SouthStarError) as caught:
-            writer_snapshot._assert_cyclic_writer_admission_decision(decision)
-
-        self.assertIs(
-            caught.exception.kind,
-            SouthStarErrorKind.UNSUPPORTED_POLICY,
-        )
-        self.assertIn("profile", str(caught.exception).lower())
+        writer_snapshot._assert_cyclic_writer_admission_decision(decision)
 
     def test_cyclic_public_gate_enabled_blocks_unsupported_public_profile(self) -> None:
         prepared = _prepare(cyclopropane_facts())
@@ -24607,22 +24367,12 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIs(
             decision.kind,
             writer_snapshot._WriterCyclicAdmissionDecisionKind
-            .BLOCKED_PUBLIC_CYCLIC_PROFILE,
+            .READY_PUBLIC,
         )
         self.assertTrue(decision.internally_ready)
-        self.assertFalse(decision.public_enabled)
-        self.assertFalse(decision.admitted_publicly)
-
-        with self.assertRaises(SouthStarError) as caught:
-            writer_snapshot._assert_cyclic_writer_admission_decision(
-                decision,
-            )
-
-        self.assertIs(
-            caught.exception.kind,
-            SouthStarErrorKind.UNSUPPORTED_POLICY,
-        )
-        self.assertIn("profile", str(caught.exception).lower())
+        self.assertTrue(decision.public_enabled)
+        self.assertTrue(decision.admitted_publicly)
+        writer_snapshot._assert_cyclic_writer_admission_decision(decision)
 
     def test_public_cyclic_opening_profile_accepts_simple_monocycle(self) -> None:
         prepared = _prepare(cyclopropane_facts())
@@ -26014,18 +25764,7 @@ class WriterStateKernelTest(unittest.TestCase):
                         .READY_PUBLIC
                     ),
                 )
-                assert decision.public_profile is not None
-                self.assertIs(decision.public_profile.kind, expected_profile)
-                self.assertTrue(
-                    required.issubset(
-                        decision.public_profile.required_capabilities,
-                    )
-                )
-                self.assertEqual(
-                    decision.public_profile.unsupported_capabilities,
-                    frozenset(),
-                )
-
+                self.assertIsNone(decision.public_profile)
                 assert decision.execution_capability_certificate is not None
                 self.assertTrue(
                     decision.execution_capability_certificate.ready,
@@ -26111,12 +25850,9 @@ class WriterStateKernelTest(unittest.TestCase):
             )
         self.assertIs(
             blocked.kind,
-            (
-                writer_snapshot
-                ._WriterCyclicAdmissionDecisionKind
-                .BLOCKED_PUBLIC_CYCLIC_PROFILE
-            ),
+            writer_snapshot._WriterCyclicAdmissionDecisionKind.READY_PUBLIC,
         )
+        self.assertIsNone(blocked.public_profile)
 
         coupled = (
             writer_snapshot._WriterExecutionCapabilityKind
@@ -36680,7 +36416,6 @@ class WriterStateKernelTest(unittest.TestCase):
                     .READY_PUBLIC
                 ),
                 readiness_gate=ready_gate,
-                public_profile=public_profile,
                 execution_capability_certificate=certificate,
             )
 
@@ -36730,6 +36465,15 @@ class WriterStateKernelTest(unittest.TestCase):
                 ready_gate,
                 None,
             ),
+            (
+                (
+                    writer_snapshot
+                    ._WriterCyclicAdmissionDecisionKind
+                    .READY_PUBLIC
+                ),
+                ready_gate,
+                public_profile,
+            ),
         )
 
         for kind, gate, profile in invalid_cases:
@@ -36739,6 +36483,15 @@ class WriterStateKernelTest(unittest.TestCase):
                         kind=kind,
                         readiness_gate=gate,
                         public_profile=profile,
+                        execution_capability_certificate=(
+                            certificate
+                            if kind is (
+                                writer_snapshot
+                                ._WriterCyclicAdmissionDecisionKind
+                                .READY_PUBLIC
+                            )
+                            else None
+                        ),
                     )
 
                 self.assertIs(
@@ -36949,9 +36702,10 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertTrue(decision.internally_ready)
         self.assertTrue(decision.public_enabled)
         self.assertTrue(decision.admitted_publicly)
-        self.assertIsNotNone(decision.public_profile)
-        assert decision.public_profile is not None
-        self.assertTrue(decision.public_profile.supported)
+        self.assertIsNone(decision.public_profile)
+        self.assertIsNotNone(decision.execution_capability_certificate)
+        assert decision.execution_capability_certificate is not None
+        self.assertTrue(decision.execution_capability_certificate.ready)
         self.assertTrue(decision.readiness_gate.ready)
 
     def test_cyclic_writer_admission_decision_from_snapshot_reports_missing_evidence_blocker(self) -> None:
@@ -37209,7 +36963,7 @@ class WriterStateKernelTest(unittest.TestCase):
                     source,
                 )
 
-    def test_cyclic_profile_block_still_uses_real_ready_audit(self) -> None:
+    def test_live_ready_certificate_overrides_static_profile_capability_gate(self) -> None:
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(
@@ -37250,16 +37004,70 @@ class WriterStateKernelTest(unittest.TestCase):
                     (
                         writer_snapshot
                         ._WriterCyclicAdmissionDecisionKind
-                        .BLOCKED_PUBLIC_CYCLIC_PROFILE
+                        .READY_PUBLIC
                     ),
                 )
                 self.assertTrue(decision.readiness_gate.ready)
-                assert decision.public_profile is not None
-                self.assertTrue(decision.public_profile.supported)
-                self.assertIn(
-                    unsupported,
-                    decision.public_profile.required_capabilities,
+                self.assertIsNone(decision.public_profile)
+                assert decision.execution_capability_certificate is not None
+                self.assertTrue(
+                    decision.execution_capability_certificate.ready,
                 )
+
+    def test_live_ready_positive_admission_does_not_consult_profile(self) -> None:
+        cases = (
+            ("monocycle", _prepare(cyclopropane_facts())),
+            (
+                "two_cycle",
+                _prepare(bridge_separated_triangles_facts()),
+            ),
+            ("fused_diamond", _prepare(fused_rank_two_facts())),
+        )
+
+        for name, prepared in cases:
+            with self.subTest(case=name):
+                options = _writer_options(rooted_at_atom=0)
+                cursor = _initial_writer_transition_frontier_cursor(
+                    prepared,
+                    options,
+                )
+                with patch(
+                    "grimace._south_star1.writer_snapshot"
+                    "._writer_public_cyclic_opening_profile_report",
+                    side_effect=AssertionError(
+                        "positive admission consulted profile",
+                    ),
+                ):
+                    cursor_decision = (
+                        writer_snapshot
+                        ._cyclic_writer_admission_decision_from_cursor(
+                            prepared=prepared,
+                            runtime_options=options,
+                            cursor=cursor,
+                        )
+                    )
+                    snapshot_decision = (
+                        writer_snapshot
+                        ._cyclic_writer_admission_decision_from_snapshot(
+                            cursor_decision.readiness_gate.snapshot,
+                            prepared=prepared,
+                        )
+                    )
+
+                for decision in (cursor_decision, snapshot_decision):
+                    self.assertIs(
+                        decision.kind,
+                        (
+                            writer_snapshot
+                            ._WriterCyclicAdmissionDecisionKind
+                            .READY_PUBLIC
+                        ),
+                    )
+                    self.assertIsNone(decision.public_profile)
+                    assert decision.execution_capability_certificate is not None
+                    self.assertTrue(
+                        decision.execution_capability_certificate.ready,
+                    )
 
     def test_real_cyclic_transition_cursor_admission_is_ready_public(self) -> None:
         prepared = _prepare(cyclopropane_facts())

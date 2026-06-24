@@ -1533,14 +1533,9 @@ class _WriterCyclicAdmissionDecision:
         ):
             valid = (
                 self.readiness_gate.ready
-                and self.public_profile is not None
-                and self.public_profile.supported
+                and self.public_profile is None
                 and self.execution_capability_certificate is not None
                 and self.execution_capability_certificate.ready
-                and (
-                    self.execution_capability_certificate.required_capabilities
-                    <= self.execution_capability_certificate.supported_capabilities
-                )
             )
         elif (
             self.kind
@@ -1571,7 +1566,7 @@ class _WriterCyclicAdmissionDecision:
             )
         ):
             valid = (
-                (self.readiness_gate.ready or self.readiness_gate.blocked)
+                self.readiness_gate.blocked
                 and self.public_profile is not None
                 and not self.public_profile.supported
             )
@@ -1584,8 +1579,7 @@ class _WriterCyclicAdmissionDecision:
         ):
             valid = (
                 self.readiness_gate.ready
-                and self.public_profile is not None
-                and self.public_profile.supported
+                and self.public_profile is None
                 and self.execution_capability_certificate is not None
                 and not self.execution_capability_certificate.ready
             )
@@ -4868,45 +4862,31 @@ def _cyclic_writer_admission_decision_from_readiness_gate(
     prepared: SouthStarPreparedMol,
 ) -> _WriterCyclicAdmissionDecision:
     if gate.ready:
-        profile = _writer_public_cyclic_opening_profile_report(
-            prepared=prepared,
-        )
-        if _PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED and profile.supported:
-            certificate = _writer_public_execution_capability_certificate(
-                gate.audit,
-            )
-            if not certificate.ready:
-                return _WriterCyclicAdmissionDecision(
-                    kind=(
-                        _WriterCyclicAdmissionDecisionKind
-                        .BLOCKED_PUBLIC_EXECUTION_CAPABILITY
-                    ),
-                    readiness_gate=gate,
-                    public_profile=profile,
-                    execution_capability_certificate=certificate,
-                )
-            return _WriterCyclicAdmissionDecision(
-                kind=_WriterCyclicAdmissionDecisionKind.READY_PUBLIC,
-                readiness_gate=gate,
-                public_profile=profile,
-                execution_capability_certificate=certificate,
-            )
-        if _PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED:
+        if not _PUBLIC_CYCLIC_WRITER_SHAPED_ENABLED:
             return _WriterCyclicAdmissionDecision(
                 kind=(
                     _WriterCyclicAdmissionDecisionKind
-                    .BLOCKED_PUBLIC_CYCLIC_PROFILE
+                    .READY_BUT_PUBLIC_CLOSED
                 ),
                 readiness_gate=gate,
-                public_profile=profile,
+            )
+
+        certificate = _writer_public_execution_capability_certificate(
+            gate.audit,
+        )
+        if not certificate.ready:
+            return _WriterCyclicAdmissionDecision(
+                kind=(
+                    _WriterCyclicAdmissionDecisionKind
+                    .BLOCKED_PUBLIC_EXECUTION_CAPABILITY
+                ),
+                readiness_gate=gate,
+                execution_capability_certificate=certificate,
             )
         return _WriterCyclicAdmissionDecision(
-            kind=(
-                _WriterCyclicAdmissionDecisionKind
-                .READY_BUT_PUBLIC_CLOSED
-            ),
+            kind=_WriterCyclicAdmissionDecisionKind.READY_PUBLIC,
             readiness_gate=gate,
-            public_profile=profile,
+            execution_capability_certificate=certificate,
         )
 
     if gate.blocked:

@@ -22,7 +22,6 @@ from .policy import DirectionMark
 from .policy import TetraToken
 from .prepared_runtime import SouthStarPreparedMol
 from .prepared_runtime import SouthStarRuntimeOptions
-from .prepared_runtime import _prepared_has_cyclic_writer_graph_surface
 from .prepared_runtime import require_writer_shaped_runtime_options
 from .prepared_runtime import runtime_root_atom_for_prepared
 from .residual_constraints import ResidualStore
@@ -137,14 +136,27 @@ def capture_writer_frontier_snapshot(
         cursor=cursor,
         decoder_boundary=decoder_boundary,
     )
-    _assert_public_writer_snapshot_cyclic_admission(
-        snapshot,
+    _checked_public_writer_frontier_cursor(
         prepared=prepared,
+        cursor=snapshot.cursor,
     )
     return snapshot
 
 
-def _initial_public_writer_shaped_frontier_cursor_after_admission(
+def _checked_public_writer_frontier_cursor(
+    *,
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+) -> WriterFrontierCursor:
+    _checked_writer_frontier_choice_snapshot(
+        prepared,
+        cursor,
+        include_counts=False,
+    )
+    return cursor
+
+
+def _initial_public_writer_shaped_frontier_cursor(
     *,
     prepared: SouthStarPreparedMol,
     runtime_options: SouthStarRuntimeOptions,
@@ -157,18 +169,10 @@ def _initial_public_writer_shaped_frontier_cursor_after_admission(
         runtime_options,
     )
 
-    if _prepared_has_cyclic_writer_graph_surface(prepared):
-        decision = _cyclic_writer_admission_decision_from_cursor(
-            prepared=prepared,
-            runtime_options=runtime_options,
-            cursor=cursor,
-        )
-        _assert_cyclic_writer_admission_decision(
-            decision,
-            prepared=prepared,
-        )
-
-    return cursor
+    return _checked_public_writer_frontier_cursor(
+        prepared=prepared,
+        cursor=cursor,
+    )
 
 
 def capture_initial_writer_frontier_snapshot(
@@ -177,7 +181,7 @@ def capture_initial_writer_frontier_snapshot(
     runtime_options: SouthStarRuntimeOptions,
     decoder_boundary: WriterDecoderBoundary = WriterDecoderBoundary(),
 ) -> WriterSearchSnapshot:
-    cursor = _initial_public_writer_shaped_frontier_cursor_after_admission(
+    cursor = _initial_public_writer_shaped_frontier_cursor(
         prepared=prepared,
         runtime_options=runtime_options,
     )
@@ -194,13 +198,13 @@ def writer_frontier_cursor_from_snapshot(
     *,
     prepared: SouthStarPreparedMol,
 ) -> WriterFrontierCursor:
-    _assert_public_writer_snapshot_cyclic_admission(
+    cursor = _validated_writer_frontier_cursor_from_snapshot(
         snapshot,
         prepared=prepared,
     )
-    return _validated_writer_frontier_cursor_from_snapshot(
-        snapshot,
+    return _checked_public_writer_frontier_cursor(
         prepared=prepared,
+        cursor=cursor,
     )
 
 
@@ -2536,32 +2540,11 @@ def _iter_writer_frontier_support_suffixes_after_emitted_texts(
     )
 
 
-def _assert_public_writer_snapshot_cyclic_admission(
-    snapshot: WriterSearchSnapshot,
-    *,
-    prepared: SouthStarPreparedMol,
-) -> None:
-    if not _prepared_has_cyclic_writer_graph_surface(prepared):
-        return
-    decision = _cyclic_writer_admission_decision_from_snapshot(
-        snapshot,
-        prepared=prepared,
-    )
-    _assert_cyclic_writer_admission_decision(
-        decision,
-        prepared=prepared,
-    )
-
-
 def resume_writer_frontier_choices_from_snapshot(
     snapshot: WriterSearchSnapshot,
     *,
     prepared: SouthStarPreparedMol,
 ) -> WriterFrontierChoices:
-    _assert_public_writer_snapshot_cyclic_admission(
-        snapshot,
-        prepared=prepared,
-    )
     return _writer_frontier_choices_after_emitted_texts(
         snapshot,
         prepared=prepared,
@@ -2575,31 +2558,11 @@ def advance_writer_frontier_snapshot(
     prepared: SouthStarPreparedMol,
     emitted_text: str,
 ) -> WriterSearchSnapshot:
-    _assert_public_writer_snapshot_cyclic_admission(
+    return _advance_writer_search_snapshot_by_emitted_text(
         snapshot,
         prepared=prepared,
+        emitted_text=emitted_text,
     )
-
-    outcome = (
-        _checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
-            snapshot,
-            prepared=prepared,
-            emitted_texts=(emitted_text,),
-            include_counts=False,
-        )
-    )
-
-    advanced_snapshot = outcome.replay_outcome.advanced_snapshot
-    if advanced_snapshot is None:
-        raise AssertionError(
-            "checked writer snapshot advance did not produce snapshot"
-        )
-
-    _assert_public_writer_snapshot_cyclic_admission(
-        advanced_snapshot,
-        prepared=prepared,
-    )
-    return advanced_snapshot
 
 
 def validate_writer_search_snapshot(

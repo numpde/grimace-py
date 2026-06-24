@@ -34,7 +34,7 @@ def enumerate_prepared_writer_shaped_support(
 ) -> SupportImage:
     require_writer_shaped_runtime_options(runtime_options)
     runtime_root_atom_for_prepared(runtime_options, prepared=prepared)
-    cursor = writer_snapshot._initial_public_writer_shaped_frontier_cursor_after_admission(
+    cursor = writer_snapshot._initial_public_writer_shaped_frontier_cursor(
         prepared=prepared,
         runtime_options=runtime_options,
     )

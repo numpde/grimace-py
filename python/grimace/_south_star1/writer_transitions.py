@@ -821,6 +821,16 @@ class _WriterNextTokenFrontierEntry:
             for support in self.supports
         )
 
+    @property
+    def execution_capabilities(
+        self,
+    ) -> frozenset[_WriterExecutionCapabilityKind]:
+        return frozenset(
+            capability
+            for support in self.supports
+            for capability in support.execution_capabilities
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class _WriterScheduledActionEmissionBatch:

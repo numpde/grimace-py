@@ -13,6 +13,9 @@ from .errors import SouthStarError
 from .errors import SouthStarErrorKind
 from .ids import AtomId
 from .writer_capabilities import _WriterExecutionCapabilityKind
+from .writer_capabilities import (
+    _unsupported_public_writer_execution_capabilities,
+)
 from .writer_state import ComponentCursor
 from .writer_state import ObligationState
 from .writer_state import WriterAtomFrame
@@ -872,6 +875,16 @@ class _WriterFrontierNextTokenEntry:
         return tuple(
             support.policy_family
             for support in self.supports
+        )
+
+    @property
+    def execution_capabilities(
+        self,
+    ) -> frozenset[_WriterExecutionCapabilityKind]:
+        return frozenset(
+            capability
+            for support in self.supports
+            for capability in support.execution_capabilities
         )
 
     @property
@@ -1746,15 +1759,20 @@ def _checked_writer_frontier_choice_snapshot(
     snapshot = _writer_frontier_choice_snapshot(
         prepared,
         cursor,
-        include_counts=include_counts,
+        include_counts=False,
         stop_after_first_blocked=True,
     )
 
-    _raise_for_writer_frontier_schedule_outcome_blockers(
-        snapshot.schedule_outcome,
-    )
+    _raise_for_writer_frontier_choice_snapshot_blockers(snapshot)
 
-    return snapshot
+    if not include_counts:
+        return snapshot
+
+    return _writer_frontier_choice_snapshot_from_schedule_outcome(
+        prepared,
+        snapshot.schedule_outcome,
+        include_counts=True,
+    )
 
 
 def writer_frontier_choices(
@@ -2166,6 +2184,65 @@ def _raise_for_writer_frontier_schedule_outcome_blockers(
         )
 
 
+def _raise_for_writer_frontier_residual_cyclic_policy_blockers(
+    outcome: _WriterFrontierScheduleOutcome,
+) -> None:
+    if outcome.residual_cyclic_policy_is_blocked:
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            "WRITER_SHAPED residual cyclic graph policy is unsupported",
+        )
+
+
+def _raise_for_writer_frontier_execution_capability_blockers(
+    outcome: _WriterFrontierScheduleOutcome,
+) -> None:
+    terminal = _unsupported_public_writer_execution_capabilities(
+        outcome.terminal_execution_capabilities
+    )
+    if terminal:
+        kind = min(terminal, key=lambda item: item.value)
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            (
+                "WRITER_SHAPED requires an unsupported South Star "
+                f"execution capability: {kind.value}; at EOS"
+            ),
+        )
+
+    for entry in sorted(
+        outcome.next_token_frontier,
+        key=lambda item: item.emitted_text,
+    ):
+        unsupported = _unsupported_public_writer_execution_capabilities(
+            entry.execution_capabilities
+        )
+        if unsupported:
+            kind = min(unsupported, key=lambda item: item.value)
+            raise SouthStarError(
+                SouthStarErrorKind.UNSUPPORTED_POLICY,
+                (
+                    "WRITER_SHAPED requires an unsupported South Star "
+                    f"execution capability: {kind.value}; "
+                    f"next={entry.emitted_text!r}"
+                ),
+            )
+
+
+def _raise_for_writer_frontier_choice_snapshot_blockers(
+    snapshot: _WriterFrontierChoiceSnapshot,
+) -> None:
+    _raise_for_writer_frontier_schedule_outcome_blockers(
+        snapshot.schedule_outcome
+    )
+    _raise_for_writer_frontier_residual_cyclic_policy_blockers(
+        snapshot.schedule_outcome
+    )
+    _raise_for_writer_frontier_execution_capability_blockers(
+        snapshot.schedule_outcome
+    )
+
+
 def _checked_writer_frontier_schedule_outcome(
     prepared: SouthStarPreparedMol,
     cursor: WriterFrontierCursor,
@@ -2177,6 +2254,8 @@ def _checked_writer_frontier_schedule_outcome(
     )
 
     _raise_for_writer_frontier_schedule_outcome_blockers(outcome)
+    _raise_for_writer_frontier_residual_cyclic_policy_blockers(outcome)
+    _raise_for_writer_frontier_execution_capability_blockers(outcome)
 
     return outcome
 

@@ -17,6 +17,7 @@ from unittest.mock import patch
 
 import grimace._south_star1.writer_frontier as writer_frontier_module
 import grimace._south_star1.writer_graph_obligations as writer_graph_obligations
+import grimace._south_star1.writer_capabilities as writer_capabilities
 import grimace._south_star1.writer_support as writer_support
 import grimace._south_star1.writer_snapshot as writer_snapshot
 import grimace._south_star1.writer_state as writer_state_module
@@ -7262,11 +7263,11 @@ class WriterStateKernelTest(unittest.TestCase):
         unchecked_snapshot.assert_called_once_with(
             prepared,
             cursor,
-            include_counts=True,
+            include_counts=False,
             stop_after_first_blocked=True,
         )
 
-    def test_checked_writer_frontier_choice_snapshot_returns_scheduled_unchecked_snapshot(self) -> None:
+    def test_checked_writer_frontier_choice_snapshot_returns_unchecked_snapshot_without_counts(self) -> None:
         prepared = _prepare(chain_facts(("C", "C")))
         cursor = initial_writer_frontier_cursor(prepared, _writer_options())
         snapshot = writer_frontier_module._WriterFrontierChoiceSnapshot(
@@ -7287,6 +7288,7 @@ class WriterStateKernelTest(unittest.TestCase):
             result = writer_frontier_module._checked_writer_frontier_choice_snapshot(
                 prepared,
                 cursor,
+                include_counts=False,
             )
 
         self.assertIs(result, snapshot)
@@ -14825,6 +14827,177 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
 
+    def _assert_live_frontier_capability_blocked(
+        self,
+        *,
+        prepared: SouthStarPreparedMol,
+        runtime_options: SouthStarRuntimeOptions,
+        cursor: WriterFrontierCursor,
+        snapshot: writer_snapshot.WriterSearchSnapshot,
+        capability: writer_snapshot._WriterExecutionCapabilityKind,
+        next_text: str,
+    ) -> None:
+        supported = (
+            writer_capabilities
+            ._PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES
+            - {capability}
+        )
+        target = (
+            "grimace._south_star1.writer_capabilities"
+            "._PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES"
+        )
+
+        def assert_blocked(label: str, thunk) -> None:
+            with self.subTest(operation=label):
+                with patch(target, supported):
+                    with self.assertRaises(SouthStarError) as raised:
+                        thunk()
+                self.assertIs(
+                    raised.exception.kind,
+                    SouthStarErrorKind.UNSUPPORTED_POLICY,
+                )
+                message = str(raised.exception)
+                self.assertIn(capability.value, message)
+                self.assertIn(f"next={next_text!r}", message)
+
+        with patch(target, supported), patch(
+            "grimace._south_star1.writer_frontier._count_writer_frontier_support",
+            side_effect=AssertionError("count work should be unreachable"),
+        ):
+            with self.assertRaises(SouthStarError) as raised:
+                writer_frontier_choices(prepared, cursor)
+        self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+        self.assertIn(capability.value, str(raised.exception))
+        self.assertIn(f"next={next_text!r}", str(raised.exception))
+
+        assert_blocked(
+            "choices",
+            lambda: writer_frontier_choices(prepared, cursor),
+        )
+        assert_blocked(
+            "support_count",
+            lambda: count_writer_frontier_support(
+                prepared,
+                cursor.support_state,
+            ),
+        )
+        assert_blocked(
+            "completion_count",
+            lambda: count_writer_cursor_completions(prepared, cursor),
+        )
+        assert_blocked(
+            "stream",
+            lambda: tuple(iter_writer_frontier_support(prepared, cursor)),
+        )
+        assert_blocked(
+            "snapshot_resume",
+            lambda: writer_snapshot.resume_writer_frontier_choices_from_snapshot(
+                snapshot,
+                prepared=prepared,
+            ),
+        )
+        assert_blocked(
+            "snapshot_advance",
+            lambda: writer_snapshot.advance_writer_frontier_snapshot(
+                snapshot,
+                prepared=prepared,
+                emitted_text=next_text,
+            ),
+        )
+        self.assertEqual(snapshot.runtime_options, runtime_options)
+
+    def test_live_frontier_blocks_unsupported_tree_child_entry_capability(
+        self,
+    ) -> None:
+        prepared = _prepare(chain_facts(("C", "O")))
+        options = _writer_options(rooted_at_atom=0)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+        initial = writer_snapshot.capture_initial_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+        )
+
+        root_choice = writer_frontier_choices(prepared, cursor).choices[0]
+        self.assertEqual(root_choice.emitted_text, "C")
+        cursor = root_choice.successor
+        snapshot = writer_snapshot.advance_writer_frontier_snapshot(
+            initial,
+            prepared=prepared,
+            emitted_text="C",
+        )
+        next_text = writer_frontier_choices(prepared, cursor).choices[0].emitted_text
+        self.assertEqual(next_text, "O")
+
+        self._assert_live_frontier_capability_blocked(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+            snapshot=snapshot,
+            capability=(
+                writer_snapshot
+                ._WriterExecutionCapabilityKind
+                .TREE_CHILD_ENTRY
+            ),
+            next_text=next_text,
+        )
+
+    def test_live_frontier_blocks_unsupported_concurrent_closure_capability(
+        self,
+    ) -> None:
+        prepared = _prepare(bridge_separated_triangles_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+        path = next(
+            path
+            for path in _branch_terminal_paths(prepared, cursor)
+            if any(
+                len(state.ring_state.open_endpoints) == 2
+                for state in path.states
+            )
+        )
+        two_open_index = next(
+            index
+            for index, state in enumerate(path.states)
+            if len(state.ring_state.open_endpoints) == 2
+        )
+        before_prefix = path.emissions[:two_open_index - 1]
+        next_text = path.emissions[two_open_index - 1]
+
+        snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+        )
+        for emitted_text in before_prefix:
+            snapshot = writer_snapshot.advance_writer_frontier_snapshot(
+                snapshot,
+                prepared=prepared,
+                emitted_text=emitted_text,
+            )
+
+        self.assertIn(
+            next_text,
+            {
+                choice.emitted_text
+                for choice in writer_frontier_choices(
+                    prepared,
+                    snapshot.cursor,
+                ).choices
+            },
+        )
+
+        self._assert_live_frontier_capability_blocked(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=snapshot.cursor,
+            snapshot=snapshot,
+            capability=(
+                writer_snapshot
+                ._WriterExecutionCapabilityKind
+                .CONCURRENT_CLOSURE_ENDPOINT_OPEN
+            ),
+            next_text=next_text,
+        )
+
     def test_writer_frontier_counts_duplicate_token_paths_to_same_state(self) -> None:
         prepared = prepare_south_star_mol_from_facts(
             chain_facts(("C",)),
@@ -15612,7 +15785,7 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
         with patch(
-            "grimace._south_star1.writer_snapshot"
+            "grimace._south_star1.writer_capabilities"
             "._PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES",
             (
                 decision
@@ -15960,7 +16133,7 @@ class WriterStateKernelTest(unittest.TestCase):
         )
         for capability in (visible_tree, visible_closure):
             with patch(
-                "grimace._south_star1.writer_snapshot"
+                "grimace._south_star1.writer_capabilities"
                 "._PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES",
                 (
                     decision
@@ -16186,7 +16359,7 @@ class WriterStateKernelTest(unittest.TestCase):
         assert decision.execution_capability_certificate is not None
         for capability in (visible_tree, visible_closure):
             with patch(
-                "grimace._south_star1.writer_snapshot"
+                "grimace._south_star1.writer_capabilities"
                 "._PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES",
                 (
                     decision
@@ -16808,7 +16981,7 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
         with patch(
-            "grimace._south_star1.writer_snapshot"
+            "grimace._south_star1.writer_capabilities"
             "._PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES",
             (
                 decision
@@ -17072,7 +17245,7 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIn(disabled, required)
 
         with patch(
-            "grimace._south_star1.writer_snapshot"
+            "grimace._south_star1.writer_capabilities"
             "._PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES",
             baseline.execution_capability_certificate.supported_capabilities
             - {disabled},
@@ -17175,7 +17348,7 @@ class WriterStateKernelTest(unittest.TestCase):
                     - {capability}
                 )
                 with patch(
-                    "grimace._south_star1.writer_snapshot"
+                    "grimace._south_star1.writer_capabilities"
                     "._PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES",
                     supported,
                 ):
@@ -18260,9 +18433,9 @@ class WriterStateKernelTest(unittest.TestCase):
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
 
         with patch(
-            "grimace._south_star1.writer_snapshot"
+            "grimace._south_star1.writer_capabilities"
             "._PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES",
-            writer_snapshot._PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES
+            writer_capabilities._PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES
             - {
                 writer_snapshot
                 ._WriterExecutionCapabilityKind

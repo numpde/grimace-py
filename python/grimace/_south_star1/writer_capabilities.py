@@ -65,7 +65,14 @@ _PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES = frozenset(
 )
 
 
+def _unsupported_public_writer_execution_capabilities(
+    capabilities: frozenset[_WriterExecutionCapabilityKind],
+) -> frozenset[_WriterExecutionCapabilityKind]:
+    return capabilities - _PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES
+
+
 __all__ = (
     "_PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES",
     "_WriterExecutionCapabilityKind",
+    "_unsupported_public_writer_execution_capabilities",
 )

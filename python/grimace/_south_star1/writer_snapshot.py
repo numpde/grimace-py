@@ -27,7 +27,7 @@ from .prepared_runtime import require_writer_shaped_runtime_options
 from .prepared_runtime import runtime_root_atom_for_prepared
 from .residual_constraints import ResidualStore
 from .residual_constraints import ResidualStoreValueSnapshot
-from .writer_capabilities import _PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES
+from . import writer_capabilities as _writer_capabilities
 from .writer_capabilities import _WriterExecutionCapabilityKind
 from .writer_graph_obligations import WriterBoundaryOwnerKind
 from .writer_graph_obligations import WriterEdgeObligationKind
@@ -46,7 +46,7 @@ from .writer_frontier import _WriterFrontierChoiceResidualAttachmentEvidence
 from .writer_frontier import _WriterFrontierChoiceSnapshot
 from .writer_frontier import _WriterFrontierChoiceSnapshotEntry
 from .writer_frontier import _checked_writer_frontier_choice_snapshot
-from .writer_frontier import _raise_for_writer_frontier_schedule_outcome_blockers
+from .writer_frontier import _raise_for_writer_frontier_choice_snapshot_blockers
 from .writer_frontier import _residual_cyclic_policy_readiness_report
 from .writer_frontier import _initial_writer_transition_frontier_cursor
 from .writer_frontier import _writer_frontier_choice_snapshot
@@ -1646,10 +1646,11 @@ def _writer_frontier_choice_snapshot_after_emitted_texts(
 def _raise_for_writer_snapshot_advance_outcome_errors(
     outcome: _WriterSnapshotAdvanceOutcome,
 ) -> None:
+    _raise_for_writer_frontier_choice_snapshot_blockers(
+        outcome.choice_snapshot
+    )
+
     if outcome.kind is _WriterSnapshotAdvanceOutcomeKind.BLOCKED:
-        _raise_for_writer_frontier_schedule_outcome_blockers(
-            outcome.choice_snapshot.schedule_outcome,
-        )
         return
 
     if (
@@ -1668,6 +1669,9 @@ def _raise_for_writer_snapshot_advance_outcome_errors(
 def _raise_for_writer_snapshot_advance_sequence_outcome_errors(
     outcome: _WriterSnapshotAdvanceSequenceOutcome,
 ) -> None:
+    for step in outcome.step_outcomes:
+        _raise_for_writer_snapshot_advance_outcome_errors(step)
+
     failed = outcome.failed_outcome
 
     if failed is None:
@@ -1679,13 +1683,14 @@ def _raise_for_writer_snapshot_advance_sequence_outcome_errors(
 def _raise_for_writer_snapshot_replay_choice_snapshot_outcome_errors(
     outcome: _WriterSnapshotReplayChoiceSnapshotOutcome,
 ) -> None:
+    _raise_for_writer_snapshot_advance_sequence_outcome_errors(
+        outcome.sequence_outcome
+    )
+
     if (
         outcome.kind
         is _WriterSnapshotReplayChoiceSnapshotOutcomeKind.REPLAY_BLOCKED
     ):
-        _raise_for_writer_snapshot_advance_sequence_outcome_errors(
-            outcome.sequence_outcome
-        )
         return
 
     if (
@@ -1695,9 +1700,6 @@ def _raise_for_writer_snapshot_replay_choice_snapshot_outcome_errors(
             .INVALID_EMITTED_TEXT
         )
     ):
-        _raise_for_writer_snapshot_advance_sequence_outcome_errors(
-            outcome.sequence_outcome
-        )
         return
 
     if outcome.choice_snapshot is None:
@@ -1706,8 +1708,8 @@ def _raise_for_writer_snapshot_replay_choice_snapshot_outcome_errors(
             "replay choice snapshot outcome did not contain a choice snapshot",
         )
 
-    _raise_for_writer_frontier_schedule_outcome_blockers(
-        outcome.choice_snapshot.schedule_outcome,
+    _raise_for_writer_frontier_choice_snapshot_blockers(
+        outcome.choice_snapshot
     )
 
 
@@ -2243,8 +2245,14 @@ def _writer_public_execution_capability_certificate(
     audit: _WriterResidualCyclicReadinessAudit,
 ) -> _WriterPublicExecutionCapabilityCertificate:
     required = audit.required_execution_capabilities
-    supported = _PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES
-    unsupported = required - supported
+    supported = (
+        _writer_capabilities
+        ._PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES
+    )
+    unsupported = (
+        _writer_capabilities
+        ._unsupported_public_writer_execution_capabilities(required)
+    )
 
     first_by_kind: dict[
         _WriterExecutionCapabilityKind,

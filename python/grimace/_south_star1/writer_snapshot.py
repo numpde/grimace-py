@@ -163,7 +163,10 @@ def _initial_public_writer_shaped_frontier_cursor_after_admission(
             runtime_options=runtime_options,
             cursor=cursor,
         )
-        _assert_cyclic_writer_admission_decision(decision)
+        _assert_cyclic_writer_admission_decision(
+            decision,
+            prepared=prepared,
+        )
 
     return cursor
 
@@ -1275,7 +1278,6 @@ class _WriterPublicExecutionCapabilityCertificate:
 class _WriterCyclicAdmissionDecisionKind(Enum):
     READY_PUBLIC = "ready_public"
     READY_BUT_PUBLIC_CLOSED = "ready_but_public_closed"
-    BLOCKED_PUBLIC_CYCLIC_PROFILE = "blocked_public_cyclic_profile"
     BLOCKED_PUBLIC_EXECUTION_CAPABILITY = "blocked_public_execution_capability"
     BLOCKED_RESIDUAL_CYCLIC_POLICY = "blocked_residual_cyclic_policy"
     TRUNCATED_READINESS_AUDIT = "truncated_readiness_audit"
@@ -1356,22 +1358,6 @@ _PUBLIC_CYCLIC_SUPPORTED_CAPABILITIES = frozenset(
         _WriterPublicCyclicRequiredCapability.FUSED_OR_BRIDGED_TOPOLOGY,
     }
 )
-
-
-def _closure_policy_blocker_capability_for_order(
-    order: BondOrder,
-) -> _WriterPublicCyclicRequiredCapability:
-    if order in {BondOrder.DOUBLE, BondOrder.TRIPLE}:
-        return (
-            _WriterPublicCyclicRequiredCapability
-            .RING_CORE_NON_SINGLE_CLOSURE_BOND
-        )
-    if order is BondOrder.AROMATIC:
-        return _WriterPublicCyclicRequiredCapability.RING_CORE_AROMATIC_BOND_TEXT
-    return (
-        _WriterPublicCyclicRequiredCapability
-        .RING_CORE_VISIBLE_SINGLE_CLOSURE_BOND_TEXT
-    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -1521,7 +1507,6 @@ class _WriterFusedRankTwoDiamondPolicyReport:
 class _WriterCyclicAdmissionDecision:
     kind: _WriterCyclicAdmissionDecisionKind
     readiness_gate: _WriterResidualCyclicReadinessGate
-    public_profile: _WriterPublicCyclicOpeningProfileReport | None = None
     execution_capability_certificate: (
         _WriterPublicExecutionCapabilityCertificate | None
     ) = None
@@ -1533,7 +1518,6 @@ class _WriterCyclicAdmissionDecision:
         ):
             valid = (
                 self.readiness_gate.ready
-                and self.public_profile is None
                 and self.execution_capability_certificate is not None
                 and self.execution_capability_certificate.ready
             )
@@ -1562,24 +1546,11 @@ class _WriterCyclicAdmissionDecision:
             self.kind
             is (
                 _WriterCyclicAdmissionDecisionKind
-                .BLOCKED_PUBLIC_CYCLIC_PROFILE
-            )
-        ):
-            valid = (
-                self.readiness_gate.blocked
-                and self.public_profile is not None
-                and not self.public_profile.supported
-            )
-        elif (
-            self.kind
-            is (
-                _WriterCyclicAdmissionDecisionKind
                 .BLOCKED_PUBLIC_EXECUTION_CAPABILITY
             )
         ):
             valid = (
                 self.readiness_gate.ready
-                and self.public_profile is None
                 and self.execution_capability_certificate is not None
                 and not self.execution_capability_certificate.ready
             )
@@ -1597,7 +1568,6 @@ class _WriterCyclicAdmissionDecision:
         return self.kind in {
             _WriterCyclicAdmissionDecisionKind.READY_PUBLIC,
             _WriterCyclicAdmissionDecisionKind.READY_BUT_PUBLIC_CLOSED,
-            _WriterCyclicAdmissionDecisionKind.BLOCKED_PUBLIC_CYCLIC_PROFILE,
             _WriterCyclicAdmissionDecisionKind
             .BLOCKED_PUBLIC_EXECUTION_CAPABILITY,
         }
@@ -4890,20 +4860,6 @@ def _cyclic_writer_admission_decision_from_readiness_gate(
         )
 
     if gate.blocked:
-        profile = _writer_public_profile_from_live_graph_policy_blocker(
-            prepared,
-            gate,
-        )
-        if profile is not None:
-            return _WriterCyclicAdmissionDecision(
-                kind=(
-                    _WriterCyclicAdmissionDecisionKind
-                    .BLOCKED_PUBLIC_CYCLIC_PROFILE
-                ),
-                readiness_gate=gate,
-                public_profile=profile,
-            )
-
         return _WriterCyclicAdmissionDecision(
             kind=(
                 _WriterCyclicAdmissionDecisionKind
@@ -4923,55 +4879,6 @@ def _cyclic_writer_admission_decision_from_readiness_gate(
     raise SouthStarError(
         SouthStarErrorKind.INTERNAL_INVARIANT,
         f"unknown residual cyclic readiness gate state: {gate.kind!r}",
-    )
-
-
-def _writer_public_profile_from_live_graph_policy_blocker(
-    prepared: SouthStarPreparedMol,
-    gate: _WriterResidualCyclicReadinessGate,
-) -> _WriterPublicCyclicOpeningProfileReport | None:
-    first = gate.first_blocked_prefix
-    if first is None:
-        return None
-
-    blockers = first.graph_policy_blockers
-    if not blockers:
-        return None
-
-    blocker = blockers[0]
-    if (
-        blocker.kind
-        is not (
-            _WriterActiveEmittedGraphPolicyBlockerKind
-            .EMPTY_CLOSURE_BOND_TEXT_RELATION
-        )
-    ):
-        return None
-
-    if blocker.bond is None:
-        return None
-
-    profile = _writer_public_cyclic_opening_profile_report(
-        prepared=prepared,
-    )
-    bond = prepared.graph_index.bond_by_id[blocker.bond]
-    unsupported = _closure_policy_blocker_capability_for_order(
-        bond.order,
-    )
-    return replace(
-        profile,
-        kind=(
-            _WriterPublicCyclicOpeningProfileKind
-            .BLOCKED_UNSUPPORTED_CLOSURE_BOND_SURFACE
-        ),
-        ring_core_unsupported_bond_count=max(
-            profile.ring_core_unsupported_bond_count,
-            1,
-        ),
-        unsupported_capabilities=frozenset({
-            *profile.unsupported_capabilities,
-            unsupported,
-        }),
     )
 
 
@@ -5046,33 +4953,11 @@ def _cyclic_writer_admission_decision_from_cursor(
 
 def _assert_cyclic_writer_admission_decision(
     decision: _WriterCyclicAdmissionDecision,
+    *,
+    prepared: SouthStarPreparedMol,
 ) -> _WriterCyclicAdmissionDecision:
     if decision.admitted_publicly:
         return decision
-
-    if decision.kind is (
-        _WriterCyclicAdmissionDecisionKind.BLOCKED_PUBLIC_CYCLIC_PROFILE
-    ):
-        unsupported = ""
-        if decision.public_profile is not None:
-            unsupported = ", ".join(
-                sorted(
-                    capability.value
-                    for capability in (
-                        decision.public_profile.unsupported_capabilities
-                    )
-                )
-            )
-            if unsupported:
-                unsupported = f" unsupported_capabilities=[{unsupported}]"
-
-        raise SouthStarError(
-            SouthStarErrorKind.UNSUPPORTED_POLICY,
-            (
-                "cyclic WRITER_SHAPED blocked by public opening profile: "
-                f"{decision.public_profile.kind.value!r}{unsupported}"
-            ),
-        )
 
     if decision.kind is (
         _WriterCyclicAdmissionDecisionKind.BLOCKED_PUBLIC_EXECUTION_CAPABILITY
@@ -5099,6 +4984,17 @@ def _assert_cyclic_writer_admission_decision(
 
     if decision.blocked:
         first = decision.first_blocked_prefix
+        if first is not None:
+            message = _live_graph_policy_block_message(
+                prepared=prepared,
+                blocked=first,
+            )
+            if message is not None:
+                raise SouthStarError(
+                    SouthStarErrorKind.UNSUPPORTED_POLICY,
+                    message,
+                )
+
         raise SouthStarError(
             SouthStarErrorKind.UNSUPPORTED_POLICY,
             (
@@ -5124,6 +5020,36 @@ def _assert_cyclic_writer_admission_decision(
         SouthStarErrorKind.INTERNAL_INVARIANT,
         f"unknown cyclic writer admission decision: {decision.kind!r}",
     )
+
+
+def _live_graph_policy_block_message(
+    *,
+    prepared: SouthStarPreparedMol,
+    blocked: _WriterResidualCyclicReadinessBlockedPrefix,
+) -> str | None:
+    for blocker in blocked.graph_policy_blockers:
+        if (
+            blocker.kind
+            is (
+                _WriterActiveEmittedGraphPolicyBlockerKind
+                .EMPTY_CLOSURE_BOND_TEXT_RELATION
+            )
+        ):
+            if blocker.bond is None:
+                raise SouthStarError(
+                    SouthStarErrorKind.INTERNAL_INVARIANT,
+                    "closure-policy blocker is missing its bond",
+                )
+
+            bond = prepared.graph_index.bond_by_id[blocker.bond]
+            return (
+                "cyclic WRITER_SHAPED blocked by live closure bond policy: "
+                f"bond={int(blocker.bond)}; "
+                f"order={bond.order.value}; "
+                f"prefix={blocked.emitted_texts!r}"
+            )
+
+    return None
 
 
 def _writer_execution_capability_block_message(
@@ -5256,7 +5182,10 @@ def _assert_public_writer_snapshot_cyclic_admission(
         snapshot,
         prepared=prepared,
     )
-    _assert_cyclic_writer_admission_decision(decision)
+    _assert_cyclic_writer_admission_decision(
+        decision,
+        prepared=prepared,
+    )
 
 
 def resume_writer_frontier_choices_from_snapshot(

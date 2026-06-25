@@ -19,6 +19,7 @@ import grimace._south_star1.writer_frontier as writer_frontier_module
 import grimace._south_star1.writer_graph_obligations as writer_graph_obligations
 import grimace._south_star1.writer_capabilities as writer_capabilities
 import grimace._south_star1.writer_support as writer_support
+import grimace._south_star1.writer_audit as writer_audit
 import grimace._south_star1.writer_snapshot as writer_snapshot
 import grimace._south_star1.writer_state as writer_state_module
 import grimace._south_star1.writer_transitions as writer_transitions
@@ -668,7 +669,7 @@ class _BranchTerminalPath:
     emissions: tuple[str, ...]
     states: tuple[WriterState, ...]
     terminal_state: WriterState
-    capabilities: frozenset[writer_snapshot._WriterExecutionCapabilityKind]
+    capabilities: frozenset[writer_capabilities._WriterExecutionCapabilityKind]
 
 
 @dataclass(frozen=True)
@@ -689,7 +690,7 @@ def _branch_terminal_paths(
         emissions: tuple[str, ...],
         states: tuple[WriterState, ...],
         capabilities: frozenset[
-            writer_snapshot._WriterExecutionCapabilityKind
+            writer_capabilities._WriterExecutionCapabilityKind
         ],
     ) -> None:
         terminal = (
@@ -1105,7 +1106,7 @@ def _assert_no_unreachable_open_closure_partners_under_private_replay(
 def _assert_replay_succeeds_for_execution_capability_uses(
     test_case: unittest.TestCase,
     *,
-    audit: writer_snapshot._WriterResidualCyclicReadinessAudit,
+    audit: writer_audit._WriterFrontierReachabilityAudit,
     snapshot: writer_snapshot.WriterSearchSnapshot,
     prepared: SouthStarPreparedMol,
 ) -> None:
@@ -1151,7 +1152,7 @@ def _assert_private_monocycle_attachment_audit_outcome(
     options = _writer_options(rooted_at_atom=0)
     cursor = _initial_writer_transition_frontier_cursor(prepared, options)
 
-    audit = writer_snapshot._audit_residual_cyclic_readiness_from_cursor(
+    audit = writer_audit._audit_writer_frontier_reachability_from_cursor(
         prepared=prepared,
         runtime_options=options,
         cursor=cursor,
@@ -2029,6 +2030,7 @@ class WriterStateKernelTest(unittest.TestCase):
                         emitted_text=emitted_text,
                         graph_action_surface=object(),
                         policy_family=family,
+                        execution_capabilities=frozenset(),
                     ),  # type: ignore[arg-type]
                     successor_key=successor_key,
                 ),
@@ -2058,11 +2060,12 @@ class WriterStateKernelTest(unittest.TestCase):
             parent_weight=parent_weight,
             schedule_support=SimpleNamespace(
                 emitted_text=emitted_text,
-                graph_action_surface=SimpleNamespace(
-                    residual_attachment_policy_key=residual_key,
-                ),
-                policy_family=policy_family,
-            ),  # type: ignore[arg-type]
+                    graph_action_surface=SimpleNamespace(
+                        residual_attachment_policy_key=residual_key,
+                    ),
+                    policy_family=policy_family,
+                    execution_capabilities=frozenset(),
+                ),  # type: ignore[arg-type]
             successor_key=writer_state_key(_raw_initial_state(successor_atom)),
         )
 
@@ -3203,7 +3206,7 @@ class WriterStateKernelTest(unittest.TestCase):
             replay_outcome=replay_outcome,
         )
 
-    def _test_residual_cyclic_readiness_ready_prefix_outcomes(
+    def _test_writer_frontier_reachability_ready_prefix_outcomes(
         self,
     ) -> dict[tuple[str, ...], writer_snapshot._WriterSnapshotPrefixReadOutcome]:
         active_outcome = self._test_active_owned_dead_closure_active_outcome()
@@ -3465,7 +3468,7 @@ class WriterStateKernelTest(unittest.TestCase):
             2,
         )
 
-    def test_writer_frontier_choices_use_schedule_outcome_not_legal_next_token_helper(self) -> None:
+    def test_writer_frontier_choices_use_state_expansion_not_legal_next_token_helper(self) -> None:
         prepared = _prepare(chain_facts(("C", "C")))
         cursor = initial_writer_frontier_cursor(prepared, _writer_options())
 
@@ -3485,15 +3488,21 @@ class WriterStateKernelTest(unittest.TestCase):
                 "writer_frontier used legal next-token frontier helper"
             ),
         ), patch(
-            "grimace._south_star1.writer_frontier._legal_writer_schedule_outcome",
-            wraps=writer_frontier_module._legal_writer_schedule_outcome,
-        ) as schedule_outcome:
+            (
+                "grimace._south_star1.writer_frontier"
+                "._writer_state_expansion_outcome_from_validated_prepared"
+            ),
+            wraps=(
+                writer_frontier_module
+                ._writer_state_expansion_outcome_from_validated_prepared
+            ),
+        ) as state_expansion:
             choices = writer_frontier_choices(prepared, cursor)
 
         self.assertEqual(tuple(choice.emitted_text for choice in choices.choices), ("C",))
-        self.assertGreater(schedule_outcome.call_count, 0)
+        self.assertGreater(state_expansion.call_count, 0)
 
-    def test_count_writer_cursor_completions_use_schedule_outcome_not_legal_next_token_helper(self) -> None:
+    def test_count_writer_cursor_completions_use_state_expansion_not_legal_next_token_helper(self) -> None:
         prepared = _prepare(chain_facts(("C", "C")))
         cursor = initial_writer_frontier_cursor(prepared, _writer_options())
 
@@ -3503,13 +3512,19 @@ class WriterStateKernelTest(unittest.TestCase):
                 "completion count used legal next-token frontier helper"
             ),
         ), patch(
-            "grimace._south_star1.writer_frontier._legal_writer_schedule_outcome",
-            wraps=writer_frontier_module._legal_writer_schedule_outcome,
-        ) as schedule_outcome:
+            (
+                "grimace._south_star1.writer_frontier"
+                "._writer_state_expansion_outcome_from_validated_prepared"
+            ),
+            wraps=(
+                writer_frontier_module
+                ._writer_state_expansion_outcome_from_validated_prepared
+            ),
+        ) as state_expansion:
             count = count_writer_cursor_completions(prepared, cursor)
 
         self.assertEqual(count, 2)
-        self.assertGreater(schedule_outcome.call_count, 0)
+        self.assertGreater(state_expansion.call_count, 0)
 
     def test_writer_frontier_residual_attachment_support_groups_preserve_order(self) -> None:
         key_7 = writer_transitions._WriterResidualAttachmentPolicyKey(
@@ -5713,9 +5728,23 @@ class WriterStateKernelTest(unittest.TestCase):
             )
         )
 
+        expansion = writer_transitions._WriterStateExpansionOutcome(
+            context=writer_transitions.build_writer_transition_expansion_context(
+                prepared,
+                writer_state_module.writer_state_from_key(cursor.weighted_states[0][0]),
+            ),
+            terminal_outcome=writer_transitions._WriterTerminalizationOutcome(
+                state=None,
+            ),
+            schedule_outcome=blocked_top_level_outcome,
+        )
+
         with patch(
-            "grimace._south_star1.writer_frontier._legal_writer_schedule_outcome",
-            return_value=blocked_top_level_outcome,
+            (
+                "grimace._south_star1.writer_frontier"
+                "._writer_state_expansion_outcome_from_validated_prepared"
+            ),
+            return_value=expansion,
         ):
             outcome = writer_frontier_module._writer_frontier_schedule_outcome(
                 prepared,
@@ -5749,10 +5778,24 @@ class WriterStateKernelTest(unittest.TestCase):
             )
         )
 
+        first_expansion = writer_transitions._WriterStateExpansionOutcome(
+            context=writer_transitions.build_writer_transition_expansion_context(
+                prepared,
+                writer_state_module.writer_state_from_key(cursor.weighted_states[0][0]),
+            ),
+            terminal_outcome=writer_transitions._WriterTerminalizationOutcome(
+                state=None,
+            ),
+            schedule_outcome=blocked_top_level_outcome,
+        )
+
         with patch(
-            "grimace._south_star1.writer_frontier._legal_writer_schedule_outcome",
+            (
+                "grimace._south_star1.writer_frontier"
+                "._writer_state_expansion_outcome_from_validated_prepared"
+            ),
             side_effect=(
-                blocked_top_level_outcome,
+                first_expansion,
                 AssertionError("second state should not be scheduled"),
             ),
         ):
@@ -6872,8 +6915,8 @@ class WriterStateKernelTest(unittest.TestCase):
 
         with patch(
             (
-                "grimace._south_star1.writer_snapshot"
-                "._audit_residual_cyclic_readiness_from_snapshot"
+                "grimace._south_star1.writer_audit"
+                "._audit_writer_frontier_reachability_from_snapshot"
             ),
             side_effect=AssertionError("runtime performed recursive admission"),
         ):
@@ -6910,8 +6953,8 @@ class WriterStateKernelTest(unittest.TestCase):
 
         with patch(
             (
-                "grimace._south_star1.writer_snapshot"
-                "._audit_residual_cyclic_readiness_from_snapshot"
+                "grimace._south_star1.writer_audit"
+                "._audit_writer_frontier_reachability_from_snapshot"
             ),
             side_effect=AssertionError("runtime performed recursive admission"),
         ):
@@ -6971,8 +7014,8 @@ class WriterStateKernelTest(unittest.TestCase):
 
         with patch(
             (
-                "grimace._south_star1.writer_snapshot"
-                "._audit_residual_cyclic_readiness_from_snapshot"
+                "grimace._south_star1.writer_audit"
+                "._audit_writer_frontier_reachability_from_snapshot"
             ),
             side_effect=AssertionError("runtime performed recursive admission"),
         ):
@@ -7753,8 +7796,8 @@ class WriterStateKernelTest(unittest.TestCase):
 
         with patch(
             (
-                "grimace._south_star1.writer_snapshot"
-                "._audit_residual_cyclic_readiness_from_snapshot"
+                "grimace._south_star1.writer_audit"
+                "._audit_writer_frontier_reachability_from_snapshot"
             ),
             side_effect=AssertionError("runtime performed recursive admission"),
         ):
@@ -7796,8 +7839,8 @@ class WriterStateKernelTest(unittest.TestCase):
 
         with patch(
             (
-                "grimace._south_star1.writer_snapshot"
-                "._audit_residual_cyclic_readiness_from_snapshot"
+                "grimace._south_star1.writer_audit"
+                "._audit_writer_frontier_reachability_from_snapshot"
             ),
             side_effect=AssertionError("runtime performed recursive admission"),
         ):
@@ -13223,7 +13266,7 @@ class WriterStateKernelTest(unittest.TestCase):
         runtime_options: SouthStarRuntimeOptions,
         cursor: WriterFrontierCursor,
         snapshot: writer_snapshot.WriterSearchSnapshot,
-        capability: writer_snapshot._WriterExecutionCapabilityKind,
+        capability: writer_capabilities._WriterExecutionCapabilityKind,
         next_text: str,
     ) -> None:
         supported = (
@@ -13323,7 +13366,7 @@ class WriterStateKernelTest(unittest.TestCase):
             cursor=cursor,
             snapshot=snapshot,
             capability=(
-                writer_snapshot
+                writer_capabilities
                 ._WriterExecutionCapabilityKind
                 .TREE_CHILD_ENTRY
             ),
@@ -13378,7 +13421,7 @@ class WriterStateKernelTest(unittest.TestCase):
             writer_capabilities
             ._PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES
             - {
-                writer_snapshot
+                writer_capabilities
                 ._WriterExecutionCapabilityKind
                 .CONCURRENT_CLOSURE_ENDPOINT_OPEN
             }
@@ -13413,14 +13456,14 @@ class WriterStateKernelTest(unittest.TestCase):
             cursor=snapshot.cursor,
             snapshot=snapshot,
             capability=(
-                writer_snapshot
+                writer_capabilities
                 ._WriterExecutionCapabilityKind
                 .CONCURRENT_CLOSURE_ENDPOINT_OPEN
             ),
             next_text=next_text,
         )
 
-    def test_residual_cyclic_readiness_audit_records_live_closure_policy_blocker(
+    def test_writer_frontier_reachability_audit_records_live_closure_policy_blocker(
         self,
     ) -> None:
         prepared = _prepare_with_ordinary_policy_options_and_slots(
@@ -13440,7 +13483,7 @@ class WriterStateKernelTest(unittest.TestCase):
             options,
         )
 
-        audit = writer_snapshot._audit_residual_cyclic_readiness_from_cursor(
+        audit = writer_audit._audit_writer_frontier_reachability_from_cursor(
             prepared=prepared,
             runtime_options=options,
             cursor=cursor,
@@ -13471,8 +13514,8 @@ class WriterStateKernelTest(unittest.TestCase):
             cursor=cursor,
         )
         snapshot_audit = (
-            writer_snapshot
-            ._audit_residual_cyclic_readiness_from_snapshot(
+            writer_audit
+            ._audit_writer_frontier_reachability_from_snapshot(
                 snapshot,
                 prepared=prepared,
             )
@@ -13989,12 +14032,12 @@ class WriterStateKernelTest(unittest.TestCase):
             )
         )
         visible_tree = (
-            writer_snapshot
+            writer_capabilities
             ._WriterExecutionCapabilityKind
             .VISIBLE_TREE_BOND_TEXT
         )
         visible_closure = (
-            writer_snapshot
+            writer_capabilities
             ._WriterExecutionCapabilityKind
             .VISIBLE_CLOSURE_BOND_TEXT
         )
@@ -14226,17 +14269,17 @@ class WriterStateKernelTest(unittest.TestCase):
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         paths = _branch_terminal_paths(prepared, cursor)
         concurrent = (
-            writer_snapshot
+            writer_capabilities
             ._WriterExecutionCapabilityKind
             .CONCURRENT_CLOSURE_ENDPOINT_OPEN
         )
         closure_open = (
-            writer_snapshot
+            writer_capabilities
             ._WriterExecutionCapabilityKind
             .CLOSURE_ENDPOINT_OPEN
         )
         closure_pair = (
-            writer_snapshot
+            writer_capabilities
             ._WriterExecutionCapabilityKind
             .CLOSURE_ENDPOINT_PAIR
         )
@@ -14747,17 +14790,17 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_shared_directional_ring_carrier_branch_roles_are_public(self) -> None:
         prepared = _prepare_shared_directional_ring_carrier_monocycle()
         shared = (
-            writer_snapshot
+            writer_capabilities
             ._WriterExecutionCapabilityKind
             .SHARED_DIRECTIONAL_CARRIER_RESTRICTION
         )
         carrier = (
-            writer_snapshot
+            writer_capabilities
             ._WriterExecutionCapabilityKind
             .DIRECTIONAL_CARRIER_RESTRICTION
         )
         ring_pair = (
-            writer_snapshot
+            writer_capabilities
             ._WriterExecutionCapabilityKind
             .DIRECTIONAL_RING_PAIR_COMPATIBILITY
         )
@@ -14945,17 +14988,17 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
         visible_closure = (
-            writer_snapshot
+            writer_capabilities
             ._WriterExecutionCapabilityKind
             .VISIBLE_CLOSURE_BOND_TEXT
         )
         visible_tree = (
-            writer_snapshot
+            writer_capabilities
             ._WriterExecutionCapabilityKind
             .VISIBLE_TREE_BOND_TEXT
         )
         tetra_ring = (
-            writer_snapshot
+            writer_capabilities
             ._WriterExecutionCapabilityKind
             .TETRA_RING_ENDPOINT_ORDER_OCCURRENCE
         )
@@ -15698,7 +15741,7 @@ class WriterStateKernelTest(unittest.TestCase):
 
                 public = (
                     writer_snapshot
-                    ._initial_public_writer_shaped_frontier_cursor(
+                    ._initial_checked_writer_frontier_cursor(
                         prepared=prepared,
                         runtime_options=options,
                     )
@@ -15766,7 +15809,7 @@ class WriterStateKernelTest(unittest.TestCase):
         source = inspect.getsource(
             (
                 writer_snapshot
-                ._initial_public_writer_shaped_frontier_cursor
+                ._initial_checked_writer_frontier_cursor
             )
         )
 
@@ -15784,7 +15827,7 @@ class WriterStateKernelTest(unittest.TestCase):
             writer_snapshot.writer_frontier_cursor_from_snapshot,
             writer_snapshot.resume_writer_frontier_choices_from_snapshot,
             writer_snapshot.advance_writer_frontier_snapshot,
-            writer_snapshot._initial_public_writer_shaped_frontier_cursor,
+            writer_snapshot._initial_checked_writer_frontier_cursor,
         )
 
         for function in runtime_functions:
@@ -15792,7 +15835,7 @@ class WriterStateKernelTest(unittest.TestCase):
                 source = inspect.getsource(function)
                 self.assertNotIn("_cyclic_writer_admission_decision", source)
                 self.assertNotIn(
-                    "_audit_residual_cyclic_readiness",
+                    "_audit_writer_frontier_reachability",
                     source,
                 )
 
@@ -15805,7 +15848,7 @@ class WriterStateKernelTest(unittest.TestCase):
         calls: list[writer_snapshot.WriterFrontierCursor] = []
         original = (
             writer_snapshot
-            ._initial_public_writer_shaped_frontier_cursor
+            ._initial_checked_writer_frontier_cursor
         )
 
         def wrapped(*, prepared, runtime_options):
@@ -15819,7 +15862,7 @@ class WriterStateKernelTest(unittest.TestCase):
         with patch(
             (
                 "grimace._south_star1.writer_support.writer_snapshot"
-                "._initial_public_writer_shaped_frontier_cursor"
+                "._initial_checked_writer_frontier_cursor"
             ),
             side_effect=wrapped,
         ):
@@ -15839,7 +15882,7 @@ class WriterStateKernelTest(unittest.TestCase):
 
         helper_calls: list[writer_frontier_module.WriterFrontierCursor] = []
         original_helper = (
-            writer_snapshot._initial_public_writer_shaped_frontier_cursor
+            writer_snapshot._initial_checked_writer_frontier_cursor
         )
 
         def wrapped_helper(*, prepared, runtime_options):
@@ -15852,7 +15895,7 @@ class WriterStateKernelTest(unittest.TestCase):
 
         with patch(
             "grimace._south_star1.writer_support.writer_snapshot"
-            "._initial_public_writer_shaped_frontier_cursor",
+            "._initial_checked_writer_frontier_cursor",
             side_effect=wrapped_helper,
         ), patch(
             "grimace._south_star1.writer_frontier.initial_writer_frontier_cursor",
@@ -16706,7 +16749,7 @@ class WriterStateKernelTest(unittest.TestCase):
         self,
     ) -> None:
         capability = (
-            writer_snapshot._WriterExecutionCapabilityKind
+            writer_capabilities._WriterExecutionCapabilityKind
             .COUPLED_CYCLIC_ATTACHMENT_RESTRICTION
         )
         prepared = _prepare(fused_rank_two_facts())
@@ -16881,7 +16924,7 @@ class WriterStateKernelTest(unittest.TestCase):
         self,
     ) -> None:
         capability = (
-            writer_snapshot._WriterExecutionCapabilityKind
+            writer_capabilities._WriterExecutionCapabilityKind
             .COUPLED_CYCLIC_ATTACHMENT_RESTRICTION
         )
         prepared = _prepare(fused_rank_two_facts())
@@ -16942,7 +16985,7 @@ class WriterStateKernelTest(unittest.TestCase):
         self,
     ) -> None:
         capability = (
-            writer_snapshot._WriterExecutionCapabilityKind
+            writer_capabilities._WriterExecutionCapabilityKind
             .COUPLED_CYCLIC_ATTACHMENT_RESTRICTION
         )
 
@@ -24701,7 +24744,7 @@ class WriterStateKernelTest(unittest.TestCase):
             writer_frontier_module._WriterFrontierScheduleOutcome,
             writer_frontier_module._WriterFrontierChoiceSnapshot,
             writer_snapshot._WriterSnapshotPrefixReadOutcome,
-            writer_snapshot._WriterResidualCyclicReadinessBlockedPrefix,
+            writer_audit._WriterFrontierBlockedPrefix,
         ):
             for name in (
                 "residual_cyclic_policy_coverage_kinds",
@@ -24711,35 +24754,35 @@ class WriterStateKernelTest(unittest.TestCase):
                 with self.subTest(owner=owner, name=name):
                     self.assertFalse(hasattr(owner, name))
 
-    def test_residual_cyclic_readiness_audit_validates_payload_shape(self) -> None:
+    def test_writer_frontier_reachability_audit_validates_payload_shape(self) -> None:
         active_outcome = self._test_residual_cyclic_blocked_active_outcome(
             include_closure_emission=False,
         )
         choice_snapshot = self._test_residual_cyclic_blocked_choice_snapshot(
             active_outcome,
         )
-        blocked_prefix = writer_snapshot._WriterResidualCyclicReadinessBlockedPrefix(
+        blocked_prefix = writer_audit._WriterFrontierBlockedPrefix(
             emitted_texts=("C",),
             choice_snapshot=choice_snapshot,
         )
 
-        writer_snapshot._WriterResidualCyclicReadinessAudit(
-            kind=writer_snapshot._WriterResidualCyclicReadinessAuditKind.READY,
+        writer_audit._WriterFrontierReachabilityAudit(
+            kind=writer_audit._WriterFrontierReachabilityAuditKind.READY,
             visited_prefixes=((),),
         )
-        writer_snapshot._WriterResidualCyclicReadinessAudit(
+        writer_audit._WriterFrontierReachabilityAudit(
             kind=(
-                writer_snapshot
-                ._WriterResidualCyclicReadinessAuditKind
+                writer_audit
+                ._WriterFrontierReachabilityAuditKind
                 .BLOCKED
             ),
             visited_prefixes=((), ("C",)),
             blocked_prefixes=(blocked_prefix,),
         )
-        writer_snapshot._WriterResidualCyclicReadinessAudit(
+        writer_audit._WriterFrontierReachabilityAudit(
             kind=(
-                writer_snapshot
-                ._WriterResidualCyclicReadinessAuditKind
+                writer_audit
+                ._WriterFrontierReachabilityAuditKind
                 .TRUNCATED
             ),
             visited_prefixes=((), ("C",)),
@@ -24749,8 +24792,8 @@ class WriterStateKernelTest(unittest.TestCase):
         invalid_cases = (
             dict(
                 kind=(
-                    writer_snapshot
-                    ._WriterResidualCyclicReadinessAuditKind
+                    writer_audit
+                    ._WriterFrontierReachabilityAuditKind
                     .READY
                 ),
                 visited_prefixes=((),),
@@ -24758,16 +24801,16 @@ class WriterStateKernelTest(unittest.TestCase):
             ),
             dict(
                 kind=(
-                    writer_snapshot
-                    ._WriterResidualCyclicReadinessAuditKind
+                    writer_audit
+                    ._WriterFrontierReachabilityAuditKind
                     .BLOCKED
                 ),
                 visited_prefixes=((),),
             ),
             dict(
                 kind=(
-                    writer_snapshot
-                    ._WriterResidualCyclicReadinessAuditKind
+                    writer_audit
+                    ._WriterFrontierReachabilityAuditKind
                     .TRUNCATED
                 ),
                 visited_prefixes=((),),
@@ -24777,7 +24820,7 @@ class WriterStateKernelTest(unittest.TestCase):
         for kwargs in invalid_cases:
             with self.subTest(kwargs=kwargs):
                 with self.assertRaises(SouthStarError) as cm:
-                    writer_snapshot._WriterResidualCyclicReadinessAudit(
+                    writer_audit._WriterFrontierReachabilityAudit(
                         **kwargs,
                     )
 
@@ -24786,8 +24829,8 @@ class WriterStateKernelTest(unittest.TestCase):
                     SouthStarErrorKind.INTERNAL_INVARIANT,
                 )
 
-    def test_residual_cyclic_readiness_audit_reports_ready_for_supported_owner_fixture(self) -> None:
-        outcomes = self._test_residual_cyclic_readiness_ready_prefix_outcomes()
+    def test_writer_frontier_reachability_audit_reports_ready_for_supported_owner_fixture(self) -> None:
+        outcomes = self._test_writer_frontier_reachability_ready_prefix_outcomes()
         root_choices = outcomes[()].replay_outcome.choice_snapshot
         leaf_choices = outcomes[("C",)].replay_outcome.choice_snapshot
 
@@ -24822,7 +24865,7 @@ class WriterStateKernelTest(unittest.TestCase):
                 cursor=cursor,
             ),
         ):
-            audit = writer_snapshot._audit_residual_cyclic_readiness_from_snapshot(
+            audit = writer_audit._audit_writer_frontier_reachability_from_snapshot(
                 self._test_writer_search_snapshot(),
                 prepared=prepared_fixture,  # type: ignore[arg-type]
                 max_depth=2,
@@ -24835,8 +24878,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIn((), audit.visited_prefixes)
         self.assertIn(("C",), audit.visited_prefixes)
 
-    def test_residual_cyclic_readiness_audit_can_truncate_by_depth(self) -> None:
-        outcomes = self._test_residual_cyclic_readiness_ready_prefix_outcomes()
+    def test_writer_frontier_reachability_audit_can_truncate_by_depth(self) -> None:
+        outcomes = self._test_writer_frontier_reachability_ready_prefix_outcomes()
         root_choices = outcomes[()].replay_outcome.choice_snapshot
 
         with patch(
@@ -24855,7 +24898,7 @@ class WriterStateKernelTest(unittest.TestCase):
                 cursor=cursor,
             ),
         ):
-            audit = writer_snapshot._audit_residual_cyclic_readiness_from_snapshot(
+            audit = writer_audit._audit_writer_frontier_reachability_from_snapshot(
                 self._test_writer_search_snapshot(),
                 prepared=object(),  # type: ignore[arg-type]
                 max_depth=0,
@@ -24866,8 +24909,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIn((), audit.visited_prefixes)
         self.assertIn(("C",), audit.visited_prefixes)
 
-    def test_residual_cyclic_readiness_audit_uses_uncounted_prefix_reads(self) -> None:
-        outcomes = self._test_residual_cyclic_readiness_ready_prefix_outcomes()
+    def test_writer_frontier_reachability_audit_uses_uncounted_prefix_reads(self) -> None:
+        outcomes = self._test_writer_frontier_reachability_ready_prefix_outcomes()
         root_choices = outcomes[()].replay_outcome.choice_snapshot
         leaf_choices = outcomes[("C",)].replay_outcome.choice_snapshot
 
@@ -24905,7 +24948,7 @@ class WriterStateKernelTest(unittest.TestCase):
             ),
             side_effect=AssertionError("audit should not count completions"),
         ):
-            audit = writer_snapshot._audit_residual_cyclic_readiness_from_snapshot(
+            audit = writer_audit._audit_writer_frontier_reachability_from_snapshot(
                 self._test_writer_search_snapshot(),
                 prepared=object(),  # type: ignore[arg-type]
                 max_depth=2,
@@ -24913,7 +24956,7 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertTrue(audit.ready)
 
-    def test_residual_cyclic_readiness_audit_from_cursor_matches_snapshot(self) -> None:
+    def test_writer_frontier_reachability_audit_from_cursor_matches_snapshot(self) -> None:
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(
@@ -24926,12 +24969,12 @@ class WriterStateKernelTest(unittest.TestCase):
             cursor=cursor,
         )
 
-        cursor_audit = writer_snapshot._audit_residual_cyclic_readiness_from_cursor(
+        cursor_audit = writer_audit._audit_writer_frontier_reachability_from_cursor(
             prepared=prepared,
             runtime_options=options,
             cursor=cursor,
         )
-        snapshot_audit = writer_snapshot._audit_residual_cyclic_readiness_from_snapshot(
+        snapshot_audit = writer_audit._audit_writer_frontier_reachability_from_snapshot(
             snapshot,
             prepared=prepared,
         )
@@ -24946,7 +24989,7 @@ class WriterStateKernelTest(unittest.TestCase):
             snapshot_audit.required_execution_capabilities,
         )
 
-    def test_residual_cyclic_readiness_audit_ignores_public_capability_configuration(self) -> None:
+    def test_writer_frontier_reachability_audit_ignores_public_capability_configuration(self) -> None:
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(
@@ -24954,7 +24997,7 @@ class WriterStateKernelTest(unittest.TestCase):
             options,
         )
         target = (
-            writer_snapshot
+            writer_capabilities
             ._WriterExecutionCapabilityKind
             .CLOSURE_ENDPOINT_OPEN
         )
@@ -24968,7 +25011,7 @@ class WriterStateKernelTest(unittest.TestCase):
                 - {target}
             ),
         ):
-            audit = writer_snapshot._audit_residual_cyclic_readiness_from_cursor(
+            audit = writer_audit._audit_writer_frontier_reachability_from_cursor(
                 prepared=prepared,
                 runtime_options=options,
                 cursor=cursor,

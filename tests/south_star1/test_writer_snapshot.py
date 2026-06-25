@@ -870,12 +870,17 @@ class WriterSnapshotTest(unittest.TestCase):
             ),
         )
 
-        with self.assertRaises(SouthStarError):
-            validate_writer_cursor_against_prepared(
-                prepared,
-                _cursor_with_key(key),
-                runtime_options=options,
-            )
+        cursor = _cursor_with_key(key)
+        validate_writer_cursor_against_prepared(
+            prepared,
+            cursor,
+            runtime_options=options,
+        )
+
+        with self.assertRaises(SouthStarError) as caught:
+            writer_frontier_choices(prepared, cursor)
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
 
     def test_cursor_audit_accepts_coherent_closed_closure_state(self) -> None:
         prepared = _prepare(triangle_facts())
@@ -1187,12 +1192,17 @@ class WriterSnapshotTest(unittest.TestCase):
         options = _writer_options(rooted_at_atom=0)
         key = _manual_emitted_root_key(AtomId(0))
 
-        with self.assertRaises(SouthStarError):
-            validate_writer_cursor_against_prepared(
-                prepared,
-                _cursor_with_key(key),
-                runtime_options=options,
-            )
+        cursor = _cursor_with_key(key)
+        validate_writer_cursor_against_prepared(
+            prepared,
+            cursor,
+            runtime_options=options,
+        )
+
+        with self.assertRaises(SouthStarError) as caught:
+            writer_frontier_choices(prepared, cursor)
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
 
     def test_cursor_audit_rejects_terminal_looking_latent_residual_bond(self) -> None:
         prepared = _prepare(chain_plus_orphan_chain_same_component_facts())

@@ -21,7 +21,7 @@ from .writer_graph_obligations import WriterGraphObligationContext
 from .writer_graph_obligations import WriterResidualAttachment
 from .writer_graph_obligations import WriterResidualAttachmentActionKind
 from .writer_graph_obligations import build_writer_graph_obligation_context
-from .writer_graph_obligations import validate_writer_snapshot_graph_surface
+from .writer_graph_obligations import validate_writer_snapshot_graph_coherence
 from .writer_graph_obligations import validate_writer_transition_graph_surface
 from .writer_graph_obligations import writer_graph_completion_status
 from .writer_graph_obligations import writer_closure_bond_text_relation
@@ -114,6 +114,13 @@ class _WriterTerminalizationOutcome:
 class WriterTransitionExpansionContext:
     state_key: WriterStateKey
     graph: WriterGraphObligationContext
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterStateExpansionOutcome:
+    context: WriterTransitionExpansionContext
+    terminal_outcome: _WriterTerminalizationOutcome
+    schedule_outcome: "_WriterTopLevelScheduleOutcome"
 
 
 @dataclass(frozen=True, slots=True)
@@ -236,6 +243,9 @@ class _WriterActiveEmittedGraphPolicyDecisionKind(Enum):
     UNRESOLVED_RESIDUAL_ATTACHMENT_CHOICE = (
         "unresolved_residual_attachment_choice"
     )
+    BLOCKED_RESIDUAL_ATTACHMENT_ACTION = (
+        "blocked_residual_attachment_action"
+    )
 
 
 class _WriterActiveEmittedGraphPolicyBlockerKind(Enum):
@@ -248,6 +258,9 @@ class _WriterActiveEmittedGraphPolicyBlockerKind(Enum):
     )
     MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE = (
         "missing_closure_open_support_evidence"
+    )
+    BLOCKED_RESIDUAL_ATTACHMENT_ACTION = (
+        "blocked_residual_attachment_action"
     )
 
 
@@ -1117,17 +1130,19 @@ class _WriterActiveEmittedGraphPolicyBlocker:
     bond: BondId | None = None
     child_blocker: _WriterChildObligationBlocker | None = None
     residual_group: _WriterResidualAttachmentPolicyGroup | None = None
+    residual_attachment_action: WriterResidualAttachmentAction | None = None
 
     def __post_init__(self) -> None:
         has_bond = self.bond is not None
         has_child = self.child_blocker is not None
         has_group = self.residual_group is not None
+        has_action = self.residual_attachment_action is not None
 
         if (
             self.kind
             is _WriterActiveEmittedGraphPolicyBlockerKind.CHILD_OBLIGATION
         ):
-            valid = has_child and not has_bond and not has_group
+            valid = has_child and not has_bond and not has_group and not has_action
         elif (
             self.kind
             is (
@@ -1135,7 +1150,7 @@ class _WriterActiveEmittedGraphPolicyBlocker:
                 .EMPTY_CLOSURE_BOND_TEXT_RELATION
             )
         ):
-            valid = has_bond and not has_child and not has_group
+            valid = has_bond and not has_child and not has_group and not has_action
         elif self.kind in (
             (
                 _WriterActiveEmittedGraphPolicyBlockerKind
@@ -1146,7 +1161,23 @@ class _WriterActiveEmittedGraphPolicyBlocker:
                 .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
             ),
         ):
-            valid = has_group and not has_bond and not has_child
+            valid = has_group and not has_bond and not has_child and not has_action
+        elif (
+            self.kind
+            is (
+                _WriterActiveEmittedGraphPolicyBlockerKind
+                .BLOCKED_RESIDUAL_ATTACHMENT_ACTION
+            )
+        ):
+            valid = (
+                has_action
+                and not has_bond
+                and not has_child
+                and not has_group
+                and writer_residual_attachment_action_is_blocked(
+                    self.residual_attachment_action
+                )
+            )
         else:
             valid = False
 
@@ -1185,6 +1216,10 @@ class _WriterActiveEmittedGraphPolicyDecision:
     active_atom: AtomId
     closure_endpoint_decision: _WriterClosureEndpointScheduleDecision
     child_schedule_surface: _WriterActiveChildScheduleSurface | None = None
+    direct_graph_policy_blockers: tuple[
+        _WriterActiveEmittedGraphPolicyBlocker,
+        ...
+    ] = ()
 
     def __post_init__(self) -> None:
         closure_survived = (
@@ -1215,6 +1250,7 @@ class _WriterActiveEmittedGraphPolicyDecision:
             valid = (
                 not closure_survived
                 and child_present
+                and not self.direct_graph_policy_blockers
                 and not self.child_schedule_surface.blocked
                 and not self.considered_closure_open_vs_cyclic_tree_entry_groups
             )
@@ -1228,6 +1264,7 @@ class _WriterActiveEmittedGraphPolicyDecision:
             valid = (
                 not closure_survived
                 and child_present
+                and not self.direct_graph_policy_blockers
                 and not self.child_schedule_surface.blocked
                 and bool(
                     self.support_dead_closure_open_vs_cyclic_tree_entry_groups
@@ -1244,6 +1281,7 @@ class _WriterActiveEmittedGraphPolicyDecision:
             valid = (
                 not closure_survived
                 and child_present
+                and not self.direct_graph_policy_blockers
                 and self.child_schedule_surface.blocked
             )
         elif (
@@ -1256,6 +1294,7 @@ class _WriterActiveEmittedGraphPolicyDecision:
             valid = (
                 not closure_survived
                 and child_present
+                and not self.direct_graph_policy_blockers
                 and not self.child_schedule_surface.blocked
                 and bool(
                     self.unsupported_owner_scope_closure_open_vs_cyclic_tree_entry_groups
@@ -1271,11 +1310,32 @@ class _WriterActiveEmittedGraphPolicyDecision:
             valid = (
                 not closure_survived
                 and child_present
+                and not self.direct_graph_policy_blockers
                 and not self.child_schedule_surface.blocked
                 and not (
                     self.unsupported_owner_scope_closure_open_vs_cyclic_tree_entry_groups
                 )
                 and bool(self.missing_closure_open_support_evidence_groups)
+            )
+        elif (
+            self.kind
+            is (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .BLOCKED_RESIDUAL_ATTACHMENT_ACTION
+            )
+        ):
+            valid = (
+                not closure_survived
+                and not child_present
+                and bool(self.direct_graph_policy_blockers)
+                and all(
+                    blocker.kind
+                    is (
+                        _WriterActiveEmittedGraphPolicyBlockerKind
+                        .BLOCKED_RESIDUAL_ATTACHMENT_ACTION
+                    )
+                    for blocker in self.direct_graph_policy_blockers
+                )
             )
         else:
             valid = False
@@ -1301,6 +1361,10 @@ class _WriterActiveEmittedGraphPolicyDecision:
             (
                 _WriterActiveEmittedGraphPolicyDecisionKind
                 .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+            ),
+            (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .BLOCKED_RESIDUAL_ATTACHMENT_ACTION
             ),
         )
 
@@ -1655,6 +1719,15 @@ class _WriterActiveEmittedGraphPolicyDecision:
             )
         ):
             return self.closure_endpoint_decision.graph_policy_blockers
+
+        if (
+            self.kind
+            is (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .BLOCKED_RESIDUAL_ATTACHMENT_ACTION
+            )
+        ):
+            return self.direct_graph_policy_blockers
 
         if (
             self.kind
@@ -2933,12 +3006,22 @@ def build_writer_transition_expansion_context(
     prepared: SouthStarPreparedMol,
     state: WriterState,
 ) -> WriterTransitionExpansionContext:
+    validate_writer_transition_prepared(prepared)
+    return _writer_transition_expansion_context_from_validated_prepared(
+        prepared,
+        state,
+    )
+
+
+def _writer_transition_expansion_context_from_validated_prepared(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+) -> WriterTransitionExpansionContext:
     if state.active is None:
         raise SouthStarError(
             SouthStarErrorKind.INTERNAL_INVARIANT,
             "writer state requires an active writer frame",
         )
-    validate_writer_transition_prepared(prepared)
     key = writer_state_key(state)
     graph = build_writer_graph_obligation_context(prepared, key)
     return WriterTransitionExpansionContext(state_key=key, graph=graph)
@@ -3141,6 +3224,20 @@ def _active_emitted_graph_policy_decision(
             ),
             active_atom=active_atom,
             closure_endpoint_decision=closure_decision,
+        )
+
+    residual_action_blockers = (
+        _blocked_residual_attachment_action_graph_policy_blockers(context)
+    )
+    if residual_action_blockers:
+        return _WriterActiveEmittedGraphPolicyDecision(
+            kind=(
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .BLOCKED_RESIDUAL_ATTACHMENT_ACTION
+            ),
+            active_atom=active_atom,
+            closure_endpoint_decision=closure_decision,
+            direct_graph_policy_blockers=residual_action_blockers,
         )
 
     if closure_decision.selected_closure_endpoint_survived:
@@ -4612,7 +4709,7 @@ def _validated_closure_open_successor_graph(
             return None
         if _has_blocked_attachment_action(graph):
             return None
-        validate_writer_snapshot_graph_surface(prepared, key, graph)
+        validate_writer_snapshot_graph_coherence(prepared, key, graph)
         return graph
     except SouthStarError:
         return None
@@ -4698,7 +4795,7 @@ def _closure_pair_successor_is_supported(
             return False
         if any(endpoint.bond == closure.bond for endpoint in key.ring_state.open_endpoints):
             return False
-        validate_writer_snapshot_graph_surface(prepared, key, graph)
+        validate_writer_snapshot_graph_coherence(prepared, key, graph)
     except SouthStarError:
         return False
     return True
@@ -4795,6 +4892,18 @@ def finalize_writer_terminal_state_with_evidence(
     state: WriterState,
 ) -> _WriterTerminalizationOutcome:
     context = build_writer_transition_expansion_context(prepared, state)
+    return _finalize_writer_terminal_state_from_context(
+        prepared,
+        state,
+        context,
+    )
+
+
+def _finalize_writer_terminal_state_from_context(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+) -> _WriterTerminalizationOutcome:
     if state.obligations.pending_entry is not None or state.branch_stack:
         return _WriterTerminalizationOutcome(state=None)
     if state.ring_state.open_endpoints:
@@ -4820,6 +4929,29 @@ def finalize_writer_terminal_state_with_evidence(
     return _WriterTerminalizationOutcome(
         state=replace(state, stereo_state=stereo_outcome.state),
         execution_capabilities=stereo_outcome.execution_capabilities,
+    )
+
+
+def _writer_state_expansion_outcome_from_validated_prepared(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+) -> _WriterStateExpansionOutcome:
+    context = _writer_transition_expansion_context_from_validated_prepared(
+        prepared,
+        state,
+    )
+    return _WriterStateExpansionOutcome(
+        context=context,
+        terminal_outcome=_finalize_writer_terminal_state_from_context(
+            prepared,
+            state,
+            context,
+        ),
+        schedule_outcome=_scheduled_writer_schedule_outcome(
+            prepared,
+            state,
+            context,
+        ),
     )
 
 
@@ -4865,6 +4997,26 @@ def _child_obligation_blockers_from_context(
             )
 
     return tuple(blockers)
+
+
+def _blocked_residual_attachment_action_graph_policy_blockers(
+    context: WriterTransitionExpansionContext,
+) -> tuple[_WriterActiveEmittedGraphPolicyBlocker, ...]:
+    graph = getattr(context, "graph", None)
+    if graph is None:
+        return ()
+
+    return tuple(
+        _WriterActiveEmittedGraphPolicyBlocker(
+            kind=(
+                _WriterActiveEmittedGraphPolicyBlockerKind
+                .BLOCKED_RESIDUAL_ATTACHMENT_ACTION
+            ),
+            residual_attachment_action=action,
+        )
+        for action in graph.residual_summary.attachment_actions
+        if writer_residual_attachment_action_is_blocked(action)
+    )
 
 
 def _child_obligation_blockers_for_atom(
@@ -4986,6 +5138,27 @@ def _raise_for_active_emitted_graph_policy_blockers(
         message = (
             "unsupported closure bond text relation for "
             f"{first.bond!r}"
+        )
+    elif (
+        first.kind
+        is (
+            _WriterActiveEmittedGraphPolicyBlockerKind
+            .BLOCKED_RESIDUAL_ATTACHMENT_ACTION
+        )
+    ):
+        action = first.residual_attachment_action
+        if action is None:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "blocked residual attachment blocker lacks its action",
+            )
+        message = (
+            "unsupported residual attachment action: "
+            f"kind={action.kind.value}; "
+            f"attachment={action.attachment_id}; "
+            f"owners={tuple(int(atom) for atom in action.owner_atoms)!r}; "
+            f"boundary_bonds="
+            f"{tuple(int(bond) for bond in action.boundary_bonds)!r}"
         )
     else:
         raise SouthStarError(

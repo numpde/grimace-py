@@ -26,7 +26,6 @@ from .writer_state import writer_state_from_key
 from .writer_state import writer_state_key
 from .writer_state import writer_state_key_sort_tuple
 from .writer_stereo import initial_writer_stereo_state
-from .writer_transitions import finalize_writer_terminal_state_with_evidence
 from .writer_transitions import _WriterActiveEmittedGraphPolicyBlocker
 from .writer_transitions import _WriterActiveEmittedGraphPolicyDecision
 from .writer_transitions import _WriterActiveChildSelectionKind
@@ -37,8 +36,8 @@ from .writer_transitions import _WriterResidualAttachmentOwnerScopeKind
 from .writer_transitions import _WriterResidualAttachmentPolicyGroup
 from .writer_transitions import _WriterResidualAttachmentPolicyKey
 from .writer_transitions import _WriterTopLevelScheduleOutcome
-from .writer_transitions import _legal_writer_schedule_outcome
 from .writer_transitions import _raise_for_top_level_schedule_outcome_blockers
+from .writer_transitions import _writer_state_expansion_outcome_from_validated_prepared
 from .writer_transitions import validate_writer_transition_prepared
 
 if TYPE_CHECKING:
@@ -181,10 +180,7 @@ class _WriterFrontierNextTokenSupport:
     def execution_capabilities(
         self,
     ) -> frozenset[_WriterExecutionCapabilityKind]:
-        if hasattr(self.schedule_support, "execution_capabilities"):
-            return self.schedule_support.execution_capabilities
-
-        return frozenset()
+        return self.schedule_support.execution_capabilities
 
 
 @dataclass(frozen=True, slots=True)
@@ -1694,17 +1690,18 @@ def _writer_frontier_schedule_outcome(
     *,
     stop_after_first_blocked: bool = False,
 ) -> _WriterFrontierScheduleOutcome:
+    validate_writer_transition_prepared(prepared)
     terminal_by_key: Counter[WriterStateKey] = Counter()
     state_outcomes: list[_WriterFrontierStateScheduleOutcome] = []
     frontier_supports: list[_WriterFrontierNextTokenSupport] = []
 
     for key, parent_weight in cursor.weighted_states:
         state = writer_state_from_key(key)
-
-        terminal_outcome = finalize_writer_terminal_state_with_evidence(
+        expansion = _writer_state_expansion_outcome_from_validated_prepared(
             prepared,
             state,
         )
+        terminal_outcome = expansion.terminal_outcome
         finalized = terminal_outcome.state
         finalized_key = None
 
@@ -1712,7 +1709,7 @@ def _writer_frontier_schedule_outcome(
             finalized_key = writer_state_key(finalized)
             terminal_by_key[finalized_key] += parent_weight
 
-        schedule_outcome = _legal_writer_schedule_outcome(prepared, state)
+        schedule_outcome = expansion.schedule_outcome
 
         state_outcome = _WriterFrontierStateScheduleOutcome(
             state_key=key,

@@ -22,6 +22,8 @@ from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
 from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
+from grimace._south_star1.writer_frontier import WriterFrontierCursor
+from grimace._south_star1.writer_frontier import _writer_frontier_choice_snapshot
 from grimace._south_star1.writer_frontier import writer_frontier_choices
 from grimace._south_star1.writer_graph_obligations import WriterBoundaryIncidence
 from grimace._south_star1.writer_graph_obligations import WriterBoundaryOwnerKind
@@ -76,20 +78,19 @@ def _synthetic_action_summary(
         boundary_by_owner_atom=(),
         boundary_by_pending_parent=(),
         has_cyclic_attachment=False,
-        has_unsupported_attachment=False,
     )
 
 
 class WriterGraphObligationsTest(unittest.TestCase):
-    def test_prepared_metadata_caches_block_cut_and_component_surfaces(self) -> None:
+    def test_prepared_metadata_caches_block_cut_and_component_connectivity(self) -> None:
         prepared = _prepare(cco_facts())
 
         self.assertEqual(
             prepared.writer_graph_metadata.block_cut,
             build_writer_block_cut_metadata(prepared),
         )
-        self.assertEqual(len(prepared.writer_graph_metadata.component_surfaces), 1)
-        surface = prepared.writer_graph_metadata.component_surfaces[0]
+        self.assertEqual(len(prepared.writer_graph_metadata.component_connectivity), 1)
+        surface = prepared.writer_graph_metadata.component_connectivity[0]
         self.assertEqual(surface.component_index, 0)
         self.assertEqual(surface.atoms, frozenset((AtomId(0), AtomId(1), AtomId(2))))
         self.assertEqual(surface.bonds, frozenset((BondId(0), BondId(1))))
@@ -104,10 +105,10 @@ class WriterGraphObligationsTest(unittest.TestCase):
             )
 
     def test_component_metadata_records_connectivity_not_support(self) -> None:
-        triangle = _prepare(triangle_facts()).writer_graph_metadata.component_surfaces[0]
+        triangle = _prepare(triangle_facts()).writer_graph_metadata.component_connectivity[0]
         malformed = _prepare(
             cycle_plus_isolate_component_facts()
-        ).writer_graph_metadata.component_surfaces[0]
+        ).writer_graph_metadata.component_connectivity[0]
 
         self.assertTrue(triangle.connected)
         self.assertFalse(malformed.connected)
@@ -289,7 +290,7 @@ class WriterGraphObligationsTest(unittest.TestCase):
         )
 
         fields = (
-            writer_graph_obligations.WriterComponentGraphSurface.__dataclass_fields__
+            writer_graph_obligations.WriterComponentConnectivity.__dataclass_fields__
         )
         for name in (
             "tree",
@@ -571,11 +572,28 @@ class WriterGraphObligationsTest(unittest.TestCase):
             tuple(action.kind for action in summary.attachment_actions),
             (WriterResidualAttachmentActionKind.BLOCKED_UNOWNED,),
         )
-        transitions = legal_writer_transitions(prepared, writer_state_from_key(key))
+        raw = _writer_frontier_choice_snapshot(
+            prepared,
+            WriterFrontierCursor(weighted_states=((key, 1),)),
+            include_counts=False,
+            stop_after_first_blocked=True,
+        )
 
-        self.assertNotIn(
-            writer_transitions.WriterTransitionKind.OPEN_CLOSURE_ENDPOINT,
-            {transition.kind for transition in transitions},
+        self.assertTrue(raw.blocked)
+        blocker = raw.graph_policy_blockers[0]
+        self.assertIs(
+            blocker.kind,
+            (
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyBlockerKind
+                .BLOCKED_RESIDUAL_ATTACHMENT_ACTION
+            ),
+        )
+        self.assertIsNotNone(blocker.residual_attachment_action)
+        assert blocker.residual_attachment_action is not None
+        self.assertIs(
+            blocker.residual_attachment_action.kind,
+            WriterResidualAttachmentActionKind.BLOCKED_UNOWNED,
         )
 
     def test_frozen_single_boundary_residual_is_blocked_unowned(self) -> None:
@@ -590,11 +608,28 @@ class WriterGraphObligationsTest(unittest.TestCase):
             tuple(action.kind for action in summary.attachment_actions),
             (WriterResidualAttachmentActionKind.BLOCKED_UNOWNED,),
         )
-        transitions = legal_writer_transitions(prepared, writer_state_from_key(key))
+        raw = _writer_frontier_choice_snapshot(
+            prepared,
+            WriterFrontierCursor(weighted_states=((key, 1),)),
+            include_counts=False,
+            stop_after_first_blocked=True,
+        )
 
-        self.assertNotIn(
-            writer_transitions.WriterTransitionKind.ENTER_INLINE_CHILD,
-            {transition.kind for transition in transitions},
+        self.assertTrue(raw.blocked)
+        blocker = raw.graph_policy_blockers[0]
+        self.assertIs(
+            blocker.kind,
+            (
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyBlockerKind
+                .BLOCKED_RESIDUAL_ATTACHMENT_ACTION
+            ),
+        )
+        self.assertIsNotNone(blocker.residual_attachment_action)
+        assert blocker.residual_attachment_action is not None
+        self.assertIs(
+            blocker.residual_attachment_action.kind,
+            WriterResidualAttachmentActionKind.BLOCKED_UNOWNED,
         )
 
     def test_triangle_closure_candidate_is_explicit_and_fails_closed(self) -> None:

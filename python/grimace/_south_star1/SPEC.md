@@ -305,66 +305,45 @@ traversal/prefix branch.
 `writer_state.py`, `writer_events.py`, `writer_graph_obligations.py`,
 `writer_transitions.py`, `writer_stereo.py`, `writer_frontier.py`,
 `writer_snapshot.py`, and `writer_support.py` are the initial `writer_shaped`
-writer-state kernel. The MVP supports ordinary acyclic prepared molecules,
-including tetrahedral and directional stereo when the required carriers are
-emitted by tree traversal. `writer_graph_obligations.py` provides the derived
-graph-obligation view over the current writer prefix: a deterministic
-current-component edge partition, residual components of unwritten graph work,
-boundary incidences into syntactically open writer atoms, visited-visited
-closure candidates, and structural block-cut metadata. Static writer graph
-metadata is cached on the prepared molecule, while per-prefix edge partitions
-and residual attachments are built through a single
-`WriterGraphObligationContext`; the derived context is not stored in
-`WriterStateKey`. Residual attachments carry explicit actionability classes:
-acyclic tree entry, cyclic tree entry, closure-open-ready, or blocked states.
-Branch and inline decisions consume tree-entry attachment classes derived from
-the edge partition; they do not preselect a spanning tree, cycle basis, ring
-cut, or render program. Cyclic residual attachments and closure-candidate edges
-can be classified structurally. Raw writer transitions can now enter
-single-boundary cyclic attachments and can open and pair closure endpoints for
-internally constructed cyclic states when successor graph obligations remain
-actionable. Public cyclic WRITER_SHAPED is capability-gated by the required
-writer capabilities: currently supported public cyclic capabilities are simple
-cycle-core closure, acyclic pendant-tree traversal, and ordinary tree-bond text
-emission on non-core material. The ring core must retain the currently supported
-closure-bond surface. Non-core pendant bonds may rely on tree writer slot
-domains. Fused/bridged, unsupported multi-cycle topologies, non-forest or
-multi-boundary pendant material, unsupported cyclic-stereo/ring-pair stereo, and
-unsupported ring-core closure-bond cases still fail closed through the same
-profile/readiness gate.
-`initial_writer_transition_frontier_cursor(...)`
-is an internal test harness for running those raw transition-surface states
-through the same weighted frontier, count, streaming, and snapshot machinery
-without
-changing the public support adapter.
-`WriterRingState` now owns explicit open and closed closure records plus ring
-label state, and the edge partition classifies open and closed closure bonds
-before residual attachments are derived. Initial writer support still requires
-every prepared component to be a connected tree. Snapshot validation has a
-separate graph-surface policy: it may audit internally coherent retained
-closure state and actionable cyclic residual attachments, but blocked residual
-attachments and closure candidate edges remain invalid.
-Every writer transition emits typed semantic events; those events update a
+writer-state kernel. Connected declared components enter one live transition
+engine. `writer_graph_obligations.py` derives the graph view over the current
+writer prefix: current-component edge partitions, residual components of
+unwritten graph work, boundary incidences into syntactically open writer atoms,
+visited-visited closure candidates, and structural block-cut metadata.
+
+Each checked frontier derives, from the retained state:
+
+- terminalization evidence;
+- legal next-token transitions;
+- graph-policy blockers;
+- executed capability evidence.
+
+Unsupported policy is reported at the exact frontier where its live operation
+is required. There is no topology-profile admission, tree-only initial
+classifier, or recursive reachable-set preflight in the runtime path. The
+recursive reachability audit is optional diagnostic instrumentation only.
+
+`WriterRingState` owns explicit open and closed closure records plus ring-label
+state. Closure candidates and blocked residual attachment actions may be
+structurally coherent retained states; checked choices, advance, count, stream,
+and resume fail closed through the same live graph-policy blockers. Snapshot
+validation checks retained-state structural coherence: prepared identity,
+runtime root domains, component membership, edge-partition consistency,
+closure-state lifecycle records, local-order occurrence records, delayed stereo
+factor records, and residual-store factor snapshots. It does not independently
+decide writer support.
+
+Every writer transition emits typed semantic events. Those events update the
 writer-owned residual stereo snapshot that is part of the canonical writer
 state key. Support counting, EOS evidence, next emitted-text choices,
 completion counts, cursor snapshots, and support streaming all route through
-the same determinized weighted frontier. EOS is represented by finalized
-terminal cursor evidence, so terminal local-order and residual stereo closure
-are persisted rather than recomputed as a discarded viability check. Terminal
-writer states must also be graph-complete over the centralized edge-obligation
-context: every current-component bond is either a tree-entry bond or a closed
-closure bond, with no pending, latent, boundary, closure-candidate, open-closure,
-or residual-attachment obligations left live. Writer
-snapshots currently use a strict single-frontier-frame shape and validate a
-structural prepared identity before resume. Snapshot validation also audits
-each retained writer state against the prepared graph, runtime root domains,
-residual attachment ownership, closure-state lifecycle records, local-order
-occurrence records, delayed stereo factor records, and residual-store factor
-snapshots before exposing a resumed cursor. Ring endpoint events have concrete
-payloads and are consumed by writer stereo as ring-pair delayed-factor hooks.
-Public cyclic support, supported ring-pair stereo factors, residual suffix
-storage, RDKit parity, and exhaustive traversal fallback still fail closed in
-`writer_shaped`.
+the determinized weighted frontier. EOS is terminal only when the state is also
+graph-complete over the centralized edge-obligation context.
+
+This architecture does not claim arbitrary cyclic or stereo support. Connected
+inputs enter the engine, and unsupported operations or relation envelopes fail
+closed at their exact live frontier. RDKit parity and exhaustive traversal
+fallback remain outside `writer_shaped`.
 
 ### Factored Residual Stereo Support
 

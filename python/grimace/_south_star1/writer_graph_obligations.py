@@ -195,7 +195,6 @@ class WriterGraphObligationSummary:
     boundary_by_owner_atom: tuple[tuple[AtomId, tuple[int, ...]], ...]
     boundary_by_pending_parent: tuple[tuple[AtomId, tuple[int, ...]], ...]
     has_cyclic_attachment: bool
-    has_unsupported_attachment: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -206,7 +205,7 @@ class WriterBlockCutMetadata:
 
 
 @dataclass(frozen=True, slots=True)
-class WriterComponentGraphSurface:
+class WriterComponentConnectivity:
     component_index: int
     atoms: frozenset[AtomId]
     bonds: frozenset[BondId]
@@ -216,7 +215,7 @@ class WriterComponentGraphSurface:
 @dataclass(frozen=True, slots=True)
 class WriterGraphPreparedMetadata:
     block_cut: WriterBlockCutMetadata
-    component_surfaces: tuple[WriterComponentGraphSurface, ...]
+    component_connectivity: tuple[WriterComponentConnectivity, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -249,7 +248,7 @@ def build_writer_graph_prepared_metadata_from_facts(
 ) -> WriterGraphPreparedMetadata:
     return WriterGraphPreparedMetadata(
         block_cut=_build_writer_block_cut_metadata_from_graph(atom_ids, graph_index),
-        component_surfaces=_component_graph_surfaces(facts, graph_index),
+        component_connectivity=_component_connectivity(facts, graph_index),
     )
 
 
@@ -343,7 +342,7 @@ def build_writer_graph_obligation_context(
 def validate_writer_transition_graph_surface(
     prepared: SouthStarPreparedMol,
 ) -> None:
-    for surface in prepared.writer_graph_metadata.component_surfaces:
+    for surface in prepared.writer_graph_metadata.component_connectivity:
         if not surface.connected:
             raise SouthStarError(
                 SouthStarErrorKind.UNSUPPORTED_POLICY,
@@ -351,25 +350,12 @@ def validate_writer_transition_graph_surface(
             )
 
 
-def validate_writer_snapshot_graph_surface(
+def validate_writer_snapshot_graph_coherence(
     prepared: SouthStarPreparedMol,
     key: WriterStateKey,
     context: WriterGraphObligationContext,
 ) -> None:
     _validate_closure_state_supported_for_snapshot(prepared, key, context)
-    if any(
-        obligation.kind is WriterEdgeObligationKind.CLOSURE_CANDIDATE
-        for obligation in context.edge_partition.obligations
-    ):
-        raise SouthStarError(
-            SouthStarErrorKind.INTERNAL_INVARIANT,
-            "writer snapshot has unsupported cyclic edge obligation",
-        )
-    if context.residual_summary.has_unsupported_attachment:
-        raise SouthStarError(
-            SouthStarErrorKind.INTERNAL_INVARIANT,
-            "writer snapshot has unsupported residual attachment",
-        )
 
 
 def classify_writer_residual_attachments(
@@ -477,10 +463,6 @@ def classify_writer_residual_attachments(
         or len(attachment.boundary) > 1
         for attachment in sorted_attachments
     ) or has_closure_candidate
-    has_unsupported_attachment = any(
-        writer_residual_attachment_action_is_blocked(action)
-        for action in attachment_actions
-    )
     return WriterGraphObligationSummary(
         attachments=WriterResidualAttachmentState(
             attachments=tuple(sorted_attachments)
@@ -489,7 +471,6 @@ def classify_writer_residual_attachments(
         boundary_by_owner_atom=_canonical_boundary_index(boundary_by_owner),
         boundary_by_pending_parent=_canonical_boundary_index(boundary_by_pending),
         has_cyclic_attachment=has_cyclic_attachment,
-        has_unsupported_attachment=has_unsupported_attachment,
     )
 
 
@@ -1353,17 +1334,17 @@ def _validate_closure_obligation(
     _invalid_edge_partition("unknown closure obligation kind")
 
 
-def _component_graph_surfaces(
+def _component_connectivity(
     facts,
     graph_index,
-) -> tuple[WriterComponentGraphSurface, ...]:
+) -> tuple[WriterComponentConnectivity, ...]:
     surfaces = []
     for index, component in enumerate(facts.components):
         atoms = frozenset(component.atoms)
         bonds = frozenset(component.bonds)
         connected_components = _component_connected_count(atoms, bonds, graph_index)
         surfaces.append(
-            WriterComponentGraphSurface(
+            WriterComponentConnectivity(
                 component_index=index,
                 atoms=atoms,
                 bonds=bonds,
@@ -1515,7 +1496,7 @@ __all__ = (
     "WriterBlockCutMetadata",
     "WriterBoundaryIncidence",
     "WriterBoundaryOwnerKind",
-    "WriterComponentGraphSurface",
+    "WriterComponentConnectivity",
     "WriterEdgeObligation",
     "WriterEdgeObligationKind",
     "WriterEdgeObligationPartition",
@@ -1534,7 +1515,7 @@ __all__ = (
     "build_writer_block_cut_metadata",
     "classify_writer_edge_obligations",
     "classify_writer_residual_attachments",
-    "validate_writer_snapshot_graph_surface",
+    "validate_writer_snapshot_graph_coherence",
     "validate_writer_transition_graph_surface",
     "validate_writer_edge_obligation_partition",
     "writer_boundary_incidence_sort_tuple",

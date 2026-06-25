@@ -1,59 +1,39 @@
 # South Star branch
 
-This branch is for South Star, a writer-state model for exact SMILES support.
+South Star is a writer-state model for exact SMILES generation.
 
-A SMILES writer is usually exposed as a procedure that returns strings. South
-Star treats it as a state machine. The state records graph traversal, branch
-returns, ring labels, closure endpoints, atom and bond text choices, stereo
-obligations, and terminal closure. A token is allowed only if applying it gives
-a valid successor state.
+The branch treats a writer as a live transition system rather than as a
+post-filter over completed strings. A retained state records the graph prefix,
+ring labels, open and closed closures, branch obligations, text choices, and
+stereo residual factors. A token is legal only when the transition that emits
+it produces a coherent successor.
 
-## Questions
-
-The branch is organized around these queries:
-
-- Which complete strings can this prepared molecule emit?
-- Which tokens are legal after this prefix?
-- Which successor state does a token produce?
-- Can this stored cursor resume without replaying its prefix?
-- Which operation makes a molecule or transition unsupported?
-
-It is not a parser-equivalence project. South Star keeps two checks separate:
-
-- whether a string is meaningful for the prepared molecular facts;
-- whether the writer model can emit that string.
-
-## Model
-
-The implementation is moving toward one live transition engine.
-
-Graph state records the writer traversal, pending entries, branch frames, ring
-labels, open closure endpoints, and closed closures. Stereo state is carried by
-residual factors over live variables. Snapshot validation reconstructs residual
-state from recorded writer history instead of trusting stored domains and
-assignments.
-
-The intended shape is:
+The working goal is a single authority for writer behavior:
 
 ```text
-prepared facts
-+ writer policy
-+ current graph/ring/stereo state
-=> legal next transitions
-=> exact successor states
+prepared facts + policy + retained writer state
+    -> terminalization evidence
+    -> legal next-token transitions
+    -> graph-policy blockers
+    -> execution-capability evidence
 ```
 
-Enumeration, online decoding, snapshot resumption, capability auditing, and
-diagnostics should all read the same state.
+Connected declared components enter this live transition engine. Unsupported
+policy is reported at the exact frontier where the required operation or
+relation envelope is encountered. There is no topology-profile admission,
+tree-only initial classifier, or recursive reachable-set preflight on the
+runtime path.
 
-## Current Work
+Snapshots are structural records. Validation checks that a cursor is coherent
+with the prepared facts and retained history; it does not independently decide
+writer support. Checked choices, advance, count, stream, and resume all enforce
+the same live blockers.
 
-Recent commits have been replacing topology-derived positive admission with
-live execution certificates. A retained transition records the writer
-capabilities it used. A public admission is positive only when the reachable
-transition set stays inside the supported capability envelope.
+The recursive reachability audit is diagnostic instrumentation only. It records
+reachable blockers and capability uses for review; it is not an admission
+layer.
 
-The current phase is about shared operations. The immediate case is a
-ring-closure bond that also acts as a directional stereo carrier. That forces
-the ring syntax relation and the stereo residual relation to be updated by the
-same live transition.
+South Star remains work in progress. The branch is about making graph syntax,
+closure lifecycles, and stereo constraints share one inspectable state model,
+so future widening can be expressed as local relations instead of special-case
+enumeration.

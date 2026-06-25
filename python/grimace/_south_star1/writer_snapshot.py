@@ -26,7 +26,6 @@ from .prepared_runtime import require_writer_shaped_runtime_options
 from .prepared_runtime import runtime_root_atom_for_prepared
 from .residual_constraints import ResidualStore
 from .residual_constraints import ResidualStoreValueSnapshot
-from .writer_capabilities import _WriterExecutionCapabilityKind
 from .writer_graph_obligations import WriterBoundaryOwnerKind
 from .writer_graph_obligations import WriterEdgeObligationKind
 from .writer_graph_obligations import WriterGraphObligationContext
@@ -35,9 +34,8 @@ from .writer_graph_obligations import WriterClosureEndpointChoice
 from .writer_graph_obligations import WriterClosureBondTextRelation
 from .writer_graph_obligations import WriterResidualAttachmentActionKind
 from .writer_graph_obligations import build_writer_graph_obligation_context
-from .writer_graph_obligations import validate_writer_snapshot_graph_surface
+from .writer_graph_obligations import validate_writer_snapshot_graph_coherence
 from .writer_graph_obligations import writer_graph_completion_status
-from .writer_graph_obligations import writer_residual_attachment_action_is_blocked
 from .writer_frontier import WriterFrontierChoices
 from .writer_frontier import WriterFrontierCursor
 from .writer_frontier import _WriterFrontierChoiceResidualAttachmentEvidence
@@ -48,7 +46,6 @@ from .writer_frontier import _raise_for_writer_frontier_choice_snapshot_blockers
 from .writer_frontier import _initial_writer_transition_frontier_cursor
 from .writer_frontier import _writer_frontier_choice_snapshot
 from .writer_frontier import iter_writer_frontier_support
-from .writer_transitions import _WriterActiveEmittedGraphPolicyBlockerKind
 from .writer_stereo import reconstruct_writer_local_order_records
 from .writer_stereo import reconstruct_writer_stereo_residual_snapshot
 from .writer_stereo import writer_closure_endpoint_relation
@@ -133,14 +130,14 @@ def capture_writer_frontier_snapshot(
         cursor=cursor,
         decoder_boundary=decoder_boundary,
     )
-    _checked_public_writer_frontier_cursor(
+    _checked_writer_frontier_cursor(
         prepared=prepared,
         cursor=snapshot.cursor,
     )
     return snapshot
 
 
-def _checked_public_writer_frontier_cursor(
+def _checked_writer_frontier_cursor(
     *,
     prepared: SouthStarPreparedMol,
     cursor: WriterFrontierCursor,
@@ -153,7 +150,7 @@ def _checked_public_writer_frontier_cursor(
     return cursor
 
 
-def _initial_public_writer_shaped_frontier_cursor(
+def _initial_checked_writer_frontier_cursor(
     *,
     prepared: SouthStarPreparedMol,
     runtime_options: SouthStarRuntimeOptions,
@@ -166,7 +163,7 @@ def _initial_public_writer_shaped_frontier_cursor(
         runtime_options,
     )
 
-    return _checked_public_writer_frontier_cursor(
+    return _checked_writer_frontier_cursor(
         prepared=prepared,
         cursor=cursor,
     )
@@ -178,9 +175,11 @@ def capture_initial_writer_frontier_snapshot(
     runtime_options: SouthStarRuntimeOptions,
     decoder_boundary: WriterDecoderBoundary = WriterDecoderBoundary(),
 ) -> WriterSearchSnapshot:
-    cursor = _initial_public_writer_shaped_frontier_cursor(
-        prepared=prepared,
-        runtime_options=runtime_options,
+    require_writer_shaped_runtime_options(runtime_options)
+    runtime_root_atom_for_prepared(runtime_options, prepared=prepared)
+    cursor = _initial_writer_transition_frontier_cursor(
+        prepared,
+        runtime_options,
     )
     return capture_writer_frontier_snapshot(
         prepared=prepared,
@@ -199,7 +198,7 @@ def writer_frontier_cursor_from_snapshot(
         snapshot,
         prepared=prepared,
     )
-    return _checked_public_writer_frontier_cursor(
+    return _checked_writer_frontier_cursor(
         prepared=prepared,
         cursor=cursor,
     )
@@ -993,100 +992,6 @@ class _WriterSnapshotPrefixReadOutcome:
         )
 
 
-class _WriterResidualCyclicReadinessAuditKind(Enum):
-    READY = "ready"
-    BLOCKED = "blocked"
-    TRUNCATED = "truncated"
-
-
-@dataclass(frozen=True, slots=True)
-class _WriterResidualCyclicReadinessBlockedPrefix:
-    emitted_texts: tuple[str, ...]
-    choice_snapshot: _WriterFrontierChoiceSnapshot
-
-    @property
-    def graph_policy_blockers(self):
-        return self.choice_snapshot.graph_policy_blockers
-
-
-@dataclass(frozen=True, slots=True)
-class _WriterExecutionCapabilityUse:
-    kind: _WriterExecutionCapabilityKind
-    emitted_texts: tuple[str, ...]
-    source_cursor: WriterFrontierCursor
-    successor_cursor: WriterFrontierCursor
-    next_emitted_text: str | None = None
-
-    @property
-    def terminal(self) -> bool:
-        return self.next_emitted_text is None
-
-
-@dataclass(frozen=True, slots=True)
-class _WriterResidualCyclicReadinessAudit:
-    kind: _WriterResidualCyclicReadinessAuditKind
-    visited_prefixes: tuple[tuple[str, ...], ...]
-    execution_capability_uses: tuple[
-        _WriterExecutionCapabilityUse,
-        ...,
-    ] = ()
-    blocked_prefixes: tuple[
-        _WriterResidualCyclicReadinessBlockedPrefix,
-        ...,
-    ] = ()
-    truncated_at_prefix: tuple[str, ...] | None = None
-
-    def __post_init__(self) -> None:
-        if self.kind is _WriterResidualCyclicReadinessAuditKind.READY:
-            valid = (
-                not self.blocked_prefixes
-                and self.truncated_at_prefix is None
-            )
-        elif self.kind is _WriterResidualCyclicReadinessAuditKind.BLOCKED:
-            valid = (
-                bool(self.blocked_prefixes)
-                and self.truncated_at_prefix is None
-            )
-        elif self.kind is _WriterResidualCyclicReadinessAuditKind.TRUNCATED:
-            valid = self.truncated_at_prefix is not None
-        else:
-            valid = False
-
-        if not valid:
-            raise SouthStarError(
-                SouthStarErrorKind.INTERNAL_INVARIANT,
-                f"invalid residual cyclic readiness audit: {self.kind!r}",
-            )
-
-    @property
-    def ready(self) -> bool:
-        return self.kind is _WriterResidualCyclicReadinessAuditKind.READY
-
-    @property
-    def blocked(self) -> bool:
-        return self.kind is _WriterResidualCyclicReadinessAuditKind.BLOCKED
-
-    @property
-    def truncated(self) -> bool:
-        return self.kind is _WriterResidualCyclicReadinessAuditKind.TRUNCATED
-
-    @property
-    def blocked_emitted_texts(self) -> tuple[tuple[str, ...], ...]:
-        return tuple(
-            blocked.emitted_texts
-            for blocked in self.blocked_prefixes
-        )
-
-    @property
-    def required_execution_capabilities(self) -> frozenset[
-        _WriterExecutionCapabilityKind
-    ]:
-        return frozenset(
-            use.kind
-            for use in self.execution_capability_uses
-        )
-
-
 def _maybe_writer_frontier_choice_snapshot_entry_for_emitted_text(
     choice_snapshot: _WriterFrontierChoiceSnapshot,
     emitted_text: str,
@@ -1632,187 +1537,6 @@ def _writer_snapshot_prefix_read_outcome_after_emitted_texts(
     )
 
 
-def _audit_residual_cyclic_readiness_from_snapshot(
-    snapshot: WriterSearchSnapshot,
-    *,
-    prepared: SouthStarPreparedMol,
-    max_depth: int | None = None,
-    max_prefixes: int | None = None,
-) -> _WriterResidualCyclicReadinessAudit:
-    visited: list[tuple[str, ...]] = []
-    blocked: list[_WriterResidualCyclicReadinessBlockedPrefix] = []
-    execution_capability_uses: list[_WriterExecutionCapabilityUse] = []
-    observed_execution_capability_use_signatures: set[
-        tuple[
-            _WriterExecutionCapabilityKind,
-            tuple[str, ...],
-            str | None,
-            WriterFrontierCursor,
-            WriterFrontierCursor,
-        ]
-    ] = set()
-    seen_cursors: set[WriterFrontierCursor] = set()
-
-    def rec(
-        current: WriterSearchSnapshot,
-        prefix: tuple[str, ...],
-    ) -> tuple[bool, tuple[str, ...] | None]:
-        if current.cursor in seen_cursors:
-            return False, None
-
-        seen_cursors.add(current.cursor)
-        visited.append(prefix)
-
-        if max_prefixes is not None and len(visited) > max_prefixes:
-            return True, prefix
-
-        if max_depth is not None and len(prefix) > max_depth:
-            return True, prefix
-
-        choice_snapshot = _writer_frontier_choice_snapshot_from_snapshot(
-            current,
-            prepared=prepared,
-            include_counts=False,
-            stop_after_first_blocked=True,
-        )
-        if choice_snapshot.blocked:
-            blocked.append(
-                _WriterResidualCyclicReadinessBlockedPrefix(
-                    emitted_texts=prefix,
-                    choice_snapshot=choice_snapshot,
-                )
-            )
-            return False, None
-
-        if choice_snapshot.terminal is not None:
-            for capability in choice_snapshot.terminal_execution_capabilities:
-                use = _WriterExecutionCapabilityUse(
-                    kind=capability,
-                    emitted_texts=prefix,
-                    source_cursor=current.cursor,
-                    successor_cursor=choice_snapshot.terminal.finalized_cursor,
-                    next_emitted_text=None,
-                )
-                signature = (
-                    use.kind,
-                    use.emitted_texts,
-                    use.next_emitted_text,
-                    use.source_cursor,
-                    use.successor_cursor,
-                )
-                if signature not in observed_execution_capability_use_signatures:
-                    observed_execution_capability_use_signatures.add(signature)
-                    execution_capability_uses.append(use)
-
-        for choice in choice_snapshot.choices:
-            for capability in choice.execution_capabilities:
-                use = _WriterExecutionCapabilityUse(
-                    kind=capability,
-                    emitted_texts=prefix,
-                    source_cursor=current.cursor,
-                    successor_cursor=choice.successor,
-                    next_emitted_text=choice.emitted_text,
-                )
-
-                signature = (
-                    use.kind,
-                    use.emitted_texts,
-                    use.next_emitted_text,
-                    use.source_cursor,
-                    use.successor_cursor,
-                )
-
-                if signature in observed_execution_capability_use_signatures:
-                    continue
-
-                observed_execution_capability_use_signatures.add(signature)
-                execution_capability_uses.append(use)
-
-            successor = _writer_search_snapshot_with_cursor_after_emitted_text(
-                current,
-                prepared=prepared,
-                cursor=choice.successor,
-            )
-            stopped, stopped_prefix = rec(
-                successor,
-                (*prefix, choice.emitted_text),
-            )
-
-            if stopped:
-                return True, stopped_prefix
-
-        return False, None
-
-    truncated, truncated_prefix = rec(snapshot, ())
-
-    if truncated:
-        return _WriterResidualCyclicReadinessAudit(
-            kind=_WriterResidualCyclicReadinessAuditKind.TRUNCATED,
-            visited_prefixes=tuple(visited),
-            blocked_prefixes=tuple(blocked),
-            truncated_at_prefix=truncated_prefix,
-            execution_capability_uses=tuple(execution_capability_uses),
-        )
-
-    if blocked:
-        return _WriterResidualCyclicReadinessAudit(
-            kind=_WriterResidualCyclicReadinessAuditKind.BLOCKED,
-            visited_prefixes=tuple(visited),
-            blocked_prefixes=tuple(blocked),
-            execution_capability_uses=tuple(execution_capability_uses),
-        )
-
-    return _WriterResidualCyclicReadinessAudit(
-        kind=_WriterResidualCyclicReadinessAuditKind.READY,
-        visited_prefixes=tuple(visited),
-        execution_capability_uses=tuple(execution_capability_uses),
-    )
-
-
-def _assert_residual_cyclic_readiness_from_snapshot(
-    snapshot: WriterSearchSnapshot,
-    *,
-    prepared: SouthStarPreparedMol,
-    max_depth: int | None = None,
-    max_prefixes: int | None = None,
-) -> _WriterResidualCyclicReadinessAudit:
-    audit = _audit_residual_cyclic_readiness_from_snapshot(
-        snapshot,
-        prepared=prepared,
-        max_depth=max_depth,
-        max_prefixes=max_prefixes,
-    )
-
-    if not audit.ready:
-        raise SouthStarError(
-            SouthStarErrorKind.UNSUPPORTED_POLICY,
-            f"residual cyclic readiness audit failed: {audit.kind!r}",
-        )
-
-    return audit
-
-
-def _audit_residual_cyclic_readiness_from_cursor(
-    *,
-    prepared: SouthStarPreparedMol,
-    runtime_options: SouthStarRuntimeOptions,
-    cursor: WriterFrontierCursor,
-    max_depth: int | None = None,
-    max_prefixes: int | None = None,
-) -> _WriterResidualCyclicReadinessAudit:
-    snapshot = _capture_writer_frontier_snapshot_unchecked(
-        prepared=prepared,
-        runtime_options=runtime_options,
-        cursor=cursor,
-    )
-    return _audit_residual_cyclic_readiness_from_snapshot(
-        snapshot,
-        prepared=prepared,
-        max_depth=max_depth,
-        max_prefixes=max_prefixes,
-    )
-
-
 def _checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
     snapshot: WriterSearchSnapshot,
     *,
@@ -1997,9 +1721,7 @@ def validate_writer_cursor_against_prepared(
             _invalid_snapshot("writer cursor contains nonpositive weight")
         _validate_component_cursor(key.component_cursor, allowed_roots)
         context = build_writer_graph_obligation_context(prepared, key)
-        validate_writer_snapshot_graph_surface(prepared, key, context)
-        _validate_edge_partition_supported_for_snapshot(context)
-        _validate_residual_attachments_supported_for_snapshot(context)
+        validate_writer_snapshot_graph_coherence(prepared, key, context)
         _validate_atom_frame(key.active, atom_ids, bond_ids, prepared)
         for frame in key.branch_stack:
             _validate_branch_frame(frame, atom_ids, bond_ids, prepared)
@@ -2018,8 +1740,7 @@ def validate_writer_cursor_against_prepared(
             prepared,
             context,
         )
-        _validate_live_frontier_ownership(prepared, key, context)
-        _validate_terminal_graph_completion(prepared, key, context)
+        _validate_live_frontier_structure(prepared, key, context)
         _validate_stereo_occurrences_bound_to_graph_state(prepared, key, context)
         _validate_policy_state(key, atom_ids, bond_ids)
         _validate_stereo_state(
@@ -2068,23 +1789,6 @@ def _round_trip_residual_snapshot(snapshot: ResidualStoreValueSnapshot) -> None:
             SouthStarErrorKind.INTERNAL_INVARIANT,
             "writer residual snapshot does not round-trip",
         )
-
-
-def _validate_edge_partition_supported_for_snapshot(
-    context: WriterGraphObligationContext,
-) -> None:
-    if any(
-        obligation.kind is WriterEdgeObligationKind.CLOSURE_CANDIDATE
-        for obligation in context.edge_partition.obligations
-    ):
-        _invalid_snapshot("writer snapshot has unsupported cyclic edge obligation")
-
-
-def _validate_residual_attachments_supported_for_snapshot(
-    context: WriterGraphObligationContext,
-) -> None:
-    if context.residual_summary.has_unsupported_attachment:
-        _invalid_snapshot("writer snapshot has unsupported residual attachment")
 
 
 def _allowed_component_roots(
@@ -2462,7 +2166,7 @@ def _validate_pending_entry_role(
         _invalid_snapshot("writer pending inline entry is not the final child")
 
 
-def _validate_live_frontier_ownership(
+def _validate_live_frontier_structure(
     prepared: SouthStarPreparedMol,
     key: WriterStateKey,
     context: WriterGraphObligationContext,
@@ -2480,27 +2184,12 @@ def _validate_live_frontier_ownership(
         for attachment in summary.attachments.attachments
         for incidence in attachment.boundary
     ]
-    blocked_actions = tuple(
-        action
-        for action in summary.attachment_actions
-        if writer_residual_attachment_action_is_blocked(action)
-    )
-    if any(
-        action.kind is WriterResidualAttachmentActionKind.BLOCKED_ORPHAN
-        for action in blocked_actions
-    ):
-        _invalid_snapshot("writer residual attachment has no boundary incidence")
     branch_return_atoms = tuple(frame.return_atom.atom for frame in key.branch_stack)
     branch_owned_atoms = {
         incidence.written_atom
         for incidence in boundary_edges
         if incidence.owner_kind is WriterBoundaryOwnerKind.BRANCH_RETURN
     }
-    if any(
-        action.kind is WriterResidualAttachmentActionKind.BLOCKED_UNOWNED
-        for action in blocked_actions
-    ):
-        _invalid_snapshot("writer live frontier does not own unvisited obligation")
     action_by_id = {
         action.attachment_id: action for action in summary.attachment_actions
     }
@@ -2511,14 +2200,20 @@ def _validate_live_frontier_ownership(
         if any(
             incidence.owner_kind is WriterBoundaryOwnerKind.UNOWNED
             for incidence in attachment.boundary
-        ):
-            _invalid_snapshot("writer live frontier does not own unvisited obligation")
+        ) and action.kind is not WriterResidualAttachmentActionKind.BLOCKED_UNOWNED:
+            _invalid_snapshot("writer unowned frontier was not classified unowned")
     pending_owned_attachment = any(
         _attachment_is_owned_by_pending_entry(key, attachment.atoms)
         for attachment in summary.attachments.attachments
     )
     if unvisited and not boundary_edges and not pending_owned_attachment:
-        _invalid_snapshot("writer current component has unvisited atoms without frontier")
+        if not any(
+            action.kind is WriterResidualAttachmentActionKind.BLOCKED_ORPHAN
+            for action in summary.attachment_actions
+        ):
+            _invalid_snapshot(
+                "writer frontier without a boundary was not classified orphaned"
+            )
     if key.branch_stack and not unvisited:
         _invalid_snapshot("writer branch stack has no unresolved return obligation")
     if any(atom not in branch_owned_atoms for atom in branch_return_atoms):
@@ -2530,20 +2225,6 @@ def _validate_live_frontier_ownership(
         and not _active_is_terminal_leaf(prepared, key)
     ):
         _invalid_snapshot("writer completed component active frame is not terminal")
-
-
-def _validate_terminal_graph_completion(
-    prepared: SouthStarPreparedMol,
-    key: WriterStateKey,
-    context: WriterGraphObligationContext,
-) -> None:
-    if not _state_is_terminal_shape(prepared, key, context):
-        return
-    completion = writer_graph_completion_status(prepared, key, context)
-    if not completion.complete:
-        _invalid_snapshot("writer terminal state has unresolved graph obligations")
-
-
 def _boundary_children_for_atom(
     summary: WriterGraphObligationSummary,
     atom: AtomId,
@@ -2906,6 +2587,8 @@ def _state_is_terminal_shape(
     if _active_owns_live_attachment_action(key, context):
         return False
     if key.component_cursor.component_index + 1 < len(key.component_cursor.component_roots):
+        return False
+    if not writer_graph_completion_status(prepared, key, context).complete:
         return False
     return _active_is_terminal_leaf(prepared, key)
 

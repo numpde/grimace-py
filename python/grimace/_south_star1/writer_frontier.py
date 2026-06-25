@@ -36,7 +36,6 @@ from .writer_transitions import _WriterNextTokenFrontierSupport
 from .writer_transitions import _WriterResidualAttachmentOwnerScopeKind
 from .writer_transitions import _WriterResidualAttachmentPolicyGroup
 from .writer_transitions import _WriterResidualAttachmentPolicyKey
-from .writer_transitions import _WriterResidualCyclicPolicyCoverageKind
 from .writer_transitions import _WriterResidualCyclicPolicyDecisionKind
 from .writer_transitions import _WriterTopLevelScheduleOutcome
 from .writer_transitions import _legal_writer_schedule_outcome
@@ -892,29 +891,6 @@ class _WriterFrontierScheduleOutcome:
         )
 
     @property
-    def residual_cyclic_policy_coverage_kinds(
-        self,
-    ) -> tuple[_WriterResidualCyclicPolicyCoverageKind, ...]:
-        return tuple(
-            decision.coverage_kind
-            for decision in self.residual_cyclic_policy_decisions
-        )
-
-    @property
-    def residual_cyclic_policy_is_covered(self) -> bool:
-        return all(
-            decision.cyclic_policy_is_covered
-            for decision in self.residual_cyclic_policy_decisions
-        )
-
-    @property
-    def residual_cyclic_policy_is_blocked(self) -> bool:
-        return any(
-            decision.cyclic_policy_is_blocked
-            for decision in self.residual_cyclic_policy_decisions
-        )
-
-    @property
     def residual_cyclic_choice_groups(self):
         return tuple(
             group
@@ -1187,12 +1163,6 @@ class _WriterFrontierChoiceSnapshot:
         return self.schedule_outcome.residual_cyclic_policy_kinds
 
     @property
-    def residual_cyclic_policy_coverage_kinds(
-        self,
-    ) -> tuple[_WriterResidualCyclicPolicyCoverageKind, ...]:
-        return self.schedule_outcome.residual_cyclic_policy_coverage_kinds
-
-    @property
     def execution_capabilities(
         self,
     ) -> frozenset[_WriterExecutionCapabilityKind]:
@@ -1208,14 +1178,6 @@ class _WriterFrontierChoiceSnapshot:
         self,
     ) -> frozenset[_WriterExecutionCapabilityKind]:
         return self.schedule_outcome.terminal_execution_capabilities
-
-    @property
-    def residual_cyclic_policy_is_covered(self) -> bool:
-        return self.schedule_outcome.residual_cyclic_policy_is_covered
-
-    @property
-    def residual_cyclic_policy_is_blocked(self) -> bool:
-        return self.schedule_outcome.residual_cyclic_policy_is_blocked
 
     @property
     def residual_cyclic_choice_groups(self):

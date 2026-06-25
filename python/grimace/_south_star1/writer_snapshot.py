@@ -813,27 +813,6 @@ class _WriterSnapshotPrefixReadOutcome:
         return self.choice_snapshot.residual_cyclic_policy_kinds
 
     @property
-    def residual_cyclic_policy_coverage_kinds(self):
-        if self.choice_snapshot is None:
-            return ()
-
-        return self.choice_snapshot.residual_cyclic_policy_coverage_kinds
-
-    @property
-    def residual_cyclic_policy_is_covered(self) -> bool:
-        if self.choice_snapshot is None:
-            return False
-
-        return self.choice_snapshot.residual_cyclic_policy_is_covered
-
-    @property
-    def residual_cyclic_policy_is_blocked(self) -> bool:
-        if self.choice_snapshot is None:
-            return self.blocked
-
-        return self.choice_snapshot.residual_cyclic_policy_is_blocked
-
-    @property
     def residual_cyclic_choice_groups(self):
         if self.choice_snapshot is None:
             return ()
@@ -1086,10 +1065,6 @@ class _WriterResidualCyclicReadinessBlockedPrefix:
     @property
     def graph_policy_blockers(self):
         return self.choice_snapshot.graph_policy_blockers
-
-    @property
-    def residual_cyclic_policy_coverage_kinds(self):
-        return self.choice_snapshot.residual_cyclic_policy_coverage_kinds
 
 
 @dataclass(frozen=True, slots=True)

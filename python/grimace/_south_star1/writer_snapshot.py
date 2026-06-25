@@ -45,7 +45,6 @@ from .writer_frontier import _WriterFrontierChoiceSnapshot
 from .writer_frontier import _WriterFrontierChoiceSnapshotEntry
 from .writer_frontier import _checked_writer_frontier_choice_snapshot
 from .writer_frontier import _raise_for_writer_frontier_choice_snapshot_blockers
-from .writer_frontier import _residual_cyclic_policy_readiness_report
 from .writer_frontier import _initial_writer_transition_frontier_cursor
 from .writer_frontier import _writer_frontier_choice_snapshot
 from .writer_frontier import iter_writer_frontier_support
@@ -835,20 +834,6 @@ class _WriterSnapshotPrefixReadOutcome:
         return self.choice_snapshot.residual_cyclic_policy_is_blocked
 
     @property
-    def residual_cyclic_policy_readiness_report(self):
-        if self.choice_snapshot is None:
-            return _residual_cyclic_policy_readiness_report(
-                coverage_kinds=self.residual_cyclic_policy_coverage_kinds,
-                graph_policy_blockers=self.graph_policy_blockers,
-                residual_cyclic_policy_decisions=(
-                    self.residual_cyclic_policy_decisions
-                ),
-                has_frontier=False,
-            )
-
-        return self.choice_snapshot.residual_cyclic_policy_readiness_report
-
-    @property
     def residual_cyclic_choice_groups(self):
         if self.choice_snapshot is None:
             return ()
@@ -1097,10 +1082,6 @@ class _WriterResidualCyclicReadinessAuditKind(Enum):
 class _WriterResidualCyclicReadinessBlockedPrefix:
     emitted_texts: tuple[str, ...]
     choice_snapshot: _WriterFrontierChoiceSnapshot
-
-    @property
-    def readiness_report(self):
-        return self.choice_snapshot.residual_cyclic_policy_readiness_report
 
     @property
     def graph_policy_blockers(self):
@@ -1777,9 +1758,7 @@ def _audit_residual_cyclic_readiness_from_snapshot(
             include_counts=False,
             stop_after_first_blocked=True,
         )
-        report = choice_snapshot.residual_cyclic_policy_readiness_report
-
-        if report.blocked:
+        if choice_snapshot.blocked:
             blocked.append(
                 _WriterResidualCyclicReadinessBlockedPrefix(
                     emitted_texts=prefix,

@@ -372,13 +372,6 @@ def validate_writer_snapshot_graph_surface(
     key: WriterStateKey,
     context: WriterGraphObligationContext,
 ) -> None:
-    current = key.component_cursor.component_index
-    for surface in prepared.writer_graph_metadata.component_surfaces:
-        if surface.component_index != current and surface.unsupported_reason is not None:
-            raise SouthStarError(
-                SouthStarErrorKind.INTERNAL_INVARIANT,
-                "writer snapshot has unsupported non-current graph component",
-            )
     _validate_closure_state_supported_for_snapshot(prepared, key, context)
     if any(
         obligation.kind is WriterEdgeObligationKind.CLOSURE_CANDIDATE
@@ -881,7 +874,20 @@ def _validate_closure_state_supported_for_snapshot(
         obligation.bond: obligation.kind
         for obligation in context.edge_partition.obligations
     }
+    current_index = key.component_cursor.component_index
+    current_bonds = frozenset(
+        prepared.facts.components[current_index].bonds
+    )
+    completed_bonds = frozenset(
+        bond
+        for component in prepared.facts.components[:current_index]
+        for bond in component.bonds
+    )
     for endpoint in key.ring_state.open_endpoints:
+        if endpoint.bond not in current_bonds:
+            _invalid_edge_partition(
+                "writer open closure endpoint is outside current component"
+            )
         if partition_by_bond.get(endpoint.bond) is not WriterEdgeObligationKind.OPEN_CLOSURE_ENDPOINT:
             _invalid_edge_partition("writer open closure endpoint lacks open edge obligation")
         fact = prepared.graph_index.bond_by_id.get(endpoint.bond)
@@ -894,8 +900,13 @@ def _validate_closure_state_supported_for_snapshot(
         _validate_open_endpoint_text(prepared, endpoint)
         _validate_open_endpoint_partner_liveness(prepared, key, endpoint, context)
     for closure in key.ring_state.closed_closures:
-        if partition_by_bond.get(closure.bond) is not WriterEdgeObligationKind.CLOSED_CLOSURE:
-            _invalid_edge_partition("writer closed closure lacks closed edge obligation")
+        if closure.bond in current_bonds:
+            if partition_by_bond.get(closure.bond) is not WriterEdgeObligationKind.CLOSED_CLOSURE:
+                _invalid_edge_partition("writer current closure lacks closed edge obligation")
+        elif closure.bond not in completed_bonds:
+            _invalid_edge_partition(
+                "writer closed closure belongs to a future component"
+            )
         fact = prepared.graph_index.bond_by_id.get(closure.bond)
         if fact is None:
             _invalid_edge_partition("writer closed closure references unknown bond")

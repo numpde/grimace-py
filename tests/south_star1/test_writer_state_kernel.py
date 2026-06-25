@@ -1598,6 +1598,50 @@ class WriterStateKernelTest(unittest.TestCase):
                     .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
                 ),
             ),
+            (
+                "mixed_supported_scopes",
+                {
+                    "closure_owner_kind": WriterBoundaryOwnerKind.ACTIVE_ATOM,
+                    "child_owner_kind": WriterBoundaryOwnerKind.BRANCH_RETURN,
+                },
+                (
+                    writer_transitions
+                    ._WriterActiveEmittedGraphPolicyDecisionKind
+                    .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+                ),
+                (
+                    writer_transitions
+                    ._WriterResidualAttachmentOwnerScopeKind
+                    .MIXED
+                ),
+                (
+                    writer_transitions
+                    ._WriterActiveEmittedGraphPolicyBlockerKind
+                    .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+                ),
+            ),
+            (
+                "supported_plus_unowned",
+                {
+                    "closure_owner_kind": WriterBoundaryOwnerKind.ACTIVE_ATOM,
+                    "child_owner_kind": WriterBoundaryOwnerKind.UNOWNED,
+                },
+                (
+                    writer_transitions
+                    ._WriterActiveEmittedGraphPolicyDecisionKind
+                    .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+                ),
+                (
+                    writer_transitions
+                    ._WriterResidualAttachmentOwnerScopeKind
+                    .MIXED
+                ),
+                (
+                    writer_transitions
+                    ._WriterActiveEmittedGraphPolicyBlockerKind
+                    .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+                ),
+            ),
         )
 
         for name, kwargs, expected_kind, expected_scope, blocker_kind in cases:
@@ -1631,8 +1675,34 @@ class WriterStateKernelTest(unittest.TestCase):
                         ),
                         (blocker_kind,),
                     )
+                    self.assertEqual(
+                        tuple(
+                            blocker.residual_group
+                            for blocker in policy.graph_policy_blockers
+                        ),
+                        groups,
+                    )
                 else:
                     self.assertEqual(policy.graph_policy_blockers, ())
+
+    def test_mixed_owner_scope_graph_policy_blocker_raises_unsupported_policy(self) -> None:
+        active_outcome = self._test_residual_cyclic_blocked_active_outcome(
+            closure_owner_kind=WriterBoundaryOwnerKind.ACTIVE_ATOM,
+            child_owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+        )
+        choice_snapshot = self._test_residual_cyclic_blocked_choice_snapshot(
+            active_outcome,
+        )
+
+        with self.assertRaises(SouthStarError) as raised:
+            (
+                writer_frontier_module
+                ._raise_for_writer_frontier_choice_snapshot_blockers(
+                    choice_snapshot,
+                )
+            )
+
+        self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
 
     def _closure_policy_for_outcome(
         self,
@@ -13579,6 +13649,106 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertEqual(support.strings, ("C.O",))
 
+    def test_disconnected_cyclic_component_snapshots_resume_after_dot(self) -> None:
+        cases = (
+            ("cycle_atom", cyclopropane_plus_singleton_facts()),
+            ("atom_cycle", singleton_plus_cyclopropane_facts()),
+        )
+
+        for name, facts in cases:
+            with self.subTest(name=name):
+                prepared = _prepare(facts)
+                options = _writer_options(rooted_at_atom=-1)
+                snapshot = (
+                    writer_snapshot
+                    .capture_initial_writer_frontier_snapshot(
+                        prepared=prepared,
+                        runtime_options=options,
+                    )
+                )
+                pending = [snapshot]
+                after_dot = None
+
+                while pending and after_dot is None:
+                    current = pending.pop(0)
+                    choices = (
+                        writer_snapshot
+                        .resume_writer_frontier_choices_from_snapshot(
+                            current,
+                            prepared=prepared,
+                        )
+                    )
+                    for choice in choices.choices:
+                        advanced = (
+                            writer_snapshot
+                            .advance_writer_frontier_snapshot(
+                                current,
+                                prepared=prepared,
+                                emitted_text=choice.emitted_text,
+                            )
+                        )
+                        if choice.emitted_text == ".":
+                            after_dot = advanced
+                            break
+                        pending.append(advanced)
+
+                self.assertIsNotNone(after_dot)
+                assert after_dot is not None
+                writer_snapshot.validate_writer_search_snapshot(
+                    after_dot,
+                    prepared=prepared,
+                )
+                resumed = (
+                    writer_snapshot
+                    .resume_writer_frontier_choices_from_snapshot(
+                        after_dot,
+                        prepared=prepared,
+                    )
+                )
+                self.assertGreater(
+                    len(resumed.choices) + int(resumed.terminal is not None),
+                    0,
+                )
+                strings = tuple(iter_writer_frontier_support(
+                    prepared,
+                    after_dot.cursor,
+                ))
+                self.assertEqual(
+                    count_writer_frontier_support(
+                        prepared,
+                        after_dot.cursor.support_state,
+                    ),
+                    len(strings),
+                )
+                self.assertGreater(
+                    count_writer_cursor_completions(
+                        prepared,
+                        after_dot.cursor,
+                    ),
+                    0,
+                )
+
+                for key, _weight in after_dot.cursor.weighted_states:
+                    current_index = key.component_cursor.component_index
+                    for index, component in enumerate(
+                        prepared.facts.components[:current_index]
+                    ):
+                        closed = frozenset(
+                            closure.bond
+                            for closure in key.ring_state.closed_closures
+                        )
+                        materialized = key.written_bonds | closed
+                        component_materialized = frozenset(
+                            bond
+                            for bond in materialized
+                            if bond in component.bonds
+                        )
+                        self.assertEqual(
+                            component_materialized,
+                            frozenset(component.bonds),
+                            msg=(name, index),
+                        )
+
     def test_component_boundary_emits_for_graph_complete_component(self) -> None:
         prepared = _prepare(cyclopropane_plus_singleton_facts())
         state = _with_next_component_root(_cyclopropane_terminal_closed_closure_state())
@@ -14273,25 +14443,16 @@ class WriterStateKernelTest(unittest.TestCase):
             ),
         )
 
-    def test_public_initial_frontier_cursor_does_not_use_transition_harness_for_cyclic_input(
+    def test_public_initial_frontier_cursor_uses_transition_harness_for_cyclic_input(
         self,
     ) -> None:
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
 
-        with patch(
-            (
-                "grimace._south_star1.writer_frontier"
-                "._initial_writer_transition_frontier_cursor"
-            ),
-            side_effect=AssertionError(
-                "public initial cursor must not use transition harness",
-            ),
-        ):
-            with self.assertRaises(SouthStarError) as caught:
-                initial_writer_frontier_cursor(prepared, options)
-
-        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+        self.assertEqual(
+            initial_writer_frontier_cursor(prepared, options),
+            _initial_writer_transition_frontier_cursor(prepared, options),
+        )
 
     def test_public_cyclic_bond_surface_rows_emit_expected_tree_tokens(self) -> None:
         token_rows = (
@@ -15477,7 +15638,7 @@ class WriterStateKernelTest(unittest.TestCase):
 
 
 
-    def test_public_writer_shaped_acyclic_starts_use_live_transition_cursor(
+    def test_public_writer_shaped_starts_use_live_transition_cursor(
         self,
     ) -> None:
         cases = (
@@ -15504,6 +15665,21 @@ class WriterStateKernelTest(unittest.TestCase):
             (
                 "disconnected",
                 _prepare(disconnected_co_facts()),
+                _writer_options(rooted_at_atom=-1),
+            ),
+            (
+                "cyclic",
+                _prepare(cyclopropane_facts()),
+                _writer_options(rooted_at_atom=0),
+            ),
+            (
+                "disconnected_cycle_atom",
+                _prepare(cyclopropane_plus_singleton_facts()),
+                _writer_options(rooted_at_atom=-1),
+            ),
+            (
+                "disconnected_atom_cycle",
+                _prepare(singleton_plus_cyclopropane_facts()),
                 _writer_options(rooted_at_atom=-1),
             ),
         )
@@ -15708,13 +15884,21 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(len(image.strings), image.distinct_count)
         self.assertGreaterEqual(image.witness_count, image.distinct_count)
 
-    def test_public_initial_frontier_still_rejects_cyclic_prepared(self) -> None:
+    def test_public_initial_frontier_accepts_cyclic_prepared(self) -> None:
         prepared = _prepare(cyclopropane_facts())
 
-        with self.assertRaises(SouthStarError) as caught:
-            initial_writer_frontier_cursor(prepared, _writer_options(rooted_at_atom=0))
+        cursor = initial_writer_frontier_cursor(
+            prepared,
+            _writer_options(rooted_at_atom=0),
+        )
 
-        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+        self.assertEqual(
+            cursor,
+            _initial_writer_transition_frontier_cursor(
+                prepared,
+                _writer_options(rooted_at_atom=0),
+            ),
+        )
 
     def test_internal_transition_frontier_accepts_cyclic_prepared(self) -> None:
         prepared = _prepare(cyclopropane_facts())
@@ -28150,6 +28334,29 @@ def cyclopropane_plus_singleton_facts() -> MoleculeFacts:
                 id=ComponentId(1),
                 atoms=(AtomId(3),),
                 bonds=(),
+            ),
+        ),
+    )
+
+
+def singleton_plus_cyclopropane_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=(atom(0, "O"), atom(1, "C"), atom(2, "C"), atom(3, "C")),
+        bonds=(
+            single_bond(0, 1, 2),
+            single_bond(1, 2, 3),
+            single_bond(2, 3, 1),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0),),
+                bonds=(),
+            ),
+            ComponentFacts(
+                id=ComponentId(1),
+                atoms=(AtomId(1), AtomId(2), AtomId(3)),
+                bonds=(BondId(0), BondId(1), BondId(2)),
             ),
         ),
     )

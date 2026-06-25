@@ -55,6 +55,7 @@ from grimace._south_star1.policy import TetraToken
 from grimace._south_star1.ordinary_policy import OrdinaryPolicyOptions
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
+from grimace._south_star1.writer_frontier import iter_writer_frontier_support
 from grimace._south_star1.writer_frontier import _initial_writer_transition_frontier_cursor
 from grimace._south_star1.writer_frontier import _writer_frontier_choice_snapshot
 from grimace._south_star1.writer_frontier import writer_frontier_choices
@@ -1454,14 +1455,14 @@ class WriterStereoResidualTest(unittest.TestCase):
             tampered.residual_snapshot,
         )
 
-    def test_shared_directional_ring_carrier_closure_path_remains_private(self) -> None:
+    def test_shared_directional_ring_carrier_closure_path_uses_live_frontier(self) -> None:
         prepared = _prepare_shared_directional_ring_carrier_facts()
         options = _writer_options(rooted_at_atom=1)
 
-        with self.assertRaises(SouthStarError):
-            initial_writer_frontier_cursor(prepared, options)
-
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+        self.assertEqual(initial_writer_frontier_cursor(prepared, options), cursor)
+        self.assertTrue(tuple(iter_writer_frontier_support(prepared, cursor)))
+
         paths = _private_terminal_paths(prepared, cursor)
         target_paths = tuple(
             path
@@ -1504,14 +1505,14 @@ class WriterStereoResidualTest(unittest.TestCase):
             writer_stereo_module.EMPTY_RESIDUAL_SNAPSHOT,
         )
 
-    def test_directional_ring_carrier_closure_path_is_private_only(self) -> None:
+    def test_directional_ring_carrier_closure_path_uses_live_frontier(self) -> None:
         prepared = _prepare_directional_ring_carrier_facts()
         options = _writer_options(rooted_at_atom=0)
 
-        with self.assertRaises(SouthStarError):
-            initial_writer_frontier_cursor(prepared, options)
-
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
+        self.assertEqual(initial_writer_frontier_cursor(prepared, options), cursor)
+        self.assertTrue(tuple(iter_writer_frontier_support(prepared, cursor)))
+
         paths = _private_terminal_paths(prepared, cursor)
         target_paths = tuple(
             path

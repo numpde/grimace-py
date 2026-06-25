@@ -21,7 +21,6 @@ from .writer_graph_obligations import WriterGraphObligationContext
 from .writer_graph_obligations import WriterResidualAttachment
 from .writer_graph_obligations import WriterResidualAttachmentActionKind
 from .writer_graph_obligations import build_writer_graph_obligation_context
-from .writer_graph_obligations import validate_writer_initial_support_graph_surface
 from .writer_graph_obligations import validate_writer_snapshot_graph_surface
 from .writer_graph_obligations import validate_writer_transition_graph_surface
 from .writer_graph_obligations import writer_graph_completion_status
@@ -1511,12 +1510,9 @@ class _WriterActiveEmittedGraphPolicyDecision:
     def unsupported_owner_scope_closure_open_vs_cyclic_tree_entry_groups(
         self,
     ) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
-        return tuple(
-            group
-            for group in self.considered_closure_open_vs_cyclic_tree_entry_groups
-            if (
-                group
-                .has_unsupported_owner_scope_closure_open_vs_cyclic_tree_entry_choice
+        return (
+            _unsupported_closure_open_vs_cyclic_tree_entry_owner_scope_groups(
+                self.considered_closure_open_vs_cyclic_tree_entry_groups
             )
         )
 
@@ -2716,6 +2712,21 @@ _SUPPORTED_DEAD_CLOSURE_OWNER_SCOPES = frozenset({
 })
 
 
+def _unsupported_closure_open_vs_cyclic_tree_entry_owner_scope_groups(
+    groups: tuple[_WriterResidualAttachmentPolicyGroup, ...],
+) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+    if not groups:
+        return ()
+
+    scope = _common_closure_open_vs_cyclic_tree_entry_owner_scope_kind(
+        groups,
+    )
+    if scope in _SUPPORTED_DEAD_CLOSURE_OWNER_SCOPES:
+        return ()
+
+    return groups
+
+
 def _active_child_graph_policy_kind(
     closure_endpoint_decision: _WriterClosureEndpointScheduleDecision,
     child_schedule_surface: _WriterActiveChildScheduleSurface,
@@ -2728,10 +2739,9 @@ def _active_child_graph_policy_kind(
     if not groups:
         return _WriterActiveEmittedGraphPolicyDecisionKind.ACTIVE_CHILD
 
-    owner_scope = (
-        _common_closure_open_vs_cyclic_tree_entry_owner_scope_kind(groups)
-    )
-    if owner_scope not in _SUPPORTED_DEAD_CLOSURE_OWNER_SCOPES:
+    if _unsupported_closure_open_vs_cyclic_tree_entry_owner_scope_groups(
+        groups
+    ):
         return (
             _WriterActiveEmittedGraphPolicyDecisionKind
             .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
@@ -4840,11 +4850,6 @@ def _transition(
     )
 
 
-def validate_writer_supported_prepared(prepared: SouthStarPreparedMol) -> None:
-    validate_writer_initial_support_graph_surface(prepared)
-    validate_writer_stereo_supported_prepared(prepared)
-
-
 def _child_obligation_blockers_from_context(
     context: WriterTransitionExpansionContext,
 ) -> tuple[_WriterChildObligationBlocker, ...]:
@@ -5102,7 +5107,6 @@ __all__ = (
     "finalize_writer_terminal_state",
     "finalize_writer_terminal_state_with_evidence",
     "legal_writer_transitions",
-    "validate_writer_supported_prepared",
     "validate_writer_transition_prepared",
     "writer_state_is_eos",
 )

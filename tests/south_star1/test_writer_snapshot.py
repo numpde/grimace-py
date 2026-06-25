@@ -1292,7 +1292,66 @@ class WriterSnapshotTest(unittest.TestCase):
         with self.assertRaises(SouthStarError):
             validate_writer_search_snapshot(snapshot, prepared=prepared)
 
-    def test_cursor_audit_rejects_future_cyclic_component_outside_current_component(self) -> None:
+    def test_snapshot_rejects_open_closure_from_completed_component(self) -> None:
+        prepared = _prepare(triangle_plus_singleton_facts())
+        options = _writer_options(rooted_at_atom=3)
+        key = replace(
+            _triangle_root_with_open_closure_key(),
+            component_cursor=ComponentCursor(
+                component_index=1,
+                component_roots=(AtomId(0), AtomId(3)),
+            ),
+            active=WriterAtomFrame(
+                atom=AtomId(3),
+                parent=None,
+                incoming_bond=None,
+                atom_emitted=True,
+            ),
+            visited_atoms=frozenset((AtomId(0), AtomId(3))),
+        )
+        snapshot = _snapshot_for_cursor(
+            prepared,
+            options,
+            _cursor_with_key(key),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_search_snapshot(snapshot, prepared=prepared)
+
+    def test_snapshot_rejects_closed_closure_from_future_component(self) -> None:
+        prepared = _prepare(singleton_plus_triangle_facts())
+        options = _writer_options(rooted_at_atom=0)
+        label = _closure_label()
+        closure = WriterClosedClosure(
+            bond=BondId(2),
+            first_atom=AtomId(1),
+            second_atom=AtomId(3),
+            label=label,
+            first_endpoint_text="1",
+            second_endpoint_text="1",
+            first_endpoint_bond_text="",
+            second_endpoint_bond_text="",
+        )
+        key = replace(
+            _manual_emitted_root_key(
+                AtomId(0),
+                component_roots=(AtomId(0), AtomId(1)),
+            ),
+            ring_state=WriterRingStateKey(
+                closed_closures=(closure,),
+                label_state=WriterRingLabelState(reusable=(label,)),
+            ),
+        )
+        snapshot = _snapshot_for_cursor(
+            prepared,
+            options,
+            _cursor_with_key(key),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_search_snapshot(snapshot, prepared=prepared)
+
+    def test_cursor_audit_accepts_future_cyclic_component_outside_current_component(self) -> None:
         prepared = _prepare(singleton_plus_triangle_facts())
         options = _writer_options(rooted_at_atom=0)
         key = _manual_emitted_root_key(
@@ -1300,12 +1359,11 @@ class WriterSnapshotTest(unittest.TestCase):
             component_roots=(AtomId(0), AtomId(1)),
         )
 
-        with self.assertRaises(SouthStarError):
-            validate_writer_cursor_against_prepared(
-                prepared,
-                _cursor_with_key(key),
-                runtime_options=options,
-            )
+        validate_writer_cursor_against_prepared(
+            prepared,
+            _cursor_with_key(key),
+            runtime_options=options,
+        )
 
     def test_cursor_audit_accepts_all_acyclic_multi_component_surface(self) -> None:
         prepared = _prepare(chain_plus_singleton_facts())

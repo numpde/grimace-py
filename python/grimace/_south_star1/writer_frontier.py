@@ -39,7 +39,6 @@ from .writer_transitions import _WriterResidualAttachmentPolicyKey
 from .writer_transitions import _WriterTopLevelScheduleOutcome
 from .writer_transitions import _legal_writer_schedule_outcome
 from .writer_transitions import _raise_for_top_level_schedule_outcome_blockers
-from .writer_transitions import validate_writer_supported_prepared
 from .writer_transitions import validate_writer_transition_prepared
 
 if TYPE_CHECKING:
@@ -1202,10 +1201,9 @@ def initial_writer_frontier_cursor(
     prepared: SouthStarPreparedMol,
     runtime_options: SouthStarRuntimeOptions,
 ) -> WriterFrontierCursor:
-    return _initial_writer_frontier_cursor(
+    return _initial_writer_transition_frontier_cursor(
         prepared,
         runtime_options,
-        validate_prepared=validate_writer_supported_prepared,
     )
 
 

@@ -2021,7 +2021,6 @@ def validate_writer_cursor_against_prepared(
         _validate_live_frontier_ownership(prepared, key, context)
         _validate_terminal_graph_completion(prepared, key, context)
         _validate_stereo_occurrences_bound_to_graph_state(prepared, key, context)
-        _validate_ring_state(prepared, key, context)
         _validate_policy_state(key, atom_ids, bond_ids)
         _validate_stereo_state(
             prepared,
@@ -2203,7 +2202,16 @@ def _validate_component_membership(
 ) -> None:
     current = key.component_cursor.component_index
     allowed_components = set(range(current + 1))
+    closed_closure_bonds = frozenset(
+        closure.bond
+        for closure in key.ring_state.closed_closures
+    )
+    materialized_bonds = key.written_bonds | closed_closure_bonds
     active = key.active
+    if key.written_bonds & closed_closure_bonds:
+        _invalid_snapshot(
+            "writer bond is both a tree edge and a closed closure"
+        )
     if atom_component[active.atom] != current:
         _invalid_snapshot("writer active atom is outside current component")
     for atom in key.visited_atoms:
@@ -2212,6 +2220,17 @@ def _validate_component_membership(
     for bond in key.written_bonds:
         if bond_component[bond] not in allowed_components:
             _invalid_snapshot("writer written bond is outside completed/current components")
+    for endpoint in key.ring_state.open_endpoints:
+        if bond_component.get(endpoint.bond) != current:
+            _invalid_snapshot(
+                "writer open closure is outside current component"
+            )
+    for closure in key.ring_state.closed_closures:
+        index = bond_component.get(closure.bond)
+        if index is None or index > current:
+            _invalid_snapshot(
+                "writer closed closure is outside completed/current components"
+            )
     pending = key.obligations.pending_entry
     if pending is not None:
         if (
@@ -2228,8 +2247,16 @@ def _validate_component_membership(
             break
         if not frozenset(component.atoms).issubset(key.visited_atoms):
             _invalid_snapshot("writer completed component has unvisited atoms")
-        if not frozenset(component.bonds).issubset(key.written_bonds):
-            _invalid_snapshot("writer completed component has unwritten bonds")
+        component_bonds = frozenset(component.bonds)
+        component_materialized = frozenset(
+            bond
+            for bond in materialized_bonds
+            if bond_component[bond] == index
+        )
+        if component_materialized != component_bonds:
+            _invalid_snapshot(
+                "writer completed component has unresolved bonds"
+            )
 
 
 def _validate_current_component_tree_fragment(
@@ -2865,42 +2892,6 @@ def _written_tree_parent_links(
                 parent_by_child[child] = (parent, bond)
                 stack.append(child)
     return parent_by_child
-
-
-def _validate_ring_state(
-    prepared: SouthStarPreparedMol,
-    key: WriterStateKey,
-    context: WriterGraphObligationContext,
-) -> None:
-    partition_by_bond = {
-        obligation.bond: obligation.kind
-        for obligation in context.edge_partition.obligations
-    }
-    open_labels = tuple(endpoint.label for endpoint in key.ring_state.open_endpoints)
-    if len(set(open_labels)) != len(open_labels):
-        _invalid_snapshot("writer open closure labels contain duplicates")
-    for endpoint in key.ring_state.open_endpoints:
-        if partition_by_bond.get(endpoint.bond) is not WriterEdgeObligationKind.OPEN_CLOSURE_ENDPOINT:
-            _invalid_snapshot("writer open closure endpoint lacks edge obligation")
-        fact = prepared.graph_index.bond_by_id.get(endpoint.bond)
-        if fact is None:
-            _invalid_snapshot("writer open closure endpoint references unknown bond")
-        if {endpoint.first_atom, endpoint.second_atom} != {fact.a, fact.b}:
-            _invalid_snapshot("writer open closure endpoint has wrong atoms")
-        if endpoint.first_atom not in key.visited_atoms:
-            _invalid_snapshot("writer open closure first atom is not visited")
-    for closure in key.ring_state.closed_closures:
-        if partition_by_bond.get(closure.bond) is not WriterEdgeObligationKind.CLOSED_CLOSURE:
-            _invalid_snapshot("writer closed closure lacks edge obligation")
-        fact = prepared.graph_index.bond_by_id.get(closure.bond)
-        if fact is None:
-            _invalid_snapshot("writer closed closure references unknown bond")
-        if {closure.first_atom, closure.second_atom} != {fact.a, fact.b}:
-            _invalid_snapshot("writer closed closure has wrong atoms")
-        if closure.first_atom not in key.visited_atoms or closure.second_atom not in key.visited_atoms:
-            _invalid_snapshot("writer closed closure endpoint is not visited")
-    if key.ring_state.open_endpoints and _state_is_terminal_shape(prepared, key, context):
-        _invalid_snapshot("writer terminal snapshot has open closure endpoints")
 
 
 def _state_is_terminal_shape(

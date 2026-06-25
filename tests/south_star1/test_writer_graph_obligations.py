@@ -6,9 +6,11 @@ from dataclasses import replace
 import inspect
 import unittest
 
+import grimace._south_star1.prepared_runtime as prepared_runtime
 import grimace._south_star1.writer_snapshot as writer_snapshot
 import grimace._south_star1.writer_transitions as writer_transitions
 from grimace._south_star1.errors import SouthStarError
+from grimace._south_star1.errors import SouthStarErrorKind
 from grimace._south_star1.facts import BondOrder
 from grimace._south_star1.facts import ComponentFacts
 from grimace._south_star1.facts import MoleculeFacts
@@ -33,8 +35,8 @@ from grimace._south_star1.writer_graph_obligations import build_writer_graph_obl
 from grimace._south_star1.writer_graph_obligations import build_writer_block_cut_metadata
 from grimace._south_star1.writer_graph_obligations import classify_writer_edge_obligations
 from grimace._south_star1.writer_graph_obligations import classify_writer_residual_attachments
-from grimace._south_star1.writer_graph_obligations import validate_writer_initial_support_graph_surface
 from grimace._south_star1.writer_graph_obligations import validate_writer_edge_obligation_partition
+import grimace._south_star1.writer_graph_obligations as writer_graph_obligations
 from grimace._south_star1.writer_graph_obligations import writer_boundary_incidence_sort_tuple
 from grimace._south_star1.writer_graph_obligations import writer_edge_obligation_partition_sort_tuple
 from grimace._south_star1.writer_graph_obligations import writer_graph_completion_status
@@ -92,10 +94,6 @@ class WriterGraphObligationsTest(unittest.TestCase):
         self.assertEqual(surface.atoms, frozenset((AtomId(0), AtomId(1), AtomId(2))))
         self.assertEqual(surface.bonds, frozenset((BondId(0), BondId(1))))
         self.assertTrue(surface.connected)
-        self.assertTrue(surface.tree)
-        self.assertEqual(surface.cyclic_rank, 0)
-        self.assertEqual(surface.cyclic_block_ids, frozenset())
-        self.assertIsNone(surface.unsupported_reason)
 
     def test_cached_block_cut_matches_fresh_metadata_for_cyclic_shapes(self) -> None:
         for facts in (triangle_facts(), six_ring_facts()):
@@ -105,20 +103,14 @@ class WriterGraphObligationsTest(unittest.TestCase):
                 build_writer_block_cut_metadata(prepared),
             )
 
-    def test_component_surface_marks_cyclic_and_malformed_components_unsupported(self) -> None:
+    def test_component_metadata_records_connectivity_not_support(self) -> None:
         triangle = _prepare(triangle_facts()).writer_graph_metadata.component_surfaces[0]
         malformed = _prepare(
             cycle_plus_isolate_component_facts()
         ).writer_graph_metadata.component_surfaces[0]
 
         self.assertTrue(triangle.connected)
-        self.assertFalse(triangle.tree)
-        self.assertEqual(triangle.cyclic_rank, 1)
-        self.assertIsNotNone(triangle.unsupported_reason)
         self.assertFalse(malformed.connected)
-        self.assertFalse(malformed.tree)
-        self.assertEqual(malformed.cyclic_rank, 1)
-        self.assertIsNotNone(malformed.unsupported_reason)
 
     def test_context_builder_returns_partition_and_residual_summary(self) -> None:
         prepared = _prepare(cco_facts())
@@ -261,18 +253,52 @@ class WriterGraphObligationsTest(unittest.TestCase):
         self.assertTrue(context.residual_summary.has_cyclic_attachment)
         self.assertEqual(context.residual_summary.attachment_actions, ())
 
-    def test_supported_graph_surface_accepts_all_acyclic_components(self) -> None:
-        validate_writer_initial_support_graph_surface(_prepare(chain_plus_singleton_facts()))
+    def test_live_initializer_accepts_connected_cyclic_component(self) -> None:
+        prepared = _prepare(triangle_facts())
 
-    def test_supported_graph_surface_rejects_cyclic_and_malformed_components(self) -> None:
-        for facts in (
-            triangle_facts(),
-            singleton_plus_triangle_facts(),
-            triangle_plus_singleton_facts(),
-            cycle_plus_isolate_component_facts(),
+        cursor = initial_writer_frontier_cursor(
+            prepared,
+            _writer_options(rooted_at_atom=0),
+        )
+
+        self.assertTrue(cursor.weighted_states)
+
+    def test_live_initializer_rejects_disconnected_declared_component(self) -> None:
+        prepared = _prepare(cycle_plus_isolate_component_facts())
+
+        with self.assertRaises(SouthStarError) as caught:
+            initial_writer_frontier_cursor(
+                prepared,
+                _writer_options(rooted_at_atom=0),
+            )
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+
+    def test_static_initial_graph_support_classifier_is_absent(self) -> None:
+        self.assertFalse(
+            hasattr(
+                writer_graph_obligations,
+                "validate_writer_initial_support_graph_surface",
+            )
+        )
+        self.assertFalse(
+            hasattr(
+                prepared_runtime,
+                "_prepared_has_cyclic_writer_graph_surface",
+            )
+        )
+
+        fields = (
+            writer_graph_obligations.WriterComponentGraphSurface.__dataclass_fields__
+        )
+        for name in (
+            "tree",
+            "cyclic_rank",
+            "cyclic_block_ids",
+            "unsupported_reason",
         ):
-            with self.assertRaises(SouthStarError):
-                validate_writer_initial_support_graph_surface(_prepare(facts))
+            with self.subTest(name=name):
+                self.assertNotIn(name, fields)
 
     def test_production_paths_use_cached_writer_graph_context(self) -> None:
         child_source = inspect.getsource(

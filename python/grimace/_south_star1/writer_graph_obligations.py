@@ -211,10 +211,6 @@ class WriterComponentGraphSurface:
     atoms: frozenset[AtomId]
     bonds: frozenset[BondId]
     connected: bool
-    tree: bool
-    cyclic_rank: int
-    cyclic_block_ids: frozenset[int]
-    unsupported_reason: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -251,10 +247,9 @@ def build_writer_graph_prepared_metadata_from_facts(
     graph_index,
     atom_ids: tuple[AtomId, ...],
 ) -> WriterGraphPreparedMetadata:
-    block_cut = _build_writer_block_cut_metadata_from_graph(atom_ids, graph_index)
     return WriterGraphPreparedMetadata(
-        block_cut=block_cut,
-        component_surfaces=_component_graph_surfaces(facts, graph_index, block_cut),
+        block_cut=_build_writer_block_cut_metadata_from_graph(atom_ids, graph_index),
+        component_surfaces=_component_graph_surfaces(facts, graph_index),
     )
 
 
@@ -343,17 +338,6 @@ def build_writer_graph_obligation_context(
         residual_summary=summary,
         prepared_metadata=metadata,
     )
-
-
-def validate_writer_initial_support_graph_surface(
-    prepared: SouthStarPreparedMol,
-) -> None:
-    for surface in prepared.writer_graph_metadata.component_surfaces:
-        if surface.unsupported_reason is not None:
-            raise SouthStarError(
-                SouthStarErrorKind.UNSUPPORTED_POLICY,
-                surface.unsupported_reason,
-            )
 
 
 def validate_writer_transition_graph_surface(
@@ -1372,42 +1356,18 @@ def _validate_closure_obligation(
 def _component_graph_surfaces(
     facts,
     graph_index,
-    block_cut: WriterBlockCutMetadata,
 ) -> tuple[WriterComponentGraphSurface, ...]:
-    block_by_bond = dict(block_cut.biconnected_block_by_bond)
     surfaces = []
     for index, component in enumerate(facts.components):
         atoms = frozenset(component.atoms)
         bonds = frozenset(component.bonds)
         connected_components = _component_connected_count(atoms, bonds, graph_index)
-        connected = connected_components == 1
-        cyclic_rank = len(bonds) - len(atoms) + connected_components
-        cyclic_block_ids = frozenset(
-            block_by_bond[bond]
-            for bond in bonds
-            if bond in block_by_bond and block_by_bond[bond] in block_cut.cyclic_blocks
-        )
-        tree = (
-            bool(atoms)
-            and connected
-            and len(bonds) == len(atoms) - 1
-            and cyclic_rank == 0
-            and not cyclic_block_ids
-        )
         surfaces.append(
             WriterComponentGraphSurface(
                 component_index=index,
                 atoms=atoms,
                 bonds=bonds,
-                connected=connected,
-                tree=tree,
-                cyclic_rank=cyclic_rank,
-                cyclic_block_ids=cyclic_block_ids,
-                unsupported_reason=(
-                    None
-                    if tree
-                    else "WRITER_SHAPED writer-state runtime supports connected tree components only"
-                ),
+                connected=connected_components == 1,
             )
         )
     return tuple(surfaces)
@@ -1574,7 +1534,6 @@ __all__ = (
     "build_writer_block_cut_metadata",
     "classify_writer_edge_obligations",
     "classify_writer_residual_attachments",
-    "validate_writer_initial_support_graph_surface",
     "validate_writer_snapshot_graph_surface",
     "validate_writer_transition_graph_surface",
     "validate_writer_edge_obligation_partition",

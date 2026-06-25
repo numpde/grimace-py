@@ -799,48 +799,6 @@ class _WriterSnapshotPrefixReadOutcome:
         return self.choice_snapshot.graph_policy_decisions
 
     @property
-    def residual_cyclic_policy_decisions(self):
-        if self.choice_snapshot is None:
-            return ()
-
-        return self.choice_snapshot.residual_cyclic_policy_decisions
-
-    @property
-    def residual_cyclic_policy_kinds(self):
-        if self.choice_snapshot is None:
-            return ()
-
-        return self.choice_snapshot.residual_cyclic_policy_kinds
-
-    @property
-    def residual_cyclic_choice_groups(self):
-        if self.choice_snapshot is None:
-            return ()
-
-        return self.choice_snapshot.residual_cyclic_choice_groups
-
-    @property
-    def residual_cyclic_unsupported_owner_scope_groups(self):
-        if self.choice_snapshot is None:
-            return ()
-
-        return self.choice_snapshot.residual_cyclic_unsupported_owner_scope_groups
-
-    @property
-    def residual_cyclic_missing_evidence_groups(self):
-        if self.choice_snapshot is None:
-            return ()
-
-        return self.choice_snapshot.residual_cyclic_missing_evidence_groups
-
-    @property
-    def residual_cyclic_support_dead_groups(self):
-        if self.choice_snapshot is None:
-            return ()
-
-        return self.choice_snapshot.residual_cyclic_support_dead_groups
-
-    @property
     def considered_closure_endpoint_selection_kinds(self):
         if self.choice_snapshot is None:
             return ()
@@ -986,22 +944,6 @@ class _WriterSnapshotPrefixReadOutcome:
     @property
     def replayed_selected_policy_families(self):
         return self.replay_outcome.replayed_selected_policy_families
-
-    @property
-    def final_choice_residual_cyclic_policy_kinds(self):
-        return tuple(
-            kind
-            for evidence in self.choice_residual_attachment_evidence
-            for kind in evidence.residual_cyclic_policy_kinds
-        )
-
-    @property
-    def replayed_residual_cyclic_policy_kinds(self):
-        return tuple(
-            kind
-            for evidence in self.replayed_choice_residual_attachment_evidence
-            for kind in evidence.residual_cyclic_policy_kinds
-        )
 
     @property
     def final_choice_dead_closure_open_resolved_cyclic_tree_entry_evidence(

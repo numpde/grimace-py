@@ -36,7 +36,6 @@ from .writer_transitions import _WriterNextTokenFrontierSupport
 from .writer_transitions import _WriterResidualAttachmentOwnerScopeKind
 from .writer_transitions import _WriterResidualAttachmentPolicyGroup
 from .writer_transitions import _WriterResidualAttachmentPolicyKey
-from .writer_transitions import _WriterResidualCyclicPolicyDecisionKind
 from .writer_transitions import _WriterTopLevelScheduleOutcome
 from .writer_transitions import _legal_writer_schedule_outcome
 from .writer_transitions import _raise_for_top_level_schedule_outcome_blockers
@@ -273,10 +272,6 @@ class _WriterFrontierResidualAttachmentEvidenceGroup:
         _WriterFrontierResidualAttachmentSupportGroup,
         ...,
     ] = ()
-    residual_cyclic_policy_decisions: tuple[
-        _WriterResidualCyclicPolicyDecision,
-        ...,
-    ] = ()
 
     @property
     def selected_supports(
@@ -472,9 +467,6 @@ class _WriterFrontierResidualAttachmentEvidenceGroup:
 
     @property
     def has_dead_closure_open_resolution_evidence(self) -> bool:
-        if self.residual_cyclic_policy_decisions:
-            return self.has_residual_cyclic_support_dead_resolution
-
         return (
             self.has_resolved_policy_evidence
             and self.has_support_dead_closure_open_evidence
@@ -490,80 +482,11 @@ class _WriterFrontierResidualAttachmentEvidenceGroup:
         )
 
     @property
-    def residual_cyclic_policy_kinds(
-        self,
-    ) -> tuple[_WriterResidualCyclicPolicyDecisionKind, ...]:
-        return tuple(
-            decision.kind
-            for decision in self.residual_cyclic_policy_decisions
-        )
-
-    @property
-    def has_residual_cyclic_policy_evidence(self) -> bool:
-        return bool(self.residual_cyclic_policy_decisions)
-
-    @property
-    def has_residual_cyclic_support_dead_resolution(self) -> bool:
-        return any(
-            decision.kind in (
-                (
-                    _WriterResidualCyclicPolicyDecisionKind
-                    .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
-                ),
-                (
-                    _WriterResidualCyclicPolicyDecisionKind
-                    .BRANCH_RETURN_AFTER_DEAD_CLOSURE_OPEN
-                ),
-                (
-                    _WriterResidualCyclicPolicyDecisionKind
-                    .PENDING_PARENT_AFTER_DEAD_CLOSURE_OPEN
-                ),
-                (
-                    _WriterResidualCyclicPolicyDecisionKind
-                    .OPEN_RING_ENDPOINT_AFTER_DEAD_CLOSURE_OPEN
-                ),
-            )
-            for decision in self.residual_cyclic_policy_decisions
-        )
-
-    @property
-    def has_residual_cyclic_missing_evidence_blocker(self) -> bool:
-        return any(
-            decision.kind
-            is (
-                _WriterResidualCyclicPolicyDecisionKind
-                .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
-            )
-            for decision in self.residual_cyclic_policy_decisions
-        )
-
-    @property
-    def has_residual_cyclic_unsupported_owner_scope_blocker(self) -> bool:
-        return any(
-            decision.kind
-            is _WriterResidualCyclicPolicyDecisionKind.UNSUPPORTED_OWNER_SCOPE
-            for decision in self.residual_cyclic_policy_decisions
-        )
-
-    @property
-    def has_retained_residual_cyclic_blocker(self) -> bool:
-        return (
-            self.has_residual_cyclic_missing_evidence_blocker
-            or self.has_residual_cyclic_unsupported_owner_scope_blocker
-        )
-
-    @property
     def has_missing_closure_open_support_evidence_blocker(self) -> bool:
-        if self.residual_cyclic_policy_decisions:
-            return self.has_residual_cyclic_missing_evidence_blocker
-
         return self.has_unresolved_policy_evidence
 
     @property
     def has_unsupported_owner_scope_blocker(self) -> bool:
-        if self.residual_cyclic_policy_decisions:
-            return self.has_residual_cyclic_unsupported_owner_scope_blocker
-
         return self.has_unsupported_owner_scope_evidence
 
 
@@ -646,29 +569,6 @@ class _WriterFrontierChoiceResidualAttachmentEvidence:
         return bool(self.unsupported_owner_scope_kinds)
 
     @property
-    def residual_cyclic_policy_decisions(
-        self,
-    ) -> tuple[_WriterResidualCyclicPolicyDecision, ...]:
-        return tuple(
-            decision
-            for group in self.residual_attachment_evidence_groups
-            for decision in group.residual_cyclic_policy_decisions
-        )
-
-    @property
-    def residual_cyclic_policy_kinds(
-        self,
-    ) -> tuple[_WriterResidualCyclicPolicyDecisionKind, ...]:
-        return tuple(
-            decision.kind
-            for decision in self.residual_cyclic_policy_decisions
-        )
-
-    @property
-    def has_retained_residual_cyclic_policy_evidence(self) -> bool:
-        return bool(self.residual_cyclic_policy_decisions)
-
-    @property
     def has_retained_dead_closure_open_resolved_cyclic_tree_entry_support(
         self,
     ) -> bool:
@@ -680,7 +580,8 @@ class _WriterFrontierChoiceResidualAttachmentEvidence:
     @property
     def has_retained_residual_cyclic_blocker_evidence(self) -> bool:
         return any(
-            group.has_retained_residual_cyclic_blocker
+            group.has_missing_closure_open_support_evidence_blocker
+            or group.has_unsupported_owner_scope_blocker
             for group in self.residual_attachment_evidence_groups
         )
 
@@ -872,57 +773,6 @@ class _WriterFrontierScheduleOutcome:
         )
 
     @property
-    def residual_cyclic_policy_decisions(
-        self,
-    ) -> tuple[_WriterResidualCyclicPolicyDecision, ...]:
-        return tuple(
-            decision.residual_cyclic_policy_decision
-            for decision in self.graph_policy_decisions
-            if decision.residual_cyclic_policy_decision is not None
-        )
-
-    @property
-    def residual_cyclic_policy_kinds(
-        self,
-    ) -> tuple[_WriterResidualCyclicPolicyDecisionKind, ...]:
-        return tuple(
-            decision.kind
-            for decision in self.residual_cyclic_policy_decisions
-        )
-
-    @property
-    def residual_cyclic_choice_groups(self):
-        return tuple(
-            group
-            for decision in self.residual_cyclic_policy_decisions
-            for group in decision.choice_groups
-        )
-
-    @property
-    def residual_cyclic_unsupported_owner_scope_groups(self):
-        return tuple(
-            group
-            for decision in self.residual_cyclic_policy_decisions
-            for group in decision.unsupported_owner_scope_groups
-        )
-
-    @property
-    def residual_cyclic_missing_evidence_groups(self):
-        return tuple(
-            group
-            for decision in self.residual_cyclic_policy_decisions
-            for group in decision.missing_evidence_groups
-        )
-
-    @property
-    def residual_cyclic_support_dead_groups(self):
-        return tuple(
-            group
-            for decision in self.residual_cyclic_policy_decisions
-            for group in decision.support_dead_groups
-        )
-
-    @property
     def considered_closure_endpoint_selection_kinds(
         self,
     ) -> tuple[_WriterClosureEndpointSelectionKind, ...]:
@@ -1085,9 +935,6 @@ class _WriterFrontierScheduleOutcome:
         self,
     ) -> tuple[_WriterFrontierResidualAttachmentEvidenceGroup, ...]:
         return _writer_frontier_residual_attachment_evidence_groups(
-            residual_cyclic_policy_decisions=(
-                self.residual_cyclic_policy_decisions
-            ),
             resolved_policy_groups=(
                 self.resolved_residual_attachment_policy_groups
             ),
@@ -1151,18 +998,6 @@ class _WriterFrontierChoiceSnapshot:
         return self.schedule_outcome.graph_policy_decisions
 
     @property
-    def residual_cyclic_policy_decisions(
-        self,
-    ) -> tuple[_WriterResidualCyclicPolicyDecision, ...]:
-        return self.schedule_outcome.residual_cyclic_policy_decisions
-
-    @property
-    def residual_cyclic_policy_kinds(
-        self,
-    ) -> tuple[_WriterResidualCyclicPolicyDecisionKind, ...]:
-        return self.schedule_outcome.residual_cyclic_policy_kinds
-
-    @property
     def execution_capabilities(
         self,
     ) -> frozenset[_WriterExecutionCapabilityKind]:
@@ -1178,25 +1013,6 @@ class _WriterFrontierChoiceSnapshot:
         self,
     ) -> frozenset[_WriterExecutionCapabilityKind]:
         return self.schedule_outcome.terminal_execution_capabilities
-
-    @property
-    def residual_cyclic_choice_groups(self):
-        return self.schedule_outcome.residual_cyclic_choice_groups
-
-    @property
-    def residual_cyclic_unsupported_owner_scope_groups(self):
-        return (
-            self.schedule_outcome
-            .residual_cyclic_unsupported_owner_scope_groups
-        )
-
-    @property
-    def residual_cyclic_missing_evidence_groups(self):
-        return self.schedule_outcome.residual_cyclic_missing_evidence_groups
-
-    @property
-    def residual_cyclic_support_dead_groups(self):
-        return self.schedule_outcome.residual_cyclic_support_dead_groups
 
     @property
     def considered_closure_endpoint_selection_kinds(
@@ -1336,13 +1152,6 @@ class _WriterFrontierChoiceSnapshot:
                 evidence
                 .has_dead_closure_open_resolved_cyclic_tree_entry_support
             )
-        )
-
-    @property
-    def has_retained_residual_cyclic_policy_evidence(self) -> bool:
-        return any(
-            evidence.has_retained_residual_cyclic_policy_evidence
-            for evidence in self.choice_residual_attachment_evidence
         )
 
     @property
@@ -1727,10 +1536,6 @@ def _owner_scope_kinds_from_residual_policy_groups(
 
 def _writer_frontier_residual_attachment_evidence_groups(
     *,
-    residual_cyclic_policy_decisions: tuple[
-        _WriterResidualCyclicPolicyDecision,
-        ...,
-    ] = (),
     resolved_policy_groups: tuple[
         _WriterResidualAttachmentPolicyGroup,
         ...,
@@ -1774,10 +1579,6 @@ def _writer_frontier_residual_attachment_evidence_groups(
     for group in unresolved_policy_groups:
         remember(group.key)
 
-    for decision in residual_cyclic_policy_decisions:
-        for group in decision.choice_groups:
-            remember(group.key)
-
     for group in selected_support_groups:
         remember(group.key)
 
@@ -1811,14 +1612,6 @@ def _writer_frontier_residual_attachment_evidence_groups(
                 for group in selected_support_groups
                 if group.key == key
             ),
-            residual_cyclic_policy_decisions=tuple(
-                decision
-                for decision in residual_cyclic_policy_decisions
-                if any(
-                    group.key == key
-                    for group in decision.choice_groups
-                )
-            ),
         )
         for key in order
     )
@@ -1830,11 +1623,6 @@ def _writer_frontier_choice_residual_attachment_evidence_groups(
     schedule_outcome: _WriterFrontierScheduleOutcome,
 ) -> tuple[_WriterFrontierResidualAttachmentEvidenceGroup, ...]:
     selected_support_groups = choice.residual_attachment_support_groups
-    residual_cyclic_policy_decisions = getattr(
-        schedule_outcome,
-        "residual_cyclic_policy_decisions",
-        (),
-    )
 
     return tuple(
         _WriterFrontierResidualAttachmentEvidenceGroup(
@@ -1872,14 +1660,6 @@ def _writer_frontier_choice_residual_attachment_evidence_groups(
                 if group.key == support_group.key
             ),
             selected_support_groups=(support_group,),
-            residual_cyclic_policy_decisions=tuple(
-                decision
-                for decision in residual_cyclic_policy_decisions
-                if any(
-                    group.key == support_group.key
-                    for group in decision.choice_groups
-                )
-            ),
         )
         for support_group in selected_support_groups
     )

@@ -70,6 +70,7 @@ from grimace._south_star1.writer_frontier import _initial_writer_transition_fron
 from grimace._south_star1.writer_frontier import iter_writer_frontier_support
 from grimace._south_star1.writer_frontier import writer_frontier_choices
 from grimace._south_star1.writer_stereo import EMPTY_RESIDUAL_SNAPSHOT
+from grimace._south_star1.writer_stereo import reconstruct_writer_stereo_residual_snapshot
 from grimace._south_star1.writer_stereo import tetra_parity_var
 from grimace._south_star1.writer_stereo import tetra_token_var
 from grimace._south_star1.writer_graph_obligations import WriterBoundaryOwnerKind
@@ -13187,6 +13188,64 @@ class WriterStateKernelTest(unittest.TestCase):
             )
             self.assertGreaterEqual(item.component_variable_count, 1)
             self.assertGreaterEqual(item.component_factor_count, 1)
+
+    def test_terminalization_forwards_residual_work_evidence(self) -> None:
+        prepared = _prepare(tetrahedral_facts())
+        terminal_key = _terminal_keys(
+            prepared,
+            initial_writer_frontier_cursor(
+                prepared,
+                _writer_options(rooted_at_atom=0),
+            ),
+        )[0]
+        local_orders = tuple(
+            replace(record, closed=False)
+            if record.atom == AtomId(0)
+            else record
+            for record in terminal_key.stereo_state.local_orders
+        )
+        stereo_state = replace(
+            terminal_key.stereo_state,
+            local_orders=local_orders,
+        )
+        stereo_state = replace(
+            stereo_state,
+            residual_snapshot=reconstruct_writer_stereo_residual_snapshot(
+                prepared,
+                stereo_state,
+            ),
+        )
+        state = writer_state_from_key(
+            replace(
+                terminal_key,
+                active=WriterAtomFrame(
+                    atom=AtomId(0),
+                    parent=None,
+                    incoming_bond=None,
+                    atom_emitted=True,
+                ),
+                stereo_state=stereo_state,
+            )
+        )
+        context = (
+            writer_transitions
+            ._writer_transition_expansion_context_from_validated_prepared(
+                prepared,
+                state,
+            )
+        )
+
+        outcome = writer_transitions._finalize_writer_terminal_state_from_context(
+            prepared,
+            state,
+            context,
+        )
+
+        self.assertIsNotNone(outcome.state)
+        self.assertIn(
+            "tetrahedral local-order factor closure",
+            {item.operation for item in outcome.residual_work_evidence},
+        )
 
     def test_residual_work_evidence_is_not_a_legality_classifier(self) -> None:
         source = inspect.getsource(
@@ -29284,36 +29343,6 @@ def _first_choice_residual_work_evidence(
             pending.append(choice.successor)
 
     raise AssertionError(f"no choice residual evidence for {operation!r}")
-
-
-def _first_terminal_residual_work_evidence(
-    prepared: SouthStarPreparedMol,
-    cursor: WriterFrontierCursor,
-    *,
-    operation: str,
-):
-    pending = [cursor]
-    seen: set[WriterFrontierCursor] = set()
-
-    while pending:
-        current = pending.pop(0)
-        if current in seen:
-            continue
-        seen.add(current)
-
-        snapshot = writer_frontier_module._writer_frontier_choice_snapshot(
-            prepared,
-            current,
-            include_counts=False,
-        )
-        if any(
-            item.operation == operation
-            for item in snapshot.terminal_residual_work_evidence
-        ):
-            return snapshot.terminal_residual_work_evidence
-        pending.extend(choice.successor for choice in snapshot.choices)
-
-    raise AssertionError(f"no terminal residual evidence for {operation!r}")
 
 
 if __name__ == "__main__":

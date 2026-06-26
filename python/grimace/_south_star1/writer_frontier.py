@@ -12,6 +12,8 @@ from .errors import SouthStarError
 from .errors import SouthStarErrorKind
 from .ids import AtomId
 from .writer_execution_evidence import WriterResidualPropagationWorkEvidence
+from .writer_execution_evidence import WriterResidualWorkEnvelopeViolation
+from .writer_execution_evidence import writer_residual_work_envelope_violation
 from .writer_capabilities import _WriterExecutionCapabilityKind
 from .writer_capabilities import (
     _unsupported_public_writer_execution_capabilities,
@@ -1906,6 +1908,62 @@ def _raise_for_writer_frontier_execution_capability_blockers(
             )
 
 
+def _first_writer_residual_work_envelope_violation(
+    evidence: tuple[WriterResidualPropagationWorkEvidence, ...],
+) -> WriterResidualWorkEnvelopeViolation | None:
+    for item in evidence:
+        violation = writer_residual_work_envelope_violation(item)
+        if violation is not None:
+            return violation
+    return None
+
+
+def _raise_for_writer_residual_work_envelope_violation(
+    violation: WriterResidualWorkEnvelopeViolation,
+    *,
+    location: str,
+) -> None:
+    evidence = violation.evidence
+    raise SouthStarError(
+        SouthStarErrorKind.UNSUPPORTED_POLICY,
+        (
+            "WRITER_SHAPED residual work exceeds the supported "
+            "execution envelope: "
+            f"operation={evidence.operation!r}; "
+            f"metric={violation.metric}; "
+            f"actual={violation.actual}; "
+            f"limit={violation.limit}; "
+            f"{location}"
+        ),
+    )
+
+
+def _raise_for_writer_frontier_residual_work_envelope_blockers(
+    outcome: _WriterFrontierScheduleOutcome,
+) -> None:
+    terminal = _first_writer_residual_work_envelope_violation(
+        outcome.terminal_residual_work_evidence
+    )
+    if terminal is not None:
+        _raise_for_writer_residual_work_envelope_violation(
+            terminal,
+            location="at EOS",
+        )
+
+    for entry in sorted(
+        outcome.next_token_frontier,
+        key=lambda item: item.emitted_text,
+    ):
+        violation = _first_writer_residual_work_envelope_violation(
+            entry.residual_work_evidence
+        )
+        if violation is not None:
+            _raise_for_writer_residual_work_envelope_violation(
+                violation,
+                location=f"next={entry.emitted_text!r}",
+            )
+
+
 def _raise_for_writer_frontier_choice_snapshot_blockers(
     snapshot: _WriterFrontierChoiceSnapshot,
 ) -> None:
@@ -1913,6 +1971,9 @@ def _raise_for_writer_frontier_choice_snapshot_blockers(
         snapshot.schedule_outcome
     )
     _raise_for_writer_frontier_execution_capability_blockers(
+        snapshot.schedule_outcome
+    )
+    _raise_for_writer_frontier_residual_work_envelope_blockers(
         snapshot.schedule_outcome
     )
 
@@ -1929,6 +1990,7 @@ def _checked_writer_frontier_schedule_outcome(
 
     _raise_for_writer_frontier_schedule_outcome_blockers(outcome)
     _raise_for_writer_frontier_execution_capability_blockers(outcome)
+    _raise_for_writer_frontier_residual_work_envelope_blockers(outcome)
 
     return outcome
 

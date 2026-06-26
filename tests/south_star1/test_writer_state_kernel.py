@@ -23,6 +23,7 @@ import grimace._south_star1.writer_support as writer_support
 import grimace._south_star1.writer_audit as writer_audit
 import grimace._south_star1.writer_snapshot as writer_snapshot
 import grimace._south_star1.writer_state as writer_state_module
+import grimace._south_star1.writer_stereo as writer_stereo
 import grimace._south_star1.writer_transitions as writer_transitions
 from grimace._south_star1.errors import SouthStarError
 from grimace._south_star1.errors import SouthStarErrorKind
@@ -61,7 +62,11 @@ from grimace._south_star1.prepared_runtime import enumerate_prepared_stereo_supp
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
 from grimace._south_star1.residual_constraints import ResidualPropagationKind
 from grimace._south_star1.residual_constraints import ResidualStore
+from grimace._south_star1.residual_constraints import VarId
 from grimace._south_star1.residual_constraints import residual_store_constraint_components
+from grimace._south_star1.writer_execution_evidence import WriterResidualPropagationWorkEvidence
+from grimace._south_star1.writer_execution_evidence import WriterResidualWorkEnvelope
+from grimace._south_star1.writer_execution_evidence import writer_residual_work_envelope_violation
 from grimace._south_star1.writer_frontier import WriterFrontierCursor
 from grimace._south_star1.writer_frontier import count_writer_cursor_completions
 from grimace._south_star1.writer_frontier import count_writer_frontier_support
@@ -13259,6 +13264,194 @@ class WriterStateKernelTest(unittest.TestCase):
         fields = writer_transitions.WriterTransition.__dataclass_fields__
 
         self.assertIn("residual_work_evidence", fields)
+
+    def test_residual_work_envelope_reports_first_exceeded_metric(
+        self,
+    ) -> None:
+        evidence = WriterResidualPropagationWorkEvidence(
+            operation="test op",
+            result_kind=ResidualPropagationKind.CERTIFIED_CONSISTENT,
+            component_variables=(VarId("x", (0,)),),
+            component_factor_keys=(),
+            checked_candidate_rows=10,
+            largest_factor_scope=2,
+            largest_candidate_row_count=3,
+        )
+        envelope = WriterResidualWorkEnvelope(
+            max_component_variable_count=0,
+            max_checked_candidate_rows=1,
+        )
+
+        violation = writer_residual_work_envelope_violation(
+            evidence,
+            envelope=envelope,
+        )
+
+        self.assertIsNotNone(violation)
+        assert violation is not None
+        self.assertEqual(violation.metric, "component_variable_count")
+        self.assertEqual(violation.actual, 1)
+        self.assertEqual(violation.limit, 0)
+
+    def test_default_residual_work_envelope_accepts_recorded_evidence(
+        self,
+    ) -> None:
+        cases = (
+            (tetrahedral_facts(), "tetrahedral atom-token restriction"),
+            (directional_facts(), "directional carrier-mark restriction"),
+        )
+
+        for facts, operation in cases:
+            with self.subTest(operation=operation):
+                prepared = _prepare(facts)
+                evidence = _first_choice_residual_work_evidence(
+                    prepared,
+                    initial_writer_frontier_cursor(
+                        prepared,
+                        _writer_options(),
+                    ),
+                    operation=operation,
+                )
+
+                self.assertTrue(evidence)
+                self.assertTrue(
+                    all(
+                        writer_residual_work_envelope_violation(item) is None
+                        for item in evidence
+                    )
+                )
+
+    def test_tight_residual_work_envelope_rejects_next_token_frontier(
+        self,
+    ) -> None:
+        prepared = _prepare(tetrahedral_facts())
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+
+        with _patched_tight_residual_work_envelope():
+            with self.assertRaises(SouthStarError) as caught:
+                writer_frontier_choices(prepared, cursor)
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+        message = str(caught.exception)
+        self.assertIn("residual work exceeds", message)
+        self.assertIn("component_variable_count", message)
+        self.assertIn("next=", message)
+
+    def test_tight_residual_work_envelope_rejects_counts_and_stream(
+        self,
+    ) -> None:
+        prepared = _prepare(tetrahedral_facts())
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+
+        operations = (
+            lambda: count_writer_frontier_support(
+                prepared,
+                cursor.support_state,
+            ),
+            lambda: count_writer_cursor_completions(prepared, cursor),
+            lambda: tuple(iter_writer_frontier_support(prepared, cursor)),
+        )
+
+        for operation in operations:
+            with self.subTest(operation=operation):
+                with _patched_tight_residual_work_envelope():
+                    with self.assertRaises(SouthStarError) as caught:
+                        operation()
+
+                self.assertIs(
+                    caught.exception.kind,
+                    SouthStarErrorKind.UNSUPPORTED_POLICY,
+                )
+                self.assertIn("residual work exceeds", str(caught.exception))
+
+    def test_tight_residual_work_envelope_rejects_snapshot_resume_and_advance(
+        self,
+    ) -> None:
+        prepared = _prepare(tetrahedral_facts())
+        options = _writer_options()
+        snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+        )
+        choices = writer_snapshot.resume_writer_frontier_choices_from_snapshot(
+            snapshot,
+            prepared=prepared,
+        )
+        token = next(
+            choice.emitted_text
+            for choice in choices.choices
+            if _snapshot_choice_has_residual_work(
+                prepared,
+                snapshot,
+                choice.emitted_text,
+            )
+        )
+
+        with _patched_tight_residual_work_envelope():
+            with self.assertRaises(SouthStarError) as caught:
+                writer_snapshot.resume_writer_frontier_choices_from_snapshot(
+                    snapshot,
+                    prepared=prepared,
+                )
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+        self.assertIn("next=", str(caught.exception))
+
+        with _patched_tight_residual_work_envelope():
+            with self.assertRaises(SouthStarError) as caught:
+                writer_snapshot.advance_writer_frontier_snapshot(
+                    snapshot,
+                    prepared=prepared,
+                    emitted_text=token,
+                )
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+        self.assertIn("next=", str(caught.exception))
+
+    def test_tight_residual_work_envelope_rejects_terminal_evidence(
+        self,
+    ) -> None:
+        prepared = _prepare(tetrahedral_facts())
+        terminal_cursor = _terminal_local_order_open_cursor(prepared)
+
+        with _patched_tight_residual_work_envelope():
+            with self.assertRaises(SouthStarError) as caught:
+                writer_frontier_choices(prepared, terminal_cursor)
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+        message = str(caught.exception)
+        self.assertIn("at EOS", message)
+        self.assertIn("tetrahedral local-order factor closure", message)
+
+    def test_residual_work_envelope_is_checked_only_at_frontier(self) -> None:
+        source = inspect.getsource(writer_transitions._transition)
+        self.assertNotIn("residual_work_envelope", source)
+        self.assertNotIn("largest_factor_scope", source)
+        self.assertNotIn("largest_candidate_row_count", source)
+
+        source = inspect.getsource(
+            writer_stereo.advance_writer_stereo_state_with_evidence
+        )
+        self.assertNotIn("residual_work_envelope", source)
+
+    def test_checked_frontier_enforces_residual_work_envelope(self) -> None:
+        source = inspect.getsource(
+            (
+                writer_frontier_module
+                ._raise_for_writer_frontier_choice_snapshot_blockers
+            )
+        )
+        self.assertIn(
+            "_raise_for_writer_frontier_residual_work_envelope_blockers",
+            source,
+        )
+        source = inspect.getsource(
+            writer_frontier_module._checked_writer_frontier_schedule_outcome
+        )
+        self.assertIn(
+            "_raise_for_writer_frontier_residual_work_envelope_blockers",
+            source,
+        )
 
     def test_writer_support_image_uses_frontier_summary(self) -> None:
         source = inspect.getsource(
@@ -29343,6 +29536,73 @@ def _first_choice_residual_work_evidence(
             pending.append(choice.successor)
 
     raise AssertionError(f"no choice residual evidence for {operation!r}")
+
+
+def _snapshot_choice_has_residual_work(
+    prepared: SouthStarPreparedMol,
+    snapshot,
+    emitted_text: str,
+) -> bool:
+    choice_snapshot = writer_frontier_module._writer_frontier_choice_snapshot(
+        prepared,
+        snapshot.cursor,
+        include_counts=False,
+    )
+    return any(
+        choice.emitted_text == emitted_text
+        and choice.residual_work_evidence
+        for choice in choice_snapshot.choices
+    )
+
+
+def _terminal_local_order_open_cursor(
+    prepared: SouthStarPreparedMol,
+) -> WriterFrontierCursor:
+    terminal_key = _terminal_keys(
+        prepared,
+        initial_writer_frontier_cursor(
+            prepared,
+            _writer_options(rooted_at_atom=0),
+        ),
+    )[0]
+    local_orders = tuple(
+        replace(record, closed=False)
+        if record.atom == AtomId(0)
+        else record
+        for record in terminal_key.stereo_state.local_orders
+    )
+    stereo_state = replace(
+        terminal_key.stereo_state,
+        local_orders=local_orders,
+    )
+    stereo_state = replace(
+        stereo_state,
+        residual_snapshot=reconstruct_writer_stereo_residual_snapshot(
+            prepared,
+            stereo_state,
+        ),
+    )
+    key = replace(
+        terminal_key,
+        active=WriterAtomFrame(
+            atom=AtomId(0),
+            parent=None,
+            incoming_bond=None,
+            atom_emitted=True,
+        ),
+        stereo_state=stereo_state,
+    )
+    return WriterFrontierCursor(weighted_states=((key, 1),))
+
+
+def _patched_tight_residual_work_envelope():
+    return patch(
+        (
+            "grimace._south_star1.writer_execution_evidence"
+            "._PUBLIC_WRITER_RESIDUAL_WORK_ENVELOPE"
+        ),
+        WriterResidualWorkEnvelope(max_component_variable_count=0),
+    )
 
 
 if __name__ == "__main__":

@@ -13612,6 +13612,102 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(violation.actual, 1)
         self.assertEqual(violation.limit, 0)
 
+    def test_default_residual_work_envelope_is_fully_bounded(self) -> None:
+        envelope = (
+            writer_execution_evidence
+            ._PUBLIC_WRITER_RESIDUAL_WORK_ENVELOPE
+        )
+
+        self.assertIsNotNone(envelope.max_component_variable_count)
+        self.assertIsNotNone(envelope.max_component_factor_count)
+        self.assertIsNotNone(envelope.max_checked_candidate_rows)
+        self.assertIsNotNone(envelope.max_largest_factor_scope)
+        self.assertIsNotNone(envelope.max_largest_candidate_row_count)
+
+    def test_default_residual_work_envelope_rejects_oversize_work(
+        self,
+    ) -> None:
+        envelope = (
+            writer_execution_evidence
+            ._PUBLIC_WRITER_RESIDUAL_WORK_ENVELOPE
+        )
+        assert envelope.max_component_variable_count is not None
+        evidence = WriterResidualPropagationWorkEvidence(
+            operation="synthetic residual propagation",
+            result_kind=ResidualPropagationKind.CERTIFIED_CONSISTENT,
+            component_variables=tuple(
+                VarId("x", (index,))
+                for index in range(
+                    envelope.max_component_variable_count + 1
+                )
+            ),
+            component_factor_keys=(),
+            checked_candidate_rows=0,
+            largest_factor_scope=0,
+            largest_candidate_row_count=0,
+        )
+
+        violation = writer_residual_work_envelope_violation(evidence)
+
+        self.assertIsNotNone(violation)
+        assert violation is not None
+        self.assertEqual(violation.metric, "component_variable_count")
+
+    def test_observed_residual_work_fits_default_envelope(self) -> None:
+        cases = (
+            lambda: _prepare(tetrahedral_facts()),
+            lambda: _prepare(directional_facts()),
+            _prepare_directional_ring_carrier_monocycle,
+            _prepare_shared_directional_ring_carrier_monocycle,
+            lambda: _prepare(cyclopropane_facts()),
+            lambda: _prepare(fused_rank_two_facts()),
+        )
+        envelope = (
+            writer_execution_evidence
+            ._PUBLIC_WRITER_RESIDUAL_WORK_ENVELOPE
+        )
+        observed = []
+
+        for prepare in cases:
+            prepared = prepare()
+            observed.extend(
+                _all_residual_work_evidence(
+                    prepared,
+                    initial_writer_frontier_cursor(
+                        prepared,
+                        _writer_options(),
+                    ),
+                )
+            )
+
+        self.assertTrue(observed)
+        for item in observed:
+            with self.subTest(operation=item.operation):
+                self.assertIsNone(
+                    writer_residual_work_envelope_violation(item)
+                )
+
+        self.assertLessEqual(
+            max(item.component_variable_count for item in observed),
+            envelope.max_component_variable_count,
+        )
+        self.assertLessEqual(
+            max(item.component_factor_count for item in observed),
+            envelope.max_component_factor_count,
+        )
+        self.assertLessEqual(
+            max(item.checked_candidate_rows for item in observed),
+            envelope.max_checked_candidate_rows,
+        )
+        self.assertLessEqual(
+            max(item.largest_factor_scope for item in observed),
+            envelope.max_largest_factor_scope,
+        )
+        self.assertLessEqual(
+            max(item.largest_candidate_row_count for item in observed),
+            envelope.max_largest_candidate_row_count,
+        )
+
     def test_default_residual_work_envelope_accepts_recorded_evidence(
         self,
     ) -> None:
@@ -13769,6 +13865,22 @@ class WriterStateKernelTest(unittest.TestCase):
         )
         self.assertIn(
             "_raise_for_writer_frontier_residual_work_envelope_blockers",
+            source,
+        )
+
+    def test_residual_work_default_envelope_has_named_limits(self) -> None:
+        source = inspect.getsource(writer_execution_evidence)
+
+        self.assertIn(
+            "_PUBLIC_RESIDUAL_PROPAGATION_MAX_COMPONENT_VARIABLE_COUNT",
+            source,
+        )
+        self.assertIn(
+            "_PUBLIC_RESIDUAL_PROPAGATION_MAX_COMPONENT_FACTOR_COUNT",
+            source,
+        )
+        self.assertIn(
+            "_PUBLIC_RESIDUAL_PROPAGATION_MAX_CHECKED_CANDIDATE_ROWS",
             source,
         )
 
@@ -29943,6 +30055,35 @@ def _all_finite_relation_work_evidence(
         )
         for choice in snapshot.choices:
             evidence.extend(choice.finite_relation_work_evidence)
+            pending.append(choice.successor)
+
+    return tuple(evidence)
+
+
+def _all_residual_work_evidence(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+    *,
+    max_cursors: int = 1000,
+):
+    pending = [cursor]
+    seen: set[WriterFrontierCursor] = set()
+    evidence = []
+
+    while pending and len(seen) < max_cursors:
+        current = pending.pop(0)
+        if current in seen:
+            continue
+        seen.add(current)
+
+        snapshot = writer_frontier_module._writer_frontier_choice_snapshot(
+            prepared,
+            current,
+            include_counts=False,
+        )
+        evidence.extend(snapshot.terminal_residual_work_evidence)
+        for choice in snapshot.choices:
+            evidence.extend(choice.residual_work_evidence)
             pending.append(choice.successor)
 
     return tuple(evidence)

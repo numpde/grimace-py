@@ -6345,8 +6345,11 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
         with patch(
-            "grimace._south_star1.writer_frontier._count_writer_frontier_support",
-            return_value=1,
+            "grimace._south_star1.writer_frontier._writer_frontier_support_suffix_summary",
+            return_value=(
+                writer_frontier_module
+                ._WriterFrontierSupportSuffixSummary(1)
+            ),
         ), patch(
             (
                 "grimace._south_star1.writer_frontier"
@@ -6403,7 +6406,7 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
         with patch(
-            "grimace._south_star1.writer_frontier._count_writer_frontier_support",
+            "grimace._south_star1.writer_frontier._writer_frontier_support_suffix_summary",
             side_effect=AssertionError("snapshot counted support"),
         ), patch(
             (
@@ -6452,7 +6455,7 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
         with patch(
-            "grimace._south_star1.writer_frontier._count_writer_frontier_support",
+            "grimace._south_star1.writer_frontier._writer_frontier_support_suffix_summary",
             side_effect=AssertionError("blocked snapshot counted support"),
         ), patch(
             (
@@ -12964,8 +12967,11 @@ class WriterStateKernelTest(unittest.TestCase):
             "grimace._south_star1.writer_frontier._group_writer_frontier_transitions",
             side_effect=AssertionError("choices used grouped transitions"),
         ), patch(
-            "grimace._south_star1.writer_frontier._count_writer_frontier_support",
-            return_value=1,
+            "grimace._south_star1.writer_frontier._writer_frontier_support_suffix_summary",
+            return_value=(
+                writer_frontier_module
+                ._WriterFrontierSupportSuffixSummary(1)
+            ),
         ), patch(
             (
                 "grimace._south_star1.writer_frontier"
@@ -13001,6 +13007,167 @@ class WriterStateKernelTest(unittest.TestCase):
                 for call in checked_snapshot.call_args_list
             )
         )
+
+    def test_writer_frontier_summary_matches_fixture_expected_values(self) -> None:
+        cases = (
+            (
+                "cco",
+                cco_facts(),
+                4,
+                4,
+                ("C(C)O", "C(O)C", "CCO", "OCC"),
+            ),
+            (
+                "cyclopropane",
+                cyclopropane_facts(),
+                1,
+                6,
+                ("C1CC1",),
+            ),
+            (
+                "methylcyclopropane",
+                methylcyclopropane_facts(),
+                6,
+                12,
+                (
+                    "C1(C)CC1",
+                    "C1(CC1)C",
+                    "C1C(C)C1",
+                    "C1C(C1)C",
+                    "C1CC1C",
+                    "CC1CC1",
+                ),
+            ),
+            (
+                "fused",
+                fused_rank_two_facts(),
+                7,
+                28,
+                (
+                    "C12C(C1)C2",
+                    "C12C(C2)C1",
+                    "C12CC1C2",
+                    "C12CC2C1",
+                    "C1C2C1C2",
+                    "C1C2CC12",
+                    "C1C2CC21",
+                ),
+            ),
+            (
+                "disconnected_cycle_atom",
+                cyclopropane_plus_singleton_facts(),
+                1,
+                6,
+                ("C1CC1.O",),
+            ),
+            (
+                "tetrahedral",
+                tetrahedral_facts(),
+                12,
+                12,
+                (
+                    "Br[C@@H](Cl)F",
+                    "Br[C@H](F)Cl",
+                    "Cl[C@@H](F)Br",
+                    "Cl[C@H](Br)F",
+                    "F[C@@H](Br)Cl",
+                    "F[C@H](Cl)Br",
+                    "[C@@H](Br)(Cl)F",
+                    "[C@@H](Cl)(F)Br",
+                    "[C@@H](F)(Br)Cl",
+                    "[C@H](Br)(F)Cl",
+                    "[C@H](Cl)(Br)F",
+                    "[C@H](F)(Cl)Br",
+                ),
+            ),
+            (
+                "directional",
+                directional_facts(),
+                12,
+                12,
+                (
+                    "C(/Cl)=C\\F",
+                    "C(/F)=C\\Cl",
+                    "C(=C/Cl)\\F",
+                    "C(=C/F)\\Cl",
+                    "C(=C\\Cl)/F",
+                    "C(=C\\F)/Cl",
+                    "C(\\Cl)=C/F",
+                    "C(\\F)=C/Cl",
+                    "Cl/C=C/F",
+                    "Cl\\C=C\\F",
+                    "F/C=C/Cl",
+                    "F\\C=C\\Cl",
+                ),
+            ),
+        )
+
+        for name, facts, expected_support, expected_completions, expected_strings in cases:
+            with self.subTest(name=name):
+                prepared = _prepare(facts)
+                cursor = initial_writer_frontier_cursor(
+                    prepared,
+                    _writer_options(),
+                )
+                summary = writer_frontier_module._writer_frontier_summary(
+                    prepared,
+                    cursor,
+                    include_support_count=True,
+                    include_completion_count=True,
+                    include_strings=True,
+                )
+
+                self.assertEqual(
+                    summary.require_support_count(),
+                    expected_support,
+                )
+                self.assertEqual(
+                    summary.require_completion_count(),
+                    expected_completions,
+                )
+                self.assertEqual(
+                    summary.require_strings(),
+                    expected_strings,
+                )
+
+    def test_writer_support_image_uses_frontier_summary(self) -> None:
+        source = inspect.getsource(
+            writer_support._writer_support_image_from_cursor
+        )
+
+        self.assertIn("_writer_frontier_summary", source)
+        self.assertNotIn("count_writer_frontier_support(", source)
+        self.assertNotIn("count_writer_cursor_completions(", source)
+        self.assertNotIn("iter_writer_frontier_support(", source)
+
+    def test_public_frontier_summary_wrappers_use_shared_summary(self) -> None:
+        for function in (
+            writer_frontier_module.count_writer_cursor_completions,
+            writer_frontier_module.iter_writer_frontier_support,
+        ):
+            with self.subTest(function=function.__name__):
+                source = inspect.getsource(function)
+                self.assertIn("_writer_frontier_summary", source)
+
+    def test_completion_count_does_not_materialize_support_summary(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+
+        with patch(
+            (
+                "grimace._south_star1.writer_frontier"
+                "._writer_frontier_support_suffix_summary_from_snapshot"
+            ),
+            side_effect=AssertionError(
+                "completion count computed support strings"
+            ),
+        ):
+            self.assertEqual(
+                count_writer_cursor_completions(prepared, cursor),
+                4,
+            )
 
     def test_count_writer_choice_snapshot_completions_counts_terminal_and_weighted_successors(self) -> None:
         prepared = _prepare(chain_facts(("C", "C")))
@@ -13323,7 +13490,7 @@ class WriterStateKernelTest(unittest.TestCase):
                 self.assertIn(f"next={next_text!r}", message)
 
         with patch(target, supported), patch(
-            "grimace._south_star1.writer_frontier._count_writer_frontier_support",
+            "grimace._south_star1.writer_frontier._writer_frontier_support_suffix_summary",
             side_effect=AssertionError("count work should be unreachable"),
         ):
             with self.assertRaises(SouthStarError) as raised:
@@ -13640,15 +13807,6 @@ class WriterStateKernelTest(unittest.TestCase):
             side_effect=AssertionError("streaming computed support count"),
         ), patch(
             "grimace._south_star1.writer_frontier.count_writer_cursor_completions",
-            side_effect=AssertionError("streaming computed completion count"),
-        ), patch(
-            "grimace._south_star1.writer_frontier._count_writer_frontier_support",
-            side_effect=AssertionError("streaming computed support count"),
-        ), patch(
-            (
-                "grimace._south_star1.writer_frontier"
-                "._count_weighted_successor_completions"
-            ),
             side_effect=AssertionError("streaming computed completion count"),
         ):
             self.assertEqual(

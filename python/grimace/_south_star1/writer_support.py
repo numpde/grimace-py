@@ -10,6 +10,7 @@ from .prepared_runtime import SouthStarPreparedMol
 from .prepared_runtime import SouthStarRuntimeOptions
 from .prepared_runtime import require_writer_shaped_runtime_options
 from .prepared_runtime import runtime_root_atom_for_prepared
+from . import writer_frontier
 from .writer_frontier import count_writer_cursor_completions
 from .writer_frontier import count_writer_frontier_support
 from .writer_frontier import iter_writer_frontier_support
@@ -38,9 +39,17 @@ def _writer_support_image_from_cursor(
     prepared: SouthStarPreparedMol,
     cursor: WriterFrontierCursor,
 ) -> SupportImage:
-    support_count = count_writer_frontier_support(prepared, cursor.support_state)
-    completion_count = count_writer_cursor_completions(prepared, cursor)
-    strings = tuple(iter_writer_frontier_support(prepared, cursor))
+    summary = writer_frontier._writer_frontier_summary(
+        prepared,
+        cursor,
+        include_support_count=True,
+        include_completion_count=True,
+        include_strings=True,
+    )
+
+    strings = summary.require_strings()
+    support_count = summary.require_support_count()
+    completion_count = summary.require_completion_count()
     if len(strings) != support_count:
         raise AssertionError("writer frontier support stream/count mismatch")
     return SupportImage(

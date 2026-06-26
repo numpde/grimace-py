@@ -19,6 +19,7 @@ from .writer_graph_obligations import WriterClosureEndpointChoice
 from .writer_graph_obligations import WriterEdgeObligationKind
 from .writer_graph_obligations import WriterGraphObligationContext
 from .writer_graph_obligations import WriterResidualAttachment
+from .writer_graph_obligations import WriterResidualAttachmentAction
 from .writer_graph_obligations import WriterResidualAttachmentActionKind
 from .writer_graph_obligations import build_writer_graph_obligation_context
 from .writer_graph_obligations import validate_writer_snapshot_graph_coherence
@@ -5002,10 +5003,6 @@ def _child_obligation_blockers_from_context(
 def _blocked_residual_attachment_action_graph_policy_blockers(
     context: WriterTransitionExpansionContext,
 ) -> tuple[_WriterActiveEmittedGraphPolicyBlocker, ...]:
-    graph = getattr(context, "graph", None)
-    if graph is None:
-        return ()
-
     return tuple(
         _WriterActiveEmittedGraphPolicyBlocker(
             kind=(
@@ -5014,7 +5011,7 @@ def _blocked_residual_attachment_action_graph_policy_blockers(
             ),
             residual_attachment_action=action,
         )
-        for action in graph.residual_summary.attachment_actions
+        for action in context.graph.residual_summary.attachment_actions
         if writer_residual_attachment_action_is_blocked(action)
     )
 

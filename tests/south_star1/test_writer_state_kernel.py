@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import contextlib
 import inspect
+import typing
 import unittest
 from collections import Counter
 from enum import Enum
@@ -122,6 +123,17 @@ _WRITER_REPLAY_PROBE_TOKENS = (
     "[C]",
     "Cl",
 )
+
+
+def _empty_writer_transition_context() -> SimpleNamespace:
+    return SimpleNamespace(
+        graph=SimpleNamespace(
+            edge_partition=SimpleNamespace(obligations=()),
+            residual_summary=SimpleNamespace(attachment_actions=()),
+        ),
+    )
+
+
 def _integer_partitions(
     total: int,
     *,
@@ -1482,6 +1494,28 @@ def _assert_public_online_loop_support_contract(
 
 
 class WriterStateKernelTest(unittest.TestCase):
+    def test_active_graph_policy_blocker_type_hints_resolve(self) -> None:
+        hints = typing.get_type_hints(
+            writer_transitions._WriterActiveEmittedGraphPolicyBlocker
+        )
+
+        self.assertIn("residual_attachment_action", hints)
+
+    def test_blocked_residual_attachment_helper_has_no_context_fallback(
+        self,
+    ) -> None:
+        source = inspect.getsource(
+            (
+                writer_transitions
+                ._blocked_residual_attachment_action_graph_policy_blockers
+            )
+        )
+
+        self.assertNotIn("getattr(", source)
+        self.assertNotIn("hasattr(", source)
+        self.assertNotIn("return ()", source)
+        self.assertIn("context.graph.residual_summary", source)
+
     def test_writer_admission_has_no_topology_profile_model(self) -> None:
         forbidden = (
             "_writer_public_cyclic_opening_profile_report",
@@ -1935,7 +1969,7 @@ class WriterStateKernelTest(unittest.TestCase):
     ) -> writer_transitions._WriterActiveEmittedGraphPolicyDecision:
         prepared = object()
         state = object()
-        context = object()
+        context = _empty_writer_transition_context()
         active_atom = AtomId(0)
         label = WriterClosureLabel(value=1, text="1")
         open_obligation = writer_transitions._WriterClosureOpenObligation(
@@ -2550,7 +2584,7 @@ class WriterStateKernelTest(unittest.TestCase):
     ) -> writer_transitions._WriterActiveEmittedScheduleOutcome:
         prepared = object()
         state = object()
-        context = object()
+        context = _empty_writer_transition_context()
         active_atom = AtomId(0)
         closure_decision, child_surface = (
             self._test_residual_cyclic_policy_inputs(
@@ -2587,7 +2621,7 @@ class WriterStateKernelTest(unittest.TestCase):
         self,
     ) -> writer_transitions._WriterTopLevelScheduleOutcome:
         prepared = object()
-        context = object()
+        context = _empty_writer_transition_context()
         active_atom = AtomId(0)
         state = SimpleNamespace(
             active=SimpleNamespace(
@@ -2634,7 +2668,7 @@ class WriterStateKernelTest(unittest.TestCase):
     ) -> writer_transitions._WriterActiveEmittedScheduleOutcome:
         prepared = object()
         state = object()
-        context = object()
+        context = _empty_writer_transition_context()
         active_atom = AtomId(0)
         closure_decision, child_surface = (
             self._test_residual_cyclic_policy_inputs(
@@ -17859,7 +17893,7 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_active_child_scheduler_uses_atom_scoped_blockers(self) -> None:
-        context = object()
+        context = _empty_writer_transition_context()
         state = object()
         active_atom = AtomId(0)
         blocker = writer_transitions._WriterChildObligationBlocker(
@@ -17900,7 +17934,7 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_active_child_schedule_surface_records_blockers_without_children(self) -> None:
-        context = object()
+        context = _empty_writer_transition_context()
         state = object()
         active_atom = AtomId(0)
         blocker = writer_transitions._WriterChildObligationBlocker(
@@ -17936,7 +17970,7 @@ class WriterStateKernelTest(unittest.TestCase):
         unblocked.assert_not_called()
 
     def test_active_child_schedule_surface_records_child_actions_and_surfaces(self) -> None:
-        context = object()
+        context = _empty_writer_transition_context()
         state = object()
         active_atom = AtomId(0)
         child = writer_transitions._WriterChildObligation(
@@ -17989,7 +18023,7 @@ class WriterStateKernelTest(unittest.TestCase):
         unblocked.assert_called_once_with(context, state, active_atom)
 
     def test_active_child_schedule_surface_records_finish_action_when_no_children(self) -> None:
-        context = object()
+        context = _empty_writer_transition_context()
         state = object()
         active_atom = AtomId(5)
 
@@ -18020,7 +18054,7 @@ class WriterStateKernelTest(unittest.TestCase):
         unblocked.assert_called_once_with(context, state, active_atom)
 
     def test_checked_child_obligations_use_atom_scoped_blockers(self) -> None:
-        context = object()
+        context = _empty_writer_transition_context()
         state = object()
         atom = AtomId(0)
         blocker = writer_transitions._WriterChildObligationBlocker(
@@ -18061,7 +18095,7 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_checked_child_obligations_delegate_when_no_atom_scoped_blockers(self) -> None:
-        context = object()
+        context = _empty_writer_transition_context()
         state = object()
         atom = AtomId(0)
         child = writer_transitions._WriterChildObligation(
@@ -18094,7 +18128,7 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_checked_child_obligations_preserve_multi_incidence_policy_error(self) -> None:
-        context = object()
+        context = _empty_writer_transition_context()
         state = object()
         atom = AtomId(0)
         blocker = writer_transitions._WriterChildObligationBlocker(
@@ -18272,7 +18306,7 @@ class WriterStateKernelTest(unittest.TestCase):
 
     def test_scheduled_writer_transitions_dispatches_pending_entry_actions(self) -> None:
         prepared = object()
-        context = object()
+        context = _empty_writer_transition_context()
         pending = PendingWriterEntry(
             parent=AtomId(0),
             child=AtomId(1),
@@ -18330,7 +18364,7 @@ class WriterStateKernelTest(unittest.TestCase):
 
     def test_scheduled_writer_transitions_dispatches_root_atom_actions(self) -> None:
         prepared = object()
-        context = object()
+        context = _empty_writer_transition_context()
         state = SimpleNamespace(
             obligations=SimpleNamespace(
                 pending_entry=None,
@@ -19949,7 +19983,7 @@ class WriterStateKernelTest(unittest.TestCase):
             kind=writer_transitions._WriterTopLevelScheduleOutcomeKind.SCHEDULED,
             schedule_decision=writer_transitions._top_level_actions_decision(batch),
         )
-        context = object()
+        context = _empty_writer_transition_context()
 
         with patch(
             "grimace._south_star1.writer_transitions.build_writer_transition_expansion_context",
@@ -20068,7 +20102,7 @@ class WriterStateKernelTest(unittest.TestCase):
 
     def test_legal_writer_next_token_frontier_builds_context_and_delegates(self) -> None:
         scheduled_frontier = (object(),)
-        context = object()
+        context = _empty_writer_transition_context()
 
         with patch(
             "grimace._south_star1.writer_transitions.build_writer_transition_expansion_context",
@@ -20630,7 +20664,7 @@ class WriterStateKernelTest(unittest.TestCase):
             active=SimpleNamespace(atom=AtomId(0)),
             ring_state=object(),
         )
-        context = object()
+        context = _empty_writer_transition_context()
         label = WriterClosureLabel(value=1, text="1")
         endpoint = WriterOpenClosureEndpoint(
             bond=BondId(1),
@@ -20746,7 +20780,7 @@ class WriterStateKernelTest(unittest.TestCase):
             active=SimpleNamespace(atom=AtomId(0)),
             ring_state=object(),
         )
-        context = object()
+        context = _empty_writer_transition_context()
         pair_batch = writer_transitions._WriterScheduledActionEmissionBatch(
             actions=(),
             emissions=(),
@@ -20866,7 +20900,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_top_level_schedule_decision_selects_top_level_batch(self) -> None:
         prepared = object()
         state = object()
-        context = object()
+        context = _empty_writer_transition_context()
         action = object()
         emission = object()
         survivor = object()
@@ -20911,7 +20945,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_top_level_schedule_decision_keeps_zero_survivor_top_level_batch(self) -> None:
         prepared = object()
         state = object()
-        context = object()
+        context = _empty_writer_transition_context()
         action = object()
         emission = object()
 
@@ -20946,7 +20980,7 @@ class WriterStateKernelTest(unittest.TestCase):
 
     def test_top_level_schedule_decision_selects_active_emitted_when_no_top_level_actions(self) -> None:
         prepared = object()
-        context = object()
+        context = _empty_writer_transition_context()
         state = SimpleNamespace(
             active=SimpleNamespace(
                 atom=AtomId(4),
@@ -21028,7 +21062,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_top_level_schedule_outcome_keeps_top_level_action_priority(self) -> None:
         prepared = object()
         state = object()
-        context = object()
+        context = _empty_writer_transition_context()
         action = writer_transitions._emit_root_atom_action(AtomId(0))
         batch = writer_transitions._WriterScheduledActionEmissionBatch(
             actions=(action,),
@@ -21071,7 +21105,7 @@ class WriterStateKernelTest(unittest.TestCase):
 
     def test_top_level_schedule_outcome_wraps_active_emitted_scheduled_outcome(self) -> None:
         prepared = object()
-        context = object()
+        context = _empty_writer_transition_context()
         active_atom = AtomId(4)
         state = SimpleNamespace(
             active=SimpleNamespace(
@@ -21120,7 +21154,7 @@ class WriterStateKernelTest(unittest.TestCase):
 
     def test_top_level_schedule_outcome_wraps_active_emitted_blocked_outcome(self) -> None:
         prepared = object()
-        context = object()
+        context = _empty_writer_transition_context()
         active_atom = AtomId(4)
         state = SimpleNamespace(
             active=SimpleNamespace(
@@ -21202,7 +21236,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_scheduled_writer_transitions_flattens_top_level_decision_survivors(self) -> None:
         prepared = object()
         state = object()
-        context = object()
+        context = _empty_writer_transition_context()
         action = writer_transitions._finish_active_action(AtomId(0))
         transition = SimpleNamespace(emitted_text="")
         emission = writer_transitions._WriterScheduledActionEmission(
@@ -21244,7 +21278,7 @@ class WriterStateKernelTest(unittest.TestCase):
 
     def test_scheduled_writer_transitions_does_not_fall_through_when_top_level_actions_do_not_survive(self) -> None:
         prepared = object()
-        context = object()
+        context = _empty_writer_transition_context()
         state = SimpleNamespace(
             obligations=SimpleNamespace(
                 pending_entry=None,
@@ -21293,7 +21327,7 @@ class WriterStateKernelTest(unittest.TestCase):
 
     def test_scheduled_writer_transitions_falls_through_after_empty_top_level_actions(self) -> None:
         prepared = object()
-        context = object()
+        context = _empty_writer_transition_context()
         state = SimpleNamespace(
             active=SimpleNamespace(
                 atom=AtomId(4),
@@ -21355,7 +21389,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_scheduled_action_emissions_preserve_action_identity(self) -> None:
         prepared = object()
         state = object()
-        context = object()
+        context = _empty_writer_transition_context()
         first_action = writer_transitions._finish_active_action(AtomId(0))
         second_action = writer_transitions._emit_root_atom_action(AtomId(1))
         transition = object()
@@ -22421,7 +22455,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_transitions_from_scheduled_actions_flattens_emissions(self) -> None:
         prepared = object()
         state = object()
-        context = object()
+        context = _empty_writer_transition_context()
         first_action = writer_transitions._finish_active_action(AtomId(0))
         second_action = writer_transitions._emit_root_atom_action(AtomId(1))
         first_transition = object()
@@ -22507,7 +22541,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_scheduled_action_emission_batch_preserves_actions_and_survivors(self) -> None:
         prepared = object()
         state = object()
-        context = object()
+        context = _empty_writer_transition_context()
         first_action = writer_transitions._finish_active_action(AtomId(0))
         second_action = writer_transitions._emit_root_atom_action(AtomId(1))
         first_emission = writer_transitions._WriterScheduledActionEmission(
@@ -22549,7 +22583,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_active_emitted_graph_policy_selects_surviving_closure_without_children(self) -> None:
         prepared = object()
         state = object()
-        context = object()
+        context = _empty_writer_transition_context()
         active_atom = AtomId(7)
         closure_decision, _, _ = self._test_closure_endpoint_decision(
             pair_survives=False,
@@ -22596,7 +22630,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_active_emitted_graph_policy_selects_closure_from_selected_endpoint_kind(self) -> None:
         prepared = object()
         state = object()
-        context = object()
+        context = _empty_writer_transition_context()
         active_atom = AtomId(7)
         closure_decision, _, _ = self._test_closure_endpoint_decision(
             pair_survives=True,
@@ -22638,7 +22672,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_active_emitted_graph_policy_selects_child_after_empty_closure_survivors(self) -> None:
         prepared = object()
         state = object()
-        context = object()
+        context = _empty_writer_transition_context()
         active_atom = AtomId(7)
         child = writer_transitions._WriterChildObligation(
             bond=BondId(1),
@@ -22715,7 +22749,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_active_emitted_graph_policy_reaches_child_when_closure_considered_but_not_selected(self) -> None:
         prepared = object()
         state = object()
-        context = object()
+        context = _empty_writer_transition_context()
         active_atom = AtomId(7)
         closure_decision, _, _ = self._test_closure_endpoint_decision(
             pair_survives=False,
@@ -22980,7 +23014,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_active_emitted_graph_policy_records_blocked_child_without_raising(self) -> None:
         prepared = object()
         state = object()
-        context = object()
+        context = _empty_writer_transition_context()
         active_atom = AtomId(7)
         blocker = writer_transitions._WriterChildObligationBlocker(
             kind=(
@@ -23320,7 +23354,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_active_emitted_schedule_outcome_returns_child_schedule_for_emittable_policy(self) -> None:
         prepared = object()
         state = object()
-        context = object()
+        context = _empty_writer_transition_context()
         active_atom = AtomId(0)
         label = WriterClosureLabel(value=1, text="1")
         open_obligation = writer_transitions._WriterClosureOpenObligation(
@@ -24201,7 +24235,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_active_emitted_graph_policy_selects_unresolved_residual_choice_before_child(self) -> None:
         prepared = object()
         state = object()
-        context = object()
+        context = _empty_writer_transition_context()
         active_atom = AtomId(0)
         label = WriterClosureLabel(value=1, text="1")
         open_obligation = writer_transitions._WriterClosureOpenObligation(
@@ -24291,7 +24325,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_active_emitted_schedule_decision_raises_for_unresolved_residual_choice_without_child_emission(self) -> None:
         prepared = object()
         state = object()
-        context = object()
+        context = _empty_writer_transition_context()
         active_atom = AtomId(0)
         label = WriterClosureLabel(value=1, text="1")
         open_obligation = writer_transitions._WriterClosureOpenObligation(
@@ -25131,7 +25165,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_active_emitted_graph_policy_allows_child_after_dead_closure_open_support(self) -> None:
         prepared = object()
         state = object()
-        context = object()
+        context = _empty_writer_transition_context()
         active_atom = AtomId(0)
         label = WriterClosureLabel(value=1, text="1")
         open_obligation = writer_transitions._WriterClosureOpenObligation(
@@ -25256,7 +25290,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_active_emitted_graph_policy_still_resolves_dead_closure_open_via_child_selection_evidence(self) -> None:
         prepared = object()
         state = object()
-        context = object()
+        context = _empty_writer_transition_context()
         active_atom = AtomId(0)
         closure_decision = self._test_closure_endpoint_decision_for_actions(
             active_atom,
@@ -25311,7 +25345,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_active_emitted_graph_policy_records_mixed_owner_dead_closure_choice_as_unsupported_owner_scope(self) -> None:
         prepared = object()
         state = object()
-        context = object()
+        context = _empty_writer_transition_context()
         active_atom = AtomId(0)
         label = WriterClosureLabel(value=1, text="1")
         open_obligation = writer_transitions._WriterClosureOpenObligation(
@@ -25469,7 +25503,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_active_emitted_graph_policy_remains_unresolved_without_closure_open_emission_evidence(self) -> None:
         prepared = object()
         state = object()
-        context = object()
+        context = _empty_writer_transition_context()
         active_atom = AtomId(0)
         label = WriterClosureLabel(value=1, text="1")
         open_obligation = writer_transitions._WriterClosureOpenObligation(
@@ -25579,7 +25613,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_active_emitted_schedule_decision_emits_child_after_dead_closure_open_support(self) -> None:
         prepared = object()
         state = object()
-        context = object()
+        context = _empty_writer_transition_context()
         active_atom = AtomId(0)
         label = WriterClosureLabel(value=1, text="1")
         open_obligation = writer_transitions._WriterClosureOpenObligation(
@@ -25889,7 +25923,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_active_emitted_graph_policy_allows_child_when_closure_open_and_cyclic_tree_use_different_attachments(self) -> None:
         prepared = object()
         state = object()
-        context = object()
+        context = _empty_writer_transition_context()
         active_atom = AtomId(0)
         label = WriterClosureLabel(value=1, text="1")
         open_obligation = writer_transitions._WriterClosureOpenObligation(
@@ -25992,7 +26026,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_active_emitted_graph_policy_does_not_treat_acyclic_child_as_cyclic_residual_choice(self) -> None:
         prepared = object()
         state = object()
-        context = object()
+        context = _empty_writer_transition_context()
         active_atom = AtomId(0)
         closure_decision = self._test_closure_endpoint_decision_for_actions(
             active_atom,
@@ -26048,7 +26082,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_active_emitted_graph_policy_selects_plain_active_child_without_resolved_residual_choice(self) -> None:
         prepared = object()
         state = object()
-        context = object()
+        context = _empty_writer_transition_context()
         active_atom = AtomId(0)
         closure_decision = writer_transitions._WriterClosureEndpointScheduleDecision(
             pair_batch=writer_transitions._WriterScheduledActionEmissionBatch(
@@ -26423,7 +26457,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_active_emitted_schedule_decision_selects_surviving_closure_batch(self) -> None:
         prepared = object()
         state = object()
-        context = object()
+        context = _empty_writer_transition_context()
         active_atom = AtomId(7)
         closure_decision, pair_emission, open_emission = (
             self._test_closure_endpoint_decision(
@@ -26474,7 +26508,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_active_emitted_schedule_decision_uses_closure_endpoint_decision(self) -> None:
         prepared = object()
         state = object()
-        context = object()
+        context = _empty_writer_transition_context()
         active_atom = AtomId(7)
         closure_decision, pair_emission, open_emission = (
             self._test_closure_endpoint_decision(
@@ -26525,7 +26559,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_active_emitted_schedule_decision_selects_child_batch_after_zero_closure_survivors(self) -> None:
         prepared = object()
         state = object()
-        context = object()
+        context = _empty_writer_transition_context()
         active_atom = AtomId(7)
 
         child_action = writer_transitions._finish_active_action(active_atom)
@@ -26604,7 +26638,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_active_emitted_schedule_decision_threads_child_surface_after_empty_closure_survivors(self) -> None:
         prepared = object()
         state = object()
-        context = object()
+        context = _empty_writer_transition_context()
         active_atom = AtomId(7)
         child_action = writer_transitions._finish_active_action(active_atom)
         child_surface = writer_transitions._WriterActiveChildScheduleSurface(
@@ -26666,7 +26700,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_active_emitted_schedule_decision_does_not_compute_child_surface_when_closure_survives(self) -> None:
         prepared = object()
         state = object()
-        context = object()
+        context = _empty_writer_transition_context()
         active_atom = AtomId(7)
         closure_decision, _, _ = self._test_closure_endpoint_decision(
             active_atom=active_atom,
@@ -26698,7 +26732,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_active_emitted_schedule_decision_raises_from_child_surface_blockers_without_emitting_child_batch(self) -> None:
         prepared = object()
         state = object()
-        context = object()
+        context = _empty_writer_transition_context()
         active_atom = AtomId(7)
         blocker = writer_transitions._WriterChildObligationBlocker(
             kind=(
@@ -26758,7 +26792,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_active_emitted_schedule_decision_raises_from_blocked_graph_policy_without_child_emission(self) -> None:
         prepared = object()
         state = object()
-        context = object()
+        context = _empty_writer_transition_context()
         active_atom = AtomId(7)
         blocker = writer_transitions._WriterChildObligationBlocker(
             kind=(
@@ -26823,7 +26857,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_active_emitted_schedule_decision_emits_child_actions_from_graph_policy(self) -> None:
         prepared = object()
         state = object()
-        context = object()
+        context = _empty_writer_transition_context()
         active_atom = AtomId(7)
         child_action = writer_transitions._finish_active_action(active_atom)
         child_surface = writer_transitions._WriterActiveChildScheduleSurface(
@@ -26891,7 +26925,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_active_emitted_schedule_decision_threads_closure_graph_policy_decision(self) -> None:
         prepared = object()
         state = object()
-        context = object()
+        context = _empty_writer_transition_context()
         active_atom = AtomId(7)
         closure_decision, _, _ = self._test_closure_endpoint_decision(
             active_atom=active_atom,
@@ -26928,7 +26962,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_active_emitted_schedule_decision_threads_child_graph_policy_decision(self) -> None:
         prepared = object()
         state = object()
-        context = object()
+        context = _empty_writer_transition_context()
         active_atom = AtomId(7)
         child_action = writer_transitions._finish_active_action(active_atom)
         child_surface = writer_transitions._WriterActiveChildScheduleSurface(
@@ -26995,7 +27029,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_active_emitted_scheduler_does_not_compute_children_when_closure_transition_survives(self) -> None:
         prepared = object()
         state = object()
-        context = object()
+        context = _empty_writer_transition_context()
         active_atom = AtomId(7)
         closure_decision, surviving_closure_emission, _ = (
             self._test_closure_endpoint_decision(
@@ -27037,7 +27071,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_active_emitted_scheduler_computes_children_after_empty_closure_transitions(self) -> None:
         prepared = object()
         state = object()
-        context = object()
+        context = _empty_writer_transition_context()
         active_atom = AtomId(7)
         child_obligation = object()
         child_action = writer_transitions._finish_active_action(active_atom)
@@ -27123,7 +27157,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_active_emitted_child_fallback_returns_empty_when_no_child_emissions_survive(self) -> None:
         prepared = object()
         state = object()
-        context = object()
+        context = _empty_writer_transition_context()
         active_atom = AtomId(7)
 
         child_obligation = object()

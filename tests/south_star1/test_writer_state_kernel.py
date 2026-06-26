@@ -2515,19 +2515,6 @@ class WriterStateKernelTest(unittest.TestCase):
                     .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
                 ),
             ),
-            (
-                WriterBoundaryOwnerKind.OPEN_RING_ENDPOINT,
-                (
-                    writer_transitions
-                    ._WriterResidualAttachmentOwnerScopeKind
-                    .OPEN_RING_ENDPOINT
-                ),
-                (
-                    writer_transitions
-                    ._WriterActiveEmittedGraphPolicyDecisionKind
-                    .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
-                ),
-            ),
         )
 
     def _test_unsupported_owner_scope_policy_matrix(self):
@@ -2546,6 +2533,15 @@ class WriterStateKernelTest(unittest.TestCase):
                 WriterBoundaryOwnerKind.ACTIVE_ATOM,
                 WriterBoundaryOwnerKind.BRANCH_RETURN,
                 writer_transitions._WriterResidualAttachmentOwnerScopeKind.MIXED,
+            ),
+            (
+                WriterBoundaryOwnerKind.OPEN_RING_ENDPOINT,
+                WriterBoundaryOwnerKind.OPEN_RING_ENDPOINT,
+                (
+                    writer_transitions
+                    ._WriterResidualAttachmentOwnerScopeKind
+                    .OPEN_RING_ENDPOINT
+                ),
             ),
         )
 
@@ -21925,7 +21921,7 @@ class WriterStateKernelTest(unittest.TestCase):
                     .OPEN_RING_ENDPOINT
                 ),
                 "has_open_ring_endpoint_owner_scope_closure_open_vs_cyclic_tree_entry_choice",
-                False,
+                True,
             ),
             (
                 WriterBoundaryOwnerKind.UNOWNED,
@@ -25161,6 +25157,89 @@ class WriterStateKernelTest(unittest.TestCase):
             )
 
         self.assertIs(raised.exception.kind, SouthStarErrorKind.INTERNAL_INVARIANT)
+
+    def test_natural_residual_attachment_owner_kinds_exclude_open_ring_endpoint(
+        self,
+    ) -> None:
+        def observe(prepared: SouthStarPreparedMol) -> set[WriterBoundaryOwnerKind]:
+            cursors = [initial_writer_frontier_cursor(prepared, _writer_options())]
+            seen = set()
+            observed: set[WriterBoundaryOwnerKind] = set()
+
+            while cursors and len(seen) < 500:
+                cursor = cursors.pop(0)
+                signature = cursor.weighted_states
+                if signature in seen:
+                    continue
+                seen.add(signature)
+
+                for key, _weight in cursor.weighted_states:
+                    context = (
+                        writer_graph_obligations
+                        .build_writer_graph_obligation_context(
+                            prepared,
+                            key,
+                        )
+                    )
+                    for attachment in (
+                        context.residual_summary.attachments.attachments
+                    ):
+                        for incidence in attachment.boundary:
+                            observed.add(incidence.owner_kind)
+
+                snapshot = writer_frontier_module._writer_frontier_choice_snapshot(
+                    prepared,
+                    cursor,
+                    include_counts=False,
+                    stop_after_first_blocked=True,
+                )
+                if snapshot.blocked:
+                    continue
+
+                cursors.extend(choice.successor for choice in snapshot.choices)
+
+            return observed
+
+        observed_owner_kinds: set[WriterBoundaryOwnerKind] = set()
+        prepared_cases = (
+            _prepare(cyclopropane_facts()),
+            _prepare(methylcyclopropane_facts()),
+            _prepare(bridge_separated_triangles_facts()),
+            _prepare(fused_rank_two_facts()),
+            _prepare(cyclopropane_plus_singleton_facts()),
+            _prepare_directional_ring_carrier_monocycle(),
+        )
+
+        for prepared in prepared_cases:
+            observed_owner_kinds.update(observe(prepared))
+
+        self.assertNotIn(
+            WriterBoundaryOwnerKind.OPEN_RING_ENDPOINT,
+            observed_owner_kinds,
+        )
+        self.assertLessEqual(
+            observed_owner_kinds,
+            {
+                WriterBoundaryOwnerKind.ACTIVE_ATOM,
+                WriterBoundaryOwnerKind.BRANCH_RETURN,
+                WriterBoundaryOwnerKind.PENDING_PARENT,
+                WriterBoundaryOwnerKind.UNOWNED,
+            },
+        )
+
+    def test_supported_dead_closure_owner_scopes_are_naturally_reachable(
+        self,
+    ) -> None:
+        supported = writer_transitions._SUPPORTED_DEAD_CLOSURE_OWNER_SCOPES
+
+        self.assertNotIn(
+            (
+                writer_transitions
+                ._WriterResidualAttachmentOwnerScopeKind
+                .OPEN_RING_ENDPOINT
+            ),
+            supported,
+        )
 
     def test_active_emitted_graph_policy_allows_child_after_dead_closure_open_support(self) -> None:
         prepared = object()

@@ -2782,7 +2782,6 @@ _SUPPORTED_DEAD_CLOSURE_OWNER_SCOPES = frozenset({
     _WriterResidualAttachmentOwnerScopeKind.ACTIVE_ATOM,
     _WriterResidualAttachmentOwnerScopeKind.BRANCH_RETURN,
     _WriterResidualAttachmentOwnerScopeKind.PENDING_PARENT,
-    _WriterResidualAttachmentOwnerScopeKind.OPEN_RING_ENDPOINT,
 })
 
 

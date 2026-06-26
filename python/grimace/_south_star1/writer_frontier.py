@@ -134,12 +134,6 @@ class _WriterFrontierSummary:
 
 
 @dataclass(frozen=True, slots=True)
-class _WriterFrontierSupportSuffixSummary:
-    support_count: int
-    strings: tuple[str, ...] | None = None
-
-
-@dataclass(frozen=True, slots=True)
 class _GroupedWriterFrontierTransitions:
     terminal_by_key: Counter[WriterStateKey]
     grouped_by_text: dict[str, set[WriterStateKey]]
@@ -1339,11 +1333,10 @@ def _writer_frontier_choice_snapshot_from_schedule_outcome(
             choices=(),
         )
 
-    support_memo: dict[
-        tuple[WriterFrontierState, bool],
-        _WriterFrontierSupportSuffixSummary,
+    summary_memo: dict[
+        tuple[WriterFrontierCursor, bool, bool, bool],
+        _WriterFrontierSummary,
     ] = {}
-    completion_memo: dict[WriterStateKey, int] = {}
     choices: list[_WriterFrontierChoiceSnapshotEntry] = []
 
     for entry in sorted(
@@ -1358,17 +1351,16 @@ def _writer_frontier_choice_snapshot_from_schedule_outcome(
         completion_count = None
 
         if include_counts:
-            support_count = _writer_frontier_support_suffix_summary(
+            summary = _writer_frontier_summary_from_cursor(
                 prepared,
-                WriterFrontierState(states=entry.successor_keys),
-                support_memo=support_memo,
+                successor,
+                include_support_count=True,
+                include_completion_count=True,
                 include_strings=False,
-            ).support_count
-            completion_count = _count_weighted_successor_completions(
-                prepared,
-                entry.weighted_successors,
-                completion_memo,
+                memo=summary_memo,
             )
+            support_count = summary.require_support_count()
+            completion_count = summary.require_completion_count()
 
             if support_count == 0 and completion_count == 0:
                 continue
@@ -1893,12 +1885,14 @@ def count_writer_frontier_support(
     prepared: SouthStarPreparedMol,
     frontier: WriterFrontierState,
 ) -> int:
-    return _writer_frontier_support_suffix_summary(
-        prepared,
-        frontier,
-        support_memo={},
-        include_strings=False,
-    ).support_count
+    return (
+        _writer_frontier_summary(
+            prepared,
+            _cursor_from_support_state(frontier),
+            include_support_count=True,
+        )
+        .require_support_count()
+    )
 
 
 def _writer_frontier_summary(
@@ -1912,80 +1906,79 @@ def _writer_frontier_summary(
     if include_strings:
         include_support_count = True
 
+    return _writer_frontier_summary_from_cursor(
+        prepared,
+        cursor,
+        include_support_count=include_support_count,
+        include_completion_count=include_completion_count,
+        include_strings=include_strings,
+        memo={},
+    )
+
+
+def _writer_frontier_summary_from_cursor(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+    *,
+    include_support_count: bool,
+    include_completion_count: bool,
+    include_strings: bool,
+    memo: dict[
+        tuple[WriterFrontierCursor, bool, bool, bool],
+        _WriterFrontierSummary,
+    ],
+) -> _WriterFrontierSummary:
+    key = (
+        cursor,
+        include_support_count,
+        include_completion_count,
+        include_strings,
+    )
+    cached = memo.get(key)
+    if cached is not None:
+        return cached
+
     snapshot = _checked_writer_frontier_choice_snapshot(
         prepared,
         cursor,
         include_counts=False,
     )
-
-    support_count = None
-    strings = None
-    completion_count = None
-
-    if include_support_count:
-        support = _writer_frontier_support_suffix_summary_from_snapshot(
-            prepared,
-            snapshot,
-            support_memo={},
-            include_strings=include_strings,
-        )
-        support_count = support.support_count
-        strings = support.strings
-
-    if include_completion_count:
-        completion_count = _count_writer_choice_snapshot_completions(
-            prepared,
-            snapshot,
-            {},
-        )
-
-    return _WriterFrontierSummary(
-        support_count=support_count,
-        completion_count=completion_count,
-        strings=strings,
-    )
-
-
-def _writer_frontier_support_suffix_summary(
-    prepared: SouthStarPreparedMol,
-    frontier: WriterFrontierState,
-    *,
-    support_memo: dict[
-        tuple[WriterFrontierState, bool],
-        _WriterFrontierSupportSuffixSummary,
-    ],
-    include_strings: bool,
-) -> _WriterFrontierSupportSuffixSummary:
-    key = (frontier, include_strings)
-    cached = support_memo.get(key)
-    if cached is not None:
-        return cached
-    snapshot = _checked_writer_frontier_choice_snapshot(
-        prepared,
-        _cursor_from_support_state(frontier),
-        include_counts=False,
-    )
-    summary = _writer_frontier_support_suffix_summary_from_snapshot(
+    summary = _writer_frontier_summary_from_snapshot(
         prepared,
         snapshot,
-        support_memo=support_memo,
+        include_support_count=include_support_count,
+        include_completion_count=include_completion_count,
         include_strings=include_strings,
+        memo=memo,
     )
-    support_memo[key] = summary
+    memo[key] = summary
     return summary
 
 
-def _writer_frontier_support_suffix_summary_from_snapshot(
+def _writer_frontier_summary_from_snapshot(
     prepared: SouthStarPreparedMol,
     snapshot: _WriterFrontierChoiceSnapshot,
     *,
-    support_memo: dict[
-        tuple[WriterFrontierState, bool],
-        _WriterFrontierSupportSuffixSummary,
-    ],
+    include_support_count: bool,
+    include_completion_count: bool,
     include_strings: bool,
-) -> _WriterFrontierSupportSuffixSummary:
-    support_count = 1 if snapshot.terminal is not None else 0
+    memo: dict[
+        tuple[WriterFrontierCursor, bool, bool, bool],
+        _WriterFrontierSummary,
+    ],
+) -> _WriterFrontierSummary:
+    support_count = (
+        1 if snapshot.terminal is not None else 0
+    ) if include_support_count else None
+
+    completion_count = (
+        (
+            snapshot.terminal.completion_count
+            if snapshot.terminal is not None
+            else 0
+        )
+    ) if include_completion_count else None
+
     strings: list[str] | None
     if include_strings:
         strings = [""] if snapshot.terminal is not None else []
@@ -1993,25 +1986,33 @@ def _writer_frontier_support_suffix_summary_from_snapshot(
         strings = None
 
     for choice in snapshot.choices:
-        successor = WriterFrontierState(states=choice.successor_keys)
-        child = _writer_frontier_support_suffix_summary(
+        child = _writer_frontier_summary_from_cursor(
             prepared,
-            successor,
-            support_memo=support_memo,
+            choice.successor,
+            include_support_count=include_support_count,
+            include_completion_count=include_completion_count,
             include_strings=include_strings,
+            memo=memo,
         )
-        support_count += child.support_count
+
+        if include_support_count:
+            assert support_count is not None
+            support_count += child.require_support_count()
+
+        if include_completion_count:
+            assert completion_count is not None
+            completion_count += child.require_completion_count()
 
         if include_strings:
             assert strings is not None
-            assert child.strings is not None
             strings.extend(
                 choice.emitted_text + suffix
-                for suffix in child.strings
+                for suffix in child.require_strings()
             )
 
-    return _WriterFrontierSupportSuffixSummary(
+    return _WriterFrontierSummary(
         support_count=support_count,
+        completion_count=completion_count,
         strings=None if strings is None else tuple(strings),
     )
 
@@ -2030,59 +2031,6 @@ def count_writer_cursor_completions(
     )
 
 
-def _count_writer_choice_snapshot_completions(
-    prepared: SouthStarPreparedMol,
-    snapshot: _WriterFrontierChoiceSnapshot,
-    memo: dict[WriterStateKey, int],
-) -> int:
-    total = 0
-
-    if snapshot.terminal is not None:
-        total += snapshot.terminal.completion_count
-
-    for choice in snapshot.choices:
-        total += _count_weighted_successor_completions(
-            prepared,
-            choice.weighted_successors,
-            memo,
-        )
-
-    return total
-
-
-def _count_weighted_successor_completions(
-    prepared: SouthStarPreparedMol,
-    weighted_successors: Counter[WriterStateKey],
-    memo: dict[WriterStateKey, int],
-) -> int:
-    return sum(
-        multiplicity * _count_writer_state_completions(prepared, key, memo)
-        for key, multiplicity in weighted_successors.items()
-    )
-
-
-def _count_writer_state_completions(
-    prepared: SouthStarPreparedMol,
-    key: WriterStateKey,
-    memo: dict[WriterStateKey, int],
-) -> int:
-    cached = memo.get(key)
-    if cached is not None:
-        return cached
-    snapshot = _checked_writer_frontier_choice_snapshot(
-        prepared,
-        WriterFrontierCursor(weighted_states=((key, 1),)),
-        include_counts=False,
-    )
-    total = _count_writer_choice_snapshot_completions(
-        prepared,
-        snapshot,
-        memo,
-    )
-    memo[key] = total
-    return total
-
-
 def iter_writer_frontier_support(
     prepared: SouthStarPreparedMol,
     cursor: WriterFrontierCursor,
@@ -2091,7 +2039,6 @@ def iter_writer_frontier_support(
         _writer_frontier_summary(
             prepared,
             cursor,
-            include_support_count=True,
             include_strings=True,
         )
         .require_strings()

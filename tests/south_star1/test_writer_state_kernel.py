@@ -6345,17 +6345,11 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
         with patch(
-            "grimace._south_star1.writer_frontier._writer_frontier_support_suffix_summary",
-            return_value=(
-                writer_frontier_module
-                ._WriterFrontierSupportSuffixSummary(1)
+            "grimace._south_star1.writer_frontier._writer_frontier_summary_from_cursor",
+            return_value=writer_frontier_module._WriterFrontierSummary(
+                support_count=1,
+                completion_count=2,
             ),
-        ), patch(
-            (
-                "grimace._south_star1.writer_frontier"
-                "._count_weighted_successor_completions"
-            ),
-            return_value=2,
         ):
             snapshot = (
                 writer_frontier_module
@@ -6406,14 +6400,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
         with patch(
-            "grimace._south_star1.writer_frontier._writer_frontier_support_suffix_summary",
-            side_effect=AssertionError("snapshot counted support"),
-        ), patch(
-            (
-                "grimace._south_star1.writer_frontier"
-                "._count_weighted_successor_completions"
-            ),
-            side_effect=AssertionError("snapshot counted completions"),
+            "grimace._south_star1.writer_frontier._writer_frontier_summary_from_cursor",
+            side_effect=AssertionError("snapshot counted summaries"),
         ):
             snapshot = (
                 writer_frontier_module
@@ -6455,14 +6443,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
         with patch(
-            "grimace._south_star1.writer_frontier._writer_frontier_support_suffix_summary",
-            side_effect=AssertionError("blocked snapshot counted support"),
-        ), patch(
-            (
-                "grimace._south_star1.writer_frontier"
-                "._count_weighted_successor_completions"
-            ),
-            side_effect=AssertionError("blocked snapshot counted completions"),
+            "grimace._south_star1.writer_frontier._writer_frontier_summary_from_cursor",
+            side_effect=AssertionError("blocked snapshot counted summaries"),
         ):
             snapshot = (
                 writer_frontier_module
@@ -12967,17 +12949,11 @@ class WriterStateKernelTest(unittest.TestCase):
             "grimace._south_star1.writer_frontier._group_writer_frontier_transitions",
             side_effect=AssertionError("choices used grouped transitions"),
         ), patch(
-            "grimace._south_star1.writer_frontier._writer_frontier_support_suffix_summary",
-            return_value=(
-                writer_frontier_module
-                ._WriterFrontierSupportSuffixSummary(1)
+            "grimace._south_star1.writer_frontier._writer_frontier_summary_from_cursor",
+            return_value=writer_frontier_module._WriterFrontierSummary(
+                support_count=1,
+                completion_count=2,
             ),
-        ), patch(
-            (
-                "grimace._south_star1.writer_frontier"
-                "._count_weighted_successor_completions"
-            ),
-            return_value=2,
         ):
             choices = writer_frontier_choices(prepared, cursor)
 
@@ -13149,104 +13125,48 @@ class WriterStateKernelTest(unittest.TestCase):
                 source = inspect.getsource(function)
                 self.assertIn("_writer_frontier_summary", source)
 
-    def test_completion_count_does_not_materialize_support_summary(
+    def test_frontier_summary_owns_support_and_completion_recursion(
+        self,
+    ) -> None:
+        source = inspect.getsource(
+            writer_frontier_module._writer_frontier_summary
+        )
+        self.assertIn("_writer_frontier_summary_from_cursor", source)
+
+        source = inspect.getsource(
+            writer_frontier_module._writer_frontier_summary_from_snapshot
+        )
+        self.assertIn("choice.successor", source)
+        self.assertNotIn("_count_weighted_successor_completions", source)
+        self.assertNotIn("_count_writer_state_completions", source)
+
+    def test_obsolete_frontier_summary_helpers_are_absent(self) -> None:
+        for name in (
+            "_WriterFrontierSupportSuffixSummary",
+            "_writer_frontier_support_suffix_summary",
+            "_writer_frontier_support_suffix_summary_from_snapshot",
+            "_count_writer_choice_snapshot_completions",
+            "_count_weighted_successor_completions",
+            "_count_writer_state_completions",
+        ):
+            with self.subTest(name=name):
+                self.assertFalse(hasattr(writer_frontier_module, name))
+
+    def test_completion_count_does_not_materialize_support_strings(
         self,
     ) -> None:
         prepared = _prepare(cco_facts())
         cursor = initial_writer_frontier_cursor(prepared, _writer_options())
 
-        with patch(
-            (
-                "grimace._south_star1.writer_frontier"
-                "._writer_frontier_support_suffix_summary_from_snapshot"
-            ),
-            side_effect=AssertionError(
-                "completion count computed support strings"
-            ),
-        ):
-            self.assertEqual(
-                count_writer_cursor_completions(prepared, cursor),
-                4,
-            )
-
-    def test_count_writer_choice_snapshot_completions_counts_terminal_and_weighted_successors(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        parent_key = writer_state_key(_raw_initial_state(AtomId(0)))
-        successor_a = writer_state_key(_raw_initial_state(AtomId(1)))
-        successor_b = writer_state_key(_raw_initial_state(AtomId(2)))
-        family = writer_transitions._WriterGraphPolicyActionFamily.ACYCLIC_TREE_ENTRY
-        support_a = writer_frontier_module._WriterFrontierNextTokenSupport(
-            state_key=parent_key,
-            parent_weight=2,
-            schedule_support=SimpleNamespace(
-                emitted_text="C",
-                graph_action_surface=object(),
-                policy_family=family,
-            ),  # type: ignore[arg-type]
-            successor_key=successor_a,
-        )
-        support_b = writer_frontier_module._WriterFrontierNextTokenSupport(
-            state_key=parent_key,
-            parent_weight=5,
-            schedule_support=SimpleNamespace(
-                emitted_text="C",
-                graph_action_surface=object(),
-                policy_family=family,
-            ),  # type: ignore[arg-type]
-            successor_key=successor_b,
-        )
-        entry = writer_frontier_module._WriterFrontierNextTokenEntry(
-            emitted_text="C",
-            supports=(support_a, support_b),
-        )
-        choice = writer_frontier_module._WriterFrontierChoiceSnapshotEntry(
-            next_token_entry=entry,
-            successor=WriterFrontierCursor(
-                weighted_states=tuple(entry.weighted_successors.items())
-            ),
-        )
-        terminal = writer_frontier_module.WriterFrontierTerminal(
-            support_count=1,
-            completion_count=3,
-            multiplicity=3,
-            finalized_cursor=WriterFrontierCursor(weighted_states=()),
-        )
-        snapshot = writer_frontier_module._WriterFrontierChoiceSnapshot(
-            schedule_outcome=writer_frontier_module._WriterFrontierScheduleOutcome(
-                state_outcomes=(),
-                terminal_by_key=Counter(),
-                grouped_by_text={},
-                weighted_by_text={},
-            ),
-            terminal=terminal,
-            choices=(choice,),
+        summary = writer_frontier_module._writer_frontier_summary(
+            prepared,
+            cursor,
+            include_completion_count=True,
         )
 
-        def count_state(
-            _prepared,
-            key: WriterStateKey,
-            _memo,
-        ) -> int:
-            if key == successor_a:
-                return 7
-            if key == successor_b:
-                return 11
-            raise AssertionError(f"unexpected successor key: {key!r}")
-
-        with patch(
-            "grimace._south_star1.writer_frontier._count_writer_state_completions",
-            side_effect=count_state,
-        ):
-            total = (
-                writer_frontier_module
-                ._count_writer_choice_snapshot_completions(
-                    prepared,
-                    snapshot,
-                    {},
-                )
-            )
-
-        self.assertEqual(total, 3 + 2 * 7 + 5 * 11)
+        self.assertIsNone(summary.support_count)
+        self.assertIsNone(summary.strings)
+        self.assertEqual(summary.require_completion_count(), 4)
 
     def test_count_writer_cursor_completions_uses_uncounted_choice_snapshot(self) -> None:
         prepared = _prepare(chain_facts(("C", "C")))
@@ -13268,84 +13188,15 @@ class WriterStateKernelTest(unittest.TestCase):
                 "._checked_writer_frontier_choice_snapshot"
             ),
             return_value=snapshot,
-        ) as checked_snapshot, patch(
-            (
-                "grimace._south_star1.writer_frontier"
-                "._count_writer_choice_snapshot_completions"
-            ),
-            return_value=123,
-        ) as count_snapshot:
+        ) as checked_snapshot:
             count = count_writer_cursor_completions(prepared, cursor)
 
-        self.assertEqual(count, 123)
+        self.assertEqual(count, 0)
         checked_snapshot.assert_called_once_with(
             prepared,
             cursor,
             include_counts=False,
         )
-        count_snapshot.assert_called_once()
-        self.assertIs(count_snapshot.call_args.args[1], snapshot)
-
-    def test_count_writer_state_completions_uses_uncounted_choice_snapshot(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        key = writer_state_key(_raw_initial_state(AtomId(0)))
-        snapshot = writer_frontier_module._WriterFrontierChoiceSnapshot(
-            schedule_outcome=writer_frontier_module._WriterFrontierScheduleOutcome(
-                state_outcomes=(),
-                terminal_by_key=Counter(),
-                grouped_by_text={},
-                weighted_by_text={},
-            ),
-            terminal=None,
-            choices=(),
-        )
-        memo: dict[WriterStateKey, int] = {}
-
-        with patch(
-            (
-                "grimace._south_star1.writer_frontier"
-                "._checked_writer_frontier_choice_snapshot"
-            ),
-            return_value=snapshot,
-        ) as checked_snapshot, patch(
-            (
-                "grimace._south_star1.writer_frontier"
-                "._count_writer_choice_snapshot_completions"
-            ),
-            return_value=17,
-        ):
-            count = writer_frontier_module._count_writer_state_completions(
-                prepared,
-                key,
-                memo,
-            )
-
-        self.assertEqual(count, 17)
-        checked_snapshot.assert_called_once_with(
-            prepared,
-            WriterFrontierCursor(weighted_states=((key, 1),)),
-            include_counts=False,
-        )
-        self.assertEqual(memo[key], 17)
-
-    def test_count_writer_state_completions_uses_memo_before_snapshot(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        key = writer_state_key(_raw_initial_state(AtomId(0)))
-
-        with patch(
-            (
-                "grimace._south_star1.writer_frontier"
-                "._checked_writer_frontier_choice_snapshot"
-            ),
-            side_effect=AssertionError("memoized completion used snapshot"),
-        ):
-            count = writer_frontier_module._count_writer_state_completions(
-                prepared,
-                key,
-                {key: 42},
-            )
-
-        self.assertEqual(count, 42)
 
     def test_completion_count_uses_uncounted_choice_snapshots(self) -> None:
         prepared = _prepare(chain_facts(("C", "C")))
@@ -13490,7 +13341,7 @@ class WriterStateKernelTest(unittest.TestCase):
                 self.assertIn(f"next={next_text!r}", message)
 
         with patch(target, supported), patch(
-            "grimace._south_star1.writer_frontier._writer_frontier_support_suffix_summary",
+            "grimace._south_star1.writer_frontier._writer_frontier_summary_from_cursor",
             side_effect=AssertionError("count work should be unreachable"),
         ):
             with self.assertRaises(SouthStarError) as raised:

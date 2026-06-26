@@ -13106,6 +13106,101 @@ class WriterStateKernelTest(unittest.TestCase):
                     expected_strings,
                 )
 
+    def test_plain_graph_frontier_has_no_residual_work_evidence(self) -> None:
+        prepared = _prepare(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+
+        snapshot = writer_frontier_module._writer_frontier_choice_snapshot(
+            prepared,
+            cursor,
+            include_counts=False,
+        )
+
+        self.assertEqual(snapshot.residual_work_evidence, ())
+        self.assertEqual(snapshot.terminal_residual_work_evidence, ())
+
+    def test_tetrahedral_atom_token_transition_records_residual_work(
+        self,
+    ) -> None:
+        prepared = _prepare(tetrahedral_facts())
+
+        evidence = _first_choice_residual_work_evidence(
+            prepared,
+            initial_writer_frontier_cursor(prepared, _writer_options()),
+            operation="tetrahedral atom-token restriction",
+        )
+
+        self.assertTrue(evidence)
+        self.assertIn(
+            "tetrahedral atom-token restriction",
+            {item.operation for item in evidence},
+        )
+        for item in evidence:
+            self.assertIs(
+                item.result_kind,
+                ResidualPropagationKind.CERTIFIED_CONSISTENT,
+            )
+            self.assertGreaterEqual(item.component_variable_count, 1)
+            self.assertGreaterEqual(item.component_factor_count, 1)
+            self.assertGreaterEqual(item.largest_factor_scope, 1)
+
+    def test_directional_carrier_transition_records_residual_work(self) -> None:
+        prepared = _prepare(directional_facts())
+
+        evidence = _first_choice_residual_work_evidence(
+            prepared,
+            initial_writer_frontier_cursor(prepared, _writer_options()),
+            operation="directional carrier-mark restriction",
+        )
+
+        self.assertTrue(evidence)
+        self.assertIn(
+            "directional carrier-mark restriction",
+            {item.operation for item in evidence},
+        )
+        for item in evidence:
+            self.assertIs(
+                item.result_kind,
+                ResidualPropagationKind.CERTIFIED_CONSISTENT,
+            )
+            self.assertGreaterEqual(item.component_variable_count, 1)
+            self.assertGreaterEqual(item.component_factor_count, 1)
+
+    def test_local_order_closure_transition_records_residual_work(self) -> None:
+        prepared = _prepare(tetrahedral_facts())
+
+        evidence = _first_choice_residual_work_evidence(
+            prepared,
+            initial_writer_frontier_cursor(prepared, _writer_options()),
+            operation="tetrahedral local-order factor closure",
+        )
+
+        self.assertTrue(evidence)
+        self.assertIn(
+            "tetrahedral local-order factor closure",
+            {item.operation for item in evidence},
+        )
+        for item in evidence:
+            self.assertIs(
+                item.result_kind,
+                ResidualPropagationKind.CERTIFIED_CONSISTENT,
+            )
+            self.assertGreaterEqual(item.component_variable_count, 1)
+            self.assertGreaterEqual(item.component_factor_count, 1)
+
+    def test_residual_work_evidence_is_not_a_legality_classifier(self) -> None:
+        source = inspect.getsource(
+            writer_frontier_module._writer_frontier_summary_from_snapshot
+        )
+
+        self.assertNotIn("largest_factor_scope", source)
+        self.assertNotIn("largest_candidate_row_count", source)
+
+    def test_transition_carries_residual_work_evidence(self) -> None:
+        fields = writer_transitions.WriterTransition.__dataclass_fields__
+
+        self.assertIn("residual_work_evidence", fields)
+
     def test_writer_support_image_uses_frontier_summary(self) -> None:
         source = inspect.getsource(
             writer_support._writer_support_image_from_cursor
@@ -29158,6 +29253,67 @@ def _prepare_with_ordinary_policy_options_and_slots(
         writer_surface=SouthStarWriterSurface(),
         policy=replace(policy, bond_text_domains=domains),
     )
+
+
+def _first_choice_residual_work_evidence(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+    *,
+    operation: str,
+):
+    pending = [cursor]
+    seen: set[WriterFrontierCursor] = set()
+
+    while pending:
+        current = pending.pop(0)
+        if current in seen:
+            continue
+        seen.add(current)
+
+        snapshot = writer_frontier_module._writer_frontier_choice_snapshot(
+            prepared,
+            current,
+            include_counts=False,
+        )
+        for choice in snapshot.choices:
+            if any(
+                item.operation == operation
+                for item in choice.residual_work_evidence
+            ):
+                return choice.residual_work_evidence
+            pending.append(choice.successor)
+
+    raise AssertionError(f"no choice residual evidence for {operation!r}")
+
+
+def _first_terminal_residual_work_evidence(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+    *,
+    operation: str,
+):
+    pending = [cursor]
+    seen: set[WriterFrontierCursor] = set()
+
+    while pending:
+        current = pending.pop(0)
+        if current in seen:
+            continue
+        seen.add(current)
+
+        snapshot = writer_frontier_module._writer_frontier_choice_snapshot(
+            prepared,
+            current,
+            include_counts=False,
+        )
+        if any(
+            item.operation == operation
+            for item in snapshot.terminal_residual_work_evidence
+        ):
+            return snapshot.terminal_residual_work_evidence
+        pending.extend(choice.successor for choice in snapshot.choices)
+
+    raise AssertionError(f"no terminal residual evidence for {operation!r}")
 
 
 if __name__ == "__main__":

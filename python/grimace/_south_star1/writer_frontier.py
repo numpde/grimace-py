@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from .errors import SouthStarError
 from .errors import SouthStarErrorKind
 from .ids import AtomId
+from .writer_execution_evidence import WriterResidualPropagationWorkEvidence
 from .writer_capabilities import _WriterExecutionCapabilityKind
 from .writer_capabilities import (
     _unsupported_public_writer_execution_capabilities,
@@ -149,6 +150,10 @@ class _WriterFrontierStateScheduleOutcome:
     terminal_execution_capabilities: frozenset[
         _WriterExecutionCapabilityKind
     ] = frozenset()
+    terminal_residual_work_evidence: tuple[
+        WriterResidualPropagationWorkEvidence,
+        ...
+    ] = ()
 
     def __post_init__(self) -> None:
         if (
@@ -157,6 +162,13 @@ class _WriterFrontierStateScheduleOutcome:
         ):
             raise ValueError(
                 "terminal execution capabilities require finalized state"
+            )
+        if (
+            self.finalized_state_key is None
+            and self.terminal_residual_work_evidence
+        ):
+            raise ValueError(
+                "terminal residual work evidence requires finalized state"
             )
 
     @property
@@ -212,6 +224,12 @@ class _WriterFrontierNextTokenSupport:
         self,
     ) -> frozenset[_WriterExecutionCapabilityKind]:
         return self.schedule_support.execution_capabilities
+
+    @property
+    def residual_work_evidence(
+        self,
+    ) -> tuple[WriterResidualPropagationWorkEvidence, ...]:
+        return self.schedule_support.residual_work_evidence
 
 
 @dataclass(frozen=True, slots=True)
@@ -680,6 +698,16 @@ class _WriterFrontierNextTokenEntry:
         )
 
     @property
+    def residual_work_evidence(
+        self,
+    ) -> tuple[WriterResidualPropagationWorkEvidence, ...]:
+        return tuple(
+            evidence
+            for support in self.supports
+            for evidence in support.residual_work_evidence
+        )
+
+    @property
     def residual_attachment_support_groups(
         self,
     ) -> tuple[_WriterFrontierResidualAttachmentSupportGroup, ...]:
@@ -735,6 +763,12 @@ class _WriterFrontierChoiceSnapshotEntry:
 
         return frozenset(capabilities)
 
+    @property
+    def residual_work_evidence(
+        self,
+    ) -> tuple[WriterResidualPropagationWorkEvidence, ...]:
+        return self.next_token_entry.residual_work_evidence
+
     def to_public_choice(self) -> WriterFrontierChoice:
         return WriterFrontierChoice(
             emitted_text=self.emitted_text,
@@ -786,6 +820,17 @@ class _WriterFrontierScheduleOutcome:
             for outcome in self.state_outcomes
             if outcome.finalized_state_key is not None
             for capability in outcome.terminal_execution_capabilities
+        )
+
+    @property
+    def terminal_residual_work_evidence(
+        self,
+    ) -> tuple[WriterResidualPropagationWorkEvidence, ...]:
+        return tuple(
+            evidence
+            for outcome in self.state_outcomes
+            if outcome.finalized_state_key is not None
+            for evidence in outcome.terminal_residual_work_evidence
         )
 
     @property
@@ -1035,10 +1080,26 @@ class _WriterFrontierChoiceSnapshot:
         return frozenset(capabilities)
 
     @property
+    def residual_work_evidence(
+        self,
+    ) -> tuple[WriterResidualPropagationWorkEvidence, ...]:
+        return tuple(
+            evidence
+            for choice in self.choices
+            for evidence in choice.residual_work_evidence
+        )
+
+    @property
     def terminal_execution_capabilities(
         self,
     ) -> frozenset[_WriterExecutionCapabilityKind]:
         return self.schedule_outcome.terminal_execution_capabilities
+
+    @property
+    def terminal_residual_work_evidence(
+        self,
+    ) -> tuple[WriterResidualPropagationWorkEvidence, ...]:
+        return self.schedule_outcome.terminal_residual_work_evidence
 
     @property
     def considered_closure_endpoint_selection_kinds(
@@ -1750,6 +1811,9 @@ def _writer_frontier_schedule_outcome(
             finalized_state_key=finalized_key,
             terminal_execution_capabilities=(
                 terminal_outcome.execution_capabilities
+            ),
+            terminal_residual_work_evidence=(
+                terminal_outcome.residual_work_evidence
             ),
             schedule_outcome=schedule_outcome,
         )

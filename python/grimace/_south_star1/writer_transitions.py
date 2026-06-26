@@ -14,6 +14,7 @@ from .ids import AtomId
 from .ids import BondId
 from .policy import DirectionMark
 from .writer_capabilities import _WriterExecutionCapabilityKind
+from .writer_execution_evidence import WriterResidualPropagationWorkEvidence
 from .writer_graph_obligations import WriterBoundaryOwnerKind
 from .writer_graph_obligations import WriterClosureEndpointChoice
 from .writer_graph_obligations import WriterEdgeObligationKind
@@ -95,6 +96,10 @@ class WriterTransition:
     semantic_execution_capabilities: frozenset[
         _WriterExecutionCapabilityKind
     ] = frozenset()
+    residual_work_evidence: tuple[
+        WriterResidualPropagationWorkEvidence,
+        ...
+    ] = ()
 
     def __post_init__(self) -> None:
         if not self.emitted_text:
@@ -109,6 +114,10 @@ class _WriterTerminalizationOutcome:
     execution_capabilities: frozenset[
         _WriterExecutionCapabilityKind
     ] = frozenset()
+    residual_work_evidence: tuple[
+        WriterResidualPropagationWorkEvidence,
+        ...
+    ] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -771,6 +780,12 @@ class _WriterNextTokenFrontierSupport:
                     )
 
         return frozenset(capabilities)
+
+    @property
+    def residual_work_evidence(
+        self,
+    ) -> tuple[WriterResidualPropagationWorkEvidence, ...]:
+        return self.transition.residual_work_evidence
 
 
 @dataclass(frozen=True, slots=True)
@@ -4929,6 +4944,7 @@ def _finalize_writer_terminal_state_from_context(
     return _WriterTerminalizationOutcome(
         state=replace(state, stereo_state=stereo_outcome.state),
         execution_capabilities=stereo_outcome.execution_capabilities,
+        residual_work_evidence=stereo_outcome.residual_work_evidence,
     )
 
 
@@ -4979,6 +4995,7 @@ def _transition(
         events=events,
         evidence=evidence,
         semantic_execution_capabilities=stereo_outcome.execution_capabilities,
+        residual_work_evidence=stereo_outcome.residual_work_evidence,
     )
 
 

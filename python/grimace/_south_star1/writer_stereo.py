@@ -12,6 +12,8 @@ from .errors import SouthStarErrorKind
 from .facts import LigandKind
 from .facts import SiteStatus
 from .writer_capabilities import _WriterExecutionCapabilityKind
+from .writer_execution_evidence import WriterResidualPropagationWorkEvidence
+from .writer_execution_evidence import writer_residual_propagation_work_evidence
 from .ids import AtomId
 from .ids import BondId
 from .ids import OccurrenceId
@@ -103,6 +105,10 @@ class WriterBondTextChoice:
 class _WriterStereoMutation:
     state: "WriterStereoState | None"
     capabilities: frozenset[_WriterExecutionCapabilityKind] = frozenset()
+    residual_work_evidence: tuple[
+        WriterResidualPropagationWorkEvidence,
+        ...
+    ] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,6 +117,10 @@ class _WriterStereoAdvanceOutcome:
     execution_capabilities: frozenset[
         _WriterExecutionCapabilityKind
     ] = frozenset()
+    residual_work_evidence: tuple[
+        WriterResidualPropagationWorkEvidence,
+        ...
+    ] = ()
 
 
 def empty_writer_stereo_state() -> "WriterStereoState":
@@ -407,6 +417,7 @@ def advance_writer_stereo_state_with_evidence(
 ) -> _WriterStereoAdvanceOutcome:
     state = stereo_state
     capabilities: set[_WriterExecutionCapabilityKind] = set()
+    work_evidence: list[WriterResidualPropagationWorkEvidence] = []
     for event in events:
         if isinstance(event, WriterAtomEmitted):
             mutation = _on_atom_emitted(prepared, state, event)
@@ -424,9 +435,11 @@ def advance_writer_stereo_state_with_evidence(
             return _WriterStereoAdvanceOutcome(state=None)
         state = mutation.state
         capabilities.update(mutation.capabilities)
+        work_evidence.extend(mutation.residual_work_evidence)
     return _WriterStereoAdvanceOutcome(
         state=state,
         execution_capabilities=frozenset(capabilities),
+        residual_work_evidence=tuple(work_evidence),
     )
 
 
@@ -868,16 +881,23 @@ def _on_atom_emitted(
     except ValueError:
         return _WriterStereoMutation(state=None)
     capabilities: set[_WriterExecutionCapabilityKind] = set()
+    work_evidence: list[WriterResidualPropagationWorkEvidence] = []
     if restriction is not None:
+        operation = "tetrahedral atom-token restriction"
         result = store.restrict_many_and_propagate(
             (restriction,)
         )
+        evidence = writer_residual_propagation_work_evidence(
+            operation=operation,
+            result=result,
+        )
         if not _writer_residual_mutation_is_legal(
             result,
-            operation="tetrahedral atom-token restriction",
+            operation=operation,
         ):
             store.rollback(checkpoint)
             return _WriterStereoMutation(state=None)
+        work_evidence.append(evidence)
         capabilities.update(
             {
                 _WriterExecutionCapabilityKind.TETRA_TOKEN_RESTRICTION,
@@ -893,6 +913,7 @@ def _on_atom_emitted(
             local_orders=local_orders,
         ),
         capabilities=frozenset(capabilities),
+        residual_work_evidence=tuple(work_evidence),
     )
 
 
@@ -900,6 +921,8 @@ def _on_bond_emitted(
     prepared: SouthStarPreparedMol,
     stereo_state: "WriterStereoState",
     event: WriterBondEmitted,
+    *,
+    operation: str = "directional carrier-mark restriction",
 ) -> _WriterStereoMutation:
     from .writer_state import WriterStereoState
 
@@ -907,6 +930,7 @@ def _on_bond_emitted(
     models = _directional_models_for_bond(prepared, event.bond)
     checkpoint = store.checkpoint()
     capabilities: set[_WriterExecutionCapabilityKind] = set()
+    work_evidence: list[WriterResidualPropagationWorkEvidence] = []
     if models:
         restrictions = _directional_bond_restrictions(
             prepared,
@@ -916,12 +940,17 @@ def _on_bond_emitted(
             mark=event.direction_mark,
         )
         result = store.restrict_many_and_propagate(restrictions)
+        evidence = writer_residual_propagation_work_evidence(
+            operation=operation,
+            result=result,
+        )
         if not _writer_residual_mutation_is_legal(
             result,
-            operation="directional carrier-mark restriction",
+            operation=operation,
         ):
             store.rollback(checkpoint)
             return _WriterStereoMutation(state=None)
+        work_evidence.append(evidence)
         capabilities.update(
             {
                 _WriterExecutionCapabilityKind.DIRECTIONAL_CARRIER_RESTRICTION,
@@ -976,6 +1005,7 @@ def _on_bond_emitted(
             local_orders=stereo_state.local_orders,
         ),
         capabilities=frozenset(capabilities),
+        residual_work_evidence=tuple(work_evidence),
     )
 
 
@@ -1002,13 +1032,19 @@ def _on_local_order_closed(
             order=closed_order.order,
         )
         assert restriction is not None
+        operation = "tetrahedral local-order factor closure"
         result = store.restrict_many_and_propagate((restriction,))
+        evidence = writer_residual_propagation_work_evidence(
+            operation=operation,
+            result=result,
+        )
         if not _writer_residual_mutation_is_legal(
             result,
-            operation="tetrahedral local-order factor closure",
+            operation=operation,
         ):
             store.rollback(checkpoint)
             return _WriterStereoMutation(state=None)
+        work_evidence = (evidence,)
         capabilities.update(
             {
                 _WriterExecutionCapabilityKind.TETRA_LOCAL_ORDER_RESTRICTION,
@@ -1023,6 +1059,7 @@ def _on_local_order_closed(
             return _WriterStereoMutation(state=None)
     else:
         capabilities = set()
+        work_evidence = ()
     return _WriterStereoMutation(
         state=WriterStereoState(
             residual_snapshot=store.value_snapshot(),
@@ -1031,6 +1068,7 @@ def _on_local_order_closed(
             local_orders=local_orders,
         ),
         capabilities=frozenset(capabilities),
+        residual_work_evidence=work_evidence,
     )
 
 
@@ -1060,6 +1098,10 @@ def _on_ring_endpoint_emitted(
         capabilities=(
             mutation.capabilities | tetra_mutation.capabilities
         ),
+        residual_work_evidence=(
+            mutation.residual_work_evidence
+            + tetra_mutation.residual_work_evidence
+        ),
     )
 
 
@@ -1088,6 +1130,10 @@ def _on_ring_endpoint_paired(
         state=tetra_mutation.state,
         capabilities=(
             mutation.capabilities | tetra_mutation.capabilities
+        ),
+        residual_work_evidence=(
+            mutation.residual_work_evidence
+            + tetra_mutation.residual_work_evidence
         ),
     )
 
@@ -1157,10 +1203,15 @@ def _project_directional_ring_endpoint(
 
     store = ResidualStore.from_value_snapshot(stereo_state.residual_snapshot)
     checkpoint = store.checkpoint()
+    operation = "directional ring endpoint projection"
     result = store.intersect_domains_and_propagate(restriction)
+    evidence = writer_residual_propagation_work_evidence(
+        operation=operation,
+        result=result,
+    )
     if not _writer_residual_mutation_is_legal(
         result,
-        operation="directional ring endpoint projection",
+        operation=operation,
     ):
         store.rollback(checkpoint)
         return _WriterStereoMutation(state=None)
@@ -1183,6 +1234,7 @@ def _project_directional_ring_endpoint(
             local_orders=stereo_state.local_orders,
         ),
         capabilities=frozenset(capabilities),
+        residual_work_evidence=(evidence,),
     )
 
 
@@ -1271,6 +1323,7 @@ def _restrict_directional_ring_pair(
             text=event.bond_text,
             direction_mark=record.mark,
         ),
+        operation="directional ring pair restriction",
     )
     if mutation.state is None:
         return mutation
@@ -1286,6 +1339,7 @@ def _restrict_directional_ring_pair(
         | frozenset((
             _WriterExecutionCapabilityKind.DIRECTIONAL_RING_PAIR_COMPATIBILITY,
         )),
+        residual_work_evidence=mutation.residual_work_evidence,
     )
 
 

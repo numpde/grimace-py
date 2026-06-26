@@ -77,9 +77,22 @@ class WriterFiniteRelationWorkEnvelopeViolation:
     limit: int
 
 
+_PUBLIC_CLOSURE_ENDPOINT_RELATION_MAX_ROW_COUNT = 3
+_PUBLIC_CLOSURE_ENDPOINT_RELATION_MAX_TOTAL_CANDIDATE_COUNT = 7
+_PUBLIC_CLOSURE_ENDPOINT_RELATION_MAX_LARGEST_CANDIDATE_COUNT = 3
+
+
 _PUBLIC_WRITER_RESIDUAL_WORK_ENVELOPE = WriterResidualWorkEnvelope()
 _PUBLIC_WRITER_FINITE_RELATION_WORK_ENVELOPE = (
-    WriterFiniteRelationWorkEnvelope()
+    WriterFiniteRelationWorkEnvelope(
+        max_row_count=_PUBLIC_CLOSURE_ENDPOINT_RELATION_MAX_ROW_COUNT,
+        max_total_candidate_count=(
+            _PUBLIC_CLOSURE_ENDPOINT_RELATION_MAX_TOTAL_CANDIDATE_COUNT
+        ),
+        max_largest_candidate_count=(
+            _PUBLIC_CLOSURE_ENDPOINT_RELATION_MAX_LARGEST_CANDIDATE_COUNT
+        ),
+    )
 )
 
 

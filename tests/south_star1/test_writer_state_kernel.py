@@ -19,6 +19,7 @@ from unittest.mock import patch
 import grimace._south_star1.writer_frontier as writer_frontier_module
 import grimace._south_star1.writer_graph_obligations as writer_graph_obligations
 import grimace._south_star1.writer_capabilities as writer_capabilities
+import grimace._south_star1.writer_execution_evidence as writer_execution_evidence
 import grimace._south_star1.writer_support as writer_support
 import grimace._south_star1.writer_audit as writer_audit
 import grimace._south_star1.writer_snapshot as writer_snapshot
@@ -13366,6 +13367,90 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(violation.actual, 3)
         self.assertEqual(violation.limit, 2)
 
+    def test_default_finite_relation_work_envelope_is_bounded(self) -> None:
+        envelope = (
+            writer_execution_evidence
+            ._PUBLIC_WRITER_FINITE_RELATION_WORK_ENVELOPE
+        )
+
+        self.assertIsNotNone(envelope.max_row_count)
+        self.assertIsNotNone(envelope.max_total_candidate_count)
+        self.assertIsNotNone(envelope.max_largest_candidate_count)
+
+    def test_default_finite_relation_work_envelope_rejects_oversize_relation(
+        self,
+    ) -> None:
+        envelope = (
+            writer_execution_evidence
+            ._PUBLIC_WRITER_FINITE_RELATION_WORK_ENVELOPE
+        )
+        assert envelope.max_row_count is not None
+        evidence = WriterFiniteRelationWorkEvidence(
+            operation="closure endpoint open relation",
+            relation_kind="closure_endpoint",
+            row_count=envelope.max_row_count + 1,
+            total_candidate_count=0,
+            largest_candidate_count=0,
+            bond=BondId(0),
+            include_direction_marks=False,
+        )
+
+        violation = writer_finite_relation_work_envelope_violation(evidence)
+
+        self.assertIsNotNone(violation)
+        assert violation is not None
+        self.assertEqual(violation.metric, "row_count")
+
+    def test_observed_closure_relation_work_fits_default_envelope(self) -> None:
+        cases = (
+            lambda: _prepare(cyclopropane_facts()),
+            lambda: _prepare(methylcyclopropane_facts()),
+            lambda: _prepare(fused_rank_two_facts()),
+            lambda: _prepare(cyclopropane_plus_singleton_facts()),
+            _prepare_directional_ring_carrier_monocycle,
+        )
+        envelope = (
+            writer_execution_evidence
+            ._PUBLIC_WRITER_FINITE_RELATION_WORK_ENVELOPE
+        )
+        observed = []
+
+        for prepare in cases:
+            prepared = prepare()
+            observed.extend(
+                _all_finite_relation_work_evidence(
+                    prepared,
+                    initial_writer_frontier_cursor(
+                        prepared,
+                        _writer_options(),
+                    ),
+                )
+            )
+
+        self.assertTrue(observed)
+        for item in observed:
+            with self.subTest(
+                operation=item.operation,
+                bond=item.bond,
+                direction=item.include_direction_marks,
+            ):
+                self.assertIsNone(
+                    writer_finite_relation_work_envelope_violation(item)
+                )
+
+        self.assertLessEqual(
+            max(item.row_count for item in observed),
+            envelope.max_row_count,
+        )
+        self.assertLessEqual(
+            max(item.total_candidate_count for item in observed),
+            envelope.max_total_candidate_count,
+        )
+        self.assertLessEqual(
+            max(item.largest_candidate_count for item in observed),
+            envelope.max_largest_candidate_count,
+        )
+
     def test_tight_finite_relation_work_envelope_rejects_next_token_frontier(
         self,
     ) -> None:
@@ -13480,6 +13565,22 @@ class WriterStateKernelTest(unittest.TestCase):
         )
         self.assertIn(
             "_raise_for_writer_frontier_finite_relation_work_envelope_blockers",
+            source,
+        )
+
+    def test_finite_relation_default_envelope_has_named_limits(self) -> None:
+        source = inspect.getsource(writer_execution_evidence)
+
+        self.assertIn(
+            "_PUBLIC_CLOSURE_ENDPOINT_RELATION_MAX_ROW_COUNT",
+            source,
+        )
+        self.assertIn(
+            "_PUBLIC_CLOSURE_ENDPOINT_RELATION_MAX_TOTAL_CANDIDATE_COUNT",
+            source,
+        )
+        self.assertIn(
+            "_PUBLIC_CLOSURE_ENDPOINT_RELATION_MAX_LARGEST_CANDIDATE_COUNT",
             source,
         )
 
@@ -29817,6 +29918,34 @@ def _first_cursor_with_finite_relation_work(
         pending.extend(choice.successor for choice in snapshot.choices)
 
     raise AssertionError("no frontier with finite relation work evidence")
+
+
+def _all_finite_relation_work_evidence(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+    *,
+    max_cursors: int = 1000,
+):
+    pending = [cursor]
+    seen: set[WriterFrontierCursor] = set()
+    evidence = []
+
+    while pending and len(seen) < max_cursors:
+        current = pending.pop(0)
+        if current in seen:
+            continue
+        seen.add(current)
+
+        snapshot = writer_frontier_module._writer_frontier_choice_snapshot(
+            prepared,
+            current,
+            include_counts=False,
+        )
+        for choice in snapshot.choices:
+            evidence.extend(choice.finite_relation_work_evidence)
+            pending.append(choice.successor)
+
+    return tuple(evidence)
 
 
 def _snapshot_choice_has_residual_work(

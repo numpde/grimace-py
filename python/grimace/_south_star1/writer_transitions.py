@@ -14,7 +14,9 @@ from .ids import AtomId
 from .ids import BondId
 from .policy import DirectionMark
 from .writer_capabilities import _WriterExecutionCapabilityKind
+from .writer_execution_evidence import WriterFiniteRelationWorkEvidence
 from .writer_execution_evidence import WriterResidualPropagationWorkEvidence
+from .writer_execution_evidence import writer_closure_endpoint_relation_work_evidence
 from .writer_graph_obligations import WriterBoundaryOwnerKind
 from .writer_graph_obligations import WriterClosureEndpointChoice
 from .writer_graph_obligations import WriterEdgeObligationKind
@@ -100,6 +102,10 @@ class WriterTransition:
         WriterResidualPropagationWorkEvidence,
         ...
     ] = ()
+    finite_relation_work_evidence: tuple[
+        WriterFiniteRelationWorkEvidence,
+        ...
+    ] = ()
 
     def __post_init__(self) -> None:
         if not self.emitted_text:
@@ -173,6 +179,10 @@ class _WriterClosureOpenObligation:
 class _WriterClosurePairObligation:
     endpoint: WriterOpenClosureEndpoint
     closure: WriterClosedClosure
+    relation_evidence: tuple[
+        WriterFiniteRelationWorkEvidence,
+        ...
+    ] = ()
 
 
 class _WriterScheduledActionKind(Enum):
@@ -786,6 +796,12 @@ class _WriterNextTokenFrontierSupport:
         self,
     ) -> tuple[WriterResidualPropagationWorkEvidence, ...]:
         return self.transition.residual_work_evidence
+
+    @property
+    def finite_relation_work_evidence(
+        self,
+    ) -> tuple[WriterFiniteRelationWorkEvidence, ...]:
+        return self.transition.finite_relation_work_evidence
 
 
 @dataclass(frozen=True, slots=True)
@@ -4245,6 +4261,7 @@ def _open_closure_endpoint_transition_from_obligation(
     closure_obligation: _WriterClosureOpenObligation,
     label: WriterClosureLabel,
     first_endpoint_choice,
+    relation_evidence: WriterFiniteRelationWorkEvidence,
 ) -> WriterTransition | None:
     endpoint = WriterOpenClosureEndpoint(
         bond=closure_obligation.bond,
@@ -4284,6 +4301,7 @@ def _open_closure_endpoint_transition_from_obligation(
             parent=endpoint.first_atom,
             child=endpoint.second_atom,
         ),
+        finite_relation_work_evidence=(relation_evidence,),
     )
 
     if transition is None:
@@ -4356,6 +4374,14 @@ def _closure_open_transitions_from_scheduled_action(
         )
     except (KeyError, SouthStarError):
         return ()
+    relation_evidence = writer_closure_endpoint_relation_work_evidence(
+        operation="closure endpoint open relation",
+        bond=closure_obligation.bond,
+        relation=relation,
+        include_direction_marks=_closure_endpoint_relation_uses_direction_marks(
+            relation
+        ),
+    )
     transitions = []
     for first_endpoint_choice in relation.openable_first_choices:
         transition = _open_closure_endpoint_transition_from_obligation(
@@ -4365,11 +4391,23 @@ def _closure_open_transitions_from_scheduled_action(
             closure_obligation,
             label,
             first_endpoint_choice,
+            relation_evidence,
         )
         if transition is not None:
             transitions.append(transition)
 
     return tuple(transitions)
+
+
+def _closure_endpoint_relation_uses_direction_marks(relation) -> bool:
+    return any(
+        first.direction_mark is not DirectionMark.ABSENT
+        or any(
+            second.direction_mark is not DirectionMark.ABSENT
+            for second in seconds
+        )
+        for first, seconds in relation.rows
+    )
 
 
 def _empty_closure_bond_text_relation_blockers(
@@ -4506,6 +4544,14 @@ def _closure_pair_obligations_from_state(
             first_atom=endpoint.first_atom,
             second_atom=endpoint.second_atom,
         )
+        relation_evidence = writer_closure_endpoint_relation_work_evidence(
+            operation="closure endpoint pair relation",
+            bond=endpoint.bond,
+            relation=relation,
+            include_direction_marks=(
+                _closure_endpoint_relation_uses_direction_marks(relation)
+            ),
+        )
         first_choice = WriterClosureEndpointChoice(
             endpoint.first_endpoint_bond_text,
             endpoint.first_endpoint_direction_mark,
@@ -4528,6 +4574,7 @@ def _closure_pair_obligations_from_state(
                 _WriterClosurePairObligation(
                     endpoint=endpoint,
                     closure=closure,
+                    relation_evidence=(relation_evidence,),
                 )
             )
 
@@ -4592,6 +4639,7 @@ def _pair_closure_endpoint_transition_from_obligation(
             parent=closure.first_atom,
             child=closure.second_atom,
         ),
+        finite_relation_work_evidence=pair_obligation.relation_evidence,
     )
 
     if transition is None:
@@ -4980,6 +5028,10 @@ def _transition(
     kind: WriterTransitionKind,
     events: tuple[WriterEvent, ...],
     evidence: WriterTransitionEvidence,
+    finite_relation_work_evidence: tuple[
+        WriterFiniteRelationWorkEvidence,
+        ...
+    ] = (),
 ) -> WriterTransition | None:
     stereo_outcome = advance_writer_stereo_state_with_evidence(
         prepared,
@@ -4996,6 +5048,7 @@ def _transition(
         evidence=evidence,
         semantic_execution_capabilities=stereo_outcome.execution_capabilities,
         residual_work_evidence=stereo_outcome.residual_work_evidence,
+        finite_relation_work_evidence=finite_relation_work_evidence,
     )
 
 

@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from .errors import SouthStarError
 from .errors import SouthStarErrorKind
 from .ids import AtomId
+from .writer_execution_evidence import WriterFiniteRelationWorkEvidence
 from .writer_execution_evidence import WriterResidualPropagationWorkEvidence
 from .writer_execution_evidence import WriterResidualWorkEnvelopeViolation
 from .writer_execution_evidence import writer_residual_work_envelope_violation
@@ -232,6 +233,12 @@ class _WriterFrontierNextTokenSupport:
         self,
     ) -> tuple[WriterResidualPropagationWorkEvidence, ...]:
         return self.schedule_support.residual_work_evidence
+
+    @property
+    def finite_relation_work_evidence(
+        self,
+    ) -> tuple[WriterFiniteRelationWorkEvidence, ...]:
+        return self.schedule_support.finite_relation_work_evidence
 
 
 @dataclass(frozen=True, slots=True)
@@ -710,6 +717,16 @@ class _WriterFrontierNextTokenEntry:
         )
 
     @property
+    def finite_relation_work_evidence(
+        self,
+    ) -> tuple[WriterFiniteRelationWorkEvidence, ...]:
+        return tuple(
+            evidence
+            for support in self.supports
+            for evidence in support.finite_relation_work_evidence
+        )
+
+    @property
     def residual_attachment_support_groups(
         self,
     ) -> tuple[_WriterFrontierResidualAttachmentSupportGroup, ...]:
@@ -770,6 +787,12 @@ class _WriterFrontierChoiceSnapshotEntry:
         self,
     ) -> tuple[WriterResidualPropagationWorkEvidence, ...]:
         return self.next_token_entry.residual_work_evidence
+
+    @property
+    def finite_relation_work_evidence(
+        self,
+    ) -> tuple[WriterFiniteRelationWorkEvidence, ...]:
+        return self.next_token_entry.finite_relation_work_evidence
 
     def to_public_choice(self) -> WriterFrontierChoice:
         return WriterFrontierChoice(
@@ -1089,6 +1112,16 @@ class _WriterFrontierChoiceSnapshot:
             evidence
             for choice in self.choices
             for evidence in choice.residual_work_evidence
+        )
+
+    @property
+    def finite_relation_work_evidence(
+        self,
+    ) -> tuple[WriterFiniteRelationWorkEvidence, ...]:
+        return tuple(
+            evidence
+            for choice in self.choices
+            for evidence in choice.finite_relation_work_evidence
         )
 
     @property

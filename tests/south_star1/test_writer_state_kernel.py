@@ -13125,6 +13125,63 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(snapshot.residual_work_evidence, ())
         self.assertEqual(snapshot.terminal_residual_work_evidence, ())
 
+    def test_plain_graph_frontier_has_no_finite_relation_work_evidence(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+
+        snapshot = writer_frontier_module._writer_frontier_choice_snapshot(
+            prepared,
+            cursor,
+            include_counts=False,
+        )
+
+        self.assertEqual(snapshot.finite_relation_work_evidence, ())
+
+    def test_monocycle_records_closure_endpoint_relation_work(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+
+        evidence = _first_choice_finite_relation_work_evidence(
+            prepared,
+            initial_writer_frontier_cursor(prepared, _writer_options()),
+            relation_kind="closure_endpoint",
+        )
+
+        self.assertTrue(evidence)
+        self.assertIn(
+            "closure_endpoint",
+            {item.relation_kind for item in evidence},
+        )
+        self.assertTrue(all(item.row_count > 0 for item in evidence))
+        self.assertTrue(
+            all(item.total_candidate_count > 0 for item in evidence)
+        )
+        self.assertTrue(all(item.bond is not None for item in evidence))
+
+    def test_directional_ring_relation_marks_direction_aware_rows(self) -> None:
+        prepared = _prepare_directional_ring_carrier_monocycle()
+
+        evidence = _first_choice_finite_relation_work_evidence(
+            prepared,
+            initial_writer_frontier_cursor(prepared, _writer_options()),
+            relation_kind="closure_endpoint",
+            require_direction_marks=True,
+        )
+
+        self.assertTrue(
+            any(item.include_direction_marks for item in evidence)
+        )
+        self.assertTrue(
+            any(
+                item.operation in {
+                    "closure endpoint open relation",
+                    "closure endpoint pair relation",
+                }
+                for item in evidence
+            )
+        )
+
     def test_tetrahedral_atom_token_transition_records_residual_work(
         self,
     ) -> None:
@@ -13264,6 +13321,25 @@ class WriterStateKernelTest(unittest.TestCase):
         fields = writer_transitions.WriterTransition.__dataclass_fields__
 
         self.assertIn("residual_work_evidence", fields)
+
+    def test_transition_carries_finite_relation_work_evidence(self) -> None:
+        fields = writer_transitions.WriterTransition.__dataclass_fields__
+
+        self.assertIn("finite_relation_work_evidence", fields)
+
+    def test_finite_relation_work_evidence_is_not_a_legality_classifier(
+        self,
+    ) -> None:
+        source = inspect.getsource(
+            (
+                writer_frontier_module
+                ._raise_for_writer_frontier_choice_snapshot_blockers
+            )
+        )
+
+        self.assertNotIn("finite_relation_work", source)
+        self.assertNotIn("row_count", source)
+        self.assertNotIn("largest_candidate_count", source)
 
     def test_residual_work_envelope_reports_first_exceeded_metric(
         self,
@@ -29536,6 +29612,44 @@ def _first_choice_residual_work_evidence(
             pending.append(choice.successor)
 
     raise AssertionError(f"no choice residual evidence for {operation!r}")
+
+
+def _first_choice_finite_relation_work_evidence(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+    *,
+    relation_kind: str,
+    require_direction_marks: bool = False,
+):
+    pending = [cursor]
+    seen: set[WriterFrontierCursor] = set()
+
+    while pending:
+        current = pending.pop(0)
+        if current in seen:
+            continue
+        seen.add(current)
+
+        snapshot = writer_frontier_module._writer_frontier_choice_snapshot(
+            prepared,
+            current,
+            include_counts=False,
+        )
+        for choice in snapshot.choices:
+            if any(
+                item.relation_kind == relation_kind
+                and (
+                    not require_direction_marks
+                    or item.include_direction_marks
+                )
+                for item in choice.finite_relation_work_evidence
+            ):
+                return choice.finite_relation_work_evidence
+            pending.append(choice.successor)
+
+    raise AssertionError(
+        f"no choice finite relation evidence for {relation_kind!r}"
+    )
 
 
 def _snapshot_choice_has_residual_work(

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .ids import BondId
 from .residual_constraints import _MAX_RESIDUAL_FACTOR_CANDIDATE_ROWS
 from .residual_constraints import _MAX_RESIDUAL_FACTOR_SCOPE
 from .residual_constraints import ResidualFactorKey
@@ -48,6 +49,17 @@ class WriterResidualWorkEnvelopeViolation:
     metric: str
     actual: int
     limit: int
+
+
+@dataclass(frozen=True, slots=True)
+class WriterFiniteRelationWorkEvidence:
+    operation: str
+    relation_kind: str
+    row_count: int
+    total_candidate_count: int
+    largest_candidate_count: int
+    bond: BondId | None = None
+    include_direction_marks: bool = False
 
 
 _PUBLIC_WRITER_RESIDUAL_WORK_ENVELOPE = WriterResidualWorkEnvelope()
@@ -120,10 +132,31 @@ def writer_residual_work_envelope_violation(
     return None
 
 
+def writer_closure_endpoint_relation_work_evidence(
+    *,
+    operation: str,
+    bond: BondId,
+    relation,
+    include_direction_marks: bool,
+) -> WriterFiniteRelationWorkEvidence:
+    candidate_counts = tuple(len(seconds) for _first, seconds in relation.rows)
+    return WriterFiniteRelationWorkEvidence(
+        operation=operation,
+        relation_kind="closure_endpoint",
+        bond=bond,
+        row_count=len(relation.rows),
+        total_candidate_count=sum(candidate_counts),
+        largest_candidate_count=max(candidate_counts, default=0),
+        include_direction_marks=include_direction_marks,
+    )
+
+
 __all__ = [
+    "WriterFiniteRelationWorkEvidence",
     "WriterResidualPropagationWorkEvidence",
     "WriterResidualWorkEnvelope",
     "WriterResidualWorkEnvelopeViolation",
+    "writer_closure_endpoint_relation_work_evidence",
     "writer_residual_propagation_work_evidence",
     "writer_residual_work_envelope_violation",
 ]

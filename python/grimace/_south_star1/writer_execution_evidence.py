@@ -62,7 +62,25 @@ class WriterFiniteRelationWorkEvidence:
     include_direction_marks: bool = False
 
 
+@dataclass(frozen=True, slots=True)
+class WriterFiniteRelationWorkEnvelope:
+    max_row_count: int | None = None
+    max_total_candidate_count: int | None = None
+    max_largest_candidate_count: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class WriterFiniteRelationWorkEnvelopeViolation:
+    evidence: WriterFiniteRelationWorkEvidence
+    metric: str
+    actual: int
+    limit: int
+
+
 _PUBLIC_WRITER_RESIDUAL_WORK_ENVELOPE = WriterResidualWorkEnvelope()
+_PUBLIC_WRITER_FINITE_RELATION_WORK_ENVELOPE = (
+    WriterFiniteRelationWorkEnvelope()
+)
 
 
 def writer_residual_propagation_work_evidence(
@@ -132,6 +150,42 @@ def writer_residual_work_envelope_violation(
     return None
 
 
+def writer_finite_relation_work_envelope_violation(
+    evidence: WriterFiniteRelationWorkEvidence,
+    *,
+    envelope: WriterFiniteRelationWorkEnvelope | None = None,
+) -> WriterFiniteRelationWorkEnvelopeViolation | None:
+    envelope = (
+        _PUBLIC_WRITER_FINITE_RELATION_WORK_ENVELOPE
+        if envelope is None
+        else envelope
+    )
+    checks = (
+        ("row_count", evidence.row_count, envelope.max_row_count),
+        (
+            "total_candidate_count",
+            evidence.total_candidate_count,
+            envelope.max_total_candidate_count,
+        ),
+        (
+            "largest_candidate_count",
+            evidence.largest_candidate_count,
+            envelope.max_largest_candidate_count,
+        ),
+    )
+
+    for metric, actual, limit in checks:
+        if limit is not None and actual > limit:
+            return WriterFiniteRelationWorkEnvelopeViolation(
+                evidence=evidence,
+                metric=metric,
+                actual=actual,
+                limit=limit,
+            )
+
+    return None
+
+
 def writer_closure_endpoint_relation_work_evidence(
     *,
     operation: str,
@@ -153,10 +207,13 @@ def writer_closure_endpoint_relation_work_evidence(
 
 __all__ = [
     "WriterFiniteRelationWorkEvidence",
+    "WriterFiniteRelationWorkEnvelope",
+    "WriterFiniteRelationWorkEnvelopeViolation",
     "WriterResidualPropagationWorkEvidence",
     "WriterResidualWorkEnvelope",
     "WriterResidualWorkEnvelopeViolation",
     "writer_closure_endpoint_relation_work_evidence",
+    "writer_finite_relation_work_envelope_violation",
     "writer_residual_propagation_work_evidence",
     "writer_residual_work_envelope_violation",
 ]

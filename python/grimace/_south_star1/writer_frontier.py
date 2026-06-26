@@ -12,8 +12,10 @@ from .errors import SouthStarError
 from .errors import SouthStarErrorKind
 from .ids import AtomId
 from .writer_execution_evidence import WriterFiniteRelationWorkEvidence
+from .writer_execution_evidence import WriterFiniteRelationWorkEnvelopeViolation
 from .writer_execution_evidence import WriterResidualPropagationWorkEvidence
 from .writer_execution_evidence import WriterResidualWorkEnvelopeViolation
+from .writer_execution_evidence import writer_finite_relation_work_envelope_violation
 from .writer_execution_evidence import writer_residual_work_envelope_violation
 from .writer_capabilities import _WriterExecutionCapabilityKind
 from .writer_capabilities import (
@@ -1997,6 +1999,58 @@ def _raise_for_writer_frontier_residual_work_envelope_blockers(
             )
 
 
+def _first_writer_finite_relation_work_envelope_violation(
+    evidence: tuple[WriterFiniteRelationWorkEvidence, ...],
+) -> WriterFiniteRelationWorkEnvelopeViolation | None:
+    for item in evidence:
+        violation = writer_finite_relation_work_envelope_violation(item)
+        if violation is not None:
+            return violation
+    return None
+
+
+def _raise_for_writer_finite_relation_work_envelope_violation(
+    violation: WriterFiniteRelationWorkEnvelopeViolation,
+    *,
+    location: str,
+) -> None:
+    evidence = violation.evidence
+    bond_text = (
+        "none" if evidence.bond is None else str(int(evidence.bond))
+    )
+    raise SouthStarError(
+        SouthStarErrorKind.UNSUPPORTED_POLICY,
+        (
+            "WRITER_SHAPED finite relation work exceeds the supported "
+            "execution envelope: "
+            f"operation={evidence.operation!r}; "
+            f"relation={evidence.relation_kind}; "
+            f"bond={bond_text}; "
+            f"metric={violation.metric}; "
+            f"actual={violation.actual}; "
+            f"limit={violation.limit}; "
+            f"{location}"
+        ),
+    )
+
+
+def _raise_for_writer_frontier_finite_relation_work_envelope_blockers(
+    outcome: _WriterFrontierScheduleOutcome,
+) -> None:
+    for entry in sorted(
+        outcome.next_token_frontier,
+        key=lambda item: item.emitted_text,
+    ):
+        violation = _first_writer_finite_relation_work_envelope_violation(
+            entry.finite_relation_work_evidence
+        )
+        if violation is not None:
+            _raise_for_writer_finite_relation_work_envelope_violation(
+                violation,
+                location=f"next={entry.emitted_text!r}",
+            )
+
+
 def _raise_for_writer_frontier_choice_snapshot_blockers(
     snapshot: _WriterFrontierChoiceSnapshot,
 ) -> None:
@@ -2007,6 +2061,9 @@ def _raise_for_writer_frontier_choice_snapshot_blockers(
         snapshot.schedule_outcome
     )
     _raise_for_writer_frontier_residual_work_envelope_blockers(
+        snapshot.schedule_outcome
+    )
+    _raise_for_writer_frontier_finite_relation_work_envelope_blockers(
         snapshot.schedule_outcome
     )
 
@@ -2024,6 +2081,9 @@ def _checked_writer_frontier_schedule_outcome(
     _raise_for_writer_frontier_schedule_outcome_blockers(outcome)
     _raise_for_writer_frontier_execution_capability_blockers(outcome)
     _raise_for_writer_frontier_residual_work_envelope_blockers(outcome)
+    _raise_for_writer_frontier_finite_relation_work_envelope_blockers(
+        outcome
+    )
 
     return outcome
 

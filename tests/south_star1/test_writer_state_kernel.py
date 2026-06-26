@@ -64,8 +64,11 @@ from grimace._south_star1.residual_constraints import ResidualPropagationKind
 from grimace._south_star1.residual_constraints import ResidualStore
 from grimace._south_star1.residual_constraints import VarId
 from grimace._south_star1.residual_constraints import residual_store_constraint_components
+from grimace._south_star1.writer_execution_evidence import WriterFiniteRelationWorkEnvelope
+from grimace._south_star1.writer_execution_evidence import WriterFiniteRelationWorkEvidence
 from grimace._south_star1.writer_execution_evidence import WriterResidualPropagationWorkEvidence
 from grimace._south_star1.writer_execution_evidence import WriterResidualWorkEnvelope
+from grimace._south_star1.writer_execution_evidence import writer_finite_relation_work_envelope_violation
 from grimace._south_star1.writer_execution_evidence import writer_residual_work_envelope_violation
 from grimace._south_star1.writer_frontier import WriterFrontierCursor
 from grimace._south_star1.writer_frontier import count_writer_cursor_completions
@@ -13330,16 +13333,155 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_finite_relation_work_evidence_is_not_a_legality_classifier(
         self,
     ) -> None:
+        source = inspect.getsource(writer_transitions._transition)
+        self.assertNotIn("finite_relation_work_envelope", source)
+        self.assertNotIn("row_count", source)
+        self.assertNotIn("largest_candidate_count", source)
+
+    def test_finite_relation_work_envelope_reports_first_exceeded_metric(
+        self,
+    ) -> None:
+        evidence = WriterFiniteRelationWorkEvidence(
+            operation="closure endpoint open relation",
+            relation_kind="closure_endpoint",
+            row_count=3,
+            total_candidate_count=7,
+            largest_candidate_count=4,
+            bond=BondId(0),
+            include_direction_marks=False,
+        )
+        envelope = WriterFiniteRelationWorkEnvelope(
+            max_row_count=2,
+            max_total_candidate_count=1,
+        )
+
+        violation = writer_finite_relation_work_envelope_violation(
+            evidence,
+            envelope=envelope,
+        )
+
+        self.assertIsNotNone(violation)
+        assert violation is not None
+        self.assertEqual(violation.metric, "row_count")
+        self.assertEqual(violation.actual, 3)
+        self.assertEqual(violation.limit, 2)
+
+    def test_tight_finite_relation_work_envelope_rejects_next_token_frontier(
+        self,
+    ) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+
+        with _patched_tight_finite_relation_work_envelope():
+            with self.assertRaises(SouthStarError) as caught:
+                writer_frontier_choices(prepared, cursor)
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+        message = str(caught.exception)
+        self.assertIn("finite relation work exceeds", message)
+        self.assertIn("row_count", message)
+        self.assertIn("next=", message)
+
+    def test_tight_finite_relation_work_envelope_rejects_counts_and_stream(
+        self,
+    ) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+
+        operations = (
+            lambda: count_writer_frontier_support(
+                prepared,
+                cursor.support_state,
+            ),
+            lambda: count_writer_cursor_completions(prepared, cursor),
+            lambda: tuple(iter_writer_frontier_support(prepared, cursor)),
+        )
+
+        for operation in operations:
+            with self.subTest(operation=operation):
+                with _patched_tight_finite_relation_work_envelope():
+                    with self.assertRaises(SouthStarError) as caught:
+                        operation()
+
+                self.assertIs(
+                    caught.exception.kind,
+                    SouthStarErrorKind.UNSUPPORTED_POLICY,
+                )
+                self.assertIn(
+                    "finite relation work exceeds",
+                    str(caught.exception),
+                )
+
+    def test_tight_finite_relation_work_envelope_rejects_snapshots(
+        self,
+    ) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        options = _writer_options()
+        cursor = _first_cursor_with_finite_relation_work(
+            prepared,
+            initial_writer_frontier_cursor(prepared, options),
+        )
+        snapshot = writer_snapshot.capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        choices = writer_snapshot.resume_writer_frontier_choices_from_snapshot(
+            snapshot,
+            prepared=prepared,
+        )
+        token = next(
+            choice.emitted_text
+            for choice in choices.choices
+            if _snapshot_choice_has_finite_relation_work(
+                prepared,
+                snapshot,
+                choice.emitted_text,
+            )
+        )
+
+        with _patched_tight_finite_relation_work_envelope():
+            with self.assertRaises(SouthStarError) as caught:
+                writer_snapshot.resume_writer_frontier_choices_from_snapshot(
+                    snapshot,
+                    prepared=prepared,
+                )
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+        self.assertIn("next=", str(caught.exception))
+
+        with _patched_tight_finite_relation_work_envelope():
+            with self.assertRaises(SouthStarError) as caught:
+                writer_snapshot.advance_writer_frontier_snapshot(
+                    snapshot,
+                    prepared=prepared,
+                    emitted_text=token,
+                )
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+        self.assertIn("next=", str(caught.exception))
+
+    def test_finite_relation_work_envelope_is_checked_only_at_frontier(
+        self,
+    ) -> None:
+        source = inspect.getsource(writer_transitions._transition)
+        self.assertNotIn("finite_relation_work_envelope", source)
+        self.assertNotIn("row_count", source)
+        self.assertNotIn("largest_candidate_count", source)
+
+    def test_checked_frontier_enforces_finite_relation_work_envelope(
+        self,
+    ) -> None:
         source = inspect.getsource(
             (
                 writer_frontier_module
                 ._raise_for_writer_frontier_choice_snapshot_blockers
             )
         )
-
-        self.assertNotIn("finite_relation_work", source)
-        self.assertNotIn("row_count", source)
-        self.assertNotIn("largest_candidate_count", source)
+        self.assertIn(
+            "_raise_for_writer_frontier_finite_relation_work_envelope_blockers",
+            source,
+        )
 
     def test_residual_work_envelope_reports_first_exceeded_metric(
         self,
@@ -29652,6 +29794,31 @@ def _first_choice_finite_relation_work_evidence(
     )
 
 
+def _first_cursor_with_finite_relation_work(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+) -> WriterFrontierCursor:
+    pending = [cursor]
+    seen: set[WriterFrontierCursor] = set()
+
+    while pending:
+        current = pending.pop(0)
+        if current in seen:
+            continue
+        seen.add(current)
+
+        snapshot = writer_frontier_module._writer_frontier_choice_snapshot(
+            prepared,
+            current,
+            include_counts=False,
+        )
+        if any(choice.finite_relation_work_evidence for choice in snapshot.choices):
+            return current
+        pending.extend(choice.successor for choice in snapshot.choices)
+
+    raise AssertionError("no frontier with finite relation work evidence")
+
+
 def _snapshot_choice_has_residual_work(
     prepared: SouthStarPreparedMol,
     snapshot,
@@ -29665,6 +29832,23 @@ def _snapshot_choice_has_residual_work(
     return any(
         choice.emitted_text == emitted_text
         and choice.residual_work_evidence
+        for choice in choice_snapshot.choices
+    )
+
+
+def _snapshot_choice_has_finite_relation_work(
+    prepared: SouthStarPreparedMol,
+    snapshot,
+    emitted_text: str,
+) -> bool:
+    choice_snapshot = writer_frontier_module._writer_frontier_choice_snapshot(
+        prepared,
+        snapshot.cursor,
+        include_counts=False,
+    )
+    return any(
+        choice.emitted_text == emitted_text
+        and choice.finite_relation_work_evidence
         for choice in choice_snapshot.choices
     )
 
@@ -29716,6 +29900,16 @@ def _patched_tight_residual_work_envelope():
             "._PUBLIC_WRITER_RESIDUAL_WORK_ENVELOPE"
         ),
         WriterResidualWorkEnvelope(max_component_variable_count=0),
+    )
+
+
+def _patched_tight_finite_relation_work_envelope():
+    return patch(
+        (
+            "grimace._south_star1.writer_execution_evidence"
+            "._PUBLIC_WRITER_FINITE_RELATION_WORK_ENVELOPE"
+        ),
+        WriterFiniteRelationWorkEnvelope(max_row_count=0),
     )
 
 

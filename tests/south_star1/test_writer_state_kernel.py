@@ -13990,6 +13990,155 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(violation.actual, 4)
         self.assertEqual(violation.limit, 3)
 
+    def test_default_graph_obligation_work_envelope_is_fully_bounded(
+        self,
+    ) -> None:
+        envelope = (
+            writer_execution_evidence
+            ._PUBLIC_WRITER_GRAPH_OBLIGATION_WORK_ENVELOPE
+        )
+
+        self.assertIsNotNone(envelope.max_component_atom_count)
+        self.assertIsNotNone(envelope.max_component_bond_count)
+        self.assertIsNotNone(envelope.max_edge_obligation_count)
+        self.assertIsNotNone(envelope.max_residual_attachment_count)
+        self.assertIsNotNone(envelope.max_residual_attachment_action_count)
+        self.assertIsNotNone(envelope.max_boundary_incidence_count)
+        self.assertIsNotNone(envelope.max_closure_candidate_count)
+        self.assertIsNotNone(envelope.max_open_closure_count)
+        self.assertIsNotNone(envelope.max_closed_closure_count)
+        self.assertIsNotNone(envelope.max_attachment_atom_count)
+        self.assertIsNotNone(envelope.max_attachment_boundary_count)
+        self.assertIsNotNone(envelope.max_attachment_cyclic_rank)
+
+    def test_default_graph_obligation_work_envelope_rejects_oversize_work(
+        self,
+    ) -> None:
+        envelope = (
+            writer_execution_evidence
+            ._PUBLIC_WRITER_GRAPH_OBLIGATION_WORK_ENVELOPE
+        )
+        assert envelope.max_component_atom_count is not None
+        evidence = WriterGraphObligationWorkEvidence(
+            operation="writer graph obligation context",
+            component_index=0,
+            component_atom_count=envelope.max_component_atom_count + 1,
+            component_bond_count=0,
+            edge_obligation_count=0,
+            residual_attachment_count=0,
+            residual_attachment_action_count=0,
+            boundary_incidence_count=0,
+            closure_candidate_count=0,
+            open_closure_count=0,
+            closed_closure_count=0,
+            max_attachment_atom_count=0,
+            max_attachment_boundary_count=0,
+            max_attachment_cyclic_rank=0,
+        )
+
+        violation = writer_graph_obligation_work_envelope_violation(
+            evidence
+        )
+
+        self.assertIsNotNone(violation)
+        assert violation is not None
+        self.assertEqual(violation.metric, "component_atom_count")
+
+    def test_observed_graph_obligation_work_fits_default_envelope(
+        self,
+    ) -> None:
+        cases = (
+            lambda: _prepare(cco_facts()),
+            lambda: _prepare(cyclopropane_facts()),
+            lambda: _prepare(methylcyclopropane_facts()),
+            lambda: _prepare(fused_rank_two_facts()),
+            lambda: _prepare(cyclopropane_plus_singleton_facts()),
+            lambda: _prepare(tetrahedral_facts()),
+            lambda: _prepare(directional_facts()),
+            _prepare_directional_ring_carrier_monocycle,
+            _prepare_shared_directional_ring_carrier_monocycle,
+            lambda: _prepare(bridge_path_with_connector_pendant_chain_facts()),
+        )
+        envelope = (
+            writer_execution_evidence
+            ._PUBLIC_WRITER_GRAPH_OBLIGATION_WORK_ENVELOPE
+        )
+        observed = []
+
+        for prepare in cases:
+            prepared = prepare()
+            observed.extend(
+                _all_graph_obligation_work_evidence(
+                    prepared,
+                    initial_writer_frontier_cursor(
+                        prepared,
+                        _writer_options(),
+                    ),
+                )
+            )
+
+        self.assertTrue(observed)
+        for item in observed:
+            with self.subTest(
+                operation=item.operation,
+                component=item.component_index,
+            ):
+                self.assertIsNone(
+                    writer_graph_obligation_work_envelope_violation(item)
+                )
+
+        self.assertLessEqual(
+            max(item.component_atom_count for item in observed),
+            envelope.max_component_atom_count,
+        )
+        self.assertLessEqual(
+            max(item.component_bond_count for item in observed),
+            envelope.max_component_bond_count,
+        )
+        self.assertLessEqual(
+            max(item.edge_obligation_count for item in observed),
+            envelope.max_edge_obligation_count,
+        )
+        self.assertLessEqual(
+            max(item.residual_attachment_count for item in observed),
+            envelope.max_residual_attachment_count,
+        )
+        self.assertLessEqual(
+            max(
+                item.residual_attachment_action_count
+                for item in observed
+            ),
+            envelope.max_residual_attachment_action_count,
+        )
+        self.assertLessEqual(
+            max(item.boundary_incidence_count for item in observed),
+            envelope.max_boundary_incidence_count,
+        )
+        self.assertLessEqual(
+            max(item.closure_candidate_count for item in observed),
+            envelope.max_closure_candidate_count,
+        )
+        self.assertLessEqual(
+            max(item.open_closure_count for item in observed),
+            envelope.max_open_closure_count,
+        )
+        self.assertLessEqual(
+            max(item.closed_closure_count for item in observed),
+            envelope.max_closed_closure_count,
+        )
+        self.assertLessEqual(
+            max(item.max_attachment_atom_count for item in observed),
+            envelope.max_attachment_atom_count,
+        )
+        self.assertLessEqual(
+            max(item.max_attachment_boundary_count for item in observed),
+            envelope.max_attachment_boundary_count,
+        )
+        self.assertLessEqual(
+            max(item.max_attachment_cyclic_rank for item in observed),
+            envelope.max_attachment_cyclic_rank,
+        )
+
     def test_tight_graph_obligation_work_envelope_rejects_current_frontier(
         self,
     ) -> None:
@@ -14102,6 +14251,22 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertIn(
             "_raise_for_writer_frontier_graph_obligation_work_envelope_blockers",
+            source,
+        )
+
+    def test_graph_obligation_default_envelope_has_named_limits(self) -> None:
+        source = inspect.getsource(writer_execution_evidence)
+
+        self.assertIn(
+            "_PUBLIC_GRAPH_OBLIGATION_MAX_COMPONENT_ATOM_COUNT",
+            source,
+        )
+        self.assertIn(
+            "_PUBLIC_GRAPH_OBLIGATION_MAX_EDGE_OBLIGATION_COUNT",
+            source,
+        )
+        self.assertIn(
+            "_PUBLIC_GRAPH_OBLIGATION_MAX_ATTACHMENT_CYCLIC_RANK",
             source,
         )
 

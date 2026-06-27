@@ -186,7 +186,10 @@ class _WriterFrontierStateScheduleOutcome:
 
     @property
     def blocked(self) -> bool:
-        return bool(self.schedule_outcome.graph_policy_blockers)
+        return bool(
+            self.schedule_outcome.graph_policy_blockers
+            or self.schedule_outcome.stereo_policy_blockers
+        )
 
     @property
     def graph_policy_blockers(
@@ -860,7 +863,10 @@ class _WriterFrontierScheduleOutcome:
 
     @property
     def blocked(self) -> bool:
-        return bool(self.graph_policy_blockers)
+        return bool(
+            self.graph_policy_blockers
+            or self.stereo_policy_blockers
+        )
 
     @property
     def terminal_execution_capabilities(

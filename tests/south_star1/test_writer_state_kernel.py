@@ -13911,6 +13911,10 @@ class WriterStateKernelTest(unittest.TestCase):
             blocker.operation,
             "directional carrier-mark restriction",
         )
+        self.assertTrue(raw.blocked)
+        self.assertTrue(raw.schedule_outcome.blocked)
+        self.assertTrue(raw.blocked_state_outcomes)
+        self.assertEqual(raw.graph_policy_blockers, ())
 
         with self.assertRaises(SouthStarError) as caught:
             writer_frontier_choices(prepared, blocked)
@@ -13920,6 +13924,28 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIn("unsupported stereo operation", message)
         self.assertIn("unsupported_directional_non_neighbor_ligand", message)
         self.assertIn("current frontier", message)
+
+    def test_stereo_policy_blocker_is_recorded_by_reachability_audit(
+        self,
+    ) -> None:
+        prepared = _prepare_directional_non_neighbor_ligand_monocycle()
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+
+        audit = writer_audit._audit_writer_frontier_reachability_from_cursor(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+            max_prefixes=100,
+        )
+
+        self.assertTrue(audit.blocked)
+        self.assertTrue(
+            any(
+                blocked.choice_snapshot.stereo_policy_blockers
+                for blocked in audit.blocked_prefixes
+            )
+        )
 
     def test_unsupported_directional_non_neighbor_ligand_blocks_observables(
         self,
@@ -13994,6 +14020,22 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertNotIn("directional", source)
         self.assertNotIn("NEIGHBOR_ATOM", source)
+
+    def test_stereo_policy_blockers_are_raw_blockers(self) -> None:
+        source = inspect.getsource(
+            writer_frontier_module._WriterFrontierScheduleOutcome.blocked.fget
+        )
+        self.assertIn("stereo_policy_blockers", source)
+
+        source = inspect.getsource(
+            (
+                writer_frontier_module
+                ._WriterFrontierStateScheduleOutcome
+                .blocked
+                .fget
+            )
+        )
+        self.assertIn("stereo_policy_blockers", source)
 
     def test_graph_obligation_work_evidence_records_initial_frontiers(
         self,

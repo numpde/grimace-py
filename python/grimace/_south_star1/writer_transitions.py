@@ -59,6 +59,7 @@ from .writer_events import WriterRingEndpointEmitted
 from .writer_events import WriterRingEndpointPaired
 from .writer_stereo import WriterAtomTextChoice
 from .writer_stereo import WriterBondTextChoice
+from .writer_stereo import WriterStereoPolicyBlocker
 from .writer_stereo import advance_writer_stereo_state_with_evidence
 from .writer_stereo import terminal_writer_stereo_state_with_evidence
 from .writer_stereo import validate_writer_stereo_supported_prepared
@@ -114,6 +115,15 @@ class WriterTransition:
             raise ValueError("writer transitions must emit nonempty text")
         if not self.events:
             raise ValueError("writer transitions must carry semantic events")
+
+
+class _WriterStereoPolicyBlockedTransition(Exception):
+    def __init__(
+        self,
+        blockers: tuple[WriterStereoPolicyBlocker, ...],
+    ) -> None:
+        super().__init__("writer stereo policy blocked transition")
+        self.blockers = blockers
 
 
 @dataclass(frozen=True, slots=True)
@@ -598,6 +608,7 @@ class _WriterResidualAttachmentPolicyGroup:
 class _WriterScheduledActionEmission:
     action: _WriterScheduledAction
     transitions: tuple[WriterTransition, ...]
+    stereo_policy_blockers: tuple[WriterStereoPolicyBlocker, ...] = ()
 
     @property
     def graph_action_surface(self) -> _WriterScheduledGraphActionSurface:
@@ -903,6 +914,16 @@ class _WriterScheduledActionEmissionBatch:
             _residual_attachment_policy_emission_groups_from_scheduled_action_emissions(
                 self.surviving_emissions
             )
+        )
+
+    @property
+    def stereo_policy_blockers(
+        self,
+    ) -> tuple[WriterStereoPolicyBlocker, ...]:
+        return tuple(
+            blocker
+            for emission in self.emissions
+            for blocker in emission.stereo_policy_blockers
         )
 
 
@@ -2288,6 +2309,15 @@ class _WriterTopLevelScheduleOutcome:
             return ()
 
         return self.active_emitted_outcome.graph_policy_blockers
+
+    @property
+    def stereo_policy_blockers(
+        self,
+    ) -> tuple[WriterStereoPolicyBlocker, ...]:
+        if self.schedule_decision is None:
+            return ()
+
+        return self.schedule_decision.selected_batch.stereo_policy_blockers
 
     @property
     def selected_transitions(self) -> tuple[WriterTransition, ...]:
@@ -4159,15 +4189,22 @@ def _scheduled_action_emissions(
     emissions: list[_WriterScheduledActionEmission] = []
 
     for action in actions:
+        stereo_policy_blockers: tuple[WriterStereoPolicyBlocker, ...] = ()
+        try:
+            transitions = _transitions_from_scheduled_action(
+                prepared,
+                state,
+                context,
+                action,
+            )
+        except _WriterStereoPolicyBlockedTransition as exc:
+            transitions = ()
+            stereo_policy_blockers = exc.blockers
         emissions.append(
             _WriterScheduledActionEmission(
                 action=action,
-                transitions=_transitions_from_scheduled_action(
-                    prepared,
-                    state,
-                    context,
-                    action,
-                ),
+                transitions=transitions,
+                stereo_policy_blockers=stereo_policy_blockers,
             )
         )
 
@@ -5052,6 +5089,10 @@ def _transition(
         events,
     )
     if stereo_outcome.state is None:
+        if stereo_outcome.stereo_policy_blockers:
+            raise _WriterStereoPolicyBlockedTransition(
+                stereo_outcome.stereo_policy_blockers
+            )
         return None
     return WriterTransition(
         emitted_text=emitted_text,

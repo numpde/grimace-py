@@ -13887,6 +13887,114 @@ class WriterStateKernelTest(unittest.TestCase):
             source,
         )
 
+    def test_unsupported_directional_non_neighbor_ligand_is_live_blocker(
+        self,
+    ) -> None:
+        prepared = _prepare_directional_non_neighbor_ligand_monocycle()
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        blocked = _first_cursor_with_stereo_policy_blocker(prepared, cursor)
+        raw = writer_frontier_module._writer_frontier_choice_snapshot(
+            prepared,
+            blocked,
+            include_counts=False,
+        )
+
+        self.assertTrue(raw.stereo_policy_blockers)
+        blocker = raw.stereo_policy_blockers[0]
+        self.assertEqual(
+            blocker.kind,
+            "unsupported_directional_non_neighbor_ligand",
+        )
+        self.assertEqual(blocker.site, SiteId(0))
+        self.assertEqual(
+            blocker.operation,
+            "directional carrier-mark restriction",
+        )
+
+        with self.assertRaises(SouthStarError) as caught:
+            writer_frontier_choices(prepared, blocked)
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+        message = str(caught.exception)
+        self.assertIn("unsupported stereo operation", message)
+        self.assertIn("unsupported_directional_non_neighbor_ligand", message)
+        self.assertIn("current frontier", message)
+
+    def test_unsupported_directional_non_neighbor_ligand_blocks_observables(
+        self,
+    ) -> None:
+        prepared = _prepare_directional_non_neighbor_ligand_monocycle()
+        cursor = _first_cursor_with_stereo_policy_blocker(
+            prepared,
+            initial_writer_frontier_cursor(prepared, _writer_options()),
+        )
+
+        operations = (
+            lambda: count_writer_frontier_support(
+                prepared,
+                cursor.support_state,
+            ),
+            lambda: count_writer_cursor_completions(prepared, cursor),
+            lambda: tuple(iter_writer_frontier_support(prepared, cursor)),
+        )
+
+        for operation in operations:
+            with self.subTest(operation=operation):
+                with self.assertRaises(SouthStarError) as caught:
+                    operation()
+
+                self.assertIs(
+                    caught.exception.kind,
+                    SouthStarErrorKind.UNSUPPORTED_POLICY,
+                )
+                self.assertIn(
+                    "unsupported stereo operation",
+                    str(caught.exception),
+                )
+
+    def test_unsupported_directional_non_neighbor_ligand_blocks_snapshots(
+        self,
+    ) -> None:
+        prepared = _prepare_directional_non_neighbor_ligand_monocycle()
+        options = _writer_options()
+        cursor = _first_cursor_with_stereo_policy_blocker(
+            prepared,
+            initial_writer_frontier_cursor(prepared, options),
+        )
+        snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+
+        with self.assertRaises(SouthStarError) as caught:
+            writer_snapshot.resume_writer_frontier_choices_from_snapshot(
+                snapshot,
+                prepared=prepared,
+            )
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+        self.assertIn("current frontier", str(caught.exception))
+
+        with self.assertRaises(SouthStarError) as caught:
+            writer_snapshot.advance_writer_frontier_snapshot(
+                snapshot,
+                prepared=prepared,
+                emitted_text="C",
+            )
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+        self.assertIn("current frontier", str(caught.exception))
+
+    def test_directional_non_neighbor_veto_is_not_prepared_level(self) -> None:
+        source = inspect.getsource(
+            writer_stereo.validate_writer_stereo_supported_prepared
+        )
+
+        self.assertNotIn("directional", source)
+        self.assertNotIn("NEIGHBOR_ATOM", source)
+
     def test_graph_obligation_work_evidence_records_initial_frontiers(
         self,
     ) -> None:
@@ -17178,16 +17286,17 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_STEREO)
 
-    def test_raw_legal_transitions_reject_same_unsupported_stereo_surface(self) -> None:
-        prepared = _prepare(unsupported_directional_implicit_h_facts())
+    def test_raw_legal_transitions_do_not_preflight_directional_ligands(
+        self,
+    ) -> None:
+        prepared = _prepare_directional_non_neighbor_ligand_monocycle()
 
-        with self.assertRaises(SouthStarError) as caught:
-            writer_transitions.legal_writer_transitions(
-                prepared,
-                _raw_initial_state(AtomId(0)),
-            )
+        transitions = writer_transitions.legal_writer_transitions(
+            prepared,
+            _raw_initial_state(AtomId(0)),
+        )
 
-        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_STEREO)
+        self.assertTrue(transitions)
 
     def test_writer_shaped_cycle_plus_isolate_component_fails_closed(self) -> None:
         prepared = _prepare(cycle_plus_isolate_component_facts())
@@ -29031,6 +29140,25 @@ def _prepare_directional_ring_carrier_monocycle() -> SouthStarPreparedMol:
     )
 
 
+def _directional_non_neighbor_ligand_monocycle_facts() -> MoleculeFacts:
+    facts = _directional_ring_carrier_monocycle_facts()
+    occurrences = list(facts.ligand_occurrences)
+    occurrences[1] = replace(
+        occurrences[1],
+        kind=LigandKind.IMPLICIT_H,
+        bond=None,
+    )
+    return replace(facts, ligand_occurrences=tuple(occurrences))
+
+
+def _prepare_directional_non_neighbor_ligand_monocycle() -> SouthStarPreparedMol:
+    facts = _directional_non_neighbor_ligand_monocycle_facts()
+    return _prepare_with_ordinary_policy_options(
+        facts,
+        options=OrdinaryPolicyOptions(non_single_ring_closures="joint"),
+    )
+
+
 def _shared_directional_ring_carrier_monocycle_facts() -> MoleculeFacts:
     left_site = SiteId(0)
     right_site = SiteId(1)
@@ -30500,6 +30628,31 @@ def _all_graph_obligation_work_evidence(
         pending.extend(choice.successor for choice in snapshot.choices)
 
     return tuple(evidence)
+
+
+def _first_cursor_with_stereo_policy_blocker(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+) -> WriterFrontierCursor:
+    pending = [cursor]
+    seen: set[WriterFrontierCursor] = set()
+
+    while pending:
+        current = pending.pop(0)
+        if current in seen:
+            continue
+        seen.add(current)
+
+        snapshot = writer_frontier_module._writer_frontier_choice_snapshot(
+            prepared,
+            current,
+            include_counts=False,
+        )
+        if snapshot.stereo_policy_blockers:
+            return current
+        pending.extend(choice.successor for choice in snapshot.choices)
+
+    raise AssertionError("no frontier with stereo policy blocker")
 
 
 def _snapshot_choice_has_residual_work(

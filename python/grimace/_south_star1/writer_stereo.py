@@ -102,6 +102,13 @@ class WriterBondTextChoice:
 
 
 @dataclass(frozen=True, slots=True)
+class WriterStereoPolicyBlocker:
+    kind: str
+    site: SiteId | None = None
+    operation: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class _WriterStereoMutation:
     state: "WriterStereoState | None"
     capabilities: frozenset[_WriterExecutionCapabilityKind] = frozenset()
@@ -109,6 +116,7 @@ class _WriterStereoMutation:
         WriterResidualPropagationWorkEvidence,
         ...
     ] = ()
+    stereo_policy_blockers: tuple[WriterStereoPolicyBlocker, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,6 +129,7 @@ class _WriterStereoAdvanceOutcome:
         WriterResidualPropagationWorkEvidence,
         ...
     ] = ()
+    stereo_policy_blockers: tuple[WriterStereoPolicyBlocker, ...] = ()
 
 
 def empty_writer_stereo_state() -> "WriterStereoState":
@@ -418,6 +427,7 @@ def advance_writer_stereo_state_with_evidence(
     state = stereo_state
     capabilities: set[_WriterExecutionCapabilityKind] = set()
     work_evidence: list[WriterResidualPropagationWorkEvidence] = []
+    stereo_policy_blockers: list[WriterStereoPolicyBlocker] = []
     for event in events:
         if isinstance(event, WriterAtomEmitted):
             mutation = _on_atom_emitted(prepared, state, event)
@@ -432,14 +442,19 @@ def advance_writer_stereo_state_with_evidence(
         else:
             continue
         if mutation.state is None:
-            return _WriterStereoAdvanceOutcome(state=None)
+            return _WriterStereoAdvanceOutcome(
+                state=None,
+                stereo_policy_blockers=mutation.stereo_policy_blockers,
+            )
         state = mutation.state
         capabilities.update(mutation.capabilities)
         work_evidence.extend(mutation.residual_work_evidence)
+        stereo_policy_blockers.extend(mutation.stereo_policy_blockers)
     return _WriterStereoAdvanceOutcome(
         state=state,
         execution_capabilities=frozenset(capabilities),
         residual_work_evidence=tuple(work_evidence),
+        stereo_policy_blockers=tuple(stereo_policy_blockers),
     )
 
 
@@ -839,16 +854,7 @@ def writer_stereo_state_sort_tuple(state: "WriterStereoState") -> tuple[object, 
 
 
 def validate_writer_stereo_supported_prepared(prepared: SouthStarPreparedMol) -> None:
-    occurrence_by_id = _occurrence_by_id(prepared)
-    if any(
-        occurrence_by_id[item].kind is not LigandKind.NEIGHBOR_ATOM
-        for template in prepared.directional_templates
-        for item in template.left_ligands + template.right_ligands
-    ):
-        raise SouthStarError(
-            SouthStarErrorKind.UNSUPPORTED_STEREO,
-            "WRITER_SHAPED directional stereo currently requires neighbor ligands",
-        )
+    return None
 
 
 def _on_atom_emitted(
@@ -932,6 +938,16 @@ def _on_bond_emitted(
     capabilities: set[_WriterExecutionCapabilityKind] = set()
     work_evidence: list[WriterResidualPropagationWorkEvidence] = []
     if models:
+        blocker = _unsupported_directional_non_neighbor_ligand_blocker_for_bond(
+            prepared,
+            event.bond,
+            operation=operation,
+        )
+        if blocker is not None:
+            return _WriterStereoMutation(
+                state=None,
+                stereo_policy_blockers=(blocker,),
+            )
         restrictions = _directional_bond_restrictions(
             prepared,
             bond=event.bond,
@@ -1683,6 +1699,37 @@ def _directional_template_substituent_bonds(
     return frozenset(bonds)
 
 
+def _unsupported_directional_non_neighbor_ligand_blocker_for_bond(
+    prepared: SouthStarPreparedMol,
+    bond: BondId,
+    *,
+    operation: str,
+) -> WriterStereoPolicyBlocker | None:
+    occurrence_by_id = _occurrence_by_id(prepared)
+    for template in sorted(
+        prepared.directional_templates,
+        key=lambda item: int(item.site),
+    ):
+        ligand_ids = template.left_ligands + template.right_ligands
+        if not any(
+            occurrence_by_id[item].kind is not LigandKind.NEIGHBOR_ATOM
+            for item in ligand_ids
+        ):
+            continue
+        if bond not in _directional_template_substituent_bonds(
+            prepared,
+            template,
+        ):
+            continue
+        return WriterStereoPolicyBlocker(
+            kind="unsupported_directional_non_neighbor_ligand",
+            site=template.site,
+            operation=operation,
+        )
+
+    return None
+
+
 def _tetra_factor_key(site: SiteId) -> ResidualFactorKey:
     return ResidualFactorKey("tetra_site", (int(site),))
 
@@ -2062,6 +2109,7 @@ __all__ = (
     "WriterBondOccurrenceRecord",
     "WriterBondTextChoice",
     "WriterLocalOrderRecord",
+    "WriterStereoPolicyBlocker",
     "_WriterStereoAdvanceOutcome",
     "advance_writer_stereo_state",
     "advance_writer_stereo_state_with_evidence",

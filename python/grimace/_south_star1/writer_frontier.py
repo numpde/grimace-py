@@ -35,6 +35,7 @@ from .writer_state import writer_state_from_key
 from .writer_state import writer_state_key
 from .writer_state import writer_state_key_sort_tuple
 from .writer_stereo import initial_writer_stereo_state
+from .writer_stereo import WriterStereoPolicyBlocker
 from .writer_transitions import _WriterActiveEmittedGraphPolicyBlocker
 from .writer_transitions import _WriterActiveEmittedGraphPolicyDecision
 from .writer_transitions import _WriterActiveChildSelectionKind
@@ -192,6 +193,12 @@ class _WriterFrontierStateScheduleOutcome:
         self,
     ) -> tuple[_WriterActiveEmittedGraphPolicyBlocker, ...]:
         return self.schedule_outcome.graph_policy_blockers
+
+    @property
+    def stereo_policy_blockers(
+        self,
+    ) -> tuple[WriterStereoPolicyBlocker, ...]:
+        return self.schedule_outcome.stereo_policy_blockers
 
     @property
     def graph_policy_decision(
@@ -842,6 +849,16 @@ class _WriterFrontierScheduleOutcome:
         )
 
     @property
+    def stereo_policy_blockers(
+        self,
+    ) -> tuple[WriterStereoPolicyBlocker, ...]:
+        return tuple(
+            blocker
+            for state_outcome in self.state_outcomes
+            for blocker in state_outcome.stereo_policy_blockers
+        )
+
+    @property
     def blocked(self) -> bool:
         return bool(self.graph_policy_blockers)
 
@@ -1099,6 +1116,12 @@ class _WriterFrontierChoiceSnapshot:
         self,
     ) -> tuple[_WriterActiveEmittedGraphPolicyBlocker, ...]:
         return self.schedule_outcome.graph_policy_blockers
+
+    @property
+    def stereo_policy_blockers(
+        self,
+    ) -> tuple[WriterStereoPolicyBlocker, ...]:
+        return self.schedule_outcome.stereo_policy_blockers
 
     @property
     def blocked_state_outcomes(
@@ -1934,6 +1957,34 @@ def _raise_for_writer_frontier_schedule_outcome_blockers(
         )
 
 
+def _raise_for_writer_frontier_stereo_policy_blockers(
+    outcome: _WriterFrontierScheduleOutcome,
+) -> None:
+    blockers = sorted(
+        outcome.stereo_policy_blockers,
+        key=lambda item: (
+            item.kind,
+            -1 if item.site is None else int(item.site),
+            item.operation,
+        ),
+    )
+    if not blockers:
+        return
+
+    first = blockers[0]
+    site = "none" if first.site is None else str(int(first.site))
+    raise SouthStarError(
+        SouthStarErrorKind.UNSUPPORTED_POLICY,
+        (
+            "WRITER_SHAPED unsupported stereo operation at current "
+            "frontier: "
+            f"kind={first.kind}; "
+            f"site={site}; "
+            f"operation={first.operation!r}"
+        ),
+    )
+
+
 def _raise_for_writer_frontier_execution_capability_blockers(
     outcome: _WriterFrontierScheduleOutcome,
 ) -> None:
@@ -2127,6 +2178,9 @@ def _raise_for_writer_frontier_choice_snapshot_blockers(
     _raise_for_writer_frontier_schedule_outcome_blockers(
         snapshot.schedule_outcome
     )
+    _raise_for_writer_frontier_stereo_policy_blockers(
+        snapshot.schedule_outcome
+    )
     _raise_for_writer_frontier_execution_capability_blockers(
         snapshot.schedule_outcome
     )
@@ -2152,6 +2206,7 @@ def _checked_writer_frontier_schedule_outcome(
     )
 
     _raise_for_writer_frontier_schedule_outcome_blockers(outcome)
+    _raise_for_writer_frontier_stereo_policy_blockers(outcome)
     _raise_for_writer_frontier_execution_capability_blockers(outcome)
     _raise_for_writer_frontier_residual_work_envelope_blockers(outcome)
     _raise_for_writer_frontier_finite_relation_work_envelope_blockers(

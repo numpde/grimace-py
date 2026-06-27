@@ -67,9 +67,12 @@ from grimace._south_star1.residual_constraints import VarId
 from grimace._south_star1.residual_constraints import residual_store_constraint_components
 from grimace._south_star1.writer_execution_evidence import WriterFiniteRelationWorkEnvelope
 from grimace._south_star1.writer_execution_evidence import WriterFiniteRelationWorkEvidence
+from grimace._south_star1.writer_execution_evidence import WriterGraphObligationWorkEnvelope
+from grimace._south_star1.writer_execution_evidence import WriterGraphObligationWorkEvidence
 from grimace._south_star1.writer_execution_evidence import WriterResidualPropagationWorkEvidence
 from grimace._south_star1.writer_execution_evidence import WriterResidualWorkEnvelope
 from grimace._south_star1.writer_execution_evidence import writer_finite_relation_work_envelope_violation
+from grimace._south_star1.writer_execution_evidence import writer_graph_obligation_work_envelope_violation
 from grimace._south_star1.writer_execution_evidence import writer_residual_work_envelope_violation
 from grimace._south_star1.writer_frontier import WriterFrontierCursor
 from grimace._south_star1.writer_frontier import count_writer_cursor_completions
@@ -13952,16 +13955,155 @@ class WriterStateKernelTest(unittest.TestCase):
             or any(item.closed_closure_count > 0 for item in evidence)
         )
 
+    def test_graph_obligation_work_envelope_reports_first_exceeded_metric(
+        self,
+    ) -> None:
+        evidence = WriterGraphObligationWorkEvidence(
+            operation="writer graph obligation context",
+            component_index=0,
+            component_atom_count=4,
+            component_bond_count=5,
+            edge_obligation_count=5,
+            residual_attachment_count=1,
+            residual_attachment_action_count=1,
+            boundary_incidence_count=2,
+            closure_candidate_count=1,
+            open_closure_count=0,
+            closed_closure_count=0,
+            max_attachment_atom_count=3,
+            max_attachment_boundary_count=2,
+            max_attachment_cyclic_rank=1,
+        )
+        envelope = WriterGraphObligationWorkEnvelope(
+            max_component_atom_count=3,
+            max_edge_obligation_count=1,
+        )
+
+        violation = writer_graph_obligation_work_envelope_violation(
+            evidence,
+            envelope=envelope,
+        )
+
+        self.assertIsNotNone(violation)
+        assert violation is not None
+        self.assertEqual(violation.metric, "component_atom_count")
+        self.assertEqual(violation.actual, 4)
+        self.assertEqual(violation.limit, 3)
+
+    def test_tight_graph_obligation_work_envelope_rejects_current_frontier(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+
+        with _patched_tight_graph_obligation_work_envelope():
+            with self.assertRaises(SouthStarError) as caught:
+                writer_frontier_choices(prepared, cursor)
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+        message = str(caught.exception)
+        self.assertIn("graph obligation work exceeds", message)
+        self.assertIn("component_atom_count", message)
+        self.assertIn("current frontier", message)
+
+    def test_tight_graph_obligation_work_envelope_rejects_counts_and_stream(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+
+        operations = (
+            lambda: count_writer_frontier_support(
+                prepared,
+                cursor.support_state,
+            ),
+            lambda: count_writer_cursor_completions(prepared, cursor),
+            lambda: tuple(iter_writer_frontier_support(prepared, cursor)),
+        )
+
+        for operation in operations:
+            with self.subTest(operation=operation):
+                with _patched_tight_graph_obligation_work_envelope():
+                    with self.assertRaises(SouthStarError) as caught:
+                        operation()
+
+                self.assertIs(
+                    caught.exception.kind,
+                    SouthStarErrorKind.UNSUPPORTED_POLICY,
+                )
+                self.assertIn(
+                    "graph obligation work exceeds",
+                    str(caught.exception),
+                )
+
+    def test_tight_graph_obligation_work_envelope_rejects_snapshots(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options()
+        snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+        )
+        token = writer_snapshot.resume_writer_frontier_choices_from_snapshot(
+            snapshot,
+            prepared=prepared,
+        ).choices[0].emitted_text
+
+        with _patched_tight_graph_obligation_work_envelope():
+            with self.assertRaises(SouthStarError) as caught:
+                writer_snapshot.resume_writer_frontier_choices_from_snapshot(
+                    snapshot,
+                    prepared=prepared,
+                )
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+        self.assertIn("current frontier", str(caught.exception))
+
+        advanced = writer_snapshot.advance_writer_frontier_snapshot(
+            snapshot,
+            prepared=prepared,
+            emitted_text=token,
+        )
+        with _patched_tight_graph_obligation_work_envelope():
+            with self.assertRaises(SouthStarError) as caught:
+                writer_snapshot.advance_writer_frontier_snapshot(
+                    snapshot,
+                    prepared=prepared,
+                    emitted_text=token,
+                )
+
+        self.assertTrue(advanced.cursor.weighted_states)
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+        self.assertIn("current frontier", str(caught.exception))
+
     def test_graph_obligation_work_evidence_is_not_a_legality_classifier(
         self,
     ) -> None:
         source = inspect.getsource(
-            writer_frontier_module
-            ._raise_for_writer_frontier_choice_snapshot_blockers
+            (
+                writer_transitions
+                ._writer_state_expansion_outcome_from_validated_prepared
+            )
         )
 
-        self.assertNotIn("graph_obligation_work", source)
+        self.assertNotIn("graph_obligation_work_envelope", source)
         self.assertNotIn("max_attachment", source)
+
+    def test_checked_frontier_enforces_graph_obligation_work_envelope(
+        self,
+    ) -> None:
+        source = inspect.getsource(
+            (
+                writer_frontier_module
+                ._raise_for_writer_frontier_choice_snapshot_blockers
+            )
+        )
+
+        self.assertIn(
+            "_raise_for_writer_frontier_graph_obligation_work_envelope_blockers",
+            source,
+        )
 
     def test_writer_support_image_uses_frontier_summary(self) -> None:
         source = inspect.getsource(
@@ -30286,6 +30428,16 @@ def _patched_tight_finite_relation_work_envelope():
             "._PUBLIC_WRITER_FINITE_RELATION_WORK_ENVELOPE"
         ),
         WriterFiniteRelationWorkEnvelope(max_row_count=0),
+    )
+
+
+def _patched_tight_graph_obligation_work_envelope():
+    return patch(
+        (
+            "grimace._south_star1.writer_execution_evidence"
+            "._PUBLIC_WRITER_GRAPH_OBLIGATION_WORK_ENVELOPE"
+        ),
+        WriterGraphObligationWorkEnvelope(max_component_atom_count=0),
     )
 
 

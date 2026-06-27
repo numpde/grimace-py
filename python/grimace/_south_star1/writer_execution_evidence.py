@@ -81,6 +81,30 @@ class WriterGraphObligationWorkEvidence:
 
 
 @dataclass(frozen=True, slots=True)
+class WriterGraphObligationWorkEnvelope:
+    max_component_atom_count: int | None = None
+    max_component_bond_count: int | None = None
+    max_edge_obligation_count: int | None = None
+    max_residual_attachment_count: int | None = None
+    max_residual_attachment_action_count: int | None = None
+    max_boundary_incidence_count: int | None = None
+    max_closure_candidate_count: int | None = None
+    max_open_closure_count: int | None = None
+    max_closed_closure_count: int | None = None
+    max_attachment_atom_count: int | None = None
+    max_attachment_boundary_count: int | None = None
+    max_attachment_cyclic_rank: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class WriterGraphObligationWorkEnvelopeViolation:
+    evidence: WriterGraphObligationWorkEvidence
+    metric: str
+    actual: int
+    limit: int
+
+
+@dataclass(frozen=True, slots=True)
 class WriterFiniteRelationWorkEnvelope:
     max_row_count: int | None = None
     max_total_candidate_count: int | None = None
@@ -136,6 +160,9 @@ _PUBLIC_WRITER_FINITE_RELATION_WORK_ENVELOPE = (
             _PUBLIC_CLOSURE_ENDPOINT_RELATION_MAX_LARGEST_CANDIDATE_COUNT
         ),
     )
+)
+_PUBLIC_WRITER_GRAPH_OBLIGATION_WORK_ENVELOPE = (
+    WriterGraphObligationWorkEnvelope()
 )
 
 
@@ -242,6 +269,91 @@ def writer_finite_relation_work_envelope_violation(
     return None
 
 
+def writer_graph_obligation_work_envelope_violation(
+    evidence: WriterGraphObligationWorkEvidence,
+    *,
+    envelope: WriterGraphObligationWorkEnvelope | None = None,
+) -> WriterGraphObligationWorkEnvelopeViolation | None:
+    envelope = (
+        _PUBLIC_WRITER_GRAPH_OBLIGATION_WORK_ENVELOPE
+        if envelope is None
+        else envelope
+    )
+    checks = (
+        (
+            "component_atom_count",
+            evidence.component_atom_count,
+            envelope.max_component_atom_count,
+        ),
+        (
+            "component_bond_count",
+            evidence.component_bond_count,
+            envelope.max_component_bond_count,
+        ),
+        (
+            "edge_obligation_count",
+            evidence.edge_obligation_count,
+            envelope.max_edge_obligation_count,
+        ),
+        (
+            "residual_attachment_count",
+            evidence.residual_attachment_count,
+            envelope.max_residual_attachment_count,
+        ),
+        (
+            "residual_attachment_action_count",
+            evidence.residual_attachment_action_count,
+            envelope.max_residual_attachment_action_count,
+        ),
+        (
+            "boundary_incidence_count",
+            evidence.boundary_incidence_count,
+            envelope.max_boundary_incidence_count,
+        ),
+        (
+            "closure_candidate_count",
+            evidence.closure_candidate_count,
+            envelope.max_closure_candidate_count,
+        ),
+        (
+            "open_closure_count",
+            evidence.open_closure_count,
+            envelope.max_open_closure_count,
+        ),
+        (
+            "closed_closure_count",
+            evidence.closed_closure_count,
+            envelope.max_closed_closure_count,
+        ),
+        (
+            "max_attachment_atom_count",
+            evidence.max_attachment_atom_count,
+            envelope.max_attachment_atom_count,
+        ),
+        (
+            "max_attachment_boundary_count",
+            evidence.max_attachment_boundary_count,
+            envelope.max_attachment_boundary_count,
+        ),
+        (
+            "max_attachment_cyclic_rank",
+            evidence.max_attachment_cyclic_rank,
+            envelope.max_attachment_cyclic_rank,
+        ),
+    )
+
+    for metric, actual, limit in checks:
+        if limit is not None and actual > limit:
+            return WriterGraphObligationWorkEnvelopeViolation(
+                evidence=evidence,
+                metric=metric,
+                actual=actual,
+                limit=limit,
+            )
+
+    return None
+
+
 def writer_closure_endpoint_relation_work_evidence(
     *,
     operation: str,
@@ -266,11 +378,14 @@ __all__ = [
     "WriterFiniteRelationWorkEnvelope",
     "WriterFiniteRelationWorkEnvelopeViolation",
     "WriterGraphObligationWorkEvidence",
+    "WriterGraphObligationWorkEnvelope",
+    "WriterGraphObligationWorkEnvelopeViolation",
     "WriterResidualPropagationWorkEvidence",
     "WriterResidualWorkEnvelope",
     "WriterResidualWorkEnvelopeViolation",
     "writer_closure_endpoint_relation_work_evidence",
     "writer_finite_relation_work_envelope_violation",
+    "writer_graph_obligation_work_envelope_violation",
     "writer_residual_propagation_work_evidence",
     "writer_residual_work_envelope_violation",
 ]

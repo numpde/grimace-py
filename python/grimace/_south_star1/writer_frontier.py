@@ -14,9 +14,11 @@ from .ids import AtomId
 from .writer_execution_evidence import WriterFiniteRelationWorkEvidence
 from .writer_execution_evidence import WriterFiniteRelationWorkEnvelopeViolation
 from .writer_execution_evidence import WriterGraphObligationWorkEvidence
+from .writer_execution_evidence import WriterGraphObligationWorkEnvelopeViolation
 from .writer_execution_evidence import WriterResidualPropagationWorkEvidence
 from .writer_execution_evidence import WriterResidualWorkEnvelopeViolation
 from .writer_execution_evidence import writer_finite_relation_work_envelope_violation
+from .writer_execution_evidence import writer_graph_obligation_work_envelope_violation
 from .writer_execution_evidence import writer_residual_work_envelope_violation
 from .writer_capabilities import _WriterExecutionCapabilityKind
 from .writer_capabilities import (
@@ -2075,6 +2077,50 @@ def _raise_for_writer_frontier_finite_relation_work_envelope_blockers(
             )
 
 
+def _first_writer_graph_obligation_work_envelope_violation(
+    evidence: tuple[WriterGraphObligationWorkEvidence, ...],
+) -> WriterGraphObligationWorkEnvelopeViolation | None:
+    for item in evidence:
+        violation = writer_graph_obligation_work_envelope_violation(item)
+        if violation is not None:
+            return violation
+    return None
+
+
+def _raise_for_writer_graph_obligation_work_envelope_violation(
+    violation: WriterGraphObligationWorkEnvelopeViolation,
+    *,
+    location: str,
+) -> None:
+    evidence = violation.evidence
+    raise SouthStarError(
+        SouthStarErrorKind.UNSUPPORTED_POLICY,
+        (
+            "WRITER_SHAPED graph obligation work exceeds the supported "
+            "execution envelope: "
+            f"operation={evidence.operation!r}; "
+            f"component={evidence.component_index}; "
+            f"metric={violation.metric}; "
+            f"actual={violation.actual}; "
+            f"limit={violation.limit}; "
+            f"{location}"
+        ),
+    )
+
+
+def _raise_for_writer_frontier_graph_obligation_work_envelope_blockers(
+    outcome: _WriterFrontierScheduleOutcome,
+) -> None:
+    violation = _first_writer_graph_obligation_work_envelope_violation(
+        outcome.graph_obligation_work_evidence
+    )
+    if violation is not None:
+        _raise_for_writer_graph_obligation_work_envelope_violation(
+            violation,
+            location="current frontier",
+        )
+
+
 def _raise_for_writer_frontier_choice_snapshot_blockers(
     snapshot: _WriterFrontierChoiceSnapshot,
 ) -> None:
@@ -2088,6 +2134,9 @@ def _raise_for_writer_frontier_choice_snapshot_blockers(
         snapshot.schedule_outcome
     )
     _raise_for_writer_frontier_finite_relation_work_envelope_blockers(
+        snapshot.schedule_outcome
+    )
+    _raise_for_writer_frontier_graph_obligation_work_envelope_blockers(
         snapshot.schedule_outcome
     )
 
@@ -2106,6 +2155,9 @@ def _checked_writer_frontier_schedule_outcome(
     _raise_for_writer_frontier_execution_capability_blockers(outcome)
     _raise_for_writer_frontier_residual_work_envelope_blockers(outcome)
     _raise_for_writer_frontier_finite_relation_work_envelope_blockers(
+        outcome
+    )
+    _raise_for_writer_frontier_graph_obligation_work_envelope_blockers(
         outcome
     )
 

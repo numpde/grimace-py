@@ -13,6 +13,7 @@ from .errors import SouthStarErrorKind
 from .ids import AtomId
 from .writer_execution_evidence import WriterFiniteRelationWorkEvidence
 from .writer_execution_evidence import WriterFiniteRelationWorkEnvelopeViolation
+from .writer_execution_evidence import WriterGraphObligationWorkEvidence
 from .writer_execution_evidence import WriterResidualPropagationWorkEvidence
 from .writer_execution_evidence import WriterResidualWorkEnvelopeViolation
 from .writer_execution_evidence import writer_finite_relation_work_envelope_violation
@@ -157,6 +158,10 @@ class _WriterFrontierStateScheduleOutcome:
     ] = frozenset()
     terminal_residual_work_evidence: tuple[
         WriterResidualPropagationWorkEvidence,
+        ...
+    ] = ()
+    graph_obligation_work_evidence: tuple[
+        WriterGraphObligationWorkEvidence,
         ...
     ] = ()
 
@@ -861,6 +866,16 @@ class _WriterFrontierScheduleOutcome:
         )
 
     @property
+    def graph_obligation_work_evidence(
+        self,
+    ) -> tuple[WriterGraphObligationWorkEvidence, ...]:
+        return tuple(
+            evidence
+            for outcome in self.state_outcomes
+            for evidence in outcome.graph_obligation_work_evidence
+        )
+
+    @property
     def graph_policy_decisions(
         self,
     ) -> tuple[_WriterActiveEmittedGraphPolicyDecision, ...]:
@@ -1125,6 +1140,12 @@ class _WriterFrontierChoiceSnapshot:
             for choice in self.choices
             for evidence in choice.finite_relation_work_evidence
         )
+
+    @property
+    def graph_obligation_work_evidence(
+        self,
+    ) -> tuple[WriterGraphObligationWorkEvidence, ...]:
+        return self.schedule_outcome.graph_obligation_work_evidence
 
     @property
     def terminal_execution_capabilities(
@@ -1851,6 +1872,9 @@ def _writer_frontier_schedule_outcome(
             ),
             terminal_residual_work_evidence=(
                 terminal_outcome.residual_work_evidence
+            ),
+            graph_obligation_work_evidence=(
+                expansion.graph_obligation_work_evidence
             ),
             schedule_outcome=schedule_outcome,
         )

@@ -13884,6 +13884,85 @@ class WriterStateKernelTest(unittest.TestCase):
             source,
         )
 
+    def test_graph_obligation_work_evidence_records_initial_frontiers(
+        self,
+    ) -> None:
+        cases = (
+            cco_facts(),
+            cyclopropane_facts(),
+            methylcyclopropane_facts(),
+            fused_rank_two_facts(),
+            cyclopropane_plus_singleton_facts(),
+            tetrahedral_facts(),
+            directional_facts(),
+        )
+
+        for facts in cases:
+            with self.subTest(atoms=len(facts.atoms), bonds=len(facts.bonds)):
+                prepared = _prepare(facts)
+                cursor = initial_writer_frontier_cursor(
+                    prepared,
+                    _writer_options(),
+                )
+                snapshot = (
+                    writer_frontier_module
+                    ._writer_frontier_choice_snapshot(
+                        prepared,
+                        cursor,
+                        include_counts=False,
+                    )
+                )
+
+                evidence = snapshot.graph_obligation_work_evidence
+                self.assertTrue(evidence)
+                for item in evidence:
+                    self.assertEqual(
+                        item.operation,
+                        "writer graph obligation context",
+                    )
+                    self.assertGreaterEqual(item.component_atom_count, 1)
+                    self.assertGreaterEqual(item.component_bond_count, 0)
+                    self.assertGreaterEqual(item.edge_obligation_count, 0)
+
+    def test_acyclic_graph_obligation_work_has_no_closure_candidates(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        evidence = _all_graph_obligation_work_evidence(
+            prepared,
+            initial_writer_frontier_cursor(prepared, _writer_options()),
+        )
+
+        self.assertTrue(evidence)
+        self.assertTrue(
+            all(item.closure_candidate_count == 0 for item in evidence)
+        )
+
+    def test_cyclic_graph_obligation_work_records_closure_counts(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        evidence = _all_graph_obligation_work_evidence(
+            prepared,
+            initial_writer_frontier_cursor(prepared, _writer_options()),
+        )
+
+        self.assertTrue(evidence)
+        self.assertTrue(
+            any(item.closure_candidate_count > 0 for item in evidence)
+            or any(item.open_closure_count > 0 for item in evidence)
+            or any(item.closed_closure_count > 0 for item in evidence)
+        )
+
+    def test_graph_obligation_work_evidence_is_not_a_legality_classifier(
+        self,
+    ) -> None:
+        source = inspect.getsource(
+            writer_frontier_module
+            ._raise_for_writer_frontier_choice_snapshot_blockers
+        )
+
+        self.assertNotIn("graph_obligation_work", source)
+        self.assertNotIn("max_attachment", source)
+
     def test_writer_support_image_uses_frontier_summary(self) -> None:
         source = inspect.getsource(
             writer_support._writer_support_image_from_cursor
@@ -30085,6 +30164,33 @@ def _all_residual_work_evidence(
         for choice in snapshot.choices:
             evidence.extend(choice.residual_work_evidence)
             pending.append(choice.successor)
+
+    return tuple(evidence)
+
+
+def _all_graph_obligation_work_evidence(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+    *,
+    max_cursors: int = 1000,
+):
+    pending = [cursor]
+    seen: set[WriterFrontierCursor] = set()
+    evidence = []
+
+    while pending and len(seen) < max_cursors:
+        current = pending.pop(0)
+        if current in seen:
+            continue
+        seen.add(current)
+
+        snapshot = writer_frontier_module._writer_frontier_choice_snapshot(
+            prepared,
+            current,
+            include_counts=False,
+        )
+        evidence.extend(snapshot.graph_obligation_work_evidence)
+        pending.extend(choice.successor for choice in snapshot.choices)
 
     return tuple(evidence)
 

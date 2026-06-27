@@ -63,6 +63,24 @@ class WriterFiniteRelationWorkEvidence:
 
 
 @dataclass(frozen=True, slots=True)
+class WriterGraphObligationWorkEvidence:
+    operation: str
+    component_index: int
+    component_atom_count: int
+    component_bond_count: int
+    edge_obligation_count: int
+    residual_attachment_count: int
+    residual_attachment_action_count: int
+    boundary_incidence_count: int
+    closure_candidate_count: int
+    open_closure_count: int
+    closed_closure_count: int
+    max_attachment_atom_count: int
+    max_attachment_boundary_count: int
+    max_attachment_cyclic_rank: int
+
+
+@dataclass(frozen=True, slots=True)
 class WriterFiniteRelationWorkEnvelope:
     max_row_count: int | None = None
     max_total_candidate_count: int | None = None
@@ -247,6 +265,7 @@ __all__ = [
     "WriterFiniteRelationWorkEvidence",
     "WriterFiniteRelationWorkEnvelope",
     "WriterFiniteRelationWorkEnvelopeViolation",
+    "WriterGraphObligationWorkEvidence",
     "WriterResidualPropagationWorkEvidence",
     "WriterResidualWorkEnvelope",
     "WriterResidualWorkEnvelopeViolation",

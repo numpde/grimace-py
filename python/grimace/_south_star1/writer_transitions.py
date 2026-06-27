@@ -15,6 +15,7 @@ from .ids import BondId
 from .policy import DirectionMark
 from .writer_capabilities import _WriterExecutionCapabilityKind
 from .writer_execution_evidence import WriterFiniteRelationWorkEvidence
+from .writer_execution_evidence import WriterGraphObligationWorkEvidence
 from .writer_execution_evidence import WriterResidualPropagationWorkEvidence
 from .writer_execution_evidence import writer_closure_endpoint_relation_work_evidence
 from .writer_graph_obligations import WriterBoundaryOwnerKind
@@ -28,6 +29,7 @@ from .writer_graph_obligations import build_writer_graph_obligation_context
 from .writer_graph_obligations import validate_writer_snapshot_graph_coherence
 from .writer_graph_obligations import validate_writer_transition_graph_surface
 from .writer_graph_obligations import writer_graph_completion_status
+from .writer_graph_obligations import writer_graph_obligation_work_evidence
 from .writer_graph_obligations import writer_closure_bond_text_relation
 from .writer_graph_obligations import writer_residual_attachment_action_is_blocked
 from .writer_graph_obligations import writer_residual_attachment_action_incidences_for_atom
@@ -137,6 +139,10 @@ class _WriterStateExpansionOutcome:
     context: WriterTransitionExpansionContext
     terminal_outcome: _WriterTerminalizationOutcome
     schedule_outcome: "_WriterTopLevelScheduleOutcome"
+    graph_obligation_work_evidence: tuple[
+        WriterGraphObligationWorkEvidence,
+        ...
+    ] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -5004,6 +5010,12 @@ def _writer_state_expansion_outcome_from_validated_prepared(
         prepared,
         state,
     )
+    graph_obligation_work = writer_graph_obligation_work_evidence(
+        operation="writer graph obligation context",
+        prepared=prepared,
+        key=context.state_key,
+        context=context.graph,
+    )
     return _WriterStateExpansionOutcome(
         context=context,
         terminal_outcome=_finalize_writer_terminal_state_from_context(
@@ -5016,6 +5028,7 @@ def _writer_state_expansion_outcome_from_validated_prepared(
             state,
             context,
         ),
+        graph_obligation_work_evidence=(graph_obligation_work,),
     )
 
 

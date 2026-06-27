@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from .errors import SouthStarError
 from .errors import SouthStarErrorKind
+from .writer_execution_evidence import WriterGraphObligationWorkEvidence
 from .facts import BondOrder
 from .facts import LigandKind
 from .ids import AtomId
@@ -336,6 +337,64 @@ def build_writer_graph_obligation_context(
         edge_partition=partition,
         residual_summary=summary,
         prepared_metadata=metadata,
+    )
+
+
+def writer_graph_obligation_work_evidence(
+    *,
+    operation: str,
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+    context: WriterGraphObligationContext,
+) -> WriterGraphObligationWorkEvidence:
+    component_index = key.component_cursor.component_index
+    component = prepared.facts.components[component_index]
+    obligations = context.edge_partition.obligations
+    attachments = context.residual_summary.attachments.attachments
+
+    return WriterGraphObligationWorkEvidence(
+        operation=operation,
+        component_index=component_index,
+        component_atom_count=len(component.atoms),
+        component_bond_count=len(component.bonds),
+        edge_obligation_count=len(obligations),
+        residual_attachment_count=len(attachments),
+        residual_attachment_action_count=(
+            len(context.residual_summary.attachment_actions)
+        ),
+        boundary_incidence_count=sum(
+            len(attachment.boundary)
+            for attachment in attachments
+        ),
+        closure_candidate_count=sum(
+            1
+            for obligation in obligations
+            if obligation.kind is WriterEdgeObligationKind.CLOSURE_CANDIDATE
+        ),
+        open_closure_count=sum(
+            1
+            for obligation in obligations
+            if obligation.kind is (
+                WriterEdgeObligationKind.OPEN_CLOSURE_ENDPOINT
+            )
+        ),
+        closed_closure_count=sum(
+            1
+            for obligation in obligations
+            if obligation.kind is WriterEdgeObligationKind.CLOSED_CLOSURE
+        ),
+        max_attachment_atom_count=max(
+            (len(attachment.atoms) for attachment in attachments),
+            default=0,
+        ),
+        max_attachment_boundary_count=max(
+            (len(attachment.boundary) for attachment in attachments),
+            default=0,
+        ),
+        max_attachment_cyclic_rank=max(
+            (attachment.cyclic_rank for attachment in attachments),
+            default=0,
+        ),
     )
 
 
@@ -1521,6 +1580,7 @@ __all__ = (
     "writer_boundary_incidence_sort_tuple",
     "writer_edge_obligation_partition_sort_tuple",
     "writer_edge_obligation_sort_tuple",
+    "writer_graph_obligation_work_evidence",
     "writer_graph_completion_status",
     "writer_residual_attachment_sort_tuple",
     "writer_residual_attachment_action_is_blocked",

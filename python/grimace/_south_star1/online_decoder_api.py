@@ -26,15 +26,21 @@ from .online_residual_continuation import OnlineResidualDecoderStats
 from .online_residual_continuation import OnlineResidualRawChoiceResult
 from .online_residual_continuation import online_branch_preserving_residual_choice_result
 from .online_residual_continuation import online_determinized_residual_choice_result
+from .policy import SerializationLanguageMode
 from .policy import SmilesPolicy
 from .prepared_runtime import SouthStarPreparedMol
 from .prepared_runtime import SouthStarRuntimeOptions
 from .prepared_runtime import component_root_domains_for_prepared
 from .prepared_runtime import require_exhaustive_runtime_options
+from .prepared_runtime import require_writer_shaped_runtime_options
 from .prepared_runtime import runtime_root_atom
 from .prepared_runtime import runtime_root_atom_for_prepared
 from .semantics import ParserSemantics
 from .stereo_templates import StereoTemplateBundle
+from .writer_runtime import WriterRuntimeState
+from .writer_runtime import advance_writer_runtime_state_by_choice
+from .writer_runtime import initial_writer_runtime_state
+from .writer_runtime import writer_runtime_choices
 
 
 EOS = "<EOS>"
@@ -50,15 +56,41 @@ class SouthStarOnlineChoice:
 
 
 @dataclass(frozen=True, slots=True)
+class WriterRuntimeOnlineStats:
+    """Summary for online choices served by the live writer runtime.
+
+    The legacy online engines expose their own detailed traversal stats.  The
+    writer-shaped path intentionally reports only frontier-level facts that come
+    from checked writer choices, so stats remain observational and do not become
+    a support classifier.
+    """
+
+    support_count: int
+    completion_count: int
+    choice_count: int
+    has_eos: bool
+
+
+@dataclass(frozen=True, slots=True)
 class SouthStarOnlineChoiceResult:
     choices: tuple[SouthStarOnlineChoice, ...]
-    stats: OnlineStateDecoderStats | OnlineContinuationStats | OnlineResidualDecoderStats
+    stats: (
+        OnlineStateDecoderStats
+        | OnlineContinuationStats
+        | OnlineResidualDecoderStats
+        | WriterRuntimeOnlineStats
+    )
 
 
 @dataclass(frozen=True, slots=True)
 class SouthStarOnlineDecoderState:
     prefix: str
-    raw_state: OnlineDecoderState | OnlineContinuationDecoderState | OnlineResidualDecoderState
+    raw_state: (
+        OnlineDecoderState
+        | OnlineContinuationDecoderState
+        | OnlineResidualDecoderState
+        | WriterRuntimeState
+    )
     decoder: "SouthStarOnlineDecoder"
 
     def choices(self) -> tuple[SouthStarOnlineChoice, ...]:
@@ -92,8 +124,31 @@ class SouthStarOnlineDecoder:
         )
         if self.rooted_at_atom != expected_root:
             raise ValueError("online decoder rooted_at_atom does not match runtime_options")
+        if self._uses_writer_runtime():
+            if self.prepared is None:
+                raise ValueError("WRITER_SHAPED online decoder requires prepared input")
+            if self.execution_mode is not OnlineDecoderExecutionMode.PREFIX_REPLAY:
+                raise ValueError(
+                    "WRITER_SHAPED online decoder uses the live writer runtime, "
+                    "not cached or residual continuation execution modes"
+                )
+
+    def _uses_writer_runtime(self) -> bool:
+        return (
+            self.runtime_options.serialization_language
+            is SerializationLanguageMode.WRITER_SHAPED
+        )
 
     def initial_state(self) -> SouthStarOnlineDecoderState:
+        if self._uses_writer_runtime():
+            if self.prepared is None:
+                raise ValueError("WRITER_SHAPED online decoder requires prepared input")
+            raw = initial_writer_runtime_state(
+                prepared=self.prepared,
+                runtime_options=self.runtime_options,
+            )
+            return SouthStarOnlineDecoderState(prefix="", raw_state=raw, decoder=self)
+
         if self.execution_mode is OnlineDecoderExecutionMode.PREFIX_REPLAY:
             raw: OnlineDecoderState | OnlineContinuationDecoderState = OnlineDecoderState(prefix="")
         elif self.execution_mode is OnlineDecoderExecutionMode.CACHED_COMPLETIONS:
@@ -115,6 +170,9 @@ class SouthStarOnlineDecoder:
         state: SouthStarOnlineDecoderState,
     ) -> SouthStarOnlineChoiceResult:
         _validate_state_belongs_to_decoder(state, self)
+        if isinstance(state.raw_state, WriterRuntimeState):
+            return self._writer_runtime_choice_result(state)
+
         raw_result = self._raw_choice_result(state.raw_state)
         out = [
             SouthStarOnlineChoice(
@@ -140,6 +198,72 @@ class SouthStarOnlineDecoder:
                 )
             )
         return SouthStarOnlineChoiceResult(choices=tuple(out), stats=raw_result.stats)
+
+    def _writer_runtime_choice_result(
+        self,
+        state: SouthStarOnlineDecoderState,
+    ) -> SouthStarOnlineChoiceResult:
+        if self.prepared is None or not isinstance(state.raw_state, WriterRuntimeState):
+            raise ValueError("WRITER_SHAPED online decoder received non-writer state")
+
+        runtime_choices = writer_runtime_choices(
+            prepared=self.prepared,
+            state=state.raw_state,
+        )
+        out = []
+        for choice in runtime_choices.choices:
+            next_runtime_state = advance_writer_runtime_state_by_choice(
+                prepared=self.prepared,
+                state=state.raw_state,
+                choice=choice,
+            )
+            out.append(
+                SouthStarOnlineChoice(
+                    text=choice.emitted_text,
+                    next_state=SouthStarOnlineDecoderState(
+                        prefix=state.prefix + choice.emitted_text,
+                        raw_state=next_runtime_state,
+                        decoder=self,
+                    ),
+                    multiplicity=choice.immediate_multiplicity,
+                    completion_count=choice.completion_count or 0,
+                )
+            )
+
+        terminal = runtime_choices.terminal
+        has_eos = terminal is not None
+        if self.include_eos and terminal is not None:
+            out.append(
+                SouthStarOnlineChoice(
+                    text=EOS,
+                    next_state=None,
+                    is_eos=True,
+                    multiplicity=terminal.multiplicity,
+                    completion_count=terminal.completion_count,
+                )
+            )
+
+        support_count = sum(
+            choice.support_count or 0
+            for choice in runtime_choices.choices
+        )
+        completion_count = sum(
+            choice.completion_count or 0
+            for choice in runtime_choices.choices
+        )
+        if terminal is not None:
+            support_count += terminal.support_count
+            completion_count += terminal.completion_count
+
+        return SouthStarOnlineChoiceResult(
+            choices=tuple(out),
+            stats=WriterRuntimeOnlineStats(
+                support_count=support_count,
+                completion_count=completion_count,
+                choice_count=len(out),
+                has_eos=has_eos,
+            ),
+        )
 
     def _raw_choice_result(
         self,
@@ -375,6 +499,12 @@ def _runtime_root_atom_for_decoder(
     prepared: SouthStarPreparedMol | None,
     facts: MoleculeFacts,
 ) -> AtomId | None:
+    if runtime_options.serialization_language is SerializationLanguageMode.WRITER_SHAPED:
+        if prepared is None:
+            raise ValueError("WRITER_SHAPED online decoder requires prepared input")
+        require_writer_shaped_runtime_options(runtime_options)
+        return runtime_root_atom_for_prepared(runtime_options, prepared=prepared)
+
     require_exhaustive_runtime_options(
         runtime_options,
         facts=None if prepared is not None else facts,
@@ -390,6 +520,8 @@ def _validate_state_belongs_to_decoder(
 ) -> None:
     if state.decoder is not decoder:
         raise ValueError("online decoder state belongs to a different decoder")
+    if isinstance(state.raw_state, WriterRuntimeState):
+        return
     if state.prefix != state.raw_state.prefix:
         raise ValueError("online decoder state prefix does not match raw state")
 
@@ -401,6 +533,7 @@ __all__ = (
     "SouthStarOnlineChoiceResult",
     "SouthStarOnlineDecoder",
     "SouthStarOnlineDecoderState",
+    "WriterRuntimeOnlineStats",
     "make_branch_preserving_online_decoder",
     "make_determinized_online_decoder",
     "online_decode_token_texts_for_policy",

@@ -121,18 +121,19 @@ def advance_writer_runtime_state(
     )
 
 
-def advance_writer_runtime_state_by_choice(
+def _advance_writer_runtime_state_by_choice(
     *,
     prepared: SouthStarPreparedMol,
     state: WriterRuntimeState,
     choice: WriterFrontierChoice,
 ) -> WriterRuntimeState:
-    """Advance from a checked choice without recomputing the frontier.
+    """Adapter-only advance from a checked choice.
 
-    Callers must pass a choice obtained from ``writer_runtime_choices`` for the
-    same state.  The choice successor is already live frontier evidence; this
-    helper only packages that successor back into a structurally coherent
-    snapshot so public adapters do not reach into snapshot internals.
+    This intentionally remains private: it trusts that ``choice`` came from
+    ``writer_runtime_choices`` for ``state``.  Public/runtime callers should use
+    ``advance_writer_runtime_state`` so emitted text is rechecked at the live
+    frontier; the online decoder uses this helper only to avoid recomputing a
+    frontier it just checked.
     """
 
     return WriterRuntimeState(
@@ -186,7 +187,6 @@ def iter_writer_runtime_support(
 __all__ = (
     "WriterRuntimeState",
     "advance_writer_runtime_state",
-    "advance_writer_runtime_state_by_choice",
     "count_writer_runtime_completions",
     "count_writer_runtime_support",
     "initial_writer_runtime_state",

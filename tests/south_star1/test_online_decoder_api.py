@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import ast
 import unittest
 from collections import Counter
 from pathlib import Path
@@ -23,6 +22,7 @@ from grimace._south_star1.online_decoder_state import online_determinized_choice
 from grimace._south_star1.online_stereo_witness import iter_exhaustive_online_stereo_witness_strings
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.ordinary_semantics import OrdinarySmilesSemantics
+from tests.helpers.module_boundaries import scan_module_boundaries
 from tests.south_star1.helpers import atom
 from tests.south_star1.helpers import directional_facts
 from tests.south_star1.helpers import single_bond
@@ -216,52 +216,37 @@ class OnlineDecoderApiTest(unittest.TestCase):
         self.assertIn(EOS, token_texts)
 
     def test_online_decoder_api_boundary_has_no_artifact_rdkit_or_writer_imports(self) -> None:
-        tree = ast.parse(ONLINE_DECODER_API_PATH.read_text(encoding="utf-8"))
-        banned_modules = {
-            "audit_rdkit",
-            "finite_space_checker",
-            "rdkit_adapter",
-            "semantic_relation_checker",
-            "support_artifact",
-            "support_artifact_checker",
-            "support_enumeration",
-            "writer_frontier",
-            "writer_online_decoder",
-            "writer_runtime",
-            "writer_snapshot",
-            "writer_support",
-            "writer_transitions",
-        }
-        banned_calls = {
-            "compile_support_artifact",
-            "enumerate_stereo_support",
-            "initial_writer_runtime_state",
-            "make_writer_shaped_online_decoder",
-            "render_image_from_witnesses",
-            "writer_runtime_choices",
-        }
-        imports: list[str] = []
-        calls: list[str] = []
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                imports.extend(
-                    alias.name
-                    for alias in node.names
-                    if alias.name.split(".", 1)[0] in banned_modules
-                )
-            if isinstance(node, ast.ImportFrom):
-                module = node.module or ""
-                if module.split(".", 1)[0] in banned_modules:
-                    imports.append(module)
-            if isinstance(node, ast.Call):
-                if isinstance(node.func, ast.Name):
-                    calls.append(node.func.id)
-                if isinstance(node.func, ast.Attribute):
-                    calls.append(node.func.attr)
+        scan = scan_module_boundaries(
+            ONLINE_DECODER_API_PATH,
+            banned_modules={
+                "audit_rdkit",
+                "finite_space_checker",
+                "rdkit_adapter",
+                "semantic_relation_checker",
+                "support_artifact",
+                "support_artifact_checker",
+                "support_enumeration",
+                "writer_frontier",
+                "writer_online_decoder",
+                "writer_runtime",
+                "writer_snapshot",
+                "writer_support",
+                "writer_transitions",
+            },
+            banned_calls={
+                "compile_support_artifact",
+                "enumerate_stereo_support",
+                "initial_writer_runtime_state",
+                "iter_exhaustive_online_stereo_witness_strings",
+                "make_writer_shaped_online_decoder",
+                "render_image_from_witnesses",
+                "writer_runtime_choices",
+            },
+        )
 
-        self.assertEqual(imports, [])
-        self.assertEqual(sorted(set(calls) & banned_calls), [])
-        self.assertNotIn("iter_exhaustive_online_stereo_witness_strings", calls)
+        self.assertEqual(scan.banned_imports, ())
+        self.assertEqual(scan.banned_imported_names, ())
+        self.assertEqual(scan.banned_calls, ())
 
     def _assert_eos_for_each_witness(self, facts: MoleculeFacts) -> None:
         decoder = _determinized_decoder(facts, include_eos=True)

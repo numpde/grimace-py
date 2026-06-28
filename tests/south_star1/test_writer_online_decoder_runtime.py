@@ -15,11 +15,27 @@ from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import enumerate_prepared_writer_shaped_support
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
+from grimace._south_star1.writer_online_decoder import make_writer_shaped_online_decoder
 from grimace._south_star1.writer_runtime import WriterRuntimeState
 from tests.south_star1.helpers import cco_facts
 
 
 class WriterOnlineDecoderRuntimeTest(unittest.TestCase):
+    def test_named_writer_shaped_decoder_factory_uses_live_runtime(self) -> None:
+        prepared = _prepare(cco_facts())
+        decoder = make_writer_shaped_online_decoder(
+            prepared=prepared,
+            include_eos=True,
+        )
+        support = enumerate_prepared_writer_shaped_support(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+
+        initial = decoder.initial_state()
+        self.assertIsInstance(initial.raw_state, WriterRuntimeState)
+        self.assertEqual(_reachable_eos_prefixes(initial), set(support.strings))
+
     def test_determinized_decoder_uses_writer_runtime_for_writer_shaped(self) -> None:
         prepared = _prepare(cco_facts())
         decoder = make_determinized_online_decoder(

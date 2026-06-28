@@ -65,7 +65,7 @@ class PreparedEfficiencyMatrixTest(unittest.TestCase):
             writer_surface=SouthStarWriterSurface(),
         )
 
-        with self.assertRaisesRegex(ValueError, "live writer runtime"):
+        with self.assertRaisesRegex(ValueError, "make_writer_shaped_online_decoder"):
             _guarded_matrix_entry(
                 fixture_name="writer-shaped-chain",
                 prepared=prepared,

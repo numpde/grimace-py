@@ -38,7 +38,7 @@ from .prepared_runtime import runtime_root_atom_for_prepared
 from .semantics import ParserSemantics
 from .stereo_templates import StereoTemplateBundle
 from .writer_runtime import WriterRuntimeState
-from .writer_runtime import advance_writer_runtime_state_by_choice
+from .writer_runtime import _advance_writer_runtime_state_by_choice
 from .writer_runtime import initial_writer_runtime_state
 from .writer_runtime import writer_runtime_choices
 
@@ -212,7 +212,7 @@ class SouthStarOnlineDecoder:
         )
         out = []
         for choice in runtime_choices.choices:
-            next_runtime_state = advance_writer_runtime_state_by_choice(
+            next_runtime_state = _advance_writer_runtime_state_by_choice(
                 prepared=self.prepared,
                 state=state.raw_state,
                 choice=choice,

@@ -15,6 +15,7 @@ from grimace._south_star1.writer_runtime import count_writer_runtime_support
 from grimace._south_star1.writer_runtime import initial_writer_runtime_state
 from grimace._south_star1.writer_runtime import iter_writer_runtime_support
 from grimace._south_star1.writer_runtime import writer_runtime_choices
+from grimace._south_star1.writer_runtime import writer_runtime_diagnostics
 from grimace._south_star1.writer_runtime import writer_runtime_has_eos
 from grimace._south_star1.writer_runtime import writer_runtime_state_from_snapshot
 from grimace._south_star1.writer_runtime import writer_runtime_terminal
@@ -48,6 +49,27 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
         self.assertEqual(
             count_writer_runtime_completions(prepared=prepared, state=state),
             support.witness_count,
+        )
+
+    def test_diagnostics_observe_live_frontier_without_classifying_support(self) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+
+        diagnostics = writer_runtime_diagnostics(prepared=prepared, state=state)
+        choices = writer_runtime_choices(prepared=prepared, state=state)
+
+        self.assertFalse(diagnostics.blocked)
+        self.assertFalse(diagnostics.has_policy_blockers)
+        self.assertEqual(
+            diagnostics.choice_texts,
+            tuple(choice.emitted_text for choice in choices.choices),
+        )
+        self.assertEqual(
+            diagnostics.has_eos,
+            choices.terminal is not None,
         )
 
     def test_choices_and_advance_delegate_to_checked_snapshot_path(self) -> None:

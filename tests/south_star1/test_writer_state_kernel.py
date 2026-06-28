@@ -17317,16 +17317,15 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
 
-    def test_internal_transition_frontier_rejects_unsupported_stereo_surface(self) -> None:
+    def test_internal_transition_frontier_accepts_directional_implicit_h_surface(self) -> None:
         prepared = _prepare(unsupported_directional_implicit_h_facts())
 
-        with self.assertRaises(SouthStarError) as caught:
-            _initial_writer_transition_frontier_cursor(
-                prepared,
-                _writer_options(rooted_at_atom=0),
-            )
+        cursor = _initial_writer_transition_frontier_cursor(
+            prepared,
+            _writer_options(rooted_at_atom=0),
+        )
 
-        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_STEREO)
+        self.assertEqual(len(cursor.weighted_states), 1)
 
     def test_raw_legal_transitions_do_not_preflight_directional_ligands(
         self,

@@ -36,15 +36,15 @@ jobs:
       - name: Create test environment
         run: python -m venv .venv
       - name: Install test tools
-        run: unset CONDA_PREFIX && . .venv/bin/activate && python -m pip install --upgrade pip maturin
+        run: env -u CONDA_PREFIX .venv/bin/python -m pip install --upgrade pip maturin
       - name: Install pinned RDKit fixture version
-        run: unset CONDA_PREFIX && . .venv/bin/activate && python -m pip install "rdkit==$RDKIT_FIXTURE_PIP_VERSION"
+        run: env -u CONDA_PREFIX .venv/bin/python -m pip install "rdkit==$RDKIT_FIXTURE_PIP_VERSION"
       - name: Install pinned test dependencies
-        run: unset CONDA_PREFIX && . .venv/bin/activate && python -m pip install "z3-solver==4.16.0.0"
+        run: env -u CONDA_PREFIX .venv/bin/python -m pip install "z3-solver==4.16.0.0"
       - name: Install package into test environment
-        run: unset CONDA_PREFIX && . .venv/bin/activate && maturin develop --release
+        run: env -u CONDA_PREFIX .venv/bin/maturin develop --release
       - name: Run South Star source-tree semantics suite
-        run: unset CONDA_PREFIX && . .venv/bin/activate && python -m unittest tests.run_south_star_semantics -q
+        run: env -u CONDA_PREFIX .venv/bin/python -m unittest tests.run_south_star_semantics -q
 
   rdkit-parity:
     runs-on: ubuntu-latest
@@ -56,13 +56,13 @@ jobs:
       - name: Create test environment
         run: python -m venv .venv
       - name: Install test tools
-        run: unset CONDA_PREFIX && . .venv/bin/activate && python -m pip install --upgrade pip maturin
+        run: env -u CONDA_PREFIX .venv/bin/python -m pip install --upgrade pip maturin
       - name: Install pinned RDKit fixture version
-        run: unset CONDA_PREFIX && . .venv/bin/activate && python -m pip install "rdkit==$RDKIT_FIXTURE_PIP_VERSION"
+        run: env -u CONDA_PREFIX .venv/bin/python -m pip install "rdkit==$RDKIT_FIXTURE_PIP_VERSION"
       - name: Install package into test environment
-        run: unset CONDA_PREFIX && . .venv/bin/activate && maturin develop --release
+        run: env -u CONDA_PREFIX .venv/bin/maturin develop --release
       - name: Run pinned RDKit parity suite
-        run: unset CONDA_PREFIX && . .venv/bin/activate && python -m unittest tests.run_pinned_rdkit_parity -q
+        run: env -u CONDA_PREFIX .venv/bin/python -m unittest tests.run_pinned_rdkit_parity -q
 
   exact-public-invariants:
     runs-on: ubuntu-latest
@@ -74,13 +74,13 @@ jobs:
       - name: Create test environment
         run: python -m venv .venv
       - name: Install test tools
-        run: unset CONDA_PREFIX && . .venv/bin/activate && python -m pip install --upgrade pip maturin
+        run: env -u CONDA_PREFIX .venv/bin/python -m pip install --upgrade pip maturin
       - name: Install pinned RDKit fixture version
-        run: unset CONDA_PREFIX && . .venv/bin/activate && python -m pip install "rdkit==$RDKIT_FIXTURE_PIP_VERSION"
+        run: env -u CONDA_PREFIX .venv/bin/python -m pip install "rdkit==$RDKIT_FIXTURE_PIP_VERSION"
       - name: Install package into test environment
-        run: unset CONDA_PREFIX && . .venv/bin/activate && maturin develop --release
+        run: env -u CONDA_PREFIX .venv/bin/maturin develop --release
       - name: Run exact public invariant suite
-        run: unset CONDA_PREFIX && . .venv/bin/activate && python -m unittest tests.run_exact_public_invariants -q
+        run: env -u CONDA_PREFIX .venv/bin/python -m unittest tests.run_exact_public_invariants -q
 
   package:
     runs-on: ubuntu-latest

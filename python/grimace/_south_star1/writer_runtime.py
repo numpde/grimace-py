@@ -21,6 +21,7 @@ from .writer_snapshot import WriterSearchSnapshot
 from .writer_snapshot import _count_writer_completions_after_emitted_texts
 from .writer_snapshot import _count_writer_frontier_support_after_emitted_texts
 from .writer_snapshot import _iter_writer_frontier_support_suffixes_after_emitted_texts
+from .writer_snapshot import _writer_frontier_choice_snapshot_from_snapshot
 from .writer_snapshot import _writer_search_snapshot_with_cursor_after_emitted_text
 from .writer_snapshot import advance_writer_frontier_snapshot
 from .writer_snapshot import capture_initial_writer_frontier_snapshot
@@ -39,6 +40,37 @@ class WriterRuntimeState:
     """
 
     snapshot: WriterSearchSnapshot
+
+
+@dataclass(frozen=True, slots=True)
+class WriterRuntimeDiagnostics:
+    """Raw live-frontier evidence for debugging and audit surfaces.
+
+    Diagnostics are observational: they expose blockers, capabilities, and work
+    evidence produced by running the current writer frontier, but they do not
+    decide support.  Checked runtime operations remain the only enforcement
+    boundary.
+    """
+
+    blocked: bool
+    graph_policy_blockers: tuple[object, ...]
+    stereo_policy_blockers: tuple[object, ...]
+    execution_capabilities: frozenset[object]
+    terminal_execution_capabilities: frozenset[object]
+    residual_work_evidence: tuple[object, ...]
+    terminal_residual_work_evidence: tuple[object, ...]
+    finite_relation_work_evidence: tuple[object, ...]
+    graph_obligation_work_evidence: tuple[object, ...]
+    choice_texts: tuple[str, ...]
+    has_eos: bool
+
+    @property
+    def all_execution_capabilities(self) -> frozenset[object]:
+        return self.execution_capabilities | self.terminal_execution_capabilities
+
+    @property
+    def has_policy_blockers(self) -> bool:
+        return bool(self.graph_policy_blockers or self.stereo_policy_blockers)
 
 
 def initial_writer_runtime_state(
@@ -71,6 +103,35 @@ def writer_runtime_state_from_snapshot(
 
     validate_writer_search_snapshot(snapshot, prepared=prepared)
     return WriterRuntimeState(snapshot)
+
+
+def writer_runtime_diagnostics(
+    *,
+    prepared: SouthStarPreparedMol,
+    state: WriterRuntimeState,
+) -> WriterRuntimeDiagnostics:
+    # Use the raw snapshot/frontier read here on purpose.  Checked operations
+    # raise at the enforcement boundary; diagnostics must instead preserve the
+    # live evidence so callers can see why that boundary would reject.
+    choice_snapshot = _writer_frontier_choice_snapshot_from_snapshot(
+        state.snapshot,
+        prepared=prepared,
+        include_counts=False,
+        stop_after_first_blocked=False,
+    )
+    return WriterRuntimeDiagnostics(
+        blocked=choice_snapshot.blocked,
+        graph_policy_blockers=choice_snapshot.graph_policy_blockers,
+        stereo_policy_blockers=choice_snapshot.stereo_policy_blockers,
+        execution_capabilities=choice_snapshot.execution_capabilities,
+        terminal_execution_capabilities=choice_snapshot.terminal_execution_capabilities,
+        residual_work_evidence=choice_snapshot.residual_work_evidence,
+        terminal_residual_work_evidence=choice_snapshot.terminal_residual_work_evidence,
+        finite_relation_work_evidence=choice_snapshot.finite_relation_work_evidence,
+        graph_obligation_work_evidence=choice_snapshot.graph_obligation_work_evidence,
+        choice_texts=tuple(choice.emitted_text for choice in choice_snapshot.choices),
+        has_eos=choice_snapshot.terminal is not None,
+    )
 
 
 def writer_runtime_choices(
@@ -185,6 +246,7 @@ def iter_writer_runtime_support(
 
 
 __all__ = (
+    "WriterRuntimeDiagnostics",
     "WriterRuntimeState",
     "advance_writer_runtime_state",
     "count_writer_runtime_completions",
@@ -192,6 +254,7 @@ __all__ = (
     "initial_writer_runtime_state",
     "iter_writer_runtime_support",
     "writer_runtime_choices",
+    "writer_runtime_diagnostics",
     "writer_runtime_has_eos",
     "writer_runtime_state_from_snapshot",
     "writer_runtime_terminal",

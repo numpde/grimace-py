@@ -60,11 +60,41 @@ class WriterRuntimeChoiceTransitions:
 
     Adapters should use this instead of accepting an arbitrary public choice and
     trying to advance it.  The runtime computes the checked frontier once, then
-    packages each live successor state from that same evidence.
+    packages each live successor state from that same evidence.  Aggregate
+    counts below are derived from that checked result so adapters do not
+    recompute frontier summaries themselves.
     """
 
     choices: WriterFrontierChoices
     transitions: tuple[WriterRuntimeChoiceTransition, ...]
+
+    @property
+    def terminal(self) -> WriterFrontierTerminal | None:
+        return self.choices.terminal
+
+    @property
+    def support_count(self) -> int:
+        support_count = sum(
+            transition.choice.support_count or 0
+            for transition in self.transitions
+        )
+        if self.terminal is not None:
+            support_count += self.terminal.support_count
+        return support_count
+
+    @property
+    def completion_count(self) -> int:
+        completion_count = sum(
+            transition.choice.completion_count or 0
+            for transition in self.transitions
+        )
+        if self.terminal is not None:
+            completion_count += self.terminal.completion_count
+        return completion_count
+
+    @property
+    def has_eos(self) -> bool:
+        return self.terminal is not None
 
 
 @dataclass(frozen=True, slots=True)

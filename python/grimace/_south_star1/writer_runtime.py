@@ -13,6 +13,10 @@ from dataclasses import dataclass
 
 from .prepared_runtime import SouthStarPreparedMol
 from .prepared_runtime import SouthStarRuntimeOptions
+from .writer_capabilities import _unsupported_public_writer_execution_capabilities
+from .writer_execution_evidence import writer_finite_relation_work_envelope_violation
+from .writer_execution_evidence import writer_graph_obligation_work_envelope_violation
+from .writer_execution_evidence import writer_residual_work_envelope_violation
 from .writer_frontier import WriterFrontierChoice
 from .writer_frontier import WriterFrontierChoices
 from .writer_frontier import WriterFrontierTerminal
@@ -46,10 +50,10 @@ class WriterRuntimeState:
 class WriterRuntimeDiagnostics:
     """Raw live-frontier evidence for debugging and audit surfaces.
 
-    Diagnostics are observational: they expose blockers, capabilities, and work
-    evidence produced by running the current writer frontier, but they do not
-    decide support.  Checked runtime operations remain the only enforcement
-    boundary.
+    Diagnostics are observational: they expose blockers, capabilities, work
+    evidence, and envelope violations produced by running the current writer
+    frontier, but they do not decide support.  Checked runtime operations remain
+    the only enforcement boundary.
     """
 
     blocked: bool
@@ -57,10 +61,16 @@ class WriterRuntimeDiagnostics:
     stereo_policy_blockers: tuple[object, ...]
     execution_capabilities: frozenset[object]
     terminal_execution_capabilities: frozenset[object]
+    unsupported_execution_capabilities: frozenset[object]
+    unsupported_terminal_execution_capabilities: frozenset[object]
     residual_work_evidence: tuple[object, ...]
     terminal_residual_work_evidence: tuple[object, ...]
     finite_relation_work_evidence: tuple[object, ...]
     graph_obligation_work_evidence: tuple[object, ...]
+    residual_work_envelope_violations: tuple[object, ...]
+    terminal_residual_work_envelope_violations: tuple[object, ...]
+    finite_relation_work_envelope_violations: tuple[object, ...]
+    graph_obligation_work_envelope_violations: tuple[object, ...]
     choice_texts: tuple[str, ...]
     has_eos: bool
 
@@ -69,8 +79,32 @@ class WriterRuntimeDiagnostics:
         return self.execution_capabilities | self.terminal_execution_capabilities
 
     @property
+    def all_unsupported_execution_capabilities(self) -> frozenset[object]:
+        return (
+            self.unsupported_execution_capabilities
+            | self.unsupported_terminal_execution_capabilities
+        )
+
+    @property
     def has_policy_blockers(self) -> bool:
         return bool(self.graph_policy_blockers or self.stereo_policy_blockers)
+
+    @property
+    def has_unsupported_execution_capabilities(self) -> bool:
+        return bool(self.all_unsupported_execution_capabilities)
+
+    @property
+    def work_envelope_violations(self) -> tuple[object, ...]:
+        return (
+            *self.residual_work_envelope_violations,
+            *self.terminal_residual_work_envelope_violations,
+            *self.finite_relation_work_envelope_violations,
+            *self.graph_obligation_work_envelope_violations,
+        )
+
+    @property
+    def has_work_envelope_violations(self) -> bool:
+        return bool(self.work_envelope_violations)
 
 
 def initial_writer_runtime_state(
@@ -125,13 +159,76 @@ def writer_runtime_diagnostics(
         stereo_policy_blockers=choice_snapshot.stereo_policy_blockers,
         execution_capabilities=choice_snapshot.execution_capabilities,
         terminal_execution_capabilities=choice_snapshot.terminal_execution_capabilities,
+        unsupported_execution_capabilities=(
+            _unsupported_public_writer_execution_capabilities(
+                choice_snapshot.execution_capabilities,
+            )
+        ),
+        unsupported_terminal_execution_capabilities=(
+            _unsupported_public_writer_execution_capabilities(
+                choice_snapshot.terminal_execution_capabilities,
+            )
+        ),
         residual_work_evidence=choice_snapshot.residual_work_evidence,
         terminal_residual_work_evidence=choice_snapshot.terminal_residual_work_evidence,
         finite_relation_work_evidence=choice_snapshot.finite_relation_work_evidence,
         graph_obligation_work_evidence=choice_snapshot.graph_obligation_work_evidence,
+        residual_work_envelope_violations=(
+            _writer_residual_work_envelope_violations(
+                choice_snapshot.residual_work_evidence,
+            )
+        ),
+        terminal_residual_work_envelope_violations=(
+            _writer_residual_work_envelope_violations(
+                choice_snapshot.terminal_residual_work_evidence,
+            )
+        ),
+        finite_relation_work_envelope_violations=(
+            _writer_finite_relation_work_envelope_violations(
+                choice_snapshot.finite_relation_work_evidence,
+            )
+        ),
+        graph_obligation_work_envelope_violations=(
+            _writer_graph_obligation_work_envelope_violations(
+                choice_snapshot.graph_obligation_work_evidence,
+            )
+        ),
         choice_texts=tuple(choice.emitted_text for choice in choice_snapshot.choices),
         has_eos=choice_snapshot.terminal is not None,
     )
+
+
+def _writer_residual_work_envelope_violations(
+    evidence: tuple[object, ...],
+) -> tuple[object, ...]:
+    violations = []
+    for item in evidence:
+        violation = writer_residual_work_envelope_violation(item)
+        if violation is not None:
+            violations.append(violation)
+    return tuple(violations)
+
+
+def _writer_finite_relation_work_envelope_violations(
+    evidence: tuple[object, ...],
+) -> tuple[object, ...]:
+    violations = []
+    for item in evidence:
+        violation = writer_finite_relation_work_envelope_violation(item)
+        if violation is not None:
+            violations.append(violation)
+    return tuple(violations)
+
+
+def _writer_graph_obligation_work_envelope_violations(
+    evidence: tuple[object, ...],
+) -> tuple[object, ...]:
+    violations = []
+    for item in evidence:
+        violation = writer_graph_obligation_work_envelope_violation(item)
+        if violation is not None:
+            violations.append(violation)
+    return tuple(violations)
 
 
 def writer_runtime_choices(

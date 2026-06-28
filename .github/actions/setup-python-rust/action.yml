@@ -6,6 +6,14 @@ inputs:
   python-version:
     description: Python version to install through actions/setup-python.
     required: true
+  source-tree-test-env:
+    description: Create a venv, install test tools, install pinned RDKit, and install the source tree with maturin develop.
+    required: false
+    default: "false"
+  install-z3:
+    description: Install the pinned z3-solver test dependency into the source-tree test environment.
+    required: false
+    default: "false"
 
 runs:
   using: composite
@@ -19,3 +27,27 @@ runs:
           .github/workflows/ci.yml
           .github/actions/setup-python-rust/action.yml
     - uses: dtolnay/rust-toolchain@stable
+    - name: Create source-tree test environment
+      if: ${{ inputs.source-tree-test-env == 'true' }}
+      shell: bash
+      run: python -m venv .venv
+    - name: Install source-tree test tools
+      if: ${{ inputs.source-tree-test-env == 'true' }}
+      shell: bash
+      run: env -u CONDA_PREFIX .venv/bin/python -m pip install --upgrade pip maturin
+    - name: Install pinned RDKit fixture version
+      if: ${{ inputs.source-tree-test-env == 'true' }}
+      shell: bash
+      run: env -u CONDA_PREFIX .venv/bin/python -m pip install "rdkit==$RDKIT_FIXTURE_PIP_VERSION"
+    - name: Install pinned z3 test dependency
+      if: ${{ inputs.source-tree-test-env == 'true' && inputs.install-z3 == 'true' }}
+      shell: bash
+      run: env -u CONDA_PREFIX .venv/bin/python -m pip install "z3-solver==4.16.0.0"
+    - name: Install package into source-tree test environment
+      if: ${{ inputs.source-tree-test-env == 'true' }}
+      shell: bash
+      run: env -u CONDA_PREFIX .venv/bin/maturin develop --release
+    - name: Expose source-tree test Python
+      if: ${{ inputs.source-tree-test-env == 'true' }}
+      shell: bash
+      run: echo "GRIMACE_CI_PYTHON=.venv/bin/python" >> "$GITHUB_ENV"

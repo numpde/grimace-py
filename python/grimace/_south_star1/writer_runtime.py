@@ -13,10 +13,12 @@ from dataclasses import dataclass
 
 from .prepared_runtime import SouthStarPreparedMol
 from .prepared_runtime import SouthStarRuntimeOptions
+from .writer_frontier import WriterFrontierChoice
 from .writer_frontier import WriterFrontierChoices
 from .writer_frontier import WriterFrontierTerminal
 from .writer_snapshot import WriterDecoderBoundary
 from .writer_snapshot import WriterSearchSnapshot
+from .writer_snapshot import _writer_search_snapshot_with_cursor_after_emitted_text
 from .writer_snapshot import advance_writer_frontier_snapshot
 from .writer_snapshot import capture_initial_writer_frontier_snapshot
 from .writer_snapshot import resume_writer_frontier_choices_from_snapshot
@@ -119,6 +121,29 @@ def advance_writer_runtime_state(
     )
 
 
+def advance_writer_runtime_state_by_choice(
+    *,
+    prepared: SouthStarPreparedMol,
+    state: WriterRuntimeState,
+    choice: WriterFrontierChoice,
+) -> WriterRuntimeState:
+    """Advance from a checked choice without recomputing the frontier.
+
+    Callers must pass a choice obtained from ``writer_runtime_choices`` for the
+    same state.  The choice successor is already live frontier evidence; this
+    helper only packages that successor back into a structurally coherent
+    snapshot so public adapters do not reach into snapshot internals.
+    """
+
+    return WriterRuntimeState(
+        _writer_search_snapshot_with_cursor_after_emitted_text(
+            state.snapshot,
+            prepared=prepared,
+            cursor=choice.successor,
+        )
+    )
+
+
 def count_writer_runtime_support(
     *,
     prepared: SouthStarPreparedMol,
@@ -155,6 +180,7 @@ def iter_writer_runtime_support(
 __all__ = (
     "WriterRuntimeState",
     "advance_writer_runtime_state",
+    "advance_writer_runtime_state_by_choice",
     "count_writer_runtime_completions",
     "count_writer_runtime_support",
     "initial_writer_runtime_state",

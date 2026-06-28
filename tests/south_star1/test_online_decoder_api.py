@@ -215,7 +215,7 @@ class OnlineDecoderApiTest(unittest.TestCase):
         self.assertIn("[C@@H]", token_texts)
         self.assertIn(EOS, token_texts)
 
-    def test_online_decoder_api_boundary_no_artifact_or_rdkit_imports(self) -> None:
+    def test_online_decoder_api_boundary_has_no_artifact_rdkit_or_writer_imports(self) -> None:
         tree = ast.parse(ONLINE_DECODER_API_PATH.read_text(encoding="utf-8"))
         banned_modules = {
             "audit_rdkit",
@@ -225,11 +225,20 @@ class OnlineDecoderApiTest(unittest.TestCase):
             "support_artifact",
             "support_artifact_checker",
             "support_enumeration",
+            "writer_frontier",
+            "writer_online_decoder",
+            "writer_runtime",
+            "writer_snapshot",
+            "writer_support",
+            "writer_transitions",
         }
         banned_calls = {
             "compile_support_artifact",
             "enumerate_stereo_support",
+            "initial_writer_runtime_state",
+            "make_writer_shaped_online_decoder",
             "render_image_from_witnesses",
+            "writer_runtime_choices",
         }
         imports: list[str] = []
         calls: list[str] = []

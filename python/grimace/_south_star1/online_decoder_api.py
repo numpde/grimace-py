@@ -375,6 +375,15 @@ def make_branch_preserving_online_decoder(
     execution_mode: OnlineDecoderExecutionMode = OnlineDecoderExecutionMode.PREFIX_REPLAY,
     runtime_options: SouthStarRuntimeOptions = SouthStarRuntimeOptions(),
 ) -> SouthStarOnlineDecoder:
+    if runtime_options.serialization_language is SerializationLanguageMode.WRITER_SHAPED:
+        return _make_writer_shaped_online_decoder_from_generic_factory(
+            prepared=prepared,
+            facts=facts,
+            policy=policy,
+            semantics=semantics,
+            include_eos=include_eos,
+            execution_mode=execution_mode,
+        )
     facts, policy, semantics, templates, graph_index = _resolve_decoder_inputs(
         prepared=prepared,
         facts=facts,
@@ -414,6 +423,15 @@ def make_determinized_online_decoder(
     execution_mode: OnlineDecoderExecutionMode = OnlineDecoderExecutionMode.PREFIX_REPLAY,
     runtime_options: SouthStarRuntimeOptions = SouthStarRuntimeOptions(),
 ) -> SouthStarOnlineDecoder:
+    if runtime_options.serialization_language is SerializationLanguageMode.WRITER_SHAPED:
+        return _make_writer_shaped_online_decoder_from_generic_factory(
+            prepared=prepared,
+            facts=facts,
+            policy=policy,
+            semantics=semantics,
+            include_eos=include_eos,
+            execution_mode=execution_mode,
+        )
     facts, policy, semantics, templates, graph_index = _resolve_decoder_inputs(
         prepared=prepared,
         facts=facts,
@@ -439,6 +457,36 @@ def make_determinized_online_decoder(
         compaction_mode=compaction_mode,
         include_eos=include_eos,
         execution_mode=execution_mode,
+    )
+
+
+def _make_writer_shaped_online_decoder_from_generic_factory(
+    *,
+    prepared: SouthStarPreparedMol | None,
+    facts: MoleculeFacts | None,
+    policy: SmilesPolicy | None,
+    semantics: ParserSemantics | None,
+    include_eos: bool,
+    execution_mode: OnlineDecoderExecutionMode,
+) -> SouthStarOnlineDecoder:
+    if execution_mode is not OnlineDecoderExecutionMode.PREFIX_REPLAY:
+        raise ValueError(
+            "WRITER_SHAPED online decoder uses the live writer runtime, "
+            "not cached or residual continuation execution modes"
+        )
+    if prepared is None:
+        raise ValueError("WRITER_SHAPED online decoder requires prepared input")
+    if facts is not None or policy is not None or semantics is not None:
+        raise ValueError("prepared decoder input cannot be mixed with raw inputs")
+
+    # Keep the generic legacy factories as compatibility shims.  The named
+    # writer constructor owns WRITER_SHAPED construction, so future writer-only
+    # runtime options have one route to audit.
+    from .writer_online_decoder import make_writer_shaped_online_decoder
+
+    return make_writer_shaped_online_decoder(
+        prepared=prepared,
+        include_eos=include_eos,
     )
 
 

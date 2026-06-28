@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import unittest
 
-from grimace._south_star1.online_decoder_api import EOS
 from grimace._south_star1.online_decoder_api import OnlineDecoderExecutionMode
 from grimace._south_star1.online_decoder_api import WriterRuntimeOnlineStats
 from grimace._south_star1.online_decoder_api import make_branch_preserving_online_decoder

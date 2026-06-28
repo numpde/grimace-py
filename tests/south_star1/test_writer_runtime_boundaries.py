@@ -10,12 +10,35 @@ from tests.helpers.module_boundaries import scan_module_boundaries
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-WRITER_SUPPORT_PATH = (
-    REPO_ROOT / "python" / "grimace" / "_south_star1" / "writer_support.py"
-)
+SOUTH_STAR_ROOT = REPO_ROOT / "python" / "grimace" / "_south_star1"
+WRITER_RUNTIME_PATH = SOUTH_STAR_ROOT / "writer_runtime.py"
+WRITER_SUPPORT_PATH = SOUTH_STAR_ROOT / "writer_support.py"
 
 
 class WriterRuntimeBoundaryTest(unittest.TestCase):
+    def test_writer_runtime_stays_below_adapters(self) -> None:
+        scan = scan_module_boundaries(
+            WRITER_RUNTIME_PATH,
+            banned_modules={
+                "audit_rdkit",
+                "online_decoder_api",
+                "rdkit_adapter",
+                "support_artifact",
+                "support_artifact_checker",
+                "support_enumeration",
+                "writer_online_decoder",
+                "writer_support",
+            },
+            banned_calls={
+                "enumerate_prepared_writer_shaped_support",
+                "make_writer_shaped_online_decoder",
+            },
+        )
+
+        self.assertEqual(scan.banned_imports, ())
+        self.assertEqual(scan.banned_imported_names, ())
+        self.assertEqual(scan.banned_calls, ())
+
     def test_writer_support_adapter_routes_through_runtime(self) -> None:
         scan = scan_module_boundaries(
             WRITER_SUPPORT_PATH,

@@ -18,14 +18,14 @@ from .writer_frontier import WriterFrontierChoices
 from .writer_frontier import WriterFrontierTerminal
 from .writer_snapshot import WriterDecoderBoundary
 from .writer_snapshot import WriterSearchSnapshot
+from .writer_snapshot import _count_writer_completions_after_emitted_texts
+from .writer_snapshot import _count_writer_frontier_support_after_emitted_texts
+from .writer_snapshot import _iter_writer_frontier_support_suffixes_after_emitted_texts
 from .writer_snapshot import _writer_search_snapshot_with_cursor_after_emitted_text
 from .writer_snapshot import advance_writer_frontier_snapshot
 from .writer_snapshot import capture_initial_writer_frontier_snapshot
 from .writer_snapshot import resume_writer_frontier_choices_from_snapshot
 from .writer_snapshot import validate_writer_search_snapshot
-from .writer_support import count_writer_snapshot_writer_shaped_completions
-from .writer_support import count_writer_snapshot_writer_shaped_support
-from .writer_support import iter_writer_snapshot_writer_shaped_support
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,9 +149,13 @@ def count_writer_runtime_support(
     prepared: SouthStarPreparedMol,
     state: WriterRuntimeState,
 ) -> int:
-    return count_writer_snapshot_writer_shaped_support(
-        snapshot=state.snapshot,
+    # Route counts through the checked snapshot-prefix operation, not through
+    # the support-image adapter.  This keeps the runtime facade below adapters
+    # while preserving the same live frontier authority.
+    return _count_writer_frontier_support_after_emitted_texts(
+        state.snapshot,
         prepared=prepared,
+        emitted_texts=(),
     )
 
 
@@ -160,9 +164,10 @@ def count_writer_runtime_completions(
     prepared: SouthStarPreparedMol,
     state: WriterRuntimeState,
 ) -> int:
-    return count_writer_snapshot_writer_shaped_completions(
-        snapshot=state.snapshot,
+    return _count_writer_completions_after_emitted_texts(
+        state.snapshot,
         prepared=prepared,
+        emitted_texts=(),
     )
 
 
@@ -171,9 +176,10 @@ def iter_writer_runtime_support(
     prepared: SouthStarPreparedMol,
     state: WriterRuntimeState,
 ) -> Iterator[str]:
-    return iter_writer_snapshot_writer_shaped_support(
-        snapshot=state.snapshot,
+    return _iter_writer_frontier_support_suffixes_after_emitted_texts(
+        state.snapshot,
         prepared=prepared,
+        emitted_texts=(),
     )
 
 

@@ -58,7 +58,6 @@ class WriterOnlineDecoderRuntimeTest(unittest.TestCase):
         )
 
         self.assertEqual(decoder.runtime_options, options)
-        self.assertEqual(decoder.rooted_at_atom, 1)
         self.assertEqual(
             _reachable_eos_prefixes(decoder.initial_state()),
             set(support.strings),

@@ -86,13 +86,13 @@ class WriterOnlineDecoderRuntimeTest(unittest.TestCase):
 
 def _reachable_eos_prefixes(state) -> set[str]:
     pending = [state]
-    seen = set()
+    seen_prefixes: set[str] = set()
     out: set[str] = set()
     while pending:
         current = pending.pop()
-        if current in seen:
+        if current.prefix in seen_prefixes:
             continue
-        seen.add(current)
+        seen_prefixes.add(current.prefix)
         for choice in current.choices():
             if choice.is_eos:
                 # EOS is an observation on the current writer frontier; it is

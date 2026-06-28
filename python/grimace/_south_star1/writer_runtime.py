@@ -47,6 +47,27 @@ class WriterRuntimeState:
 
 
 @dataclass(frozen=True, slots=True)
+class WriterRuntimeChoiceTransition:
+    """A checked writer choice paired with its already-packaged successor state."""
+
+    choice: WriterFrontierChoice
+    next_state: WriterRuntimeState
+
+
+@dataclass(frozen=True, slots=True)
+class WriterRuntimeChoiceTransitions:
+    """Checked choices plus successors from one live frontier evaluation.
+
+    Adapters should use this instead of accepting an arbitrary public choice and
+    trying to advance it.  The runtime computes the checked frontier once, then
+    packages each live successor state from that same evidence.
+    """
+
+    choices: WriterFrontierChoices
+    transitions: tuple[WriterRuntimeChoiceTransition, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class WriterRuntimeDiagnostics:
     """Raw live-frontier evidence for debugging and audit surfaces.
 
@@ -242,6 +263,31 @@ def writer_runtime_choices(
     )
 
 
+def writer_runtime_choice_transitions(
+    *,
+    prepared: SouthStarPreparedMol,
+    state: WriterRuntimeState,
+) -> WriterRuntimeChoiceTransitions:
+    choices = writer_runtime_choices(
+        prepared=prepared,
+        state=state,
+    )
+    return WriterRuntimeChoiceTransitions(
+        choices=choices,
+        transitions=tuple(
+            WriterRuntimeChoiceTransition(
+                choice=choice,
+                next_state=_writer_runtime_state_after_checked_choice(
+                    prepared=prepared,
+                    state=state,
+                    choice=choice,
+                ),
+            )
+            for choice in choices.choices
+        ),
+    )
+
+
 def writer_runtime_terminal(
     *,
     prepared: SouthStarPreparedMol,
@@ -279,19 +325,17 @@ def advance_writer_runtime_state(
     )
 
 
-def _advance_writer_runtime_state_by_choice(
+def _writer_runtime_state_after_checked_choice(
     *,
     prepared: SouthStarPreparedMol,
     state: WriterRuntimeState,
     choice: WriterFrontierChoice,
 ) -> WriterRuntimeState:
-    """Adapter-only advance from a checked choice.
+    """Package a successor from the same checked frontier evaluation.
 
-    This intentionally remains private: it trusts that ``choice`` came from
-    ``writer_runtime_choices`` for ``state``.  Public/runtime callers should use
-    ``advance_writer_runtime_state`` so emitted text is rechecked at the live
-    frontier; the online decoder uses this helper only to avoid recomputing a
-    frontier it just checked.
+    This helper stays private because it trusts choice provenance.  The public
+    runtime surface exposes ``writer_runtime_choice_transitions`` instead, which
+    computes choices and successor states together from one live frontier.
     """
 
     return WriterRuntimeState(
@@ -343,6 +387,8 @@ def iter_writer_runtime_support(
 
 
 __all__ = (
+    "WriterRuntimeChoiceTransition",
+    "WriterRuntimeChoiceTransitions",
     "WriterRuntimeDiagnostics",
     "WriterRuntimeState",
     "advance_writer_runtime_state",
@@ -350,6 +396,7 @@ __all__ = (
     "count_writer_runtime_support",
     "initial_writer_runtime_state",
     "iter_writer_runtime_support",
+    "writer_runtime_choice_transitions",
     "writer_runtime_choices",
     "writer_runtime_diagnostics",
     "writer_runtime_has_eos",

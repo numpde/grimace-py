@@ -63,6 +63,9 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
 
         self.assertFalse(diagnostics.blocked)
         self.assertFalse(diagnostics.has_policy_blockers)
+        self.assertFalse(diagnostics.has_unsupported_execution_capabilities)
+        self.assertFalse(diagnostics.has_work_envelope_violations)
+        self.assertEqual((), diagnostics.work_envelope_violations)
         self.assertEqual(
             diagnostics.choice_texts,
             tuple(choice.emitted_text for choice in choices.choices),

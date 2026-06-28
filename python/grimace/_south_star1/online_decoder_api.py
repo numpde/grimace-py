@@ -381,6 +381,7 @@ def make_branch_preserving_online_decoder(
             facts=facts,
             policy=policy,
             semantics=semantics,
+            runtime_options=runtime_options,
             include_eos=include_eos,
             execution_mode=execution_mode,
         )
@@ -429,6 +430,7 @@ def make_determinized_online_decoder(
             facts=facts,
             policy=policy,
             semantics=semantics,
+            runtime_options=runtime_options,
             include_eos=include_eos,
             execution_mode=execution_mode,
         )
@@ -466,6 +468,7 @@ def _make_writer_shaped_online_decoder_from_generic_factory(
     facts: MoleculeFacts | None,
     policy: SmilesPolicy | None,
     semantics: ParserSemantics | None,
+    runtime_options: SouthStarRuntimeOptions,
     include_eos: bool,
     execution_mode: OnlineDecoderExecutionMode,
 ) -> SouthStarOnlineDecoder:
@@ -486,6 +489,7 @@ def _make_writer_shaped_online_decoder_from_generic_factory(
 
     return make_writer_shaped_online_decoder(
         prepared=prepared,
+        runtime_options=runtime_options,
         include_eos=include_eos,
     )
 

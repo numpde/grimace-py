@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .ids import AtomId
 from .policy import SerializationLanguageMode
 from .prepared_runtime import SouthStarPreparedMol
 from .prepared_runtime import SouthStarRuntimeOptions
@@ -74,8 +75,8 @@ class WriterShapedOnlineDecoderState:
 class WriterShapedOnlineDecoder:
     prepared: SouthStarPreparedMol
     runtime_options: SouthStarRuntimeOptions
-    rooted_at_atom: object
-    component_root_domains: tuple[tuple[object, ...], ...]
+    rooted_at_atom: AtomId | None
+    component_root_domains: tuple[tuple[AtomId, ...], ...]
     include_eos: bool = False
 
     def initial_state(self) -> WriterShapedOnlineDecoderState:

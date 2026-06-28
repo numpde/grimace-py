@@ -9,11 +9,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .ids import AtomId
 from .policy import SerializationLanguageMode
 from .prepared_runtime import SouthStarPreparedMol
 from .prepared_runtime import SouthStarRuntimeOptions
-from .prepared_runtime import component_root_domains_for_prepared
 from .prepared_runtime import require_writer_shaped_runtime_options
 from .prepared_runtime import runtime_root_atom_for_prepared
 from .writer_runtime import WriterRuntimeState
@@ -75,8 +73,6 @@ class WriterShapedOnlineDecoderState:
 class WriterShapedOnlineDecoder:
     prepared: SouthStarPreparedMol
     runtime_options: SouthStarRuntimeOptions
-    rooted_at_atom: AtomId | None
-    component_root_domains: tuple[tuple[AtomId, ...], ...]
     include_eos: bool = False
 
     def initial_state(self) -> WriterShapedOnlineDecoderState:
@@ -174,22 +170,16 @@ def make_writer_shaped_online_decoder(
     """
 
     require_writer_shaped_runtime_options(runtime_options)
-    rooted_at_atom = runtime_root_atom_for_prepared(
+    # Validate the requested root at construction, but do not duplicate derived
+    # root-domain state on the decoder.  The live writer runtime remains the
+    # single source of transition/support state.
+    runtime_root_atom_for_prepared(
         runtime_options,
         prepared=prepared,
-    )
-    root_domains = tuple(
-        atoms
-        for _, atoms in component_root_domains_for_prepared(
-            prepared=prepared,
-            rooted_at_atom=rooted_at_atom,
-        )
     )
     return WriterShapedOnlineDecoder(
         prepared=prepared,
         runtime_options=runtime_options,
-        rooted_at_atom=rooted_at_atom,
-        component_root_domains=root_domains,
         include_eos=include_eos,
     )
 

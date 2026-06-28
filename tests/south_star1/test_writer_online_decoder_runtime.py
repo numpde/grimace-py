@@ -5,9 +5,11 @@ from __future__ import annotations
 import unittest
 
 from grimace._south_star1.online_decoder_api import OnlineDecoderExecutionMode
+from grimace._south_star1.online_decoder_api import SouthStarOnlineDecoderState
 from grimace._south_star1.online_decoder_api import WriterRuntimeOnlineStats
 from grimace._south_star1.online_decoder_api import make_branch_preserving_online_decoder
 from grimace._south_star1.online_decoder_api import make_determinized_online_decoder
+from grimace._south_star1.online_decoder_state import OnlineDecoderState
 from grimace._south_star1.policy import SerializationLanguageMode
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
@@ -51,6 +53,21 @@ class WriterOnlineDecoderRuntimeTest(unittest.TestCase):
             _reachable_eos_prefixes(decoder.initial_state()),
             set(support.strings),
         )
+
+    def test_writer_shaped_route_never_falls_through_to_legacy_raw_state(self) -> None:
+        prepared = _prepare(cco_facts())
+        decoder = make_determinized_online_decoder(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        invalid_state = SouthStarOnlineDecoderState(
+            prefix="",
+            raw_state=OnlineDecoderState(prefix=""),
+            decoder=decoder,
+        )
+
+        with self.assertRaisesRegex(ValueError, "non-writer state"):
+            decoder.choices_with_stats(invalid_state)
 
     def test_branch_preserving_factory_also_uses_writer_runtime(self) -> None:
         prepared = _prepare(cco_facts())

@@ -15,9 +15,8 @@ from .prepared_runtime import SouthStarRuntimeOptions
 from .prepared_runtime import require_writer_shaped_runtime_options
 from .prepared_runtime import runtime_root_atom_for_prepared
 from .writer_runtime import WriterRuntimeState
-from .writer_runtime import _advance_writer_runtime_state_by_choice
 from .writer_runtime import initial_writer_runtime_state
-from .writer_runtime import writer_runtime_choices
+from .writer_runtime import writer_runtime_choice_transitions
 
 
 EOS = "<EOS>"
@@ -96,23 +95,19 @@ class WriterShapedOnlineDecoder:
         state: WriterShapedOnlineDecoderState,
     ) -> WriterShapedOnlineChoiceResult:
         _validate_writer_state_belongs_to_decoder(state, self)
-        runtime_choices = writer_runtime_choices(
+        runtime_transitions = writer_runtime_choice_transitions(
             prepared=self.prepared,
             state=state.raw_state,
         )
         out = []
-        for choice in runtime_choices.choices:
-            next_runtime_state = _advance_writer_runtime_state_by_choice(
-                prepared=self.prepared,
-                state=state.raw_state,
-                choice=choice,
-            )
+        for transition in runtime_transitions.transitions:
+            choice = transition.choice
             out.append(
                 WriterShapedOnlineChoice(
                     text=choice.emitted_text,
                     next_state=WriterShapedOnlineDecoderState(
                         prefix=state.prefix + choice.emitted_text,
-                        raw_state=next_runtime_state,
+                        raw_state=transition.next_state,
                         decoder=self,
                     ),
                     multiplicity=choice.immediate_multiplicity,
@@ -120,7 +115,7 @@ class WriterShapedOnlineDecoder:
                 )
             )
 
-        terminal = runtime_choices.terminal
+        terminal = runtime_transitions.choices.terminal
         has_eos = terminal is not None
         if self.include_eos and terminal is not None:
             out.append(
@@ -134,12 +129,12 @@ class WriterShapedOnlineDecoder:
             )
 
         support_count = sum(
-            choice.support_count or 0
-            for choice in runtime_choices.choices
+            transition.choice.support_count or 0
+            for transition in runtime_transitions.transitions
         )
         completion_count = sum(
-            choice.completion_count or 0
-            for choice in runtime_choices.choices
+            transition.choice.completion_count or 0
+            for transition in runtime_transitions.transitions
         )
         if terminal is not None:
             support_count += terminal.support_count

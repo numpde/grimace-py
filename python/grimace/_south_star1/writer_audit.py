@@ -30,6 +30,10 @@ class _WriterFrontierBlockedPrefix:
     def graph_policy_blockers(self):
         return self.choice_snapshot.graph_policy_blockers
 
+    @property
+    def stereo_policy_blockers(self):
+        return self.choice_snapshot.stereo_policy_blockers
+
 
 @dataclass(frozen=True, slots=True)
 class _WriterExecutionCapabilityUse:

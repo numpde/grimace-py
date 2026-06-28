@@ -2,6 +2,13 @@ name: Setup Python and Rust
 
 description: Shared CI setup for Python jobs that build the Rust extension.
 
+# This action has two modes on purpose:
+#
+# - packaging jobs only need the interpreter, pip cache, and Rust toolchain;
+# - source-tree jobs also need an isolated venv with the extension installed by
+#   `maturin develop`, but should keep their actual test command visible in the
+#   workflow.  The optional venv setup below centralizes that mechanical setup
+#   without hiding the semantic layer each job executes.
 inputs:
   python-version:
     description: Python version to install through actions/setup-python.

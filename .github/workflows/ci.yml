@@ -30,14 +30,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: ./.github/actions/setup-python-rust
         with:
           python-version: "3.12"
-          cache: "pip"
-          cache-dependency-path: |
-            pyproject.toml
-            .github/workflows/ci.yml
-      - uses: dtolnay/rust-toolchain@stable
       - name: Create test environment
         run: python -m venv .venv
       - name: Install test tools
@@ -55,14 +50,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: ./.github/actions/setup-python-rust
         with:
           python-version: "3.12"
-          cache: "pip"
-          cache-dependency-path: |
-            pyproject.toml
-            .github/workflows/ci.yml
-      - uses: dtolnay/rust-toolchain@stable
       - name: Create test environment
         run: python -m venv .venv
       - name: Install test tools
@@ -78,14 +68,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: ./.github/actions/setup-python-rust
         with:
           python-version: "3.12"
-          cache: "pip"
-          cache-dependency-path: |
-            pyproject.toml
-            .github/workflows/ci.yml
-      - uses: dtolnay/rust-toolchain@stable
       - name: Create test environment
         run: python -m venv .venv
       - name: Install test tools
@@ -105,14 +90,9 @@ jobs:
         python-version: ["3.12", "3.13"]
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: ./.github/actions/setup-python-rust
         with:
           python-version: ${{ matrix.python-version }}
-          cache: "pip"
-          cache-dependency-path: |
-            pyproject.toml
-            .github/workflows/ci.yml
-      - uses: dtolnay/rust-toolchain@stable
       - name: Install build tools
         run: python -m pip install --upgrade pip maturin twine
       - name: Install pinned RDKit fixture version
@@ -130,14 +110,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: ./.github/actions/setup-python-rust
         with:
           python-version: "3.12"
-          cache: "pip"
-          cache-dependency-path: |
-            pyproject.toml
-            .github/workflows/ci.yml
-      - uses: dtolnay/rust-toolchain@stable
       - name: Install build tools
         run: python -m pip install --upgrade pip maturin twine
       - name: Install pinned RDKit fixture version

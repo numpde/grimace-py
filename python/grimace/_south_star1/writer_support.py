@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from typing import TYPE_CHECKING
 
 from .enumerate import SupportImage
 from .prepared_runtime import SouthStarPreparedMol
@@ -13,7 +14,9 @@ from .writer_runtime import count_writer_runtime_support
 from .writer_runtime import initial_writer_runtime_state
 from .writer_runtime import iter_writer_runtime_support
 from .writer_runtime import writer_runtime_state_from_snapshot
-from .writer_snapshot import WriterSearchSnapshot
+
+if TYPE_CHECKING:
+    from .writer_snapshot import WriterSearchSnapshot
 
 
 # This module materializes support images; it should not decide support itself.

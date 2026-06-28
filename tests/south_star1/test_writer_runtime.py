@@ -14,6 +14,7 @@ from grimace._south_star1.writer_runtime import count_writer_runtime_completions
 from grimace._south_star1.writer_runtime import count_writer_runtime_support
 from grimace._south_star1.writer_runtime import initial_writer_runtime_state
 from grimace._south_star1.writer_runtime import iter_writer_runtime_support
+from grimace._south_star1.writer_runtime import writer_runtime_choice_transitions
 from grimace._south_star1.writer_runtime import writer_runtime_choices
 from grimace._south_star1.writer_runtime import writer_runtime_diagnostics
 from grimace._south_star1.writer_runtime import writer_runtime_has_eos
@@ -74,6 +75,34 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             diagnostics.has_eos,
             choices.terminal is not None,
         )
+
+    def test_choice_transitions_package_checked_successors(self) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+
+        transitions = writer_runtime_choice_transitions(
+            prepared=prepared,
+            state=state,
+        )
+        choices = writer_runtime_choices(prepared=prepared, state=state)
+
+        self.assertEqual(transitions.choices, choices)
+        self.assertEqual(
+            tuple(transition.choice for transition in transitions.transitions),
+            choices.choices,
+        )
+        for transition in transitions.transitions:
+            self.assertEqual(
+                transition.next_state.snapshot,
+                advance_writer_frontier_snapshot(
+                    state.snapshot,
+                    prepared=prepared,
+                    emitted_text=transition.choice.emitted_text,
+                ),
+            )
 
     def test_choices_and_advance_delegate_to_checked_snapshot_path(self) -> None:
         prepared = _prepare(cco_facts())

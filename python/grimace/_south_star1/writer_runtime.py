@@ -8,6 +8,7 @@ support authority from growing beside the live writer transition engine.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from collections.abc import Iterator
 from dataclasses import dataclass
 
@@ -224,24 +225,26 @@ def writer_runtime_diagnostics(
         terminal_residual_work_evidence=choice_snapshot.terminal_residual_work_evidence,
         finite_relation_work_evidence=choice_snapshot.finite_relation_work_evidence,
         graph_obligation_work_evidence=choice_snapshot.graph_obligation_work_evidence,
-        residual_work_envelope_violations=(
-            _writer_residual_work_envelope_violations(
-                choice_snapshot.residual_work_evidence,
-            )
+        residual_work_envelope_violations=_writer_work_envelope_violations(
+            choice_snapshot.residual_work_evidence,
+            writer_residual_work_envelope_violation,
         ),
         terminal_residual_work_envelope_violations=(
-            _writer_residual_work_envelope_violations(
+            _writer_work_envelope_violations(
                 choice_snapshot.terminal_residual_work_evidence,
+                writer_residual_work_envelope_violation,
             )
         ),
         finite_relation_work_envelope_violations=(
-            _writer_finite_relation_work_envelope_violations(
+            _writer_work_envelope_violations(
                 choice_snapshot.finite_relation_work_evidence,
+                writer_finite_relation_work_envelope_violation,
             )
         ),
         graph_obligation_work_envelope_violations=(
-            _writer_graph_obligation_work_envelope_violations(
+            _writer_work_envelope_violations(
                 choice_snapshot.graph_obligation_work_evidence,
+                writer_graph_obligation_work_envelope_violation,
             )
         ),
         choice_texts=tuple(choice.emitted_text for choice in choice_snapshot.choices),
@@ -249,37 +252,15 @@ def writer_runtime_diagnostics(
     )
 
 
-def _writer_residual_work_envelope_violations(
+def _writer_work_envelope_violations(
     evidence: tuple[object, ...],
+    violation_check: Callable[[object], object | None],
 ) -> tuple[object, ...]:
-    violations = []
-    for item in evidence:
-        violation = writer_residual_work_envelope_violation(item)
-        if violation is not None:
-            violations.append(violation)
-    return tuple(violations)
-
-
-def _writer_finite_relation_work_envelope_violations(
-    evidence: tuple[object, ...],
-) -> tuple[object, ...]:
-    violations = []
-    for item in evidence:
-        violation = writer_finite_relation_work_envelope_violation(item)
-        if violation is not None:
-            violations.append(violation)
-    return tuple(violations)
-
-
-def _writer_graph_obligation_work_envelope_violations(
-    evidence: tuple[object, ...],
-) -> tuple[object, ...]:
-    violations = []
-    for item in evidence:
-        violation = writer_graph_obligation_work_envelope_violation(item)
-        if violation is not None:
-            violations.append(violation)
-    return tuple(violations)
+    return tuple(
+        violation
+        for item in evidence
+        if (violation := violation_check(item)) is not None
+    )
 
 
 def writer_runtime_choices(

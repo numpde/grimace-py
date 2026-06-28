@@ -1,0 +1,21 @@
+name: Setup Python and Rust
+
+description: Shared CI setup for Python jobs that build the Rust extension.
+
+inputs:
+  python-version:
+    description: Python version to install through actions/setup-python.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v6
+      with:
+        python-version: ${{ inputs.python-version }}
+        cache: pip
+        cache-dependency-path: |
+          pyproject.toml
+          .github/workflows/ci.yml
+          .github/actions/setup-python-rust/action.yml
+    - uses: dtolnay/rust-toolchain@stable

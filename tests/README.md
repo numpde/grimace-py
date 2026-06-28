@@ -54,8 +54,8 @@ installed wheel and sdist jobs run the installed-artifact correctness subset.
   belong in version-keyed fixtures under `tests/fixtures/rdkit_known_quirks/`.
 - RDKit disconnected sampling input suites belong under
   `tests/fixtures/rdkit_disconnected_sampling/`.
-- Large pinned RDKit fixture corpora may use `VERSION/*.json` shards under the
-  fixture root; keep shard names ordered by source area or serializer feature.
+- Large pinned RDKit fixture corpora may use version-directory JSON files under
+  the fixture root; keep file names ordered by source area or serializer feature.
 - Pinned RDKit JSON fixtures should reuse `tests/helpers/pinned_rdkit_fixtures.py`
   for version, id, source, and canonical expected-set validation.
 - Exact public invariant checks should be runnable through `tests.run_exact_public_invariants`.

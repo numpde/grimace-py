@@ -101,7 +101,11 @@ class WriterOnlineDecoderRuntimeTest(unittest.TestCase):
             "online_residual_continuation",
             "online_search_vm",
         }
+        banned_imported_names = {
+            "_advance_writer_runtime_state_by_choice",
+        }
         banned_calls = {
+            "_advance_writer_runtime_state_by_choice",
             "make_branch_preserving_online_decoder",
             "make_determinized_online_decoder",
             "online_branch_preserving_choice_result",
@@ -120,6 +124,11 @@ class WriterOnlineDecoderRuntimeTest(unittest.TestCase):
                 module = node.module or ""
                 if module.split(".", 1)[0] in banned_modules:
                     imports.append(module)
+                imports.extend(
+                    alias.name
+                    for alias in node.names
+                    if alias.name in banned_imported_names
+                )
             if isinstance(node, ast.Call):
                 if isinstance(node.func, ast.Name):
                     calls.append(node.func.id)

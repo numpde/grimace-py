@@ -115,8 +115,7 @@ class WriterShapedOnlineDecoder:
                 )
             )
 
-        terminal = runtime_transitions.choices.terminal
-        has_eos = terminal is not None
+        terminal = runtime_transitions.terminal
         if self.include_eos and terminal is not None:
             out.append(
                 WriterShapedOnlineChoice(
@@ -128,25 +127,13 @@ class WriterShapedOnlineDecoder:
                 )
             )
 
-        support_count = sum(
-            transition.choice.support_count or 0
-            for transition in runtime_transitions.transitions
-        )
-        completion_count = sum(
-            transition.choice.completion_count or 0
-            for transition in runtime_transitions.transitions
-        )
-        if terminal is not None:
-            support_count += terminal.support_count
-            completion_count += terminal.completion_count
-
         return WriterShapedOnlineChoiceResult(
             choices=tuple(out),
             stats=WriterRuntimeOnlineStats(
-                support_count=support_count,
-                completion_count=completion_count,
+                support_count=runtime_transitions.support_count,
+                completion_count=runtime_transitions.completion_count,
                 choice_count=len(out),
-                has_eos=has_eos,
+                has_eos=runtime_transitions.has_eos,
             ),
         )
 

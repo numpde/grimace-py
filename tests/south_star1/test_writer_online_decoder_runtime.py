@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import ast
 import unittest
 from pathlib import Path
 
@@ -17,6 +16,7 @@ from grimace._south_star1.writer_online_decoder import WriterRuntimeOnlineStats
 from grimace._south_star1.writer_online_decoder import WriterShapedOnlineDecoderState
 from grimace._south_star1.writer_online_decoder import make_writer_shaped_online_decoder
 from grimace._south_star1.writer_runtime import WriterRuntimeState
+from tests.helpers.module_boundaries import scan_module_boundaries
 from tests.south_star1.helpers import cco_facts
 
 
@@ -92,51 +92,31 @@ class WriterOnlineDecoderRuntimeTest(unittest.TestCase):
             decoder.choices_with_stats(invalid_state)
 
     def test_writer_online_decoder_boundary_has_no_legacy_online_imports(self) -> None:
-        tree = ast.parse(WRITER_ONLINE_DECODER_PATH.read_text(encoding="utf-8"))
-        banned_modules = {
-            "online_continuation",
-            "online_decoder_api",
-            "online_decoder_state",
-            "online_decisions",
-            "online_residual_continuation",
-            "online_search_vm",
-        }
-        banned_imported_names = {
-            "_advance_writer_runtime_state_by_choice",
-        }
-        banned_calls = {
-            "_advance_writer_runtime_state_by_choice",
-            "make_branch_preserving_online_decoder",
-            "make_determinized_online_decoder",
-            "online_branch_preserving_choice_result",
-            "online_determinized_choice_result",
-        }
-        imports: list[str] = []
-        calls: list[str] = []
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                imports.extend(
-                    alias.name
-                    for alias in node.names
-                    if alias.name.split(".", 1)[0] in banned_modules
-                )
-            if isinstance(node, ast.ImportFrom):
-                module = node.module or ""
-                if module.split(".", 1)[0] in banned_modules:
-                    imports.append(module)
-                imports.extend(
-                    alias.name
-                    for alias in node.names
-                    if alias.name in banned_imported_names
-                )
-            if isinstance(node, ast.Call):
-                if isinstance(node.func, ast.Name):
-                    calls.append(node.func.id)
-                if isinstance(node.func, ast.Attribute):
-                    calls.append(node.func.attr)
+        scan = scan_module_boundaries(
+            WRITER_ONLINE_DECODER_PATH,
+            banned_modules={
+                "online_continuation",
+                "online_decoder_api",
+                "online_decoder_state",
+                "online_decisions",
+                "online_residual_continuation",
+                "online_search_vm",
+            },
+            banned_imported_names={
+                "_advance_writer_runtime_state_by_choice",
+            },
+            banned_calls={
+                "_advance_writer_runtime_state_by_choice",
+                "make_branch_preserving_online_decoder",
+                "make_determinized_online_decoder",
+                "online_branch_preserving_choice_result",
+                "online_determinized_choice_result",
+            },
+        )
 
-        self.assertEqual(imports, [])
-        self.assertEqual(sorted(set(calls) & banned_calls), [])
+        self.assertEqual(scan.banned_imports, ())
+        self.assertEqual(scan.banned_imported_names, ())
+        self.assertEqual(scan.banned_calls, ())
 
 
 def _reachable_eos_prefixes(state) -> set[str]:

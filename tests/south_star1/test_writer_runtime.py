@@ -90,6 +90,16 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
         choices = writer_runtime_choices(prepared=prepared, state=state)
 
         self.assertEqual(transitions.choices, choices)
+        self.assertEqual(transitions.terminal, choices.terminal)
+        self.assertEqual(transitions.has_eos, choices.terminal is not None)
+        self.assertEqual(
+            transitions.support_count,
+            sum(choice.support_count or 0 for choice in choices.choices),
+        )
+        self.assertEqual(
+            transitions.completion_count,
+            sum(choice.completion_count or 0 for choice in choices.choices),
+        )
         self.assertEqual(
             tuple(transition.choice for transition in transitions.transitions),
             choices.choices,

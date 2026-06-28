@@ -170,8 +170,13 @@ class SouthStarOnlineDecoder:
         state: SouthStarOnlineDecoderState,
     ) -> SouthStarOnlineChoiceResult:
         _validate_state_belongs_to_decoder(state, self)
-        if isinstance(state.raw_state, WriterRuntimeState):
+        if self._uses_writer_runtime():
+            # Dispatch by declared serialization language, not by raw-state
+            # shape.  That makes WRITER_SHAPED ownership explicit: this facade
+            # must not accidentally fall through to any legacy online VM path.
             return self._writer_runtime_choice_result(state)
+        if isinstance(state.raw_state, WriterRuntimeState):
+            raise ValueError("non-WRITER_SHAPED decoder received writer runtime state")
 
         raw_result = self._raw_choice_result(state.raw_state)
         out = [

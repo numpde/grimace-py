@@ -1,27 +1,162 @@
-"""Named constructor for the writer-shaped online decoder route.
+"""Online decoder facade for the writer-shaped live runtime.
 
-The generic online factories still exist for legacy exhaustive runtimes.  This
-module gives WRITER_SHAPED a single obvious construction target: prepared input
-plus writer-shaped runtime options produce a decoder backed by the live writer
-runtime, not by any legacy online VM knobs.
+The generic online factories exist for legacy exhaustive runtimes.  WRITER_SHAPED
+has a separate prepared-only route so branch, compaction, and legacy execution
+mode knobs cannot become accidental support gates.
 """
 
 from __future__ import annotations
 
-from .online_continuation import OnlineDecoderExecutionMode
-from .online_decoder_api import SouthStarOnlineDecoder
-from .online_decisions import FrontierCompactionMode
+from dataclasses import dataclass
+
 from .policy import SerializationLanguageMode
 from .prepared_runtime import SouthStarPreparedMol
 from .prepared_runtime import SouthStarRuntimeOptions
 from .prepared_runtime import component_root_domains_for_prepared
 from .prepared_runtime import require_writer_shaped_runtime_options
 from .prepared_runtime import runtime_root_atom_for_prepared
+from .writer_runtime import WriterRuntimeState
+from .writer_runtime import _advance_writer_runtime_state_by_choice
+from .writer_runtime import initial_writer_runtime_state
+from .writer_runtime import writer_runtime_choices
 
+
+EOS = "<EOS>"
 
 _DEFAULT_WRITER_RUNTIME_OPTIONS = SouthStarRuntimeOptions(
     serialization_language=SerializationLanguageMode.WRITER_SHAPED,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class WriterRuntimeOnlineStats:
+    """Frontier-level stats for writer-shaped online choices.
+
+    These stats are observational summaries of checked writer choices.  They are
+    intentionally not a support decision surface.
+    """
+
+    support_count: int
+    completion_count: int
+    choice_count: int
+    has_eos: bool
+
+
+@dataclass(frozen=True, slots=True)
+class WriterShapedOnlineChoice:
+    text: str
+    next_state: "WriterShapedOnlineDecoderState | None"
+    is_eos: bool = False
+    multiplicity: int = 1
+    completion_count: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class WriterShapedOnlineChoiceResult:
+    choices: tuple[WriterShapedOnlineChoice, ...]
+    stats: WriterRuntimeOnlineStats
+
+
+@dataclass(frozen=True, slots=True)
+class WriterShapedOnlineDecoderState:
+    prefix: str
+    raw_state: WriterRuntimeState
+    decoder: "WriterShapedOnlineDecoder"
+
+    def choices(self) -> tuple[WriterShapedOnlineChoice, ...]:
+        return self.decoder.choices(self)
+
+    def choices_with_stats(self) -> WriterShapedOnlineChoiceResult:
+        return self.decoder.choices_with_stats(self)
+
+
+@dataclass(frozen=True, slots=True)
+class WriterShapedOnlineDecoder:
+    prepared: SouthStarPreparedMol
+    runtime_options: SouthStarRuntimeOptions
+    rooted_at_atom: object
+    component_root_domains: tuple[tuple[object, ...], ...]
+    include_eos: bool = False
+
+    def initial_state(self) -> WriterShapedOnlineDecoderState:
+        return WriterShapedOnlineDecoderState(
+            prefix="",
+            raw_state=initial_writer_runtime_state(
+                prepared=self.prepared,
+                runtime_options=self.runtime_options,
+            ),
+            decoder=self,
+        )
+
+    def choices(
+        self,
+        state: WriterShapedOnlineDecoderState,
+    ) -> tuple[WriterShapedOnlineChoice, ...]:
+        return self.choices_with_stats(state).choices
+
+    def choices_with_stats(
+        self,
+        state: WriterShapedOnlineDecoderState,
+    ) -> WriterShapedOnlineChoiceResult:
+        _validate_writer_state_belongs_to_decoder(state, self)
+        runtime_choices = writer_runtime_choices(
+            prepared=self.prepared,
+            state=state.raw_state,
+        )
+        out = []
+        for choice in runtime_choices.choices:
+            next_runtime_state = _advance_writer_runtime_state_by_choice(
+                prepared=self.prepared,
+                state=state.raw_state,
+                choice=choice,
+            )
+            out.append(
+                WriterShapedOnlineChoice(
+                    text=choice.emitted_text,
+                    next_state=WriterShapedOnlineDecoderState(
+                        prefix=state.prefix + choice.emitted_text,
+                        raw_state=next_runtime_state,
+                        decoder=self,
+                    ),
+                    multiplicity=choice.immediate_multiplicity,
+                    completion_count=choice.completion_count or 0,
+                )
+            )
+
+        terminal = runtime_choices.terminal
+        has_eos = terminal is not None
+        if self.include_eos and terminal is not None:
+            out.append(
+                WriterShapedOnlineChoice(
+                    text=EOS,
+                    next_state=None,
+                    is_eos=True,
+                    multiplicity=terminal.multiplicity,
+                    completion_count=terminal.completion_count,
+                )
+            )
+
+        support_count = sum(
+            choice.support_count or 0
+            for choice in runtime_choices.choices
+        )
+        completion_count = sum(
+            choice.completion_count or 0
+            for choice in runtime_choices.choices
+        )
+        if terminal is not None:
+            support_count += terminal.support_count
+            completion_count += terminal.completion_count
+
+        return WriterShapedOnlineChoiceResult(
+            choices=tuple(out),
+            stats=WriterRuntimeOnlineStats(
+                support_count=support_count,
+                completion_count=completion_count,
+                choice_count=len(out),
+                has_eos=has_eos,
+            ),
+        )
 
 
 def make_writer_shaped_online_decoder(
@@ -29,7 +164,7 @@ def make_writer_shaped_online_decoder(
     prepared: SouthStarPreparedMol,
     runtime_options: SouthStarRuntimeOptions = _DEFAULT_WRITER_RUNTIME_OPTIONS,
     include_eos: bool = False,
-) -> SouthStarOnlineDecoder:
+) -> WriterShapedOnlineDecoder:
     """Construct the online decoder for the live writer-shaped runtime.
 
     WRITER_SHAPED is intentionally prepared-only here.  Preparation supplies the
@@ -49,25 +184,30 @@ def make_writer_shaped_online_decoder(
             rooted_at_atom=rooted_at_atom,
         )
     )
-
-    # These legacy facade fields are deliberately fixed: the writer runtime is
-    # already the bounded live state engine, and exposes one checked choice per
-    # emitted token text.  Cached/residual continuation modes do not apply.
-    return SouthStarOnlineDecoder(
+    return WriterShapedOnlineDecoder(
         prepared=prepared,
-        facts=prepared.facts,
-        policy=prepared.policy,
-        semantics=prepared.semantics,
-        templates=prepared.stereo_template_bundle(),
-        rooted_at_atom=rooted_at_atom,
-        graph_index=prepared.graph_index,
-        component_root_domains=root_domains,
         runtime_options=runtime_options,
-        branch_mode="determinized",
-        compaction_mode=FrontierCompactionMode.TRAVERSAL_ONLY,
+        rooted_at_atom=rooted_at_atom,
+        component_root_domains=root_domains,
         include_eos=include_eos,
-        execution_mode=OnlineDecoderExecutionMode.PREFIX_REPLAY,
     )
 
 
-__all__ = ("make_writer_shaped_online_decoder",)
+def _validate_writer_state_belongs_to_decoder(
+    state: WriterShapedOnlineDecoderState,
+    decoder: WriterShapedOnlineDecoder,
+) -> None:
+    if state.decoder is not decoder:
+        raise ValueError("writer-shaped online decoder state belongs to a different decoder")
+    if not isinstance(state.raw_state, WriterRuntimeState):
+        raise ValueError("WRITER_SHAPED online decoder received non-writer state")
+
+
+__all__ = (
+    "WriterRuntimeOnlineStats",
+    "WriterShapedOnlineChoice",
+    "WriterShapedOnlineChoiceResult",
+    "WriterShapedOnlineDecoder",
+    "WriterShapedOnlineDecoderState",
+    "make_writer_shaped_online_decoder",
+)

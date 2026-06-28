@@ -9,6 +9,7 @@ The test suite is organized by intent first, then by feature.
 - `tests/rdkit_serialization/`: RDKit-derived writer conformance tests, organized by behavior and mapped onto Grimace's public support/decoder surface, including pinned serializer regression cases.
 - `tests/parity/`: Rust kernel versus Python reference parity checks on curated and representative slices.
 - `tests/integration/`: import, end-to-end smoke coverage, and kernel dataset contract checks.
+- `tests/south_star1/`: South Star 1 proof-kernel and writer-shaped runtime checks.
 - `tests/perf/`: opt-in timing checks that are excluded by default.
 - `tests/helpers/`: shared case selectors, policy loaders, molecule parsers, and assertion helpers.
 - `tests/rdkit_serialization/known_stereo_gaps.py`: opt-in diagnostic checks
@@ -17,6 +18,7 @@ The test suite is organized by intent first, then by feature.
 ## Commands
 
 - Default suite: `PYTHONPATH=python:. python3 -m unittest discover -s tests -t .`
+- South Star 1 source-tree semantics: `PYTHONPATH=python:. python3 -m unittest tests.run_south_star_semantics -q`
 - Exact public invariants: `PYTHONPATH=python:. python3 -m unittest tests.run_exact_public_invariants -q`
 - Installed-artifact correctness subset: `python3 -m unittest tests.run_installed_package_correctness -q`
 - Pinned RDKit parity subset: `PYTHONPATH=python:. python3 -m unittest tests.run_pinned_rdkit_parity -q`
@@ -24,9 +26,10 @@ The test suite is organized by intent first, then by feature.
 - Stereo constraint diagnostics: `PYTHONPATH=python:. python3 -m unittest tests.run_stereo_constraint_diagnostics -q`
 - Perf suite: `RUN_PERF_TESTS=1 PYTHONPATH=python:. python3 -m unittest discover -s tests/perf -t .`
 
-CI runs the exact public invariants and pinned RDKit parity layers as separate
-source-tree jobs, and reuses them inside the installed-artifact correctness
-subset.
+CI intentionally runs named layers instead of reusing full source-tree discovery
+for every pull request. The source-tree job runs the South Star 1 semantics
+runner; exact public invariants and pinned RDKit parity run as separate jobs;
+installed wheel and sdist jobs run the installed-artifact correctness subset.
 
 ## Rules
 

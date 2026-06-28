@@ -32,7 +32,6 @@ from .prepared_runtime import SouthStarPreparedMol
 from .prepared_runtime import SouthStarRuntimeOptions
 from .prepared_runtime import component_root_domains_for_prepared
 from .prepared_runtime import require_exhaustive_runtime_options
-from .prepared_runtime import require_writer_shaped_runtime_options
 from .prepared_runtime import runtime_root_atom
 from .prepared_runtime import runtime_root_atom_for_prepared
 from .semantics import ParserSemantics
@@ -375,16 +374,7 @@ def make_branch_preserving_online_decoder(
     execution_mode: OnlineDecoderExecutionMode = OnlineDecoderExecutionMode.PREFIX_REPLAY,
     runtime_options: SouthStarRuntimeOptions = SouthStarRuntimeOptions(),
 ) -> SouthStarOnlineDecoder:
-    if runtime_options.serialization_language is SerializationLanguageMode.WRITER_SHAPED:
-        return _make_writer_shaped_online_decoder_from_generic_factory(
-            prepared=prepared,
-            facts=facts,
-            policy=policy,
-            semantics=semantics,
-            runtime_options=runtime_options,
-            include_eos=include_eos,
-            execution_mode=execution_mode,
-        )
+    _reject_writer_shaped_generic_online_factory(runtime_options)
     facts, policy, semantics, templates, graph_index = _resolve_decoder_inputs(
         prepared=prepared,
         facts=facts,
@@ -424,16 +414,7 @@ def make_determinized_online_decoder(
     execution_mode: OnlineDecoderExecutionMode = OnlineDecoderExecutionMode.PREFIX_REPLAY,
     runtime_options: SouthStarRuntimeOptions = SouthStarRuntimeOptions(),
 ) -> SouthStarOnlineDecoder:
-    if runtime_options.serialization_language is SerializationLanguageMode.WRITER_SHAPED:
-        return _make_writer_shaped_online_decoder_from_generic_factory(
-            prepared=prepared,
-            facts=facts,
-            policy=policy,
-            semantics=semantics,
-            runtime_options=runtime_options,
-            include_eos=include_eos,
-            execution_mode=execution_mode,
-        )
+    _reject_writer_shaped_generic_online_factory(runtime_options)
     facts, policy, semantics, templates, graph_index = _resolve_decoder_inputs(
         prepared=prepared,
         facts=facts,
@@ -462,35 +443,17 @@ def make_determinized_online_decoder(
     )
 
 
-def _make_writer_shaped_online_decoder_from_generic_factory(
-    *,
-    prepared: SouthStarPreparedMol | None,
-    facts: MoleculeFacts | None,
-    policy: SmilesPolicy | None,
-    semantics: ParserSemantics | None,
+def _reject_writer_shaped_generic_online_factory(
     runtime_options: SouthStarRuntimeOptions,
-    include_eos: bool,
-    execution_mode: OnlineDecoderExecutionMode,
-) -> SouthStarOnlineDecoder:
-    if execution_mode is not OnlineDecoderExecutionMode.PREFIX_REPLAY:
-        raise ValueError(
-            "WRITER_SHAPED online decoder uses the live writer runtime, "
-            "not cached or residual continuation execution modes"
-        )
-    if prepared is None:
-        raise ValueError("WRITER_SHAPED online decoder requires prepared input")
-    if facts is not None or policy is not None or semantics is not None:
-        raise ValueError("prepared decoder input cannot be mixed with raw inputs")
+) -> None:
+    if runtime_options.serialization_language is not SerializationLanguageMode.WRITER_SHAPED:
+        return
 
-    # Keep the generic legacy factories as compatibility shims.  The named
-    # writer constructor owns WRITER_SHAPED construction, so future writer-only
-    # runtime options have one route to audit.
-    from .writer_online_decoder import make_writer_shaped_online_decoder
-
-    return make_writer_shaped_online_decoder(
-        prepared=prepared,
-        runtime_options=runtime_options,
-        include_eos=include_eos,
+    # WRITER_SHAPED has a dedicated prepared-only constructor so callers cannot
+    # smuggle it through legacy branch/compaction/execution-mode knobs.
+    raise ValueError(
+        "WRITER_SHAPED online decoding requires "
+        "writer_online_decoder.make_writer_shaped_online_decoder"
     )
 
 
@@ -556,12 +519,6 @@ def _runtime_root_atom_for_decoder(
     prepared: SouthStarPreparedMol | None,
     facts: MoleculeFacts,
 ) -> AtomId | None:
-    if runtime_options.serialization_language is SerializationLanguageMode.WRITER_SHAPED:
-        if prepared is None:
-            raise ValueError("WRITER_SHAPED online decoder requires prepared input")
-        require_writer_shaped_runtime_options(runtime_options)
-        return runtime_root_atom_for_prepared(runtime_options, prepared=prepared)
-
     require_exhaustive_runtime_options(
         runtime_options,
         facts=None if prepared is not None else facts,

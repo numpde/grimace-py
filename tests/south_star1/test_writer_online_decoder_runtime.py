@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import unittest
 
-from grimace._south_star1.online_decoder_api import OnlineDecoderExecutionMode
 from grimace._south_star1.online_decoder_api import SouthStarOnlineDecoderState
 from grimace._south_star1.online_decoder_api import WriterRuntimeOnlineStats
 from grimace._south_star1.online_decoder_api import make_branch_preserving_online_decoder
@@ -33,49 +32,50 @@ class WriterOnlineDecoderRuntimeTest(unittest.TestCase):
         )
 
         initial = decoder.initial_state()
+        result = initial.choices_with_stats()
         self.assertIsInstance(initial.raw_state, WriterRuntimeState)
+        self.assertIsInstance(result.stats, WriterRuntimeOnlineStats)
         self.assertEqual(_reachable_eos_prefixes(initial), set(support.strings))
 
-    def test_determinized_decoder_uses_writer_runtime_for_writer_shaped(self) -> None:
+    def test_named_writer_shaped_decoder_preserves_runtime_options(self) -> None:
         prepared = _prepare(cco_facts())
-        decoder = make_determinized_online_decoder(
+        options = _writer_options(rooted_at_atom=1)
+        decoder = make_writer_shaped_online_decoder(
             prepared=prepared,
-            runtime_options=_writer_options(),
-            include_eos=True,
-        )
-
-        state = decoder.initial_state()
-        result = state.choices_with_stats()
-
-        self.assertIsInstance(state.raw_state, WriterRuntimeState)
-        self.assertIsInstance(result.stats, WriterRuntimeOnlineStats)
-        self.assertEqual(result.stats.choice_count, len(result.choices))
-        self.assertFalse(result.stats.has_eos)
-        self.assertTrue(result.choices)
-
-    def test_writer_shaped_decoder_reaches_existing_writer_support(self) -> None:
-        prepared = _prepare(cco_facts())
-        decoder = make_determinized_online_decoder(
-            prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=options,
             include_eos=True,
         )
         support = enumerate_prepared_writer_shaped_support(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=options,
         )
 
+        self.assertEqual(decoder.runtime_options, options)
+        self.assertEqual(decoder.rooted_at_atom, 1)
         self.assertEqual(
             _reachable_eos_prefixes(decoder.initial_state()),
             set(support.strings),
         )
 
+    def test_generic_online_factories_reject_writer_shaped_runtime(self) -> None:
+        prepared = _prepare(cco_facts())
+        for factory in (
+            make_branch_preserving_online_decoder,
+            make_determinized_online_decoder,
+        ):
+            with self.subTest(factory=factory.__name__):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "make_writer_shaped_online_decoder",
+                ):
+                    factory(
+                        prepared=prepared,
+                        runtime_options=_writer_options(),
+                    )
+
     def test_writer_shaped_route_never_falls_through_to_legacy_raw_state(self) -> None:
         prepared = _prepare(cco_facts())
-        decoder = make_determinized_online_decoder(
-            prepared=prepared,
-            runtime_options=_writer_options(),
-        )
+        decoder = make_writer_shaped_online_decoder(prepared=prepared)
         invalid_state = SouthStarOnlineDecoderState(
             prefix="",
             raw_state=OnlineDecoderState(prefix=""),
@@ -84,36 +84,6 @@ class WriterOnlineDecoderRuntimeTest(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "non-writer state"):
             decoder.choices_with_stats(invalid_state)
-
-    def test_branch_preserving_factory_also_uses_writer_runtime(self) -> None:
-        prepared = _prepare(cco_facts())
-        decoder = make_branch_preserving_online_decoder(
-            prepared=prepared,
-            runtime_options=_writer_options(),
-        )
-
-        self.assertIsInstance(decoder.initial_state().raw_state, WriterRuntimeState)
-
-    def test_writer_shaped_online_decoder_requires_prepared_input(self) -> None:
-        prepared = _prepare(cco_facts())
-
-        with self.assertRaisesRegex(ValueError, "requires prepared input"):
-            make_determinized_online_decoder(
-                facts=prepared.facts,
-                policy=prepared.policy,
-                semantics=prepared.semantics,
-                runtime_options=_writer_options(),
-            )
-
-    def test_writer_shaped_online_decoder_rejects_legacy_execution_modes(self) -> None:
-        prepared = _prepare(cco_facts())
-
-        with self.assertRaisesRegex(ValueError, "live writer runtime"):
-            make_determinized_online_decoder(
-                prepared=prepared,
-                runtime_options=_writer_options(),
-                execution_mode=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
-            )
 
 
 def _reachable_eos_prefixes(state) -> set[str]:
@@ -144,8 +114,9 @@ def _prepare(facts):
     )
 
 
-def _writer_options() -> SouthStarRuntimeOptions:
+def _writer_options(*, rooted_at_atom: int = -1) -> SouthStarRuntimeOptions:
     return SouthStarRuntimeOptions(
+        rooted_at_atom=rooted_at_atom,
         serialization_language=SerializationLanguageMode.WRITER_SHAPED,
     )
 

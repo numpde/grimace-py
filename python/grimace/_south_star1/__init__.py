@@ -61,6 +61,7 @@ CORE_MODULES: tuple[str, ...] = (
     "writer_events",
     "writer_frontier",
     "writer_graph_obligations",
+    "writer_runtime",
     "writer_snapshot",
     "writer_state",
     "writer_stereo",

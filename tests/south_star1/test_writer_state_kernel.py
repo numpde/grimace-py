@@ -14420,12 +14420,15 @@ class WriterStateKernelTest(unittest.TestCase):
             source,
         )
 
-    def test_writer_support_image_uses_frontier_summary(self) -> None:
+    def test_writer_support_image_uses_runtime_facade(self) -> None:
         source = inspect.getsource(
-            writer_support._writer_support_image_from_cursor
+            writer_support._writer_support_image_from_runtime_state
         )
 
-        self.assertIn("_writer_frontier_summary", source)
+        self.assertIn("iter_writer_runtime_support", source)
+        self.assertIn("count_writer_runtime_support", source)
+        self.assertIn("count_writer_runtime_completions", source)
+        self.assertNotIn("_writer_frontier_summary", source)
         self.assertNotIn("count_writer_frontier_support(", source)
         self.assertNotIn("count_writer_cursor_completions(", source)
         self.assertNotIn("iter_writer_frontier_support(", source)
@@ -17198,25 +17201,19 @@ class WriterStateKernelTest(unittest.TestCase):
         prepared = _prepare(cco_facts())
         options = _writer_options(rooted_at_atom=0)
 
-        calls: list[writer_snapshot.WriterFrontierCursor] = []
-        original = (
-            writer_snapshot
-            ._initial_checked_writer_frontier_cursor
-        )
+        calls = []
+        original = writer_support.initial_writer_runtime_state
 
         def wrapped(*, prepared, runtime_options):
-            cursor = original(
+            state = original(
                 prepared=prepared,
                 runtime_options=runtime_options,
             )
-            calls.append(cursor)
-            return cursor
+            calls.append(state)
+            return state
 
         with patch(
-            (
-                "grimace._south_star1.writer_support.writer_snapshot"
-                "._initial_checked_writer_frontier_cursor"
-            ),
+            "grimace._south_star1.writer_support.initial_writer_runtime_state",
             side_effect=wrapped,
         ):
             image = enumerate_prepared_stereo_support(
@@ -17233,22 +17230,19 @@ class WriterStateKernelTest(unittest.TestCase):
         prepared = _prepare(cyclopropane_facts())
         options = _writer_options(rooted_at_atom=0)
 
-        helper_calls: list[writer_frontier_module.WriterFrontierCursor] = []
-        original_helper = (
-            writer_snapshot._initial_checked_writer_frontier_cursor
-        )
+        helper_calls = []
+        original_helper = writer_support.initial_writer_runtime_state
 
         def wrapped_helper(*, prepared, runtime_options):
-            cursor = original_helper(
+            state = original_helper(
                 prepared=prepared,
                 runtime_options=runtime_options,
             )
-            helper_calls.append(cursor)
-            return cursor
+            helper_calls.append(state)
+            return state
 
         with patch(
-            "grimace._south_star1.writer_support.writer_snapshot"
-            "._initial_checked_writer_frontier_cursor",
+            "grimace._south_star1.writer_support.initial_writer_runtime_state",
             side_effect=wrapped_helper,
         ), patch(
             "grimace._south_star1.writer_frontier.initial_writer_frontier_cursor",
@@ -17262,7 +17256,7 @@ class WriterStateKernelTest(unittest.TestCase):
             )
 
         self.assertEqual(len(helper_calls), 1)
-        transition_cursor = helper_calls[0]
+        transition_cursor = helper_calls[0].snapshot.cursor
         expected_distinct = count_writer_frontier_support(
             prepared,
             transition_cursor.support_state,

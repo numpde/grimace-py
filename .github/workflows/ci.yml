@@ -33,18 +33,10 @@ jobs:
       - uses: ./.github/actions/setup-python-rust
         with:
           python-version: "3.12"
-      - name: Create test environment
-        run: python -m venv .venv
-      - name: Install test tools
-        run: env -u CONDA_PREFIX .venv/bin/python -m pip install --upgrade pip maturin
-      - name: Install pinned RDKit fixture version
-        run: env -u CONDA_PREFIX .venv/bin/python -m pip install "rdkit==$RDKIT_FIXTURE_PIP_VERSION"
-      - name: Install pinned test dependencies
-        run: env -u CONDA_PREFIX .venv/bin/python -m pip install "z3-solver==4.16.0.0"
-      - name: Install package into test environment
-        run: env -u CONDA_PREFIX .venv/bin/maturin develop --release
+          source-tree-test-env: "true"
+          install-z3: "true"
       - name: Run South Star source-tree semantics suite
-        run: env -u CONDA_PREFIX .venv/bin/python -m unittest tests.run_south_star_semantics -q
+        run: env -u CONDA_PREFIX "$GRIMACE_CI_PYTHON" -m unittest tests.run_south_star_semantics -q
 
   rdkit-parity:
     runs-on: ubuntu-latest
@@ -53,16 +45,9 @@ jobs:
       - uses: ./.github/actions/setup-python-rust
         with:
           python-version: "3.12"
-      - name: Create test environment
-        run: python -m venv .venv
-      - name: Install test tools
-        run: env -u CONDA_PREFIX .venv/bin/python -m pip install --upgrade pip maturin
-      - name: Install pinned RDKit fixture version
-        run: env -u CONDA_PREFIX .venv/bin/python -m pip install "rdkit==$RDKIT_FIXTURE_PIP_VERSION"
-      - name: Install package into test environment
-        run: env -u CONDA_PREFIX .venv/bin/maturin develop --release
+          source-tree-test-env: "true"
       - name: Run pinned RDKit parity suite
-        run: env -u CONDA_PREFIX .venv/bin/python -m unittest tests.run_pinned_rdkit_parity -q
+        run: env -u CONDA_PREFIX "$GRIMACE_CI_PYTHON" -m unittest tests.run_pinned_rdkit_parity -q
 
   exact-public-invariants:
     runs-on: ubuntu-latest
@@ -71,16 +56,9 @@ jobs:
       - uses: ./.github/actions/setup-python-rust
         with:
           python-version: "3.12"
-      - name: Create test environment
-        run: python -m venv .venv
-      - name: Install test tools
-        run: env -u CONDA_PREFIX .venv/bin/python -m pip install --upgrade pip maturin
-      - name: Install pinned RDKit fixture version
-        run: env -u CONDA_PREFIX .venv/bin/python -m pip install "rdkit==$RDKIT_FIXTURE_PIP_VERSION"
-      - name: Install package into test environment
-        run: env -u CONDA_PREFIX .venv/bin/maturin develop --release
+          source-tree-test-env: "true"
       - name: Run exact public invariant suite
-        run: env -u CONDA_PREFIX .venv/bin/python -m unittest tests.run_exact_public_invariants -q
+        run: env -u CONDA_PREFIX "$GRIMACE_CI_PYTHON" -m unittest tests.run_exact_public_invariants -q
 
   package:
     runs-on: ubuntu-latest

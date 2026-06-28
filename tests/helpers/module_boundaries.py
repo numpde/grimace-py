@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+from collections.abc import Collection
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -29,9 +30,9 @@ class ModuleImportObservation:
 def scan_module_boundaries(
     path: Path,
     *,
-    banned_modules: set[str] | frozenset[str] = frozenset(),
-    banned_imported_names: set[str] | frozenset[str] = frozenset(),
-    banned_calls: set[str] | frozenset[str] = frozenset(),
+    banned_modules: Collection[str] = frozenset(),
+    banned_imported_names: Collection[str] = frozenset(),
+    banned_calls: Collection[str] = frozenset(),
 ) -> ModuleBoundaryScan:
     tree = ast.parse(path.read_text(encoding="utf-8"))
     imports: list[str] = []
@@ -43,11 +44,11 @@ def scan_module_boundaries(
             imports.extend(
                 alias.name
                 for alias in node.names
-                if _module_root(alias.name) in banned_modules
+                if _module_is_banned(alias.name, banned_modules)
             )
         if isinstance(node, ast.ImportFrom):
             module = node.module or ""
-            if _module_root(module) in banned_modules:
+            if _module_is_banned(module, banned_modules):
                 imports.append(module)
             imported_names.extend(
                 alias.name
@@ -79,7 +80,7 @@ def import_from_observations(
         if not isinstance(node, ast.ImportFrom):
             continue
         module = node.module or ""
-        if _module_root(module) != module_root:
+        if not _module_is_banned(module, {module_root}):
             continue
         observations.append(
             ModuleImportObservation(
@@ -94,8 +95,10 @@ def import_from_observations(
     return tuple(observations)
 
 
-def _module_root(module: str) -> str:
-    return module.split(".", 1)[0]
+def _module_is_banned(module: str, banned_modules: Collection[str]) -> bool:
+    if module in banned_modules:
+        return True
+    return any(part in banned_modules for part in module.split("."))
 
 
 def _call_name(node: ast.Call) -> str | None:

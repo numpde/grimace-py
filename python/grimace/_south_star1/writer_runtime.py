@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from collections.abc import Iterator
 from dataclasses import dataclass
+from dataclasses import replace
 
 from .errors import SouthStarError
 from .errors import SouthStarErrorKind
@@ -25,6 +26,7 @@ from .writer_frontier import WriterFrontierChoices
 from .writer_frontier import WriterFrontierCursor
 from .writer_frontier import WriterFrontierTerminal
 from .writer_snapshot import WriterDecoderBoundary
+from .writer_snapshot import WriterFrontierFrame
 from .writer_snapshot import WriterSearchSnapshot
 from .writer_snapshot import _checked_writer_frontier_choice_snapshot_from_snapshot
 from .writer_snapshot import _count_writer_completions_after_emitted_texts
@@ -439,15 +441,28 @@ def _writer_runtime_state_after_branch_transition(
     state: WriterRuntimeState,
     branch_transition: _WriterRuntimeBranchTransition,
 ) -> WriterRuntimeState:
-    return WriterRuntimeState(
-        _writer_search_snapshot_with_cursor_after_emitted_text(
-            state.snapshot,
-            prepared=prepared,
-            cursor=WriterFrontierCursor(
-                weighted_states=((branch_transition.successor_state, 1),)
-            ),
-        )
+    return _writer_runtime_state_with_cursor(
+        prepared=prepared,
+        state=state,
+        cursor=WriterFrontierCursor(
+            weighted_states=((branch_transition.successor_state, 1),)
+        ),
     )
+
+
+def _writer_runtime_state_with_cursor(
+    *,
+    prepared: SouthStarPreparedMol,
+    state: WriterRuntimeState,
+    cursor: WriterFrontierCursor,
+) -> WriterRuntimeState:
+    snapshot = replace(
+        state.snapshot,
+        cursor=cursor,
+        frame_stack=(WriterFrontierFrame(cursor),),
+    )
+    validate_writer_search_snapshot(snapshot, prepared=prepared)
+    return WriterRuntimeState(snapshot)
 
 
 def count_writer_runtime_support(
@@ -534,12 +549,10 @@ def _count_writer_runtime_branch_completions_for_state_key(
             "writer branch-completion count encountered a recursive state",
         )
 
-    single_state = WriterRuntimeState(
-        _writer_search_snapshot_with_cursor_after_emitted_text(
-            state.snapshot,
-            prepared=prepared,
-            cursor=WriterFrontierCursor(weighted_states=((state_key, 1),)),
-        )
+    single_state = _writer_runtime_state_with_cursor(
+        prepared=prepared,
+        state=state,
+        cursor=WriterFrontierCursor(weighted_states=((state_key, 1),)),
     )
     branch_batch = _writer_runtime_branch_transition_batch(
         prepared=prepared,

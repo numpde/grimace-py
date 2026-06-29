@@ -30,7 +30,10 @@ class WriterRuntimeBoundaryTest(unittest.TestCase):
                 "writer_support",
             },
             banned_calls={
+                "count_writer_runtime_completions",
+                "count_writer_runtime_support",
                 "enumerate_prepared_writer_shaped_support",
+                "iter_writer_runtime_support",
                 "make_writer_shaped_online_decoder",
             },
         )
@@ -51,6 +54,7 @@ class WriterRuntimeBoundaryTest(unittest.TestCase):
             banned_calls={
                 "count_writer_cursor_completions",
                 "count_writer_frontier_support",
+                "count_writer_runtime_branch_completions",
                 "initial_writer_frontier_cursor",
                 "iter_writer_frontier_support",
             },

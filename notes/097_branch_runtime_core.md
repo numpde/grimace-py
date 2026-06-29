@@ -33,6 +33,7 @@ snapshot.
 raw writer transitions
   -> checked frontier schedule outcome
   -> branch-preserving runtime supports
+  -> branch-provenance successor states
   -> text/determinized runtime choices from the same schedule
   -> adapters: writer_online_decoder, writer_support, snapshots
 ```
@@ -40,13 +41,14 @@ raw writer transitions
 This is still an intermediate inversion point. The checked frontier schedule
 lives in `writer_frontier.py`; the public text snapshot remains the adapter
 surface. The branch-preserving runtime layer now consumes the schedule's raw
-supports beneath that text projection and keeps the projection tied to the same
-checked schedule.
+supports beneath that text projection and can package exact successor runtime
+states by branch provenance.
 
 `count_writer_runtime_branch_completions(...)` is the first consumer of the
 branch-preserving layer. It counts completions by memoized recursion over
 canonical writer state keys and does not materialize support strings or route
-through the support-image adapter.
+through the support-image adapter. It uses the branch-provenance successor
+packaging rather than advancing by emitted text.
 
 ## Guardrails
 

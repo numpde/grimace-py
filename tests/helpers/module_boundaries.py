@@ -20,6 +20,18 @@ class ModuleBoundaryScan:
     banned_imported_names: tuple[str, ...]
     banned_calls: tuple[str, ...]
 
+    @property
+    def violations(self) -> tuple[str, ...]:
+        return (
+            *(f"import:{module}" for module in self.banned_imports),
+            *(f"imported-name:{name}" for name in self.banned_imported_names),
+            *(f"call:{name}" for name in self.banned_calls),
+        )
+
+    @property
+    def clean(self) -> bool:
+        return not self.violations
+
 
 @dataclass(frozen=True, slots=True)
 class ModuleImportObservation:

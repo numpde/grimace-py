@@ -57,6 +57,18 @@ class WriterLocalOrderClosed:
 
 
 @dataclass(frozen=True, slots=True)
+class WriterRingLabelAllocated:
+    label: "WriterClosureLabel"
+    source: Literal["fresh", "reused"]
+
+
+@dataclass(frozen=True, slots=True)
+class WriterRingLabelReleased:
+    label: "WriterClosureLabel"
+    destination: Literal["reusable"] = "reusable"
+
+
+@dataclass(frozen=True, slots=True)
 class WriterRingEndpointEmitted:
     bond: BondId
     endpoint_atom: AtomId
@@ -89,6 +101,8 @@ WriterEvent: TypeAlias = (
     | WriterBranchClosed
     | WriterComponentBoundaryEmitted
     | WriterLocalOrderClosed
+    | WriterRingLabelAllocated
+    | WriterRingLabelReleased
     | WriterRingEndpointEmitted
     | WriterRingEndpointPaired
 )
@@ -121,6 +135,20 @@ def writer_event_sort_tuple(event: WriterEvent) -> tuple[object, ...]:
         return ("component_boundary", int(event.next_root))
     if isinstance(event, WriterLocalOrderClosed):
         return ("local_order_closed", int(event.atom))
+    if isinstance(event, WriterRingLabelAllocated):
+        return (
+            "ring_label_allocated",
+            event.label.value,
+            event.label.text,
+            event.source,
+        )
+    if isinstance(event, WriterRingLabelReleased):
+        return (
+            "ring_label_released",
+            event.label.value,
+            event.label.text,
+            event.destination,
+        )
     if isinstance(event, WriterRingEndpointEmitted):
         return (
             "ring_endpoint",
@@ -162,5 +190,7 @@ __all__ = (
     "WriterLocalOrderClosed",
     "WriterRingEndpointEmitted",
     "WriterRingEndpointPaired",
+    "WriterRingLabelAllocated",
+    "WriterRingLabelReleased",
     "writer_event_sort_tuple",
 )

@@ -35,6 +35,7 @@ raw writer transitions
   -> checked frontier schedule outcome
   -> branch-preserving runtime supports
   -> branch-provenance successor states
+  -> branch-local lifecycle events
   -> text/determinized runtime choices from the same schedule
   -> adapters: writer_online_decoder, writer_support, snapshots
 ```
@@ -42,6 +43,12 @@ raw writer transitions
 Branch successor states are selected by branch provenance, not by emitted text.
 They still use the same token-boundary snapshot packaging as checked text
 successors so decoder-boundary accounting observes one selected writer step.
+
+Ring label allocation/release is exposed as branch-local lifecycle events on the
+runtime branch transition. Opening a closure endpoint emits label allocation
+evidence before the endpoint event; pairing a closure endpoint emits label
+release evidence after the pair event. The state update remains authoritative:
+allocated/reusable label accounting is read from the exact branch successor.
 
 `count_writer_runtime_completions(...)` and
 `count_writer_runtime_branch_completions(...)` both consume the branch-preserving

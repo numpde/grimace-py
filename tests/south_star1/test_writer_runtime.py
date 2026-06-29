@@ -11,6 +11,7 @@ from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import enumerate_prepared_writer_shaped_support
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
 from grimace._south_star1.writer_frontier import WriterFrontierCursor
+from grimace._south_star1.writer_runtime import _writer_runtime_branch_choice_transitions
 from grimace._south_star1.writer_runtime import _writer_runtime_branch_transition_batch
 from grimace._south_star1.writer_runtime import advance_writer_runtime_state
 from grimace._south_star1.writer_runtime import count_writer_runtime_branch_completions
@@ -118,6 +119,38 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             self.assertEqual(
                 choice.immediate_multiplicity,
                 sum(weighted_successors.values()),
+            )
+
+    def test_branch_transitions_package_provenance_successors(self) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+
+        branch_state_transitions = _writer_runtime_branch_choice_transitions(
+            prepared=prepared,
+            state=state,
+            include_counts=True,
+        )
+        batch = branch_state_transitions.batch
+        branch_text_counts = Counter(
+            transition.branch_transition.emitted_text
+            for transition in branch_state_transitions.transitions
+        )
+
+        self.assertEqual(
+            tuple(transition.branch_transition for transition in branch_state_transitions.transitions),
+            batch.branch_transitions,
+        )
+        self.assertGreater(max(branch_text_counts.values()), 1)
+        for transition in branch_state_transitions.transitions:
+            branch = transition.branch_transition
+            self.assertEqual(
+                transition.next_state.snapshot.cursor,
+                WriterFrontierCursor(
+                    weighted_states=((branch.successor_state, 1),)
+                ),
             )
 
     def test_diagnostics_observe_live_frontier_without_classifying_support(self) -> None:

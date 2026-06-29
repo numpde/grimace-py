@@ -24,7 +24,6 @@ from .writer_frontier import _writer_frontier_choice_snapshot_from_schedule_outc
 from .writer_snapshot import WriterDecoderBoundary
 from .writer_snapshot import WriterFrontierFrame
 from .writer_snapshot import WriterSearchSnapshot
-from .writer_snapshot import _count_writer_completions_after_emitted_texts
 from .writer_snapshot import _count_writer_frontier_support_after_emitted_texts
 from .writer_snapshot import _iter_writer_frontier_support_suffixes_after_emitted_texts
 from .writer_snapshot import _writer_frontier_choice_snapshot_from_snapshot
@@ -432,10 +431,9 @@ def count_writer_runtime_completions(
     prepared: SouthStarPreparedMol,
     state: WriterRuntimeState,
 ) -> int:
-    return _count_writer_completions_after_emitted_texts(
-        state.snapshot,
+    return count_writer_runtime_branch_completions(
         prepared=prepared,
-        emitted_texts=(),
+        state=state,
     )
 
 

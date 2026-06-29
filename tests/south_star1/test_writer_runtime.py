@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import unittest
+from collections import Counter
 
 from grimace._south_star1.policy import SerializationLanguageMode
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import enumerate_prepared_writer_shaped_support
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
+from grimace._south_star1.writer_frontier import WriterFrontierCursor
 from grimace._south_star1.writer_runtime import _writer_runtime_branch_transition_batch
 from grimace._south_star1.writer_runtime import advance_writer_runtime_state
 from grimace._south_star1.writer_runtime import count_writer_runtime_branch_completions
@@ -96,6 +98,27 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             max(branch_texts.count(text) for text in set(branch_texts)),
             1,
         )
+        for choice in choices.choices:
+            weighted_successors = Counter(
+                {
+                    branch.successor_state: 0
+                    for branch in branch_batch.branch_transitions
+                    if branch.emitted_text == choice.emitted_text
+                }
+            )
+            for branch in branch_batch.branch_transitions:
+                if branch.emitted_text == choice.emitted_text:
+                    weighted_successors[branch.successor_state] += branch.parent_weight
+            self.assertEqual(
+                choice.successor,
+                WriterFrontierCursor(
+                    weighted_states=tuple(weighted_successors.items())
+                ),
+            )
+            self.assertEqual(
+                choice.immediate_multiplicity,
+                sum(weighted_successors.values()),
+            )
 
     def test_diagnostics_observe_live_frontier_without_classifying_support(self) -> None:
         prepared = _prepare(cco_facts())

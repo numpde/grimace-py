@@ -12,6 +12,8 @@ from collections.abc import Callable
 from collections.abc import Iterator
 from dataclasses import dataclass
 
+from .errors import SouthStarError
+from .errors import SouthStarErrorKind
 from .prepared_runtime import SouthStarPreparedMol
 from .prepared_runtime import SouthStarRuntimeOptions
 from .writer_capabilities import _unsupported_public_writer_execution_capabilities
@@ -20,6 +22,7 @@ from .writer_execution_evidence import writer_graph_obligation_work_envelope_vio
 from .writer_execution_evidence import writer_residual_work_envelope_violation
 from .writer_frontier import WriterFrontierChoice
 from .writer_frontier import WriterFrontierChoices
+from .writer_frontier import WriterFrontierCursor
 from .writer_frontier import WriterFrontierTerminal
 from .writer_snapshot import WriterDecoderBoundary
 from .writer_snapshot import WriterSearchSnapshot
@@ -430,6 +433,23 @@ def _writer_runtime_state_after_checked_choice(
     )
 
 
+def _writer_runtime_state_after_branch_transition(
+    *,
+    prepared: SouthStarPreparedMol,
+    state: WriterRuntimeState,
+    branch_transition: _WriterRuntimeBranchTransition,
+) -> WriterRuntimeState:
+    return WriterRuntimeState(
+        _writer_search_snapshot_with_cursor_after_emitted_text(
+            state.snapshot,
+            prepared=prepared,
+            cursor=WriterFrontierCursor(
+                weighted_states=((branch_transition.successor_state, 1),)
+            ),
+        )
+    )
+
+
 def count_writer_runtime_support(
     *,
     prepared: SouthStarPreparedMol,
@@ -457,6 +477,97 @@ def count_writer_runtime_completions(
     )
 
 
+def count_writer_runtime_branch_completions(
+    *,
+    prepared: SouthStarPreparedMol,
+    state: WriterRuntimeState,
+) -> int:
+    """Count branch-preserving completions without materializing strings.
+
+    This is intentionally separate from support-string counting.  It follows the
+    checked live transition supports and memoizes by canonical successor state.
+    """
+
+    return _count_writer_runtime_branch_completions(
+        prepared=prepared,
+        state=state,
+        memo={},
+        active=frozenset(),
+    )
+
+
+def _count_writer_runtime_branch_completions(
+    *,
+    prepared: SouthStarPreparedMol,
+    state: WriterRuntimeState,
+    memo: dict[object, int],
+    active: frozenset[object],
+) -> int:
+    cursor = state.snapshot.cursor
+    total = 0
+
+    for state_key, weight in cursor.weighted_states:
+        total += weight * _count_writer_runtime_branch_completions_for_state_key(
+            prepared=prepared,
+            state=state,
+            state_key=state_key,
+            memo=memo,
+            active=active,
+        )
+
+    return total
+
+
+def _count_writer_runtime_branch_completions_for_state_key(
+    *,
+    prepared: SouthStarPreparedMol,
+    state: WriterRuntimeState,
+    state_key: object,
+    memo: dict[object, int],
+    active: frozenset[object],
+) -> int:
+    if state_key in memo:
+        return memo[state_key]
+    if state_key in active:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "writer branch-completion count encountered a recursive state",
+        )
+
+    single_state = WriterRuntimeState(
+        _writer_search_snapshot_with_cursor_after_emitted_text(
+            state.snapshot,
+            prepared=prepared,
+            cursor=WriterFrontierCursor(weighted_states=((state_key, 1),)),
+        )
+    )
+    branch_batch = _writer_runtime_branch_transition_batch(
+        prepared=prepared,
+        state=single_state,
+        include_counts=False,
+    )
+    total = 0
+    if branch_batch.choices.terminal is not None:
+        total += branch_batch.choices.terminal.completion_count
+
+    next_active = active | frozenset((state_key,))
+    for branch_transition in branch_batch.branch_transitions:
+        successor_state = _writer_runtime_state_after_branch_transition(
+            prepared=prepared,
+            state=single_state,
+            branch_transition=branch_transition,
+        )
+        total += _count_writer_runtime_branch_completions(
+            prepared=prepared,
+            state=successor_state,
+            memo=memo,
+            active=next_active,
+        )
+
+    memo[state_key] = total
+    return total
+
+
 def iter_writer_runtime_support(
     *,
     prepared: SouthStarPreparedMol,
@@ -475,6 +586,7 @@ __all__ = (
     "WriterRuntimeDiagnostics",
     "WriterRuntimeState",
     "advance_writer_runtime_state",
+    "count_writer_runtime_branch_completions",
     "count_writer_runtime_completions",
     "count_writer_runtime_support",
     "initial_writer_runtime_state",

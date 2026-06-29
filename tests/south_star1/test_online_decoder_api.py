@@ -244,9 +244,7 @@ class OnlineDecoderApiTest(unittest.TestCase):
             },
         )
 
-        self.assertEqual(scan.banned_imports, ())
-        self.assertEqual(scan.banned_imported_names, ())
-        self.assertEqual(scan.banned_calls, ())
+        self.assertEqual(scan.violations, ())
 
     def _assert_eos_for_each_witness(self, facts: MoleculeFacts) -> None:
         decoder = _determinized_decoder(facts, include_eos=True)

@@ -106,12 +106,11 @@ class WriterRuntimeChoiceTransitions:
 
 
 @dataclass(frozen=True, slots=True)
-class _WriterRuntimeBranchTransition:
-    """One branch-preserving checked transition support.
+class WriterRuntimeBranchTransition:
+    """One checked branch-preserving transition plus its exact successor.
 
-    ``emitted_text`` is payload.  It is not the identity of this transition:
-    same-text supports intentionally remain separate until a text projection
-    groups them for the current public choice surface.
+    ``emitted_text`` is payload. It is not the identity of this transition:
+    same-text supports remain separate until a text projection groups them.
     """
 
     emitted_text: str
@@ -125,30 +124,23 @@ class _WriterRuntimeBranchTransition:
     execution_capabilities: frozenset[object]
     residual_work_evidence: tuple[object, ...]
     finite_relation_work_evidence: tuple[object, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class _WriterRuntimeBranchTransitionBatch:
-    """Checked text projection plus the branch-preserving supports below it."""
-
-    choices: WriterFrontierChoices
-    branch_transitions: tuple[_WriterRuntimeBranchTransition, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class _WriterRuntimeBranchStateTransition:
-    """A branch-preserving support paired with its exact successor state."""
-
-    branch_transition: _WriterRuntimeBranchTransition
     next_state: WriterRuntimeState
 
 
 @dataclass(frozen=True, slots=True)
-class _WriterRuntimeBranchStateTransitions:
-    """Branch-preserving checked supports plus provenance-successor states."""
+class WriterRuntimeBranchTransitions:
+    """Branch-preserving supports and the current text projection above them."""
 
-    batch: _WriterRuntimeBranchTransitionBatch
-    transitions: tuple[_WriterRuntimeBranchStateTransition, ...]
+    choices: WriterFrontierChoices
+    transitions: tuple[WriterRuntimeBranchTransition, ...]
+
+    @property
+    def branch_transitions(self) -> tuple[WriterRuntimeBranchTransition, ...]:
+        return self.transitions
+
+    @property
+    def terminal(self) -> WriterFrontierTerminal | None:
+        return self.choices.terminal
 
 
 @dataclass(frozen=True, slots=True)
@@ -332,7 +324,7 @@ def writer_runtime_choice_transitions(
     prepared: SouthStarPreparedMol,
     state: WriterRuntimeState,
 ) -> WriterRuntimeChoiceTransitions:
-    branch_batch = _writer_runtime_branch_transition_batch(
+    branch_batch = writer_runtime_branch_transitions(
         prepared=prepared,
         state=state,
         include_counts=True,
@@ -353,12 +345,12 @@ def writer_runtime_choice_transitions(
     )
 
 
-def _writer_runtime_branch_transition_batch(
+def writer_runtime_branch_transitions(
     *,
     prepared: SouthStarPreparedMol,
     state: WriterRuntimeState,
-    include_counts: bool,
-) -> _WriterRuntimeBranchTransitionBatch:
+    include_counts: bool = True,
+) -> WriterRuntimeBranchTransitions:
     validate_writer_search_snapshot(state.snapshot, prepared=prepared)
     schedule_outcome = _checked_writer_frontier_schedule_outcome(
         prepared,
@@ -369,11 +361,16 @@ def _writer_runtime_branch_transition_batch(
         schedule_outcome,
         include_counts=include_counts,
     )
-    branch_transitions: list[_WriterRuntimeBranchTransition] = []
+    branch_transitions: list[WriterRuntimeBranchTransition] = []
     for branch_ordinal, support in enumerate(schedule_outcome.next_token_supports):
         transition = support.schedule_support.transition
+        successor_state = _writer_runtime_state_for_successor_key(
+            prepared=prepared,
+            state=state,
+            successor_state=support.successor_key,
+        )
         branch_transitions.append(
-            _WriterRuntimeBranchTransition(
+            WriterRuntimeBranchTransition(
                 emitted_text=support.emitted_text,
                 source_state=support.state_key,
                 successor_state=support.successor_key,
@@ -385,39 +382,26 @@ def _writer_runtime_branch_transition_batch(
                 execution_capabilities=frozenset(support.execution_capabilities),
                 residual_work_evidence=tuple(support.residual_work_evidence),
                 finite_relation_work_evidence=tuple(support.finite_relation_work_evidence),
+                next_state=successor_state,
             )
         )
 
-    return _WriterRuntimeBranchTransitionBatch(
+    return WriterRuntimeBranchTransitions(
         choices=choice_snapshot.public_choices,
-        branch_transitions=tuple(branch_transitions),
+        transitions=tuple(branch_transitions),
     )
 
 
-def _writer_runtime_branch_choice_transitions(
+def _writer_runtime_branch_transition_batch(
     *,
     prepared: SouthStarPreparedMol,
     state: WriterRuntimeState,
-    include_counts: bool = False,
-) -> _WriterRuntimeBranchStateTransitions:
-    batch = _writer_runtime_branch_transition_batch(
+    include_counts: bool,
+) -> WriterRuntimeBranchTransitions:
+    return writer_runtime_branch_transitions(
         prepared=prepared,
         state=state,
         include_counts=include_counts,
-    )
-    return _WriterRuntimeBranchStateTransitions(
-        batch=batch,
-        transitions=tuple(
-            _WriterRuntimeBranchStateTransition(
-                branch_transition=branch_transition,
-                next_state=_writer_runtime_state_after_branch_transition(
-                    prepared=prepared,
-                    state=state,
-                    branch_transition=branch_transition,
-                ),
-            )
-            for branch_transition in batch.branch_transitions
-        ),
     )
 
 
@@ -484,14 +468,22 @@ def _writer_runtime_state_after_branch_transition(
     *,
     prepared: SouthStarPreparedMol,
     state: WriterRuntimeState,
-    branch_transition: _WriterRuntimeBranchTransition,
+    branch_transition: WriterRuntimeBranchTransition,
+) -> WriterRuntimeState:
+    del prepared, state
+    return branch_transition.next_state
+
+
+def _writer_runtime_state_for_successor_key(
+    *,
+    prepared: SouthStarPreparedMol,
+    state: WriterRuntimeState,
+    successor_state: object,
 ) -> WriterRuntimeState:
     return _writer_runtime_state_with_cursor(
         prepared=prepared,
         state=state,
-        cursor=WriterFrontierCursor(
-            weighted_states=((branch_transition.successor_state, 1),)
-        ),
+        cursor=WriterFrontierCursor(weighted_states=((successor_state, 1),)),
     )
 
 
@@ -599,20 +591,20 @@ def _count_writer_runtime_branch_completions_for_state_key(
         state=state,
         cursor=WriterFrontierCursor(weighted_states=((state_key, 1),)),
     )
-    branch_transitions = _writer_runtime_branch_choice_transitions(
+    branch_batch = writer_runtime_branch_transitions(
         prepared=prepared,
         state=single_state,
         include_counts=False,
     )
     total = 0
-    if branch_transitions.batch.choices.terminal is not None:
-        total += branch_transitions.batch.choices.terminal.completion_count
+    if branch_batch.terminal is not None:
+        total += branch_batch.terminal.completion_count
 
     next_active = active | frozenset((state_key,))
-    for branch_state_transition in branch_transitions.transitions:
+    for branch_transition in branch_batch.transitions:
         total += _count_writer_runtime_branch_completions(
             prepared=prepared,
-            state=branch_state_transition.next_state,
+            state=branch_transition.next_state,
             memo=memo,
             active=next_active,
         )
@@ -634,6 +626,8 @@ def iter_writer_runtime_support(
 
 
 __all__ = (
+    "WriterRuntimeBranchTransition",
+    "WriterRuntimeBranchTransitions",
     "WriterRuntimeChoiceTransition",
     "WriterRuntimeChoiceTransitions",
     "WriterRuntimeDiagnostics",
@@ -644,6 +638,7 @@ __all__ = (
     "count_writer_runtime_support",
     "initial_writer_runtime_state",
     "iter_writer_runtime_support",
+    "writer_runtime_branch_transitions",
     "writer_runtime_choice_transitions",
     "writer_runtime_choices",
     "writer_runtime_diagnostics",

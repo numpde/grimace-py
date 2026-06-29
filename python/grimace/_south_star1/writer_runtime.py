@@ -144,6 +144,18 @@ class WriterRuntimeBranchTransitions:
 
 
 @dataclass(frozen=True, slots=True)
+class _WriterRuntimeBranchChoiceTransition:
+    branch_transition: WriterRuntimeBranchTransition
+    next_state: WriterRuntimeState
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterRuntimeBranchChoiceTransitions:
+    batch: WriterRuntimeBranchTransitions
+    transitions: tuple[_WriterRuntimeBranchChoiceTransition, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class WriterRuntimeDiagnostics:
     """Raw live-frontier evidence for debugging and audit surfaces.
 
@@ -402,6 +414,29 @@ def _writer_runtime_branch_transition_batch(
         prepared=prepared,
         state=state,
         include_counts=include_counts,
+    )
+
+
+def _writer_runtime_branch_choice_transitions(
+    *,
+    prepared: SouthStarPreparedMol,
+    state: WriterRuntimeState,
+    include_counts: bool,
+) -> _WriterRuntimeBranchChoiceTransitions:
+    batch = writer_runtime_branch_transitions(
+        prepared=prepared,
+        state=state,
+        include_counts=include_counts,
+    )
+    return _WriterRuntimeBranchChoiceTransitions(
+        batch=batch,
+        transitions=tuple(
+            _WriterRuntimeBranchChoiceTransition(
+                branch_transition=transition,
+                next_state=transition.next_state,
+            )
+            for transition in batch.transitions
+        ),
     )
 
 

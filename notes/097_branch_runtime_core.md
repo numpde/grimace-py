@@ -43,11 +43,11 @@ Branch successor states are selected by branch provenance, not by emitted text.
 They still use the same token-boundary snapshot packaging as checked text
 successors so decoder-boundary accounting observes one selected writer step.
 
-`count_writer_runtime_branch_completions(...)` is the first consumer of the
-branch-preserving layer. It counts completions by memoized recursion over
-canonical writer state keys and does not materialize support strings or route
-through the support-image adapter. It uses branch-provenance successor packaging
-rather than advancing by emitted text.
+`count_writer_runtime_completions(...)` and
+`count_writer_runtime_branch_completions(...)` both consume the branch-preserving
+layer. They count completions by memoized recursion over canonical writer state
+keys and do not materialize support strings or route through the support-image
+adapter. Distinct-string support count and support streaming remain text adapters.
 
 ## Guardrails
 

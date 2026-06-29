@@ -348,27 +348,25 @@ def _writer_runtime_branch_transition_batch(
         include_counts=include_counts,
     )
     branch_transitions: list[_WriterRuntimeBranchTransition] = []
-    branch_ordinal = 0
-
-    for choice in choice_snapshot.choices:
-        for support in choice.supports:
-            transition = support.schedule_support.transition
-            branch_transitions.append(
-                _WriterRuntimeBranchTransition(
-                    emitted_text=choice.emitted_text,
-                    source_state=support.state_key,
-                    successor_state=support.successor_key,
-                    parent_weight=support.parent_weight,
-                    branch_ordinal=branch_ordinal,
-                    transition_kind=transition.kind,
-                    events=transition.events,
-                    evidence=transition.evidence,
-                    execution_capabilities=frozenset(support.execution_capabilities),
-                    residual_work_evidence=tuple(support.residual_work_evidence),
-                    finite_relation_work_evidence=tuple(support.finite_relation_work_evidence),
-                )
+    for branch_ordinal, support in enumerate(
+        choice_snapshot.schedule_outcome.next_token_supports
+    ):
+        transition = support.schedule_support.transition
+        branch_transitions.append(
+            _WriterRuntimeBranchTransition(
+                emitted_text=support.emitted_text,
+                source_state=support.state_key,
+                successor_state=support.successor_key,
+                parent_weight=support.parent_weight,
+                branch_ordinal=branch_ordinal,
+                transition_kind=transition.kind,
+                events=transition.events,
+                evidence=transition.evidence,
+                execution_capabilities=frozenset(support.execution_capabilities),
+                residual_work_evidence=tuple(support.residual_work_evidence),
+                finite_relation_work_evidence=tuple(support.finite_relation_work_evidence),
             )
-            branch_ordinal += 1
+        )
 
     return _WriterRuntimeBranchTransitionBatch(
         choices=choice_snapshot.public_choices,

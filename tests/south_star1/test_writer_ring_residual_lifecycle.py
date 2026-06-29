@@ -5,6 +5,11 @@ from __future__ import annotations
 import unittest
 from collections import deque
 
+from grimace._south_star1.facts import ComponentFacts
+from grimace._south_star1.facts import MoleculeFacts
+from grimace._south_star1.ids import AtomId
+from grimace._south_star1.ids import BondId
+from grimace._south_star1.ids import ComponentId
 from grimace._south_star1.policy import SerializationLanguageMode
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
@@ -17,7 +22,9 @@ from grimace._south_star1.writer_runtime import WriterRuntimeState
 from grimace._south_star1.writer_runtime import count_writer_runtime_branch_completions
 from grimace._south_star1.writer_runtime import initial_writer_runtime_state
 from grimace._south_star1.writer_runtime import writer_runtime_branch_transitions
+from tests.south_star1.helpers import atom
 from tests.south_star1.helpers import cyclopropane_facts
+from tests.south_star1.helpers import single_bond
 
 
 class WriterRingResidualLifecycleTest(unittest.TestCase):
@@ -144,6 +151,130 @@ class WriterRingResidualLifecycleTest(unittest.TestCase):
             0,
         )
 
+    def test_released_ring_label_is_reused_by_later_component_closure(self) -> None:
+        prepared = _prepare(_two_independent_cyclopropane_components_facts())
+        initial = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+
+        first_open = _find_branch_transition(
+            prepared,
+            initial,
+            "open_closure_endpoint",
+        )
+        first_allocated = _single_event(
+            first_open.events,
+            WriterRingLabelAllocated,
+        )
+        first_opened_state = _single_state_key(first_open.next_state)
+        first_endpoint = first_opened_state.ring_state.open_endpoints[0]
+        self.assertEqual(first_allocated.source, "fresh")
+        self.assertEqual(first_endpoint.label, first_allocated.label)
+
+        first_pair = _find_branch_transition(
+            prepared,
+            first_open.next_state,
+            "pair_closure_endpoint",
+        )
+        first_released = _single_event(
+            first_pair.events,
+            WriterRingLabelReleased,
+        )
+        first_paired_state = _single_state_key(first_pair.next_state)
+        first_closure = first_paired_state.ring_state.closed_closures[0]
+
+        self.assertEqual(first_released.label, first_allocated.label)
+        self.assertEqual(first_paired_state.ring_state.open_endpoints, ())
+        self.assertEqual(len(first_paired_state.ring_state.closed_closures), 1)
+        self.assertNotIn(
+            first_released.label,
+            first_paired_state.ring_state.label_state.allocated,
+        )
+        self.assertIn(
+            first_released.label,
+            first_paired_state.ring_state.label_state.reusable,
+        )
+        self.assertGreater(
+            count_writer_runtime_branch_completions(
+                prepared=prepared,
+                state=first_pair.next_state,
+            ),
+            0,
+        )
+
+        second_open = _find_branch_transition(
+            prepared,
+            first_pair.next_state,
+            "open_closure_endpoint",
+            predicate=lambda branch: _has_label_allocation_source(
+                branch,
+                "reused",
+            ),
+        )
+        second_allocated = _single_event(
+            second_open.events,
+            WriterRingLabelAllocated,
+        )
+        second_opened_state = _single_state_key(second_open.next_state)
+        second_endpoint = second_opened_state.ring_state.open_endpoints[0]
+
+        self.assertEqual(second_allocated.source, "reused")
+        self.assertEqual(second_allocated.label, first_released.label)
+        self.assertEqual(second_endpoint.label, first_released.label)
+        self.assertNotEqual(second_endpoint.bond, first_closure.bond)
+        self.assertEqual(len(second_opened_state.ring_state.closed_closures), 1)
+        self.assertIn(
+            second_allocated.label,
+            second_opened_state.ring_state.label_state.allocated,
+        )
+        self.assertNotIn(
+            second_allocated.label,
+            second_opened_state.ring_state.label_state.reusable,
+        )
+
+        second_pair = _find_branch_transition(
+            prepared,
+            second_open.next_state,
+            "pair_closure_endpoint",
+        )
+        second_paired = _single_event(
+            second_pair.events,
+            WriterRingEndpointPaired,
+        )
+        second_released = _single_event(
+            second_pair.events,
+            WriterRingLabelReleased,
+        )
+        second_paired_state = _single_state_key(second_pair.next_state)
+
+        self.assertEqual(second_paired.label, first_released.label)
+        self.assertEqual(second_released.label, first_released.label)
+        self.assertEqual(second_released.destination, "reusable")
+        self.assertEqual(second_paired_state.ring_state.open_endpoints, ())
+        self.assertEqual(len(second_paired_state.ring_state.closed_closures), 2)
+        self.assertNotIn(
+            first_released.label,
+            second_paired_state.ring_state.label_state.allocated,
+        )
+        self.assertIn(
+            first_released.label,
+            second_paired_state.ring_state.label_state.reusable,
+        )
+        self.assertTrue(
+            any(
+                evidence.relation_kind == "closure_endpoint"
+                for evidence in second_pair.finite_relation_work_evidence
+            )
+        )
+        self.assertGreater(
+            count_writer_runtime_branch_completions(
+                prepared=prepared,
+                state=second_pair.next_state,
+            ),
+            0,
+        )
+
 
 def _single_event(events, event_type):
     matches = tuple(event for event in events if isinstance(event, event_type))
@@ -166,11 +297,17 @@ def _single_state_key(state: WriterRuntimeState):
     return state_key
 
 
-def _find_branch_transition(prepared, state, kind_value: str):
+def _find_branch_transition(
+    prepared,
+    state,
+    kind_value: str,
+    *,
+    predicate=None,
+):
     pending = deque((state,))
     seen = set()
 
-    while pending and len(seen) < 512:
+    while pending and len(seen) < 4096:
         current = pending.popleft()
         cursor = current.snapshot.cursor
         if cursor in seen:
@@ -183,11 +320,46 @@ def _find_branch_transition(prepared, state, kind_value: str):
             include_counts=True,
         )
         for branch in branches.transitions:
-            if getattr(branch.transition_kind, "value", None) == kind_value:
+            if getattr(branch.transition_kind, "value", None) != kind_value:
+                continue
+            if predicate is None or predicate(branch):
                 return branch
         pending.extend(branch.next_state for branch in branches.transitions)
 
     raise AssertionError(f"did not find writer branch transition kind {kind_value!r}")
+
+
+def _has_label_allocation_source(branch, source: str) -> bool:
+    return any(
+        isinstance(event, WriterRingLabelAllocated) and event.source == source
+        for event in branch.events
+    )
+
+
+def _two_independent_cyclopropane_components_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=tuple(atom(index, "C") for index in range(6)),
+        bonds=(
+            single_bond(0, 0, 1),
+            single_bond(1, 1, 2),
+            single_bond(2, 2, 0),
+            single_bond(3, 3, 4),
+            single_bond(4, 4, 5),
+            single_bond(5, 5, 3),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0), AtomId(1), AtomId(2)),
+                bonds=(BondId(0), BondId(1), BondId(2)),
+            ),
+            ComponentFacts(
+                id=ComponentId(1),
+                atoms=(AtomId(3), AtomId(4), AtomId(5)),
+                bonds=(BondId(3), BondId(4), BondId(5)),
+            ),
+        ),
+    )
 
 
 def _prepare(facts):

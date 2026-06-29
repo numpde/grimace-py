@@ -221,7 +221,7 @@ def _writer_work_envelope_violations(evidence: tuple[object, ...], violation_che
 
 
 def writer_runtime_choices(*, prepared: SouthStarPreparedMol, state: WriterRuntimeState) -> WriterFrontierChoices:
-    return resume_writer_frontier_choices_from_snapshot(state.snapshot, prepared=prepared)
+    return writer_runtime_branch_transitions(prepared=prepared, state=state, include_counts=True).choices
 
 
 def writer_runtime_choice_transitions(*, prepared: SouthStarPreparedMol, state: WriterRuntimeState) -> WriterRuntimeChoiceTransitions:

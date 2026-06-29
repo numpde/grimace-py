@@ -50,6 +50,13 @@ evidence before the endpoint event; pairing a closure endpoint emits label
 release evidence after the pair event. The state update remains authoritative:
 allocated/reusable label accounting is read from the exact branch successor.
 
+Ring-label lifecycle derivation now lives in `writer_ring_lifecycle.py` as an
+idempotent writer event-stream augmentation. `writer_runtime.py` consumes that
+helper rather than owning ring-specific decoration. This keeps the runtime
+compatible with the intended next step: raw writer transitions can carry the
+same lifecycle events directly, and the runtime branch surface will not duplicate
+them.
+
 `count_writer_runtime_completions(...)` and
 `count_writer_runtime_branch_completions(...)` both consume the branch-preserving
 layer. They count completions by memoized recursion over canonical writer state

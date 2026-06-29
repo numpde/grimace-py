@@ -11,14 +11,13 @@ from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import enumerate_prepared_writer_shaped_support
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
 from grimace._south_star1.writer_frontier import WriterFrontierCursor
-from grimace._south_star1.writer_runtime import _writer_runtime_branch_choice_transitions
-from grimace._south_star1.writer_runtime import _writer_runtime_branch_transition_batch
 from grimace._south_star1.writer_runtime import advance_writer_runtime_state
 from grimace._south_star1.writer_runtime import count_writer_runtime_branch_completions
 from grimace._south_star1.writer_runtime import count_writer_runtime_completions
 from grimace._south_star1.writer_runtime import count_writer_runtime_support
 from grimace._south_star1.writer_runtime import initial_writer_runtime_state
 from grimace._south_star1.writer_runtime import iter_writer_runtime_support
+from grimace._south_star1.writer_runtime import writer_runtime_branch_transitions
 from grimace._south_star1.writer_runtime import writer_runtime_choice_transitions
 from grimace._south_star1.writer_runtime import writer_runtime_choices
 from grimace._south_star1.writer_runtime import writer_runtime_diagnostics
@@ -71,7 +70,7 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             runtime_options=_writer_options(),
         )
 
-        branch_batch = _writer_runtime_branch_transition_batch(
+        branch_batch = writer_runtime_branch_transitions(
             prepared=prepared,
             state=state,
             include_counts=True,
@@ -128,28 +127,26 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             runtime_options=_writer_options(),
         )
 
-        branch_state_transitions = _writer_runtime_branch_choice_transitions(
+        branch_transitions = writer_runtime_branch_transitions(
             prepared=prepared,
             state=state,
             include_counts=True,
         )
-        batch = branch_state_transitions.batch
         branch_text_counts = Counter(
-            transition.branch_transition.emitted_text
-            for transition in branch_state_transitions.transitions
+            transition.emitted_text
+            for transition in branch_transitions.transitions
         )
 
         self.assertEqual(
-            tuple(transition.branch_transition for transition in branch_state_transitions.transitions),
-            batch.branch_transitions,
+            branch_transitions.branch_transitions,
+            branch_transitions.transitions,
         )
         self.assertGreater(max(branch_text_counts.values()), 1)
-        for transition in branch_state_transitions.transitions:
-            branch = transition.branch_transition
+        for transition in branch_transitions.transitions:
             self.assertEqual(
                 transition.next_state.snapshot.cursor,
                 WriterFrontierCursor(
-                    weighted_states=((branch.successor_state, 1),)
+                    weighted_states=((transition.successor_state, 1),)
                 ),
             )
 

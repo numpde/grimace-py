@@ -25,10 +25,11 @@ from .writer_frontier import WriterFrontierChoice
 from .writer_frontier import WriterFrontierChoices
 from .writer_frontier import WriterFrontierCursor
 from .writer_frontier import WriterFrontierTerminal
+from .writer_frontier import _checked_writer_frontier_schedule_outcome
+from .writer_frontier import _writer_frontier_choice_snapshot_from_schedule_outcome
 from .writer_snapshot import WriterDecoderBoundary
 from .writer_snapshot import WriterFrontierFrame
 from .writer_snapshot import WriterSearchSnapshot
-from .writer_snapshot import _checked_writer_frontier_choice_snapshot_from_snapshot
 from .writer_snapshot import _count_writer_completions_after_emitted_texts
 from .writer_snapshot import _count_writer_frontier_support_after_emitted_texts
 from .writer_snapshot import _iter_writer_frontier_support_suffixes_after_emitted_texts
@@ -342,15 +343,18 @@ def _writer_runtime_branch_transition_batch(
     state: WriterRuntimeState,
     include_counts: bool,
 ) -> _WriterRuntimeBranchTransitionBatch:
-    choice_snapshot = _checked_writer_frontier_choice_snapshot_from_snapshot(
-        state.snapshot,
-        prepared=prepared,
+    validate_writer_search_snapshot(state.snapshot, prepared=prepared)
+    schedule_outcome = _checked_writer_frontier_schedule_outcome(
+        prepared,
+        state.snapshot.cursor,
+    )
+    choice_snapshot = _writer_frontier_choice_snapshot_from_schedule_outcome(
+        prepared,
+        schedule_outcome,
         include_counts=include_counts,
     )
     branch_transitions: list[_WriterRuntimeBranchTransition] = []
-    for branch_ordinal, support in enumerate(
-        choice_snapshot.schedule_outcome.next_token_supports
-    ):
+    for branch_ordinal, support in enumerate(schedule_outcome.next_token_supports):
         transition = support.schedule_support.transition
         branch_transitions.append(
             _WriterRuntimeBranchTransition(

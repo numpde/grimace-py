@@ -22,12 +22,12 @@ projection must remain above the branch-preserving support layer.
 ## Current slice
 
 `writer_runtime.py` exposes the existing checked text projection through
-`writer_runtime_choice_transitions(...)`. Internally, it validates the retained
-snapshot, runs one checked frontier schedule, records branch-preserving supports
-from that schedule's raw `next_token_supports`, and projects the public text
-choices from the same schedule outcome. It no longer derives runtime branch
-supports from public text-choice entries or from a separately replayed text
-snapshot.
+`writer_runtime_choices(...)` and `writer_runtime_choice_transitions(...)`.
+Internally, it validates the retained snapshot, runs one checked frontier
+schedule, records branch-preserving supports from that schedule's raw
+`next_token_supports`, and projects the public text choices from the same
+schedule outcome. It no longer derives runtime branch supports from public
+text-choice entries or from a separately replayed text snapshot.
 
 ```text
 raw writer transitions

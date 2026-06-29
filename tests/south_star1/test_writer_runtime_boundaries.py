@@ -35,9 +35,7 @@ class WriterRuntimeBoundaryTest(unittest.TestCase):
             },
         )
 
-        self.assertEqual(scan.banned_imports, ())
-        self.assertEqual(scan.banned_imported_names, ())
-        self.assertEqual(scan.banned_calls, ())
+        self.assertEqual(scan.violations, ())
 
     def test_writer_support_adapter_routes_through_runtime(self) -> None:
         scan = scan_module_boundaries(
@@ -62,9 +60,7 @@ class WriterRuntimeBoundaryTest(unittest.TestCase):
             module_root="writer_snapshot",
         )
 
-        self.assertEqual(scan.banned_imports, ())
-        self.assertEqual(scan.banned_imported_names, ())
-        self.assertEqual(scan.banned_calls, ())
+        self.assertEqual(scan.violations, ())
         self.assertEqual(len(snapshot_imports), 1)
         self.assertTrue(snapshot_imports[0].inside_type_checking)
 

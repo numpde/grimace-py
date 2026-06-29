@@ -9,7 +9,9 @@ from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import enumerate_prepared_writer_shaped_support
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
+from grimace._south_star1.writer_runtime import _writer_runtime_branch_transition_batch
 from grimace._south_star1.writer_runtime import advance_writer_runtime_state
+from grimace._south_star1.writer_runtime import count_writer_runtime_branch_completions
 from grimace._south_star1.writer_runtime import count_writer_runtime_completions
 from grimace._south_star1.writer_runtime import count_writer_runtime_support
 from grimace._south_star1.writer_runtime import initial_writer_runtime_state
@@ -50,6 +52,49 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
         self.assertEqual(
             count_writer_runtime_completions(prepared=prepared, state=state),
             support.witness_count,
+        )
+        self.assertEqual(
+            count_writer_runtime_branch_completions(
+                prepared=prepared,
+                state=state,
+            ),
+            support.witness_count,
+        )
+
+    def test_branch_transition_batch_sits_below_text_projection(self) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+
+        branch_batch = _writer_runtime_branch_transition_batch(
+            prepared=prepared,
+            state=state,
+            include_counts=True,
+        )
+        choices = writer_runtime_choices(prepared=prepared, state=state)
+        branch_texts = tuple(
+            branch.emitted_text
+            for branch in branch_batch.branch_transitions
+        )
+
+        self.assertEqual(branch_batch.choices, choices)
+        self.assertEqual(
+            tuple(branch.branch_ordinal for branch in branch_batch.branch_transitions),
+            tuple(range(len(branch_batch.branch_transitions))),
+        )
+        self.assertEqual(
+            sum(branch.parent_weight for branch in branch_batch.branch_transitions),
+            sum(choice.immediate_multiplicity for choice in choices.choices),
+        )
+        self.assertEqual(
+            sorted(set(branch_texts)),
+            sorted(choice.emitted_text for choice in choices.choices),
+        )
+        self.assertGreater(
+            max(branch_texts.count(text) for text in set(branch_texts)),
+            1,
         )
 
     def test_diagnostics_observe_live_frontier_without_classifying_support(self) -> None:
@@ -162,6 +207,16 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             count_writer_runtime_support(prepared=prepared, state=resumed),
             count_writer_runtime_support(prepared=prepared, state=state),
         )
+        self.assertEqual(
+            count_writer_runtime_branch_completions(
+                prepared=prepared,
+                state=resumed,
+            ),
+            count_writer_runtime_branch_completions(
+                prepared=prepared,
+                state=state,
+            ),
+        )
 
     def test_terminal_eos_after_complete_runtime_string(self) -> None:
         prepared = _prepare(cco_facts())
@@ -216,7 +271,3 @@ def _writer_options() -> SouthStarRuntimeOptions:
     return SouthStarRuntimeOptions(
         serialization_language=SerializationLanguageMode.WRITER_SHAPED,
     )
-
-
-if __name__ == "__main__":
-    unittest.main()

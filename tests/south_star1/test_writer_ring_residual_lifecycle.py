@@ -11,6 +11,7 @@ from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
 from grimace._south_star1.writer_events import WriterRingEndpointEmitted
 from grimace._south_star1.writer_events import WriterRingEndpointPaired
+from grimace._south_star1.writer_runtime import WriterRuntimeState
 from grimace._south_star1.writer_runtime import count_writer_runtime_branch_completions
 from grimace._south_star1.writer_runtime import initial_writer_runtime_state
 from grimace._south_star1.writer_runtime import writer_runtime_branch_transitions
@@ -30,9 +31,15 @@ class WriterRingResidualLifecycleTest(unittest.TestCase):
             initial,
             "open_closure_endpoint",
         )
-        self.assertTrue(
-            any(isinstance(event, WriterRingEndpointEmitted) for event in opened.events)
+        opened_event = _single_event(opened.events, WriterRingEndpointEmitted)
+        opened_state = _single_state_key(opened.next_state)
+
+        self.assertEqual(
+            opened_state.ring_state.open_endpoints[0].bond,
+            opened_event.bond,
         )
+        self.assertEqual(len(opened_state.ring_state.open_endpoints), 1)
+        self.assertEqual(opened_state.ring_state.closed_closures, ())
         self.assertGreater(
             count_writer_runtime_branch_completions(
                 prepared=prepared,
@@ -46,8 +53,14 @@ class WriterRingResidualLifecycleTest(unittest.TestCase):
             opened.next_state,
             "pair_closure_endpoint",
         )
-        self.assertTrue(
-            any(isinstance(event, WriterRingEndpointPaired) for event in paired.events)
+        paired_event = _single_event(paired.events, WriterRingEndpointPaired)
+        paired_state = _single_state_key(paired.next_state)
+
+        self.assertEqual(paired_state.ring_state.open_endpoints, ())
+        self.assertEqual(len(paired_state.ring_state.closed_closures), 1)
+        self.assertEqual(
+            paired_state.ring_state.closed_closures[0].bond,
+            paired_event.bond,
         )
         self.assertTrue(
             any(
@@ -62,6 +75,27 @@ class WriterRingResidualLifecycleTest(unittest.TestCase):
             ),
             0,
         )
+
+
+def _single_event(events, event_type):
+    matches = tuple(event for event in events if isinstance(event, event_type))
+    if len(matches) != 1:
+        raise AssertionError(
+            f"expected exactly one {event_type.__name__}, got {len(matches)}",
+        )
+    return matches[0]
+
+
+def _single_state_key(state: WriterRuntimeState):
+    weighted_states = state.snapshot.cursor.weighted_states
+    if len(weighted_states) != 1:
+        raise AssertionError(
+            f"expected one branch successor state, got {len(weighted_states)}",
+        )
+    state_key, weight = weighted_states[0]
+    if weight != 1:
+        raise AssertionError(f"expected unit branch successor weight, got {weight}")
+    return state_key
 
 
 def _find_branch_transition(prepared, state, kind_value: str):

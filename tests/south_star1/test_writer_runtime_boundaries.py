@@ -57,6 +57,7 @@ class WriterRuntimeBoundaryTest(unittest.TestCase):
                 "count_writer_runtime_branch_completions",
                 "initial_writer_frontier_cursor",
                 "iter_writer_frontier_support",
+                "writer_runtime_branch_transitions",
             },
         )
         snapshot_imports = import_from_observations(

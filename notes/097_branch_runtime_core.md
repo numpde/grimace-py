@@ -22,10 +22,10 @@ projection must remain above the branch-preserving support layer.
 ## Current slice
 
 `writer_runtime.py` exposes the existing checked text projection through
-`writer_runtime_choice_transitions(...)`. Internally, it also records the
-branch-preserving transition supports that justify the projection. This keeps
-adapters on the existing runtime facade while preparing the dependency direction
-we want:
+`writer_runtime_choice_transitions(...)`. Internally, it records the
+branch-preserving supports from the checked frontier schedule outcome's raw
+`next_token_supports`, not from public text-choice entries. This keeps adapters
+on the existing runtime facade while preparing the dependency direction we want:
 
 ```text
 raw writer transitions
@@ -33,6 +33,11 @@ raw writer transitions
   -> text/determinized runtime choices
   -> adapters: writer_online_decoder, writer_support, snapshots
 ```
+
+This is an intermediate inversion point. The checked frontier schedule still
+lives in `writer_frontier.py`; the public text snapshot remains the adapter
+surface. The branch-preserving runtime layer now consumes the schedule's raw
+supports beneath that text projection.
 
 `count_writer_runtime_branch_completions(...)` is the first consumer of the
 branch-preserving layer. It counts completions by memoized recursion over

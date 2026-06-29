@@ -2,38 +2,36 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
-from dataclasses import dataclass, replace
+from collections.abc import Callable
+from collections.abc import Iterator
+from dataclasses import dataclass
+from dataclasses import replace
 
-from .errors import SouthStarError, SouthStarErrorKind
-from .prepared_runtime import SouthStarPreparedMol, SouthStarRuntimeOptions
+from .errors import SouthStarError
+from .errors import SouthStarErrorKind
+from .prepared_runtime import SouthStarPreparedMol
+from .prepared_runtime import SouthStarRuntimeOptions
 from .writer_capabilities import _unsupported_public_writer_execution_capabilities
-from .writer_execution_evidence import (
-    writer_finite_relation_work_envelope_violation,
-    writer_graph_obligation_work_envelope_violation,
-    writer_residual_work_envelope_violation,
-)
-from .writer_frontier import (
-    WriterFrontierChoice,
-    WriterFrontierChoices,
-    WriterFrontierCursor,
-    WriterFrontierTerminal,
-    _checked_writer_frontier_schedule_outcome,
-    _writer_frontier_choice_snapshot_from_schedule_outcome,
-)
-from .writer_snapshot import (
-    WriterDecoderBoundary,
-    WriterFrontierFrame,
-    WriterSearchSnapshot,
-    _count_writer_completions_after_emitted_texts,
-    _count_writer_frontier_support_after_emitted_texts,
-    _iter_writer_frontier_support_suffixes_after_emitted_texts,
-    _writer_frontier_choice_snapshot_from_snapshot,
-    _writer_search_snapshot_with_cursor_after_emitted_text,
-    advance_writer_frontier_snapshot,
-    capture_initial_writer_frontier_snapshot,
-    validate_writer_search_snapshot,
-)
+from .writer_execution_evidence import writer_finite_relation_work_envelope_violation
+from .writer_execution_evidence import writer_graph_obligation_work_envelope_violation
+from .writer_execution_evidence import writer_residual_work_envelope_violation
+from .writer_frontier import WriterFrontierChoice
+from .writer_frontier import WriterFrontierChoices
+from .writer_frontier import WriterFrontierCursor
+from .writer_frontier import WriterFrontierTerminal
+from .writer_frontier import _checked_writer_frontier_schedule_outcome
+from .writer_frontier import _writer_frontier_choice_snapshot_from_schedule_outcome
+from .writer_snapshot import WriterDecoderBoundary
+from .writer_snapshot import WriterFrontierFrame
+from .writer_snapshot import WriterSearchSnapshot
+from .writer_snapshot import _count_writer_completions_after_emitted_texts
+from .writer_snapshot import _count_writer_frontier_support_after_emitted_texts
+from .writer_snapshot import _iter_writer_frontier_support_suffixes_after_emitted_texts
+from .writer_snapshot import _writer_frontier_choice_snapshot_from_snapshot
+from .writer_snapshot import _writer_search_snapshot_with_cursor_after_emitted_text
+from .writer_snapshot import advance_writer_frontier_snapshot
+from .writer_snapshot import capture_initial_writer_frontier_snapshot
+from .writer_snapshot import validate_writer_search_snapshot
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,14 +56,20 @@ class WriterRuntimeChoiceTransitions:
 
     @property
     def support_count(self) -> int:
-        total = sum(t.choice.support_count or 0 for t in self.transitions)
+        total = sum(
+            transition.choice.support_count or 0
+            for transition in self.transitions
+        )
         if self.terminal is not None:
             total += self.terminal.support_count
         return total
 
     @property
     def completion_count(self) -> int:
-        total = sum(t.choice.completion_count or 0 for t in self.transitions)
+        total = sum(
+            transition.choice.completion_count or 0
+            for transition in self.transitions
+        )
         if self.terminal is not None:
             total += self.terminal.completion_count
         return total
@@ -131,7 +135,10 @@ class WriterRuntimeDiagnostics:
 
     @property
     def all_unsupported_execution_capabilities(self) -> frozenset[object]:
-        return self.unsupported_execution_capabilities | self.unsupported_terminal_execution_capabilities
+        return (
+            self.unsupported_execution_capabilities
+            | self.unsupported_terminal_execution_capabilities
+        )
 
     @property
     def has_policy_blockers(self) -> bool:
@@ -170,12 +177,20 @@ def initial_writer_runtime_state(
     )
 
 
-def writer_runtime_state_from_snapshot(snapshot: WriterSearchSnapshot, *, prepared: SouthStarPreparedMol) -> WriterRuntimeState:
+def writer_runtime_state_from_snapshot(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+) -> WriterRuntimeState:
     validate_writer_search_snapshot(snapshot, prepared=prepared)
     return WriterRuntimeState(snapshot)
 
 
-def writer_runtime_diagnostics(*, prepared: SouthStarPreparedMol, state: WriterRuntimeState) -> WriterRuntimeDiagnostics:
+def writer_runtime_diagnostics(
+    *,
+    prepared: SouthStarPreparedMol,
+    state: WriterRuntimeState,
+) -> WriterRuntimeDiagnostics:
     choice_snapshot = _writer_frontier_choice_snapshot_from_snapshot(
         state.snapshot,
         prepared=prepared,
@@ -188,37 +203,90 @@ def writer_runtime_diagnostics(*, prepared: SouthStarPreparedMol, state: WriterR
         stereo_policy_blockers=choice_snapshot.stereo_policy_blockers,
         execution_capabilities=choice_snapshot.execution_capabilities,
         terminal_execution_capabilities=choice_snapshot.terminal_execution_capabilities,
-        unsupported_execution_capabilities=_unsupported_public_writer_execution_capabilities(choice_snapshot.execution_capabilities),
-        unsupported_terminal_execution_capabilities=_unsupported_public_writer_execution_capabilities(choice_snapshot.terminal_execution_capabilities),
+        unsupported_execution_capabilities=(
+            _unsupported_public_writer_execution_capabilities(
+                choice_snapshot.execution_capabilities,
+            )
+        ),
+        unsupported_terminal_execution_capabilities=(
+            _unsupported_public_writer_execution_capabilities(
+                choice_snapshot.terminal_execution_capabilities,
+            )
+        ),
         residual_work_evidence=choice_snapshot.residual_work_evidence,
         terminal_residual_work_evidence=choice_snapshot.terminal_residual_work_evidence,
         finite_relation_work_evidence=choice_snapshot.finite_relation_work_evidence,
         graph_obligation_work_evidence=choice_snapshot.graph_obligation_work_evidence,
-        residual_work_envelope_violations=_writer_work_envelope_violations(choice_snapshot.residual_work_evidence, writer_residual_work_envelope_violation),
-        terminal_residual_work_envelope_violations=_writer_work_envelope_violations(choice_snapshot.terminal_residual_work_evidence, writer_residual_work_envelope_violation),
-        finite_relation_work_envelope_violations=_writer_work_envelope_violations(choice_snapshot.finite_relation_work_evidence, writer_finite_relation_work_envelope_violation),
-        graph_obligation_work_envelope_violations=_writer_work_envelope_violations(choice_snapshot.graph_obligation_work_evidence, writer_graph_obligation_work_envelope_violation),
+        residual_work_envelope_violations=_writer_work_envelope_violations(
+            choice_snapshot.residual_work_evidence,
+            writer_residual_work_envelope_violation,
+        ),
+        terminal_residual_work_envelope_violations=(
+            _writer_work_envelope_violations(
+                choice_snapshot.terminal_residual_work_evidence,
+                writer_residual_work_envelope_violation,
+            )
+        ),
+        finite_relation_work_envelope_violations=(
+            _writer_work_envelope_violations(
+                choice_snapshot.finite_relation_work_evidence,
+                writer_finite_relation_work_envelope_violation,
+            )
+        ),
+        graph_obligation_work_envelope_violations=(
+            _writer_work_envelope_violations(
+                choice_snapshot.graph_obligation_work_evidence,
+                writer_graph_obligation_work_envelope_violation,
+            )
+        ),
         choice_texts=tuple(choice.emitted_text for choice in choice_snapshot.choices),
         has_eos=choice_snapshot.terminal is not None,
     )
 
 
-def _writer_work_envelope_violations(evidence: tuple[object, ...], violation_check: Callable[[object], object | None]) -> tuple[object, ...]:
-    return tuple(violation for item in evidence if (violation := violation_check(item)) is not None)
+def _writer_work_envelope_violations(
+    evidence: tuple[object, ...],
+    violation_check: Callable[[object], object | None],
+) -> tuple[object, ...]:
+    return tuple(
+        violation
+        for item in evidence
+        if (violation := violation_check(item)) is not None
+    )
 
 
-def writer_runtime_choices(*, prepared: SouthStarPreparedMol, state: WriterRuntimeState) -> WriterFrontierChoices:
-    return writer_runtime_branch_transitions(prepared=prepared, state=state, include_counts=True).choices
+def writer_runtime_choices(
+    *,
+    prepared: SouthStarPreparedMol,
+    state: WriterRuntimeState,
+) -> WriterFrontierChoices:
+    return writer_runtime_branch_transitions(
+        prepared=prepared,
+        state=state,
+        include_counts=True,
+    ).choices
 
 
-def writer_runtime_choice_transitions(*, prepared: SouthStarPreparedMol, state: WriterRuntimeState) -> WriterRuntimeChoiceTransitions:
-    branch_batch = writer_runtime_branch_transitions(prepared=prepared, state=state, include_counts=True)
+def writer_runtime_choice_transitions(
+    *,
+    prepared: SouthStarPreparedMol,
+    state: WriterRuntimeState,
+) -> WriterRuntimeChoiceTransitions:
+    branch_batch = writer_runtime_branch_transitions(
+        prepared=prepared,
+        state=state,
+        include_counts=True,
+    )
     return WriterRuntimeChoiceTransitions(
         choices=branch_batch.choices,
         transitions=tuple(
             WriterRuntimeChoiceTransition(
                 choice=choice,
-                next_state=_writer_runtime_state_after_checked_choice(prepared=prepared, state=state, choice=choice),
+                next_state=_writer_runtime_state_after_checked_choice(
+                    prepared=prepared,
+                    state=state,
+                    choice=choice,
+                ),
             )
             for choice in branch_batch.choices.choices
         ),
@@ -232,12 +300,23 @@ def writer_runtime_branch_transitions(
     include_counts: bool = True,
 ) -> WriterRuntimeBranchTransitions:
     validate_writer_search_snapshot(state.snapshot, prepared=prepared)
-    schedule_outcome = _checked_writer_frontier_schedule_outcome(prepared, state.snapshot.cursor)
-    choice_snapshot = _writer_frontier_choice_snapshot_from_schedule_outcome(prepared, schedule_outcome, include_counts=include_counts)
+    schedule_outcome = _checked_writer_frontier_schedule_outcome(
+        prepared,
+        state.snapshot.cursor,
+    )
+    choice_snapshot = _writer_frontier_choice_snapshot_from_schedule_outcome(
+        prepared,
+        schedule_outcome,
+        include_counts=include_counts,
+    )
     branch_transitions: list[WriterRuntimeBranchTransition] = []
     for branch_ordinal, support in enumerate(schedule_outcome.next_token_supports):
         transition = support.schedule_support.transition
-        successor_state = _writer_runtime_state_for_successor_key(prepared=prepared, state=state, successor_state=support.successor_key)
+        successor_state = _writer_runtime_state_for_successor_key(
+            prepared=prepared,
+            state=state,
+            successor_state=support.successor_key,
+        )
         branch_transitions.append(
             WriterRuntimeBranchTransition(
                 emitted_text=support.emitted_text,
@@ -254,26 +333,64 @@ def writer_runtime_branch_transitions(
                 next_state=successor_state,
             )
         )
-    return WriterRuntimeBranchTransitions(choices=choice_snapshot.public_choices, transitions=tuple(branch_transitions))
+    return WriterRuntimeBranchTransitions(
+        choices=choice_snapshot.public_choices,
+        transitions=tuple(branch_transitions),
+    )
 
 
-def writer_runtime_terminal(*, prepared: SouthStarPreparedMol, state: WriterRuntimeState) -> WriterFrontierTerminal | None:
+def writer_runtime_terminal(
+    *,
+    prepared: SouthStarPreparedMol,
+    state: WriterRuntimeState,
+) -> WriterFrontierTerminal | None:
     return writer_runtime_choices(prepared=prepared, state=state).terminal
 
 
-def writer_runtime_has_eos(*, prepared: SouthStarPreparedMol, state: WriterRuntimeState) -> bool:
+def writer_runtime_has_eos(
+    *,
+    prepared: SouthStarPreparedMol,
+    state: WriterRuntimeState,
+) -> bool:
     return writer_runtime_terminal(prepared=prepared, state=state) is not None
 
 
-def advance_writer_runtime_state(*, prepared: SouthStarPreparedMol, state: WriterRuntimeState, emitted_text: str) -> WriterRuntimeState:
-    return WriterRuntimeState(advance_writer_frontier_snapshot(state.snapshot, prepared=prepared, emitted_text=emitted_text))
+def advance_writer_runtime_state(
+    *,
+    prepared: SouthStarPreparedMol,
+    state: WriterRuntimeState,
+    emitted_text: str,
+) -> WriterRuntimeState:
+    return WriterRuntimeState(
+        advance_writer_frontier_snapshot(
+            state.snapshot,
+            prepared=prepared,
+            emitted_text=emitted_text,
+        )
+    )
 
 
-def _writer_runtime_state_after_checked_choice(*, prepared: SouthStarPreparedMol, state: WriterRuntimeState, choice: WriterFrontierChoice) -> WriterRuntimeState:
-    return WriterRuntimeState(_writer_search_snapshot_with_cursor_after_emitted_text(state.snapshot, prepared=prepared, cursor=choice.successor))
+def _writer_runtime_state_after_checked_choice(
+    *,
+    prepared: SouthStarPreparedMol,
+    state: WriterRuntimeState,
+    choice: WriterFrontierChoice,
+) -> WriterRuntimeState:
+    return WriterRuntimeState(
+        _writer_search_snapshot_with_cursor_after_emitted_text(
+            state.snapshot,
+            prepared=prepared,
+            cursor=choice.successor,
+        )
+    )
 
 
-def _writer_runtime_state_for_successor_key(*, prepared: SouthStarPreparedMol, state: WriterRuntimeState, successor_state: object) -> WriterRuntimeState:
+def _writer_runtime_state_for_successor_key(
+    *,
+    prepared: SouthStarPreparedMol,
+    state: WriterRuntimeState,
+    successor_state: object,
+) -> WriterRuntimeState:
     return WriterRuntimeState(
         _writer_search_snapshot_with_cursor_after_emitted_text(
             state.snapshot,
@@ -283,22 +400,56 @@ def _writer_runtime_state_for_successor_key(*, prepared: SouthStarPreparedMol, s
     )
 
 
-def _writer_runtime_state_with_cursor(*, prepared: SouthStarPreparedMol, state: WriterRuntimeState, cursor: WriterFrontierCursor) -> WriterRuntimeState:
-    snapshot = replace(state.snapshot, cursor=cursor, frame_stack=(WriterFrontierFrame(cursor),))
+def _writer_runtime_state_with_cursor(
+    *,
+    prepared: SouthStarPreparedMol,
+    state: WriterRuntimeState,
+    cursor: WriterFrontierCursor,
+) -> WriterRuntimeState:
+    snapshot = replace(
+        state.snapshot,
+        cursor=cursor,
+        frame_stack=(WriterFrontierFrame(cursor),),
+    )
     validate_writer_search_snapshot(snapshot, prepared=prepared)
     return WriterRuntimeState(snapshot)
 
 
-def count_writer_runtime_support(*, prepared: SouthStarPreparedMol, state: WriterRuntimeState) -> int:
-    return _count_writer_frontier_support_after_emitted_texts(state.snapshot, prepared=prepared, emitted_texts=())
+def count_writer_runtime_support(
+    *,
+    prepared: SouthStarPreparedMol,
+    state: WriterRuntimeState,
+) -> int:
+    return _count_writer_frontier_support_after_emitted_texts(
+        state.snapshot,
+        prepared=prepared,
+        emitted_texts=(),
+    )
 
 
-def count_writer_runtime_completions(*, prepared: SouthStarPreparedMol, state: WriterRuntimeState) -> int:
-    return _count_writer_completions_after_emitted_texts(state.snapshot, prepared=prepared, emitted_texts=())
+def count_writer_runtime_completions(
+    *,
+    prepared: SouthStarPreparedMol,
+    state: WriterRuntimeState,
+) -> int:
+    return _count_writer_completions_after_emitted_texts(
+        state.snapshot,
+        prepared=prepared,
+        emitted_texts=(),
+    )
 
 
-def count_writer_runtime_branch_completions(*, prepared: SouthStarPreparedMol, state: WriterRuntimeState) -> int:
-    return _count_writer_runtime_branch_completions(prepared=prepared, state=state, memo={}, active=frozenset())
+def count_writer_runtime_branch_completions(
+    *,
+    prepared: SouthStarPreparedMol,
+    state: WriterRuntimeState,
+) -> int:
+    return _count_writer_runtime_branch_completions(
+        prepared=prepared,
+        state=state,
+        memo={},
+        active=frozenset(),
+    )
 
 
 def _count_writer_runtime_branch_completions(
@@ -331,19 +482,43 @@ def _count_writer_runtime_branch_completions_for_state_key(
     if state_key in memo:
         return memo[state_key]
     if state_key in active:
-        raise SouthStarError(SouthStarErrorKind.INTERNAL_INVARIANT, "writer branch-completion count encountered a recursive state")
-    single_state = _writer_runtime_state_with_cursor(prepared=prepared, state=state, cursor=WriterFrontierCursor(weighted_states=((state_key, 1),)))
-    branch_batch = writer_runtime_branch_transitions(prepared=prepared, state=single_state, include_counts=False)
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "writer branch-completion count encountered a recursive state",
+        )
+    single_state = _writer_runtime_state_with_cursor(
+        prepared=prepared,
+        state=state,
+        cursor=WriterFrontierCursor(weighted_states=((state_key, 1),)),
+    )
+    branch_batch = writer_runtime_branch_transitions(
+        prepared=prepared,
+        state=single_state,
+        include_counts=False,
+    )
     total = 0 if branch_batch.terminal is None else branch_batch.terminal.completion_count
     next_active = active | frozenset((state_key,))
     for branch_transition in branch_batch.transitions:
-        total += _count_writer_runtime_branch_completions(prepared=prepared, state=branch_transition.next_state, memo=memo, active=next_active)
+        total += _count_writer_runtime_branch_completions(
+            prepared=prepared,
+            state=branch_transition.next_state,
+            memo=memo,
+            active=next_active,
+        )
     memo[state_key] = total
     return total
 
 
-def iter_writer_runtime_support(*, prepared: SouthStarPreparedMol, state: WriterRuntimeState) -> Iterator[str]:
-    return _iter_writer_frontier_support_suffixes_after_emitted_texts(state.snapshot, prepared=prepared, emitted_texts=())
+def iter_writer_runtime_support(
+    *,
+    prepared: SouthStarPreparedMol,
+    state: WriterRuntimeState,
+) -> Iterator[str]:
+    return _iter_writer_frontier_support_suffixes_after_emitted_texts(
+        state.snapshot,
+        prepared=prepared,
+        emitted_texts=(),
+    )
 
 
 __all__ = (

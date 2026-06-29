@@ -34,12 +34,12 @@ class WriterRingResidualLifecycleTest(unittest.TestCase):
         opened_event = _single_event(opened.events, WriterRingEndpointEmitted)
         opened_state = _single_state_key(opened.next_state)
 
+        self.assertEqual(len(opened_state.ring_state.open_endpoints), 1)
+        self.assertEqual(opened_state.ring_state.closed_closures, ())
         self.assertEqual(
             opened_state.ring_state.open_endpoints[0].bond,
             opened_event.bond,
         )
-        self.assertEqual(len(opened_state.ring_state.open_endpoints), 1)
-        self.assertEqual(opened_state.ring_state.closed_closures, ())
         self.assertGreater(
             count_writer_runtime_branch_completions(
                 prepared=prepared,

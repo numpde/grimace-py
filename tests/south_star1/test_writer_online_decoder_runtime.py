@@ -114,9 +114,7 @@ class WriterOnlineDecoderRuntimeTest(unittest.TestCase):
             },
         )
 
-        self.assertEqual(scan.banned_imports, ())
-        self.assertEqual(scan.banned_imported_names, ())
-        self.assertEqual(scan.banned_calls, ())
+        self.assertEqual(scan.violations, ())
 
 
 def _reachable_eos_prefixes(state) -> set[str]:

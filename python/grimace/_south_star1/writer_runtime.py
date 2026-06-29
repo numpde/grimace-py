@@ -32,7 +32,6 @@ from .writer_snapshot import (
     _writer_search_snapshot_with_cursor_after_emitted_text,
     advance_writer_frontier_snapshot,
     capture_initial_writer_frontier_snapshot,
-    resume_writer_frontier_choices_from_snapshot,
     validate_writer_search_snapshot,
 )
 
@@ -104,18 +103,6 @@ class WriterRuntimeBranchTransitions:
     @property
     def terminal(self) -> WriterFrontierTerminal | None:
         return self.choices.terminal
-
-
-@dataclass(frozen=True, slots=True)
-class _WriterRuntimeBranchChoiceTransition:
-    branch_transition: WriterRuntimeBranchTransition
-    next_state: WriterRuntimeState
-
-
-@dataclass(frozen=True, slots=True)
-class _WriterRuntimeBranchChoiceTransitions:
-    batch: WriterRuntimeBranchTransitions
-    transitions: tuple[_WriterRuntimeBranchChoiceTransition, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -270,18 +257,6 @@ def writer_runtime_branch_transitions(
     return WriterRuntimeBranchTransitions(choices=choice_snapshot.public_choices, transitions=tuple(branch_transitions))
 
 
-def _writer_runtime_branch_transition_batch(*, prepared: SouthStarPreparedMol, state: WriterRuntimeState, include_counts: bool) -> WriterRuntimeBranchTransitions:
-    return writer_runtime_branch_transitions(prepared=prepared, state=state, include_counts=include_counts)
-
-
-def _writer_runtime_branch_choice_transitions(*, prepared: SouthStarPreparedMol, state: WriterRuntimeState, include_counts: bool) -> _WriterRuntimeBranchChoiceTransitions:
-    batch = writer_runtime_branch_transitions(prepared=prepared, state=state, include_counts=include_counts)
-    return _WriterRuntimeBranchChoiceTransitions(
-        batch=batch,
-        transitions=tuple(_WriterRuntimeBranchChoiceTransition(branch_transition=transition, next_state=transition.next_state) for transition in batch.transitions),
-    )
-
-
 def writer_runtime_terminal(*, prepared: SouthStarPreparedMol, state: WriterRuntimeState) -> WriterFrontierTerminal | None:
     return writer_runtime_choices(prepared=prepared, state=state).terminal
 
@@ -296,11 +271,6 @@ def advance_writer_runtime_state(*, prepared: SouthStarPreparedMol, state: Write
 
 def _writer_runtime_state_after_checked_choice(*, prepared: SouthStarPreparedMol, state: WriterRuntimeState, choice: WriterFrontierChoice) -> WriterRuntimeState:
     return WriterRuntimeState(_writer_search_snapshot_with_cursor_after_emitted_text(state.snapshot, prepared=prepared, cursor=choice.successor))
-
-
-def _writer_runtime_state_after_branch_transition(*, prepared: SouthStarPreparedMol, state: WriterRuntimeState, branch_transition: WriterRuntimeBranchTransition) -> WriterRuntimeState:
-    del prepared, state
-    return branch_transition.next_state
 
 
 def _writer_runtime_state_for_successor_key(*, prepared: SouthStarPreparedMol, state: WriterRuntimeState, successor_state: object) -> WriterRuntimeState:

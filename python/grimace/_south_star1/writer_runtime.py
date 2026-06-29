@@ -12,10 +12,6 @@ from .errors import SouthStarErrorKind
 from .prepared_runtime import SouthStarPreparedMol
 from .prepared_runtime import SouthStarRuntimeOptions
 from .writer_capabilities import _unsupported_public_writer_execution_capabilities
-from .writer_events import WriterRingEndpointEmitted
-from .writer_events import WriterRingEndpointPaired
-from .writer_events import WriterRingLabelAllocated
-from .writer_events import WriterRingLabelReleased
 from .writer_execution_evidence import writer_finite_relation_work_envelope_violation
 from .writer_execution_evidence import writer_graph_obligation_work_envelope_violation
 from .writer_execution_evidence import writer_residual_work_envelope_violation
@@ -25,6 +21,7 @@ from .writer_frontier import WriterFrontierCursor
 from .writer_frontier import WriterFrontierTerminal
 from .writer_frontier import _checked_writer_frontier_schedule_outcome
 from .writer_frontier import _writer_frontier_choice_snapshot_from_schedule_outcome
+from .writer_ring_lifecycle import writer_events_with_ring_label_lifecycle
 from .writer_snapshot import WriterDecoderBoundary
 from .writer_snapshot import WriterFrontierFrame
 from .writer_snapshot import WriterSearchSnapshot
@@ -328,7 +325,7 @@ def writer_runtime_branch_transitions(
                 parent_weight=support.parent_weight,
                 branch_ordinal=branch_ordinal,
                 transition_kind=transition.kind,
-                events=_writer_runtime_branch_events(
+                events=writer_events_with_ring_label_lifecycle(
                     source_state=support.state_key,
                     events=transition.events,
                 ),
@@ -343,31 +340,6 @@ def writer_runtime_branch_transitions(
         choices=choice_snapshot.public_choices,
         transitions=tuple(branch_transitions),
     )
-
-
-def _writer_runtime_branch_events(
-    *,
-    source_state: object,
-    events: tuple[object, ...],
-) -> tuple[object, ...]:
-    result: list[object] = []
-    reusable_labels = getattr(source_state.ring_state.label_state, "reusable", ())
-    for event in events:
-        if isinstance(event, WriterRingEndpointEmitted):
-            result.append(
-                WriterRingLabelAllocated(
-                    label=event.label,
-                    source=("reused" if event.label in reusable_labels else "fresh"),
-                )
-            )
-            result.append(event)
-            continue
-        if isinstance(event, WriterRingEndpointPaired):
-            result.append(event)
-            result.append(WriterRingLabelReleased(label=event.label))
-            continue
-        result.append(event)
-    return tuple(result)
 
 
 def writer_runtime_terminal(

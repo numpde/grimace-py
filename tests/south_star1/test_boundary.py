@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import ast
 import importlib
+import tempfile
 import unittest
 from pathlib import Path
 
 import grimace
 import grimace._south_star1 as south_star1
+from tests.helpers.module_boundaries import import_from_observations
+from tests.helpers.module_boundaries import scan_module_boundaries
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -52,6 +55,40 @@ class SouthStar1BoundaryTest(unittest.TestCase):
 
     def test_private_package_is_not_publicly_exported(self) -> None:
         self.assertNotIn("_south_star1", grimace.__all__)
+
+    def test_module_boundary_helper_catches_imported_module_aliases(self) -> None:
+        source = "\n".join(
+            (
+                "from . import writer_support",
+                "from grimace._south_star1 import writer_runtime",
+                "if TYPE_CHECKING:",
+                "    from . import writer_snapshot",
+                "",
+            )
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "sample.py"
+            path.write_text(source, encoding="utf-8")
+
+            scan = scan_module_boundaries(
+                path,
+                banned_modules={
+                    "writer_runtime",
+                    "writer_support",
+                },
+            )
+            observations = import_from_observations(
+                path,
+                module_root="writer_snapshot",
+            )
+
+        self.assertIn("writer_support", scan.banned_imports)
+        self.assertIn(
+            "grimace._south_star1.writer_runtime",
+            scan.banned_imports,
+        )
+        self.assertEqual(len(observations), 1)
+        self.assertTrue(observations[0].inside_type_checking)
 
     def test_deleted_south_star_prototype_stays_deleted(self) -> None:
         with self.assertRaises(ModuleNotFoundError):

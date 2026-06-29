@@ -62,6 +62,11 @@ def scan_module_boundaries(
             module = node.module or ""
             if _module_is_banned(module, banned_modules):
                 imports.append(module)
+            imports.extend(
+                _joined_import_name(module, alias.name)
+                for alias in node.names
+                if alias.name in banned_modules
+            )
             imported_names.extend(
                 alias.name
                 for alias in node.names
@@ -92,11 +97,20 @@ def import_from_observations(
         if not isinstance(node, ast.ImportFrom):
             continue
         module = node.module or ""
-        if not _module_is_banned(module, {module_root}):
+        matching_aliases = tuple(
+            alias.name
+            for alias in node.names
+            if alias.name == module_root
+        )
+        if not _module_is_banned(module, {module_root}) and not matching_aliases:
             continue
         observations.append(
             ModuleImportObservation(
-                module=module,
+                module=(
+                    module
+                    if _module_is_banned(module, {module_root})
+                    else _joined_import_name(module, matching_aliases[0])
+                ),
                 inside_type_checking=_inside_type_checking_block(
                     node,
                     parent_by_child,
@@ -111,6 +125,12 @@ def _module_is_banned(module: str, banned_modules: Collection[str]) -> bool:
     if module in banned_modules:
         return True
     return any(part in banned_modules for part in module.split("."))
+
+
+def _joined_import_name(module: str, name: str) -> str:
+    if not module:
+        return name
+    return f"{module}.{name}"
 
 
 def _call_name(node: ast.Call) -> str | None:

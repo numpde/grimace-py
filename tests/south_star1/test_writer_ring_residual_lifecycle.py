@@ -11,6 +11,8 @@ from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
 from grimace._south_star1.writer_events import WriterRingEndpointEmitted
 from grimace._south_star1.writer_events import WriterRingEndpointPaired
+from grimace._south_star1.writer_events import WriterRingLabelAllocated
+from grimace._south_star1.writer_events import WriterRingLabelReleased
 from grimace._south_star1.writer_runtime import WriterRuntimeState
 from grimace._south_star1.writer_runtime import count_writer_runtime_branch_completions
 from grimace._south_star1.writer_runtime import initial_writer_runtime_state
@@ -32,14 +34,26 @@ class WriterRingResidualLifecycleTest(unittest.TestCase):
             "open_closure_endpoint",
         )
         opened_event = _single_event(opened.events, WriterRingEndpointEmitted)
+        opened_label_event = _single_event(opened.events, WriterRingLabelAllocated)
         opened_state = _single_state_key(opened.next_state)
 
         self.assertEqual(len(opened_state.ring_state.open_endpoints), 1)
         self.assertEqual(opened_state.ring_state.closed_closures, ())
+        opened_endpoint = opened_state.ring_state.open_endpoints[0]
+        self.assertEqual(opened_endpoint.bond, opened_event.bond)
+        self.assertEqual(opened_endpoint.first_atom, opened_event.endpoint_atom)
+        self.assertEqual(opened_endpoint.second_atom, opened_event.partner_atom)
+        self.assertEqual(opened_endpoint.label, opened_event.label)
+        self.assertEqual(opened_endpoint.label, opened_label_event.label)
+        self.assertEqual(opened_endpoint.first_endpoint_text, opened_event.endpoint_text)
+        self.assertEqual(opened_endpoint.first_endpoint_bond_text, opened_event.bond_text)
         self.assertEqual(
-            opened_state.ring_state.open_endpoints[0].bond,
-            opened_event.bond,
+            opened_endpoint.first_endpoint_direction_mark,
+            opened_event.direction_mark,
         )
+        self.assertEqual(opened_label_event.source, "fresh")
+        self.assertIn(opened_endpoint.label, opened_state.ring_state.label_state.allocated)
+        self.assertNotIn(opened_endpoint.label, opened_state.ring_state.label_state.reusable)
         self.assertGreater(
             count_writer_runtime_branch_completions(
                 prepared=prepared,
@@ -54,13 +68,67 @@ class WriterRingResidualLifecycleTest(unittest.TestCase):
             "pair_closure_endpoint",
         )
         paired_event = _single_event(paired.events, WriterRingEndpointPaired)
+        paired_label_event = _single_event(paired.events, WriterRingLabelReleased)
         paired_state = _single_state_key(paired.next_state)
 
         self.assertEqual(paired_state.ring_state.open_endpoints, ())
+        self.assertFalse(
+            any(
+                endpoint.bond == opened_endpoint.bond
+                for endpoint in paired_state.ring_state.open_endpoints
+            )
+        )
         self.assertEqual(len(paired_state.ring_state.closed_closures), 1)
+        closed_closure = paired_state.ring_state.closed_closures[0]
+        self.assertEqual(closed_closure.bond, paired_event.bond)
+        self.assertEqual(closed_closure.bond, opened_endpoint.bond)
+        self.assertEqual(closed_closure.first_atom, opened_endpoint.first_atom)
+        self.assertEqual(closed_closure.second_atom, opened_endpoint.second_atom)
+        self.assertEqual(closed_closure.second_atom, paired_event.endpoint_atom)
+        self.assertEqual(closed_closure.first_atom, paired_event.partner_atom)
+        self.assertEqual(closed_closure.label, opened_endpoint.label)
+        self.assertEqual(closed_closure.label, paired_event.label)
+        self.assertEqual(closed_closure.label, paired_label_event.label)
         self.assertEqual(
-            paired_state.ring_state.closed_closures[0].bond,
-            paired_event.bond,
+            closed_closure.first_endpoint_text,
+            opened_endpoint.first_endpoint_text,
+        )
+        self.assertEqual(
+            closed_closure.second_endpoint_text,
+            paired_event.endpoint_text,
+        )
+        self.assertEqual(
+            closed_closure.first_endpoint_bond_text,
+            paired_event.first_endpoint_bond_text,
+        )
+        self.assertEqual(
+            closed_closure.first_endpoint_bond_text,
+            opened_endpoint.first_endpoint_bond_text,
+        )
+        self.assertEqual(
+            closed_closure.second_endpoint_bond_text,
+            paired_event.bond_text,
+        )
+        self.assertEqual(
+            closed_closure.first_endpoint_direction_mark,
+            paired_event.first_endpoint_direction_mark,
+        )
+        self.assertEqual(
+            closed_closure.first_endpoint_direction_mark,
+            opened_endpoint.first_endpoint_direction_mark,
+        )
+        self.assertEqual(
+            closed_closure.second_endpoint_direction_mark,
+            paired_event.direction_mark,
+        )
+        self.assertEqual(paired_label_event.destination, "reusable")
+        self.assertNotIn(
+            closed_closure.label,
+            paired_state.ring_state.label_state.allocated,
+        )
+        self.assertIn(
+            closed_closure.label,
+            paired_state.ring_state.label_state.reusable,
         )
         self.assertTrue(
             any(

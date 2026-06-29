@@ -136,6 +136,22 @@ class _WriterRuntimeBranchTransitionBatch:
 
 
 @dataclass(frozen=True, slots=True)
+class _WriterRuntimeBranchStateTransition:
+    """A branch-preserving support paired with its exact successor state."""
+
+    branch_transition: _WriterRuntimeBranchTransition
+    next_state: WriterRuntimeState
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterRuntimeBranchStateTransitions:
+    """Branch-preserving checked supports plus provenance-successor states."""
+
+    batch: _WriterRuntimeBranchTransitionBatch
+    transitions: tuple[_WriterRuntimeBranchStateTransition, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class WriterRuntimeDiagnostics:
     """Raw live-frontier evidence for debugging and audit surfaces.
 
@@ -378,6 +394,33 @@ def _writer_runtime_branch_transition_batch(
     )
 
 
+def _writer_runtime_branch_choice_transitions(
+    *,
+    prepared: SouthStarPreparedMol,
+    state: WriterRuntimeState,
+    include_counts: bool = False,
+) -> _WriterRuntimeBranchStateTransitions:
+    batch = _writer_runtime_branch_transition_batch(
+        prepared=prepared,
+        state=state,
+        include_counts=include_counts,
+    )
+    return _WriterRuntimeBranchStateTransitions(
+        batch=batch,
+        transitions=tuple(
+            _WriterRuntimeBranchStateTransition(
+                branch_transition=branch_transition,
+                next_state=_writer_runtime_state_after_branch_transition(
+                    prepared=prepared,
+                    state=state,
+                    branch_transition=branch_transition,
+                ),
+            )
+            for branch_transition in batch.branch_transitions
+        ),
+    )
+
+
 def writer_runtime_terminal(
     *,
     prepared: SouthStarPreparedMol,
@@ -556,25 +599,20 @@ def _count_writer_runtime_branch_completions_for_state_key(
         state=state,
         cursor=WriterFrontierCursor(weighted_states=((state_key, 1),)),
     )
-    branch_batch = _writer_runtime_branch_transition_batch(
+    branch_transitions = _writer_runtime_branch_choice_transitions(
         prepared=prepared,
         state=single_state,
         include_counts=False,
     )
     total = 0
-    if branch_batch.choices.terminal is not None:
-        total += branch_batch.choices.terminal.completion_count
+    if branch_transitions.batch.choices.terminal is not None:
+        total += branch_transitions.batch.choices.terminal.completion_count
 
     next_active = active | frozenset((state_key,))
-    for branch_transition in branch_batch.branch_transitions:
-        successor_state = _writer_runtime_state_after_branch_transition(
-            prepared=prepared,
-            state=single_state,
-            branch_transition=branch_transition,
-        )
+    for branch_state_transition in branch_transitions.transitions:
         total += _count_writer_runtime_branch_completions(
             prepared=prepared,
-            state=successor_state,
+            state=branch_state_transition.next_state,
             memo=memo,
             active=next_active,
         )

@@ -23,6 +23,7 @@ from .writer_frontier import WriterFrontierChoices
 from .writer_frontier import WriterFrontierTerminal
 from .writer_snapshot import WriterDecoderBoundary
 from .writer_snapshot import WriterSearchSnapshot
+from .writer_snapshot import _checked_writer_frontier_choice_snapshot_from_snapshot
 from .writer_snapshot import _count_writer_completions_after_emitted_texts
 from .writer_snapshot import _count_writer_frontier_support_after_emitted_texts
 from .writer_snapshot import _iter_writer_frontier_support_suffixes_after_emitted_texts
@@ -96,6 +97,36 @@ class WriterRuntimeChoiceTransitions:
     @property
     def has_eos(self) -> bool:
         return self.terminal is not None
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterRuntimeBranchTransition:
+    """One branch-preserving checked transition support.
+
+    ``emitted_text`` is payload.  It is not the identity of this transition:
+    same-text supports intentionally remain separate until a text projection
+    groups them for the current public choice surface.
+    """
+
+    emitted_text: str
+    source_state: object
+    successor_state: object
+    parent_weight: int
+    branch_ordinal: int
+    transition_kind: object
+    events: tuple[object, ...]
+    evidence: object
+    execution_capabilities: frozenset[object]
+    residual_work_evidence: tuple[object, ...]
+    finite_relation_work_evidence: tuple[object, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterRuntimeBranchTransitionBatch:
+    """Checked text projection plus the branch-preserving supports below it."""
+
+    choices: WriterFrontierChoices
+    branch_transitions: tuple[_WriterRuntimeBranchTransition, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -279,12 +310,13 @@ def writer_runtime_choice_transitions(
     prepared: SouthStarPreparedMol,
     state: WriterRuntimeState,
 ) -> WriterRuntimeChoiceTransitions:
-    choices = writer_runtime_choices(
+    branch_batch = _writer_runtime_branch_transition_batch(
         prepared=prepared,
         state=state,
+        include_counts=True,
     )
     return WriterRuntimeChoiceTransitions(
-        choices=choices,
+        choices=branch_batch.choices,
         transitions=tuple(
             WriterRuntimeChoiceTransition(
                 choice=choice,
@@ -294,8 +326,48 @@ def writer_runtime_choice_transitions(
                     choice=choice,
                 ),
             )
-            for choice in choices.choices
+            for choice in branch_batch.choices.choices
         ),
+    )
+
+
+def _writer_runtime_branch_transition_batch(
+    *,
+    prepared: SouthStarPreparedMol,
+    state: WriterRuntimeState,
+    include_counts: bool,
+) -> _WriterRuntimeBranchTransitionBatch:
+    choice_snapshot = _checked_writer_frontier_choice_snapshot_from_snapshot(
+        state.snapshot,
+        prepared=prepared,
+        include_counts=include_counts,
+    )
+    branch_transitions: list[_WriterRuntimeBranchTransition] = []
+    branch_ordinal = 0
+
+    for choice in choice_snapshot.choices:
+        for support in choice.supports:
+            transition = support.schedule_support.transition
+            branch_transitions.append(
+                _WriterRuntimeBranchTransition(
+                    emitted_text=choice.emitted_text,
+                    source_state=support.state_key,
+                    successor_state=support.successor_key,
+                    parent_weight=support.parent_weight,
+                    branch_ordinal=branch_ordinal,
+                    transition_kind=transition.kind,
+                    events=transition.events,
+                    evidence=transition.evidence,
+                    execution_capabilities=frozenset(support.execution_capabilities),
+                    residual_work_evidence=tuple(support.residual_work_evidence),
+                    finite_relation_work_evidence=tuple(support.finite_relation_work_evidence),
+                )
+            )
+            branch_ordinal += 1
+
+    return _WriterRuntimeBranchTransitionBatch(
+        choices=choice_snapshot.public_choices,
+        branch_transitions=tuple(branch_transitions),
     )
 
 

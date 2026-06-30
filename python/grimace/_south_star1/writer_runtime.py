@@ -2,27 +2,22 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from collections.abc import Iterator
 from dataclasses import dataclass
 
 from .prepared_runtime import SouthStarPreparedMol
 from .prepared_runtime import SouthStarRuntimeOptions
-from .writer_capabilities import _unsupported_public_writer_execution_capabilities
-from .writer_execution_evidence import writer_finite_relation_work_envelope_violation
-from .writer_execution_evidence import writer_graph_obligation_work_envelope_violation
-from .writer_execution_evidence import writer_residual_work_envelope_violation
 from .writer_frontier import WriterFrontierChoice
 from .writer_frontier import WriterFrontierChoices
 from .writer_frontier import WriterFrontierCursor
 from .writer_frontier import WriterFrontierTerminal
 from .writer_frontier import _checked_writer_frontier_branch_supports
 from .writer_frontier import _count_checked_writer_frontier_branch_completions
+from .writer_frontier import _writer_frontier_diagnostics
 from .writer_snapshot import WriterDecoderBoundary
 from .writer_snapshot import WriterSearchSnapshot
 from .writer_snapshot import _count_writer_frontier_support_after_emitted_texts
 from .writer_snapshot import _iter_writer_frontier_support_suffixes_after_emitted_texts
-from .writer_snapshot import _writer_frontier_choice_snapshot_from_snapshot
 from .writer_snapshot import _writer_search_snapshot_with_cursor_after_emitted_text
 from .writer_snapshot import advance_writer_frontier_snapshot
 from .writer_snapshot import capture_initial_writer_frontier_snapshot
@@ -186,67 +181,37 @@ def writer_runtime_diagnostics(
     prepared: SouthStarPreparedMol,
     state: WriterRuntimeState,
 ) -> WriterRuntimeDiagnostics:
-    choice_snapshot = _writer_frontier_choice_snapshot_from_snapshot(
-        state.snapshot,
+    validate_writer_search_snapshot(state.snapshot, prepared=prepared)
+    frontier = _writer_frontier_diagnostics(
         prepared=prepared,
-        include_counts=False,
-        stop_after_first_blocked=False,
+        cursor=state.snapshot.cursor,
     )
     return WriterRuntimeDiagnostics(
-        blocked=choice_snapshot.blocked,
-        graph_policy_blockers=choice_snapshot.graph_policy_blockers,
-        stereo_policy_blockers=choice_snapshot.stereo_policy_blockers,
-        execution_capabilities=choice_snapshot.execution_capabilities,
-        terminal_execution_capabilities=choice_snapshot.terminal_execution_capabilities,
-        unsupported_execution_capabilities=(
-            _unsupported_public_writer_execution_capabilities(
-                choice_snapshot.execution_capabilities,
-            )
-        ),
+        blocked=frontier.blocked,
+        graph_policy_blockers=frontier.graph_policy_blockers,
+        stereo_policy_blockers=frontier.stereo_policy_blockers,
+        execution_capabilities=frontier.execution_capabilities,
+        terminal_execution_capabilities=frontier.terminal_execution_capabilities,
+        unsupported_execution_capabilities=frontier.unsupported_execution_capabilities,
         unsupported_terminal_execution_capabilities=(
-            _unsupported_public_writer_execution_capabilities(
-                choice_snapshot.terminal_execution_capabilities,
-            )
+            frontier.unsupported_terminal_execution_capabilities
         ),
-        residual_work_evidence=choice_snapshot.residual_work_evidence,
-        terminal_residual_work_evidence=choice_snapshot.terminal_residual_work_evidence,
-        finite_relation_work_evidence=choice_snapshot.finite_relation_work_evidence,
-        graph_obligation_work_evidence=choice_snapshot.graph_obligation_work_evidence,
-        residual_work_envelope_violations=_writer_work_envelope_violations(
-            choice_snapshot.residual_work_evidence,
-            writer_residual_work_envelope_violation,
-        ),
+        residual_work_evidence=frontier.residual_work_evidence,
+        terminal_residual_work_evidence=frontier.terminal_residual_work_evidence,
+        finite_relation_work_evidence=frontier.finite_relation_work_evidence,
+        graph_obligation_work_evidence=frontier.graph_obligation_work_evidence,
+        residual_work_envelope_violations=frontier.residual_work_envelope_violations,
         terminal_residual_work_envelope_violations=(
-            _writer_work_envelope_violations(
-                choice_snapshot.terminal_residual_work_evidence,
-                writer_residual_work_envelope_violation,
-            )
+            frontier.terminal_residual_work_envelope_violations
         ),
         finite_relation_work_envelope_violations=(
-            _writer_work_envelope_violations(
-                choice_snapshot.finite_relation_work_evidence,
-                writer_finite_relation_work_envelope_violation,
-            )
+            frontier.finite_relation_work_envelope_violations
         ),
         graph_obligation_work_envelope_violations=(
-            _writer_work_envelope_violations(
-                choice_snapshot.graph_obligation_work_evidence,
-                writer_graph_obligation_work_envelope_violation,
-            )
+            frontier.graph_obligation_work_envelope_violations
         ),
-        choice_texts=tuple(choice.emitted_text for choice in choice_snapshot.choices),
-        has_eos=choice_snapshot.terminal is not None,
-    )
-
-
-def _writer_work_envelope_violations(
-    evidence: tuple[object, ...],
-    violation_check: Callable[[object], object | None],
-) -> tuple[object, ...]:
-    return tuple(
-        violation
-        for item in evidence
-        if (violation := violation_check(item)) is not None
+        choice_texts=frontier.choice_texts,
+        has_eos=frontier.has_eos,
     )
 
 

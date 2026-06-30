@@ -13,11 +13,13 @@ from grimace._south_star1.writer_frontier import WriterFrontierCursor
 from grimace._south_star1.writer_frontier import _checked_writer_frontier_branch_supports
 from grimace._south_star1.writer_frontier import _checked_writer_frontier_schedule_outcome
 from grimace._south_star1.writer_frontier import _count_checked_writer_frontier_branch_completions
+from grimace._south_star1.writer_frontier import _writer_frontier_diagnostics
 from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
 from grimace._south_star1.writer_runtime import count_writer_runtime_branch_completions
 from grimace._south_star1.writer_runtime import initial_writer_runtime_state
 from grimace._south_star1.writer_runtime import writer_runtime_branch_transitions
 from grimace._south_star1.writer_runtime import writer_runtime_choices
+from grimace._south_star1.writer_runtime import writer_runtime_diagnostics
 from tests.south_star1.helpers import cco_facts
 
 
@@ -120,6 +122,82 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 state.snapshot.cursor,
             ),
         )
+
+    def test_runtime_diagnostics_is_frontier_owned(self) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+
+        runtime = writer_runtime_diagnostics(
+            prepared=prepared,
+            state=state,
+        )
+        frontier = _writer_frontier_diagnostics(
+            prepared,
+            state.snapshot.cursor,
+        )
+
+        self.assertEqual(runtime.blocked, frontier.blocked)
+        self.assertEqual(
+            runtime.graph_policy_blockers,
+            frontier.graph_policy_blockers,
+        )
+        self.assertEqual(
+            runtime.stereo_policy_blockers,
+            frontier.stereo_policy_blockers,
+        )
+        self.assertEqual(
+            runtime.execution_capabilities,
+            frontier.execution_capabilities,
+        )
+        self.assertEqual(
+            runtime.terminal_execution_capabilities,
+            frontier.terminal_execution_capabilities,
+        )
+        self.assertEqual(
+            runtime.unsupported_execution_capabilities,
+            frontier.unsupported_execution_capabilities,
+        )
+        self.assertEqual(
+            runtime.unsupported_terminal_execution_capabilities,
+            frontier.unsupported_terminal_execution_capabilities,
+        )
+        self.assertEqual(
+            runtime.residual_work_evidence,
+            frontier.residual_work_evidence,
+        )
+        self.assertEqual(
+            runtime.terminal_residual_work_evidence,
+            frontier.terminal_residual_work_evidence,
+        )
+        self.assertEqual(
+            runtime.finite_relation_work_evidence,
+            frontier.finite_relation_work_evidence,
+        )
+        self.assertEqual(
+            runtime.graph_obligation_work_evidence,
+            frontier.graph_obligation_work_evidence,
+        )
+        self.assertEqual(
+            runtime.residual_work_envelope_violations,
+            frontier.residual_work_envelope_violations,
+        )
+        self.assertEqual(
+            runtime.terminal_residual_work_envelope_violations,
+            frontier.terminal_residual_work_envelope_violations,
+        )
+        self.assertEqual(
+            runtime.finite_relation_work_envelope_violations,
+            frontier.finite_relation_work_envelope_violations,
+        )
+        self.assertEqual(
+            runtime.graph_obligation_work_envelope_violations,
+            frontier.graph_obligation_work_envelope_violations,
+        )
+        self.assertEqual(runtime.choice_texts, frontier.choice_texts)
+        self.assertEqual(runtime.has_eos, frontier.has_eos)
 
 
 def _prepare(facts):

@@ -283,6 +283,27 @@ class _WriterFrontierBranchSupportBatch:
 
 
 @dataclass(frozen=True, slots=True)
+class _WriterFrontierDiagnostics:
+    blocked: bool
+    graph_policy_blockers: tuple[object, ...]
+    stereo_policy_blockers: tuple[object, ...]
+    execution_capabilities: frozenset[object]
+    terminal_execution_capabilities: frozenset[object]
+    unsupported_execution_capabilities: frozenset[object]
+    unsupported_terminal_execution_capabilities: frozenset[object]
+    residual_work_evidence: tuple[object, ...]
+    terminal_residual_work_evidence: tuple[object, ...]
+    finite_relation_work_evidence: tuple[object, ...]
+    graph_obligation_work_evidence: tuple[object, ...]
+    residual_work_envelope_violations: tuple[object, ...]
+    terminal_residual_work_envelope_violations: tuple[object, ...]
+    finite_relation_work_envelope_violations: tuple[object, ...]
+    graph_obligation_work_envelope_violations: tuple[object, ...]
+    choice_texts: tuple[str, ...]
+    has_eos: bool
+
+
+@dataclass(frozen=True, slots=True)
 class _WriterFrontierResidualAttachmentSupportGroup:
     key: _WriterResidualAttachmentPolicyKey
     supports: tuple[_WriterFrontierNextTokenSupport, ...]
@@ -2384,6 +2405,87 @@ def _count_checked_writer_frontier_branch_completions_for_state_key(
 
     memo[state_key] = total
     return total
+
+
+def _writer_frontier_work_envelope_violations(
+    evidence: tuple[object, ...],
+    violation_check,
+) -> tuple[object, ...]:
+    return tuple(
+        violation
+        for item in evidence
+        if (violation := violation_check(item)) is not None
+    )
+
+
+def _writer_frontier_diagnostics(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+) -> _WriterFrontierDiagnostics:
+    choice_snapshot = _writer_frontier_choice_snapshot(
+        prepared,
+        cursor,
+        include_counts=False,
+        stop_after_first_blocked=False,
+    )
+    return _WriterFrontierDiagnostics(
+        blocked=choice_snapshot.blocked,
+        graph_policy_blockers=choice_snapshot.graph_policy_blockers,
+        stereo_policy_blockers=choice_snapshot.stereo_policy_blockers,
+        execution_capabilities=choice_snapshot.execution_capabilities,
+        terminal_execution_capabilities=(
+            choice_snapshot.terminal_execution_capabilities
+        ),
+        unsupported_execution_capabilities=(
+            _unsupported_public_writer_execution_capabilities(
+                choice_snapshot.execution_capabilities,
+            )
+        ),
+        unsupported_terminal_execution_capabilities=(
+            _unsupported_public_writer_execution_capabilities(
+                choice_snapshot.terminal_execution_capabilities,
+            )
+        ),
+        residual_work_evidence=choice_snapshot.residual_work_evidence,
+        terminal_residual_work_evidence=(
+            choice_snapshot.terminal_residual_work_evidence
+        ),
+        finite_relation_work_evidence=(
+            choice_snapshot.finite_relation_work_evidence
+        ),
+        graph_obligation_work_evidence=(
+            choice_snapshot.graph_obligation_work_evidence
+        ),
+        residual_work_envelope_violations=(
+            _writer_frontier_work_envelope_violations(
+                choice_snapshot.residual_work_evidence,
+                writer_residual_work_envelope_violation,
+            )
+        ),
+        terminal_residual_work_envelope_violations=(
+            _writer_frontier_work_envelope_violations(
+                choice_snapshot.terminal_residual_work_evidence,
+                writer_residual_work_envelope_violation,
+            )
+        ),
+        finite_relation_work_envelope_violations=(
+            _writer_frontier_work_envelope_violations(
+                choice_snapshot.finite_relation_work_evidence,
+                writer_finite_relation_work_envelope_violation,
+            )
+        ),
+        graph_obligation_work_envelope_violations=(
+            _writer_frontier_work_envelope_violations(
+                choice_snapshot.graph_obligation_work_evidence,
+                writer_graph_obligation_work_envelope_violation,
+            )
+        ),
+        choice_texts=tuple(
+            choice.emitted_text
+            for choice in choice_snapshot.choices
+        ),
+        has_eos=choice_snapshot.terminal is not None,
+    )
 
 
 def _group_writer_frontier_transitions(

@@ -87,3 +87,5 @@ _writer_stereo_non_neighbor.install()
 _writer_transition_lifecycle.install()
 
 del _writer_stereo_non_neighbor
+
+del _writer_transition_lifecycle

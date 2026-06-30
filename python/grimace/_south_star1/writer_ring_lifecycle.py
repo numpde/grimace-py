@@ -69,6 +69,8 @@ def install_writer_transition_lifecycle() -> None:
     if getattr(current, _TRANSITION_LIFECYCLE_INSTALLED_MARKER, False):
         return
 
+    # Temporary bridge until raw closure transitions carry these lifecycle
+    # events directly. The hook must rewrite only the event stream.
     def _transition_with_ring_label_lifecycle(prepared, state, **kwargs):
         kwargs["events"] = writer_events_with_ring_label_lifecycle(
             source_state=state,

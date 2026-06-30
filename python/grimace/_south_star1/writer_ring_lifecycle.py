@@ -50,11 +50,13 @@ def writer_events_with_ring_label_lifecycle(
                 )
             result.append(event)
             continue
+
         if isinstance(event, WriterRingEndpointPaired):
             result.append(event)
             if event.label not in released:
                 result.append(WriterRingLabelReleased(label=event.label))
             continue
+
         result.append(event)
 
     return tuple(result)
@@ -79,13 +81,15 @@ def validate_writer_ring_lifecycle_transition(
         successor_state=successor_state,
         events=events,
     )
-    if violations:
-        first = violations[0]
-        detail = f": {first.message}" if first.message else ""
-        raise SouthStarError(
-            SouthStarErrorKind.INTERNAL_INVARIANT,
-            f"writer ring lifecycle transition violation: {first.kind}{detail}",
-        )
+    if not violations:
+        return
+
+    first = violations[0]
+    detail = f": {first.message}" if first.message else ""
+    raise SouthStarError(
+        SouthStarErrorKind.INTERNAL_INVARIANT,
+        f"writer ring lifecycle transition violation: {first.kind}{detail}",
+    )
 
 
 def writer_ring_lifecycle_transition_violations(
@@ -176,7 +180,10 @@ def writer_ring_lifecycle_transition_violations(
         )
         _require(
             violations,
-            not any(endpoint.bond == event.bond for endpoint in _open_endpoints(successor_state)),
+            not any(
+                endpoint.bond == event.bond
+                for endpoint in _open_endpoints(successor_state)
+            ),
             "successor_pair_open_endpoint_retained",
             event.label,
             "successor retained an open endpoint for the paired bond",
@@ -209,7 +216,9 @@ def writer_ring_lifecycle_transition_violations(
         transition_events=opens,
         missing_kind="allocation_without_open_endpoint",
         late_kind="allocation_after_open_endpoint",
-        ordered=lambda lifecycle_index, transition_index: lifecycle_index < transition_index,
+        ordered=lambda lifecycle_index, transition_index: (
+            lifecycle_index < transition_index
+        ),
     )
     _check_lifecycle_event_order(
         violations,
@@ -217,7 +226,9 @@ def writer_ring_lifecycle_transition_violations(
         transition_events=pairs,
         missing_kind="release_without_paired_endpoint",
         late_kind="release_before_paired_endpoint",
-        ordered=lambda lifecycle_index, transition_index: transition_index < lifecycle_index,
+        ordered=lambda lifecycle_index, transition_index: (
+            transition_index < lifecycle_index
+        ),
     )
     return tuple(violations)
 
@@ -233,7 +244,9 @@ def _require_one(
     if not matches:
         violations.append(_violation(missing_kind, label, "missing lifecycle evidence"))
     elif len(matches) > 1:
-        violations.append(_violation(duplicate_kind, label, "duplicate lifecycle evidence"))
+        violations.append(
+            _violation(duplicate_kind, label, "duplicate lifecycle evidence")
+        )
 
 
 def _require(
@@ -263,9 +276,24 @@ def _check_lifecycle_event_order(
             if transition_event.label == lifecycle_event.label
         )
         if not positions:
-            violations.append(_violation(missing_kind, lifecycle_event.label, "missing matching endpoint"))
-        elif not any(ordered(lifecycle_index, position) for position in positions):
-            violations.append(_violation(late_kind, lifecycle_event.label, "wrong lifecycle event order"))
+            violations.append(
+                _violation(
+                    missing_kind,
+                    lifecycle_event.label,
+                    "missing matching endpoint",
+                )
+            )
+        elif not any(
+            ordered(lifecycle_index, position)
+            for position in positions
+        ):
+            violations.append(
+                _violation(
+                    late_kind,
+                    lifecycle_event.label,
+                    "wrong lifecycle event order",
+                )
+            )
 
 
 def _matching(
@@ -301,7 +329,11 @@ def _violation(
     label: WriterClosureLabel | None,
     message: str,
 ) -> WriterRingLifecycleTransitionViolation:
-    return WriterRingLifecycleTransitionViolation(kind=kind, label=label, message=message)
+    return WriterRingLifecycleTransitionViolation(
+        kind=kind,
+        label=label,
+        message=message,
+    )
 
 
 def _labels(state: object, label_state_field: str) -> tuple[WriterClosureLabel, ...]:
@@ -332,7 +364,10 @@ def _has_open_endpoint(state: object, event: WriterRingEndpointEmitted) -> bool:
     )
 
 
-def _has_open_endpoint_for_pair(state: object, event: WriterRingEndpointPaired) -> bool:
+def _has_open_endpoint_for_pair(
+    state: object,
+    event: WriterRingEndpointPaired,
+) -> bool:
     return any(
         endpoint.bond == event.bond
         and endpoint.first_atom == event.partner_atom

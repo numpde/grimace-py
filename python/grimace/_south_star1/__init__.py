@@ -81,11 +81,13 @@ BOUNDARY_MODULES: tuple[str, ...] = (
 __all__ = ("BOUNDARY_MODULES", "CORE_MODULES")
 
 from . import writer_stereo_non_neighbor as _writer_stereo_non_neighbor
-from . import writer_transition_lifecycle as _writer_transition_lifecycle
 
 _writer_stereo_non_neighbor.install()
-_writer_transition_lifecycle.install()
 
 del _writer_stereo_non_neighbor
+
+from . import writer_transition_lifecycle as _writer_transition_lifecycle
+
+_writer_transition_lifecycle.install()
 
 del _writer_transition_lifecycle

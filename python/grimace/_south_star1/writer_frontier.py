@@ -275,6 +275,12 @@ class _WriterFrontierBranchSupport:
     residual_work_evidence: tuple[object, ...]
     finite_relation_work_evidence: tuple[object, ...]
 
+    @property
+    def successor_cursor(self) -> WriterFrontierCursor:
+        return WriterFrontierCursor(
+            weighted_states=((self.successor_state, 1),)
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class _WriterFrontierBranchSupportBatch:

@@ -1038,7 +1038,7 @@ def _writer_frontier_choice_snapshot_entry_for_emitted_text(
     return choice
 
 
-def _writer_search_snapshot_with_cursor_after_emitted_text(
+def _writer_search_snapshot_after_checked_frontier_cursor_step(
     snapshot: WriterSearchSnapshot,
     *,
     prepared: SouthStarPreparedMol,
@@ -1063,6 +1063,32 @@ def _writer_search_snapshot_with_cursor_after_emitted_text(
     )
 
     return advanced
+
+
+def _writer_search_snapshot_after_checked_choice(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    choice,
+) -> WriterSearchSnapshot:
+    return _writer_search_snapshot_after_checked_frontier_cursor_step(
+        snapshot,
+        prepared=prepared,
+        cursor=choice.successor,
+    )
+
+
+def _writer_search_snapshot_after_checked_branch_support(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    support,
+) -> WriterSearchSnapshot:
+    return _writer_search_snapshot_after_checked_frontier_cursor_step(
+        snapshot,
+        prepared=prepared,
+        cursor=support.successor_cursor,
+    )
 
 
 def _writer_snapshot_advance_outcome_by_emitted_text(
@@ -1099,10 +1125,10 @@ def _writer_snapshot_advance_outcome_by_emitted_text(
             choice_snapshot=choice_snapshot,
         )
 
-    advanced_snapshot = _writer_search_snapshot_with_cursor_after_emitted_text(
+    advanced_snapshot = _writer_search_snapshot_after_checked_choice(
         snapshot,
         prepared=prepared,
-        cursor=choice.successor,
+        choice=choice,
     )
 
     return _WriterSnapshotAdvanceOutcome(

@@ -18,8 +18,11 @@ from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
 from grimace._south_star1.writer_runtime import count_writer_runtime_branch_completions
 from grimace._south_star1.writer_runtime import initial_writer_runtime_state
 from grimace._south_star1.writer_runtime import writer_runtime_branch_transitions
+from grimace._south_star1.writer_runtime import writer_runtime_choice_transitions
 from grimace._south_star1.writer_runtime import writer_runtime_choices
 from grimace._south_star1.writer_runtime import writer_runtime_diagnostics
+from grimace._south_star1.writer_snapshot import _writer_search_snapshot_after_checked_branch_support
+from grimace._south_star1.writer_snapshot import _writer_search_snapshot_after_checked_choice
 from tests.south_star1.helpers import cco_facts
 
 
@@ -198,6 +201,55 @@ class WriterBranchRuntimeTest(unittest.TestCase):
         )
         self.assertEqual(runtime.choice_texts, frontier.choice_texts)
         self.assertEqual(runtime.has_eos, frontier.has_eos)
+
+    def test_branch_runtime_next_state_uses_snapshot_branch_packaging(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        batch = _checked_writer_frontier_branch_supports(
+            prepared,
+            state.snapshot.cursor,
+            include_counts=False,
+        )
+        branches = writer_runtime_branch_transitions(
+            prepared=prepared,
+            state=state,
+            include_counts=False,
+        )
+
+        for support, branch in zip(batch.supports, branches.transitions):
+            expected = _writer_search_snapshot_after_checked_branch_support(
+                state.snapshot,
+                prepared=prepared,
+                support=support,
+            )
+            self.assertEqual(support.successor_cursor, expected.cursor)
+            self.assertEqual(branch.next_state.snapshot, expected)
+
+    def test_choice_runtime_next_state_uses_snapshot_choice_packaging(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        choices = writer_runtime_choice_transitions(
+            prepared=prepared,
+            state=state,
+        )
+
+        for transition in choices.transitions:
+            expected = _writer_search_snapshot_after_checked_choice(
+                state.snapshot,
+                prepared=prepared,
+                choice=transition.choice,
+            )
+            self.assertEqual(transition.next_state.snapshot, expected)
 
 
 def _prepare(facts):

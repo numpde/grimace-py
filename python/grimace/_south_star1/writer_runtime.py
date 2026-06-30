@@ -9,7 +9,6 @@ from .prepared_runtime import SouthStarPreparedMol
 from .prepared_runtime import SouthStarRuntimeOptions
 from .writer_frontier import WriterFrontierChoice
 from .writer_frontier import WriterFrontierChoices
-from .writer_frontier import WriterFrontierCursor
 from .writer_frontier import WriterFrontierTerminal
 from .writer_frontier import _checked_writer_frontier_branch_supports
 from .writer_frontier import _count_checked_writer_frontier_branch_completions
@@ -18,7 +17,8 @@ from .writer_snapshot import WriterDecoderBoundary
 from .writer_snapshot import WriterSearchSnapshot
 from .writer_snapshot import _count_writer_frontier_support_after_emitted_texts
 from .writer_snapshot import _iter_writer_frontier_support_suffixes_after_emitted_texts
-from .writer_snapshot import _writer_search_snapshot_with_cursor_after_emitted_text
+from .writer_snapshot import _writer_search_snapshot_after_checked_branch_support
+from .writer_snapshot import _writer_search_snapshot_after_checked_choice
 from .writer_snapshot import advance_writer_frontier_snapshot
 from .writer_snapshot import capture_initial_writer_frontier_snapshot
 from .writer_snapshot import validate_writer_search_snapshot
@@ -267,10 +267,10 @@ def writer_runtime_branch_transitions(
     )
     branch_transitions: list[WriterRuntimeBranchTransition] = []
     for support in branch_batch.supports:
-        successor_state = _writer_runtime_state_for_successor_key(
+        successor_state = _writer_runtime_state_after_checked_branch_support(
             prepared=prepared,
             state=state,
-            successor_state=support.successor_state,
+            support=support,
         )
         branch_transitions.append(
             WriterRuntimeBranchTransition(
@@ -334,25 +334,25 @@ def _writer_runtime_state_after_checked_choice(
     choice: WriterFrontierChoice,
 ) -> WriterRuntimeState:
     return WriterRuntimeState(
-        _writer_search_snapshot_with_cursor_after_emitted_text(
+        _writer_search_snapshot_after_checked_choice(
             state.snapshot,
             prepared=prepared,
-            cursor=choice.successor,
+            choice=choice,
         )
     )
 
 
-def _writer_runtime_state_for_successor_key(
+def _writer_runtime_state_after_checked_branch_support(
     *,
     prepared: SouthStarPreparedMol,
     state: WriterRuntimeState,
-    successor_state: object,
+    support,
 ) -> WriterRuntimeState:
     return WriterRuntimeState(
-        _writer_search_snapshot_with_cursor_after_emitted_text(
+        _writer_search_snapshot_after_checked_branch_support(
             state.snapshot,
             prepared=prepared,
-            cursor=WriterFrontierCursor(weighted_states=((successor_state, 1),)),
+            support=support,
         )
     )
 

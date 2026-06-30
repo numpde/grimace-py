@@ -21,28 +21,25 @@ projection remains above the branch-preserving support layer.
 
 ## Current shape
 
-`writer_runtime.py` exposes the checked text projection through
-`writer_runtime_choices(...)` and `writer_runtime_choice_transitions(...)`, but
-both now route through the branch-preserving runtime surface. Internally, the
-runtime validates the retained snapshot, runs one checked frontier schedule,
-records branch-preserving supports from that schedule's raw `next_token_supports`,
-and projects the public text choices from the same schedule outcome. Runtime no
-longer derives branch supports from public text-choice entries or from a
-separately replayed text snapshot.
+`writer_frontier.py` owns checked branch supports, branch completion counts, and
+diagnostics. `writer_snapshot.py` owns checked token-boundary snapshot
+advancement. `writer_runtime.py` validates retained snapshots and wraps
+frontier/snapshot products in public runtime dataclasses.
 
 ```text
 raw writer transitions
   -> checked frontier schedule outcome
-  -> branch-preserving runtime supports
-  -> branch-provenance successor states
+  -> checked frontier branch supports
+  -> snapshot-owned token-boundary successor snapshots
   -> branch-local lifecycle events
   -> text/determinized runtime choices from the same schedule
   -> adapters: writer_online_decoder, writer_support, snapshots
 ```
 
 Branch successor states are selected by branch provenance, not by emitted text.
-They still use the same token-boundary snapshot packaging as checked text
-successors so decoder-boundary accounting observes one selected writer step.
+Branch supports carry their exact successor cursor, and snapshot-owned
+token-boundary packaging advances the decoder boundary for both checked branch
+supports and checked text choices.
 
 Closure lifecycle events are now constructed directly by the raw closure
 transition factories in `writer_transitions.py`. Opening a closure endpoint

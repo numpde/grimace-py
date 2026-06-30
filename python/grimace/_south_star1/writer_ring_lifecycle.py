@@ -22,7 +22,6 @@ WriterRingLabelAllocationSource = Literal["fresh", "reused"]
 class WriterRingLifecycleTransitionViolation:
     kind: str
     label: WriterClosureLabel | None = None
-    message: str = ""
 
 
 def writer_events_with_ring_label_lifecycle(
@@ -81,11 +80,9 @@ def validate_writer_ring_lifecycle_transition(
     if not violations:
         return
 
-    first = violations[0]
-    detail = f": {first.message}" if first.message else ""
     raise SouthStarError(
         SouthStarErrorKind.INTERNAL_INVARIANT,
-        f"writer ring lifecycle transition violation: {first.kind}{detail}",
+        f"writer ring lifecycle transition violation: {violations[0].kind}",
     )
 
 
@@ -121,7 +118,6 @@ def writer_ring_lifecycle_transition_violations(
                 prior[0].source == expected,
                 "allocation_source_mismatch",
                 event.label,
-                message=f"expected {expected!r}, got {prior[0].source!r}",
             )
         _require_open_state(violations, source_state, successor_state, event)
 
@@ -254,11 +250,9 @@ def _require(
     condition: bool,
     kind: str,
     label: WriterClosureLabel,
-    *,
-    message: str = "",
 ) -> None:
     if not condition:
-        violations.append(_violation(kind, label, message))
+        violations.append(_violation(kind, label))
 
 
 def _require_order(
@@ -313,13 +307,8 @@ def _event_labels(events, event_type) -> frozenset[WriterClosureLabel]:
 def _violation(
     kind: str,
     label: WriterClosureLabel | None,
-    message: str,
 ) -> WriterRingLifecycleTransitionViolation:
-    return WriterRingLifecycleTransitionViolation(
-        kind=kind,
-        label=label,
-        message=message,
-    )
+    return WriterRingLifecycleTransitionViolation(kind=kind, label=label)
 
 
 def _labels(state: object, label_state_field: str) -> tuple[WriterClosureLabel, ...]:

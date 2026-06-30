@@ -50,13 +50,12 @@ event; pairing a closure endpoint carries label release evidence after the pair
 event. The state update remains authoritative: allocated/reusable label
 accounting is read from the exact branch successor.
 
-The lifecycle installer is now restricted to closure-transition factory
-installation. The installed closure factories construct the lifecycle events
-before calling the raw `_transition(...)` constructor, so `_transition(...)`,
-stereo advancement, runtime preservation, and lifecycle validation all see the
-same event stream. The remaining scaffold is the import-time factory
-installation point itself; the next cleanup is to move these closure-factory
-bodies directly into `writer_transitions.py` and delete the installer.
+The lifecycle installer is now isolated in `writer_closure_transition_lifecycle.py`.
+That scaffold installs only closure-transition factories, and those installed
+factories construct lifecycle events before calling the raw `_transition(...)`
+constructor. `writer_ring_lifecycle.py` is validation/source-classification only.
+The remaining cleanup is still to move the installed closure-factory bodies
+into `writer_transitions.py` and delete the installer module.
 
 `count_writer_runtime_completions(...)` and
 `count_writer_runtime_branch_completions(...)` both consume the branch-preserving

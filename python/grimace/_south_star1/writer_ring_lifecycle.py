@@ -130,11 +130,8 @@ def writer_ring_lifecycle_transition_violations(
                 source_state=source_state,
                 label=event.label,
             )
-            _require(
-                violations,
-                prior[0].source == expected,
-                "allocation_source_mismatch",
-            )
+            if prior[0].source != expected:
+                violations.append("allocation_source_mismatch")
         _require_open_state(violations, source_state, successor_state, event)
 
     for index, event in pairs:
@@ -244,9 +241,9 @@ def _require_one(
     duplicate_kind: str,
 ) -> None:
     if not matches:
-        _require(violations, False, missing_kind)
+        violations.append(missing_kind)
     elif len(matches) > 1:
-        _require(violations, False, duplicate_kind)
+        violations.append(duplicate_kind)
 
 
 def _require_all(
@@ -254,15 +251,6 @@ def _require_all(
     checks: tuple[tuple[bool, str], ...],
 ) -> None:
     violations.extend(kind for condition, kind in checks if not condition)
-
-
-def _require(
-    violations: list[str],
-    condition: bool,
-    kind: str,
-) -> None:
-    if not condition:
-        violations.append(kind)
 
 
 def _require_order(
@@ -281,9 +269,9 @@ def _require_order(
             if transition_event.label == lifecycle_event.label
         )
         if not positions:
-            _require(violations, False, missing_kind)
+            violations.append(missing_kind)
         elif not any(ordered(lifecycle_index, position) for position in positions):
-            _require(violations, False, order_kind)
+            violations.append(order_kind)
 
 
 def _matching(

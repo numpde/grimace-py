@@ -30,11 +30,7 @@ def writer_events_with_ring_label_lifecycle(
     source_state: object,
     events: tuple[WriterEvent, ...],
 ) -> tuple[WriterEvent, ...]:
-    """Return ``events`` with ring-label lifecycle evidence made explicit.
-
-    The helper is intentionally idempotent. Raw writer transitions can start
-    carrying these events directly without causing branch-runtime duplication.
-    """
+    """Return ``events`` with ring-label lifecycle evidence made explicit."""
 
     allocated_labels = _event_labels(events, WriterRingLabelAllocated)
     released_labels = _event_labels(events, WriterRingLabelReleased)
@@ -71,8 +67,7 @@ def writer_ring_label_allocation_source(
     source_state: object,
     label: WriterClosureLabel,
 ) -> WriterRingLabelAllocationSource:
-    reusable_labels = _source_state_reusable_labels(source_state)
-    return "reused" if label in reusable_labels else "fresh"
+    return "reused" if label in _labels(source_state, "reusable") else "fresh"
 
 
 def validate_writer_ring_lifecycle_transition(
@@ -103,206 +98,204 @@ def writer_ring_lifecycle_transition_violations(
     successor_state: object,
     events: tuple[object, ...],
 ) -> tuple[WriterRingLifecycleTransitionViolation, ...]:
+    indexed = tuple(enumerate(events))
+    opens = _indexed_events(indexed, WriterRingEndpointEmitted)
+    pairs = _indexed_events(indexed, WriterRingEndpointPaired)
+    allocations = _indexed_events(indexed, WriterRingLabelAllocated)
+    releases = _indexed_events(indexed, WriterRingLabelReleased)
+
     violations: list[WriterRingLifecycleTransitionViolation] = []
-    open_events = _indexed_events(events, WriterRingEndpointEmitted)
-    pair_events = _indexed_events(events, WriterRingEndpointPaired)
-    allocation_events = _indexed_events(events, WriterRingLabelAllocated)
-    release_events = _indexed_events(events, WriterRingLabelReleased)
-
-    for index, allocation in allocation_events:
-        matching_positions = tuple(
-            endpoint_index
-            for endpoint_index, endpoint in open_events
-            if endpoint.label == allocation.label
-        )
-        if not matching_positions:
-            violations.append(
-                _violation(
-                    "allocation_without_open_endpoint",
-                    allocation.label,
-                    "label allocation has no matching emitted open endpoint",
-                )
-            )
-            continue
-        if all(endpoint_index < index for endpoint_index in matching_positions):
-            violations.append(
-                _violation(
-                    "allocation_after_open_endpoint",
-                    allocation.label,
-                    "label allocation appears after its open endpoint",
-                )
-            )
-
-    for index, release in release_events:
-        matching_positions = tuple(
-            pair_index
-            for pair_index, pair in pair_events
-            if pair.label == release.label
-        )
-        if not matching_positions:
-            violations.append(
-                _violation(
-                    "release_without_paired_endpoint",
-                    release.label,
-                    "label release has no matching paired endpoint",
-                )
-            )
-            continue
-        if all(pair_index > index for pair_index in matching_positions):
-            violations.append(
-                _violation(
-                    "release_before_paired_endpoint",
-                    release.label,
-                    "label release appears before its paired endpoint",
-                )
-            )
-
-    for index, event in open_events:
-        allocations = tuple(
-            allocation
-            for allocation_index, allocation in allocation_events
-            if allocation.label == event.label and allocation_index < index
-        )
-        if not allocations:
-            violations.append(
-                _violation(
-                    "missing_open_label_allocation",
-                    event.label,
-                    "open endpoint is not preceded by label allocation evidence",
-                )
-            )
-        elif len(allocations) > 1:
-            violations.append(
-                _violation(
-                    "duplicate_open_label_allocation",
-                    event.label,
-                    "open endpoint has multiple prior label allocations",
-                )
-            )
-        else:
-            expected_source = writer_ring_label_allocation_source(
+    for index, event in opens:
+        matches = _matching_before(allocations, index, event.label)
+        violations.extend(_single_lifecycle_event_violations(
+            matches,
+            missing_kind="missing_open_label_allocation",
+            duplicate_kind="duplicate_open_label_allocation",
+            label=event.label,
+            missing_message="open endpoint is not preceded by label allocation evidence",
+            duplicate_message="open endpoint has multiple prior label allocations",
+        ))
+        if len(matches) == 1:
+            expected = writer_ring_label_allocation_source(
                 source_state=source_state,
                 label=event.label,
             )
-            if allocations[0].source != expected_source:
-                violations.append(
-                    _violation(
-                        "allocation_source_mismatch",
-                        event.label,
-                        (
-                            "allocation source does not match source-state "
-                            f"label lifecycle: expected {expected_source!r}, "
-                            f"got {allocations[0].source!r}"
-                        ),
-                    )
-                )
+            if matches[0].source != expected:
+                violations.append(_violation(
+                    "allocation_source_mismatch",
+                    event.label,
+                    (
+                        "allocation source does not match source-state label "
+                        f"lifecycle: expected {expected!r}, got {matches[0].source!r}"
+                    ),
+                ))
+        violations.extend(_open_state_violations(source_state, successor_state, event))
 
-        if event.label in _allocated_labels(source_state):
-            violations.append(
-                _violation(
-                    "open_source_label_already_allocated",
-                    event.label,
-                    "open endpoint allocates a label already allocated in source state",
-                )
-            )
-        if not _successor_has_open_endpoint(successor_state, event):
-            violations.append(
-                _violation(
-                    "successor_open_endpoint_missing",
-                    event.label,
-                    "successor state does not contain the emitted open endpoint",
-                )
-            )
-        if event.label not in _allocated_labels(successor_state):
-            violations.append(
-                _violation(
-                    "successor_open_label_not_allocated",
-                    event.label,
-                    "successor state does not mark the opened label allocated",
-                )
-            )
-        if event.label in _reusable_labels(successor_state):
-            violations.append(
-                _violation(
-                    "successor_open_label_still_reusable",
-                    event.label,
-                    "successor state still marks the opened label reusable",
-                )
-            )
+    for index, event in pairs:
+        matches = _matching_after(releases, index, event.label)
+        violations.extend(_single_lifecycle_event_violations(
+            matches,
+            missing_kind="missing_paired_label_release",
+            duplicate_kind="duplicate_paired_label_release",
+            label=event.label,
+            missing_message="paired endpoint is not followed by label release evidence",
+            duplicate_message="paired endpoint has multiple following label releases",
+        ))
+        violations.extend(_pair_state_violations(source_state, successor_state, event))
 
-    for index, event in pair_events:
-        releases = tuple(
-            release
-            for release_index, release in release_events
-            if release.label == event.label and release_index > index
-        )
-        if not releases:
-            violations.append(
-                _violation(
-                    "missing_paired_label_release",
-                    event.label,
-                    "paired endpoint is not followed by label release evidence",
-                )
-            )
-        elif len(releases) > 1:
-            violations.append(
-                _violation(
-                    "duplicate_paired_label_release",
-                    event.label,
-                    "paired endpoint has multiple following label releases",
-                )
-            )
-
-        if not _source_has_open_endpoint_for_pair(source_state, event):
-            violations.append(
-                _violation(
-                    "source_pair_open_endpoint_missing",
-                    event.label,
-                    "source state does not contain the paired open endpoint",
-                )
-            )
-        if event.label not in _allocated_labels(source_state):
-            violations.append(
-                _violation(
-                    "pair_source_label_not_allocated",
-                    event.label,
-                    "paired endpoint source state does not mark the label allocated",
-                )
-            )
-        if _successor_has_open_endpoint_for_bond(successor_state, event.bond):
-            violations.append(
-                _violation(
-                    "successor_pair_open_endpoint_retained",
-                    event.label,
-                    "successor state still contains an open endpoint for paired bond",
-                )
-            )
-        if not _successor_has_closed_closure(successor_state, event):
-            violations.append(
-                _violation(
-                    "successor_closed_closure_missing",
-                    event.label,
-                    "successor state does not contain the paired closed closure",
-                )
-            )
-        if event.label in _allocated_labels(successor_state):
-            violations.append(
-                _violation(
-                    "successor_paired_label_still_allocated",
-                    event.label,
-                    "successor state still marks the paired label allocated",
-                )
-            )
-        if event.label not in _reusable_labels(successor_state):
-            violations.append(
-                _violation(
-                    "successor_paired_label_not_reusable",
-                    event.label,
-                    "successor state does not mark the paired label reusable",
-                )
-            )
-
+    violations.extend(_unmatched_lifecycle_evidence_violations(
+        lifecycle_events=allocations,
+        transition_events=opens,
+        missing_kind="allocation_without_open_endpoint",
+        late_kind="allocation_after_open_endpoint",
+        label_word="allocation",
+        transition_word="open endpoint",
+        relation=lambda lifecycle_index, transition_index: lifecycle_index < transition_index,
+    ))
+    violations.extend(_unmatched_lifecycle_evidence_violations(
+        lifecycle_events=releases,
+        transition_events=pairs,
+        missing_kind="release_without_paired_endpoint",
+        late_kind="release_before_paired_endpoint",
+        label_word="release",
+        transition_word="paired endpoint",
+        relation=lambda lifecycle_index, transition_index: transition_index < lifecycle_index,
+    ))
     return tuple(violations)
+
+
+def _open_state_violations(
+    source_state: object,
+    successor_state: object,
+    event: WriterRingEndpointEmitted,
+) -> tuple[WriterRingLifecycleTransitionViolation, ...]:
+    checks = (
+        (
+            event.label not in _labels(source_state, "allocated"),
+            "open_source_label_already_allocated",
+            "open endpoint allocates a label already allocated in source state",
+        ),
+        (
+            _has_open_endpoint(successor_state, event),
+            "successor_open_endpoint_missing",
+            "successor state does not contain the emitted open endpoint",
+        ),
+        (
+            event.label in _labels(successor_state, "allocated"),
+            "successor_open_label_not_allocated",
+            "successor state does not mark the opened label allocated",
+        ),
+        (
+            event.label not in _labels(successor_state, "reusable"),
+            "successor_open_label_still_reusable",
+            "successor state still marks the opened label reusable",
+        ),
+    )
+    return tuple(_violation(kind, event.label, message) for ok, kind, message in checks if not ok)
+
+
+def _pair_state_violations(
+    source_state: object,
+    successor_state: object,
+    event: WriterRingEndpointPaired,
+) -> tuple[WriterRingLifecycleTransitionViolation, ...]:
+    checks = (
+        (
+            _has_open_endpoint_for_pair(source_state, event),
+            "source_pair_open_endpoint_missing",
+            "source state does not contain the paired open endpoint",
+        ),
+        (
+            event.label in _labels(source_state, "allocated"),
+            "pair_source_label_not_allocated",
+            "paired endpoint source state does not mark the label allocated",
+        ),
+        (
+            not any(endpoint.bond == event.bond for endpoint in _open_endpoints(successor_state)),
+            "successor_pair_open_endpoint_retained",
+            "successor state still contains an open endpoint for paired bond",
+        ),
+        (
+            _has_closed_closure(successor_state, event),
+            "successor_closed_closure_missing",
+            "successor state does not contain the paired closed closure",
+        ),
+        (
+            event.label not in _labels(successor_state, "allocated"),
+            "successor_paired_label_still_allocated",
+            "successor state still marks the paired label allocated",
+        ),
+        (
+            event.label in _labels(successor_state, "reusable"),
+            "successor_paired_label_not_reusable",
+            "successor state does not mark the paired label reusable",
+        ),
+    )
+    return tuple(_violation(kind, event.label, message) for ok, kind, message in checks if not ok)
+
+
+def _single_lifecycle_event_violations(
+    matches: tuple[object, ...],
+    *,
+    missing_kind: str,
+    duplicate_kind: str,
+    label: WriterClosureLabel,
+    missing_message: str,
+    duplicate_message: str,
+) -> tuple[WriterRingLifecycleTransitionViolation, ...]:
+    if not matches:
+        return (_violation(missing_kind, label, missing_message),)
+    if len(matches) > 1:
+        return (_violation(duplicate_kind, label, duplicate_message),)
+    return ()
+
+
+def _unmatched_lifecycle_evidence_violations(
+    *,
+    lifecycle_events,
+    transition_events,
+    missing_kind: str,
+    late_kind: str,
+    label_word: str,
+    transition_word: str,
+    relation,
+) -> tuple[WriterRingLifecycleTransitionViolation, ...]:
+    violations: list[WriterRingLifecycleTransitionViolation] = []
+    for lifecycle_index, lifecycle_event in lifecycle_events:
+        candidates = tuple(
+            transition_index
+            for transition_index, transition_event in transition_events
+            if transition_event.label == lifecycle_event.label
+        )
+        if not candidates:
+            violations.append(_violation(
+                missing_kind,
+                lifecycle_event.label,
+                f"label {label_word} has no matching emitted {transition_word}",
+            ))
+        elif not any(relation(lifecycle_index, transition_index) for transition_index in candidates):
+            violations.append(_violation(
+                late_kind,
+                lifecycle_event.label,
+                f"label {label_word} is not ordered with its {transition_word}",
+            ))
+    return tuple(violations)
+
+
+def _matching_before(indexed_events, index: int, label: WriterClosureLabel) -> tuple[object, ...]:
+    return tuple(event for event_index, event in indexed_events if event_index < index and event.label == label)
+
+
+def _matching_after(indexed_events, index: int, label: WriterClosureLabel) -> tuple[object, ...]:
+    return tuple(event for event_index, event in indexed_events if event_index > index and event.label == label)
+
+
+def _indexed_events(indexed_events, event_type):
+    return tuple((index, event) for index, event in indexed_events if isinstance(event, event_type))
+
+
+def _event_labels(events, event_type) -> frozenset[WriterClosureLabel]:
+    return frozenset(event.label for event in events if isinstance(event, event_type))
 
 
 def _violation(
@@ -310,78 +303,25 @@ def _violation(
     label: WriterClosureLabel | None,
     message: str,
 ) -> WriterRingLifecycleTransitionViolation:
-    return WriterRingLifecycleTransitionViolation(
-        kind=kind,
-        label=label,
-        message=message,
-    )
+    return WriterRingLifecycleTransitionViolation(kind=kind, label=label, message=message)
 
 
-def _indexed_events(events, event_type):
-    return tuple(
-        (index, event)
-        for index, event in enumerate(events)
-        if isinstance(event, event_type)
-    )
-
-
-def _event_labels(events, event_type) -> frozenset[WriterClosureLabel]:
-    return frozenset(
-        event.label
-        for event in events
-        if isinstance(event, event_type)
-    )
-
-
-def _source_state_reusable_labels(
-    source_state: object,
-) -> tuple[WriterClosureLabel, ...]:
-    return _reusable_labels(source_state)
-
-
-def _ring_state(state: object):
-    return getattr(state, "ring_state", None)
-
-
-def _label_state(state: object):
-    ring_state = _ring_state(state)
-    if ring_state is None:
-        return None
-    return getattr(ring_state, "label_state", None)
-
-
-def _allocated_labels(state: object) -> tuple[WriterClosureLabel, ...]:
-    label_state = _label_state(state)
+def _labels(state: object, label_state_field: str) -> tuple[WriterClosureLabel, ...]:
+    label_state = getattr(getattr(state, "ring_state", None), "label_state", None)
     if label_state is None:
         return ()
-    return tuple(getattr(label_state, "allocated", ()))
-
-
-def _reusable_labels(state: object) -> tuple[WriterClosureLabel, ...]:
-    label_state = _label_state(state)
-    if label_state is None:
-        return ()
-    return tuple(getattr(label_state, "reusable", ()))
+    return tuple(getattr(label_state, label_state_field, ()))
 
 
 def _open_endpoints(state: object) -> tuple[object, ...]:
-    ring_state = _ring_state(state)
-    if ring_state is None:
-        return ()
-    return tuple(getattr(ring_state, "open_endpoints", ()))
+    return tuple(getattr(getattr(state, "ring_state", None), "open_endpoints", ()))
 
 
 def _closed_closures(state: object) -> tuple[object, ...]:
-    ring_state = _ring_state(state)
-    if ring_state is None:
-        return ()
-    return tuple(getattr(ring_state, "closed_closures", ()))
+    return tuple(getattr(getattr(state, "ring_state", None), "closed_closures", ()))
 
 
-def _successor_has_open_endpoint(
-    state: object,
-    event: WriterRingEndpointEmitted,
-) -> bool:
+def _has_open_endpoint(state: object, event: WriterRingEndpointEmitted) -> bool:
     return any(
         endpoint.bond == event.bond
         and endpoint.first_atom == event.endpoint_atom
@@ -394,10 +334,7 @@ def _successor_has_open_endpoint(
     )
 
 
-def _source_has_open_endpoint_for_pair(
-    state: object,
-    event: WriterRingEndpointPaired,
-) -> bool:
+def _has_open_endpoint_for_pair(state: object, event: WriterRingEndpointPaired) -> bool:
     return any(
         endpoint.bond == event.bond
         and endpoint.first_atom == event.partner_atom
@@ -409,14 +346,7 @@ def _source_has_open_endpoint_for_pair(
     )
 
 
-def _successor_has_open_endpoint_for_bond(state: object, bond) -> bool:
-    return any(endpoint.bond == bond for endpoint in _open_endpoints(state))
-
-
-def _successor_has_closed_closure(
-    state: object,
-    event: WriterRingEndpointPaired,
-) -> bool:
+def _has_closed_closure(state: object, event: WriterRingEndpointPaired) -> bool:
     return any(
         closure.bond == event.bond
         and closure.first_atom == event.partner_atom

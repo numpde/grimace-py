@@ -95,13 +95,11 @@ def validate_writer_ring_lifecycle_transition(
         successor_state=successor_state,
         events=events,
     )
-    if not violations:
-        return
-
-    raise SouthStarError(
-        SouthStarErrorKind.INTERNAL_INVARIANT,
-        f"writer ring lifecycle transition violation: {violations[0]}",
-    )
+    if violations:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            f"writer ring lifecycle transition violation: {violations[0]}",
+        )
 
 
 def writer_ring_lifecycle_transition_violations(
@@ -126,12 +124,13 @@ def writer_ring_lifecycle_transition_violations(
             duplicate_kind="duplicate_open_label_allocation",
         )
         if len(prior) == 1:
+            expected = writer_ring_label_allocation_source(
+                source_state=source_state,
+                label=event.label,
+            )
             _require(
                 violations,
-                prior[0].source == writer_ring_label_allocation_source(
-                    source_state=source_state,
-                    label=event.label,
-                ),
+                prior[0].source == expected,
                 "allocation_source_mismatch",
             )
         _require_open_state(violations, source_state, successor_state, event)
@@ -175,25 +174,26 @@ def _require_open_state(
     successor_state: object,
     event: WriterRingEndpointEmitted,
 ) -> None:
-    _require(
+    _require_all(
         violations,
-        event.label not in _labels(source_state, "allocated"),
-        "open_source_label_already_allocated",
-    )
-    _require(
-        violations,
-        _has_open_endpoint(successor_state, event),
-        "successor_open_endpoint_missing",
-    )
-    _require(
-        violations,
-        event.label in _labels(successor_state, "allocated"),
-        "successor_open_label_not_allocated",
-    )
-    _require(
-        violations,
-        event.label not in _labels(successor_state, "reusable"),
-        "successor_open_label_still_reusable",
+        (
+            (
+                event.label not in _labels(source_state, "allocated"),
+                "open_source_label_already_allocated",
+            ),
+            (
+                _has_open_endpoint(successor_state, event),
+                "successor_open_endpoint_missing",
+            ),
+            (
+                event.label in _labels(successor_state, "allocated"),
+                "successor_open_label_not_allocated",
+            ),
+            (
+                event.label not in _labels(successor_state, "reusable"),
+                "successor_open_label_still_reusable",
+            ),
+        ),
     )
 
 
@@ -203,35 +203,34 @@ def _require_pair_state(
     successor_state: object,
     event: WriterRingEndpointPaired,
 ) -> None:
-    _require(
+    _require_all(
         violations,
-        _has_open_endpoint_for_pair(source_state, event),
-        "source_pair_open_endpoint_missing",
-    )
-    _require(
-        violations,
-        event.label in _labels(source_state, "allocated"),
-        "pair_source_label_not_allocated",
-    )
-    _require(
-        violations,
-        not _has_open_endpoint_for_bond(successor_state, event.bond),
-        "successor_pair_open_endpoint_retained",
-    )
-    _require(
-        violations,
-        _has_closed_closure(successor_state, event),
-        "successor_closed_closure_missing",
-    )
-    _require(
-        violations,
-        event.label not in _labels(successor_state, "allocated"),
-        "successor_paired_label_still_allocated",
-    )
-    _require(
-        violations,
-        event.label in _labels(successor_state, "reusable"),
-        "successor_paired_label_not_reusable",
+        (
+            (
+                _has_open_endpoint_for_pair(source_state, event),
+                "source_pair_open_endpoint_missing",
+            ),
+            (
+                event.label in _labels(source_state, "allocated"),
+                "pair_source_label_not_allocated",
+            ),
+            (
+                not _has_open_endpoint_for_bond(successor_state, event.bond),
+                "successor_pair_open_endpoint_retained",
+            ),
+            (
+                _has_closed_closure(successor_state, event),
+                "successor_closed_closure_missing",
+            ),
+            (
+                event.label not in _labels(successor_state, "allocated"),
+                "successor_paired_label_still_allocated",
+            ),
+            (
+                event.label in _labels(successor_state, "reusable"),
+                "successor_paired_label_not_reusable",
+            ),
+        ),
     )
 
 
@@ -246,6 +245,13 @@ def _require_one(
         _require(violations, False, missing_kind)
     elif len(matches) > 1:
         _require(violations, False, duplicate_kind)
+
+
+def _require_all(
+    violations: list[str],
+    checks: tuple[tuple[bool, str], ...],
+) -> None:
+    violations.extend(kind for condition, kind in checks if not condition)
 
 
 def _require(

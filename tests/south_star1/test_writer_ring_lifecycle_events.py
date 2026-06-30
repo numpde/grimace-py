@@ -198,10 +198,7 @@ class WriterRingLifecycleEventsTest(unittest.TestCase):
             events=(_endpoint_emitted(label),),
         )
 
-        self.assertIn(
-            "missing_open_label_allocation",
-            _violation_kinds(violations),
-        )
+        self.assertIn("missing_open_label_allocation", violations)
 
     def test_transition_validator_reports_allocation_source_mismatch(self) -> None:
         label = _label(1)
@@ -217,10 +214,7 @@ class WriterRingLifecycleEventsTest(unittest.TestCase):
             ),
         )
 
-        self.assertIn(
-            "allocation_source_mismatch",
-            _violation_kinds(violations),
-        )
+        self.assertIn("allocation_source_mismatch", violations)
 
     def test_transition_validator_reports_missing_pair_release(self) -> None:
         label = _label(1)
@@ -236,10 +230,7 @@ class WriterRingLifecycleEventsTest(unittest.TestCase):
             events=(_endpoint_paired(label),),
         )
 
-        self.assertIn(
-            "missing_paired_label_release",
-            _violation_kinds(violations),
-        )
+        self.assertIn("missing_paired_label_release", violations)
 
 
 @dataclass(frozen=True, slots=True)
@@ -323,10 +314,6 @@ def _single_event(events, event_type):
             f"expected exactly one {event_type.__name__}, got {len(matches)}",
         )
     return matches[0]
-
-
-def _violation_kinds(violations) -> tuple[str, ...]:
-    return tuple(violation.kind for violation in violations)
 
 
 def _find_raw_frontier_transition(

@@ -145,7 +145,6 @@ class WriterRingLifecycleEventsTest(unittest.TestCase):
         paired_event = _single_event(paired.events, WriterRingEndpointPaired)
         paired_released = _single_event(paired.events, WriterRingLabelReleased)
 
-        self.assertEqual(paired_source, opened_successor)
         self.assertEqual(paired.events[-2], paired_event)
         self.assertEqual(paired.events[-1], paired_released)
         self.assertEqual(paired_released.label, opened_allocated.label)

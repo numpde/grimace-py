@@ -21,7 +21,6 @@ from .writer_frontier import WriterFrontierCursor
 from .writer_frontier import WriterFrontierTerminal
 from .writer_frontier import _checked_writer_frontier_schedule_outcome
 from .writer_frontier import _writer_frontier_choice_snapshot_from_schedule_outcome
-from .writer_ring_lifecycle import writer_events_with_ring_label_lifecycle
 from .writer_snapshot import WriterDecoderBoundary
 from .writer_snapshot import WriterFrontierFrame
 from .writer_snapshot import WriterSearchSnapshot
@@ -325,10 +324,7 @@ def writer_runtime_branch_transitions(
                 parent_weight=support.parent_weight,
                 branch_ordinal=branch_ordinal,
                 transition_kind=transition.kind,
-                events=writer_events_with_ring_label_lifecycle(
-                    source_state=support.state_key,
-                    events=transition.events,
-                ),
+                events=transition.events,
                 evidence=transition.evidence,
                 execution_capabilities=frozenset(support.execution_capabilities),
                 residual_work_evidence=tuple(support.residual_work_evidence),

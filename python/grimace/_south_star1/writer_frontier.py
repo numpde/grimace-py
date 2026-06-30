@@ -34,6 +34,7 @@ from .writer_state import WriterStateKey
 from .writer_state import writer_state_from_key
 from .writer_state import writer_state_key
 from .writer_state import writer_state_key_sort_tuple
+from .writer_ring_lifecycle import validate_writer_ring_lifecycle_transition
 from .writer_stereo import initial_writer_stereo_state
 from .writer_stereo import WriterStereoPolicyBlocker
 from .writer_transitions import _WriterActiveEmittedGraphPolicyBlocker
@@ -1867,6 +1868,17 @@ def _validate_writer_frontier_schedule_outcome_grouping(
         )
 
 
+def _validate_writer_frontier_schedule_outcome_lifecycle(
+    outcome: _WriterFrontierScheduleOutcome,
+) -> None:
+    for support in outcome.next_token_supports:
+        validate_writer_ring_lifecycle_transition(
+            source_state=support.state_key,
+            successor_state=support.successor_key,
+            events=support.schedule_support.transition.events,
+        )
+
+
 def _writer_frontier_schedule_outcome(
     prepared: SouthStarPreparedMol,
     cursor: WriterFrontierCursor,
@@ -1950,6 +1962,7 @@ def _writer_frontier_schedule_outcome(
         next_token_frontier=next_token_frontier,
     )
     _validate_writer_frontier_schedule_outcome_grouping(outcome)
+    _validate_writer_frontier_schedule_outcome_lifecycle(outcome)
 
     return outcome
 

@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import unittest
 from collections import deque
+from dataclasses import replace
 from types import SimpleNamespace
 
+from grimace._south_star1 import writer_transitions
+from grimace._south_star1.errors import SouthStarError
 from grimace._south_star1.ids import AtomId
 from grimace._south_star1.ids import BondId
 from grimace._south_star1.policy import SerializationLanguageMode
@@ -119,6 +122,47 @@ class WriterRingLifecycleEventsTest(unittest.TestCase):
             _single_event(runtime_branch.events, WriterRingLabelAllocated).source,
             "fresh",
         )
+
+    def test_checked_frontier_rejects_raw_closure_transition_without_lifecycle(
+        self,
+    ) -> None:
+        prepared = _prepared_cyclopropane()
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        original = (
+            writer_transitions
+            ._open_closure_endpoint_transition_from_obligation
+        )
+
+        def without_allocation(*args, **kwargs):
+            transition = original(*args, **kwargs)
+            if transition is None:
+                return None
+            return replace(
+                transition,
+                events=tuple(
+                    event
+                    for event in transition.events
+                    if not isinstance(event, WriterRingLabelAllocated)
+                ),
+            )
+
+        writer_transitions._open_closure_endpoint_transition_from_obligation = (
+            without_allocation
+        )
+        try:
+            with self.assertRaisesRegex(
+                SouthStarError,
+                "writer ring lifecycle transition violation",
+            ):
+                _find_raw_frontier_transition(
+                    prepared,
+                    initial,
+                    "open_closure_endpoint",
+                )
+        finally:
+            writer_transitions._open_closure_endpoint_transition_from_obligation = (
+                original
+            )
 
     def test_transition_validator_reports_lifecycle_violations(self) -> None:
         label = _label(1)

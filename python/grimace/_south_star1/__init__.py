@@ -58,6 +58,7 @@ CORE_MODULES: tuple[str, ...] = (
     "support_artifact_schema",
     "support_enumeration",
     "stereo_witness",
+    "writer_closure_transition_lifecycle",
     "writer_events",
     "writer_frontier",
     "writer_graph_obligations",
@@ -79,12 +80,12 @@ BOUNDARY_MODULES: tuple[str, ...] = (
 
 __all__ = ("BOUNDARY_MODULES", "CORE_MODULES")
 
-from . import writer_ring_lifecycle as _writer_ring_lifecycle
+from . import writer_closure_transition_lifecycle as _writer_closure_transition_lifecycle
 from . import writer_stereo_non_neighbor as _writer_stereo_non_neighbor
 
 _writer_stereo_non_neighbor.install()
-_writer_ring_lifecycle.install_writer_transition_lifecycle()
+_writer_closure_transition_lifecycle.install_writer_transition_lifecycle()
 
-del _writer_ring_lifecycle
+del _writer_closure_transition_lifecycle
 
 del _writer_stereo_non_neighbor

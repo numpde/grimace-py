@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import unittest
 from collections import Counter
 from types import SimpleNamespace
@@ -19,6 +20,9 @@ from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_fa
 from grimace._south_star1.writer_events import WriterRingEndpointEmitted
 from grimace._south_star1.writer_events import WriterRingLabelAllocated
 from grimace._south_star1.writer_capabilities import _WriterExecutionCapabilityKind
+from grimace._south_star1.writer_execution_evidence import (
+    writer_graph_obligation_work_envelope_violation,
+)
 from grimace._south_star1.writer_frontier import WriterFrontierCursor
 from grimace._south_star1.writer_frontier import _checked_writer_frontier_branch_supports
 from grimace._south_star1.writer_frontier import _checked_writer_frontier_schedule_outcome
@@ -27,6 +31,8 @@ from grimace._south_star1.writer_frontier import _writer_frontier_diagnostics
 from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
 from grimace._south_star1.writer_graph_obligations import WriterBoundaryOwnerKind
 from grimace._south_star1.writer_graph_obligations import WriterResidualAttachmentActionKind
+from grimace._south_star1.writer_graph_obligations import build_writer_graph_obligation_context
+from grimace._south_star1.writer_graph_obligations import writer_graph_obligation_work_evidence
 from grimace._south_star1.writer_runtime import count_writer_runtime_branch_completions
 from grimace._south_star1.writer_runtime import initial_writer_runtime_state
 from grimace._south_star1.writer_runtime import writer_runtime_branch_transitions
@@ -257,29 +263,59 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             0,
         )
 
-    def test_live_branch_return_closure_candidate_partner(self) -> None:
-        state = _branch_return_closure_candidate_state(live_partner=True)
+    def test_graph_evidence_classifies_live_branch_return_closure_candidate(
+        self,
+    ) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        key = writer_state_key(
+            _branch_return_closure_candidate_state(live_partner=True)
+        )
+        context = build_writer_graph_obligation_context(prepared, key)
 
-        self.assertEqual(
-            writer_transitions._live_branch_return_closure_candidate_partner(
-                state,
-                active_atom=AtomId(0),
-                left=AtomId(0),
-                right=AtomId(1),
-            ),
-            AtomId(1),
+        evidence = writer_graph_obligation_work_evidence(
+            operation="test",
+            prepared=prepared,
+            key=key,
+            context=context,
         )
 
-    def test_frozen_closure_candidate_partner_is_not_live(self) -> None:
-        state = _branch_return_closure_candidate_state(live_partner=False)
-
+        self.assertEqual(evidence.closure_candidate_count, 1)
+        self.assertEqual(
+            evidence.live_branch_return_closure_candidate_count,
+            1,
+        )
+        self.assertEqual(evidence.unsupported_closure_candidate_count, 0)
         self.assertIsNone(
-            writer_transitions._live_branch_return_closure_candidate_partner(
-                state,
-                active_atom=AtomId(0),
-                left=AtomId(0),
-                right=AtomId(1),
-            )
+            writer_graph_obligation_work_envelope_violation(evidence)
+        )
+
+    def test_graph_evidence_classifies_frozen_closure_candidate(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        key = writer_state_key(
+            _branch_return_closure_candidate_state(live_partner=False)
+        )
+        context = build_writer_graph_obligation_context(prepared, key)
+
+        evidence = writer_graph_obligation_work_evidence(
+            operation="test",
+            prepared=prepared,
+            key=key,
+            context=context,
+        )
+
+        self.assertEqual(evidence.closure_candidate_count, 1)
+        self.assertEqual(
+            evidence.live_branch_return_closure_candidate_count,
+            0,
+        )
+        self.assertEqual(evidence.unsupported_closure_candidate_count, 1)
+
+        violation = writer_graph_obligation_work_envelope_violation(evidence)
+        self.assertIsNotNone(violation)
+        assert violation is not None
+        self.assertEqual(
+            violation.metric,
+            "unsupported_closure_candidate_count",
         )
 
     def test_live_branch_return_closure_candidate_reaches_branch_support(
@@ -320,6 +356,21 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             ),
             support.execution_capabilities,
         )
+        context = build_writer_graph_obligation_context(
+            prepared,
+            support.source_state,
+        )
+        evidence = writer_graph_obligation_work_evidence(
+            operation="test",
+            prepared=prepared,
+            key=support.source_state,
+            context=context,
+        )
+        self.assertEqual(
+            evidence.live_branch_return_closure_candidate_count,
+            1,
+        )
+        self.assertEqual(evidence.unsupported_closure_candidate_count, 0)
         self.assertIsInstance(support.events[0], WriterRingLabelAllocated)
         self.assertIsInstance(support.events[1], WriterRingEndpointEmitted)
         self.assertEqual(
@@ -358,6 +409,18 @@ class WriterBranchRuntimeTest(unittest.TestCase):
 
         self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
         self.assertIn("closure-candidate", str(caught.exception))
+
+    def test_closure_candidate_liveness_is_graph_owned(self) -> None:
+        source = inspect.getsource(writer_transitions)
+
+        self.assertIn(
+            "writer_live_branch_return_closure_candidate_resolutions",
+            source,
+        )
+        self.assertNotIn(
+            "def _live_branch_return_closure_candidate_partner",
+            source,
+        )
 
     def test_runtime_branch_completion_count_is_frontier_owned(self) -> None:
         prepared = _prepare(cco_facts())

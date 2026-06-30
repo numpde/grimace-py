@@ -73,6 +73,8 @@ class WriterGraphObligationWorkEvidence:
     residual_attachment_action_count: int
     boundary_incidence_count: int
     closure_candidate_count: int
+    live_branch_return_closure_candidate_count: int
+    unsupported_closure_candidate_count: int
     open_closure_count: int
     closed_closure_count: int
     max_attachment_atom_count: int
@@ -89,6 +91,8 @@ class WriterGraphObligationWorkEnvelope:
     max_residual_attachment_action_count: int | None = None
     max_boundary_incidence_count: int | None = None
     max_closure_candidate_count: int | None = None
+    max_live_branch_return_closure_candidate_count: int | None = None
+    max_unsupported_closure_candidate_count: int | None = None
     max_open_closure_count: int | None = None
     max_closed_closure_count: int | None = None
     max_attachment_atom_count: int | None = None
@@ -140,6 +144,8 @@ _PUBLIC_GRAPH_OBLIGATION_MAX_RESIDUAL_ATTACHMENT_COUNT = 4
 _PUBLIC_GRAPH_OBLIGATION_MAX_RESIDUAL_ATTACHMENT_ACTION_COUNT = 4
 _PUBLIC_GRAPH_OBLIGATION_MAX_BOUNDARY_INCIDENCE_COUNT = 4
 _PUBLIC_GRAPH_OBLIGATION_MAX_CLOSURE_CANDIDATE_COUNT = 1
+_PUBLIC_GRAPH_OBLIGATION_MAX_LIVE_BRANCH_RETURN_CLOSURE_CANDIDATE_COUNT = 1
+_PUBLIC_GRAPH_OBLIGATION_MAX_UNSUPPORTED_CLOSURE_CANDIDATE_COUNT = 0
 _PUBLIC_GRAPH_OBLIGATION_MAX_OPEN_CLOSURE_COUNT = 2
 _PUBLIC_GRAPH_OBLIGATION_MAX_CLOSED_CLOSURE_COUNT = 2
 _PUBLIC_GRAPH_OBLIGATION_MAX_ATTACHMENT_ATOM_COUNT = 10
@@ -196,6 +202,12 @@ _PUBLIC_WRITER_GRAPH_OBLIGATION_WORK_ENVELOPE = (
         ),
         max_closure_candidate_count=(
             _PUBLIC_GRAPH_OBLIGATION_MAX_CLOSURE_CANDIDATE_COUNT
+        ),
+        max_live_branch_return_closure_candidate_count=(
+            _PUBLIC_GRAPH_OBLIGATION_MAX_LIVE_BRANCH_RETURN_CLOSURE_CANDIDATE_COUNT
+        ),
+        max_unsupported_closure_candidate_count=(
+            _PUBLIC_GRAPH_OBLIGATION_MAX_UNSUPPORTED_CLOSURE_CANDIDATE_COUNT
         ),
         max_open_closure_count=(
             _PUBLIC_GRAPH_OBLIGATION_MAX_OPEN_CLOSURE_COUNT
@@ -364,6 +376,16 @@ def writer_graph_obligation_work_envelope_violation(
             "closure_candidate_count",
             evidence.closure_candidate_count,
             envelope.max_closure_candidate_count,
+        ),
+        (
+            "live_branch_return_closure_candidate_count",
+            evidence.live_branch_return_closure_candidate_count,
+            envelope.max_live_branch_return_closure_candidate_count,
+        ),
+        (
+            "unsupported_closure_candidate_count",
+            evidence.unsupported_closure_candidate_count,
+            envelope.max_unsupported_closure_candidate_count,
         ),
         (
             "open_closure_count",

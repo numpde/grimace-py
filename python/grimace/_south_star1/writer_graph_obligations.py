@@ -39,6 +39,12 @@ class WriterEdgeObligationKind(Enum):
     CLOSED_CLOSURE = "closed_closure"
 
 
+class WriterClosureCandidateResolutionKind(Enum):
+    LIVE_BRANCH_RETURN = "live_branch_return"
+    UNSUPPORTED_NOT_ACTIVE = "unsupported_not_active"
+    UNSUPPORTED_FROZEN_PARTNER = "unsupported_frozen_partner"
+
+
 @dataclass(frozen=True, slots=True)
 class WriterClosureBondTextRelation:
     rows: tuple[tuple[str, tuple[str, ...]], ...]
@@ -142,6 +148,14 @@ class WriterEdgeObligation:
 @dataclass(frozen=True, slots=True)
 class WriterEdgeObligationPartition:
     obligations: tuple[WriterEdgeObligation, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class WriterClosureCandidateResolution:
+    bond: BondId
+    first_atom: AtomId | None
+    second_atom: AtomId | None
+    resolution_kind: WriterClosureCandidateResolutionKind
 
 
 @dataclass(frozen=True, slots=True)
@@ -351,6 +365,10 @@ def writer_graph_obligation_work_evidence(
     component = prepared.facts.components[component_index]
     obligations = context.edge_partition.obligations
     attachments = context.residual_summary.attachments.attachments
+    closure_candidate_resolutions = writer_closure_candidate_resolutions(
+        key,
+        context.edge_partition,
+    )
 
     return WriterGraphObligationWorkEvidence(
         operation=operation,
@@ -370,6 +388,22 @@ def writer_graph_obligation_work_evidence(
             1
             for obligation in obligations
             if obligation.kind is WriterEdgeObligationKind.CLOSURE_CANDIDATE
+        ),
+        live_branch_return_closure_candidate_count=sum(
+            1
+            for resolution in closure_candidate_resolutions
+            if (
+                resolution.resolution_kind
+                is WriterClosureCandidateResolutionKind.LIVE_BRANCH_RETURN
+            )
+        ),
+        unsupported_closure_candidate_count=sum(
+            1
+            for resolution in closure_candidate_resolutions
+            if (
+                resolution.resolution_kind
+                is not WriterClosureCandidateResolutionKind.LIVE_BRANCH_RETURN
+            )
         ),
         open_closure_count=sum(
             1
@@ -611,6 +645,81 @@ def classify_writer_edge_obligations(
             )
         )
     return WriterEdgeObligationPartition(obligations=tuple(obligations))
+
+
+def writer_closure_candidate_resolutions(
+    key: WriterStateKey,
+    partition: WriterEdgeObligationPartition,
+) -> tuple[WriterClosureCandidateResolution, ...]:
+    branch_return_atoms = frozenset(
+        frame.return_atom.atom
+        for frame in key.branch_stack
+    )
+    active_atom = key.active.atom
+    resolutions: list[WriterClosureCandidateResolution] = []
+
+    for obligation in partition.obligations:
+        if obligation.kind is not WriterEdgeObligationKind.CLOSURE_CANDIDATE:
+            continue
+
+        if active_atom == obligation.a:
+            partner = obligation.b
+        elif active_atom == obligation.b:
+            partner = obligation.a
+        else:
+            resolutions.append(
+                WriterClosureCandidateResolution(
+                    bond=obligation.bond,
+                    first_atom=None,
+                    second_atom=None,
+                    resolution_kind=(
+                        WriterClosureCandidateResolutionKind
+                        .UNSUPPORTED_NOT_ACTIVE
+                    ),
+                )
+            )
+            continue
+
+        if partner in branch_return_atoms:
+            resolutions.append(
+                WriterClosureCandidateResolution(
+                    bond=obligation.bond,
+                    first_atom=active_atom,
+                    second_atom=partner,
+                    resolution_kind=(
+                        WriterClosureCandidateResolutionKind
+                        .LIVE_BRANCH_RETURN
+                    ),
+                )
+            )
+        else:
+            resolutions.append(
+                WriterClosureCandidateResolution(
+                    bond=obligation.bond,
+                    first_atom=active_atom,
+                    second_atom=partner,
+                    resolution_kind=(
+                        WriterClosureCandidateResolutionKind
+                        .UNSUPPORTED_FROZEN_PARTNER
+                    ),
+                )
+            )
+
+    return tuple(resolutions)
+
+
+def writer_live_branch_return_closure_candidate_resolutions(
+    key: WriterStateKey,
+    partition: WriterEdgeObligationPartition,
+) -> tuple[WriterClosureCandidateResolution, ...]:
+    return tuple(
+        resolution
+        for resolution in writer_closure_candidate_resolutions(key, partition)
+        if (
+            resolution.resolution_kind
+            is WriterClosureCandidateResolutionKind.LIVE_BRANCH_RETURN
+        )
+    )
 
 
 def writer_residual_attachment_action_is_blocked(
@@ -1555,6 +1664,8 @@ __all__ = (
     "WriterBlockCutMetadata",
     "WriterBoundaryIncidence",
     "WriterBoundaryOwnerKind",
+    "WriterClosureCandidateResolution",
+    "WriterClosureCandidateResolutionKind",
     "WriterComponentConnectivity",
     "WriterEdgeObligation",
     "WriterEdgeObligationKind",
@@ -1578,10 +1689,12 @@ __all__ = (
     "validate_writer_transition_graph_surface",
     "validate_writer_edge_obligation_partition",
     "writer_boundary_incidence_sort_tuple",
+    "writer_closure_candidate_resolutions",
     "writer_edge_obligation_partition_sort_tuple",
     "writer_edge_obligation_sort_tuple",
     "writer_graph_obligation_work_evidence",
     "writer_graph_completion_status",
+    "writer_live_branch_return_closure_candidate_resolutions",
     "writer_residual_attachment_sort_tuple",
     "writer_residual_attachment_action_is_blocked",
     "writer_residual_attachment_closure_deficit",

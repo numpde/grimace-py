@@ -14118,6 +14118,8 @@ class WriterStateKernelTest(unittest.TestCase):
             residual_attachment_action_count=1,
             boundary_incidence_count=2,
             closure_candidate_count=1,
+            live_branch_return_closure_candidate_count=0,
+            unsupported_closure_candidate_count=1,
             open_closure_count=0,
             closed_closure_count=0,
             max_attachment_atom_count=3,
@@ -14155,6 +14157,12 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIsNotNone(envelope.max_residual_attachment_action_count)
         self.assertIsNotNone(envelope.max_boundary_incidence_count)
         self.assertIsNotNone(envelope.max_closure_candidate_count)
+        self.assertIsNotNone(
+            envelope.max_live_branch_return_closure_candidate_count
+        )
+        self.assertIsNotNone(
+            envelope.max_unsupported_closure_candidate_count
+        )
         self.assertIsNotNone(envelope.max_open_closure_count)
         self.assertIsNotNone(envelope.max_closed_closure_count)
         self.assertIsNotNone(envelope.max_attachment_atom_count)
@@ -14179,6 +14187,8 @@ class WriterStateKernelTest(unittest.TestCase):
             residual_attachment_action_count=0,
             boundary_incidence_count=0,
             closure_candidate_count=0,
+            live_branch_return_closure_candidate_count=0,
+            unsupported_closure_candidate_count=0,
             open_closure_count=0,
             closed_closure_count=0,
             max_attachment_atom_count=0,
@@ -14267,6 +14277,17 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertLessEqual(
             max(item.closure_candidate_count for item in observed),
             envelope.max_closure_candidate_count,
+        )
+        self.assertLessEqual(
+            max(
+                item.live_branch_return_closure_candidate_count
+                for item in observed
+            ),
+            envelope.max_live_branch_return_closure_candidate_count,
+        )
+        self.assertLessEqual(
+            max(item.unsupported_closure_candidate_count for item in observed),
+            envelope.max_unsupported_closure_candidate_count,
         )
         self.assertLessEqual(
             max(item.open_closure_count for item in observed),

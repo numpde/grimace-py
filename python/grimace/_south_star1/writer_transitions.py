@@ -30,6 +30,9 @@ from .writer_graph_obligations import validate_writer_snapshot_graph_coherence
 from .writer_graph_obligations import validate_writer_transition_graph_surface
 from .writer_graph_obligations import writer_graph_completion_status
 from .writer_graph_obligations import writer_graph_obligation_work_evidence
+from .writer_graph_obligations import (
+    writer_live_branch_return_closure_candidate_resolutions,
+)
 from .writer_graph_obligations import writer_closure_bond_text_relation
 from .writer_graph_obligations import writer_residual_attachment_action_is_blocked
 from .writer_graph_obligations import writer_residual_attachment_action_incidences_for_atom
@@ -4614,56 +4617,34 @@ def _residual_attachment_closure_open_obligations_from_context(
     return tuple(obligations)
 
 
-def _live_branch_return_closure_candidate_partner(
-    state: WriterState | WriterStateKey,
-    *,
-    active_atom: AtomId,
-    left: AtomId,
-    right: AtomId,
-) -> AtomId | None:
-    if active_atom == left:
-        partner = right
-    elif active_atom == right:
-        partner = left
-    else:
-        return None
-
-    live_branch_return_atoms = frozenset(
-        frame.return_atom.atom
-        for frame in state.branch_stack
-    )
-
-    if partner in live_branch_return_atoms:
-        return partner
-
-    return None
-
-
 def _live_branch_return_closure_candidate_open_obligations_from_context(
     context: WriterTransitionExpansionContext,
-    state: WriterState,
+    state: WriterState | WriterStateKey,
     active_atom: AtomId,
 ) -> tuple[_WriterClosureOpenObligation, ...]:
+    del active_atom
+
+    key = getattr(context, "state_key", None)
+    if key is None:
+        key = state if isinstance(state, WriterStateKey) else writer_state_key(state)
+
     obligations: list[_WriterClosureOpenObligation] = []
 
-    for obligation in context.graph.edge_partition.obligations:
-        if obligation.kind is not WriterEdgeObligationKind.CLOSURE_CANDIDATE:
-            continue
-
-        partner = _live_branch_return_closure_candidate_partner(
-            state,
-            active_atom=active_atom,
-            left=obligation.a,
-            right=obligation.b,
-        )
-        if partner is None:
-            continue
+    for resolution in writer_live_branch_return_closure_candidate_resolutions(
+        key,
+        context.graph.edge_partition,
+    ):
+        if resolution.first_atom is None or resolution.second_atom is None:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "live closure-candidate resolution lacks endpoints",
+            )
 
         obligations.append(
             _WriterClosureOpenObligation(
-                bond=obligation.bond,
-                first_atom=active_atom,
-                second_atom=partner,
+                bond=resolution.bond,
+                first_atom=resolution.first_atom,
+                second_atom=resolution.second_atom,
                 attachment_id=None,
                 attachment_action_kind=None,
                 owner_kind=None,
@@ -5284,19 +5265,30 @@ def _child_obligation_blockers_from_context(
     state: WriterState | None = None,
     active_atom: AtomId | None = None,
 ) -> tuple[_WriterChildObligationBlocker, ...]:
+    del active_atom
+
     blockers: list[_WriterChildObligationBlocker] = []
+    key = getattr(context, "state_key", None)
+    if key is None and state is not None:
+        key = writer_state_key(state)
+    live_candidate_bonds = (
+        frozenset()
+        if key is None
+        else frozenset(
+            resolution.bond
+            for resolution in (
+                writer_live_branch_return_closure_candidate_resolutions(
+                    key,
+                    context.graph.edge_partition,
+                )
+            )
+        )
+    )
 
     for obligation in context.graph.edge_partition.obligations:
         if obligation.kind is WriterEdgeObligationKind.CLOSURE_CANDIDATE:
-            if state is not None and active_atom is not None:
-                partner = _live_branch_return_closure_candidate_partner(
-                    state,
-                    active_atom=active_atom,
-                    left=obligation.a,
-                    right=obligation.b,
-                )
-                if partner is not None:
-                    continue
+            if obligation.bond in live_candidate_bonds:
+                continue
 
             blockers.append(
                 _WriterChildObligationBlocker(

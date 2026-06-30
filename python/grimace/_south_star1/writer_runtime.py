@@ -5,10 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from collections.abc import Iterator
 from dataclasses import dataclass
-from dataclasses import replace
 
-from .errors import SouthStarError
-from .errors import SouthStarErrorKind
 from .prepared_runtime import SouthStarPreparedMol
 from .prepared_runtime import SouthStarRuntimeOptions
 from .writer_capabilities import _unsupported_public_writer_execution_capabilities
@@ -20,8 +17,8 @@ from .writer_frontier import WriterFrontierChoices
 from .writer_frontier import WriterFrontierCursor
 from .writer_frontier import WriterFrontierTerminal
 from .writer_frontier import _checked_writer_frontier_branch_supports
+from .writer_frontier import _count_checked_writer_frontier_branch_completions
 from .writer_snapshot import WriterDecoderBoundary
-from .writer_snapshot import WriterFrontierFrame
 from .writer_snapshot import WriterSearchSnapshot
 from .writer_snapshot import _count_writer_frontier_support_after_emitted_texts
 from .writer_snapshot import _iter_writer_frontier_support_suffixes_after_emitted_texts
@@ -395,21 +392,6 @@ def _writer_runtime_state_for_successor_key(
     )
 
 
-def _writer_runtime_state_with_cursor(
-    *,
-    prepared: SouthStarPreparedMol,
-    state: WriterRuntimeState,
-    cursor: WriterFrontierCursor,
-) -> WriterRuntimeState:
-    snapshot = replace(
-        state.snapshot,
-        cursor=cursor,
-        frame_stack=(WriterFrontierFrame(cursor),),
-    )
-    validate_writer_search_snapshot(snapshot, prepared=prepared)
-    return WriterRuntimeState(snapshot)
-
-
 def count_writer_runtime_support(
     *,
     prepared: SouthStarPreparedMol,
@@ -438,69 +420,11 @@ def count_writer_runtime_branch_completions(
     prepared: SouthStarPreparedMol,
     state: WriterRuntimeState,
 ) -> int:
-    return _count_writer_runtime_branch_completions(
-        prepared=prepared,
-        state=state,
-        memo={},
-        active=frozenset(),
+    validate_writer_search_snapshot(state.snapshot, prepared=prepared)
+    return _count_checked_writer_frontier_branch_completions(
+        prepared,
+        state.snapshot.cursor,
     )
-
-
-def _count_writer_runtime_branch_completions(
-    *,
-    prepared: SouthStarPreparedMol,
-    state: WriterRuntimeState,
-    memo: dict[object, int],
-    active: frozenset[object],
-) -> int:
-    total = 0
-    for state_key, weight in state.snapshot.cursor.weighted_states:
-        total += weight * _count_writer_runtime_branch_completions_for_state_key(
-            prepared=prepared,
-            state=state,
-            state_key=state_key,
-            memo=memo,
-            active=active,
-        )
-    return total
-
-
-def _count_writer_runtime_branch_completions_for_state_key(
-    *,
-    prepared: SouthStarPreparedMol,
-    state: WriterRuntimeState,
-    state_key: object,
-    memo: dict[object, int],
-    active: frozenset[object],
-) -> int:
-    if state_key in memo:
-        return memo[state_key]
-    if state_key in active:
-        raise SouthStarError(
-            SouthStarErrorKind.INTERNAL_INVARIANT,
-            "writer branch-completion count encountered a recursive state",
-        )
-    single_state = _writer_runtime_state_with_cursor(
-        prepared=prepared,
-        state=state,
-        cursor=WriterFrontierCursor(weighted_states=((state_key, 1),)),
-    )
-    branch_batch = writer_runtime_branch_transitions(
-        prepared=prepared,
-        state=single_state,
-        include_counts=False,
-    )
-    total = 0 if branch_batch.terminal is None else branch_batch.terminal.completion_count
-    next_active = active | frozenset((state_key,))
-    for branch_transition in branch_batch.transitions:
-        total += _count_writer_runtime_branch_completions(
-            prepared=prepared,
-            state=branch_transition.next_state,
-            memo=memo,
-            active=next_active,
-        )
-    memo[state_key] = total
-    return total
 
 
 def iter_writer_runtime_support(

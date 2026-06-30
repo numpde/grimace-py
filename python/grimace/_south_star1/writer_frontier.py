@@ -2311,6 +2311,81 @@ def _checked_writer_frontier_branch_supports(
     )
 
 
+def _count_checked_writer_frontier_branch_completions(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+) -> int:
+    return _count_checked_writer_frontier_branch_completions_from_cursor(
+        prepared=prepared,
+        cursor=cursor,
+        memo={},
+        active=frozenset(),
+    )
+
+
+def _count_checked_writer_frontier_branch_completions_from_cursor(
+    *,
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+    memo: dict[WriterStateKey, int],
+    active: frozenset[WriterStateKey],
+) -> int:
+    total = 0
+    for state_key, weight in cursor.weighted_states:
+        total += (
+            weight
+            * _count_checked_writer_frontier_branch_completions_for_state_key(
+                prepared=prepared,
+                state_key=state_key,
+                memo=memo,
+                active=active,
+            )
+        )
+    return total
+
+
+def _count_checked_writer_frontier_branch_completions_for_state_key(
+    *,
+    prepared: SouthStarPreparedMol,
+    state_key: WriterStateKey,
+    memo: dict[WriterStateKey, int],
+    active: frozenset[WriterStateKey],
+) -> int:
+    if state_key in memo:
+        return memo[state_key]
+    if state_key in active:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "writer branch-completion count encountered a recursive state",
+        )
+
+    cursor = WriterFrontierCursor(weighted_states=((state_key, 1),))
+    batch = _checked_writer_frontier_branch_supports(
+        prepared,
+        cursor,
+        include_counts=False,
+    )
+    total = (
+        0
+        if batch.choices.terminal is None
+        else batch.choices.terminal.completion_count
+    )
+    next_active = active | frozenset((state_key,))
+
+    for support in batch.supports:
+        total += _count_checked_writer_frontier_branch_completions_from_cursor(
+            prepared=prepared,
+            cursor=WriterFrontierCursor(
+                weighted_states=((support.successor_state, 1),)
+            ),
+            memo=memo,
+            active=next_active,
+        )
+
+    memo[state_key] = total
+    return total
+
+
 def _group_writer_frontier_transitions(
     prepared: SouthStarPreparedMol,
     cursor: WriterFrontierCursor,

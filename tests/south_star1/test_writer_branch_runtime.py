@@ -12,7 +12,9 @@ from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_fa
 from grimace._south_star1.writer_frontier import WriterFrontierCursor
 from grimace._south_star1.writer_frontier import _checked_writer_frontier_branch_supports
 from grimace._south_star1.writer_frontier import _checked_writer_frontier_schedule_outcome
+from grimace._south_star1.writer_frontier import _count_checked_writer_frontier_branch_completions
 from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
+from grimace._south_star1.writer_runtime import count_writer_runtime_branch_completions
 from grimace._south_star1.writer_runtime import initial_writer_runtime_state
 from grimace._south_star1.writer_runtime import writer_runtime_branch_transitions
 from grimace._south_star1.writer_runtime import writer_runtime_choices
@@ -100,6 +102,24 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 projected.finite_relation_work_evidence,
                 tuple(raw.finite_relation_work_evidence),
             )
+
+    def test_runtime_branch_completion_count_is_frontier_owned(self) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+
+        self.assertEqual(
+            count_writer_runtime_branch_completions(
+                prepared=prepared,
+                state=state,
+            ),
+            _count_checked_writer_frontier_branch_completions(
+                prepared,
+                state.snapshot.cursor,
+            ),
+        )
 
 
 def _prepare(facts):

@@ -21,6 +21,8 @@ from grimace._south_star1.writer_frontier import _checked_writer_frontier_schedu
 from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
 from grimace._south_star1.writer_ring_lifecycle import writer_events_with_ring_label_lifecycle
 from grimace._south_star1.writer_ring_lifecycle import writer_ring_label_allocation_source
+from grimace._south_star1.writer_runtime import initial_writer_runtime_state
+from grimace._south_star1.writer_runtime import writer_runtime_branch_transitions
 from grimace._south_star1.writer_state import WriterClosureLabel
 from grimace._south_star1.writer_state import WriterRingLabelState
 from grimace._south_star1.writer_state import WriterRingState
@@ -137,6 +139,34 @@ class WriterRingLifecycleEventsTest(unittest.TestCase):
         self.assertEqual(paired_released.label, opened_allocated.label)
         self.assertEqual(paired_released.label, paired_event.label)
 
+    def test_runtime_branch_transition_preserves_raw_transition_events(self) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            cyclopropane_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+        runtime_initial = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+
+        raw_transition, raw_successor = _find_raw_frontier_transition(
+            prepared,
+            runtime_initial.snapshot.cursor,
+            "open_closure_endpoint",
+        )
+        runtime_branch = _find_runtime_branch_transition(
+            prepared,
+            runtime_initial,
+            "open_closure_endpoint",
+        )
+
+        self.assertEqual(runtime_branch.successor_state, raw_successor)
+        self.assertEqual(runtime_branch.events, raw_transition.events)
+        self.assertEqual(
+            _single_event(runtime_branch.events, WriterRingLabelAllocated).source,
+            "fresh",
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class _SourceState:
@@ -214,6 +244,34 @@ def _find_raw_frontier_transition(
         )
 
     raise AssertionError(f"did not find raw writer transition kind {kind_value!r}")
+
+
+def _find_runtime_branch_transition(
+    prepared,
+    state,
+    kind_value: str,
+):
+    pending = deque((state,))
+    seen = set()
+
+    while pending and len(seen) < 512:
+        current = pending.popleft()
+        cursor = current.snapshot.cursor
+        if cursor in seen:
+            continue
+        seen.add(cursor)
+
+        branches = writer_runtime_branch_transitions(
+            prepared=prepared,
+            state=current,
+            include_counts=False,
+        )
+        for branch in branches.transitions:
+            if getattr(branch.transition_kind, "value", None) == kind_value:
+                return branch
+        pending.extend(branch.next_state for branch in branches.transitions)
+
+    raise AssertionError(f"did not find writer branch transition kind {kind_value!r}")
 
 
 def _writer_options() -> SouthStarRuntimeOptions:

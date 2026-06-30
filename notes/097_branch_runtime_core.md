@@ -53,10 +53,9 @@ accounting is read from the exact branch successor.
 Ring-label lifecycle derivation lives in `writer_ring_lifecycle.py` as an
 idempotent writer event-stream augmentation. It is installed at writer transition
 construction by `writer_transition_lifecycle.py`, where the source writer state is
-available for fresh-vs-reused allocation evidence. `writer_runtime.py` still
-passes raw events through the same idempotent helper as a compatibility guard, so
-branch-runtime surfaces preserve direct raw transition lifecycle evidence without
-duplicating it.
+available for fresh-vs-reused allocation evidence. `writer_runtime.py` now
+preserves raw transition events directly; branch-runtime lifecycle evidence is
+not runtime decoration.
 
 `count_writer_runtime_completions(...)` and
 `count_writer_runtime_branch_completions(...)` both consume the branch-preserving

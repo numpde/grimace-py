@@ -116,7 +116,7 @@ class WriterRingLifecycleEventsTest(unittest.TestCase):
         )
         initial = initial_writer_frontier_cursor(prepared, _writer_options())
 
-        opened, opened_successor = _find_raw_frontier_transition(
+        opened, opened_source, opened_successor = _find_raw_frontier_transition(
             prepared,
             initial,
             "open_closure_endpoint",
@@ -130,14 +130,14 @@ class WriterRingLifecycleEventsTest(unittest.TestCase):
         self.assertEqual(opened_allocated.label, opened_event.label)
         self.assertEqual(
             writer_ring_lifecycle_transition_violations(
-                source_state=initial.weighted_states[0][0],
+                source_state=opened_source,
                 successor_state=opened_successor,
                 events=opened.events,
             ),
             (),
         )
 
-        paired, paired_successor = _find_raw_frontier_transition(
+        paired, paired_source, paired_successor = _find_raw_frontier_transition(
             prepared,
             WriterFrontierCursor(weighted_states=((opened_successor, 1),)),
             "pair_closure_endpoint",
@@ -145,13 +145,14 @@ class WriterRingLifecycleEventsTest(unittest.TestCase):
         paired_event = _single_event(paired.events, WriterRingEndpointPaired)
         paired_released = _single_event(paired.events, WriterRingLabelReleased)
 
+        self.assertEqual(paired_source, opened_successor)
         self.assertEqual(paired.events[-2], paired_event)
         self.assertEqual(paired.events[-1], paired_released)
         self.assertEqual(paired_released.label, opened_allocated.label)
         self.assertEqual(paired_released.label, paired_event.label)
         self.assertEqual(
             writer_ring_lifecycle_transition_violations(
-                source_state=opened_successor,
+                source_state=paired_source,
                 successor_state=paired_successor,
                 events=paired.events,
             ),
@@ -168,7 +169,7 @@ class WriterRingLifecycleEventsTest(unittest.TestCase):
             runtime_options=_writer_options(),
         )
 
-        raw_transition, raw_successor = _find_raw_frontier_transition(
+        raw_transition, raw_source, raw_successor = _find_raw_frontier_transition(
             prepared,
             runtime_initial.snapshot.cursor,
             "open_closure_endpoint",
@@ -179,6 +180,7 @@ class WriterRingLifecycleEventsTest(unittest.TestCase):
             "open_closure_endpoint",
         )
 
+        self.assertEqual(runtime_branch.source_state, raw_source)
         self.assertEqual(runtime_branch.successor_state, raw_successor)
         self.assertEqual(runtime_branch.events, raw_transition.events)
         self.assertEqual(
@@ -346,7 +348,7 @@ def _find_raw_frontier_transition(
         for support in outcome.next_token_supports:
             transition = support.schedule_support.transition
             if getattr(transition.kind, "value", None) == kind_value:
-                return transition, support.successor_key
+                return transition, support.state_key, support.successor_key
         pending.extend(
             WriterFrontierCursor(weighted_states=((support.successor_key, 1),))
             for support in outcome.next_token_supports

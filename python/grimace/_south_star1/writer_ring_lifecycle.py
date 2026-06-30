@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Literal
 
 from .errors import SouthStarError
@@ -16,6 +17,10 @@ from .writer_state import WriterClosureLabel
 
 WriterRingLabelAllocationSource = Literal["fresh", "reused"]
 _TRANSITION_LIFECYCLE_INSTALLED_MARKER = "_ring_label_lifecycle_installed"
+_CLOSURE_TRANSITION_FACTORIES = (
+    "_open_closure_endpoint_transition_from_obligation",
+    "_pair_closure_endpoint_transition_from_obligation",
+)
 
 
 def writer_events_with_ring_label_lifecycle(
@@ -61,29 +66,35 @@ def writer_ring_label_allocation_source(
 
 
 def install_writer_transition_lifecycle() -> None:
-    """Install ring-label lifecycle evidence at transition construction time."""
+    """Install ring-label lifecycle evidence on raw closure transitions."""
 
     from . import writer_transitions
 
-    current = writer_transitions._transition
+    for name in _CLOSURE_TRANSITION_FACTORIES:
+        _install_lifecycle_wrapper(writer_transitions, name)
+
+
+def _install_lifecycle_wrapper(writer_transitions, name: str) -> None:
+    current = getattr(writer_transitions, name)
     if getattr(current, _TRANSITION_LIFECYCLE_INSTALLED_MARKER, False):
         return
 
-    # Temporary bridge until raw closure transitions carry these lifecycle
-    # events directly. The hook must rewrite only the event stream.
-    def _transition_with_ring_label_lifecycle(prepared, state, **kwargs):
-        kwargs["events"] = writer_events_with_ring_label_lifecycle(
-            source_state=state,
-            events=kwargs["events"],
+    # Temporary bridge until raw closure transition factories construct these
+    # lifecycle events directly. The wrapper must rewrite only events.
+    def _with_ring_label_lifecycle(prepared, state, *args, **kwargs):
+        transition = current(prepared, state, *args, **kwargs)
+        if transition is None:
+            return None
+        return replace(
+            transition,
+            events=writer_events_with_ring_label_lifecycle(
+                source_state=state,
+                events=transition.events,
+            ),
         )
-        return current(prepared, state, **kwargs)
 
-    setattr(
-        _transition_with_ring_label_lifecycle,
-        _TRANSITION_LIFECYCLE_INSTALLED_MARKER,
-        True,
-    )
-    writer_transitions._transition = _transition_with_ring_label_lifecycle
+    setattr(_with_ring_label_lifecycle, _TRANSITION_LIFECYCLE_INSTALLED_MARKER, True)
+    setattr(writer_transitions, name, _with_ring_label_lifecycle)
 
 
 def validate_writer_ring_lifecycle_transition(

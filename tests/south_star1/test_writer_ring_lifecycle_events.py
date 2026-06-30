@@ -1,4 +1,4 @@
-"""Ring-label lifecycle event derivation tests."""
+"""Ring-label lifecycle event construction tests."""
 
 from __future__ import annotations
 
@@ -19,7 +19,6 @@ from grimace._south_star1.writer_events import WriterRingLabelReleased
 from grimace._south_star1.writer_frontier import WriterFrontierCursor
 from grimace._south_star1.writer_frontier import _checked_writer_frontier_schedule_outcome
 from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
-from grimace._south_star1.writer_ring_lifecycle import writer_events_with_ring_label_lifecycle
 from grimace._south_star1.writer_ring_lifecycle import writer_ring_label_allocation_source
 from grimace._south_star1.writer_ring_lifecycle import writer_ring_lifecycle_transition_violations
 from grimace._south_star1.writer_runtime import initial_writer_runtime_state
@@ -33,60 +32,22 @@ from tests.south_star1.helpers import cyclopropane_facts
 
 
 class WriterRingLifecycleEventsTest(unittest.TestCase):
-    def test_lifecycle_event_derivation(self) -> None:
+    def test_ring_label_allocation_source(self) -> None:
         label = _label(1)
-        opened = _endpoint_emitted(label)
-        paired = _endpoint_paired(label)
-        predecorated = (
-            WriterRingLabelAllocated(label=label, source="reused"),
-            opened,
-            paired,
-            WriterRingLabelReleased(label=label),
+        cases = (
+            ("fresh", _state(), "fresh"),
+            ("reused", _state(reusable=(label,)), "reused"),
         )
 
-        cases = (
-            (
-                "fresh open",
-                _state(),
-                (opened,),
-                (WriterRingLabelAllocated(label=label, source="fresh"), opened),
-            ),
-            (
-                "reused open",
-                _state(reusable=(label,)),
-                (opened,),
-                (WriterRingLabelAllocated(label=label, source="reused"), opened),
-            ),
-            (
-                "pair release",
-                _state(),
-                (paired,),
-                (paired, WriterRingLabelReleased(label=label)),
-            ),
-            (
-                "idempotent predecorated stream",
-                _state(reusable=(label,)),
-                predecorated,
-                predecorated,
-            ),
-        )
-        for name, source_state, events, expected in cases:
+        for name, source_state, expected in cases:
             with self.subTest(name=name):
                 self.assertEqual(
-                    writer_events_with_ring_label_lifecycle(
+                    writer_ring_label_allocation_source(
                         source_state=source_state,
-                        events=events,
+                        label=label,
                     ),
                     expected,
                 )
-
-        self.assertEqual(
-            writer_ring_label_allocation_source(
-                source_state=_state(reusable=(label,)),
-                label=label,
-            ),
-            "reused",
-        )
 
     def test_raw_frontier_support_transitions_carry_lifecycle_events(self) -> None:
         prepared = _prepared_cyclopropane()

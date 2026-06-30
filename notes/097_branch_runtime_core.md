@@ -44,18 +44,11 @@ Branch successor states are selected by branch provenance, not by emitted text.
 They still use the same token-boundary snapshot packaging as checked text
 successors so decoder-boundary accounting observes one selected writer step.
 
-Ring label allocation/release is carried on raw writer transition event streams.
-Opening a closure endpoint carries label allocation evidence before the endpoint
-event; pairing a closure endpoint carries label release evidence after the pair
-event. The state update remains authoritative: allocated/reusable label
-accounting is read from the exact branch successor.
-
-The lifecycle installer is now isolated in `writer_closure_transition_lifecycle.py`.
-That scaffold installs only closure-transition factories, and those installed
-factories construct lifecycle events before calling the raw `_transition(...)`
-constructor. `writer_ring_lifecycle.py` is validation/source-classification only.
-The remaining cleanup is still to move the installed closure-factory bodies
-into `writer_transitions.py` and delete the installer module.
+Closure lifecycle events are now constructed directly by the raw closure
+transition factories in `writer_transitions.py`. Opening a closure endpoint
+constructs allocation evidence before the endpoint event; pairing constructs
+release evidence after the pair event. There is no import-time lifecycle
+installer or post-construction event rewriting.
 
 `count_writer_runtime_completions(...)` and
 `count_writer_runtime_branch_completions(...)` both consume the branch-preserving

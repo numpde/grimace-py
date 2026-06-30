@@ -38,7 +38,6 @@ class WriterRingLifecycleEventsTest(unittest.TestCase):
             ("fresh", _state(), "fresh"),
             ("reused", _state(reusable=(label,)), "reused"),
         )
-
         for name, source_state, expected in cases:
             with self.subTest(name=name):
                 self.assertEqual(

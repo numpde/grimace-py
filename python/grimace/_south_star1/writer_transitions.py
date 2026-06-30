@@ -57,6 +57,9 @@ from .writer_events import WriterEvent
 from .writer_events import WriterLocalOrderClosed
 from .writer_events import WriterRingEndpointEmitted
 from .writer_events import WriterRingEndpointPaired
+from .writer_events import WriterRingLabelAllocated
+from .writer_events import WriterRingLabelReleased
+from .writer_ring_lifecycle import writer_ring_label_allocation_source
 from .writer_stereo import WriterAtomTextChoice
 from .writer_stereo import WriterBondTextChoice
 from .writer_stereo import WriterStereoPolicyBlocker
@@ -4329,6 +4332,13 @@ def _open_closure_endpoint_transition_from_obligation(
         ),
         kind=WriterTransitionKind.OPEN_CLOSURE_ENDPOINT,
         events=(
+            WriterRingLabelAllocated(
+                label=endpoint.label,
+                source=writer_ring_label_allocation_source(
+                    source_state=state,
+                    label=endpoint.label,
+                ),
+            ),
             WriterRingEndpointEmitted(
                 bond=endpoint.bond,
                 endpoint_atom=endpoint.first_atom,
@@ -4676,6 +4686,7 @@ def _pair_closure_endpoint_transition_from_obligation(
                 first_endpoint_bond_text=closure.first_endpoint_bond_text,
                 first_endpoint_direction_mark=closure.first_endpoint_direction_mark,
             ),
+            WriterRingLabelReleased(label=closure.label),
         ),
         evidence=WriterTransitionEvidence(
             bond=closure.bond,

@@ -107,60 +107,83 @@ def writer_ring_lifecycle_transition_violations(
     violations: list[WriterRingLifecycleTransitionViolation] = []
     for index, event in opens:
         matches = _matching_before(allocations, index, event.label)
-        violations.extend(_single_lifecycle_event_violations(
-            matches,
-            missing_kind="missing_open_label_allocation",
-            duplicate_kind="duplicate_open_label_allocation",
-            label=event.label,
-            missing_message="open endpoint is not preceded by label allocation evidence",
-            duplicate_message="open endpoint has multiple prior label allocations",
-        ))
+        violations.extend(
+            _single_lifecycle_event_violations(
+                matches,
+                missing_kind="missing_open_label_allocation",
+                duplicate_kind="duplicate_open_label_allocation",
+                label=event.label,
+                missing_message=(
+                    "open endpoint is not preceded by label allocation evidence"
+                ),
+                duplicate_message=(
+                    "open endpoint has multiple prior label allocations"
+                ),
+            )
+        )
         if len(matches) == 1:
             expected = writer_ring_label_allocation_source(
                 source_state=source_state,
                 label=event.label,
             )
             if matches[0].source != expected:
-                violations.append(_violation(
-                    "allocation_source_mismatch",
-                    event.label,
-                    (
-                        "allocation source does not match source-state label "
-                        f"lifecycle: expected {expected!r}, got {matches[0].source!r}"
-                    ),
-                ))
+                violations.append(
+                    _violation(
+                        "allocation_source_mismatch",
+                        event.label,
+                        (
+                            "allocation source does not match source-state label "
+                            f"lifecycle: expected {expected!r}, "
+                            f"got {matches[0].source!r}"
+                        ),
+                    )
+                )
         violations.extend(_open_state_violations(source_state, successor_state, event))
 
     for index, event in pairs:
         matches = _matching_after(releases, index, event.label)
-        violations.extend(_single_lifecycle_event_violations(
-            matches,
-            missing_kind="missing_paired_label_release",
-            duplicate_kind="duplicate_paired_label_release",
-            label=event.label,
-            missing_message="paired endpoint is not followed by label release evidence",
-            duplicate_message="paired endpoint has multiple following label releases",
-        ))
+        violations.extend(
+            _single_lifecycle_event_violations(
+                matches,
+                missing_kind="missing_paired_label_release",
+                duplicate_kind="duplicate_paired_label_release",
+                label=event.label,
+                missing_message=(
+                    "paired endpoint is not followed by label release evidence"
+                ),
+                duplicate_message=(
+                    "paired endpoint has multiple following label releases"
+                ),
+            )
+        )
         violations.extend(_pair_state_violations(source_state, successor_state, event))
 
-    violations.extend(_unmatched_lifecycle_evidence_violations(
-        lifecycle_events=allocations,
-        transition_events=opens,
-        missing_kind="allocation_without_open_endpoint",
-        late_kind="allocation_after_open_endpoint",
-        label_word="allocation",
-        transition_word="open endpoint",
-        relation=lambda lifecycle_index, transition_index: lifecycle_index < transition_index,
-    ))
-    violations.extend(_unmatched_lifecycle_evidence_violations(
-        lifecycle_events=releases,
-        transition_events=pairs,
-        missing_kind="release_without_paired_endpoint",
-        late_kind="release_before_paired_endpoint",
-        label_word="release",
-        transition_word="paired endpoint",
-        relation=lambda lifecycle_index, transition_index: transition_index < lifecycle_index,
-    ))
+    violations.extend(
+        _unmatched_lifecycle_evidence_violations(
+            lifecycle_events=allocations,
+            transition_events=opens,
+            missing_kind="allocation_without_open_endpoint",
+            late_kind="allocation_after_open_endpoint",
+            label_word="allocation",
+            transition_word="open endpoint",
+            relation=lambda lifecycle_index, transition_index: (
+                lifecycle_index < transition_index
+            ),
+        )
+    )
+    violations.extend(
+        _unmatched_lifecycle_evidence_violations(
+            lifecycle_events=releases,
+            transition_events=pairs,
+            missing_kind="release_without_paired_endpoint",
+            late_kind="release_before_paired_endpoint",
+            label_word="release",
+            transition_word="paired endpoint",
+            relation=lambda lifecycle_index, transition_index: (
+                transition_index < lifecycle_index
+            ),
+        )
+    )
     return tuple(violations)
 
 
@@ -191,7 +214,11 @@ def _open_state_violations(
             "successor state still marks the opened label reusable",
         ),
     )
-    return tuple(_violation(kind, event.label, message) for ok, kind, message in checks if not ok)
+    return tuple(
+        _violation(kind, event.label, message)
+        for ok, kind, message in checks
+        if not ok
+    )
 
 
 def _pair_state_violations(
@@ -211,7 +238,10 @@ def _pair_state_violations(
             "paired endpoint source state does not mark the label allocated",
         ),
         (
-            not any(endpoint.bond == event.bond for endpoint in _open_endpoints(successor_state)),
+            not any(
+                endpoint.bond == event.bond
+                for endpoint in _open_endpoints(successor_state)
+            ),
             "successor_pair_open_endpoint_retained",
             "successor state still contains an open endpoint for paired bond",
         ),
@@ -231,7 +261,11 @@ def _pair_state_violations(
             "successor state does not mark the paired label reusable",
         ),
     )
-    return tuple(_violation(kind, event.label, message) for ok, kind, message in checks if not ok)
+    return tuple(
+        _violation(kind, event.label, message)
+        for ok, kind, message in checks
+        if not ok
+    )
 
 
 def _single_lifecycle_event_violations(
@@ -268,34 +302,65 @@ def _unmatched_lifecycle_evidence_violations(
             if transition_event.label == lifecycle_event.label
         )
         if not candidates:
-            violations.append(_violation(
-                missing_kind,
-                lifecycle_event.label,
-                f"label {label_word} has no matching emitted {transition_word}",
-            ))
-        elif not any(relation(lifecycle_index, transition_index) for transition_index in candidates):
-            violations.append(_violation(
-                late_kind,
-                lifecycle_event.label,
-                f"label {label_word} is not ordered with its {transition_word}",
-            ))
+            violations.append(
+                _violation(
+                    missing_kind,
+                    lifecycle_event.label,
+                    f"label {label_word} has no matching emitted {transition_word}",
+                )
+            )
+        elif not any(
+            relation(lifecycle_index, transition_index)
+            for transition_index in candidates
+        ):
+            violations.append(
+                _violation(
+                    late_kind,
+                    lifecycle_event.label,
+                    f"label {label_word} is not ordered with its {transition_word}",
+                )
+            )
     return tuple(violations)
 
 
-def _matching_before(indexed_events, index: int, label: WriterClosureLabel) -> tuple[object, ...]:
-    return tuple(event for event_index, event in indexed_events if event_index < index and event.label == label)
+def _matching_before(
+    indexed_events,
+    index: int,
+    label: WriterClosureLabel,
+) -> tuple[object, ...]:
+    return tuple(
+        event
+        for event_index, event in indexed_events
+        if event_index < index and event.label == label
+    )
 
 
-def _matching_after(indexed_events, index: int, label: WriterClosureLabel) -> tuple[object, ...]:
-    return tuple(event for event_index, event in indexed_events if event_index > index and event.label == label)
+def _matching_after(
+    indexed_events,
+    index: int,
+    label: WriterClosureLabel,
+) -> tuple[object, ...]:
+    return tuple(
+        event
+        for event_index, event in indexed_events
+        if event_index > index and event.label == label
+    )
 
 
 def _indexed_events(indexed_events, event_type):
-    return tuple((index, event) for index, event in indexed_events if isinstance(event, event_type))
+    return tuple(
+        (index, event)
+        for index, event in indexed_events
+        if isinstance(event, event_type)
+    )
 
 
 def _event_labels(events, event_type) -> frozenset[WriterClosureLabel]:
-    return frozenset(event.label for event in events if isinstance(event, event_type))
+    return frozenset(
+        event.label
+        for event in events
+        if isinstance(event, event_type)
+    )
 
 
 def _violation(
@@ -303,7 +368,11 @@ def _violation(
     label: WriterClosureLabel | None,
     message: str,
 ) -> WriterRingLifecycleTransitionViolation:
-    return WriterRingLifecycleTransitionViolation(kind=kind, label=label, message=message)
+    return WriterRingLifecycleTransitionViolation(
+        kind=kind,
+        label=label,
+        message=message,
+    )
 
 
 def _labels(state: object, label_state_field: str) -> tuple[WriterClosureLabel, ...]:

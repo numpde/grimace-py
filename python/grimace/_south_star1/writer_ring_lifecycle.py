@@ -100,192 +100,176 @@ def writer_ring_lifecycle_transition_violations(
     pairs = _indexed(indexed, WriterRingEndpointPaired)
     allocations = _indexed(indexed, WriterRingLabelAllocated)
     releases = _indexed(indexed, WriterRingLabelReleased)
+    violations: list[WriterRingLifecycleTransitionViolation] = []
 
-    return (
-        *_open_violations(source_state, successor_state, opens, allocations),
-        *_pair_violations(source_state, successor_state, pairs, releases),
-        *_ordering_violations(
-            lifecycle_events=allocations,
-            transition_events=opens,
-            missing_kind="allocation_without_open_endpoint",
-            order_kind="allocation_after_open_endpoint",
-            ordered=lambda lifecycle_index, transition_index: (
-                lifecycle_index < transition_index
-            ),
-        ),
-        *_ordering_violations(
-            lifecycle_events=releases,
-            transition_events=pairs,
-            missing_kind="release_without_paired_endpoint",
-            order_kind="release_before_paired_endpoint",
-            ordered=lambda lifecycle_index, transition_index: (
-                transition_index < lifecycle_index
-            ),
-        ),
-    )
-
-
-def _open_violations(
-    source_state: object,
-    successor_state: object,
-    opens,
-    allocations,
-) -> tuple[WriterRingLifecycleTransitionViolation, ...]:
-    result: list[WriterRingLifecycleTransitionViolation] = []
     for index, event in opens:
         prior = _matching(allocations, event.label, before=index)
-        result.extend(
-            _one_event_violations(
-                prior,
-                label=event.label,
-                missing_kind="missing_open_label_allocation",
-                duplicate_kind="duplicate_open_label_allocation",
-            )
+        _require_one(
+            violations,
+            prior,
+            event.label,
+            missing_kind="missing_open_label_allocation",
+            duplicate_kind="duplicate_open_label_allocation",
         )
         if len(prior) == 1:
             expected = writer_ring_label_allocation_source(
                 source_state=source_state,
                 label=event.label,
             )
-            result.extend(
-                _when_false(
-                    prior[0].source == expected,
-                    "allocation_source_mismatch",
-                    event.label,
-                    f"expected {expected!r}, got {prior[0].source!r}",
-                )
-            )
-        result.extend(
-            _state_violations(
+            _require(
+                violations,
+                prior[0].source == expected,
+                "allocation_source_mismatch",
                 event.label,
-                checks=(
-                    (
-                        event.label not in _labels(source_state, "allocated"),
-                        "open_source_label_already_allocated",
-                        "source label is already allocated",
-                    ),
-                    (
-                        _has_open_endpoint(successor_state, event),
-                        "successor_open_endpoint_missing",
-                        "successor lacks the emitted open endpoint",
-                    ),
-                    (
-                        event.label in _labels(successor_state, "allocated"),
-                        "successor_open_label_not_allocated",
-                        "successor did not allocate the opened label",
-                    ),
-                    (
-                        event.label not in _labels(successor_state, "reusable"),
-                        "successor_open_label_still_reusable",
-                        "successor still marks opened label reusable",
-                    ),
-                ),
+                message=f"expected {expected!r}, got {prior[0].source!r}",
             )
-        )
-    return tuple(result)
+        _require_open_state(violations, source_state, successor_state, event)
 
-
-def _pair_violations(
-    source_state: object,
-    successor_state: object,
-    pairs,
-    releases,
-) -> tuple[WriterRingLifecycleTransitionViolation, ...]:
-    result: list[WriterRingLifecycleTransitionViolation] = []
     for index, event in pairs:
         following = _matching(releases, event.label, after=index)
-        result.extend(
-            _one_event_violations(
-                following,
-                label=event.label,
-                missing_kind="missing_paired_label_release",
-                duplicate_kind="duplicate_paired_label_release",
-            )
+        _require_one(
+            violations,
+            following,
+            event.label,
+            missing_kind="missing_paired_label_release",
+            duplicate_kind="duplicate_paired_label_release",
         )
-        result.extend(
-            _state_violations(
-                event.label,
-                checks=(
-                    (
-                        _has_open_endpoint_for_pair(source_state, event),
-                        "source_pair_open_endpoint_missing",
-                        "source lacks the paired open endpoint",
-                    ),
-                    (
-                        event.label in _labels(source_state, "allocated"),
-                        "pair_source_label_not_allocated",
-                        "source label is not allocated",
-                    ),
-                    (
-                        not _has_open_endpoint_for_bond(successor_state, event.bond),
-                        "successor_pair_open_endpoint_retained",
-                        "successor retained an open endpoint for the paired bond",
-                    ),
-                    (
-                        _has_closed_closure(successor_state, event),
-                        "successor_closed_closure_missing",
-                        "successor lacks the emitted closed closure",
-                    ),
-                    (
-                        event.label not in _labels(successor_state, "allocated"),
-                        "successor_paired_label_still_allocated",
-                        "successor still marks paired label allocated",
-                    ),
-                    (
-                        event.label in _labels(successor_state, "reusable"),
-                        "successor_paired_label_not_reusable",
-                        "successor did not release paired label to reusable",
-                    ),
-                ),
-            )
-        )
-    return tuple(result)
+        _require_pair_state(violations, source_state, successor_state, event)
+
+    _require_order(
+        violations,
+        lifecycle_events=allocations,
+        transition_events=opens,
+        missing_kind="allocation_without_open_endpoint",
+        order_kind="allocation_after_open_endpoint",
+        ordered=lambda lifecycle_index, transition_index: (
+            lifecycle_index < transition_index
+        ),
+    )
+    _require_order(
+        violations,
+        lifecycle_events=releases,
+        transition_events=pairs,
+        missing_kind="release_without_paired_endpoint",
+        order_kind="release_before_paired_endpoint",
+        ordered=lambda lifecycle_index, transition_index: (
+            transition_index < lifecycle_index
+        ),
+    )
+    return tuple(violations)
 
 
-def _one_event_violations(
-    matches: tuple[object, ...],
-    *,
-    label: WriterClosureLabel,
-    missing_kind: str,
-    duplicate_kind: str,
-) -> tuple[WriterRingLifecycleTransitionViolation, ...]:
-    if not matches:
-        return (_violation(missing_kind, label, "missing lifecycle evidence"),)
-    if len(matches) > 1:
-        return (_violation(duplicate_kind, label, "duplicate lifecycle evidence"),)
-    return ()
-
-
-def _state_violations(
-    label: WriterClosureLabel,
-    *,
-    checks: tuple[tuple[bool, str, str], ...],
-) -> tuple[WriterRingLifecycleTransitionViolation, ...]:
-    return tuple(
-        _violation(kind, label, message)
-        for condition, kind, message in checks
-        if not condition
+def _require_open_state(
+    violations: list[WriterRingLifecycleTransitionViolation],
+    source_state: object,
+    successor_state: object,
+    event: WriterRingEndpointEmitted,
+) -> None:
+    _require(
+        violations,
+        event.label not in _labels(source_state, "allocated"),
+        "open_source_label_already_allocated",
+        event.label,
+    )
+    _require(
+        violations,
+        _has_open_endpoint(successor_state, event),
+        "successor_open_endpoint_missing",
+        event.label,
+    )
+    _require(
+        violations,
+        event.label in _labels(successor_state, "allocated"),
+        "successor_open_label_not_allocated",
+        event.label,
+    )
+    _require(
+        violations,
+        event.label not in _labels(successor_state, "reusable"),
+        "successor_open_label_still_reusable",
+        event.label,
     )
 
 
-def _when_false(
+def _require_pair_state(
+    violations: list[WriterRingLifecycleTransitionViolation],
+    source_state: object,
+    successor_state: object,
+    event: WriterRingEndpointPaired,
+) -> None:
+    _require(
+        violations,
+        _has_open_endpoint_for_pair(source_state, event),
+        "source_pair_open_endpoint_missing",
+        event.label,
+    )
+    _require(
+        violations,
+        event.label in _labels(source_state, "allocated"),
+        "pair_source_label_not_allocated",
+        event.label,
+    )
+    _require(
+        violations,
+        not _has_open_endpoint_for_bond(successor_state, event.bond),
+        "successor_pair_open_endpoint_retained",
+        event.label,
+    )
+    _require(
+        violations,
+        _has_closed_closure(successor_state, event),
+        "successor_closed_closure_missing",
+        event.label,
+    )
+    _require(
+        violations,
+        event.label not in _labels(successor_state, "allocated"),
+        "successor_paired_label_still_allocated",
+        event.label,
+    )
+    _require(
+        violations,
+        event.label in _labels(successor_state, "reusable"),
+        "successor_paired_label_not_reusable",
+        event.label,
+    )
+
+
+def _require_one(
+    violations: list[WriterRingLifecycleTransitionViolation],
+    matches: tuple[object, ...],
+    label: WriterClosureLabel,
+    *,
+    missing_kind: str,
+    duplicate_kind: str,
+) -> None:
+    if not matches:
+        _require(violations, False, missing_kind, label)
+    elif len(matches) > 1:
+        _require(violations, False, duplicate_kind, label)
+
+
+def _require(
+    violations: list[WriterRingLifecycleTransitionViolation],
     condition: bool,
     kind: str,
     label: WriterClosureLabel,
-    message: str,
-) -> tuple[WriterRingLifecycleTransitionViolation, ...]:
-    return () if condition else (_violation(kind, label, message),)
+    *,
+    message: str = "",
+) -> None:
+    if not condition:
+        violations.append(_violation(kind, label, message))
 
 
-def _ordering_violations(
+def _require_order(
+    violations: list[WriterRingLifecycleTransitionViolation],
     *,
     lifecycle_events,
     transition_events,
     missing_kind: str,
     order_kind: str,
     ordered,
-) -> tuple[WriterRingLifecycleTransitionViolation, ...]:
-    result: list[WriterRingLifecycleTransitionViolation] = []
+) -> None:
     for lifecycle_index, lifecycle_event in lifecycle_events:
         positions = tuple(
             transition_index
@@ -293,22 +277,9 @@ def _ordering_violations(
             if transition_event.label == lifecycle_event.label
         )
         if not positions:
-            result.append(
-                _violation(
-                    missing_kind,
-                    lifecycle_event.label,
-                    "missing matching endpoint",
-                )
-            )
+            _require(violations, False, missing_kind, lifecycle_event.label)
         elif not any(ordered(lifecycle_index, position) for position in positions):
-            result.append(
-                _violation(
-                    order_kind,
-                    lifecycle_event.label,
-                    "wrong lifecycle event order",
-                )
-            )
-    return tuple(result)
+            _require(violations, False, order_kind, lifecycle_event.label)
 
 
 def _matching(

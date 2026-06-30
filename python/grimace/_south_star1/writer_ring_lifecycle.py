@@ -16,6 +16,7 @@ from .writer_state import WriterClosureLabel
 
 
 WriterRingLabelAllocationSource = Literal["fresh", "reused"]
+_TRANSITION_LIFECYCLE_INSTALLED_MARKER = "_ring_label_lifecycle_installed"
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,6 +65,30 @@ def writer_ring_label_allocation_source(
     label: WriterClosureLabel,
 ) -> WriterRingLabelAllocationSource:
     return "reused" if label in _labels(source_state, "reusable") else "fresh"
+
+
+def install_writer_transition_lifecycle() -> None:
+    """Install ring-label lifecycle evidence at transition construction time."""
+
+    from . import writer_transitions
+
+    current = writer_transitions._transition
+    if getattr(current, _TRANSITION_LIFECYCLE_INSTALLED_MARKER, False):
+        return
+
+    def _transition_with_ring_label_lifecycle(prepared, state, **kwargs):
+        kwargs["events"] = writer_events_with_ring_label_lifecycle(
+            source_state=state,
+            events=kwargs["events"],
+        )
+        return current(prepared, state, **kwargs)
+
+    setattr(
+        _transition_with_ring_label_lifecycle,
+        _TRANSITION_LIFECYCLE_INSTALLED_MARKER,
+        True,
+    )
+    writer_transitions._transition = _transition_with_ring_label_lifecycle
 
 
 def validate_writer_ring_lifecycle_transition(
@@ -376,6 +401,7 @@ def _has_closed_closure(state: object, event: WriterRingEndpointPaired) -> bool:
 __all__ = (
     "WriterRingLabelAllocationSource",
     "WriterRingLifecycleTransitionViolation",
+    "install_writer_transition_lifecycle",
     "validate_writer_ring_lifecycle_transition",
     "writer_events_with_ring_label_lifecycle",
     "writer_ring_label_allocation_source",

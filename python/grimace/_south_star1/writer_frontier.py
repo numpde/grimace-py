@@ -262,6 +262,27 @@ class _WriterFrontierNextTokenSupport:
 
 
 @dataclass(frozen=True, slots=True)
+class _WriterFrontierBranchSupport:
+    emitted_text: str
+    source_state: WriterStateKey
+    successor_state: WriterStateKey
+    parent_weight: int
+    branch_ordinal: int
+    transition_kind: object
+    events: tuple[object, ...]
+    evidence: object
+    execution_capabilities: frozenset[object]
+    residual_work_evidence: tuple[object, ...]
+    finite_relation_work_evidence: tuple[object, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterFrontierBranchSupportBatch:
+    choices: WriterFrontierChoices
+    supports: tuple[_WriterFrontierBranchSupport, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class _WriterFrontierResidualAttachmentSupportGroup:
     key: _WriterResidualAttachmentPolicyKey
     supports: tuple[_WriterFrontierNextTokenSupport, ...]
@@ -2236,6 +2257,58 @@ def _checked_writer_frontier_schedule_outcome(
     )
 
     return outcome
+
+
+def _writer_frontier_branch_support_from_next_token_support(
+    *,
+    branch_ordinal: int,
+    support: _WriterFrontierNextTokenSupport,
+) -> _WriterFrontierBranchSupport:
+    transition = support.schedule_support.transition
+    return _WriterFrontierBranchSupport(
+        emitted_text=support.emitted_text,
+        source_state=support.state_key,
+        successor_state=support.successor_key,
+        parent_weight=support.parent_weight,
+        branch_ordinal=branch_ordinal,
+        transition_kind=transition.kind,
+        events=transition.events,
+        evidence=transition.evidence,
+        execution_capabilities=frozenset(support.execution_capabilities),
+        residual_work_evidence=tuple(support.residual_work_evidence),
+        finite_relation_work_evidence=tuple(
+            support.finite_relation_work_evidence
+        ),
+    )
+
+
+def _checked_writer_frontier_branch_supports(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+    *,
+    include_counts: bool = True,
+) -> _WriterFrontierBranchSupportBatch:
+    schedule_outcome = _checked_writer_frontier_schedule_outcome(
+        prepared,
+        cursor,
+    )
+    choice_snapshot = _writer_frontier_choice_snapshot_from_schedule_outcome(
+        prepared,
+        schedule_outcome,
+        include_counts=include_counts,
+    )
+    return _WriterFrontierBranchSupportBatch(
+        choices=choice_snapshot.public_choices,
+        supports=tuple(
+            _writer_frontier_branch_support_from_next_token_support(
+                branch_ordinal=branch_ordinal,
+                support=support,
+            )
+            for branch_ordinal, support in enumerate(
+                schedule_outcome.next_token_supports
+            )
+        ),
+    )
 
 
 def _group_writer_frontier_transitions(

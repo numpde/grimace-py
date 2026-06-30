@@ -10,6 +10,9 @@ from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
 from grimace._south_star1.writer_frontier import WriterFrontierCursor
+from grimace._south_star1.writer_frontier import _checked_writer_frontier_branch_supports
+from grimace._south_star1.writer_frontier import _checked_writer_frontier_schedule_outcome
+from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
 from grimace._south_star1.writer_runtime import initial_writer_runtime_state
 from grimace._south_star1.writer_runtime import writer_runtime_branch_transitions
 from grimace._south_star1.writer_runtime import writer_runtime_choices
@@ -56,6 +59,46 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 WriterFrontierCursor(
                     weighted_states=tuple(weighted_successors.items())
                 ),
+            )
+
+    def test_checked_frontier_branch_supports_preserve_raw_supports(self) -> None:
+        prepared = _prepare(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+
+        schedule = _checked_writer_frontier_schedule_outcome(prepared, initial)
+        batch = _checked_writer_frontier_branch_supports(
+            prepared,
+            initial,
+            include_counts=False,
+        )
+
+        self.assertEqual(len(batch.supports), len(schedule.next_token_supports))
+        self.assertTrue(batch.supports)
+
+        for ordinal, (projected, raw) in enumerate(
+            zip(batch.supports, schedule.next_token_supports)
+        ):
+            transition = raw.schedule_support.transition
+
+            self.assertEqual(projected.branch_ordinal, ordinal)
+            self.assertEqual(projected.emitted_text, raw.emitted_text)
+            self.assertEqual(projected.source_state, raw.state_key)
+            self.assertEqual(projected.successor_state, raw.successor_key)
+            self.assertEqual(projected.parent_weight, raw.parent_weight)
+            self.assertEqual(projected.transition_kind, transition.kind)
+            self.assertEqual(projected.events, transition.events)
+            self.assertEqual(projected.evidence, transition.evidence)
+            self.assertEqual(
+                projected.execution_capabilities,
+                frozenset(raw.execution_capabilities),
+            )
+            self.assertEqual(
+                projected.residual_work_evidence,
+                tuple(raw.residual_work_evidence),
+            )
+            self.assertEqual(
+                projected.finite_relation_work_evidence,
+                tuple(raw.finite_relation_work_evidence),
             )
 
 

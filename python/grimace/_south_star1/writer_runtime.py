@@ -19,8 +19,7 @@ from .writer_frontier import WriterFrontierChoice
 from .writer_frontier import WriterFrontierChoices
 from .writer_frontier import WriterFrontierCursor
 from .writer_frontier import WriterFrontierTerminal
-from .writer_frontier import _checked_writer_frontier_schedule_outcome
-from .writer_frontier import _writer_frontier_choice_snapshot_from_schedule_outcome
+from .writer_frontier import _checked_writer_frontier_branch_supports
 from .writer_snapshot import WriterDecoderBoundary
 from .writer_snapshot import WriterFrontierFrame
 from .writer_snapshot import WriterSearchSnapshot
@@ -299,41 +298,38 @@ def writer_runtime_branch_transitions(
     include_counts: bool = True,
 ) -> WriterRuntimeBranchTransitions:
     validate_writer_search_snapshot(state.snapshot, prepared=prepared)
-    schedule_outcome = _checked_writer_frontier_schedule_outcome(
+    branch_batch = _checked_writer_frontier_branch_supports(
         prepared,
         state.snapshot.cursor,
-    )
-    choice_snapshot = _writer_frontier_choice_snapshot_from_schedule_outcome(
-        prepared,
-        schedule_outcome,
         include_counts=include_counts,
     )
     branch_transitions: list[WriterRuntimeBranchTransition] = []
-    for branch_ordinal, support in enumerate(schedule_outcome.next_token_supports):
-        transition = support.schedule_support.transition
+    for support in branch_batch.supports:
         successor_state = _writer_runtime_state_for_successor_key(
             prepared=prepared,
             state=state,
-            successor_state=support.successor_key,
+            successor_state=support.successor_state,
         )
         branch_transitions.append(
             WriterRuntimeBranchTransition(
                 emitted_text=support.emitted_text,
-                source_state=support.state_key,
-                successor_state=support.successor_key,
+                source_state=support.source_state,
+                successor_state=support.successor_state,
                 parent_weight=support.parent_weight,
-                branch_ordinal=branch_ordinal,
-                transition_kind=transition.kind,
-                events=transition.events,
-                evidence=transition.evidence,
-                execution_capabilities=frozenset(support.execution_capabilities),
-                residual_work_evidence=tuple(support.residual_work_evidence),
-                finite_relation_work_evidence=tuple(support.finite_relation_work_evidence),
+                branch_ordinal=support.branch_ordinal,
+                transition_kind=support.transition_kind,
+                events=support.events,
+                evidence=support.evidence,
+                execution_capabilities=support.execution_capabilities,
+                residual_work_evidence=support.residual_work_evidence,
+                finite_relation_work_evidence=(
+                    support.finite_relation_work_evidence
+                ),
                 next_state=successor_state,
             )
         )
     return WriterRuntimeBranchTransitions(
-        choices=choice_snapshot.public_choices,
+        choices=branch_batch.choices,
         transitions=tuple(branch_transitions),
     )
 

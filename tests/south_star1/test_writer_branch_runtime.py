@@ -8,10 +8,16 @@ from types import SimpleNamespace
 
 import grimace._south_star1.writer_frontier as writer_frontier_module
 import grimace._south_star1.writer_transitions as writer_transitions
+from grimace._south_star1.errors import SouthStarError
+from grimace._south_star1.errors import SouthStarErrorKind
+from grimace._south_star1.ids import AtomId
+from grimace._south_star1.ids import BondId
 from grimace._south_star1.policy import SerializationLanguageMode
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
+from grimace._south_star1.writer_events import WriterRingEndpointEmitted
+from grimace._south_star1.writer_events import WriterRingLabelAllocated
 from grimace._south_star1.writer_capabilities import _WriterExecutionCapabilityKind
 from grimace._south_star1.writer_frontier import WriterFrontierCursor
 from grimace._south_star1.writer_frontier import _checked_writer_frontier_branch_supports
@@ -29,7 +35,17 @@ from grimace._south_star1.writer_runtime import writer_runtime_choices
 from grimace._south_star1.writer_runtime import writer_runtime_diagnostics
 from grimace._south_star1.writer_snapshot import _writer_search_snapshot_after_checked_branch_support
 from grimace._south_star1.writer_snapshot import _writer_search_snapshot_after_checked_choice
+from grimace._south_star1.writer_state import ComponentCursor
+from grimace._south_star1.writer_state import ObligationState
+from grimace._south_star1.writer_state import WriterAtomFrame
+from grimace._south_star1.writer_state import WriterBranchFrame
+from grimace._south_star1.writer_state import WriterPolicyState
+from grimace._south_star1.writer_state import WriterRingState
+from grimace._south_star1.writer_state import WriterState
+from grimace._south_star1.writer_state import WriterStereoState
+from grimace._south_star1.writer_state import writer_state_key
 from tests.south_star1.helpers import cco_facts
+from tests.south_star1.helpers import cyclopropane_facts
 
 
 class WriterBranchRuntimeTest(unittest.TestCase):
@@ -241,6 +257,108 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             0,
         )
 
+    def test_live_branch_return_closure_candidate_partner(self) -> None:
+        state = _branch_return_closure_candidate_state(live_partner=True)
+
+        self.assertEqual(
+            writer_transitions._live_branch_return_closure_candidate_partner(
+                state,
+                active_atom=AtomId(0),
+                left=AtomId(0),
+                right=AtomId(1),
+            ),
+            AtomId(1),
+        )
+
+    def test_frozen_closure_candidate_partner_is_not_live(self) -> None:
+        state = _branch_return_closure_candidate_state(live_partner=False)
+
+        self.assertIsNone(
+            writer_transitions._live_branch_return_closure_candidate_partner(
+                state,
+                active_atom=AtomId(0),
+                left=AtomId(0),
+                right=AtomId(1),
+            )
+        )
+
+    def test_live_branch_return_closure_candidate_reaches_branch_support(
+        self,
+    ) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        cursor = WriterFrontierCursor(
+            weighted_states=(
+                (
+                    writer_state_key(
+                        _branch_return_closure_candidate_state(
+                            live_partner=True,
+                        )
+                    ),
+                    1,
+                ),
+            )
+        )
+
+        batch = _checked_writer_frontier_branch_supports(
+            prepared,
+            cursor,
+            include_counts=False,
+        )
+        support = next(
+            support
+            for support in batch.supports
+            if (
+                support.transition_kind
+                is writer_transitions.WriterTransitionKind.OPEN_CLOSURE_ENDPOINT
+            )
+        )
+
+        self.assertIn(
+            (
+                _WriterExecutionCapabilityKind
+                .LIVE_BRANCH_RETURN_CLOSURE_CANDIDATE_OPEN
+            ),
+            support.execution_capabilities,
+        )
+        self.assertIsInstance(support.events[0], WriterRingLabelAllocated)
+        self.assertIsInstance(support.events[1], WriterRingEndpointEmitted)
+        self.assertEqual(
+            support.successor_cursor.weighted_states,
+            ((support.successor_state, 1),),
+        )
+        self.assertGreater(
+            _count_checked_writer_frontier_branch_completions(
+                prepared,
+                support.successor_cursor,
+            ),
+            0,
+        )
+
+    def test_frozen_closure_candidate_still_blocks(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        cursor = WriterFrontierCursor(
+            weighted_states=(
+                (
+                    writer_state_key(
+                        _branch_return_closure_candidate_state(
+                            live_partner=False,
+                        )
+                    ),
+                    1,
+                ),
+            )
+        )
+
+        with self.assertRaises(SouthStarError) as caught:
+            _checked_writer_frontier_branch_supports(
+                prepared,
+                cursor,
+                include_counts=False,
+            )
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+        self.assertIn("closure-candidate", str(caught.exception))
+
     def test_runtime_branch_completion_count_is_frontier_owned(self) -> None:
         prepared = _prepare(cco_facts())
         state = initial_writer_runtime_state(
@@ -395,6 +513,41 @@ def _prepare(facts):
 def _writer_options() -> SouthStarRuntimeOptions:
     return SouthStarRuntimeOptions(
         serialization_language=SerializationLanguageMode.WRITER_SHAPED,
+    )
+
+
+def _branch_return_closure_candidate_state(
+    *,
+    live_partner: bool,
+) -> WriterState:
+    return_atom = WriterAtomFrame(
+        atom=AtomId(1),
+        parent=None,
+        incoming_bond=None,
+        atom_emitted=True,
+    )
+    return WriterState(
+        component_cursor=ComponentCursor(
+            component_index=0,
+            component_roots=(AtomId(1),),
+        ),
+        active=WriterAtomFrame(
+            atom=AtomId(0),
+            parent=AtomId(2),
+            incoming_bond=BondId(2),
+            atom_emitted=True,
+        ),
+        branch_stack=(
+            (WriterBranchFrame(return_atom=return_atom),)
+            if live_partner
+            else ()
+        ),
+        visited_atoms=frozenset((AtomId(0), AtomId(1), AtomId(2))),
+        written_bonds=frozenset((BondId(1), BondId(2))),
+        obligations=ObligationState(),
+        ring_state=WriterRingState(),
+        stereo_state=WriterStereoState(),
+        policy_state=WriterPolicyState(),
     )
 
 

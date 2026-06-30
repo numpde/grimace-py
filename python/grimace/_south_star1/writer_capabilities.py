@@ -39,6 +39,9 @@ class _WriterExecutionCapabilityKind(Enum):
     OPEN_RING_ENDPOINT_RESIDUAL_ATTACHMENT_RESOLUTION = (
         "open_ring_endpoint_residual_attachment_resolution"
     )
+    LIVE_BRANCH_RETURN_CLOSURE_CANDIDATE_OPEN = (
+        "live_branch_return_closure_candidate_open"
+    )
 
 
 _PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES = frozenset(
@@ -67,6 +70,10 @@ _PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES = frozenset(
         (
             _WriterExecutionCapabilityKind
             .OPEN_RING_ENDPOINT_RESIDUAL_ATTACHMENT_RESOLUTION
+        ),
+        (
+            _WriterExecutionCapabilityKind
+            .LIVE_BRANCH_RETURN_CLOSURE_CANDIDATE_OPEN
         ),
     }
 )

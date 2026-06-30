@@ -174,6 +174,13 @@ class _WriterChildObligationBlockerKind(Enum):
     MULTI_INCIDENCE_RESIDUAL_ATTACHMENT = "multi_incidence_residual_attachment"
 
 
+class _WriterClosureOpenObligationSourceKind(Enum):
+    RESIDUAL_ATTACHMENT = "residual_attachment"
+    LIVE_BRANCH_RETURN_CLOSURE_CANDIDATE = (
+        "live_branch_return_closure_candidate"
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class _WriterChildObligationBlocker:
     kind: _WriterChildObligationBlockerKind
@@ -188,10 +195,44 @@ class _WriterClosureOpenObligation:
     bond: BondId
     first_atom: AtomId
     second_atom: AtomId
-    attachment_id: int
-    attachment_action_kind: WriterResidualAttachmentActionKind
-    owner_kind: WriterBoundaryOwnerKind
+    attachment_id: int | None
+    attachment_action_kind: WriterResidualAttachmentActionKind | None
+    owner_kind: WriterBoundaryOwnerKind | None
     source_attachment: WriterResidualAttachment | None = None
+    source_kind: _WriterClosureOpenObligationSourceKind = (
+        _WriterClosureOpenObligationSourceKind.RESIDUAL_ATTACHMENT
+    )
+
+    def __post_init__(self) -> None:
+        if (
+            self.source_kind
+            is _WriterClosureOpenObligationSourceKind.RESIDUAL_ATTACHMENT
+        ):
+            valid = (
+                self.attachment_id is not None
+                and self.attachment_action_kind is not None
+            )
+        elif (
+            self.source_kind
+            is (
+                _WriterClosureOpenObligationSourceKind
+                .LIVE_BRANCH_RETURN_CLOSURE_CANDIDATE
+            )
+        ):
+            valid = (
+                self.attachment_id is None
+                and self.attachment_action_kind is None
+                and self.owner_kind is None
+                and self.source_attachment is None
+            )
+        else:
+            valid = False
+
+        if not valid:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                f"invalid closure-open obligation source: {self.source_kind!r}",
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -397,6 +438,7 @@ class _WriterScheduledGraphActionSurface:
     attachment_action_kind: WriterResidualAttachmentActionKind | None = None
     owner_kind: WriterBoundaryOwnerKind | None = None
     closure_label: WriterClosureLabel | None = None
+    closure_open_source_kind: _WriterClosureOpenObligationSourceKind | None = None
     pending_entry: bool = False
 
     @property
@@ -768,6 +810,19 @@ class _WriterNextTokenFrontierSupport:
             capabilities.add(
                 _WriterExecutionCapabilityKind.CLOSURE_ENDPOINT_OPEN,
             )
+            if (
+                self.graph_action_surface.closure_open_source_kind
+                is (
+                    _WriterClosureOpenObligationSourceKind
+                    .LIVE_BRANCH_RETURN_CLOSURE_CANDIDATE
+                )
+            ):
+                capabilities.add(
+                    (
+                        _WriterExecutionCapabilityKind
+                        .LIVE_BRANCH_RETURN_CLOSURE_CANDIDATE_OPEN
+                    )
+                )
         elif self.policy_family is _WriterGraphPolicyActionFamily.CLOSURE_PAIR:
             capabilities.add(
                 _WriterExecutionCapabilityKind.CLOSURE_ENDPOINT_PAIR,
@@ -2589,6 +2644,7 @@ def _scheduled_graph_action_surface(
             attachment_action_kind=closure_open.attachment_action_kind,
             owner_kind=closure_open.owner_kind,
             closure_label=label,
+            closure_open_source_kind=closure_open.source_kind,
         )
 
     if action.kind is _WriterScheduledActionKind.PAIR_CLOSURE_ENDPOINT:
@@ -4526,7 +4582,7 @@ def _empty_closure_bond_text_relation_blockers(
     return tuple(blockers)
 
 
-def _closure_open_obligations_from_context(
+def _residual_attachment_closure_open_obligations_from_context(
     context: WriterTransitionExpansionContext,
     atom: AtomId,
 ) -> tuple[_WriterClosureOpenObligation, ...]:
@@ -4558,17 +4614,122 @@ def _closure_open_obligations_from_context(
     return tuple(obligations)
 
 
+def _live_branch_return_closure_candidate_partner(
+    state: WriterState | WriterStateKey,
+    *,
+    active_atom: AtomId,
+    left: AtomId,
+    right: AtomId,
+) -> AtomId | None:
+    if active_atom == left:
+        partner = right
+    elif active_atom == right:
+        partner = left
+    else:
+        return None
+
+    live_branch_return_atoms = frozenset(
+        frame.return_atom.atom
+        for frame in state.branch_stack
+    )
+
+    if partner in live_branch_return_atoms:
+        return partner
+
+    return None
+
+
+def _live_branch_return_closure_candidate_open_obligations_from_context(
+    context: WriterTransitionExpansionContext,
+    state: WriterState,
+    active_atom: AtomId,
+) -> tuple[_WriterClosureOpenObligation, ...]:
+    obligations: list[_WriterClosureOpenObligation] = []
+
+    for obligation in context.graph.edge_partition.obligations:
+        if obligation.kind is not WriterEdgeObligationKind.CLOSURE_CANDIDATE:
+            continue
+
+        partner = _live_branch_return_closure_candidate_partner(
+            state,
+            active_atom=active_atom,
+            left=obligation.a,
+            right=obligation.b,
+        )
+        if partner is None:
+            continue
+
+        obligations.append(
+            _WriterClosureOpenObligation(
+                bond=obligation.bond,
+                first_atom=active_atom,
+                second_atom=partner,
+                attachment_id=None,
+                attachment_action_kind=None,
+                owner_kind=None,
+                source_kind=(
+                    _WriterClosureOpenObligationSourceKind
+                    .LIVE_BRANCH_RETURN_CLOSURE_CANDIDATE
+                ),
+            )
+        )
+
+    return tuple(obligations)
+
+
+def _closure_open_obligations_from_context(
+    context: WriterTransitionExpansionContext,
+    state_or_atom,
+    atom: AtomId | None = None,
+) -> tuple[_WriterClosureOpenObligation, ...]:
+    if atom is None:
+        state = getattr(context, "state_key", None)
+        atom = state_or_atom
+    else:
+        state = state_or_atom
+
+    live_obligations = (
+        ()
+        if state is None
+        else _live_branch_return_closure_candidate_open_obligations_from_context(
+            context,
+            state,
+            atom,
+        )
+    )
+
+    return (
+        *_residual_attachment_closure_open_obligations_from_context(
+            context,
+            atom,
+        ),
+        *live_obligations,
+    )
+
+
 def _closure_open_scheduled_actions(
     context: WriterTransitionExpansionContext,
-    active_atom: AtomId,
-    labels: tuple[WriterClosureLabel, ...],
+    state_or_active_atom,
+    active_atom_or_labels,
+    labels: tuple[WriterClosureLabel, ...] | None = None,
 ) -> tuple[_WriterScheduledAction, ...]:
+    if labels is None:
+        state = getattr(context, "state_key", None)
+        active_atom = state_or_active_atom
+        labels = active_atom_or_labels
+    else:
+        state = state_or_active_atom
+        active_atom = active_atom_or_labels
+
     actions: list[_WriterScheduledAction] = []
 
-    for closure_obligation in _closure_open_obligations_from_context(
-        context,
-        active_atom,
-    ):
+    obligations = (
+        _closure_open_obligations_from_context(context, active_atom)
+        if state is None
+        else _closure_open_obligations_from_context(context, state, active_atom)
+    )
+
+    for closure_obligation in obligations:
         for label in labels:
             actions.append(
                 _open_closure_endpoint_action(
@@ -5120,11 +5281,23 @@ def _transition(
 
 def _child_obligation_blockers_from_context(
     context: WriterTransitionExpansionContext,
+    state: WriterState | None = None,
+    active_atom: AtomId | None = None,
 ) -> tuple[_WriterChildObligationBlocker, ...]:
     blockers: list[_WriterChildObligationBlocker] = []
 
     for obligation in context.graph.edge_partition.obligations:
         if obligation.kind is WriterEdgeObligationKind.CLOSURE_CANDIDATE:
+            if state is not None and active_atom is not None:
+                partner = _live_branch_return_closure_candidate_partner(
+                    state,
+                    active_atom=active_atom,
+                    left=obligation.a,
+                    right=obligation.b,
+                )
+                if partner is not None:
+                    continue
+
             blockers.append(
                 _WriterChildObligationBlocker(
                     kind=_WriterChildObligationBlockerKind.CLOSURE_CANDIDATE,
@@ -5153,9 +5326,22 @@ def _blocked_residual_attachment_action_graph_policy_blockers(
 
 def _child_obligation_blockers_for_atom(
     context: WriterTransitionExpansionContext,
-    atom: AtomId,
+    state_or_atom,
+    atom: AtomId | None = None,
 ) -> tuple[_WriterChildObligationBlocker, ...]:
-    blockers = list(_child_obligation_blockers_from_context(context))
+    if atom is None:
+        state = getattr(context, "state_key", None)
+        atom = state_or_atom
+    else:
+        state = state_or_atom
+
+    blockers = list(
+        _child_obligation_blockers_from_context(
+            context,
+            state,
+            atom,
+        )
+    )
 
     summary = context.graph.residual_summary
     action_incidences_for_atom = writer_residual_attachment_action_incidences_for_atom(

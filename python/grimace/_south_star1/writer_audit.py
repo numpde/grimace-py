@@ -213,7 +213,7 @@ def _audit_writer_frontier_reachability_from_snapshot(
 
             successor = (
                 writer_snapshot
-                ._writer_search_snapshot_with_cursor_after_emitted_text(
+                ._writer_search_snapshot_after_checked_frontier_cursor_step(
                     current,
                     prepared=prepared,
                     cursor=choice.successor,

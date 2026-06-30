@@ -4,17 +4,23 @@ from __future__ import annotations
 
 import unittest
 from collections import Counter
+from types import SimpleNamespace
 
+import grimace._south_star1.writer_frontier as writer_frontier_module
+import grimace._south_star1.writer_transitions as writer_transitions
 from grimace._south_star1.policy import SerializationLanguageMode
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
+from grimace._south_star1.writer_capabilities import _WriterExecutionCapabilityKind
 from grimace._south_star1.writer_frontier import WriterFrontierCursor
 from grimace._south_star1.writer_frontier import _checked_writer_frontier_branch_supports
 from grimace._south_star1.writer_frontier import _checked_writer_frontier_schedule_outcome
 from grimace._south_star1.writer_frontier import _count_checked_writer_frontier_branch_completions
 from grimace._south_star1.writer_frontier import _writer_frontier_diagnostics
 from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
+from grimace._south_star1.writer_graph_obligations import WriterBoundaryOwnerKind
+from grimace._south_star1.writer_graph_obligations import WriterResidualAttachmentActionKind
 from grimace._south_star1.writer_runtime import count_writer_runtime_branch_completions
 from grimace._south_star1.writer_runtime import initial_writer_runtime_state
 from grimace._south_star1.writer_runtime import writer_runtime_branch_transitions
@@ -107,6 +113,133 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 projected.finite_relation_work_evidence,
                 tuple(raw.finite_relation_work_evidence),
             )
+            self.assertEqual(projected.residual_attachment_policy_evidence, ())
+
+    def test_open_ring_endpoint_owned_residual_resolution_reaches_branch_support(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        source_key = initial.weighted_states[0][0]
+        key = writer_transitions._WriterResidualAttachmentPolicyKey(
+            active_atom=source_key.active.atom,
+            attachment_id=7,
+        )
+        support = writer_frontier_module._WriterFrontierNextTokenSupport(
+            state_key=source_key,
+            parent_weight=1,
+            schedule_support=SimpleNamespace(
+                emitted_text="C",
+                graph_action_surface=SimpleNamespace(
+                    residual_attachment_policy_key=key,
+                ),
+                policy_family=(
+                    writer_transitions
+                    ._WriterGraphPolicyActionFamily
+                    .CYCLIC_TREE_ENTRY
+                ),
+                execution_capabilities=frozenset(),
+                residual_work_evidence=(),
+                finite_relation_work_evidence=(),
+                transition=SimpleNamespace(
+                    kind=(
+                        writer_transitions
+                        ._WriterGraphPolicyActionFamily
+                        .CYCLIC_TREE_ENTRY
+                    ),
+                    events=(),
+                    evidence=None,
+                ),
+            ),
+            successor_key=source_key,
+        )
+        policy_group = writer_transitions._WriterResidualAttachmentPolicyGroup(
+            key=key,
+            surfaces=(
+                writer_transitions._WriterScheduledGraphActionSurface(
+                    kind=(
+                        writer_transitions
+                        ._WriterScheduledActionKind
+                        .OPEN_CLOSURE_ENDPOINT
+                    ),
+                    active_atom=key.active_atom,
+                    attachment_id=key.attachment_id,
+                    attachment_action_kind=(
+                        WriterResidualAttachmentActionKind
+                        .CLOSURE_OPEN_READY
+                    ),
+                    owner_kind=WriterBoundaryOwnerKind.OPEN_RING_ENDPOINT,
+                ),
+                writer_transitions._WriterScheduledGraphActionSurface(
+                    kind=(
+                        writer_transitions
+                        ._WriterScheduledActionKind
+                        .ENTER_INLINE_CHILD
+                    ),
+                    active_atom=key.active_atom,
+                    attachment_id=key.attachment_id,
+                    attachment_action_kind=(
+                        WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY
+                    ),
+                    owner_kind=WriterBoundaryOwnerKind.OPEN_RING_ENDPOINT,
+                ),
+            ),
+        )
+        evidence_group = (
+            writer_frontier_module
+            ._WriterFrontierResidualAttachmentEvidenceGroup(
+                key=key,
+                resolved_policy_groups=(policy_group,),
+                support_dead_closure_open_vs_cyclic_tree_entry_policy_groups=(
+                    policy_group,
+                ),
+                selected_support_groups=(
+                    writer_frontier_module
+                    ._WriterFrontierResidualAttachmentSupportGroup(
+                        key=key,
+                        supports=(support,),
+                    ),
+                ),
+            )
+        )
+        branch_support = (
+            writer_frontier_module
+            ._writer_frontier_branch_support_from_next_token_support(
+                branch_ordinal=0,
+                support=support,
+                schedule_outcome=SimpleNamespace(
+                    residual_attachment_evidence_groups=(evidence_group,),
+                ),
+            )
+        )
+
+        self.assertIn(
+            (
+                _WriterExecutionCapabilityKind
+                .OPEN_RING_ENDPOINT_RESIDUAL_ATTACHMENT_RESOLUTION
+            ),
+            branch_support.execution_capabilities,
+        )
+        self.assertEqual(
+            branch_support.residual_attachment_policy_evidence,
+            (evidence_group,),
+        )
+        self.assertTrue(
+            any(
+                (
+                    group.has_dead_closure_open_resolved_cyclic_tree_entry_support
+                    and group.has_open_ring_endpoint_owner_scope_evidence
+                )
+                for group in branch_support.residual_attachment_policy_evidence
+            )
+        )
+        self.assertGreater(
+            _count_checked_writer_frontier_branch_completions(
+                prepared,
+                branch_support.successor_cursor,
+            ),
+            0,
+        )
 
     def test_runtime_branch_completion_count_is_frontier_owned(self) -> None:
         prepared = _prepare(cco_facts())

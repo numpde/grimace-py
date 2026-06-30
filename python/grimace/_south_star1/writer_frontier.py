@@ -274,6 +274,10 @@ class _WriterFrontierBranchSupport:
     execution_capabilities: frozenset[object]
     residual_work_evidence: tuple[object, ...]
     finite_relation_work_evidence: tuple[object, ...]
+    residual_attachment_policy_evidence: tuple[
+        "_WriterFrontierResidualAttachmentEvidenceGroup",
+        ...,
+    ] = ()
 
     @property
     def successor_cursor(self) -> WriterFrontierCursor:
@@ -2290,8 +2294,25 @@ def _writer_frontier_branch_support_from_next_token_support(
     *,
     branch_ordinal: int,
     support: _WriterFrontierNextTokenSupport,
+    schedule_outcome: _WriterFrontierScheduleOutcome,
 ) -> _WriterFrontierBranchSupport:
     transition = support.schedule_support.transition
+    policy_evidence = _residual_attachment_policy_evidence_for_branch_support(
+        schedule_outcome=schedule_outcome,
+        support=support,
+    )
+    capabilities = set(support.execution_capabilities)
+    if _branch_support_has_open_ring_endpoint_residual_resolution(
+        support=support,
+        policy_evidence=policy_evidence,
+    ):
+        capabilities.add(
+            (
+                _WriterExecutionCapabilityKind
+                .OPEN_RING_ENDPOINT_RESIDUAL_ATTACHMENT_RESOLUTION
+            )
+        )
+
     return _WriterFrontierBranchSupport(
         emitted_text=support.emitted_text,
         source_state=support.state_key,
@@ -2301,11 +2322,45 @@ def _writer_frontier_branch_support_from_next_token_support(
         transition_kind=transition.kind,
         events=transition.events,
         evidence=transition.evidence,
-        execution_capabilities=frozenset(support.execution_capabilities),
+        execution_capabilities=frozenset(capabilities),
         residual_work_evidence=tuple(support.residual_work_evidence),
         finite_relation_work_evidence=tuple(
             support.finite_relation_work_evidence
         ),
+        residual_attachment_policy_evidence=policy_evidence,
+    )
+
+
+def _residual_attachment_policy_evidence_for_branch_support(
+    *,
+    schedule_outcome: _WriterFrontierScheduleOutcome,
+    support: _WriterFrontierNextTokenSupport,
+) -> tuple[_WriterFrontierResidualAttachmentEvidenceGroup, ...]:
+    key = support.graph_action_surface.residual_attachment_policy_key
+    if key is None:
+        return ()
+
+    return tuple(
+        group
+        for group in schedule_outcome.residual_attachment_evidence_groups
+        if group.key == key
+    )
+
+
+def _branch_support_has_open_ring_endpoint_residual_resolution(
+    *,
+    support: _WriterFrontierNextTokenSupport,
+    policy_evidence: tuple[_WriterFrontierResidualAttachmentEvidenceGroup, ...],
+) -> bool:
+    if support.policy_family is not _WriterGraphPolicyActionFamily.CYCLIC_TREE_ENTRY:
+        return False
+
+    return any(
+        (
+            group.has_dead_closure_open_resolved_cyclic_tree_entry_support
+            and group.has_open_ring_endpoint_owner_scope_evidence
+        )
+        for group in policy_evidence
     )
 
 
@@ -2330,6 +2385,7 @@ def _checked_writer_frontier_branch_supports(
             _writer_frontier_branch_support_from_next_token_support(
                 branch_ordinal=branch_ordinal,
                 support=support,
+                schedule_outcome=schedule_outcome,
             )
             for branch_ordinal, support in enumerate(
                 schedule_outcome.next_token_supports

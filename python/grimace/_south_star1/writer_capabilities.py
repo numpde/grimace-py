@@ -36,6 +36,9 @@ class _WriterExecutionCapabilityKind(Enum):
 
     RESIDUAL_PROPAGATION = "residual_propagation"
     RESIDUAL_FACTOR_DISCHARGE = "residual_factor_discharge"
+    OPEN_RING_ENDPOINT_RESIDUAL_ATTACHMENT_RESOLUTION = (
+        "open_ring_endpoint_residual_attachment_resolution"
+    )
 
 
 _PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES = frozenset(
@@ -61,6 +64,10 @@ _PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES = frozenset(
         _WriterExecutionCapabilityKind.DIRECTIONAL_RING_PAIR_COMPATIBILITY,
         _WriterExecutionCapabilityKind.RESIDUAL_PROPAGATION,
         _WriterExecutionCapabilityKind.RESIDUAL_FACTOR_DISCHARGE,
+        (
+            _WriterExecutionCapabilityKind
+            .OPEN_RING_ENDPOINT_RESIDUAL_ATTACHMENT_RESOLUTION
+        ),
     }
 )
 

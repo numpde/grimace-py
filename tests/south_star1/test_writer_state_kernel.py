@@ -3462,7 +3462,7 @@ class WriterStateKernelTest(unittest.TestCase):
         choice = choice_snapshot.choices[0]
         advanced_snapshot = (
             writer_snapshot
-            ._writer_search_snapshot_with_cursor_after_emitted_text(
+            ._writer_search_snapshot_after_checked_frontier_cursor_step(
                 source_snapshot,
                 prepared=prepared,
                 cursor=choice.successor,
@@ -11091,7 +11091,7 @@ class WriterStateKernelTest(unittest.TestCase):
         choice = choice_snapshot.choices[0]
         advanced_snapshot = (
             writer_snapshot
-            ._writer_search_snapshot_with_cursor_after_emitted_text(
+            ._writer_search_snapshot_after_checked_frontier_cursor_step(
                 source_snapshot,
                 prepared=prepared,
                 cursor=choice.successor,
@@ -12116,7 +12116,7 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertIs(raised.exception.kind, SouthStarErrorKind.INTERNAL_INVARIANT)
 
-    def test_writer_search_snapshot_with_cursor_after_emitted_text_updates_cursor_and_boundary(self) -> None:
+    def test_writer_search_snapshot_after_checked_frontier_cursor_step_updates_cursor_and_boundary(self) -> None:
         prepared = _prepare(chain_facts(("C", "C")))
         options = _writer_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
@@ -12137,7 +12137,7 @@ class WriterStateKernelTest(unittest.TestCase):
 
         advanced = (
             writer_snapshot
-            ._writer_search_snapshot_with_cursor_after_emitted_text(
+            ._writer_search_snapshot_after_checked_frontier_cursor_step(
                 snapshot,
                 prepared=prepared,
                 cursor=choice.successor,
@@ -12576,7 +12576,7 @@ class WriterStateKernelTest(unittest.TestCase):
         choice = choice_snapshot.choices[0]
         advanced_snapshot = (
             writer_snapshot
-            ._writer_search_snapshot_with_cursor_after_emitted_text(
+            ._writer_search_snapshot_after_checked_frontier_cursor_step(
                 snapshot,
                 prepared=prepared,
                 cursor=choice.successor,
@@ -23238,7 +23238,7 @@ class WriterStateKernelTest(unittest.TestCase):
                     .OPEN_RING_ENDPOINT
                 ),
                 "has_open_ring_endpoint_owner_scope_closure_open_vs_cyclic_tree_entry_choice",
-                True,
+                False,
             ),
             (
                 WriterBoundaryOwnerKind.UNOWNED,
@@ -26205,7 +26205,7 @@ class WriterStateKernelTest(unittest.TestCase):
         ), patch(
             (
                 "grimace._south_star1.writer_snapshot"
-                "._writer_search_snapshot_with_cursor_after_emitted_text"
+                "._writer_search_snapshot_after_checked_frontier_cursor_step"
             ),
             side_effect=lambda current, *, prepared, cursor: replace(
                 current,
@@ -26238,7 +26238,7 @@ class WriterStateKernelTest(unittest.TestCase):
         ), patch(
             (
                 "grimace._south_star1.writer_snapshot"
-                "._writer_search_snapshot_with_cursor_after_emitted_text"
+                "._writer_search_snapshot_after_checked_frontier_cursor_step"
             ),
             side_effect=lambda current, *, prepared, cursor: replace(
                 current,
@@ -26276,7 +26276,7 @@ class WriterStateKernelTest(unittest.TestCase):
         ), patch(
             (
                 "grimace._south_star1.writer_snapshot"
-                "._writer_search_snapshot_with_cursor_after_emitted_text"
+                "._writer_search_snapshot_after_checked_frontier_cursor_step"
             ),
             side_effect=lambda current, *, prepared, cursor: replace(
                 current,
@@ -26544,18 +26544,57 @@ class WriterStateKernelTest(unittest.TestCase):
             },
         )
 
-    def test_supported_dead_closure_owner_scopes_are_naturally_reachable(
+    def test_open_ring_endpoint_owner_scope_is_supported_for_dead_closure_resolution(
         self,
     ) -> None:
         supported = writer_transitions._SUPPORTED_DEAD_CLOSURE_OWNER_SCOPES
+        group = self._test_residual_policy_group_with_owner_scope(
+            writer_transitions._WriterResidualAttachmentPolicyKey(
+                AtomId(0),
+                7,
+            ),
+            closure_owner_kind=WriterBoundaryOwnerKind.OPEN_RING_ENDPOINT,
+            child_owner_kind=WriterBoundaryOwnerKind.OPEN_RING_ENDPOINT,
+        )
 
-        self.assertNotIn(
+        self.assertIn(
             (
                 writer_transitions
                 ._WriterResidualAttachmentOwnerScopeKind
                 .OPEN_RING_ENDPOINT
             ),
             supported,
+        )
+        self.assertEqual(
+            (
+                writer_transitions
+                ._unsupported_closure_open_vs_cyclic_tree_entry_owner_scope_groups(
+                    (group,)
+                )
+            ),
+            (),
+        )
+
+    def test_unowned_residual_attachment_scope_still_blocks_dead_closure_resolution(
+        self,
+    ) -> None:
+        group = self._test_residual_policy_group_with_owner_scope(
+            writer_transitions._WriterResidualAttachmentPolicyKey(
+                AtomId(0),
+                7,
+            ),
+            closure_owner_kind=WriterBoundaryOwnerKind.UNOWNED,
+            child_owner_kind=WriterBoundaryOwnerKind.UNOWNED,
+        )
+
+        self.assertEqual(
+            (
+                writer_transitions
+                ._unsupported_closure_open_vs_cyclic_tree_entry_owner_scope_groups(
+                    (group,)
+                )
+            ),
+            (group,),
         )
 
     def test_active_emitted_graph_policy_allows_child_after_dead_closure_open_support(self) -> None:
@@ -26681,6 +26720,51 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(
             decision.child_scheduled_actions,
             child_surface.scheduled_actions,
+        )
+
+    def test_active_emitted_graph_policy_allows_open_ring_endpoint_dead_closure_resolution(self) -> None:
+        prepared = object()
+        state = object()
+        context = _empty_writer_transition_context()
+        active_atom = AtomId(0)
+        closure_decision, child_surface = self._test_residual_cyclic_policy_inputs(
+            active_atom=active_atom,
+            closure_owner_kind=WriterBoundaryOwnerKind.OPEN_RING_ENDPOINT,
+            child_owner_kind=WriterBoundaryOwnerKind.OPEN_RING_ENDPOINT,
+        )
+
+        with patch(
+            "grimace._south_star1.writer_transitions._closure_endpoint_schedule_decision",
+            return_value=closure_decision,
+        ), patch(
+            "grimace._south_star1.writer_transitions._active_child_schedule_surface_from_context",
+            return_value=child_surface,
+        ):
+            decision = writer_transitions._active_emitted_graph_policy_decision(
+                prepared,  # type: ignore[arg-type]
+                state,  # type: ignore[arg-type]
+                context,  # type: ignore[arg-type]
+                active_atom,
+            )
+
+        self.assertIs(
+            decision.kind,
+            (
+                writer_transitions
+                ._WriterActiveEmittedGraphPolicyDecisionKind
+                .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+            ),
+        )
+        self.assertTrue(decision.emits_child_actions)
+        self.assertTrue(
+            decision.support_dead_closure_open_vs_cyclic_tree_entry_groups
+        )
+        self.assertEqual(
+            (
+                decision
+                .unsupported_owner_scope_closure_open_vs_cyclic_tree_entry_groups
+            ),
+            (),
         )
 
     def test_active_emitted_graph_policy_still_resolves_dead_closure_open_via_child_selection_evidence(self) -> None:

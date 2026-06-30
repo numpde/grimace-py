@@ -50,12 +50,13 @@ event; pairing a closure endpoint carries label release evidence after the pair
 event. The state update remains authoritative: allocated/reusable label
 accounting is read from the exact branch successor.
 
-Ring-label lifecycle derivation lives in `writer_ring_lifecycle.py` as an
-idempotent writer event-stream augmentation. It is installed at writer transition
-construction by `writer_transition_lifecycle.py`, where the source writer state is
-available for fresh-vs-reused allocation evidence. `writer_runtime.py` now
-preserves raw transition events directly; branch-runtime lifecycle evidence is
-not runtime decoration.
+The lifecycle installer is now restricted to closure-transition factory
+installation. The installed closure factories construct the lifecycle events
+before calling the raw `_transition(...)` constructor, so `_transition(...)`,
+stereo advancement, runtime preservation, and lifecycle validation all see the
+same event stream. The remaining scaffold is the import-time factory
+installation point itself; the next cleanup is to move these closure-factory
+bodies directly into `writer_transitions.py` and delete the installer.
 
 `count_writer_runtime_completions(...)` and
 `count_writer_runtime_branch_completions(...)` both consume the branch-preserving

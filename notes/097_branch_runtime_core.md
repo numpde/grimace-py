@@ -44,18 +44,19 @@ Branch successor states are selected by branch provenance, not by emitted text.
 They still use the same token-boundary snapshot packaging as checked text
 successors so decoder-boundary accounting observes one selected writer step.
 
-Ring label allocation/release is exposed as branch-local lifecycle events on the
-runtime branch transition. Opening a closure endpoint emits label allocation
-evidence before the endpoint event; pairing a closure endpoint emits label
-release evidence after the pair event. The state update remains authoritative:
-allocated/reusable label accounting is read from the exact branch successor.
+Ring label allocation/release is carried on raw writer transition event streams.
+Opening a closure endpoint carries label allocation evidence before the endpoint
+event; pairing a closure endpoint carries label release evidence after the pair
+event. The state update remains authoritative: allocated/reusable label
+accounting is read from the exact branch successor.
 
-Ring-label lifecycle derivation now lives in `writer_ring_lifecycle.py` as an
-idempotent writer event-stream augmentation. `writer_runtime.py` consumes that
-helper rather than owning ring-specific decoration. This keeps the runtime
-compatible with the intended next step: raw writer transitions can carry the
-same lifecycle events directly, and the runtime branch surface will not duplicate
-them.
+Ring-label lifecycle derivation lives in `writer_ring_lifecycle.py` as an
+idempotent writer event-stream augmentation. It is installed at writer transition
+construction by `writer_transition_lifecycle.py`, where the source writer state is
+available for fresh-vs-reused allocation evidence. `writer_runtime.py` still
+passes raw events through the same idempotent helper as a compatibility guard, so
+branch-runtime surfaces preserve direct raw transition lifecycle evidence without
+duplicating it.
 
 `count_writer_runtime_completions(...)` and
 `count_writer_runtime_branch_completions(...)` both consume the branch-preserving

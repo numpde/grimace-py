@@ -21,6 +21,7 @@ from .writer_frontier import WriterFrontierCursor
 from .writer_frontier import WriterFrontierTerminal
 from .writer_frontier import _checked_writer_frontier_schedule_outcome
 from .writer_frontier import _writer_frontier_choice_snapshot_from_schedule_outcome
+from .writer_ring_lifecycle import validate_writer_ring_lifecycle_transition
 from .writer_snapshot import WriterDecoderBoundary
 from .writer_snapshot import WriterFrontierFrame
 from .writer_snapshot import WriterSearchSnapshot
@@ -311,6 +312,11 @@ def writer_runtime_branch_transitions(
     branch_transitions: list[WriterRuntimeBranchTransition] = []
     for branch_ordinal, support in enumerate(schedule_outcome.next_token_supports):
         transition = support.schedule_support.transition
+        validate_writer_ring_lifecycle_transition(
+            source_state=support.state_key,
+            successor_state=support.successor_key,
+            events=transition.events,
+        )
         successor_state = _writer_runtime_state_for_successor_key(
             prepared=prepared,
             state=state,

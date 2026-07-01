@@ -27,6 +27,9 @@ from .writer_capabilities import _WriterExecutionCapabilityKind
 from .writer_capabilities import (
     _unsupported_public_writer_execution_capabilities,
 )
+from .writer_closure_candidate_lifecycle import (
+    validate_writer_closure_candidate_lifecycle_transition,
+)
 from .writer_state import ComponentCursor
 from .writer_state import ObligationState
 from .writer_state import WriterAtomFrame
@@ -1939,6 +1942,20 @@ def _validate_writer_frontier_schedule_outcome_lifecycle(
         )
 
 
+def _validate_writer_frontier_schedule_outcome_closure_candidates(
+    prepared: SouthStarPreparedMol,
+    outcome: _WriterFrontierScheduleOutcome,
+) -> None:
+    for support in outcome.next_token_supports:
+        validate_writer_closure_candidate_lifecycle_transition(
+            prepared=prepared,
+            source_state=support.state_key,
+            successor_state=support.successor_key,
+            transition_kind=support.schedule_support.transition.kind,
+            graph_action_surface=support.graph_action_surface,
+        )
+
+
 def _writer_frontier_schedule_outcome(
     prepared: SouthStarPreparedMol,
     cursor: WriterFrontierCursor,
@@ -2023,6 +2040,10 @@ def _writer_frontier_schedule_outcome(
     )
     _validate_writer_frontier_schedule_outcome_grouping(outcome)
     _validate_writer_frontier_schedule_outcome_lifecycle(outcome)
+    _validate_writer_frontier_schedule_outcome_closure_candidates(
+        prepared,
+        outcome,
+    )
 
     return outcome
 

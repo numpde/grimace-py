@@ -24,6 +24,12 @@ from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_fa
 from grimace._south_star1.writer_events import WriterRingEndpointEmitted
 from grimace._south_star1.writer_events import WriterRingLabelAllocated
 from grimace._south_star1.writer_capabilities import _WriterExecutionCapabilityKind
+from grimace._south_star1.writer_closure_candidate_lifecycle import (
+    validate_writer_closure_candidate_lifecycle_transition,
+)
+from grimace._south_star1.writer_closure_candidate_lifecycle import (
+    writer_closure_candidate_lifecycle_transition_violations,
+)
 from grimace._south_star1.writer_execution_evidence import (
     writer_graph_obligation_work_envelope_violation,
 )
@@ -453,6 +459,42 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             0,
         )
 
+    def test_live_candidate_lifecycle_opens_exact_bond(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        cursor = WriterFrontierCursor(
+            weighted_states=(
+                (
+                    writer_state_key(
+                        _branch_return_closure_candidate_state(
+                            live_partner=True,
+                        )
+                    ),
+                    1,
+                ),
+            )
+        )
+        batch = _checked_writer_frontier_branch_supports(
+            prepared,
+            cursor,
+            include_counts=False,
+        )
+        support = next(
+            support
+            for support in batch.supports
+            if (
+                support.transition_kind
+                is writer_transitions.WriterTransitionKind.OPEN_CLOSURE_ENDPOINT
+            )
+        )
+
+        validate_writer_closure_candidate_lifecycle_transition(
+            prepared=prepared,
+            source_state=support.source_state,
+            successor_state=support.successor_state,
+            transition_kind=support.transition_kind,
+            graph_action_surface=support.graph_action_surface,
+        )
+
     def test_frozen_closure_candidate_still_blocks(self) -> None:
         prepared = _prepare(cyclopropane_facts())
         cursor = WriterFrontierCursor(
@@ -857,33 +899,117 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             WriterClosureCandidateResolutionKind.DEFERRED_CONTROL_LIVE,
         )
 
-        next_batch = _checked_writer_frontier_branch_supports(
+        successor_context = build_writer_graph_obligation_context(
             prepared,
-            support.successor_cursor,
+            support.successor_state,
+        )
+        successor_evidence = writer_graph_obligation_work_evidence(
+            operation="writer graph obligation context",
+            prepared=prepared,
+            key=support.successor_state,
+            context=successor_context,
+        )
+        self.assertEqual(
+            successor_evidence.deferred_control_live_closure_candidate_count,
+            1,
+        )
+        self.assertEqual(
+            successor_evidence.unsupported_closure_candidate_count,
+            0,
+        )
+
+    def test_deferred_control_live_candidate_lifecycle_survives_pending_step(
+        self,
+    ) -> None:
+        prepared = _prepare(_pending_control_live_closure_candidate_facts())
+        cursor = WriterFrontierCursor(
+            weighted_states=(
+                (
+                    writer_state_key(
+                        _pending_parent_branch_return_closure_candidate_state(
+                            frozen_endpoint=False,
+                        )
+                    ),
+                    1,
+                ),
+            )
+        )
+        batch = _checked_writer_frontier_branch_supports(
+            prepared,
+            cursor,
             include_counts=False,
         )
-        self.assertTrue(next_batch.supports)
-        self.assertFalse(
-            any(
-                support.transition_kind
-                is writer_transitions.WriterTransitionKind.OPEN_CLOSURE_ENDPOINT
-                for support in next_batch.supports
+        support = next(
+            support
+            for support in batch.supports
+            if (
+                _WriterExecutionCapabilityKind
+                .DEFERRED_CONTROL_LIVE_CLOSURE_CANDIDATE
+            )
+            in support.execution_capabilities
+        )
+
+        validate_writer_closure_candidate_lifecycle_transition(
+            prepared=prepared,
+            source_state=support.source_state,
+            successor_state=support.successor_state,
+            transition_kind=support.transition_kind,
+            graph_action_surface=support.graph_action_surface,
+        )
+
+    def test_deferred_candidate_lifecycle_rejects_unsupported_successor(
+        self,
+    ) -> None:
+        prepared = _prepare(_pending_control_live_closure_candidate_facts())
+        source = writer_state_key(
+            _pending_parent_branch_return_closure_candidate_state(
+                frozen_endpoint=False,
             )
         )
-        self.assertTrue(
-            any(
-                (
-                    support.graph_obligation_work_evidence[0]
-                    .deferred_control_live_closure_candidate_count
-                    == 1
-                )
-                and (
-                    support.graph_obligation_work_evidence[0]
-                    .unsupported_closure_candidate_count
-                    == 0
-                )
-                for support in next_batch.supports
+        successor = writer_state_key(
+            _pending_parent_branch_return_closure_candidate_state(
+                frozen_endpoint=True,
             )
+        )
+
+        violations = writer_closure_candidate_lifecycle_transition_violations(
+            prepared=prepared,
+            source_state=source,
+            successor_state=successor,
+            transition_kind=writer_transitions.WriterTransitionKind.ENTER_CHILD_BOND,
+            graph_action_surface=None,
+        )
+
+        self.assertIn(
+            "supported_candidate_became_unsupported",
+            violations,
+        )
+
+    def test_live_candidate_lifecycle_rejects_claimed_open_without_open_state(
+        self,
+    ) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        state = writer_state_key(
+            _branch_return_closure_candidate_state(live_partner=True)
+        )
+
+        violations = writer_closure_candidate_lifecycle_transition_violations(
+            prepared=prepared,
+            source_state=state,
+            successor_state=state,
+            transition_kind=(
+                writer_transitions.WriterTransitionKind.OPEN_CLOSURE_ENDPOINT
+            ),
+            graph_action_surface=SimpleNamespace(
+                bond=BondId(0),
+                boundary_atom=AtomId(0),
+                partner_atom=AtomId(1),
+            ),
+        )
+
+        self.assertIn(
+            "opened_candidate_lacks_successor_open_endpoint",
+            violations,
         )
 
     def test_control_live_candidate_with_frozen_endpoint_still_blocks(

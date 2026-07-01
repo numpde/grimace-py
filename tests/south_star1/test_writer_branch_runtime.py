@@ -11,6 +11,7 @@ import grimace._south_star1.writer_frontier as writer_frontier_module
 import grimace._south_star1.writer_transitions as writer_transitions
 from grimace._south_star1.errors import SouthStarError
 from grimace._south_star1.errors import SouthStarErrorKind
+from grimace._south_star1.facts import BondOrder
 from grimace._south_star1.facts import ComponentFacts
 from grimace._south_star1.facts import MoleculeFacts
 from grimace._south_star1.ids import AtomId
@@ -36,8 +37,10 @@ from grimace._south_star1.writer_graph_obligations import WriterBoundaryOwnerKin
 from grimace._south_star1.writer_graph_obligations import (
     WriterClosureCandidateResolutionKind,
 )
+from grimace._south_star1.writer_graph_obligations import WriterControlLiveAtomRole
 from grimace._south_star1.writer_graph_obligations import WriterResidualAttachmentActionKind
 from grimace._south_star1.writer_graph_obligations import build_writer_graph_obligation_context
+from grimace._south_star1.writer_graph_obligations import writer_control_live_roles_by_atom
 from grimace._south_star1.writer_graph_obligations import writer_graph_obligation_work_evidence
 from grimace._south_star1.writer_runtime import count_writer_runtime_branch_completions
 from grimace._south_star1.writer_runtime import initial_writer_runtime_state
@@ -49,6 +52,7 @@ from grimace._south_star1.writer_snapshot import _writer_search_snapshot_after_c
 from grimace._south_star1.writer_snapshot import _writer_search_snapshot_after_checked_choice
 from grimace._south_star1.writer_state import ComponentCursor
 from grimace._south_star1.writer_state import ObligationState
+from grimace._south_star1.writer_state import PendingWriterEntry
 from grimace._south_star1.writer_state import WriterAtomFrame
 from grimace._south_star1.writer_state import WriterBranchFrame
 from grimace._south_star1.writer_state import WriterPolicyState
@@ -59,6 +63,7 @@ from grimace._south_star1.writer_state import writer_state_key
 from tests.south_star1.helpers import cco_facts
 from tests.south_star1.helpers import cyclopropane_facts
 from tests.south_star1.helpers import atom
+from tests.south_star1.helpers import bond
 from tests.south_star1.helpers import single_bond
 
 
@@ -312,6 +317,10 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             evidence.deferred_branch_return_closure_candidate_count,
             0,
         )
+        self.assertEqual(
+            evidence.deferred_control_live_closure_candidate_count,
+            0,
+        )
         self.assertEqual(evidence.unsupported_closure_candidate_count, 0)
         self.assertIsNone(
             writer_graph_obligation_work_envelope_violation(evidence)
@@ -338,6 +347,10 @@ class WriterBranchRuntimeTest(unittest.TestCase):
         )
         self.assertEqual(
             evidence.deferred_branch_return_closure_candidate_count,
+            0,
+        )
+        self.assertEqual(
+            evidence.deferred_control_live_closure_candidate_count,
             0,
         )
         self.assertEqual(evidence.unsupported_closure_candidate_count, 1)
@@ -404,6 +417,10 @@ class WriterBranchRuntimeTest(unittest.TestCase):
         )
         self.assertEqual(
             evidence.deferred_branch_return_closure_candidate_count,
+            0,
+        )
+        self.assertEqual(
+            evidence.deferred_control_live_closure_candidate_count,
             0,
         )
         self.assertEqual(evidence.unsupported_closure_candidate_count, 0)
@@ -495,6 +512,10 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             evidence.deferred_branch_return_closure_candidate_count,
             1,
         )
+        self.assertEqual(
+            evidence.deferred_control_live_closure_candidate_count,
+            0,
+        )
         self.assertEqual(evidence.unsupported_closure_candidate_count, 0)
         self.assertIsNone(
             writer_graph_obligation_work_envelope_violation(evidence)
@@ -578,6 +599,10 @@ class WriterBranchRuntimeTest(unittest.TestCase):
         )
         self.assertEqual(
             evidence.deferred_branch_return_closure_candidate_count,
+            0,
+        )
+        self.assertEqual(
+            evidence.deferred_control_live_closure_candidate_count,
             0,
         )
         self.assertEqual(evidence.unsupported_closure_candidate_count, 0)
@@ -703,6 +728,192 @@ class WriterBranchRuntimeTest(unittest.TestCase):
         self.assertEqual(
             evidence.live_branch_return_closure_candidate_count,
             1,
+        )
+        self.assertEqual(
+            evidence.deferred_control_live_closure_candidate_count,
+            0,
+        )
+        self.assertEqual(evidence.unsupported_closure_candidate_count, 1)
+        violation = writer_graph_obligation_work_envelope_violation(evidence)
+        self.assertIsNotNone(violation)
+        assert violation is not None
+        self.assertEqual(
+            violation.metric,
+            "unsupported_closure_candidate_count",
+        )
+
+        with self.assertRaises(SouthStarError) as caught:
+            _checked_writer_frontier_branch_supports(
+                prepared,
+                cursor,
+                include_counts=False,
+            )
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+
+    def test_control_live_roles_include_pending_parent_and_branch_return(
+        self,
+    ) -> None:
+        key = writer_state_key(
+            _pending_parent_branch_return_closure_candidate_state(
+                frozen_endpoint=False,
+            )
+        )
+
+        roles = writer_control_live_roles_by_atom(key)
+
+        self.assertIn(
+            WriterControlLiveAtomRole.PENDING_PARENT,
+            roles[AtomId(3)],
+        )
+        self.assertIn(
+            WriterControlLiveAtomRole.BRANCH_RETURN,
+            roles[AtomId(0)],
+        )
+
+    def test_deferred_control_live_closure_candidate_allows_pending_step(
+        self,
+    ) -> None:
+        prepared = _prepare(_pending_control_live_closure_candidate_facts())
+        cursor = WriterFrontierCursor(
+            weighted_states=(
+                (
+                    writer_state_key(
+                        _pending_parent_branch_return_closure_candidate_state(
+                            frozen_endpoint=False,
+                        )
+                    ),
+                    1,
+                ),
+            )
+        )
+        key = cursor.weighted_states[0][0]
+        context = build_writer_graph_obligation_context(prepared, key)
+        evidence = writer_graph_obligation_work_evidence(
+            operation="writer graph obligation context",
+            prepared=prepared,
+            key=key,
+            context=context,
+        )
+
+        self.assertEqual(evidence.closure_candidate_count, 1)
+        self.assertEqual(
+            evidence.live_branch_return_closure_candidate_count,
+            0,
+        )
+        self.assertEqual(
+            evidence.deferred_branch_return_closure_candidate_count,
+            0,
+        )
+        self.assertEqual(
+            evidence.deferred_control_live_closure_candidate_count,
+            1,
+        )
+        self.assertEqual(evidence.unsupported_closure_candidate_count, 0)
+        self.assertIsNone(
+            writer_graph_obligation_work_envelope_violation(evidence)
+        )
+
+        batch = _checked_writer_frontier_branch_supports(
+            prepared,
+            cursor,
+            include_counts=False,
+        )
+        self.assertFalse(
+            any(
+                support.transition_kind
+                is writer_transitions.WriterTransitionKind.OPEN_CLOSURE_ENDPOINT
+                for support in batch.supports
+            )
+        )
+        support = next(
+            support
+            for support in batch.supports
+            if (
+                _WriterExecutionCapabilityKind
+                .DEFERRED_CONTROL_LIVE_CLOSURE_CANDIDATE
+            )
+            in support.execution_capabilities
+        )
+
+        self.assertIs(
+            support.transition_kind,
+            writer_transitions.WriterTransitionKind.ENTER_CHILD_BOND,
+        )
+        self.assertEqual(
+            support.graph_obligation_work_evidence[0]
+            .deferred_control_live_closure_candidate_count,
+            1,
+        )
+        self.assertEqual(
+            len(support.closure_candidate_resolution_evidence),
+            1,
+        )
+        self.assertIs(
+            (
+                support.closure_candidate_resolution_evidence[0]
+                .resolution_kind
+            ),
+            WriterClosureCandidateResolutionKind.DEFERRED_CONTROL_LIVE,
+        )
+
+        next_batch = _checked_writer_frontier_branch_supports(
+            prepared,
+            support.successor_cursor,
+            include_counts=False,
+        )
+        self.assertTrue(next_batch.supports)
+        self.assertFalse(
+            any(
+                support.transition_kind
+                is writer_transitions.WriterTransitionKind.OPEN_CLOSURE_ENDPOINT
+                for support in next_batch.supports
+            )
+        )
+        self.assertTrue(
+            any(
+                (
+                    support.graph_obligation_work_evidence[0]
+                    .deferred_control_live_closure_candidate_count
+                    == 1
+                )
+                and (
+                    support.graph_obligation_work_evidence[0]
+                    .unsupported_closure_candidate_count
+                    == 0
+                )
+                for support in next_batch.supports
+            )
+        )
+
+    def test_control_live_candidate_with_frozen_endpoint_still_blocks(
+        self,
+    ) -> None:
+        prepared = _prepare(_pending_control_live_closure_candidate_facts())
+        cursor = WriterFrontierCursor(
+            weighted_states=(
+                (
+                    writer_state_key(
+                        _pending_parent_branch_return_closure_candidate_state(
+                            frozen_endpoint=True,
+                        )
+                    ),
+                    1,
+                ),
+            )
+        )
+        key = cursor.weighted_states[0][0]
+        context = build_writer_graph_obligation_context(prepared, key)
+        evidence = writer_graph_obligation_work_evidence(
+            operation="test",
+            prepared=prepared,
+            key=key,
+            context=context,
+        )
+
+        self.assertEqual(
+            evidence.deferred_control_live_closure_candidate_count,
+            0,
         )
         self.assertEqual(evidence.unsupported_closure_candidate_count, 1)
         violation = writer_graph_obligation_work_envelope_violation(evidence)
@@ -1064,6 +1275,24 @@ def _two_live_closure_candidate_facts() -> MoleculeFacts:
     )
 
 
+def _pending_control_live_closure_candidate_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=tuple(atom(index, "C") for index in range(4)),
+        bonds=(
+            single_bond(0, 3, 2),
+            bond(1, 3, 1, BondOrder.DOUBLE),
+            single_bond(2, 3, 0),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0), AtomId(1), AtomId(2), AtomId(3)),
+                bonds=(BondId(0), BondId(1), BondId(2)),
+            ),
+        ),
+    )
+
+
 def _multi_live_branch_return_closure_candidate_state() -> WriterState:
     return _multi_closure_candidate_state(
         branch_return_atoms=(AtomId(3), AtomId(0)),
@@ -1073,6 +1302,51 @@ def _multi_live_branch_return_closure_candidate_state() -> WriterState:
 def _mixed_live_and_unsupported_closure_candidate_state() -> WriterState:
     return _multi_closure_candidate_state(
         branch_return_atoms=(AtomId(0),),
+    )
+
+
+def _pending_parent_branch_return_closure_candidate_state(
+    *,
+    frozen_endpoint: bool,
+) -> WriterState:
+    return WriterState(
+        component_cursor=ComponentCursor(
+            component_index=0,
+            component_roots=(AtomId(3),),
+        ),
+        active=WriterAtomFrame(
+            atom=AtomId(2),
+            parent=AtomId(3),
+            incoming_bond=BondId(0),
+            atom_emitted=True,
+        ),
+        branch_stack=(
+            ()
+            if frozen_endpoint
+            else (
+                WriterBranchFrame(
+                    return_atom=WriterAtomFrame(
+                        atom=AtomId(0),
+                        parent=None,
+                        incoming_bond=None,
+                        atom_emitted=True,
+                    )
+                ),
+            )
+        ),
+        visited_atoms=frozenset((AtomId(0), AtomId(2), AtomId(3))),
+        written_bonds=frozenset((BondId(0),)),
+        obligations=ObligationState(
+            pending_entry=PendingWriterEntry(
+                parent=AtomId(3),
+                child=AtomId(1),
+                bond=BondId(1),
+                branch=False,
+            )
+        ),
+        ring_state=WriterRingState(),
+        stereo_state=WriterStereoState(),
+        policy_state=WriterPolicyState(),
     )
 
 

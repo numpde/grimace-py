@@ -32,6 +32,9 @@ from .writer_graph_obligations import validate_writer_transition_graph_surface
 from .writer_graph_obligations import (
     writer_deferred_branch_return_closure_candidate_resolutions,
 )
+from .writer_graph_obligations import (
+    writer_deferred_control_live_closure_candidate_resolutions,
+)
 from .writer_graph_obligations import writer_closure_candidate_resolutions
 from .writer_graph_obligations import writer_graph_completion_status
 from .writer_graph_obligations import writer_graph_obligation_work_evidence
@@ -5086,6 +5089,7 @@ def _has_unsupported_closure_candidate(
         not in (
             WriterClosureCandidateResolutionKind.LIVE_BRANCH_RETURN,
             WriterClosureCandidateResolutionKind.DEFERRED_BRANCH_RETURN,
+            WriterClosureCandidateResolutionKind.DEFERRED_CONTROL_LIVE,
         )
         for resolution in writer_closure_candidate_resolutions(
             key,
@@ -5298,6 +5302,10 @@ def _child_obligation_blockers_from_context(
                     context.graph.edge_partition,
                 ),
                 *writer_deferred_branch_return_closure_candidate_resolutions(
+                    key,
+                    context.graph.edge_partition,
+                ),
+                *writer_deferred_control_live_closure_candidate_resolutions(
                     key,
                     context.graph.edge_partition,
                 ),

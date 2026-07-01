@@ -14115,6 +14115,7 @@ class WriterStateKernelTest(unittest.TestCase):
             closure_candidate_count=1,
             live_branch_return_closure_candidate_count=0,
             deferred_branch_return_closure_candidate_count=0,
+            deferred_control_live_closure_candidate_count=0,
             unsupported_closure_candidate_count=1,
             open_closure_count=0,
             closed_closure_count=0,
@@ -14160,6 +14161,9 @@ class WriterStateKernelTest(unittest.TestCase):
             envelope.max_deferred_branch_return_closure_candidate_count
         )
         self.assertIsNotNone(
+            envelope.max_deferred_control_live_closure_candidate_count
+        )
+        self.assertIsNotNone(
             envelope.max_unsupported_closure_candidate_count
         )
         self.assertIsNotNone(envelope.max_open_closure_count)
@@ -14188,6 +14192,7 @@ class WriterStateKernelTest(unittest.TestCase):
             closure_candidate_count=0,
             live_branch_return_closure_candidate_count=0,
             deferred_branch_return_closure_candidate_count=0,
+            deferred_control_live_closure_candidate_count=0,
             unsupported_closure_candidate_count=0,
             open_closure_count=0,
             closed_closure_count=0,
@@ -14291,6 +14296,13 @@ class WriterStateKernelTest(unittest.TestCase):
                 for item in observed
             ),
             envelope.max_deferred_branch_return_closure_candidate_count,
+        )
+        self.assertLessEqual(
+            max(
+                item.deferred_control_live_closure_candidate_count
+                for item in observed
+            ),
+            envelope.max_deferred_control_live_closure_candidate_count,
         )
         self.assertLessEqual(
             max(item.unsupported_closure_candidate_count for item in observed),
@@ -14441,6 +14453,13 @@ class WriterStateKernelTest(unittest.TestCase):
         )
         self.assertIn(
             "_PUBLIC_GRAPH_OBLIGATION_MAX_EDGE_OBLIGATION_COUNT",
+            source,
+        )
+        self.assertIn(
+            (
+                "_PUBLIC_GRAPH_OBLIGATION_MAX_DEFERRED_CONTROL_LIVE_"
+                "CLOSURE_CANDIDATE_COUNT"
+            ),
             source,
         )
         self.assertIn(

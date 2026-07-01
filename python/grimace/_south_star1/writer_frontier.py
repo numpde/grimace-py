@@ -2342,6 +2342,16 @@ def _writer_frontier_branch_support_from_next_token_support(
                 .DEFERRED_BRANCH_RETURN_CLOSURE_CANDIDATE
             )
         )
+    if any(
+        evidence.deferred_control_live_closure_candidate_count
+        for evidence in graph_evidence
+    ):
+        capabilities.add(
+            (
+                _WriterExecutionCapabilityKind
+                .DEFERRED_CONTROL_LIVE_CLOSURE_CANDIDATE
+            )
+        )
 
     return _WriterFrontierBranchSupport(
         emitted_text=support.emitted_text,
@@ -2424,7 +2434,10 @@ def _closure_candidate_resolution_evidence_for_branch_support(
         return matches
 
     if any(
-        evidence.deferred_branch_return_closure_candidate_count
+        (
+            evidence.deferred_branch_return_closure_candidate_count
+            or evidence.deferred_control_live_closure_candidate_count
+        )
         for evidence in graph_obligation_work_evidence
     ):
         return tuple(
@@ -2432,7 +2445,10 @@ def _closure_candidate_resolution_evidence_for_branch_support(
             for resolution in resolutions
             if (
                 resolution.resolution_kind
-                is WriterClosureCandidateResolutionKind.DEFERRED_BRANCH_RETURN
+                in (
+                    WriterClosureCandidateResolutionKind.DEFERRED_BRANCH_RETURN,
+                    WriterClosureCandidateResolutionKind.DEFERRED_CONTROL_LIVE,
+                )
             )
         )
 

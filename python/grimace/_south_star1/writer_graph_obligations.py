@@ -42,8 +42,22 @@ class WriterEdgeObligationKind(Enum):
 class WriterClosureCandidateResolutionKind(Enum):
     LIVE_BRANCH_RETURN = "live_branch_return"
     DEFERRED_BRANCH_RETURN = "deferred_branch_return"
+    DEFERRED_CONTROL_LIVE = "deferred_control_live"
     UNSUPPORTED_NOT_ACTIVE = "unsupported_not_active"
     UNSUPPORTED_FROZEN_PARTNER = "unsupported_frozen_partner"
+
+
+class WriterControlLiveAtomRole(Enum):
+    ACTIVE = "active"
+    BRANCH_RETURN = "branch_return"
+    PENDING_PARENT = "pending_parent"
+    OPEN_RING_ENDPOINT = "open_ring_endpoint"
+
+
+@dataclass(frozen=True, slots=True)
+class WriterControlLiveAtom:
+    atom: AtomId
+    role: WriterControlLiveAtomRole
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,6 +171,8 @@ class WriterClosureCandidateResolution:
     first_atom: AtomId | None
     second_atom: AtomId | None
     resolution_kind: WriterClosureCandidateResolutionKind
+    first_atom_roles: frozenset[WriterControlLiveAtomRole] = frozenset()
+    second_atom_roles: frozenset[WriterControlLiveAtomRole] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)
@@ -406,6 +422,14 @@ def writer_graph_obligation_work_evidence(
                 is WriterClosureCandidateResolutionKind.DEFERRED_BRANCH_RETURN
             )
         ),
+        deferred_control_live_closure_candidate_count=sum(
+            1
+            for resolution in closure_candidate_resolutions
+            if (
+                resolution.resolution_kind
+                is WriterClosureCandidateResolutionKind.DEFERRED_CONTROL_LIVE
+            )
+        ),
         unsupported_closure_candidate_count=sum(
             1
             for resolution in closure_candidate_resolutions
@@ -414,6 +438,7 @@ def writer_graph_obligation_work_evidence(
                 not in (
                     WriterClosureCandidateResolutionKind.LIVE_BRANCH_RETURN,
                     WriterClosureCandidateResolutionKind.DEFERRED_BRANCH_RETURN,
+                    WriterClosureCandidateResolutionKind.DEFERRED_CONTROL_LIVE,
                 )
             )
         ),
@@ -663,10 +688,9 @@ def writer_closure_candidate_resolutions(
     key: WriterStateKey,
     partition: WriterEdgeObligationPartition,
 ) -> tuple[WriterClosureCandidateResolution, ...]:
-    branch_return_atoms = frozenset(
-        frame.return_atom.atom
-        for frame in key.branch_stack
-    )
+    roles_by_atom = writer_control_live_roles_by_atom(key)
+    branch_return_role = WriterControlLiveAtomRole.BRANCH_RETURN
+    pending_parent_role = WriterControlLiveAtomRole.PENDING_PARENT
     active_atom = key.active.atom
     resolutions: list[WriterClosureCandidateResolution] = []
 
@@ -679,34 +703,47 @@ def writer_closure_candidate_resolutions(
         elif active_atom == obligation.b:
             partner = obligation.a
         else:
-            candidate_atoms = frozenset((obligation.a, obligation.b))
-            if candidate_atoms.issubset(branch_return_atoms):
-                resolutions.append(
-                    WriterClosureCandidateResolution(
-                        bond=obligation.bond,
-                        first_atom=None,
-                        second_atom=None,
-                        resolution_kind=(
-                            WriterClosureCandidateResolutionKind
-                            .DEFERRED_BRANCH_RETURN
-                        ),
-                    )
+            left_roles = roles_by_atom.get(obligation.a, frozenset())
+            right_roles = roles_by_atom.get(obligation.b, frozenset())
+            if branch_return_role in left_roles and branch_return_role in right_roles:
+                kind = (
+                    WriterClosureCandidateResolutionKind
+                    .DEFERRED_BRANCH_RETURN
+                )
+            elif (
+                (
+                    pending_parent_role in left_roles
+                    and branch_return_role in right_roles
+                )
+                or (
+                    branch_return_role in left_roles
+                    and pending_parent_role in right_roles
+                )
+            ):
+                kind = (
+                    WriterClosureCandidateResolutionKind
+                    .DEFERRED_CONTROL_LIVE
                 )
             else:
-                resolutions.append(
-                    WriterClosureCandidateResolution(
-                        bond=obligation.bond,
-                        first_atom=None,
-                        second_atom=None,
-                        resolution_kind=(
-                            WriterClosureCandidateResolutionKind
-                            .UNSUPPORTED_NOT_ACTIVE
-                        ),
-                    )
+                kind = (
+                    WriterClosureCandidateResolutionKind
+                    .UNSUPPORTED_NOT_ACTIVE
                 )
+            resolutions.append(
+                WriterClosureCandidateResolution(
+                    bond=obligation.bond,
+                    first_atom=None,
+                    second_atom=None,
+                    resolution_kind=kind,
+                    first_atom_roles=left_roles,
+                    second_atom_roles=right_roles,
+                )
+            )
             continue
 
-        if partner in branch_return_atoms:
+        active_roles = roles_by_atom.get(active_atom, frozenset())
+        partner_roles = roles_by_atom.get(partner, frozenset())
+        if branch_return_role in partner_roles:
             resolutions.append(
                 WriterClosureCandidateResolution(
                     bond=obligation.bond,
@@ -716,6 +753,8 @@ def writer_closure_candidate_resolutions(
                         WriterClosureCandidateResolutionKind
                         .LIVE_BRANCH_RETURN
                     ),
+                    first_atom_roles=active_roles,
+                    second_atom_roles=partner_roles,
                 )
             )
         else:
@@ -728,10 +767,60 @@ def writer_closure_candidate_resolutions(
                         WriterClosureCandidateResolutionKind
                         .UNSUPPORTED_FROZEN_PARTNER
                     ),
+                    first_atom_roles=active_roles,
+                    second_atom_roles=partner_roles,
                 )
             )
 
     return tuple(resolutions)
+
+
+def writer_control_live_atoms(
+    key: WriterStateKey,
+) -> tuple[WriterControlLiveAtom, ...]:
+    atoms: list[WriterControlLiveAtom] = [
+        WriterControlLiveAtom(
+            atom=key.active.atom,
+            role=WriterControlLiveAtomRole.ACTIVE,
+        )
+    ]
+    atoms.extend(
+        WriterControlLiveAtom(
+            atom=frame.return_atom.atom,
+            role=WriterControlLiveAtomRole.BRANCH_RETURN,
+        )
+        for frame in key.branch_stack
+    )
+
+    pending = key.obligations.pending_entry
+    if pending is not None:
+        atoms.append(
+            WriterControlLiveAtom(
+                atom=pending.parent,
+                role=WriterControlLiveAtomRole.PENDING_PARENT,
+            )
+        )
+
+    atoms.extend(
+        WriterControlLiveAtom(
+            atom=endpoint.second_atom,
+            role=WriterControlLiveAtomRole.OPEN_RING_ENDPOINT,
+        )
+        for endpoint in key.ring_state.open_endpoints
+    )
+    return tuple(atoms)
+
+
+def writer_control_live_roles_by_atom(
+    key: WriterStateKey,
+) -> dict[AtomId, frozenset[WriterControlLiveAtomRole]]:
+    grouped: dict[AtomId, set[WriterControlLiveAtomRole]] = {}
+    for item in writer_control_live_atoms(key):
+        grouped.setdefault(item.atom, set()).add(item.role)
+    return {
+        atom: frozenset(roles)
+        for atom, roles in grouped.items()
+    }
 
 
 def writer_live_branch_return_closure_candidate_resolutions(
@@ -758,6 +847,20 @@ def writer_deferred_branch_return_closure_candidate_resolutions(
         if (
             resolution.resolution_kind
             is WriterClosureCandidateResolutionKind.DEFERRED_BRANCH_RETURN
+        )
+    )
+
+
+def writer_deferred_control_live_closure_candidate_resolutions(
+    key: WriterStateKey,
+    partition: WriterEdgeObligationPartition,
+) -> tuple[WriterClosureCandidateResolution, ...]:
+    return tuple(
+        resolution
+        for resolution in writer_closure_candidate_resolutions(key, partition)
+        if (
+            resolution.resolution_kind
+            is WriterClosureCandidateResolutionKind.DEFERRED_CONTROL_LIVE
         )
     )
 
@@ -1706,6 +1809,8 @@ __all__ = (
     "WriterBoundaryOwnerKind",
     "WriterClosureCandidateResolution",
     "WriterClosureCandidateResolutionKind",
+    "WriterControlLiveAtom",
+    "WriterControlLiveAtomRole",
     "WriterComponentConnectivity",
     "WriterEdgeObligation",
     "WriterEdgeObligationKind",
@@ -1731,6 +1836,9 @@ __all__ = (
     "writer_boundary_incidence_sort_tuple",
     "writer_closure_candidate_resolutions",
     "writer_deferred_branch_return_closure_candidate_resolutions",
+    "writer_deferred_control_live_closure_candidate_resolutions",
+    "writer_control_live_atoms",
+    "writer_control_live_roles_by_atom",
     "writer_edge_obligation_partition_sort_tuple",
     "writer_edge_obligation_sort_tuple",
     "writer_graph_obligation_work_evidence",

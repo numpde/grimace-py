@@ -27,6 +27,9 @@ from .writer_capabilities import _WriterExecutionCapabilityKind
 from .writer_capabilities import (
     _unsupported_public_writer_execution_capabilities,
 )
+from .writer_closure_candidate_branch_certificates import (
+    writer_closure_candidate_branch_certificates,
+)
 from .writer_closure_candidate_lifecycle import (
     validate_writer_closure_candidate_lifecycle_transition,
 )
@@ -289,6 +292,7 @@ class _WriterFrontierBranchSupport:
     policy_family: object | None = None
     closure_candidate_resolution_evidence: tuple[object, ...] = ()
     closure_candidate_lifecycle_evidence: tuple[object, ...] = ()
+    closure_candidate_branch_certificates: tuple[object, ...] = ()
     residual_attachment_policy_evidence: tuple[
         "_WriterFrontierResidualAttachmentEvidenceGroup",
         ...,
@@ -2385,6 +2389,20 @@ def _writer_frontier_branch_support_from_next_token_support(
                 .DEFERRED_CONTROL_LIVE_CLOSURE_CANDIDATE
             )
         )
+    execution_capabilities = frozenset(capabilities)
+    closure_candidate_branch_certificates = (
+        writer_closure_candidate_branch_certificates(
+            execution_capabilities=execution_capabilities,
+            transition_kind=transition.kind,
+            graph_action_surface=support.graph_action_surface,
+            graph_obligation_work_evidence=graph_evidence,
+            closure_candidate_resolution_evidence=closure_candidate_evidence,
+            closure_candidate_lifecycle_evidence=(
+                closure_candidate_lifecycle_evidence
+            ),
+            events=transition.events,
+        )
+    )
 
     return _WriterFrontierBranchSupport(
         emitted_text=support.emitted_text,
@@ -2395,7 +2413,7 @@ def _writer_frontier_branch_support_from_next_token_support(
         transition_kind=transition.kind,
         events=transition.events,
         evidence=transition.evidence,
-        execution_capabilities=frozenset(capabilities),
+        execution_capabilities=execution_capabilities,
         residual_work_evidence=tuple(support.residual_work_evidence),
         finite_relation_work_evidence=tuple(
             support.finite_relation_work_evidence
@@ -2406,6 +2424,9 @@ def _writer_frontier_branch_support_from_next_token_support(
         closure_candidate_resolution_evidence=closure_candidate_evidence,
         closure_candidate_lifecycle_evidence=(
             closure_candidate_lifecycle_evidence
+        ),
+        closure_candidate_branch_certificates=(
+            closure_candidate_branch_certificates
         ),
         residual_attachment_policy_evidence=policy_evidence,
     )

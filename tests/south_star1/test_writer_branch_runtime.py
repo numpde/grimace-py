@@ -24,6 +24,12 @@ from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_fa
 from grimace._south_star1.writer_events import WriterRingEndpointEmitted
 from grimace._south_star1.writer_events import WriterRingLabelAllocated
 from grimace._south_star1.writer_capabilities import _WriterExecutionCapabilityKind
+from grimace._south_star1.writer_closure_candidate_branch_certificates import (
+    WriterClosureCandidateBranchCertificateKind,
+)
+from grimace._south_star1.writer_closure_candidate_branch_certificates import (
+    writer_closure_candidate_branch_certificates,
+)
 from grimace._south_star1.writer_closure_candidate_lifecycle import (
     WriterClosureCandidateLifecycleOutcomeKind,
 )
@@ -175,6 +181,10 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             )
             self.assertEqual(
                 projected.closure_candidate_lifecycle_evidence,
+                (),
+            )
+            self.assertEqual(
+                projected.closure_candidate_branch_certificates,
                 (),
             )
             self.assertEqual(projected.residual_attachment_policy_evidence, ())
@@ -513,6 +523,17 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             evidence[0].successor_obligation_kind,
             WriterEdgeObligationKind.OPEN_CLOSURE_ENDPOINT,
         )
+        certificate = _single_closure_candidate_branch_certificate(
+            support,
+            WriterClosureCandidateBranchCertificateKind.LIVE_BRANCH_RETURN_OPENED,
+        )
+        self.assertEqual(certificate.bond, support.graph_action_surface.bond)
+        self.assertIs(
+            certificate.lifecycle_evidence.outcome_kind,
+            WriterClosureCandidateLifecycleOutcomeKind.OPENED,
+        )
+        self.assertIsInstance(support.events[0], WriterRingLabelAllocated)
+        self.assertIsInstance(support.events[1], WriterRingEndpointEmitted)
 
     def test_frozen_closure_candidate_still_blocks(self) -> None:
         prepared = _prepare(cyclopropane_facts())
@@ -711,12 +732,13 @@ class WriterBranchRuntimeTest(unittest.TestCase):
         self.assertEqual(
             len(
                 {
-                    evidence.bond
+                    certificate.bond
                     for support in open_supports
-                    for evidence in support.closure_candidate_lifecycle_evidence
-                    if (
-                        evidence.outcome_kind
-                        is WriterClosureCandidateLifecycleOutcomeKind.OPENED
+                    for certificate in support.closure_candidate_branch_certificates
+                    if certificate.kind
+                    is (
+                        WriterClosureCandidateBranchCertificateKind
+                        .LIVE_BRANCH_RETURN_OPENED
                     )
                 }
             ),
@@ -769,6 +791,14 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 opened_lifecycle_evidence[0].bond,
                 resolution.bond,
             )
+            certificate = _single_closure_candidate_branch_certificate(
+                support,
+                (
+                    WriterClosureCandidateBranchCertificateKind
+                    .LIVE_BRANCH_RETURN_OPENED
+                ),
+            )
+            self.assertEqual(certificate.bond, resolution.bond)
 
         text = open_supports[0].emitted_text
         same_text_supports = tuple(
@@ -1016,6 +1046,64 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 WriterClosureCandidateResolutionKind.LIVE_BRANCH_RETURN,
             },
         )
+        certificate = _single_closure_candidate_branch_certificate(
+            support,
+            (
+                WriterClosureCandidateBranchCertificateKind
+                .DEFERRED_CONTROL_LIVE_RETAINED
+            ),
+        )
+        self.assertIs(
+            certificate.lifecycle_evidence.outcome_kind,
+            WriterClosureCandidateLifecycleOutcomeKind.RETAINED_SUPPORTED,
+        )
+        self.assertIsNot(
+            support.transition_kind,
+            writer_transitions.WriterTransitionKind.OPEN_CLOSURE_ENDPOINT,
+        )
+
+    def test_deferred_branch_return_candidate_gets_retained_certificate(
+        self,
+    ) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        cursor = WriterFrontierCursor(
+            weighted_states=(
+                (
+                    writer_state_key(
+                        _deferred_branch_return_closure_candidate_state(
+                            frozen_endpoint=False,
+                        )
+                    ),
+                    1,
+                ),
+            )
+        )
+        batch = _checked_writer_frontier_branch_supports(
+            prepared,
+            cursor,
+            include_counts=False,
+        )
+        support = next(
+            support
+            for support in batch.supports
+            if (
+                _WriterExecutionCapabilityKind
+                .DEFERRED_BRANCH_RETURN_CLOSURE_CANDIDATE
+            )
+            in support.execution_capabilities
+        )
+
+        certificate = _single_closure_candidate_branch_certificate(
+            support,
+            (
+                WriterClosureCandidateBranchCertificateKind
+                .DEFERRED_BRANCH_RETURN_RETAINED
+            ),
+        )
+        self.assertIs(
+            certificate.lifecycle_evidence.outcome_kind,
+            WriterClosureCandidateLifecycleOutcomeKind.RETAINED_SUPPORTED,
+        )
 
     def test_deferred_candidate_lifecycle_rejects_unsupported_successor(
         self,
@@ -1071,6 +1159,100 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             "opened_candidate_lacks_successor_open_endpoint",
             violations,
         )
+
+    def test_live_open_certificate_requires_opened_lifecycle(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        cursor = WriterFrontierCursor(
+            weighted_states=(
+                (
+                    writer_state_key(
+                        _branch_return_closure_candidate_state(
+                            live_partner=True,
+                        )
+                    ),
+                    1,
+                ),
+            )
+        )
+        batch = _checked_writer_frontier_branch_supports(
+            prepared,
+            cursor,
+            include_counts=False,
+        )
+        support = next(
+            support
+            for support in batch.supports
+            if (
+                _WriterExecutionCapabilityKind
+                .LIVE_BRANCH_RETURN_CLOSURE_CANDIDATE_OPEN
+            )
+            in support.execution_capabilities
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "capability_lacks_exact_lifecycle",
+        ):
+            writer_closure_candidate_branch_certificates(
+                execution_capabilities=support.execution_capabilities,
+                transition_kind=support.transition_kind,
+                graph_action_surface=support.graph_action_surface,
+                graph_obligation_work_evidence=(
+                    support.graph_obligation_work_evidence
+                ),
+                closure_candidate_resolution_evidence=(
+                    support.closure_candidate_resolution_evidence
+                ),
+                closure_candidate_lifecycle_evidence=(),
+                events=support.events,
+            )
+
+    def test_deferred_certificate_requires_retained_lifecycle(self) -> None:
+        prepared = _prepare(_pending_control_live_closure_candidate_facts())
+        cursor = WriterFrontierCursor(
+            weighted_states=(
+                (
+                    writer_state_key(
+                        _pending_parent_branch_return_closure_candidate_state(
+                            frozen_endpoint=False,
+                        )
+                    ),
+                    1,
+                ),
+            )
+        )
+        batch = _checked_writer_frontier_branch_supports(
+            prepared,
+            cursor,
+            include_counts=False,
+        )
+        support = next(
+            support
+            for support in batch.supports
+            if (
+                _WriterExecutionCapabilityKind
+                .DEFERRED_CONTROL_LIVE_CLOSURE_CANDIDATE
+            )
+            in support.execution_capabilities
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "deferred_capability_lacks_retained_lifecycle",
+        ):
+            writer_closure_candidate_branch_certificates(
+                execution_capabilities=support.execution_capabilities,
+                transition_kind=support.transition_kind,
+                graph_action_surface=support.graph_action_surface,
+                graph_obligation_work_evidence=(
+                    support.graph_obligation_work_evidence
+                ),
+                closure_candidate_resolution_evidence=(
+                    support.closure_candidate_resolution_evidence
+                ),
+                closure_candidate_lifecycle_evidence=(),
+                events=support.events,
+            )
 
     def test_control_live_candidate_with_frozen_endpoint_still_blocks(
         self,
@@ -1325,6 +1507,10 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 support.closure_candidate_lifecycle_evidence,
             )
             self.assertEqual(
+                branch.closure_candidate_branch_certificates,
+                support.closure_candidate_branch_certificates,
+            )
+            self.assertEqual(
                 branch.residual_attachment_policy_evidence,
                 support.residual_attachment_policy_evidence,
             )
@@ -1356,6 +1542,22 @@ def _prepare(facts):
         facts,
         writer_surface=SouthStarWriterSurface(),
     )
+
+
+def _single_closure_candidate_branch_certificate(
+    support,
+    kind: WriterClosureCandidateBranchCertificateKind,
+):
+    matches = tuple(
+        certificate
+        for certificate in support.closure_candidate_branch_certificates
+        if certificate.kind is kind
+    )
+    if len(matches) != 1:
+        raise AssertionError(
+            f"expected exactly one closure-candidate certificate {kind!r}"
+        )
+    return matches[0]
 
 
 def _writer_options() -> SouthStarRuntimeOptions:

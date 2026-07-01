@@ -20,6 +20,7 @@ from .writer_execution_evidence import WriterResidualPropagationWorkEvidence
 from .writer_execution_evidence import writer_closure_endpoint_relation_work_evidence
 from .writer_graph_obligations import WriterBoundaryOwnerKind
 from .writer_graph_obligations import WriterClosureEndpointChoice
+from .writer_graph_obligations import WriterClosureCandidateResolutionKind
 from .writer_graph_obligations import WriterEdgeObligationKind
 from .writer_graph_obligations import WriterGraphObligationContext
 from .writer_graph_obligations import WriterResidualAttachment
@@ -31,6 +32,7 @@ from .writer_graph_obligations import validate_writer_transition_graph_surface
 from .writer_graph_obligations import (
     writer_deferred_branch_return_closure_candidate_resolutions,
 )
+from .writer_graph_obligations import writer_closure_candidate_resolutions
 from .writer_graph_obligations import writer_graph_completion_status
 from .writer_graph_obligations import writer_graph_obligation_work_evidence
 from .writer_graph_obligations import (
@@ -4969,7 +4971,7 @@ def _validated_closure_open_successor_graph(
         graph = build_writer_graph_obligation_context(prepared, key)
         if _edge_kind(graph, endpoint.bond) is not WriterEdgeObligationKind.OPEN_CLOSURE_ENDPOINT:
             return None
-        if _has_closure_candidate(graph):
+        if _has_unsupported_closure_candidate(key, graph):
             return None
         if _has_blocked_attachment_action(graph):
             return None
@@ -5075,10 +5077,20 @@ def _edge_kind(
     return None
 
 
-def _has_closure_candidate(graph: WriterGraphObligationContext) -> bool:
+def _has_unsupported_closure_candidate(
+    key: WriterStateKey,
+    graph: WriterGraphObligationContext,
+) -> bool:
     return any(
-        obligation.kind is WriterEdgeObligationKind.CLOSURE_CANDIDATE
-        for obligation in graph.edge_partition.obligations
+        resolution.resolution_kind
+        not in (
+            WriterClosureCandidateResolutionKind.LIVE_BRANCH_RETURN,
+            WriterClosureCandidateResolutionKind.DEFERRED_BRANCH_RETURN,
+        )
+        for resolution in writer_closure_candidate_resolutions(
+            key,
+            graph.edge_partition,
+        )
     )
 
 

@@ -82,6 +82,11 @@ class WriterRuntimeBranchTransition:
     execution_capabilities: frozenset[object]
     residual_work_evidence: tuple[object, ...]
     finite_relation_work_evidence: tuple[object, ...]
+    graph_obligation_work_evidence: tuple[object, ...]
+    graph_action_surface: object | None
+    policy_family: object | None
+    closure_candidate_resolution_evidence: tuple[object, ...]
+    residual_attachment_policy_evidence: tuple[object, ...]
     next_state: WriterRuntimeState
 
 
@@ -286,6 +291,17 @@ def writer_runtime_branch_transitions(
                 residual_work_evidence=support.residual_work_evidence,
                 finite_relation_work_evidence=(
                     support.finite_relation_work_evidence
+                ),
+                graph_obligation_work_evidence=(
+                    support.graph_obligation_work_evidence
+                ),
+                graph_action_surface=support.graph_action_surface,
+                policy_family=support.policy_family,
+                closure_candidate_resolution_evidence=(
+                    support.closure_candidate_resolution_evidence
+                ),
+                residual_attachment_policy_evidence=(
+                    support.residual_attachment_policy_evidence
                 ),
                 next_state=successor_state,
             )

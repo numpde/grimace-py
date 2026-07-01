@@ -20,6 +20,9 @@ from .writer_execution_evidence import WriterResidualWorkEnvelopeViolation
 from .writer_execution_evidence import writer_finite_relation_work_envelope_violation
 from .writer_execution_evidence import writer_graph_obligation_work_envelope_violation
 from .writer_execution_evidence import writer_residual_work_envelope_violation
+from .writer_graph_obligations import WriterClosureCandidateResolutionKind
+from .writer_graph_obligations import build_writer_graph_obligation_context
+from .writer_graph_obligations import writer_closure_candidate_resolutions
 from .writer_capabilities import _WriterExecutionCapabilityKind
 from .writer_capabilities import (
     _unsupported_public_writer_execution_capabilities,
@@ -41,6 +44,7 @@ from .writer_transitions import _WriterActiveEmittedGraphPolicyBlocker
 from .writer_transitions import _WriterActiveEmittedGraphPolicyDecision
 from .writer_transitions import _WriterActiveChildSelectionKind
 from .writer_transitions import _WriterClosureEndpointSelectionKind
+from .writer_transitions import _WriterClosureOpenObligationSourceKind
 from .writer_transitions import _WriterGraphPolicyActionFamily
 from .writer_transitions import _WriterNextTokenFrontierSupport
 from .writer_transitions import _WriterResidualAttachmentOwnerScopeKind
@@ -275,6 +279,9 @@ class _WriterFrontierBranchSupport:
     residual_work_evidence: tuple[object, ...]
     finite_relation_work_evidence: tuple[object, ...]
     graph_obligation_work_evidence: tuple[object, ...] = ()
+    graph_action_surface: object | None = None
+    policy_family: object | None = None
+    closure_candidate_resolution_evidence: tuple[object, ...] = ()
     residual_attachment_policy_evidence: tuple[
         "_WriterFrontierResidualAttachmentEvidenceGroup",
         ...,
@@ -2293,6 +2300,7 @@ def _checked_writer_frontier_schedule_outcome(
 
 def _writer_frontier_branch_support_from_next_token_support(
     *,
+    prepared: SouthStarPreparedMol,
     branch_ordinal: int,
     support: _WriterFrontierNextTokenSupport,
     schedule_outcome: _WriterFrontierScheduleOutcome,
@@ -2305,6 +2313,13 @@ def _writer_frontier_branch_support_from_next_token_support(
     graph_evidence = _graph_obligation_work_evidence_for_branch_support(
         schedule_outcome=schedule_outcome,
         support=support,
+    )
+    closure_candidate_evidence = (
+        _closure_candidate_resolution_evidence_for_branch_support(
+            prepared=prepared,
+            support=support,
+            graph_obligation_work_evidence=graph_evidence,
+        )
     )
     capabilities = set(support.execution_capabilities)
     if _branch_support_has_open_ring_endpoint_residual_resolution(
@@ -2343,6 +2358,9 @@ def _writer_frontier_branch_support_from_next_token_support(
             support.finite_relation_work_evidence
         ),
         graph_obligation_work_evidence=graph_evidence,
+        graph_action_surface=support.graph_action_surface,
+        policy_family=support.policy_family,
+        closure_candidate_resolution_evidence=closure_candidate_evidence,
         residual_attachment_policy_evidence=policy_evidence,
     )
 
@@ -2358,6 +2376,67 @@ def _graph_obligation_work_evidence_for_branch_support(
         if state_outcome.state_key == support.state_key
         for evidence in state_outcome.graph_obligation_work_evidence
     )
+
+
+def _closure_candidate_resolution_evidence_for_branch_support(
+    *,
+    prepared: SouthStarPreparedMol,
+    support: _WriterFrontierNextTokenSupport,
+    graph_obligation_work_evidence: tuple[WriterGraphObligationWorkEvidence, ...],
+) -> tuple[object, ...]:
+    context = build_writer_graph_obligation_context(
+        prepared,
+        support.state_key,
+    )
+    resolutions = writer_closure_candidate_resolutions(
+        support.state_key,
+        context.edge_partition,
+    )
+    surface = support.graph_action_surface
+
+    if (
+        support.policy_family is _WriterGraphPolicyActionFamily.CLOSURE_OPEN
+        and surface.closure_open_source_kind
+        is (
+            _WriterClosureOpenObligationSourceKind
+            .LIVE_BRANCH_RETURN_CLOSURE_CANDIDATE
+        )
+    ):
+        matches = tuple(
+            resolution
+            for resolution in resolutions
+            if (
+                resolution.resolution_kind
+                is WriterClosureCandidateResolutionKind.LIVE_BRANCH_RETURN
+                and resolution.bond == surface.bond
+                and resolution.first_atom == surface.boundary_atom
+                and resolution.second_atom == surface.partner_atom
+            )
+        )
+        if len(matches) != 1:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                (
+                    "live closure-candidate branch support lacks exact "
+                    "graph resolution"
+                ),
+            )
+        return matches
+
+    if any(
+        evidence.deferred_branch_return_closure_candidate_count
+        for evidence in graph_obligation_work_evidence
+    ):
+        return tuple(
+            resolution
+            for resolution in resolutions
+            if (
+                resolution.resolution_kind
+                is WriterClosureCandidateResolutionKind.DEFERRED_BRANCH_RETURN
+            )
+        )
+
+    return ()
 
 
 def _residual_attachment_policy_evidence_for_branch_support(
@@ -2412,6 +2491,7 @@ def _checked_writer_frontier_branch_supports(
         choices=choice_snapshot.public_choices,
         supports=tuple(
             _writer_frontier_branch_support_from_next_token_support(
+                prepared=prepared,
                 branch_ordinal=branch_ordinal,
                 support=support,
                 schedule_outcome=schedule_outcome,

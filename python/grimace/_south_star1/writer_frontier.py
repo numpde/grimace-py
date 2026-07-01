@@ -274,6 +274,7 @@ class _WriterFrontierBranchSupport:
     execution_capabilities: frozenset[object]
     residual_work_evidence: tuple[object, ...]
     finite_relation_work_evidence: tuple[object, ...]
+    graph_obligation_work_evidence: tuple[object, ...] = ()
     residual_attachment_policy_evidence: tuple[
         "_WriterFrontierResidualAttachmentEvidenceGroup",
         ...,
@@ -2301,6 +2302,10 @@ def _writer_frontier_branch_support_from_next_token_support(
         schedule_outcome=schedule_outcome,
         support=support,
     )
+    graph_evidence = _graph_obligation_work_evidence_for_branch_support(
+        schedule_outcome=schedule_outcome,
+        support=support,
+    )
     capabilities = set(support.execution_capabilities)
     if _branch_support_has_open_ring_endpoint_residual_resolution(
         support=support,
@@ -2310,6 +2315,16 @@ def _writer_frontier_branch_support_from_next_token_support(
             (
                 _WriterExecutionCapabilityKind
                 .OPEN_RING_ENDPOINT_RESIDUAL_ATTACHMENT_RESOLUTION
+            )
+        )
+    if any(
+        evidence.deferred_branch_return_closure_candidate_count
+        for evidence in graph_evidence
+    ):
+        capabilities.add(
+            (
+                _WriterExecutionCapabilityKind
+                .DEFERRED_BRANCH_RETURN_CLOSURE_CANDIDATE
             )
         )
 
@@ -2327,7 +2342,21 @@ def _writer_frontier_branch_support_from_next_token_support(
         finite_relation_work_evidence=tuple(
             support.finite_relation_work_evidence
         ),
+        graph_obligation_work_evidence=graph_evidence,
         residual_attachment_policy_evidence=policy_evidence,
+    )
+
+
+def _graph_obligation_work_evidence_for_branch_support(
+    *,
+    schedule_outcome: _WriterFrontierScheduleOutcome,
+    support: _WriterFrontierNextTokenSupport,
+) -> tuple[WriterGraphObligationWorkEvidence, ...]:
+    return tuple(
+        evidence
+        for state_outcome in getattr(schedule_outcome, "state_outcomes", ())
+        if state_outcome.state_key == support.state_key
+        for evidence in state_outcome.graph_obligation_work_evidence
     )
 
 

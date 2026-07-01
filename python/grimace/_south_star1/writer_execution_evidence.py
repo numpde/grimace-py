@@ -74,6 +74,7 @@ class WriterGraphObligationWorkEvidence:
     boundary_incidence_count: int
     closure_candidate_count: int
     live_branch_return_closure_candidate_count: int
+    deferred_branch_return_closure_candidate_count: int
     unsupported_closure_candidate_count: int
     open_closure_count: int
     closed_closure_count: int
@@ -92,6 +93,7 @@ class WriterGraphObligationWorkEnvelope:
     max_boundary_incidence_count: int | None = None
     max_closure_candidate_count: int | None = None
     max_live_branch_return_closure_candidate_count: int | None = None
+    max_deferred_branch_return_closure_candidate_count: int | None = None
     max_unsupported_closure_candidate_count: int | None = None
     max_open_closure_count: int | None = None
     max_closed_closure_count: int | None = None
@@ -145,6 +147,7 @@ _PUBLIC_GRAPH_OBLIGATION_MAX_RESIDUAL_ATTACHMENT_ACTION_COUNT = 4
 _PUBLIC_GRAPH_OBLIGATION_MAX_BOUNDARY_INCIDENCE_COUNT = 4
 _PUBLIC_GRAPH_OBLIGATION_MAX_CLOSURE_CANDIDATE_COUNT = 1
 _PUBLIC_GRAPH_OBLIGATION_MAX_LIVE_BRANCH_RETURN_CLOSURE_CANDIDATE_COUNT = 1
+_PUBLIC_GRAPH_OBLIGATION_MAX_DEFERRED_BRANCH_RETURN_CLOSURE_CANDIDATE_COUNT = 1
 _PUBLIC_GRAPH_OBLIGATION_MAX_UNSUPPORTED_CLOSURE_CANDIDATE_COUNT = 0
 _PUBLIC_GRAPH_OBLIGATION_MAX_OPEN_CLOSURE_COUNT = 2
 _PUBLIC_GRAPH_OBLIGATION_MAX_CLOSED_CLOSURE_COUNT = 2
@@ -205,6 +208,9 @@ _PUBLIC_WRITER_GRAPH_OBLIGATION_WORK_ENVELOPE = (
         ),
         max_live_branch_return_closure_candidate_count=(
             _PUBLIC_GRAPH_OBLIGATION_MAX_LIVE_BRANCH_RETURN_CLOSURE_CANDIDATE_COUNT
+        ),
+        max_deferred_branch_return_closure_candidate_count=(
+            _PUBLIC_GRAPH_OBLIGATION_MAX_DEFERRED_BRANCH_RETURN_CLOSURE_CANDIDATE_COUNT
         ),
         max_unsupported_closure_candidate_count=(
             _PUBLIC_GRAPH_OBLIGATION_MAX_UNSUPPORTED_CLOSURE_CANDIDATE_COUNT
@@ -381,6 +387,11 @@ def writer_graph_obligation_work_envelope_violation(
             "live_branch_return_closure_candidate_count",
             evidence.live_branch_return_closure_candidate_count,
             envelope.max_live_branch_return_closure_candidate_count,
+        ),
+        (
+            "deferred_branch_return_closure_candidate_count",
+            evidence.deferred_branch_return_closure_candidate_count,
+            envelope.max_deferred_branch_return_closure_candidate_count,
         ),
         (
             "unsupported_closure_candidate_count",

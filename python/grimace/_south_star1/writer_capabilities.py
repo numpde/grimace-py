@@ -42,6 +42,9 @@ class _WriterExecutionCapabilityKind(Enum):
     LIVE_BRANCH_RETURN_CLOSURE_CANDIDATE_OPEN = (
         "live_branch_return_closure_candidate_open"
     )
+    DEFERRED_BRANCH_RETURN_CLOSURE_CANDIDATE = (
+        "deferred_branch_return_closure_candidate"
+    )
 
 
 _PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES = frozenset(
@@ -74,6 +77,10 @@ _PUBLIC_SUPPORTED_WRITER_EXECUTION_CAPABILITIES = frozenset(
         (
             _WriterExecutionCapabilityKind
             .LIVE_BRANCH_RETURN_CLOSURE_CANDIDATE_OPEN
+        ),
+        (
+            _WriterExecutionCapabilityKind
+            .DEFERRED_BRANCH_RETURN_CLOSURE_CANDIDATE
         ),
     }
 )

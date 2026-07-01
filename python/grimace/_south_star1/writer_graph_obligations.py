@@ -41,6 +41,7 @@ class WriterEdgeObligationKind(Enum):
 
 class WriterClosureCandidateResolutionKind(Enum):
     LIVE_BRANCH_RETURN = "live_branch_return"
+    DEFERRED_BRANCH_RETURN = "deferred_branch_return"
     UNSUPPORTED_NOT_ACTIVE = "unsupported_not_active"
     UNSUPPORTED_FROZEN_PARTNER = "unsupported_frozen_partner"
 
@@ -397,12 +398,23 @@ def writer_graph_obligation_work_evidence(
                 is WriterClosureCandidateResolutionKind.LIVE_BRANCH_RETURN
             )
         ),
+        deferred_branch_return_closure_candidate_count=sum(
+            1
+            for resolution in closure_candidate_resolutions
+            if (
+                resolution.resolution_kind
+                is WriterClosureCandidateResolutionKind.DEFERRED_BRANCH_RETURN
+            )
+        ),
         unsupported_closure_candidate_count=sum(
             1
             for resolution in closure_candidate_resolutions
             if (
                 resolution.resolution_kind
-                is not WriterClosureCandidateResolutionKind.LIVE_BRANCH_RETURN
+                not in (
+                    WriterClosureCandidateResolutionKind.LIVE_BRANCH_RETURN,
+                    WriterClosureCandidateResolutionKind.DEFERRED_BRANCH_RETURN,
+                )
             )
         ),
         open_closure_count=sum(
@@ -667,17 +679,31 @@ def writer_closure_candidate_resolutions(
         elif active_atom == obligation.b:
             partner = obligation.a
         else:
-            resolutions.append(
-                WriterClosureCandidateResolution(
-                    bond=obligation.bond,
-                    first_atom=None,
-                    second_atom=None,
-                    resolution_kind=(
-                        WriterClosureCandidateResolutionKind
-                        .UNSUPPORTED_NOT_ACTIVE
-                    ),
+            candidate_atoms = frozenset((obligation.a, obligation.b))
+            if candidate_atoms.issubset(branch_return_atoms):
+                resolutions.append(
+                    WriterClosureCandidateResolution(
+                        bond=obligation.bond,
+                        first_atom=None,
+                        second_atom=None,
+                        resolution_kind=(
+                            WriterClosureCandidateResolutionKind
+                            .DEFERRED_BRANCH_RETURN
+                        ),
+                    )
                 )
-            )
+            else:
+                resolutions.append(
+                    WriterClosureCandidateResolution(
+                        bond=obligation.bond,
+                        first_atom=None,
+                        second_atom=None,
+                        resolution_kind=(
+                            WriterClosureCandidateResolutionKind
+                            .UNSUPPORTED_NOT_ACTIVE
+                        ),
+                    )
+                )
             continue
 
         if partner in branch_return_atoms:
@@ -718,6 +744,20 @@ def writer_live_branch_return_closure_candidate_resolutions(
         if (
             resolution.resolution_kind
             is WriterClosureCandidateResolutionKind.LIVE_BRANCH_RETURN
+        )
+    )
+
+
+def writer_deferred_branch_return_closure_candidate_resolutions(
+    key: WriterStateKey,
+    partition: WriterEdgeObligationPartition,
+) -> tuple[WriterClosureCandidateResolution, ...]:
+    return tuple(
+        resolution
+        for resolution in writer_closure_candidate_resolutions(key, partition)
+        if (
+            resolution.resolution_kind
+            is WriterClosureCandidateResolutionKind.DEFERRED_BRANCH_RETURN
         )
     )
 
@@ -1690,6 +1730,7 @@ __all__ = (
     "validate_writer_edge_obligation_partition",
     "writer_boundary_incidence_sort_tuple",
     "writer_closure_candidate_resolutions",
+    "writer_deferred_branch_return_closure_candidate_resolutions",
     "writer_edge_obligation_partition_sort_tuple",
     "writer_edge_obligation_sort_tuple",
     "writer_graph_obligation_work_evidence",

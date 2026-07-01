@@ -28,6 +28,9 @@ from .writer_graph_obligations import WriterResidualAttachmentActionKind
 from .writer_graph_obligations import build_writer_graph_obligation_context
 from .writer_graph_obligations import validate_writer_snapshot_graph_coherence
 from .writer_graph_obligations import validate_writer_transition_graph_surface
+from .writer_graph_obligations import (
+    writer_deferred_branch_return_closure_candidate_resolutions,
+)
 from .writer_graph_obligations import writer_graph_completion_status
 from .writer_graph_obligations import writer_graph_obligation_work_evidence
 from .writer_graph_obligations import (
@@ -214,6 +217,7 @@ class _WriterClosureOpenObligation:
             valid = (
                 self.attachment_id is not None
                 and self.attachment_action_kind is not None
+                and self.owner_kind is not None
             )
         elif (
             self.source_kind
@@ -5271,23 +5275,27 @@ def _child_obligation_blockers_from_context(
     key = getattr(context, "state_key", None)
     if key is None and state is not None:
         key = writer_state_key(state)
-    live_candidate_bonds = (
+    live_or_deferred_candidate_bonds = (
         frozenset()
         if key is None
         else frozenset(
             resolution.bond
             for resolution in (
-                writer_live_branch_return_closure_candidate_resolutions(
+                *writer_live_branch_return_closure_candidate_resolutions(
                     key,
                     context.graph.edge_partition,
-                )
+                ),
+                *writer_deferred_branch_return_closure_candidate_resolutions(
+                    key,
+                    context.graph.edge_partition,
+                ),
             )
         )
     )
 
     for obligation in context.graph.edge_partition.obligations:
         if obligation.kind is WriterEdgeObligationKind.CLOSURE_CANDIDATE:
-            if obligation.bond in live_candidate_bonds:
+            if obligation.bond in live_or_deferred_candidate_bonds:
                 continue
 
             blockers.append(

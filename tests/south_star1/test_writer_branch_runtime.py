@@ -25,6 +25,9 @@ from grimace._south_star1.writer_events import WriterRingEndpointEmitted
 from grimace._south_star1.writer_events import WriterRingLabelAllocated
 from grimace._south_star1.writer_capabilities import _WriterExecutionCapabilityKind
 from grimace._south_star1.writer_closure_candidate_lifecycle import (
+    WriterClosureCandidateLifecycleOutcomeKind,
+)
+from grimace._south_star1.writer_closure_candidate_lifecycle import (
     validate_writer_closure_candidate_lifecycle_transition,
 )
 from grimace._south_star1.writer_closure_candidate_lifecycle import (
@@ -44,6 +47,7 @@ from grimace._south_star1.writer_graph_obligations import (
     WriterClosureCandidateResolutionKind,
 )
 from grimace._south_star1.writer_graph_obligations import WriterControlLiveAtomRole
+from grimace._south_star1.writer_graph_obligations import WriterEdgeObligationKind
 from grimace._south_star1.writer_graph_obligations import WriterResidualAttachmentActionKind
 from grimace._south_star1.writer_graph_obligations import build_writer_graph_obligation_context
 from grimace._south_star1.writer_graph_obligations import writer_control_live_roles_by_atom
@@ -167,6 +171,10 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             self.assertEqual(projected.policy_family, raw.policy_family)
             self.assertEqual(
                 projected.closure_candidate_resolution_evidence,
+                (),
+            )
+            self.assertEqual(
+                projected.closure_candidate_lifecycle_evidence,
                 (),
             )
             self.assertEqual(projected.residual_attachment_policy_evidence, ())
@@ -494,6 +502,17 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             transition_kind=support.transition_kind,
             graph_action_surface=support.graph_action_surface,
         )
+        evidence = support.closure_candidate_lifecycle_evidence
+        self.assertEqual(len(evidence), 1)
+        self.assertIs(
+            evidence[0].outcome_kind,
+            WriterClosureCandidateLifecycleOutcomeKind.OPENED,
+        )
+        self.assertEqual(evidence[0].bond, support.graph_action_surface.bond)
+        self.assertIs(
+            evidence[0].successor_obligation_kind,
+            WriterEdgeObligationKind.OPEN_CLOSURE_ENDPOINT,
+        )
 
     def test_frozen_closure_candidate_still_blocks(self) -> None:
         prepared = _prepare(cyclopropane_facts())
@@ -689,6 +708,20 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             ),
             len(open_supports),
         )
+        self.assertEqual(
+            len(
+                {
+                    evidence.bond
+                    for support in open_supports
+                    for evidence in support.closure_candidate_lifecycle_evidence
+                    if (
+                        evidence.outcome_kind
+                        is WriterClosureCandidateLifecycleOutcomeKind.OPENED
+                    )
+                }
+            ),
+            len(open_supports),
+        )
 
         for support in open_supports:
             self.assertEqual(
@@ -723,6 +756,19 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             )
             self.assertIsInstance(support.events[0], WriterRingLabelAllocated)
             self.assertIsInstance(support.events[1], WriterRingEndpointEmitted)
+            opened_lifecycle_evidence = tuple(
+                evidence
+                for evidence in support.closure_candidate_lifecycle_evidence
+                if (
+                    evidence.outcome_kind
+                    is WriterClosureCandidateLifecycleOutcomeKind.OPENED
+                )
+            )
+            self.assertEqual(len(opened_lifecycle_evidence), 1)
+            self.assertEqual(
+                opened_lifecycle_evidence[0].bond,
+                resolution.bond,
+            )
 
         text = open_supports[0].emitted_text
         same_text_supports = tuple(
@@ -955,6 +1001,20 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             successor_state=support.successor_state,
             transition_kind=support.transition_kind,
             graph_action_surface=support.graph_action_surface,
+        )
+        evidence = support.closure_candidate_lifecycle_evidence
+        self.assertEqual(len(evidence), 1)
+        self.assertIs(
+            evidence[0].outcome_kind,
+            WriterClosureCandidateLifecycleOutcomeKind.RETAINED_SUPPORTED,
+        )
+        self.assertIn(
+            evidence[0].successor_resolution.resolution_kind,
+            {
+                WriterClosureCandidateResolutionKind.DEFERRED_CONTROL_LIVE,
+                WriterClosureCandidateResolutionKind.DEFERRED_BRANCH_RETURN,
+                WriterClosureCandidateResolutionKind.LIVE_BRANCH_RETURN,
+            },
         )
 
     def test_deferred_candidate_lifecycle_rejects_unsupported_successor(
@@ -1259,6 +1319,10 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             self.assertEqual(
                 branch.closure_candidate_resolution_evidence,
                 support.closure_candidate_resolution_evidence,
+            )
+            self.assertEqual(
+                branch.closure_candidate_lifecycle_evidence,
+                support.closure_candidate_lifecycle_evidence,
             )
             self.assertEqual(
                 branch.residual_attachment_policy_evidence,

@@ -86,6 +86,7 @@ class WriterRuntimeBranchTransition:
     graph_action_surface: object | None
     policy_family: object | None
     closure_candidate_resolution_evidence: tuple[object, ...]
+    closure_candidate_lifecycle_evidence: tuple[object, ...]
     residual_attachment_policy_evidence: tuple[object, ...]
     next_state: WriterRuntimeState
 
@@ -299,6 +300,9 @@ def writer_runtime_branch_transitions(
                 policy_family=support.policy_family,
                 closure_candidate_resolution_evidence=(
                     support.closure_candidate_resolution_evidence
+                ),
+                closure_candidate_lifecycle_evidence=(
+                    support.closure_candidate_lifecycle_evidence
                 ),
                 residual_attachment_policy_evidence=(
                     support.residual_attachment_policy_evidence

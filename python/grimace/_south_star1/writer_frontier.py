@@ -30,6 +30,9 @@ from .writer_capabilities import (
 from .writer_closure_candidate_lifecycle import (
     validate_writer_closure_candidate_lifecycle_transition,
 )
+from .writer_closure_candidate_lifecycle import (
+    writer_closure_candidate_lifecycle_evidence_for_transition,
+)
 from .writer_state import ComponentCursor
 from .writer_state import ObligationState
 from .writer_state import WriterAtomFrame
@@ -285,6 +288,7 @@ class _WriterFrontierBranchSupport:
     graph_action_surface: object | None = None
     policy_family: object | None = None
     closure_candidate_resolution_evidence: tuple[object, ...] = ()
+    closure_candidate_lifecycle_evidence: tuple[object, ...] = ()
     residual_attachment_policy_evidence: tuple[
         "_WriterFrontierResidualAttachmentEvidenceGroup",
         ...,
@@ -2342,6 +2346,14 @@ def _writer_frontier_branch_support_from_next_token_support(
             graph_obligation_work_evidence=graph_evidence,
         )
     )
+    closure_candidate_lifecycle_evidence = (
+        writer_closure_candidate_lifecycle_evidence_for_transition(
+            prepared=prepared,
+            source_state=support.state_key,
+            successor_state=support.successor_key,
+            graph_action_surface=support.graph_action_surface,
+        )
+    )
     capabilities = set(support.execution_capabilities)
     if _branch_support_has_open_ring_endpoint_residual_resolution(
         support=support,
@@ -2392,6 +2404,9 @@ def _writer_frontier_branch_support_from_next_token_support(
         graph_action_surface=support.graph_action_surface,
         policy_family=support.policy_family,
         closure_candidate_resolution_evidence=closure_candidate_evidence,
+        closure_candidate_lifecycle_evidence=(
+            closure_candidate_lifecycle_evidence
+        ),
         residual_attachment_policy_evidence=policy_evidence,
     )
 

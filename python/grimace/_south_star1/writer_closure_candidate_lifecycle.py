@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from enum import Enum
+
 from .errors import SouthStarError
 from .errors import SouthStarErrorKind
 from .writer_graph_obligations import WriterClosureCandidateResolution
@@ -18,6 +21,21 @@ _SUPPORTED_CLOSURE_CANDIDATE_RESOLUTION_KINDS = frozenset(
         WriterClosureCandidateResolutionKind.DEFERRED_CONTROL_LIVE,
     }
 )
+
+
+class WriterClosureCandidateLifecycleOutcomeKind(Enum):
+    RETAINED_SUPPORTED = "retained_supported"
+    OPENED = "opened"
+    CLOSED = "closed"
+
+
+@dataclass(frozen=True, slots=True)
+class WriterClosureCandidateLifecycleEvidence:
+    bond: object
+    source_resolution: object
+    outcome_kind: WriterClosureCandidateLifecycleOutcomeKind
+    successor_resolution: object | None = None
+    successor_obligation_kind: object | None = None
 
 
 def validate_writer_closure_candidate_lifecycle_transition(
@@ -54,7 +72,26 @@ def writer_closure_candidate_lifecycle_transition_violations(
     graph_action_surface,
 ) -> tuple[str, ...]:
     del transition_kind
+    try:
+        writer_closure_candidate_lifecycle_evidence_for_transition(
+            prepared=prepared,
+            source_state=source_state,
+            successor_state=successor_state,
+            graph_action_surface=graph_action_surface,
+        )
+    except _ClosureCandidateLifecycleViolation as caught:
+        return (caught.kind,)
 
+    return ()
+
+
+def writer_closure_candidate_lifecycle_evidence_for_transition(
+    *,
+    prepared,
+    source_state,
+    successor_state,
+    graph_action_surface,
+) -> tuple[WriterClosureCandidateLifecycleEvidence, ...]:
     source_context = build_writer_graph_obligation_context(
         prepared,
         source_state,
@@ -80,7 +117,7 @@ def writer_closure_candidate_lifecycle_transition_violations(
         for obligation in successor_context.edge_partition.obligations
     }
 
-    violations: list[str] = []
+    evidence: list[WriterClosureCandidateLifecycleEvidence] = []
     for resolution in source_resolutions:
         if (
             resolution.resolution_kind
@@ -92,32 +129,73 @@ def writer_closure_candidate_lifecycle_transition_violations(
             resolution=resolution,
             graph_action_surface=graph_action_surface,
         ):
-            _require_successor_open_endpoint(
-                violations,
+            successor_obligation = _require_successor_open_endpoint(
                 resolution=resolution,
                 successor_obligation_by_bond=successor_obligation_by_bond,
+            )
+            evidence.append(
+                WriterClosureCandidateLifecycleEvidence(
+                    bond=resolution.bond,
+                    source_resolution=resolution,
+                    outcome_kind=(
+                        WriterClosureCandidateLifecycleOutcomeKind.OPENED
+                    ),
+                    successor_obligation_kind=successor_obligation,
+                )
             )
             continue
 
         successor_resolution = successor_resolution_by_bond.get(
             resolution.bond
         )
+        successor_obligation = successor_obligation_by_bond.get(
+            resolution.bond
+        )
         if successor_resolution is None:
-            if successor_obligation_by_bond.get(resolution.bond) in (
-                WriterEdgeObligationKind.OPEN_CLOSURE_ENDPOINT,
-                WriterEdgeObligationKind.CLOSED_CLOSURE,
-            ):
+            if successor_obligation is WriterEdgeObligationKind.OPEN_CLOSURE_ENDPOINT:
+                evidence.append(
+                    WriterClosureCandidateLifecycleEvidence(
+                        bond=resolution.bond,
+                        source_resolution=resolution,
+                        outcome_kind=(
+                            WriterClosureCandidateLifecycleOutcomeKind.OPENED
+                        ),
+                        successor_obligation_kind=successor_obligation,
+                    )
+                )
                 continue
-            violations.append("supported_candidate_disappeared")
+            if successor_obligation is WriterEdgeObligationKind.CLOSED_CLOSURE:
+                evidence.append(
+                    WriterClosureCandidateLifecycleEvidence(
+                        bond=resolution.bond,
+                        source_resolution=resolution,
+                        outcome_kind=(
+                            WriterClosureCandidateLifecycleOutcomeKind.CLOSED
+                        ),
+                        successor_obligation_kind=successor_obligation,
+                    )
+                )
+                continue
+            _lifecycle_violation("supported_candidate_disappeared")
             continue
 
         if (
             successor_resolution.resolution_kind
             not in _SUPPORTED_CLOSURE_CANDIDATE_RESOLUTION_KINDS
         ):
-            violations.append("supported_candidate_became_unsupported")
+            _lifecycle_violation("supported_candidate_became_unsupported")
+        evidence.append(
+            WriterClosureCandidateLifecycleEvidence(
+                bond=resolution.bond,
+                source_resolution=resolution,
+                outcome_kind=(
+                    WriterClosureCandidateLifecycleOutcomeKind.RETAINED_SUPPORTED
+                ),
+                successor_resolution=successor_resolution,
+            )
+        )
 
-    return tuple(violations)
+    return tuple(evidence)
 
 
 def _support_opens_resolution(
@@ -136,19 +214,30 @@ def _support_opens_resolution(
 
 
 def _require_successor_open_endpoint(
-    violations: list[str],
     *,
     resolution: WriterClosureCandidateResolution,
     successor_obligation_by_bond,
-) -> None:
-    if (
-        successor_obligation_by_bond.get(resolution.bond)
-        is not WriterEdgeObligationKind.OPEN_CLOSURE_ENDPOINT
-    ):
-        violations.append("opened_candidate_lacks_successor_open_endpoint")
+) -> WriterEdgeObligationKind:
+    successor_obligation = successor_obligation_by_bond.get(resolution.bond)
+    if successor_obligation is not WriterEdgeObligationKind.OPEN_CLOSURE_ENDPOINT:
+        _lifecycle_violation("opened_candidate_lacks_successor_open_endpoint")
+    return successor_obligation
+
+
+def _lifecycle_violation(kind: str) -> None:
+    raise _ClosureCandidateLifecycleViolation(kind)
+
+
+class _ClosureCandidateLifecycleViolation(Exception):
+    def __init__(self, kind: str) -> None:
+        super().__init__(kind)
+        self.kind = kind
 
 
 __all__ = (
+    "WriterClosureCandidateLifecycleEvidence",
+    "WriterClosureCandidateLifecycleOutcomeKind",
     "validate_writer_closure_candidate_lifecycle_transition",
+    "writer_closure_candidate_lifecycle_evidence_for_transition",
     "writer_closure_candidate_lifecycle_transition_violations",
 )

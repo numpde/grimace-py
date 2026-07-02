@@ -19,6 +19,12 @@ WRITER_CLOSURE_CANDIDATE_BRANCH_CERTIFICATES_PATH = (
 WRITER_CLOSURE_CANDIDATE_LIFECYCLE_PATH = (
     SOUTH_STAR_ROOT / "writer_closure_candidate_lifecycle.py"
 )
+WRITER_RESIDUAL_ATTACHMENT_BRANCH_CERTIFICATES_PATH = (
+    SOUTH_STAR_ROOT / "writer_residual_attachment_branch_certificates.py"
+)
+WRITER_RESIDUAL_ATTACHMENT_LIFECYCLE_PATH = (
+    SOUTH_STAR_ROOT / "writer_residual_attachment_lifecycle.py"
+)
 
 
 class WriterRuntimeBoundaryTest(unittest.TestCase):
@@ -94,6 +100,36 @@ class WriterRuntimeBoundaryTest(unittest.TestCase):
     ) -> None:
         scan = scan_module_boundaries(
             WRITER_CLOSURE_CANDIDATE_BRANCH_CERTIFICATES_PATH,
+            banned_modules={
+                "audit_rdkit",
+                "rdkit_adapter",
+                "writer_online_decoder",
+                "writer_runtime",
+                "writer_support",
+            },
+        )
+
+        self.assertEqual(scan.violations, ())
+
+    def test_residual_attachment_lifecycle_stays_below_runtime(self) -> None:
+        scan = scan_module_boundaries(
+            WRITER_RESIDUAL_ATTACHMENT_LIFECYCLE_PATH,
+            banned_modules={
+                "audit_rdkit",
+                "rdkit_adapter",
+                "writer_online_decoder",
+                "writer_runtime",
+                "writer_support",
+            },
+        )
+
+        self.assertEqual(scan.violations, ())
+
+    def test_residual_attachment_branch_certificates_stay_below_runtime(
+        self,
+    ) -> None:
+        scan = scan_module_boundaries(
+            WRITER_RESIDUAL_ATTACHMENT_BRANCH_CERTIFICATES_PATH,
             banned_modules={
                 "audit_rdkit",
                 "rdkit_adapter",

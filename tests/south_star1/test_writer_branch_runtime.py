@@ -58,6 +58,18 @@ from grimace._south_star1.writer_graph_obligations import WriterResidualAttachme
 from grimace._south_star1.writer_graph_obligations import build_writer_graph_obligation_context
 from grimace._south_star1.writer_graph_obligations import writer_control_live_roles_by_atom
 from grimace._south_star1.writer_graph_obligations import writer_graph_obligation_work_evidence
+from grimace._south_star1.writer_residual_attachment_branch_certificates import (
+    WriterResidualAttachmentBranchCertificateKind,
+)
+from grimace._south_star1.writer_residual_attachment_branch_certificates import (
+    writer_residual_attachment_branch_certificates,
+)
+from grimace._south_star1.writer_residual_attachment_lifecycle import (
+    WriterResidualAttachmentLifecycleOutcomeKind,
+)
+from grimace._south_star1.writer_residual_attachment_lifecycle import (
+    validate_writer_residual_attachment_lifecycle_transition,
+)
 from grimace._south_star1.writer_runtime import count_writer_runtime_branch_completions
 from grimace._south_star1.writer_runtime import initial_writer_runtime_state
 from grimace._south_star1.writer_runtime import writer_runtime_branch_transitions
@@ -1356,6 +1368,162 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 source_attachment=None,
             )
 
+    def test_residual_attachment_closure_open_has_lifecycle_evidence(
+        self,
+    ) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _find_checked_branch_support(
+            prepared,
+            initial,
+            lambda support: (
+                support.transition_kind
+                is writer_transitions.WriterTransitionKind.OPEN_CLOSURE_ENDPOINT
+                and getattr(
+                    support.graph_action_surface,
+                    "attachment_id",
+                    None,
+                )
+                is not None
+            ),
+        )
+
+        evidence = support.residual_attachment_lifecycle_evidence
+        self.assertEqual(len(evidence), 1)
+        self.assertIs(
+            evidence[0].outcome_kind,
+            (
+                WriterResidualAttachmentLifecycleOutcomeKind
+                .CLOSURE_OPEN_DISCHARGED
+            ),
+        )
+        self.assertEqual(evidence[0].bond, support.graph_action_surface.bond)
+        self.assertEqual(
+            evidence[0].source_closure_deficit,
+            evidence[0].successor_closure_deficit + 1,
+        )
+        self.assertEqual(
+            evidence[0].removed_boundary_bonds,
+            (support.graph_action_surface.bond,),
+        )
+
+    def test_closure_candidate_open_has_no_residual_attachment_lifecycle(
+        self,
+    ) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        cursor = WriterFrontierCursor(
+            weighted_states=(
+                (
+                    writer_state_key(
+                        _branch_return_closure_candidate_state(
+                            live_partner=True,
+                        )
+                    ),
+                    1,
+                ),
+            )
+        )
+        batch = _checked_writer_frontier_branch_supports(
+            prepared,
+            cursor,
+            include_counts=False,
+        )
+        support = next(
+            support
+            for support in batch.supports
+            if (
+                _WriterExecutionCapabilityKind
+                .LIVE_BRANCH_RETURN_CLOSURE_CANDIDATE_OPEN
+            )
+            in support.execution_capabilities
+        )
+
+        self.assertEqual(support.residual_attachment_lifecycle_evidence, ())
+        self.assertEqual(support.residual_attachment_branch_certificates, ())
+
+    def test_coupled_cyclic_attachment_capability_is_certified(self) -> None:
+        capability = (
+            _WriterExecutionCapabilityKind
+            .COUPLED_CYCLIC_ATTACHMENT_RESTRICTION
+        )
+        prepared = _prepare(_fused_rank_two_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _find_checked_branch_support(
+            prepared,
+            initial,
+            lambda support: capability in support.execution_capabilities,
+        )
+
+        certificate = _single_residual_attachment_branch_certificate(
+            support,
+            (
+                WriterResidualAttachmentBranchCertificateKind
+                .COUPLED_CYCLIC_ATTACHMENT_DISCHARGED
+            ),
+        )
+        self.assertEqual(certificate.bond, support.graph_action_surface.bond)
+        self.assertEqual(
+            certificate.lifecycle_evidence.source_closure_deficit,
+            2,
+        )
+        self.assertEqual(
+            certificate.lifecycle_evidence.successor_closure_deficit,
+            1,
+        )
+        self.assertEqual(
+            len(certificate.lifecycle_evidence.source_attachment.block_ids),
+            1,
+        )
+
+    def test_residual_attachment_lifecycle_rejects_malformed_successor(
+        self,
+    ) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _find_checked_branch_support(
+            prepared,
+            initial,
+            lambda support: (
+                support.transition_kind
+                is writer_transitions.WriterTransitionKind.OPEN_CLOSURE_ENDPOINT
+                and getattr(
+                    support.graph_action_surface,
+                    "attachment_id",
+                    None,
+                )
+                is not None
+            ),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "successor_boundary_mismatch",
+        ):
+            validate_writer_residual_attachment_lifecycle_transition(
+                prepared=prepared,
+                source_state=support.source_state,
+                successor_state=support.source_state,
+                graph_action_surface=support.graph_action_surface,
+            )
+
+    def test_coupled_certificate_requires_lifecycle(self) -> None:
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "coupled_capability_lacks_lifecycle",
+        ):
+            writer_residual_attachment_branch_certificates(
+                execution_capabilities=frozenset(
+                    {
+                        (
+                            _WriterExecutionCapabilityKind
+                            .COUPLED_CYCLIC_ATTACHMENT_RESTRICTION
+                        )
+                    }
+                ),
+                graph_action_surface=SimpleNamespace(),
+                residual_attachment_lifecycle_evidence=(),
+            )
+
     def test_closure_candidate_liveness_is_graph_owned(self) -> None:
         source = inspect.getsource(writer_transitions)
 
@@ -1511,6 +1679,14 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 support.closure_candidate_branch_certificates,
             )
             self.assertEqual(
+                branch.residual_attachment_lifecycle_evidence,
+                support.residual_attachment_lifecycle_evidence,
+            )
+            self.assertEqual(
+                branch.residual_attachment_branch_certificates,
+                support.residual_attachment_branch_certificates,
+            )
+            self.assertEqual(
                 branch.residual_attachment_policy_evidence,
                 support.residual_attachment_policy_evidence,
             )
@@ -1558,6 +1734,47 @@ def _single_closure_candidate_branch_certificate(
             f"expected exactly one closure-candidate certificate {kind!r}"
         )
     return matches[0]
+
+
+def _single_residual_attachment_branch_certificate(
+    support,
+    kind: WriterResidualAttachmentBranchCertificateKind,
+):
+    matches = tuple(
+        certificate
+        for certificate in support.residual_attachment_branch_certificates
+        if certificate.kind is kind
+    )
+    if len(matches) != 1:
+        raise AssertionError(
+            f"expected exactly one residual-attachment certificate {kind!r}"
+        )
+    return matches[0]
+
+
+def _find_checked_branch_support(
+    prepared,
+    cursor: WriterFrontierCursor,
+    predicate,
+):
+    pending = [cursor]
+    seen: set[WriterFrontierCursor] = set()
+    while pending and len(seen) < 1000:
+        current = pending.pop(0)
+        if current in seen:
+            continue
+        seen.add(current)
+        batch = _checked_writer_frontier_branch_supports(
+            prepared,
+            current,
+            include_counts=False,
+        )
+        for support in batch.supports:
+            if predicate(support):
+                return support
+            pending.append(support.successor_cursor)
+
+    raise AssertionError("expected checked branch support was not found")
 
 
 def _writer_options() -> SouthStarRuntimeOptions:
@@ -1680,6 +1897,26 @@ def _pending_control_live_closure_candidate_facts() -> MoleculeFacts:
                 id=ComponentId(0),
                 atoms=(AtomId(0), AtomId(1), AtomId(2), AtomId(3)),
                 bonds=(BondId(0), BondId(1), BondId(2)),
+            ),
+        ),
+    )
+
+
+def _fused_rank_two_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=tuple(atom(index, "C") for index in range(4)),
+        bonds=(
+            single_bond(0, 0, 1),
+            single_bond(1, 1, 2),
+            single_bond(2, 2, 0),
+            single_bond(3, 0, 3),
+            single_bond(4, 3, 1),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=tuple(AtomId(index) for index in range(4)),
+                bonds=tuple(BondId(index) for index in range(5)),
             ),
         ),
     )

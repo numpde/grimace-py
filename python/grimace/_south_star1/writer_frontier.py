@@ -36,6 +36,15 @@ from .writer_closure_candidate_lifecycle import (
 from .writer_closure_candidate_lifecycle import (
     writer_closure_candidate_lifecycle_evidence_for_transition,
 )
+from .writer_residual_attachment_branch_certificates import (
+    writer_residual_attachment_branch_certificates,
+)
+from .writer_residual_attachment_lifecycle import (
+    validate_writer_residual_attachment_lifecycle_transition,
+)
+from .writer_residual_attachment_lifecycle import (
+    writer_residual_attachment_lifecycle_evidence_for_transition,
+)
 from .writer_state import ComponentCursor
 from .writer_state import ObligationState
 from .writer_state import WriterAtomFrame
@@ -293,6 +302,8 @@ class _WriterFrontierBranchSupport:
     closure_candidate_resolution_evidence: tuple[object, ...] = ()
     closure_candidate_lifecycle_evidence: tuple[object, ...] = ()
     closure_candidate_branch_certificates: tuple[object, ...] = ()
+    residual_attachment_lifecycle_evidence: tuple[object, ...] = ()
+    residual_attachment_branch_certificates: tuple[object, ...] = ()
     residual_attachment_policy_evidence: tuple[
         "_WriterFrontierResidualAttachmentEvidenceGroup",
         ...,
@@ -1964,6 +1975,19 @@ def _validate_writer_frontier_schedule_outcome_closure_candidates(
         )
 
 
+def _validate_writer_frontier_schedule_outcome_residual_attachments(
+    prepared: SouthStarPreparedMol,
+    outcome: _WriterFrontierScheduleOutcome,
+) -> None:
+    for support in outcome.next_token_supports:
+        validate_writer_residual_attachment_lifecycle_transition(
+            prepared=prepared,
+            source_state=support.state_key,
+            successor_state=support.successor_key,
+            graph_action_surface=support.graph_action_surface,
+        )
+
+
 def _writer_frontier_schedule_outcome(
     prepared: SouthStarPreparedMol,
     cursor: WriterFrontierCursor,
@@ -2049,6 +2073,10 @@ def _writer_frontier_schedule_outcome(
     _validate_writer_frontier_schedule_outcome_grouping(outcome)
     _validate_writer_frontier_schedule_outcome_lifecycle(outcome)
     _validate_writer_frontier_schedule_outcome_closure_candidates(
+        prepared,
+        outcome,
+    )
+    _validate_writer_frontier_schedule_outcome_residual_attachments(
         prepared,
         outcome,
     )
@@ -2358,6 +2386,14 @@ def _writer_frontier_branch_support_from_next_token_support(
             graph_action_surface=support.graph_action_surface,
         )
     )
+    residual_attachment_lifecycle_evidence = (
+        writer_residual_attachment_lifecycle_evidence_for_transition(
+            prepared=prepared,
+            source_state=support.state_key,
+            successor_state=support.successor_key,
+            graph_action_surface=support.graph_action_surface,
+        )
+    )
     capabilities = set(support.execution_capabilities)
     if _branch_support_has_open_ring_endpoint_residual_resolution(
         support=support,
@@ -2403,6 +2439,15 @@ def _writer_frontier_branch_support_from_next_token_support(
             events=transition.events,
         )
     )
+    residual_attachment_branch_certificates = (
+        writer_residual_attachment_branch_certificates(
+            execution_capabilities=execution_capabilities,
+            graph_action_surface=support.graph_action_surface,
+            residual_attachment_lifecycle_evidence=(
+                residual_attachment_lifecycle_evidence
+            ),
+        )
+    )
 
     return _WriterFrontierBranchSupport(
         emitted_text=support.emitted_text,
@@ -2427,6 +2472,12 @@ def _writer_frontier_branch_support_from_next_token_support(
         ),
         closure_candidate_branch_certificates=(
             closure_candidate_branch_certificates
+        ),
+        residual_attachment_lifecycle_evidence=(
+            residual_attachment_lifecycle_evidence
+        ),
+        residual_attachment_branch_certificates=(
+            residual_attachment_branch_certificates
         ),
         residual_attachment_policy_evidence=policy_evidence,
     )

@@ -23,6 +23,12 @@ from .writer_execution_evidence import writer_residual_work_envelope_violation
 from .writer_graph_obligations import WriterClosureCandidateResolutionKind
 from .writer_graph_obligations import build_writer_graph_obligation_context
 from .writer_graph_obligations import writer_closure_candidate_resolutions
+from .writer_projection_certificates import (
+    writer_terminal_projection_certificate,
+)
+from .writer_projection_certificates import (
+    writer_text_choice_projection_certificates,
+)
 from .writer_capabilities import _WriterExecutionCapabilityKind
 from .writer_capabilities import (
     _unsupported_public_writer_execution_capabilities,
@@ -340,6 +346,8 @@ class _WriterFrontierBranchSupportBatch:
     choices: WriterFrontierChoices
     supports: tuple[_WriterFrontierBranchSupport, ...]
     terminal_supports: tuple["_WriterFrontierTerminalSupport", ...] = ()
+    text_choice_projection_certificates: tuple[object, ...] = ()
+    terminal_projection_certificate: object | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -2704,23 +2712,35 @@ def _checked_writer_frontier_branch_supports(
         schedule_outcome,
         include_counts=include_counts,
     )
+    branch_supports = tuple(
+        _writer_frontier_branch_support_from_next_token_support(
+            prepared=prepared,
+            branch_ordinal=branch_ordinal,
+            support=support,
+            schedule_outcome=schedule_outcome,
+        )
+        for branch_ordinal, support in enumerate(
+            schedule_outcome.next_token_supports
+        )
+    )
+    terminal_supports = _writer_frontier_terminal_supports_from_schedule_outcome(
+        prepared=prepared,
+        schedule_outcome=schedule_outcome,
+    )
     return _WriterFrontierBranchSupportBatch(
         choices=choice_snapshot.public_choices,
-        supports=tuple(
-            _writer_frontier_branch_support_from_next_token_support(
-                prepared=prepared,
-                branch_ordinal=branch_ordinal,
-                support=support,
-                schedule_outcome=schedule_outcome,
-            )
-            for branch_ordinal, support in enumerate(
-                schedule_outcome.next_token_supports
+        supports=branch_supports,
+        terminal_supports=terminal_supports,
+        text_choice_projection_certificates=(
+            writer_text_choice_projection_certificates(
+                choices=choice_snapshot.public_choices,
+                branch_supports=branch_supports,
             )
         ),
-        terminal_supports=(
-            _writer_frontier_terminal_supports_from_schedule_outcome(
-                prepared=prepared,
-                schedule_outcome=schedule_outcome,
+        terminal_projection_certificate=(
+            writer_terminal_projection_certificate(
+                terminal=choice_snapshot.public_choices.terminal,
+                terminal_supports=terminal_supports,
             )
         ),
     )

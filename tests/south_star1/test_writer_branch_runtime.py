@@ -64,6 +64,9 @@ from grimace._south_star1.writer_graph_obligations import WriterResidualAttachme
 from grimace._south_star1.writer_graph_obligations import build_writer_graph_obligation_context
 from grimace._south_star1.writer_graph_obligations import writer_control_live_roles_by_atom
 from grimace._south_star1.writer_graph_obligations import writer_graph_obligation_work_evidence
+from grimace._south_star1.writer_projection_certificates import (
+    writer_text_choice_projection_certificates,
+)
 from grimace._south_star1.writer_residual_attachment_branch_certificates import (
     WriterResidualAttachmentBranchCertificateKind,
 )
@@ -270,6 +273,59 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 self.assertEqual(
                     certificate.stereo_branch_certificates,
                     support.stereo_branch_certificates,
+                )
+
+    def test_checked_text_choices_have_projection_certificates(self) -> None:
+        for facts in (
+            cco_facts(),
+            cyclopropane_facts(),
+            tetrahedral_facts(),
+            directional_facts(),
+        ):
+            prepared = _prepare(facts)
+            initial = initial_writer_frontier_cursor(
+                prepared,
+                _writer_options(),
+            )
+            batch = _checked_writer_frontier_branch_supports(
+                prepared,
+                initial,
+                include_counts=True,
+            )
+
+            self.assertEqual(
+                len(batch.text_choice_projection_certificates),
+                len(batch.choices.choices),
+            )
+            for certificate in batch.text_choice_projection_certificates:
+                matching = tuple(
+                    support
+                    for support in batch.supports
+                    if support.emitted_text == certificate.emitted_text
+                )
+                expected = WriterFrontierCursor(
+                    weighted_states=tuple(
+                        (support.successor_state, support.parent_weight)
+                        for support in matching
+                    )
+                )
+
+                self.assertEqual(
+                    certificate.choice.emitted_text,
+                    certificate.emitted_text,
+                )
+                self.assertEqual(certificate.successor_cursor, expected)
+                self.assertEqual(certificate.choice.successor, expected)
+                self.assertEqual(
+                    certificate.immediate_multiplicity,
+                    sum(support.parent_weight for support in matching),
+                )
+                self.assertEqual(
+                    certificate.branch_certificates,
+                    tuple(
+                        support.checked_branch_certificate
+                        for support in matching
+                    ),
                 )
 
     def test_open_ring_endpoint_owned_residual_resolution_reaches_branch_support(
@@ -835,6 +891,28 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 }
             ),
             len(open_supports),
+        )
+        choice_certificate = next(
+            certificate
+            for certificate in batch.text_choice_projection_certificates
+            if certificate.emitted_text == open_supports[0].emitted_text
+        )
+        same_text_supports = tuple(
+            support
+            for support in open_supports
+            if support.emitted_text == choice_certificate.emitted_text
+        )
+        self.assertGreater(len(choice_certificate.branch_certificates), 1)
+        self.assertEqual(
+            choice_certificate.branch_certificates,
+            tuple(
+                support.checked_branch_certificate
+                for support in same_text_supports
+            ),
+        )
+        self.assertEqual(
+            choice_certificate.immediate_multiplicity,
+            sum(support.parent_weight for support in same_text_supports),
         )
 
         for support in open_supports:
@@ -1825,6 +1903,105 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 ),
             )
 
+    def test_text_projection_certificate_rejects_missing_support(self) -> None:
+        prepared = _prepare(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        batch = _checked_writer_frontier_branch_supports(
+            prepared,
+            initial,
+            include_counts=False,
+        )
+        choice = batch.choices.choices[0]
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "choice_lacks_branch_support",
+        ):
+            writer_text_choice_projection_certificates(
+                choices=SimpleNamespace(
+                    choices=(
+                        SimpleNamespace(
+                            emitted_text="missing",
+                            successor=choice.successor,
+                            immediate_multiplicity=(
+                                choice.immediate_multiplicity
+                            ),
+                            support_count=choice.support_count,
+                            completion_count=choice.completion_count,
+                        ),
+                    )
+                ),
+                branch_supports=batch.supports,
+            )
+
+    def test_text_projection_certificate_rejects_successor_mismatch(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        batch = _checked_writer_frontier_branch_supports(
+            prepared,
+            initial,
+            include_counts=False,
+        )
+        choice = batch.choices.choices[0]
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "choice_successor_cursor_mismatch",
+        ):
+            writer_text_choice_projection_certificates(
+                choices=SimpleNamespace(
+                    choices=(
+                        SimpleNamespace(
+                            emitted_text=choice.emitted_text,
+                            successor=WriterFrontierCursor(
+                                weighted_states=()
+                            ),
+                            immediate_multiplicity=(
+                                choice.immediate_multiplicity
+                            ),
+                            support_count=choice.support_count,
+                            completion_count=choice.completion_count,
+                        ),
+                    )
+                ),
+                branch_supports=batch.supports,
+            )
+
+    def test_text_projection_certificate_rejects_multiplicity_mismatch(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        batch = _checked_writer_frontier_branch_supports(
+            prepared,
+            initial,
+            include_counts=False,
+        )
+        choice = batch.choices.choices[0]
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "choice_immediate_multiplicity_mismatch",
+        ):
+            writer_text_choice_projection_certificates(
+                choices=SimpleNamespace(
+                    choices=(
+                        SimpleNamespace(
+                            emitted_text=choice.emitted_text,
+                            successor=choice.successor,
+                            immediate_multiplicity=(
+                                choice.immediate_multiplicity + 1
+                            ),
+                            support_count=choice.support_count,
+                            completion_count=choice.completion_count,
+                        ),
+                    )
+                ),
+                branch_supports=batch.supports,
+            )
+
     def test_closure_candidate_liveness_is_graph_owned(self) -> None:
         source = inspect.getsource(writer_transitions)
 
@@ -1948,6 +2125,14 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             prepared=prepared,
             state=state,
             include_counts=False,
+        )
+        self.assertEqual(
+            branches.text_choice_projection_certificates,
+            batch.text_choice_projection_certificates,
+        )
+        self.assertEqual(
+            branches.terminal_projection_certificate,
+            batch.terminal_projection_certificate,
         )
 
         for support, branch in zip(batch.supports, branches.transitions):

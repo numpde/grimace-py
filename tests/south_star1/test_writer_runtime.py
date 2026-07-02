@@ -15,6 +15,9 @@ from grimace._south_star1.writer_branch_certificates import (
 )
 from grimace._south_star1.writer_frontier import WriterFrontierCursor
 from grimace._south_star1.writer_frontier import _checked_writer_frontier_branch_supports
+from grimace._south_star1.writer_projection_certificates import (
+    writer_terminal_projection_certificate,
+)
 from grimace._south_star1.writer_stereo import EMPTY_RESIDUAL_SNAPSHOT
 from grimace._south_star1.writer_terminal_certificates import (
     WriterTerminalCertificateKind,
@@ -355,6 +358,22 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
                 for support in frontier.terminal_supports
             ),
         )
+        self.assertIsNotNone(branches.terminal_projection_certificate)
+        self.assertEqual(
+            branches.terminal_projection_certificate,
+            frontier.terminal_projection_certificate,
+        )
+        self.assertEqual(
+            branches.terminal_projection_certificate.terminal,
+            branches.terminal,
+        )
+        self.assertEqual(
+            branches.terminal_projection_certificate.terminal_certificates,
+            tuple(
+                support.checked_terminal_certificate
+                for support in branches.terminal_supports
+            ),
+        )
 
     def test_initial_runtime_state_has_no_terminal_supports(self) -> None:
         prepared = _prepare(cco_facts())
@@ -439,6 +458,88 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
                     support.graph_obligation_work_evidence
                 ),
                 terminal_certificates=support.terminal_certificates,
+            )
+
+    def test_terminal_projection_certificate_rejects_missing_support(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        state = advance_writer_runtime_state(
+            prepared=prepared,
+            state=state,
+            emitted_text="C",
+        )
+        state = advance_writer_runtime_state(
+            prepared=prepared,
+            state=state,
+            emitted_text="C",
+        )
+        state = advance_writer_runtime_state(
+            prepared=prepared,
+            state=state,
+            emitted_text="O",
+        )
+        branches = writer_runtime_branch_transitions(
+            prepared=prepared,
+            state=state,
+            include_counts=False,
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "terminal_lacks_terminal_supports",
+        ):
+            writer_terminal_projection_certificate(
+                terminal=branches.terminal,
+                terminal_supports=(),
+            )
+
+    def test_terminal_projection_certificate_rejects_multiplicity_mismatch(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        state = advance_writer_runtime_state(
+            prepared=prepared,
+            state=state,
+            emitted_text="C",
+        )
+        state = advance_writer_runtime_state(
+            prepared=prepared,
+            state=state,
+            emitted_text="C",
+        )
+        state = advance_writer_runtime_state(
+            prepared=prepared,
+            state=state,
+            emitted_text="O",
+        )
+        branches = writer_runtime_branch_transitions(
+            prepared=prepared,
+            state=state,
+            include_counts=False,
+        )
+        terminal = branches.terminal
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "terminal_multiplicity_mismatch",
+        ):
+            writer_terminal_projection_certificate(
+                terminal=terminal.__class__(
+                    support_count=terminal.support_count,
+                    completion_count=terminal.completion_count,
+                    multiplicity=terminal.multiplicity + 1,
+                    finalized_cursor=terminal.finalized_cursor,
+                ),
+                terminal_supports=branches.terminal_supports,
             )
 
 

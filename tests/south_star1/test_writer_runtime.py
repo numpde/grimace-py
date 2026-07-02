@@ -11,6 +11,14 @@ from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import enumerate_prepared_writer_shaped_support
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
 from grimace._south_star1.writer_frontier import WriterFrontierCursor
+from grimace._south_star1.writer_stereo import EMPTY_RESIDUAL_SNAPSHOT
+from grimace._south_star1.writer_terminal_certificates import (
+    WriterTerminalCertificateKind,
+)
+from grimace._south_star1.writer_terminal_certificates import (
+    writer_terminal_certificates,
+)
+from grimace._south_star1.errors import SouthStarError
 from grimace._south_star1.writer_runtime import advance_writer_runtime_state
 from grimace._south_star1.writer_runtime import count_writer_runtime_branch_completions
 from grimace._south_star1.writer_runtime import count_writer_runtime_completions
@@ -288,6 +296,83 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
         self.assertGreaterEqual(terminal.support_count, 1)
         self.assertGreaterEqual(terminal.completion_count, 1)
 
+        branches = writer_runtime_branch_transitions(
+            prepared=prepared,
+            state=state,
+            include_counts=False,
+        )
+        self.assertIsNotNone(branches.terminal)
+        self.assertTrue(branches.terminal_supports)
+        self.assertEqual(
+            branches.terminal.multiplicity,
+            sum(support.parent_weight for support in branches.terminal_supports),
+        )
+
+        support = branches.terminal_supports[0]
+        graph = _single_terminal_certificate(
+            support,
+            WriterTerminalCertificateKind.GRAPH_COMPLETE,
+        )
+        self.assertTrue(graph.graph_completion_status.complete)
+        self.assertEqual(graph.graph_completion_status.unresolved_kinds, ())
+        self.assertEqual(graph.graph_completion_status.unresolved_bonds, ())
+
+        stereo = _single_terminal_certificate(
+            support,
+            WriterTerminalCertificateKind.STEREO_TERMINALIZED,
+        )
+        self.assertEqual(
+            support.finalized_state.stereo_state.residual_snapshot,
+            EMPTY_RESIDUAL_SNAPSHOT,
+        )
+        self.assertEqual(
+            stereo.terminal_stereo_lifecycle_evidence,
+            support.terminal_stereo_lifecycle_evidence,
+        )
+
+        finalized = _single_terminal_certificate(
+            support,
+            WriterTerminalCertificateKind.FINALIZED_STATE,
+        )
+        self.assertEqual(finalized.finalized_state, support.finalized_state)
+
+    def test_initial_runtime_state_has_no_terminal_supports(self) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        branches = writer_runtime_branch_transitions(
+            prepared=prepared,
+            state=state,
+            include_counts=False,
+        )
+
+        self.assertIsNone(branches.terminal)
+        self.assertEqual(branches.terminal_supports, ())
+
+    def test_terminal_certificate_rejects_nonterminal_graph(self) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        source = state.snapshot.cursor.weighted_states[0][0]
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "terminal graph is not complete",
+        ):
+            writer_terminal_certificates(
+                prepared=prepared,
+                source_state=source,
+                finalized_state=source,
+                graph_obligation_work_evidence=(),
+                terminal_stereo_lifecycle_evidence=(),
+                terminal_execution_capabilities=frozenset(),
+                terminal_residual_work_evidence=(),
+            )
+
 
 def _advance_runtime_along_string(prepared, state, text: str):
     remaining = text
@@ -311,6 +396,22 @@ def _advance_runtime_along_string(prepared, state, text: str):
         )
         remaining = remaining[len(choice.emitted_text) :]
     return state
+
+
+def _single_terminal_certificate(
+    support,
+    kind: WriterTerminalCertificateKind,
+):
+    matches = tuple(
+        certificate
+        for certificate in support.terminal_certificates
+        if certificate.kind is kind
+    )
+    if len(matches) != 1:
+        raise AssertionError(
+            f"expected exactly one terminal certificate {kind!r}"
+        )
+    return matches[0]
 
 
 def _prepare(facts):

@@ -151,6 +151,7 @@ class _WriterTerminalizationOutcome:
         WriterResidualPropagationWorkEvidence,
         ...
     ] = ()
+    stereo_lifecycle_evidence: tuple[object, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -5211,6 +5212,7 @@ def _finalize_writer_terminal_state_from_context(
         state=replace(state, stereo_state=stereo_outcome.state),
         execution_capabilities=stereo_outcome.execution_capabilities,
         residual_work_evidence=stereo_outcome.residual_work_evidence,
+        stereo_lifecycle_evidence=stereo_outcome.stereo_lifecycle_evidence,
     )
 
 

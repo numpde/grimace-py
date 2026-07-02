@@ -28,6 +28,9 @@ WRITER_RESIDUAL_ATTACHMENT_LIFECYCLE_PATH = (
 WRITER_STEREO_BRANCH_CERTIFICATES_PATH = (
     SOUTH_STAR_ROOT / "writer_stereo_branch_certificates.py"
 )
+WRITER_TERMINAL_CERTIFICATES_PATH = (
+    SOUTH_STAR_ROOT / "writer_terminal_certificates.py"
+)
 
 
 class WriterRuntimeBoundaryTest(unittest.TestCase):
@@ -147,6 +150,20 @@ class WriterRuntimeBoundaryTest(unittest.TestCase):
     def test_stereo_branch_certificates_stay_below_runtime(self) -> None:
         scan = scan_module_boundaries(
             WRITER_STEREO_BRANCH_CERTIFICATES_PATH,
+            banned_modules={
+                "audit_rdkit",
+                "rdkit_adapter",
+                "writer_online_decoder",
+                "writer_runtime",
+                "writer_support",
+            },
+        )
+
+        self.assertEqual(scan.violations, ())
+
+    def test_terminal_certificates_stay_below_runtime(self) -> None:
+        scan = scan_module_boundaries(
+            WRITER_TERMINAL_CERTIFICATES_PATH,
             banned_modules={
                 "audit_rdkit",
                 "rdkit_adapter",

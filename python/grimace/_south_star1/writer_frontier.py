@@ -59,6 +59,7 @@ from .writer_ring_lifecycle import validate_writer_ring_lifecycle_transition
 from .writer_stereo import initial_writer_stereo_state
 from .writer_stereo import WriterStereoPolicyBlocker
 from .writer_stereo_branch_certificates import writer_stereo_branch_certificates
+from .writer_terminal_certificates import writer_terminal_certificates
 from .writer_transitions import _WriterActiveEmittedGraphPolicyBlocker
 from .writer_transitions import _WriterActiveEmittedGraphPolicyDecision
 from .writer_transitions import _WriterActiveChildSelectionKind
@@ -187,6 +188,7 @@ class _WriterFrontierStateScheduleOutcome:
         WriterResidualPropagationWorkEvidence,
         ...
     ] = ()
+    terminal_stereo_lifecycle_evidence: tuple[object, ...] = ()
     graph_obligation_work_evidence: tuple[
         WriterGraphObligationWorkEvidence,
         ...
@@ -206,6 +208,13 @@ class _WriterFrontierStateScheduleOutcome:
         ):
             raise ValueError(
                 "terminal residual work evidence requires finalized state"
+            )
+        if (
+            self.finalized_state_key is None
+            and self.terminal_stereo_lifecycle_evidence
+        ):
+            raise ValueError(
+                "terminal stereo lifecycle evidence requires finalized state"
             )
 
     @property
@@ -323,6 +332,19 @@ class _WriterFrontierBranchSupport:
 class _WriterFrontierBranchSupportBatch:
     choices: WriterFrontierChoices
     supports: tuple[_WriterFrontierBranchSupport, ...]
+    terminal_supports: tuple["_WriterFrontierTerminalSupport", ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterFrontierTerminalSupport:
+    source_state: WriterStateKey
+    finalized_state: WriterStateKey
+    parent_weight: int
+    terminal_execution_capabilities: frozenset[object]
+    terminal_residual_work_evidence: tuple[object, ...]
+    terminal_stereo_lifecycle_evidence: tuple[object, ...]
+    graph_obligation_work_evidence: tuple[object, ...]
+    terminal_certificates: tuple[object, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -1991,6 +2013,16 @@ def _validate_writer_frontier_schedule_outcome_residual_attachments(
         )
 
 
+def _validate_writer_frontier_schedule_outcome_terminal_supports(
+    prepared: SouthStarPreparedMol,
+    outcome: _WriterFrontierScheduleOutcome,
+) -> None:
+    _writer_frontier_terminal_supports_from_schedule_outcome(
+        prepared=prepared,
+        schedule_outcome=outcome,
+    )
+
+
 def _writer_frontier_schedule_outcome(
     prepared: SouthStarPreparedMol,
     cursor: WriterFrontierCursor,
@@ -2027,6 +2059,9 @@ def _writer_frontier_schedule_outcome(
             ),
             terminal_residual_work_evidence=(
                 terminal_outcome.residual_work_evidence
+            ),
+            terminal_stereo_lifecycle_evidence=(
+                terminal_outcome.stereo_lifecycle_evidence
             ),
             graph_obligation_work_evidence=(
                 expansion.graph_obligation_work_evidence
@@ -2080,6 +2115,10 @@ def _writer_frontier_schedule_outcome(
         outcome,
     )
     _validate_writer_frontier_schedule_outcome_residual_attachments(
+        prepared,
+        outcome,
+    )
+    _validate_writer_frontier_schedule_outcome_terminal_supports(
         prepared,
         outcome,
     )
@@ -2637,7 +2676,64 @@ def _checked_writer_frontier_branch_supports(
                 schedule_outcome.next_token_supports
             )
         ),
+        terminal_supports=(
+            _writer_frontier_terminal_supports_from_schedule_outcome(
+                prepared=prepared,
+                schedule_outcome=schedule_outcome,
+            )
+        ),
     )
+
+
+def _writer_frontier_terminal_supports_from_schedule_outcome(
+    *,
+    prepared: SouthStarPreparedMol,
+    schedule_outcome: _WriterFrontierScheduleOutcome,
+) -> tuple[_WriterFrontierTerminalSupport, ...]:
+    supports: list[_WriterFrontierTerminalSupport] = []
+    for outcome in schedule_outcome.state_outcomes:
+        if outcome.finalized_state_key is None:
+            continue
+
+        certificates = writer_terminal_certificates(
+            prepared=prepared,
+            source_state=outcome.state_key,
+            finalized_state=outcome.finalized_state_key,
+            graph_obligation_work_evidence=(
+                outcome.graph_obligation_work_evidence
+            ),
+            terminal_stereo_lifecycle_evidence=(
+                outcome.terminal_stereo_lifecycle_evidence
+            ),
+            terminal_execution_capabilities=(
+                outcome.terminal_execution_capabilities
+            ),
+            terminal_residual_work_evidence=(
+                outcome.terminal_residual_work_evidence
+            ),
+        )
+        supports.append(
+            _WriterFrontierTerminalSupport(
+                source_state=outcome.state_key,
+                finalized_state=outcome.finalized_state_key,
+                parent_weight=outcome.parent_weight,
+                terminal_execution_capabilities=(
+                    outcome.terminal_execution_capabilities
+                ),
+                terminal_residual_work_evidence=(
+                    outcome.terminal_residual_work_evidence
+                ),
+                terminal_stereo_lifecycle_evidence=(
+                    outcome.terminal_stereo_lifecycle_evidence
+                ),
+                graph_obligation_work_evidence=(
+                    outcome.graph_obligation_work_evidence
+                ),
+                terminal_certificates=certificates,
+            )
+        )
+
+    return tuple(supports)
 
 
 def _count_checked_writer_frontier_branch_completions(

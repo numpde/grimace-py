@@ -97,9 +97,22 @@ class WriterRuntimeBranchTransition:
 
 
 @dataclass(frozen=True, slots=True)
+class WriterRuntimeTerminalSupport:
+    source_state: object
+    finalized_state: object
+    parent_weight: int
+    terminal_execution_capabilities: frozenset[object]
+    terminal_residual_work_evidence: tuple[object, ...]
+    terminal_stereo_lifecycle_evidence: tuple[object, ...]
+    graph_obligation_work_evidence: tuple[object, ...]
+    terminal_certificates: tuple[object, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class WriterRuntimeBranchTransitions:
     choices: WriterFrontierChoices
     transitions: tuple[WriterRuntimeBranchTransition, ...]
+    terminal_supports: tuple[WriterRuntimeTerminalSupport, ...] = ()
 
     @property
     def branch_transitions(self) -> tuple[WriterRuntimeBranchTransition, ...]:
@@ -329,6 +342,27 @@ def writer_runtime_branch_transitions(
     return WriterRuntimeBranchTransitions(
         choices=branch_batch.choices,
         transitions=tuple(branch_transitions),
+        terminal_supports=tuple(
+            WriterRuntimeTerminalSupport(
+                source_state=support.source_state,
+                finalized_state=support.finalized_state,
+                parent_weight=support.parent_weight,
+                terminal_execution_capabilities=(
+                    support.terminal_execution_capabilities
+                ),
+                terminal_residual_work_evidence=(
+                    support.terminal_residual_work_evidence
+                ),
+                terminal_stereo_lifecycle_evidence=(
+                    support.terminal_stereo_lifecycle_evidence
+                ),
+                graph_obligation_work_evidence=(
+                    support.graph_obligation_work_evidence
+                ),
+                terminal_certificates=support.terminal_certificates,
+            )
+            for support in branch_batch.terminal_supports
+        ),
     )
 
 

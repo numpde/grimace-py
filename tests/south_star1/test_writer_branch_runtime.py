@@ -27,6 +27,9 @@ from grimace._south_star1.writer_events import WriterAtomEmitted
 from grimace._south_star1.writer_events import WriterBondEmitted
 from grimace._south_star1.writer_events import WriterLocalOrderClosed
 from grimace._south_star1.writer_capabilities import _WriterExecutionCapabilityKind
+from grimace._south_star1.writer_branch_certificates import (
+    writer_checked_branch_support_certificate,
+)
 from grimace._south_star1.writer_closure_candidate_branch_certificates import (
     WriterClosureCandidateBranchCertificateKind,
 )
@@ -211,6 +214,63 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 (),
             )
             self.assertEqual(projected.residual_attachment_policy_evidence, ())
+            self.assertIsNotNone(projected.checked_branch_certificate)
+            self.assertEqual(
+                projected.checked_branch_certificate.source_state,
+                projected.source_state,
+            )
+            self.assertEqual(
+                projected.checked_branch_certificate.successor_state,
+                projected.successor_state,
+            )
+            self.assertEqual(
+                projected.checked_branch_certificate.events,
+                projected.events,
+            )
+
+    def test_checked_branch_supports_have_aggregate_certificates(self) -> None:
+        for facts in (
+            cco_facts(),
+            cyclopropane_facts(),
+            tetrahedral_facts(),
+            directional_facts(),
+        ):
+            prepared = _prepare(facts)
+            initial = initial_writer_frontier_cursor(
+                prepared,
+                _writer_options(),
+            )
+            batch = _checked_writer_frontier_branch_supports(
+                prepared,
+                initial,
+                include_counts=False,
+            )
+
+            self.assertTrue(batch.supports)
+            for support in batch.supports:
+                certificate = support.checked_branch_certificate
+                self.assertIsNotNone(certificate)
+                self.assertEqual(certificate.source_state, support.source_state)
+                self.assertEqual(
+                    certificate.successor_state,
+                    support.successor_state,
+                )
+                self.assertEqual(
+                    certificate.execution_capabilities,
+                    support.execution_capabilities,
+                )
+                self.assertEqual(
+                    certificate.closure_candidate_branch_certificates,
+                    support.closure_candidate_branch_certificates,
+                )
+                self.assertEqual(
+                    certificate.residual_attachment_branch_certificates,
+                    support.residual_attachment_branch_certificates,
+                )
+                self.assertEqual(
+                    certificate.stereo_branch_certificates,
+                    support.stereo_branch_certificates,
+                )
 
     def test_open_ring_endpoint_owned_residual_resolution_reaches_branch_support(
         self,
@@ -763,6 +823,15 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                         WriterClosureCandidateBranchCertificateKind
                         .LIVE_BRANCH_RETURN_OPENED
                     )
+                }
+            ),
+            len(open_supports),
+        )
+        self.assertEqual(
+            len(
+                {
+                    support.checked_branch_certificate.successor_state
+                    for support in open_supports
                 }
             ),
             len(open_supports),
@@ -1639,6 +1708,123 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 events=(),
             )
 
+    def test_checked_branch_certificate_rejects_missing_stereo_capability(
+        self,
+    ) -> None:
+        capability = (
+            _WriterExecutionCapabilityKind.DIRECTIONAL_CARRIER_RESTRICTION
+        )
+        prepared = _prepare(directional_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _find_checked_branch_support(
+            prepared,
+            initial,
+            lambda support: capability in support.execution_capabilities,
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "stereo_certificate_capability_missing",
+        ):
+            writer_checked_branch_support_certificate(
+                source_state=support.source_state,
+                successor_state=support.successor_state,
+                emitted_text=support.emitted_text,
+                transition_kind=support.transition_kind,
+                graph_action_surface=support.graph_action_surface,
+                policy_family=support.policy_family,
+                events=support.events,
+                transition_evidence=support.evidence,
+                execution_capabilities=frozenset(
+                    capability
+                    for capability in support.execution_capabilities
+                    if capability
+                    is not (
+                        _WriterExecutionCapabilityKind
+                        .DIRECTIONAL_CARRIER_RESTRICTION
+                    )
+                ),
+                graph_obligation_work_evidence=(
+                    support.graph_obligation_work_evidence
+                ),
+                residual_work_evidence=support.residual_work_evidence,
+                finite_relation_work_evidence=(
+                    support.finite_relation_work_evidence
+                ),
+                closure_candidate_resolution_evidence=(
+                    support.closure_candidate_resolution_evidence
+                ),
+                closure_candidate_lifecycle_evidence=(
+                    support.closure_candidate_lifecycle_evidence
+                ),
+                closure_candidate_branch_certificates=(
+                    support.closure_candidate_branch_certificates
+                ),
+                residual_attachment_lifecycle_evidence=(
+                    support.residual_attachment_lifecycle_evidence
+                ),
+                residual_attachment_branch_certificates=(
+                    support.residual_attachment_branch_certificates
+                ),
+                stereo_lifecycle_evidence=support.stereo_lifecycle_evidence,
+                stereo_branch_certificates=support.stereo_branch_certificates,
+                residual_attachment_policy_evidence=(
+                    support.residual_attachment_policy_evidence
+                ),
+            )
+
+    def test_checked_branch_certificate_rejects_policy_mismatch(self) -> None:
+        prepared = _prepare(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _checked_writer_frontier_branch_supports(
+            prepared,
+            initial,
+            include_counts=False,
+        ).supports[0]
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "graph_action_surface_policy_family_mismatch",
+        ):
+            writer_checked_branch_support_certificate(
+                source_state=support.source_state,
+                successor_state=support.successor_state,
+                emitted_text=support.emitted_text,
+                transition_kind=support.transition_kind,
+                graph_action_surface=SimpleNamespace(policy_family=object()),
+                policy_family=support.policy_family,
+                events=support.events,
+                transition_evidence=support.evidence,
+                execution_capabilities=support.execution_capabilities,
+                graph_obligation_work_evidence=(
+                    support.graph_obligation_work_evidence
+                ),
+                residual_work_evidence=support.residual_work_evidence,
+                finite_relation_work_evidence=(
+                    support.finite_relation_work_evidence
+                ),
+                closure_candidate_resolution_evidence=(
+                    support.closure_candidate_resolution_evidence
+                ),
+                closure_candidate_lifecycle_evidence=(
+                    support.closure_candidate_lifecycle_evidence
+                ),
+                closure_candidate_branch_certificates=(
+                    support.closure_candidate_branch_certificates
+                ),
+                residual_attachment_lifecycle_evidence=(
+                    support.residual_attachment_lifecycle_evidence
+                ),
+                residual_attachment_branch_certificates=(
+                    support.residual_attachment_branch_certificates
+                ),
+                stereo_lifecycle_evidence=support.stereo_lifecycle_evidence,
+                stereo_branch_certificates=support.stereo_branch_certificates,
+                residual_attachment_policy_evidence=(
+                    support.residual_attachment_policy_evidence
+                ),
+            )
+
     def test_closure_candidate_liveness_is_graph_owned(self) -> None:
         source = inspect.getsource(writer_transitions)
 
@@ -1812,6 +1998,10 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             self.assertEqual(
                 branch.residual_attachment_policy_evidence,
                 support.residual_attachment_policy_evidence,
+            )
+            self.assertEqual(
+                branch.checked_branch_certificate,
+                support.checked_branch_certificate,
             )
 
     def test_choice_runtime_next_state_uses_snapshot_choice_packaging(

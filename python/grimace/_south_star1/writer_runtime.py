@@ -93,6 +93,7 @@ class WriterRuntimeBranchTransition:
     stereo_lifecycle_evidence: tuple[object, ...]
     stereo_branch_certificates: tuple[object, ...]
     residual_attachment_policy_evidence: tuple[object, ...]
+    checked_branch_certificate: object | None
     next_state: WriterRuntimeState
 
 
@@ -106,6 +107,7 @@ class WriterRuntimeTerminalSupport:
     terminal_stereo_lifecycle_evidence: tuple[object, ...]
     graph_obligation_work_evidence: tuple[object, ...]
     terminal_certificates: tuple[object, ...]
+    checked_terminal_certificate: object | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -336,6 +338,9 @@ def writer_runtime_branch_transitions(
                 residual_attachment_policy_evidence=(
                     support.residual_attachment_policy_evidence
                 ),
+                checked_branch_certificate=(
+                    support.checked_branch_certificate
+                ),
                 next_state=successor_state,
             )
         )
@@ -360,6 +365,9 @@ def writer_runtime_branch_transitions(
                     support.graph_obligation_work_evidence
                 ),
                 terminal_certificates=support.terminal_certificates,
+                checked_terminal_certificate=(
+                    support.checked_terminal_certificate
+                ),
             )
             for support in branch_batch.terminal_supports
         ),

@@ -58,6 +58,7 @@ CORE_MODULES: tuple[str, ...] = (
     "support_artifact_schema",
     "support_enumeration",
     "stereo_witness",
+    "writer_branch_certificates",
     "writer_events",
     "writer_closure_candidate_branch_certificates",
     "writer_closure_candidate_lifecycle",

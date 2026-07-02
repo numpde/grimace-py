@@ -13,6 +13,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SOUTH_STAR_ROOT = REPO_ROOT / "python" / "grimace" / "_south_star1"
 WRITER_RUNTIME_PATH = SOUTH_STAR_ROOT / "writer_runtime.py"
 WRITER_SUPPORT_PATH = SOUTH_STAR_ROOT / "writer_support.py"
+WRITER_BRANCH_CERTIFICATES_PATH = (
+    SOUTH_STAR_ROOT / "writer_branch_certificates.py"
+)
 WRITER_CLOSURE_CANDIDATE_BRANCH_CERTIFICATES_PATH = (
     SOUTH_STAR_ROOT / "writer_closure_candidate_branch_certificates.py"
 )
@@ -90,6 +93,20 @@ class WriterRuntimeBoundaryTest(unittest.TestCase):
     def test_closure_candidate_lifecycle_stays_below_runtime(self) -> None:
         scan = scan_module_boundaries(
             WRITER_CLOSURE_CANDIDATE_LIFECYCLE_PATH,
+            banned_modules={
+                "audit_rdkit",
+                "rdkit_adapter",
+                "writer_online_decoder",
+                "writer_runtime",
+                "writer_support",
+            },
+        )
+
+        self.assertEqual(scan.violations, ())
+
+    def test_branch_certificates_stay_below_runtime(self) -> None:
+        scan = scan_module_boundaries(
+            WRITER_BRANCH_CERTIFICATES_PATH,
             banned_modules={
                 "audit_rdkit",
                 "rdkit_adapter",

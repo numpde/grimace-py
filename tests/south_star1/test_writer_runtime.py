@@ -10,7 +10,11 @@ from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import enumerate_prepared_writer_shaped_support
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
+from grimace._south_star1.writer_branch_certificates import (
+    writer_checked_terminal_support_certificate,
+)
 from grimace._south_star1.writer_frontier import WriterFrontierCursor
+from grimace._south_star1.writer_frontier import _checked_writer_frontier_branch_supports
 from grimace._south_star1.writer_stereo import EMPTY_RESIDUAL_SNAPSHOT
 from grimace._south_star1.writer_terminal_certificates import (
     WriterTerminalCertificateKind,
@@ -301,6 +305,11 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             state=state,
             include_counts=False,
         )
+        frontier = _checked_writer_frontier_branch_supports(
+            prepared,
+            state.snapshot.cursor,
+            include_counts=False,
+        )
         self.assertIsNotNone(branches.terminal)
         self.assertTrue(branches.terminal_supports)
         self.assertEqual(
@@ -335,6 +344,17 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             WriterTerminalCertificateKind.FINALIZED_STATE,
         )
         self.assertEqual(finalized.finalized_state, support.finalized_state)
+        self.assertIsNotNone(support.checked_terminal_certificate)
+        self.assertEqual(
+            tuple(
+                support.checked_terminal_certificate
+                for support in branches.terminal_supports
+            ),
+            tuple(
+                support.checked_terminal_certificate
+                for support in frontier.terminal_supports
+            ),
+        )
 
     def test_initial_runtime_state_has_no_terminal_supports(self) -> None:
         prepared = _prepare(cco_facts())
@@ -371,6 +391,54 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
                 terminal_stereo_lifecycle_evidence=(),
                 terminal_execution_capabilities=frozenset(),
                 terminal_residual_work_evidence=(),
+            )
+
+    def test_checked_terminal_certificate_rejects_zero_weight(self) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        state = advance_writer_runtime_state(
+            prepared=prepared,
+            state=state,
+            emitted_text="C",
+        )
+        state = advance_writer_runtime_state(
+            prepared=prepared,
+            state=state,
+            emitted_text="C",
+        )
+        state = advance_writer_runtime_state(
+            prepared=prepared,
+            state=state,
+            emitted_text="O",
+        )
+        branches = writer_runtime_branch_transitions(
+            prepared=prepared,
+            state=state,
+            include_counts=False,
+        )
+        support = branches.terminal_supports[0]
+
+        with self.assertRaisesRegex(SouthStarError, "nonpositive_parent_weight"):
+            writer_checked_terminal_support_certificate(
+                source_state=support.source_state,
+                finalized_state=support.finalized_state,
+                parent_weight=0,
+                terminal_execution_capabilities=(
+                    support.terminal_execution_capabilities
+                ),
+                terminal_residual_work_evidence=(
+                    support.terminal_residual_work_evidence
+                ),
+                terminal_stereo_lifecycle_evidence=(
+                    support.terminal_stereo_lifecycle_evidence
+                ),
+                graph_obligation_work_evidence=(
+                    support.graph_obligation_work_evidence
+                ),
+                terminal_certificates=support.terminal_certificates,
             )
 
 

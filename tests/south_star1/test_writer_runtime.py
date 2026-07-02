@@ -226,6 +226,26 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
                     emitted_text=transition.choice.emitted_text,
                 ),
             )
+            self.assertIsNotNone(transition.snapshot_step_certificate)
+            self.assertEqual(
+                transition.snapshot_step_certificate.emitted_text,
+                transition.choice.emitted_text,
+            )
+            self.assertEqual(
+                transition.snapshot_step_certificate.source_snapshot,
+                state.snapshot,
+            )
+            self.assertEqual(
+                transition.snapshot_step_certificate.advanced_snapshot,
+                transition.next_state.snapshot,
+            )
+            self.assertEqual(
+                transition.snapshot_step_certificate.successor_cursor,
+                transition.choice.successor,
+            )
+            self.assertTrue(
+                transition.snapshot_step_certificate.branch_certificates
+            )
 
     def test_choices_and_advance_delegate_to_checked_snapshot_path(self) -> None:
         prepared = _prepare(cco_facts())

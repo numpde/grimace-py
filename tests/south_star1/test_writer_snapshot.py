@@ -47,12 +47,22 @@ from grimace._south_star1.writer_frontier import writer_frontier_choices
 from grimace._south_star1.writer_snapshot import WriterDecoderBoundary
 from grimace._south_star1.writer_snapshot import WriterFrontierFrame
 from grimace._south_star1.writer_snapshot import WriterSearchSnapshot
+from grimace._south_star1.writer_snapshot import _writer_snapshot_advance_outcome_by_emitted_text
+from grimace._south_star1.writer_snapshot import _writer_snapshot_advance_sequence_outcome_by_emitted_texts
+from grimace._south_star1.writer_snapshot import _checked_writer_snapshot_prefix_read_outcome_after_emitted_texts
 from grimace._south_star1.writer_snapshot import _prepared_identity
+from grimace._south_star1.writer_snapshot import advance_writer_frontier_snapshot
 from grimace._south_star1.writer_snapshot import capture_writer_frontier_snapshot
 from grimace._south_star1.writer_snapshot import resume_writer_frontier_choices_from_snapshot
 from grimace._south_star1.writer_snapshot import validate_writer_cursor_against_prepared
 from grimace._south_star1.writer_snapshot import validate_writer_search_snapshot
 from grimace._south_star1.writer_snapshot import writer_frontier_cursor_from_snapshot
+from grimace._south_star1.writer_snapshot_certificates import (
+    writer_snapshot_replay_certificate,
+)
+from grimace._south_star1.writer_snapshot_certificates import (
+    writer_snapshot_step_certificate,
+)
 from grimace._south_star1.writer_state import ComponentCursor
 from grimace._south_star1.writer_state import ObligationState
 from grimace._south_star1.writer_state import ObligationStateKey
@@ -111,6 +121,239 @@ class WriterSnapshotTest(unittest.TestCase):
             count_writer_cursor_completions(prepared, snapshot.cursor),
             count_writer_cursor_completions(prepared, cursor),
         )
+
+    def test_snapshot_advance_emits_step_certificate(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options()
+        snapshot = capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=initial_writer_frontier_cursor(prepared, options),
+        )
+        emitted_text = writer_frontier_choices(
+            prepared,
+            snapshot.cursor,
+        ).choices[0].emitted_text
+
+        outcome = _writer_snapshot_advance_outcome_by_emitted_text(
+            snapshot,
+            prepared=prepared,
+            emitted_text=emitted_text,
+        )
+
+        certificate = outcome.step_certificate
+        self.assertIsNotNone(certificate)
+        self.assertEqual(certificate.emitted_text, emitted_text)
+        self.assertEqual(certificate.source_snapshot, snapshot)
+        self.assertEqual(certificate.advanced_snapshot, outcome.advanced_snapshot)
+        self.assertEqual(certificate.successor_cursor, outcome.choice.successor)
+        self.assertTrue(certificate.branch_certificates)
+
+    def test_snapshot_replay_certificate_tracks_prefix_steps(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options()
+        snapshot = capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=initial_writer_frontier_cursor(prepared, options),
+        )
+        first = writer_frontier_choices(
+            prepared,
+            snapshot.cursor,
+        ).choices[0].emitted_text
+        after_first = advance_writer_frontier_snapshot(
+            snapshot,
+            prepared=prepared,
+            emitted_text=first,
+        )
+        second = writer_frontier_choices(
+            prepared,
+            after_first.cursor,
+        ).choices[0].emitted_text
+
+        outcome = _writer_snapshot_advance_sequence_outcome_by_emitted_texts(
+            snapshot,
+            prepared=prepared,
+            emitted_texts=(first, second),
+        )
+
+        certificate = outcome.replay_certificate
+        self.assertIsNotNone(certificate)
+        self.assertEqual(certificate.emitted_texts, (first, second))
+        self.assertEqual(len(certificate.step_certificates), 2)
+        self.assertEqual(certificate.final_snapshot, outcome.current_snapshot)
+        self.assertEqual(
+            certificate.step_certificates[0].advanced_snapshot,
+            certificate.step_certificates[1].source_snapshot,
+        )
+
+    def test_empty_snapshot_replay_has_empty_certificate(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options()
+        snapshot = capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=initial_writer_frontier_cursor(prepared, options),
+        )
+
+        outcome = _writer_snapshot_advance_sequence_outcome_by_emitted_texts(
+            snapshot,
+            prepared=prepared,
+            emitted_texts=(),
+        )
+
+        certificate = outcome.replay_certificate
+        self.assertIsNotNone(certificate)
+        self.assertEqual(certificate.step_certificates, ())
+        self.assertEqual(certificate.final_snapshot, snapshot)
+
+    def test_prefix_read_exposes_replay_certificate(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options()
+        snapshot = capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=initial_writer_frontier_cursor(prepared, options),
+        )
+        emitted_text = writer_frontier_choices(
+            prepared,
+            snapshot.cursor,
+        ).choices[0].emitted_text
+
+        outcome = _checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
+            snapshot,
+            prepared=prepared,
+            emitted_texts=(emitted_text,),
+            include_counts=False,
+        )
+
+        self.assertIsNotNone(outcome.replay_certificate)
+        self.assertEqual(
+            outcome.replay_certificate.final_snapshot,
+            outcome.replay_outcome.advanced_snapshot,
+        )
+        self.assertEqual(
+            outcome.step_certificates,
+            outcome.replay_certificate.step_certificates,
+        )
+
+    def test_invalid_snapshot_advance_has_no_step_certificate(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options()
+        snapshot = capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=initial_writer_frontier_cursor(prepared, options),
+        )
+
+        outcome = _writer_snapshot_advance_outcome_by_emitted_text(
+            snapshot,
+            prepared=prepared,
+            emitted_text="not-a-choice",
+        )
+
+        self.assertTrue(outcome.invalid_emitted_text)
+        self.assertIsNone(outcome.step_certificate)
+
+    def test_snapshot_step_certificate_rejects_malformed_inputs(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options()
+        snapshot = capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=initial_writer_frontier_cursor(prepared, options),
+        )
+        emitted_text = writer_frontier_choices(
+            prepared,
+            snapshot.cursor,
+        ).choices[0].emitted_text
+        outcome = _writer_snapshot_advance_outcome_by_emitted_text(
+            snapshot,
+            prepared=prepared,
+            emitted_text=emitted_text,
+        )
+        certificate = outcome.step_certificate
+
+        with self.assertRaisesRegex(SouthStarError, "emitted_text_mismatch"):
+            writer_snapshot_step_certificate(
+                source_snapshot=snapshot,
+                emitted_text="wrong",
+                text_projection_certificate=(
+                    certificate.text_projection_certificate
+                ),
+                advanced_snapshot=outcome.advanced_snapshot,
+            )
+
+        with self.assertRaisesRegex(SouthStarError, "successor_cursor_mismatch"):
+            writer_snapshot_step_certificate(
+                source_snapshot=snapshot,
+                emitted_text=emitted_text,
+                text_projection_certificate=(
+                    certificate.text_projection_certificate
+                ),
+                advanced_snapshot=replace(
+                    outcome.advanced_snapshot,
+                    cursor=snapshot.cursor,
+                ),
+            )
+
+        with self.assertRaisesRegex(SouthStarError, "decoder_boundary_mismatch"):
+            writer_snapshot_step_certificate(
+                source_snapshot=snapshot,
+                emitted_text=emitted_text,
+                text_projection_certificate=(
+                    certificate.text_projection_certificate
+                ),
+                advanced_snapshot=replace(
+                    outcome.advanced_snapshot,
+                    decoder_boundary=snapshot.decoder_boundary,
+                ),
+            )
+
+        with self.assertRaisesRegex(SouthStarError, "missing_branch_certificates"):
+            writer_snapshot_step_certificate(
+                source_snapshot=snapshot,
+                emitted_text=emitted_text,
+                text_projection_certificate=replace(
+                    certificate.text_projection_certificate,
+                    branch_certificates=(),
+                ),
+                advanced_snapshot=outcome.advanced_snapshot,
+            )
+
+    def test_snapshot_replay_certificate_rejects_malformed_inputs(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options()
+        snapshot = capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=initial_writer_frontier_cursor(prepared, options),
+        )
+        emitted_text = writer_frontier_choices(
+            prepared,
+            snapshot.cursor,
+        ).choices[0].emitted_text
+        outcome = _writer_snapshot_advance_sequence_outcome_by_emitted_texts(
+            snapshot,
+            prepared=prepared,
+            emitted_texts=(emitted_text,),
+        )
+
+        with self.assertRaisesRegex(SouthStarError, "step_count_mismatch"):
+            writer_snapshot_replay_certificate(
+                source_snapshot=snapshot,
+                emitted_texts=(emitted_text,),
+                step_certificates=(),
+                final_snapshot=outcome.current_snapshot,
+            )
+
+        with self.assertRaisesRegex(SouthStarError, "final_snapshot_mismatch"):
+            writer_snapshot_replay_certificate(
+                source_snapshot=snapshot,
+                emitted_texts=(emitted_text,),
+                step_certificates=outcome.step_certificates,
+                final_snapshot=snapshot,
+            )
 
     def test_internal_cyclic_root_snapshot_round_trips_choices_and_counts(self) -> None:
         prepared = _prepare(triangle_facts())

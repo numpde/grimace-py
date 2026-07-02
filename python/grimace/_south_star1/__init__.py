@@ -71,6 +71,7 @@ CORE_MODULES: tuple[str, ...] = (
     "writer_ring_lifecycle",
     "writer_runtime",
     "writer_snapshot",
+    "writer_snapshot_certificates",
     "writer_state",
     "writer_stereo",
     "writer_stereo_branch_certificates",

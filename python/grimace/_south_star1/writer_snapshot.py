@@ -41,11 +41,14 @@ from .writer_frontier import WriterFrontierCursor
 from .writer_frontier import _WriterFrontierChoiceResidualAttachmentEvidence
 from .writer_frontier import _WriterFrontierChoiceSnapshot
 from .writer_frontier import _WriterFrontierChoiceSnapshotEntry
+from .writer_frontier import _checked_writer_frontier_branch_supports
 from .writer_frontier import _checked_writer_frontier_choice_snapshot
 from .writer_frontier import _raise_for_writer_frontier_choice_snapshot_blockers
 from .writer_frontier import _initial_writer_transition_frontier_cursor
 from .writer_frontier import _writer_frontier_choice_snapshot
 from .writer_frontier import iter_writer_frontier_support
+from .writer_snapshot_certificates import writer_snapshot_replay_certificate
+from .writer_snapshot_certificates import writer_snapshot_step_certificate
 from .writer_stereo import reconstruct_writer_local_order_records
 from .writer_stereo import reconstruct_writer_stereo_residual_snapshot
 from .writer_stereo import writer_closure_endpoint_relation
@@ -284,10 +287,12 @@ class _WriterSnapshotAdvanceOutcome:
     choice_snapshot: _WriterFrontierChoiceSnapshot
     choice: _WriterFrontierChoiceSnapshotEntry | None = None
     advanced_snapshot: WriterSearchSnapshot | None = None
+    step_certificate: object | None = None
 
     def __post_init__(self) -> None:
         has_choice = self.choice is not None
         has_advanced = self.advanced_snapshot is not None
+        has_certificate = self.step_certificate is not None
 
         if self.kind is _WriterSnapshotAdvanceOutcomeKind.ADVANCED:
             valid = (
@@ -301,12 +306,14 @@ class _WriterSnapshotAdvanceOutcome:
                 self.choice_snapshot.blocked
                 and not has_choice
                 and not has_advanced
+                and not has_certificate
             )
         elif self.kind is _WriterSnapshotAdvanceOutcomeKind.INVALID_EMITTED_TEXT:
             valid = (
                 not self.choice_snapshot.blocked
                 and not has_choice
                 and not has_advanced
+                and not has_certificate
             )
         else:
             valid = False
@@ -372,6 +379,7 @@ class _WriterSnapshotAdvanceSequenceOutcome:
     emitted_texts: tuple[str, ...]
     step_outcomes: tuple[_WriterSnapshotAdvanceOutcome, ...]
     current_snapshot: WriterSearchSnapshot
+    replay_certificate: object | None = None
 
     def __post_init__(self) -> None:
         if tuple(
@@ -413,6 +421,11 @@ class _WriterSnapshotAdvanceSequenceOutcome:
         if self.kind is _WriterSnapshotAdvanceSequenceOutcomeKind.ADVANCED:
             if len(self.step_outcomes) != len(self.emitted_texts):
                 return False
+            if (
+                self.replay_certificate is not None
+                and self.replay_certificate.final_snapshot != self.current_snapshot
+            ):
+                return False
 
             for step in self.step_outcomes:
                 if (
@@ -436,6 +449,7 @@ class _WriterSnapshotAdvanceSequenceOutcome:
                 and self.step_outcomes[-1].kind
                 is _WriterSnapshotAdvanceOutcomeKind.BLOCKED
                 and self.current_snapshot == self.step_outcomes[-1].source_snapshot
+                and self.replay_certificate is None
             )
 
         if (
@@ -447,6 +461,7 @@ class _WriterSnapshotAdvanceSequenceOutcome:
                 and self.step_outcomes[-1].kind
                 is _WriterSnapshotAdvanceOutcomeKind.INVALID_EMITTED_TEXT
                 and self.current_snapshot == self.step_outcomes[-1].source_snapshot
+                and self.replay_certificate is None
             )
 
         return False
@@ -507,6 +522,14 @@ class _WriterSnapshotAdvanceSequenceOutcome:
             step
             for step in self.step_outcomes
             if step.kind is _WriterSnapshotAdvanceOutcomeKind.ADVANCED
+        )
+
+    @property
+    def step_certificates(self) -> tuple[object, ...]:
+        return tuple(
+            step.step_certificate
+            for step in self.advanced_step_outcomes
+            if step.step_certificate is not None
         )
 
     @property
@@ -697,6 +720,14 @@ class _WriterSnapshotReplayChoiceSnapshotOutcome:
     def replayed_selected_policy_families(self):
         return self.sequence_outcome.selected_policy_families
 
+    @property
+    def replay_certificate(self):
+        return self.sequence_outcome.replay_certificate
+
+    @property
+    def step_certificates(self) -> tuple[object, ...]:
+        return self.sequence_outcome.step_certificates
+
 
 @dataclass(frozen=True, slots=True)
 class _WriterSnapshotPrefixReadOutcome:
@@ -759,6 +790,14 @@ class _WriterSnapshotPrefixReadOutcome:
     @property
     def emitted_texts(self) -> tuple[str, ...]:
         return self.replay_outcome.emitted_texts
+
+    @property
+    def replay_certificate(self):
+        return self.replay_outcome.replay_certificate
+
+    @property
+    def step_certificates(self) -> tuple[object, ...]:
+        return self.replay_outcome.step_certificates
 
     @property
     def choice_snapshot(self) -> _WriterFrontierChoiceSnapshot | None:
@@ -1091,6 +1130,59 @@ def _writer_search_snapshot_after_checked_branch_support(
     )
 
 
+def _checked_text_projection_certificate_for_emitted_text(
+    *,
+    prepared: SouthStarPreparedMol,
+    snapshot: WriterSearchSnapshot,
+    emitted_text: str,
+):
+    batch = _checked_writer_frontier_branch_supports(
+        prepared,
+        snapshot.cursor,
+        include_counts=False,
+    )
+    matches = tuple(
+        certificate
+        for certificate in batch.text_choice_projection_certificates
+        if certificate.emitted_text == emitted_text
+    )
+    if len(matches) != 1:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "checked text projection certificate mismatch",
+        )
+    return matches[0]
+
+
+def _writer_search_snapshot_after_certified_emitted_text(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    emitted_text: str,
+):
+    projection_certificate = (
+        _checked_text_projection_certificate_for_emitted_text(
+            prepared=prepared,
+            snapshot=snapshot,
+            emitted_text=emitted_text,
+        )
+    )
+    advanced_snapshot = (
+        _writer_search_snapshot_after_checked_frontier_cursor_step(
+            snapshot,
+            prepared=prepared,
+            cursor=projection_certificate.successor_cursor,
+        )
+    )
+    certificate = writer_snapshot_step_certificate(
+        source_snapshot=snapshot,
+        emitted_text=emitted_text,
+        text_projection_certificate=projection_certificate,
+        advanced_snapshot=advanced_snapshot,
+    )
+    return advanced_snapshot, certificate
+
+
 def _writer_snapshot_advance_outcome_by_emitted_text(
     snapshot: WriterSearchSnapshot,
     *,
@@ -1125,10 +1217,12 @@ def _writer_snapshot_advance_outcome_by_emitted_text(
             choice_snapshot=choice_snapshot,
         )
 
-    advanced_snapshot = _writer_search_snapshot_after_checked_choice(
-        snapshot,
-        prepared=prepared,
-        choice=choice,
+    advanced_snapshot, step_certificate = (
+        _writer_search_snapshot_after_certified_emitted_text(
+            snapshot,
+            prepared=prepared,
+            emitted_text=emitted_text,
+        )
     )
 
     return _WriterSnapshotAdvanceOutcome(
@@ -1138,6 +1232,7 @@ def _writer_snapshot_advance_outcome_by_emitted_text(
         choice_snapshot=choice_snapshot,
         choice=choice,
         advanced_snapshot=advanced_snapshot,
+        step_certificate=step_certificate,
     )
 
 
@@ -1194,12 +1289,24 @@ def _writer_snapshot_advance_sequence_outcome_by_emitted_texts(
             f"unknown writer snapshot advance step outcome: {step.kind!r}",
         )
 
+    replay_certificate = writer_snapshot_replay_certificate(
+        source_snapshot=snapshot,
+        emitted_texts=emitted_texts,
+        step_certificates=tuple(
+            step.step_certificate
+            for step in step_outcomes
+            if step.step_certificate is not None
+        ),
+        final_snapshot=current,
+    )
+
     return _WriterSnapshotAdvanceSequenceOutcome(
         kind=_WriterSnapshotAdvanceSequenceOutcomeKind.ADVANCED,
         source_snapshot=snapshot,
         emitted_texts=emitted_texts,
         step_outcomes=tuple(step_outcomes),
         current_snapshot=current,
+        replay_certificate=replay_certificate,
     )
 
 

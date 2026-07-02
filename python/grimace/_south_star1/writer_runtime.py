@@ -19,6 +19,7 @@ from .writer_snapshot import _count_writer_frontier_support_after_emitted_texts
 from .writer_snapshot import _iter_writer_frontier_support_suffixes_after_emitted_texts
 from .writer_snapshot import _writer_search_snapshot_after_checked_branch_support
 from .writer_snapshot import _writer_search_snapshot_after_checked_choice
+from .writer_snapshot import _writer_search_snapshot_after_certified_emitted_text
 from .writer_snapshot import advance_writer_frontier_snapshot
 from .writer_snapshot import capture_initial_writer_frontier_snapshot
 from .writer_snapshot import validate_writer_search_snapshot
@@ -33,6 +34,7 @@ class WriterRuntimeState:
 class WriterRuntimeChoiceTransition:
     choice: WriterFrontierChoice
     next_state: WriterRuntimeState
+    snapshot_step_certificate: object | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -270,13 +272,17 @@ def writer_runtime_choice_transitions(
         transitions=tuple(
             WriterRuntimeChoiceTransition(
                 choice=choice,
-                next_state=_writer_runtime_state_after_checked_choice(
+                next_state=next_state,
+                snapshot_step_certificate=step_certificate,
+            )
+            for choice in branch_batch.choices.choices
+            for next_state, step_certificate in (
+                _writer_runtime_state_after_certified_choice_text(
                     prepared=prepared,
                     state=state,
                     choice=choice,
                 ),
             )
-            for choice in branch_batch.choices.choices
         ),
     )
 
@@ -426,6 +432,20 @@ def _writer_runtime_state_after_checked_choice(
             choice=choice,
         )
     )
+
+
+def _writer_runtime_state_after_certified_choice_text(
+    *,
+    prepared: SouthStarPreparedMol,
+    state: WriterRuntimeState,
+    choice: WriterFrontierChoice,
+) -> tuple[WriterRuntimeState, object]:
+    snapshot, certificate = _writer_search_snapshot_after_certified_emitted_text(
+        state.snapshot,
+        prepared=prepared,
+        emitted_text=choice.emitted_text,
+    )
+    return WriterRuntimeState(snapshot), certificate
 
 
 def _writer_runtime_state_after_checked_branch_support(

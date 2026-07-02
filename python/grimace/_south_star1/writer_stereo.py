@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from enum import Enum
 from typing import TYPE_CHECKING
 from typing import Literal
 
@@ -108,12 +109,39 @@ class WriterStereoPolicyBlocker:
     operation: str = ""
 
 
+class WriterStereoLifecycleOutcomeKind(Enum):
+    EVENT_RECORDED = "event_recorded"
+    RESIDUAL_RESTRICTED = "residual_restricted"
+    RESIDUAL_DISCHARGED = "residual_discharged"
+    RECORD_AND_RESTRICT = "record_and_restrict"
+
+
+@dataclass(frozen=True, slots=True)
+class WriterStereoLifecycleEvidence:
+    event: WriterEvent
+    source_residual_snapshot: object
+    successor_residual_snapshot: object
+    source_atom_occurrences: tuple[object, ...]
+    successor_atom_occurrences: tuple[object, ...]
+    source_bond_occurrences: tuple[object, ...]
+    successor_bond_occurrences: tuple[object, ...]
+    source_local_orders: tuple[object, ...]
+    successor_local_orders: tuple[object, ...]
+    capabilities: frozenset[object]
+    residual_work_evidence: tuple[object, ...]
+    outcome_kind: WriterStereoLifecycleOutcomeKind
+
+
 @dataclass(frozen=True, slots=True)
 class _WriterStereoMutation:
     state: "WriterStereoState | None"
     capabilities: frozenset[_WriterExecutionCapabilityKind] = frozenset()
     residual_work_evidence: tuple[
         WriterResidualPropagationWorkEvidence,
+        ...
+    ] = ()
+    stereo_lifecycle_evidence: tuple[
+        WriterStereoLifecycleEvidence,
         ...
     ] = ()
     stereo_policy_blockers: tuple[WriterStereoPolicyBlocker, ...] = ()
@@ -127,6 +155,10 @@ class _WriterStereoAdvanceOutcome:
     ] = frozenset()
     residual_work_evidence: tuple[
         WriterResidualPropagationWorkEvidence,
+        ...
+    ] = ()
+    stereo_lifecycle_evidence: tuple[
+        WriterStereoLifecycleEvidence,
         ...
     ] = ()
     stereo_policy_blockers: tuple[WriterStereoPolicyBlocker, ...] = ()
@@ -427,8 +459,10 @@ def advance_writer_stereo_state_with_evidence(
     state = stereo_state
     capabilities: set[_WriterExecutionCapabilityKind] = set()
     work_evidence: list[WriterResidualPropagationWorkEvidence] = []
+    lifecycle_evidence: list[WriterStereoLifecycleEvidence] = []
     stereo_policy_blockers: list[WriterStereoPolicyBlocker] = []
     for event in events:
+        source_state = state
         if isinstance(event, WriterAtomEmitted):
             mutation = _on_atom_emitted(prepared, state, event)
         elif isinstance(event, WriterBondEmitted):
@@ -449,13 +483,85 @@ def advance_writer_stereo_state_with_evidence(
         state = mutation.state
         capabilities.update(mutation.capabilities)
         work_evidence.extend(mutation.residual_work_evidence)
+        lifecycle_evidence.extend(mutation.stereo_lifecycle_evidence)
+        evidence = _stereo_lifecycle_evidence_for_event(
+            event=event,
+            source_state=source_state,
+            successor_state=state,
+            capabilities=mutation.capabilities,
+            residual_work_evidence=mutation.residual_work_evidence,
+        )
+        if evidence is not None:
+            lifecycle_evidence.append(evidence)
         stereo_policy_blockers.extend(mutation.stereo_policy_blockers)
     return _WriterStereoAdvanceOutcome(
         state=state,
         execution_capabilities=frozenset(capabilities),
         residual_work_evidence=tuple(work_evidence),
+        stereo_lifecycle_evidence=tuple(lifecycle_evidence),
         stereo_policy_blockers=tuple(stereo_policy_blockers),
     )
+
+
+def _stereo_lifecycle_evidence_for_event(
+    *,
+    event: WriterEvent,
+    source_state: "WriterStereoState",
+    successor_state: "WriterStereoState",
+    capabilities: frozenset[object],
+    residual_work_evidence: tuple[object, ...],
+) -> WriterStereoLifecycleEvidence | None:
+    if (
+        source_state == successor_state
+        and not capabilities
+        and not residual_work_evidence
+    ):
+        return None
+
+    return WriterStereoLifecycleEvidence(
+        event=event,
+        source_residual_snapshot=source_state.residual_snapshot,
+        successor_residual_snapshot=successor_state.residual_snapshot,
+        source_atom_occurrences=source_state.atom_occurrences,
+        successor_atom_occurrences=successor_state.atom_occurrences,
+        source_bond_occurrences=source_state.bond_occurrences,
+        successor_bond_occurrences=successor_state.bond_occurrences,
+        source_local_orders=source_state.local_orders,
+        successor_local_orders=successor_state.local_orders,
+        capabilities=frozenset(capabilities),
+        residual_work_evidence=tuple(residual_work_evidence),
+        outcome_kind=_stereo_lifecycle_outcome_kind(
+            source_state=source_state,
+            successor_state=successor_state,
+            capabilities=capabilities,
+            residual_work_evidence=residual_work_evidence,
+        ),
+    )
+
+
+def _stereo_lifecycle_outcome_kind(
+    *,
+    source_state: "WriterStereoState",
+    successor_state: "WriterStereoState",
+    capabilities: frozenset[object],
+    residual_work_evidence: tuple[object, ...],
+) -> WriterStereoLifecycleOutcomeKind:
+    recorded = (
+        source_state.atom_occurrences != successor_state.atom_occurrences
+        or source_state.bond_occurrences != successor_state.bond_occurrences
+        or source_state.local_orders != successor_state.local_orders
+    )
+    restricted = bool(residual_work_evidence)
+    if recorded and restricted:
+        return WriterStereoLifecycleOutcomeKind.RECORD_AND_RESTRICT
+    if restricted:
+        return WriterStereoLifecycleOutcomeKind.RESIDUAL_RESTRICTED
+    if (
+        _WriterExecutionCapabilityKind.RESIDUAL_FACTOR_DISCHARGE
+        in capabilities
+    ):
+        return WriterStereoLifecycleOutcomeKind.RESIDUAL_DISCHARGED
+    return WriterStereoLifecycleOutcomeKind.EVENT_RECORDED
 
 
 def terminal_writer_stereo_state(

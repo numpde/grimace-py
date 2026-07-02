@@ -90,6 +90,8 @@ class WriterRuntimeBranchTransition:
     closure_candidate_branch_certificates: tuple[object, ...]
     residual_attachment_lifecycle_evidence: tuple[object, ...]
     residual_attachment_branch_certificates: tuple[object, ...]
+    stereo_lifecycle_evidence: tuple[object, ...]
+    stereo_branch_certificates: tuple[object, ...]
     residual_attachment_policy_evidence: tuple[object, ...]
     next_state: WriterRuntimeState
 
@@ -316,6 +318,8 @@ def writer_runtime_branch_transitions(
                 residual_attachment_branch_certificates=(
                     support.residual_attachment_branch_certificates
                 ),
+                stereo_lifecycle_evidence=support.stereo_lifecycle_evidence,
+                stereo_branch_certificates=support.stereo_branch_certificates,
                 residual_attachment_policy_evidence=(
                     support.residual_attachment_policy_evidence
                 ),

@@ -123,6 +123,7 @@ class WriterTransition:
         WriterFiniteRelationWorkEvidence,
         ...
     ] = ()
+    stereo_lifecycle_evidence: tuple[object, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.emitted_text:
@@ -5277,6 +5278,9 @@ def _transition(
         semantic_execution_capabilities=stereo_outcome.execution_capabilities,
         residual_work_evidence=stereo_outcome.residual_work_evidence,
         finite_relation_work_evidence=finite_relation_work_evidence,
+        stereo_lifecycle_evidence=(
+            stereo_outcome.stereo_lifecycle_evidence
+        ),
     )
 
 

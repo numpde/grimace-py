@@ -58,6 +58,7 @@ from .writer_state import writer_state_key_sort_tuple
 from .writer_ring_lifecycle import validate_writer_ring_lifecycle_transition
 from .writer_stereo import initial_writer_stereo_state
 from .writer_stereo import WriterStereoPolicyBlocker
+from .writer_stereo_branch_certificates import writer_stereo_branch_certificates
 from .writer_transitions import _WriterActiveEmittedGraphPolicyBlocker
 from .writer_transitions import _WriterActiveEmittedGraphPolicyDecision
 from .writer_transitions import _WriterActiveChildSelectionKind
@@ -304,6 +305,8 @@ class _WriterFrontierBranchSupport:
     closure_candidate_branch_certificates: tuple[object, ...] = ()
     residual_attachment_lifecycle_evidence: tuple[object, ...] = ()
     residual_attachment_branch_certificates: tuple[object, ...] = ()
+    stereo_lifecycle_evidence: tuple[object, ...] = ()
+    stereo_branch_certificates: tuple[object, ...] = ()
     residual_attachment_policy_evidence: tuple[
         "_WriterFrontierResidualAttachmentEvidenceGroup",
         ...,
@@ -2394,6 +2397,9 @@ def _writer_frontier_branch_support_from_next_token_support(
             graph_action_surface=support.graph_action_surface,
         )
     )
+    stereo_lifecycle_evidence = tuple(
+        getattr(transition, "stereo_lifecycle_evidence", ())
+    )
     capabilities = set(support.execution_capabilities)
     if _branch_support_has_open_ring_endpoint_residual_resolution(
         support=support,
@@ -2448,6 +2454,11 @@ def _writer_frontier_branch_support_from_next_token_support(
             ),
         )
     )
+    stereo_branch_certificates = writer_stereo_branch_certificates(
+        execution_capabilities=execution_capabilities,
+        stereo_lifecycle_evidence=stereo_lifecycle_evidence,
+        events=transition.events,
+    )
 
     return _WriterFrontierBranchSupport(
         emitted_text=support.emitted_text,
@@ -2479,6 +2490,8 @@ def _writer_frontier_branch_support_from_next_token_support(
         residual_attachment_branch_certificates=(
             residual_attachment_branch_certificates
         ),
+        stereo_lifecycle_evidence=stereo_lifecycle_evidence,
+        stereo_branch_certificates=stereo_branch_certificates,
         residual_attachment_policy_evidence=policy_evidence,
     )
 

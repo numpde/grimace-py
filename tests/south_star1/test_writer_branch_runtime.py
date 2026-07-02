@@ -23,6 +23,9 @@ from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
 from grimace._south_star1.writer_events import WriterRingEndpointEmitted
 from grimace._south_star1.writer_events import WriterRingLabelAllocated
+from grimace._south_star1.writer_events import WriterAtomEmitted
+from grimace._south_star1.writer_events import WriterBondEmitted
+from grimace._south_star1.writer_events import WriterLocalOrderClosed
 from grimace._south_star1.writer_capabilities import _WriterExecutionCapabilityKind
 from grimace._south_star1.writer_closure_candidate_branch_certificates import (
     WriterClosureCandidateBranchCertificateKind,
@@ -70,6 +73,12 @@ from grimace._south_star1.writer_residual_attachment_lifecycle import (
 from grimace._south_star1.writer_residual_attachment_lifecycle import (
     validate_writer_residual_attachment_lifecycle_transition,
 )
+from grimace._south_star1.writer_stereo_branch_certificates import (
+    WriterStereoBranchCertificateKind,
+)
+from grimace._south_star1.writer_stereo_branch_certificates import (
+    writer_stereo_branch_certificates,
+)
 from grimace._south_star1.writer_runtime import count_writer_runtime_branch_completions
 from grimace._south_star1.writer_runtime import initial_writer_runtime_state
 from grimace._south_star1.writer_runtime import writer_runtime_branch_transitions
@@ -90,6 +99,8 @@ from grimace._south_star1.writer_state import WriterStereoState
 from grimace._south_star1.writer_state import writer_state_key
 from tests.south_star1.helpers import cco_facts
 from tests.south_star1.helpers import cyclopropane_facts
+from tests.south_star1.helpers import directional_facts
+from tests.south_star1.helpers import tetrahedral_facts
 from tests.south_star1.helpers import atom
 from tests.south_star1.helpers import bond
 from tests.south_star1.helpers import single_bond
@@ -1524,6 +1535,110 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 residual_attachment_lifecycle_evidence=(),
             )
 
+    def test_tetra_atom_token_capability_is_stereo_certified(self) -> None:
+        capability = _WriterExecutionCapabilityKind.TETRA_TOKEN_RESTRICTION
+        prepared = _prepare(tetrahedral_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _find_checked_branch_support(
+            prepared,
+            initial,
+            lambda support: capability in support.execution_capabilities,
+        )
+
+        self.assertTrue(support.stereo_lifecycle_evidence)
+        certificate = _single_stereo_branch_certificate(
+            support,
+            WriterStereoBranchCertificateKind.TETRA_TOKEN_RESTRICTED,
+        )
+        self.assertIsInstance(certificate.event, WriterAtomEmitted)
+        self.assertIn(capability, certificate.lifecycle_evidence.capabilities)
+        self.assertTrue(certificate.residual_work_evidence)
+        self.assertEqual(
+            certificate.residual_work_evidence[0].operation,
+            "tetrahedral atom-token restriction",
+        )
+
+    def test_tetra_local_order_capability_is_stereo_certified(self) -> None:
+        capability = (
+            _WriterExecutionCapabilityKind.TETRA_LOCAL_ORDER_RESTRICTION
+        )
+        prepared = _prepare(tetrahedral_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _find_checked_branch_support(
+            prepared,
+            initial,
+            lambda support: capability in support.execution_capabilities,
+        )
+
+        certificate = _single_stereo_branch_certificate(
+            support,
+            WriterStereoBranchCertificateKind.TETRA_LOCAL_ORDER_RESTRICTED,
+        )
+        self.assertIsInstance(certificate.event, WriterLocalOrderClosed)
+        self.assertIn(capability, certificate.lifecycle_evidence.capabilities)
+        self.assertEqual(
+            certificate.residual_work_evidence[0].operation,
+            "tetrahedral local-order factor closure",
+        )
+
+    def test_directional_carrier_capability_is_stereo_certified(self) -> None:
+        capability = (
+            _WriterExecutionCapabilityKind.DIRECTIONAL_CARRIER_RESTRICTION
+        )
+        prepared = _prepare(directional_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _find_checked_branch_support(
+            prepared,
+            initial,
+            lambda support: capability in support.execution_capabilities,
+        )
+
+        certificate = _single_stereo_branch_certificate(
+            support,
+            WriterStereoBranchCertificateKind.DIRECTIONAL_CARRIER_RESTRICTED,
+        )
+        self.assertIsInstance(certificate.event, WriterBondEmitted)
+        self.assertIn(capability, certificate.lifecycle_evidence.capabilities)
+        self.assertEqual(
+            certificate.residual_work_evidence[0].operation,
+            "directional carrier-mark restriction",
+        )
+
+    def test_residual_factor_discharge_capability_is_stereo_certified(
+        self,
+    ) -> None:
+        capability = _WriterExecutionCapabilityKind.RESIDUAL_FACTOR_DISCHARGE
+        prepared = _prepare(directional_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _find_checked_branch_support(
+            prepared,
+            initial,
+            lambda support: capability in support.execution_capabilities,
+        )
+
+        certificate = _single_stereo_branch_certificate(
+            support,
+            WriterStereoBranchCertificateKind.RESIDUAL_FACTOR_DISCHARGED,
+        )
+        self.assertIn(capability, certificate.lifecycle_evidence.capabilities)
+        self.assertNotEqual(
+            certificate.lifecycle_evidence.source_residual_snapshot,
+            certificate.lifecycle_evidence.successor_residual_snapshot,
+        )
+
+    def test_stereo_certificate_requires_matching_lifecycle(self) -> None:
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "tetra_token_restriction_lacks_exact_lifecycle",
+        ):
+            writer_stereo_branch_certificates(
+                execution_capabilities=frozenset(
+                    {_WriterExecutionCapabilityKind.TETRA_TOKEN_RESTRICTION}
+                ),
+                stereo_lifecycle_evidence=(),
+                events=(),
+            )
+
     def test_closure_candidate_liveness_is_graph_owned(self) -> None:
         source = inspect.getsource(writer_transitions)
 
@@ -1687,6 +1802,14 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 support.residual_attachment_branch_certificates,
             )
             self.assertEqual(
+                branch.stereo_lifecycle_evidence,
+                support.stereo_lifecycle_evidence,
+            )
+            self.assertEqual(
+                branch.stereo_branch_certificates,
+                support.stereo_branch_certificates,
+            )
+            self.assertEqual(
                 branch.residual_attachment_policy_evidence,
                 support.residual_attachment_policy_evidence,
             )
@@ -1748,6 +1871,22 @@ def _single_residual_attachment_branch_certificate(
     if len(matches) != 1:
         raise AssertionError(
             f"expected exactly one residual-attachment certificate {kind!r}"
+        )
+    return matches[0]
+
+
+def _single_stereo_branch_certificate(
+    support,
+    kind: WriterStereoBranchCertificateKind,
+):
+    matches = tuple(
+        certificate
+        for certificate in support.stereo_branch_certificates
+        if certificate.kind is kind
+    )
+    if len(matches) != 1:
+        raise AssertionError(
+            f"expected exactly one stereo certificate {kind!r}"
         )
     return matches[0]
 

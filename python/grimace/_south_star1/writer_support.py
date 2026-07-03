@@ -9,7 +9,6 @@ from .enumerate import SupportImage
 from .prepared_runtime import SouthStarPreparedMol
 from .prepared_runtime import SouthStarRuntimeOptions
 from .writer_runtime import WriterRuntimeState
-from .writer_runtime import count_writer_runtime_completions
 from .writer_runtime import count_writer_runtime_support
 from .writer_runtime import initial_writer_runtime_state
 from .writer_runtime import iter_writer_runtime_support
@@ -45,10 +44,6 @@ def _writer_support_image_from_runtime_state(
     certificate = writer_runtime_support_image_certificate(
         prepared=prepared,
         state=state,
-        witness_count=count_writer_runtime_completions(
-            prepared=prepared,
-            state=state,
-        ),
     )
     return SupportImage(
         witness_count=certificate.witness_count,

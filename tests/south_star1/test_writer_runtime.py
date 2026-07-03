@@ -14,6 +14,18 @@ from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_fa
 from grimace._south_star1.writer_branch_certificates import (
     writer_checked_terminal_support_certificate,
 )
+from grimace._south_star1.writer_count_certificates import (
+    WriterBranchCompletionTermCertificate,
+)
+from grimace._south_star1.writer_count_certificates import (
+    writer_branch_completion_term_certificate,
+)
+from grimace._south_star1.writer_count_certificates import (
+    writer_cursor_completion_count_certificate,
+)
+from grimace._south_star1.writer_count_certificates import (
+    writer_state_completion_count_certificate,
+)
 from grimace._south_star1.writer_frontier import WriterFrontierCursor
 from grimace._south_star1.writer_frontier import _checked_writer_frontier_branch_supports
 from grimace._south_star1.writer_projection_certificates import (
@@ -31,6 +43,7 @@ from grimace._south_star1.writer_runtime import advance_writer_runtime_state
 from grimace._south_star1.writer_runtime import count_writer_runtime_branch_completions
 from grimace._south_star1.writer_runtime import count_writer_runtime_completions
 from grimace._south_star1.writer_runtime import count_writer_runtime_support
+from grimace._south_star1.writer_runtime import writer_runtime_branch_completion_count_certificate
 from grimace._south_star1.writer_runtime import initial_writer_runtime_state
 from grimace._south_star1.writer_runtime import iter_writer_runtime_certified_support
 from grimace._south_star1.writer_runtime import iter_writer_runtime_support
@@ -99,6 +112,25 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             image_certificate.string_certificates,
             tuple(item.certificate for item in certified),
         )
+        self.assertIsNotNone(image_certificate.witness_count_certificate)
+        assert image_certificate.witness_count_certificate is not None
+        self.assertEqual(
+            image_certificate.witness_count,
+            image_certificate.witness_count_certificate.completion_count,
+        )
+        count_certificate = (
+            writer_runtime_branch_completion_count_certificate(
+                prepared=prepared,
+                state=state,
+            )
+        )
+        self.assertEqual(
+            count_writer_runtime_branch_completions(
+                prepared=prepared,
+                state=state,
+            ),
+            count_certificate.completion_count,
+        )
         for item in certified:
             certificate = item.certificate
             self.assertEqual(item.string, certificate.string)
@@ -116,6 +148,90 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             ),
             support.witness_count,
         )
+
+    def test_count_certificate_matches_counted_completions(self) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        count_certificate = writer_runtime_branch_completion_count_certificate(
+            prepared=prepared,
+            state=state,
+        )
+        self.assertEqual(
+            count_writer_runtime_branch_completions(
+                prepared=prepared,
+                state=state,
+            ),
+            count_certificate.completion_count,
+        )
+
+    def test_count_certificate_state_term_invariants(self) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        count_certificate = writer_runtime_branch_completion_count_certificate(
+            prepared=prepared,
+            state=state,
+        )
+
+        state_key, _, state_count = count_certificate.state_count_certificates[0]
+        self.assertEqual(
+            state_count.completion_count,
+            state_count.terminal_count
+            + sum(term.successor_count for term in state_count.branch_terms),
+        )
+        if state_count.terminal_projection_certificate is not None:
+            self.assertEqual(
+                state_count.terminal_projection_certificate.terminal.completion_count,
+                state_count.terminal_count,
+            )
+        self.assertTrue(
+            all(
+                isinstance(term, WriterBranchCompletionTermCertificate)
+                for term in state_count.branch_terms
+            )
+        )
+
+        if state_count.branch_terms:
+            term = state_count.branch_terms[0]
+            self.assertEqual(
+                term.branch_certificate.successor_state,
+                term.successor_count_certificate.state_count_certificates[0][0],
+            )
+
+    def test_count_certificate_rejects_malformed_state_data(self) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        support_cert = writer_runtime_branch_completion_count_certificate(
+            prepared=prepared,
+            state=state,
+        )
+        state_key, _, state_count = support_cert.state_count_certificates[0]
+        self.assertIsNotNone(state_count)
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "terminal_count_without_terminal_projection",
+        ):
+            writer_state_completion_count_certificate(
+                state_key=state_key,
+                terminal_projection_certificate=None,
+                terminal_count=1,
+                branch_terms=state_count.branch_terms,
+            )
+
+        with self.assertRaises(SouthStarError):
+            writer_cursor_completion_count_certificate(
+                cursor=state.snapshot.cursor,
+                state_count_certificates=((state_key, 0, state_count),),
+            )
 
     def test_branch_transition_batch_sits_below_text_projection(self) -> None:
         prepared = _prepare(cco_facts())

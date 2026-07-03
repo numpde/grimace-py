@@ -11,7 +11,9 @@ from .writer_frontier import WriterFrontierChoice
 from .writer_frontier import WriterFrontierChoices
 from .writer_frontier import WriterFrontierTerminal
 from .writer_frontier import _checked_writer_frontier_branch_supports
-from .writer_frontier import _count_checked_writer_frontier_branch_completions
+from .writer_frontier import (
+    _checked_writer_frontier_branch_completion_count_certificate,
+)
 from .writer_frontier import _writer_frontier_diagnostics
 from .writer_snapshot import WriterDecoderBoundary
 from .writer_snapshot import WriterSearchSnapshot
@@ -497,8 +499,19 @@ def count_writer_runtime_branch_completions(
     prepared: SouthStarPreparedMol,
     state: WriterRuntimeState,
 ) -> int:
+    return writer_runtime_branch_completion_count_certificate(
+        prepared=prepared,
+        state=state,
+    ).completion_count
+
+
+def writer_runtime_branch_completion_count_certificate(
+    *,
+    prepared: SouthStarPreparedMol,
+    state: WriterRuntimeState,
+):
     validate_writer_search_snapshot(state.snapshot, prepared=prepared)
-    return _count_checked_writer_frontier_branch_completions(
+    return _checked_writer_frontier_branch_completion_count_certificate(
         prepared,
         state.snapshot.cursor,
     )
@@ -536,7 +549,7 @@ def writer_runtime_support_image_certificate(
     *,
     prepared: SouthStarPreparedMol,
     state: WriterRuntimeState,
-    witness_count: int,
+    witness_count: int | None = None,
 ):
     certified = tuple(
         iter_writer_runtime_certified_support(
@@ -544,12 +557,20 @@ def writer_runtime_support_image_certificate(
             state=state,
         )
     )
+    count_certificate = writer_runtime_branch_completion_count_certificate(
+        prepared=prepared,
+        state=state,
+    )
+    if witness_count is None:
+        witness_count = count_certificate.completion_count
+
     from .writer_support_certificates import writer_support_image_certificate
 
     return writer_support_image_certificate(
         source_snapshot=state.snapshot,
         string_certificates=tuple(item.certificate for item in certified),
         witness_count=witness_count,
+        witness_count_certificate=count_certificate,
     )
 
 
@@ -572,6 +593,7 @@ __all__ = (
     "writer_runtime_choice_transitions",
     "writer_runtime_choices",
     "writer_runtime_diagnostics",
+    "writer_runtime_branch_completion_count_certificate",
     "writer_runtime_has_eos",
     "writer_runtime_state_from_snapshot",
     "writer_runtime_terminal",

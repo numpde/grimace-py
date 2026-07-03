@@ -67,6 +67,12 @@ from grimace._south_star1.writer_graph_obligations import writer_graph_obligatio
 from grimace._south_star1.writer_projection_certificates import (
     writer_text_choice_projection_certificates,
 )
+from grimace._south_star1.writer_count_certificates import (
+    writer_cursor_completion_count_certificate,
+)
+from grimace._south_star1.writer_count_certificates import (
+    writer_state_completion_count_certificate,
+)
 from grimace._south_star1.writer_residual_attachment_branch_certificates import (
     WriterResidualAttachmentBranchCertificateKind,
 )
@@ -91,6 +97,9 @@ from grimace._south_star1.writer_runtime import writer_runtime_branch_transition
 from grimace._south_star1.writer_runtime import writer_runtime_choice_transitions
 from grimace._south_star1.writer_runtime import writer_runtime_choices
 from grimace._south_star1.writer_runtime import writer_runtime_diagnostics
+from grimace._south_star1.writer_runtime import (
+    writer_runtime_branch_completion_count_certificate,
+)
 from grimace._south_star1.writer_snapshot import _writer_search_snapshot_after_checked_branch_support
 from grimace._south_star1.writer_snapshot import _writer_search_snapshot_after_checked_choice
 from grimace._south_star1.writer_state import ComponentCursor
@@ -2031,6 +2040,61 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 state.snapshot.cursor,
             ),
         )
+
+    def test_runtime_branch_completion_count_certificate_is_frontier_owned(self) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+
+        facade = count_writer_runtime_branch_completions(
+            prepared=prepared,
+            state=state,
+        )
+        certificate = writer_runtime_branch_completion_count_certificate(
+            prepared=prepared,
+            state=state,
+        )
+        self.assertEqual(facade, certificate.completion_count)
+
+        state_key, _, state_count = (
+            certificate.state_count_certificates[0]
+        )
+        self.assertEqual(
+            state_count.completion_count,
+            state_count.terminal_count
+            + sum(term.successor_count for term in state_count.branch_terms),
+        )
+
+        for term in state_count.branch_terms:
+            self.assertIsNotNone(term.branch_certificate)
+            self.assertIsNotNone(term.successor_count_certificate)
+            self.assertIsInstance(term.successor_count, int)
+
+        with self.assertRaises(SouthStarError):
+            writer_cursor_completion_count_certificate(
+                cursor=state.snapshot.cursor,
+                state_count_certificates=((state_key, 0, state_count),),
+            )
+
+        frontier = _checked_writer_frontier_branch_supports(
+            prepared,
+            state.snapshot.cursor,
+            include_counts=False,
+        )
+        if frontier.terminal_projection_certificate is not None:
+            terminal_count = frontier.terminal_projection_certificate.terminal.completion_count
+        else:
+            terminal_count = 0
+
+        reconstructed = writer_state_completion_count_certificate(
+            state_key=state_key,
+            terminal_projection_certificate=frontier.terminal_projection_certificate,
+            terminal_count=terminal_count,
+            branch_terms=state_count.branch_terms,
+        )
+        self.assertEqual(state_count.completion_count, reconstructed.completion_count)
 
     def test_runtime_diagnostics_is_frontier_owned(self) -> None:
         prepared = _prepare(cco_facts())

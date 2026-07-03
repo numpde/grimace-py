@@ -71,6 +71,9 @@ from .writer_ring_lifecycle import validate_writer_ring_lifecycle_transition
 from .writer_stereo import initial_writer_stereo_state
 from .writer_stereo import WriterStereoPolicyBlocker
 from .writer_stereo_branch_certificates import writer_stereo_branch_certificates
+from .writer_count_certificates import writer_branch_completion_term_certificate
+from .writer_count_certificates import writer_cursor_completion_count_certificate
+from .writer_count_certificates import writer_state_completion_count_certificate
 from .writer_terminal_certificates import writer_terminal_certificates
 from .writer_transitions import _WriterActiveEmittedGraphPolicyBlocker
 from .writer_transitions import _WriterActiveEmittedGraphPolicyDecision
@@ -2822,7 +2825,17 @@ def _count_checked_writer_frontier_branch_completions(
     prepared: SouthStarPreparedMol,
     cursor: WriterFrontierCursor,
 ) -> int:
-    return _count_checked_writer_frontier_branch_completions_from_cursor(
+    return _checked_writer_frontier_branch_completion_count_certificate(
+        prepared=prepared,
+        cursor=cursor,
+    ).completion_count
+
+
+def _checked_writer_frontier_branch_completion_count_certificate(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+) -> object:
+    return _checked_writer_frontier_branch_completion_count_certificate_from_cursor(
         prepared=prepared,
         cursor=cursor,
         memo={},
@@ -2830,34 +2843,39 @@ def _count_checked_writer_frontier_branch_completions(
     )
 
 
-def _count_checked_writer_frontier_branch_completions_from_cursor(
+def _checked_writer_frontier_branch_completion_count_certificate_from_cursor(
     *,
     prepared: SouthStarPreparedMol,
     cursor: WriterFrontierCursor,
-    memo: dict[WriterStateKey, int],
+    memo: dict[WriterStateKey, object],
     active: frozenset[WriterStateKey],
-) -> int:
-    total = 0
-    for state_key, weight in cursor.weighted_states:
-        total += (
-            weight
-            * _count_checked_writer_frontier_branch_completions_for_state_key(
+) -> object:
+    state_count_certificates = tuple(
+        (
+            state_key,
+            weight,
+            _checked_writer_frontier_branch_completion_count_certificate_for_state_key(
                 prepared=prepared,
                 state_key=state_key,
                 memo=memo,
                 active=active,
-            )
+            ),
         )
-    return total
+        for state_key, weight in cursor.weighted_states
+    )
+    return writer_cursor_completion_count_certificate(
+        cursor=cursor,
+        state_count_certificates=state_count_certificates,
+    )
 
 
-def _count_checked_writer_frontier_branch_completions_for_state_key(
+def _checked_writer_frontier_branch_completion_count_certificate_for_state_key(
     *,
     prepared: SouthStarPreparedMol,
     state_key: WriterStateKey,
-    memo: dict[WriterStateKey, int],
+    memo: dict[WriterStateKey, object],
     active: frozenset[WriterStateKey],
-) -> int:
+):
     if state_key in memo:
         return memo[state_key]
     if state_key in active:
@@ -2879,18 +2897,28 @@ def _count_checked_writer_frontier_branch_completions_for_state_key(
     )
     next_active = active | frozenset((state_key,))
 
-    for support in batch.supports:
-        total += _count_checked_writer_frontier_branch_completions_from_cursor(
-            prepared=prepared,
-            cursor=WriterFrontierCursor(
-                weighted_states=((support.successor_state, 1),)
+    branch_terms = tuple(
+        writer_branch_completion_term_certificate(
+            branch_certificate=support.checked_branch_certificate,
+            successor_count_certificate=(
+                _checked_writer_frontier_branch_completion_count_certificate_from_cursor(
+                    prepared=prepared,
+                    cursor=support.successor_cursor,
+                    memo=memo,
+                    active=next_active,
+                )
             ),
-            memo=memo,
-            active=next_active,
         )
-
-    memo[state_key] = total
-    return total
+        for support in batch.supports
+    )
+    certificate = writer_state_completion_count_certificate(
+        state_key=state_key,
+        terminal_projection_certificate=batch.terminal_projection_certificate,
+        terminal_count=total,
+        branch_terms=branch_terms,
+    )
+    memo[state_key] = certificate
+    return certificate
 
 
 def _writer_frontier_work_envelope_violations(

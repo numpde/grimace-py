@@ -16,7 +16,7 @@ from .writer_frontier import _writer_frontier_diagnostics
 from .writer_snapshot import WriterDecoderBoundary
 from .writer_snapshot import WriterSearchSnapshot
 from .writer_snapshot import _count_writer_frontier_support_after_emitted_texts
-from .writer_snapshot import _iter_writer_frontier_support_suffixes_after_emitted_texts
+from .writer_snapshot import _iter_writer_snapshot_certified_support_strings
 from .writer_snapshot import _writer_search_snapshot_after_checked_branch_support
 from .writer_snapshot import _writer_search_snapshot_after_checked_choice
 from .writer_snapshot import _writer_search_snapshot_after_certified_emitted_text
@@ -69,6 +69,12 @@ class WriterRuntimeChoiceTransitions:
     @property
     def has_eos(self) -> bool:
         return self.terminal is not None
+
+
+@dataclass(frozen=True, slots=True)
+class WriterRuntimeCertifiedSupportString:
+    string: str
+    certificate: object
 
 
 @dataclass(frozen=True, slots=True)
@@ -503,10 +509,47 @@ def iter_writer_runtime_support(
     prepared: SouthStarPreparedMol,
     state: WriterRuntimeState,
 ) -> Iterator[str]:
-    return _iter_writer_frontier_support_suffixes_after_emitted_texts(
+    for item in iter_writer_runtime_certified_support(
+        prepared=prepared,
+        state=state,
+    ):
+        yield item.string
+
+
+def iter_writer_runtime_certified_support(
+    *,
+    prepared: SouthStarPreparedMol,
+    state: WriterRuntimeState,
+) -> Iterator[WriterRuntimeCertifiedSupportString]:
+    validate_writer_search_snapshot(state.snapshot, prepared=prepared)
+    for item in _iter_writer_snapshot_certified_support_strings(
         state.snapshot,
         prepared=prepared,
-        emitted_texts=(),
+    ):
+        yield WriterRuntimeCertifiedSupportString(
+            string=item.string,
+            certificate=item.certificate,
+        )
+
+
+def writer_runtime_support_image_certificate(
+    *,
+    prepared: SouthStarPreparedMol,
+    state: WriterRuntimeState,
+    witness_count: int,
+):
+    certified = tuple(
+        iter_writer_runtime_certified_support(
+            prepared=prepared,
+            state=state,
+        )
+    )
+    from .writer_support_certificates import writer_support_image_certificate
+
+    return writer_support_image_certificate(
+        source_snapshot=state.snapshot,
+        string_certificates=tuple(item.certificate for item in certified),
+        witness_count=witness_count,
     )
 
 
@@ -515,6 +558,7 @@ __all__ = (
     "WriterRuntimeBranchTransitions",
     "WriterRuntimeChoiceTransition",
     "WriterRuntimeChoiceTransitions",
+    "WriterRuntimeCertifiedSupportString",
     "WriterRuntimeDiagnostics",
     "WriterRuntimeState",
     "advance_writer_runtime_state",
@@ -523,6 +567,7 @@ __all__ = (
     "count_writer_runtime_support",
     "initial_writer_runtime_state",
     "iter_writer_runtime_support",
+    "iter_writer_runtime_certified_support",
     "writer_runtime_branch_transitions",
     "writer_runtime_choice_transitions",
     "writer_runtime_choices",
@@ -530,4 +575,5 @@ __all__ = (
     "writer_runtime_has_eos",
     "writer_runtime_state_from_snapshot",
     "writer_runtime_terminal",
+    "writer_runtime_support_image_certificate",
 )

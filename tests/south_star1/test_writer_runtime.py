@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import unittest
 from collections import Counter
+from dataclasses import replace
 
 from grimace._south_star1.policy import SerializationLanguageMode
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
@@ -31,7 +32,9 @@ from grimace._south_star1.writer_runtime import count_writer_runtime_branch_comp
 from grimace._south_star1.writer_runtime import count_writer_runtime_completions
 from grimace._south_star1.writer_runtime import count_writer_runtime_support
 from grimace._south_star1.writer_runtime import initial_writer_runtime_state
+from grimace._south_star1.writer_runtime import iter_writer_runtime_certified_support
 from grimace._south_star1.writer_runtime import iter_writer_runtime_support
+from grimace._south_star1.writer_runtime import writer_runtime_support_image_certificate
 from grimace._south_star1.writer_runtime import writer_runtime_branch_transitions
 from grimace._south_star1.writer_runtime import writer_runtime_choice_transitions
 from grimace._south_star1.writer_runtime import writer_runtime_choices
@@ -41,6 +44,9 @@ from grimace._south_star1.writer_runtime import writer_runtime_state_from_snapsh
 from grimace._south_star1.writer_runtime import writer_runtime_terminal
 from grimace._south_star1.writer_snapshot import advance_writer_frontier_snapshot
 from grimace._south_star1.writer_snapshot import resume_writer_frontier_choices_from_snapshot
+from grimace._south_star1.writer_support_certificates import (
+    writer_support_string_certificate,
+)
 from tests.south_star1.helpers import cco_facts
 
 
@@ -70,6 +76,39 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             count_writer_runtime_completions(prepared=prepared, state=state),
             support.witness_count,
         )
+        certified = tuple(
+            iter_writer_runtime_certified_support(
+                prepared=prepared,
+                state=state,
+            )
+        )
+        image_certificate = writer_runtime_support_image_certificate(
+            prepared=prepared,
+            state=state,
+            witness_count=count_writer_runtime_completions(
+                prepared=prepared,
+                state=state,
+            ),
+        )
+        self.assertEqual(tuple(item.string for item in certified), support.strings)
+        self.assertTrue(all(item.certificate for item in certified))
+        self.assertEqual(image_certificate.strings, support.strings)
+        self.assertEqual(image_certificate.distinct_count, support.distinct_count)
+        self.assertEqual(image_certificate.witness_count, support.witness_count)
+        self.assertEqual(
+            image_certificate.string_certificates,
+            tuple(item.certificate for item in certified),
+        )
+        for item in certified:
+            certificate = item.certificate
+            self.assertEqual(item.string, certificate.string)
+            self.assertEqual(item.string, "".join(certificate.emitted_texts))
+            self.assertIsNotNone(certificate.terminal_projection_certificate)
+            self.assertTrue(certificate.terminal_certificates)
+            self.assertEqual(
+                certificate.replay_certificate.final_snapshot,
+                certificate.final_snapshot,
+            )
         self.assertEqual(
             count_writer_runtime_branch_completions(
                 prepared=prepared,
@@ -560,6 +599,75 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
                     finalized_cursor=terminal.finalized_cursor,
                 ),
                 terminal_supports=branches.terminal_supports,
+            )
+
+    def test_support_string_certificate_rejects_malformed_inputs(self) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        item = next(
+            iter_writer_runtime_certified_support(
+                prepared=prepared,
+                state=state,
+            )
+        )
+        certificate = item.certificate
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "string_emitted_texts_mismatch",
+        ):
+            writer_support_string_certificate(
+                source_snapshot=state.snapshot,
+                string=certificate.string + "x",
+                emitted_texts=certificate.emitted_texts,
+                replay_certificate=certificate.replay_certificate,
+                terminal_projection_certificate=(
+                    certificate.terminal_projection_certificate
+                ),
+            )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "replay_source_snapshot_mismatch",
+        ):
+            writer_support_string_certificate(
+                source_snapshot=certificate.final_snapshot,
+                string=certificate.string,
+                emitted_texts=certificate.emitted_texts,
+                replay_certificate=certificate.replay_certificate,
+                terminal_projection_certificate=(
+                    certificate.terminal_projection_certificate
+                ),
+            )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "missing_terminal_projection_certificate",
+        ):
+            writer_support_string_certificate(
+                source_snapshot=state.snapshot,
+                string=certificate.string,
+                emitted_texts=certificate.emitted_texts,
+                replay_certificate=certificate.replay_certificate,
+                terminal_projection_certificate=None,
+            )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "terminal_projection_lacks_certificates",
+        ):
+            writer_support_string_certificate(
+                source_snapshot=state.snapshot,
+                string=certificate.string,
+                emitted_texts=certificate.emitted_texts,
+                replay_certificate=certificate.replay_certificate,
+                terminal_projection_certificate=replace(
+                    certificate.terminal_projection_certificate,
+                    terminal_certificates=(),
+                ),
             )
 
 

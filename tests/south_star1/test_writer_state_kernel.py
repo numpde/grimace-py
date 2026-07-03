@@ -14472,8 +14472,7 @@ class WriterStateKernelTest(unittest.TestCase):
             writer_support._writer_support_image_from_runtime_state
         )
 
-        self.assertIn("iter_writer_runtime_support", source)
-        self.assertIn("count_writer_runtime_support", source)
+        self.assertIn("writer_runtime_support_image_certificate", source)
         self.assertIn("count_writer_runtime_completions", source)
         self.assertNotIn("_writer_frontier_summary", source)
         self.assertNotIn("count_writer_frontier_support(", source)

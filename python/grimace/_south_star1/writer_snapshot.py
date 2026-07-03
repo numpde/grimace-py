@@ -61,6 +61,7 @@ from .writer_state import WriterBranchFrame
 from .writer_state import WriterRingStateKey
 from .writer_state import WriterStateKey
 from .writer_state import WriterStereoStateKey
+from .writer_support_certificates import writer_support_string_certificate
 
 
 
@@ -98,6 +99,12 @@ class WriterSearchSnapshot:
     cursor: WriterFrontierCursor
     decoder_boundary: WriterDecoderBoundary
     frame_stack: tuple[WriterSnapshotFrame, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterSnapshotCertifiedSupportString:
+    string: str
+    certificate: object
 
 
 def _capture_writer_frontier_snapshot_unchecked(
@@ -1768,6 +1775,88 @@ def _iter_writer_frontier_support_suffixes_after_emitted_texts(
         prepared,
         outcome.choice_snapshot,
     )
+
+
+def _iter_writer_snapshot_certified_support_strings(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+) -> Iterator[_WriterSnapshotCertifiedSupportString]:
+    choice_snapshot = _writer_frontier_choice_snapshot_from_snapshot(
+        snapshot,
+        prepared=prepared,
+        include_counts=False,
+        stop_after_first_blocked=True,
+    )
+    _raise_for_writer_frontier_choice_snapshot_blockers(choice_snapshot)
+    batch = _checked_writer_frontier_branch_supports(
+        prepared,
+        snapshot.cursor,
+        include_counts=False,
+    )
+
+    if choice_snapshot.terminal is not None:
+        terminal_certificate = batch.terminal_projection_certificate
+        if terminal_certificate is None:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "terminal support lacks projection certificate",
+            )
+        replay_certificate = writer_snapshot_replay_certificate(
+            source_snapshot=snapshot,
+            emitted_texts=(),
+            step_certificates=(),
+            final_snapshot=snapshot,
+        )
+        yield _WriterSnapshotCertifiedSupportString(
+            string="",
+            certificate=writer_support_string_certificate(
+                source_snapshot=snapshot,
+                string="",
+                emitted_texts=(),
+                replay_certificate=replay_certificate,
+                terminal_projection_certificate=terminal_certificate,
+            ),
+        )
+
+    for choice in choice_snapshot.public_choices.choices:
+        advanced_snapshot, step_certificate = (
+            _writer_search_snapshot_after_certified_emitted_text(
+                snapshot,
+                prepared=prepared,
+                emitted_text=choice.emitted_text,
+            )
+        )
+        for suffix in _iter_writer_snapshot_certified_support_strings(
+            advanced_snapshot,
+            prepared=prepared,
+        ):
+            emitted_texts = (
+                step_certificate.emitted_text,
+                *suffix.certificate.emitted_texts,
+            )
+            replay_certificate = writer_snapshot_replay_certificate(
+                source_snapshot=snapshot,
+                emitted_texts=emitted_texts,
+                step_certificates=(
+                    step_certificate,
+                    *suffix.certificate.replay_certificate.step_certificates,
+                ),
+                final_snapshot=suffix.certificate.final_snapshot,
+            )
+            string = choice.emitted_text + suffix.string
+            yield _WriterSnapshotCertifiedSupportString(
+                string=string,
+                certificate=writer_support_string_certificate(
+                    source_snapshot=snapshot,
+                    string=string,
+                    emitted_texts=emitted_texts,
+                    replay_certificate=replay_certificate,
+                    terminal_projection_certificate=(
+                        suffix.certificate.terminal_projection_certificate
+                    ),
+                ),
+            )
 
 
 def resume_writer_frontier_choices_from_snapshot(

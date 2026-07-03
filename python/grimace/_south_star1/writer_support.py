@@ -13,6 +13,7 @@ from .writer_runtime import count_writer_runtime_completions
 from .writer_runtime import count_writer_runtime_support
 from .writer_runtime import initial_writer_runtime_state
 from .writer_runtime import iter_writer_runtime_support
+from .writer_runtime import writer_runtime_support_image_certificate
 from .writer_runtime import writer_runtime_state_from_snapshot
 
 if TYPE_CHECKING:
@@ -41,25 +42,18 @@ def _writer_support_image_from_runtime_state(
     prepared: SouthStarPreparedMol,
     state: WriterRuntimeState,
 ) -> SupportImage:
-    strings = tuple(
-        iter_writer_runtime_support(
-            prepared=prepared,
-            state=state,
-        )
-    )
-    support_count = count_writer_runtime_support(
+    certificate = writer_runtime_support_image_certificate(
         prepared=prepared,
         state=state,
-    )
-    if len(strings) != support_count:
-        raise AssertionError("writer runtime support stream/count mismatch")
-    return SupportImage(
         witness_count=count_writer_runtime_completions(
             prepared=prepared,
             state=state,
         ),
-        distinct_count=support_count,
-        strings=strings,
+    )
+    return SupportImage(
+        witness_count=certificate.witness_count,
+        distinct_count=certificate.distinct_count,
+        strings=certificate.strings,
     )
 
 

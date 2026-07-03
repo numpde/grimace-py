@@ -43,6 +43,13 @@ def writer_cursor_completion_count_certificate(
     ],
 ) -> WriterCursorCompletionCountCertificate:
     total = 0
+    cursor_weighted_states = tuple(cursor.weighted_states)
+    observed = tuple(
+        (state_key, weight) for state_key, weight, _certificate in state_count_certificates
+    )
+    if observed != cursor_weighted_states:
+        _count_violation("cursor_weighted_states_mismatch")
+
     seen = frozenset()
     for state_key, weight, certificate in state_count_certificates:
         if weight <= 0:
@@ -109,11 +116,16 @@ def writer_branch_completion_term_certificate(
     ):
         _count_violation("invalid_successor_count_certificate")
 
-    successor_state, weight = successor_count_certificate.cursor.weighted_states[0]
+    weighted_states = tuple(successor_count_certificate.cursor.weighted_states)
+    if len(weighted_states) != 1:
+        _count_violation("branch_successor_cursor_not_singleton")
+
+    if weighted_states[0][1] != 1:
+        _count_violation("branch_successor_cursor_not_singleton")
+
+    successor_state = weighted_states[0][0]
     if branch_certificate.successor_state != successor_state:
         _count_violation("branch_successor_count_mismatch")
-    if weight != 1:
-        _count_violation("branch_successor_cursor_not_singleton")
     if (
         len(successor_count_certificate.state_count_certificates) != 1
         or successor_count_certificate.state_count_certificates[0][0]

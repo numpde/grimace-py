@@ -5,6 +5,7 @@ from __future__ import annotations
 import unittest
 from collections import Counter
 from dataclasses import replace
+from types import SimpleNamespace
 
 from grimace._south_star1.policy import SerializationLanguageMode
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
@@ -23,8 +24,10 @@ from grimace._south_star1.writer_count_certificates import (
 from grimace._south_star1.writer_count_certificates import (
     writer_cursor_completion_count_certificate,
 )
-from grimace._south_star1.writer_count_certificates import (
-    writer_state_completion_count_certificate,
+from grimace._south_star1.writer_count_certificates import writer_state_completion_count_certificate
+from grimace._south_star1.writer_diagnostic_certificates import (
+    WriterDiagnosticsCertificate,
+    writer_diagnostics_certificate,
 )
 from grimace._south_star1.writer_frontier import WriterFrontierCursor
 from grimace._south_star1.writer_frontier import _checked_writer_frontier_branch_supports
@@ -233,6 +236,103 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
                 state_count_certificates=((state_key, 0, state_count),),
             )
 
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "cursor_weighted_states_mismatch",
+        ):
+            writer_cursor_completion_count_certificate(
+                cursor=state.snapshot.cursor,
+                state_count_certificates=((state_key, 2, state_count),),
+            )
+
+    def test_branch_certificate_term_matches_singleton_successor_cursor(self) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        support_batch = _checked_writer_frontier_branch_supports(
+            prepared,
+            state.snapshot.cursor,
+            include_counts=False,
+        )
+        support = support_batch.supports[0]
+        count_certificate = writer_runtime_branch_completion_count_certificate(
+            prepared=prepared,
+            state=state,
+        )
+        state_key, _, state_count = count_certificate.state_count_certificates[0]
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "branch_successor_cursor_not_singleton",
+        ):
+            writer_branch_completion_term_certificate(
+                branch_certificate=support.checked_branch_certificate,
+                successor_count_certificate=SimpleNamespace(
+                cursor=WriterFrontierCursor(
+                    weighted_states=((state_key, 1), (state_key, 1))
+                ),
+                state_count_certificates=((state_key, 1, state_count),),
+            ),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "branch_successor_cursor_not_singleton",
+        ):
+            writer_branch_completion_term_certificate(
+                branch_certificate=support.checked_branch_certificate,
+                successor_count_certificate=SimpleNamespace(
+                    cursor=WriterFrontierCursor(
+                        weighted_states=((state_key, 2),)
+                    ),
+                    state_count_certificates=((state_key, 2, state_count),),
+                ),
+            )
+
+    def test_diagnostics_certificate_blocks_blocked_state(self) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+
+        blocked_diagnostics = SimpleNamespace(
+            blocked=True,
+            graph_policy_blockers=("blocked",),
+            stereo_policy_blockers=(),
+            execution_capabilities=frozenset(),
+            terminal_execution_capabilities=frozenset(),
+            unsupported_execution_capabilities=frozenset(),
+            unsupported_terminal_execution_capabilities=frozenset(),
+            residual_work_evidence=(),
+            terminal_residual_work_evidence=(),
+            finite_relation_work_evidence=(),
+            graph_obligation_work_evidence=(),
+            residual_work_envelope_violations=(),
+            terminal_residual_work_envelope_violations=(),
+            finite_relation_work_envelope_violations=(),
+            graph_obligation_work_envelope_violations=(),
+            choice_texts=(),
+            has_eos=False,
+        )
+        branch_batch = SimpleNamespace(
+            supports=(),
+            terminal_supports=(),
+            text_choice_projection_certificates=(),
+            terminal_projection_certificate=None,
+        )
+        certificate = writer_diagnostics_certificate(
+            cursor=state.snapshot.cursor,
+            diagnostics=blocked_diagnostics,
+            branch_batch=branch_batch,
+        )
+
+        self.assertTrue(certificate.blocked)
+        self.assertFalse(certificate.text_choice_projection_certificates)
+        self.assertFalse(certificate.terminal_projection_certificate)
+        self.assertTrue(certificate.graph_policy_blocker_certificates)
+
     def test_branch_transition_batch_sits_below_text_projection(self) -> None:
         prepared = _prepare(cco_facts())
         state = initial_writer_runtime_state(
@@ -342,6 +442,157 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
         self.assertEqual(
             diagnostics.has_eos,
             choices.terminal is not None,
+        )
+        self.assertIsNotNone(diagnostics.diagnostic_certificate)
+        self.assertEqual(
+            diagnostics.diagnostic_certificate.text_choice_projection_certificates,
+            tuple(
+                cert
+                for cert in _checked_writer_frontier_branch_supports(
+                    prepared,
+                    state.snapshot.cursor,
+                    include_counts=False,
+                ).text_choice_projection_certificates
+            ),
+        )
+        self.assertEqual(
+            diagnostics.diagnostic_certificate.blocked,
+            diagnostics.blocked,
+        )
+        self.assertEqual(
+            diagnostics.diagnostic_certificate.execution_capabilities,
+            diagnostics.execution_capabilities,
+        )
+        self.assertEqual(
+            diagnostics.diagnostic_certificate.terminal_execution_capabilities,
+            diagnostics.terminal_execution_capabilities,
+        )
+
+    def test_diagnostics_certificate_rejects_malformed_inputs(self) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        branch_batch = _checked_writer_frontier_branch_supports(
+            prepared,
+            state.snapshot.cursor,
+            include_counts=False,
+        )
+
+        base = SimpleNamespace(
+            blocked=False,
+            graph_policy_blockers=(),
+            stereo_policy_blockers=(),
+            execution_capabilities=frozenset(),
+            terminal_execution_capabilities=frozenset(),
+            unsupported_execution_capabilities=frozenset(),
+            unsupported_terminal_execution_capabilities=frozenset(),
+            residual_work_evidence=(),
+            terminal_residual_work_evidence=(),
+            finite_relation_work_evidence=(),
+            graph_obligation_work_evidence=(),
+            residual_work_envelope_violations=(),
+            terminal_residual_work_envelope_violations=(),
+            finite_relation_work_envelope_violations=(),
+            graph_obligation_work_envelope_violations=(),
+            choice_texts=("bad",),
+            has_eos=False,
+        )
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "choice_texts_mismatch",
+        ):
+            writer_diagnostics_certificate(
+                cursor=state.snapshot.cursor,
+                diagnostics=base,
+                branch_batch=branch_batch,
+            )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "has_eos_mismatch",
+        ):
+            writer_diagnostics_certificate(
+                cursor=state.snapshot.cursor,
+                diagnostics=SimpleNamespace(**{
+                    **vars(base),
+                    "choice_texts": tuple(
+                        cert.emitted_text
+                        for cert in branch_batch.text_choice_projection_certificates
+                    ),
+                    "has_eos": True,
+                }),
+                branch_batch=branch_batch,
+            )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "residual_work_violation_evidence_missing",
+        ):
+            writer_diagnostics_certificate(
+                cursor=state.snapshot.cursor,
+                diagnostics=SimpleNamespace(**{
+                    **vars(base),
+                    "choice_texts": tuple(
+                        cert.emitted_text
+                        for cert in branch_batch.text_choice_projection_certificates
+                    ),
+                    "has_eos": False,
+                    "residual_work_envelope_violations": (
+                        SimpleNamespace(evidence=object()),
+                    ),
+                }),
+                branch_batch=branch_batch,
+            )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "count_certificate_cursor_mismatch",
+        ):
+            writer_diagnostics_certificate(
+                cursor=WriterFrontierCursor(weighted_states=()),
+                diagnostics=SimpleNamespace(**{
+                    **vars(base),
+                    "choice_texts": tuple(
+                        cert.emitted_text
+                        for cert in branch_batch.text_choice_projection_certificates
+                    ),
+                    "has_eos": bool(
+                        branch_batch.terminal_projection_certificate is not None
+                    ),
+                }),
+                branch_batch=branch_batch,
+                count_certificate=writer_runtime_branch_completion_count_certificate(
+                    prepared=prepared,
+                    state=state,
+                ),
+            )
+
+    def test_diagnostics_certificate_counts_linked(self) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        branch_batch = _checked_writer_frontier_branch_supports(
+            prepared,
+            state.snapshot.cursor,
+            include_counts=False,
+        )
+        diagnostics = writer_runtime_diagnostics(
+            prepared=prepared,
+            state=state,
+        )
+        cert = diagnostics.diagnostic_certificate
+        self.assertIsNotNone(cert)
+        self.assertIsNotNone(cert.count_certificate)
+        self.assertEqual(
+            writer_runtime_branch_completion_count_certificate(
+                prepared=prepared,
+                state=state,
+            ).completion_count,
+            cert.count_certificate.completion_count,
         )
 
     def test_choice_transitions_package_checked_successors(self) -> None:

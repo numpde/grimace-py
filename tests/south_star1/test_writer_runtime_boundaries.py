@@ -25,6 +25,9 @@ WRITER_CLOSURE_CANDIDATE_LIFECYCLE_PATH = (
 WRITER_COUNT_CERTIFICATES_PATH = (
     SOUTH_STAR_ROOT / "writer_count_certificates.py"
 )
+WRITER_DIAGNOSTIC_CERTIFICATES_PATH = (
+    SOUTH_STAR_ROOT / "writer_diagnostic_certificates.py"
+)
 WRITER_RESIDUAL_ATTACHMENT_BRANCH_CERTIFICATES_PATH = (
     SOUTH_STAR_ROOT / "writer_residual_attachment_branch_certificates.py"
 )
@@ -119,6 +122,20 @@ class WriterRuntimeBoundaryTest(unittest.TestCase):
     def test_count_certificates_stay_below_runtime(self) -> None:
         scan = scan_module_boundaries(
             WRITER_COUNT_CERTIFICATES_PATH,
+            banned_modules={
+                "audit_rdkit",
+                "rdkit_adapter",
+                "writer_online_decoder",
+                "writer_runtime",
+                "writer_support",
+            },
+        )
+
+        self.assertEqual(scan.violations, ())
+
+    def test_diagnostic_certificates_stay_below_runtime(self) -> None:
+        scan = scan_module_boundaries(
+            WRITER_DIAGNOSTIC_CERTIFICATES_PATH,
             banned_modules={
                 "audit_rdkit",
                 "rdkit_adapter",

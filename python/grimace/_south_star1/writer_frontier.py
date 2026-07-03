@@ -7,6 +7,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from itertools import product
 from typing import TYPE_CHECKING
+from types import SimpleNamespace
 
 from .errors import SouthStarError
 from .errors import SouthStarErrorKind
@@ -74,6 +75,7 @@ from .writer_stereo_branch_certificates import writer_stereo_branch_certificates
 from .writer_count_certificates import writer_branch_completion_term_certificate
 from .writer_count_certificates import writer_cursor_completion_count_certificate
 from .writer_count_certificates import writer_state_completion_count_certificate
+from .writer_diagnostic_certificates import writer_diagnostics_certificate
 from .writer_terminal_certificates import writer_terminal_certificates
 from .writer_transitions import _WriterActiveEmittedGraphPolicyBlocker
 from .writer_transitions import _WriterActiveEmittedGraphPolicyDecision
@@ -385,6 +387,7 @@ class _WriterFrontierDiagnostics:
     graph_obligation_work_envelope_violations: tuple[object, ...]
     choice_texts: tuple[str, ...]
     has_eos: bool
+    diagnostic_certificate: object | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -2942,7 +2945,7 @@ def _writer_frontier_diagnostics(
         include_counts=False,
         stop_after_first_blocked=False,
     )
-    return _WriterFrontierDiagnostics(
+    diagnostics_dict = dict(
         blocked=choice_snapshot.blocked,
         graph_policy_blockers=choice_snapshot.graph_policy_blockers,
         stereo_policy_blockers=choice_snapshot.stereo_policy_blockers,
@@ -3000,6 +3003,36 @@ def _writer_frontier_diagnostics(
         ),
         has_eos=choice_snapshot.terminal is not None,
     )
+    if choice_snapshot.blocked:
+        branch_batch = _WriterFrontierBranchSupportBatch(
+            choices=choice_snapshot.public_choices,
+            supports=(),
+            terminal_supports=(),
+            text_choice_projection_certificates=(),
+            terminal_projection_certificate=None,
+        )
+        count_certificate = None
+    else:
+        branch_batch = _checked_writer_frontier_branch_supports(
+            prepared,
+            cursor,
+            include_counts=False,
+        )
+        count_certificate = (
+            _checked_writer_frontier_branch_completion_count_certificate(
+                prepared=prepared,
+                cursor=cursor,
+            )
+        )
+
+    diagnostics_dict["diagnostic_certificate"] = writer_diagnostics_certificate(
+        cursor=cursor,
+        diagnostics=SimpleNamespace(**diagnostics_dict),
+        branch_batch=branch_batch,
+        count_certificate=count_certificate,
+    )
+
+    return _WriterFrontierDiagnostics(**diagnostics_dict)
 
 
 def _group_writer_frontier_transitions(

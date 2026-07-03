@@ -156,6 +156,7 @@ class WriterRuntimeDiagnostics:
     graph_obligation_work_envelope_violations: tuple[object, ...]
     choice_texts: tuple[str, ...]
     has_eos: bool
+    diagnostic_certificate: object | None = None
 
     @property
     def all_execution_capabilities(self) -> frozenset[object]:
@@ -250,6 +251,7 @@ def writer_runtime_diagnostics(
         ),
         choice_texts=frontier.choice_texts,
         has_eos=frontier.has_eos,
+        diagnostic_certificate=frontier.diagnostic_certificate,
     )
 
 

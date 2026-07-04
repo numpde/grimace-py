@@ -128,6 +128,8 @@ class WriterRuntimeBranchTransitions:
     terminal_supports: tuple[WriterRuntimeTerminalSupport, ...] = ()
     text_choice_projection_certificates: tuple[object, ...] = ()
     terminal_projection_certificate: object | None = None
+    count_certificate: object | None = None
+    checked_frontier_certificate: object | None = None
 
     @property
     def branch_transitions(self) -> tuple[WriterRuntimeBranchTransition, ...]:
@@ -158,6 +160,7 @@ class WriterRuntimeDiagnostics:
     choice_texts: tuple[str, ...]
     has_eos: bool
     diagnostic_certificate: object | None = None
+    checked_frontier_certificate: object | None = None
 
     @property
     def all_execution_capabilities(self) -> frozenset[object]:
@@ -253,6 +256,7 @@ def writer_runtime_diagnostics(
         choice_texts=frontier.choice_texts,
         has_eos=frontier.has_eos,
         diagnostic_certificate=frontier.diagnostic_certificate,
+        checked_frontier_certificate=frontier.checked_frontier_certificate,
     )
 
 
@@ -369,6 +373,10 @@ def writer_runtime_branch_transitions(
     return WriterRuntimeBranchTransitions(
         choices=branch_batch.choices,
         transitions=tuple(branch_transitions),
+        count_certificate=branch_batch.count_certificate,
+        checked_frontier_certificate=(
+            branch_batch.checked_frontier_certificate
+        ),
         terminal_supports=tuple(
             WriterRuntimeTerminalSupport(
                 source_state=support.source_state,

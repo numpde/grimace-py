@@ -5,6 +5,7 @@ from __future__ import annotations
 import inspect
 import unittest
 from collections import Counter
+from dataclasses import replace
 from types import SimpleNamespace
 
 import grimace._south_star1.writer_frontier as writer_frontier_module
@@ -53,6 +54,7 @@ from grimace._south_star1.writer_execution_evidence import (
     writer_graph_obligation_work_envelope_violation,
 )
 from grimace._south_star1.writer_frontier import WriterFrontierCursor
+from grimace._south_star1.writer_frontier import WriterFrontierTerminal
 from grimace._south_star1.writer_frontier import _checked_writer_frontier_branch_supports
 from grimace._south_star1.writer_frontier import _checked_writer_frontier_schedule_outcome
 from grimace._south_star1.writer_frontier import _count_checked_writer_frontier_branch_completions
@@ -70,6 +72,12 @@ from grimace._south_star1.writer_graph_obligations import writer_control_live_ro
 from grimace._south_star1.writer_graph_obligations import writer_graph_obligation_work_evidence
 from grimace._south_star1.writer_projection_certificates import (
     writer_text_choice_projection_certificates,
+)
+from grimace._south_star1.writer_projection_certificates import (
+    WriterTextChoiceProjectionCertificate,
+)
+from grimace._south_star1.writer_frontier_certificates import (
+    writer_checked_frontier_certificate,
 )
 from grimace._south_star1.writer_count_certificates import (
     writer_cursor_completion_count_certificate,
@@ -242,6 +250,318 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             self.assertEqual(
                 projected.checked_branch_certificate.events,
                 projected.events,
+            )
+
+    def test_checked_frontier_batch_has_checked_frontier_certificate(self) -> None:
+        prepared = _prepare(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        batch = _checked_writer_frontier_branch_supports(
+            prepared,
+            cursor,
+        )
+        cert = batch.checked_frontier_certificate
+        self.assertIsNotNone(cert)
+        assert cert is not None
+
+        self.assertEqual(cert.cursor, cursor)
+        self.assertEqual(cert.choices, batch.choices)
+        self.assertEqual(
+            cert.branch_certificates,
+            tuple(
+                support.checked_branch_certificate
+                for support in batch.supports
+            ),
+        )
+        self.assertEqual(
+            cert.terminal_certificates,
+            tuple(
+                support.checked_terminal_certificate
+                for support in batch.terminal_supports
+            ),
+        )
+        self.assertEqual(
+            cert.text_choice_projection_certificates,
+            batch.text_choice_projection_certificates,
+        )
+        self.assertEqual(
+            cert.terminal_projection_certificate,
+            batch.terminal_projection_certificate,
+        )
+        self.assertIs(cert.count_certificate, batch.count_certificate)
+        self.assertIsNone(cert.diagnostic_certificate)
+
+    def test_checked_frontier_batch_lacks_certificate_when_counts_disabled(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        batch = _checked_writer_frontier_branch_supports(
+            prepared,
+            cursor,
+            include_counts=False,
+        )
+        self.assertIsNone(batch.checked_frontier_certificate)
+
+    def test_checked_frontier_certificate_partitions_text_projection(
+        self,
+    ) -> None:
+        prepared = _prepare(_two_live_closure_candidate_facts())
+        cursor = WriterFrontierCursor(
+            weighted_states=(
+                (
+                    writer_state_key(
+                        _multi_live_branch_return_closure_candidate_state()
+                    ),
+                    1,
+                ),
+            )
+        )
+        batch = _checked_writer_frontier_branch_supports(
+            prepared,
+            cursor,
+        )
+        cert = batch.checked_frontier_certificate
+        self.assertIsNotNone(cert)
+        assert cert is not None
+
+        branch_certificates = tuple(
+            support.checked_branch_certificate
+            for support in batch.supports
+            if support.checked_branch_certificate is not None
+        )
+        projected = tuple(
+            branch_certificate
+            for projection in cert.text_choice_projection_certificates
+            for branch_certificate in projection.branch_certificates
+        )
+        self.assertEqual(
+            Counter(id(certificate) for certificate in projected),
+            Counter(id(certificate) for certificate in branch_certificates),
+        )
+
+        same_text_choices = tuple(
+            cert for cert in batch.text_choice_projection_certificates
+            if len(cert.branch_certificates) > 1
+        )
+        self.assertTrue(
+            any(
+                len(proj.branch_certificates) > 1
+                for proj in same_text_choices
+            )
+        )
+
+    def test_checked_frontier_certificate_count_certificate_matches_runtime_count(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        batch = _checked_writer_frontier_branch_supports(
+            prepared,
+            state.snapshot.cursor,
+        )
+        cert = batch.count_certificate
+        self.assertIsNotNone(cert)
+        assert cert is not None
+        self.assertEqual(
+            count_writer_runtime_branch_completions(
+                prepared=prepared,
+                state=state,
+            ),
+            cert.completion_count,
+        )
+        self.assertEqual(cert.cursor, state.snapshot.cursor)
+
+    def test_runtime_branch_transitions_preserve_checked_frontier_certificate(self) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        runtime = writer_runtime_branch_transitions(
+            prepared=prepared,
+            state=state,
+            include_counts=True,
+        )
+        batch = _checked_writer_frontier_branch_supports(
+            prepared,
+            state.snapshot.cursor,
+        )
+        self.assertIsNotNone(batch.checked_frontier_certificate)
+        self.assertEqual(
+            runtime.checked_frontier_certificate,
+            batch.checked_frontier_certificate,
+        )
+
+    def test_checked_frontier_certificate_rejects_missing_branch_certificate(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        batch = _checked_writer_frontier_branch_supports(
+            prepared,
+            cursor,
+        )
+        malformed_supports = (
+            replace(batch.supports[0], checked_branch_certificate=None),
+            *batch.supports[1:],
+        )
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "missing_branch_certificate",
+        ):
+            writer_checked_frontier_certificate(
+                cursor=cursor,
+                choices=batch.choices,
+                branch_supports=malformed_supports,
+                terminal_supports=batch.terminal_supports,
+                text_choice_projection_certificates=(
+                    batch.text_choice_projection_certificates
+                ),
+                terminal_projection_certificate=(
+                    batch.terminal_projection_certificate
+                ),
+                count_certificate=batch.count_certificate,
+            )
+
+    def test_checked_frontier_certificate_rejects_terminal_choice_without_projection(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        batch = _checked_writer_frontier_branch_supports(
+            prepared,
+            cursor,
+        )
+
+        fake_choice = batch.choices.__class__(
+            terminal=WriterFrontierTerminal(
+                1,
+                1,
+                1,
+                WriterFrontierCursor(weighted_states=()),
+            ),
+            choices=(),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "terminal_choice_lacks_projection_certificate",
+        ):
+            writer_checked_frontier_certificate(
+                cursor=cursor,
+                choices=fake_choice,
+                branch_supports=(),
+                terminal_supports=(),
+                text_choice_projection_certificates=(),
+                terminal_projection_certificate=None,
+                count_certificate=writer_cursor_completion_count_certificate(
+                    cursor=WriterFrontierCursor(weighted_states=((batch.supports[0].source_state, 1),)),
+                    state_count_certificates=(
+                        (
+                            batch.supports[0].source_state,
+                            1,
+                            writer_state_completion_count_certificate(
+                                state_key=batch.supports[0].source_state,
+                                terminal_projection_certificate=None,
+                                terminal_count=0,
+                                branch_terms=(),
+                            ),
+                        ),
+                    ),
+                ),
+            )
+
+    def test_checked_frontier_certificate_rejects_count_cursor_mismatch(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        batch = _checked_writer_frontier_branch_supports(
+            prepared,
+            cursor,
+            include_counts=True,
+        )
+
+        wrong_cursor = WriterFrontierCursor(
+            weighted_states=((batch.supports[0].source_state, 2),)
+        )
+        wrong_count = writer_cursor_completion_count_certificate(
+            cursor=wrong_cursor,
+            state_count_certificates=(
+                (
+                    batch.supports[0].source_state,
+                    2,
+                    writer_state_completion_count_certificate(
+                        state_key=batch.supports[0].source_state,
+                        terminal_projection_certificate=None,
+                        terminal_count=0,
+                        branch_terms=(),
+                    ),
+                ),
+            ),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "count_certificate_cursor_mismatch",
+        ):
+            writer_checked_frontier_certificate(
+                cursor=cursor,
+                choices=batch.choices,
+                branch_supports=batch.supports,
+                terminal_supports=batch.terminal_supports,
+                text_choice_projection_certificates=(
+                    batch.text_choice_projection_certificates
+                ),
+                terminal_projection_certificate=
+                batch.terminal_projection_certificate,
+                count_certificate=wrong_count,
+            )
+
+    def test_checked_frontier_certificate_rejects_projection_partition_mismatch(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        batch = _checked_writer_frontier_branch_supports(prepared, cursor)
+        if not batch.text_choice_projection_certificates:
+            self.skipTest("no text choices available in this frontier")
+
+        first = batch.text_choice_projection_certificates[0]
+        if not first.branch_certificates:
+            self.skipTest("expected at least one branch certificate")
+
+        malformed_projection = WriterTextChoiceProjectionCertificate(
+            emitted_text=first.emitted_text,
+            choice=first.choice,
+            branch_certificates=first.branch_certificates[:-1],
+            successor_cursor=first.successor_cursor,
+            immediate_multiplicity=first.immediate_multiplicity,
+            support_count=first.support_count,
+            completion_count=first.completion_count,
+        )
+        malformed_projections = (
+            malformed_projection,
+            *batch.text_choice_projection_certificates[1:],
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "projection_branch_certificate_partition_mismatch",
+        ):
+            writer_checked_frontier_certificate(
+                cursor=cursor,
+                choices=batch.choices,
+                branch_supports=batch.supports,
+                terminal_supports=batch.terminal_supports,
+                text_choice_projection_certificates=malformed_projections,
+                terminal_projection_certificate=(
+                    batch.terminal_projection_certificate
+                ),
+                count_certificate=batch.count_certificate,
             )
 
     def test_checked_branch_supports_have_aggregate_certificates(self) -> None:

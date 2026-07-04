@@ -66,6 +66,7 @@ CORE_MODULES: tuple[str, ...] = (
     "writer_count_certificates",
     "writer_diagnostic_certificates",
     "writer_frontier",
+    "writer_frontier_certificates",
     "writer_graph_obligations",
     "writer_online_decoder",
     "writer_projection_certificates",

@@ -14,6 +14,13 @@ from .prepared_runtime import SouthStarPreparedMol
 from .prepared_runtime import SouthStarRuntimeOptions
 from .prepared_runtime import require_writer_shaped_runtime_options
 from .prepared_runtime import runtime_root_atom_for_prepared
+from .writer_online_decoder_certificates import (
+    writer_online_choice_result_certificate,
+)
+from .writer_online_decoder_certificates import writer_online_eos_choice_certificate
+from .writer_online_decoder_certificates import (
+    writer_online_text_choice_certificate,
+)
 from .writer_runtime import WriterRuntimeState
 from .writer_runtime import initial_writer_runtime_state
 from .writer_runtime import writer_runtime_choice_transitions
@@ -47,12 +54,16 @@ class WriterShapedOnlineChoice:
     is_eos: bool = False
     multiplicity: int = 1
     completion_count: int = 0
+    choice_certificate: object | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class WriterShapedOnlineChoiceResult:
     choices: tuple[WriterShapedOnlineChoice, ...]
     stats: WriterRuntimeOnlineStats
+    result_certificate: object | None = None
+    checked_frontier_certificate: object | None = None
+    count_certificate: object | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,6 +113,10 @@ class WriterShapedOnlineDecoder:
         out = []
         for transition in runtime_transitions.transitions:
             choice = transition.choice
+            projection = _single_projection_for_choice(
+                runtime_transitions.text_choice_projection_certificates,
+                choice,
+            )
             out.append(
                 WriterShapedOnlineChoice(
                     text=choice.emitted_text,
@@ -112,6 +127,25 @@ class WriterShapedOnlineDecoder:
                     ),
                     multiplicity=choice.immediate_multiplicity,
                     completion_count=choice.completion_count or 0,
+                    choice_certificate=writer_online_text_choice_certificate(
+                        prefix=state.prefix,
+                        choice=choice,
+                        next_state=WriterShapedOnlineDecoderState(
+                            prefix=state.prefix + choice.emitted_text,
+                            raw_state=transition.next_state,
+                            decoder=self,
+                        ),
+                        snapshot_step_certificate=(
+                            transition.snapshot_step_certificate
+                        ),
+                        text_projection_certificate=projection,
+                        checked_frontier_certificate=(
+                            runtime_transitions.checked_frontier_certificate
+                        ),
+                        count_certificate=(
+                            runtime_transitions.count_certificate
+                        ),
+                    ),
                 )
             )
 
@@ -124,6 +158,18 @@ class WriterShapedOnlineDecoder:
                     is_eos=True,
                     multiplicity=terminal.multiplicity,
                     completion_count=terminal.completion_count,
+                    choice_certificate=writer_online_eos_choice_certificate(
+                        prefix=state.prefix,
+                        eos_text=EOS,
+                        terminal=terminal,
+                        terminal_projection_certificate=(
+                            runtime_transitions.terminal_projection_certificate
+                        ),
+                        checked_frontier_certificate=(
+                            runtime_transitions.checked_frontier_certificate
+                        ),
+                        count_certificate=runtime_transitions.count_certificate,
+                    ),
                 )
             )
 
@@ -135,7 +181,38 @@ class WriterShapedOnlineDecoder:
                 choice_count=len(out),
                 has_eos=runtime_transitions.has_eos,
             ),
+            result_certificate=writer_online_choice_result_certificate(
+                prefix=state.prefix,
+                choices=tuple(out),
+                choice_certificates=(
+                    tuple(item.choice_certificate for item in out)
+                ),
+                checked_frontier_certificate=(
+                    runtime_transitions.checked_frontier_certificate
+                ),
+                count_certificate=runtime_transitions.count_certificate,
+            ),
+            checked_frontier_certificate=(
+                runtime_transitions.checked_frontier_certificate
+            ),
+            count_certificate=runtime_transitions.count_certificate,
         )
+
+
+def _single_projection_for_choice(
+    projection_certificates: tuple[object, ...],
+    choice,
+):
+    matches = tuple(
+        cert
+        for cert in projection_certificates
+        if cert.emitted_text == choice.emitted_text
+    )
+    if len(matches) != 1:
+        raise ValueError(
+            "online decoder observed non-unique choice projection certificate"
+        )
+    return matches[0]
 
 
 def make_writer_shaped_online_decoder(

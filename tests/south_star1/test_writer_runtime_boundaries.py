@@ -31,6 +31,9 @@ WRITER_FRONTIER_CERTIFICATES_PATH = (
 WRITER_COUNT_CERTIFICATES_PATH = (
     SOUTH_STAR_ROOT / "writer_count_certificates.py"
 )
+WRITER_ONLINE_DECODER_CERTIFICATES_PATH = (
+    SOUTH_STAR_ROOT / "writer_online_decoder_certificates.py"
+)
 WRITER_DIAGNOSTIC_CERTIFICATES_PATH = (
     SOUTH_STAR_ROOT / "writer_diagnostic_certificates.py"
 )
@@ -278,6 +281,21 @@ class WriterRuntimeBoundaryTest(unittest.TestCase):
                 "writer_online_decoder",
                 "writer_runtime",
                 "writer_support",
+            },
+        )
+
+        self.assertEqual(scan.violations, ())
+
+    def test_online_decoder_certificates_stay_below_runtime(self) -> None:
+        scan = scan_module_boundaries(
+            WRITER_ONLINE_DECODER_CERTIFICATES_PATH,
+            banned_modules={
+                "audit_rdkit",
+                "rdkit_adapter",
+                "writer_online_decoder",
+                "writer_runtime",
+                "writer_support",
+                "writer_frontier",
             },
         )
 

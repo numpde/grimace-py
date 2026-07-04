@@ -41,6 +41,10 @@ class WriterRuntimeChoiceTransition:
 class WriterRuntimeChoiceTransitions:
     choices: WriterFrontierChoices
     transitions: tuple[WriterRuntimeChoiceTransition, ...]
+    text_choice_projection_certificates: tuple[object, ...] = ()
+    terminal_projection_certificate: object | None = None
+    count_certificate: object | None = None
+    checked_frontier_certificate: object | None = None
 
     @property
     def terminal(self) -> WriterFrontierTerminal | None:
@@ -282,6 +286,14 @@ def writer_runtime_choice_transitions(
     )
     return WriterRuntimeChoiceTransitions(
         choices=branch_batch.choices,
+        text_choice_projection_certificates=(
+            branch_batch.text_choice_projection_certificates
+        ),
+        terminal_projection_certificate=(
+            branch_batch.terminal_projection_certificate
+        ),
+        count_certificate=branch_batch.count_certificate,
+        checked_frontier_certificate=branch_batch.checked_frontier_certificate,
         transitions=tuple(
             WriterRuntimeChoiceTransition(
                 choice=choice,

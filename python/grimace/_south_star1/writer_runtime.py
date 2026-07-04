@@ -10,10 +10,8 @@ from .prepared_runtime import SouthStarRuntimeOptions
 from .writer_frontier import WriterFrontierChoice
 from .writer_frontier import WriterFrontierChoices
 from .writer_frontier import WriterFrontierTerminal
-from .writer_frontier import _checked_writer_frontier_branch_supports
-from .writer_frontier import (
-    _checked_writer_frontier_branch_completion_count_certificate,
-)
+from .writer_frontier import _checked_writer_frontier_count_certificate
+from .writer_frontier import _checked_writer_frontier_product
 from .writer_frontier import _writer_frontier_diagnostics
 from .writer_snapshot import WriterDecoderBoundary
 from .writer_snapshot import WriterSearchSnapshot
@@ -309,11 +307,11 @@ def writer_runtime_branch_transitions(
     include_counts: bool = True,
 ) -> WriterRuntimeBranchTransitions:
     validate_writer_search_snapshot(state.snapshot, prepared=prepared)
-    branch_batch = _checked_writer_frontier_branch_supports(
+    branch_batch = _checked_writer_frontier_product(
         prepared,
         state.snapshot.cursor,
         include_counts=include_counts,
-    )
+    ).branch_batch
     branch_transitions: list[WriterRuntimeBranchTransition] = []
     for support in branch_batch.supports:
         successor_state = _writer_runtime_state_after_checked_branch_support(
@@ -525,7 +523,7 @@ def writer_runtime_branch_completion_count_certificate(
     state: WriterRuntimeState,
 ):
     validate_writer_search_snapshot(state.snapshot, prepared=prepared)
-    return _checked_writer_frontier_branch_completion_count_certificate(
+    return _checked_writer_frontier_count_certificate(
         prepared,
         state.snapshot.cursor,
     )

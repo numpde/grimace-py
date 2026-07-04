@@ -361,6 +361,35 @@ class _WriterFrontierBranchSupportBatch:
 
 
 @dataclass(frozen=True, slots=True)
+class _WriterCheckedFrontierProduct:
+    cursor: WriterFrontierCursor
+    choices: WriterFrontierChoices
+    branch_supports: tuple[_WriterFrontierBranchSupport, ...]
+    terminal_supports: tuple["_WriterFrontierTerminalSupport", ...]
+    text_choice_projection_certificates: tuple[object, ...] = ()
+    terminal_projection_certificate: object | None = None
+    count_certificate: object | None = None
+    diagnostic_certificate: object | None = None
+    checked_frontier_certificate: object | None = None
+
+    @property
+    def branch_batch(self) -> _WriterFrontierBranchSupportBatch:
+        return _WriterFrontierBranchSupportBatch(
+            choices=self.choices,
+            supports=self.branch_supports,
+            terminal_supports=self.terminal_supports,
+            text_choice_projection_certificates=(
+                self.text_choice_projection_certificates
+            ),
+            terminal_projection_certificate=(
+                self.terminal_projection_certificate
+            ),
+            count_certificate=self.count_certificate,
+            checked_frontier_certificate=self.checked_frontier_certificate,
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class _WriterFrontierTerminalSupport:
     source_state: WriterStateKey
     finalized_state: WriterStateKey
@@ -2732,7 +2761,26 @@ def _checked_writer_frontier_branch_supports(
     *,
     include_counts: bool = True,
     include_frontier_certificate: bool = True,
+    include_count_certificate: bool = True,
 ) -> _WriterFrontierBranchSupportBatch:
+    return _checked_writer_frontier_product(
+        prepared,
+        cursor,
+        include_counts=include_counts,
+        include_frontier_certificate=include_frontier_certificate,
+        include_count_certificate=include_count_certificate,
+    ).branch_batch
+
+
+def _checked_writer_frontier_product(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+    *,
+    include_counts: bool = True,
+    include_frontier_certificate: bool = True,
+    include_diagnostics: bool = False,
+    include_count_certificate: bool = True,
+) -> _WriterCheckedFrontierProduct:
     schedule_outcome = _checked_writer_frontier_schedule_outcome(
         prepared,
         cursor,
@@ -2740,8 +2788,18 @@ def _checked_writer_frontier_branch_supports(
     choice_snapshot = _writer_frontier_choice_snapshot_from_schedule_outcome(
         prepared,
         schedule_outcome,
-        include_counts=include_counts,
+        include_counts=False,
     )
+    public_choices = (
+        choice_snapshot.public_choices
+        if not include_counts
+        else _writer_frontier_choice_snapshot_from_schedule_outcome(
+            prepared,
+            schedule_outcome,
+            include_counts=True,
+        ).public_choices
+    )
+
     branch_supports = tuple(
         _writer_frontier_branch_support_from_next_token_support(
             prepared=prepared,
@@ -2762,48 +2820,129 @@ def _checked_writer_frontier_branch_supports(
         branch_supports=branch_supports,
     )
     terminal_projection_certificate = writer_terminal_projection_certificate(
-        terminal=choice_snapshot.public_choices.terminal,
+        terminal=public_choices.terminal,
         terminal_supports=terminal_supports,
     )
+    completion_count_certificate: object | None = None
+    if include_count_certificate and include_counts:
+        completion_count_certificate = _checked_writer_frontier_branch_completion_count_certificate(
+            prepared,
+            cursor,
+            include_frontier_product=False,
+        )
+
     branch_batch = _WriterFrontierBranchSupportBatch(
-        choices=choice_snapshot.public_choices,
+        choices=public_choices,
         supports=branch_supports,
         terminal_supports=terminal_supports,
         text_choice_projection_certificates=text_choice_projection_certificates,
         terminal_projection_certificate=terminal_projection_certificate,
+        count_certificate=completion_count_certificate,
     )
 
-    if include_frontier_certificate and include_counts:
-        count_certificate = _checked_writer_frontier_branch_completion_count_certificate(
-            prepared,
-            cursor,
-            include_frontier_certificate=False,
+    diagnostic_certificate = None
+    if include_diagnostics:
+        diagnostic_certificate = writer_diagnostics_certificate(
+            cursor=cursor,
+            diagnostics=SimpleNamespace(
+                blocked=choice_snapshot.blocked,
+                graph_policy_blockers=choice_snapshot.graph_policy_blockers,
+                stereo_policy_blockers=choice_snapshot.stereo_policy_blockers,
+                execution_capabilities=choice_snapshot.execution_capabilities,
+                terminal_execution_capabilities=(
+                    choice_snapshot.terminal_execution_capabilities
+                ),
+                unsupported_execution_capabilities=(
+                    _unsupported_public_writer_execution_capabilities(
+                        choice_snapshot.execution_capabilities,
+                    )
+                ),
+                unsupported_terminal_execution_capabilities=(
+                    _unsupported_public_writer_execution_capabilities(
+                        choice_snapshot.terminal_execution_capabilities,
+                    )
+                ),
+                residual_work_evidence=choice_snapshot.residual_work_evidence,
+                terminal_residual_work_evidence=(
+                    choice_snapshot.terminal_residual_work_evidence
+                ),
+                finite_relation_work_evidence=(
+                    choice_snapshot.finite_relation_work_evidence
+                ),
+                graph_obligation_work_evidence=(
+                    choice_snapshot.graph_obligation_work_evidence
+                ),
+                residual_work_envelope_violations=(
+                    _writer_frontier_work_envelope_violations(
+                        choice_snapshot.residual_work_evidence,
+                        writer_residual_work_envelope_violation,
+                    )
+                ),
+                terminal_residual_work_envelope_violations=(
+                    _writer_frontier_work_envelope_violations(
+                        choice_snapshot.terminal_residual_work_evidence,
+                        writer_residual_work_envelope_violation,
+                    )
+                ),
+                finite_relation_work_envelope_violations=(
+                    _writer_frontier_work_envelope_violations(
+                        choice_snapshot.finite_relation_work_evidence,
+                        writer_finite_relation_work_envelope_violation,
+                    )
+                ),
+                graph_obligation_work_envelope_violations=(
+                    _writer_frontier_work_envelope_violations(
+                        choice_snapshot.graph_obligation_work_evidence,
+                        writer_graph_obligation_work_envelope_violation,
+                    )
+                ),
+                choice_texts=tuple(
+                    choice.emitted_text for choice in choice_snapshot.choices
+                ),
+                has_eos=choice_snapshot.terminal is not None,
+            ),
+            branch_batch=branch_batch,
+            count_certificate=completion_count_certificate,
+        )
+    checked_frontier_certificate = None
+    if (
+        include_frontier_certificate
+        and include_counts
+        and not choice_snapshot.blocked
+    ):
+        checked_frontier_certificate = writer_checked_frontier_certificate(
+            cursor=cursor,
+            choices=public_choices,
+            branch_supports=branch_supports,
+            terminal_supports=terminal_supports,
+            text_choice_projection_certificates=(
+                text_choice_projection_certificates
+            ),
+            terminal_projection_certificate=terminal_projection_certificate,
+            count_certificate=completion_count_certificate,
+            diagnostic_certificate=diagnostic_certificate,
         )
         branch_batch = _WriterFrontierBranchSupportBatch(
-            choices=branch_batch.choices,
-            supports=branch_batch.supports,
-            terminal_supports=branch_batch.terminal_supports,
-            text_choice_projection_certificates=(
-                branch_batch.text_choice_projection_certificates
-            ),
-            terminal_projection_certificate=(
-                branch_batch.terminal_projection_certificate
-            ),
-            count_certificate=count_certificate,
-            checked_frontier_certificate=writer_checked_frontier_certificate(
-                cursor=cursor,
-                choices=choice_snapshot.public_choices,
-                branch_supports=branch_supports,
-                terminal_supports=terminal_supports,
-                text_choice_projection_certificates=(
-                    text_choice_projection_certificates
-                ),
-                terminal_projection_certificate=terminal_projection_certificate,
-                count_certificate=count_certificate,
-            ),
+            choices=public_choices,
+            supports=branch_supports,
+            terminal_supports=terminal_supports,
+            text_choice_projection_certificates=text_choice_projection_certificates,
+            terminal_projection_certificate=terminal_projection_certificate,
+            count_certificate=completion_count_certificate,
+            checked_frontier_certificate=checked_frontier_certificate,
         )
 
-    return branch_batch
+    return _WriterCheckedFrontierProduct(
+        cursor=cursor,
+        choices=public_choices,
+        branch_supports=branch_supports,
+        terminal_supports=terminal_supports,
+        text_choice_projection_certificates=text_choice_projection_certificates,
+        terminal_projection_certificate=terminal_projection_certificate,
+        count_certificate=completion_count_certificate,
+        diagnostic_certificate=diagnostic_certificate,
+        checked_frontier_certificate=checked_frontier_certificate,
+    )
 
 
 def _writer_frontier_terminal_supports_from_schedule_outcome(
@@ -2882,24 +3021,35 @@ def _count_checked_writer_frontier_branch_completions(
     prepared: SouthStarPreparedMol,
     cursor: WriterFrontierCursor,
 ) -> int:
-    return _checked_writer_frontier_branch_completion_count_certificate(
+    return _checked_writer_frontier_count_certificate(
         prepared=prepared,
         cursor=cursor,
     ).completion_count
+
+
+def _checked_writer_frontier_count_certificate(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+) -> object:
+    return _checked_writer_frontier_branch_completion_count_certificate(
+        prepared=prepared,
+        cursor=cursor,
+        include_frontier_product=False,
+    )
 
 
 def _checked_writer_frontier_branch_completion_count_certificate(
     prepared: SouthStarPreparedMol,
     cursor: WriterFrontierCursor,
     *,
-    include_frontier_certificate: bool = True,
+    include_frontier_product: bool = True,
 ) -> object:
     return _checked_writer_frontier_branch_completion_count_certificate_from_cursor(
         prepared=prepared,
         cursor=cursor,
         memo={},
         active=frozenset(),
-        include_frontier_certificate=include_frontier_certificate,
+        include_frontier_product=include_frontier_product,
     )
 
 
@@ -2909,7 +3059,7 @@ def _checked_writer_frontier_branch_completion_count_certificate_from_cursor(
     cursor: WriterFrontierCursor,
     memo: dict[WriterStateKey, object],
     active: frozenset[WriterStateKey],
-    include_frontier_certificate: bool = True,
+    include_frontier_product: bool = True,
 ) -> object:
     state_count_certificates = tuple(
         (
@@ -2920,7 +3070,7 @@ def _checked_writer_frontier_branch_completion_count_certificate_from_cursor(
                 state_key=state_key,
                 memo=memo,
                 active=active,
-                include_frontier_certificate=include_frontier_certificate,
+                include_frontier_product=include_frontier_product,
             ),
         )
         for state_key, weight in cursor.weighted_states
@@ -2937,7 +3087,7 @@ def _checked_writer_frontier_branch_completion_count_certificate_for_state_key(
     state_key: WriterStateKey,
     memo: dict[WriterStateKey, object],
     active: frozenset[WriterStateKey],
-    include_frontier_certificate: bool = True,
+    include_frontier_product: bool = True,
 ):
     if state_key in memo:
         return memo[state_key]
@@ -2952,7 +3102,8 @@ def _checked_writer_frontier_branch_completion_count_certificate_for_state_key(
         prepared,
         cursor,
         include_counts=False,
-        include_frontier_certificate=include_frontier_certificate,
+        include_frontier_certificate=include_frontier_product,
+        include_count_certificate=False,
     )
     total = (
         0
@@ -2970,7 +3121,7 @@ def _checked_writer_frontier_branch_completion_count_certificate_for_state_key(
                     cursor=support.successor_cursor,
                     memo=memo,
                     active=next_active,
-                    include_frontier_certificate=include_frontier_certificate,
+                    include_frontier_product=include_frontier_product,
                 )
             ),
         )
@@ -3076,19 +3227,15 @@ def _writer_frontier_diagnostics(
         count_certificate = None
         checked_frontier_certificate = None
     else:
-        branch_batch = _checked_writer_frontier_branch_supports(
+        product = _checked_writer_frontier_product(
             prepared,
             cursor,
-            include_counts=False,
+            include_counts=True,
             include_frontier_certificate=False,
+            include_diagnostics=False,
         )
-        count_certificate = (
-            _checked_writer_frontier_branch_completion_count_certificate(
-                prepared=prepared,
-                cursor=cursor,
-                include_frontier_certificate=False,
-            )
-        )
+        branch_batch = product.branch_batch
+        count_certificate = product.count_certificate
         checked_frontier_certificate = writer_checked_frontier_certificate(
             cursor=cursor,
             choices=branch_batch.choices,
@@ -3101,6 +3248,7 @@ def _writer_frontier_diagnostics(
                 branch_batch.terminal_projection_certificate
             ),
             count_certificate=count_certificate,
+            diagnostic_certificate=None,
         )
 
     diagnostic_certificate = writer_diagnostics_certificate(

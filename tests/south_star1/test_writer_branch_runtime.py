@@ -56,6 +56,7 @@ from grimace._south_star1.writer_execution_evidence import (
 from grimace._south_star1.writer_frontier import WriterFrontierCursor
 from grimace._south_star1.writer_frontier import WriterFrontierTerminal
 from grimace._south_star1.writer_frontier import _checked_writer_frontier_branch_supports
+from grimace._south_star1.writer_frontier import _checked_writer_frontier_product
 from grimace._south_star1.writer_frontier import _checked_writer_frontier_schedule_outcome
 from grimace._south_star1.writer_frontier import _count_checked_writer_frontier_branch_completions
 from grimace._south_star1.writer_frontier import _writer_frontier_diagnostics
@@ -299,6 +300,7 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             prepared,
             cursor,
             include_counts=False,
+            include_frontier_certificate=False,
         )
         self.assertIsNone(batch.checked_frontier_certificate)
 
@@ -373,6 +375,79 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             cert.completion_count,
         )
         self.assertEqual(cert.cursor, state.snapshot.cursor)
+
+    def test_checked_frontier_product_equals_compatibility_batch(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        product = _checked_writer_frontier_product(
+            prepared,
+            cursor,
+            include_counts=False,
+        )
+        batch = _checked_writer_frontier_branch_supports(
+            prepared,
+            cursor,
+            include_counts=False,
+        )
+
+        self.assertEqual(product.branch_batch, batch)
+        self.assertIsNone(product.count_certificate)
+        self.assertIsNone(product.checked_frontier_certificate)
+
+    def test_runtime_choice_and_product_align(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        product = _checked_writer_frontier_product(
+            prepared,
+            state.snapshot.cursor,
+            include_counts=True,
+        )
+        runtime = writer_runtime_branch_transitions(
+            prepared=prepared,
+            state=state,
+            include_counts=True,
+        )
+
+        self.assertEqual(product.choices, runtime.choices)
+        self.assertEqual(product.count_certificate, runtime.count_certificate)
+        self.assertEqual(
+            product.text_choice_projection_certificates,
+            runtime.text_choice_projection_certificates,
+        )
+        self.assertEqual(
+            product.terminal_projection_certificate,
+            runtime.terminal_projection_certificate,
+        )
+        self.assertEqual(
+            product.checked_frontier_certificate,
+            runtime.checked_frontier_certificate,
+        )
+
+    def test_checked_frontier_count_certificate_drives_count_function(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        product = _checked_writer_frontier_product(
+            prepared,
+            cursor,
+            include_counts=True,
+        )
+
+        self.assertEqual(
+            _count_checked_writer_frontier_branch_completions(
+                prepared,
+                cursor,
+            ),
+            product.count_certificate.completion_count,
+        )
 
     def test_runtime_branch_transitions_preserve_checked_frontier_certificate(self) -> None:
         prepared = _prepare(cco_facts())

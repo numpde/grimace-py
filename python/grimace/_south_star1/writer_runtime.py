@@ -103,8 +103,9 @@ class WriterRuntimeBranchTransition:
     stereo_lifecycle_evidence: tuple[object, ...]
     stereo_branch_certificates: tuple[object, ...]
     residual_attachment_policy_evidence: tuple[object, ...]
-    checked_branch_certificate: object | None
     next_state: WriterRuntimeState
+    checked_branch_certificate: object | None
+    capability_coverage_certificate: object | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -358,6 +359,9 @@ def writer_runtime_branch_transitions(
                 ),
                 checked_branch_certificate=(
                     support.checked_branch_certificate
+                ),
+                capability_coverage_certificate=(
+                    support.capability_coverage_certificate
                 ),
                 next_state=successor_state,
             )

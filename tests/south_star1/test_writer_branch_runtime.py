@@ -30,6 +30,10 @@ from grimace._south_star1.writer_capabilities import _WriterExecutionCapabilityK
 from grimace._south_star1.writer_branch_certificates import (
     writer_checked_branch_support_certificate,
 )
+from grimace._south_star1.writer_capability_certificates import (
+    WriterCapabilityCoverageCertificate,
+    WriterCapabilityCertificateKind,
+)
 from grimace._south_star1.writer_closure_candidate_branch_certificates import (
     WriterClosureCandidateBranchCertificateKind,
 )
@@ -283,6 +287,155 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                     certificate.stereo_branch_certificates,
                     support.stereo_branch_certificates,
                 )
+
+    def test_checked_branch_supports_have_capability_coverage(self) -> None:
+        prepared = _prepare(cco_facts())
+        initial = initial_writer_frontier_cursor(
+            prepared,
+            _writer_options(),
+        )
+        batch = _checked_writer_frontier_branch_supports(
+            prepared,
+            initial,
+            include_counts=False,
+        )
+
+        for support in batch.supports:
+            coverage = support.capability_coverage_certificate
+            self.assertIsNotNone(coverage)
+            self.assertIsNotNone(coverage.execution_capabilities)
+            self.assertEqual(
+                coverage.execution_capabilities,
+                support.execution_capabilities,
+            )
+            self.assertEqual(
+                coverage.covered_capabilities,
+                support.execution_capabilities,
+            )
+
+            for capability in support.execution_capabilities:
+                self.assertIn(
+                    capability,
+                    tuple(c.capability for c in coverage.capability_certificates),
+                )
+
+    def test_checked_branch_supporter_coverage_requires_matching_capability_certificates(
+        self,
+    ) -> None:
+        prepared = _prepare(directional_facts())
+        initial = initial_writer_frontier_cursor(
+            prepared,
+            _writer_options(),
+        )
+        support = _find_checked_branch_support(
+            prepared,
+            initial,
+            lambda support: bool(support.execution_capabilities),
+        )
+
+        # Remove one capability without removing its corresponding coverage
+        # certificate to verify the aggregate certificate rejects the mismatch.
+        reduced_capabilities = set(support.execution_capabilities)
+        removed_capability = next(iter(reduced_capabilities))
+        reduced_capabilities.remove(removed_capability)
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "capability_coverage_execution_mismatch",
+        ):
+            writer_checked_branch_support_certificate(
+                source_state=support.source_state,
+                successor_state=support.successor_state,
+                emitted_text=support.emitted_text,
+                transition_kind=support.transition_kind,
+                graph_action_surface=support.graph_action_surface,
+                policy_family=support.policy_family,
+                events=support.events,
+                transition_evidence=support.evidence,
+                execution_capabilities=frozenset(
+                    capability for capability in reduced_capabilities
+                ),
+                graph_obligation_work_evidence=(
+                    support.graph_obligation_work_evidence
+                ),
+                residual_work_evidence=support.residual_work_evidence,
+                finite_relation_work_evidence=(
+                    support.finite_relation_work_evidence
+                ),
+                closure_candidate_resolution_evidence=(
+                    support.closure_candidate_resolution_evidence
+                ),
+                closure_candidate_lifecycle_evidence=(
+                    support.closure_candidate_lifecycle_evidence
+                ),
+                closure_candidate_branch_certificates=(
+                    support.closure_candidate_branch_certificates
+                ),
+                residual_attachment_lifecycle_evidence=(
+                    support.residual_attachment_lifecycle_evidence
+                ),
+                residual_attachment_branch_certificates=(
+                    support.residual_attachment_branch_certificates
+                ),
+                stereo_lifecycle_evidence=support.stereo_lifecycle_evidence,
+                stereo_branch_certificates=support.stereo_branch_certificates,
+                residual_attachment_policy_evidence=(
+                    support.residual_attachment_policy_evidence
+                ),
+                capability_coverage_certificate=(
+                    support.capability_coverage_certificate
+                ),
+            )
+
+        # Remove the graph-capability coverage while leaving execution unchanged.
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "capability_coverage_incomplete",
+        ):
+            writer_checked_branch_support_certificate(
+                source_state=support.source_state,
+                successor_state=support.successor_state,
+                emitted_text=support.emitted_text,
+                transition_kind=support.transition_kind,
+                graph_action_surface=support.graph_action_surface,
+                policy_family=support.policy_family,
+                events=support.events,
+                transition_evidence=support.evidence,
+                execution_capabilities=support.execution_capabilities,
+                graph_obligation_work_evidence=(
+                    support.graph_obligation_work_evidence
+                ),
+                residual_work_evidence=support.residual_work_evidence,
+                finite_relation_work_evidence=(
+                    support.finite_relation_work_evidence
+                ),
+                closure_candidate_resolution_evidence=(
+                    support.closure_candidate_resolution_evidence
+                ),
+                closure_candidate_lifecycle_evidence=(
+                    support.closure_candidate_lifecycle_evidence
+                ),
+                closure_candidate_branch_certificates=(
+                    support.closure_candidate_branch_certificates
+                ),
+                residual_attachment_lifecycle_evidence=(
+                    support.residual_attachment_lifecycle_evidence
+                ),
+                residual_attachment_branch_certificates=(
+                    support.residual_attachment_branch_certificates
+                ),
+                stereo_lifecycle_evidence=support.stereo_lifecycle_evidence,
+                stereo_branch_certificates=support.stereo_branch_certificates,
+                residual_attachment_policy_evidence=(
+                    support.residual_attachment_policy_evidence
+                ),
+                capability_coverage_certificate=(
+                    WriterCapabilityCoverageCertificate(
+                        execution_capabilities=support.execution_capabilities,
+                        capability_certificates=(),
+                    )
+                ),
+            )
 
     def test_checked_text_choices_have_projection_certificates(self) -> None:
         for facts in (
@@ -1811,7 +1964,7 @@ class WriterBranchRuntimeTest(unittest.TestCase):
 
         with self.assertRaisesRegex(
             SouthStarError,
-            "stereo_certificate_capability_missing",
+            "capability_coverage_execution_mismatch",
         ):
             writer_checked_branch_support_certificate(
                 source_state=support.source_state,
@@ -1857,6 +2010,9 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 stereo_branch_certificates=support.stereo_branch_certificates,
                 residual_attachment_policy_evidence=(
                     support.residual_attachment_policy_evidence
+                ),
+                capability_coverage_certificate=(
+                    support.capability_coverage_certificate
                 ),
             )
 
@@ -1909,6 +2065,9 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 stereo_branch_certificates=support.stereo_branch_certificates,
                 residual_attachment_policy_evidence=(
                     support.residual_attachment_policy_evidence
+                ),
+                capability_coverage_certificate=(
+                    support.capability_coverage_certificate
                 ),
             )
 

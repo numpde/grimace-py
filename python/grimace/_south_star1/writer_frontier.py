@@ -76,6 +76,7 @@ from .writer_count_certificates import writer_branch_completion_term_certificate
 from .writer_count_certificates import writer_cursor_completion_count_certificate
 from .writer_count_certificates import writer_state_completion_count_certificate
 from .writer_diagnostic_certificates import writer_diagnostics_certificate
+from .writer_capability_certificates import writer_capability_coverage_certificate
 from .writer_terminal_certificates import writer_terminal_certificates
 from .writer_transitions import _WriterActiveEmittedGraphPolicyBlocker
 from .writer_transitions import _WriterActiveEmittedGraphPolicyDecision
@@ -338,6 +339,7 @@ class _WriterFrontierBranchSupport:
         ...,
     ] = ()
     checked_branch_certificate: object | None = None
+    capability_coverage_certificate: object | None = None
 
     @property
     def successor_cursor(self) -> WriterFrontierCursor:
@@ -2443,13 +2445,13 @@ def _writer_frontier_branch_support_from_next_token_support(
         )
     )
     closure_candidate_lifecycle_evidence = (
-        writer_closure_candidate_lifecycle_evidence_for_transition(
-            prepared=prepared,
-            source_state=support.state_key,
-            successor_state=support.successor_key,
-            graph_action_surface=support.graph_action_surface,
+            writer_closure_candidate_lifecycle_evidence_for_transition(
+                prepared=prepared,
+                source_state=support.state_key,
+                successor_state=support.successor_key,
+                graph_action_surface=support.graph_action_surface,
+            )
         )
-    )
     residual_attachment_lifecycle_evidence = (
         writer_residual_attachment_lifecycle_evidence_for_transition(
             prepared=prepared,
@@ -2524,6 +2526,21 @@ def _writer_frontier_branch_support_from_next_token_support(
     finite_relation_work_evidence = tuple(
         support.finite_relation_work_evidence
     )
+    capability_coverage_certificate = writer_capability_coverage_certificate(
+        execution_capabilities=execution_capabilities,
+        transition_kind=transition.kind,
+        graph_action_surface=support.graph_action_surface,
+        policy_family=support.policy_family,
+        events=transition.events,
+        transition_evidence=transition.evidence,
+        finite_relation_work_evidence=finite_relation_work_evidence,
+        residual_work_evidence=tuple(support.residual_work_evidence),
+        closure_candidate_branch_certificates=closure_candidate_branch_certificates,
+        residual_attachment_branch_certificates=residual_attachment_branch_certificates,
+        stereo_branch_certificates=stereo_branch_certificates,
+        residual_attachment_policy_evidence=policy_evidence,
+        successor_state=support.successor_key,
+    )
     checked_branch_certificate = writer_checked_branch_support_certificate(
         source_state=support.state_key,
         successor_state=support.successor_key,
@@ -2553,6 +2570,7 @@ def _writer_frontier_branch_support_from_next_token_support(
         stereo_lifecycle_evidence=stereo_lifecycle_evidence,
         stereo_branch_certificates=stereo_branch_certificates,
         residual_attachment_policy_evidence=policy_evidence,
+        capability_coverage_certificate=capability_coverage_certificate,
     )
 
     return _WriterFrontierBranchSupport(
@@ -2587,6 +2605,7 @@ def _writer_frontier_branch_support_from_next_token_support(
         stereo_branch_certificates=stereo_branch_certificates,
         residual_attachment_policy_evidence=policy_evidence,
         checked_branch_certificate=checked_branch_certificate,
+        capability_coverage_certificate=capability_coverage_certificate,
     )
 
 

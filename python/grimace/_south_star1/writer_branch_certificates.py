@@ -36,6 +36,7 @@ class WriterCheckedBranchSupportCertificate:
     stereo_lifecycle_evidence: tuple[object, ...]
     stereo_branch_certificates: tuple[object, ...]
     residual_attachment_policy_evidence: tuple[object, ...]
+    capability_coverage_certificate: object
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +73,7 @@ def writer_checked_branch_support_certificate(
     stereo_lifecycle_evidence: tuple[object, ...],
     stereo_branch_certificates: tuple[object, ...],
     residual_attachment_policy_evidence: tuple[object, ...],
+    capability_coverage_certificate,
 ) -> WriterCheckedBranchSupportCertificate:
     if not emitted_text:
         _branch_violation("missing_emitted_text")
@@ -82,6 +84,21 @@ def writer_checked_branch_support_certificate(
         graph_action_surface=graph_action_surface,
         policy_family=policy_family,
     )
+
+    if (
+        capability_coverage_certificate is None
+        or capability_coverage_certificate.execution_capabilities
+        != execution_capabilities
+    ):
+        _branch_violation(
+            "capability_coverage_execution_mismatch"
+        )
+    if (
+        capability_coverage_certificate.covered_capabilities
+        != execution_capabilities
+    ):
+        _branch_violation("capability_coverage_incomplete")
+
     _validate_closure_candidate_certificates(
         execution_capabilities=execution_capabilities,
         resolution_evidence=closure_candidate_resolution_evidence,
@@ -139,6 +156,7 @@ def writer_checked_branch_support_certificate(
         stereo_lifecycle_evidence=stereo_lifecycle_evidence,
         stereo_branch_certificates=stereo_branch_certificates,
         residual_attachment_policy_evidence=residual_attachment_policy_evidence,
+        capability_coverage_certificate=capability_coverage_certificate,
     )
 
 

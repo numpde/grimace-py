@@ -75,6 +75,16 @@ from .writer_stereo_branch_certificates import writer_stereo_branch_certificates
 from .writer_count_certificates import writer_branch_completion_term_certificate
 from .writer_count_certificates import writer_cursor_completion_count_certificate
 from .writer_count_certificates import writer_state_completion_count_certificate
+from .writer_support_count_certificates import (
+    WriterTextStateSupportCountCertificate,
+)
+from .writer_support_count_certificates import (
+    writer_text_choice_support_count_term_certificate,
+)
+from .writer_support_count_certificates import (
+    writer_text_state_support_count_certificate,
+)
+from .writer_support_count_certificates import writer_text_support_count_certificate
 from .writer_diagnostic_certificates import writer_diagnostics_certificate
 from .writer_capability_certificates import writer_capability_coverage_certificate
 from .writer_frontier_certificates import writer_checked_frontier_certificate
@@ -3025,6 +3035,83 @@ def _count_checked_writer_frontier_branch_completions(
         prepared=prepared,
         cursor=cursor,
     ).completion_count
+
+
+def _checked_writer_frontier_text_support_count_certificate(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+    source_snapshot: object,
+) -> object:
+    memo: dict[WriterFrontierCursor, WriterTextStateSupportCountCertificate] = {}
+    state_count_certificate = (
+        _checked_writer_frontier_text_support_count_state_certificate(
+            prepared=prepared,
+            cursor=cursor,
+            memo=memo,
+            active=frozenset(),
+        )
+    )
+    return writer_text_support_count_certificate(
+        source_snapshot=source_snapshot,
+        cursor=cursor,
+        state_support_count_certificate=state_count_certificate,
+    )
+
+
+def _checked_writer_frontier_text_support_count_state_certificate(
+    *,
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+    memo: dict[WriterFrontierCursor, WriterTextStateSupportCountCertificate],
+    active: frozenset[WriterFrontierCursor],
+):
+    if cursor in memo:
+        return memo[cursor]
+
+    if cursor in active:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "writer support-count encountered a recursive frontier cursor",
+        )
+
+    product = _checked_writer_frontier_product(
+        prepared,
+        cursor,
+        include_counts=False,
+        include_frontier_certificate=False,
+        include_count_certificate=False,
+        include_diagnostics=False,
+    )
+
+    next_active = active | frozenset((cursor,))
+    choice_terms = tuple(
+        writer_text_choice_support_count_term_certificate(
+            text_projection_certificate=projection,
+            successor_support_count_certificate=(
+                _checked_writer_frontier_text_support_count_state_certificate(
+                    prepared=prepared,
+                    cursor=projection.successor_cursor,
+                    memo=memo,
+                    active=next_active,
+                )
+            ),
+        )
+        for projection in product.text_choice_projection_certificates
+    )
+
+    terminal_projection_certificate = product.terminal_projection_certificate
+    terminal_count = (
+        0 if terminal_projection_certificate is None else 1
+    )
+
+    certificate = writer_text_state_support_count_certificate(
+        cursor=cursor,
+        terminal_projection_certificate=terminal_projection_certificate,
+        terminal_count=terminal_count,
+        choice_terms=choice_terms,
+    )
+    memo[cursor] = certificate
+    return certificate
 
 
 def _checked_writer_frontier_count_certificate(

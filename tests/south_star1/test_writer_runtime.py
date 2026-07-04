@@ -58,8 +58,18 @@ from grimace._south_star1.writer_runtime import writer_runtime_diagnostics
 from grimace._south_star1.writer_runtime import writer_runtime_has_eos
 from grimace._south_star1.writer_runtime import writer_runtime_state_from_snapshot
 from grimace._south_star1.writer_runtime import writer_runtime_terminal
+from grimace._south_star1.writer_runtime import writer_runtime_support_count_certificate
 from grimace._south_star1.writer_snapshot import advance_writer_frontier_snapshot
 from grimace._south_star1.writer_snapshot import resume_writer_frontier_choices_from_snapshot
+from grimace._south_star1.writer_support_count_certificates import (
+    WriterTextSupportCountCertificate,
+)
+from grimace._south_star1.writer_support_count_certificates import (
+    writer_text_choice_support_count_term_certificate,
+)
+from grimace._south_star1.writer_support_count_certificates import (
+    writer_text_support_count_certificate,
+)
 from grimace._south_star1.writer_support_certificates import (
     writer_support_string_certificate,
 )
@@ -121,6 +131,12 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             image_certificate.witness_count,
             image_certificate.witness_count_certificate.completion_count,
         )
+        self.assertIsNotNone(image_certificate.support_count_certificate)
+        assert image_certificate.support_count_certificate is not None
+        self.assertEqual(
+            image_certificate.distinct_count,
+            image_certificate.support_count_certificate.support_count,
+        )
         count_certificate = (
             writer_runtime_branch_completion_count_certificate(
                 prepared=prepared,
@@ -150,6 +166,28 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
                 state=state,
             ),
             support.witness_count,
+        )
+
+    def test_count_writer_runtime_support_is_certificate_backed(self) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        count_certificate = writer_runtime_support_count_certificate(
+            prepared=prepared,
+            state=state,
+        )
+        self.assertIsInstance(
+            count_certificate,
+            WriterTextSupportCountCertificate,
+        )
+        self.assertEqual(
+            count_writer_runtime_support(
+                prepared=prepared,
+                state=state,
+            ),
+            count_certificate.support_count,
         )
 
     def test_count_certificate_matches_counted_completions(self) -> None:
@@ -243,6 +281,76 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             writer_cursor_completion_count_certificate(
                 cursor=state.snapshot.cursor,
                 state_count_certificates=((state_key, 2, state_count),),
+            )
+
+    def test_support_count_certificates_reject_malformed(self) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        support_count_certificate = writer_runtime_support_count_certificate(
+            prepared=prepared,
+            state=state,
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "state_support_count_cursor_mismatch",
+        ):
+            writer_text_support_count_certificate(
+                source_snapshot=state.snapshot,
+                cursor=WriterFrontierCursor(
+                    weighted_states=(
+                        (state.snapshot.cursor.weighted_states[0][0], 1),
+                    )
+                ),
+                state_support_count_certificate=(
+                    support_count_certificate.state_support_count_certificate
+                ),
+            )
+
+        if not support_count_certificate.state_support_count_certificate.choice_terms:
+            self.skipTest("fixture has no choice terms for support count")
+        first_term = (
+            support_count_certificate.state_support_count_certificate.choice_terms[0]
+        )
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "projection_successor_cursor_mismatch",
+        ):
+            writer_text_choice_support_count_term_certificate(
+                text_projection_certificate=(
+                    first_term.text_projection_certificate
+                ),
+                successor_support_count_certificate=SimpleNamespace(
+                    cursor=WriterFrontierCursor(
+                        weighted_states=((state.snapshot.cursor.weighted_states[0][0], 2),)
+                    ),
+                    support_count=first_term.support_count,
+                ),
+            )
+
+        if (
+            support_count_certificate.state_support_count_certificate.terminal_count
+            == 0
+        ):
+            self.skipTest("fixture has no terminal support at this state")
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "terminal_count_mismatch",
+        ):
+            writer_text_state_support_count_certificate(
+                cursor=support_count_certificate.cursor,
+                terminal_projection_certificate=(
+                    support_count_certificate.state_support_count_certificate
+                    .terminal_projection_certificate
+                ),
+                terminal_count=0,
+                choice_terms=(
+                    support_count_certificate.state_support_count_certificate
+                    .choice_terms
+                ),
             )
 
     def test_branch_certificate_term_matches_singleton_successor_cursor(self) -> None:

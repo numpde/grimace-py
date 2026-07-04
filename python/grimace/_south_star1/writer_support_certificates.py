@@ -25,6 +25,7 @@ class WriterSupportImageCertificate:
     string_certificates: tuple[WriterSupportStringCertificate, ...]
     distinct_count: int
     witness_count: int
+    support_count_certificate: object | None = None
     witness_count_certificate: object | None = None
 
 
@@ -68,11 +69,16 @@ def writer_support_image_certificate(
     source_snapshot,
     string_certificates: tuple[WriterSupportStringCertificate, ...],
     witness_count: int,
+    support_count_certificate: object | None = None,
     witness_count_certificate: object | None = None,
 ) -> WriterSupportImageCertificate:
     strings = tuple(certificate.string for certificate in string_certificates)
     if len(set(strings)) != len(strings):
         _image_violation("duplicate_support_string_certificate")
+
+    if support_count_certificate is not None:
+        if support_count_certificate.support_count != len(strings):
+            _image_violation("support_count_certificate_mismatch")
 
     if witness_count_certificate is not None:
         if witness_count_certificate.completion_count != witness_count:
@@ -84,6 +90,7 @@ def writer_support_image_certificate(
         string_certificates=string_certificates,
         distinct_count=len(strings),
         witness_count=witness_count,
+        support_count_certificate=support_count_certificate,
         witness_count_certificate=witness_count_certificate,
     )
 

@@ -8,6 +8,7 @@ mode knobs cannot become accidental support gates.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from dataclasses import replace
 
 from .policy import SerializationLanguageMode
 from .prepared_runtime import SouthStarPreparedMol
@@ -21,9 +22,11 @@ from .writer_online_decoder_certificates import writer_online_eos_choice_certifi
 from .writer_online_decoder_certificates import (
     writer_online_text_choice_certificate,
 )
+from .writer_online_stats_certificates import writer_online_stats_certificate
 from .writer_runtime import WriterRuntimeState
-from .writer_runtime import initial_writer_runtime_state
 from .writer_runtime import writer_runtime_choice_transitions
+from .writer_runtime import writer_runtime_support_count_certificate
+from .writer_runtime import initial_writer_runtime_state
 
 
 EOS = "<EOS>"
@@ -45,6 +48,7 @@ class WriterRuntimeOnlineStats:
     completion_count: int
     choice_count: int
     has_eos: bool
+    stats_certificate: object | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,6 +111,10 @@ class WriterShapedOnlineDecoder:
     ) -> WriterShapedOnlineChoiceResult:
         _validate_writer_state_belongs_to_decoder(state, self)
         runtime_transitions = writer_runtime_choice_transitions(
+            prepared=self.prepared,
+            state=state.raw_state,
+        )
+        support_count_certificate = writer_runtime_support_count_certificate(
             prepared=self.prepared,
             state=state.raw_state,
         )
@@ -173,25 +181,41 @@ class WriterShapedOnlineDecoder:
                 )
             )
 
+        stats = WriterRuntimeOnlineStats(
+            support_count=runtime_transitions.support_count,
+            completion_count=runtime_transitions.completion_count,
+            choice_count=len(out),
+            has_eos=runtime_transitions.has_eos,
+        )
+        result_certificate = writer_online_choice_result_certificate(
+            prefix=state.prefix,
+            choices=tuple(out),
+            choice_certificates=(
+                tuple(item.choice_certificate for item in out)
+            ),
+            checked_frontier_certificate=(
+                runtime_transitions.checked_frontier_certificate
+            ),
+            count_certificate=runtime_transitions.count_certificate,
+        )
+        stats_certificate = writer_online_stats_certificate(
+            prefix=state.prefix,
+            stats=stats,
+            choice_result_certificate=result_certificate,
+            checked_frontier_certificate=(
+                runtime_transitions.checked_frontier_certificate
+            ),
+            support_count_certificate=support_count_certificate,
+            completion_count_certificate=(
+                runtime_transitions.count_certificate
+            ),
+        )
+        stats = replace(stats, stats_certificate=stats_certificate)
+
         return WriterShapedOnlineChoiceResult(
             choices=tuple(out),
-            stats=WriterRuntimeOnlineStats(
-                support_count=runtime_transitions.support_count,
-                completion_count=runtime_transitions.completion_count,
-                choice_count=len(out),
-                has_eos=runtime_transitions.has_eos,
-            ),
-            result_certificate=writer_online_choice_result_certificate(
-                prefix=state.prefix,
-                choices=tuple(out),
-                choice_certificates=(
-                    tuple(item.choice_certificate for item in out)
-                ),
-                checked_frontier_certificate=(
-                    runtime_transitions.checked_frontier_certificate
-                ),
-                count_certificate=runtime_transitions.count_certificate,
-            ),
+            stats=stats,
+            result_certificate=result_certificate,
             checked_frontier_certificate=(
                 runtime_transitions.checked_frontier_certificate
             ),

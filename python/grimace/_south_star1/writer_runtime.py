@@ -12,10 +12,10 @@ from .writer_frontier import WriterFrontierChoices
 from .writer_frontier import WriterFrontierTerminal
 from .writer_frontier import _checked_writer_frontier_count_certificate
 from .writer_frontier import _checked_writer_frontier_product
+from .writer_frontier import _checked_writer_frontier_text_support_count_certificate
 from .writer_frontier import _writer_frontier_diagnostics
 from .writer_snapshot import WriterDecoderBoundary
 from .writer_snapshot import WriterSearchSnapshot
-from .writer_snapshot import _count_writer_frontier_support_after_emitted_texts
 from .writer_snapshot import _iter_writer_snapshot_certified_support_strings
 from .writer_snapshot import _writer_search_snapshot_after_checked_branch_support
 from .writer_snapshot import _writer_search_snapshot_after_checked_choice
@@ -500,11 +500,10 @@ def count_writer_runtime_support(
     prepared: SouthStarPreparedMol,
     state: WriterRuntimeState,
 ) -> int:
-    return _count_writer_frontier_support_after_emitted_texts(
-        state.snapshot,
+    return writer_runtime_support_count_certificate(
         prepared=prepared,
-        emitted_texts=(),
-    )
+        state=state,
+    ).support_count
 
 
 def count_writer_runtime_completions(
@@ -527,6 +526,19 @@ def count_writer_runtime_branch_completions(
         prepared=prepared,
         state=state,
     ).completion_count
+
+
+def writer_runtime_support_count_certificate(
+    *,
+    prepared: SouthStarPreparedMol,
+    state: WriterRuntimeState,
+):
+    validate_writer_search_snapshot(state.snapshot, prepared=prepared)
+    return _checked_writer_frontier_text_support_count_certificate(
+        prepared=prepared,
+        cursor=state.snapshot.cursor,
+        source_snapshot=state.snapshot,
+    )
 
 
 def writer_runtime_branch_completion_count_certificate(
@@ -585,6 +597,10 @@ def writer_runtime_support_image_certificate(
         prepared=prepared,
         state=state,
     )
+    support_count_certificate = writer_runtime_support_count_certificate(
+        prepared=prepared,
+        state=state,
+    )
     if witness_count is None:
         witness_count = count_certificate.completion_count
 
@@ -595,6 +611,7 @@ def writer_runtime_support_image_certificate(
         string_certificates=tuple(item.certificate for item in certified),
         witness_count=witness_count,
         witness_count_certificate=count_certificate,
+        support_count_certificate=support_count_certificate,
     )
 
 
@@ -610,6 +627,7 @@ __all__ = (
     "count_writer_runtime_branch_completions",
     "count_writer_runtime_completions",
     "count_writer_runtime_support",
+    "writer_runtime_support_count_certificate",
     "initial_writer_runtime_state",
     "iter_writer_runtime_support",
     "iter_writer_runtime_certified_support",

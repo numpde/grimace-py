@@ -5,6 +5,7 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from dataclasses import replace
 
 from grimace._south_star1.errors import SouthStarError
 from grimace._south_star1.writer_online_decoder_certificates import (
@@ -27,7 +28,11 @@ from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_fa
 from grimace._south_star1.writer_online_decoder import WriterRuntimeOnlineStats
 from grimace._south_star1.writer_online_decoder import WriterShapedOnlineDecoderState
 from grimace._south_star1.writer_online_decoder import make_writer_shaped_online_decoder
+from grimace._south_star1.writer_online_stats_certificates import (
+    writer_online_stats_certificate,
+)
 from grimace._south_star1.writer_runtime import WriterRuntimeState
+from grimace._south_star1.writer_runtime import writer_runtime_support_count_certificate
 from grimace._south_star1.writer_runtime import writer_runtime_choice_transitions
 from tests.helpers.module_boundaries import scan_module_boundaries
 from tests.south_star1.helpers import cco_facts
@@ -222,6 +227,58 @@ class WriterOnlineDecoderRuntimeTest(unittest.TestCase):
             runtime_transitions.count_certificate,
         )
 
+    def test_writer_shaped_online_stats_certificate(self) -> None:
+        prepared = _prepare(cco_facts())
+        decoder = make_writer_shaped_online_decoder(
+            prepared=prepared,
+            include_eos=True,
+        )
+        state = decoder.initial_state()
+        result = state.choices_with_stats()
+        runtime_state = state.raw_state
+        runtime_transitions = writer_runtime_choice_transitions(
+            prepared=prepared,
+            state=runtime_state,
+        )
+
+        self.assertIsNotNone(result.stats.stats_certificate)
+        assert result.stats.stats_certificate is not None
+        self.assertEqual(
+            result.stats.stats_certificate.support_count_certificate,
+            writer_runtime_support_count_certificate(
+                prepared=prepared,
+                state=runtime_state,
+            ),
+        )
+        self.assertEqual(
+            result.stats.stats_certificate.completion_count_certificate,
+            runtime_transitions.count_certificate,
+        )
+        self.assertEqual(
+            result.stats.stats_certificate.choice_result_certificate,
+            result.result_certificate,
+        )
+        self.assertEqual(
+            result.stats.stats_certificate.checked_frontier_certificate,
+            runtime_transitions.checked_frontier_certificate,
+        )
+        self.assertEqual(
+            result.stats.support_count,
+            result.stats.stats_certificate.support_count_certificate.support_count,
+        )
+        self.assertEqual(
+            result.stats.completion_count,
+            result.stats.stats_certificate.completion_count_certificate.completion_count,
+        )
+        self.assertEqual(
+            result.stats.choice_count,
+            len(result.choices),
+        )
+        self.assertEqual(
+            result.stats.has_eos,
+            any(choice.is_eos for choice in result.choices),
+        )
+
     def test_writer_shaped_online_choice_certificate_rejects_mismatch(
         self,
     ) -> None:
@@ -288,6 +345,100 @@ class WriterOnlineDecoderRuntimeTest(unittest.TestCase):
                 checked_frontier_certificate=transitions.checked_frontier_certificate,
                 count_certificate=transitions.count_certificate,
             )
+
+    def test_writer_shaped_online_stats_certificate_rejects_mismatch(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        decoder = make_writer_shaped_online_decoder(prepared=prepared)
+        state = decoder.initial_state()
+        result = state.choices_with_stats()
+        transitions = writer_runtime_choice_transitions(
+            prepared=prepared,
+            state=state.raw_state,
+        )
+        support_count_certificate = writer_runtime_support_count_certificate(
+            prepared=prepared,
+            state=state.raw_state,
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "support_count_mismatch",
+        ):
+            writer_online_stats_certificate(
+                prefix=state.prefix,
+                stats=replace(
+                    result.stats,
+                    support_count=result.stats.support_count + 1,
+                ),
+                choice_result_certificate=result.result_certificate,
+                checked_frontier_certificate=(
+                    transitions.checked_frontier_certificate
+                ),
+                support_count_certificate=support_count_certificate,
+                completion_count_certificate=(
+                    transitions.count_certificate
+                ),
+            )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "completion_count_mismatch",
+        ):
+            writer_online_stats_certificate(
+                prefix=state.prefix,
+                stats=replace(
+                    result.stats,
+                    completion_count=result.stats.completion_count + 1,
+                ),
+                choice_result_certificate=result.result_certificate,
+                checked_frontier_certificate=(
+                    transitions.checked_frontier_certificate
+                ),
+                support_count_certificate=support_count_certificate,
+                completion_count_certificate=(
+                    transitions.count_certificate
+                ),
+            )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "choice_count_mismatch",
+        ):
+            writer_online_stats_certificate(
+                prefix=state.prefix,
+                stats=replace(
+                    result.stats,
+                    choice_count=result.stats.choice_count + 1,
+                ),
+                choice_result_certificate=result.result_certificate,
+                checked_frontier_certificate=(
+                    transitions.checked_frontier_certificate
+                ),
+                support_count_certificate=support_count_certificate,
+                completion_count_certificate=(
+                    transitions.count_certificate
+                ),
+            )
+
+        if any(choice.is_eos for choice in result.choices):
+            with self.assertRaisesRegex(
+                SouthStarError,
+                "has_eos_mismatch",
+            ):
+                writer_online_stats_certificate(
+                    prefix=state.prefix,
+                    stats=replace(result.stats, has_eos=False),
+                    choice_result_certificate=result.result_certificate,
+                    checked_frontier_certificate=(
+                        transitions.checked_frontier_certificate
+                    ),
+                    support_count_certificate=support_count_certificate,
+                    completion_count_certificate=(
+                        transitions.count_certificate
+                    ),
+                )
 
 
 def _reachable_eos_prefixes(state) -> set[str]:

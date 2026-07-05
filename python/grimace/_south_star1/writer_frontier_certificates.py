@@ -61,6 +61,10 @@ def writer_frontier_projection_certificate(
             _frontier_violation("branch_certificate_successor_mismatch")
         if certificate.emitted_text != support.emitted_text:
             _frontier_violation("branch_certificate_text_mismatch")
+        if certificate.parent_weight != support.parent_weight:
+            _frontier_violation("branch_certificate_parent_weight_mismatch")
+        if certificate.branch_ordinal != support.branch_ordinal:
+            _frontier_violation("branch_certificate_ordinal_mismatch")
 
     terminal_certificates = tuple(
         support.checked_terminal_certificate for support in terminal_supports

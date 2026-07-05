@@ -60,6 +60,15 @@ def writer_text_choice_projection_certificates(
         )
         if any(certificate is None for certificate in branch_certificates):
             _choice_violation("branch_support_lacks_checked_certificate")
+        for support, certificate in zip(supports, branch_certificates):
+            if certificate.parent_weight != support.parent_weight:
+                _choice_violation("branch_certificate_parent_weight_mismatch")
+            if certificate.branch_ordinal != support.branch_ordinal:
+                _choice_violation("branch_certificate_ordinal_mismatch")
+            if certificate.source_state != support.source_state:
+                _choice_violation("branch_certificate_source_mismatch")
+            if certificate.successor_state != support.successor_state:
+                _choice_violation("branch_certificate_successor_mismatch")
 
         expected_successor = _cursor_like(
             choice.successor,
@@ -69,9 +78,14 @@ def writer_text_choice_projection_certificates(
             _choice_violation("choice_successor_cursor_mismatch")
 
         immediate_multiplicity = sum(
-            support.parent_weight
-            for support in supports
+            certificate.parent_weight
+            for certificate in branch_certificates
         )
+        support_multiplicity = sum(support.parent_weight for support in supports)
+        if immediate_multiplicity != support_multiplicity:
+            _choice_violation(
+                "branch_certificate_support_weight_total_mismatch"
+            )
         if choice.immediate_multiplicity != immediate_multiplicity:
             _choice_violation("choice_immediate_multiplicity_mismatch")
 

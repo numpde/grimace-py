@@ -1802,6 +1802,8 @@ def _validate_lifecycle_replay_certificate_values(certificate) -> None:
             _delta_violation("closure_lifecycle_replay_evidence_mismatch")
         if closure.graph_action_surface != certificate.graph_action_surface:
             _delta_violation("closure_lifecycle_replay_surface_mismatch")
+        if closure.kind is not WriterClosureCandidateLifecycleReplayKind.REPLAYED:
+            _delta_violation("closure_lifecycle_replay_kind_mismatch")
         if not closure.replay_complete:
             _delta_violation("closure_lifecycle_replay_incomplete")
         if len(closure.replay_terms) != len(
@@ -1859,6 +1861,16 @@ def _validate_lifecycle_replay_certificate_values(certificate) -> None:
         if residual.graph_action_surface != certificate.graph_action_surface:
             _delta_violation(
                 "residual_attachment_lifecycle_replay_surface_mismatch"
+            )
+        if (
+            residual.kind
+            is not (
+                WriterResidualAttachmentLifecycleReplayKind
+                .CLOSURE_OPEN_DISCHARGED
+            )
+        ):
+            _delta_violation(
+                "residual_attachment_lifecycle_replay_kind_mismatch"
             )
         if not residual.replay_complete:
             _delta_violation("residual_attachment_lifecycle_replay_incomplete")

@@ -21,6 +21,8 @@ class WriterCheckedBranchSupportCertificate:
     source_state: object
     successor_state: object
     emitted_text: str
+    parent_weight: int
+    branch_ordinal: int
     transition_kind: object
     graph_action_surface: object | None
     policy_family: object | None
@@ -60,6 +62,8 @@ def writer_checked_branch_support_certificate(
     source_state,
     successor_state,
     emitted_text: str,
+    parent_weight: int,
+    branch_ordinal: int,
     transition_kind,
     graph_action_surface,
     policy_family,
@@ -82,6 +86,10 @@ def writer_checked_branch_support_certificate(
 ) -> WriterCheckedBranchSupportCertificate:
     if not emitted_text:
         _branch_violation("missing_emitted_text")
+    if parent_weight <= 0:
+        _branch_violation("nonpositive_parent_weight")
+    if branch_ordinal < 0:
+        _branch_violation("negative_branch_ordinal")
 
     ring_lifecycle_events = _ring_lifecycle_events(events)
     _validate_ring_lifecycle_events(events, ring_lifecycle_events)
@@ -154,6 +162,8 @@ def writer_checked_branch_support_certificate(
         source_state=source_state,
         successor_state=successor_state,
         emitted_text=emitted_text,
+        parent_weight=parent_weight,
+        branch_ordinal=branch_ordinal,
         transition_kind=transition_kind,
         graph_action_surface=graph_action_surface,
         policy_family=policy_family,

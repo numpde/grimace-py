@@ -187,6 +187,33 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 ),
             )
 
+    def test_runtime_branch_transition_certificate_carries_support_identity(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+
+        transitions = writer_runtime_branch_transitions(
+            prepared=prepared,
+            state=state,
+            include_counts=False,
+        )
+
+        self.assertTrue(transitions.transitions)
+        for transition in transitions.transitions:
+            certificate = transition.checked_branch_certificate
+            self.assertIsNotNone(certificate)
+            self.assertEqual(certificate.parent_weight, transition.parent_weight)
+            self.assertEqual(certificate.branch_ordinal, transition.branch_ordinal)
+            self.assertEqual(certificate.source_state, transition.source_state)
+            self.assertEqual(
+                certificate.successor_state,
+                transition.successor_state,
+            )
+
     def test_checked_frontier_branch_supports_preserve_raw_supports(self) -> None:
         prepared = _prepare(cco_facts())
         initial = initial_writer_frontier_cursor(prepared, _writer_options())
@@ -804,6 +831,50 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 )
             )
 
+    def test_checked_branch_certificate_rejects_nonpositive_parent_weight(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _checked_writer_frontier_branch_supports(
+            prepared,
+            initial,
+            include_counts=False,
+        ).supports[0]
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "nonpositive_parent_weight",
+        ):
+            writer_checked_branch_support_certificate(
+                **_checked_branch_certificate_kwargs(
+                    support,
+                    parent_weight=0,
+                )
+            )
+
+    def test_checked_branch_certificate_rejects_negative_branch_ordinal(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _checked_writer_frontier_branch_supports(
+            prepared,
+            initial,
+            include_counts=False,
+        ).supports[0]
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "negative_branch_ordinal",
+        ):
+            writer_checked_branch_support_certificate(
+                **_checked_branch_certificate_kwargs(
+                    support,
+                    branch_ordinal=-1,
+                )
+            )
+
     def test_checked_branch_certificate_rejects_successor_graph_obligation_evidence_mismatch(
         self,
     ) -> None:
@@ -996,6 +1067,23 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 support.stereo_lifecycle_evidence,
             )
 
+    def test_checked_branch_certificate_identity_matches_branch_support(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        batch = _checked_writer_frontier_branch_supports(
+            prepared,
+            initial,
+            include_counts=False,
+        )
+
+        self.assertTrue(batch.supports)
+        for support in batch.supports:
+            certificate = support.checked_branch_certificate
+            self.assertEqual(certificate.parent_weight, support.parent_weight)
+            self.assertEqual(certificate.branch_ordinal, support.branch_ordinal)
+
     def test_closure_candidate_lifecycle_replay_present_when_evidence_exists(
         self,
     ) -> None:
@@ -1077,6 +1165,53 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 )
             )
 
+    def test_closure_lifecycle_replay_rejects_wrong_kind(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        cursor = WriterFrontierCursor(
+            weighted_states=(
+                (
+                    writer_state_key(
+                        _branch_return_closure_candidate_state(
+                            live_partner=True,
+                        )
+                    ),
+                    1,
+                ),
+            )
+        )
+        support = _find_checked_branch_support(
+            prepared,
+            cursor,
+            lambda support: (
+                support.successor_state_certificate
+                .closure_candidate_lifecycle_replay_certificate
+                is not None
+            ),
+        )
+        certificate = support.successor_state_certificate
+        bad_certificate = replace(
+            certificate,
+            closure_candidate_lifecycle_replay_certificate=replace(
+                certificate.closure_candidate_lifecycle_replay_certificate,
+                kind=(
+                    writer_state_delta_certificates
+                    .WriterClosureCandidateLifecycleReplayKind
+                    .EVIDENCE_BOUND_INCOMPLETE
+                ),
+            ),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "closure_lifecycle_replay_kind_mismatch",
+        ):
+            (
+                writer_state_delta_certificates
+                .validate_writer_branch_successor_state_certificate(
+                    bad_certificate
+                )
+            )
+
     def test_residual_attachment_lifecycle_replay_present_when_evidence_exists(
         self,
     ) -> None:
@@ -1133,6 +1268,47 @@ class WriterBranchRuntimeTest(unittest.TestCase):
         with self.assertRaisesRegex(
             SouthStarError,
             "residual_attachment_lifecycle_replay_evidence_mismatch",
+        ):
+            (
+                writer_state_delta_certificates
+                .validate_writer_branch_successor_state_certificate(
+                    bad_certificate
+                )
+            )
+
+    def test_residual_attachment_lifecycle_replay_rejects_wrong_kind(
+        self,
+    ) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _find_checked_branch_support(
+            prepared,
+            initial,
+            lambda support: (
+                support.successor_state_certificate
+                .residual_attachment_lifecycle_replay_certificate
+                is not None
+            ),
+        )
+        certificate = support.successor_state_certificate
+        bad_certificate = replace(
+            certificate,
+            residual_attachment_lifecycle_replay_certificate=replace(
+                (
+                    certificate
+                    .residual_attachment_lifecycle_replay_certificate
+                ),
+                kind=(
+                    writer_state_delta_certificates
+                    .WriterResidualAttachmentLifecycleReplayKind
+                    .EVIDENCE_BOUND_INCOMPLETE
+                ),
+            ),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "residual_attachment_lifecycle_replay_kind_mismatch",
         ):
             (
                 writer_state_delta_certificates
@@ -2228,6 +2404,97 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                     branch_certificate.successor_state,
                 )
 
+    def test_text_projection_immediate_multiplicity_matches_branch_certificate_weights(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        product = _checked_writer_frontier_product(
+            prepared,
+            cursor,
+            include_counts=False,
+            include_frontier_certificate=False,
+            include_count_certificate=False,
+        )
+
+        for projection in product.text_choice_projection_certificates:
+            self.assertEqual(
+                projection.immediate_multiplicity,
+                sum(
+                    certificate.parent_weight
+                    for certificate in projection.branch_certificates
+                ),
+            )
+
+    def test_text_projection_rejects_branch_certificate_parent_weight_mismatch(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        batch = _checked_writer_frontier_branch_supports(
+            prepared,
+            cursor,
+            include_counts=False,
+        )
+        support = batch.supports[0]
+        bad_certificate = replace(
+            support.checked_branch_certificate,
+            parent_weight=support.parent_weight + 1,
+        )
+        bad_support = replace(
+            support,
+            checked_branch_certificate=bad_certificate,
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "branch_certificate_parent_weight_mismatch",
+        ):
+            writer_text_choice_projection_certificates(
+                source_cursor=cursor,
+                choices=batch.choices,
+                branch_supports=(bad_support, *batch.supports[1:]),
+            )
+
+    def test_frontier_projection_rejects_branch_certificate_ordinal_mismatch(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        product = _checked_writer_frontier_product(
+            prepared,
+            cursor,
+            include_counts=False,
+            include_frontier_certificate=False,
+            include_count_certificate=False,
+        )
+        support = product.branch_supports[0]
+        bad_certificate = replace(
+            support.checked_branch_certificate,
+            branch_ordinal=support.branch_ordinal + 100,
+        )
+        bad_support = replace(
+            support,
+            checked_branch_certificate=bad_certificate,
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "branch_certificate_ordinal_mismatch",
+        ):
+            writer_frontier_projection_certificate(
+                cursor=product.cursor,
+                choices=product.choices,
+                branch_supports=(bad_support, *product.branch_supports[1:]),
+                terminal_supports=product.terminal_supports,
+                text_choice_projection_certificates=(
+                    product.text_choice_projection_certificates
+                ),
+                terminal_projection_certificate=(
+                    product.terminal_projection_certificate
+                ),
+            )
+
     def test_checked_branch_supports_have_capability_coverage(self) -> None:
         prepared = _prepare(cco_facts())
         initial = initial_writer_frontier_cursor(
@@ -2287,6 +2554,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 source_state=support.source_state,
                 successor_state=support.successor_state,
                 emitted_text=support.emitted_text,
+                parent_weight=support.parent_weight,
+                branch_ordinal=support.branch_ordinal,
                 transition_kind=support.transition_kind,
                 graph_action_surface=support.graph_action_surface,
                 policy_family=support.policy_family,
@@ -2339,6 +2608,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 source_state=support.source_state,
                 successor_state=support.successor_state,
                 emitted_text=support.emitted_text,
+                parent_weight=support.parent_weight,
+                branch_ordinal=support.branch_ordinal,
                 transition_kind=support.transition_kind,
                 graph_action_surface=support.graph_action_surface,
                 policy_family=support.policy_family,
@@ -3916,6 +4187,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 source_state=support.source_state,
                 successor_state=support.successor_state,
                 emitted_text=support.emitted_text,
+                parent_weight=support.parent_weight,
+                branch_ordinal=support.branch_ordinal,
                 transition_kind=support.transition_kind,
                 graph_action_surface=support.graph_action_surface,
                 policy_family=support.policy_family,
@@ -3982,6 +4255,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 source_state=support.source_state,
                 successor_state=support.successor_state,
                 emitted_text=support.emitted_text,
+                parent_weight=support.parent_weight,
+                branch_ordinal=support.branch_ordinal,
                 transition_kind=support.transition_kind,
                 graph_action_surface=SimpleNamespace(policy_family=object()),
                 policy_family=support.policy_family,
@@ -4474,6 +4749,8 @@ def _checked_branch_certificate_kwargs(support, **overrides):
         source_state=support.source_state,
         successor_state=support.successor_state,
         emitted_text=support.emitted_text,
+        parent_weight=support.parent_weight,
+        branch_ordinal=support.branch_ordinal,
         transition_kind=support.transition_kind,
         graph_action_surface=support.graph_action_surface,
         policy_family=support.policy_family,

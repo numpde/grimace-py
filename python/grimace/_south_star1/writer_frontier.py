@@ -2750,6 +2750,8 @@ def _writer_frontier_branch_support_from_next_token_support(
         source_state=support.state_key,
         successor_state=support.successor_key,
         emitted_text=support.emitted_text,
+        parent_weight=support.parent_weight,
+        branch_ordinal=branch_ordinal,
         transition_kind=transition.kind,
         graph_action_surface=support.graph_action_surface,
         policy_family=support.policy_family,

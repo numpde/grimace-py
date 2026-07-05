@@ -4741,6 +4741,35 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 branch_terms=(bad_term, *state_count.branch_terms[1:]),
             )
 
+    def test_state_count_certificate_rejects_terminal_projection_source_mismatch(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        product = _first_terminal_frontier_product(prepared)
+        terminal_projection = product.terminal_projection_certificate
+        self.assertIsNotNone(terminal_projection)
+        state_key = product.cursor.weighted_states[0][0]
+        finalized_state = (
+            terminal_projection.finalized_cursor.weighted_states[0][0]
+        )
+        bad_projection = replace(
+            terminal_projection,
+            source_cursor=WriterFrontierCursor(
+                weighted_states=((finalized_state, 1),)
+            ),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "terminal_projection_source_state_mismatch",
+        ):
+            writer_state_completion_count_certificate(
+                state_key=state_key,
+                terminal_projection_certificate=bad_projection,
+                terminal_count=terminal_projection.terminal.completion_count,
+                branch_terms=(),
+            )
+
     def test_runtime_diagnostics_is_frontier_owned(self) -> None:
         prepared = _prepare(cco_facts())
         state = initial_writer_runtime_state(

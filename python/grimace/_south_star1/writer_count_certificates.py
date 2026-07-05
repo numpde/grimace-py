@@ -85,6 +85,10 @@ def writer_state_completion_count_certificate(
         terminal = terminal_projection_certificate.terminal
         if terminal is None:
             _count_violation("terminal_projection_lacks_terminal")
+        if tuple(terminal_projection_certificate.source_cursor.weighted_states) != (
+            (state_key, 1),
+        ):
+            _count_violation("terminal_projection_source_state_mismatch")
         if terminal.completion_count != terminal_count:
             _count_violation("terminal_count_mismatch")
 

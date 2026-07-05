@@ -170,6 +170,7 @@ def writer_checked_frontier_certificate(
     text_choice_count_certificates: tuple[object, ...] = (),
     terminal_choice_count_certificate: object | None = None,
     support_count_certificate: object | None = None,
+    frontier_completion_count_certificate: object | None = None,
     terminal_projection_certificate=None,
     count_certificate=None,
     diagnostic_certificate=None,
@@ -332,20 +333,51 @@ def writer_checked_frontier_certificate(
                 "support_count_certificate_total_mismatch"
             )
 
-    frontier_completion_count_certificate = None
     if count_certificate is not None:
         if count_certificate.cursor != cursor:
             _frontier_violation("count_certificate_cursor_mismatch")
-        frontier_completion_count_certificate = (
-            writer_frontier_completion_count_certificate(
-                projection_certificate=projection_certificate,
-                count_certificate=count_certificate,
-                text_choice_count_certificates=text_choice_count_certificates,
-                terminal_choice_count_certificate=(
-                    terminal_choice_count_certificate
-                ),
+        if frontier_completion_count_certificate is None:
+            frontier_completion_count_certificate = (
+                writer_frontier_completion_count_certificate(
+                    projection_certificate=projection_certificate,
+                    count_certificate=count_certificate,
+                    text_choice_count_certificates=(
+                        text_choice_count_certificates
+                    ),
+                    terminal_choice_count_certificate=(
+                        terminal_choice_count_certificate
+                    ),
+                )
             )
+        if (
+            frontier_completion_count_certificate.projection_certificate
+            is not projection_certificate
+        ):
+            _frontier_violation(
+                "frontier_completion_count_projection_mismatch"
+            )
+        if (
+            frontier_completion_count_certificate.count_certificate
+            is not count_certificate
+        ):
+            _frontier_violation("frontier_completion_count_mismatch")
+        coverage = (
+            frontier_completion_count_certificate.term_coverage_certificate
         )
+        if coverage is None:
+            _frontier_violation("frontier_completion_term_coverage_missing")
+        if coverage.projection_certificate is not projection_certificate:
+            _frontier_violation(
+                "frontier_completion_coverage_projection_mismatch"
+            )
+        if coverage.count_certificate is not count_certificate:
+            _frontier_violation(
+                "frontier_completion_coverage_count_mismatch"
+            )
+        if coverage.completion_count != count_certificate.completion_count:
+            _frontier_violation("frontier_completion_coverage_total_mismatch")
+    elif frontier_completion_count_certificate is not None:
+        _frontier_violation("frontier_completion_count_without_count")
 
     if diagnostic_certificate is not None:
         if diagnostic_certificate.cursor != cursor:

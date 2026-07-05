@@ -36,6 +36,9 @@ from grimace._south_star1.writer_count_certificates import (
 from grimace._south_star1.writer_count_certificates import (
     writer_frontier_completion_count_certificate,
 )
+from grimace._south_star1.writer_count_certificates import (
+    writer_frontier_completion_term_coverage_certificate,
+)
 from grimace._south_star1.writer_count_certificates import writer_state_completion_count_certificate
 from grimace._south_star1.writer_choice_count_certificates import (
     writer_text_choice_count_certificate,
@@ -1547,6 +1550,30 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             product.count_certificate.completion_count,
         )
 
+    def test_frontier_completion_count_carries_term_coverage(self) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        product = _checked_writer_frontier_product(
+            prepared,
+            state.snapshot.cursor,
+        )
+
+        aggregate = (
+            product.checked_frontier_certificate
+            .frontier_completion_count_certificate
+        )
+        coverage = aggregate.term_coverage_certificate
+        self.assertIsNotNone(coverage)
+        self.assertIs(coverage.projection_certificate, product.projection_certificate)
+        self.assertIs(coverage.count_certificate, product.count_certificate)
+        self.assertEqual(
+            coverage.completion_count,
+            product.count_certificate.completion_count,
+        )
+
     def test_choice_count_certificate_rejects_malformed(self) -> None:
         prepared = _prepare(cco_facts())
         state = initial_writer_runtime_state(
@@ -1581,6 +1608,63 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
                 support_count_certificate=product.support_count_certificate,
                 count_certificate=bad_count,
                 diagnostic_certificate=product.diagnostic_certificate,
+            )
+
+        count = product.count_certificate
+        state_key, weight, state_count = count.state_count_certificates[0]
+        if state_count.branch_terms:
+            branch_term = state_count.branch_terms[0]
+            bad_branch = replace(
+                branch_term.branch_certificate,
+                emitted_text=(
+                    branch_term.branch_certificate.emitted_text + "_bad"
+                ),
+            )
+            bad_state_count = replace(
+                state_count,
+                branch_terms=(
+                    replace(branch_term, branch_certificate=bad_branch),
+                    *state_count.branch_terms[1:],
+                ),
+            )
+            bad_count = replace(
+                count,
+                state_count_certificates=(
+                    (state_key, weight, bad_state_count),
+                    *count.state_count_certificates[1:],
+                ),
+            )
+            with self.assertRaisesRegex(
+                SouthStarError,
+                "branch_completion_term_key_partition_mismatch",
+            ):
+                writer_frontier_completion_term_coverage_certificate(
+                    projection_certificate=product.projection_certificate,
+                    count_certificate=bad_count,
+                )
+
+        bad_projection = replace(
+            product.projection_certificate,
+            branch_certificates=(
+                replace(
+                    product.projection_certificate.branch_certificates[0],
+                    parent_weight=(
+                        product.projection_certificate
+                        .branch_certificates[0]
+                        .parent_weight
+                        + 1
+                    ),
+                ),
+                *product.projection_certificate.branch_certificates[1:],
+            ),
+        )
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "branch_completion_parent_weight_scale_mismatch",
+        ):
+            writer_frontier_completion_term_coverage_certificate(
+                projection_certificate=bad_projection,
+                count_certificate=product.count_certificate,
             )
 
         with self.assertRaisesRegex(
@@ -2040,6 +2124,58 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             self.skipTest("fixture state has no terminal projection")
         if product.terminal_choice_count_certificate is None:
             self.skipTest("fixture state has no terminal choice count")
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "frontier_completion_term_coverage_missing",
+        ):
+            writer_checked_frontier_certificate(
+                projection_certificate=product.projection_certificate,
+                text_choice_count_certificates=(
+                    product.text_choice_count_certificates
+                ),
+                terminal_choice_count_certificate=(
+                    product.terminal_choice_count_certificate
+                ),
+                support_count_certificate=product.support_count_certificate,
+                count_certificate=product.count_certificate,
+                frontier_completion_count_certificate=replace(
+                    product.checked_frontier_certificate
+                    .frontier_completion_count_certificate,
+                    term_coverage_certificate=None,
+                ),
+            )
+
+        terminal_projection = (
+            product.projection_certificate.terminal_projection_certificate
+        )
+        bad_terminal_projection = replace(
+            terminal_projection,
+            terminal_certificates=(
+                replace(
+                    terminal_projection.terminal_certificates[0],
+                    parent_weight=(
+                        terminal_projection.terminal_certificates[0]
+                        .parent_weight
+                        + 1
+                    ),
+                ),
+                *terminal_projection.terminal_certificates[1:],
+            ),
+        )
+        bad_projection = replace(
+            product.projection_certificate,
+            terminal_projection_certificate=bad_terminal_projection,
+            terminal_certificates=bad_terminal_projection.terminal_certificates,
+        )
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "terminal_completion_parent_weight_scale_mismatch",
+        ):
+            writer_frontier_completion_term_coverage_certificate(
+                projection_certificate=bad_projection,
+                count_certificate=product.count_certificate,
+            )
 
         with self.assertRaisesRegex(
             SouthStarError,

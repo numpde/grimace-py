@@ -4706,6 +4706,41 @@ class WriterBranchRuntimeTest(unittest.TestCase):
         )
         self.assertEqual(state_count.completion_count, reconstructed.completion_count)
 
+    def test_state_count_certificate_rejects_branch_term_source_mismatch(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        certificate = writer_runtime_branch_completion_count_certificate(
+            prepared=prepared,
+            state=state,
+        )
+        state_key, _, state_count = certificate.state_count_certificates[0]
+        term = state_count.branch_terms[0]
+        bad_term = replace(
+            term,
+            branch_certificate=replace(
+                term.branch_certificate,
+                source_state=term.branch_certificate.successor_state,
+            ),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "branch_term_source_state_mismatch",
+        ):
+            writer_state_completion_count_certificate(
+                state_key=state_key,
+                terminal_projection_certificate=(
+                    state_count.terminal_projection_certificate
+                ),
+                terminal_count=state_count.terminal_count,
+                branch_terms=(bad_term, *state_count.branch_terms[1:]),
+            )
+
     def test_runtime_diagnostics_is_frontier_owned(self) -> None:
         prepared = _prepare(cco_facts())
         state = initial_writer_runtime_state(

@@ -113,6 +113,16 @@ def writer_checked_branch_support_certificate(
         policy_family=policy_family,
         events=events,
         transition_evidence=transition_evidence,
+        graph_obligation_work_evidence=graph_obligation_work_evidence,
+        residual_work_evidence=residual_work_evidence,
+        finite_relation_work_evidence=finite_relation_work_evidence,
+        closure_candidate_lifecycle_evidence=(
+            closure_candidate_lifecycle_evidence
+        ),
+        residual_attachment_lifecycle_evidence=(
+            residual_attachment_lifecycle_evidence
+        ),
+        stereo_lifecycle_evidence=stereo_lifecycle_evidence,
     )
 
     _validate_closure_candidate_certificates(
@@ -353,6 +363,12 @@ def _validate_successor_state_certificate(
     policy_family,
     events: tuple[object, ...],
     transition_evidence,
+    graph_obligation_work_evidence: tuple[object, ...],
+    residual_work_evidence: tuple[object, ...],
+    finite_relation_work_evidence: tuple[object, ...],
+    closure_candidate_lifecycle_evidence: tuple[object, ...],
+    residual_attachment_lifecycle_evidence: tuple[object, ...],
+    stereo_lifecycle_evidence: tuple[object, ...],
 ) -> None:
     if successor_state_certificate is None:
         _branch_violation("missing_successor_state_certificate")
@@ -372,6 +388,34 @@ def _validate_successor_state_certificate(
         _branch_violation("successor_certificate_events_mismatch")
     if successor_state_certificate.transition_evidence != transition_evidence:
         _branch_violation("successor_certificate_evidence_mismatch")
+    if (
+        successor_state_certificate.graph_obligation_work_evidence
+        != graph_obligation_work_evidence
+    ):
+        _branch_violation("successor_certificate_graph_obligation_evidence_mismatch")
+    if successor_state_certificate.residual_work_evidence != residual_work_evidence:
+        _branch_violation("successor_certificate_residual_work_evidence_mismatch")
+    if (
+        successor_state_certificate.finite_relation_work_evidence
+        != finite_relation_work_evidence
+    ):
+        _branch_violation("successor_certificate_finite_relation_evidence_mismatch")
+    if (
+        successor_state_certificate.closure_candidate_lifecycle_evidence
+        != closure_candidate_lifecycle_evidence
+    ):
+        _branch_violation(
+            "successor_certificate_closure_lifecycle_evidence_mismatch"
+        )
+    if (
+        successor_state_certificate.residual_attachment_lifecycle_evidence
+        != residual_attachment_lifecycle_evidence
+    ):
+        _branch_violation(
+            "successor_certificate_residual_attachment_lifecycle_evidence_mismatch"
+        )
+    if successor_state_certificate.stereo_lifecycle_evidence != stereo_lifecycle_evidence:
+        _branch_violation("successor_certificate_stereo_lifecycle_evidence_mismatch")
     validate_writer_branch_successor_state_certificate(
         successor_state_certificate
     )

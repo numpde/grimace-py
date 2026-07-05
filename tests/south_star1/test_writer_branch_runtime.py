@@ -804,6 +804,198 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 )
             )
 
+    def test_checked_branch_certificate_rejects_successor_graph_obligation_evidence_mismatch(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _checked_writer_frontier_branch_supports(
+            prepared,
+            initial,
+            include_counts=False,
+        ).supports[0]
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "successor_certificate_graph_obligation_evidence_mismatch",
+        ):
+            writer_checked_branch_support_certificate(
+                **_checked_branch_certificate_kwargs(
+                    support,
+                    successor_state_certificate=replace(
+                        support.successor_state_certificate,
+                        graph_obligation_work_evidence=(object(),),
+                    ),
+                )
+            )
+
+    def test_checked_branch_certificate_rejects_successor_residual_work_mismatch(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _checked_writer_frontier_branch_supports(
+            prepared,
+            initial,
+            include_counts=False,
+        ).supports[0]
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "successor_certificate_residual_work_evidence_mismatch",
+        ):
+            writer_checked_branch_support_certificate(
+                **_checked_branch_certificate_kwargs(
+                    support,
+                    successor_state_certificate=replace(
+                        support.successor_state_certificate,
+                        residual_work_evidence=(object(),),
+                    ),
+                )
+            )
+
+    def test_checked_branch_certificate_rejects_successor_finite_relation_evidence_mismatch(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _checked_writer_frontier_branch_supports(
+            prepared,
+            initial,
+            include_counts=False,
+        ).supports[0]
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "successor_certificate_finite_relation_evidence_mismatch",
+        ):
+            writer_checked_branch_support_certificate(
+                **_checked_branch_certificate_kwargs(
+                    support,
+                    successor_state_certificate=replace(
+                        support.successor_state_certificate,
+                        finite_relation_work_evidence=(object(),),
+                    ),
+                )
+            )
+
+    def test_checked_branch_certificate_rejects_successor_closure_lifecycle_mismatch(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _checked_writer_frontier_branch_supports(
+            prepared,
+            initial,
+            include_counts=False,
+        ).supports[0]
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "successor_certificate_closure_lifecycle_evidence_mismatch",
+        ):
+            writer_checked_branch_support_certificate(
+                **_checked_branch_certificate_kwargs(
+                    support,
+                    successor_state_certificate=replace(
+                        support.successor_state_certificate,
+                        closure_candidate_lifecycle_evidence=(object(),),
+                    ),
+                )
+            )
+
+    def test_checked_branch_certificate_rejects_successor_residual_attachment_lifecycle_mismatch(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _checked_writer_frontier_branch_supports(
+            prepared,
+            initial,
+            include_counts=False,
+        ).supports[0]
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            (
+                "successor_certificate_residual_attachment_lifecycle_evidence"
+                "_mismatch"
+            ),
+        ):
+            writer_checked_branch_support_certificate(
+                **_checked_branch_certificate_kwargs(
+                    support,
+                    successor_state_certificate=replace(
+                        support.successor_state_certificate,
+                        residual_attachment_lifecycle_evidence=(object(),),
+                    ),
+                )
+            )
+
+    def test_checked_branch_certificate_rejects_successor_stereo_lifecycle_mismatch(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _checked_writer_frontier_branch_supports(
+            prepared,
+            initial,
+            include_counts=False,
+        ).supports[0]
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "successor_certificate_stereo_lifecycle_evidence_mismatch",
+        ):
+            writer_checked_branch_support_certificate(
+                **_checked_branch_certificate_kwargs(
+                    support,
+                    successor_state_certificate=replace(
+                        support.successor_state_certificate,
+                        stereo_lifecycle_evidence=(object(),),
+                    ),
+                )
+            )
+
+    def test_successor_state_certificate_evidence_matches_branch_support(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        batch = _checked_writer_frontier_branch_supports(
+            prepared,
+            initial,
+            include_counts=False,
+        )
+
+        self.assertTrue(batch.supports)
+        for support in batch.supports:
+            certificate = support.successor_state_certificate
+            self.assertEqual(
+                certificate.graph_obligation_work_evidence,
+                support.graph_obligation_work_evidence,
+            )
+            self.assertEqual(
+                certificate.residual_work_evidence,
+                support.residual_work_evidence,
+            )
+            self.assertEqual(
+                certificate.finite_relation_work_evidence,
+                support.finite_relation_work_evidence,
+            )
+            self.assertEqual(
+                certificate.closure_candidate_lifecycle_evidence,
+                support.closure_candidate_lifecycle_evidence,
+            )
+            self.assertEqual(
+                certificate.residual_attachment_lifecycle_evidence,
+                support.residual_attachment_lifecycle_evidence,
+            )
+            self.assertEqual(
+                certificate.stereo_lifecycle_evidence,
+                support.stereo_lifecycle_evidence,
+            )
+
     def test_checked_branch_certificate_rejects_stale_field_delta(self) -> None:
         prepared = _prepare(cco_facts())
         initial = initial_writer_frontier_cursor(prepared, _writer_options())

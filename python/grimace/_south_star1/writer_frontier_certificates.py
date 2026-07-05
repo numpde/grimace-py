@@ -10,7 +10,18 @@ from .errors import SouthStarErrorKind
 
 
 @dataclass(frozen=True, slots=True)
+class WriterFrontierProjectionCertificate:
+    cursor: object
+    choices: object
+    branch_certificates: tuple[object, ...]
+    terminal_certificates: tuple[object, ...]
+    text_choice_projection_certificates: tuple[object, ...]
+    terminal_projection_certificate: object | None
+
+
+@dataclass(frozen=True, slots=True)
 class WriterCheckedFrontierCertificate:
+    projection_certificate: object
     cursor: object
     choices: object
     branch_certificates: tuple[object, ...]
@@ -24,20 +35,15 @@ class WriterCheckedFrontierCertificate:
     diagnostic_certificate: object | None = None
 
 
-def writer_checked_frontier_certificate(
+def writer_frontier_projection_certificate(
     *,
     cursor,
     choices,
     branch_supports: tuple[object, ...],
     terminal_supports: tuple[object, ...],
     text_choice_projection_certificates: tuple[object, ...],
-    text_choice_count_certificates: tuple[object, ...] = (),
-    terminal_choice_count_certificate: object | None = None,
-    support_count_certificate: object | None = None,
     terminal_projection_certificate,
-    count_certificate,
-    diagnostic_certificate=None,
-) -> WriterCheckedFrontierCertificate:
+) -> WriterFrontierProjectionCertificate:
     branch_certificates = tuple(
         support.checked_branch_certificate for support in branch_supports
     )
@@ -66,6 +72,10 @@ def writer_checked_frontier_certificate(
     else:
         if terminal_projection_certificate is None:
             _frontier_violation("terminal_choice_lacks_projection_certificate")
+        if terminal_projection_certificate.source_cursor != cursor:
+            _frontier_violation(
+                "terminal_projection_source_cursor_mismatch"
+            )
         for terminal_support, terminal_certificate in zip(
             terminal_supports, terminal_certificates
         ):
@@ -117,6 +127,58 @@ def writer_checked_frontier_certificate(
         for certificate in branch_certificates
     ):
         _frontier_violation("projection_branch_certificate_partition_mismatch")
+
+    if terminal_projection_certificate is not None and tuple(
+        terminal_projection_certificate.terminal_certificates
+    ) != terminal_certificates:
+        _frontier_violation("terminal_certificate_partition_mismatch")
+
+    return WriterFrontierProjectionCertificate(
+        cursor=cursor,
+        choices=choices,
+        branch_certificates=branch_certificates,
+        terminal_certificates=terminal_certificates,
+        text_choice_projection_certificates=text_choice_projection_certificates,
+        terminal_projection_certificate=terminal_projection_certificate,
+    )
+
+
+def writer_checked_frontier_certificate(
+    *,
+    cursor=None,
+    choices=None,
+    branch_supports: tuple[object, ...] = (),
+    terminal_supports: tuple[object, ...] = (),
+    text_choice_projection_certificates: tuple[object, ...] = (),
+    projection_certificate=None,
+    text_choice_count_certificates: tuple[object, ...] = (),
+    terminal_choice_count_certificate: object | None = None,
+    support_count_certificate: object | None = None,
+    terminal_projection_certificate=None,
+    count_certificate=None,
+    diagnostic_certificate=None,
+) -> WriterCheckedFrontierCertificate:
+    if projection_certificate is None:
+        projection_certificate = writer_frontier_projection_certificate(
+            cursor=cursor,
+            choices=choices,
+            branch_supports=branch_supports,
+            terminal_supports=terminal_supports,
+            text_choice_projection_certificates=(
+                text_choice_projection_certificates
+            ),
+            terminal_projection_certificate=terminal_projection_certificate,
+        )
+    cursor = projection_certificate.cursor
+    choices = projection_certificate.choices
+    branch_certificates = projection_certificate.branch_certificates
+    terminal_certificates = projection_certificate.terminal_certificates
+    text_choice_projection_certificates = (
+        projection_certificate.text_choice_projection_certificates
+    )
+    terminal_projection_certificate = (
+        projection_certificate.terminal_projection_certificate
+    )
 
     if text_choice_count_certificates:
         if len(text_choice_count_certificates) != len(
@@ -232,6 +294,7 @@ def writer_checked_frontier_certificate(
             _frontier_violation("diagnostic_projection_certificate_mismatch")
 
     return WriterCheckedFrontierCertificate(
+        projection_certificate=projection_certificate,
         cursor=cursor,
         choices=choices,
         branch_certificates=branch_certificates,
@@ -253,4 +316,9 @@ def _frontier_violation(kind: str) -> None:
     )
 
 
-__all__ = ("WriterCheckedFrontierCertificate", "writer_checked_frontier_certificate")
+__all__ = (
+    "WriterCheckedFrontierCertificate",
+    "WriterFrontierProjectionCertificate",
+    "writer_checked_frontier_certificate",
+    "writer_frontier_projection_certificate",
+)

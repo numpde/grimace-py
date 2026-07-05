@@ -311,6 +311,9 @@ class WriterOnlineDecoderRuntimeTest(unittest.TestCase):
                     emitted_text="DIFFERENT",
                     branch_certificates=projection.branch_certificates,
                 ),
+                frontier_projection_certificate=(
+                    transitions.projection_certificate
+                ),
                 checked_frontier_certificate=(
                     transitions.checked_frontier_certificate
                 ),
@@ -328,7 +331,7 @@ class WriterOnlineDecoderRuntimeTest(unittest.TestCase):
         )
         with self.assertRaisesRegex(
             SouthStarError,
-            "text_projection_frontier_cursor_mismatch",
+            "frontier_projection_cursor_mismatch",
         ):
             writer_online_text_choice_certificate(
                 prefix=state.prefix,
@@ -340,6 +343,9 @@ class WriterOnlineDecoderRuntimeTest(unittest.TestCase):
                 ),
                 snapshot_step_certificate=bad_step,
                 text_projection_certificate=bad_projection,
+                frontier_projection_certificate=(
+                    transitions.projection_certificate
+                ),
                 checked_frontier_certificate=(
                     transitions.checked_frontier_certificate
                 ),
@@ -357,6 +363,9 @@ class WriterOnlineDecoderRuntimeTest(unittest.TestCase):
                     terminal=transitions.terminal,
                     terminal_projection_certificate=(
                         transitions.terminal_projection_certificate
+                    ),
+                    frontier_projection_certificate=(
+                        transitions.projection_certificate
                     ),
                     checked_frontier_certificate=(
                         transitions.checked_frontier_certificate
@@ -386,13 +395,16 @@ class WriterOnlineDecoderRuntimeTest(unittest.TestCase):
         )
         with self.assertRaisesRegex(
             SouthStarError,
-            "terminal_projection_frontier_cursor_mismatch",
+            "frontier_projection_cursor_mismatch",
         ):
             writer_online_eos_choice_certificate(
                 prefix=terminal_state.prefix,
                 eos_text="<EOS>",
                 terminal=terminal_transitions.terminal,
                 terminal_projection_certificate=bad_terminal_projection,
+                frontier_projection_certificate=(
+                    terminal_transitions.projection_certificate
+                ),
                 checked_frontier_certificate=(
                     terminal_transitions.checked_frontier_certificate
                 ),

@@ -43,6 +43,7 @@ from .writer_frontier import _WriterFrontierChoiceSnapshot
 from .writer_frontier import _WriterFrontierChoiceSnapshotEntry
 from .writer_frontier import _checked_writer_frontier_branch_supports
 from .writer_frontier import _checked_writer_frontier_choice_snapshot
+from .writer_frontier import _checked_writer_frontier_product
 from .writer_frontier import _raise_for_writer_frontier_choice_snapshot_blockers
 from .writer_frontier import _initial_writer_transition_frontier_cursor
 from .writer_frontier import _writer_frontier_choice_snapshot
@@ -1143,14 +1144,24 @@ def _checked_text_projection_certificate_for_emitted_text(
     snapshot: WriterSearchSnapshot,
     emitted_text: str,
 ):
-    batch = _checked_writer_frontier_branch_supports(
+    product = _checked_writer_frontier_product(
         prepared,
         snapshot.cursor,
         include_counts=False,
+        include_frontier_certificate=False,
+        include_count_certificate=False,
     )
+    if product.projection_certificate is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "legal frontier product lacks projection certificate",
+        )
     matches = tuple(
         certificate
-        for certificate in batch.text_choice_projection_certificates
+        for certificate in (
+            product.projection_certificate
+            .text_choice_projection_certificates
+        )
         if certificate.emitted_text == emitted_text
     )
     if len(matches) != 1:
@@ -1158,7 +1169,7 @@ def _checked_text_projection_certificate_for_emitted_text(
             SouthStarErrorKind.INTERNAL_INVARIANT,
             "checked text projection certificate mismatch",
         )
-    return matches[0]
+    return product.projection_certificate, matches[0]
 
 
 def _writer_search_snapshot_after_certified_emitted_text(
@@ -1167,7 +1178,10 @@ def _writer_search_snapshot_after_certified_emitted_text(
     prepared: SouthStarPreparedMol,
     emitted_text: str,
 ):
-    projection_certificate = (
+    (
+        frontier_projection_certificate,
+        projection_certificate,
+    ) = (
         _checked_text_projection_certificate_for_emitted_text(
             prepared=prepared,
             snapshot=snapshot,
@@ -1184,6 +1198,7 @@ def _writer_search_snapshot_after_certified_emitted_text(
     certificate = writer_snapshot_step_certificate(
         source_snapshot=snapshot,
         emitted_text=emitted_text,
+        frontier_projection_certificate=frontier_projection_certificate,
         text_projection_certificate=projection_certificate,
         advanced_snapshot=advanced_snapshot,
     )
@@ -1194,6 +1209,7 @@ def _writer_search_snapshot_after_certified_text_projection(
     snapshot: WriterSearchSnapshot,
     *,
     prepared: SouthStarPreparedMol,
+    frontier_projection_certificate,
     text_projection_certificate,
 ):
     advanced_snapshot = (
@@ -1206,6 +1222,7 @@ def _writer_search_snapshot_after_certified_text_projection(
     certificate = writer_snapshot_step_certificate(
         source_snapshot=snapshot,
         emitted_text=text_projection_certificate.emitted_text,
+        frontier_projection_certificate=frontier_projection_certificate,
         text_projection_certificate=text_projection_certificate,
         advanced_snapshot=advanced_snapshot,
     )
@@ -1811,14 +1828,21 @@ def _iter_writer_snapshot_certified_support_strings(
         stop_after_first_blocked=True,
     )
     _raise_for_writer_frontier_choice_snapshot_blockers(choice_snapshot)
-    batch = _checked_writer_frontier_branch_supports(
+    product = _checked_writer_frontier_product(
         prepared,
         snapshot.cursor,
-        include_counts=True,
+        include_counts=False,
+        include_frontier_certificate=False,
+        include_count_certificate=False,
     )
+    if product.projection_certificate is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "legal frontier product lacks projection certificate",
+        )
 
-    if batch.choices.terminal is not None:
-        terminal_certificate = batch.terminal_projection_certificate
+    if product.choices.terminal is not None:
+        terminal_certificate = product.terminal_projection_certificate
         if terminal_certificate is None:
             raise SouthStarError(
                 SouthStarErrorKind.INTERNAL_INVARIANT,
@@ -1837,12 +1861,15 @@ def _iter_writer_snapshot_certified_support_strings(
                 string="",
                 emitted_texts=(),
                 replay_certificate=replay_certificate,
+                terminal_frontier_projection_certificate=(
+                    product.projection_certificate
+                ),
                 terminal_projection_certificate=terminal_certificate,
                 text_projection_certificates=(),
             ),
         )
 
-    for choice in batch.choices.choices:
+    for choice in product.choices.choices:
         advanced_snapshot, step_certificate = (
             _writer_search_snapshot_after_certified_emitted_text(
                 snapshot,
@@ -1879,6 +1906,10 @@ def _iter_writer_snapshot_certified_support_strings(
                     string=string,
                     emitted_texts=emitted_texts,
                     replay_certificate=replay_certificate,
+                    terminal_frontier_projection_certificate=(
+                        suffix.certificate
+                        .terminal_frontier_projection_certificate
+                    ),
                     terminal_projection_certificate=(
                         suffix.certificate.terminal_projection_certificate
                     ),

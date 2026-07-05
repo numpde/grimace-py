@@ -12,6 +12,7 @@ from .errors import SouthStarErrorKind
 class WriterSnapshotStepCertificate:
     source_snapshot: object
     emitted_text: str
+    frontier_projection_certificate: object
     text_projection_certificate: object
     source_cursor: object
     successor_cursor: object
@@ -27,15 +28,29 @@ class WriterSnapshotReplayCertificate:
     emitted_texts: tuple[str, ...]
     step_certificates: tuple[WriterSnapshotStepCertificate, ...]
     final_snapshot: object
+    frontier_projection_certificates: tuple[object, ...] = ()
 
 
 def writer_snapshot_step_certificate(
     *,
     source_snapshot,
     emitted_text: str,
+    frontier_projection_certificate,
     text_projection_certificate,
     advanced_snapshot,
 ) -> WriterSnapshotStepCertificate:
+    if frontier_projection_certificate is None:
+        _step_violation("missing_frontier_projection_certificate")
+    if frontier_projection_certificate.cursor != source_snapshot.cursor:
+        _step_violation("frontier_projection_cursor_mismatch")
+    if not any(
+        projection is text_projection_certificate
+        for projection in (
+            frontier_projection_certificate
+            .text_choice_projection_certificates
+        )
+    ):
+        _step_violation("text_projection_not_in_frontier_projection")
     if not emitted_text:
         _step_violation("missing_emitted_text")
     if text_projection_certificate.emitted_text != emitted_text:
@@ -63,6 +78,7 @@ def writer_snapshot_step_certificate(
     return WriterSnapshotStepCertificate(
         source_snapshot=source_snapshot,
         emitted_text=emitted_text,
+        frontier_projection_certificate=frontier_projection_certificate,
         text_projection_certificate=text_projection_certificate,
         source_cursor=text_projection_certificate.source_cursor,
         successor_cursor=text_projection_certificate.successor_cursor,
@@ -91,6 +107,8 @@ def writer_snapshot_replay_certificate(
             _replay_violation("step_source_snapshot_mismatch")
         if step.source_cursor != current.cursor:
             _replay_violation("step_source_cursor_mismatch")
+        if step.frontier_projection_certificate.cursor != current.cursor:
+            _replay_violation("step_frontier_projection_cursor_mismatch")
         if step.successor_cursor != step.advanced_snapshot.cursor:
             _replay_violation("step_successor_cursor_mismatch")
         current = step.advanced_snapshot
@@ -103,6 +121,10 @@ def writer_snapshot_replay_certificate(
         emitted_texts=emitted_texts,
         step_certificates=step_certificates,
         final_snapshot=final_snapshot,
+        frontier_projection_certificates=tuple(
+            step.frontier_projection_certificate
+            for step in step_certificates
+        ),
     )
 
 

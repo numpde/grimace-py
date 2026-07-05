@@ -147,6 +147,16 @@ class WriterSnapshotTest(unittest.TestCase):
         self.assertEqual(certificate.source_snapshot, snapshot)
         self.assertEqual(certificate.advanced_snapshot, outcome.advanced_snapshot)
         self.assertEqual(certificate.successor_cursor, outcome.choice.successor)
+        self.assertIsNotNone(certificate.frontier_projection_certificate)
+        self.assertTrue(
+            any(
+                projection is certificate.text_projection_certificate
+                for projection in (
+                    certificate.frontier_projection_certificate
+                    .text_choice_projection_certificates
+                )
+            )
+        )
         self.assertTrue(certificate.branch_certificates)
 
     def test_snapshot_replay_certificate_tracks_prefix_steps(self) -> None:
@@ -186,6 +196,23 @@ class WriterSnapshotTest(unittest.TestCase):
             certificate.step_certificates[0].advanced_snapshot,
             certificate.step_certificates[1].source_snapshot,
         )
+        self.assertEqual(
+            certificate.frontier_projection_certificates,
+            tuple(
+                step.frontier_projection_certificate
+                for step in certificate.step_certificates
+            ),
+        )
+        for step in certificate.step_certificates:
+            self.assertTrue(
+                any(
+                    projection is step.text_projection_certificate
+                    for projection in (
+                        step.frontier_projection_certificate
+                        .text_choice_projection_certificates
+                    )
+                )
+            )
 
     def test_empty_snapshot_replay_has_empty_certificate(self) -> None:
         prepared = _prepare(cco_facts())
@@ -278,6 +305,9 @@ class WriterSnapshotTest(unittest.TestCase):
             writer_snapshot_step_certificate(
                 source_snapshot=snapshot,
                 emitted_text="wrong",
+                frontier_projection_certificate=(
+                    certificate.frontier_projection_certificate
+                ),
                 text_projection_certificate=(
                     certificate.text_projection_certificate
                 ),
@@ -288,6 +318,9 @@ class WriterSnapshotTest(unittest.TestCase):
             writer_snapshot_step_certificate(
                 source_snapshot=snapshot,
                 emitted_text=emitted_text,
+                frontier_projection_certificate=(
+                    certificate.frontier_projection_certificate
+                ),
                 text_projection_certificate=(
                     certificate.text_projection_certificate
                 ),
@@ -301,6 +334,9 @@ class WriterSnapshotTest(unittest.TestCase):
             writer_snapshot_step_certificate(
                 source_snapshot=snapshot,
                 emitted_text=emitted_text,
+                frontier_projection_certificate=(
+                    certificate.frontier_projection_certificate
+                ),
                 text_projection_certificate=(
                     certificate.text_projection_certificate
                 ),
@@ -311,13 +347,18 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
         with self.assertRaisesRegex(SouthStarError, "missing_branch_certificates"):
+            bad_projection = replace(
+                certificate.text_projection_certificate,
+                branch_certificates=(),
+            )
             writer_snapshot_step_certificate(
                 source_snapshot=snapshot,
                 emitted_text=emitted_text,
-                text_projection_certificate=replace(
-                    certificate.text_projection_certificate,
-                    branch_certificates=(),
+                frontier_projection_certificate=replace(
+                    certificate.frontier_projection_certificate,
+                    text_choice_projection_certificates=(bad_projection,),
                 ),
+                text_projection_certificate=bad_projection,
                 advanced_snapshot=outcome.advanced_snapshot,
             )
 

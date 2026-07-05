@@ -45,6 +45,7 @@ class WriterRuntimeChoiceTransitions:
     text_choice_count_certificates: tuple[object, ...] = ()
     terminal_choice_count_certificate: object | None = None
     support_count_certificate: object | None = None
+    projection_certificate: object | None = None
     terminal_projection_certificate: object | None = None
     count_certificate: object | None = None
     checked_frontier_certificate: object | None = None
@@ -142,6 +143,7 @@ class WriterRuntimeBranchTransitions:
     terminal_choice_count_certificate: object | None = None
     terminal_projection_certificate: object | None = None
     support_count_certificate: object | None = None
+    projection_certificate: object | None = None
     count_certificate: object | None = None
     checked_frontier_certificate: object | None = None
 
@@ -310,6 +312,7 @@ def writer_runtime_choice_transitions(
             branch_batch.terminal_choice_count_certificate
         ),
         support_count_certificate=branch_batch.support_count_certificate,
+        projection_certificate=branch_batch.projection_certificate,
         terminal_projection_certificate=(
             branch_batch.terminal_projection_certificate
         ),
@@ -330,6 +333,9 @@ def writer_runtime_choice_transitions(
                     prepared=prepared,
                     state=state,
                     choice=choice,
+                    frontier_projection_certificate=(
+                        branch_batch.projection_certificate
+                    ),
                     text_projection_certificate=projection_certificate,
                 ),
             )
@@ -415,6 +421,7 @@ def writer_runtime_branch_transitions(
         terminal_choice_count_certificate=(
             branch_batch.terminal_choice_count_certificate
         ),
+        projection_certificate=branch_batch.projection_certificate,
         count_certificate=branch_batch.count_certificate,
         checked_frontier_certificate=(
             branch_batch.checked_frontier_certificate
@@ -503,6 +510,7 @@ def _writer_runtime_state_after_certified_choice_text(
     prepared: SouthStarPreparedMol,
     state: WriterRuntimeState,
     choice: WriterFrontierChoice,
+    frontier_projection_certificate,
     text_projection_certificate,
 ) -> tuple[WriterRuntimeState, object]:
     if text_projection_certificate.emitted_text != choice.emitted_text:
@@ -513,6 +521,7 @@ def _writer_runtime_state_after_certified_choice_text(
     snapshot, certificate = _writer_search_snapshot_after_certified_text_projection(
         state.snapshot,
         prepared=prepared,
+        frontier_projection_certificate=frontier_projection_certificate,
         text_projection_certificate=text_projection_certificate,
     )
     return WriterRuntimeState(snapshot), certificate

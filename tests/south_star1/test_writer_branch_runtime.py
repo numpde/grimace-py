@@ -288,8 +288,33 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             cert.terminal_projection_certificate,
             batch.terminal_projection_certificate,
         )
+        self.assertIs(
+            cert.projection_certificate,
+            batch.projection_certificate,
+        )
         self.assertIs(cert.count_certificate, batch.count_certificate)
         self.assertIsNone(cert.diagnostic_certificate)
+
+    def test_uncounted_product_has_projection_certificate_without_counts(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        product = _checked_writer_frontier_product(
+            prepared,
+            cursor,
+            include_counts=False,
+            include_frontier_certificate=False,
+            include_count_certificate=False,
+        )
+
+        self.assertIsNotNone(product.projection_certificate)
+        self.assertIsNone(product.count_certificate)
+        self.assertIsNone(product.checked_frontier_certificate)
+        self.assertEqual(
+            product.projection_certificate.text_choice_projection_certificates,
+            product.text_choice_projection_certificates,
+        )
 
     def test_checked_frontier_batch_lacks_certificate_when_counts_disabled(
         self,

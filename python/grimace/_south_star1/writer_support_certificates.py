@@ -14,6 +14,7 @@ class WriterSupportStringCertificate:
     emitted_texts: tuple[str, ...]
     replay_certificate: object
     final_snapshot: object
+    terminal_frontier_projection_certificate: object
     terminal_projection_certificate: object
     terminal_certificates: tuple[object, ...]
     text_projection_certificates: tuple[object, ...] = ()
@@ -47,6 +48,7 @@ def writer_support_string_certificate(
     string: str,
     emitted_texts: tuple[str, ...],
     replay_certificate,
+    terminal_frontier_projection_certificate,
     terminal_projection_certificate,
     text_projection_certificates: tuple[object, ...] = (),
 ) -> WriterSupportStringCertificate:
@@ -58,6 +60,16 @@ def writer_support_string_certificate(
         _string_violation("replay_emitted_texts_mismatch")
     if terminal_projection_certificate is None:
         _string_violation("missing_terminal_projection_certificate")
+    if terminal_frontier_projection_certificate is None:
+        _string_violation("missing_terminal_frontier_projection_certificate")
+    if terminal_frontier_projection_certificate.cursor != (
+        replay_certificate.final_snapshot.cursor
+    ):
+        _string_violation("terminal_frontier_projection_cursor_mismatch")
+    if terminal_projection_certificate is not (
+        terminal_frontier_projection_certificate.terminal_projection_certificate
+    ):
+        _string_violation("terminal_projection_not_in_frontier_projection")
     if terminal_projection_certificate.terminal is None:
         _string_violation("terminal_projection_lacks_terminal")
     if not terminal_projection_certificate.terminal_certificates:
@@ -92,6 +104,9 @@ def writer_support_string_certificate(
         emitted_texts=emitted_texts,
         replay_certificate=replay_certificate,
         final_snapshot=replay_certificate.final_snapshot,
+        terminal_frontier_projection_certificate=(
+            terminal_frontier_projection_certificate
+        ),
         terminal_projection_certificate=terminal_projection_certificate,
         terminal_certificates=terminal_projection_certificate.terminal_certificates,
         text_projection_certificates=text_projection_certificates,

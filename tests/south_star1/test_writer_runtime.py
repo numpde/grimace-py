@@ -389,7 +389,41 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             writer_snapshot_step_certificate(
                 source_snapshot=state.snapshot,
                 emitted_text=step.emitted_text,
+                frontier_projection_certificate=replace(
+                    step.frontier_projection_certificate,
+                    text_choice_projection_certificates=(bad_projection,),
+                ),
                 text_projection_certificate=bad_projection,
+                advanced_snapshot=step.advanced_snapshot,
+            )
+
+    def test_snapshot_step_rejects_projection_not_in_frontier_projection(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        transition = writer_runtime_choice_transitions(
+            prepared=prepared,
+            state=state,
+        ).transitions[0]
+        step = transition.snapshot_step_certificate
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "text_projection_not_in_frontier_projection",
+        ):
+            writer_snapshot_step_certificate(
+                source_snapshot=state.snapshot,
+                emitted_text=step.emitted_text,
+                frontier_projection_certificate=(
+                    step.frontier_projection_certificate
+                ),
+                text_projection_certificate=replace(
+                    step.text_projection_certificate
+                ),
                 advanced_snapshot=step.advanced_snapshot,
             )
 
@@ -419,12 +453,48 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
                 string=certificate.string,
                 emitted_texts=certificate.emitted_texts,
                 replay_certificate=certificate.replay_certificate,
+                terminal_frontier_projection_certificate=(
+                    certificate.terminal_frontier_projection_certificate
+                ),
                 terminal_projection_certificate=(
                     certificate.terminal_projection_certificate
                 ),
                 text_projection_certificates=(
                     replace(certificate.text_projection_certificates[0]),
                     *certificate.text_projection_certificates[1:],
+                ),
+            )
+
+    def test_support_string_rejects_detached_terminal_projection(self) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        certificate = next(
+            iter_writer_runtime_certified_support(
+                prepared=prepared,
+                state=state,
+            )
+        ).certificate
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "terminal_projection_not_in_frontier_projection",
+        ):
+            writer_support_string_certificate(
+                source_snapshot=state.snapshot,
+                string=certificate.string,
+                emitted_texts=certificate.emitted_texts,
+                replay_certificate=certificate.replay_certificate,
+                terminal_frontier_projection_certificate=(
+                    certificate.terminal_frontier_projection_certificate
+                ),
+                terminal_projection_certificate=replace(
+                    certificate.terminal_projection_certificate
+                ),
+                text_projection_certificates=(
+                    certificate.text_projection_certificates
                 ),
             )
 
@@ -1846,6 +1916,9 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
                 string=certificate.string + "x",
                 emitted_texts=certificate.emitted_texts,
                 replay_certificate=certificate.replay_certificate,
+                terminal_frontier_projection_certificate=(
+                    certificate.terminal_frontier_projection_certificate
+                ),
                 terminal_projection_certificate=(
                     certificate.terminal_projection_certificate
                 ),
@@ -1860,6 +1933,9 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
                 string=certificate.string,
                 emitted_texts=certificate.emitted_texts,
                 replay_certificate=certificate.replay_certificate,
+                terminal_frontier_projection_certificate=(
+                    certificate.terminal_frontier_projection_certificate
+                ),
                 terminal_projection_certificate=(
                     certificate.terminal_projection_certificate
                 ),
@@ -1874,6 +1950,9 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
                 string=certificate.string,
                 emitted_texts=certificate.emitted_texts,
                 replay_certificate=certificate.replay_certificate,
+                terminal_frontier_projection_certificate=(
+                    certificate.terminal_frontier_projection_certificate
+                ),
                 terminal_projection_certificate=None,
             )
 
@@ -1881,15 +1960,20 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             SouthStarError,
             "terminal_projection_lacks_certificates",
         ):
+            bad_terminal_projection = replace(
+                certificate.terminal_projection_certificate,
+                terminal_certificates=(),
+            )
             writer_support_string_certificate(
                 source_snapshot=state.snapshot,
                 string=certificate.string,
                 emitted_texts=certificate.emitted_texts,
                 replay_certificate=certificate.replay_certificate,
-                terminal_projection_certificate=replace(
-                    certificate.terminal_projection_certificate,
-                    terminal_certificates=(),
+                terminal_frontier_projection_certificate=replace(
+                    certificate.terminal_frontier_projection_certificate,
+                    terminal_projection_certificate=bad_terminal_projection,
                 ),
+                terminal_projection_certificate=bad_terminal_projection,
             )
 
 

@@ -104,6 +104,7 @@ from .writer_diagnostic_certificates import (
 from .writer_diagnostic_certificates import writer_diagnostics_certificate
 from .writer_capability_certificates import writer_capability_coverage_certificate
 from .writer_frontier_certificates import writer_checked_frontier_certificate
+from .writer_frontier_certificates import writer_frontier_projection_certificate
 from .writer_terminal_certificates import writer_terminal_certificates
 from .writer_transitions import _WriterActiveEmittedGraphPolicyBlocker
 from .writer_transitions import _WriterActiveEmittedGraphPolicyDecision
@@ -390,6 +391,7 @@ class _WriterFrontierBranchSupportBatch:
     text_choice_count_certificates: tuple[object, ...] = ()
     terminal_choice_count_certificate: object | None = None
     support_count_certificate: object | None = None
+    projection_certificate: object | None = None
     terminal_projection_certificate: object | None = None
     count_certificate: object | None = None
     checked_frontier_certificate: object | None = None
@@ -438,6 +440,7 @@ class _WriterCheckedFrontierProduct:
     text_choice_count_certificates: tuple[object, ...] = ()
     terminal_choice_count_certificate: object | None = None
     support_count_certificate: object | None = None
+    projection_certificate: object | None = None
     terminal_projection_certificate: object | None = None
     count_certificate: object | None = None
     diagnostic_certificate: object | None = None
@@ -476,6 +479,7 @@ class _WriterCheckedFrontierProduct:
                 self.terminal_choice_count_certificate
             ),
             support_count_certificate=self.support_count_certificate,
+            projection_certificate=self.projection_certificate,
             count_certificate=self.count_certificate,
             checked_frontier_certificate=self.checked_frontier_certificate,
         )
@@ -3062,6 +3066,16 @@ def _legal_writer_frontier_product_from_schedule_outcome(
         terminal=public_choices.terminal,
         terminal_supports=terminal_supports,
     )
+    projection_certificate = writer_frontier_projection_certificate(
+        cursor=cursor,
+        choices=public_choices,
+        branch_supports=branch_supports,
+        terminal_supports=terminal_supports,
+        text_choice_projection_certificates=(
+            text_choice_projection_certificates
+        ),
+        terminal_projection_certificate=terminal_projection_certificate,
+    )
     completion_count_certificate: object | None = None
     support_count_certificate: object | None = None
     text_choice_count_certificates: tuple[object, ...] = ()
@@ -3111,6 +3125,7 @@ def _legal_writer_frontier_product_from_schedule_outcome(
         text_choice_count_certificates=text_choice_count_certificates,
         terminal_choice_count_certificate=terminal_choice_count_certificate,
         support_count_certificate=support_count_certificate,
+        projection_certificate=projection_certificate,
         terminal_projection_certificate=terminal_projection_certificate,
         count_certificate=completion_count_certificate,
     )
@@ -3184,13 +3199,7 @@ def _legal_writer_frontier_product_from_schedule_outcome(
         and not choice_snapshot.blocked
     ):
         checked_frontier_certificate = writer_checked_frontier_certificate(
-            cursor=cursor,
-            choices=public_choices,
-            branch_supports=branch_supports,
-            terminal_supports=terminal_supports,
-            text_choice_projection_certificates=(
-                text_choice_projection_certificates
-            ),
+            projection_certificate=projection_certificate,
             text_choice_count_certificates=text_choice_count_certificates,
             terminal_choice_count_certificate=(
                 terminal_choice_count_certificate
@@ -3208,6 +3217,7 @@ def _legal_writer_frontier_product_from_schedule_outcome(
             text_choice_count_certificates=text_choice_count_certificates,
             terminal_choice_count_certificate=terminal_choice_count_certificate,
             support_count_certificate=support_count_certificate,
+            projection_certificate=projection_certificate,
             terminal_projection_certificate=terminal_projection_certificate,
             count_certificate=completion_count_certificate,
             checked_frontier_certificate=checked_frontier_certificate,
@@ -3223,6 +3233,7 @@ def _legal_writer_frontier_product_from_schedule_outcome(
         text_choice_count_certificates=text_choice_count_certificates,
         terminal_choice_count_certificate=terminal_choice_count_certificate,
         support_count_certificate=support_count_certificate,
+        projection_certificate=projection_certificate,
         terminal_projection_certificate=terminal_projection_certificate,
         count_certificate=completion_count_certificate,
         diagnostic_certificate=diagnostic_certificate,

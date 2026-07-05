@@ -24,6 +24,7 @@ class WriterOnlineChoiceCertificate:
     text_projection_certificate: object | None
     snapshot_step_certificate: object | None
     terminal_projection_certificate: object | None
+    frontier_projection_certificate: object | None
     checked_frontier_certificate: object | None
     count_certificate: object | None
     branch_certificates: tuple[object, ...] = ()
@@ -46,6 +47,7 @@ def writer_online_text_choice_certificate(
     next_state,
     snapshot_step_certificate,
     text_projection_certificate,
+    frontier_projection_certificate,
     checked_frontier_certificate,
     count_certificate,
 ) -> WriterOnlineChoiceCertificate:
@@ -70,6 +72,20 @@ def writer_online_text_choice_certificate(
         _violation("text_projection_step_source_cursor_mismatch")
     if not text_projection_certificate.branch_certificates:
         _violation("text_projection_missing_branch_certificates")
+    if frontier_projection_certificate is None:
+        _violation("missing_frontier_projection_certificate")
+    if frontier_projection_certificate.cursor != (
+        text_projection_certificate.source_cursor
+    ):
+        _violation("frontier_projection_cursor_mismatch")
+    if not any(
+        projection is text_projection_certificate
+        for projection in (
+            frontier_projection_certificate
+            .text_choice_projection_certificates
+        )
+    ):
+        _violation("text_projection_not_in_frontier_projection")
     if (
         snapshot_step_certificate.advanced_snapshot
         != next_state.raw_state.snapshot
@@ -98,6 +114,7 @@ def writer_online_text_choice_certificate(
         text_projection_certificate=text_projection_certificate,
         snapshot_step_certificate=snapshot_step_certificate,
         terminal_projection_certificate=None,
+        frontier_projection_certificate=frontier_projection_certificate,
         checked_frontier_certificate=checked_frontier_certificate,
         count_certificate=count_certificate,
         branch_certificates=tuple(
@@ -113,6 +130,7 @@ def writer_online_eos_choice_certificate(
     eos_text: str,
     terminal,
     terminal_projection_certificate,
+    frontier_projection_certificate,
     checked_frontier_certificate,
     count_certificate,
 ) -> WriterOnlineChoiceCertificate:
@@ -126,6 +144,16 @@ def writer_online_eos_choice_certificate(
         _violation("terminal_projection_terminal_mismatch")
     if not terminal_projection_certificate.terminal_certificates:
         _violation("terminal_projection_missing_terminal_certificates")
+    if frontier_projection_certificate is None:
+        _violation("missing_frontier_projection_certificate")
+    if frontier_projection_certificate.cursor != (
+        terminal_projection_certificate.source_cursor
+    ):
+        _violation("frontier_projection_cursor_mismatch")
+    if terminal_projection_certificate is not (
+        frontier_projection_certificate.terminal_projection_certificate
+    ):
+        _violation("terminal_projection_not_in_frontier_projection")
     if checked_frontier_certificate is not None:
         if terminal_projection_certificate.source_cursor != (
             checked_frontier_certificate.cursor
@@ -145,6 +173,7 @@ def writer_online_eos_choice_certificate(
         text_projection_certificate=None,
         snapshot_step_certificate=None,
         terminal_projection_certificate=terminal_projection_certificate,
+        frontier_projection_certificate=frontier_projection_certificate,
         checked_frontier_certificate=checked_frontier_certificate,
         count_certificate=count_certificate,
         branch_certificates=(),

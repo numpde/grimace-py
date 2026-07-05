@@ -147,6 +147,9 @@ class WriterShapedOnlineDecoder:
                             transition.snapshot_step_certificate
                         ),
                         text_projection_certificate=projection,
+                        frontier_projection_certificate=(
+                            runtime_transitions.projection_certificate
+                        ),
                         checked_frontier_certificate=(
                             runtime_transitions.checked_frontier_certificate
                         ),
@@ -172,6 +175,9 @@ class WriterShapedOnlineDecoder:
                         terminal=terminal,
                         terminal_projection_certificate=(
                             runtime_transitions.terminal_projection_certificate
+                        ),
+                        frontier_projection_certificate=(
+                            runtime_transitions.projection_certificate
                         ),
                         checked_frontier_certificate=(
                             runtime_transitions.checked_frontier_certificate

@@ -957,6 +957,94 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 )
             )
 
+    def test_graph_replay_rejects_active_frame_mismatch(self) -> None:
+        prepared = _prepare(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _find_checked_branch_support(
+            prepared,
+            initial,
+            lambda support: (
+                support.successor_state.active != support.source_state.active
+            ),
+        )
+        bad_successor = replace(
+            support.successor_state,
+            active=support.source_state.active,
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "graph_replay_active_mismatch",
+        ):
+            writer_branch_successor_state_certificate(
+                **_successor_state_certificate_kwargs(
+                    support,
+                    successor_state=bad_successor,
+                )
+            )
+
+    def test_graph_replay_rejects_branch_stack_mismatch(self) -> None:
+        prepared = _prepare(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _find_checked_branch_support(
+            prepared,
+            initial,
+            lambda support: (
+                support.successor_state.branch_stack
+                != support.source_state.branch_stack
+            ),
+        )
+        bad_successor = replace(
+            support.successor_state,
+            branch_stack=support.source_state.branch_stack,
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "graph_replay_branch_stack_mismatch",
+        ):
+            writer_branch_successor_state_certificate(
+                **_successor_state_certificate_kwargs(
+                    support,
+                    successor_state=bad_successor,
+                )
+            )
+
+    def test_graph_replay_does_not_treat_bond_text_event_as_written_bond_authority(
+        self,
+    ) -> None:
+        prepared = _prepare(directional_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _find_checked_branch_support(
+            prepared,
+            initial,
+            lambda support: any(
+                isinstance(event, WriterBondEmitted) for event in support.events
+            ),
+        )
+        bond_event = next(
+            event
+            for event in support.events
+            if isinstance(event, WriterBondEmitted)
+        )
+        bad_successor = replace(
+            support.successor_state,
+            written_bonds=frozenset(
+                (*support.successor_state.written_bonds, bond_event.bond)
+            ),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "graph_replay_written_bonds_mismatch",
+        ):
+            writer_branch_successor_state_certificate(
+                **_successor_state_certificate_kwargs(
+                    support,
+                    successor_state=bad_successor,
+                )
+            )
+
     def test_event_delta_view_ignores_class_name_spoofing(self) -> None:
         spoof = type(
             "WriterAtomEmitted",
@@ -1136,6 +1224,66 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                         event,
                         bad_event,
                     ),
+                )
+            )
+
+    def test_ring_replay_rejects_wrong_removed_open_endpoint(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _find_checked_branch_support(
+            prepared,
+            initial,
+            lambda support: any(
+                isinstance(event, WriterRingEndpointPaired)
+                for event in support.events
+            ),
+        )
+        bad_successor = replace(
+            support.successor_state,
+            ring_state=replace(
+                support.successor_state.ring_state,
+                open_endpoints=support.source_state.ring_state.open_endpoints,
+            ),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "ring_replay_successor_state_mismatch",
+        ):
+            writer_branch_successor_state_certificate(
+                **_successor_state_certificate_kwargs(
+                    support,
+                    successor_state=bad_successor,
+                )
+            )
+
+    def test_ring_replay_rejects_label_state_mismatch(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _find_checked_branch_support(
+            prepared,
+            initial,
+            lambda support: (
+                support.successor_state.ring_state.label_state
+                != support.source_state.ring_state.label_state
+            ),
+        )
+        bad_successor = replace(
+            support.successor_state,
+            ring_state=replace(
+                support.successor_state.ring_state,
+                label_state=support.source_state.ring_state.label_state,
+            ),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "ring_replay_successor_state_mismatch",
+        ):
+            writer_branch_successor_state_certificate(
+                **_successor_state_certificate_kwargs(
+                    support,
+                    successor_state=bad_successor,
                 )
             )
 

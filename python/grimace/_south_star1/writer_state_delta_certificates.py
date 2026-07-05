@@ -18,6 +18,9 @@ from .writer_events import WriterRingEndpointPaired
 from .writer_events import WriterRingLabelAllocated
 from .writer_events import WriterRingLabelReleased
 from .writer_state import WriterClosedClosure
+from .writer_state import WriterAtomFrame
+from .writer_state import WriterBranchFrame
+from .writer_state import WriterRingLabelState
 from .writer_state import WriterOpenClosureEndpoint
 
 
@@ -123,15 +126,38 @@ class WriterRingStateReplayCertificate:
     expected_successor_ring_state: object
     actual_successor_ring_state: object
     ring_events: tuple[object, ...]
+    replayed_open_endpoints: tuple[object, ...] = ()
+    replayed_closed_closures: tuple[object, ...] = ()
+    replayed_label_state: object | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class WriterGraphSuccessorProjection:
+    component_cursor: object
+    active: object
+    branch_stack: tuple[object, ...]
+    visited_atoms: frozenset[object]
+    written_bonds: frozenset[object]
+    obligations: object
+
+
+@dataclass(frozen=True, slots=True)
+class WriterGraphObligationReplayCertificate:
+    source_obligations: object
+    successor_obligations: object
+    graph_action_surface: object | None
+    graph_obligation_work_evidence: tuple[object, ...]
+    replay_complete: bool
 
 
 @dataclass(frozen=True, slots=True)
 class WriterGraphStateReplayCertificate:
     source_state: object
-    expected_successor_projection: object
+    expected_successor_projection: WriterGraphSuccessorProjection
     actual_successor_state: object
     graph_action_surface: object | None
     graph_obligation_work_evidence: tuple[object, ...]
+    obligation_replay_certificate: object | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -573,6 +599,30 @@ def _closed_closure_from_pair_event(
     )
 
 
+def _label_sort_key(label) -> tuple[object, ...]:
+    return (label.value, label.text)
+
+
+def _open_endpoint_sort_key(endpoint) -> tuple[object, ...]:
+    return (
+        int(endpoint.bond),
+        int(endpoint.first_atom),
+        int(endpoint.second_atom),
+        endpoint.label.value,
+        endpoint.label.text,
+    )
+
+
+def _closed_closure_sort_key(closure) -> tuple[object, ...]:
+    return (
+        int(closure.bond),
+        int(closure.first_atom),
+        int(closure.second_atom),
+        closure.label.value,
+        closure.label.text,
+    )
+
+
 def _ring_state_delta_certificate(
     *,
     source_state,
@@ -751,23 +801,64 @@ def _ring_state_replay_certificate(
     if not ring_events:
         _delta_violation("ring_replay_lacks_events")
 
+    expected_open = set(source_state.ring_state.open_endpoints)
+    expected_closed = set(source_state.ring_state.closed_closures)
+    expected_allocated = list(source_state.ring_state.label_state.allocated)
+    expected_reusable = list(source_state.ring_state.label_state.reusable)
+
+    for event in event_view.ring_label_allocated_events:
+        if event.source == "reused":
+            if event.label not in expected_reusable:
+                _delta_violation("ring_replay_reused_label_not_available")
+            expected_reusable.remove(event.label)
+        if event.label not in expected_allocated:
+            expected_allocated.append(event.label)
+
+    for event in event_view.ring_endpoint_emitted_events:
+        if event.side == "open":
+            expected_open.add(_open_endpoint_from_event(event))
+
+    for event in event_view.ring_endpoint_paired_events:
+        closed = _closed_closure_from_pair_event(
+            event,
+            source_open=frozenset(expected_open),
+        )
+        matches = tuple(
+            endpoint
+            for endpoint in expected_open
+            if endpoint.bond == event.bond and endpoint.label == event.label
+        )
+        if len(matches) != 1:
+            _delta_violation("ring_replay_pair_lacks_matching_open_endpoint")
+        expected_open.remove(matches[0])
+        expected_closed.add(closed)
+
+    for event in event_view.ring_label_released_events:
+        if event.label in expected_allocated:
+            expected_allocated.remove(event.label)
+        if event.label not in expected_reusable:
+            expected_reusable.append(event.label)
+
+    expected_ring_state = successor_state.ring_state.__class__(
+        open_endpoints=tuple(sorted(expected_open, key=_open_endpoint_sort_key)),
+        closed_closures=tuple(
+            sorted(expected_closed, key=_closed_closure_sort_key)
+        ),
+        label_state=WriterRingLabelState(
+            allocated=tuple(sorted(expected_allocated, key=_label_sort_key)),
+            reusable=tuple(sorted(expected_reusable, key=_label_sort_key)),
+        ),
+    )
+
     source_open = frozenset(source_state.ring_state.open_endpoints)
     successor_open = frozenset(successor_state.ring_state.open_endpoints)
     source_closed = frozenset(source_state.ring_state.closed_closures)
     successor_closed = frozenset(successor_state.ring_state.closed_closures)
-
     added_open = successor_open - source_open
     removed_open = source_open - successor_open
     added_closed = successor_closed - source_closed
-    expected_added_open = frozenset(
-        _open_endpoint_from_event(event)
-        for event in event_view.ring_endpoint_emitted_events
-        if event.side == "open"
-    )
-    expected_added_closed = frozenset(
-        _closed_closure_from_pair_event(event, source_open=source_open)
-        for event in event_view.ring_endpoint_paired_events
-    )
+    expected_added_open = frozenset(expected_open) - source_open
+    expected_added_closed = frozenset(expected_closed) - source_closed
     if added_open != expected_added_open:
         _delta_violation("ring_replay_added_open_mismatch")
     if added_closed != expected_added_closed:
@@ -778,12 +869,17 @@ def _ring_state_replay_certificate(
         _delta_violation("ring_replay_removed_open_without_pair_event")
     if added_closed and not event_view.ring_endpoint_paired_events:
         _delta_violation("ring_replay_added_closed_without_pair_event")
+    if expected_ring_state != successor_state.ring_state:
+        _delta_violation("ring_replay_successor_state_mismatch")
 
     return WriterRingStateReplayCertificate(
         source_ring_state=source_state.ring_state,
-        expected_successor_ring_state=successor_state.ring_state,
+        expected_successor_ring_state=expected_ring_state,
         actual_successor_ring_state=successor_state.ring_state,
         ring_events=ring_events,
+        replayed_open_endpoints=expected_ring_state.open_endpoints,
+        replayed_closed_closures=expected_ring_state.closed_closures,
+        replayed_label_state=expected_ring_state.label_state,
     )
 
 
@@ -815,27 +911,94 @@ def _graph_state_replay_certificate(
     if graph_action_surface is None and not graph_obligation_work_evidence:
         _delta_violation("graph_replay_lacks_action_or_evidence")
 
-    added_atoms = successor_state.visited_atoms - source_state.visited_atoms
-    added_bonds = successor_state.written_bonds - source_state.written_bonds
-    event_view = writer_event_delta_view(events)
     expected_visited = set(source_state.visited_atoms)
     expected_written = set(source_state.written_bonds)
-    for event in event_view.atom_events:
-        expected_visited.add(event.atom)
-        if event.incoming_bond is not None:
-            expected_written.add(event.incoming_bond)
-    for event in (
-        *event_view.ring_endpoint_emitted_events,
-        *event_view.ring_endpoint_paired_events,
-    ):
-        expected_written.add(event.bond)
+    expected_active = source_state.active
+    expected_branch_stack = tuple(source_state.branch_stack)
+    expected_component_cursor = source_state.component_cursor
+
+    for event in events:
+        if isinstance(event, WriterAtomEmitted):
+            pending = getattr(source_state.obligations, "pending_entry", None)
+            if pending is not None:
+                if pending.parent != event.parent:
+                    _delta_violation("graph_replay_pending_parent_mismatch")
+                if pending.child != event.atom:
+                    _delta_violation("graph_replay_pending_child_mismatch")
+                if pending.bond != event.incoming_bond:
+                    _delta_violation("graph_replay_pending_bond_mismatch")
+                if pending.branch:
+                    expected_branch_stack = (
+                        *expected_branch_stack,
+                        WriterBranchFrame(
+                            return_atom=WriterAtomFrame(
+                                atom=pending.parent,
+                                parent=source_state.active.parent,
+                                incoming_bond=source_state.active.incoming_bond,
+                                atom_emitted=True,
+                            )
+                        ),
+                    )
+
+            expected_visited.add(event.atom)
+            if event.incoming_bond is not None:
+                expected_written.add(event.incoming_bond)
+            expected_active = WriterAtomFrame(
+                atom=event.atom,
+                parent=event.parent,
+                incoming_bond=event.incoming_bond,
+                atom_emitted=True,
+            )
+        elif isinstance(event, WriterRingEndpointEmitted):
+            expected_written.add(event.bond)
+        elif isinstance(event, WriterRingEndpointPaired):
+            expected_written.add(event.bond)
+        elif isinstance(event, WriterBranchClosed):
+            if not expected_branch_stack:
+                _delta_violation("graph_replay_branch_close_without_stack")
+            if event.atom != expected_active.atom:
+                _delta_violation("graph_replay_branch_close_atom_mismatch")
+            expected_active = expected_branch_stack[-1].return_atom
+            expected_branch_stack = expected_branch_stack[:-1]
+        elif isinstance(event, WriterComponentBoundaryEmitted):
+            roots = expected_component_cursor.component_roots
+            try:
+                component_index = roots.index(event.next_root)
+            except ValueError:
+                _delta_violation("graph_replay_component_boundary_root_mismatch")
+            expected_component_cursor = expected_component_cursor.__class__(
+                component_index=component_index,
+                component_roots=roots,
+            )
+            expected_active = WriterAtomFrame(
+                atom=event.next_root,
+                parent=None,
+                incoming_bond=None,
+                atom_emitted=False,
+            )
+
     if frozenset(expected_visited) != successor_state.visited_atoms:
         _delta_violation("graph_replay_visited_atoms_mismatch")
     if frozenset(expected_written) != successor_state.written_bonds:
         _delta_violation("graph_replay_written_bonds_mismatch")
+    if expected_active != successor_state.active:
+        _delta_violation("graph_replay_active_mismatch")
+    if expected_branch_stack != successor_state.branch_stack:
+        _delta_violation("graph_replay_branch_stack_mismatch")
+    if expected_component_cursor != successor_state.component_cursor:
+        _delta_violation("graph_replay_component_cursor_mismatch")
+
+    obligation_replay_certificate = _graph_obligation_replay_certificate(
+        source_state=source_state,
+        successor_state=successor_state,
+        graph_action_surface=graph_action_surface,
+        graph_obligation_work_evidence=graph_obligation_work_evidence,
+    )
     if graph_action_surface is not None:
         surface_atom = getattr(graph_action_surface, "partner_atom", None)
         surface_bond = getattr(graph_action_surface, "bond", None)
+        added_atoms = successor_state.visited_atoms - source_state.visited_atoms
+        added_bonds = successor_state.written_bonds - source_state.written_bonds
         if added_atoms and surface_atom is not None and surface_atom not in added_atoms:
             _delta_violation("graph_replay_added_atom_surface_mismatch")
         if added_bonds and surface_bond is not None and surface_bond not in added_bonds:
@@ -843,17 +1006,38 @@ def _graph_state_replay_certificate(
 
     return WriterGraphStateReplayCertificate(
         source_state=source_state,
-        expected_successor_projection=SimpleNamespace(
-            visited_atoms=successor_state.visited_atoms,
-            written_bonds=successor_state.written_bonds,
-            active=successor_state.active,
-            branch_stack=successor_state.branch_stack,
-            component_cursor=successor_state.component_cursor,
+        expected_successor_projection=WriterGraphSuccessorProjection(
+            visited_atoms=frozenset(expected_visited),
+            written_bonds=frozenset(expected_written),
+            active=expected_active,
+            branch_stack=expected_branch_stack,
+            component_cursor=expected_component_cursor,
             obligations=successor_state.obligations,
         ),
         actual_successor_state=successor_state,
         graph_action_surface=graph_action_surface,
         graph_obligation_work_evidence=graph_obligation_work_evidence,
+        obligation_replay_certificate=obligation_replay_certificate,
+    )
+
+
+def _graph_obligation_replay_certificate(
+    *,
+    source_state,
+    successor_state,
+    graph_action_surface,
+    graph_obligation_work_evidence: tuple[object, ...],
+) -> WriterGraphObligationReplayCertificate | None:
+    if source_state.obligations == successor_state.obligations:
+        return None
+    if graph_action_surface is None and not graph_obligation_work_evidence:
+        _delta_violation("obligation_replay_lacks_graph_evidence")
+    return WriterGraphObligationReplayCertificate(
+        source_obligations=source_state.obligations,
+        successor_obligations=successor_state.obligations,
+        graph_action_surface=graph_action_surface,
+        graph_obligation_work_evidence=graph_obligation_work_evidence,
+        replay_complete=False,
     )
 
 
@@ -1039,6 +1223,25 @@ def _validate_replay_certificate_values(certificate) -> None:
             _delta_violation("graph_replay_projection_component_cursor_mismatch")
         if projection.obligations != actual.obligations:
             _delta_violation("graph_replay_projection_obligations_mismatch")
+        obligation_replay = graph.obligation_replay_certificate
+        if obligation_replay is None:
+            if certificate.source_state.obligations != certificate.successor_state.obligations:
+                _delta_violation("graph_replay_lacks_obligation_certificate")
+        else:
+            if obligation_replay.source_obligations != certificate.source_state.obligations:
+                _delta_violation("obligation_replay_source_mismatch")
+            if (
+                obligation_replay.successor_obligations
+                != certificate.successor_state.obligations
+            ):
+                _delta_violation("obligation_replay_successor_mismatch")
+            if obligation_replay.graph_action_surface != certificate.graph_action_surface:
+                _delta_violation("obligation_replay_surface_mismatch")
+            if (
+                obligation_replay.graph_obligation_work_evidence
+                != certificate.graph_obligation_work_evidence
+            ):
+                _delta_violation("obligation_replay_evidence_mismatch")
 
     stereo = certificate.stereo_replay_certificate
     if stereo is not None:
@@ -1090,8 +1293,10 @@ def _delta_violation(kind: str) -> None:
 __all__ = (
     "WriterBranchSuccessorStateCertificate",
     "WriterEventDeltaView",
+    "WriterGraphObligationReplayCertificate",
     "WriterGraphStateDeltaCertificate",
     "WriterGraphStateReplayCertificate",
+    "WriterGraphSuccessorProjection",
     "WriterPolicyStateDeltaCertificate",
     "WriterPolicyStateReplayCertificate",
     "WriterRingStateDeltaCertificate",

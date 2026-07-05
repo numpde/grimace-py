@@ -295,6 +295,21 @@ def writer_checked_frontier_certificate(
             _frontier_violation(
                 "support_count_certificate_cursor_mismatch"
             )
+        if (
+            support_count_certificate.state_support_count_certificate.cursor
+            != cursor
+        ):
+            _frontier_violation(
+                "support_count_state_certificate_cursor_mismatch"
+            )
+        if support_count_certificate.support_count != (
+            support_count_certificate
+            .state_support_count_certificate
+            .support_count
+        ):
+            _frontier_violation(
+                "support_count_state_certificate_total_mismatch"
+            )
 
         terminal_support_count = 0
         if terminal_choice_count_certificate is not None:

@@ -37,6 +37,7 @@ class WriterCheckedBranchSupportCertificate:
     stereo_branch_certificates: tuple[object, ...]
     residual_attachment_policy_evidence: tuple[object, ...]
     capability_coverage_certificate: object
+    successor_state_certificate: object
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,6 +75,7 @@ def writer_checked_branch_support_certificate(
     stereo_branch_certificates: tuple[object, ...],
     residual_attachment_policy_evidence: tuple[object, ...],
     capability_coverage_certificate,
+    successor_state_certificate,
 ) -> WriterCheckedBranchSupportCertificate:
     if not emitted_text:
         _branch_violation("missing_emitted_text")
@@ -98,6 +100,17 @@ def writer_checked_branch_support_certificate(
         != execution_capabilities
     ):
         _branch_violation("capability_coverage_incomplete")
+    _validate_successor_state_certificate(
+        successor_state_certificate=successor_state_certificate,
+        source_state=source_state,
+        successor_state=successor_state,
+        emitted_text=emitted_text,
+        transition_kind=transition_kind,
+        graph_action_surface=graph_action_surface,
+        policy_family=policy_family,
+        events=events,
+        transition_evidence=transition_evidence,
+    )
 
     _validate_closure_candidate_certificates(
         execution_capabilities=execution_capabilities,
@@ -157,6 +170,7 @@ def writer_checked_branch_support_certificate(
         stereo_branch_certificates=stereo_branch_certificates,
         residual_attachment_policy_evidence=residual_attachment_policy_evidence,
         capability_coverage_certificate=capability_coverage_certificate,
+        successor_state_certificate=successor_state_certificate,
     )
 
 
@@ -323,6 +337,38 @@ def _validate_closure_finite_relation_evidence(
         and not finite_relation_work_evidence
     ):
         _branch_violation("closure_transition_lacks_finite_relation_evidence")
+
+
+def _validate_successor_state_certificate(
+    *,
+    successor_state_certificate,
+    source_state,
+    successor_state,
+    emitted_text: str,
+    transition_kind,
+    graph_action_surface,
+    policy_family,
+    events: tuple[object, ...],
+    transition_evidence,
+) -> None:
+    if successor_state_certificate is None:
+        _branch_violation("missing_successor_state_certificate")
+    if successor_state_certificate.source_state != source_state:
+        _branch_violation("successor_certificate_source_mismatch")
+    if successor_state_certificate.successor_state != successor_state:
+        _branch_violation("successor_certificate_successor_mismatch")
+    if successor_state_certificate.emitted_text != emitted_text:
+        _branch_violation("successor_certificate_text_mismatch")
+    if successor_state_certificate.transition_kind != transition_kind:
+        _branch_violation("successor_certificate_transition_mismatch")
+    if successor_state_certificate.graph_action_surface != graph_action_surface:
+        _branch_violation("successor_certificate_graph_surface_mismatch")
+    if successor_state_certificate.policy_family != policy_family:
+        _branch_violation("successor_certificate_policy_family_mismatch")
+    if successor_state_certificate.events != events:
+        _branch_violation("successor_certificate_events_mismatch")
+    if successor_state_certificate.transition_evidence != transition_evidence:
+        _branch_violation("successor_certificate_evidence_mismatch")
 
 
 def _branch_violation(kind: str) -> None:

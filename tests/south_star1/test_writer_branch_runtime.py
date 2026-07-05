@@ -80,6 +80,9 @@ from grimace._south_star1.writer_projection_certificates import (
 from grimace._south_star1.writer_frontier_certificates import (
     writer_checked_frontier_certificate,
 )
+from grimace._south_star1.writer_frontier_certificates import (
+    writer_frontier_projection_certificate,
+)
 from grimace._south_star1.writer_count_certificates import (
     writer_cursor_completion_count_certificate,
 )
@@ -103,6 +106,9 @@ from grimace._south_star1.writer_stereo_branch_certificates import (
 )
 from grimace._south_star1.writer_stereo_branch_certificates import (
     writer_stereo_branch_certificates,
+)
+from grimace._south_star1.writer_state_delta_certificates import (
+    writer_branch_successor_state_certificate,
 )
 from grimace._south_star1.writer_runtime import count_writer_runtime_branch_completions
 from grimace._south_star1.writer_runtime import initial_writer_runtime_state
@@ -665,6 +671,52 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 count_certificate=batch.count_certificate,
             )
 
+    def test_frontier_projection_rejects_branch_certificate_without_successor_proof(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        batch = _checked_writer_frontier_branch_supports(
+            prepared,
+            cursor,
+            include_counts=False,
+        )
+        if not batch.supports:
+            self.skipTest("fixture has no branch supports")
+
+        support = batch.supports[0]
+        bad_certificate = SimpleNamespace(
+            source_state=support.source_state,
+            successor_state=support.successor_state,
+            emitted_text=support.emitted_text,
+        )
+        bad_support = replace(
+            support,
+            checked_branch_certificate=bad_certificate,
+        )
+        bad_projection = replace(
+            batch.text_choice_projection_certificates[0],
+            branch_certificates=(bad_certificate,),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "branch_certificate_lacks_successor_state_certificate",
+        ):
+            writer_frontier_projection_certificate(
+                cursor=cursor,
+                choices=batch.choices,
+                branch_supports=(bad_support, *batch.supports[1:]),
+                terminal_supports=batch.terminal_supports,
+                text_choice_projection_certificates=(
+                    bad_projection,
+                    *batch.text_choice_projection_certificates[1:],
+                ),
+                terminal_projection_certificate=(
+                    batch.terminal_projection_certificate
+                ),
+            )
+
     def test_checked_branch_supports_have_aggregate_certificates(self) -> None:
         for facts in (
             cco_facts(),
@@ -708,6 +760,159 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                     certificate.stereo_branch_certificates,
                     support.stereo_branch_certificates,
                 )
+                self.assertIsNotNone(support.successor_state_certificate)
+                self.assertIs(
+                    certificate.successor_state_certificate,
+                    support.successor_state_certificate,
+                )
+                self.assertEqual(
+                    support.successor_state_certificate.source_state,
+                    support.source_state,
+                )
+                self.assertEqual(
+                    support.successor_state_certificate.successor_state,
+                    support.successor_state,
+                )
+
+    def test_checked_branch_certificate_rejects_successor_state_mismatch(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _checked_writer_frontier_branch_supports(
+            prepared,
+            initial,
+            include_counts=False,
+        ).supports[0]
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "successor_certificate_successor_mismatch",
+        ):
+            writer_checked_branch_support_certificate(
+                **_checked_branch_certificate_kwargs(
+                    support,
+                    successor_state_certificate=replace(
+                        support.successor_state_certificate,
+                        successor_state=support.source_state,
+                    ),
+                )
+            )
+
+    def test_successor_state_certificate_rejects_ring_delta_without_event(
+        self,
+    ) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _find_checked_branch_support(
+            prepared,
+            initial,
+            lambda support: (
+                support.successor_state.ring_state
+                != support.source_state.ring_state
+            ),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "ring_delta_without_ring_lifecycle_event",
+        ):
+            writer_branch_successor_state_certificate(
+                source_state=support.source_state,
+                successor_state=support.successor_state,
+                emitted_text=support.emitted_text,
+                transition_kind=support.transition_kind,
+                graph_action_surface=support.graph_action_surface,
+                policy_family=support.policy_family,
+                events=tuple(
+                    event
+                    for event in support.events
+                    if not event.__class__.__name__.startswith("WriterRing")
+                ),
+                transition_evidence=support.evidence,
+                graph_obligation_work_evidence=(
+                    support.graph_obligation_work_evidence
+                ),
+                residual_work_evidence=support.residual_work_evidence,
+                finite_relation_work_evidence=(
+                    support.finite_relation_work_evidence
+                ),
+                closure_candidate_lifecycle_evidence=(
+                    support.closure_candidate_lifecycle_evidence
+                ),
+                residual_attachment_lifecycle_evidence=(
+                    support.residual_attachment_lifecycle_evidence
+                ),
+                stereo_lifecycle_evidence=support.stereo_lifecycle_evidence,
+            )
+
+    def test_successor_state_certificate_rejects_stereo_delta_without_lifecycle(
+        self,
+    ) -> None:
+        prepared = _prepare(tetrahedral_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _find_checked_branch_support(
+            prepared,
+            initial,
+            lambda support: (
+                support.successor_state.stereo_state
+                != support.source_state.stereo_state
+            ),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "stereo_delta_without_lifecycle_evidence",
+        ):
+            writer_branch_successor_state_certificate(
+                source_state=support.source_state,
+                successor_state=support.successor_state,
+                emitted_text=support.emitted_text,
+                transition_kind=support.transition_kind,
+                graph_action_surface=support.graph_action_surface,
+                policy_family=support.policy_family,
+                events=support.events,
+                transition_evidence=support.evidence,
+                graph_obligation_work_evidence=(
+                    support.graph_obligation_work_evidence
+                ),
+                residual_work_evidence=support.residual_work_evidence,
+                finite_relation_work_evidence=(
+                    support.finite_relation_work_evidence
+                ),
+                closure_candidate_lifecycle_evidence=(
+                    support.closure_candidate_lifecycle_evidence
+                ),
+                residual_attachment_lifecycle_evidence=(
+                    support.residual_attachment_lifecycle_evidence
+                ),
+                stereo_lifecycle_evidence=(),
+            )
+
+    def test_runtime_branch_transitions_expose_successor_state_certificate(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+
+        transitions = writer_runtime_branch_transitions(
+            prepared=prepared,
+            state=state,
+            include_counts=False,
+        )
+
+        self.assertTrue(transitions.transitions)
+        for transition in transitions.transitions:
+            certificate = transition.successor_state_certificate
+            self.assertIsNotNone(certificate)
+            self.assertEqual(certificate.source_state, transition.source_state)
+            self.assertEqual(
+                certificate.successor_state,
+                transition.successor_state,
+            )
 
     def test_checked_branch_supports_have_capability_coverage(self) -> None:
         prepared = _prepare(cco_facts())
@@ -806,6 +1011,9 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 capability_coverage_certificate=(
                     support.capability_coverage_certificate
                 ),
+                successor_state_certificate=(
+                    support.successor_state_certificate
+                ),
             )
 
         # Remove the graph-capability coverage while leaving execution unchanged.
@@ -855,6 +1063,9 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                         execution_capabilities=support.execution_capabilities,
                         capability_certificates=(),
                     )
+                ),
+                successor_state_certificate=(
+                    support.successor_state_certificate
                 ),
             )
 
@@ -2435,6 +2646,9 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 capability_coverage_certificate=(
                     support.capability_coverage_certificate
                 ),
+                successor_state_certificate=(
+                    support.successor_state_certificate
+                ),
             )
 
     def test_checked_branch_certificate_rejects_policy_mismatch(self) -> None:
@@ -2489,6 +2703,9 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 ),
                 capability_coverage_certificate=(
                     support.capability_coverage_certificate
+                ),
+                successor_state_certificate=(
+                    support.successor_state_certificate
                 ),
             )
 
@@ -2936,6 +3153,51 @@ def _find_checked_branch_support(
             pending.append(support.successor_cursor)
 
     raise AssertionError("expected checked branch support was not found")
+
+
+def _checked_branch_certificate_kwargs(support, **overrides):
+    kwargs = dict(
+        source_state=support.source_state,
+        successor_state=support.successor_state,
+        emitted_text=support.emitted_text,
+        transition_kind=support.transition_kind,
+        graph_action_surface=support.graph_action_surface,
+        policy_family=support.policy_family,
+        events=support.events,
+        transition_evidence=support.evidence,
+        execution_capabilities=support.execution_capabilities,
+        graph_obligation_work_evidence=(
+            support.graph_obligation_work_evidence
+        ),
+        residual_work_evidence=support.residual_work_evidence,
+        finite_relation_work_evidence=support.finite_relation_work_evidence,
+        closure_candidate_resolution_evidence=(
+            support.closure_candidate_resolution_evidence
+        ),
+        closure_candidate_lifecycle_evidence=(
+            support.closure_candidate_lifecycle_evidence
+        ),
+        closure_candidate_branch_certificates=(
+            support.closure_candidate_branch_certificates
+        ),
+        residual_attachment_lifecycle_evidence=(
+            support.residual_attachment_lifecycle_evidence
+        ),
+        residual_attachment_branch_certificates=(
+            support.residual_attachment_branch_certificates
+        ),
+        stereo_lifecycle_evidence=support.stereo_lifecycle_evidence,
+        stereo_branch_certificates=support.stereo_branch_certificates,
+        residual_attachment_policy_evidence=(
+            support.residual_attachment_policy_evidence
+        ),
+        capability_coverage_certificate=(
+            support.capability_coverage_certificate
+        ),
+        successor_state_certificate=support.successor_state_certificate,
+    )
+    kwargs.update(overrides)
+    return kwargs
 
 
 def _writer_options() -> SouthStarRuntimeOptions:

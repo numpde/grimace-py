@@ -51,6 +51,10 @@ def writer_frontier_projection_certificate(
         _frontier_violation("missing_branch_certificate")
 
     for support, certificate in zip(branch_supports, branch_certificates):
+        if getattr(certificate, "successor_state_certificate", None) is None:
+            _frontier_violation(
+                "branch_certificate_lacks_successor_state_certificate"
+            )
         if certificate.source_state != support.source_state:
             _frontier_violation("branch_certificate_source_mismatch")
         if certificate.successor_state != support.successor_state:

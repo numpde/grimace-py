@@ -70,6 +70,9 @@ WRITER_SNAPSHOT_CERTIFICATES_PATH = (
 WRITER_SUPPORT_CERTIFICATES_PATH = (
     SOUTH_STAR_ROOT / "writer_support_certificates.py"
 )
+WRITER_STATE_DELTA_CERTIFICATES_PATH = (
+    SOUTH_STAR_ROOT / "writer_state_delta_certificates.py"
+)
 
 
 class WriterRuntimeBoundaryTest(unittest.TestCase):
@@ -205,6 +208,20 @@ class WriterRuntimeBoundaryTest(unittest.TestCase):
     def test_branch_certificates_stay_below_runtime(self) -> None:
         scan = scan_module_boundaries(
             WRITER_BRANCH_CERTIFICATES_PATH,
+            banned_modules={
+                "audit_rdkit",
+                "rdkit_adapter",
+                "writer_online_decoder",
+                "writer_runtime",
+                "writer_support",
+            },
+        )
+
+        self.assertEqual(scan.violations, ())
+
+    def test_state_delta_certificates_stay_below_runtime(self) -> None:
+        scan = scan_module_boundaries(
+            WRITER_STATE_DELTA_CERTIFICATES_PATH,
             banned_modules={
                 "audit_rdkit",
                 "rdkit_adapter",

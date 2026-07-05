@@ -105,6 +105,9 @@ from .writer_diagnostic_certificates import writer_diagnostics_certificate
 from .writer_capability_certificates import writer_capability_coverage_certificate
 from .writer_frontier_certificates import writer_checked_frontier_certificate
 from .writer_frontier_certificates import writer_frontier_projection_certificate
+from .writer_state_delta_certificates import (
+    writer_branch_successor_state_certificate,
+)
 from .writer_terminal_certificates import writer_terminal_certificates
 from .writer_transitions import _WriterActiveEmittedGraphPolicyBlocker
 from .writer_transitions import _WriterActiveEmittedGraphPolicyDecision
@@ -374,6 +377,7 @@ class _WriterFrontierBranchSupport:
     ] = ()
     checked_branch_certificate: object | None = None
     capability_coverage_certificate: object | None = None
+    successor_state_certificate: object | None = None
 
     @property
     def successor_cursor(self) -> WriterFrontierCursor:
@@ -2722,6 +2726,26 @@ def _writer_frontier_branch_support_from_next_token_support(
         residual_attachment_policy_evidence=policy_evidence,
         successor_state=support.successor_key,
     )
+    successor_state_certificate = writer_branch_successor_state_certificate(
+        source_state=support.state_key,
+        successor_state=support.successor_key,
+        emitted_text=support.emitted_text,
+        transition_kind=transition.kind,
+        graph_action_surface=support.graph_action_surface,
+        policy_family=support.policy_family,
+        events=transition.events,
+        transition_evidence=transition.evidence,
+        graph_obligation_work_evidence=graph_evidence,
+        residual_work_evidence=residual_work_evidence,
+        finite_relation_work_evidence=finite_relation_work_evidence,
+        closure_candidate_lifecycle_evidence=(
+            closure_candidate_lifecycle_evidence
+        ),
+        residual_attachment_lifecycle_evidence=(
+            residual_attachment_lifecycle_evidence
+        ),
+        stereo_lifecycle_evidence=stereo_lifecycle_evidence,
+    )
     checked_branch_certificate = writer_checked_branch_support_certificate(
         source_state=support.state_key,
         successor_state=support.successor_key,
@@ -2752,6 +2776,7 @@ def _writer_frontier_branch_support_from_next_token_support(
         stereo_branch_certificates=stereo_branch_certificates,
         residual_attachment_policy_evidence=policy_evidence,
         capability_coverage_certificate=capability_coverage_certificate,
+        successor_state_certificate=successor_state_certificate,
     )
 
     return _WriterFrontierBranchSupport(
@@ -2787,6 +2812,7 @@ def _writer_frontier_branch_support_from_next_token_support(
         residual_attachment_policy_evidence=policy_evidence,
         checked_branch_certificate=checked_branch_certificate,
         capability_coverage_certificate=capability_coverage_certificate,
+        successor_state_certificate=successor_state_certificate,
     )
 
 

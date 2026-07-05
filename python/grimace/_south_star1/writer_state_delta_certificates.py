@@ -18,6 +18,12 @@ from .writer_events import WriterRingEndpointEmitted
 from .writer_events import WriterRingEndpointPaired
 from .writer_events import WriterRingLabelAllocated
 from .writer_events import WriterRingLabelReleased
+from .writer_closure_candidate_lifecycle import (
+    WriterClosureCandidateLifecycleOutcomeKind,
+)
+from .writer_residual_attachment_lifecycle import (
+    WriterResidualAttachmentLifecycleOutcomeKind,
+)
 from .writer_state import WriterClosedClosure
 from .writer_state import WriterAtomFrame
 from .writer_state import WriterBranchFrame
@@ -69,6 +75,8 @@ class WriterBranchSuccessorStateCertificate:
     ring_replay_certificate: object | None = None
     graph_replay_certificate: object | None = None
     stereo_replay_certificate: object | None = None
+    closure_candidate_lifecycle_replay_certificate: object | None = None
+    residual_attachment_lifecycle_replay_certificate: object | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -201,6 +209,58 @@ class WriterStereoStateReplayCertificate:
     lifecycle_chain_certificate: object | None = None
 
 
+class WriterClosureCandidateLifecycleReplayKind(Enum):
+    UNCHANGED_OR_EMPTY = "unchanged_or_empty"
+    REPLAYED = "replayed"
+    EVIDENCE_BOUND_INCOMPLETE = "evidence_bound_incomplete"
+
+
+@dataclass(frozen=True, slots=True)
+class WriterClosureCandidateLifecycleReplayTerm:
+    bond: object
+    outcome_kind: object
+    source_resolution: object
+    successor_resolution: object | None
+    successor_obligation_kind: object | None
+    graph_action_surface: object | None
+
+
+@dataclass(frozen=True, slots=True)
+class WriterClosureCandidateLifecycleReplayCertificate:
+    kind: WriterClosureCandidateLifecycleReplayKind
+    lifecycle_evidence: tuple[object, ...]
+    replay_terms: tuple[WriterClosureCandidateLifecycleReplayTerm, ...]
+    graph_action_surface: object | None
+    replay_complete: bool
+
+
+class WriterResidualAttachmentLifecycleReplayKind(Enum):
+    UNCHANGED_OR_EMPTY = "unchanged_or_empty"
+    CLOSURE_OPEN_DISCHARGED = "closure_open_discharged"
+    EVIDENCE_BOUND_INCOMPLETE = "evidence_bound_incomplete"
+
+
+@dataclass(frozen=True, slots=True)
+class WriterResidualAttachmentLifecycleReplayTerm:
+    attachment_id: int
+    bond: object
+    outcome_kind: object
+    source_attachment: object
+    successor_attachment: object
+    source_closure_deficit: int
+    successor_closure_deficit: int
+    removed_boundary_bonds: tuple[object, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class WriterResidualAttachmentLifecycleReplayCertificate:
+    kind: WriterResidualAttachmentLifecycleReplayKind
+    lifecycle_evidence: tuple[object, ...]
+    replay_terms: tuple[WriterResidualAttachmentLifecycleReplayTerm, ...]
+    graph_action_surface: object | None
+    replay_complete: bool
+
+
 @dataclass(frozen=True, slots=True)
 class WriterEventDeltaView:
     atom_events: tuple[WriterAtomEmitted, ...]
@@ -310,6 +370,22 @@ def writer_branch_successor_state_certificate(
         ),
         graph_action_surface=graph_action_surface,
     )
+    closure_candidate_lifecycle_replay_certificate = (
+        _closure_candidate_lifecycle_replay_certificate(
+            closure_candidate_lifecycle_evidence=(
+                closure_candidate_lifecycle_evidence
+            ),
+            graph_action_surface=graph_action_surface,
+        )
+    )
+    residual_attachment_lifecycle_replay_certificate = (
+        _residual_attachment_lifecycle_replay_certificate(
+            residual_attachment_lifecycle_evidence=(
+                residual_attachment_lifecycle_evidence
+            ),
+            graph_action_surface=graph_action_surface,
+        )
+    )
 
     certificate = WriterBranchSuccessorStateCertificate(
         source_state=source_state,
@@ -338,6 +414,12 @@ def writer_branch_successor_state_certificate(
         ring_replay_certificate=ring_replay_certificate,
         graph_replay_certificate=graph_replay_certificate,
         stereo_replay_certificate=stereo_replay_certificate,
+        closure_candidate_lifecycle_replay_certificate=(
+            closure_candidate_lifecycle_replay_certificate
+        ),
+        residual_attachment_lifecycle_replay_certificate=(
+            residual_attachment_lifecycle_replay_certificate
+        ),
         **deltas,
     )
     validate_writer_branch_successor_state_certificate(certificate)
@@ -411,6 +493,7 @@ def validate_writer_branch_successor_state_certificate(certificate) -> None:
         stereo_replay_certificate=certificate.stereo_replay_certificate,
     )
     _validate_replay_certificate_values(certificate)
+    _validate_lifecycle_replay_certificate_values(certificate)
 
 
 def validate_writer_state_field_deltas(certificate) -> None:
@@ -1293,6 +1376,169 @@ def _stereo_lifecycle_chain_matches_state(
     )
 
 
+def _closure_candidate_lifecycle_replay_certificate(
+    *,
+    closure_candidate_lifecycle_evidence: tuple[object, ...],
+    graph_action_surface,
+) -> WriterClosureCandidateLifecycleReplayCertificate | None:
+    if not closure_candidate_lifecycle_evidence:
+        return None
+
+    terms = []
+    for evidence in closure_candidate_lifecycle_evidence:
+        bond = getattr(evidence, "bond", None)
+        source_resolution = getattr(evidence, "source_resolution", None)
+        outcome = getattr(evidence, "outcome_kind", None)
+        successor_resolution = getattr(evidence, "successor_resolution", None)
+        successor_obligation_kind = getattr(
+            evidence,
+            "successor_obligation_kind",
+            None,
+        )
+
+        if bond is None:
+            _delta_violation("closure_lifecycle_replay_missing_bond")
+        if source_resolution is None:
+            _delta_violation("closure_lifecycle_replay_missing_source_resolution")
+
+        if outcome is WriterClosureCandidateLifecycleOutcomeKind.RETAINED_SUPPORTED:
+            if successor_resolution is None:
+                _delta_violation(
+                    "closure_lifecycle_retained_lacks_successor_resolution"
+                )
+            if successor_obligation_kind is not None:
+                _delta_violation(
+                    "closure_lifecycle_retained_has_successor_obligation"
+                )
+        elif outcome in (
+            WriterClosureCandidateLifecycleOutcomeKind.OPENED,
+            WriterClosureCandidateLifecycleOutcomeKind.CLOSED,
+        ):
+            if successor_obligation_kind is None:
+                _delta_violation(
+                    "closure_lifecycle_terminal_lacks_successor_obligation"
+                )
+            if successor_resolution is not None:
+                _delta_violation(
+                    "closure_lifecycle_terminal_has_successor_resolution"
+                )
+        else:
+            _delta_violation("closure_lifecycle_unknown_outcome")
+
+        surface_bond = getattr(graph_action_surface, "bond", None)
+        if (
+            graph_action_surface is not None
+            and surface_bond is not None
+            and outcome is WriterClosureCandidateLifecycleOutcomeKind.OPENED
+            and surface_bond != bond
+        ):
+            _delta_violation("closure_lifecycle_opened_surface_bond_mismatch")
+
+        terms.append(
+            WriterClosureCandidateLifecycleReplayTerm(
+                bond=bond,
+                outcome_kind=outcome,
+                source_resolution=source_resolution,
+                successor_resolution=successor_resolution,
+                successor_obligation_kind=successor_obligation_kind,
+                graph_action_surface=graph_action_surface,
+            )
+        )
+
+    return WriterClosureCandidateLifecycleReplayCertificate(
+        kind=WriterClosureCandidateLifecycleReplayKind.REPLAYED,
+        lifecycle_evidence=closure_candidate_lifecycle_evidence,
+        replay_terms=tuple(terms),
+        graph_action_surface=graph_action_surface,
+        replay_complete=True,
+    )
+
+
+def _residual_attachment_lifecycle_replay_certificate(
+    *,
+    residual_attachment_lifecycle_evidence: tuple[object, ...],
+    graph_action_surface,
+) -> WriterResidualAttachmentLifecycleReplayCertificate | None:
+    if not residual_attachment_lifecycle_evidence:
+        return None
+
+    terms = []
+    for evidence in residual_attachment_lifecycle_evidence:
+        outcome = getattr(evidence, "outcome_kind", None)
+        if (
+            outcome
+            is not (
+                WriterResidualAttachmentLifecycleOutcomeKind
+                .CLOSURE_OPEN_DISCHARGED
+            )
+        ):
+            _delta_violation("residual_attachment_lifecycle_unknown_outcome")
+
+        attachment_id = getattr(evidence, "attachment_id", None)
+        bond = getattr(evidence, "bond", None)
+        source_attachment = getattr(evidence, "source_attachment", None)
+        successor_attachment = getattr(evidence, "successor_attachment", None)
+        source_deficit = getattr(evidence, "source_closure_deficit", None)
+        successor_deficit = getattr(evidence, "successor_closure_deficit", None)
+        removed = tuple(getattr(evidence, "removed_boundary_bonds", ()))
+
+        if attachment_id is None:
+            _delta_violation("residual_attachment_lacks_attachment_id")
+        if bond is None:
+            _delta_violation("residual_attachment_lacks_bond")
+        if source_attachment is None:
+            _delta_violation("residual_attachment_lacks_source_attachment")
+        if successor_attachment is None:
+            _delta_violation("residual_attachment_lacks_successor_attachment")
+        if bond not in removed:
+            _delta_violation("residual_attachment_removed_boundary_mismatch")
+        if source_deficit != successor_deficit + 1:
+            _delta_violation("residual_attachment_deficit_delta_mismatch")
+
+        surface_bond = getattr(graph_action_surface, "bond", None)
+        if (
+            graph_action_surface is not None
+            and surface_bond is not None
+            and surface_bond != bond
+        ):
+            _delta_violation("residual_attachment_surface_bond_mismatch")
+
+        removed_bonds = frozenset(removed)
+        source_boundary = tuple(getattr(source_attachment, "boundary", ()))
+        successor_boundary = tuple(getattr(successor_attachment, "boundary", ()))
+        expected_boundary = tuple(
+            incidence
+            for incidence in source_boundary
+            if getattr(incidence, "bond", None) not in removed_bonds
+        )
+        if successor_boundary != expected_boundary:
+            _delta_violation("residual_attachment_successor_boundary_mismatch")
+
+        terms.append(
+            WriterResidualAttachmentLifecycleReplayTerm(
+                attachment_id=attachment_id,
+                bond=bond,
+                outcome_kind=outcome,
+                source_attachment=source_attachment,
+                successor_attachment=successor_attachment,
+                source_closure_deficit=source_deficit,
+                successor_closure_deficit=successor_deficit,
+                removed_boundary_bonds=removed,
+            )
+        )
+
+    return WriterResidualAttachmentLifecycleReplayCertificate(
+        kind=(
+            WriterResidualAttachmentLifecycleReplayKind
+            .CLOSURE_OPEN_DISCHARGED
+        ),
+        lifecycle_evidence=residual_attachment_lifecycle_evidence,
+        replay_terms=tuple(terms),
+        graph_action_surface=graph_action_surface,
+        replay_complete=True,
+    )
+
+
 def _validate_changed_field_coverage(
     *,
     deltas: dict[str, object],
@@ -1544,6 +1790,142 @@ def _validate_replay_certificate_values(certificate) -> None:
                 _delta_violation("stereo_lifecycle_chain_expected_mismatch")
 
 
+def _validate_lifecycle_replay_certificate_values(certificate) -> None:
+    closure = certificate.closure_candidate_lifecycle_replay_certificate
+    if certificate.closure_candidate_lifecycle_evidence:
+        if closure is None:
+            _delta_violation("closure_lifecycle_lacks_replay_certificate")
+        if (
+            closure.lifecycle_evidence
+            != certificate.closure_candidate_lifecycle_evidence
+        ):
+            _delta_violation("closure_lifecycle_replay_evidence_mismatch")
+        if closure.graph_action_surface != certificate.graph_action_surface:
+            _delta_violation("closure_lifecycle_replay_surface_mismatch")
+        if not closure.replay_complete:
+            _delta_violation("closure_lifecycle_replay_incomplete")
+        if len(closure.replay_terms) != len(
+            certificate.closure_candidate_lifecycle_evidence
+        ):
+            _delta_violation("closure_lifecycle_replay_term_count_mismatch")
+        for term, evidence in zip(
+            closure.replay_terms,
+            certificate.closure_candidate_lifecycle_evidence,
+        ):
+            if term.bond != getattr(evidence, "bond", None):
+                _delta_violation("closure_lifecycle_replay_term_bond_mismatch")
+            if term.outcome_kind != getattr(evidence, "outcome_kind", None):
+                _delta_violation("closure_lifecycle_replay_term_outcome_mismatch")
+            if term.source_resolution != getattr(
+                evidence,
+                "source_resolution",
+                None,
+            ):
+                _delta_violation("closure_lifecycle_replay_term_source_mismatch")
+            if term.successor_resolution != getattr(
+                evidence,
+                "successor_resolution",
+                None,
+            ):
+                _delta_violation(
+                    "closure_lifecycle_replay_term_successor_mismatch"
+                )
+            if term.successor_obligation_kind != getattr(
+                evidence,
+                "successor_obligation_kind",
+                None,
+            ):
+                _delta_violation(
+                    "closure_lifecycle_replay_term_obligation_mismatch"
+                )
+            if term.graph_action_surface != certificate.graph_action_surface:
+                _delta_violation("closure_lifecycle_replay_term_surface_mismatch")
+    elif closure is not None:
+        _delta_violation("closure_lifecycle_replay_without_evidence")
+
+    residual = certificate.residual_attachment_lifecycle_replay_certificate
+    if certificate.residual_attachment_lifecycle_evidence:
+        if residual is None:
+            _delta_violation(
+                "residual_attachment_lifecycle_lacks_replay_certificate"
+            )
+        if (
+            residual.lifecycle_evidence
+            != certificate.residual_attachment_lifecycle_evidence
+        ):
+            _delta_violation(
+                "residual_attachment_lifecycle_replay_evidence_mismatch"
+            )
+        if residual.graph_action_surface != certificate.graph_action_surface:
+            _delta_violation(
+                "residual_attachment_lifecycle_replay_surface_mismatch"
+            )
+        if not residual.replay_complete:
+            _delta_violation("residual_attachment_lifecycle_replay_incomplete")
+        if len(residual.replay_terms) != len(
+            certificate.residual_attachment_lifecycle_evidence
+        ):
+            _delta_violation(
+                "residual_attachment_lifecycle_replay_term_count_mismatch"
+            )
+        for term, evidence in zip(
+            residual.replay_terms,
+            certificate.residual_attachment_lifecycle_evidence,
+        ):
+            if term.attachment_id != getattr(evidence, "attachment_id", None):
+                _delta_violation(
+                    "residual_attachment_lifecycle_replay_term_id_mismatch"
+                )
+            if term.bond != getattr(evidence, "bond", None):
+                _delta_violation(
+                    "residual_attachment_lifecycle_replay_term_bond_mismatch"
+                )
+            if term.outcome_kind != getattr(evidence, "outcome_kind", None):
+                _delta_violation(
+                    "residual_attachment_lifecycle_replay_term_outcome_mismatch"
+                )
+            if term.source_attachment != getattr(
+                evidence,
+                "source_attachment",
+                None,
+            ):
+                _delta_violation(
+                    "residual_attachment_lifecycle_replay_term_source_mismatch"
+                )
+            if term.successor_attachment != getattr(
+                evidence,
+                "successor_attachment",
+                None,
+            ):
+                _delta_violation(
+                    "residual_attachment_lifecycle_replay_term_successor_mismatch"
+                )
+            if term.source_closure_deficit != getattr(
+                evidence,
+                "source_closure_deficit",
+                None,
+            ):
+                _delta_violation(
+                    "residual_attachment_lifecycle_replay_term_source_deficit_mismatch"
+                )
+            if term.successor_closure_deficit != getattr(
+                evidence,
+                "successor_closure_deficit",
+                None,
+            ):
+                _delta_violation(
+                    "residual_attachment_lifecycle_replay_term_successor_deficit_mismatch"
+                )
+            if term.removed_boundary_bonds != tuple(
+                getattr(evidence, "removed_boundary_bonds", ())
+            ):
+                _delta_violation(
+                    "residual_attachment_lifecycle_replay_term_removed_mismatch"
+                )
+    elif residual is not None:
+        _delta_violation("residual_attachment_lifecycle_replay_without_evidence")
+
+
 def _validate_closure_candidate_delta(
     *,
     closure_candidate_lifecycle_evidence: tuple[object, ...],
@@ -1573,6 +1955,9 @@ def _delta_violation(kind: str) -> None:
 
 __all__ = (
     "WriterBranchSuccessorStateCertificate",
+    "WriterClosureCandidateLifecycleReplayCertificate",
+    "WriterClosureCandidateLifecycleReplayKind",
+    "WriterClosureCandidateLifecycleReplayTerm",
     "WriterEventDeltaView",
     "WriterGraphObligationReplayCertificate",
     "WriterGraphObligationReplayKind",
@@ -1581,6 +1966,9 @@ __all__ = (
     "WriterGraphSuccessorProjection",
     "WriterPolicyStateDeltaCertificate",
     "WriterPolicyStateReplayCertificate",
+    "WriterResidualAttachmentLifecycleReplayCertificate",
+    "WriterResidualAttachmentLifecycleReplayKind",
+    "WriterResidualAttachmentLifecycleReplayTerm",
     "WriterRingStateDeltaCertificate",
     "WriterRingStateReplayCertificate",
     "WriterStereoStateDeltaCertificate",

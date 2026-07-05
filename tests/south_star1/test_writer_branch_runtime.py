@@ -996,6 +996,211 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 support.stereo_lifecycle_evidence,
             )
 
+    def test_closure_candidate_lifecycle_replay_present_when_evidence_exists(
+        self,
+    ) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        cursor = WriterFrontierCursor(
+            weighted_states=(
+                (
+                    writer_state_key(
+                        _branch_return_closure_candidate_state(
+                            live_partner=True,
+                        )
+                    ),
+                    1,
+                ),
+            )
+        )
+        support = _find_checked_branch_support(
+            prepared,
+            cursor,
+            lambda support: bool(
+                support.closure_candidate_lifecycle_evidence
+            ),
+        )
+
+        replay = (
+            support.successor_state_certificate
+            .closure_candidate_lifecycle_replay_certificate
+        )
+
+        self.assertIsNotNone(replay)
+        self.assertTrue(replay.replay_complete)
+        self.assertEqual(
+            replay.lifecycle_evidence,
+            support.closure_candidate_lifecycle_evidence,
+        )
+        self.assertEqual(
+            len(replay.replay_terms),
+            len(support.closure_candidate_lifecycle_evidence),
+        )
+
+    def test_closure_lifecycle_replay_rejects_stale_evidence(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        cursor = WriterFrontierCursor(
+            weighted_states=(
+                (
+                    writer_state_key(
+                        _branch_return_closure_candidate_state(
+                            live_partner=True,
+                        )
+                    ),
+                    1,
+                ),
+            )
+        )
+        support = _find_checked_branch_support(
+            prepared,
+            cursor,
+            lambda support: bool(
+                support.closure_candidate_lifecycle_evidence
+            ),
+        )
+        certificate = support.successor_state_certificate
+        bad_certificate = replace(
+            certificate,
+            closure_candidate_lifecycle_replay_certificate=replace(
+                certificate.closure_candidate_lifecycle_replay_certificate,
+                lifecycle_evidence=(),
+            ),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "closure_lifecycle_replay_evidence_mismatch",
+        ):
+            (
+                writer_state_delta_certificates
+                .validate_writer_branch_successor_state_certificate(
+                    bad_certificate
+                )
+            )
+
+    def test_residual_attachment_lifecycle_replay_present_when_evidence_exists(
+        self,
+    ) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _find_checked_branch_support(
+            prepared,
+            initial,
+            lambda support: bool(
+                support.residual_attachment_lifecycle_evidence
+            ),
+        )
+
+        replay = (
+            support.successor_state_certificate
+            .residual_attachment_lifecycle_replay_certificate
+        )
+
+        self.assertIsNotNone(replay)
+        self.assertTrue(replay.replay_complete)
+        self.assertEqual(
+            replay.lifecycle_evidence,
+            support.residual_attachment_lifecycle_evidence,
+        )
+        self.assertEqual(
+            len(replay.replay_terms),
+            len(support.residual_attachment_lifecycle_evidence),
+        )
+
+    def test_residual_attachment_lifecycle_replay_rejects_stale_evidence(
+        self,
+    ) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _find_checked_branch_support(
+            prepared,
+            initial,
+            lambda support: bool(
+                support.residual_attachment_lifecycle_evidence
+            ),
+        )
+        certificate = support.successor_state_certificate
+        bad_certificate = replace(
+            certificate,
+            residual_attachment_lifecycle_replay_certificate=replace(
+                (
+                    certificate
+                    .residual_attachment_lifecycle_replay_certificate
+                ),
+                lifecycle_evidence=(),
+            ),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "residual_attachment_lifecycle_replay_evidence_mismatch",
+        ):
+            (
+                writer_state_delta_certificates
+                .validate_writer_branch_successor_state_certificate(
+                    bad_certificate
+                )
+            )
+
+    def test_residual_attachment_replay_rejects_successor_boundary_mismatch(
+        self,
+    ) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _find_checked_branch_support(
+            prepared,
+            initial,
+            lambda support: bool(
+                support.residual_attachment_lifecycle_evidence
+            ),
+        )
+        evidence = support.residual_attachment_lifecycle_evidence[0]
+        bad_successor_attachment = replace(
+            evidence.successor_attachment,
+            boundary=evidence.source_attachment.boundary,
+        )
+        bad_evidence = replace(
+            evidence,
+            successor_attachment=bad_successor_attachment,
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "residual_attachment_successor_boundary_mismatch",
+        ):
+            writer_branch_successor_state_certificate(
+                **_successor_state_certificate_kwargs(
+                    support,
+                    residual_attachment_lifecycle_evidence=(bad_evidence,),
+                )
+            )
+
+    def test_residual_attachment_replay_rejects_deficit_mismatch(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _find_checked_branch_support(
+            prepared,
+            initial,
+            lambda support: bool(
+                support.residual_attachment_lifecycle_evidence
+            ),
+        )
+        evidence = support.residual_attachment_lifecycle_evidence[0]
+        bad_evidence = replace(
+            evidence,
+            successor_closure_deficit=evidence.source_closure_deficit,
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "residual_attachment_deficit_delta_mismatch",
+        ):
+            writer_branch_successor_state_certificate(
+                **_successor_state_certificate_kwargs(
+                    support,
+                    residual_attachment_lifecycle_evidence=(bad_evidence,),
+                )
+            )
+
     def test_checked_branch_certificate_rejects_stale_field_delta(self) -> None:
         prepared = _prepare(cco_facts())
         initial = initial_writer_frontier_cursor(prepared, _writer_options())

@@ -1939,6 +1939,30 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
         )
         if product.terminal_projection_certificate is None:
             self.skipTest("fixture state has no terminal projection")
+        if product.terminal_choice_count_certificate is None:
+            self.skipTest("fixture state has no terminal choice count")
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "terminal_choice_count_support_count_mismatch",
+        ):
+            writer_checked_frontier_certificate(
+                projection_certificate=product.projection_certificate,
+                text_choice_count_certificates=(
+                    product.text_choice_count_certificates
+                ),
+                terminal_choice_count_certificate=replace(
+                    product.terminal_choice_count_certificate,
+                    support_count=(
+                        product.terminal_choice_count_certificate
+                        .support_count
+                        + 1
+                    ),
+                ),
+                support_count_certificate=None,
+                count_certificate=product.count_certificate,
+            )
+
         bad_terminal = replace(
             product.terminal_projection_certificate,
             source_cursor=WriterFrontierCursor(weighted_states=()),

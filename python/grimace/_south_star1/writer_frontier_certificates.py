@@ -18,6 +18,9 @@ class WriterCheckedFrontierCertificate:
     text_choice_projection_certificates: tuple[object, ...]
     terminal_projection_certificate: object | None
     count_certificate: object
+    text_choice_count_certificates: tuple[object, ...] = ()
+    terminal_choice_count_certificate: object | None = None
+    support_count_certificate: object | None = None
     diagnostic_certificate: object | None = None
 
 
@@ -28,6 +31,9 @@ def writer_checked_frontier_certificate(
     branch_supports: tuple[object, ...],
     terminal_supports: tuple[object, ...],
     text_choice_projection_certificates: tuple[object, ...],
+    text_choice_count_certificates: tuple[object, ...] = (),
+    terminal_choice_count_certificate: object | None = None,
+    support_count_certificate: object | None = None,
     terminal_projection_certificate,
     count_certificate,
     diagnostic_certificate=None,
@@ -109,10 +115,90 @@ def writer_checked_frontier_certificate(
     ):
         _frontier_violation("projection_branch_certificate_partition_mismatch")
 
-    if count_certificate is None:
-        _frontier_violation("missing_count_certificate")
-    if count_certificate.cursor != cursor:
-        _frontier_violation("count_certificate_cursor_mismatch")
+    if text_choice_count_certificates:
+        if len(text_choice_count_certificates) != len(
+            text_choice_projection_certificates
+        ):
+            _frontier_violation(
+                "choice_count_certificate_count_mismatch"
+            )
+
+        for projection, choice_count_certificate in zip(
+            text_choice_projection_certificates,
+            text_choice_count_certificates,
+        ):
+            if getattr(
+                choice_count_certificate,
+                "text_projection_certificate",
+                None,
+            ) is not projection:
+                _frontier_violation(
+                    "choice_count_certificate_projection_mismatch"
+                )
+
+        projected_choice_count_projection_identities = tuple(
+            id(certificate.text_projection_certificate)
+            for certificate in text_choice_count_certificates
+        )
+        if len(set(projected_choice_count_projection_identities)) != len(
+            projected_choice_count_projection_identities
+        ):
+            _frontier_violation("choice_count_certificate_duplicate")
+
+        projected_choice_count_projections = tuple(
+            cert.text_projection_certificate
+            for cert in text_choice_count_certificates
+        )
+        if sorted(projected_choice_count_projections, key=id) != sorted(
+            text_choice_projection_certificates,
+            key=id,
+        ):
+            _frontier_violation(
+                "choice_count_certificate_projection_partition"
+            )
+
+    if terminal_projection_certificate is None and (
+        terminal_choice_count_certificate is not None
+    ):
+        _frontier_violation("terminal_choice_count_without_terminal")
+    if terminal_projection_certificate is not None and (
+        terminal_choice_count_certificate is None
+    ):
+        _frontier_violation("terminal_choice_count_missing")
+    if terminal_choice_count_certificate is not None:
+        if terminal_choice_count_certificate.terminal_projection_certificate is not (
+            terminal_projection_certificate
+        ):
+            _frontier_violation(
+                "terminal_choice_count_projection_mismatch"
+            )
+
+    if support_count_certificate is not None:
+        if support_count_certificate.cursor != cursor:
+            _frontier_violation(
+                "support_count_certificate_cursor_mismatch"
+            )
+
+        terminal_support_count = 0
+        if terminal_choice_count_certificate is not None:
+            terminal_support_count = (
+                terminal_choice_count_certificate.support_count
+            )
+
+        if support_count_certificate.support_count != (
+            terminal_support_count
+            + sum(
+                cert.support_count
+                for cert in text_choice_count_certificates
+            )
+        ):
+            _frontier_violation(
+                "support_count_certificate_total_mismatch"
+            )
+
+    if count_certificate is not None:
+        if count_certificate.cursor != cursor:
+            _frontier_violation("count_certificate_cursor_mismatch")
 
     if diagnostic_certificate is not None:
         if diagnostic_certificate.cursor != cursor:
@@ -134,6 +220,9 @@ def writer_checked_frontier_certificate(
         branch_certificates=branch_certificates,
         terminal_certificates=terminal_certificates,
         text_choice_projection_certificates=text_choice_projection_certificates,
+        text_choice_count_certificates=text_choice_count_certificates,
+        terminal_choice_count_certificate=terminal_choice_count_certificate,
+        support_count_certificate=support_count_certificate,
         terminal_projection_certificate=terminal_projection_certificate,
         count_certificate=count_certificate,
         diagnostic_certificate=diagnostic_certificate,

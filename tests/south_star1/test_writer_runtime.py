@@ -25,12 +25,19 @@ from grimace._south_star1.writer_count_certificates import (
     writer_cursor_completion_count_certificate,
 )
 from grimace._south_star1.writer_count_certificates import writer_state_completion_count_certificate
+from grimace._south_star1.writer_choice_count_certificates import (
+    writer_text_choice_count_certificate,
+)
+from grimace._south_star1.writer_choice_count_certificates import (
+    writer_terminal_choice_count_certificate,
+)
 from grimace._south_star1.writer_diagnostic_certificates import (
     WriterDiagnosticsCertificate,
     writer_diagnostics_certificate,
 )
 from grimace._south_star1.writer_frontier import WriterFrontierCursor
 from grimace._south_star1.writer_frontier import _checked_writer_frontier_branch_supports
+from grimace._south_star1.writer_frontier import _checked_writer_frontier_product
 from grimace._south_star1.writer_projection_certificates import (
     writer_terminal_projection_certificate,
 )
@@ -721,11 +728,19 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
         self.assertEqual(transitions.has_eos, choices.terminal is not None)
         self.assertEqual(
             transitions.support_count,
-            sum(choice.support_count or 0 for choice in choices.choices),
+            transitions.support_count_certificate.support_count
+            if transitions.support_count_certificate is not None
+            else sum(
+                choice.support_count or 0 for choice in choices.choices
+            ),
         )
         self.assertEqual(
             transitions.completion_count,
-            sum(choice.completion_count or 0 for choice in choices.choices),
+            transitions.count_certificate.completion_count
+            if transitions.count_certificate is not None
+            else sum(
+                choice.completion_count or 0 for choice in choices.choices
+            ),
         )
         self.assertEqual(
             tuple(transition.choice for transition in transitions.transitions),
@@ -759,6 +774,125 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             )
             self.assertTrue(
                 transition.snapshot_step_certificate.branch_certificates
+            )
+
+    def test_choice_count_certificates_are_projection_backed(self) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        product = _checked_writer_frontier_product(
+            prepared,
+            state.snapshot.cursor,
+        )
+
+        self.assertEqual(
+            len(product.text_choice_count_certificates),
+            len(product.text_choice_projection_certificates),
+        )
+
+        for projection, count_certificate in zip(
+            product.text_choice_projection_certificates,
+            product.text_choice_count_certificates,
+        ):
+            self.assertIs(
+                count_certificate.text_projection_certificate,
+                projection,
+            )
+            self.assertEqual(
+                projection.successor_cursor,
+                count_certificate.support_count_certificate.cursor,
+            )
+            self.assertEqual(
+                projection.successor_cursor,
+                count_certificate.completion_count_certificate.cursor,
+            )
+            if projection.support_count is not None:
+                self.assertEqual(
+                    projection.support_count,
+                    count_certificate.support_count_certificate.support_count,
+                )
+            if projection.completion_count is not None:
+                self.assertEqual(
+                    projection.completion_count,
+                    count_certificate.completion_count_certificate.completion_count,
+                )
+
+        if product.terminal_projection_certificate is not None:
+            self.assertIsNotNone(product.terminal_choice_count_certificate)
+            self.assertIs(
+                product.terminal_choice_count_certificate.terminal_projection_certificate,  # type: ignore[union-attr]
+                product.terminal_projection_certificate,
+            )
+
+        if product.terminal_choice_count_certificate is not None:
+            self.assertEqual(
+                product.terminal_choice_count_certificate.support_count,
+                product.terminal_projection_certificate.support_count,
+            )
+
+    def test_choice_count_certificate_rejects_malformed(self) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        product = _checked_writer_frontier_product(
+            prepared,
+            state.snapshot.cursor,
+        )
+        if not product.text_choice_projection_certificates:
+            self.skipTest("fixture has no text choices")
+
+        projection = product.text_choice_projection_certificates[0]
+        successor_cursor = projection.successor_cursor
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "support_count_successor_cursor_mismatch",
+        ):
+            writer_text_choice_count_certificate(
+                text_projection_certificate=projection,
+                support_count_certificate=SimpleNamespace(
+                    cursor=WriterFrontierCursor(
+                        weighted_states=((state.snapshot.cursor.weighted_states[0][0], 1),)
+                    ),
+                    support_count=projection.support_count or 0,
+                ),
+                completion_count_certificate=SimpleNamespace(
+                    cursor=successor_cursor,
+                    completion_count=projection.completion_count or 0,
+                ),
+            )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "completion_count_successor_cursor_mismatch",
+        ):
+            writer_text_choice_count_certificate(
+                text_projection_certificate=projection,
+                support_count_certificate=SimpleNamespace(
+                    cursor=successor_cursor,
+                    support_count=projection.support_count or 0,
+                ),
+                completion_count_certificate=SimpleNamespace(
+                    cursor=WriterFrontierCursor(
+                        weighted_states=((state.snapshot.cursor.weighted_states[0][0], 1),)
+                    ),
+                    completion_count=projection.completion_count or 0,
+                ),
+            )
+
+        if product.terminal_projection_certificate is None:
+            self.skipTest("fixture has no terminal projection")
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "terminal_projection_lacks_terminal",
+        ):
+            writer_terminal_choice_count_certificate(
+                terminal_projection_certificate=SimpleNamespace(
+                    terminal=None,
+                )
             )
 
     def test_choices_and_advance_delegate_to_checked_snapshot_path(self) -> None:

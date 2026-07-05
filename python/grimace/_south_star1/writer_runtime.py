@@ -42,6 +42,9 @@ class WriterRuntimeChoiceTransitions:
     choices: WriterFrontierChoices
     transitions: tuple[WriterRuntimeChoiceTransition, ...]
     text_choice_projection_certificates: tuple[object, ...] = ()
+    text_choice_count_certificates: tuple[object, ...] = ()
+    terminal_choice_count_certificate: object | None = None
+    support_count_certificate: object | None = None
     terminal_projection_certificate: object | None = None
     count_certificate: object | None = None
     checked_frontier_certificate: object | None = None
@@ -52,6 +55,9 @@ class WriterRuntimeChoiceTransitions:
 
     @property
     def support_count(self) -> int:
+        if self.support_count_certificate is not None:
+            return self.support_count_certificate.support_count
+
         total = sum(
             transition.choice.support_count or 0
             for transition in self.transitions
@@ -62,6 +68,9 @@ class WriterRuntimeChoiceTransitions:
 
     @property
     def completion_count(self) -> int:
+        if self.count_certificate is not None:
+            return self.count_certificate.completion_count
+
         total = sum(
             transition.choice.completion_count or 0
             for transition in self.transitions
@@ -129,7 +138,10 @@ class WriterRuntimeBranchTransitions:
     transitions: tuple[WriterRuntimeBranchTransition, ...]
     terminal_supports: tuple[WriterRuntimeTerminalSupport, ...] = ()
     text_choice_projection_certificates: tuple[object, ...] = ()
+    text_choice_count_certificates: tuple[object, ...] = ()
+    terminal_choice_count_certificate: object | None = None
     terminal_projection_certificate: object | None = None
+    support_count_certificate: object | None = None
     count_certificate: object | None = None
     checked_frontier_certificate: object | None = None
 
@@ -289,6 +301,13 @@ def writer_runtime_choice_transitions(
         text_choice_projection_certificates=(
             branch_batch.text_choice_projection_certificates
         ),
+        text_choice_count_certificates=(
+            branch_batch.text_choice_count_certificates
+        ),
+        terminal_choice_count_certificate=(
+            branch_batch.terminal_choice_count_certificate
+        ),
+        support_count_certificate=branch_batch.support_count_certificate,
         terminal_projection_certificate=(
             branch_batch.terminal_projection_certificate
         ),
@@ -383,6 +402,13 @@ def writer_runtime_branch_transitions(
     return WriterRuntimeBranchTransitions(
         choices=branch_batch.choices,
         transitions=tuple(branch_transitions),
+        support_count_certificate=branch_batch.support_count_certificate,
+        text_choice_count_certificates=(
+            branch_batch.text_choice_count_certificates
+        ),
+        terminal_choice_count_certificate=(
+            branch_batch.terminal_choice_count_certificate
+        ),
         count_certificate=branch_batch.count_certificate,
         checked_frontier_certificate=(
             branch_batch.checked_frontier_certificate

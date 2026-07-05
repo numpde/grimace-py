@@ -34,6 +34,17 @@ class WriterCursorCompletionCountCertificate:
     completion_count: int
 
 
+@dataclass(frozen=True, slots=True)
+class WriterFrontierCompletionCountCertificate:
+    projection_certificate: object
+    count_certificate: object
+    text_choice_count_certificates: tuple[object, ...]
+    terminal_choice_count_certificate: object | None
+    terminal_completion_count: int
+    text_completion_count: int
+    completion_count: int
+
+
 def writer_cursor_completion_count_certificate(
     *,
     cursor,
@@ -152,6 +163,92 @@ def writer_branch_completion_term_certificate(
     )
 
 
+def writer_frontier_completion_count_certificate(
+    *,
+    projection_certificate,
+    count_certificate,
+    text_choice_count_certificates: tuple[object, ...],
+    terminal_choice_count_certificate,
+) -> WriterFrontierCompletionCountCertificate:
+    if projection_certificate is None:
+        _frontier_count_violation("missing_projection_certificate")
+    if count_certificate is None:
+        _frontier_count_violation("missing_count_certificate")
+    if count_certificate.cursor != projection_certificate.cursor:
+        _frontier_count_violation("count_certificate_cursor_mismatch")
+
+    projections = tuple(
+        projection_certificate.text_choice_projection_certificates
+    )
+    if len(text_choice_count_certificates) != len(projections):
+        _frontier_count_violation(
+            "text_choice_count_certificate_count_mismatch"
+        )
+
+    for projection, choice_count in zip(
+        projections,
+        text_choice_count_certificates,
+    ):
+        if choice_count.text_projection_certificate is not projection:
+            _frontier_count_violation(
+                "text_choice_count_projection_mismatch"
+            )
+        if choice_count.completion_count != (
+            choice_count.completion_count_certificate.completion_count
+        ):
+            _frontier_count_violation(
+                "text_choice_completion_count_nested_mismatch"
+            )
+
+    terminal_projection = (
+        projection_certificate.terminal_projection_certificate
+    )
+    if terminal_projection is None:
+        if terminal_choice_count_certificate is not None:
+            _frontier_count_violation(
+                "terminal_choice_count_without_terminal_projection"
+            )
+        terminal_completion_count = 0
+    else:
+        if terminal_choice_count_certificate is None:
+            _frontier_count_violation("terminal_choice_count_missing")
+        if (
+            terminal_choice_count_certificate.terminal_projection_certificate
+            is not terminal_projection
+        ):
+            _frontier_count_violation(
+                "terminal_choice_count_projection_mismatch"
+            )
+        if (
+            terminal_choice_count_certificate.completion_count
+            != terminal_projection.completion_count
+        ):
+            _frontier_count_violation(
+                "terminal_choice_completion_count_mismatch"
+            )
+        terminal_completion_count = (
+            terminal_choice_count_certificate.completion_count
+        )
+
+    text_completion_count = sum(
+        certificate.completion_count
+        for certificate in text_choice_count_certificates
+    )
+    completion_count = terminal_completion_count + text_completion_count
+    if completion_count != count_certificate.completion_count:
+        _frontier_count_violation("frontier_completion_count_total_mismatch")
+
+    return WriterFrontierCompletionCountCertificate(
+        projection_certificate=projection_certificate,
+        count_certificate=count_certificate,
+        text_choice_count_certificates=text_choice_count_certificates,
+        terminal_choice_count_certificate=terminal_choice_count_certificate,
+        terminal_completion_count=terminal_completion_count,
+        text_completion_count=text_completion_count,
+        completion_count=completion_count,
+    )
+
+
 def _count_violation(kind: str) -> None:
     raise SouthStarError(
         SouthStarErrorKind.INTERNAL_INVARIANT,
@@ -159,11 +256,20 @@ def _count_violation(kind: str) -> None:
     )
 
 
+def _frontier_count_violation(kind: str) -> None:
+    raise SouthStarError(
+        SouthStarErrorKind.INTERNAL_INVARIANT,
+        f"writer frontier completion count certificate violation: {kind}",
+    )
+
+
 __all__ = (
     "WriterBranchCompletionTermCertificate",
     "WriterCursorCompletionCountCertificate",
+    "WriterFrontierCompletionCountCertificate",
     "WriterStateCompletionCountCertificate",
     "writer_branch_completion_term_certificate",
     "writer_cursor_completion_count_certificate",
+    "writer_frontier_completion_count_certificate",
     "writer_state_completion_count_certificate",
 )

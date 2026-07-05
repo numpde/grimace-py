@@ -33,6 +33,9 @@ from grimace._south_star1.writer_count_certificates import (
 from grimace._south_star1.writer_count_certificates import (
     writer_cursor_completion_count_certificate,
 )
+from grimace._south_star1.writer_count_certificates import (
+    writer_frontier_completion_count_certificate,
+)
 from grimace._south_star1.writer_count_certificates import writer_state_completion_count_certificate
 from grimace._south_star1.writer_choice_count_certificates import (
     writer_text_choice_count_certificate,
@@ -1515,6 +1518,35 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
                 product.terminal_projection_certificate.support_count,
             )
 
+    def test_frontier_completion_count_is_choice_aggregate(self) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        product = _checked_writer_frontier_product(
+            prepared,
+            state.snapshot.cursor,
+        )
+
+        aggregate = (
+            product.checked_frontier_certificate
+            .frontier_completion_count_certificate
+        )
+        self.assertIsNotNone(aggregate)
+        terminal = 0
+        if product.terminal_choice_count_certificate is not None:
+            terminal = product.terminal_choice_count_certificate.completion_count
+        text = sum(
+            certificate.completion_count
+            for certificate in product.text_choice_count_certificates
+        )
+        self.assertEqual(aggregate.completion_count, terminal + text)
+        self.assertEqual(
+            aggregate.completion_count,
+            product.count_certificate.completion_count,
+        )
+
     def test_choice_count_certificate_rejects_malformed(self) -> None:
         prepared = _prepare(cco_facts())
         state = initial_writer_runtime_state(
@@ -1530,6 +1562,27 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
 
         projection = product.text_choice_projection_certificates[0]
         successor_cursor = projection.successor_cursor
+        bad_count = replace(
+            product.count_certificate,
+            completion_count=product.count_certificate.completion_count + 1,
+        )
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "frontier_completion_count_total_mismatch",
+        ):
+            writer_checked_frontier_certificate(
+                projection_certificate=product.projection_certificate,
+                text_choice_count_certificates=(
+                    product.text_choice_count_certificates
+                ),
+                terminal_choice_count_certificate=(
+                    product.terminal_choice_count_certificate
+                ),
+                support_count_certificate=product.support_count_certificate,
+                count_certificate=bad_count,
+                diagnostic_certificate=product.diagnostic_certificate,
+            )
+
         with self.assertRaisesRegex(
             SouthStarError,
             "support_count_successor_cursor_mismatch",
@@ -1617,6 +1670,24 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
                 ),
                 count_certificate=product.count_certificate,
             )
+
+        if len(product.text_choice_count_certificates) > 1:
+            with self.assertRaisesRegex(
+                SouthStarError,
+                "text_choice_count_projection_mismatch",
+            ):
+                writer_frontier_completion_count_certificate(
+                    projection_certificate=product.projection_certificate,
+                    count_certificate=product.count_certificate,
+                    text_choice_count_certificates=(
+                        product.text_choice_count_certificates[1],
+                        product.text_choice_count_certificates[0],
+                        *product.text_choice_count_certificates[2:],
+                    ),
+                    terminal_choice_count_certificate=(
+                        product.terminal_choice_count_certificate
+                    ),
+                )
 
         if product.terminal_projection_certificate is None:
             self.skipTest("fixture has no terminal projection")
@@ -1969,6 +2040,26 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             self.skipTest("fixture state has no terminal projection")
         if product.terminal_choice_count_certificate is None:
             self.skipTest("fixture state has no terminal choice count")
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "terminal_choice_completion_count_mismatch",
+        ):
+            writer_frontier_completion_count_certificate(
+                projection_certificate=product.projection_certificate,
+                count_certificate=product.count_certificate,
+                text_choice_count_certificates=(
+                    product.text_choice_count_certificates
+                ),
+                terminal_choice_count_certificate=replace(
+                    product.terminal_choice_count_certificate,
+                    completion_count=(
+                        product.terminal_choice_count_certificate
+                        .completion_count
+                        + 1
+                    ),
+                ),
+            )
 
         with self.assertRaisesRegex(
             SouthStarError,

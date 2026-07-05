@@ -7,6 +7,9 @@ from dataclasses import dataclass
 
 from .errors import SouthStarError
 from .errors import SouthStarErrorKind
+from .writer_count_certificates import (
+    writer_frontier_completion_count_certificate,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,6 +35,7 @@ class WriterCheckedFrontierCertificate:
     text_choice_count_certificates: tuple[object, ...] = ()
     terminal_choice_count_certificate: object | None = None
     support_count_certificate: object | None = None
+    frontier_completion_count_certificate: object | None = None
     diagnostic_certificate: object | None = None
 
 
@@ -328,9 +332,20 @@ def writer_checked_frontier_certificate(
                 "support_count_certificate_total_mismatch"
             )
 
+    frontier_completion_count_certificate = None
     if count_certificate is not None:
         if count_certificate.cursor != cursor:
             _frontier_violation("count_certificate_cursor_mismatch")
+        frontier_completion_count_certificate = (
+            writer_frontier_completion_count_certificate(
+                projection_certificate=projection_certificate,
+                count_certificate=count_certificate,
+                text_choice_count_certificates=text_choice_count_certificates,
+                terminal_choice_count_certificate=(
+                    terminal_choice_count_certificate
+                ),
+            )
+        )
 
     if diagnostic_certificate is not None:
         if diagnostic_certificate.cursor != cursor:
@@ -356,6 +371,9 @@ def writer_checked_frontier_certificate(
         text_choice_count_certificates=text_choice_count_certificates,
         terminal_choice_count_certificate=terminal_choice_count_certificate,
         support_count_certificate=support_count_certificate,
+        frontier_completion_count_certificate=(
+            frontier_completion_count_certificate
+        ),
         terminal_projection_certificate=terminal_projection_certificate,
         count_certificate=count_certificate,
         diagnostic_certificate=diagnostic_certificate,

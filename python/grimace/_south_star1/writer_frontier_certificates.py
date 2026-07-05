@@ -212,6 +212,20 @@ def writer_checked_frontier_certificate(
                 _frontier_violation(
                     "choice_count_certificate_projection_mismatch"
                 )
+            if choice_count_certificate.support_count != (
+                choice_count_certificate.support_count_certificate.support_count
+            ):
+                _frontier_violation(
+                    "choice_count_certificate_support_count_mismatch"
+                )
+            if choice_count_certificate.completion_count != (
+                choice_count_certificate
+                .completion_count_certificate
+                .completion_count
+            ):
+                _frontier_violation(
+                    "choice_count_certificate_completion_count_mismatch"
+                )
 
         projected_choice_count_projection_identities = tuple(
             id(certificate.text_projection_certificate)

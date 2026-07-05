@@ -1566,6 +1566,30 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
                 ),
             )
 
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "choice_count_certificate_support_count_mismatch",
+        ):
+            writer_checked_frontier_certificate(
+                projection_certificate=product.projection_certificate,
+                text_choice_count_certificates=(
+                    replace(
+                        product.text_choice_count_certificates[0],
+                        support_count=(
+                            product.text_choice_count_certificates[0]
+                            .support_count
+                            + 1
+                        ),
+                    ),
+                    *product.text_choice_count_certificates[1:],
+                ),
+                terminal_choice_count_certificate=(
+                    product.terminal_choice_count_certificate
+                ),
+                support_count_certificate=product.support_count_certificate,
+                count_certificate=product.count_certificate,
+            )
+
         if product.terminal_projection_certificate is None:
             self.skipTest("fixture has no terminal projection")
         with self.assertRaisesRegex(

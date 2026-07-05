@@ -48,6 +48,10 @@ class WriterBranchSuccessorStateCertificate:
     ring_delta_certificate: object | None = None
     graph_delta_certificate: object | None = None
     stereo_delta_certificate: object | None = None
+    policy_replay_certificate: object | None = None
+    ring_replay_certificate: object | None = None
+    graph_replay_certificate: object | None = None
+    stereo_replay_certificate: object | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,6 +92,41 @@ class WriterGraphStateDeltaCertificate:
 class WriterStereoStateDeltaCertificate:
     source_stereo_state: object
     successor_stereo_state: object
+    stereo_lifecycle_evidence: tuple[object, ...]
+    residual_work_evidence: tuple[object, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class WriterPolicyStateReplayCertificate:
+    source_policy_state: object
+    expected_successor_policy_state: object
+    actual_successor_policy_state: object
+    atom_text_events: tuple[object, ...]
+    bond_text_events: tuple[object, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class WriterRingStateReplayCertificate:
+    source_ring_state: object
+    expected_successor_ring_state: object
+    actual_successor_ring_state: object
+    ring_events: tuple[object, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class WriterGraphStateReplayCertificate:
+    source_state: object
+    expected_successor_projection: object
+    actual_successor_state: object
+    graph_action_surface: object | None
+    graph_obligation_work_evidence: tuple[object, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class WriterStereoStateReplayCertificate:
+    source_stereo_state: object
+    expected_successor_stereo_state: object
+    actual_successor_stereo_state: object
     stereo_lifecycle_evidence: tuple[object, ...]
     residual_work_evidence: tuple[object, ...]
 
@@ -142,6 +181,38 @@ def writer_branch_successor_state_certificate(
         graph_delta_certificate=graph_delta_certificate,
         stereo_delta_certificate=stereo_delta_certificate,
     )
+    policy_replay_certificate = _policy_state_replay_certificate(
+        source_state=source_state,
+        successor_state=successor_state,
+        events=events,
+    )
+    ring_replay_certificate = _ring_state_replay_certificate(
+        source_state=source_state,
+        successor_state=successor_state,
+        events=events,
+    )
+    graph_replay_certificate = _graph_state_replay_certificate(
+        source_state=source_state,
+        successor_state=successor_state,
+        graph_action_surface=graph_action_surface,
+        graph_obligation_work_evidence=graph_obligation_work_evidence,
+    )
+    stereo_replay_certificate = _stereo_state_replay_certificate(
+        source_state=source_state,
+        successor_state=successor_state,
+        stereo_lifecycle_evidence=stereo_lifecycle_evidence,
+        residual_work_evidence=residual_work_evidence,
+    )
+    _validate_replay_coverage(
+        policy_delta_certificate=policy_delta_certificate,
+        ring_delta_certificate=ring_delta_certificate,
+        graph_delta_certificate=graph_delta_certificate,
+        stereo_delta_certificate=stereo_delta_certificate,
+        policy_replay_certificate=policy_replay_certificate,
+        ring_replay_certificate=ring_replay_certificate,
+        graph_replay_certificate=graph_replay_certificate,
+        stereo_replay_certificate=stereo_replay_certificate,
+    )
     _validate_closure_candidate_delta(
         closure_candidate_lifecycle_evidence=(
             closure_candidate_lifecycle_evidence
@@ -155,7 +226,7 @@ def writer_branch_successor_state_certificate(
         graph_action_surface=graph_action_surface,
     )
 
-    return WriterBranchSuccessorStateCertificate(
+    certificate = WriterBranchSuccessorStateCertificate(
         source_state=source_state,
         successor_state=successor_state,
         emitted_text=emitted_text,
@@ -178,6 +249,10 @@ def writer_branch_successor_state_certificate(
         ring_delta_certificate=ring_delta_certificate,
         graph_delta_certificate=graph_delta_certificate,
         stereo_delta_certificate=stereo_delta_certificate,
+        policy_replay_certificate=policy_replay_certificate,
+        ring_replay_certificate=ring_replay_certificate,
+        graph_replay_certificate=graph_replay_certificate,
+        stereo_replay_certificate=stereo_replay_certificate,
         **deltas,
     )
     validate_writer_branch_successor_state_certificate(certificate)
@@ -195,6 +270,17 @@ def validate_writer_branch_successor_state_certificate(certificate) -> None:
         graph_delta_certificate=certificate.graph_delta_certificate,
         stereo_delta_certificate=certificate.stereo_delta_certificate,
     )
+    _validate_replay_coverage(
+        policy_delta_certificate=certificate.policy_delta_certificate,
+        ring_delta_certificate=certificate.ring_delta_certificate,
+        graph_delta_certificate=certificate.graph_delta_certificate,
+        stereo_delta_certificate=certificate.stereo_delta_certificate,
+        policy_replay_certificate=certificate.policy_replay_certificate,
+        ring_replay_certificate=certificate.ring_replay_certificate,
+        graph_replay_certificate=certificate.graph_replay_certificate,
+        stereo_replay_certificate=certificate.stereo_replay_certificate,
+    )
+    _validate_replay_certificate_values(certificate)
 
 
 def validate_writer_state_field_deltas(certificate) -> None:
@@ -514,6 +600,194 @@ def _graph_state_delta_certificate(
     )
 
 
+def _policy_state_replay_certificate(
+    *,
+    source_state,
+    successor_state,
+    events: tuple[object, ...],
+) -> WriterPolicyStateReplayCertificate | None:
+    if source_state.policy_state == successor_state.policy_state:
+        return None
+
+    atom_text = dict(source_state.policy_state.atom_text)
+    bond_text = dict(source_state.policy_state.bond_text)
+    atom_events = []
+    bond_events = []
+    for event in events:
+        name = event.__class__.__name__
+        if name == "WriterAtomEmitted":
+            atom = getattr(event, "atom", None)
+            text = getattr(event, "text", None)
+            if atom is not None and text is not None:
+                atom_text[atom] = text
+                atom_events.append(event)
+        elif name == "WriterBondEmitted":
+            bond = getattr(event, "bond", None)
+            text = getattr(event, "text", None)
+            if bond is not None and text is not None:
+                bond_text[bond] = text
+                bond_events.append(event)
+        elif name in {"WriterRingEndpointEmitted", "WriterRingEndpointPaired"}:
+            bond = getattr(event, "bond", None)
+            text = getattr(event, "bond_text", None)
+            if bond is not None and text is not None:
+                bond_text[bond] = text
+                bond_events.append(event)
+
+    expected = source_state.policy_state.__class__(
+        atom_text=tuple(sorted(atom_text.items(), key=lambda item: int(item[0]))),
+        bond_text=tuple(sorted(bond_text.items(), key=lambda item: int(item[0]))),
+    )
+    if expected != successor_state.policy_state:
+        _delta_violation("policy_replay_successor_mismatch")
+
+    return WriterPolicyStateReplayCertificate(
+        source_policy_state=source_state.policy_state,
+        expected_successor_policy_state=expected,
+        actual_successor_policy_state=successor_state.policy_state,
+        atom_text_events=tuple(atom_events),
+        bond_text_events=tuple(bond_events),
+    )
+
+
+def _ring_state_replay_certificate(
+    *,
+    source_state,
+    successor_state,
+    events: tuple[object, ...],
+) -> WriterRingStateReplayCertificate | None:
+    if source_state.ring_state == successor_state.ring_state:
+        return None
+
+    ring_event_names = {
+        "WriterRingLabelAllocated",
+        "WriterRingEndpointEmitted",
+        "WriterRingEndpointPaired",
+        "WriterRingLabelReleased",
+    }
+    ring_events = tuple(
+        event for event in events
+        if event.__class__.__name__ in ring_event_names
+    )
+    if not ring_events:
+        _delta_violation("ring_replay_lacks_events")
+
+    source_open = frozenset(source_state.ring_state.open_endpoints)
+    successor_open = frozenset(successor_state.ring_state.open_endpoints)
+    source_closed = frozenset(source_state.ring_state.closed_closures)
+    successor_closed = frozenset(successor_state.ring_state.closed_closures)
+
+    added_open = successor_open - source_open
+    removed_open = source_open - successor_open
+    added_closed = successor_closed - source_closed
+    if added_open and not any(
+        event.__class__.__name__ == "WriterRingEndpointEmitted"
+        for event in ring_events
+    ):
+        _delta_violation("ring_replay_added_open_without_emit_event")
+    if removed_open and not any(
+        event.__class__.__name__ == "WriterRingEndpointPaired"
+        for event in ring_events
+    ):
+        _delta_violation("ring_replay_removed_open_without_pair_event")
+    if added_closed and not any(
+        event.__class__.__name__ == "WriterRingEndpointPaired"
+        for event in ring_events
+    ):
+        _delta_violation("ring_replay_added_closed_without_pair_event")
+
+    return WriterRingStateReplayCertificate(
+        source_ring_state=source_state.ring_state,
+        expected_successor_ring_state=successor_state.ring_state,
+        actual_successor_ring_state=successor_state.ring_state,
+        ring_events=ring_events,
+    )
+
+
+def _graph_state_replay_certificate(
+    *,
+    source_state,
+    successor_state,
+    graph_action_surface,
+    graph_obligation_work_evidence: tuple[object, ...],
+) -> WriterGraphStateReplayCertificate | None:
+    changed = any(
+        (
+            source_state.component_cursor != successor_state.component_cursor,
+            source_state.active != successor_state.active,
+            source_state.branch_stack != successor_state.branch_stack,
+            source_state.visited_atoms != successor_state.visited_atoms,
+            source_state.written_bonds != successor_state.written_bonds,
+            source_state.obligations != successor_state.obligations,
+        )
+    )
+    if not changed:
+        return None
+
+    if not source_state.visited_atoms <= successor_state.visited_atoms:
+        _delta_violation("graph_replay_visited_atoms_not_monotone")
+    if not source_state.written_bonds <= successor_state.written_bonds:
+        _delta_violation("graph_replay_written_bonds_not_monotone")
+    if graph_action_surface is None and not graph_obligation_work_evidence:
+        _delta_violation("graph_replay_lacks_action_or_evidence")
+
+    added_atoms = successor_state.visited_atoms - source_state.visited_atoms
+    added_bonds = successor_state.written_bonds - source_state.written_bonds
+    if graph_action_surface is not None:
+        surface_atom = getattr(graph_action_surface, "partner_atom", None)
+        surface_bond = getattr(graph_action_surface, "bond", None)
+        if added_atoms and surface_atom is not None and surface_atom not in added_atoms:
+            _delta_violation("graph_replay_added_atom_surface_mismatch")
+        if added_bonds and surface_bond is not None and surface_bond not in added_bonds:
+            _delta_violation("graph_replay_added_bond_surface_mismatch")
+
+    return WriterGraphStateReplayCertificate(
+        source_state=source_state,
+        expected_successor_projection=SimpleNamespace(
+            visited_atoms=successor_state.visited_atoms,
+            written_bonds=successor_state.written_bonds,
+            active=successor_state.active,
+            branch_stack=successor_state.branch_stack,
+            component_cursor=successor_state.component_cursor,
+            obligations=successor_state.obligations,
+        ),
+        actual_successor_state=successor_state,
+        graph_action_surface=graph_action_surface,
+        graph_obligation_work_evidence=graph_obligation_work_evidence,
+    )
+
+
+def _stereo_state_replay_certificate(
+    *,
+    source_state,
+    successor_state,
+    stereo_lifecycle_evidence: tuple[object, ...],
+    residual_work_evidence: tuple[object, ...],
+) -> WriterStereoStateReplayCertificate | None:
+    if source_state.stereo_state == successor_state.stereo_state:
+        return None
+
+    if not stereo_lifecycle_evidence:
+        _delta_violation("stereo_replay_lacks_lifecycle")
+
+    lifecycle_work = tuple(
+        item
+        for evidence in stereo_lifecycle_evidence
+        for item in getattr(evidence, "residual_work_evidence", ())
+    )
+    for item in lifecycle_work:
+        if item not in residual_work_evidence:
+            _delta_violation("stereo_replay_work_evidence_missing")
+
+    return WriterStereoStateReplayCertificate(
+        source_stereo_state=source_state.stereo_state,
+        expected_successor_stereo_state=successor_state.stereo_state,
+        actual_successor_stereo_state=successor_state.stereo_state,
+        stereo_lifecycle_evidence=stereo_lifecycle_evidence,
+        residual_work_evidence=residual_work_evidence,
+    )
+
+
 def _validate_changed_field_coverage(
     *,
     deltas: dict[str, object],
@@ -541,6 +815,27 @@ def _validate_changed_field_coverage(
         _delta_violation("graph_delta_lacks_certificate")
     if deltas["stereo_state_delta"].changed and stereo_delta_certificate is None:
         _delta_violation("stereo_delta_lacks_certificate")
+
+
+def _validate_replay_coverage(
+    *,
+    policy_delta_certificate,
+    ring_delta_certificate,
+    graph_delta_certificate,
+    stereo_delta_certificate,
+    policy_replay_certificate,
+    ring_replay_certificate,
+    graph_replay_certificate,
+    stereo_replay_certificate,
+) -> None:
+    if policy_delta_certificate is not None and policy_replay_certificate is None:
+        _delta_violation("policy_delta_lacks_replay_certificate")
+    if ring_delta_certificate is not None and ring_replay_certificate is None:
+        _delta_violation("ring_delta_lacks_replay_certificate")
+    if graph_delta_certificate is not None and graph_replay_certificate is None:
+        _delta_violation("graph_delta_lacks_replay_certificate")
+    if stereo_delta_certificate is not None and stereo_replay_certificate is None:
+        _delta_violation("stereo_delta_lacks_replay_certificate")
 
 
 def _validate_domain_certificate_values(certificate) -> None:
@@ -586,6 +881,71 @@ def _validate_domain_certificate_values(certificate) -> None:
             _delta_violation("stereo_certificate_residual_work_mismatch")
 
 
+def _validate_replay_certificate_values(certificate) -> None:
+    policy = certificate.policy_replay_certificate
+    if policy is not None:
+        if policy.source_policy_state != certificate.source_state.policy_state:
+            _delta_violation("policy_replay_source_mismatch")
+        if (
+            policy.expected_successor_policy_state
+            != certificate.successor_state.policy_state
+        ):
+            _delta_violation("policy_replay_expected_successor_mismatch")
+        if (
+            policy.actual_successor_policy_state
+            != certificate.successor_state.policy_state
+        ):
+            _delta_violation("policy_replay_successor_mismatch")
+
+    ring = certificate.ring_replay_certificate
+    if ring is not None:
+        if ring.source_ring_state != certificate.source_state.ring_state:
+            _delta_violation("ring_replay_source_mismatch")
+        if (
+            ring.expected_successor_ring_state
+            != certificate.successor_state.ring_state
+        ):
+            _delta_violation("ring_replay_expected_successor_mismatch")
+        if (
+            ring.actual_successor_ring_state
+            != certificate.successor_state.ring_state
+        ):
+            _delta_violation("ring_replay_successor_mismatch")
+
+    graph = certificate.graph_replay_certificate
+    if graph is not None:
+        if graph.source_state != certificate.source_state:
+            _delta_violation("graph_replay_source_mismatch")
+        if graph.actual_successor_state != certificate.successor_state:
+            _delta_violation("graph_replay_successor_mismatch")
+        if graph.graph_action_surface != certificate.graph_action_surface:
+            _delta_violation("graph_replay_surface_mismatch")
+        if (
+            graph.graph_obligation_work_evidence
+            != certificate.graph_obligation_work_evidence
+        ):
+            _delta_violation("graph_replay_evidence_mismatch")
+
+    stereo = certificate.stereo_replay_certificate
+    if stereo is not None:
+        if stereo.source_stereo_state != certificate.source_state.stereo_state:
+            _delta_violation("stereo_replay_source_mismatch")
+        if (
+            stereo.expected_successor_stereo_state
+            != certificate.successor_state.stereo_state
+        ):
+            _delta_violation("stereo_replay_expected_successor_mismatch")
+        if (
+            stereo.actual_successor_stereo_state
+            != certificate.successor_state.stereo_state
+        ):
+            _delta_violation("stereo_replay_successor_mismatch")
+        if stereo.stereo_lifecycle_evidence != certificate.stereo_lifecycle_evidence:
+            _delta_violation("stereo_replay_lifecycle_mismatch")
+        if stereo.residual_work_evidence != certificate.residual_work_evidence:
+            _delta_violation("stereo_replay_residual_work_mismatch")
+
+
 def _validate_closure_candidate_delta(
     *,
     closure_candidate_lifecycle_evidence: tuple[object, ...],
@@ -616,9 +976,13 @@ def _delta_violation(kind: str) -> None:
 __all__ = (
     "WriterBranchSuccessorStateCertificate",
     "WriterGraphStateDeltaCertificate",
+    "WriterGraphStateReplayCertificate",
     "WriterPolicyStateDeltaCertificate",
+    "WriterPolicyStateReplayCertificate",
     "WriterRingStateDeltaCertificate",
+    "WriterRingStateReplayCertificate",
     "WriterStereoStateDeltaCertificate",
+    "WriterStereoStateReplayCertificate",
     "WriterStateFieldDelta",
     "validate_writer_branch_successor_state_certificate",
     "validate_writer_state_field_deltas",

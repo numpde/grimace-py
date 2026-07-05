@@ -7,8 +7,10 @@ import unittest
 from collections import Counter
 from dataclasses import replace
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import grimace._south_star1.writer_frontier as writer_frontier_module
+import grimace._south_star1.writer_state_delta_certificates as writer_state_delta_certificates
 import grimace._south_star1.writer_transitions as writer_transitions
 from grimace._south_star1.errors import SouthStarError
 from grimace._south_star1.errors import SouthStarErrorKind
@@ -830,6 +832,60 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 )
             )
 
+    def test_successor_state_certificate_constructor_calls_validator(self) -> None:
+        prepared = _prepare(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _checked_writer_frontier_branch_supports(
+            prepared,
+            initial,
+            include_counts=False,
+        ).supports[0]
+
+        with patch.object(
+            writer_state_delta_certificates,
+            "validate_writer_branch_successor_state_certificate",
+            side_effect=SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "sentinel",
+            ),
+        ):
+            with self.assertRaisesRegex(SouthStarError, "sentinel"):
+                writer_branch_successor_state_certificate(
+                    **_successor_state_certificate_kwargs(support)
+                )
+
+    def test_checked_branch_certificate_rejects_stale_replay_certificate(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _find_checked_branch_support(
+            prepared,
+            initial,
+            lambda support: (
+                support.successor_state_certificate.graph_replay_certificate
+                is not None
+            ),
+        )
+        bad_successor_certificate = replace(
+            support.successor_state_certificate,
+            graph_replay_certificate=replace(
+                support.successor_state_certificate.graph_replay_certificate,
+                actual_successor_state=support.source_state,
+            ),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "graph_replay_successor_mismatch",
+        ):
+            writer_checked_branch_support_certificate(
+                **_checked_branch_certificate_kwargs(
+                    support,
+                    successor_state_certificate=bad_successor_certificate,
+                )
+            )
+
     def test_successor_state_certificate_rejects_nonmonotone_visited_atoms(
         self,
     ) -> None:
@@ -1005,6 +1061,14 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 or certificate.ring_delta_certificate is not None
                 or certificate.stereo_delta_certificate is not None
             )
+            if certificate.graph_delta_certificate is not None:
+                self.assertIsNotNone(certificate.graph_replay_certificate)
+            if certificate.policy_delta_certificate is not None:
+                self.assertIsNotNone(certificate.policy_replay_certificate)
+            if certificate.ring_delta_certificate is not None:
+                self.assertIsNotNone(certificate.ring_replay_certificate)
+            if certificate.stereo_delta_certificate is not None:
+                self.assertIsNotNone(certificate.stereo_replay_certificate)
 
     def test_projection_certificate_exposes_branch_successor_proofs(self) -> None:
         prepared = _prepare(cco_facts())

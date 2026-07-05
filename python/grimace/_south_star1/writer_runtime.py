@@ -175,6 +175,7 @@ class WriterRuntimeDiagnostics:
     has_eos: bool
     diagnostic_certificate: object | None = None
     checked_frontier_certificate: object | None = None
+    blocked_frontier_certificate: object | None = None
 
     @property
     def all_execution_capabilities(self) -> frozenset[object]:
@@ -271,6 +272,7 @@ def writer_runtime_diagnostics(
         has_eos=frontier.has_eos,
         diagnostic_certificate=frontier.diagnostic_certificate,
         checked_frontier_certificate=frontier.checked_frontier_certificate,
+        blocked_frontier_certificate=frontier.blocked_frontier_certificate,
     )
 
 

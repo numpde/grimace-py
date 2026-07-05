@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Iterator
 from dataclasses import dataclass
+from enum import Enum
 from itertools import product
 from typing import TYPE_CHECKING
 from types import SimpleNamespace
@@ -93,6 +94,9 @@ from .writer_support_count_certificates import (
 from .writer_support_count_certificates import writer_text_support_count_certificate
 from .writer_support_certificates import (
     writer_frontier_support_string_certificate,
+)
+from .writer_blocked_frontier_certificates import (
+    writer_blocked_frontier_certificate,
 )
 from .writer_diagnostic_certificates import writer_diagnostics_certificate
 from .writer_capability_certificates import writer_capability_coverage_certificate
@@ -388,8 +392,14 @@ class _WriterFrontierBranchSupportBatch:
     checked_frontier_certificate: object | None = None
 
 
+class _WriterCheckedFrontierProductKind(Enum):
+    LEGAL = "legal"
+    BLOCKED = "blocked"
+
+
 @dataclass(frozen=True, slots=True)
 class _WriterCheckedFrontierProduct:
+    kind: _WriterCheckedFrontierProductKind
     cursor: WriterFrontierCursor
     choices: WriterFrontierChoices
     branch_supports: tuple[_WriterFrontierBranchSupport, ...]
@@ -402,9 +412,23 @@ class _WriterCheckedFrontierProduct:
     count_certificate: object | None = None
     diagnostic_certificate: object | None = None
     checked_frontier_certificate: object | None = None
+    blocked_frontier_certificate: object | None = None
+
+    @property
+    def blocked(self) -> bool:
+        return self.kind is _WriterCheckedFrontierProductKind.BLOCKED
+
+    @property
+    def legal(self) -> bool:
+        return self.kind is _WriterCheckedFrontierProductKind.LEGAL
 
     @property
     def branch_batch(self) -> _WriterFrontierBranchSupportBatch:
+        if self.blocked:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "blocked writer frontier product has no branch batch",
+            )
         return _WriterFrontierBranchSupportBatch(
             choices=self.choices,
             supports=self.branch_supports,
@@ -461,6 +485,7 @@ class _WriterFrontierDiagnostics:
     has_eos: bool
     diagnostic_certificate: object | None = None
     checked_frontier_certificate: object | None = None
+    blocked_frontier_certificate: object | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -3098,6 +3123,7 @@ def _checked_writer_frontier_product(
         )
 
     return _WriterCheckedFrontierProduct(
+        kind=_WriterCheckedFrontierProductKind.LEGAL,
         cursor=cursor,
         choices=public_choices,
         branch_supports=branch_supports,
@@ -3393,17 +3419,13 @@ def _writer_frontier_work_envelope_violations(
     )
 
 
-def _writer_frontier_diagnostics(
-    prepared: SouthStarPreparedMol,
-    cursor: WriterFrontierCursor,
-) -> _WriterFrontierDiagnostics:
-    choice_snapshot = _writer_frontier_choice_snapshot(
-        prepared,
-        cursor,
-        include_counts=False,
-        stop_after_first_blocked=False,
-    )
-    diagnostics_dict = dict(
+def _writer_frontier_diagnostics_dict_from_choice_snapshot(
+    choice_snapshot: _WriterFrontierChoiceSnapshot,
+    *,
+    choice_texts: tuple[str, ...] | None = None,
+    has_eos: bool | None = None,
+) -> dict[str, object]:
+    return dict(
         blocked=choice_snapshot.blocked,
         graph_policy_blockers=choice_snapshot.graph_policy_blockers,
         stereo_policy_blockers=choice_snapshot.stereo_policy_blockers,
@@ -3455,93 +3477,193 @@ def _writer_frontier_diagnostics(
                 writer_graph_obligation_work_envelope_violation,
             )
         ),
-        choice_texts=tuple(
-            choice.emitted_text
-            for choice in choice_snapshot.choices
+        choice_texts=(
+            choice_texts
+            if choice_texts is not None
+            else tuple(choice.emitted_text for choice in choice_snapshot.choices)
         ),
-        has_eos=choice_snapshot.terminal is not None,
+        has_eos=(
+            has_eos
+            if has_eos is not None
+            else choice_snapshot.terminal is not None
+        ),
+    )
+
+
+def _empty_blocked_writer_frontier_branch_batch() -> _WriterFrontierBranchSupportBatch:
+    return _WriterFrontierBranchSupportBatch(
+        choices=WriterFrontierChoices(terminal=None, choices=()),
+        supports=(),
+        terminal_supports=(),
+        text_choice_projection_certificates=(),
+        text_choice_count_certificates=(),
+        terminal_choice_count_certificate=None,
+        support_count_certificate=None,
+        terminal_projection_certificate=None,
+        count_certificate=None,
+        checked_frontier_certificate=None,
+    )
+
+
+def _blocked_writer_frontier_product_from_choice_snapshot(
+    *,
+    cursor: WriterFrontierCursor,
+    choice_snapshot: _WriterFrontierChoiceSnapshot,
+) -> _WriterCheckedFrontierProduct:
+    branch_batch = _empty_blocked_writer_frontier_branch_batch()
+    diagnostics_dict = _writer_frontier_diagnostics_dict_from_choice_snapshot(
+        choice_snapshot,
+        choice_texts=(),
+        has_eos=False,
+    )
+    diagnostic_certificate = writer_diagnostics_certificate(
+        cursor=cursor,
+        diagnostics=SimpleNamespace(**diagnostics_dict),
+        branch_batch=branch_batch,
+        count_certificate=None,
+    )
+    blocked_frontier_certificate = writer_blocked_frontier_certificate(
+        cursor=cursor,
+        diagnostic_certificate=diagnostic_certificate,
+    )
+    return _WriterCheckedFrontierProduct(
+        kind=_WriterCheckedFrontierProductKind.BLOCKED,
+        cursor=cursor,
+        choices=branch_batch.choices,
+        branch_supports=(),
+        terminal_supports=(),
+        text_choice_projection_certificates=(),
+        text_choice_count_certificates=(),
+        terminal_choice_count_certificate=None,
+        support_count_certificate=None,
+        terminal_projection_certificate=None,
+        count_certificate=None,
+        diagnostic_certificate=diagnostic_certificate,
+        checked_frontier_certificate=None,
+        blocked_frontier_certificate=blocked_frontier_certificate,
+    )
+
+
+def _diagnostic_writer_frontier_product(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+) -> _WriterCheckedFrontierProduct:
+    choice_snapshot = _writer_frontier_choice_snapshot(
+        prepared,
+        cursor,
+        include_counts=False,
+        stop_after_first_blocked=False,
     )
     if choice_snapshot.blocked:
-        branch_batch = _WriterFrontierBranchSupportBatch(
-            choices=choice_snapshot.public_choices,
-            supports=(),
-            terminal_supports=(),
-            text_choice_projection_certificates=(),
-            terminal_projection_certificate=None,
-        )
-        count_certificate = None
-        checked_frontier_certificate = None
-    else:
-        product = _checked_writer_frontier_product(
-            prepared,
-            cursor,
-            include_counts=True,
-            include_frontier_certificate=False,
-            include_diagnostics=False,
-        )
-        branch_batch = product.branch_batch
-        count_certificate = product.count_certificate
-        checked_frontier_certificate = writer_checked_frontier_certificate(
+        return _blocked_writer_frontier_product_from_choice_snapshot(
             cursor=cursor,
-            choices=branch_batch.choices,
-            branch_supports=branch_batch.supports,
-            terminal_supports=branch_batch.terminal_supports,
-            text_choice_projection_certificates=(
-                branch_batch.text_choice_projection_certificates
-            ),
-            text_choice_count_certificates=(
-                branch_batch.text_choice_count_certificates
-            ),
-            terminal_choice_count_certificate=(
-                branch_batch.terminal_choice_count_certificate
-            ),
-            support_count_certificate=(
-                branch_batch.support_count_certificate
-            ),
-            terminal_projection_certificate=(
-                branch_batch.terminal_projection_certificate
-            ),
-            count_certificate=count_certificate,
-            diagnostic_certificate=None,
+            choice_snapshot=choice_snapshot,
         )
+
+    product = _checked_writer_frontier_product(
+        prepared,
+        cursor,
+        include_counts=True,
+        include_frontier_certificate=False,
+        include_diagnostics=False,
+    )
+    branch_batch = product.branch_batch
+    diagnostics_dict = _writer_frontier_diagnostics_dict_from_choice_snapshot(
+        choice_snapshot,
+        choice_texts=tuple(
+            choice.emitted_text for choice in branch_batch.choices.choices
+        ),
+        has_eos=branch_batch.choices.terminal is not None,
+    )
 
     diagnostic_certificate = writer_diagnostics_certificate(
         cursor=cursor,
         diagnostics=SimpleNamespace(**diagnostics_dict),
         branch_batch=branch_batch,
-        count_certificate=count_certificate,
+        count_certificate=product.count_certificate,
     )
-    if (
-        checked_frontier_certificate is not None
-        and diagnostic_certificate is not None
-    ):
-        checked_frontier_certificate = writer_checked_frontier_certificate(
-            cursor=cursor,
-            choices=branch_batch.choices,
-            branch_supports=branch_batch.supports,
-            terminal_supports=branch_batch.terminal_supports,
-            text_choice_projection_certificates=(
-                branch_batch.text_choice_projection_certificates
-            ),
-            text_choice_count_certificates=(
-                branch_batch.text_choice_count_certificates
-            ),
-            terminal_choice_count_certificate=(
-                branch_batch.terminal_choice_count_certificate
-            ),
-            support_count_certificate=branch_batch.support_count_certificate,
-            terminal_projection_certificate=(
-                branch_batch.terminal_projection_certificate
-            ),
-            count_certificate=count_certificate,
-            diagnostic_certificate=diagnostic_certificate,
+    checked_frontier_certificate = writer_checked_frontier_certificate(
+        cursor=cursor,
+        choices=branch_batch.choices,
+        branch_supports=branch_batch.supports,
+        terminal_supports=branch_batch.terminal_supports,
+        text_choice_projection_certificates=(
+            branch_batch.text_choice_projection_certificates
+        ),
+        text_choice_count_certificates=(
+            branch_batch.text_choice_count_certificates
+        ),
+        terminal_choice_count_certificate=(
+            branch_batch.terminal_choice_count_certificate
+        ),
+        support_count_certificate=branch_batch.support_count_certificate,
+        terminal_projection_certificate=(
+            branch_batch.terminal_projection_certificate
+        ),
+        count_certificate=product.count_certificate,
+        diagnostic_certificate=diagnostic_certificate,
+    )
+
+    return _WriterCheckedFrontierProduct(
+        kind=_WriterCheckedFrontierProductKind.LEGAL,
+        cursor=product.cursor,
+        choices=product.choices,
+        branch_supports=product.branch_supports,
+        terminal_supports=product.terminal_supports,
+        text_choice_projection_certificates=(
+            product.text_choice_projection_certificates
+        ),
+        text_choice_count_certificates=product.text_choice_count_certificates,
+        terminal_choice_count_certificate=(
+            product.terminal_choice_count_certificate
+        ),
+        support_count_certificate=product.support_count_certificate,
+        terminal_projection_certificate=product.terminal_projection_certificate,
+        count_certificate=product.count_certificate,
+        diagnostic_certificate=diagnostic_certificate,
+        checked_frontier_certificate=checked_frontier_certificate,
+        blocked_frontier_certificate=None,
+    )
+
+
+def _writer_frontier_diagnostics(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+) -> _WriterFrontierDiagnostics:
+    product = _diagnostic_writer_frontier_product(prepared, cursor)
+    diagnostic_certificate = product.diagnostic_certificate
+    if diagnostic_certificate is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "diagnostic writer frontier product lacks diagnostic certificate",
         )
 
-    diagnostics_dict["checked_frontier_certificate"] = (
-        checked_frontier_certificate
+    choice_snapshot = _writer_frontier_choice_snapshot(
+        prepared,
+        cursor,
+        include_counts=False,
+        stop_after_first_blocked=False,
+    )
+    diagnostics_dict = _writer_frontier_diagnostics_dict_from_choice_snapshot(
+        choice_snapshot,
+        choice_texts=tuple(
+            certificate.emitted_text
+            for certificate in (
+                diagnostic_certificate.text_choice_projection_certificates
+            )
+        ),
+        has_eos=(
+            diagnostic_certificate.terminal_projection_certificate
+            is not None
+        ),
     )
     diagnostics_dict["diagnostic_certificate"] = diagnostic_certificate
-
+    diagnostics_dict["checked_frontier_certificate"] = (
+        product.checked_frontier_certificate
+    )
+    diagnostics_dict["blocked_frontier_certificate"] = (
+        product.blocked_frontier_certificate
+    )
     return _WriterFrontierDiagnostics(**diagnostics_dict)
 
 

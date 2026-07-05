@@ -15,6 +15,9 @@ from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_fa
 from grimace._south_star1.writer_branch_certificates import (
     writer_checked_terminal_support_certificate,
 )
+from grimace._south_star1.writer_blocked_frontier_certificates import (
+    writer_blocked_frontier_certificate,
+)
 from grimace._south_star1.writer_frontier_certificates import (
     writer_checked_frontier_certificate,
 )
@@ -816,6 +819,8 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             choices.terminal is not None,
         )
         self.assertIsNotNone(diagnostics.diagnostic_certificate)
+        self.assertIsNotNone(diagnostics.checked_frontier_certificate)
+        self.assertIsNone(diagnostics.blocked_frontier_certificate)
         self.assertEqual(
             diagnostics.diagnostic_certificate.text_choice_projection_certificates,
             _checked_writer_frontier_product(
@@ -834,6 +839,56 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
         self.assertEqual(
             diagnostics.diagnostic_certificate.terminal_execution_capabilities,
             diagnostics.terminal_execution_capabilities,
+        )
+
+    def test_blocked_frontier_certificate_binds_blocked_diagnostics(self) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        blocked_diagnostics = SimpleNamespace(
+            blocked=True,
+            graph_policy_blockers=("blocked",),
+            stereo_policy_blockers=(),
+            execution_capabilities=frozenset(),
+            terminal_execution_capabilities=frozenset(),
+            unsupported_execution_capabilities=frozenset(),
+            unsupported_terminal_execution_capabilities=frozenset(),
+            residual_work_evidence=(),
+            terminal_residual_work_evidence=(),
+            finite_relation_work_evidence=(),
+            graph_obligation_work_evidence=(),
+            residual_work_envelope_violations=(),
+            terminal_residual_work_envelope_violations=(),
+            finite_relation_work_envelope_violations=(),
+            graph_obligation_work_envelope_violations=(),
+            choice_texts=(),
+            has_eos=False,
+        )
+        empty_batch = SimpleNamespace(
+            supports=(),
+            terminal_supports=(),
+            text_choice_projection_certificates=(),
+            terminal_projection_certificate=None,
+        )
+        diagnostic_certificate = writer_diagnostics_certificate(
+            cursor=state.snapshot.cursor,
+            diagnostics=blocked_diagnostics,
+            branch_batch=empty_batch,
+        )
+        blocked_certificate = writer_blocked_frontier_certificate(
+            cursor=state.snapshot.cursor,
+            diagnostic_certificate=diagnostic_certificate,
+        )
+
+        self.assertTrue(blocked_certificate.blocked)
+        self.assertIs(
+            blocked_certificate.diagnostic_certificate,
+            diagnostic_certificate,
+        )
+        self.assertTrue(
+            blocked_certificate.graph_policy_blocker_certificates
         )
 
     def test_diagnostics_certificate_rejects_malformed_inputs(self) -> None:
@@ -875,6 +930,36 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
                 cursor=state.snapshot.cursor,
                 diagnostics=base,
                 branch_batch=branch_batch,
+            )
+
+        bad_projection = replace(
+            branch_batch.text_choice_projection_certificates[0],
+            source_cursor=WriterFrontierCursor(weighted_states=()),
+        )
+        bad_batch = replace(
+            branch_batch,
+            text_choice_projection_certificates=(
+                bad_projection,
+                *branch_batch.text_choice_projection_certificates[1:],
+            ),
+        )
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "projection_source_cursor_mismatch",
+        ):
+            writer_diagnostics_certificate(
+                cursor=state.snapshot.cursor,
+                diagnostics=SimpleNamespace(**{
+                    **vars(base),
+                    "choice_texts": tuple(
+                        cert.emitted_text
+                        for cert in bad_batch.text_choice_projection_certificates
+                    ),
+                    "has_eos": bool(
+                        bad_batch.terminal_projection_certificate is not None
+                    ),
+                }),
+                branch_batch=bad_batch,
             )
 
         with self.assertRaisesRegex(
@@ -919,7 +1004,7 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             "count_certificate_cursor_mismatch",
         ):
             writer_diagnostics_certificate(
-                cursor=WriterFrontierCursor(weighted_states=()),
+                cursor=state.snapshot.cursor,
                 diagnostics=SimpleNamespace(**{
                     **vars(base),
                     "choice_texts": tuple(
@@ -931,10 +1016,85 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
                     ),
                 }),
                 branch_batch=branch_batch,
-                count_certificate=writer_runtime_branch_completion_count_certificate(
-                    prepared=prepared,
-                    state=state,
+                count_certificate=replace(
+                    writer_runtime_branch_completion_count_certificate(
+                        prepared=prepared,
+                        state=state,
+                    ),
+                    cursor=WriterFrontierCursor(weighted_states=()),
                 ),
+            )
+
+    def test_blocked_frontier_certificate_rejects_positive_payload(self) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        product = _checked_writer_frontier_product(
+            prepared,
+            state.snapshot.cursor,
+        )
+        diagnostic_certificate = WriterDiagnosticsCertificate(
+            cursor=state.snapshot.cursor,
+            blocked=True,
+            graph_policy_blocker_certificates=("blocked",),
+            stereo_policy_blocker_certificates=(),
+            execution_capabilities=frozenset(),
+            terminal_execution_capabilities=frozenset(),
+            unsupported_execution_capability_certificates=(),
+            unsupported_terminal_execution_capability_certificates=(),
+            work_envelope_violation_certificates=(),
+            text_choice_projection_certificates=(
+                product.text_choice_projection_certificates
+            ),
+            terminal_projection_certificate=None,
+            branch_certificates=(),
+            terminal_certificates=(),
+            count_certificate=None,
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "blocked_frontier_has_text_projections",
+        ):
+            writer_blocked_frontier_certificate(
+                cursor=state.snapshot.cursor,
+                diagnostic_certificate=diagnostic_certificate,
+            )
+
+    def test_blocked_frontier_certificate_rejects_missing_negative_evidence(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        diagnostic_certificate = WriterDiagnosticsCertificate(
+            cursor=state.snapshot.cursor,
+            blocked=True,
+            graph_policy_blocker_certificates=(),
+            stereo_policy_blocker_certificates=(),
+            execution_capabilities=frozenset(),
+            terminal_execution_capabilities=frozenset(),
+            unsupported_execution_capability_certificates=(),
+            unsupported_terminal_execution_capability_certificates=(),
+            work_envelope_violation_certificates=(),
+            text_choice_projection_certificates=(),
+            terminal_projection_certificate=None,
+            branch_certificates=(),
+            terminal_certificates=(),
+            count_certificate=None,
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "blocked_frontier_lacks_negative_evidence",
+        ):
+            writer_blocked_frontier_certificate(
+                cursor=state.snapshot.cursor,
+                diagnostic_certificate=diagnostic_certificate,
             )
 
     def test_diagnostics_certificate_counts_linked(self) -> None:

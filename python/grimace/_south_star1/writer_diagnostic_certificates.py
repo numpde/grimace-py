@@ -69,9 +69,24 @@ def writer_diagnostics_certificate(
     if diagnostics.choice_texts != choice_texts:
         _diagnostic_violation("choice_texts_mismatch")
 
+    for projection in getattr(
+        branch_batch,
+        "text_choice_projection_certificates",
+        (),
+    ):
+        if getattr(projection, "source_cursor", None) != cursor:
+            _diagnostic_violation("projection_source_cursor_mismatch")
+
     terminal_projection_certificate = (
         getattr(branch_batch, "terminal_projection_certificate", None)
     )
+    if (
+        terminal_projection_certificate is not None
+        and getattr(terminal_projection_certificate, "source_cursor", None)
+        != cursor
+    ):
+        _diagnostic_violation("terminal_projection_source_cursor_mismatch")
+
     if bool(terminal_projection_certificate) != diagnostics.has_eos:
         _diagnostic_violation("has_eos_mismatch")
 
@@ -89,16 +104,6 @@ def writer_diagnostics_certificate(
         )
         for blocker in diagnostics.stereo_policy_blockers
     )
-
-    blocked = bool(diagnostics.graph_policy_blockers or diagnostics.stereo_policy_blockers)
-    if diagnostics.blocked != blocked:
-        _diagnostic_violation("blocked_mismatch")
-
-    if blocked:
-        if choice_texts:
-            _diagnostic_violation("blocked_has_projection_choice_texts")
-    else:
-        pass
 
     graph_obligation_evidences = tuple(diagnostics.graph_obligation_work_evidence)
     residual_evidences = tuple(diagnostics.residual_work_evidence)
@@ -137,8 +142,25 @@ def writer_diagnostics_certificate(
         ),
     )
 
+    blocked = bool(
+        graph_blockers
+        or stereo_blockers
+        or work_envelope_violation_certificates
+        or diagnostics.unsupported_execution_capabilities
+        or diagnostics.unsupported_terminal_execution_capabilities
+    )
+    if diagnostics.blocked != blocked:
+        _diagnostic_violation("blocked_mismatch")
+
+    if blocked and choice_texts:
+        _diagnostic_violation("blocked_has_projection_choice_texts")
+
     if diagnostics.blocked and not (
-        graph_blockers or stereo_blockers or work_envelope_violation_certificates
+        graph_blockers
+        or stereo_blockers
+        or work_envelope_violation_certificates
+        or diagnostics.unsupported_execution_capabilities
+        or diagnostics.unsupported_terminal_execution_capabilities
     ):
         _diagnostic_violation("blocked_without_blockers_or_violations")
 

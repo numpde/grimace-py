@@ -10,6 +10,9 @@ from .writer_events import WriterRingEndpointEmitted
 from .writer_events import WriterRingEndpointPaired
 from .writer_events import WriterRingLabelAllocated
 from .writer_events import WriterRingLabelReleased
+from .writer_state_delta_certificates import (
+    validate_writer_branch_successor_state_certificate,
+)
 from .writer_terminal_certificates import WriterTerminalCertificateKind
 
 
@@ -369,6 +372,9 @@ def _validate_successor_state_certificate(
         _branch_violation("successor_certificate_events_mismatch")
     if successor_state_certificate.transition_evidence != transition_evidence:
         _branch_violation("successor_certificate_evidence_mismatch")
+    validate_writer_branch_successor_state_certificate(
+        successor_state_certificate
+    )
 
 
 def _branch_violation(kind: str) -> None:

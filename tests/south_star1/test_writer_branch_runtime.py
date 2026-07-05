@@ -127,6 +127,7 @@ from grimace._south_star1.writer_state import PendingWriterEntry
 from grimace._south_star1.writer_state import WriterAtomFrame
 from grimace._south_star1.writer_state import WriterBranchFrame
 from grimace._south_star1.writer_state import WriterPolicyState
+from grimace._south_star1.writer_state import WriterPolicyStateKey
 from grimace._south_star1.writer_state import WriterRingState
 from grimace._south_star1.writer_state import WriterState
 from grimace._south_star1.writer_state import WriterStereoState
@@ -799,6 +800,91 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 )
             )
 
+    def test_checked_branch_certificate_rejects_stale_field_delta(self) -> None:
+        prepared = _prepare(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _find_checked_branch_support(
+            prepared,
+            initial,
+            lambda support: (
+                support.successor_state.active != support.source_state.active
+            ),
+        )
+        bad_successor_certificate = replace(
+            support.successor_state_certificate,
+            active_delta=replace(
+                support.successor_state_certificate.active_delta,
+                successor_value=support.source_state.active,
+                changed=False,
+            ),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "active_delta_",
+        ):
+            writer_checked_branch_support_certificate(
+                **_checked_branch_certificate_kwargs(
+                    support,
+                    successor_state_certificate=bad_successor_certificate,
+                )
+            )
+
+    def test_successor_state_certificate_rejects_nonmonotone_visited_atoms(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _find_checked_branch_support(
+            prepared,
+            initial,
+            lambda support: bool(support.source_state.visited_atoms),
+        )
+        bad_successor = replace(
+            support.successor_state,
+            visited_atoms=frozenset(),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "visited_atoms_not_monotone",
+        ):
+            writer_branch_successor_state_certificate(
+                **_successor_state_certificate_kwargs(
+                    support,
+                    successor_state=bad_successor,
+                )
+            )
+
+    def test_policy_delta_rejects_missing_event_payload(self) -> None:
+        prepared = _prepare(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _checked_writer_frontier_branch_supports(
+            prepared,
+            initial,
+            include_counts=False,
+        ).supports[0]
+        atom = next(iter(support.successor_state.visited_atoms))
+        bad_successor = replace(
+            support.successor_state,
+            policy_state=WriterPolicyStateKey(
+                atom_text=((atom, "synthetic"),),
+                bond_text=support.successor_state.policy_state.bond_text,
+            ),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "atom_policy_delta_lacks_event",
+        ):
+            writer_branch_successor_state_certificate(
+                **_successor_state_certificate_kwargs(
+                    support,
+                    successor_state=bad_successor,
+                    events=(),
+                )
+            )
+
     def test_successor_state_certificate_rejects_ring_delta_without_event(
         self,
     ) -> None:
@@ -913,6 +999,39 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 certificate.successor_state,
                 transition.successor_state,
             )
+            self.assertTrue(
+                certificate.graph_delta_certificate is not None
+                or certificate.policy_delta_certificate is not None
+                or certificate.ring_delta_certificate is not None
+                or certificate.stereo_delta_certificate is not None
+            )
+
+    def test_projection_certificate_exposes_branch_successor_proofs(self) -> None:
+        prepared = _prepare(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        product = _checked_writer_frontier_product(
+            prepared,
+            cursor,
+            include_counts=False,
+            include_frontier_certificate=False,
+            include_count_certificate=False,
+        )
+
+        self.assertIsNotNone(product.projection_certificate)
+        for projection in (
+            product.projection_certificate.text_choice_projection_certificates
+        ):
+            for branch_certificate in projection.branch_certificates:
+                successor = branch_certificate.successor_state_certificate
+                self.assertIsNotNone(successor)
+                self.assertEqual(
+                    successor.source_state,
+                    branch_certificate.source_state,
+                )
+                self.assertEqual(
+                    successor.successor_state,
+                    branch_certificate.successor_state,
+                )
 
     def test_checked_branch_supports_have_capability_coverage(self) -> None:
         prepared = _prepare(cco_facts())
@@ -3195,6 +3314,33 @@ def _checked_branch_certificate_kwargs(support, **overrides):
             support.capability_coverage_certificate
         ),
         successor_state_certificate=support.successor_state_certificate,
+    )
+    kwargs.update(overrides)
+    return kwargs
+
+
+def _successor_state_certificate_kwargs(support, **overrides):
+    kwargs = dict(
+        source_state=support.source_state,
+        successor_state=support.successor_state,
+        emitted_text=support.emitted_text,
+        transition_kind=support.transition_kind,
+        graph_action_surface=support.graph_action_surface,
+        policy_family=support.policy_family,
+        events=support.events,
+        transition_evidence=support.evidence,
+        graph_obligation_work_evidence=(
+            support.graph_obligation_work_evidence
+        ),
+        residual_work_evidence=support.residual_work_evidence,
+        finite_relation_work_evidence=support.finite_relation_work_evidence,
+        closure_candidate_lifecycle_evidence=(
+            support.closure_candidate_lifecycle_evidence
+        ),
+        residual_attachment_lifecycle_evidence=(
+            support.residual_attachment_lifecycle_evidence
+        ),
+        stereo_lifecycle_evidence=support.stereo_lifecycle_evidence,
     )
     kwargs.update(overrides)
     return kwargs

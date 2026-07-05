@@ -7,6 +7,18 @@ from types import SimpleNamespace
 
 from .errors import SouthStarError
 from .errors import SouthStarErrorKind
+from .writer_events import WriterAtomEmitted
+from .writer_events import WriterBondEmitted
+from .writer_events import WriterBranchClosed
+from .writer_events import WriterBranchOpened
+from .writer_events import WriterComponentBoundaryEmitted
+from .writer_events import WriterLocalOrderClosed
+from .writer_events import WriterRingEndpointEmitted
+from .writer_events import WriterRingEndpointPaired
+from .writer_events import WriterRingLabelAllocated
+from .writer_events import WriterRingLabelReleased
+from .writer_state import WriterClosedClosure
+from .writer_state import WriterOpenClosureEndpoint
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,6 +143,20 @@ class WriterStereoStateReplayCertificate:
     residual_work_evidence: tuple[object, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class WriterEventDeltaView:
+    atom_events: tuple[WriterAtomEmitted, ...]
+    bond_events: tuple[WriterBondEmitted, ...]
+    branch_open_events: tuple[WriterBranchOpened, ...]
+    branch_close_events: tuple[WriterBranchClosed, ...]
+    component_boundary_events: tuple[WriterComponentBoundaryEmitted, ...]
+    local_order_events: tuple[WriterLocalOrderClosed, ...]
+    ring_label_allocated_events: tuple[WriterRingLabelAllocated, ...]
+    ring_label_released_events: tuple[WriterRingLabelReleased, ...]
+    ring_endpoint_emitted_events: tuple[WriterRingEndpointEmitted, ...]
+    ring_endpoint_paired_events: tuple[WriterRingEndpointPaired, ...]
+
+
 def writer_branch_successor_state_certificate(
     *,
     source_state,
@@ -194,6 +220,7 @@ def writer_branch_successor_state_certificate(
     graph_replay_certificate = _graph_state_replay_certificate(
         source_state=source_state,
         successor_state=successor_state,
+        events=events,
         graph_action_surface=graph_action_surface,
         graph_obligation_work_evidence=graph_obligation_work_evidence,
     )
@@ -257,6 +284,51 @@ def writer_branch_successor_state_certificate(
     )
     validate_writer_branch_successor_state_certificate(certificate)
     return certificate
+
+
+def writer_event_delta_view(events: tuple[object, ...]) -> WriterEventDeltaView:
+    return WriterEventDeltaView(
+        atom_events=tuple(
+            event for event in events if isinstance(event, WriterAtomEmitted)
+        ),
+        bond_events=tuple(
+            event for event in events if isinstance(event, WriterBondEmitted)
+        ),
+        branch_open_events=tuple(
+            event for event in events if isinstance(event, WriterBranchOpened)
+        ),
+        branch_close_events=tuple(
+            event for event in events if isinstance(event, WriterBranchClosed)
+        ),
+        component_boundary_events=tuple(
+            event
+            for event in events
+            if isinstance(event, WriterComponentBoundaryEmitted)
+        ),
+        local_order_events=tuple(
+            event for event in events if isinstance(event, WriterLocalOrderClosed)
+        ),
+        ring_label_allocated_events=tuple(
+            event
+            for event in events
+            if isinstance(event, WriterRingLabelAllocated)
+        ),
+        ring_label_released_events=tuple(
+            event
+            for event in events
+            if isinstance(event, WriterRingLabelReleased)
+        ),
+        ring_endpoint_emitted_events=tuple(
+            event
+            for event in events
+            if isinstance(event, WriterRingEndpointEmitted)
+        ),
+        ring_endpoint_paired_events=tuple(
+            event
+            for event in events
+            if isinstance(event, WriterRingEndpointPaired)
+        ),
+    )
 
 
 def validate_writer_branch_successor_state_certificate(certificate) -> None:
@@ -403,7 +475,8 @@ def _policy_state_delta_certificate(
     if not atom_text_added and not bond_text_added:
         _delta_violation("policy_delta_without_additions")
 
-    event_payloads = _policy_event_payloads(events)
+    event_view = writer_event_delta_view(events)
+    event_payloads = _policy_event_payloads(event_view)
     for payload in atom_text_added:
         if payload not in event_payloads.atom_text:
             _delta_violation("atom_policy_delta_lacks_event")
@@ -411,13 +484,12 @@ def _policy_state_delta_certificate(
         if payload not in event_payloads.bond_text:
             _delta_violation("bond_policy_delta_lacks_event")
 
-    policy_event_names = {
-        "WriterAtomEmitted",
-        "WriterBondEmitted",
-        "WriterRingEndpointEmitted",
-        "WriterRingEndpointPaired",
-    }
-    if not any(event.__class__.__name__ in policy_event_names for event in events):
+    if not (
+        event_view.atom_events
+        or event_view.bond_events
+        or event_view.ring_endpoint_emitted_events
+        or event_view.ring_endpoint_paired_events
+    ):
         _delta_violation("policy_delta_without_emission_event")
 
     return WriterPolicyStateDeltaCertificate(
@@ -429,29 +501,75 @@ def _policy_state_delta_certificate(
     )
 
 
-def _policy_event_payloads(events: tuple[object, ...]):
-    atom_text = []
-    bond_text = []
-    for event in events:
-        name = event.__class__.__name__
-        if name == "WriterAtomEmitted":
-            atom = getattr(event, "atom", None)
-            text = getattr(event, "text", None)
-            if atom is not None and text is not None:
-                atom_text.append((atom, text))
-        elif name == "WriterBondEmitted":
-            bond = getattr(event, "bond", None)
-            text = getattr(event, "text", None)
-            if bond is not None and text is not None:
-                bond_text.append((bond, text))
-        elif name in {"WriterRingEndpointEmitted", "WriterRingEndpointPaired"}:
-            bond = getattr(event, "bond", None)
-            text = getattr(event, "bond_text", None)
-            if bond is not None and text is not None:
-                bond_text.append((bond, text))
+def _policy_event_payloads(event_view: WriterEventDeltaView):
+    atom_text = tuple(
+        (event.atom, event.text)
+        for event in event_view.atom_events
+    )
+    bond_text = tuple(
+        (event.bond, event.text)
+        for event in event_view.bond_events
+    ) + tuple(
+        (event.bond, event.bond_text)
+        for event in (
+            *event_view.ring_endpoint_emitted_events,
+            *event_view.ring_endpoint_paired_events,
+        )
+    )
     return SimpleNamespace(
-        atom_text=tuple(atom_text),
-        bond_text=tuple(bond_text),
+        atom_text=atom_text,
+        bond_text=bond_text,
+    )
+
+
+def _ring_events_from_view(event_view: WriterEventDeltaView) -> tuple[object, ...]:
+    return (
+        event_view.ring_label_allocated_events
+        + event_view.ring_endpoint_emitted_events
+        + event_view.ring_endpoint_paired_events
+        + event_view.ring_label_released_events
+    )
+
+
+def _open_endpoint_from_event(
+    event: WriterRingEndpointEmitted,
+) -> WriterOpenClosureEndpoint:
+    return WriterOpenClosureEndpoint(
+        bond=event.bond,
+        first_atom=event.endpoint_atom,
+        second_atom=event.partner_atom,
+        label=event.label,
+        first_endpoint_text=event.endpoint_text,
+        first_endpoint_bond_text=event.bond_text,
+        first_endpoint_direction_mark=event.direction_mark,
+    )
+
+
+def _closed_closure_from_pair_event(
+    event: WriterRingEndpointPaired,
+    *,
+    source_open: frozenset[WriterOpenClosureEndpoint],
+) -> WriterClosedClosure:
+    matches = tuple(
+        endpoint
+        for endpoint in source_open
+        if endpoint.bond == event.bond and endpoint.label == event.label
+    )
+    if len(matches) != 1:
+        _delta_violation("ring_replay_pair_lacks_matching_open_endpoint")
+
+    endpoint = matches[0]
+    return WriterClosedClosure(
+        bond=event.bond,
+        first_atom=endpoint.first_atom,
+        second_atom=endpoint.second_atom,
+        label=event.label,
+        first_endpoint_text=endpoint.first_endpoint_text,
+        second_endpoint_text=event.endpoint_text,
+        first_endpoint_bond_text=event.first_endpoint_bond_text,
+        second_endpoint_bond_text=event.bond_text,
+        first_endpoint_direction_mark=event.first_endpoint_direction_mark,
+        second_endpoint_direction_mark=event.direction_mark,
     )
 
 
@@ -464,16 +582,8 @@ def _ring_state_delta_certificate(
     if source_state.ring_state == successor_state.ring_state:
         return None
 
-    ring_event_names = {
-        "WriterRingLabelAllocated",
-        "WriterRingEndpointEmitted",
-        "WriterRingEndpointPaired",
-        "WriterRingLabelReleased",
-    }
-    ring_events = tuple(
-        event for event in events
-        if event.__class__.__name__ in ring_event_names
-    )
+    event_view = writer_event_delta_view(events)
+    ring_events = _ring_events_from_view(event_view)
     if not ring_events:
         _delta_violation("ring_delta_without_ring_lifecycle_event")
 
@@ -481,38 +591,22 @@ def _ring_state_delta_certificate(
     successor_open = frozenset(successor_state.ring_state.open_endpoints)
     source_closed = frozenset(source_state.ring_state.closed_closures)
     successor_closed = frozenset(successor_state.ring_state.closed_closures)
-    if source_open != successor_open and not any(
-        event.__class__.__name__
-        in {"WriterRingEndpointEmitted", "WriterRingEndpointPaired"}
-        for event in ring_events
+    if source_open != successor_open and not (
+        event_view.ring_endpoint_emitted_events
+        or event_view.ring_endpoint_paired_events
     ):
         _delta_violation("open_endpoint_delta_without_endpoint_event")
-    if source_closed != successor_closed and not any(
-        event.__class__.__name__ == "WriterRingEndpointPaired"
-        for event in ring_events
-    ):
+    if source_closed != successor_closed and not event_view.ring_endpoint_paired_events:
         _delta_violation("closed_closure_delta_without_pair_event")
 
     return WriterRingStateDeltaCertificate(
         source_ring_state=source_state.ring_state,
         successor_ring_state=successor_state.ring_state,
         events=ring_events,
-        allocated_labels=tuple(
-            event for event in ring_events
-            if event.__class__.__name__ == "WriterRingLabelAllocated"
-        ),
-        emitted_endpoints=tuple(
-            event for event in ring_events
-            if event.__class__.__name__ == "WriterRingEndpointEmitted"
-        ),
-        paired_endpoints=tuple(
-            event for event in ring_events
-            if event.__class__.__name__ == "WriterRingEndpointPaired"
-        ),
-        released_labels=tuple(
-            event for event in ring_events
-            if event.__class__.__name__ == "WriterRingLabelReleased"
-        ),
+        allocated_labels=event_view.ring_label_allocated_events,
+        emitted_endpoints=event_view.ring_endpoint_emitted_events,
+        paired_endpoints=event_view.ring_endpoint_paired_events,
+        released_labels=event_view.ring_label_released_events,
     )
 
 
@@ -611,28 +705,17 @@ def _policy_state_replay_certificate(
 
     atom_text = dict(source_state.policy_state.atom_text)
     bond_text = dict(source_state.policy_state.bond_text)
-    atom_events = []
-    bond_events = []
-    for event in events:
-        name = event.__class__.__name__
-        if name == "WriterAtomEmitted":
-            atom = getattr(event, "atom", None)
-            text = getattr(event, "text", None)
-            if atom is not None and text is not None:
-                atom_text[atom] = text
-                atom_events.append(event)
-        elif name == "WriterBondEmitted":
-            bond = getattr(event, "bond", None)
-            text = getattr(event, "text", None)
-            if bond is not None and text is not None:
-                bond_text[bond] = text
-                bond_events.append(event)
-        elif name in {"WriterRingEndpointEmitted", "WriterRingEndpointPaired"}:
-            bond = getattr(event, "bond", None)
-            text = getattr(event, "bond_text", None)
-            if bond is not None and text is not None:
-                bond_text[bond] = text
-                bond_events.append(event)
+    event_view = writer_event_delta_view(events)
+
+    for event in event_view.atom_events:
+        atom_text[event.atom] = event.text
+    for event in event_view.bond_events:
+        bond_text[event.bond] = event.text
+    for event in (
+        *event_view.ring_endpoint_emitted_events,
+        *event_view.ring_endpoint_paired_events,
+    ):
+        bond_text[event.bond] = event.bond_text
 
     expected = source_state.policy_state.__class__(
         atom_text=tuple(sorted(atom_text.items(), key=lambda item: int(item[0]))),
@@ -645,8 +728,12 @@ def _policy_state_replay_certificate(
         source_policy_state=source_state.policy_state,
         expected_successor_policy_state=expected,
         actual_successor_policy_state=successor_state.policy_state,
-        atom_text_events=tuple(atom_events),
-        bond_text_events=tuple(bond_events),
+        atom_text_events=event_view.atom_events,
+        bond_text_events=(
+            event_view.bond_events
+            + event_view.ring_endpoint_emitted_events
+            + event_view.ring_endpoint_paired_events
+        ),
     )
 
 
@@ -659,16 +746,8 @@ def _ring_state_replay_certificate(
     if source_state.ring_state == successor_state.ring_state:
         return None
 
-    ring_event_names = {
-        "WriterRingLabelAllocated",
-        "WriterRingEndpointEmitted",
-        "WriterRingEndpointPaired",
-        "WriterRingLabelReleased",
-    }
-    ring_events = tuple(
-        event for event in events
-        if event.__class__.__name__ in ring_event_names
-    )
+    event_view = writer_event_delta_view(events)
+    ring_events = _ring_events_from_view(event_view)
     if not ring_events:
         _delta_violation("ring_replay_lacks_events")
 
@@ -680,20 +759,24 @@ def _ring_state_replay_certificate(
     added_open = successor_open - source_open
     removed_open = source_open - successor_open
     added_closed = successor_closed - source_closed
-    if added_open and not any(
-        event.__class__.__name__ == "WriterRingEndpointEmitted"
-        for event in ring_events
-    ):
+    expected_added_open = frozenset(
+        _open_endpoint_from_event(event)
+        for event in event_view.ring_endpoint_emitted_events
+        if event.side == "open"
+    )
+    expected_added_closed = frozenset(
+        _closed_closure_from_pair_event(event, source_open=source_open)
+        for event in event_view.ring_endpoint_paired_events
+    )
+    if added_open != expected_added_open:
+        _delta_violation("ring_replay_added_open_mismatch")
+    if added_closed != expected_added_closed:
+        _delta_violation("ring_replay_added_closed_mismatch")
+    if added_open and not event_view.ring_endpoint_emitted_events:
         _delta_violation("ring_replay_added_open_without_emit_event")
-    if removed_open and not any(
-        event.__class__.__name__ == "WriterRingEndpointPaired"
-        for event in ring_events
-    ):
+    if removed_open and not event_view.ring_endpoint_paired_events:
         _delta_violation("ring_replay_removed_open_without_pair_event")
-    if added_closed and not any(
-        event.__class__.__name__ == "WriterRingEndpointPaired"
-        for event in ring_events
-    ):
+    if added_closed and not event_view.ring_endpoint_paired_events:
         _delta_violation("ring_replay_added_closed_without_pair_event")
 
     return WriterRingStateReplayCertificate(
@@ -708,6 +791,7 @@ def _graph_state_replay_certificate(
     *,
     source_state,
     successor_state,
+    events: tuple[object, ...],
     graph_action_surface,
     graph_obligation_work_evidence: tuple[object, ...],
 ) -> WriterGraphStateReplayCertificate | None:
@@ -733,6 +817,22 @@ def _graph_state_replay_certificate(
 
     added_atoms = successor_state.visited_atoms - source_state.visited_atoms
     added_bonds = successor_state.written_bonds - source_state.written_bonds
+    event_view = writer_event_delta_view(events)
+    expected_visited = set(source_state.visited_atoms)
+    expected_written = set(source_state.written_bonds)
+    for event in event_view.atom_events:
+        expected_visited.add(event.atom)
+        if event.incoming_bond is not None:
+            expected_written.add(event.incoming_bond)
+    for event in (
+        *event_view.ring_endpoint_emitted_events,
+        *event_view.ring_endpoint_paired_events,
+    ):
+        expected_written.add(event.bond)
+    if frozenset(expected_visited) != successor_state.visited_atoms:
+        _delta_violation("graph_replay_visited_atoms_mismatch")
+    if frozenset(expected_written) != successor_state.written_bonds:
+        _delta_violation("graph_replay_written_bonds_mismatch")
     if graph_action_surface is not None:
         surface_atom = getattr(graph_action_surface, "partner_atom", None)
         surface_bond = getattr(graph_action_surface, "bond", None)
@@ -925,6 +1025,20 @@ def _validate_replay_certificate_values(certificate) -> None:
             != certificate.graph_obligation_work_evidence
         ):
             _delta_violation("graph_replay_evidence_mismatch")
+        projection = graph.expected_successor_projection
+        actual = graph.actual_successor_state
+        if projection.visited_atoms != actual.visited_atoms:
+            _delta_violation("graph_replay_projection_visited_atoms_mismatch")
+        if projection.written_bonds != actual.written_bonds:
+            _delta_violation("graph_replay_projection_written_bonds_mismatch")
+        if projection.active != actual.active:
+            _delta_violation("graph_replay_projection_active_mismatch")
+        if projection.branch_stack != actual.branch_stack:
+            _delta_violation("graph_replay_projection_branch_stack_mismatch")
+        if projection.component_cursor != actual.component_cursor:
+            _delta_violation("graph_replay_projection_component_cursor_mismatch")
+        if projection.obligations != actual.obligations:
+            _delta_violation("graph_replay_projection_obligations_mismatch")
 
     stereo = certificate.stereo_replay_certificate
     if stereo is not None:
@@ -975,6 +1089,7 @@ def _delta_violation(kind: str) -> None:
 
 __all__ = (
     "WriterBranchSuccessorStateCertificate",
+    "WriterEventDeltaView",
     "WriterGraphStateDeltaCertificate",
     "WriterGraphStateReplayCertificate",
     "WriterPolicyStateDeltaCertificate",
@@ -987,4 +1102,5 @@ __all__ = (
     "validate_writer_branch_successor_state_certificate",
     "validate_writer_state_field_deltas",
     "writer_branch_successor_state_certificate",
+    "writer_event_delta_view",
 )

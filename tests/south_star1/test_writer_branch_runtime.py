@@ -25,6 +25,7 @@ from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
 from grimace._south_star1.writer_events import WriterRingEndpointEmitted
+from grimace._south_star1.writer_events import WriterRingEndpointPaired
 from grimace._south_star1.writer_events import WriterRingLabelAllocated
 from grimace._south_star1.writer_events import WriterAtomEmitted
 from grimace._south_star1.writer_events import WriterBondEmitted
@@ -128,6 +129,7 @@ from grimace._south_star1.writer_state import ObligationState
 from grimace._south_star1.writer_state import PendingWriterEntry
 from grimace._south_star1.writer_state import WriterAtomFrame
 from grimace._south_star1.writer_state import WriterBranchFrame
+from grimace._south_star1.writer_state import WriterClosureLabel
 from grimace._south_star1.writer_state import WriterPolicyState
 from grimace._south_star1.writer_state import WriterPolicyStateKey
 from grimace._south_star1.writer_state import WriterRingState
@@ -886,6 +888,86 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 )
             )
 
+    def test_successor_state_certificate_rejects_stale_graph_replay_projection(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _find_checked_branch_support(
+            prepared,
+            initial,
+            lambda support: (
+                support.successor_state_certificate.graph_replay_certificate
+                is not None
+            ),
+        )
+        certificate = support.successor_state_certificate
+        bad_successor_certificate = replace(
+            certificate,
+            graph_replay_certificate=replace(
+                certificate.graph_replay_certificate,
+                expected_successor_projection=SimpleNamespace(
+                    visited_atoms=certificate.source_state.visited_atoms,
+                    written_bonds=certificate.successor_state.written_bonds,
+                    active=certificate.successor_state.active,
+                    branch_stack=certificate.successor_state.branch_stack,
+                    component_cursor=certificate.successor_state.component_cursor,
+                    obligations=certificate.successor_state.obligations,
+                ),
+            ),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "graph_replay_projection_visited_atoms_mismatch",
+        ):
+            (
+                writer_state_delta_certificates
+                .validate_writer_branch_successor_state_certificate(
+                    bad_successor_certificate,
+                )
+            )
+
+    def test_graph_replay_rejects_missing_atom_event_for_visited_delta(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _find_checked_branch_support(
+            prepared,
+            initial,
+            lambda support: bool(
+                support.successor_state.visited_atoms
+                - support.source_state.visited_atoms
+            ),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "graph_replay_visited_atoms_mismatch",
+        ):
+            writer_branch_successor_state_certificate(
+                **_successor_state_certificate_kwargs(
+                    support,
+                    events=tuple(
+                        event
+                        for event in support.events
+                        if not isinstance(event, WriterAtomEmitted)
+                    ),
+                )
+            )
+
+    def test_event_delta_view_ignores_class_name_spoofing(self) -> None:
+        spoof = type(
+            "WriterAtomEmitted",
+            (),
+            {"atom": AtomId(0), "text": "C"},
+        )()
+
+        view = writer_state_delta_certificates.writer_event_delta_view((spoof,))
+
+        self.assertEqual(view.atom_events, ())
+
     def test_successor_state_certificate_rejects_nonmonotone_visited_atoms(
         self,
     ) -> None:
@@ -986,6 +1068,75 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                     support.residual_attachment_lifecycle_evidence
                 ),
                 stereo_lifecycle_evidence=support.stereo_lifecycle_evidence,
+            )
+
+    def test_ring_replay_rejects_wrong_endpoint_payload(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _find_checked_branch_support(
+            prepared,
+            initial,
+            lambda support: any(
+                isinstance(event, WriterRingEndpointEmitted)
+                for event in support.events
+            ),
+        )
+        event = next(
+            event
+            for event in support.events
+            if isinstance(event, WriterRingEndpointEmitted)
+        )
+        bad_event = replace(event, endpoint_text="BAD")
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "ring_replay_added_open_mismatch",
+        ):
+            writer_branch_successor_state_certificate(
+                **_successor_state_certificate_kwargs(
+                    support,
+                    events=_replace_event_identity(
+                        support.events,
+                        event,
+                        bad_event,
+                    ),
+                )
+            )
+
+    def test_ring_pair_replay_requires_matching_open_endpoint(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _find_checked_branch_support(
+            prepared,
+            initial,
+            lambda support: any(
+                isinstance(event, WriterRingEndpointPaired)
+                for event in support.events
+            ),
+        )
+        event = next(
+            event
+            for event in support.events
+            if isinstance(event, WriterRingEndpointPaired)
+        )
+        bad_event = replace(
+            event,
+            label=WriterClosureLabel(99, "%99"),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "ring_replay_pair_lacks_matching_open_endpoint",
+        ):
+            writer_branch_successor_state_certificate(
+                **_successor_state_certificate_kwargs(
+                    support,
+                    events=_replace_event_identity(
+                        support.events,
+                        event,
+                        bad_event,
+                    ),
+                )
             )
 
     def test_successor_state_certificate_rejects_stereo_delta_without_lifecycle(
@@ -3408,6 +3559,13 @@ def _successor_state_certificate_kwargs(support, **overrides):
     )
     kwargs.update(overrides)
     return kwargs
+
+
+def _replace_event_identity(events, old_event, new_event):
+    return tuple(
+        new_event if event is old_event else event
+        for event in events
+    )
 
 
 def _writer_options() -> SouthStarRuntimeOptions:

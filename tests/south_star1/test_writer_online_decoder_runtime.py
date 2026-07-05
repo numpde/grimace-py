@@ -31,6 +31,7 @@ from grimace._south_star1.writer_online_decoder import make_writer_shaped_online
 from grimace._south_star1.writer_online_stats_certificates import (
     writer_online_stats_certificate,
 )
+from grimace._south_star1.writer_frontier import WriterFrontierCursor
 from grimace._south_star1.writer_runtime import WriterRuntimeState
 from grimace._south_star1.writer_runtime import writer_runtime_support_count_certificate
 from grimace._south_star1.writer_runtime import writer_runtime_choice_transitions
@@ -316,6 +317,35 @@ class WriterOnlineDecoderRuntimeTest(unittest.TestCase):
                 count_certificate=transitions.count_certificate,
             )
 
+        bad_projection = replace(
+            projection,
+            source_cursor=WriterFrontierCursor(weighted_states=()),
+        )
+        bad_step = replace(
+            transition.snapshot_step_certificate,
+            text_projection_certificate=bad_projection,
+            source_cursor=bad_projection.source_cursor,
+        )
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "text_projection_frontier_cursor_mismatch",
+        ):
+            writer_online_text_choice_certificate(
+                prefix=state.prefix,
+                choice=choice,
+                next_state=WriterShapedOnlineDecoderState(
+                    prefix=state.prefix + choice.emitted_text,
+                    raw_state=transition.next_state,
+                    decoder=decoder,
+                ),
+                snapshot_step_certificate=bad_step,
+                text_projection_certificate=bad_projection,
+                checked_frontier_certificate=(
+                    transitions.checked_frontier_certificate
+                ),
+                count_certificate=transitions.count_certificate,
+            )
+
         if transitions.terminal is not None:
             with self.assertRaisesRegex(
                 SouthStarError,
@@ -333,6 +363,41 @@ class WriterOnlineDecoderRuntimeTest(unittest.TestCase):
                     ),
                     count_certificate=transitions.count_certificate,
                 )
+
+        terminal_state = state
+        while True:
+            terminal_transitions = writer_runtime_choice_transitions(
+                prepared=prepared,
+                state=terminal_state.raw_state,
+            )
+            if terminal_transitions.terminal is not None:
+                break
+            terminal_state = WriterShapedOnlineDecoderState(
+                prefix=(
+                    terminal_state.prefix
+                    + terminal_transitions.transitions[0].choice.emitted_text
+                ),
+                raw_state=terminal_transitions.transitions[0].next_state,
+                decoder=decoder,
+            )
+        bad_terminal_projection = replace(
+            terminal_transitions.terminal_projection_certificate,
+            source_cursor=WriterFrontierCursor(weighted_states=()),
+        )
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "terminal_projection_frontier_cursor_mismatch",
+        ):
+            writer_online_eos_choice_certificate(
+                prefix=terminal_state.prefix,
+                eos_text="<EOS>",
+                terminal=terminal_transitions.terminal,
+                terminal_projection_certificate=bad_terminal_projection,
+                checked_frontier_certificate=(
+                    terminal_transitions.checked_frontier_certificate
+                ),
+                count_certificate=terminal_transitions.count_certificate,
+            )
 
         with self.assertRaisesRegex(
             SouthStarError,

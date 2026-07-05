@@ -1820,17 +1820,7 @@ def _iter_writer_snapshot_certified_support_strings(
             ),
         )
 
-    projection_by_text = {
-        certificate.emitted_text: certificate
-        for certificate in batch.text_choice_projection_certificates
-    }
     for choice in batch.choices.choices:
-        projection_certificate = projection_by_text.get(choice.emitted_text)
-        if projection_certificate is None:
-            raise SouthStarError(
-                SouthStarErrorKind.INTERNAL_INVARIANT,
-                "choice lacks text projection certificate",
-            )
         advanced_snapshot, step_certificate = (
             _writer_search_snapshot_after_certified_emitted_text(
                 snapshot,
@@ -1847,7 +1837,7 @@ def _iter_writer_snapshot_certified_support_strings(
                 *suffix.certificate.emitted_texts,
             )
             text_projection_certificates = (
-                projection_certificate,
+                step_certificate.text_projection_certificate,
                 *suffix.certificate.text_projection_certificates,
             )
             replay_certificate = writer_snapshot_replay_certificate(

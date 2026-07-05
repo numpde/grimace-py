@@ -64,6 +64,10 @@ def writer_online_text_choice_certificate(
         _violation("missing_text_projection_certificate")
     if text_projection_certificate.emitted_text != text:
         _violation("text_projection_text_mismatch")
+    if text_projection_certificate.source_cursor != (
+        snapshot_step_certificate.source_cursor
+    ):
+        _violation("text_projection_step_source_cursor_mismatch")
     if not text_projection_certificate.branch_certificates:
         _violation("text_projection_missing_branch_certificates")
     if (
@@ -71,6 +75,19 @@ def writer_online_text_choice_certificate(
         != next_state.raw_state.snapshot
     ):
         _violation("text_choice_advanced_snapshot_mismatch")
+    if checked_frontier_certificate is not None:
+        if text_projection_certificate.source_cursor != (
+            checked_frontier_certificate.cursor
+        ):
+            _violation("text_projection_frontier_cursor_mismatch")
+        if not any(
+            projection is text_projection_certificate
+            for projection in (
+                checked_frontier_certificate
+                .text_choice_projection_certificates
+            )
+        ):
+            _violation("text_projection_not_in_frontier_certificate")
 
     return WriterOnlineChoiceCertificate(
         kind=WriterOnlineChoiceCertificateKind.TEXT,
@@ -109,6 +126,15 @@ def writer_online_eos_choice_certificate(
         _violation("terminal_projection_terminal_mismatch")
     if not terminal_projection_certificate.terminal_certificates:
         _violation("terminal_projection_missing_terminal_certificates")
+    if checked_frontier_certificate is not None:
+        if terminal_projection_certificate.source_cursor != (
+            checked_frontier_certificate.cursor
+        ):
+            _violation("terminal_projection_frontier_cursor_mismatch")
+        if terminal_projection_certificate is not (
+            checked_frontier_certificate.terminal_projection_certificate
+        ):
+            _violation("terminal_projection_not_in_frontier_certificate")
 
     return WriterOnlineChoiceCertificate(
         kind=WriterOnlineChoiceCertificateKind.EOS,

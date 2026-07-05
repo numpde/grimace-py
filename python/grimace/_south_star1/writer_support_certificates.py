@@ -66,14 +66,26 @@ def writer_support_string_certificate(
         terminal_projection_certificate.finalized_cursor
     ):
         _string_violation("terminal_finalized_cursor_mismatch")
-    if text_projection_certificates:
-        if tuple(
-            certificate.emitted_text
-            for certificate in text_projection_certificates
-        ) != emitted_texts:
-            _string_violation("support_string_projection_text_mismatch")
-        if replay_certificate.emitted_texts != emitted_texts:
-            _string_violation("support_string_replay_text_mismatch")
+    if terminal_projection_certificate.source_cursor != (
+        replay_certificate.final_snapshot.cursor
+    ):
+        _string_violation("terminal_projection_final_cursor_mismatch")
+    if len(text_projection_certificates) != len(emitted_texts):
+        _string_violation("support_string_projection_count_mismatch")
+    if tuple(
+        certificate.emitted_text
+        for certificate in text_projection_certificates
+    ) != emitted_texts:
+        _string_violation("support_string_projection_text_mismatch")
+    if replay_certificate.emitted_texts != emitted_texts:
+        _string_violation("support_string_replay_text_mismatch")
+    if tuple(
+        id(step.text_projection_certificate)
+        for step in replay_certificate.step_certificates
+    ) != tuple(id(certificate) for certificate in text_projection_certificates):
+        _string_violation(
+            "support_string_replay_projection_chain_mismatch"
+        )
 
     return WriterSupportStringCertificate(
         string=string,
@@ -118,6 +130,10 @@ def writer_frontier_support_string_certificate(
         _string_violation("frontier_terminal_projection_lacks_terminal")
     if not terminal_projection_certificate.terminal_certificates:
         _string_violation("frontier_terminal_projection_lacks_certificates")
+    if terminal_projection_certificate.source_cursor != current:
+        _string_violation(
+            "frontier_terminal_projection_source_cursor_mismatch"
+        )
 
     return WriterFrontierSupportStringCertificate(
         source_cursor=source_cursor,
@@ -141,12 +157,25 @@ def writer_support_image_certificate(
     strings = tuple(certificate.string for certificate in string_certificates)
     if len(set(strings)) != len(strings):
         _image_violation("duplicate_support_string_certificate")
+    for certificate in string_certificates:
+        if certificate.replay_certificate.source_snapshot != source_snapshot:
+            _image_violation("string_certificate_source_snapshot_mismatch")
 
     if support_count_certificate is not None:
+        if getattr(support_count_certificate, "source_snapshot", None) != (
+            source_snapshot
+        ):
+            _image_violation("support_count_source_snapshot_mismatch")
         if support_count_certificate.support_count != len(strings):
             _image_violation("support_count_certificate_mismatch")
 
     if witness_count_certificate is not None:
+        source_cursor = getattr(source_snapshot, "cursor", None)
+        if (
+            source_cursor is not None
+            and witness_count_certificate.cursor != source_cursor
+        ):
+            _image_violation("witness_count_cursor_mismatch")
         if witness_count_certificate.completion_count != witness_count:
             _image_violation("witness_count_certificate_mismatch")
 

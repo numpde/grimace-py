@@ -2940,6 +2940,7 @@ def _checked_writer_frontier_product(
         branch_supports=branch_supports,
     )
     terminal_projection_certificate = writer_terminal_projection_certificate(
+        source_cursor=cursor,
         terminal=public_choices.terminal,
         terminal_supports=terminal_supports,
     )

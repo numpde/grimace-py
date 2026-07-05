@@ -40,6 +40,8 @@ def writer_snapshot_step_certificate(
         _step_violation("missing_emitted_text")
     if text_projection_certificate.emitted_text != emitted_text:
         _step_violation("emitted_text_mismatch")
+    if text_projection_certificate.source_cursor != source_snapshot.cursor:
+        _step_violation("projection_source_cursor_mismatch")
     if not text_projection_certificate.branch_certificates:
         _step_violation("missing_branch_certificates")
     if advanced_snapshot.cursor != text_projection_certificate.successor_cursor:
@@ -62,7 +64,7 @@ def writer_snapshot_step_certificate(
         source_snapshot=source_snapshot,
         emitted_text=emitted_text,
         text_projection_certificate=text_projection_certificate,
-        source_cursor=source_snapshot.cursor,
+        source_cursor=text_projection_certificate.source_cursor,
         successor_cursor=text_projection_certificate.successor_cursor,
         advanced_snapshot=advanced_snapshot,
         decoder_boundary_before=source_snapshot.decoder_boundary,
@@ -87,6 +89,10 @@ def writer_snapshot_replay_certificate(
             _replay_violation("step_emitted_text_mismatch")
         if step.source_snapshot != current:
             _replay_violation("step_source_snapshot_mismatch")
+        if step.source_cursor != current.cursor:
+            _replay_violation("step_source_cursor_mismatch")
+        if step.successor_cursor != step.advanced_snapshot.cursor:
+            _replay_violation("step_successor_cursor_mismatch")
         current = step.advanced_snapshot
 
     if final_snapshot != current:

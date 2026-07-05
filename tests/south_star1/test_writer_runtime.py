@@ -15,6 +15,9 @@ from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_fa
 from grimace._south_star1.writer_branch_certificates import (
     writer_checked_terminal_support_certificate,
 )
+from grimace._south_star1.writer_frontier_certificates import (
+    writer_checked_frontier_certificate,
+)
 from grimace._south_star1.writer_count_certificates import (
     WriterBranchCompletionTermCertificate,
 )
@@ -78,6 +81,9 @@ from grimace._south_star1.writer_runtime import writer_runtime_terminal
 from grimace._south_star1.writer_runtime import writer_runtime_support_count_certificate
 from grimace._south_star1.writer_snapshot import advance_writer_frontier_snapshot
 from grimace._south_star1.writer_snapshot import resume_writer_frontier_choices_from_snapshot
+from grimace._south_star1.writer_snapshot_certificates import (
+    writer_snapshot_step_certificate,
+)
 from grimace._south_star1.writer_support_count_certificates import (
     WriterTextSupportCountCertificate,
 )
@@ -89,6 +95,9 @@ from grimace._south_star1.writer_support_count_certificates import (
 )
 from grimace._south_star1.writer_support_certificates import (
     writer_frontier_support_string_certificate,
+)
+from grimace._south_star1.writer_support_certificates import (
+    writer_support_image_certificate,
 )
 from grimace._south_star1.writer_support_certificates import (
     writer_support_string_certificate,
@@ -315,6 +324,134 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
                 terminal_projection_certificate=(
                     certificate.terminal_projection_certificate
                 ),
+            )
+
+    def test_frontier_support_string_certificate_rejects_terminal_source_mismatch(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        certified = tuple(
+            _iter_checked_writer_frontier_certified_support_strings(
+                prepared,
+                cursor,
+            )
+        )
+        certificate = next(item.certificate for item in certified)
+        bad_terminal = replace(
+            certificate.terminal_projection_certificate,
+            source_cursor=WriterFrontierCursor(weighted_states=()),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "frontier_terminal_projection_source_cursor_mismatch",
+        ):
+            writer_frontier_support_string_certificate(
+                source_cursor=certificate.source_cursor,
+                string=certificate.string,
+                emitted_texts=certificate.emitted_texts,
+                text_projection_certificates=(
+                    certificate.text_projection_certificates
+                ),
+                terminal_projection_certificate=bad_terminal,
+            )
+
+    def test_snapshot_step_certificate_rejects_projection_source_mismatch(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        transition = writer_runtime_choice_transitions(
+            prepared=prepared,
+            state=state,
+        ).transitions[0]
+        step = transition.snapshot_step_certificate
+        bad_projection = replace(
+            step.text_projection_certificate,
+            source_cursor=WriterFrontierCursor(weighted_states=()),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "projection_source_cursor_mismatch",
+        ):
+            writer_snapshot_step_certificate(
+                source_snapshot=state.snapshot,
+                emitted_text=step.emitted_text,
+                text_projection_certificate=bad_projection,
+                advanced_snapshot=step.advanced_snapshot,
+            )
+
+    def test_support_string_certificate_rejects_projection_chain_mismatch(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        certificate = next(
+            item.certificate
+            for item in iter_writer_runtime_certified_support(
+                prepared=prepared,
+                state=state,
+            )
+            if len(item.certificate.text_projection_certificates) > 1
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "support_string_replay_projection_chain_mismatch",
+        ):
+            writer_support_string_certificate(
+                source_snapshot=state.snapshot,
+                string=certificate.string,
+                emitted_texts=certificate.emitted_texts,
+                replay_certificate=certificate.replay_certificate,
+                terminal_projection_certificate=(
+                    certificate.terminal_projection_certificate
+                ),
+                text_projection_certificates=(
+                    replace(certificate.text_projection_certificates[0]),
+                    *certificate.text_projection_certificates[1:],
+                ),
+            )
+
+    def test_support_image_certificate_rejects_foreign_string_certificate(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        foreign = next(
+            iter_writer_runtime_certified_support(
+                prepared=prepared,
+                state=state,
+            )
+        ).certificate
+        advanced = advance_writer_runtime_state(
+            prepared=prepared,
+            state=state,
+            emitted_text=writer_runtime_choices(
+                prepared=prepared,
+                state=state,
+            ).choices[0].emitted_text,
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "string_certificate_source_snapshot_mismatch",
+        ):
+            writer_support_image_certificate(
+                source_snapshot=advanced.snapshot,
+                string_certificates=(foreign,),
+                witness_count=1,
             )
 
     def test_count_certificate_matches_counted_completions(self) -> None:
@@ -1278,6 +1415,7 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             "terminal_lacks_terminal_supports",
         ):
             writer_terminal_projection_certificate(
+                source_cursor=state.snapshot.cursor,
                 terminal=branches.terminal,
                 terminal_supports=(),
             )
@@ -1317,6 +1455,7 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             "terminal_multiplicity_mismatch",
         ):
             writer_terminal_projection_certificate(
+                source_cursor=state.snapshot.cursor,
                 terminal=terminal.__class__(
                     support_count=terminal.support_count,
                     completion_count=terminal.completion_count,
@@ -1324,6 +1463,54 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
                     finalized_cursor=terminal.finalized_cursor,
                 ),
                 terminal_supports=branches.terminal_supports,
+            )
+
+    def test_checked_frontier_rejects_terminal_projection_source_mismatch(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        for emitted_text in ("C", "C", "O"):
+            state = advance_writer_runtime_state(
+                prepared=prepared,
+                state=state,
+                emitted_text=emitted_text,
+            )
+        product = _checked_writer_frontier_product(
+            prepared,
+            state.snapshot.cursor,
+        )
+        if product.terminal_projection_certificate is None:
+            self.skipTest("fixture state has no terminal projection")
+        bad_terminal = replace(
+            product.terminal_projection_certificate,
+            source_cursor=WriterFrontierCursor(weighted_states=()),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "terminal_projection_source_cursor_mismatch",
+        ):
+            writer_checked_frontier_certificate(
+                cursor=state.snapshot.cursor,
+                choices=product.choices,
+                branch_supports=product.branch_supports,
+                terminal_supports=product.terminal_supports,
+                text_choice_projection_certificates=(
+                    product.text_choice_projection_certificates
+                ),
+                text_choice_count_certificates=(
+                    product.text_choice_count_certificates
+                ),
+                terminal_choice_count_certificate=(
+                    product.terminal_choice_count_certificate
+                ),
+                support_count_certificate=product.support_count_certificate,
+                terminal_projection_certificate=bad_terminal,
+                count_certificate=product.count_certificate,
             )
 
     def test_support_string_certificate_rejects_malformed_inputs(self) -> None:

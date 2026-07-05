@@ -23,6 +23,7 @@ class WriterTextChoiceProjectionCertificate:
 
 @dataclass(frozen=True, slots=True)
 class WriterTerminalProjectionCertificate:
+    source_cursor: object
     terminal: object
     terminal_certificates: tuple[object, ...]
     finalized_cursor: object
@@ -37,6 +38,7 @@ def writer_text_choice_projection_certificates(
     choices,
     branch_supports: tuple[object, ...],
 ) -> tuple[WriterTextChoiceProjectionCertificate, ...]:
+    source_weights = dict(getattr(source_cursor, "weighted_states", ()))
     certificates: list[WriterTextChoiceProjectionCertificate] = []
     for choice in choices.choices:
         supports = tuple(
@@ -46,6 +48,11 @@ def writer_text_choice_projection_certificates(
         )
         if not supports:
             _choice_violation("choice_lacks_branch_support")
+        for support in supports:
+            if support.source_state not in source_weights:
+                _choice_violation("branch_support_source_not_in_cursor")
+            if support.parent_weight != source_weights[support.source_state]:
+                _choice_violation("branch_support_parent_weight_mismatch")
 
         branch_certificates = tuple(
             support.checked_branch_certificate
@@ -86,6 +93,7 @@ def writer_text_choice_projection_certificates(
 
 def writer_terminal_projection_certificate(
     *,
+    source_cursor,
     terminal,
     terminal_supports: tuple[object, ...],
 ) -> WriterTerminalProjectionCertificate | None:
@@ -96,6 +104,12 @@ def writer_terminal_projection_certificate(
 
     if not terminal_supports:
         _terminal_violation("terminal_lacks_terminal_supports")
+    source_weights = dict(getattr(source_cursor, "weighted_states", ()))
+    for support in terminal_supports:
+        if support.source_state not in source_weights:
+            _terminal_violation("terminal_support_source_not_in_cursor")
+        if support.parent_weight != source_weights[support.source_state]:
+            _terminal_violation("terminal_support_parent_weight_mismatch")
 
     terminal_certificates = tuple(
         support.checked_terminal_certificate
@@ -119,6 +133,7 @@ def writer_terminal_projection_certificate(
         _terminal_violation("terminal_multiplicity_mismatch")
 
     return WriterTerminalProjectionCertificate(
+        source_cursor=source_cursor,
         terminal=terminal,
         terminal_certificates=terminal_certificates,
         finalized_cursor=expected_finalized_cursor,

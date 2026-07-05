@@ -88,6 +88,10 @@ def writer_text_state_support_count_certificate(
         _support_count_violation("terminal_count_mismatch")
 
     if terminal_projection_certificate is not None:
+        if terminal_projection_certificate.source_cursor != cursor:
+            _support_count_violation(
+                "terminal_projection_source_cursor_mismatch"
+            )
         terminal = terminal_projection_certificate.terminal
         if terminal is None:
             _support_count_violation("terminal_projection_lacks_terminal")
@@ -95,6 +99,10 @@ def writer_text_state_support_count_certificate(
     for term in choice_terms:
         if term is None:
             _support_count_violation("missing_choice_term")
+        if term.text_projection_certificate.source_cursor != cursor:
+            _support_count_violation(
+                "choice_projection_source_cursor_mismatch"
+            )
 
     support_count = terminal_count + sum(term.support_count for term in choice_terms)
     if support_count < 0:
@@ -121,6 +129,9 @@ def writer_text_support_count_certificate(
 
     if state_support_count_certificate.cursor != cursor:
         _support_count_violation("state_support_count_cursor_mismatch")
+    source_cursor = getattr(source_snapshot, "cursor", None)
+    if source_cursor is not None and source_cursor != cursor:
+        _support_count_violation("source_snapshot_cursor_mismatch")
 
     return WriterTextSupportCountCertificate(
         source_snapshot=source_snapshot,

@@ -86,6 +86,9 @@ def writer_checked_frontier_certificate(
     choice_texts = tuple(choice.emitted_text for choice in choices.choices)
     if projection_texts != choice_texts:
         _frontier_violation("projection_choice_text_mismatch")
+    for projection in text_choice_projection_certificates:
+        if getattr(projection, "source_cursor", None) != cursor:
+            _frontier_violation("projection_source_cursor_mismatch")
 
     projected_certs = tuple(
         branch_certificate
@@ -165,12 +168,26 @@ def writer_checked_frontier_certificate(
         terminal_choice_count_certificate is None
     ):
         _frontier_violation("terminal_choice_count_missing")
+    if terminal_projection_certificate is not None:
+        if terminal_projection_certificate.source_cursor != cursor:
+            _frontier_violation(
+                "terminal_projection_source_cursor_mismatch"
+            )
     if terminal_choice_count_certificate is not None:
         if terminal_choice_count_certificate.terminal_projection_certificate is not (
             terminal_projection_certificate
         ):
             _frontier_violation(
                 "terminal_choice_count_projection_mismatch"
+            )
+        if (
+            terminal_choice_count_certificate
+            .terminal_projection_certificate
+            .source_cursor
+            != cursor
+        ):
+            _frontier_violation(
+                "terminal_choice_count_source_cursor_mismatch"
             )
 
     if support_count_certificate is not None:

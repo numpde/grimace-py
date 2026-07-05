@@ -1045,6 +1045,205 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 )
             )
 
+    def test_obligation_replay_is_complete_for_pending_entry_creation(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _find_checked_branch_support(
+            prepared,
+            initial,
+            lambda support: (
+                support.source_state.obligations.pending_entry is None
+                and support.successor_state.obligations.pending_entry is not None
+            ),
+        )
+        obligation = (
+            support.successor_state_certificate
+            .graph_replay_certificate
+            .obligation_replay_certificate
+        )
+
+        self.assertIsNotNone(obligation)
+        self.assertIs(
+            obligation.kind,
+            (
+                writer_state_delta_certificates
+                .WriterGraphObligationReplayKind
+                .PENDING_ENTRY_CREATED
+            ),
+        )
+        self.assertTrue(obligation.replay_complete)
+        self.assertEqual(
+            obligation.expected_successor_obligations,
+            obligation.actual_successor_obligations,
+        )
+
+    def test_obligation_replay_is_complete_for_pending_entry_discharge(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _find_checked_branch_support(
+            prepared,
+            initial,
+            lambda support: (
+                support.source_state.obligations.pending_entry is not None
+                and support.successor_state.obligations.pending_entry is None
+                and any(
+                    isinstance(event, WriterAtomEmitted)
+                    for event in support.events
+                )
+            ),
+        )
+        obligation = (
+            support.successor_state_certificate
+            .graph_replay_certificate
+            .obligation_replay_certificate
+        )
+
+        self.assertIsNotNone(obligation)
+        self.assertIs(
+            obligation.kind,
+            (
+                writer_state_delta_certificates
+                .WriterGraphObligationReplayKind
+                .PENDING_ENTRY_DISCHARGED
+            ),
+        )
+        self.assertTrue(obligation.replay_complete)
+        self.assertEqual(
+            obligation.expected_successor_obligations,
+            obligation.actual_successor_obligations,
+        )
+
+    def test_obligation_replay_rejects_wrong_pending_child_event(self) -> None:
+        prepared = _prepare(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _find_checked_branch_support(
+            prepared,
+            initial,
+            lambda support: (
+                support.source_state.obligations.pending_entry is not None
+                and any(
+                    isinstance(event, WriterAtomEmitted)
+                    for event in support.events
+                )
+            ),
+        )
+        event = next(
+            event
+            for event in support.events
+            if isinstance(event, WriterAtomEmitted)
+        )
+        bad_event = replace(event, atom=AtomId(int(event.atom) + 100))
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "obligation_replay_pending_child_mismatch",
+        ):
+            writer_branch_successor_state_certificate(
+                **_successor_state_certificate_kwargs(
+                    support,
+                    events=_replace_event_identity(
+                        support.events,
+                        event,
+                        bad_event,
+                    ),
+                )
+            )
+
+    def test_obligation_replay_rejects_stale_expected_successor(self) -> None:
+        prepared = _prepare(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _find_checked_branch_support(
+            prepared,
+            initial,
+            lambda support: (
+                support.source_state.obligations
+                != support.successor_state.obligations
+                and (
+                    support.successor_state_certificate
+                    .graph_replay_certificate
+                    .obligation_replay_certificate
+                    .replay_complete
+                )
+            ),
+        )
+        certificate = support.successor_state_certificate
+        graph = certificate.graph_replay_certificate
+        obligation = graph.obligation_replay_certificate
+        bad_certificate = replace(
+            certificate,
+            graph_replay_certificate=replace(
+                graph,
+                obligation_replay_certificate=replace(
+                    obligation,
+                    expected_successor_obligations=(
+                        certificate.source_state.obligations
+                    ),
+                ),
+            ),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "obligation_replay_expected_successor_mismatch",
+        ):
+            (
+                writer_state_delta_certificates
+                .validate_writer_branch_successor_state_certificate(
+                    bad_certificate,
+                )
+            )
+
+    def test_obligation_replay_rejects_false_completion_kind(self) -> None:
+        prepared = _prepare(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _find_checked_branch_support(
+            prepared,
+            initial,
+            lambda support: (
+                support.successor_state_certificate.graph_replay_certificate
+                is not None
+                and (
+                    support.successor_state_certificate
+                    .graph_replay_certificate
+                    .obligation_replay_certificate
+                    is not None
+                )
+            ),
+        )
+        certificate = support.successor_state_certificate
+        graph = certificate.graph_replay_certificate
+        obligation = graph.obligation_replay_certificate
+        bad_certificate = replace(
+            certificate,
+            graph_replay_certificate=replace(
+                graph,
+                obligation_replay_certificate=replace(
+                    obligation,
+                    kind=(
+                        writer_state_delta_certificates
+                        .WriterGraphObligationReplayKind
+                        .EVIDENCE_BOUND_INCOMPLETE
+                    ),
+                    replay_complete=True,
+                ),
+            ),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "obligation_replay_false_completion",
+        ):
+            (
+                writer_state_delta_certificates
+                .validate_writer_branch_successor_state_certificate(
+                    bad_certificate,
+                )
+            )
+
     def test_event_delta_view_ignores_class_name_spoofing(self) -> None:
         spoof = type(
             "WriterAtomEmitted",
@@ -1284,6 +1483,41 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 **_successor_state_certificate_kwargs(
                     support,
                     successor_state=bad_successor,
+                )
+            )
+
+    def test_ring_replay_rejects_stale_auxiliary_label_state(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _find_checked_branch_support(
+            prepared,
+            initial,
+            lambda support: (
+                support.successor_state_certificate.ring_replay_certificate
+                is not None
+                and (
+                    support.successor_state.ring_state.label_state
+                    != support.source_state.ring_state.label_state
+                )
+            ),
+        )
+        certificate = support.successor_state_certificate
+        bad_certificate = replace(
+            certificate,
+            ring_replay_certificate=replace(
+                certificate.ring_replay_certificate,
+                replayed_label_state=certificate.source_state.ring_state.label_state,
+            ),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "ring_replay_label_state_mismatch",
+        ):
+            (
+                writer_state_delta_certificates
+                .validate_writer_branch_successor_state_certificate(
+                    bad_certificate,
                 )
             )
 

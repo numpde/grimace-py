@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 from types import SimpleNamespace
 
 from .errors import SouthStarError
@@ -20,6 +21,7 @@ from .writer_events import WriterRingLabelReleased
 from .writer_state import WriterClosedClosure
 from .writer_state import WriterAtomFrame
 from .writer_state import WriterBranchFrame
+from .writer_state import PendingWriterEntry
 from .writer_state import WriterRingLabelState
 from .writer_state import WriterOpenClosureEndpoint
 
@@ -141,13 +143,24 @@ class WriterGraphSuccessorProjection:
     obligations: object
 
 
+class WriterGraphObligationReplayKind(Enum):
+    UNCHANGED = "unchanged"
+    PENDING_ENTRY_CREATED = "pending_entry_created"
+    PENDING_ENTRY_DISCHARGED = "pending_entry_discharged"
+    PENDING_ENTRY_TRANSFORMED = "pending_entry_transformed"
+    EVIDENCE_BOUND_INCOMPLETE = "evidence_bound_incomplete"
+
+
 @dataclass(frozen=True, slots=True)
 class WriterGraphObligationReplayCertificate:
+    kind: WriterGraphObligationReplayKind
     source_obligations: object
-    successor_obligations: object
+    expected_successor_obligations: object
+    actual_successor_obligations: object
     graph_action_surface: object | None
     graph_obligation_work_evidence: tuple[object, ...]
     replay_complete: bool
+    event_view: object | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -922,11 +935,11 @@ def _graph_state_replay_certificate(
             pending = getattr(source_state.obligations, "pending_entry", None)
             if pending is not None:
                 if pending.parent != event.parent:
-                    _delta_violation("graph_replay_pending_parent_mismatch")
+                    _delta_violation("obligation_replay_pending_parent_mismatch")
                 if pending.child != event.atom:
-                    _delta_violation("graph_replay_pending_child_mismatch")
+                    _delta_violation("obligation_replay_pending_child_mismatch")
                 if pending.bond != event.incoming_bond:
-                    _delta_violation("graph_replay_pending_bond_mismatch")
+                    _delta_violation("obligation_replay_pending_bond_mismatch")
                 if pending.branch:
                     expected_branch_stack = (
                         *expected_branch_stack,
@@ -991,6 +1004,7 @@ def _graph_state_replay_certificate(
     obligation_replay_certificate = _graph_obligation_replay_certificate(
         source_state=source_state,
         successor_state=successor_state,
+        event_view=writer_event_delta_view(events),
         graph_action_surface=graph_action_surface,
         graph_obligation_work_evidence=graph_obligation_work_evidence,
     )
@@ -1025,19 +1039,110 @@ def _graph_obligation_replay_certificate(
     *,
     source_state,
     successor_state,
+    event_view: WriterEventDeltaView,
     graph_action_surface,
     graph_obligation_work_evidence: tuple[object, ...],
-) -> WriterGraphObligationReplayCertificate | None:
+) -> WriterGraphObligationReplayCertificate:
     if source_state.obligations == successor_state.obligations:
-        return None
+        return WriterGraphObligationReplayCertificate(
+            kind=WriterGraphObligationReplayKind.UNCHANGED,
+            source_obligations=source_state.obligations,
+            expected_successor_obligations=source_state.obligations,
+            actual_successor_obligations=successor_state.obligations,
+            graph_action_surface=graph_action_surface,
+            graph_obligation_work_evidence=graph_obligation_work_evidence,
+            replay_complete=True,
+            event_view=event_view,
+        )
     if graph_action_surface is None and not graph_obligation_work_evidence:
         _delta_violation("obligation_replay_lacks_graph_evidence")
+
+    expected, kind, complete = _expected_obligations_from_graph_replay(
+        source_state=source_state,
+        successor_state=successor_state,
+        event_view=event_view,
+        graph_action_surface=graph_action_surface,
+    )
+    if complete and expected != successor_state.obligations:
+        _delta_violation("obligation_replay_successor_mismatch")
     return WriterGraphObligationReplayCertificate(
+        kind=kind,
         source_obligations=source_state.obligations,
-        successor_obligations=successor_state.obligations,
+        expected_successor_obligations=expected,
+        actual_successor_obligations=successor_state.obligations,
         graph_action_surface=graph_action_surface,
         graph_obligation_work_evidence=graph_obligation_work_evidence,
-        replay_complete=False,
+        replay_complete=complete,
+        event_view=event_view,
+    )
+
+
+def _expected_obligations_from_graph_replay(
+    *,
+    source_state,
+    successor_state,
+    event_view: WriterEventDeltaView,
+    graph_action_surface,
+) -> tuple[object, WriterGraphObligationReplayKind, bool]:
+    expected = source_state.obligations
+    pending = getattr(expected, "pending_entry", None)
+    discharged = False
+
+    for event in event_view.atom_events:
+        if pending is None:
+            continue
+        if pending.parent != event.parent:
+            _delta_violation("obligation_replay_pending_parent_mismatch")
+        if pending.child != event.atom:
+            _delta_violation("obligation_replay_pending_child_mismatch")
+        if pending.bond != event.incoming_bond:
+            _delta_violation("obligation_replay_pending_bond_mismatch")
+        expected = expected.__class__(pending_entry=None)
+        pending = None
+        discharged = True
+
+    if discharged:
+        return (
+            expected,
+            WriterGraphObligationReplayKind.PENDING_ENTRY_DISCHARGED,
+            True,
+        )
+
+    if getattr(source_state.obligations, "pending_entry", None) is None:
+        pending_entry = _pending_entry_from_graph_action_surface(graph_action_surface)
+        if pending_entry is not None:
+            expected = source_state.obligations.__class__(
+                pending_entry=pending_entry,
+            )
+            return (
+                expected,
+                WriterGraphObligationReplayKind.PENDING_ENTRY_CREATED,
+                True,
+            )
+
+    return (
+        successor_state.obligations,
+        WriterGraphObligationReplayKind.EVIDENCE_BOUND_INCOMPLETE,
+        False,
+    )
+
+
+def _pending_entry_from_graph_action_surface(surface) -> PendingWriterEntry | None:
+    if surface is None:
+        return None
+    kind = getattr(getattr(surface, "kind", None), "value", None)
+    if kind != "open_branch":
+        return None
+    parent = getattr(surface, "active_atom", None)
+    child = getattr(surface, "partner_atom", None)
+    bond = getattr(surface, "bond", None)
+    if parent is None or child is None or bond is None:
+        return None
+    return PendingWriterEntry(
+        parent=parent,
+        child=child,
+        bond=bond,
+        branch=True,
     )
 
 
@@ -1195,6 +1300,16 @@ def _validate_replay_certificate_values(certificate) -> None:
             != certificate.successor_state.ring_state
         ):
             _delta_violation("ring_replay_successor_mismatch")
+        if tuple(ring.replayed_open_endpoints) != tuple(
+            ring.expected_successor_ring_state.open_endpoints
+        ):
+            _delta_violation("ring_replay_open_endpoints_mismatch")
+        if tuple(ring.replayed_closed_closures) != tuple(
+            ring.expected_successor_ring_state.closed_closures
+        ):
+            _delta_violation("ring_replay_closed_closures_mismatch")
+        if ring.replayed_label_state != ring.expected_successor_ring_state.label_state:
+            _delta_violation("ring_replay_label_state_mismatch")
 
     graph = certificate.graph_replay_certificate
     if graph is not None:
@@ -1231,10 +1346,28 @@ def _validate_replay_certificate_values(certificate) -> None:
             if obligation_replay.source_obligations != certificate.source_state.obligations:
                 _delta_violation("obligation_replay_source_mismatch")
             if (
-                obligation_replay.successor_obligations
+                obligation_replay.actual_successor_obligations
                 != certificate.successor_state.obligations
             ):
-                _delta_violation("obligation_replay_successor_mismatch")
+                _delta_violation("obligation_replay_actual_successor_mismatch")
+            if (
+                obligation_replay.replay_complete
+                and obligation_replay.expected_successor_obligations
+                != obligation_replay.actual_successor_obligations
+            ):
+                _delta_violation("obligation_replay_expected_successor_mismatch")
+            if (
+                obligation_replay.kind
+                is WriterGraphObligationReplayKind.EVIDENCE_BOUND_INCOMPLETE
+                and obligation_replay.replay_complete
+            ):
+                _delta_violation("obligation_replay_false_completion")
+            if (
+                obligation_replay.kind
+                is not WriterGraphObligationReplayKind.EVIDENCE_BOUND_INCOMPLETE
+                and not obligation_replay.replay_complete
+            ):
+                _delta_violation("obligation_replay_incomplete_kind_mismatch")
             if obligation_replay.graph_action_surface != certificate.graph_action_surface:
                 _delta_violation("obligation_replay_surface_mismatch")
             if (
@@ -1294,6 +1427,7 @@ __all__ = (
     "WriterBranchSuccessorStateCertificate",
     "WriterEventDeltaView",
     "WriterGraphObligationReplayCertificate",
+    "WriterGraphObligationReplayKind",
     "WriterGraphStateDeltaCertificate",
     "WriterGraphStateReplayCertificate",
     "WriterGraphSuccessorProjection",

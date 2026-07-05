@@ -97,6 +97,9 @@ from grimace._south_star1.writer_support_count_certificates import (
     writer_text_choice_support_count_term_certificate,
 )
 from grimace._south_star1.writer_support_count_certificates import (
+    writer_text_state_support_count_certificate,
+)
+from grimace._south_star1.writer_support_count_certificates import (
     writer_text_support_count_certificate,
 )
 from grimace._south_star1.writer_support_certificates import (
@@ -669,6 +672,30 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
                         weighted_states=((state.snapshot.cursor.weighted_states[0][0], 2),)
                     ),
                     support_count=first_term.support_count,
+                ),
+            )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "choice_term_support_count_mismatch",
+        ):
+            writer_text_state_support_count_certificate(
+                cursor=support_count_certificate.cursor,
+                terminal_projection_certificate=(
+                    support_count_certificate.state_support_count_certificate
+                    .terminal_projection_certificate
+                ),
+                terminal_count=(
+                    support_count_certificate.state_support_count_certificate
+                    .terminal_count
+                ),
+                choice_terms=(
+                    replace(
+                        first_term,
+                        support_count=first_term.support_count + 1,
+                    ),
+                    *support_count_certificate.state_support_count_certificate
+                    .choice_terms[1:],
                 ),
             )
 

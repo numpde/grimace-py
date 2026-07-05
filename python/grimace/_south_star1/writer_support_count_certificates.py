@@ -103,6 +103,10 @@ def writer_text_state_support_count_certificate(
             _support_count_violation(
                 "choice_projection_source_cursor_mismatch"
             )
+        if term.support_count != (
+            term.successor_support_count_certificate.support_count
+        ):
+            _support_count_violation("choice_term_support_count_mismatch")
 
     support_count = terminal_count + sum(term.support_count for term in choice_terms)
     if support_count < 0:

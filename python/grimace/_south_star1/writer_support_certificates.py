@@ -16,6 +16,18 @@ class WriterSupportStringCertificate:
     final_snapshot: object
     terminal_projection_certificate: object
     terminal_certificates: tuple[object, ...]
+    text_projection_certificates: tuple[object, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class WriterFrontierSupportStringCertificate:
+    source_cursor: object
+    string: str
+    emitted_texts: tuple[str, ...]
+    text_projection_certificates: tuple[object, ...]
+    terminal_projection_certificate: object
+    terminal_certificates: tuple[object, ...]
+    final_cursor: object
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,6 +48,7 @@ def writer_support_string_certificate(
     emitted_texts: tuple[str, ...],
     replay_certificate,
     terminal_projection_certificate,
+    text_projection_certificates: tuple[object, ...] = (),
 ) -> WriterSupportStringCertificate:
     if string != "".join(emitted_texts):
         _string_violation("string_emitted_texts_mismatch")
@@ -53,6 +66,14 @@ def writer_support_string_certificate(
         terminal_projection_certificate.finalized_cursor
     ):
         _string_violation("terminal_finalized_cursor_mismatch")
+    if text_projection_certificates:
+        if tuple(
+            certificate.emitted_text
+            for certificate in text_projection_certificates
+        ) != emitted_texts:
+            _string_violation("support_string_projection_text_mismatch")
+        if replay_certificate.emitted_texts != emitted_texts:
+            _string_violation("support_string_replay_text_mismatch")
 
     return WriterSupportStringCertificate(
         string=string,
@@ -61,6 +82,51 @@ def writer_support_string_certificate(
         final_snapshot=replay_certificate.final_snapshot,
         terminal_projection_certificate=terminal_projection_certificate,
         terminal_certificates=terminal_projection_certificate.terminal_certificates,
+        text_projection_certificates=text_projection_certificates,
+    )
+
+
+def writer_frontier_support_string_certificate(
+    *,
+    source_cursor,
+    string: str,
+    emitted_texts: tuple[str, ...],
+    text_projection_certificates: tuple[object, ...],
+    terminal_projection_certificate,
+) -> WriterFrontierSupportStringCertificate:
+    if string != "".join(emitted_texts):
+        _string_violation("frontier_string_text_mismatch")
+    if len(emitted_texts) != len(text_projection_certificates):
+        _string_violation("frontier_projection_count_mismatch")
+
+    current = source_cursor
+    for emitted_text, projection in zip(
+        emitted_texts,
+        text_projection_certificates,
+    ):
+        if projection.emitted_text != emitted_text:
+            _string_violation("frontier_projection_text_mismatch")
+        if projection.source_cursor != current:
+            _string_violation("frontier_projection_source_cursor_mismatch")
+        if projection.choice.successor != projection.successor_cursor:
+            _string_violation("frontier_projection_successor_mismatch")
+        current = projection.successor_cursor
+
+    if terminal_projection_certificate is None:
+        _string_violation("frontier_support_lacks_terminal_projection")
+    if terminal_projection_certificate.terminal is None:
+        _string_violation("frontier_terminal_projection_lacks_terminal")
+    if not terminal_projection_certificate.terminal_certificates:
+        _string_violation("frontier_terminal_projection_lacks_certificates")
+
+    return WriterFrontierSupportStringCertificate(
+        source_cursor=source_cursor,
+        string=string,
+        emitted_texts=emitted_texts,
+        text_projection_certificates=text_projection_certificates,
+        terminal_projection_certificate=terminal_projection_certificate,
+        terminal_certificates=terminal_projection_certificate.terminal_certificates,
+        final_cursor=current,
     )
 
 
@@ -110,8 +176,10 @@ def _image_violation(kind: str) -> None:
 
 
 __all__ = (
+    "WriterFrontierSupportStringCertificate",
     "WriterSupportImageCertificate",
     "WriterSupportStringCertificate",
+    "writer_frontier_support_string_certificate",
     "writer_support_image_certificate",
     "writer_support_string_certificate",
 )

@@ -610,6 +610,7 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             self.skipTest("expected at least one branch certificate")
 
         malformed_projection = WriterTextChoiceProjectionCertificate(
+            source_cursor=first.source_cursor,
             emitted_text=first.emitted_text,
             choice=first.choice,
             branch_certificates=first.branch_certificates[:-1],
@@ -2481,6 +2482,7 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             "choice_lacks_branch_support",
         ):
             writer_text_choice_projection_certificates(
+                source_cursor=initial,
                 choices=SimpleNamespace(
                     choices=(
                         SimpleNamespace(
@@ -2514,6 +2516,7 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             "choice_successor_cursor_mismatch",
         ):
             writer_text_choice_projection_certificates(
+                source_cursor=initial,
                 choices=SimpleNamespace(
                     choices=(
                         SimpleNamespace(
@@ -2549,6 +2552,7 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             "choice_immediate_multiplicity_mismatch",
         ):
             writer_text_choice_projection_certificates(
+                source_cursor=initial,
                 choices=SimpleNamespace(
                     choices=(
                         SimpleNamespace(

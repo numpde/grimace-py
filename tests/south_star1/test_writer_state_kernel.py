@@ -12879,75 +12879,25 @@ class WriterStateKernelTest(unittest.TestCase):
             include_counts=False,
         )
 
-    def test_writer_frontier_choices_routes_through_checked_choice_snapshot(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
-        successor_key = cursor.weighted_states[0][0]
-        support = writer_frontier_module._WriterFrontierNextTokenSupport(
-            state_key=successor_key,
-            parent_weight=1,
-            schedule_support=SimpleNamespace(
-                emitted_text="C",
-                graph_action_surface=object(),
-                policy_family=(
-                    writer_transitions
-                    ._WriterGraphPolicyActionFamily
-                    .ACYCLIC_TREE_ENTRY
-                ),
-            ),  # type: ignore[arg-type]
-            successor_key=successor_key,
-        )
-        entry = writer_frontier_module._WriterFrontierNextTokenEntry(
-            emitted_text="C",
-            supports=(support,),
-        )
-        choice = writer_frontier_module._WriterFrontierChoiceSnapshotEntry(
-            next_token_entry=entry,
-            successor=WriterFrontierCursor(weighted_states=((successor_key, 1),)),
-            support_count=1,
-            completion_count=2,
-        )
-        snapshot = writer_frontier_module._WriterFrontierChoiceSnapshot(
-            schedule_outcome=writer_frontier_module._WriterFrontierScheduleOutcome(
-                state_outcomes=(),
-                terminal_by_key=Counter(),
-                grouped_by_text={"C": {successor_key}},
-                weighted_by_text={"C": Counter({successor_key: 1})},
-                next_token_frontier=(entry,),
-            ),
-            terminal=None,
-            choices=(choice,),
-        )
-
-        with patch(
-            (
-                "grimace._south_star1.writer_frontier"
-                "._checked_writer_frontier_choice_snapshot"
-            ),
-            return_value=snapshot,
-        ) as checked_snapshot:
-            choices = writer_frontier_choices(prepared, cursor)
-
-        self.assertEqual(choices, snapshot.public_choices)
-        checked_snapshot.assert_called_once_with(prepared, cursor)
-
-    def test_writer_frontier_choices_uses_counted_choice_snapshot(self) -> None:
+    def test_writer_frontier_choices_routes_through_checked_product(self) -> None:
         prepared = _prepare(chain_facts(("C", "C")))
         cursor = initial_writer_frontier_cursor(prepared, _writer_options())
 
         with patch(
-            (
-                "grimace._south_star1.writer_frontier"
-                "._checked_writer_frontier_choice_snapshot"
-            ),
-            wraps=writer_frontier_module._checked_writer_frontier_choice_snapshot,
-        ) as checked_snapshot:
+            "grimace._south_star1.writer_frontier._checked_writer_frontier_product",
+            wraps=writer_frontier_module._checked_writer_frontier_product,
+        ) as checked_product:
             choices = writer_frontier_choices(prepared, cursor)
 
+        product = writer_frontier_module._checked_writer_frontier_product(
+            prepared,
+            cursor,
+        )
+        self.assertEqual(choices, product.choices)
         self.assertEqual(tuple(choice.emitted_text for choice in choices.choices), ("C",))
-        self.assertGreater(checked_snapshot.call_count, 0)
-        self.assertEqual(checked_snapshot.call_args_list[0].args, (prepared, cursor))
-        self.assertNotIn("include_counts", checked_snapshot.call_args_list[0].kwargs)
+        self.assertGreater(checked_product.call_count, 0)
+        self.assertEqual(checked_product.call_args_list[0].args, (prepared, cursor))
+        self.assertTrue(checked_product.call_args_list[0].kwargs["include_counts"])
 
     def test_writer_frontier_choices_use_next_token_entries_not_grouped_transitions(self) -> None:
         prepared = _prepare(chain_facts(("C", "C")))
@@ -12967,30 +12917,25 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertEqual(tuple(choice.emitted_text for choice in choices.choices), ("C",))
 
-    def test_count_writer_frontier_support_uses_uncounted_choice_snapshot(self) -> None:
+    def test_count_writer_frontier_support_uses_support_count_certificate(self) -> None:
         prepared = _prepare(cco_facts())
         cursor = initial_writer_frontier_cursor(prepared, _writer_options())
 
-        with patch(
-            (
-                "grimace._south_star1.writer_frontier"
-                "._checked_writer_frontier_choice_snapshot"
-            ),
-            wraps=writer_frontier_module._checked_writer_frontier_choice_snapshot,
-        ) as checked_snapshot:
-            support_count = count_writer_frontier_support(
-                prepared,
-                cursor.support_state,
-            )
-
-        self.assertEqual(support_count, 4)
-        self.assertGreater(checked_snapshot.call_count, 0)
-        self.assertTrue(
-            all(
-                call.kwargs.get("include_counts") is False
-                for call in checked_snapshot.call_args_list
+        support_count = count_writer_frontier_support(
+            prepared,
+            cursor.support_state,
+        )
+        certificate = (
+            writer_frontier_module
+            ._checked_writer_frontier_text_support_count_certificate(
+                prepared=prepared,
+                cursor=cursor,
+                source_snapshot=cursor,
             )
         )
+
+        self.assertEqual(support_count, 4)
+        self.assertEqual(support_count, certificate.support_count)
 
     def test_writer_frontier_summary_matches_fixture_expected_values(self) -> None:
         cases = (
@@ -14531,57 +14476,30 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIsNone(summary.strings)
         self.assertEqual(summary.require_completion_count(), 4)
 
-    def test_count_writer_cursor_completions_uses_uncounted_choice_snapshot(self) -> None:
+    def test_count_writer_cursor_completions_uses_count_certificate(self) -> None:
         prepared = _prepare(chain_facts(("C", "C")))
         cursor = initial_writer_frontier_cursor(prepared, _writer_options())
-        snapshot = writer_frontier_module._WriterFrontierChoiceSnapshot(
-            schedule_outcome=writer_frontier_module._WriterFrontierScheduleOutcome(
-                state_outcomes=(),
-                terminal_by_key=Counter(),
-                grouped_by_text={},
-                weighted_by_text={},
-            ),
-            terminal=None,
-            choices=(),
+        certificate = writer_frontier_module._checked_writer_frontier_count_certificate(
+            prepared=prepared,
+            cursor=cursor,
         )
 
-        with patch(
-            (
-                "grimace._south_star1.writer_frontier"
-                "._checked_writer_frontier_choice_snapshot"
-            ),
-            return_value=snapshot,
-        ) as checked_snapshot:
-            count = count_writer_cursor_completions(prepared, cursor)
+        count = count_writer_cursor_completions(prepared, cursor)
 
-        self.assertEqual(count, 0)
-        checked_snapshot.assert_called_once_with(
-            prepared,
-            cursor,
-            include_counts=False,
-        )
+        self.assertEqual(count, certificate.completion_count)
 
-    def test_completion_count_uses_uncounted_choice_snapshots(self) -> None:
+    def test_completion_count_uses_count_certificates(self) -> None:
         prepared = _prepare(chain_facts(("C", "C")))
         cursor = initial_writer_frontier_cursor(prepared, _writer_options())
 
-        with patch(
-            (
-                "grimace._south_star1.writer_frontier"
-                "._checked_writer_frontier_choice_snapshot"
-            ),
-            wraps=writer_frontier_module._checked_writer_frontier_choice_snapshot,
-        ) as checked_snapshot:
-            count = count_writer_cursor_completions(prepared, cursor)
+        count = count_writer_cursor_completions(prepared, cursor)
+        certificate = writer_frontier_module._checked_writer_frontier_count_certificate(
+            prepared=prepared,
+            cursor=cursor,
+        )
 
         self.assertEqual(count, 2)
-        self.assertGreater(checked_snapshot.call_count, 0)
-        self.assertTrue(
-            all(
-                call.kwargs.get("include_counts") is False
-                for call in checked_snapshot.call_args_list
-            )
-        )
+        self.assertEqual(count, certificate.completion_count)
 
     def test_count_writer_frontier_support_uses_next_token_entries_not_grouped_transitions(self) -> None:
         prepared = _prepare(cco_facts())
@@ -14598,27 +14516,21 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertEqual(support_count, 4)
 
-    def test_iter_writer_frontier_support_uses_uncounted_choice_snapshot(self) -> None:
+    def test_iter_writer_frontier_support_uses_certified_support_strings(self) -> None:
         prepared = _prepare(cco_facts())
         cursor = initial_writer_frontier_cursor(prepared, _writer_options())
 
-        with patch(
-            (
-                "grimace._south_star1.writer_frontier"
-                "._checked_writer_frontier_choice_snapshot"
-            ),
-            wraps=writer_frontier_module._checked_writer_frontier_choice_snapshot,
-        ) as checked_snapshot:
-            strings = tuple(iter_writer_frontier_support(prepared, cursor))
-
-        self.assertEqual(strings, ("C(C)O", "C(O)C", "CCO", "OCC"))
-        self.assertGreater(checked_snapshot.call_count, 0)
-        self.assertTrue(
-            all(
-                call.kwargs.get("include_counts") is False
-                for call in checked_snapshot.call_args_list
+        certified = tuple(
+            writer_frontier_module
+            ._iter_checked_writer_frontier_certified_support_strings(
+                prepared,
+                cursor,
             )
         )
+        strings = tuple(iter_writer_frontier_support(prepared, cursor))
+
+        self.assertEqual(strings, ("C(C)O", "C(O)C", "CCO", "OCC"))
+        self.assertEqual(strings, tuple(item.string for item in certified))
 
     def test_iter_writer_frontier_support_uses_next_token_entries_not_grouped_transitions(self) -> None:
         prepared = _prepare(cco_facts())

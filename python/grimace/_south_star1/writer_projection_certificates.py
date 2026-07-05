@@ -11,6 +11,7 @@ from .errors import SouthStarErrorKind
 
 @dataclass(frozen=True, slots=True)
 class WriterTextChoiceProjectionCertificate:
+    source_cursor: object
     emitted_text: str
     choice: object
     branch_certificates: tuple[object, ...]
@@ -32,6 +33,7 @@ class WriterTerminalProjectionCertificate:
 
 def writer_text_choice_projection_certificates(
     *,
+    source_cursor,
     choices,
     branch_supports: tuple[object, ...],
 ) -> tuple[WriterTextChoiceProjectionCertificate, ...]:
@@ -68,6 +70,7 @@ def writer_text_choice_projection_certificates(
 
         certificates.append(
             WriterTextChoiceProjectionCertificate(
+                source_cursor=source_cursor,
                 emitted_text=choice.emitted_text,
                 choice=choice,
                 branch_certificates=branch_certificates,

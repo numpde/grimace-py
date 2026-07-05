@@ -38,6 +38,16 @@ from grimace._south_star1.writer_diagnostic_certificates import (
 from grimace._south_star1.writer_frontier import WriterFrontierCursor
 from grimace._south_star1.writer_frontier import _checked_writer_frontier_branch_supports
 from grimace._south_star1.writer_frontier import _checked_writer_frontier_product
+from grimace._south_star1.writer_frontier import _checked_writer_frontier_count_certificate
+from grimace._south_star1.writer_frontier import (
+    _iter_checked_writer_frontier_certified_support_strings,
+)
+from grimace._south_star1.writer_frontier import (
+    _writer_frontier_raw_successors_for_streaming,
+)
+from grimace._south_star1.writer_frontier import count_writer_cursor_completions
+from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
+from grimace._south_star1.writer_frontier import writer_frontier_choices
 from grimace._south_star1.writer_projection_certificates import (
     writer_terminal_projection_certificate,
 )
@@ -76,6 +86,9 @@ from grimace._south_star1.writer_support_count_certificates import (
 )
 from grimace._south_star1.writer_support_count_certificates import (
     writer_text_support_count_certificate,
+)
+from grimace._south_star1.writer_support_certificates import (
+    writer_frontier_support_string_certificate,
 )
 from grimace._south_star1.writer_support_certificates import (
     writer_support_string_certificate,
@@ -196,6 +209,113 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             ),
             count_certificate.support_count,
         )
+
+    def test_writer_frontier_choices_are_product_backed(self) -> None:
+        prepared = _prepare(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+
+        product = _checked_writer_frontier_product(prepared, cursor)
+
+        self.assertEqual(writer_frontier_choices(prepared, cursor), product.choices)
+        self.assertIsNotNone(product.checked_frontier_certificate)
+
+    def test_raw_streaming_successors_follow_projection_certificates(self) -> None:
+        prepared = _prepare(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+
+        product = _checked_writer_frontier_product(
+            prepared,
+            cursor,
+            include_counts=False,
+        )
+
+        self.assertEqual(
+            _writer_frontier_raw_successors_for_streaming(prepared, cursor),
+            tuple(
+                (certificate.emitted_text, certificate.successor_cursor)
+                for certificate in product.text_choice_projection_certificates
+            ),
+        )
+
+    def test_count_writer_cursor_completions_is_certificate_backed(self) -> None:
+        prepared = _prepare(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        certificate = _checked_writer_frontier_count_certificate(
+            prepared=prepared,
+            cursor=cursor,
+        )
+
+        self.assertEqual(
+            count_writer_cursor_completions(prepared, cursor),
+            certificate.completion_count,
+        )
+
+    def test_support_string_certificate_carries_projection_chain(self) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+
+        certified = tuple(
+            iter_writer_runtime_certified_support(
+                prepared=prepared,
+                state=state,
+            )
+        )
+
+        self.assertTrue(certified)
+        for item in certified:
+            certificate = item.certificate
+            self.assertEqual(item.string, certificate.string)
+            self.assertEqual(item.string, "".join(certificate.emitted_texts))
+            self.assertEqual(
+                tuple(
+                    projection.emitted_text
+                    for projection in certificate.text_projection_certificates
+                ),
+                certificate.emitted_texts,
+            )
+            self.assertIsNotNone(certificate.terminal_projection_certificate)
+
+    def test_frontier_support_string_certificate_rejects_projection_source_mismatch(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        certified = tuple(
+            _iter_checked_writer_frontier_certified_support_strings(
+                prepared,
+                cursor,
+            )
+        )
+        certificate = next(
+            item.certificate
+            for item in certified
+            if item.certificate.text_projection_certificates
+        )
+        projection = certificate.text_projection_certificates[0]
+        bad_projection = replace(
+            projection,
+            source_cursor=WriterFrontierCursor(weighted_states=()),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "frontier_projection_source_cursor_mismatch",
+        ):
+            writer_frontier_support_string_certificate(
+                source_cursor=cursor,
+                string=certificate.string,
+                emitted_texts=certificate.emitted_texts,
+                text_projection_certificates=(
+                    bad_projection,
+                    *certificate.text_projection_certificates[1:],
+                ),
+                terminal_projection_certificate=(
+                    certificate.terminal_projection_certificate
+                ),
+            )
 
     def test_count_certificate_matches_counted_completions(self) -> None:
         prepared = _prepare(cco_facts())
@@ -561,14 +681,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
         self.assertIsNotNone(diagnostics.diagnostic_certificate)
         self.assertEqual(
             diagnostics.diagnostic_certificate.text_choice_projection_certificates,
-            tuple(
-                cert
-                for cert in _checked_writer_frontier_branch_supports(
-                    prepared,
-                    state.snapshot.cursor,
-                    include_counts=False,
-                ).text_choice_projection_certificates
-            ),
+            _checked_writer_frontier_product(
+                prepared,
+                state.snapshot.cursor,
+            ).text_choice_projection_certificates,
         )
         self.assertEqual(
             diagnostics.diagnostic_certificate.blocked,

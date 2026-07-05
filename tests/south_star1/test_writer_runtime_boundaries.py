@@ -89,6 +89,9 @@ class WriterRuntimeBoundaryTest(unittest.TestCase):
                 "enumerate_prepared_writer_shaped_support",
                 "iter_writer_runtime_support",
                 "make_writer_shaped_online_decoder",
+                "_writer_frontier_summary",
+                "_writer_frontier_summary_from_cursor",
+                "_writer_frontier_summary_from_snapshot",
             },
         )
 
@@ -112,6 +115,9 @@ class WriterRuntimeBoundaryTest(unittest.TestCase):
                 "initial_writer_frontier_cursor",
                 "iter_writer_frontier_support",
                 "writer_runtime_branch_transitions",
+                "_writer_frontier_summary",
+                "_writer_frontier_summary_from_cursor",
+                "_writer_frontier_summary_from_snapshot",
             },
         )
         snapshot_imports = import_from_observations(

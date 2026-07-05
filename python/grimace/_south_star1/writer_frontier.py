@@ -91,6 +91,9 @@ from .writer_support_count_certificates import (
     writer_text_state_support_count_certificate,
 )
 from .writer_support_count_certificates import writer_text_support_count_certificate
+from .writer_support_certificates import (
+    writer_frontier_support_string_certificate,
+)
 from .writer_diagnostic_certificates import writer_diagnostics_certificate
 from .writer_capability_certificates import writer_capability_coverage_certificate
 from .writer_frontier_certificates import writer_checked_frontier_certificate
@@ -201,6 +204,12 @@ class _WriterFrontierSummary:
                 "writer frontier summary did not compute support strings",
             )
         return self.strings
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterFrontierCertifiedSupportString:
+    string: str
+    certificate: object
 
 
 @dataclass(frozen=True, slots=True)
@@ -1774,25 +1783,46 @@ def writer_frontier_choices(
     prepared: SouthStarPreparedMol,
     cursor: WriterFrontierCursor,
 ) -> WriterFrontierChoices:
-    snapshot = _checked_writer_frontier_choice_snapshot(
+    return _checked_writer_frontier_choices_from_product(
         prepared,
         cursor,
     )
 
-    return snapshot.public_choices
+
+def _checked_writer_frontier_choices_from_product(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+    *,
+    include_counts: bool = True,
+) -> WriterFrontierChoices:
+    return _checked_writer_frontier_product(
+        prepared,
+        cursor,
+        include_counts=include_counts,
+        include_frontier_certificate=True,
+        include_count_certificate=True,
+    ).choices
 
 
 def _writer_frontier_raw_successors_for_streaming(
     prepared: SouthStarPreparedMol,
     cursor: WriterFrontierCursor,
 ) -> tuple[tuple[str, WriterFrontierCursor], ...]:
-    snapshot = _checked_writer_frontier_choice_snapshot(
+    product = _checked_writer_frontier_product(
         prepared,
         cursor,
         include_counts=False,
+        include_frontier_certificate=False,
+        include_count_certificate=False,
     )
 
-    return _successors_from_choice_snapshot(snapshot)
+    return tuple(
+        (
+            certificate.emitted_text,
+            certificate.successor_cursor,
+        )
+        for certificate in product.text_choice_projection_certificates
+    )
 
 
 def _successors_from_grouped(
@@ -2819,15 +2849,7 @@ def _checked_writer_frontier_product(
         schedule_outcome,
         include_counts=False,
     )
-    public_choices = (
-        choice_snapshot.public_choices
-        if not include_counts
-        else _writer_frontier_choice_snapshot_from_schedule_outcome(
-            prepared,
-            schedule_outcome,
-            include_counts=True,
-        ).public_choices
-    )
+    public_choices = choice_snapshot.public_choices
 
     branch_supports = tuple(
         _writer_frontier_branch_support_from_next_token_support(
@@ -2844,8 +2866,77 @@ def _checked_writer_frontier_product(
         prepared=prepared,
         schedule_outcome=schedule_outcome,
     )
+
+    completion_count_memo: dict[WriterFrontierCursor, object] = {}
+    support_count_state_memo: dict[
+        WriterFrontierCursor, WriterTextStateSupportCountCertificate
+    ] = {}
+
+    def _successor_completion_count_certificate(
+        successor_cursor: WriterFrontierCursor,
+    ) -> object:
+        if successor_cursor in completion_count_memo:
+            return completion_count_memo[successor_cursor]
+        value = _checked_writer_frontier_branch_completion_count_certificate(
+            prepared=prepared,
+            cursor=successor_cursor,
+            include_frontier_product=False,
+        )
+        completion_count_memo[successor_cursor] = value
+        return value
+
+    if include_counts:
+        uncounted_projections = writer_text_choice_projection_certificates(
+            source_cursor=cursor,
+            choices=public_choices,
+            branch_supports=branch_supports,
+        )
+        counted_choices: list[WriterFrontierChoice] = []
+        for projection in uncounted_projections:
+            successor_support_count_certificate = (
+                _checked_writer_frontier_text_support_count_state_certificate(
+                    prepared=prepared,
+                    cursor=projection.successor_cursor,
+                    memo=support_count_state_memo,
+                    active=frozenset(),
+                )
+            )
+            successor_completion_count_certificate = (
+                _successor_completion_count_certificate(
+                    projection.successor_cursor,
+                )
+            )
+            support_count = successor_support_count_certificate.support_count
+            completion_count = (
+                successor_completion_count_certificate.completion_count
+            )
+            if support_count == 0 and completion_count == 0:
+                continue
+            counted_choices.append(
+                WriterFrontierChoice(
+                    emitted_text=projection.emitted_text,
+                    successor=projection.successor_cursor,
+                    immediate_multiplicity=projection.immediate_multiplicity,
+                    support_count=support_count,
+                    completion_count=completion_count,
+                )
+            )
+        public_choices = WriterFrontierChoices(
+            terminal=public_choices.terminal,
+            choices=tuple(counted_choices),
+        )
+        public_choice_texts = frozenset(
+            choice.emitted_text for choice in public_choices.choices
+        )
+        branch_supports = tuple(
+            support
+            for support in branch_supports
+            if support.emitted_text in public_choice_texts
+        )
+
     text_choice_projection_certificates = writer_text_choice_projection_certificates(
-        choices=choice_snapshot.public_choices,
+        source_cursor=cursor,
+        choices=public_choices,
         branch_supports=branch_supports,
     )
     terminal_projection_certificate = writer_terminal_projection_certificate(
@@ -2869,23 +2960,6 @@ def _checked_writer_frontier_product(
                 source_snapshot=cursor,
             )
         )
-        completion_count_memo: dict[WriterFrontierCursor, object] = {}
-        support_count_state_memo: dict[
-            WriterFrontierCursor, WriterTextStateSupportCountCertificate
-        ] = {}
-
-        def _successor_completion_count_certificate(
-            successor_cursor: WriterFrontierCursor,
-        ) -> object:
-            if successor_cursor in completion_count_memo:
-                return completion_count_memo[successor_cursor]
-            value = _checked_writer_frontier_branch_completion_count_certificate(
-                prepared=prepared,
-                cursor=successor_cursor,
-                include_frontier_product=False,
-            )
-            completion_count_memo[successor_cursor] = value
-            return value
 
         text_choice_count_certificates = tuple(
             writer_text_choice_count_certificate(
@@ -3486,14 +3560,12 @@ def count_writer_frontier_support(
     prepared: SouthStarPreparedMol,
     frontier: WriterFrontierState,
 ) -> int:
-    return (
-        _writer_frontier_summary(
-            prepared,
-            _cursor_from_support_state(frontier),
-            include_support_count=True,
-        )
-        .require_support_count()
-    )
+    cursor = _cursor_from_support_state(frontier)
+    return _checked_writer_frontier_text_support_count_certificate(
+        prepared=prepared,
+        cursor=cursor,
+        source_snapshot=cursor,
+    ).support_count
 
 
 def _writer_frontier_summary(
@@ -3622,28 +3694,87 @@ def count_writer_cursor_completions(
     prepared: SouthStarPreparedMol,
     cursor: WriterFrontierCursor,
 ) -> int:
-    return (
-        _writer_frontier_summary(
-            prepared,
-            cursor,
-            include_completion_count=True,
-        )
-        .require_completion_count()
-    )
+    return _checked_writer_frontier_count_certificate(
+        prepared=prepared,
+        cursor=cursor,
+    ).completion_count
 
 
 def iter_writer_frontier_support(
     prepared: SouthStarPreparedMol,
     cursor: WriterFrontierCursor,
 ) -> Iterator[str]:
-    yield from (
-        _writer_frontier_summary(
-            prepared,
-            cursor,
-            include_strings=True,
-        )
-        .require_strings()
+    for item in _iter_checked_writer_frontier_certified_support_strings(
+        prepared,
+        cursor,
+        source_cursor=cursor,
+    ):
+        yield item.string
+
+
+def _iter_checked_writer_frontier_certified_support_strings(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+    *,
+    source_cursor: object | None = None,
+) -> Iterator[_WriterFrontierCertifiedSupportString]:
+    if source_cursor is None:
+        source_cursor = cursor
+
+    product = _checked_writer_frontier_product(
+        prepared,
+        cursor,
+        include_counts=False,
+        include_frontier_certificate=True,
+        include_count_certificate=False,
     )
+
+    if product.choices.terminal is not None:
+        terminal_projection_certificate = product.terminal_projection_certificate
+        if terminal_projection_certificate is None:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "terminal support lacks terminal projection certificate",
+            )
+
+        yield _WriterFrontierCertifiedSupportString(
+            string="",
+            certificate=writer_frontier_support_string_certificate(
+                source_cursor=source_cursor,
+                string="",
+                emitted_texts=(),
+                text_projection_certificates=(),
+                terminal_projection_certificate=terminal_projection_certificate,
+            ),
+        )
+
+    for projection in product.text_choice_projection_certificates:
+        for suffix in _iter_checked_writer_frontier_certified_support_strings(
+            prepared,
+            projection.successor_cursor,
+            source_cursor=projection.successor_cursor,
+        ):
+            emitted_texts = (
+                projection.emitted_text,
+                *suffix.certificate.emitted_texts,
+            )
+            text_projection_certificates = (
+                projection,
+                *suffix.certificate.text_projection_certificates,
+            )
+            string = projection.emitted_text + suffix.string
+            yield _WriterFrontierCertifiedSupportString(
+                string=string,
+                certificate=writer_frontier_support_string_certificate(
+                    source_cursor=source_cursor,
+                    string=string,
+                    emitted_texts=emitted_texts,
+                    text_projection_certificates=text_projection_certificates,
+                    terminal_projection_certificate=(
+                        suffix.certificate.terminal_projection_certificate
+                    ),
+                ),
+            )
 
 
 def _root_domains_for_runtime(

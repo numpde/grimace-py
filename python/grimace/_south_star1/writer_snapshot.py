@@ -1146,7 +1146,7 @@ def _checked_text_projection_certificate_for_emitted_text(
     batch = _checked_writer_frontier_branch_supports(
         prepared,
         snapshot.cursor,
-        include_counts=False,
+        include_counts=True,
     )
     matches = tuple(
         certificate
@@ -1792,10 +1792,10 @@ def _iter_writer_snapshot_certified_support_strings(
     batch = _checked_writer_frontier_branch_supports(
         prepared,
         snapshot.cursor,
-        include_counts=False,
+        include_counts=True,
     )
 
-    if choice_snapshot.terminal is not None:
+    if batch.choices.terminal is not None:
         terminal_certificate = batch.terminal_projection_certificate
         if terminal_certificate is None:
             raise SouthStarError(
@@ -1816,10 +1816,21 @@ def _iter_writer_snapshot_certified_support_strings(
                 emitted_texts=(),
                 replay_certificate=replay_certificate,
                 terminal_projection_certificate=terminal_certificate,
+                text_projection_certificates=(),
             ),
         )
 
-    for choice in choice_snapshot.public_choices.choices:
+    projection_by_text = {
+        certificate.emitted_text: certificate
+        for certificate in batch.text_choice_projection_certificates
+    }
+    for choice in batch.choices.choices:
+        projection_certificate = projection_by_text.get(choice.emitted_text)
+        if projection_certificate is None:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "choice lacks text projection certificate",
+            )
         advanced_snapshot, step_certificate = (
             _writer_search_snapshot_after_certified_emitted_text(
                 snapshot,
@@ -1834,6 +1845,10 @@ def _iter_writer_snapshot_certified_support_strings(
             emitted_texts = (
                 step_certificate.emitted_text,
                 *suffix.certificate.emitted_texts,
+            )
+            text_projection_certificates = (
+                projection_certificate,
+                *suffix.certificate.text_projection_certificates,
             )
             replay_certificate = writer_snapshot_replay_certificate(
                 source_snapshot=snapshot,
@@ -1855,6 +1870,7 @@ def _iter_writer_snapshot_certified_support_strings(
                     terminal_projection_certificate=(
                         suffix.certificate.terminal_projection_certificate
                     ),
+                    text_projection_certificates=text_projection_certificates,
                 ),
             )
 

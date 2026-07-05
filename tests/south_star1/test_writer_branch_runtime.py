@@ -78,6 +78,9 @@ from grimace._south_star1.writer_projection_certificates import (
     writer_text_choice_projection_certificates,
 )
 from grimace._south_star1.writer_projection_certificates import (
+    writer_terminal_projection_certificate,
+)
+from grimace._south_star1.writer_projection_certificates import (
     WriterTextChoiceProjectionCertificate,
 )
 from grimace._south_star1.writer_frontier_certificates import (
@@ -2426,6 +2429,30 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 ),
             )
 
+    def test_text_projection_successor_cursor_is_branch_certificate_derived(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        product = _checked_writer_frontier_product(
+            prepared,
+            cursor,
+            include_counts=False,
+            include_frontier_certificate=False,
+            include_count_certificate=False,
+        )
+
+        for projection in product.text_choice_projection_certificates:
+            weighted = Counter()
+            for certificate in projection.branch_certificates:
+                weighted[certificate.successor_state] += (
+                    certificate.parent_weight
+                )
+            expected = projection.successor_cursor.__class__(
+                weighted_states=tuple(weighted.items())
+            )
+            self.assertEqual(projection.successor_cursor, expected)
+
     def test_text_projection_rejects_branch_certificate_parent_weight_mismatch(
         self,
     ) -> None:
@@ -2454,6 +2481,150 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 source_cursor=cursor,
                 choices=batch.choices,
                 branch_supports=(bad_support, *batch.supports[1:]),
+            )
+
+    def test_text_projection_rejects_branch_certificate_successor_mismatch(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        batch = _checked_writer_frontier_branch_supports(
+            prepared,
+            cursor,
+            include_counts=False,
+        )
+        support = batch.supports[0]
+        bad_certificate = replace(
+            support.checked_branch_certificate,
+            successor_state=support.source_state,
+        )
+        bad_support = replace(
+            support,
+            checked_branch_certificate=bad_certificate,
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "branch_certificate_successor_mismatch",
+        ):
+            writer_text_choice_projection_certificates(
+                source_cursor=cursor,
+                choices=batch.choices,
+                branch_supports=(bad_support, *batch.supports[1:]),
+            )
+
+    def test_terminal_projection_multiplicity_matches_terminal_certificate_weights(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        product = _first_terminal_frontier_product(prepared)
+        terminal_projection = product.terminal_projection_certificate
+        self.assertIsNotNone(terminal_projection)
+
+        self.assertEqual(
+            terminal_projection.multiplicity,
+            sum(
+                certificate.parent_weight
+                for certificate in terminal_projection.terminal_certificates
+            ),
+        )
+
+    def test_terminal_projection_finalized_cursor_is_certificate_derived(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        product = _first_terminal_frontier_product(prepared)
+        terminal_projection = product.terminal_projection_certificate
+        self.assertIsNotNone(terminal_projection)
+
+        weighted = Counter()
+        for certificate in terminal_projection.terminal_certificates:
+            weighted[certificate.finalized_state] += certificate.parent_weight
+        expected = terminal_projection.finalized_cursor.__class__(
+            weighted_states=tuple(weighted.items())
+        )
+        self.assertEqual(terminal_projection.finalized_cursor, expected)
+
+    def test_terminal_projection_rejects_certificate_parent_weight_mismatch(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        product = _first_terminal_frontier_product(prepared)
+        support = product.terminal_supports[0]
+        bad_certificate = replace(
+            support.checked_terminal_certificate,
+            parent_weight=support.parent_weight + 1,
+        )
+        bad_support = replace(
+            support,
+            checked_terminal_certificate=bad_certificate,
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "terminal_certificate_parent_weight_mismatch",
+        ):
+            writer_terminal_projection_certificate(
+                source_cursor=product.cursor,
+                terminal=product.choices.terminal,
+                terminal_supports=(bad_support, *product.terminal_supports[1:]),
+            )
+
+    def test_terminal_projection_rejects_certificate_finalized_mismatch(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        product = _first_terminal_frontier_product(prepared)
+        support = product.terminal_supports[0]
+        bad_certificate = replace(
+            support.checked_terminal_certificate,
+            finalized_state=support.source_state,
+        )
+        bad_support = replace(
+            support,
+            checked_terminal_certificate=bad_certificate,
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "terminal_certificate_finalized_mismatch",
+        ):
+            writer_terminal_projection_certificate(
+                source_cursor=product.cursor,
+                terminal=product.choices.terminal,
+                terminal_supports=(bad_support, *product.terminal_supports[1:]),
+            )
+
+    def test_frontier_projection_rejects_terminal_certificate_parent_weight_mismatch(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        product = _first_terminal_frontier_product(prepared)
+        support = product.terminal_supports[0]
+        bad_certificate = replace(
+            support.checked_terminal_certificate,
+            parent_weight=support.parent_weight + 1,
+        )
+        bad_support = replace(
+            support,
+            checked_terminal_certificate=bad_certificate,
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "terminal_certificate_parent_weight_mismatch",
+        ):
+            writer_frontier_projection_certificate(
+                cursor=product.cursor,
+                choices=product.choices,
+                branch_supports=product.branch_supports,
+                terminal_supports=(bad_support, *product.terminal_supports[1:]),
+                text_choice_projection_certificates=(
+                    product.text_choice_projection_certificates
+                ),
+                terminal_projection_certificate=(
+                    product.terminal_projection_certificate
+                ),
             )
 
     def test_frontier_projection_rejects_branch_certificate_ordinal_mismatch(
@@ -4742,6 +4913,28 @@ def _find_checked_branch_support(
             pending.append(support.successor_cursor)
 
     raise AssertionError("expected checked branch support was not found")
+
+
+def _first_terminal_frontier_product(prepared):
+    pending = [initial_writer_frontier_cursor(prepared, _writer_options())]
+    seen: set[WriterFrontierCursor] = set()
+    while pending and len(seen) < 1000:
+        current = pending.pop(0)
+        if current in seen:
+            continue
+        seen.add(current)
+        product = _checked_writer_frontier_product(
+            prepared,
+            current,
+            include_counts=False,
+            include_frontier_certificate=False,
+            include_count_certificate=False,
+        )
+        if product.terminal_supports:
+            return product
+        pending.extend(choice.successor for choice in product.choices.choices)
+
+    raise AssertionError("expected terminal frontier product was not found")
 
 
 def _checked_branch_certificate_kwargs(support, **overrides):

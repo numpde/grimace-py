@@ -97,6 +97,10 @@ def writer_frontier_projection_certificate(
                 _frontier_violation(
                     "terminal_certificate_finalized_state_mismatch"
                 )
+            if terminal_certificate.parent_weight != terminal_support.parent_weight:
+                _frontier_violation(
+                    "terminal_certificate_parent_weight_mismatch"
+                )
 
     projection_texts = tuple(
         cert.emitted_text for cert in text_choice_projection_certificates

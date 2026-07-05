@@ -72,8 +72,16 @@ def writer_text_choice_projection_certificates(
 
         expected_successor = _cursor_like(
             choice.successor,
+            _weighted_successor_states_from_branch_certificates(
+                branch_certificates
+            ),
+        )
+        support_expected_successor = _cursor_like(
+            choice.successor,
             _weighted_successor_states(supports),
         )
+        if expected_successor != support_expected_successor:
+            _choice_violation("branch_certificate_successor_weight_mismatch")
         if choice.successor != expected_successor:
             _choice_violation("choice_successor_cursor_mismatch")
 
@@ -131,18 +139,38 @@ def writer_terminal_projection_certificate(
     )
     if any(certificate is None for certificate in terminal_certificates):
         _terminal_violation("terminal_support_lacks_checked_certificate")
+    for support, certificate in zip(terminal_supports, terminal_certificates):
+        if certificate.source_state != support.source_state:
+            _terminal_violation("terminal_certificate_source_mismatch")
+        if certificate.finalized_state != support.finalized_state:
+            _terminal_violation("terminal_certificate_finalized_mismatch")
+        if certificate.parent_weight != support.parent_weight:
+            _terminal_violation("terminal_certificate_parent_weight_mismatch")
 
     expected_finalized_cursor = _cursor_like(
         terminal.finalized_cursor,
+        _weighted_finalized_states_from_terminal_certificates(
+            terminal_certificates
+        ),
+    )
+    support_expected_finalized_cursor = _cursor_like(
+        terminal.finalized_cursor,
         _weighted_finalized_states(terminal_supports),
     )
+    if expected_finalized_cursor != support_expected_finalized_cursor:
+        _terminal_violation("terminal_certificate_finalized_weight_mismatch")
     if terminal.finalized_cursor != expected_finalized_cursor:
         _terminal_violation("terminal_finalized_cursor_mismatch")
 
     multiplicity = sum(
-        support.parent_weight
-        for support in terminal_supports
+        certificate.parent_weight
+        for certificate in terminal_certificates
     )
+    support_multiplicity = sum(
+        support.parent_weight for support in terminal_supports
+    )
+    if multiplicity != support_multiplicity:
+        _terminal_violation("terminal_certificate_support_weight_total_mismatch")
     if terminal.multiplicity != multiplicity:
         _terminal_violation("terminal_multiplicity_mismatch")
 
@@ -166,12 +194,30 @@ def _weighted_successor_states(
     return tuple(weighted.items())
 
 
+def _weighted_successor_states_from_branch_certificates(
+    certificates: tuple[object, ...],
+) -> tuple[tuple[object, int], ...]:
+    weighted: Counter[object] = Counter()
+    for certificate in certificates:
+        weighted[certificate.successor_state] += certificate.parent_weight
+    return tuple(weighted.items())
+
+
 def _weighted_finalized_states(
     supports: tuple[object, ...],
 ) -> tuple[tuple[object, int], ...]:
     weighted: Counter[object] = Counter()
     for support in supports:
         weighted[support.finalized_state] += support.parent_weight
+    return tuple(weighted.items())
+
+
+def _weighted_finalized_states_from_terminal_certificates(
+    certificates: tuple[object, ...],
+) -> tuple[tuple[object, int], ...]:
+    weighted: Counter[object] = Counter()
+    for certificate in certificates:
+        weighted[certificate.finalized_state] += certificate.parent_weight
     return tuple(weighted.items())
 
 

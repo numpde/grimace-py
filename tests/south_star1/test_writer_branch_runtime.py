@@ -2578,6 +2578,23 @@ class WriterBranchRuntimeTest(unittest.TestCase):
         )
         self.assertEqual(terminal_projection.finalized_cursor, expected)
 
+    def test_terminal_supports_are_unambiguous_by_source_and_finalized_state(
+        self,
+    ) -> None:
+        for facts in (
+            cco_facts(),
+            cyclopropane_facts(),
+            tetrahedral_facts(),
+            directional_facts(),
+        ):
+            prepared = _prepare(facts)
+            product = _first_terminal_frontier_product(prepared)
+            identities = tuple(
+                (support.source_state, support.finalized_state)
+                for support in product.terminal_supports
+            )
+            self.assertEqual(len(identities), len(set(identities)))
+
     def test_terminal_projection_rejects_certificate_parent_weight_mismatch(
         self,
     ) -> None:

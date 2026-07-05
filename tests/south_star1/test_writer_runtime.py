@@ -627,6 +627,29 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
                 state_count_certificates=((state_key, 2, state_count),),
             )
 
+        if not state_count.branch_terms:
+            self.skipTest("fixture has no branch terms for completion count")
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "branch_term_successor_count_mismatch",
+        ):
+            writer_state_completion_count_certificate(
+                state_key=state_key,
+                terminal_projection_certificate=(
+                    state_count.terminal_projection_certificate
+                ),
+                terminal_count=state_count.terminal_count,
+                branch_terms=(
+                    replace(
+                        state_count.branch_terms[0],
+                        successor_count=(
+                            state_count.branch_terms[0].successor_count + 1
+                        ),
+                    ),
+                    *state_count.branch_terms[1:],
+                ),
+            )
+
     def test_support_count_certificates_reject_malformed(self) -> None:
         prepared = _prepare(cco_facts())
         state = initial_writer_runtime_state(

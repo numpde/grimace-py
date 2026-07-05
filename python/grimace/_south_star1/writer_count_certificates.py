@@ -95,6 +95,10 @@ def writer_state_completion_count_certificate(
     for term in branch_terms:
         if term.branch_certificate.source_state != state_key:
             _count_violation("branch_term_source_state_mismatch")
+        if term.successor_count != (
+            term.successor_count_certificate.completion_count
+        ):
+            _count_violation("branch_term_successor_count_mismatch")
 
     branch_total = sum(term.successor_count for term in branch_terms)
     completion_count = terminal_count + branch_total

@@ -173,13 +173,32 @@ class WriterGraphStateReplayCertificate:
     obligation_replay_certificate: object | None = None
 
 
+class WriterStereoReplayKind(Enum):
+    UNCHANGED = "unchanged"
+    LIFECYCLE_CHAIN_COMPLETE = "lifecycle_chain_complete"
+    EVIDENCE_BOUND_INCOMPLETE = "evidence_bound_incomplete"
+
+
+@dataclass(frozen=True, slots=True)
+class WriterStereoLifecycleChainCertificate:
+    source_residual_snapshot: object
+    expected_successor_residual_snapshot: object
+    actual_successor_residual_snapshot: object
+    lifecycle_evidence: tuple[object, ...]
+    residual_work_evidence: tuple[object, ...]
+    replay_complete: bool
+
+
 @dataclass(frozen=True, slots=True)
 class WriterStereoStateReplayCertificate:
+    kind: WriterStereoReplayKind
     source_stereo_state: object
     expected_successor_stereo_state: object
     actual_successor_stereo_state: object
     stereo_lifecycle_evidence: tuple[object, ...]
     residual_work_evidence: tuple[object, ...]
+    replay_complete: bool
+    lifecycle_chain_certificate: object | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1159,6 +1178,68 @@ def _stereo_state_replay_certificate(
     if not stereo_lifecycle_evidence:
         _delta_violation("stereo_replay_lacks_lifecycle")
 
+    chain_certificate = _stereo_lifecycle_chain_certificate(
+        source_state=source_state,
+        successor_state=successor_state,
+        stereo_lifecycle_evidence=stereo_lifecycle_evidence,
+        residual_work_evidence=residual_work_evidence,
+    )
+    kind = (
+        WriterStereoReplayKind.LIFECYCLE_CHAIN_COMPLETE
+        if (
+            chain_certificate.replay_complete
+            and _stereo_lifecycle_chain_matches_state(
+                source_state=source_state,
+                successor_state=successor_state,
+                stereo_lifecycle_evidence=stereo_lifecycle_evidence,
+            )
+        )
+        else WriterStereoReplayKind.EVIDENCE_BOUND_INCOMPLETE
+    )
+    replay_complete = kind is WriterStereoReplayKind.LIFECYCLE_CHAIN_COMPLETE
+    expected_stereo_state = (
+        successor_state.stereo_state
+        if replay_complete
+        else successor_state.stereo_state
+    )
+
+    return WriterStereoStateReplayCertificate(
+        kind=kind,
+        source_stereo_state=source_state.stereo_state,
+        expected_successor_stereo_state=expected_stereo_state,
+        actual_successor_stereo_state=successor_state.stereo_state,
+        stereo_lifecycle_evidence=stereo_lifecycle_evidence,
+        residual_work_evidence=residual_work_evidence,
+        replay_complete=replay_complete,
+        lifecycle_chain_certificate=chain_certificate,
+    )
+
+
+def _stereo_lifecycle_chain_certificate(
+    *,
+    source_state,
+    successor_state,
+    stereo_lifecycle_evidence: tuple[object, ...],
+    residual_work_evidence: tuple[object, ...],
+) -> WriterStereoLifecycleChainCertificate:
+    source_snapshot = source_state.stereo_state.residual_snapshot
+    actual_successor_snapshot = successor_state.stereo_state.residual_snapshot
+    current = source_snapshot
+    complete = True
+
+    for evidence in stereo_lifecycle_evidence:
+        evidence_source = getattr(evidence, "source_residual_snapshot", None)
+        evidence_successor = getattr(evidence, "successor_residual_snapshot", None)
+        if evidence_source is None or evidence_successor is None:
+            complete = False
+            continue
+        if evidence_source != current:
+            _delta_violation("stereo_lifecycle_source_snapshot_mismatch")
+        current = evidence_successor
+
+    if complete and current != actual_successor_snapshot:
+        _delta_violation("stereo_lifecycle_successor_snapshot_mismatch")
+
     lifecycle_work = tuple(
         item
         for evidence in stereo_lifecycle_evidence
@@ -1168,12 +1249,47 @@ def _stereo_state_replay_certificate(
         if item not in residual_work_evidence:
             _delta_violation("stereo_replay_work_evidence_missing")
 
-    return WriterStereoStateReplayCertificate(
-        source_stereo_state=source_state.stereo_state,
-        expected_successor_stereo_state=successor_state.stereo_state,
-        actual_successor_stereo_state=successor_state.stereo_state,
-        stereo_lifecycle_evidence=stereo_lifecycle_evidence,
+    return WriterStereoLifecycleChainCertificate(
+        source_residual_snapshot=source_snapshot,
+        expected_successor_residual_snapshot=(
+            current if complete else actual_successor_snapshot
+        ),
+        actual_successor_residual_snapshot=actual_successor_snapshot,
+        lifecycle_evidence=stereo_lifecycle_evidence,
         residual_work_evidence=residual_work_evidence,
+        replay_complete=complete,
+    )
+
+
+def _stereo_lifecycle_chain_matches_state(
+    *,
+    source_state,
+    successor_state,
+    stereo_lifecycle_evidence: tuple[object, ...],
+) -> bool:
+    current_residual = source_state.stereo_state.residual_snapshot
+    current_atoms = source_state.stereo_state.atom_occurrences
+    current_bonds = source_state.stereo_state.bond_occurrences
+    current_orders = source_state.stereo_state.local_orders
+
+    for evidence in stereo_lifecycle_evidence:
+        if (
+            getattr(evidence, "source_residual_snapshot", None) != current_residual
+            or getattr(evidence, "source_atom_occurrences", None) != current_atoms
+            or getattr(evidence, "source_bond_occurrences", None) != current_bonds
+            or getattr(evidence, "source_local_orders", None) != current_orders
+        ):
+            return False
+        current_residual = evidence.successor_residual_snapshot
+        current_atoms = evidence.successor_atom_occurrences
+        current_bonds = evidence.successor_bond_occurrences
+        current_orders = evidence.successor_local_orders
+
+    return (
+        current_residual == successor_state.stereo_state.residual_snapshot
+        and current_atoms == successor_state.stereo_state.atom_occurrences
+        and current_bonds == successor_state.stereo_state.bond_occurrences
+        and current_orders == successor_state.stereo_state.local_orders
     )
 
 
@@ -1375,16 +1491,15 @@ def _validate_replay_certificate_values(certificate) -> None:
                 != certificate.graph_obligation_work_evidence
             ):
                 _delta_violation("obligation_replay_evidence_mismatch")
+            if obligation_replay.event_view != writer_event_delta_view(
+                certificate.events
+            ):
+                _delta_violation("obligation_replay_event_view_mismatch")
 
     stereo = certificate.stereo_replay_certificate
     if stereo is not None:
         if stereo.source_stereo_state != certificate.source_state.stereo_state:
             _delta_violation("stereo_replay_source_mismatch")
-        if (
-            stereo.expected_successor_stereo_state
-            != certificate.successor_state.stereo_state
-        ):
-            _delta_violation("stereo_replay_expected_successor_mismatch")
         if (
             stereo.actual_successor_stereo_state
             != certificate.successor_state.stereo_state
@@ -1394,6 +1509,39 @@ def _validate_replay_certificate_values(certificate) -> None:
             _delta_violation("stereo_replay_lifecycle_mismatch")
         if stereo.residual_work_evidence != certificate.residual_work_evidence:
             _delta_violation("stereo_replay_residual_work_mismatch")
+        if stereo.kind is WriterStereoReplayKind.EVIDENCE_BOUND_INCOMPLETE:
+            if stereo.replay_complete:
+                _delta_violation("stereo_replay_false_completion")
+        else:
+            if not stereo.replay_complete:
+                _delta_violation("stereo_replay_incomplete_kind_mismatch")
+            if (
+                stereo.expected_successor_stereo_state
+                != stereo.actual_successor_stereo_state
+            ):
+                _delta_violation("stereo_replay_expected_successor_mismatch")
+        chain = stereo.lifecycle_chain_certificate
+        if chain is not None:
+            if chain.lifecycle_evidence != certificate.stereo_lifecycle_evidence:
+                _delta_violation("stereo_lifecycle_chain_evidence_mismatch")
+            if chain.residual_work_evidence != certificate.residual_work_evidence:
+                _delta_violation("stereo_lifecycle_chain_work_mismatch")
+            if (
+                chain.source_residual_snapshot
+                != certificate.source_state.stereo_state.residual_snapshot
+            ):
+                _delta_violation("stereo_lifecycle_chain_source_mismatch")
+            if (
+                chain.actual_successor_residual_snapshot
+                != certificate.successor_state.stereo_state.residual_snapshot
+            ):
+                _delta_violation("stereo_lifecycle_chain_successor_mismatch")
+            if (
+                chain.replay_complete
+                and chain.expected_successor_residual_snapshot
+                != chain.actual_successor_residual_snapshot
+            ):
+                _delta_violation("stereo_lifecycle_chain_expected_mismatch")
 
 
 def _validate_closure_candidate_delta(
@@ -1437,6 +1585,8 @@ __all__ = (
     "WriterRingStateReplayCertificate",
     "WriterStereoStateDeltaCertificate",
     "WriterStereoStateReplayCertificate",
+    "WriterStereoLifecycleChainCertificate",
+    "WriterStereoReplayKind",
     "WriterStateFieldDelta",
     "validate_writer_branch_successor_state_certificate",
     "validate_writer_state_field_deltas",

@@ -1244,6 +1244,61 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 )
             )
 
+    def test_obligation_replay_rejects_stale_event_view(self) -> None:
+        prepared = _prepare(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _find_checked_branch_support(
+            prepared,
+            initial,
+            lambda support: (
+                support.successor_state_certificate.graph_replay_certificate
+                is not None
+                and (
+                    support.successor_state_certificate
+                    .graph_replay_certificate
+                    .obligation_replay_certificate
+                    is not None
+                )
+            ),
+        )
+        certificate = support.successor_state_certificate
+        graph = certificate.graph_replay_certificate
+        obligation = graph.obligation_replay_certificate
+        bad_certificate = replace(
+            certificate,
+            graph_replay_certificate=replace(
+                graph,
+                obligation_replay_certificate=replace(
+                    obligation,
+                    event_view=(
+                        writer_state_delta_certificates.WriterEventDeltaView(
+                            atom_events=(),
+                            bond_events=(),
+                            branch_open_events=(),
+                            branch_close_events=(),
+                            component_boundary_events=(),
+                            local_order_events=(),
+                            ring_label_allocated_events=(),
+                            ring_label_released_events=(),
+                            ring_endpoint_emitted_events=(),
+                            ring_endpoint_paired_events=(),
+                        )
+                    ),
+                ),
+            ),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "obligation_replay_event_view_mismatch",
+        ):
+            (
+                writer_state_delta_certificates
+                .validate_writer_branch_successor_state_certificate(
+                    bad_certificate,
+                )
+            )
+
     def test_event_delta_view_ignores_class_name_spoofing(self) -> None:
         spoof = type(
             "WriterAtomEmitted",
@@ -1562,6 +1617,152 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                     support.residual_attachment_lifecycle_evidence
                 ),
                 stereo_lifecycle_evidence=(),
+            )
+
+    def test_stereo_replay_has_complete_lifecycle_chain_when_evidence_matches(
+        self,
+    ) -> None:
+        prepared = _prepare(tetrahedral_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _find_checked_branch_support(
+            prepared,
+            initial,
+            lambda support: (
+                support.successor_state_certificate.stereo_replay_certificate
+                is not None
+                and (
+                    support.successor_state_certificate
+                    .stereo_replay_certificate
+                    .replay_complete
+                )
+            ),
+        )
+        stereo = support.successor_state_certificate.stereo_replay_certificate
+
+        self.assertIs(
+            stereo.kind,
+            (
+                writer_state_delta_certificates.WriterStereoReplayKind
+                .LIFECYCLE_CHAIN_COMPLETE
+            ),
+        )
+        self.assertIsNotNone(stereo.lifecycle_chain_certificate)
+        self.assertTrue(stereo.lifecycle_chain_certificate.replay_complete)
+        self.assertEqual(
+            stereo.expected_successor_stereo_state,
+            stereo.actual_successor_stereo_state,
+        )
+
+    def test_stereo_replay_rejects_missing_residual_work_item(self) -> None:
+        prepared = _prepare(tetrahedral_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _find_checked_branch_support(
+            prepared,
+            initial,
+            lambda support: any(
+                getattr(evidence, "residual_work_evidence", ())
+                for evidence in support.stereo_lifecycle_evidence
+            ),
+        )
+        lifecycle_work = tuple(
+            item
+            for evidence in support.stereo_lifecycle_evidence
+            for item in getattr(evidence, "residual_work_evidence", ())
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "stereo_delta_work_evidence_missing|stereo_replay_work_evidence_missing",
+        ):
+            writer_branch_successor_state_certificate(
+                **_successor_state_certificate_kwargs(
+                    support,
+                    residual_work_evidence=tuple(
+                        item
+                        for item in support.residual_work_evidence
+                        if item is not lifecycle_work[0]
+                    ),
+                )
+            )
+
+    def test_stereo_replay_rejects_false_completion(self) -> None:
+        prepared = _prepare(tetrahedral_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _find_checked_branch_support(
+            prepared,
+            initial,
+            lambda support: (
+                support.successor_state_certificate.stereo_replay_certificate
+                is not None
+            ),
+        )
+        certificate = support.successor_state_certificate
+        bad_certificate = replace(
+            certificate,
+            stereo_replay_certificate=replace(
+                certificate.stereo_replay_certificate,
+                kind=(
+                    writer_state_delta_certificates.WriterStereoReplayKind
+                    .EVIDENCE_BOUND_INCOMPLETE
+                ),
+                replay_complete=True,
+            ),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "stereo_replay_false_completion",
+        ):
+            (
+                writer_state_delta_certificates
+                .validate_writer_branch_successor_state_certificate(
+                    bad_certificate,
+                )
+            )
+
+    def test_stereo_lifecycle_chain_rejects_successor_snapshot_mismatch(
+        self,
+    ) -> None:
+        prepared = _prepare(tetrahedral_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        support = _find_checked_branch_support(
+            prepared,
+            initial,
+            lambda support: (
+                support.successor_state_certificate.stereo_replay_certificate
+                is not None
+                and (
+                    support.successor_state_certificate
+                    .stereo_replay_certificate
+                    .lifecycle_chain_certificate
+                    is not None
+                )
+            ),
+        )
+        certificate = support.successor_state_certificate
+        chain = certificate.stereo_replay_certificate.lifecycle_chain_certificate
+        bad_certificate = replace(
+            certificate,
+            stereo_replay_certificate=replace(
+                certificate.stereo_replay_certificate,
+                lifecycle_chain_certificate=replace(
+                    chain,
+                    actual_successor_residual_snapshot=(
+                        certificate.source_state.stereo_state.residual_snapshot
+                    ),
+                ),
+            ),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "stereo_lifecycle_chain_successor_mismatch",
+        ):
+            (
+                writer_state_delta_certificates
+                .validate_writer_branch_successor_state_certificate(
+                    bad_certificate,
+                )
             )
 
     def test_runtime_branch_transitions_expose_successor_state_certificate(

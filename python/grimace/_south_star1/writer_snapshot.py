@@ -1146,7 +1146,7 @@ def _checked_text_projection_certificate_for_emitted_text(
     batch = _checked_writer_frontier_branch_supports(
         prepared,
         snapshot.cursor,
-        include_counts=True,
+        include_counts=False,
     )
     matches = tuple(
         certificate
@@ -1185,6 +1185,28 @@ def _writer_search_snapshot_after_certified_emitted_text(
         source_snapshot=snapshot,
         emitted_text=emitted_text,
         text_projection_certificate=projection_certificate,
+        advanced_snapshot=advanced_snapshot,
+    )
+    return advanced_snapshot, certificate
+
+
+def _writer_search_snapshot_after_certified_text_projection(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    text_projection_certificate,
+):
+    advanced_snapshot = (
+        _writer_search_snapshot_after_checked_frontier_cursor_step(
+            snapshot,
+            prepared=prepared,
+            cursor=text_projection_certificate.successor_cursor,
+        )
+    )
+    certificate = writer_snapshot_step_certificate(
+        source_snapshot=snapshot,
+        emitted_text=text_projection_certificate.emitted_text,
+        text_projection_certificate=text_projection_certificate,
         advanced_snapshot=advanced_snapshot,
     )
     return advanced_snapshot, certificate

@@ -12819,51 +12819,21 @@ class WriterStateKernelTest(unittest.TestCase):
             ),
         )
 
-    def test_writer_frontier_raw_successors_for_streaming_uses_uncounted_choice_snapshot(self) -> None:
+    def test_writer_frontier_raw_successors_for_streaming_uses_product_projections(self) -> None:
         prepared = _prepare(chain_facts(("C", "C")))
         cursor = initial_writer_frontier_cursor(prepared, _writer_options())
-        successor_key = cursor.weighted_states[0][0]
-        support = writer_frontier_module._WriterFrontierNextTokenSupport(
-            state_key=successor_key,
-            parent_weight=1,
-            schedule_support=SimpleNamespace(
-                emitted_text="C",
-                graph_action_surface=object(),
-                policy_family=(
-                    writer_transitions
-                    ._WriterGraphPolicyActionFamily
-                    .ACYCLIC_TREE_ENTRY
-                ),
-            ),  # type: ignore[arg-type]
-            successor_key=successor_key,
-        )
-        entry = writer_frontier_module._WriterFrontierNextTokenEntry(
-            emitted_text="C",
-            supports=(support,),
-        )
-        choice = writer_frontier_module._WriterFrontierChoiceSnapshotEntry(
-            next_token_entry=entry,
-            successor=WriterFrontierCursor(weighted_states=((successor_key, 1),)),
-        )
-        snapshot = writer_frontier_module._WriterFrontierChoiceSnapshot(
-            schedule_outcome=writer_frontier_module._WriterFrontierScheduleOutcome(
-                state_outcomes=(),
-                terminal_by_key=Counter(),
-                grouped_by_text={"C": {successor_key}},
-                weighted_by_text={"C": Counter({successor_key: 1})},
-                next_token_frontier=(entry,),
-            ),
-            terminal=None,
-            choices=(choice,),
+        product = writer_frontier_module._checked_writer_frontier_product(
+            prepared,
+            cursor,
+            include_counts=False,
+            include_frontier_certificate=False,
+            include_count_certificate=False,
         )
 
         with patch(
-            (
-                "grimace._south_star1.writer_frontier"
-                "._checked_writer_frontier_choice_snapshot"
-            ),
-            return_value=snapshot,
-        ) as checked_snapshot:
+            "grimace._south_star1.writer_frontier._checked_writer_frontier_product",
+            wraps=writer_frontier_module._checked_writer_frontier_product,
+        ) as checked_product:
             successors = (
                 writer_frontier_module
                 ._writer_frontier_raw_successors_for_streaming(
@@ -12872,11 +12842,19 @@ class WriterStateKernelTest(unittest.TestCase):
                 )
             )
 
-        self.assertEqual(successors, ((choice.emitted_text, choice.successor),))
-        checked_snapshot.assert_called_once_with(
+        self.assertEqual(
+            successors,
+            tuple(
+                (cert.emitted_text, cert.successor_cursor)
+                for cert in product.text_choice_projection_certificates
+            ),
+        )
+        checked_product.assert_called_once_with(
             prepared,
             cursor,
             include_counts=False,
+            include_frontier_certificate=False,
+            include_count_certificate=False,
         )
 
     def test_writer_frontier_choices_routes_through_checked_product(self) -> None:
@@ -14424,14 +14402,24 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertNotIn("count_writer_cursor_completions(", source)
         self.assertNotIn("iter_writer_frontier_support(", source)
 
-    def test_public_frontier_summary_wrappers_use_shared_summary(self) -> None:
-        for function in (
-            writer_frontier_module.count_writer_cursor_completions,
-            writer_frontier_module.iter_writer_frontier_support,
-        ):
-            with self.subTest(function=function.__name__):
-                source = inspect.getsource(function)
-                self.assertIn("_writer_frontier_summary", source)
+    def test_public_frontier_wrappers_use_product_certificates(self) -> None:
+        completion_source = inspect.getsource(
+            writer_frontier_module.count_writer_cursor_completions
+        )
+        support_source = inspect.getsource(
+            writer_frontier_module.iter_writer_frontier_support
+        )
+
+        self.assertIn(
+            "_checked_writer_frontier_count_certificate",
+            completion_source,
+        )
+        self.assertIn(
+            "_iter_checked_writer_frontier_certified_support_strings",
+            support_source,
+        )
+        self.assertNotIn("_writer_frontier_summary", completion_source)
+        self.assertNotIn("_writer_frontier_summary", support_source)
 
     def test_frontier_summary_owns_support_and_completion_recursion(
         self,

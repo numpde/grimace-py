@@ -6,7 +6,9 @@ import unittest
 from collections import Counter
 from dataclasses import replace
 from types import SimpleNamespace
+from unittest.mock import patch
 
+from grimace._south_star1 import writer_frontier as writer_frontier_module
 from grimace._south_star1.policy import SerializationLanguageMode
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
@@ -15,6 +17,7 @@ from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_fa
 from grimace._south_star1.writer_branch_certificates import (
     writer_checked_terminal_support_certificate,
 )
+from grimace._south_star1.writer_capabilities import _WriterExecutionCapabilityKind
 from grimace._south_star1.writer_blocked_frontier_certificates import (
     writer_blocked_frontier_certificate,
 )
@@ -106,6 +109,7 @@ from grimace._south_star1.writer_support_certificates import (
     writer_support_string_certificate,
 )
 from tests.south_star1.helpers import cco_facts
+from tests.south_star1.helpers import tetrahedral_facts
 
 
 class WriterRuntimeFacadeTest(unittest.TestCase):
@@ -891,6 +895,129 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             blocked_certificate.graph_policy_blocker_certificates
         )
 
+    def test_diagnostics_returns_blocked_product_for_unsupported_capability(
+        self,
+    ) -> None:
+        prepared = _prepare(tetrahedral_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        product = _checked_writer_frontier_product(
+            prepared,
+            state.snapshot.cursor,
+        )
+        capability = next(
+            capability
+            for support in product.branch_supports
+            for capability in support.execution_capabilities
+        )
+
+        def unsupported(capabilities):
+            return frozenset(
+                item for item in capabilities if item is capability
+            )
+
+        with patch.object(
+            writer_frontier_module,
+            "_unsupported_public_writer_execution_capabilities",
+            unsupported,
+        ):
+            diagnostics = writer_runtime_diagnostics(
+                prepared=prepared,
+                state=state,
+            )
+
+        self.assertTrue(diagnostics.blocked)
+        self.assertIsNone(diagnostics.checked_frontier_certificate)
+        self.assertIsNotNone(diagnostics.blocked_frontier_certificate)
+        self.assertEqual(diagnostics.choice_texts, ())
+        self.assertFalse(diagnostics.has_eos)
+        self.assertIn(
+            capability,
+            diagnostics.unsupported_execution_capabilities,
+        )
+        cert = diagnostics.diagnostic_certificate
+        self.assertIsNotNone(cert)
+        self.assertFalse(cert.text_choice_projection_certificates)
+        self.assertIsNone(cert.terminal_projection_certificate)
+        self.assertFalse(cert.branch_certificates)
+        self.assertFalse(cert.terminal_certificates)
+        self.assertIsNone(cert.count_certificate)
+        self.assertTrue(
+            cert.unsupported_execution_capability_certificates
+        )
+        self.assertTrue(
+            cert
+            .unsupported_execution_capability_certificates[0]
+            .source_evidence
+        )
+
+    def test_runtime_choices_still_raise_for_unsupported_capability(
+        self,
+    ) -> None:
+        prepared = _prepare(tetrahedral_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        product = _checked_writer_frontier_product(
+            prepared,
+            state.snapshot.cursor,
+        )
+        capability = next(
+            capability
+            for support in product.branch_supports
+            for capability in support.execution_capabilities
+        )
+
+        def unsupported(capabilities):
+            return frozenset(
+                item for item in capabilities if item is capability
+            )
+
+        with patch.object(
+            writer_frontier_module,
+            "_unsupported_public_writer_execution_capabilities",
+            unsupported,
+        ):
+            with self.assertRaisesRegex(
+                SouthStarError,
+                "unsupported South Star execution capability",
+            ):
+                writer_runtime_choices(prepared=prepared, state=state)
+
+    def test_diagnostics_returns_blocked_product_for_work_envelope_violation(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+
+        def fake_violation(evidence):
+            return SimpleNamespace(evidence=evidence)
+
+        with patch.object(
+            writer_frontier_module,
+            "writer_graph_obligation_work_envelope_violation",
+            fake_violation,
+        ):
+            diagnostics = writer_runtime_diagnostics(
+                prepared=prepared,
+                state=state,
+            )
+
+        self.assertTrue(diagnostics.blocked)
+        self.assertIsNone(diagnostics.checked_frontier_certificate)
+        self.assertIsNotNone(diagnostics.blocked_frontier_certificate)
+        self.assertEqual(diagnostics.choice_texts, ())
+        self.assertFalse(diagnostics.has_eos)
+        self.assertTrue(
+            diagnostics.graph_obligation_work_envelope_violations
+        )
+
     def test_diagnostics_certificate_rejects_malformed_inputs(self) -> None:
         prepared = _prepare(cco_facts())
         state = initial_writer_runtime_state(
@@ -960,6 +1087,29 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
                     ),
                 }),
                 branch_batch=bad_batch,
+            )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "unsupported_capability_lacks_source_evidence",
+        ):
+            writer_diagnostics_certificate(
+                cursor=state.snapshot.cursor,
+                diagnostics=SimpleNamespace(**{
+                    **vars(base),
+                    "blocked": True,
+                    "choice_texts": (),
+                    "has_eos": False,
+                    "unsupported_execution_capabilities": frozenset((
+                        _WriterExecutionCapabilityKind.TREE_CHILD_ENTRY,
+                    )),
+                }),
+                branch_batch=SimpleNamespace(
+                    supports=(),
+                    terminal_supports=(),
+                    text_choice_projection_certificates=(),
+                    terminal_projection_certificate=None,
+                ),
             )
 
         with self.assertRaisesRegex(

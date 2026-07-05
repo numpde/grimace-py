@@ -19,7 +19,7 @@ from .writer_snapshot import WriterSearchSnapshot
 from .writer_snapshot import _iter_writer_snapshot_certified_support_strings
 from .writer_snapshot import _writer_search_snapshot_after_checked_branch_support
 from .writer_snapshot import _writer_search_snapshot_after_checked_choice
-from .writer_snapshot import _writer_search_snapshot_after_certified_emitted_text
+from .writer_snapshot import _writer_search_snapshot_after_certified_text_projection
 from .writer_snapshot import advance_writer_frontier_snapshot
 from .writer_snapshot import capture_initial_writer_frontier_snapshot
 from .writer_snapshot import validate_writer_search_snapshot
@@ -321,12 +321,16 @@ def writer_runtime_choice_transitions(
                 next_state=next_state,
                 snapshot_step_certificate=step_certificate,
             )
-            for choice in branch_batch.choices.choices
+            for choice, projection_certificate in zip(
+                branch_batch.choices.choices,
+                branch_batch.text_choice_projection_certificates,
+            )
             for next_state, step_certificate in (
                 _writer_runtime_state_after_certified_choice_text(
                     prepared=prepared,
                     state=state,
                     choice=choice,
+                    text_projection_certificate=projection_certificate,
                 ),
             )
         ),
@@ -499,11 +503,17 @@ def _writer_runtime_state_after_certified_choice_text(
     prepared: SouthStarPreparedMol,
     state: WriterRuntimeState,
     choice: WriterFrontierChoice,
+    text_projection_certificate,
 ) -> tuple[WriterRuntimeState, object]:
-    snapshot, certificate = _writer_search_snapshot_after_certified_emitted_text(
+    if text_projection_certificate.emitted_text != choice.emitted_text:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "runtime choice projection text mismatch",
+        )
+    snapshot, certificate = _writer_search_snapshot_after_certified_text_projection(
         state.snapshot,
         prepared=prepared,
-        emitted_text=choice.emitted_text,
+        text_projection_certificate=text_projection_certificate,
     )
     return WriterRuntimeState(snapshot), certificate
 

@@ -98,6 +98,9 @@ from .writer_support_certificates import (
 from .writer_blocked_frontier_certificates import (
     writer_blocked_frontier_certificate,
 )
+from .writer_diagnostic_certificates import (
+    WriterUnsupportedCapabilitySourceEvidence,
+)
 from .writer_diagnostic_certificates import writer_diagnostics_certificate
 from .writer_capability_certificates import writer_capability_coverage_certificate
 from .writer_frontier_certificates import writer_checked_frontier_certificate
@@ -395,6 +398,33 @@ class _WriterFrontierBranchSupportBatch:
 class _WriterCheckedFrontierProductKind(Enum):
     LEGAL = "legal"
     BLOCKED = "blocked"
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterFrontierBlockerEvidence:
+    graph_policy_blockers: tuple[object, ...]
+    stereo_policy_blockers: tuple[object, ...]
+    unsupported_execution_capabilities: frozenset[object]
+    unsupported_terminal_execution_capabilities: frozenset[object]
+    residual_work_envelope_violations: tuple[object, ...]
+    terminal_residual_work_envelope_violations: tuple[object, ...]
+    finite_relation_work_envelope_violations: tuple[object, ...]
+    graph_obligation_work_envelope_violations: tuple[object, ...]
+    unsupported_capability_source_evidence: tuple[object, ...] = ()
+    unsupported_terminal_capability_source_evidence: tuple[object, ...] = ()
+
+    @property
+    def blocked(self) -> bool:
+        return bool(
+            self.graph_policy_blockers
+            or self.stereo_policy_blockers
+            or self.unsupported_execution_capabilities
+            or self.unsupported_terminal_execution_capabilities
+            or self.residual_work_envelope_violations
+            or self.terminal_residual_work_envelope_violations
+            or self.finite_relation_work_envelope_violations
+            or self.graph_obligation_work_envelope_violations
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -1116,6 +1146,36 @@ class _WriterFrontierScheduleOutcome:
             for outcome in self.state_outcomes
             if outcome.finalized_state_key is not None
             for evidence in outcome.terminal_residual_work_evidence
+        )
+
+    @property
+    def execution_capabilities(
+        self,
+    ) -> frozenset[_WriterExecutionCapabilityKind]:
+        return frozenset(
+            capability
+            for entry in self.next_token_frontier
+            for capability in entry.execution_capabilities
+        )
+
+    @property
+    def residual_work_evidence(
+        self,
+    ) -> tuple[WriterResidualPropagationWorkEvidence, ...]:
+        return tuple(
+            evidence
+            for entry in self.next_token_frontier
+            for evidence in entry.residual_work_evidence
+        )
+
+    @property
+    def finite_relation_work_evidence(
+        self,
+    ) -> tuple[WriterFiniteRelationWorkEvidence, ...]:
+        return tuple(
+            evidence
+            for entry in self.next_token_frontier
+            for evidence in entry.finite_relation_work_evidence
         )
 
     @property
@@ -2865,10 +2925,43 @@ def _checked_writer_frontier_product(
     include_diagnostics: bool = False,
     include_count_certificate: bool = True,
 ) -> _WriterCheckedFrontierProduct:
-    schedule_outcome = _checked_writer_frontier_schedule_outcome(
+    schedule_outcome = _writer_frontier_schedule_outcome(
         prepared,
         cursor,
+        stop_after_first_blocked=True,
     )
+    blocker_evidence = _writer_frontier_blocker_evidence_from_schedule_outcome(
+        schedule_outcome
+    )
+    if blocker_evidence.blocked:
+        _raise_for_writer_frontier_blocker_evidence(
+            blocker_evidence,
+            schedule_outcome,
+        )
+
+    return _legal_writer_frontier_product_from_schedule_outcome(
+        prepared=prepared,
+        cursor=cursor,
+        schedule_outcome=schedule_outcome,
+        blocker_evidence=blocker_evidence,
+        include_counts=include_counts,
+        include_frontier_certificate=include_frontier_certificate,
+        include_diagnostics=include_diagnostics,
+        include_count_certificate=include_count_certificate,
+    )
+
+
+def _legal_writer_frontier_product_from_schedule_outcome(
+    *,
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+    schedule_outcome: _WriterFrontierScheduleOutcome,
+    blocker_evidence: _WriterFrontierBlockerEvidence,
+    include_counts: bool,
+    include_frontier_certificate: bool,
+    include_diagnostics: bool,
+    include_count_certificate: bool,
+) -> _WriterCheckedFrontierProduct:
     choice_snapshot = _writer_frontier_choice_snapshot_from_schedule_outcome(
         prepared,
         schedule_outcome,
@@ -3027,22 +3120,30 @@ def _checked_writer_frontier_product(
         diagnostic_certificate = writer_diagnostics_certificate(
             cursor=cursor,
             diagnostics=SimpleNamespace(
-                blocked=choice_snapshot.blocked,
-                graph_policy_blockers=choice_snapshot.graph_policy_blockers,
-                stereo_policy_blockers=choice_snapshot.stereo_policy_blockers,
+                blocked=blocker_evidence.blocked,
+                graph_policy_blockers=(
+                    blocker_evidence.graph_policy_blockers
+                ),
+                stereo_policy_blockers=(
+                    blocker_evidence.stereo_policy_blockers
+                ),
                 execution_capabilities=choice_snapshot.execution_capabilities,
                 terminal_execution_capabilities=(
                     choice_snapshot.terminal_execution_capabilities
                 ),
                 unsupported_execution_capabilities=(
-                    _unsupported_public_writer_execution_capabilities(
-                        choice_snapshot.execution_capabilities,
-                    )
+                    blocker_evidence.unsupported_execution_capabilities
                 ),
                 unsupported_terminal_execution_capabilities=(
-                    _unsupported_public_writer_execution_capabilities(
-                        choice_snapshot.terminal_execution_capabilities,
-                    )
+                    blocker_evidence
+                    .unsupported_terminal_execution_capabilities
+                ),
+                unsupported_capability_source_evidence=(
+                    blocker_evidence.unsupported_capability_source_evidence
+                ),
+                unsupported_terminal_capability_source_evidence=(
+                    blocker_evidence
+                    .unsupported_terminal_capability_source_evidence
                 ),
                 residual_work_evidence=choice_snapshot.residual_work_evidence,
                 terminal_residual_work_evidence=(
@@ -3055,28 +3156,18 @@ def _checked_writer_frontier_product(
                     choice_snapshot.graph_obligation_work_evidence
                 ),
                 residual_work_envelope_violations=(
-                    _writer_frontier_work_envelope_violations(
-                        choice_snapshot.residual_work_evidence,
-                        writer_residual_work_envelope_violation,
-                    )
+                    blocker_evidence.residual_work_envelope_violations
                 ),
                 terminal_residual_work_envelope_violations=(
-                    _writer_frontier_work_envelope_violations(
-                        choice_snapshot.terminal_residual_work_evidence,
-                        writer_residual_work_envelope_violation,
-                    )
+                    blocker_evidence
+                    .terminal_residual_work_envelope_violations
                 ),
                 finite_relation_work_envelope_violations=(
-                    _writer_frontier_work_envelope_violations(
-                        choice_snapshot.finite_relation_work_evidence,
-                        writer_finite_relation_work_envelope_violation,
-                    )
+                    blocker_evidence.finite_relation_work_envelope_violations
                 ),
                 graph_obligation_work_envelope_violations=(
-                    _writer_frontier_work_envelope_violations(
-                        choice_snapshot.graph_obligation_work_evidence,
-                        writer_graph_obligation_work_envelope_violation,
-                    )
+                    blocker_evidence
+                    .graph_obligation_work_envelope_violations
                 ),
                 choice_texts=tuple(
                     choice.emitted_text for choice in choice_snapshot.choices
@@ -3419,29 +3510,179 @@ def _writer_frontier_work_envelope_violations(
     )
 
 
+def _writer_frontier_unsupported_capability_source_evidence(
+    *,
+    outcome: _WriterFrontierScheduleOutcome,
+    unsupported_execution_capabilities: frozenset[object],
+    unsupported_terminal_execution_capabilities: frozenset[object],
+) -> tuple[
+    tuple[object, ...],
+    tuple[object, ...],
+]:
+    execution_evidence: list[object] = []
+    for support in outcome.next_token_supports:
+        unsupported = (
+            support.execution_capabilities
+            & unsupported_execution_capabilities
+        )
+        for capability in unsupported:
+            transition = support.schedule_support.transition
+            execution_evidence.append(
+                WriterUnsupportedCapabilitySourceEvidence(
+                    capability=capability,
+                    source_kind="next_token_support",
+                    source_state=support.state_key,
+                    emitted_text=support.emitted_text,
+                    transition_kind=transition.kind,
+                    policy_family=support.policy_family,
+                    graph_action_surface=support.graph_action_surface,
+                    terminal=False,
+                    evidence=transition.evidence,
+                )
+            )
+
+    terminal_evidence: list[object] = []
+    for state_outcome in outcome.state_outcomes:
+        unsupported = (
+            state_outcome.terminal_execution_capabilities
+            & unsupported_terminal_execution_capabilities
+        )
+        for capability in unsupported:
+            terminal_evidence.append(
+                WriterUnsupportedCapabilitySourceEvidence(
+                    capability=capability,
+                    source_kind="terminal_support",
+                    source_state=state_outcome.state_key,
+                    terminal=True,
+                    evidence=state_outcome,
+                )
+            )
+
+    return tuple(execution_evidence), tuple(terminal_evidence)
+
+
+def _writer_frontier_blocker_evidence_from_schedule_outcome(
+    outcome: _WriterFrontierScheduleOutcome,
+) -> _WriterFrontierBlockerEvidence:
+    unsupported_execution_capabilities = (
+        _unsupported_public_writer_execution_capabilities(
+            outcome.execution_capabilities
+        )
+    )
+    unsupported_terminal_execution_capabilities = (
+        _unsupported_public_writer_execution_capabilities(
+            outcome.terminal_execution_capabilities
+        )
+    )
+    (
+        unsupported_source_evidence,
+        unsupported_terminal_source_evidence,
+    ) = _writer_frontier_unsupported_capability_source_evidence(
+        outcome=outcome,
+        unsupported_execution_capabilities=(
+            unsupported_execution_capabilities
+        ),
+        unsupported_terminal_execution_capabilities=(
+            unsupported_terminal_execution_capabilities
+        ),
+    )
+    return _WriterFrontierBlockerEvidence(
+        graph_policy_blockers=outcome.graph_policy_blockers,
+        stereo_policy_blockers=outcome.stereo_policy_blockers,
+        unsupported_execution_capabilities=(
+            unsupported_execution_capabilities
+        ),
+        unsupported_terminal_execution_capabilities=(
+            unsupported_terminal_execution_capabilities
+        ),
+        residual_work_envelope_violations=(
+            _writer_frontier_work_envelope_violations(
+                outcome.residual_work_evidence,
+                writer_residual_work_envelope_violation,
+            )
+        ),
+        terminal_residual_work_envelope_violations=(
+            _writer_frontier_work_envelope_violations(
+                outcome.terminal_residual_work_evidence,
+                writer_residual_work_envelope_violation,
+            )
+        ),
+        finite_relation_work_envelope_violations=(
+            _writer_frontier_work_envelope_violations(
+                outcome.finite_relation_work_evidence,
+                writer_finite_relation_work_envelope_violation,
+            )
+        ),
+        graph_obligation_work_envelope_violations=(
+            _writer_frontier_work_envelope_violations(
+                outcome.graph_obligation_work_evidence,
+                writer_graph_obligation_work_envelope_violation,
+            )
+        ),
+        unsupported_capability_source_evidence=(
+            unsupported_source_evidence
+        ),
+        unsupported_terminal_capability_source_evidence=(
+            unsupported_terminal_source_evidence
+        ),
+    )
+
+
+def _raise_for_writer_frontier_blocker_evidence(
+    blocker_evidence: _WriterFrontierBlockerEvidence,
+    outcome: _WriterFrontierScheduleOutcome,
+) -> None:
+    if blocker_evidence.graph_policy_blockers:
+        _raise_for_writer_frontier_schedule_outcome_blockers(outcome)
+    if blocker_evidence.stereo_policy_blockers:
+        _raise_for_writer_frontier_stereo_policy_blockers(outcome)
+    if (
+        blocker_evidence.unsupported_execution_capabilities
+        or blocker_evidence.unsupported_terminal_execution_capabilities
+    ):
+        _raise_for_writer_frontier_execution_capability_blockers(outcome)
+    if (
+        blocker_evidence.residual_work_envelope_violations
+        or blocker_evidence.terminal_residual_work_envelope_violations
+    ):
+        _raise_for_writer_frontier_residual_work_envelope_blockers(outcome)
+    if blocker_evidence.finite_relation_work_envelope_violations:
+        _raise_for_writer_frontier_finite_relation_work_envelope_blockers(
+            outcome
+        )
+    if blocker_evidence.graph_obligation_work_envelope_violations:
+        _raise_for_writer_frontier_graph_obligation_work_envelope_blockers(
+            outcome
+        )
+
+
 def _writer_frontier_diagnostics_dict_from_choice_snapshot(
     choice_snapshot: _WriterFrontierChoiceSnapshot,
     *,
+    blocker_evidence: _WriterFrontierBlockerEvidence,
     choice_texts: tuple[str, ...] | None = None,
     has_eos: bool | None = None,
 ) -> dict[str, object]:
     return dict(
-        blocked=choice_snapshot.blocked,
-        graph_policy_blockers=choice_snapshot.graph_policy_blockers,
-        stereo_policy_blockers=choice_snapshot.stereo_policy_blockers,
+        blocked=blocker_evidence.blocked,
+        graph_policy_blockers=blocker_evidence.graph_policy_blockers,
+        stereo_policy_blockers=blocker_evidence.stereo_policy_blockers,
         execution_capabilities=choice_snapshot.execution_capabilities,
         terminal_execution_capabilities=(
             choice_snapshot.terminal_execution_capabilities
         ),
         unsupported_execution_capabilities=(
-            _unsupported_public_writer_execution_capabilities(
-                choice_snapshot.execution_capabilities,
-            )
+            blocker_evidence.unsupported_execution_capabilities
         ),
         unsupported_terminal_execution_capabilities=(
-            _unsupported_public_writer_execution_capabilities(
-                choice_snapshot.terminal_execution_capabilities,
-            )
+            blocker_evidence.unsupported_terminal_execution_capabilities
+        ),
+        unsupported_capability_source_evidence=(
+            blocker_evidence.unsupported_capability_source_evidence
+        ),
+        unsupported_terminal_capability_source_evidence=(
+            blocker_evidence
+            .unsupported_terminal_capability_source_evidence
         ),
         residual_work_evidence=choice_snapshot.residual_work_evidence,
         terminal_residual_work_evidence=(
@@ -3454,28 +3695,16 @@ def _writer_frontier_diagnostics_dict_from_choice_snapshot(
             choice_snapshot.graph_obligation_work_evidence
         ),
         residual_work_envelope_violations=(
-            _writer_frontier_work_envelope_violations(
-                choice_snapshot.residual_work_evidence,
-                writer_residual_work_envelope_violation,
-            )
+            blocker_evidence.residual_work_envelope_violations
         ),
         terminal_residual_work_envelope_violations=(
-            _writer_frontier_work_envelope_violations(
-                choice_snapshot.terminal_residual_work_evidence,
-                writer_residual_work_envelope_violation,
-            )
+            blocker_evidence.terminal_residual_work_envelope_violations
         ),
         finite_relation_work_envelope_violations=(
-            _writer_frontier_work_envelope_violations(
-                choice_snapshot.finite_relation_work_evidence,
-                writer_finite_relation_work_envelope_violation,
-            )
+            blocker_evidence.finite_relation_work_envelope_violations
         ),
         graph_obligation_work_envelope_violations=(
-            _writer_frontier_work_envelope_violations(
-                choice_snapshot.graph_obligation_work_evidence,
-                writer_graph_obligation_work_envelope_violation,
-            )
+            blocker_evidence.graph_obligation_work_envelope_violations
         ),
         choice_texts=(
             choice_texts
@@ -3509,10 +3738,12 @@ def _blocked_writer_frontier_product_from_choice_snapshot(
     *,
     cursor: WriterFrontierCursor,
     choice_snapshot: _WriterFrontierChoiceSnapshot,
+    blocker_evidence: _WriterFrontierBlockerEvidence,
 ) -> _WriterCheckedFrontierProduct:
     branch_batch = _empty_blocked_writer_frontier_branch_batch()
     diagnostics_dict = _writer_frontier_diagnostics_dict_from_choice_snapshot(
         choice_snapshot,
+        blocker_evidence=blocker_evidence,
         choice_texts=(),
         has_eos=False,
     )
@@ -3548,28 +3779,40 @@ def _diagnostic_writer_frontier_product(
     prepared: SouthStarPreparedMol,
     cursor: WriterFrontierCursor,
 ) -> _WriterCheckedFrontierProduct:
-    choice_snapshot = _writer_frontier_choice_snapshot(
+    schedule_outcome = _writer_frontier_schedule_outcome(
         prepared,
         cursor,
-        include_counts=False,
         stop_after_first_blocked=False,
     )
-    if choice_snapshot.blocked:
+    blocker_evidence = _writer_frontier_blocker_evidence_from_schedule_outcome(
+        schedule_outcome
+    )
+    choice_snapshot = _writer_frontier_choice_snapshot_from_schedule_outcome(
+        prepared,
+        schedule_outcome,
+        include_counts=False,
+    )
+    if blocker_evidence.blocked:
         return _blocked_writer_frontier_product_from_choice_snapshot(
             cursor=cursor,
             choice_snapshot=choice_snapshot,
+            blocker_evidence=blocker_evidence,
         )
 
-    product = _checked_writer_frontier_product(
-        prepared,
-        cursor,
+    product = _legal_writer_frontier_product_from_schedule_outcome(
+        prepared=prepared,
+        cursor=cursor,
+        schedule_outcome=schedule_outcome,
+        blocker_evidence=blocker_evidence,
         include_counts=True,
         include_frontier_certificate=False,
         include_diagnostics=False,
+        include_count_certificate=True,
     )
     branch_batch = product.branch_batch
     diagnostics_dict = _writer_frontier_diagnostics_dict_from_choice_snapshot(
         choice_snapshot,
+        blocker_evidence=blocker_evidence,
         choice_texts=tuple(
             choice.emitted_text for choice in branch_batch.choices.choices
         ),
@@ -3644,8 +3887,12 @@ def _writer_frontier_diagnostics(
         include_counts=False,
         stop_after_first_blocked=False,
     )
+    blocker_evidence = _writer_frontier_blocker_evidence_from_schedule_outcome(
+        choice_snapshot.schedule_outcome
+    )
     diagnostics_dict = _writer_frontier_diagnostics_dict_from_choice_snapshot(
         choice_snapshot,
+        blocker_evidence=blocker_evidence,
         choice_texts=tuple(
             certificate.emitted_text
             for certificate in (
@@ -3663,6 +3910,11 @@ def _writer_frontier_diagnostics(
     )
     diagnostics_dict["blocked_frontier_certificate"] = (
         product.blocked_frontier_certificate
+    )
+    diagnostics_dict.pop("unsupported_capability_source_evidence", None)
+    diagnostics_dict.pop(
+        "unsupported_terminal_capability_source_evidence",
+        None,
     )
     return _WriterFrontierDiagnostics(**diagnostics_dict)
 

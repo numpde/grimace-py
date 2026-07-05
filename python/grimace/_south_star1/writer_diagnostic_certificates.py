@@ -20,6 +20,20 @@ class WriterUnsupportedCapabilityCertificate:
     capability: object
     source: str
     source_certificates: tuple[object, ...]
+    source_evidence: tuple[object, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class WriterUnsupportedCapabilitySourceEvidence:
+    capability: object
+    source_kind: str
+    source_state: object | None = None
+    emitted_text: str | None = None
+    transition_kind: object | None = None
+    policy_family: object | None = None
+    graph_action_surface: object | None = None
+    terminal: bool = False
+    evidence: object | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -173,6 +187,13 @@ def writer_diagnostics_certificate(
             source="branch_support",
             branch_certificates=branch_certificates,
             terminal_certificates=terminal_certificates,
+            source_evidence=tuple(
+                getattr(
+                    diagnostics,
+                    "unsupported_capability_source_evidence",
+                    (),
+                )
+            ),
         )
     )
     unsupported_terminal_execution_capability_certificates = (
@@ -183,6 +204,13 @@ def writer_diagnostics_certificate(
             source="terminal_support",
             branch_certificates=branch_certificates,
             terminal_certificates=terminal_certificates,
+            source_evidence=tuple(
+                getattr(
+                    diagnostics,
+                    "unsupported_terminal_capability_source_evidence",
+                    (),
+                )
+            ),
         )
     )
 
@@ -264,6 +292,7 @@ def _unsupported_capability_certificates(
     source: str,
     branch_certificates: tuple[object, ...],
     terminal_certificates: tuple[object, ...],
+    source_evidence: tuple[object, ...] = (),
 ) -> tuple[WriterUnsupportedCapabilityCertificate, ...]:
     certificates: list[WriterUnsupportedCapabilityCertificate] = []
     for capability in unsupported:
@@ -281,11 +310,21 @@ def _unsupported_capability_certificates(
                 (),
             )
         )
+        matching_source_evidence = tuple(
+            item
+            for item in source_evidence
+            if getattr(item, "capability", None) is capability
+        )
+        if not source_certificates and not matching_source_evidence:
+            _diagnostic_violation(
+                "unsupported_capability_lacks_source_evidence"
+            )
         certificates.append(
             WriterUnsupportedCapabilityCertificate(
                 capability=capability,
                 source=source,
                 source_certificates=source_certificates,
+                source_evidence=matching_source_evidence,
             )
         )
     return tuple(certificates)
@@ -303,5 +342,6 @@ __all__ = (
     "WriterDiagnosticBlockerCertificate",
     "WriterWorkEnvelopeViolationCertificate",
     "WriterUnsupportedCapabilityCertificate",
+    "WriterUnsupportedCapabilitySourceEvidence",
     "writer_diagnostics_certificate",
 )

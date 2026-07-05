@@ -28,6 +28,7 @@ from .writer_state import WriterClosedClosure
 from .writer_state import WriterAtomFrame
 from .writer_state import WriterBranchFrame
 from .writer_state import PendingWriterEntry
+from .writer_state import PendingEntryPhase
 from .writer_state import WriterRingLabelState
 from .writer_state import WriterOpenClosureEndpoint
 
@@ -1189,6 +1190,28 @@ def _expected_obligations_from_graph_replay(
     expected = source_state.obligations
     pending = getattr(expected, "pending_entry", None)
     discharged = False
+    transformed = False
+
+    for event in event_view.bond_events:
+        if pending is None:
+            continue
+        if pending.phase is not PendingEntryPhase.NEEDS_BOND_OR_ATOM:
+            continue
+        if pending.parent != event.parent:
+            _delta_violation("obligation_replay_pending_parent_mismatch")
+        if pending.child != event.child:
+            _delta_violation("obligation_replay_pending_child_mismatch")
+        if pending.bond != event.bond:
+            _delta_violation("obligation_replay_pending_bond_mismatch")
+        pending = PendingWriterEntry(
+            parent=pending.parent,
+            child=pending.child,
+            bond=pending.bond,
+            branch=pending.branch,
+            phase=PendingEntryPhase.NEEDS_ATOM_AFTER_BOND,
+        )
+        expected = expected.__class__(pending_entry=pending)
+        transformed = True
 
     for event in event_view.atom_events:
         if pending is None:
@@ -1209,9 +1232,18 @@ def _expected_obligations_from_graph_replay(
             WriterGraphObligationReplayKind.PENDING_ENTRY_DISCHARGED,
             True,
         )
+    if transformed:
+        return (
+            expected,
+            WriterGraphObligationReplayKind.PENDING_ENTRY_TRANSFORMED,
+            True,
+        )
 
     if getattr(source_state.obligations, "pending_entry", None) is None:
-        pending_entry = _pending_entry_from_graph_action_surface(graph_action_surface)
+        pending_entry = _pending_entry_from_graph_action_surface(
+            graph_action_surface,
+            event_view=event_view,
+        )
         if pending_entry is not None:
             expected = source_state.obligations.__class__(
                 pending_entry=pending_entry,
@@ -1229,16 +1261,35 @@ def _expected_obligations_from_graph_replay(
     )
 
 
-def _pending_entry_from_graph_action_surface(surface) -> PendingWriterEntry | None:
+def _pending_entry_from_graph_action_surface(
+    surface,
+    *,
+    event_view: WriterEventDeltaView,
+) -> PendingWriterEntry | None:
     if surface is None:
         return None
     kind = getattr(getattr(surface, "kind", None), "value", None)
-    if kind != "open_branch":
-        return None
     parent = getattr(surface, "active_atom", None)
     child = getattr(surface, "partner_atom", None)
     bond = getattr(surface, "bond", None)
     if parent is None or child is None or bond is None:
+        return None
+    if kind == "enter_inline_child":
+        if not any(
+            event.parent == parent
+            and event.child == child
+            and event.bond == bond
+            for event in event_view.bond_events
+        ):
+            return None
+        return PendingWriterEntry(
+            parent=parent,
+            child=child,
+            bond=bond,
+            branch=False,
+            phase=PendingEntryPhase.NEEDS_ATOM_AFTER_BOND,
+        )
+    if kind != "open_branch":
         return None
     return PendingWriterEntry(
         parent=parent,

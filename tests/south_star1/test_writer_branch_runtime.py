@@ -1729,6 +1729,39 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 )
             )
 
+    def test_directional_graph_obligation_replay_has_no_incomplete_cases(
+        self,
+    ) -> None:
+        prepared = _prepare(directional_facts())
+        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        seen: set[WriterFrontierCursor] = set()
+        pending = [initial]
+        while pending and len(seen) < 1000:
+            cursor = pending.pop(0)
+            if cursor in seen:
+                continue
+            seen.add(cursor)
+            batch = _checked_writer_frontier_branch_supports(
+                prepared,
+                cursor,
+                include_counts=False,
+            )
+            for support in batch.supports:
+                replay = (
+                    support.successor_state_certificate
+                    .graph_replay_certificate
+                    .obligation_replay_certificate
+                )
+                self.assertIsNot(
+                    replay.kind,
+                    (
+                        writer_state_delta_certificates
+                        .WriterGraphObligationReplayKind
+                        .EVIDENCE_BOUND_INCOMPLETE
+                    ),
+                )
+                pending.append(support.successor_cursor)
+
     def test_obligation_replay_rejects_stale_expected_successor(self) -> None:
         prepared = _prepare(cco_facts())
         initial = initial_writer_frontier_cursor(prepared, _writer_options())

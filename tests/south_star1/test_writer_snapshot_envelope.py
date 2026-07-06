@@ -196,6 +196,20 @@ class WriterSnapshotEnvelopeTest(unittest.TestCase):
             ).accepted
         )
 
+    def test_wrong_decoder_boundary_is_rejected(self) -> None:
+        prepared = _prepare(cco_facts())
+        envelope = _legal_envelope(prepared=prepared)
+        envelope["source_snapshot"]["decoder_boundary"][
+            "consumed_token_count"
+        ] += 1
+
+        self.assertFalse(
+            verify_writer_snapshot_advance_envelope(
+                prepared=prepared,
+                envelope=envelope,
+            ).accepted
+        )
+
     def test_wrong_emitted_text_is_rejected(self) -> None:
         prepared = _prepare(cco_facts())
         envelope = _legal_envelope(prepared=prepared)

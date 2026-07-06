@@ -1,0 +1,319 @@
+"""Durable envelopes for writer snapshot replay chains."""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from dataclasses import dataclass
+
+from .errors import SouthStarError
+from .errors import SouthStarErrorKind
+from .prepared_runtime import SouthStarPreparedMol
+from .writer_envelope_terms import _digest
+from .writer_envelope_terms import _identity_envelope
+from .writer_envelope_terms import _runtime_options_from_terms
+from .writer_envelope_terms import _snapshot_identity_envelope
+from .writer_envelope_terms import _term
+from .writer_snapshot import _prepared_identity
+from .writer_snapshot import (
+    _writer_snapshot_advance_sequence_outcome_by_emitted_texts,
+)
+from .writer_snapshot_envelope import _source_snapshot_from_envelope
+from .writer_snapshot_envelope import verify_writer_snapshot_advance_envelope
+from .writer_snapshot_envelope import writer_snapshot_advance_envelope_for_emitted_text
+
+
+SCHEMA_NAME = "writer_snapshot_replay"
+SCHEMA_VERSION = 1
+_TOP_LEVEL_FIELDS = frozenset((
+    "schema_name",
+    "schema_version",
+    "prepared_identity",
+    "source_snapshot",
+    "emitted_texts",
+    "outcome_kind",
+    "consumed_emitted_texts",
+    "remaining_emitted_texts",
+    "step_advance_envelopes",
+    "current_snapshot",
+    "replay_certificate",
+    "failed_advance_envelope",
+))
+_OUTCOME_KINDS = frozenset(("advanced", "invalid_emitted_text", "blocked"))
+
+
+@dataclass(frozen=True, slots=True)
+class WriterSnapshotReplayEnvelopeVerification:
+    accepted: bool
+    outcome_kind: str
+    source_snapshot: object | None
+    current_snapshot: object | None
+    failed_step_index: int | None = None
+    reason: str | None = None
+
+
+def writer_snapshot_replay_envelope_for_emitted_texts(
+    *,
+    prepared: SouthStarPreparedMol,
+    snapshot,
+    emitted_texts: tuple[str, ...],
+) -> dict[str, object]:
+    outcome = _writer_snapshot_advance_sequence_outcome_by_emitted_texts(
+        snapshot,
+        prepared=prepared,
+        emitted_texts=emitted_texts,
+    )
+    advanced_step_envelopes = tuple(
+        writer_snapshot_advance_envelope_for_emitted_text(
+            prepared=prepared,
+            snapshot=step.source_snapshot,
+            emitted_text=step.emitted_text,
+        )
+        for step in outcome.advanced_step_outcomes
+    )
+    failed_envelope = None
+    failed = outcome.failed_outcome
+    if failed is not None:
+        failed_envelope = writer_snapshot_advance_envelope_for_emitted_text(
+            prepared=prepared,
+            snapshot=failed.source_snapshot,
+            emitted_text=failed.emitted_text,
+        )
+    envelope = {
+        "schema_name": SCHEMA_NAME,
+        "schema_version": SCHEMA_VERSION,
+        "prepared_identity": _identity_envelope(snapshot.prepared_identity),
+        "source_snapshot": _snapshot_identity_envelope(snapshot),
+        "emitted_texts": list(emitted_texts),
+        "outcome_kind": outcome.kind.value,
+        "consumed_emitted_texts": list(outcome.consumed_emitted_texts),
+        "remaining_emitted_texts": list(outcome.remaining_emitted_texts),
+        "step_advance_envelopes": list(advanced_step_envelopes),
+        "current_snapshot": _snapshot_identity_envelope(
+            outcome.current_snapshot
+        ),
+        "replay_certificate": (
+            None
+            if outcome.replay_certificate is None
+            else _replay_certificate_envelope(outcome.replay_certificate)
+        ),
+        "failed_advance_envelope": failed_envelope,
+    }
+    _validate_envelope_shape(envelope)
+    _assert_prepared_identity_matches(prepared, envelope)
+    return envelope
+
+
+def verify_writer_snapshot_replay_envelope(
+    *,
+    prepared: SouthStarPreparedMol,
+    envelope: object,
+) -> WriterSnapshotReplayEnvelopeVerification:
+    try:
+        _validate_envelope_shape(envelope)
+        assert isinstance(envelope, Mapping)
+        outcome_kind = str(envelope["outcome_kind"])
+        _assert_prepared_identity_matches(prepared, envelope)
+        source_snapshot = _source_snapshot_from_envelope(
+            prepared=prepared,
+            envelope=envelope,
+        )
+        current_snapshot, failed_step_index = _verify_step_chain(
+            prepared=prepared,
+            source_snapshot=source_snapshot,
+            envelope=envelope,
+        )
+        expected = writer_snapshot_replay_envelope_for_emitted_texts(
+            prepared=prepared,
+            snapshot=source_snapshot,
+            emitted_texts=tuple(envelope["emitted_texts"]),
+        )
+        if expected != envelope:
+            return WriterSnapshotReplayEnvelopeVerification(
+                accepted=False,
+                outcome_kind=outcome_kind,
+                source_snapshot=source_snapshot,
+                current_snapshot=current_snapshot,
+                failed_step_index=failed_step_index,
+                reason="envelope_terms_mismatch",
+            )
+        return WriterSnapshotReplayEnvelopeVerification(
+            accepted=True,
+            outcome_kind=outcome_kind,
+            source_snapshot=source_snapshot,
+            current_snapshot=current_snapshot,
+            failed_step_index=failed_step_index,
+        )
+    except SouthStarError as exc:
+        return WriterSnapshotReplayEnvelopeVerification(
+            accepted=False,
+            outcome_kind=(
+                envelope.get("outcome_kind", "unknown")
+                if isinstance(envelope, Mapping)
+                else "unknown"
+            ),
+            source_snapshot=None,
+            current_snapshot=None,
+            reason=exc.args[-1] if exc.args else "verification_error",
+        )
+    except (AssertionError, KeyError, TypeError, ValueError) as exc:
+        return WriterSnapshotReplayEnvelopeVerification(
+            accepted=False,
+            outcome_kind=(
+                envelope.get("outcome_kind", "unknown")
+                if isinstance(envelope, Mapping)
+                else "unknown"
+            ),
+            source_snapshot=None,
+            current_snapshot=None,
+            reason=f"malformed_envelope:{type(exc).__name__}",
+        )
+
+
+def _verify_step_chain(*, prepared, source_snapshot, envelope):
+    emitted_texts = tuple(envelope["emitted_texts"])
+    step_envelopes = tuple(envelope["step_advance_envelopes"])
+    current = source_snapshot
+    for index, step_envelope in enumerate(step_envelopes):
+        _validate_step_source(step_envelope, current)
+        if step_envelope["emitted_text"] != emitted_texts[index]:
+            _replay_envelope_violation("step_emitted_text_mismatch")
+        verification = verify_writer_snapshot_advance_envelope(
+            prepared=prepared,
+            envelope=step_envelope,
+        )
+        if not verification.accepted:
+            _replay_envelope_violation("step_advance_envelope_rejected")
+        if verification.outcome_kind != "advanced":
+            _replay_envelope_violation("advanced_step_outcome_mismatch")
+        if verification.advanced_snapshot is None:
+            _replay_envelope_violation("advanced_step_lacks_snapshot")
+        current = verification.advanced_snapshot
+
+    failed = envelope["failed_advance_envelope"]
+    outcome_kind = envelope["outcome_kind"]
+    if outcome_kind == "advanced":
+        if failed is not None:
+            _replay_envelope_violation("advanced_replay_has_failed_step")
+        if len(step_envelopes) != len(emitted_texts):
+            _replay_envelope_violation("advanced_step_count_mismatch")
+        if envelope["remaining_emitted_texts"]:
+            _replay_envelope_violation("advanced_remaining_texts_mismatch")
+        if envelope["replay_certificate"] is None:
+            _replay_envelope_violation("missing_replay_certificate")
+        if _snapshot_identity_envelope(current) != envelope["current_snapshot"]:
+            _replay_envelope_violation("current_snapshot_mismatch")
+        return current, None
+
+    if failed is None:
+        _replay_envelope_violation("missing_failed_advance_envelope")
+    failed_index = len(step_envelopes)
+    if failed_index >= len(emitted_texts):
+        _replay_envelope_violation("failed_step_index_mismatch")
+    _validate_step_source(failed, current)
+    if failed["emitted_text"] != emitted_texts[failed_index]:
+        _replay_envelope_violation("failed_step_emitted_text_mismatch")
+    verification = verify_writer_snapshot_advance_envelope(
+        prepared=prepared,
+        envelope=failed,
+    )
+    if not verification.accepted:
+        _replay_envelope_violation("failed_advance_envelope_rejected")
+    if verification.outcome_kind != outcome_kind:
+        _replay_envelope_violation("failed_outcome_kind_mismatch")
+    if envelope["replay_certificate"] is not None:
+        _replay_envelope_violation("failed_replay_has_certificate")
+    if _snapshot_identity_envelope(current) != envelope["current_snapshot"]:
+        _replay_envelope_violation("failed_current_snapshot_mismatch")
+    return current, failed_index
+
+
+def _validate_step_source(step_envelope, snapshot) -> None:
+    if step_envelope["source_snapshot"] != _snapshot_identity_envelope(snapshot):
+        _replay_envelope_violation("step_source_snapshot_mismatch")
+
+
+def _replay_certificate_envelope(certificate) -> dict[str, object]:
+    return {
+        "source_snapshot": _snapshot_identity_envelope(
+            certificate.source_snapshot
+        ),
+        "emitted_texts": list(certificate.emitted_texts),
+        "step_certificate_digests": [
+            _digest(_term(step)) for step in certificate.step_certificates
+        ],
+        "frontier_projection_digests": [
+            _digest(_term(projection))
+            for projection in certificate.frontier_projection_certificates
+        ],
+        "final_snapshot": _snapshot_identity_envelope(
+            certificate.final_snapshot
+        ),
+        "digest": _digest(_term(certificate)),
+    }
+
+
+def _validate_envelope_shape(envelope: object) -> None:
+    if not isinstance(envelope, Mapping):
+        _replay_envelope_violation("envelope_not_mapping")
+    keys = frozenset(envelope)
+    if keys != _TOP_LEVEL_FIELDS:
+        _replay_envelope_violation("top_level_fields_mismatch")
+    if envelope["schema_name"] != SCHEMA_NAME:
+        _replay_envelope_violation("unknown_schema_name")
+    if envelope["schema_version"] != SCHEMA_VERSION:
+        _replay_envelope_violation("unknown_schema_version")
+    if envelope["outcome_kind"] not in _OUTCOME_KINDS:
+        _replay_envelope_violation("unknown_outcome_kind")
+    for field in (
+        "emitted_texts",
+        "consumed_emitted_texts",
+        "remaining_emitted_texts",
+        "step_advance_envelopes",
+    ):
+        if not isinstance(envelope[field], list):
+            _replay_envelope_violation(f"{field}_not_list")
+    emitted = list(envelope["emitted_texts"])
+    consumed = list(envelope["consumed_emitted_texts"])
+    remaining = list(envelope["remaining_emitted_texts"])
+    if consumed + remaining != emitted:
+        _replay_envelope_violation("consumed_remaining_partition_mismatch")
+    if envelope["outcome_kind"] == "advanced":
+        if remaining:
+            _replay_envelope_violation("advanced_remaining_texts_mismatch")
+        if envelope["failed_advance_envelope"] is not None:
+            _replay_envelope_violation("advanced_failed_envelope_mismatch")
+    else:
+        if envelope["failed_advance_envelope"] is None:
+            _replay_envelope_violation("missing_failed_advance_envelope")
+        if not remaining:
+            _replay_envelope_violation("failed_remaining_texts_mismatch")
+
+
+def _assert_prepared_identity_matches(prepared, envelope) -> None:
+    runtime_options = _runtime_options_from_terms(
+        envelope["source_snapshot"]["runtime_options"]
+    )
+    actual = _identity_envelope(_prepared_identity(prepared, runtime_options))
+    if envelope["prepared_identity"] != actual:
+        _replay_envelope_violation("prepared_identity_mismatch")
+    if (
+        envelope["source_snapshot"]["prepared_identity_digest"]
+        != actual["digest"]
+    ):
+        _replay_envelope_violation("source_snapshot_prepared_identity_mismatch")
+
+
+def _replay_envelope_violation(kind: str) -> None:
+    raise SouthStarError(
+        SouthStarErrorKind.INTERNAL_INVARIANT,
+        f"writer snapshot replay envelope violation: {kind}",
+    )
+
+
+__all__ = (
+    "SCHEMA_NAME",
+    "SCHEMA_VERSION",
+    "WriterSnapshotReplayEnvelopeVerification",
+    "verify_writer_snapshot_replay_envelope",
+    "writer_snapshot_replay_envelope_for_emitted_texts",
+)

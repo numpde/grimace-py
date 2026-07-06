@@ -4,17 +4,16 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from dataclasses import fields
-from dataclasses import is_dataclass
-from enum import Enum
-import hashlib
-import json
 
 from .errors import SouthStarError
 from .errors import SouthStarErrorKind
-from .policy import SerializationLanguageMode
+from .writer_envelope_terms import _cursor_envelope
+from .writer_envelope_terms import _digest
+from .writer_envelope_terms import _identity_envelope
+from .writer_envelope_terms import _runtime_options_from_terms
+from .writer_envelope_terms import _snapshot_identity_envelope
+from .writer_envelope_terms import _term
 from .prepared_runtime import SouthStarPreparedMol
-from .prepared_runtime import SouthStarRuntimeOptions
 from .writer_frontier import initial_writer_frontier_cursor
 from .writer_frontier import _snapshot_advance_writer_frontier_product
 from .writer_snapshot import WriterDecoderBoundary
@@ -323,33 +322,39 @@ def _source_snapshot_from_envelope(*, prepared, envelope) -> object:
     )
     cursor_digest = snapshot_terms["cursor"]["digest"]
     expected_boundary = snapshot_terms["decoder_boundary"]
-    for cursor in _reachable_cursors(prepared, runtime_options):
+    expected_depth = expected_boundary["consumed_token_count"]
+    for cursor, depth in _reachable_snapshot_positions(
+        prepared,
+        runtime_options,
+    ):
+        if depth != expected_depth:
+            continue
         snapshot = _capture_writer_frontier_snapshot_unchecked(
             prepared=prepared,
             runtime_options=runtime_options,
             cursor=cursor,
             decoder_boundary=WriterDecoderBoundary(
-                consumed_token_count=(
-                    expected_boundary["consumed_token_count"]
-                ),
+                consumed_token_count=expected_depth,
             ),
         )
         if _cursor_envelope(snapshot.cursor)["digest"] == cursor_digest:
             if _snapshot_identity_envelope(snapshot) != snapshot_terms:
                 _envelope_violation("source_snapshot_identity_mismatch")
             return snapshot
-    _envelope_violation("source_snapshot_cursor_not_reachable")
+    _envelope_violation("source_snapshot_position_not_reachable")
 
 
-def _reachable_cursors(prepared, runtime_options):
-    pending = [initial_writer_frontier_cursor(prepared, runtime_options)]
+def _reachable_snapshot_positions(prepared, runtime_options):
+    pending = [(initial_writer_frontier_cursor(prepared, runtime_options), 0)]
     seen = set()
     while pending and len(seen) < 5000:
-        cursor = pending.pop(0)
-        if cursor in seen:
+        cursor, depth = pending.pop(0)
+        cursor_digest = _cursor_envelope(cursor)["digest"]
+        key = (cursor_digest, depth)
+        if key in seen:
             continue
-        seen.add(cursor)
-        yield cursor
+        seen.add(key)
+        yield cursor, depth
         product = _snapshot_advance_writer_frontier_product(
             prepared,
             cursor,
@@ -359,18 +364,7 @@ def _reachable_cursors(prepared, runtime_options):
         for projection in (
             product.projection_certificate.text_choice_projection_certificates
         ):
-            pending.append(projection.successor_cursor)
-
-
-def _runtime_options_from_terms(terms: Mapping[str, object]):
-    return SouthStarRuntimeOptions(
-        rooted_at_atom=terms["rooted_at_atom"],
-        canonical=terms["canonical"],
-        do_random=terms["do_random"],
-        serialization_language=SerializationLanguageMode(
-            terms["serialization_language"]
-        ),
-    )
+            pending.append((projection.successor_cursor, depth + 1))
 
 
 def _assert_prepared_identity_matches(prepared, envelope) -> None:
@@ -386,53 +380,6 @@ def _assert_prepared_identity_matches(prepared, envelope) -> None:
         != actual["digest"]
     ):
         _envelope_violation("source_snapshot_prepared_identity_mismatch")
-
-
-def _identity_envelope(identity) -> dict[str, object]:
-    terms = _term(identity)
-    return {
-        "terms": terms,
-        "digest": _digest(terms),
-    }
-
-
-def _snapshot_identity_envelope(snapshot) -> dict[str, object]:
-    prepared_terms = _term(snapshot.prepared_identity)
-    return {
-        "serialization_language": snapshot.serialization_language.value,
-        "runtime_options": _runtime_options_terms(snapshot.runtime_options),
-        "prepared_identity_terms": prepared_terms,
-        "prepared_identity_digest": _digest(prepared_terms),
-        "cursor": _cursor_envelope(snapshot.cursor),
-        "decoder_boundary": _decoder_boundary_terms(snapshot.decoder_boundary),
-        "frame_stack_cursors": [
-            _cursor_envelope(frame.cursor) for frame in snapshot.frame_stack
-        ],
-        "digest": _digest(_term(snapshot)),
-    }
-
-
-def _runtime_options_terms(options) -> dict[str, object]:
-    return {
-        "rooted_at_atom": options.rooted_at_atom,
-        "canonical": options.canonical,
-        "do_random": options.do_random,
-        "serialization_language": options.serialization_language.value,
-    }
-
-
-def _decoder_boundary_terms(boundary) -> dict[str, object]:
-    return {
-        "consumed_token_count": boundary.consumed_token_count,
-    }
-
-
-def _cursor_envelope(cursor) -> dict[str, object]:
-    terms = _term(cursor)
-    return {
-        "terms": terms,
-        "digest": _digest(terms),
-    }
 
 
 def _text_projection_key(projection) -> dict[str, object]:
@@ -468,51 +415,6 @@ def _validate_envelope_shape(envelope: object) -> None:
             _envelope_violation("blocked_product_kind_mismatch")
     elif envelope["frontier_product_kind"] != "legal":
         _envelope_violation("legal_product_kind_mismatch")
-
-
-def _term(value):
-    if value is None or isinstance(value, (str, bool)):
-        return value
-    if isinstance(value, int):
-        return int(value)
-    if isinstance(value, Enum):
-        return {
-            "__enum__": f"{value.__class__.__module__}.{value.__class__.__name__}",
-            "value": value.value,
-        }
-    if isinstance(value, (tuple, list)):
-        return [_term(item) for item in value]
-    if isinstance(value, (frozenset, set)):
-        return [
-            *sorted(
-                (_term(item) for item in value),
-                key=_canonical_json,
-            )
-        ]
-    if isinstance(value, Mapping):
-        return [
-            [str(key), _term(item)]
-            for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
-        ]
-    if is_dataclass(value):
-        return {
-            "__dataclass__": (
-                f"{value.__class__.__module__}.{value.__class__.__name__}"
-            ),
-            "fields": [
-                [field.name, _term(getattr(value, field.name))]
-                for field in fields(value)
-            ],
-        }
-    _envelope_violation(f"unsupported_term_type:{type(value).__name__}")
-
-
-def _digest(term) -> str:
-    return hashlib.sha256(_canonical_json(term).encode("utf-8")).hexdigest()
-
-
-def _canonical_json(term) -> str:
-    return json.dumps(term, sort_keys=True, separators=(",", ":"))
 
 
 def _envelope_violation(kind: str) -> None:

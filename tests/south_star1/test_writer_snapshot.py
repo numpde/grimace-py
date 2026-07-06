@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import inspect
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -52,6 +53,7 @@ from grimace._south_star1.writer_snapshot import WriterFrontierFrame
 from grimace._south_star1.writer_snapshot import WriterSearchSnapshot
 from grimace._south_star1.writer_snapshot import _writer_snapshot_advance_outcome_by_emitted_text
 from grimace._south_star1.writer_snapshot import _writer_snapshot_advance_sequence_outcome_by_emitted_texts
+from grimace._south_star1.writer_snapshot import _raise_for_writer_snapshot_advance_outcome_errors
 from grimace._south_star1.writer_snapshot import _checked_writer_snapshot_text_projection_lookup
 from grimace._south_star1.writer_snapshot import _checked_writer_snapshot_prefix_read_outcome_after_emitted_texts
 from grimace._south_star1.writer_snapshot import _checked_writer_snapshot_prefix_product_after_emitted_texts
@@ -333,6 +335,57 @@ class WriterSnapshotTest(unittest.TestCase):
         self.assertIsNotNone(outcome.blocked_frontier_certificate)
         self.assertIsNotNone(outcome.blocked_advance_certificate)
 
+    def test_snapshot_advance_blocked_error_does_not_delegate_to_choice_snapshot_blockers(
+        self,
+    ) -> None:
+        prepared = _prepare(tetrahedral_facts())
+        options = _writer_options()
+        snapshot = capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=initial_writer_frontier_cursor(prepared, options),
+        )
+        product = _checked_writer_snapshot_text_projection_lookup(
+            snapshot,
+            prepared=prepared,
+            emitted_text=writer_frontier_choices(
+                prepared,
+                snapshot.cursor,
+            ).choices[0].emitted_text,
+        ).product
+        capability = next(
+            capability
+            for support in product.branch_supports
+            for capability in support.execution_capabilities
+        )
+
+        def unsupported(capabilities):
+            return frozenset(
+                item for item in capabilities if item is capability
+            )
+
+        with patch.object(
+            writer_frontier_module,
+            "_unsupported_public_writer_execution_capabilities",
+            unsupported,
+        ):
+            outcome = _writer_snapshot_advance_outcome_by_emitted_text(
+                snapshot,
+                prepared=prepared,
+                emitted_text="C",
+            )
+
+        with patch.object(
+            writer_frontier_module,
+            "_raise_for_writer_frontier_choice_snapshot_blockers",
+            side_effect=AssertionError("choice snapshot blocker authority"),
+        ):
+            with self.assertRaisesRegex(
+                SouthStarError,
+                "unsupported execution capabilities",
+            ):
+                _raise_for_writer_snapshot_advance_outcome_errors(outcome)
+
     def test_snapshot_blocked_advance_certificate_rejects_cursor_mismatch(
         self,
     ) -> None:
@@ -395,6 +448,52 @@ class WriterSnapshotTest(unittest.TestCase):
                     blocked.blocked_frontier_certificate
                 ),
             )
+
+    def test_snapshot_advance_successor_cursor_comes_from_text_projection_certificate(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options()
+        snapshot = capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=initial_writer_frontier_cursor(prepared, options),
+        )
+        emitted_text = writer_frontier_choices(
+            prepared,
+            snapshot.cursor,
+        ).choices[0].emitted_text
+
+        outcome = _writer_snapshot_advance_outcome_by_emitted_text(
+            snapshot,
+            prepared=prepared,
+            emitted_text=emitted_text,
+        )
+
+        self.assertEqual(
+            outcome.advanced_snapshot.cursor,
+            outcome.text_projection_certificate.successor_cursor,
+        )
+        self.assertEqual(
+            outcome.step_certificate.successor_cursor,
+            outcome.text_projection_certificate.successor_cursor,
+        )
+
+    def test_snapshot_advance_boundary_forbids_choice_snapshot_entry_lookup(
+        self,
+    ) -> None:
+        source = inspect.getsource(
+            _writer_snapshot_advance_outcome_by_emitted_text
+        )
+
+        self.assertNotIn(
+            "_maybe_writer_frontier_choice_snapshot_entry_for_emitted_text",
+            source,
+        )
+        self.assertNotIn(
+            "_writer_frontier_choice_snapshot_entry_for_emitted_text",
+            source,
+        )
 
     def test_snapshot_advance_outcome_rejects_stale_step_projection(
         self,

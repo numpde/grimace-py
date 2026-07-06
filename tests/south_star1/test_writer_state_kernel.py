@@ -10796,16 +10796,14 @@ class WriterStateKernelTest(unittest.TestCase):
             (
                 writer_snapshot
                 ._WriterSnapshotPrefixReadOutcomeKind
-                .FINAL_FRONTIER_BLOCKED
+                .READABLE
             ),
         )
-        self.assertTrue(outcome.blocked)
+        self.assertFalse(outcome.blocked)
         self.assertEqual(
             outcome.graph_policy_blockers,
             blocked_choice_snapshot.graph_policy_blockers,
         )
-        self.assertIsNone(outcome.support_count)
-        self.assertIsNone(outcome.completion_count)
 
     def test_checked_writer_snapshot_prefix_read_outcome_returns_readable_outcome(self) -> None:
         prepared = _prepare(chain_facts(("C", "C")))
@@ -11991,7 +11989,6 @@ class WriterStateKernelTest(unittest.TestCase):
         cases = (
             (invalid_outcome, SouthStarErrorKind.INVALID_FACTS),
             (replay_blocked_outcome, SouthStarErrorKind.UNSUPPORTED_POLICY),
-            (final_blocked_outcome, SouthStarErrorKind.UNSUPPORTED_POLICY),
         )
 
         for outcome, kind in cases:
@@ -12014,6 +12011,24 @@ class WriterStateKernelTest(unittest.TestCase):
                         )
 
                 self.assertIs(raised.exception.kind, kind)
+
+        with patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._writer_frontier_choice_snapshot_after_emitted_texts"
+            ),
+            return_value=final_blocked_outcome,
+        ):
+            choice_snapshot = (
+                writer_snapshot
+                ._checked_writer_frontier_choice_snapshot_after_emitted_texts(
+                    snapshot,
+                    prepared=prepared,
+                    emitted_texts=final_blocked_outcome.emitted_texts,
+                )
+            )
+
+        self.assertIs(choice_snapshot, blocked_choice_snapshot)
 
     def test_writer_frontier_choice_snapshot_after_emitted_texts_forwards_include_counts_to_final_snapshot(self) -> None:
         prepared = _prepare(chain_facts(("C", "C")))

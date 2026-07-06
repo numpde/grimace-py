@@ -44,7 +44,6 @@ from .writer_frontier import _WriterFrontierChoiceSnapshotEntry
 from .writer_frontier import _checked_writer_frontier_branch_supports
 from .writer_frontier import _checked_writer_frontier_choice_snapshot
 from .writer_frontier import _checked_writer_frontier_product
-from .writer_frontier import _raise_for_writer_frontier_choice_snapshot_blockers
 from .writer_frontier import _initial_writer_transition_frontier_cursor
 from .writer_frontier import _snapshot_advance_writer_frontier_product
 from .writer_frontier import _writer_frontier_choice_snapshot
@@ -892,7 +891,6 @@ class _WriterSnapshotPrefixReadOutcome:
                 self.replay_outcome.kind
                 is _WriterSnapshotReplayChoiceSnapshotOutcomeKind.CHOICE_SNAPSHOT
                 and choice_snapshot is not None
-                and not choice_snapshot.blocked
             )
         elif self.kind is _WriterSnapshotPrefixReadOutcomeKind.REPLAY_BLOCKED:
             valid = (
@@ -1634,10 +1632,6 @@ def _raise_for_writer_snapshot_advance_outcome_errors(
     outcome: _WriterSnapshotAdvanceOutcome,
 ) -> None:
     if outcome.kind is _WriterSnapshotAdvanceOutcomeKind.BLOCKED:
-        if outcome.choice_snapshot.blocked:
-            _raise_for_writer_frontier_choice_snapshot_blockers(
-                outcome.choice_snapshot
-            )
         raise SouthStarError(
             SouthStarErrorKind.UNSUPPORTED_POLICY,
             _writer_snapshot_blocked_advance_message(outcome),
@@ -1660,7 +1654,17 @@ def _raise_for_writer_snapshot_advance_outcome_errors(
 def _writer_snapshot_blocked_advance_message(
     outcome: _WriterSnapshotAdvanceOutcome,
 ) -> str:
-    blocked = outcome.blocked_frontier_certificate
+    return _writer_snapshot_blocked_frontier_message(
+        outcome.blocked_frontier_certificate,
+        emitted_text=outcome.emitted_text,
+    )
+
+
+def _writer_snapshot_blocked_frontier_message(
+    blocked,
+    *,
+    emitted_text: str | None = None,
+) -> str:
     if blocked is None:
         return "writer snapshot advance frontier is blocked"
 
@@ -1675,8 +1679,14 @@ def _writer_snapshot_blocked_advance_message(
         return (
             "writer snapshot advance frontier is blocked by unsupported "
             f"execution capabilities: {', '.join(capability_names)} "
-            f"next={outcome.emitted_text!r}"
+            f"next={emitted_text!r}"
         )
+
+    if (
+        blocked.graph_policy_blocker_certificates
+        or blocked.stereo_policy_blocker_certificates
+    ):
+        return "writer snapshot advance current frontier is blocked"
 
     work_violations = tuple(blocked.work_envelope_violation_certificates)
     if work_violations:
@@ -1740,10 +1750,6 @@ def _raise_for_writer_snapshot_replay_choice_snapshot_outcome_errors(
             SouthStarErrorKind.INTERNAL_INVARIANT,
             "replay choice snapshot outcome did not contain a choice snapshot",
         )
-
-    _raise_for_writer_frontier_choice_snapshot_blockers(
-        outcome.choice_snapshot
-    )
 
 
 def _advance_writer_search_snapshot_by_emitted_text(
@@ -2001,7 +2007,18 @@ def _writer_snapshot_prefix_read_outcome_after_emitted_texts(
             "prefix read replay outcome did not contain a choice snapshot",
         )
 
-    if choice_snapshot.blocked:
+    final_snapshot = replay_outcome.advanced_snapshot
+    if final_snapshot is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "prefix read replay outcome did not contain a final snapshot",
+        )
+    final_product = _snapshot_advance_writer_frontier_product(
+        prepared,
+        final_snapshot.cursor,
+    )
+
+    if final_product.blocked:
         return _WriterSnapshotPrefixReadOutcome(
             kind=_WriterSnapshotPrefixReadOutcomeKind.FINAL_FRONTIER_BLOCKED,
             replay_outcome=replay_outcome,
@@ -2052,6 +2069,14 @@ def _checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
     )
 
     if outcome.kind is not _WriterSnapshotPrefixReadOutcomeKind.READABLE:
+        if (
+            outcome.kind
+            is _WriterSnapshotPrefixReadOutcomeKind.FINAL_FRONTIER_BLOCKED
+        ):
+            raise SouthStarError(
+                SouthStarErrorKind.UNSUPPORTED_POLICY,
+                "writer snapshot prefix read final current frontier is blocked",
+            )
         raise SouthStarError(
             SouthStarErrorKind.INTERNAL_INVARIANT,
             (
@@ -2140,14 +2165,17 @@ def _iter_writer_snapshot_certified_support_strings(
         include_counts=False,
         stop_after_first_blocked=True,
     )
-    _raise_for_writer_frontier_choice_snapshot_blockers(choice_snapshot)
-    product = _checked_writer_frontier_product(
+    product = _snapshot_advance_writer_frontier_product(
         prepared,
         snapshot.cursor,
-        include_counts=False,
-        include_frontier_certificate=False,
-        include_count_certificate=False,
     )
+    if product.blocked:
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            _writer_snapshot_blocked_frontier_message(
+                product.blocked_frontier_certificate,
+            ),
+        )
     if product.projection_certificate is None:
         raise SouthStarError(
             SouthStarErrorKind.INTERNAL_INVARIANT,

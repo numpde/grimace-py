@@ -53,6 +53,22 @@ class SouthStar1BoundaryTest(unittest.TestCase):
             ("audit_rdkit", "rdkit_adapter"),
         )
 
+    def test_snapshot_advance_envelope_boundary(self) -> None:
+        path = SOUTH_STAR1_ROOT / "writer_snapshot_envelope.py"
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+
+        self.assertFalse(_imports_rdkit(tree))
+        self.assertNotIn("choice_snapshot", source)
+        self.assertNotIn(
+            "_maybe_writer_frontier_choice_snapshot_entry_for_emitted_text",
+            source,
+        )
+        self.assertNotIn(
+            "_writer_frontier_choice_snapshot_entry_for_emitted_text",
+            source,
+        )
+
     def test_private_package_is_not_publicly_exported(self) -> None:
         self.assertNotIn("_south_star1", grimace.__all__)
 

@@ -27,6 +27,10 @@ class WriterOnlineChoiceCertificate:
     frontier_projection_certificate: object | None
     checked_frontier_certificate: object | None
     count_certificate: object | None
+    choice_count_coverage_term: object | None = None
+    multiplicity: int = 1
+    support_count: int = 0
+    completion_count: int = 0
     branch_certificates: tuple[object, ...] = ()
     terminal_certificates: tuple[object, ...] = ()
 
@@ -50,6 +54,10 @@ def writer_online_text_choice_certificate(
     frontier_projection_certificate,
     checked_frontier_certificate,
     count_certificate,
+    choice_count_coverage_term=None,
+    online_multiplicity: int | None = None,
+    online_support_count: int | None = None,
+    online_completion_count: int | None = None,
 ) -> WriterOnlineChoiceCertificate:
     text = getattr(choice, "emitted_text", "")
     if not text:
@@ -104,6 +112,20 @@ def writer_online_text_choice_certificate(
             )
         ):
             _violation("text_projection_not_in_frontier_certificate")
+    if online_multiplicity is None:
+        online_multiplicity = text_projection_certificate.immediate_multiplicity
+    if online_support_count is None:
+        online_support_count = getattr(choice, "support_count", 0) or 0
+    if online_completion_count is None:
+        online_completion_count = getattr(choice, "completion_count", 0) or 0
+    _validate_text_choice_count_coverage(
+        checked_frontier_certificate=checked_frontier_certificate,
+        text_projection_certificate=text_projection_certificate,
+        choice_count_coverage_term=choice_count_coverage_term,
+        online_multiplicity=online_multiplicity,
+        online_support_count=online_support_count,
+        online_completion_count=online_completion_count,
+    )
 
     return WriterOnlineChoiceCertificate(
         kind=WriterOnlineChoiceCertificateKind.TEXT,
@@ -117,6 +139,10 @@ def writer_online_text_choice_certificate(
         frontier_projection_certificate=frontier_projection_certificate,
         checked_frontier_certificate=checked_frontier_certificate,
         count_certificate=count_certificate,
+        choice_count_coverage_term=choice_count_coverage_term,
+        multiplicity=online_multiplicity,
+        support_count=online_support_count,
+        completion_count=online_completion_count,
         branch_certificates=tuple(
             text_projection_certificate.branch_certificates
         ),
@@ -133,6 +159,10 @@ def writer_online_eos_choice_certificate(
     frontier_projection_certificate,
     checked_frontier_certificate,
     count_certificate,
+    terminal_choice_count_coverage_term=None,
+    online_multiplicity: int | None = None,
+    online_support_count: int | None = None,
+    online_completion_count: int | None = None,
 ) -> WriterOnlineChoiceCertificate:
     if eos_text != "<EOS>":
         _violation("eos_choice_text_mismatch")
@@ -163,6 +193,20 @@ def writer_online_eos_choice_certificate(
             checked_frontier_certificate.terminal_projection_certificate
         ):
             _violation("terminal_projection_not_in_frontier_certificate")
+    if online_multiplicity is None:
+        online_multiplicity = terminal_projection_certificate.multiplicity
+    if online_support_count is None:
+        online_support_count = terminal_projection_certificate.support_count
+    if online_completion_count is None:
+        online_completion_count = terminal_projection_certificate.completion_count
+    _validate_terminal_choice_count_coverage(
+        checked_frontier_certificate=checked_frontier_certificate,
+        terminal_projection_certificate=terminal_projection_certificate,
+        terminal_choice_count_coverage_term=terminal_choice_count_coverage_term,
+        online_multiplicity=online_multiplicity,
+        online_support_count=online_support_count,
+        online_completion_count=online_completion_count,
+    )
 
     return WriterOnlineChoiceCertificate(
         kind=WriterOnlineChoiceCertificateKind.EOS,
@@ -176,6 +220,10 @@ def writer_online_eos_choice_certificate(
         frontier_projection_certificate=frontier_projection_certificate,
         checked_frontier_certificate=checked_frontier_certificate,
         count_certificate=count_certificate,
+        choice_count_coverage_term=terminal_choice_count_coverage_term,
+        multiplicity=online_multiplicity,
+        support_count=online_support_count,
+        completion_count=online_completion_count,
         branch_certificates=(),
         terminal_certificates=terminal_projection_certificate.terminal_certificates,
     )
@@ -234,6 +282,19 @@ def writer_online_choice_result_certificate(
             and certificate.count_certificate is not count_certificate
         ):
             _violation("count_certificate_mismatch")
+        if getattr(choice, "multiplicity", None) != certificate.multiplicity:
+            _choice_violation("choice_multiplicity_certificate_mismatch")
+        if getattr(choice, "support_count", None) != certificate.support_count:
+            _choice_violation("choice_support_count_certificate_mismatch")
+        if (
+            getattr(choice, "completion_count", None)
+            != certificate.completion_count
+        ):
+            _choice_violation("choice_completion_count_certificate_mismatch")
+        _validate_result_choice_coverage_term(
+            certificate=certificate,
+            checked_frontier_certificate=checked_frontier_certificate,
+        )
 
     return WriterOnlineChoiceResultCertificate(
         prefix=prefix,
@@ -242,6 +303,110 @@ def writer_online_choice_result_certificate(
         checked_frontier_certificate=checked_frontier_certificate,
         count_certificate=count_certificate,
     )
+
+
+def _validate_text_choice_count_coverage(
+    *,
+    checked_frontier_certificate,
+    text_projection_certificate,
+    choice_count_coverage_term,
+    online_multiplicity: int,
+    online_support_count: int,
+    online_completion_count: int,
+) -> None:
+    if checked_frontier_certificate is None:
+        return
+    choice_coverage = getattr(
+        checked_frontier_certificate,
+        "choice_count_coverage_certificate",
+        None,
+    )
+    if choice_coverage is None:
+        return
+    if choice_count_coverage_term is None:
+        _violation("missing_choice_count_coverage_term")
+    matches = tuple(
+        term
+        for term in choice_coverage.text_choice_terms
+        if term.text_projection_certificate is text_projection_certificate
+    )
+    if len(matches) != 1 or choice_count_coverage_term is not matches[0]:
+        _violation("choice_coverage_term_mismatch")
+    if online_support_count != choice_count_coverage_term.support_count:
+        _violation("online_support_count_coverage_mismatch")
+    if online_completion_count != choice_count_coverage_term.completion_count:
+        _violation("online_completion_count_coverage_mismatch")
+    if online_multiplicity != text_projection_certificate.immediate_multiplicity:
+        _violation("online_multiplicity_projection_mismatch")
+
+
+def _validate_terminal_choice_count_coverage(
+    *,
+    checked_frontier_certificate,
+    terminal_projection_certificate,
+    terminal_choice_count_coverage_term,
+    online_multiplicity: int,
+    online_support_count: int,
+    online_completion_count: int,
+) -> None:
+    if checked_frontier_certificate is None:
+        return
+    choice_coverage = getattr(
+        checked_frontier_certificate,
+        "choice_count_coverage_certificate",
+        None,
+    )
+    if choice_coverage is None:
+        return
+    if terminal_choice_count_coverage_term is None:
+        _violation("missing_terminal_choice_count_coverage_term")
+    if (
+        terminal_choice_count_coverage_term
+        is not choice_coverage.terminal_choice_term
+    ):
+        _violation("terminal_choice_coverage_term_mismatch")
+    if online_support_count != terminal_choice_count_coverage_term.support_count:
+        _violation("online_terminal_support_count_coverage_mismatch")
+    if (
+        online_completion_count
+        != terminal_choice_count_coverage_term.completion_count
+    ):
+        _violation("online_terminal_completion_count_coverage_mismatch")
+    if online_multiplicity != terminal_projection_certificate.multiplicity:
+        _violation("online_terminal_multiplicity_projection_mismatch")
+
+
+def _validate_result_choice_coverage_term(
+    *,
+    certificate,
+    checked_frontier_certificate,
+) -> None:
+    if checked_frontier_certificate is None:
+        return
+    choice_coverage = getattr(
+        checked_frontier_certificate,
+        "choice_count_coverage_certificate",
+        None,
+    )
+    if choice_coverage is None:
+        return
+    if certificate.kind is WriterOnlineChoiceCertificateKind.TEXT:
+        matches = tuple(
+            term
+            for term in choice_coverage.text_choice_terms
+            if term.text_projection_certificate
+            is certificate.text_projection_certificate
+        )
+        if (
+            len(matches) != 1
+            or certificate.choice_count_coverage_term is not matches[0]
+        ):
+            _choice_violation("choice_coverage_term_mismatch")
+    elif (
+        certificate.choice_count_coverage_term
+        is not choice_coverage.terminal_choice_term
+    ):
+        _choice_violation("terminal_choice_coverage_term_mismatch")
 
 
 def _choice_violation(kind: str) -> None:

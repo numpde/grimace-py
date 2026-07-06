@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Iterator
 from dataclasses import dataclass
 
+from .errors import SouthStarError
+from .errors import SouthStarErrorKind
 from .prepared_runtime import SouthStarPreparedMol
 from .prepared_runtime import SouthStarRuntimeOptions
 from .writer_frontier import WriterFrontierChoice
@@ -35,6 +37,9 @@ class WriterRuntimeChoiceTransition:
     choice: WriterFrontierChoice
     next_state: WriterRuntimeState
     snapshot_step_certificate: object | None = None
+    text_projection_certificate: object | None = None
+    text_choice_count_certificate: object | None = None
+    choice_count_coverage_term: object | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,6 +50,9 @@ class WriterRuntimeChoiceTransitions:
     text_choice_count_certificates: tuple[object, ...] = ()
     terminal_choice_count_certificate: object | None = None
     support_count_certificate: object | None = None
+    support_count_term_coverage_certificate: object | None = None
+    frontier_completion_count_certificate: object | None = None
+    choice_count_coverage_certificate: object | None = None
     projection_certificate: object | None = None
     terminal_projection_certificate: object | None = None
     count_certificate: object | None = None
@@ -144,6 +152,9 @@ class WriterRuntimeBranchTransitions:
     terminal_choice_count_certificate: object | None = None
     terminal_projection_certificate: object | None = None
     support_count_certificate: object | None = None
+    support_count_term_coverage_certificate: object | None = None
+    frontier_completion_count_certificate: object | None = None
+    choice_count_coverage_certificate: object | None = None
     projection_certificate: object | None = None
     count_certificate: object | None = None
     checked_frontier_certificate: object | None = None
@@ -301,6 +312,10 @@ def writer_runtime_choice_transitions(
         state=state,
         include_counts=True,
     )
+    checked = branch_batch.checked_frontier_certificate
+    choice_count_coverage = (
+        None if checked is None else checked.choice_count_coverage_certificate
+    )
     return WriterRuntimeChoiceTransitions(
         choices=branch_batch.choices,
         text_choice_projection_certificates=(
@@ -313,6 +328,13 @@ def writer_runtime_choice_transitions(
             branch_batch.terminal_choice_count_certificate
         ),
         support_count_certificate=branch_batch.support_count_certificate,
+        support_count_term_coverage_certificate=(
+            branch_batch.support_count_term_coverage_certificate
+        ),
+        frontier_completion_count_certificate=(
+            branch_batch.frontier_completion_count_certificate
+        ),
+        choice_count_coverage_certificate=choice_count_coverage,
         projection_certificate=branch_batch.projection_certificate,
         terminal_projection_certificate=(
             branch_batch.terminal_projection_certificate
@@ -324,6 +346,19 @@ def writer_runtime_choice_transitions(
                 choice=choice,
                 next_state=next_state,
                 snapshot_step_certificate=step_certificate,
+                text_projection_certificate=projection_certificate,
+                text_choice_count_certificate=(
+                    _choice_count_certificate_for_projection(
+                        branch_batch.text_choice_count_certificates,
+                        projection_certificate,
+                    )
+                ),
+                choice_count_coverage_term=(
+                    _choice_coverage_term_for_projection(
+                        choice_count_coverage,
+                        projection_certificate,
+                    )
+                ),
             )
             for choice, projection_certificate in zip(
                 branch_batch.choices.choices,
@@ -425,6 +460,30 @@ def writer_runtime_branch_transitions(
         terminal_choice_count_certificate=(
             branch_batch.terminal_choice_count_certificate
         ),
+        support_count_term_coverage_certificate=(
+            None
+            if branch_batch.checked_frontier_certificate is None
+            else (
+                branch_batch.checked_frontier_certificate
+                .support_count_term_coverage_certificate
+            )
+        ),
+        frontier_completion_count_certificate=(
+            None
+            if branch_batch.checked_frontier_certificate is None
+            else (
+                branch_batch.checked_frontier_certificate
+                .frontier_completion_count_certificate
+            )
+        ),
+        choice_count_coverage_certificate=(
+            None
+            if branch_batch.checked_frontier_certificate is None
+            else (
+                branch_batch.checked_frontier_certificate
+                .choice_count_coverage_certificate
+            )
+        ),
         projection_certificate=branch_batch.projection_certificate,
         count_certificate=branch_batch.count_certificate,
         checked_frontier_certificate=(
@@ -461,6 +520,42 @@ def writer_runtime_branch_transitions(
             branch_batch.terminal_projection_certificate
         ),
     )
+
+
+def _choice_count_certificate_for_projection(
+    text_choice_count_certificates: tuple[object, ...],
+    projection,
+):
+    matches = tuple(
+        certificate
+        for certificate in text_choice_count_certificates
+        if certificate.text_projection_certificate is projection
+    )
+    if len(matches) != 1:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "writer runtime text choice lacks unique choice count certificate",
+        )
+    return matches[0]
+
+
+def _choice_coverage_term_for_projection(
+    choice_count_coverage_certificate,
+    projection,
+):
+    if choice_count_coverage_certificate is None:
+        return None
+    matches = tuple(
+        term
+        for term in choice_count_coverage_certificate.text_choice_terms
+        if term.text_projection_certificate is projection
+    )
+    if len(matches) != 1:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "writer runtime text choice lacks unique choice count coverage term",
+        )
+    return matches[0]
 
 
 def writer_runtime_terminal(

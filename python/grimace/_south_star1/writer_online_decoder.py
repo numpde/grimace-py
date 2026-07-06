@@ -48,6 +48,7 @@ class WriterRuntimeOnlineStats:
     completion_count: int
     choice_count: int
     has_eos: bool
+    eos_available: bool = False
     stats_certificate: object | None = None
 
 
@@ -57,6 +58,7 @@ class WriterShapedOnlineChoice:
     next_state: "WriterShapedOnlineDecoderState | None"
     is_eos: bool = False
     multiplicity: int = 1
+    support_count: int = 0
     completion_count: int = 0
     choice_certificate: object | None = None
 
@@ -125,24 +127,22 @@ class WriterShapedOnlineDecoder:
                 runtime_transitions.text_choice_projection_certificates,
                 choice,
             )
+            next_state = WriterShapedOnlineDecoderState(
+                prefix=state.prefix + choice.emitted_text,
+                raw_state=transition.next_state,
+                decoder=self,
+            )
             out.append(
                 WriterShapedOnlineChoice(
                     text=choice.emitted_text,
-                    next_state=WriterShapedOnlineDecoderState(
-                        prefix=state.prefix + choice.emitted_text,
-                        raw_state=transition.next_state,
-                        decoder=self,
-                    ),
+                    next_state=next_state,
                     multiplicity=choice.immediate_multiplicity,
+                    support_count=choice.support_count or 0,
                     completion_count=choice.completion_count or 0,
                     choice_certificate=writer_online_text_choice_certificate(
                         prefix=state.prefix,
                         choice=choice,
-                        next_state=WriterShapedOnlineDecoderState(
-                            prefix=state.prefix + choice.emitted_text,
-                            raw_state=transition.next_state,
-                            decoder=self,
-                        ),
+                        next_state=next_state,
                         snapshot_step_certificate=(
                             transition.snapshot_step_certificate
                         ),
@@ -156,6 +156,12 @@ class WriterShapedOnlineDecoder:
                         count_certificate=(
                             runtime_transitions.count_certificate
                         ),
+                        choice_count_coverage_term=(
+                            transition.choice_count_coverage_term
+                        ),
+                        online_multiplicity=choice.immediate_multiplicity,
+                        online_support_count=choice.support_count or 0,
+                        online_completion_count=choice.completion_count or 0,
                     ),
                 )
             )
@@ -168,6 +174,7 @@ class WriterShapedOnlineDecoder:
                     next_state=None,
                     is_eos=True,
                     multiplicity=terminal.multiplicity,
+                    support_count=terminal.support_count,
                     completion_count=terminal.completion_count,
                     choice_certificate=writer_online_eos_choice_certificate(
                         prefix=state.prefix,
@@ -183,15 +190,25 @@ class WriterShapedOnlineDecoder:
                             runtime_transitions.checked_frontier_certificate
                         ),
                         count_certificate=runtime_transitions.count_certificate,
+                        terminal_choice_count_coverage_term=(
+                            runtime_transitions
+                            .choice_count_coverage_certificate
+                            .terminal_choice_term
+                        ),
+                        online_multiplicity=terminal.multiplicity,
+                        online_support_count=terminal.support_count,
+                        online_completion_count=terminal.completion_count,
                     ),
                 )
             )
 
+        eos_included = any(choice.is_eos for choice in out)
         stats = WriterRuntimeOnlineStats(
             support_count=runtime_transitions.support_count,
             completion_count=runtime_transitions.completion_count,
             choice_count=len(out),
-            has_eos=runtime_transitions.has_eos,
+            has_eos=eos_included,
+            eos_available=runtime_transitions.has_eos,
         )
         result_certificate = writer_online_choice_result_certificate(
             prefix=state.prefix,

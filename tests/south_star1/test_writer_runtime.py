@@ -1632,6 +1632,60 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             product.count_certificate.completion_count,
         )
 
+    def test_runtime_choice_transitions_expose_choice_count_coverage(self) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        transitions = writer_runtime_choice_transitions(
+            prepared=prepared,
+            state=state,
+        )
+
+        checked = transitions.checked_frontier_certificate
+        self.assertIsNotNone(checked)
+        self.assertIs(
+            transitions.choice_count_coverage_certificate,
+            checked.choice_count_coverage_certificate,
+        )
+        self.assertIs(
+            transitions.support_count_term_coverage_certificate,
+            checked.support_count_term_coverage_certificate,
+        )
+        self.assertIs(
+            transitions.frontier_completion_count_certificate,
+            checked.frontier_completion_count_certificate,
+        )
+        for transition in transitions.transitions:
+            self.assertIsNotNone(transition.choice_count_coverage_term)
+            self.assertIs(
+                transition.choice_count_coverage_term.text_projection_certificate,
+                transition.text_projection_certificate,
+            )
+            self.assertIs(
+                transition.choice_count_coverage_term.text_choice_count_certificate,
+                transition.text_choice_count_certificate,
+            )
+        branch_transitions = writer_runtime_branch_transitions(
+            prepared=prepared,
+            state=state,
+        )
+        branch_checked = branch_transitions.checked_frontier_certificate
+        self.assertIsNotNone(branch_checked)
+        self.assertIs(
+            branch_transitions.choice_count_coverage_certificate,
+            branch_checked.choice_count_coverage_certificate,
+        )
+        self.assertIs(
+            branch_transitions.support_count_term_coverage_certificate,
+            branch_checked.support_count_term_coverage_certificate,
+        )
+        self.assertIs(
+            branch_transitions.frontier_completion_count_certificate,
+            branch_checked.frontier_completion_count_certificate,
+        )
+
     def test_choice_count_certificate_rejects_malformed(self) -> None:
         prepared = _prepare(cco_facts())
         state = initial_writer_runtime_state(

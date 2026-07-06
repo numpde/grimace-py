@@ -85,6 +85,27 @@ def writer_online_stats_certificate(
     ):
         _stats_violation("has_eos_mismatch")
 
+    eos_available = (
+        checked_frontier_certificate.terminal_projection_certificate is not None
+    )
+    if getattr(stats, "eos_available", False) != eos_available:
+        _stats_violation("eos_available_mismatch")
+
+    choice_coverage = getattr(
+        checked_frontier_certificate,
+        "choice_count_coverage_certificate",
+        None,
+    )
+    if choice_coverage is None:
+        _stats_violation("missing_choice_count_coverage_certificate")
+    if getattr(stats, "support_count", None) != choice_coverage.support_count:
+        _stats_violation("choice_coverage_support_count_mismatch")
+    if (
+        getattr(stats, "completion_count", None)
+        != choice_coverage.completion_count
+    ):
+        _stats_violation("choice_coverage_completion_count_mismatch")
+
     return WriterOnlineStatsCertificate(
         prefix=prefix,
         stats=stats,

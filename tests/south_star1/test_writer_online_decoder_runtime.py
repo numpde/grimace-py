@@ -423,6 +423,249 @@ class WriterOnlineDecoderRuntimeTest(unittest.TestCase):
                 count_certificate=transitions.count_certificate,
             )
 
+    def test_online_text_choice_certificate_rejects_count_coverage_mismatch(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        decoder = make_writer_shaped_online_decoder(prepared=prepared)
+        state = decoder.initial_state()
+        result = state.choices_with_stats()
+        choice = next(choice for choice in result.choices if not choice.is_eos)
+        certificate = choice.choice_certificate
+        assert certificate is not None
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "online_support_count_coverage_mismatch",
+        ):
+            writer_online_text_choice_certificate(
+                prefix=certificate.prefix_before,
+                choice=certificate.choice,
+                next_state=choice.next_state,
+                snapshot_step_certificate=(
+                    certificate.snapshot_step_certificate
+                ),
+                text_projection_certificate=(
+                    certificate.text_projection_certificate
+                ),
+                frontier_projection_certificate=(
+                    certificate.frontier_projection_certificate
+                ),
+                checked_frontier_certificate=(
+                    certificate.checked_frontier_certificate
+                ),
+                count_certificate=certificate.count_certificate,
+                choice_count_coverage_term=(
+                    certificate.choice_count_coverage_term
+                ),
+                online_multiplicity=certificate.multiplicity,
+                online_support_count=certificate.support_count + 1,
+                online_completion_count=certificate.completion_count,
+            )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "online_completion_count_coverage_mismatch",
+        ):
+            writer_online_text_choice_certificate(
+                prefix=certificate.prefix_before,
+                choice=certificate.choice,
+                next_state=choice.next_state,
+                snapshot_step_certificate=(
+                    certificate.snapshot_step_certificate
+                ),
+                text_projection_certificate=(
+                    certificate.text_projection_certificate
+                ),
+                frontier_projection_certificate=(
+                    certificate.frontier_projection_certificate
+                ),
+                checked_frontier_certificate=(
+                    certificate.checked_frontier_certificate
+                ),
+                count_certificate=certificate.count_certificate,
+                choice_count_coverage_term=(
+                    certificate.choice_count_coverage_term
+                ),
+                online_multiplicity=certificate.multiplicity,
+                online_support_count=certificate.support_count,
+                online_completion_count=certificate.completion_count + 1,
+            )
+
+        stale_term = SimpleNamespace(
+            text_projection_certificate=(
+                certificate.text_projection_certificate
+            ),
+            support_count=certificate.support_count,
+            completion_count=certificate.completion_count,
+        )
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "choice_coverage_term_mismatch",
+        ):
+            writer_online_text_choice_certificate(
+                prefix=certificate.prefix_before,
+                choice=certificate.choice,
+                next_state=choice.next_state,
+                snapshot_step_certificate=(
+                    certificate.snapshot_step_certificate
+                ),
+                text_projection_certificate=(
+                    certificate.text_projection_certificate
+                ),
+                frontier_projection_certificate=(
+                    certificate.frontier_projection_certificate
+                ),
+                checked_frontier_certificate=(
+                    certificate.checked_frontier_certificate
+                ),
+                count_certificate=certificate.count_certificate,
+                choice_count_coverage_term=stale_term,
+                online_multiplicity=certificate.multiplicity,
+                online_support_count=certificate.support_count,
+                online_completion_count=certificate.completion_count,
+            )
+
+    def test_online_result_certificate_rejects_choice_scalar_mismatch(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        decoder = make_writer_shaped_online_decoder(prepared=prepared)
+        state = decoder.initial_state()
+        result = state.choices_with_stats()
+        choice = result.choices[0]
+        bad_choice = replace(
+            choice,
+            completion_count=choice.completion_count + 1,
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "choice_completion_count_certificate_mismatch",
+        ):
+            writer_online_choice_result_certificate(
+                prefix=state.prefix,
+                choices=(bad_choice, *result.choices[1:]),
+                choice_certificates=tuple(
+                    choice.choice_certificate for choice in result.choices
+                ),
+                checked_frontier_certificate=(
+                    result.checked_frontier_certificate
+                ),
+                count_certificate=result.count_certificate,
+            )
+
+    def test_online_eos_choice_certificate_rejects_count_coverage_mismatch(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        decoder = make_writer_shaped_online_decoder(
+            prepared=prepared,
+            include_eos=True,
+        )
+        state = decoder.initial_state()
+        while True:
+            result = state.choices_with_stats()
+            eos_choices = tuple(
+                choice for choice in result.choices if choice.is_eos
+            )
+            if eos_choices:
+                break
+            state = next(
+                choice.next_state
+                for choice in result.choices
+                if not choice.is_eos
+            )
+            assert state is not None
+
+        choice = eos_choices[0]
+        certificate = choice.choice_certificate
+        assert certificate is not None
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "online_terminal_completion_count_coverage_mismatch",
+        ):
+            writer_online_eos_choice_certificate(
+                prefix=certificate.prefix_before,
+                eos_text="<EOS>",
+                terminal=(
+                    certificate.terminal_projection_certificate.terminal
+                ),
+                terminal_projection_certificate=(
+                    certificate.terminal_projection_certificate
+                ),
+                frontier_projection_certificate=(
+                    certificate.frontier_projection_certificate
+                ),
+                checked_frontier_certificate=(
+                    certificate.checked_frontier_certificate
+                ),
+                count_certificate=certificate.count_certificate,
+                terminal_choice_count_coverage_term=(
+                    certificate.choice_count_coverage_term
+                ),
+                online_multiplicity=certificate.multiplicity,
+                online_support_count=certificate.support_count,
+                online_completion_count=certificate.completion_count + 1,
+            )
+
+        stale_term = SimpleNamespace(
+            terminal_projection_certificate=(
+                certificate.terminal_projection_certificate
+            ),
+            support_count=certificate.support_count,
+            completion_count=certificate.completion_count,
+        )
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "terminal_choice_coverage_term_mismatch",
+        ):
+            writer_online_eos_choice_certificate(
+                prefix=certificate.prefix_before,
+                eos_text="<EOS>",
+                terminal=(
+                    certificate.terminal_projection_certificate.terminal
+                ),
+                terminal_projection_certificate=(
+                    certificate.terminal_projection_certificate
+                ),
+                frontier_projection_certificate=(
+                    certificate.frontier_projection_certificate
+                ),
+                checked_frontier_certificate=(
+                    certificate.checked_frontier_certificate
+                ),
+                count_certificate=certificate.count_certificate,
+                terminal_choice_count_coverage_term=stale_term,
+                online_multiplicity=certificate.multiplicity,
+                online_support_count=certificate.support_count,
+                online_completion_count=certificate.completion_count,
+            )
+
+    def test_online_stats_distinguishes_eos_available_from_eos_included(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        decoder = make_writer_shaped_online_decoder(
+            prepared=prepared,
+            include_eos=False,
+        )
+        state = decoder.initial_state()
+        while True:
+            result = state.choices_with_stats()
+            if result.stats.eos_available:
+                break
+            state = next(
+                choice.next_state
+                for choice in result.choices
+                if not choice.is_eos
+            )
+            assert state is not None
+
+        self.assertFalse(result.stats.has_eos)
+        self.assertTrue(result.stats.eos_available)
+
     def test_writer_shaped_online_stats_certificate_rejects_mismatch(
         self,
     ) -> None:

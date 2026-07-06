@@ -121,6 +121,9 @@ from grimace._south_star1.writer_support_certificates import (
     writer_support_image_certificate,
 )
 from grimace._south_star1.writer_support_certificates import (
+    writer_support_image_enumeration_coverage_certificate,
+)
+from grimace._south_star1.writer_support_certificates import (
     writer_support_string_certificate,
 )
 from tests.south_star1.helpers import cco_facts
@@ -187,6 +190,20 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
         self.assertEqual(
             image_certificate.distinct_count,
             image_certificate.support_count_certificate.support_count,
+        )
+        self.assertIsNotNone(image_certificate.checked_frontier_certificate)
+        self.assertIsNotNone(
+            image_certificate.enumeration_coverage_certificate
+        )
+        assert image_certificate.enumeration_coverage_certificate is not None
+        self.assertIs(
+            image_certificate.enumeration_coverage_certificate
+            .checked_frontier_certificate,
+            image_certificate.checked_frontier_certificate,
+        )
+        self.assertEqual(
+            image_certificate.enumeration_coverage_certificate.support_count,
+            image_certificate.distinct_count,
         )
         count_certificate = (
             writer_runtime_branch_completion_count_certificate(
@@ -544,6 +561,179 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
                 source_snapshot=advanced.snapshot,
                 string_certificates=(foreign,),
                 witness_count=1,
+            )
+
+    def test_support_image_coverage_rejects_missing_text_bucket_string(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        certificate = writer_runtime_support_image_certificate(
+            prepared=prepared,
+            state=state,
+        )
+        removed = next(
+            item
+            for item in certificate.string_certificates
+            if item.emitted_texts
+        )
+        string_certificates = tuple(
+            item
+            for item in certificate.string_certificates
+            if item is not removed
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "support_image_text_bucket_count_mismatch",
+        ):
+            writer_support_image_enumeration_coverage_certificate(
+                source_snapshot=certificate.source_snapshot,
+                checked_frontier_certificate=(
+                    certificate.checked_frontier_certificate
+                ),
+                support_count_certificate=(
+                    certificate.support_count_certificate
+                ),
+                string_certificates=string_certificates,
+            )
+
+    def test_support_image_coverage_rejects_stale_first_projection(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        certificate = writer_runtime_support_image_certificate(
+            prepared=prepared,
+            state=state,
+        )
+        string_certificate = next(
+            item
+            for item in certificate.string_certificates
+            if item.emitted_texts
+        )
+        bad_step = replace(
+            string_certificate.replay_certificate.step_certificates[0],
+            text_projection_certificate=object(),
+        )
+        bad_replay = replace(
+            string_certificate.replay_certificate,
+            step_certificates=(
+                bad_step,
+                *string_certificate.replay_certificate.step_certificates[1:],
+            ),
+        )
+        bad_string = replace(
+            string_certificate,
+            replay_certificate=bad_replay,
+        )
+        string_certificates = tuple(
+            bad_string if item is string_certificate else item
+            for item in certificate.string_certificates
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            (
+                "support_string_replay_projection_chain_mismatch|"
+                "support_image_text_bucket_without_coverage"
+            ),
+        ):
+            writer_support_image_enumeration_coverage_certificate(
+                source_snapshot=certificate.source_snapshot,
+                checked_frontier_certificate=(
+                    certificate.checked_frontier_certificate
+                ),
+                support_count_certificate=(
+                    certificate.support_count_certificate
+                ),
+                string_certificates=string_certificates,
+            )
+
+    def test_support_image_coverage_rejects_terminal_bucket_mismatch(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        state = _terminal_capable_runtime_state(prepared)
+        certificate = writer_runtime_support_image_certificate(
+            prepared=prepared,
+            state=state,
+        )
+        terminal_string = next(
+            item
+            for item in certificate.string_certificates
+            if not item.emitted_texts
+        )
+        string_certificates = tuple(
+            item
+            for item in certificate.string_certificates
+            if item is not terminal_string
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "support_image_terminal_bucket_count_mismatch",
+        ):
+            writer_support_image_enumeration_coverage_certificate(
+                source_snapshot=certificate.source_snapshot,
+                checked_frontier_certificate=(
+                    certificate.checked_frontier_certificate
+                ),
+                support_count_certificate=(
+                    certificate.support_count_certificate
+                ),
+                string_certificates=string_certificates,
+            )
+
+    def test_support_image_certificate_rejects_stale_coverage_total(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        certificate = writer_runtime_support_image_certificate(
+            prepared=prepared,
+            state=state,
+        )
+        bad_coverage = replace(
+            certificate.enumeration_coverage_certificate,
+            support_count=(
+                certificate
+                .enumeration_coverage_certificate
+                .support_count
+                + 1
+            ),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            (
+                "support_image_coverage_count_mismatch|"
+                "support_image_coverage_support_count_mismatch"
+            ),
+        ):
+            writer_support_image_certificate(
+                source_snapshot=certificate.source_snapshot,
+                string_certificates=certificate.string_certificates,
+                witness_count=certificate.witness_count,
+                support_count_certificate=(
+                    certificate.support_count_certificate
+                ),
+                witness_count_certificate=(
+                    certificate.witness_count_certificate
+                ),
+                checked_frontier_certificate=(
+                    certificate.checked_frontier_certificate
+                ),
+                enumeration_coverage_certificate=bad_coverage,
             )
 
     def test_count_certificate_matches_counted_completions(self) -> None:
@@ -2656,6 +2846,21 @@ def _advance_runtime_along_string(prepared, state, text: str):
             emitted_text=choice.emitted_text,
         )
         remaining = remaining[len(choice.emitted_text) :]
+    return state
+
+
+def _terminal_capable_runtime_state(prepared):
+    state = initial_writer_runtime_state(
+        prepared=prepared,
+        runtime_options=_writer_options(),
+    )
+    while not writer_runtime_has_eos(prepared=prepared, state=state):
+        choice = writer_runtime_choices(prepared=prepared, state=state).choices[0]
+        state = advance_writer_runtime_state(
+            prepared=prepared,
+            state=state,
+            emitted_text=choice.emitted_text,
+        )
     return state
 
 

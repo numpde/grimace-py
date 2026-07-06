@@ -739,14 +739,15 @@ def writer_runtime_support_image_certificate(
             state=state,
         )
     )
-    count_certificate = writer_runtime_branch_completion_count_certificate(
-        prepared=prepared,
-        state=state,
+    product = _checked_writer_frontier_product(
+        prepared,
+        state.snapshot.cursor,
+        include_counts=True,
+        include_frontier_certificate=True,
+        include_count_certificate=True,
     )
-    support_count_certificate = writer_runtime_support_count_certificate(
-        prepared=prepared,
-        state=state,
-    )
+    count_certificate = product.count_certificate
+    support_count_certificate = product.support_count_certificate
     if witness_count is None:
         witness_count = count_certificate.completion_count
 
@@ -758,6 +759,7 @@ def writer_runtime_support_image_certificate(
         witness_count=witness_count,
         witness_count_certificate=count_certificate,
         support_count_certificate=support_count_certificate,
+        checked_frontier_certificate=product.checked_frontier_certificate,
     )
 
 

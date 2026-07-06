@@ -10,6 +10,9 @@ from .errors import SouthStarErrorKind
 from .writer_count_certificates import (
     writer_frontier_completion_count_certificate,
 )
+from .writer_support_count_certificates import (
+    writer_frontier_support_count_term_coverage_certificate,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,6 +38,7 @@ class WriterCheckedFrontierCertificate:
     text_choice_count_certificates: tuple[object, ...] = ()
     terminal_choice_count_certificate: object | None = None
     support_count_certificate: object | None = None
+    support_count_term_coverage_certificate: object | None = None
     frontier_completion_count_certificate: object | None = None
     diagnostic_certificate: object | None = None
 
@@ -170,6 +174,7 @@ def writer_checked_frontier_certificate(
     text_choice_count_certificates: tuple[object, ...] = (),
     terminal_choice_count_certificate: object | None = None,
     support_count_certificate: object | None = None,
+    support_count_term_coverage_certificate: object | None = None,
     frontier_completion_count_certificate: object | None = None,
     terminal_projection_certificate=None,
     count_certificate=None,
@@ -332,6 +337,30 @@ def writer_checked_frontier_certificate(
             _frontier_violation(
                 "support_count_certificate_total_mismatch"
             )
+        if support_count_term_coverage_certificate is None:
+            support_count_term_coverage_certificate = (
+                writer_frontier_support_count_term_coverage_certificate(
+                    projection_certificate=projection_certificate,
+                    support_count_certificate=support_count_certificate,
+                )
+            )
+        if (
+            support_count_term_coverage_certificate.projection_certificate
+            is not projection_certificate
+        ):
+            _frontier_violation("support_count_coverage_projection_mismatch")
+        if (
+            support_count_term_coverage_certificate.support_count_certificate
+            is not support_count_certificate
+        ):
+            _frontier_violation("support_count_coverage_certificate_mismatch")
+        if (
+            support_count_term_coverage_certificate.support_count
+            != support_count_certificate.support_count
+        ):
+            _frontier_violation("support_count_coverage_total_mismatch")
+    elif support_count_term_coverage_certificate is not None:
+        _frontier_violation("support_count_coverage_without_support_count")
 
     if count_certificate is not None:
         if count_certificate.cursor != cursor:
@@ -403,6 +432,9 @@ def writer_checked_frontier_certificate(
         text_choice_count_certificates=text_choice_count_certificates,
         terminal_choice_count_certificate=terminal_choice_count_certificate,
         support_count_certificate=support_count_certificate,
+        support_count_term_coverage_certificate=(
+            support_count_term_coverage_certificate
+        ),
         frontier_completion_count_certificate=(
             frontier_completion_count_certificate
         ),

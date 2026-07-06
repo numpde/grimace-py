@@ -103,6 +103,9 @@ from grimace._south_star1.writer_support_count_certificates import (
     writer_text_choice_support_count_term_certificate,
 )
 from grimace._south_star1.writer_support_count_certificates import (
+    writer_frontier_support_count_term_coverage_certificate,
+)
+from grimace._south_star1.writer_support_count_certificates import (
     writer_text_state_support_count_certificate,
 )
 from grimace._south_star1.writer_support_count_certificates import (
@@ -1574,6 +1577,32 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             product.count_certificate.completion_count,
         )
 
+    def test_frontier_support_count_carries_term_coverage(self) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        product = _checked_writer_frontier_product(
+            prepared,
+            state.snapshot.cursor,
+        )
+
+        coverage = (
+            product.checked_frontier_certificate
+            .support_count_term_coverage_certificate
+        )
+        self.assertIsNotNone(coverage)
+        self.assertIs(coverage.projection_certificate, product.projection_certificate)
+        self.assertIs(
+            coverage.support_count_certificate,
+            product.support_count_certificate,
+        )
+        self.assertEqual(
+            coverage.support_count,
+            product.support_count_certificate.support_count,
+        )
+
     def test_choice_count_certificate_rejects_malformed(self) -> None:
         prepared = _prepare(cco_facts())
         state = initial_writer_runtime_state(
@@ -1666,6 +1695,47 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
                 projection_certificate=bad_projection,
                 count_certificate=product.count_certificate,
             )
+
+        state_support = (
+            product.support_count_certificate.state_support_count_certificate
+        )
+        if state_support.choice_terms:
+            bad_state_support = replace(
+                state_support,
+                choice_terms=state_support.choice_terms[1:],
+            )
+            with self.assertRaisesRegex(
+                SouthStarError,
+                "support_count_choice_term_projection_partition_mismatch",
+            ):
+                writer_frontier_support_count_term_coverage_certificate(
+                    projection_certificate=product.projection_certificate,
+                    support_count_certificate=replace(
+                        product.support_count_certificate,
+                        state_support_count_certificate=bad_state_support,
+                    ),
+                )
+
+            bad_term = replace(
+                state_support.choice_terms[0],
+                text_projection_certificate=object(),
+            )
+            bad_state_support = replace(
+                state_support,
+                choice_terms=(bad_term, *state_support.choice_terms[1:]),
+            )
+            with self.assertRaisesRegex(
+                SouthStarError,
+                "support_count_choice_term_projection_partition_mismatch|"
+                "choice_projection_source_cursor_mismatch",
+            ):
+                writer_frontier_support_count_term_coverage_certificate(
+                    projection_certificate=product.projection_certificate,
+                    support_count_certificate=replace(
+                        product.support_count_certificate,
+                        state_support_count_certificate=bad_state_support,
+                    ),
+                )
 
         with self.assertRaisesRegex(
             SouthStarError,
@@ -2146,6 +2216,31 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
                 ),
             )
 
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "support_count_coverage_certificate_mismatch",
+        ):
+            writer_checked_frontier_certificate(
+                projection_certificate=product.projection_certificate,
+                text_choice_count_certificates=(
+                    product.text_choice_count_certificates
+                ),
+                terminal_choice_count_certificate=(
+                    product.terminal_choice_count_certificate
+                ),
+                support_count_certificate=product.support_count_certificate,
+                support_count_term_coverage_certificate=replace(
+                    product.checked_frontier_certificate
+                    .support_count_term_coverage_certificate,
+                    support_count_certificate=object(),
+                ),
+                count_certificate=product.count_certificate,
+                frontier_completion_count_certificate=(
+                    product.checked_frontier_certificate
+                    .frontier_completion_count_certificate
+                ),
+            )
+
         terminal_projection = (
             product.projection_certificate.terminal_projection_certificate
         )
@@ -2175,6 +2270,25 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             writer_frontier_completion_term_coverage_certificate(
                 projection_certificate=bad_projection,
                 count_certificate=product.count_certificate,
+            )
+
+        state_support = (
+            product.support_count_certificate.state_support_count_certificate
+        )
+        bad_state_support = replace(
+            state_support,
+            terminal_projection_certificate=None,
+        )
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "terminal_support_count_projection_mismatch",
+        ):
+            writer_frontier_support_count_term_coverage_certificate(
+                projection_certificate=product.projection_certificate,
+                support_count_certificate=replace(
+                    product.support_count_certificate,
+                    state_support_count_certificate=bad_state_support,
+                ),
             )
 
         with self.assertRaisesRegex(

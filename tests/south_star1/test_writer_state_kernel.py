@@ -3449,21 +3449,30 @@ class WriterStateKernelTest(unittest.TestCase):
         emitted_text: str,
         prepared,
     ) -> writer_snapshot._WriterSnapshotAdvanceOutcome:
-        choice_snapshot = writer_snapshot._writer_frontier_choice_snapshot_from_snapshot(
+        return writer_snapshot._writer_snapshot_advance_outcome_by_emitted_text(
             source_snapshot,
             prepared=prepared,
-            include_counts=False,
-        )
-        choice = choice_snapshot.choices[0]
-        advanced_snapshot = (
-            writer_snapshot
-            ._writer_search_snapshot_after_checked_frontier_cursor_step(
-                source_snapshot,
-                prepared=prepared,
-                cursor=choice.successor,
-            )
+            emitted_text=emitted_text,
         )
 
+    def _test_projection_bound_advance_outcome(
+        self,
+        *,
+        source_snapshot: writer_snapshot.WriterSearchSnapshot,
+        emitted_text: str,
+        choice_snapshot,
+        choice,
+        advanced_snapshot: writer_snapshot.WriterSearchSnapshot,
+    ) -> writer_snapshot._WriterSnapshotAdvanceOutcome:
+        text_projection = SimpleNamespace(
+            emitted_text=emitted_text,
+            choice=choice,
+        )
+        frontier_projection = object()
+        step_certificate = SimpleNamespace(
+            frontier_projection_certificate=frontier_projection,
+            text_projection_certificate=text_projection,
+        )
         return writer_snapshot._WriterSnapshotAdvanceOutcome(
             kind=writer_snapshot._WriterSnapshotAdvanceOutcomeKind.ADVANCED,
             source_snapshot=source_snapshot,
@@ -3471,6 +3480,10 @@ class WriterStateKernelTest(unittest.TestCase):
             choice_snapshot=choice_snapshot,
             choice=choice,
             advanced_snapshot=advanced_snapshot,
+            step_certificate=step_certificate,
+            frontier_product=object(),
+            frontier_projection_certificate=frontier_projection,
+            text_projection_certificate=text_projection,
         )
 
     def test_writer_shaped_acyclic_support_uses_writer_frontier(self) -> None:
@@ -9597,8 +9610,7 @@ class WriterStateKernelTest(unittest.TestCase):
             terminal=None,
             choices=(choice,),
         )
-        outcome = writer_snapshot._WriterSnapshotAdvanceOutcome(
-            kind=writer_snapshot._WriterSnapshotAdvanceOutcomeKind.ADVANCED,
+        outcome = self._test_projection_bound_advance_outcome(
             source_snapshot=snapshot,
             emitted_text="C",
             choice_snapshot=choice_snapshot,
@@ -9667,8 +9679,7 @@ class WriterStateKernelTest(unittest.TestCase):
             terminal=None,
             choices=(),
         )
-        outcome = writer_snapshot._WriterSnapshotAdvanceOutcome(
-            kind=writer_snapshot._WriterSnapshotAdvanceOutcomeKind.ADVANCED,
+        outcome = self._test_projection_bound_advance_outcome(
             source_snapshot=snapshot,
             emitted_text="C",
             choice_snapshot=choice_snapshot,
@@ -9763,16 +9774,14 @@ class WriterStateKernelTest(unittest.TestCase):
             terminal=None,
             choices=(choice_n,),
         )
-        step_c = writer_snapshot._WriterSnapshotAdvanceOutcome(
-            kind=writer_snapshot._WriterSnapshotAdvanceOutcomeKind.ADVANCED,
+        step_c = self._test_projection_bound_advance_outcome(
             source_snapshot=snapshot,
             emitted_text="C",
             choice_snapshot=choice_snapshot_c,
             choice=choice_c,
             advanced_snapshot=snapshot_1,
         )
-        step_n = writer_snapshot._WriterSnapshotAdvanceOutcome(
-            kind=writer_snapshot._WriterSnapshotAdvanceOutcomeKind.ADVANCED,
+        step_n = self._test_projection_bound_advance_outcome(
             source_snapshot=snapshot_1,
             emitted_text="N",
             choice_snapshot=choice_snapshot_n,
@@ -9850,8 +9859,7 @@ class WriterStateKernelTest(unittest.TestCase):
             terminal=None,
             choices=(choice,),
         )
-        step = writer_snapshot._WriterSnapshotAdvanceOutcome(
-            kind=writer_snapshot._WriterSnapshotAdvanceOutcomeKind.ADVANCED,
+        step = self._test_projection_bound_advance_outcome(
             source_snapshot=snapshot,
             emitted_text="C",
             choice_snapshot=choice_snapshot,
@@ -9931,8 +9939,7 @@ class WriterStateKernelTest(unittest.TestCase):
             terminal=None,
             choices=(choice,),
         )
-        step = writer_snapshot._WriterSnapshotAdvanceOutcome(
-            kind=writer_snapshot._WriterSnapshotAdvanceOutcomeKind.ADVANCED,
+        step = self._test_projection_bound_advance_outcome(
             source_snapshot=snapshot,
             emitted_text="C",
             choice_snapshot=choice_snapshot,
@@ -10097,8 +10104,7 @@ class WriterStateKernelTest(unittest.TestCase):
                 choices=(final_choice,),
             )
         )
-        step = writer_snapshot._WriterSnapshotAdvanceOutcome(
-            kind=writer_snapshot._WriterSnapshotAdvanceOutcomeKind.ADVANCED,
+        step = self._test_projection_bound_advance_outcome(
             source_snapshot=snapshot,
             emitted_text="C",
             choice_snapshot=replay_choice_snapshot,
@@ -10301,8 +10307,7 @@ class WriterStateKernelTest(unittest.TestCase):
                 choices=(final_choice,),
             )
         )
-        step = writer_snapshot._WriterSnapshotAdvanceOutcome(
-            kind=writer_snapshot._WriterSnapshotAdvanceOutcomeKind.ADVANCED,
+        step = self._test_projection_bound_advance_outcome(
             source_snapshot=snapshot,
             emitted_text="C",
             choice_snapshot=replay_choice_snapshot,
@@ -11098,6 +11103,23 @@ class WriterStateKernelTest(unittest.TestCase):
                 cursor=choice.successor,
             )
         )
+        lookup = writer_snapshot._checked_writer_snapshot_text_projection_lookup(
+            source_snapshot,
+            prepared=prepared,
+            emitted_text=choice.emitted_text,
+        )
+        assert lookup is not None
+        _, step_certificate = (
+            writer_snapshot
+            ._writer_search_snapshot_after_certified_text_projection(
+                source_snapshot,
+                prepared=prepared,
+                frontier_projection_certificate=(
+                    lookup.frontier_projection_certificate
+                ),
+                text_projection_certificate=lookup.text_projection_certificate,
+            )
+        )
         blocked_choice_snapshot = self._test_blocked_frontier_choice_snapshot(cursor)
 
         advanced = writer_snapshot._WriterSnapshotAdvanceOutcome(
@@ -11107,6 +11129,12 @@ class WriterStateKernelTest(unittest.TestCase):
             choice_snapshot=choice_snapshot,
             choice=choice,
             advanced_snapshot=advanced_snapshot,
+            step_certificate=step_certificate,
+            frontier_product=lookup.product,
+            frontier_projection_certificate=(
+                lookup.frontier_projection_certificate
+            ),
+            text_projection_certificate=lookup.text_projection_certificate,
         )
         blocked = writer_snapshot._WriterSnapshotAdvanceOutcome(
             kind=writer_snapshot._WriterSnapshotAdvanceOutcomeKind.BLOCKED,
@@ -12583,8 +12611,7 @@ class WriterStateKernelTest(unittest.TestCase):
                 cursor=choice.successor,
             )
         )
-        outcome = writer_snapshot._WriterSnapshotAdvanceOutcome(
-            kind=writer_snapshot._WriterSnapshotAdvanceOutcomeKind.ADVANCED,
+        outcome = self._test_projection_bound_advance_outcome(
             source_snapshot=snapshot,
             emitted_text=choice.emitted_text,
             choice_snapshot=choice_snapshot,

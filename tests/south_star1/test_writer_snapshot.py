@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from types import SimpleNamespace
 import unittest
 
 from grimace._south_star1.errors import SouthStarError
@@ -49,6 +50,7 @@ from grimace._south_star1.writer_snapshot import WriterFrontierFrame
 from grimace._south_star1.writer_snapshot import WriterSearchSnapshot
 from grimace._south_star1.writer_snapshot import _writer_snapshot_advance_outcome_by_emitted_text
 from grimace._south_star1.writer_snapshot import _writer_snapshot_advance_sequence_outcome_by_emitted_texts
+from grimace._south_star1.writer_snapshot import _checked_writer_snapshot_text_projection_lookup
 from grimace._south_star1.writer_snapshot import _checked_writer_snapshot_prefix_read_outcome_after_emitted_texts
 from grimace._south_star1.writer_snapshot import _checked_writer_snapshot_prefix_product_after_emitted_texts
 from grimace._south_star1.writer_snapshot import _prepared_identity
@@ -162,6 +164,155 @@ class WriterSnapshotTest(unittest.TestCase):
             )
         )
         self.assertTrue(certificate.branch_certificates)
+
+    def test_snapshot_advance_outcome_carries_product_projection_identity(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options()
+        snapshot = capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=initial_writer_frontier_cursor(prepared, options),
+        )
+        emitted_text = writer_frontier_choices(
+            prepared,
+            snapshot.cursor,
+        ).choices[0].emitted_text
+
+        outcome = _writer_snapshot_advance_outcome_by_emitted_text(
+            snapshot,
+            prepared=prepared,
+            emitted_text=emitted_text,
+        )
+
+        self.assertIs(
+            outcome.frontier_projection_certificate,
+            outcome.step_certificate.frontier_projection_certificate,
+        )
+        self.assertIs(
+            outcome.text_projection_certificate,
+            outcome.step_certificate.text_projection_certificate,
+        )
+        self.assertEqual(
+            outcome.text_projection_certificate.emitted_text,
+            emitted_text,
+        )
+
+    def test_snapshot_advance_invalid_text_has_no_projection_match(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options()
+        snapshot = capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=initial_writer_frontier_cursor(prepared, options),
+        )
+
+        lookup = (
+            _checked_writer_snapshot_text_projection_lookup(
+                snapshot,
+                prepared=prepared,
+                emitted_text="not-a-choice",
+            )
+        )
+        self.assertIsNone(lookup)
+
+        outcome = _writer_snapshot_advance_outcome_by_emitted_text(
+            snapshot,
+            prepared=prepared,
+            emitted_text="not-a-choice",
+        )
+        self.assertTrue(outcome.invalid_emitted_text)
+
+    def test_snapshot_advance_outcome_rejects_stale_step_projection(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options()
+        snapshot = capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=initial_writer_frontier_cursor(prepared, options),
+        )
+        emitted_text = writer_frontier_choices(
+            prepared,
+            snapshot.cursor,
+        ).choices[0].emitted_text
+        outcome = _writer_snapshot_advance_outcome_by_emitted_text(
+            snapshot,
+            prepared=prepared,
+            emitted_text=emitted_text,
+        )
+        bad_step = replace(
+            outcome.step_certificate,
+            text_projection_certificate=object(),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "invalid writer snapshot advance outcome",
+        ):
+            type(outcome)(
+                kind=outcome.kind,
+                source_snapshot=outcome.source_snapshot,
+                emitted_text=outcome.emitted_text,
+                choice_snapshot=outcome.choice_snapshot,
+                choice=outcome.choice,
+                advanced_snapshot=outcome.advanced_snapshot,
+                step_certificate=bad_step,
+                frontier_product=outcome.frontier_product,
+                frontier_projection_certificate=(
+                    outcome.frontier_projection_certificate
+                ),
+                text_projection_certificate=outcome.text_projection_certificate,
+            )
+
+    def test_snapshot_replay_sequence_rejects_projection_chain_mismatch(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options()
+        snapshot = capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=initial_writer_frontier_cursor(prepared, options),
+        )
+        emitted_text = writer_frontier_choices(
+            prepared,
+            snapshot.cursor,
+        ).choices[0].emitted_text
+        sequence = _writer_snapshot_advance_sequence_outcome_by_emitted_texts(
+            snapshot,
+            prepared=prepared,
+            emitted_texts=(emitted_text,),
+        )
+        original_step = sequence.step_outcomes[0]
+        bad_step = SimpleNamespace(
+            kind=original_step.kind,
+            source_snapshot=original_step.source_snapshot,
+            emitted_text=original_step.emitted_text,
+            advanced_snapshot=original_step.advanced_snapshot,
+            step_certificate=original_step.step_certificate,
+            frontier_projection_certificate=(
+                original_step.frontier_projection_certificate
+            ),
+            text_projection_certificate=SimpleNamespace(
+                emitted_text=emitted_text,
+            ),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "invalid writer snapshot advance sequence outcome",
+        ):
+            type(sequence)(
+                kind=sequence.kind,
+                source_snapshot=sequence.source_snapshot,
+                emitted_texts=sequence.emitted_texts,
+                step_outcomes=(bad_step,),
+                current_snapshot=sequence.current_snapshot,
+                replay_certificate=sequence.replay_certificate,
+            )
 
     def test_snapshot_replay_certificate_tracks_prefix_steps(self) -> None:
         prepared = _prepare(cco_facts())

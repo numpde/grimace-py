@@ -119,6 +119,13 @@ class _WriterSnapshotCertifiedPrefixProduct:
     prefix_read_certificate: object
 
 
+@dataclass(frozen=True, slots=True)
+class _WriterSnapshotAdvanceProjectionLookup:
+    product: object
+    frontier_projection_certificate: object
+    text_projection_certificate: object
+
+
 def _capture_writer_frontier_snapshot_unchecked(
     *,
     prepared: SouthStarPreparedMol,
@@ -307,11 +314,16 @@ class _WriterSnapshotAdvanceOutcome:
     choice: _WriterFrontierChoiceSnapshotEntry | None = None
     advanced_snapshot: WriterSearchSnapshot | None = None
     step_certificate: object | None = None
+    frontier_product: object | None = None
+    frontier_projection_certificate: object | None = None
+    text_projection_certificate: object | None = None
 
     def __post_init__(self) -> None:
         has_choice = self.choice is not None
         has_advanced = self.advanced_snapshot is not None
         has_certificate = self.step_certificate is not None
+        has_projection = self.text_projection_certificate is not None
+        has_frontier_projection = self.frontier_projection_certificate is not None
 
         if self.kind is _WriterSnapshotAdvanceOutcomeKind.ADVANCED:
             valid = (
@@ -319,6 +331,18 @@ class _WriterSnapshotAdvanceOutcome:
                 and has_choice
                 and has_advanced
                 and self.choice.emitted_text == self.emitted_text
+                and has_certificate
+                and has_projection
+                and has_frontier_projection
+                and self.text_projection_certificate.emitted_text == (
+                    self.emitted_text
+                )
+                and self.step_certificate.text_projection_certificate is (
+                    self.text_projection_certificate
+                )
+                and self.step_certificate.frontier_projection_certificate is (
+                    self.frontier_projection_certificate
+                )
             )
         elif self.kind is _WriterSnapshotAdvanceOutcomeKind.BLOCKED:
             valid = (
@@ -326,6 +350,8 @@ class _WriterSnapshotAdvanceOutcome:
                 and not has_choice
                 and not has_advanced
                 and not has_certificate
+                and not has_projection
+                and not has_frontier_projection
             )
         elif self.kind is _WriterSnapshotAdvanceOutcomeKind.INVALID_EMITTED_TEXT:
             valid = (
@@ -333,6 +359,8 @@ class _WriterSnapshotAdvanceOutcome:
                 and not has_choice
                 and not has_advanced
                 and not has_certificate
+                and not has_projection
+                and not has_frontier_projection
             )
         else:
             valid = False
@@ -451,6 +479,13 @@ class _WriterSnapshotAdvanceSequenceOutcome:
                     step.kind
                     is not _WriterSnapshotAdvanceOutcomeKind.ADVANCED
                     or step.advanced_snapshot is None
+                    or step.step_certificate is None
+                    or step.text_projection_certificate is not (
+                        step.step_certificate.text_projection_certificate
+                    )
+                    or step.frontier_projection_certificate is not (
+                        step.step_certificate.frontier_projection_certificate
+                    )
                 ):
                     return False
 
@@ -1155,6 +1190,31 @@ def _checked_text_projection_certificate_for_emitted_text(
     snapshot: WriterSearchSnapshot,
     emitted_text: str,
 ):
+    lookup = _checked_writer_snapshot_text_projection_lookup(
+        snapshot,
+        prepared=prepared,
+        emitted_text=emitted_text,
+    )
+    if lookup is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INVALID_FACTS,
+            (
+                "writer snapshot emitted text is not in the current "
+                f"frontier: {emitted_text!r}"
+            ),
+        )
+    return (
+        lookup.frontier_projection_certificate,
+        lookup.text_projection_certificate,
+    )
+
+
+def _checked_writer_snapshot_text_projection_lookup(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    emitted_text: str,
+) -> _WriterSnapshotAdvanceProjectionLookup | None:
     product = _checked_writer_frontier_product(
         prepared,
         snapshot.cursor,
@@ -1165,7 +1225,7 @@ def _checked_text_projection_certificate_for_emitted_text(
     if product.projection_certificate is None:
         raise SouthStarError(
             SouthStarErrorKind.INTERNAL_INVARIANT,
-            "legal frontier product lacks projection certificate",
+            "legal snapshot advance product lacks projection certificate",
         )
     matches = tuple(
         certificate
@@ -1175,12 +1235,18 @@ def _checked_text_projection_certificate_for_emitted_text(
         )
         if certificate.emitted_text == emitted_text
     )
-    if len(matches) != 1:
+    if len(matches) > 1:
         raise SouthStarError(
             SouthStarErrorKind.INTERNAL_INVARIANT,
-            "checked text projection certificate mismatch",
+            "snapshot advance observed duplicate text projection",
         )
-    return product.projection_certificate, matches[0]
+    if not matches:
+        return None
+    return _WriterSnapshotAdvanceProjectionLookup(
+        product=product,
+        frontier_projection_certificate=product.projection_certificate,
+        text_projection_certificate=matches[0],
+    )
 
 
 def _writer_search_snapshot_after_certified_emitted_text(
@@ -1246,6 +1312,11 @@ def _writer_snapshot_advance_outcome_by_emitted_text(
     prepared: SouthStarPreparedMol,
     emitted_text: str,
 ) -> _WriterSnapshotAdvanceOutcome:
+    lookup = _checked_writer_snapshot_text_projection_lookup(
+        snapshot,
+        prepared=prepared,
+        emitted_text=emitted_text,
+    )
     choice_snapshot = _writer_frontier_choice_snapshot_from_snapshot(
         snapshot,
         prepared=prepared,
@@ -1261,12 +1332,7 @@ def _writer_snapshot_advance_outcome_by_emitted_text(
             choice_snapshot=choice_snapshot,
         )
 
-    choice = _maybe_writer_frontier_choice_snapshot_entry_for_emitted_text(
-        choice_snapshot,
-        emitted_text,
-    )
-
-    if choice is None:
+    if lookup is None:
         return _WriterSnapshotAdvanceOutcome(
             kind=_WriterSnapshotAdvanceOutcomeKind.INVALID_EMITTED_TEXT,
             source_snapshot=snapshot,
@@ -1275,10 +1341,13 @@ def _writer_snapshot_advance_outcome_by_emitted_text(
         )
 
     advanced_snapshot, step_certificate = (
-        _writer_search_snapshot_after_certified_emitted_text(
+        _writer_search_snapshot_after_certified_text_projection(
             snapshot,
             prepared=prepared,
-            emitted_text=emitted_text,
+            frontier_projection_certificate=(
+                lookup.frontier_projection_certificate
+            ),
+            text_projection_certificate=lookup.text_projection_certificate,
         )
     )
 
@@ -1287,9 +1356,12 @@ def _writer_snapshot_advance_outcome_by_emitted_text(
         source_snapshot=snapshot,
         emitted_text=emitted_text,
         choice_snapshot=choice_snapshot,
-        choice=choice,
+        choice=lookup.text_projection_certificate.choice,
         advanced_snapshot=advanced_snapshot,
         step_certificate=step_certificate,
+        frontier_product=lookup.product,
+        frontier_projection_certificate=lookup.frontier_projection_certificate,
+        text_projection_certificate=lookup.text_projection_certificate,
     )
 
 

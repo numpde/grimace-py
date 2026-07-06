@@ -500,7 +500,12 @@ def _result_from_sink(
         require_resumable=True,
     )
     return OnlineResidualRawChoiceResult(
-        choices=tuple(sorted(choices, key=lambda choice: (choice.text, repr(choice.next_state.frontier)))),
+        choices=tuple(
+            sorted(
+                choices,
+                key=lambda choice: choice.text,
+            )
+        ),
         eos_completion_count=sum(
             continuation.completion_count
             for continuation in merge_residual_continuations_by_key(sink.eos_by_frontier)
@@ -576,7 +581,7 @@ def merge_residual_continuations_by_key(
             by_key[key] = continuation
             continue
         by_key[key] = _merge_continuation_counts(existing, continuation)
-    return tuple(by_key[key] for key in sorted(by_key, key=repr))
+    return tuple(by_key.values())
 
 
 def _merge_continuation_counts(

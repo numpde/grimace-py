@@ -18,7 +18,9 @@ from .writer_snapshot import (
     _writer_snapshot_advance_sequence_outcome_by_emitted_texts,
 )
 from .writer_snapshot_envelope import _source_snapshot_from_envelope
-from .writer_snapshot_envelope import verify_writer_snapshot_advance_envelope
+from .writer_snapshot_envelope import (
+    _verify_writer_snapshot_advance_envelope_from_known_source,
+)
 from .writer_snapshot_envelope import writer_snapshot_advance_envelope_for_emitted_text
 
 
@@ -177,8 +179,9 @@ def _verify_step_chain(*, prepared, source_snapshot, envelope):
         _validate_step_source(step_envelope, current)
         if step_envelope["emitted_text"] != emitted_texts[index]:
             _replay_envelope_violation("step_emitted_text_mismatch")
-        verification = verify_writer_snapshot_advance_envelope(
+        verification = _verify_writer_snapshot_advance_envelope_from_known_source(
             prepared=prepared,
+            source_snapshot=current,
             envelope=step_envelope,
         )
         if not verification.accepted:
@@ -212,8 +215,9 @@ def _verify_step_chain(*, prepared, source_snapshot, envelope):
     _validate_step_source(failed, current)
     if failed["emitted_text"] != emitted_texts[failed_index]:
         _replay_envelope_violation("failed_step_emitted_text_mismatch")
-    verification = verify_writer_snapshot_advance_envelope(
+    verification = _verify_writer_snapshot_advance_envelope_from_known_source(
         prepared=prepared,
+        source_snapshot=current,
         envelope=failed,
     )
     if not verification.accepted:

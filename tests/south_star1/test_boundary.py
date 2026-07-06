@@ -88,7 +88,10 @@ class SouthStar1BoundaryTest(unittest.TestCase):
             "writer_snapshot_advance_envelope_for_emitted_text",
             source,
         )
-        self.assertIn("verify_writer_snapshot_advance_envelope", source)
+        self.assertIn(
+            "_verify_writer_snapshot_advance_envelope_from_known_source",
+            source,
+        )
 
     def test_private_package_is_not_publicly_exported(self) -> None:
         self.assertNotIn("_south_star1", grimace.__all__)

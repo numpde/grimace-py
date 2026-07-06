@@ -8,6 +8,7 @@ import unittest
 from unittest.mock import patch
 
 import grimace._south_star1.writer_frontier as writer_frontier_module
+import grimace._south_star1.writer_snapshot_replay_envelope as replay_envelope_module
 from grimace._south_star1.policy import SerializationLanguageMode
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
@@ -73,6 +74,36 @@ class WriterSnapshotReplayEnvelopeTest(unittest.TestCase):
         self.assertEqual(verification.outcome_kind, "advanced")
         self.assertEqual(envelope["consumed_emitted_texts"], list(emitted_texts))
         self.assertIsNotNone(verification.current_snapshot)
+
+    def test_multi_step_replay_source_lookup_runs_once(self) -> None:
+        prepared = _prepare(cco_facts())
+        snapshot = _initial_snapshot(prepared)
+        emitted_texts = _legal_prefix(prepared, snapshot, length=2)
+        envelope = writer_snapshot_replay_envelope_for_emitted_texts(
+            prepared=prepared,
+            snapshot=snapshot,
+            emitted_texts=emitted_texts,
+        )
+        calls = 0
+        original = replay_envelope_module._source_snapshot_from_envelope
+
+        def counted_source(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            return original(*args, **kwargs)
+
+        with patch.object(
+            replay_envelope_module,
+            "_source_snapshot_from_envelope",
+            counted_source,
+        ):
+            verification = verify_writer_snapshot_replay_envelope(
+                prepared=prepared,
+                envelope=envelope,
+            )
+
+        self.assertTrue(verification.accepted)
+        self.assertEqual(calls, 1)
 
     def test_invalid_text_at_first_step_verifies(self) -> None:
         prepared = _prepare(cco_facts())

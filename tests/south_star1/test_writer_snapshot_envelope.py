@@ -8,6 +8,7 @@ import unittest
 from unittest.mock import patch
 
 import grimace._south_star1.writer_frontier as writer_frontier_module
+import grimace._south_star1.writer_snapshot_envelope as envelope_module
 from grimace._south_star1.policy import SerializationLanguageMode
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
@@ -209,6 +210,57 @@ class WriterSnapshotEnvelopeTest(unittest.TestCase):
                 envelope=envelope,
             ).accepted
         )
+
+    def test_legal_source_lookup_uses_bounded_frontier_scan(self) -> None:
+        prepared = _prepare(cco_facts())
+        envelope = _legal_envelope(prepared=prepared)
+        calls = 0
+        original = envelope_module._snapshot_advance_writer_frontier_product
+
+        def counted_product(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            return original(*args, **kwargs)
+
+        with patch.object(
+            envelope_module,
+            "_snapshot_advance_writer_frontier_product",
+            counted_product,
+        ):
+            verification = verify_writer_snapshot_advance_envelope(
+                prepared=prepared,
+                envelope=envelope,
+            )
+
+        self.assertTrue(verification.accepted)
+        self.assertLessEqual(calls, 3)
+
+    def test_blocked_source_lookup_does_not_walk_past_blocked_product(
+        self,
+    ) -> None:
+        prepared = _prepare(tetrahedral_facts())
+        envelope = _blocked_envelope(prepared)
+        calls = 0
+        original = envelope_module._snapshot_advance_writer_frontier_product
+
+        def counted_product(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            return original(*args, **kwargs)
+
+        with _blocked_capability_patch(prepared):
+            with patch.object(
+                envelope_module,
+                "_snapshot_advance_writer_frontier_product",
+                counted_product,
+            ):
+                verification = verify_writer_snapshot_advance_envelope(
+                    prepared=prepared,
+                    envelope=envelope,
+                )
+
+        self.assertTrue(verification.accepted)
+        self.assertLessEqual(calls, 2)
 
     def test_wrong_emitted_text_is_rejected(self) -> None:
         prepared = _prepare(cco_facts())

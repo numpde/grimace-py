@@ -131,6 +131,75 @@ def verify_writer_snapshot_advance_envelope(
         )
 
 
+def _verify_writer_snapshot_advance_envelope_from_known_source(
+    *,
+    prepared: SouthStarPreparedMol,
+    source_snapshot,
+    envelope: object,
+) -> WriterSnapshotAdvanceEnvelopeVerification:
+    try:
+        _validate_envelope_shape(envelope)
+        assert isinstance(envelope, Mapping)
+        outcome_kind = envelope["outcome_kind"]
+        if envelope["source_snapshot"] != _snapshot_identity_envelope(
+            source_snapshot
+        ):
+            _envelope_violation("known_source_snapshot_mismatch")
+        _assert_prepared_identity_matches(prepared, envelope)
+        expected = writer_snapshot_advance_envelope_for_emitted_text(
+            prepared=prepared,
+            snapshot=source_snapshot,
+            emitted_text=envelope["emitted_text"],
+        )
+        if expected != envelope:
+            return WriterSnapshotAdvanceEnvelopeVerification(
+                accepted=False,
+                outcome_kind=str(outcome_kind),
+                source_snapshot=source_snapshot,
+                advanced_snapshot=None,
+                reason="envelope_terms_mismatch",
+            )
+
+        advanced_snapshot = None
+        if outcome_kind == "advanced":
+            outcome = _writer_snapshot_advance_outcome_by_emitted_text(
+                source_snapshot,
+                prepared=prepared,
+                emitted_text=envelope["emitted_text"],
+            )
+            advanced_snapshot = outcome.advanced_snapshot
+        return WriterSnapshotAdvanceEnvelopeVerification(
+            accepted=True,
+            outcome_kind=str(outcome_kind),
+            source_snapshot=source_snapshot,
+            advanced_snapshot=advanced_snapshot,
+        )
+    except SouthStarError as exc:
+        return WriterSnapshotAdvanceEnvelopeVerification(
+            accepted=False,
+            outcome_kind=(
+                envelope.get("outcome_kind", "unknown")
+                if isinstance(envelope, Mapping)
+                else "unknown"
+            ),
+            source_snapshot=None,
+            advanced_snapshot=None,
+            reason=exc.args[-1] if exc.args else "verification_error",
+        )
+    except (AssertionError, KeyError, TypeError, ValueError) as exc:
+        return WriterSnapshotAdvanceEnvelopeVerification(
+            accepted=False,
+            outcome_kind=(
+                envelope.get("outcome_kind", "unknown")
+                if isinstance(envelope, Mapping)
+                else "unknown"
+            ),
+            source_snapshot=None,
+            advanced_snapshot=None,
+            reason=f"malformed_envelope:{type(exc).__name__}",
+        )
+
+
 def _envelope_from_outcome(*, prepared, outcome) -> dict[str, object]:
     source_snapshot = outcome.source_snapshot
     product_kind = "blocked" if outcome.frontier_product.blocked else "legal"

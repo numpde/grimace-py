@@ -182,6 +182,34 @@ def writer_support_string_envelope_for_prefix_read(
     return envelope
 
 
+def _writer_support_string_envelope_from_certificate(
+    *,
+    prepared: SouthStarPreparedMol,
+    source_kind: str,
+    source_snapshot,
+    prefix_read_envelope,
+    count_envelope,
+    replay_envelope,
+    certificate,
+) -> dict[str, object]:
+    terminal_product = _terminal_product_for_certificate(
+        prepared=prepared,
+        certificate=certificate,
+    )
+    envelope = _envelope_from_certificate_with_product(
+        source_kind=source_kind,
+        source_snapshot=source_snapshot,
+        prefix_read_envelope=prefix_read_envelope,
+        count_envelope=count_envelope,
+        replay_envelope=replay_envelope,
+        certificate=certificate,
+        terminal_product=terminal_product,
+    )
+    _validate_envelope_shape(envelope)
+    _assert_prepared_identity_matches(prepared, envelope)
+    return envelope
+
+
 def verify_writer_support_string_envelope(
     *,
     prepared: SouthStarPreparedMol,

@@ -92,6 +92,7 @@ CORE_MODULES: tuple[str, ...] = (
     "writer_stereo_non_neighbor",
     "writer_support",
     "writer_support_certificates",
+    "writer_support_image_envelope",
     "writer_support_string_envelope",
     "writer_choice_count_certificates",
     "writer_terminal_certificates",

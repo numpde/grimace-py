@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import inspect
+import re
 import unittest
 from collections import Counter
+from dataclasses import dataclass
 from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -146,6 +149,59 @@ from tests.south_star1.helpers import tetrahedral_facts
 from tests.south_star1.helpers import atom
 from tests.south_star1.helpers import bond
 from tests.south_star1.helpers import single_bond
+
+
+@dataclass(frozen=True, slots=True)
+class RemainingEvidenceIncompleteDomain:
+    code: str
+    certificate_family: str
+    authority_surface: str
+    classification: str
+    exact_replay_candidate: bool
+
+
+REMAINING_EVIDENCE_INCOMPLETE_DOMAINS = (
+    RemainingEvidenceIncompleteDomain(
+        code="WriterGraphObligationReplayKind.EVIDENCE_BOUND_INCOMPLETE",
+        certificate_family="WriterGraphObligationReplayCertificate",
+        authority_surface="branch successor-state graph replay",
+        classification="MISSING_EVIDENCE",
+        exact_replay_candidate=False,
+    ),
+    RemainingEvidenceIncompleteDomain(
+        code="WriterStereoReplayKind.EVIDENCE_BOUND_INCOMPLETE",
+        certificate_family="WriterStereoStateReplayCertificate",
+        authority_surface="branch successor-state stereo replay",
+        classification="MISSING_EVIDENCE",
+        exact_replay_candidate=False,
+    ),
+    RemainingEvidenceIncompleteDomain(
+        code=(
+            "WriterClosureCandidateLifecycleReplayKind"
+            ".EVIDENCE_BOUND_INCOMPLETE"
+        ),
+        certificate_family=(
+            "WriterClosureCandidateLifecycleReplayCertificate"
+        ),
+        authority_surface="branch successor-state closure lifecycle replay",
+        classification="DEAD_OR_UNREACHABLE",
+        exact_replay_candidate=False,
+    ),
+    RemainingEvidenceIncompleteDomain(
+        code=(
+            "WriterResidualAttachmentLifecycleReplayKind"
+            ".EVIDENCE_BOUND_INCOMPLETE"
+        ),
+        certificate_family=(
+            "WriterResidualAttachmentLifecycleReplayCertificate"
+        ),
+        authority_surface=(
+            "branch successor-state residual attachment lifecycle replay"
+        ),
+        classification="DEAD_OR_UNREACHABLE",
+        exact_replay_candidate=False,
+    ),
+)
 
 
 class WriterBranchRuntimeTest(unittest.TestCase):
@@ -1728,6 +1784,96 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                     ),
                 )
             )
+
+    def test_evidence_bound_incomplete_domains_are_classified(self) -> None:
+        source = Path(
+            writer_state_delta_certificates.__file__
+        ).read_text(encoding="utf-8")
+        observed = {
+            f"{name}.EVIDENCE_BOUND_INCOMPLETE"
+            for name in re.findall(
+                (
+                    r"class (Writer[A-Za-z]+(?:ReplayKind|LifecycleReplayKind))"
+                    r"\(Enum\):(?:(?!\nclass ).)*?"
+                    r"EVIDENCE_BOUND_INCOMPLETE"
+                ),
+                source,
+                flags=re.S,
+            )
+        }
+
+        classified = {
+            domain.code
+            for domain in REMAINING_EVIDENCE_INCOMPLETE_DOMAINS
+        }
+        self.assertEqual(observed, classified)
+        self.assertTrue(
+            all(
+                domain.classification
+                in {
+                    "EXACT_REPLAY_READY",
+                    "MISSING_THREADING",
+                    "MISSING_EVIDENCE",
+                    "DIAGNOSTIC_ONLY",
+                    "DEAD_OR_UNREACHABLE",
+                }
+                for domain in REMAINING_EVIDENCE_INCOMPLETE_DOMAINS
+            )
+        )
+
+    def test_core_fixture_replay_certificates_have_no_incomplete_cases(
+        self,
+    ) -> None:
+        for facts in (
+            cco_facts(),
+            cyclopropane_facts(),
+            directional_facts(),
+            tetrahedral_facts(),
+        ):
+            with self.subTest(facts=facts):
+                prepared = _prepare(facts)
+                seen: set[WriterFrontierCursor] = set()
+                pending = [
+                    initial_writer_frontier_cursor(
+                        prepared,
+                        _writer_options(),
+                    )
+                ]
+                while pending and len(seen) < 1000:
+                    cursor = pending.pop(0)
+                    if cursor in seen:
+                        continue
+                    seen.add(cursor)
+                    batch = _checked_writer_frontier_branch_supports(
+                        prepared,
+                        cursor,
+                        include_counts=False,
+                    )
+                    for support in batch.supports:
+                        certificate = support.successor_state_certificate
+                        graph = certificate.graph_replay_certificate
+                        if graph is not None:
+                            obligation = graph.obligation_replay_certificate
+                            if obligation is not None:
+                                self.assertIsNot(
+                                    obligation.kind,
+                                    (
+                                        writer_state_delta_certificates
+                                        .WriterGraphObligationReplayKind
+                                        .EVIDENCE_BOUND_INCOMPLETE
+                                    ),
+                                )
+                        stereo = certificate.stereo_replay_certificate
+                        if stereo is not None:
+                            self.assertIsNot(
+                                stereo.kind,
+                                (
+                                    writer_state_delta_certificates
+                                    .WriterStereoReplayKind
+                                    .EVIDENCE_BOUND_INCOMPLETE
+                                ),
+                            )
+                        pending.append(support.successor_cursor)
 
     def test_directional_graph_obligation_replay_has_no_incomplete_cases(
         self,

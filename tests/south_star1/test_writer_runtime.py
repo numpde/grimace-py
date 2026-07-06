@@ -2426,6 +2426,7 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
                 source_state=support.source_state,
                 finalized_state=support.finalized_state,
                 parent_weight=0,
+                terminal_ordinal=support.terminal_ordinal,
                 terminal_execution_capabilities=(
                     support.terminal_execution_capabilities
                 ),

@@ -50,6 +50,8 @@ class WriterCheckedTerminalSupportCertificate:
     source_state: object
     finalized_state: object
     parent_weight: int
+    terminal_ordinal: int
+    terminal_support_key: tuple[object, ...]
     terminal_execution_capabilities: frozenset[object]
     terminal_residual_work_evidence: tuple[object, ...]
     terminal_stereo_lifecycle_evidence: tuple[object, ...]
@@ -202,6 +204,7 @@ def writer_checked_terminal_support_certificate(
     source_state,
     finalized_state,
     parent_weight: int,
+    terminal_ordinal: int,
     terminal_execution_capabilities: frozenset[object],
     terminal_residual_work_evidence: tuple[object, ...],
     terminal_stereo_lifecycle_evidence: tuple[object, ...],
@@ -210,6 +213,8 @@ def writer_checked_terminal_support_certificate(
 ) -> WriterCheckedTerminalSupportCertificate:
     if parent_weight <= 0:
         _terminal_violation("nonpositive_parent_weight")
+    if terminal_ordinal < 0:
+        _terminal_violation("negative_terminal_ordinal")
 
     kinds = frozenset(certificate.kind for certificate in terminal_certificates)
     if WriterTerminalCertificateKind.GRAPH_COMPLETE not in kinds:
@@ -237,10 +242,24 @@ def writer_checked_terminal_support_certificate(
     if terminal_residual_work_evidence != lifecycle_work:
         _terminal_violation("terminal_residual_work_lifecycle_mismatch")
 
+    terminal_support_key = (
+        source_state,
+        finalized_state,
+        parent_weight,
+        terminal_ordinal,
+        terminal_execution_capabilities,
+        terminal_residual_work_evidence,
+        terminal_stereo_lifecycle_evidence,
+        graph_obligation_work_evidence,
+        terminal_certificates,
+    )
+
     return WriterCheckedTerminalSupportCertificate(
         source_state=source_state,
         finalized_state=finalized_state,
         parent_weight=parent_weight,
+        terminal_ordinal=terminal_ordinal,
+        terminal_support_key=terminal_support_key,
         terminal_execution_capabilities=terminal_execution_capabilities,
         terminal_residual_work_evidence=terminal_residual_work_evidence,
         terminal_stereo_lifecycle_evidence=terminal_stereo_lifecycle_evidence,

@@ -2740,6 +2740,22 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 for support in product.terminal_supports
             )
             self.assertEqual(len(identities), len(set(identities)))
+            ordinals = tuple(
+                support.terminal_ordinal for support in product.terminal_supports
+            )
+            self.assertEqual(ordinals, tuple(range(len(ordinals))))
+            support_keys = tuple(
+                support.terminal_support_key
+                for support in product.terminal_supports
+            )
+            self.assertEqual(len(support_keys), len(set(support_keys)))
+            self.assertEqual(
+                product.terminal_projection_certificate.terminal_support_identities,
+                tuple(
+                    support.checked_terminal_certificate.terminal_support_key
+                    for support in product.terminal_supports
+                ),
+            )
 
     def test_terminal_projection_rejects_certificate_parent_weight_mismatch(
         self,
@@ -2791,6 +2807,59 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 terminal_supports=(bad_support, *product.terminal_supports[1:]),
             )
 
+    def test_terminal_projection_rejects_certificate_ordinal_mismatch(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        product = _first_terminal_frontier_product(prepared)
+        support = product.terminal_supports[0]
+        bad_certificate = replace(
+            support.checked_terminal_certificate,
+            terminal_ordinal=support.terminal_ordinal + 1,
+        )
+        bad_support = replace(
+            support,
+            checked_terminal_certificate=bad_certificate,
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "terminal_certificate_ordinal_mismatch",
+        ):
+            writer_terminal_projection_certificate(
+                source_cursor=product.cursor,
+                terminal=product.choices.terminal,
+                terminal_supports=(bad_support, *product.terminal_supports[1:]),
+            )
+
+    def test_terminal_projection_rejects_certificate_key_mismatch(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        product = _first_terminal_frontier_product(prepared)
+        support = product.terminal_supports[0]
+        bad_certificate = replace(
+            support.checked_terminal_certificate,
+            terminal_support_key=(
+                *support.checked_terminal_certificate.terminal_support_key,
+                "bad",
+            ),
+        )
+        bad_support = replace(
+            support,
+            checked_terminal_certificate=bad_certificate,
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "terminal_certificate_key_mismatch",
+        ):
+            writer_terminal_projection_certificate(
+                source_cursor=product.cursor,
+                terminal=product.choices.terminal,
+                terminal_supports=(bad_support, *product.terminal_supports[1:]),
+            )
+
     def test_frontier_projection_rejects_terminal_certificate_parent_weight_mismatch(
         self,
     ) -> None:
@@ -2809,6 +2878,38 @@ class WriterBranchRuntimeTest(unittest.TestCase):
         with self.assertRaisesRegex(
             SouthStarError,
             "terminal_certificate_parent_weight_mismatch",
+        ):
+            writer_frontier_projection_certificate(
+                cursor=product.cursor,
+                choices=product.choices,
+                branch_supports=product.branch_supports,
+                terminal_supports=(bad_support, *product.terminal_supports[1:]),
+                text_choice_projection_certificates=(
+                    product.text_choice_projection_certificates
+                ),
+                terminal_projection_certificate=(
+                    product.terminal_projection_certificate
+                ),
+            )
+
+    def test_frontier_projection_rejects_terminal_certificate_ordinal_mismatch(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        product = _first_terminal_frontier_product(prepared)
+        support = product.terminal_supports[0]
+        bad_certificate = replace(
+            support.checked_terminal_certificate,
+            terminal_ordinal=support.terminal_ordinal + 1,
+        )
+        bad_support = replace(
+            support,
+            checked_terminal_certificate=bad_certificate,
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "terminal_certificate_ordinal_mismatch",
         ):
             writer_frontier_projection_certificate(
                 cursor=product.cursor,

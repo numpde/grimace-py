@@ -134,6 +134,8 @@ class WriterRuntimeTerminalSupport:
     source_state: object
     finalized_state: object
     parent_weight: int
+    terminal_ordinal: int
+    terminal_support_key: tuple[object, ...]
     terminal_execution_capabilities: frozenset[object]
     terminal_residual_work_evidence: tuple[object, ...]
     terminal_stereo_lifecycle_evidence: tuple[object, ...]
@@ -494,6 +496,8 @@ def writer_runtime_branch_transitions(
                 source_state=support.source_state,
                 finalized_state=support.finalized_state,
                 parent_weight=support.parent_weight,
+                terminal_ordinal=support.terminal_ordinal,
+                terminal_support_key=support.terminal_support_key,
                 terminal_execution_capabilities=(
                     support.terminal_execution_capabilities
                 ),

@@ -38,6 +38,7 @@ _TOP_LEVEL_FIELDS = frozenset((
     "replay_envelope",
     "final_snapshot",
     "final_frontier_product_kind",
+    "final_frontier_product",
     "prefix_read_certificate",
     "public_frontier",
     "support_count",
@@ -240,6 +241,7 @@ def _failed_replay_envelope(
         replay_envelope=replay_envelope,
         final_snapshot=None,
         final_frontier_product_kind=None,
+        final_frontier_product=None,
         prefix_read_certificate=None,
         public_frontier=None,
         support_count=None,
@@ -272,6 +274,9 @@ def _final_frontier_blocked_envelope(
         replay_envelope=replay_envelope,
         final_snapshot=_snapshot_identity_envelope(final_snapshot),
         final_frontier_product_kind="blocked",
+        final_frontier_product=_writer_frontier_product_identity_envelope(
+            final_product
+        ),
         prefix_read_certificate=None,
         public_frontier=None,
         support_count=None,
@@ -308,11 +313,14 @@ def _readable_envelope(
         replay_envelope=replay_envelope,
         final_snapshot=_snapshot_identity_envelope(prefix.final_snapshot),
         final_frontier_product_kind="legal",
+        final_frontier_product=_writer_frontier_product_identity_envelope(
+            prefix.frontier_product
+        ),
         prefix_read_certificate=_prefix_read_certificate_envelope(
             certificate
         ),
         public_frontier=_public_frontier_envelope(
-            prefix.frontier_product.choices
+            prefix.frontier_product
         ),
         support_count=support_count,
         completion_count=completion_count,
@@ -329,6 +337,7 @@ def _base_envelope(
     replay_envelope,
     final_snapshot,
     final_frontier_product_kind,
+    final_frontier_product,
     prefix_read_certificate,
     public_frontier,
     support_count,
@@ -346,6 +355,7 @@ def _base_envelope(
         "replay_envelope": replay_envelope,
         "final_snapshot": final_snapshot,
         "final_frontier_product_kind": final_frontier_product_kind,
+        "final_frontier_product": final_frontier_product,
         "prefix_read_certificate": prefix_read_certificate,
         "public_frontier": public_frontier,
         "support_count": support_count,
@@ -360,24 +370,24 @@ def _prefix_read_certificate_envelope(certificate) -> dict[str, object]:
             certificate.source_snapshot
         ),
         "emitted_texts": list(certificate.emitted_texts),
-        "replay_certificate_digest": _certificate_digest(
+        "replay_certificate_digest": _full_term_digest(
             certificate.replay_certificate
         ),
-        "final_snapshot": _snapshot_identity_envelope(
-            certificate.final_snapshot
-        ),
-        "final_frontier_projection_certificate_digest": (
-            _certificate_digest(
+        "final_snapshot": _snapshot_identity_envelope(certificate.final_snapshot),
+        "final_frontier_projection_certificate": (
+            _frontier_projection_certificate_identity_envelope(
                 certificate.final_frontier_projection_certificate
             )
         ),
-        "checked_frontier_certificate_digest": _certificate_digest(
-            certificate.checked_frontier_certificate
+        "checked_frontier_certificate": (
+            _checked_frontier_certificate_identity_envelope(
+                certificate.checked_frontier_certificate
+            )
         ),
-        "support_count_certificate_digest": _certificate_digest(
+        "support_count_certificate": _support_count_certificate_envelope(
             certificate.support_count_certificate
         ),
-        "completion_count_certificate_digest": _certificate_digest(
+        "completion_count_certificate": _completion_count_certificate_envelope(
             certificate.completion_count_certificate
         ),
         "support_count": certificate.support_count,
@@ -387,48 +397,514 @@ def _prefix_read_certificate_envelope(certificate) -> dict[str, object]:
     return envelope
 
 
-def _certificate_digest(certificate) -> str | None:
+def _full_term_digest(certificate) -> str | None:
     if certificate is None:
         return None
-    terms = {
-        "__class__": (
-            f"{certificate.__class__.__module__}."
-            f"{certificate.__class__.__name__}"
+    return _digest(_term(certificate))
+
+
+def _writer_frontier_product_identity_envelope(product) -> dict[str, object]:
+    if product is None:
+        return None
+    if product.blocked:
+        blocked = product.blocked_frontier_certificate
+        diagnostic = product.diagnostic_certificate
+        envelope = {
+            "kind": "blocked",
+            "cursor": _cursor_envelope(product.cursor),
+            "blocked_frontier_certificate": {
+                "cursor": _cursor_envelope(blocked.cursor),
+                "blocked": blocked.blocked,
+                "diagnostic_certificate_digest": _full_term_digest(diagnostic),
+                "digest": _full_term_digest(blocked),
+            },
+            "diagnostic_certificate_digest": _full_term_digest(diagnostic),
+        }
+    else:
+        envelope = {
+            "kind": "legal",
+            "cursor": _cursor_envelope(product.cursor),
+            "frontier_projection_certificate": (
+                _frontier_projection_certificate_identity_envelope(
+                    product.projection_certificate
+                )
+            ),
+            "text_projection_certificates": [
+                _text_projection_certificate_identity_envelope(projection)
+                for projection in product.text_choice_projection_certificates
+            ],
+            "terminal_projection_certificate": (
+                _terminal_projection_certificate_identity_envelope(
+                    product.terminal_projection_certificate
+                )
+            ),
+            "checked_frontier_certificate": (
+                _checked_frontier_certificate_identity_envelope(
+                    product.checked_frontier_certificate
+                )
+            ),
+            "support_count_certificate": _support_count_certificate_envelope(
+                product.support_count_certificate
+            ),
+            "completion_count_certificate": (
+                _completion_count_certificate_envelope(product.count_certificate)
+            ),
+            "branch_support_identities": [
+                _branch_support_identity_envelope(support)
+                for support in product.branch_supports
+            ],
+            "terminal_support_identities": [
+                _terminal_support_identity_envelope(support)
+                for support in product.terminal_supports
+            ],
+        }
+    envelope["digest"] = _digest(_term(envelope))
+    return envelope
+
+
+def _frontier_projection_certificate_identity_envelope(certificate):
+    if certificate is None:
+        return None
+    envelope = {
+        "cursor": _cursor_envelope(certificate.cursor),
+        "text_projection_digests": [
+            item["digest"]
+            for item in (
+                _text_projection_certificate_identity_envelope(projection)
+                for projection in certificate.text_choice_projection_certificates
+            )
+        ],
+        "terminal_projection_digest": (
+            None
+            if certificate.terminal_projection_certificate is None
+            else _terminal_projection_certificate_identity_envelope(
+                certificate.terminal_projection_certificate
+            )["digest"]
+        ),
+        "branch_certificate_digests": [
+            _branch_certificate_identity_envelope(certificate)["digest"]
+            for certificate in certificate.branch_certificates
+        ],
+        "terminal_certificate_digests": [
+            _terminal_support_identity_envelope_from_certificate(
+                certificate
+            )["digest"]
+            for certificate in certificate.terminal_certificates
+        ],
+    }
+    envelope["digest"] = _digest(_term(envelope))
+    return envelope
+
+
+def _text_projection_certificate_identity_envelope(certificate):
+    if certificate is None:
+        return None
+    envelope = {
+        "source_cursor": _cursor_envelope(certificate.source_cursor),
+        "emitted_text": certificate.emitted_text,
+        "successor_cursor": _cursor_envelope(certificate.successor_cursor),
+        "immediate_multiplicity": certificate.immediate_multiplicity,
+        "support_count": certificate.support_count,
+        "completion_count": certificate.completion_count,
+        "branch_certificate_digests": [
+            _branch_certificate_identity_envelope(branch)["digest"]
+            for branch in certificate.branch_certificates
+        ],
+    }
+    envelope["digest"] = _digest(_term(envelope))
+    return envelope
+
+
+def _terminal_projection_certificate_identity_envelope(certificate):
+    if certificate is None:
+        return None
+    envelope = {
+        "source_cursor": _cursor_envelope(certificate.source_cursor),
+        "finalized_cursor": _cursor_envelope(certificate.finalized_cursor),
+        "multiplicity": certificate.multiplicity,
+        "support_count": certificate.support_count,
+        "completion_count": certificate.completion_count,
+        "terminal_support_identities": [
+            _terminal_support_identity_envelope_from_certificate(terminal)
+            for terminal in certificate.terminal_certificates
+        ],
+        "terminal_certificate_digests": [
+            _terminal_support_identity_envelope_from_certificate(
+                terminal
+            )["digest"]
+            for terminal in certificate.terminal_certificates
+        ],
+    }
+    envelope["digest"] = _digest(_term(envelope))
+    return envelope
+
+
+def _checked_frontier_certificate_identity_envelope(certificate):
+    if certificate is None:
+        return None
+    envelope = {
+        "cursor": _cursor_envelope(certificate.cursor),
+        "projection_certificate_digest": (
+            _frontier_projection_certificate_identity_envelope(
+                certificate.projection_certificate
+            )["digest"]
+        ),
+        "support_count_certificate_digest": (
+            _support_count_certificate_envelope(
+                certificate.support_count_certificate
+            )["digest"]
+            if certificate.support_count_certificate is not None
+            else None
+        ),
+        "completion_count_certificate_digest": (
+            _completion_count_certificate_envelope(
+                certificate.count_certificate
+            )["digest"]
+            if certificate.count_certificate is not None
+            else None
+        ),
+        "support_count_term_coverage": _support_count_coverage_envelope(
+            certificate.support_count_term_coverage_certificate
+        ),
+        "frontier_completion_count": _frontier_completion_count_envelope(
+            certificate.frontier_completion_count_certificate
+        ),
+        "choice_count_coverage": _choice_count_coverage_envelope(
+            certificate.choice_count_coverage_certificate
         ),
     }
-    for name in (
-        "cursor",
-        "source_cursor",
-        "successor_cursor",
-        "finalized_cursor",
-        "source_snapshot",
-        "final_snapshot",
-        "emitted_text",
-        "emitted_texts",
-        "support_count",
-        "completion_count",
-        "multiplicity",
-        "blocked",
+    envelope["digest"] = _digest(_term(envelope))
+    return envelope
+
+
+def _support_count_coverage_envelope(certificate):
+    if certificate is None:
+        return None
+    envelope = {
+        "projection_certificate_digest": (
+            _frontier_projection_certificate_identity_envelope(
+                certificate.projection_certificate
+            )["digest"]
+        ),
+        "support_count_certificate_digest": (
+            _support_count_certificate_envelope(
+                certificate.support_count_certificate
+            )["digest"]
+        ),
+        "text_terms": [
+            {
+                "text_projection_digest": (
+                    _text_projection_certificate_identity_envelope(
+                        term.text_projection_certificate
+                    )["digest"]
+                ),
+                "support_count": term.support_count,
+            }
+            for term in certificate.text_terms
+        ],
+        "terminal_term": (
+            None
+            if certificate.terminal_term is None
+            else {
+                "terminal_projection_digest": (
+                    _terminal_projection_certificate_identity_envelope(
+                        certificate
+                        .terminal_term
+                        .terminal_projection_certificate
+                    )["digest"]
+                ),
+                "terminal_count": certificate.terminal_term.terminal_count,
+            }
+        ),
+        "text_support_count": certificate.text_support_count,
+        "terminal_support_count": certificate.terminal_support_count,
+        "support_count": certificate.support_count,
+    }
+    envelope["digest"] = _digest(_term(envelope))
+    return envelope
+
+
+def _frontier_completion_count_envelope(certificate):
+    if certificate is None:
+        return None
+    coverage = certificate.term_coverage_certificate
+    envelope = {
+        "projection_certificate_digest": (
+            _frontier_projection_certificate_identity_envelope(
+                certificate.projection_certificate
+            )["digest"]
+        ),
+        "count_certificate_digest": (
+            _completion_count_certificate_envelope(
+                certificate.count_certificate
+            )["digest"]
+        ),
+        "terminal_completion_count": certificate.terminal_completion_count,
+        "text_completion_count": certificate.text_completion_count,
+        "completion_count": certificate.completion_count,
+        "term_coverage": (
+            None
+            if coverage is None
+            else {
+                "branch_term_count": len(coverage.branch_terms),
+                "terminal_term_count": len(coverage.terminal_terms),
+                "branch_completion_count": coverage.branch_completion_count,
+                "terminal_completion_count": (
+                    coverage.terminal_completion_count
+                ),
+                "completion_count": coverage.completion_count,
+                "branch_terms": [
+                    {
+                        "projection_branch_digest": (
+                            _branch_certificate_identity_envelope(
+                                term.projection_branch_certificate
+                            )["digest"]
+                        ),
+                        "cursor_weight": term.cursor_weight,
+                        "projection_parent_weight": (
+                            term.projection_parent_weight
+                        ),
+                        "count_parent_weight": term.count_parent_weight,
+                        "successor_completion_count": (
+                            term.successor_completion_count
+                        ),
+                        "weighted_completion_count": (
+                            term.weighted_completion_count
+                        ),
+                    }
+                    for term in coverage.branch_terms
+                ],
+                "terminal_terms": [
+                    {
+                        "projection_terminal_digest": (
+                            _terminal_support_identity_envelope_from_certificate(
+                                term.projection_terminal_certificate
+                            )["digest"]
+                        ),
+                        "cursor_weight": term.cursor_weight,
+                        "projection_parent_weight": (
+                            term.projection_parent_weight
+                        ),
+                        "count_parent_weight": term.count_parent_weight,
+                        "terminal_completion_count": (
+                            term.terminal_completion_count
+                        ),
+                        "weighted_completion_count": (
+                            term.weighted_completion_count
+                        ),
+                    }
+                    for term in coverage.terminal_terms
+                ],
+            }
+        ),
+    }
+    envelope["digest"] = _digest(_term(envelope))
+    return envelope
+
+
+def _choice_count_coverage_envelope(certificate):
+    if certificate is None:
+        return None
+    envelope = {
+        "projection_certificate_digest": (
+            _frontier_projection_certificate_identity_envelope(
+                certificate.projection_certificate
+            )["digest"]
+        ),
+        "support_count_term_coverage_digest": (
+            _support_count_coverage_envelope(
+                certificate.support_count_term_coverage_certificate
+            )["digest"]
+        ),
+        "completion_count_term_coverage_digest": (
+            _completion_term_coverage_digest(
+                certificate.completion_count_term_coverage_certificate
+            )
+        ),
+        "text_choice_terms": [
+            {
+                "text_projection_digest": (
+                    _text_projection_certificate_identity_envelope(
+                        term.text_projection_certificate
+                    )["digest"]
+                ),
+                "support_count": term.support_count,
+                "completion_count": term.completion_count,
+                "completion_branch_count": len(
+                    term.completion_coverage_terms
+                ),
+            }
+            for term in certificate.text_choice_terms
+        ],
+        "terminal_choice_term": (
+            None
+            if certificate.terminal_choice_term is None
+            else {
+                "terminal_projection_digest": (
+                    _terminal_projection_certificate_identity_envelope(
+                        certificate
+                        .terminal_choice_term
+                        .terminal_projection_certificate
+                    )["digest"]
+                ),
+                "support_count": (
+                    certificate.terminal_choice_term.support_count
+                ),
+                "completion_count": (
+                    certificate.terminal_choice_term.completion_count
+                ),
+            }
+        ),
+        "support_count": certificate.support_count,
+        "completion_count": certificate.completion_count,
+    }
+    envelope["digest"] = _digest(_term(envelope))
+    return envelope
+
+
+def _completion_term_coverage_digest(certificate):
+    if certificate is None:
+        return None
+    envelope = {
+        "projection_certificate_digest": (
+            _frontier_projection_certificate_identity_envelope(
+                certificate.projection_certificate
+            )["digest"]
+        ),
+        "count_certificate_digest": (
+            _completion_count_certificate_envelope(
+                certificate.count_certificate
+            )["digest"]
+        ),
+        "branch_completion_count": certificate.branch_completion_count,
+        "terminal_completion_count": certificate.terminal_completion_count,
+        "completion_count": certificate.completion_count,
+        "branch_term_count": len(certificate.branch_terms),
+        "terminal_term_count": len(certificate.terminal_terms),
+    }
+    return _digest(_term(envelope))
+
+
+def _support_count_certificate_envelope(certificate):
+    if certificate is None:
+        return None
+    envelope = {
+        "cursor": _cursor_envelope(certificate.cursor),
+        "support_count": certificate.support_count,
+        "state_support_count_certificate_digest": _full_term_digest(
+            certificate.state_support_count_certificate
+        ),
+    }
+    envelope["digest"] = _digest(_term(envelope))
+    return envelope
+
+
+def _completion_count_certificate_envelope(certificate):
+    if certificate is None:
+        return None
+    envelope = {
+        "cursor": _cursor_envelope(certificate.cursor),
+        "completion_count": certificate.completion_count,
+        "state_count_certificate_digests": [
+            _digest(_term((state_key, weight, state_certificate)))
+            for state_key, weight, state_certificate in (
+                certificate.state_count_certificates
+            )
+        ],
+    }
+    envelope["digest"] = _digest(_term(envelope))
+    return envelope
+
+
+def _branch_support_identity_envelope(support):
+    certificate = support.checked_branch_certificate
+    envelope = _branch_certificate_identity_envelope(certificate)
+    if envelope["parent_weight"] != support.parent_weight:
+        _prefix_envelope_violation("branch_support_parent_weight_mismatch")
+    if envelope["branch_ordinal"] != support.branch_ordinal:
+        _prefix_envelope_violation("branch_support_ordinal_mismatch")
+    return envelope
+
+
+def _branch_certificate_identity_envelope(certificate):
+    envelope = {
+        "source_state_digest": _digest(_term(certificate.source_state)),
+        "successor_state_digest": _digest(_term(certificate.successor_state)),
+        "emitted_text": certificate.emitted_text,
+        "parent_weight": certificate.parent_weight,
+        "branch_ordinal": certificate.branch_ordinal,
+        "transition_kind": _term(certificate.transition_kind),
+        "graph_action_surface_digest": _full_term_digest(
+            certificate.graph_action_surface
+        ),
+        "policy_family_digest": _full_term_digest(certificate.policy_family),
+        "events_digest": _full_term_digest(certificate.events),
+        "successor_state_certificate_digest": _full_term_digest(
+            certificate.successor_state_certificate
+        ),
+    }
+    envelope["digest"] = _digest(_term(envelope))
+    return envelope
+
+
+def _terminal_support_identity_envelope(support):
+    certificate = support.checked_terminal_certificate
+    envelope = _terminal_support_identity_envelope_from_certificate(
+        certificate
+    )
+    if envelope["parent_weight"] != support.parent_weight:
+        _prefix_envelope_violation("terminal_support_parent_weight_mismatch")
+    if envelope["terminal_ordinal"] != support.terminal_ordinal:
+        _prefix_envelope_violation("terminal_support_ordinal_mismatch")
+    if envelope["terminal_support_key_digest"] != _digest(
+        _term(support.terminal_support_key)
     ):
-        if hasattr(certificate, name):
-            terms[name] = _compact_certificate_term(getattr(certificate, name))
-    return _digest(_term(terms))
+        _prefix_envelope_violation("terminal_support_key_mismatch")
+    return envelope
 
 
-def _compact_certificate_term(value):
-    if hasattr(value, "cursor") and hasattr(value, "decoder_boundary"):
-        return _snapshot_identity_envelope(value)
-    if hasattr(value, "weighted_states"):
-        return _cursor_envelope(value)
-    if isinstance(value, tuple):
-        return [_compact_certificate_term(item) for item in value]
-    if value is None or isinstance(value, (str, bool, int)):
-        return value
-    return _term(value)
+def _terminal_support_identity_envelope_from_certificate(certificate):
+    envelope = {
+        "source_state_digest": _digest(_term(certificate.source_state)),
+        "finalized_state_digest": _digest(_term(certificate.finalized_state)),
+        "parent_weight": certificate.parent_weight,
+        "terminal_ordinal": certificate.terminal_ordinal,
+        "terminal_support_key_digest": _digest(
+            _term(certificate.terminal_support_key)
+        ),
+        "terminal_execution_capabilities_digest": _full_term_digest(
+            certificate.terminal_execution_capabilities
+        ),
+        "terminal_residual_work_evidence_digest": _full_term_digest(
+            certificate.terminal_residual_work_evidence
+        ),
+        "terminal_stereo_lifecycle_evidence_digest": _full_term_digest(
+            certificate.terminal_stereo_lifecycle_evidence
+        ),
+        "graph_obligation_work_evidence_digest": _full_term_digest(
+            certificate.graph_obligation_work_evidence
+        ),
+        "terminal_certificate_digests": [
+            _terminal_certificate_identity_envelope(terminal)["digest"]
+            for terminal in certificate.terminal_certificates
+        ],
+    }
+    envelope["digest"] = _digest(_term(envelope))
+    return envelope
 
 
-def _public_frontier_envelope(choices) -> dict[str, object]:
-    terminal = choices.terminal
+def _terminal_certificate_identity_envelope(certificate):
+    envelope = {
+        "kind": _term(certificate.kind),
+        "source_state_digest": _digest(_term(certificate.source_state)),
+        "finalized_state_digest": _digest(_term(certificate.finalized_state)),
+        "digest": _full_term_digest(certificate),
+    }
+    return envelope
+
+
+def _public_frontier_envelope(product) -> dict[str, object]:
+    terminal = product.choices.terminal
     return {
         "terminal": (
             None
@@ -440,6 +916,10 @@ def _public_frontier_envelope(choices) -> dict[str, object]:
                 "finalized_cursor": _cursor_envelope(
                     terminal.finalized_cursor
                 ),
+                "terminal_support_identities": [
+                    _terminal_support_identity_envelope(support)
+                    for support in product.terminal_supports
+                ],
             }
         ),
         "choices": [
@@ -450,7 +930,7 @@ def _public_frontier_envelope(choices) -> dict[str, object]:
                 "support_count": choice.support_count,
                 "completion_count": choice.completion_count,
             }
-            for choice in choices.choices
+            for choice in product.choices.choices
         ],
     }
 
@@ -488,6 +968,9 @@ def _validate_readable_shape(envelope) -> None:
         _prefix_envelope_violation("readable_missing_final_snapshot")
     if envelope["final_frontier_product_kind"] != "legal":
         _prefix_envelope_violation("readable_product_kind_mismatch")
+    product = envelope["final_frontier_product"]
+    if not isinstance(product, Mapping) or product.get("kind") != "legal":
+        _prefix_envelope_violation("readable_product_identity_mismatch")
     if envelope["prefix_read_certificate"] is None:
         _prefix_envelope_violation("readable_missing_prefix_certificate")
     if envelope["public_frontier"] is None:
@@ -518,6 +1001,8 @@ def _validate_failed_replay_shape(envelope) -> None:
         _prefix_envelope_violation("failed_replay_final_snapshot_mismatch")
     if envelope["final_frontier_product_kind"] is not None:
         _prefix_envelope_violation("failed_replay_product_kind_mismatch")
+    if envelope["final_frontier_product"] is not None:
+        _prefix_envelope_violation("failed_replay_product_identity_mismatch")
     if envelope["prefix_read_certificate"] is not None:
         _prefix_envelope_violation("failed_replay_prefix_certificate_mismatch")
     if envelope["public_frontier"] is not None:
@@ -536,6 +1021,9 @@ def _validate_final_frontier_blocked_shape(envelope) -> None:
         _prefix_envelope_violation("final_blocked_missing_final_snapshot")
     if envelope["final_frontier_product_kind"] != "blocked":
         _prefix_envelope_violation("final_blocked_product_kind_mismatch")
+    product = envelope["final_frontier_product"]
+    if not isinstance(product, Mapping) or product.get("kind") != "blocked":
+        _prefix_envelope_violation("final_blocked_product_identity_mismatch")
     if envelope["prefix_read_certificate"] is not None:
         _prefix_envelope_violation("final_blocked_prefix_certificate_mismatch")
     if envelope["public_frontier"] is not None:

@@ -26,6 +26,7 @@ class WriterTerminalProjectionCertificate:
     source_cursor: object
     terminal: object
     terminal_certificates: tuple[object, ...]
+    terminal_support_identities: tuple[object, ...]
     finalized_cursor: object
     multiplicity: int
     support_count: int
@@ -146,6 +147,10 @@ def writer_terminal_projection_certificate(
             _terminal_violation("terminal_certificate_finalized_mismatch")
         if certificate.parent_weight != support.parent_weight:
             _terminal_violation("terminal_certificate_parent_weight_mismatch")
+        if certificate.terminal_ordinal != support.terminal_ordinal:
+            _terminal_violation("terminal_certificate_ordinal_mismatch")
+        if certificate.terminal_support_key != support.terminal_support_key:
+            _terminal_violation("terminal_certificate_key_mismatch")
 
     expected_finalized_cursor = _cursor_like(
         terminal.finalized_cursor,
@@ -178,6 +183,10 @@ def writer_terminal_projection_certificate(
         source_cursor=source_cursor,
         terminal=terminal,
         terminal_certificates=terminal_certificates,
+        terminal_support_identities=tuple(
+            certificate.terminal_support_key
+            for certificate in terminal_certificates
+        ),
         finalized_cursor=expected_finalized_cursor,
         multiplicity=multiplicity,
         support_count=terminal.support_count,

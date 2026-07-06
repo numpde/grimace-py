@@ -113,6 +113,14 @@ def writer_frontier_projection_certificate(
                 _frontier_violation(
                     "terminal_certificate_parent_weight_mismatch"
                 )
+            if terminal_certificate.terminal_ordinal != (
+                terminal_support.terminal_ordinal
+            ):
+                _frontier_violation("terminal_certificate_ordinal_mismatch")
+            if terminal_certificate.terminal_support_key != (
+                terminal_support.terminal_support_key
+            ):
+                _frontier_violation("terminal_certificate_key_mismatch")
 
     projection_texts = tuple(
         cert.emitted_text for cert in text_choice_projection_certificates

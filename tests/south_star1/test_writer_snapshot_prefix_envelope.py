@@ -301,6 +301,129 @@ class WriterSnapshotPrefixEnvelopeTest(unittest.TestCase):
 
         self.assertFalse(_verify(envelope).accepted)
 
+    def test_terminal_support_identity_is_exposed_in_readable_envelope(
+        self,
+    ) -> None:
+        prepared, envelope = _terminal_readable_envelope()
+
+        terminal = envelope["public_frontier"]["terminal"]
+        self.assertIsNotNone(terminal)
+        self.assertTrue(terminal["terminal_support_identities"])
+        self.assertEqual(
+            terminal["terminal_support_identities"],
+            envelope["final_frontier_product"]["terminal_support_identities"],
+        )
+        verification = verify_writer_snapshot_prefix_read_envelope(
+            prepared=prepared,
+            envelope=envelope,
+        )
+        self.assertTrue(verification.accepted)
+
+    def test_changed_terminal_support_ordinal_is_rejected(self) -> None:
+        prepared, envelope = _terminal_readable_envelope()
+        identity = envelope["final_frontier_product"][
+            "terminal_support_identities"
+        ][0]
+        identity["terminal_ordinal"] += 1
+
+        self.assertFalse(
+            verify_writer_snapshot_prefix_read_envelope(
+                prepared=prepared,
+                envelope=envelope,
+            ).accepted
+        )
+
+    def test_changed_terminal_support_source_digest_is_rejected(self) -> None:
+        prepared, envelope = _terminal_readable_envelope()
+        identity = envelope["final_frontier_product"][
+            "terminal_support_identities"
+        ][0]
+        identity["source_state_digest"] = "0" * 64
+
+        self.assertFalse(
+            verify_writer_snapshot_prefix_read_envelope(
+                prepared=prepared,
+                envelope=envelope,
+            ).accepted
+        )
+
+    def test_changed_terminal_support_finalized_digest_is_rejected(
+        self,
+    ) -> None:
+        prepared, envelope = _terminal_readable_envelope()
+        identity = envelope["final_frontier_product"][
+            "terminal_support_identities"
+        ][0]
+        identity["finalized_state_digest"] = "1" * 64
+
+        self.assertFalse(
+            verify_writer_snapshot_prefix_read_envelope(
+                prepared=prepared,
+                envelope=envelope,
+            ).accepted
+        )
+
+    def test_changed_terminal_parent_weight_is_rejected(self) -> None:
+        prepared, envelope = _terminal_readable_envelope()
+        identity = envelope["final_frontier_product"][
+            "terminal_support_identities"
+        ][0]
+        identity["parent_weight"] += 1
+
+        self.assertFalse(
+            verify_writer_snapshot_prefix_read_envelope(
+                prepared=prepared,
+                envelope=envelope,
+            ).accepted
+        )
+
+    def test_changed_terminal_projection_digest_is_rejected(self) -> None:
+        prepared, envelope = _terminal_readable_envelope()
+        envelope["final_frontier_product"]["terminal_projection_certificate"][
+            "digest"
+        ] = "2" * 64
+
+        self.assertFalse(
+            verify_writer_snapshot_prefix_read_envelope(
+                prepared=prepared,
+                envelope=envelope,
+            ).accepted
+        )
+
+    def test_changed_final_frontier_product_digest_is_rejected(self) -> None:
+        envelope = _readable_envelope()
+        envelope["final_frontier_product"]["digest"] = "3" * 64
+
+        self.assertFalse(_verify(envelope).accepted)
+
+    def test_changed_checked_frontier_digest_is_rejected(self) -> None:
+        envelope = _readable_envelope()
+        envelope["final_frontier_product"]["checked_frontier_certificate"][
+            "digest"
+        ] = "4" * 64
+
+        self.assertFalse(_verify(envelope).accepted)
+
+    def test_changed_support_count_certificate_digest_is_rejected(
+        self,
+    ) -> None:
+        envelope = _readable_envelope()
+        envelope["final_frontier_product"]["support_count_certificate"][
+            "digest"
+        ] = "5" * 64
+
+        self.assertFalse(_verify(envelope).accepted)
+
+    def test_changed_completion_count_certificate_digest_is_rejected(
+        self,
+    ) -> None:
+        envelope = _readable_envelope()
+        envelope["final_frontier_product"]["completion_count_certificate"][
+            "digest"
+        ] = "6" * 64
+
+        self.assertFalse(_verify(envelope).accepted)
+
     def test_invalid_replay_with_prefix_certificate_is_rejected(self) -> None:
         prepared = _prepare(cco_facts())
         invalid = writer_snapshot_prefix_read_envelope_for_emitted_texts(
@@ -331,6 +454,29 @@ class WriterSnapshotPrefixEnvelopeTest(unittest.TestCase):
         envelope["final_frontier_product_kind"] = "blocked"
 
         with _blocked_capability_patch(prepared, snapshot.cursor):
+            self.assertFalse(
+                verify_writer_snapshot_prefix_read_envelope(
+                    prepared=prepared,
+                    envelope=envelope,
+                ).accepted
+            )
+
+    def test_final_frontier_blocked_stale_diagnostic_digest_is_rejected(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        snapshot = _initial_snapshot(prepared)
+        emitted_texts = _legal_prefix(prepared, snapshot, length=1)
+        context = _final_frontier_blocked_patch(prepared, snapshot, emitted_texts)
+        with context:
+            envelope = writer_snapshot_prefix_read_envelope_for_emitted_texts(
+                prepared=prepared,
+                snapshot=snapshot,
+                emitted_texts=emitted_texts,
+            )
+            envelope["final_frontier_product"][
+                "diagnostic_certificate_digest"
+            ] = "7" * 64
             self.assertFalse(
                 verify_writer_snapshot_prefix_read_envelope(
                     prepared=prepared,
@@ -423,6 +569,22 @@ def _legal_prefix(prepared, snapshot, *, length: int) -> tuple[str, ...]:
             raise AssertionError("legal prefix helper failed to advance")
         current = verification.advanced_snapshot
     return tuple(emitted)
+
+
+def _terminal_readable_envelope():
+    from tests.south_star1.test_writer_snapshot import two_atom_facts
+
+    prepared = _prepare(two_atom_facts())
+    snapshot = _initial_snapshot(prepared)
+    emitted_texts = _legal_prefix(prepared, snapshot, length=2)
+    envelope = _readable_envelope(
+        prepared=prepared,
+        snapshot=snapshot,
+        emitted_texts=emitted_texts,
+    )
+    if envelope["public_frontier"]["terminal"] is None:
+        raise AssertionError("expected a terminal-capable prefix")
+    return prepared, envelope
 
 
 def _blocked_capability_patch(prepared, cursor):

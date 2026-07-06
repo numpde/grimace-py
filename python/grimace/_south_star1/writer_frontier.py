@@ -494,6 +494,8 @@ class _WriterFrontierTerminalSupport:
     source_state: WriterStateKey
     finalized_state: WriterStateKey
     parent_weight: int
+    terminal_ordinal: int
+    terminal_support_key: tuple[object, ...]
     terminal_execution_capabilities: frozenset[object]
     terminal_residual_work_evidence: tuple[object, ...]
     terminal_stereo_lifecycle_evidence: tuple[object, ...]
@@ -3311,10 +3313,11 @@ def _writer_frontier_terminal_supports_from_schedule_outcome(
     schedule_outcome: _WriterFrontierScheduleOutcome,
 ) -> tuple[_WriterFrontierTerminalSupport, ...]:
     supports: list[_WriterFrontierTerminalSupport] = []
-    for outcome in schedule_outcome.state_outcomes:
-        if outcome.finalized_state_key is None:
-            continue
-
+    for terminal_ordinal, outcome in enumerate(
+        item
+        for item in schedule_outcome.state_outcomes
+        if item.finalized_state_key is not None
+    ):
         certificates = writer_terminal_certificates(
             prepared=prepared,
             source_state=outcome.state_key,
@@ -3337,6 +3340,7 @@ def _writer_frontier_terminal_supports_from_schedule_outcome(
                 source_state=outcome.state_key,
                 finalized_state=outcome.finalized_state_key,
                 parent_weight=outcome.parent_weight,
+                terminal_ordinal=terminal_ordinal,
                 terminal_execution_capabilities=(
                     outcome.terminal_execution_capabilities
                 ),
@@ -3352,11 +3356,14 @@ def _writer_frontier_terminal_supports_from_schedule_outcome(
                 terminal_certificates=certificates,
             )
         )
+        terminal_support_key = checked_terminal_certificate.terminal_support_key
         supports.append(
             _WriterFrontierTerminalSupport(
                 source_state=outcome.state_key,
                 finalized_state=outcome.finalized_state_key,
                 parent_weight=outcome.parent_weight,
+                terminal_ordinal=terminal_ordinal,
+                terminal_support_key=terminal_support_key,
                 terminal_execution_capabilities=(
                     outcome.terminal_execution_capabilities
                 ),

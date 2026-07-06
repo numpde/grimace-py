@@ -2983,6 +2983,42 @@ def _checked_writer_frontier_product(
     )
 
 
+def _snapshot_advance_writer_frontier_product(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+) -> _WriterCheckedFrontierProduct:
+    schedule_outcome = _writer_frontier_schedule_outcome(
+        prepared,
+        cursor,
+        stop_after_first_blocked=False,
+    )
+    blocker_evidence = _writer_frontier_blocker_evidence_from_schedule_outcome(
+        schedule_outcome
+    )
+    choice_snapshot = _writer_frontier_choice_snapshot_from_schedule_outcome(
+        prepared,
+        schedule_outcome,
+        include_counts=False,
+    )
+    if blocker_evidence.blocked:
+        return _blocked_writer_frontier_product_from_choice_snapshot(
+            cursor=cursor,
+            choice_snapshot=choice_snapshot,
+            blocker_evidence=blocker_evidence,
+        )
+
+    return _legal_writer_frontier_product_from_schedule_outcome(
+        prepared=prepared,
+        cursor=cursor,
+        schedule_outcome=schedule_outcome,
+        blocker_evidence=blocker_evidence,
+        include_counts=False,
+        include_frontier_certificate=False,
+        include_diagnostics=False,
+        include_count_certificate=False,
+    )
+
+
 def _legal_writer_frontier_product_from_schedule_outcome(
     *,
     prepared: SouthStarPreparedMol,

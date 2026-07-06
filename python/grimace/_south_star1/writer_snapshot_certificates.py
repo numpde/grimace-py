@@ -45,6 +45,21 @@ class WriterSnapshotPrefixReadCertificate:
     completion_count: int | None
 
 
+@dataclass(frozen=True, slots=True)
+class WriterSnapshotBlockedAdvanceCertificate:
+    source_snapshot: object
+    emitted_text: str
+    blocked_frontier_certificate: object
+    diagnostic_certificate: object
+
+
+@dataclass(frozen=True, slots=True)
+class WriterSnapshotInvalidTextCertificate:
+    source_snapshot: object
+    emitted_text: str
+    frontier_projection_certificate: object
+
+
 def writer_snapshot_step_certificate(
     *,
     source_snapshot,
@@ -100,6 +115,49 @@ def writer_snapshot_step_certificate(
         decoder_boundary_before=source_snapshot.decoder_boundary,
         decoder_boundary_after=advanced_snapshot.decoder_boundary,
         branch_certificates=text_projection_certificate.branch_certificates,
+    )
+
+
+def writer_snapshot_blocked_advance_certificate(
+    *,
+    source_snapshot,
+    emitted_text: str,
+    blocked_frontier_certificate,
+) -> WriterSnapshotBlockedAdvanceCertificate:
+    if blocked_frontier_certificate.cursor != source_snapshot.cursor:
+        _advance_violation("blocked_frontier_cursor_mismatch")
+    if not blocked_frontier_certificate.blocked:
+        _advance_violation("blocked_frontier_certificate_not_blocked")
+    return WriterSnapshotBlockedAdvanceCertificate(
+        source_snapshot=source_snapshot,
+        emitted_text=emitted_text,
+        blocked_frontier_certificate=blocked_frontier_certificate,
+        diagnostic_certificate=(
+            blocked_frontier_certificate.diagnostic_certificate
+        ),
+    )
+
+
+def writer_snapshot_invalid_text_certificate(
+    *,
+    source_snapshot,
+    emitted_text: str,
+    frontier_projection_certificate,
+) -> WriterSnapshotInvalidTextCertificate:
+    if frontier_projection_certificate.cursor != source_snapshot.cursor:
+        _advance_violation("invalid_text_projection_cursor_mismatch")
+    if any(
+        projection.emitted_text == emitted_text
+        for projection in (
+            frontier_projection_certificate
+            .text_choice_projection_certificates
+        )
+    ):
+        _advance_violation("invalid_text_has_projection_match")
+    return WriterSnapshotInvalidTextCertificate(
+        source_snapshot=source_snapshot,
+        emitted_text=emitted_text,
+        frontier_projection_certificate=frontier_projection_certificate,
     )
 
 
@@ -221,10 +279,21 @@ def _prefix_violation(kind: str) -> None:
     )
 
 
+def _advance_violation(kind: str) -> None:
+    raise SouthStarError(
+        SouthStarErrorKind.INTERNAL_INVARIANT,
+        f"writer snapshot advance certificate violation: {kind}",
+    )
+
+
 __all__ = (
+    "WriterSnapshotBlockedAdvanceCertificate",
+    "WriterSnapshotInvalidTextCertificate",
     "WriterSnapshotPrefixReadCertificate",
     "WriterSnapshotReplayCertificate",
     "WriterSnapshotStepCertificate",
+    "writer_snapshot_blocked_advance_certificate",
+    "writer_snapshot_invalid_text_certificate",
     "writer_snapshot_prefix_read_certificate",
     "writer_snapshot_replay_certificate",
     "writer_snapshot_step_certificate",

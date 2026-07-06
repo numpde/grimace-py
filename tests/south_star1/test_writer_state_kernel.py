@@ -23,6 +23,7 @@ import grimace._south_star1.writer_execution_evidence as writer_execution_eviden
 import grimace._south_star1.writer_support as writer_support
 import grimace._south_star1.writer_audit as writer_audit
 import grimace._south_star1.writer_snapshot as writer_snapshot
+import grimace._south_star1.writer_snapshot_certificates as writer_snapshot_certificates
 import grimace._south_star1.writer_state as writer_state_module
 import grimace._south_star1.writer_stereo as writer_stereo
 import grimace._south_star1.writer_transitions as writer_transitions
@@ -3481,9 +3482,80 @@ class WriterStateKernelTest(unittest.TestCase):
             choice=choice,
             advanced_snapshot=advanced_snapshot,
             step_certificate=step_certificate,
-            frontier_product=object(),
+            frontier_product=SimpleNamespace(legal=True),
             frontier_projection_certificate=frontier_projection,
             text_projection_certificate=text_projection,
+        )
+
+    def _test_blocked_advance_outcome(
+        self,
+        *,
+        source_snapshot: writer_snapshot.WriterSearchSnapshot,
+        emitted_text: str,
+        choice_snapshot,
+    ) -> writer_snapshot._WriterSnapshotAdvanceOutcome:
+        blocked_frontier_certificate = SimpleNamespace(
+            cursor=source_snapshot.cursor,
+            blocked=True,
+            diagnostic_certificate=object(),
+        )
+        blocked_advance_certificate = (
+            writer_snapshot_certificates
+            .writer_snapshot_blocked_advance_certificate(
+                source_snapshot=source_snapshot,
+                emitted_text=emitted_text,
+                blocked_frontier_certificate=blocked_frontier_certificate,
+            )
+        )
+        return writer_snapshot._WriterSnapshotAdvanceOutcome(
+            kind=writer_snapshot._WriterSnapshotAdvanceOutcomeKind.BLOCKED,
+            source_snapshot=source_snapshot,
+            emitted_text=emitted_text,
+            choice_snapshot=choice_snapshot,
+            frontier_product=SimpleNamespace(
+                blocked=True,
+                blocked_frontier_certificate=blocked_frontier_certificate,
+            ),
+            blocked_frontier_certificate=blocked_frontier_certificate,
+            blocked_advance_certificate=blocked_advance_certificate,
+        )
+
+    def _test_invalid_text_advance_outcome(
+        self,
+        *,
+        source_snapshot: writer_snapshot.WriterSearchSnapshot,
+        emitted_text: str,
+        choice_snapshot,
+    ) -> writer_snapshot._WriterSnapshotAdvanceOutcome:
+        projection_certificate = SimpleNamespace(
+            cursor=source_snapshot.cursor,
+            text_choice_projection_certificates=(),
+        )
+        invalid_text_certificate = (
+            writer_snapshot_certificates
+            .writer_snapshot_invalid_text_certificate(
+                source_snapshot=source_snapshot,
+                emitted_text=emitted_text,
+                frontier_projection_certificate=projection_certificate,
+            )
+        )
+        return writer_snapshot._WriterSnapshotAdvanceOutcome(
+            kind=(
+                writer_snapshot
+                ._WriterSnapshotAdvanceOutcomeKind
+                .INVALID_EMITTED_TEXT
+            ),
+            source_snapshot=source_snapshot,
+            emitted_text=emitted_text,
+            choice_snapshot=choice_snapshot,
+            frontier_product=SimpleNamespace(
+                legal=True,
+                projection_certificate=projection_certificate,
+            ),
+            invalid_text_frontier_projection_certificate=(
+                projection_certificate
+            ),
+            invalid_text_certificate=invalid_text_certificate,
         )
 
     def test_writer_shaped_acyclic_support_uses_writer_frontier(self) -> None:
@@ -12271,6 +12343,15 @@ class WriterStateKernelTest(unittest.TestCase):
             cursor=cursor,
         )
         blocked_choice_snapshot = self._test_blocked_frontier_choice_snapshot(cursor)
+        blocked_frontier_certificate = SimpleNamespace(
+            cursor=snapshot.cursor,
+            blocked=True,
+            diagnostic_certificate=object(),
+        )
+        blocked_product = SimpleNamespace(
+            blocked=True,
+            blocked_frontier_certificate=blocked_frontier_certificate,
+        )
 
         with patch(
             (
@@ -12278,6 +12359,12 @@ class WriterStateKernelTest(unittest.TestCase):
                 "._writer_frontier_choice_snapshot_from_snapshot"
             ),
             return_value=blocked_choice_snapshot,
+        ), patch(
+            (
+                "grimace._south_star1.writer_snapshot"
+                "._snapshot_advance_writer_frontier_product"
+            ),
+            return_value=blocked_product,
         ):
             outcome = writer_snapshot._writer_snapshot_advance_outcome_by_emitted_text(
                 snapshot,
@@ -12528,7 +12615,7 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(snapshot.cursor, cursor)
         self.assertEqual(snapshot.decoder_boundary.consumed_token_count, 0)
 
-    def test_advance_writer_search_snapshot_by_emitted_text_raises_from_blocked_choice_snapshot(self) -> None:
+    def test_advance_writer_search_snapshot_by_emitted_text_ignores_blocked_diagnostic_choice_snapshot(self) -> None:
         prepared = _prepare(chain_facts(("C", "C")))
         options = _writer_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
@@ -12546,14 +12633,13 @@ class WriterStateKernelTest(unittest.TestCase):
             ),
             return_value=blocked_choice_snapshot,
         ):
-            with self.assertRaises(SouthStarError) as raised:
-                writer_snapshot._advance_writer_search_snapshot_by_emitted_text(
-                    snapshot,
-                    prepared=prepared,
-                    emitted_text="C",
-                )
+            advanced = writer_snapshot._advance_writer_search_snapshot_by_emitted_text(
+                snapshot,
+                prepared=prepared,
+                emitted_text="C",
+            )
 
-        self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+        self.assertNotEqual(advanced.cursor, snapshot.cursor)
 
     def test_advance_writer_search_snapshot_by_emitted_text_raises_from_blocked_advance_outcome(self) -> None:
         prepared = _prepare(chain_facts(("C", "C")))

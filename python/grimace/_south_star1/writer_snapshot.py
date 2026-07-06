@@ -46,8 +46,11 @@ from .writer_frontier import _checked_writer_frontier_choice_snapshot
 from .writer_frontier import _checked_writer_frontier_product
 from .writer_frontier import _raise_for_writer_frontier_choice_snapshot_blockers
 from .writer_frontier import _initial_writer_transition_frontier_cursor
+from .writer_frontier import _snapshot_advance_writer_frontier_product
 from .writer_frontier import _writer_frontier_choice_snapshot
 from .writer_frontier import iter_writer_frontier_support
+from .writer_snapshot_certificates import writer_snapshot_blocked_advance_certificate
+from .writer_snapshot_certificates import writer_snapshot_invalid_text_certificate
 from .writer_snapshot_certificates import writer_snapshot_prefix_read_certificate
 from .writer_snapshot_certificates import writer_snapshot_replay_certificate
 from .writer_snapshot_certificates import writer_snapshot_step_certificate
@@ -122,8 +125,16 @@ class _WriterSnapshotCertifiedPrefixProduct:
 @dataclass(frozen=True, slots=True)
 class _WriterSnapshotAdvanceProjectionLookup:
     product: object
-    frontier_projection_certificate: object
-    text_projection_certificate: object
+    frontier_projection_certificate: object | None = None
+    text_projection_certificate: object | None = None
+
+    @property
+    def blocked(self) -> bool:
+        return bool(getattr(self.product, "blocked", False))
+
+    @property
+    def matched(self) -> bool:
+        return self.text_projection_certificate is not None
 
 
 def _capture_writer_frontier_snapshot_unchecked(
@@ -317,6 +328,10 @@ class _WriterSnapshotAdvanceOutcome:
     frontier_product: object | None = None
     frontier_projection_certificate: object | None = None
     text_projection_certificate: object | None = None
+    blocked_frontier_certificate: object | None = None
+    invalid_text_frontier_projection_certificate: object | None = None
+    blocked_advance_certificate: object | None = None
+    invalid_text_certificate: object | None = None
 
     def __post_init__(self) -> None:
         has_choice = self.choice is not None
@@ -324,10 +339,13 @@ class _WriterSnapshotAdvanceOutcome:
         has_certificate = self.step_certificate is not None
         has_projection = self.text_projection_certificate is not None
         has_frontier_projection = self.frontier_projection_certificate is not None
+        has_blocked_certificate = self.blocked_advance_certificate is not None
+        has_invalid_certificate = self.invalid_text_certificate is not None
 
         if self.kind is _WriterSnapshotAdvanceOutcomeKind.ADVANCED:
             valid = (
-                not self.choice_snapshot.blocked
+                self.frontier_product is not None
+                and getattr(self.frontier_product, "legal", False)
                 and has_choice
                 and has_advanced
                 and self.choice.emitted_text == self.emitted_text
@@ -343,25 +361,92 @@ class _WriterSnapshotAdvanceOutcome:
                 and self.step_certificate.frontier_projection_certificate is (
                     self.frontier_projection_certificate
                 )
+                and self.blocked_frontier_certificate is None
+                and self.invalid_text_frontier_projection_certificate is None
+                and not has_blocked_certificate
+                and not has_invalid_certificate
             )
         elif self.kind is _WriterSnapshotAdvanceOutcomeKind.BLOCKED:
-            valid = (
-                self.choice_snapshot.blocked
-                and not has_choice
-                and not has_advanced
-                and not has_certificate
-                and not has_projection
-                and not has_frontier_projection
-            )
+            if self.frontier_product is None:
+                valid = (
+                    self.choice_snapshot.blocked
+                    and not has_choice
+                    and not has_advanced
+                    and not has_certificate
+                    and not has_projection
+                    and not has_frontier_projection
+                    and self.blocked_frontier_certificate is None
+                    and self.invalid_text_frontier_projection_certificate is None
+                    and not has_blocked_certificate
+                    and not has_invalid_certificate
+                )
+            else:
+                valid = (
+                    getattr(self.frontier_product, "blocked", False)
+                    and self.blocked_frontier_certificate is (
+                        self.frontier_product.blocked_frontier_certificate
+                    )
+                    and has_blocked_certificate
+                    and (
+                        self
+                        .blocked_advance_certificate
+                        .blocked_frontier_certificate
+                        is self.blocked_frontier_certificate
+                    )
+                    and not has_choice
+                    and not has_advanced
+                    and not has_certificate
+                    and not has_projection
+                    and not has_frontier_projection
+                    and self.invalid_text_frontier_projection_certificate is None
+                    and not has_invalid_certificate
+                )
         elif self.kind is _WriterSnapshotAdvanceOutcomeKind.INVALID_EMITTED_TEXT:
-            valid = (
-                not self.choice_snapshot.blocked
-                and not has_choice
-                and not has_advanced
-                and not has_certificate
-                and not has_projection
-                and not has_frontier_projection
+            projection_certificate = (
+                self.invalid_text_frontier_projection_certificate
             )
+            if self.frontier_product is None:
+                valid = (
+                    not self.choice_snapshot.blocked
+                    and not has_choice
+                    and not has_advanced
+                    and not has_certificate
+                    and not has_projection
+                    and not has_frontier_projection
+                    and self.blocked_frontier_certificate is None
+                    and projection_certificate is None
+                    and not has_blocked_certificate
+                    and not has_invalid_certificate
+                )
+            else:
+                valid = (
+                    getattr(self.frontier_product, "legal", False)
+                    and projection_certificate is (
+                        self.frontier_product.projection_certificate
+                    )
+                    and projection_certificate is not None
+                    and not any(
+                        projection.emitted_text == self.emitted_text
+                        for projection in (
+                            projection_certificate
+                            .text_choice_projection_certificates
+                        )
+                    )
+                    and has_invalid_certificate
+                    and (
+                        self
+                        .invalid_text_certificate
+                        .frontier_projection_certificate
+                        is projection_certificate
+                    )
+                    and not has_choice
+                    and not has_advanced
+                    and not has_certificate
+                    and not has_projection
+                    and not has_frontier_projection
+                    and self.blocked_frontier_certificate is None
+                    and not has_blocked_certificate
+                )
         else:
             valid = False
 
@@ -498,11 +583,15 @@ class _WriterSnapshotAdvanceSequenceOutcome:
             return self.current_snapshot == expected
 
         if self.kind is _WriterSnapshotAdvanceSequenceOutcomeKind.BLOCKED:
+            failed = self.step_outcomes[-1] if self.step_outcomes else None
             return (
                 bool(self.step_outcomes)
-                and self.step_outcomes[-1].kind
-                is _WriterSnapshotAdvanceOutcomeKind.BLOCKED
-                and self.current_snapshot == self.step_outcomes[-1].source_snapshot
+                and failed.kind is _WriterSnapshotAdvanceOutcomeKind.BLOCKED
+                and (
+                    failed.frontier_product is None
+                    or failed.blocked_advance_certificate is not None
+                )
+                and self.current_snapshot == failed.source_snapshot
                 and self.replay_certificate is None
             )
 
@@ -510,11 +599,16 @@ class _WriterSnapshotAdvanceSequenceOutcome:
             self.kind
             is _WriterSnapshotAdvanceSequenceOutcomeKind.INVALID_EMITTED_TEXT
         ):
+            failed = self.step_outcomes[-1] if self.step_outcomes else None
             return (
                 bool(self.step_outcomes)
-                and self.step_outcomes[-1].kind
+                and failed.kind
                 is _WriterSnapshotAdvanceOutcomeKind.INVALID_EMITTED_TEXT
-                and self.current_snapshot == self.step_outcomes[-1].source_snapshot
+                and (
+                    failed.frontier_product is None
+                    or failed.invalid_text_certificate is not None
+                )
+                and self.current_snapshot == failed.source_snapshot
                 and self.replay_certificate is None
             )
 
@@ -1195,7 +1289,7 @@ def _checked_text_projection_certificate_for_emitted_text(
         prepared=prepared,
         emitted_text=emitted_text,
     )
-    if lookup is None:
+    if lookup.blocked or not lookup.matched:
         raise SouthStarError(
             SouthStarErrorKind.INVALID_FACTS,
             (
@@ -1214,15 +1308,16 @@ def _checked_writer_snapshot_text_projection_lookup(
     *,
     prepared: SouthStarPreparedMol,
     emitted_text: str,
-) -> _WriterSnapshotAdvanceProjectionLookup | None:
-    product = _checked_writer_frontier_product(
+) -> _WriterSnapshotAdvanceProjectionLookup:
+    product = _snapshot_advance_writer_frontier_product(
         prepared,
         snapshot.cursor,
-        include_counts=False,
-        include_frontier_certificate=False,
-        include_count_certificate=False,
     )
-    if product.projection_certificate is None:
+    if product.blocked:
+        return _WriterSnapshotAdvanceProjectionLookup(product=product)
+
+    projection_certificate = product.projection_certificate
+    if projection_certificate is None:
         raise SouthStarError(
             SouthStarErrorKind.INTERNAL_INVARIANT,
             "legal snapshot advance product lacks projection certificate",
@@ -1230,8 +1325,7 @@ def _checked_writer_snapshot_text_projection_lookup(
     matches = tuple(
         certificate
         for certificate in (
-            product.projection_certificate
-            .text_choice_projection_certificates
+            projection_certificate.text_choice_projection_certificates
         )
         if certificate.emitted_text == emitted_text
     )
@@ -1241,10 +1335,13 @@ def _checked_writer_snapshot_text_projection_lookup(
             "snapshot advance observed duplicate text projection",
         )
     if not matches:
-        return None
+        return _WriterSnapshotAdvanceProjectionLookup(
+            product=product,
+            frontier_projection_certificate=projection_certificate,
+        )
     return _WriterSnapshotAdvanceProjectionLookup(
         product=product,
-        frontier_projection_certificate=product.projection_certificate,
+        frontier_projection_certificate=projection_certificate,
         text_projection_certificate=matches[0],
     )
 
@@ -1324,20 +1421,44 @@ def _writer_snapshot_advance_outcome_by_emitted_text(
         stop_after_first_blocked=True,
     )
 
-    if choice_snapshot.blocked:
+    if lookup.blocked:
+        blocked_certificate = writer_snapshot_blocked_advance_certificate(
+            source_snapshot=snapshot,
+            emitted_text=emitted_text,
+            blocked_frontier_certificate=(
+                lookup.product.blocked_frontier_certificate
+            ),
+        )
         return _WriterSnapshotAdvanceOutcome(
             kind=_WriterSnapshotAdvanceOutcomeKind.BLOCKED,
             source_snapshot=snapshot,
             emitted_text=emitted_text,
             choice_snapshot=choice_snapshot,
+            frontier_product=lookup.product,
+            blocked_frontier_certificate=(
+                lookup.product.blocked_frontier_certificate
+            ),
+            blocked_advance_certificate=blocked_certificate,
         )
 
-    if lookup is None:
+    if not lookup.matched:
+        invalid_certificate = writer_snapshot_invalid_text_certificate(
+            source_snapshot=snapshot,
+            emitted_text=emitted_text,
+            frontier_projection_certificate=(
+                lookup.frontier_projection_certificate
+            ),
+        )
         return _WriterSnapshotAdvanceOutcome(
             kind=_WriterSnapshotAdvanceOutcomeKind.INVALID_EMITTED_TEXT,
             source_snapshot=snapshot,
             emitted_text=emitted_text,
             choice_snapshot=choice_snapshot,
+            frontier_product=lookup.product,
+            invalid_text_frontier_projection_certificate=(
+                lookup.frontier_projection_certificate
+            ),
+            invalid_text_certificate=invalid_certificate,
         )
 
     advanced_snapshot, step_certificate = (
@@ -1512,11 +1633,15 @@ def _writer_frontier_choice_snapshot_after_emitted_texts(
 def _raise_for_writer_snapshot_advance_outcome_errors(
     outcome: _WriterSnapshotAdvanceOutcome,
 ) -> None:
-    _raise_for_writer_frontier_choice_snapshot_blockers(
-        outcome.choice_snapshot
-    )
-
     if outcome.kind is _WriterSnapshotAdvanceOutcomeKind.BLOCKED:
+        if outcome.choice_snapshot.blocked:
+            _raise_for_writer_frontier_choice_snapshot_blockers(
+                outcome.choice_snapshot
+            )
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            _writer_snapshot_blocked_advance_message(outcome),
+        )
         return
 
     if (
@@ -1530,6 +1655,48 @@ def _raise_for_writer_snapshot_advance_outcome_errors(
                 f"frontier: {outcome.emitted_text!r}"
             ),
         )
+
+
+def _writer_snapshot_blocked_advance_message(
+    outcome: _WriterSnapshotAdvanceOutcome,
+) -> str:
+    blocked = outcome.blocked_frontier_certificate
+    if blocked is None:
+        return "writer snapshot advance frontier is blocked"
+
+    capability_names = tuple(
+        getattr(certificate.capability, "value", str(certificate.capability))
+        for certificate in (
+            *blocked.unsupported_execution_capability_certificates,
+            *blocked.unsupported_terminal_execution_capability_certificates,
+        )
+    )
+    if capability_names:
+        return (
+            "writer snapshot advance frontier is blocked by unsupported "
+            f"execution capabilities: {', '.join(capability_names)} "
+            f"next={outcome.emitted_text!r}"
+        )
+
+    work_violations = tuple(blocked.work_envelope_violation_certificates)
+    if work_violations:
+        first = work_violations[0]
+        violation = first.violation
+        actual = getattr(violation, "actual", None)
+        limit = getattr(violation, "limit", None)
+        metric = getattr(violation, "metric", None)
+        if first.category == "graph_obligation":
+            return (
+                "writer snapshot advance current frontier exceeds graph "
+                f"obligation work envelope: {metric} current={actual} "
+                f"limit={limit}"
+            )
+        return (
+            "writer snapshot advance frontier exceeds work envelope: "
+            f"{first.category} {metric} next={actual} limit={limit}"
+        )
+
+    return "writer snapshot advance frontier is blocked"
 
 
 def _raise_for_writer_snapshot_advance_sequence_outcome_errors(

@@ -48,6 +48,7 @@ from .writer_frontier import _raise_for_writer_frontier_choice_snapshot_blockers
 from .writer_frontier import _initial_writer_transition_frontier_cursor
 from .writer_frontier import _writer_frontier_choice_snapshot
 from .writer_frontier import iter_writer_frontier_support
+from .writer_snapshot_certificates import writer_snapshot_prefix_read_certificate
 from .writer_snapshot_certificates import writer_snapshot_replay_certificate
 from .writer_snapshot_certificates import writer_snapshot_step_certificate
 from .writer_stereo import reconstruct_writer_local_order_records
@@ -106,6 +107,16 @@ class WriterSearchSnapshot:
 class _WriterSnapshotCertifiedSupportString:
     string: str
     certificate: object
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterSnapshotCertifiedPrefixProduct:
+    source_snapshot: WriterSearchSnapshot
+    emitted_texts: tuple[str, ...]
+    final_snapshot: WriterSearchSnapshot
+    replay_certificate: object
+    frontier_product: object
+    prefix_read_certificate: object
 
 
 def _capture_writer_frontier_snapshot_unchecked(
@@ -1570,31 +1581,87 @@ def _checked_writer_frontier_choice_snapshot_after_emitted_texts(
     return outcome.choice_snapshot
 
 
+def _checked_writer_snapshot_prefix_product_after_emitted_texts(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    emitted_texts: tuple[str, ...],
+    include_counts: bool = True,
+) -> _WriterSnapshotCertifiedPrefixProduct:
+    sequence_outcome = (
+        _writer_snapshot_advance_sequence_outcome_by_emitted_texts(
+            snapshot,
+            prepared=prepared,
+            emitted_texts=emitted_texts,
+        )
+    )
+    _raise_for_writer_snapshot_advance_sequence_outcome_errors(
+        sequence_outcome
+    )
+
+    final_snapshot = sequence_outcome.advanced_snapshot
+    replay_certificate = sequence_outcome.replay_certificate
+    if final_snapshot is None or replay_certificate is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "checked prefix product lacks replay final snapshot",
+        )
+
+    product = _checked_writer_frontier_product(
+        prepared,
+        final_snapshot.cursor,
+        include_counts=include_counts,
+        include_frontier_certificate=include_counts,
+        include_count_certificate=include_counts,
+    )
+    if product.projection_certificate is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "checked prefix product lacks final projection certificate",
+        )
+    if product.checked_frontier_certificate is None and include_counts:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "checked prefix product lacks final checked frontier certificate",
+        )
+
+    prefix_certificate = writer_snapshot_prefix_read_certificate(
+        source_snapshot=snapshot,
+        emitted_texts=emitted_texts,
+        replay_certificate=replay_certificate,
+        final_snapshot=final_snapshot,
+        final_frontier_product=product,
+    )
+    return _WriterSnapshotCertifiedPrefixProduct(
+        source_snapshot=snapshot,
+        emitted_texts=emitted_texts,
+        final_snapshot=final_snapshot,
+        replay_certificate=replay_certificate,
+        frontier_product=product,
+        prefix_read_certificate=prefix_certificate,
+    )
+
+
 def _writer_frontier_choices_after_emitted_texts(
     snapshot: WriterSearchSnapshot,
     *,
     prepared: SouthStarPreparedMol,
     emitted_texts: tuple[str, ...],
 ) -> WriterFrontierChoices:
-    outcome = _checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
+    prefix = _checked_writer_snapshot_prefix_product_after_emitted_texts(
         snapshot,
         prepared=prepared,
         emitted_texts=emitted_texts,
         include_counts=True,
     )
-
-    if outcome.public_choices is None:
-        raise SouthStarError(
-            SouthStarErrorKind.INTERNAL_INVARIANT,
-            "checked prefix read did not contain public choices",
-        )
-
-    return outcome.public_choices
+    return prefix.frontier_product.choices
 
 
 def _count_writer_frontier_choice_snapshot_supports(
     choice_snapshot: _WriterFrontierChoiceSnapshot,
 ) -> int:
+    # Legacy diagnostic helper. Checked prefix-read surfaces use
+    # _checked_writer_snapshot_prefix_product_after_emitted_texts instead.
     total = 0
 
     if choice_snapshot.terminal is not None:
@@ -1615,6 +1682,8 @@ def _count_writer_frontier_choice_snapshot_supports(
 def _count_writer_frontier_choice_snapshot_completions(
     choice_snapshot: _WriterFrontierChoiceSnapshot,
 ) -> int:
+    # Legacy diagnostic helper. Checked prefix-read surfaces use
+    # _checked_writer_snapshot_prefix_product_after_emitted_texts instead.
     total = 0
 
     if choice_snapshot.terminal is not None:
@@ -1636,6 +1705,8 @@ def _iter_writer_frontier_support_suffixes_from_choice_snapshot(
     prepared: SouthStarPreparedMol,
     choice_snapshot: _WriterFrontierChoiceSnapshot,
 ) -> Iterator[str]:
+    # Legacy diagnostic helper. Checked suffix reads use certified support
+    # strings from the replay final snapshot instead.
     if choice_snapshot.terminal is not None:
         yield ""
 
@@ -1701,11 +1772,17 @@ def _writer_snapshot_prefix_read_outcome_after_emitted_texts(
     completion_count = None
 
     if include_counts:
-        support_count = _count_writer_frontier_choice_snapshot_supports(
-            choice_snapshot
+        prefix_product = (
+            _checked_writer_snapshot_prefix_product_after_emitted_texts(
+                snapshot,
+                prepared=prepared,
+                emitted_texts=emitted_texts,
+                include_counts=True,
+            )
         )
-        completion_count = _count_writer_frontier_choice_snapshot_completions(
-            choice_snapshot
+        support_count = prefix_product.prefix_read_certificate.support_count
+        completion_count = (
+            prefix_product.prefix_read_certificate.completion_count
         )
 
     return _WriterSnapshotPrefixReadOutcome(
@@ -1753,20 +1830,21 @@ def _count_writer_frontier_support_after_emitted_texts(
     prepared: SouthStarPreparedMol,
     emitted_texts: tuple[str, ...],
 ) -> int:
-    outcome = _checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
+    prefix = _checked_writer_snapshot_prefix_product_after_emitted_texts(
         snapshot,
         prepared=prepared,
         emitted_texts=emitted_texts,
         include_counts=True,
     )
+    count = prefix.prefix_read_certificate.support_count
 
-    if outcome.support_count is None:
+    if count is None:
         raise SouthStarError(
             SouthStarErrorKind.INTERNAL_INVARIANT,
             "checked prefix read did not contain a support count",
         )
 
-    return outcome.support_count
+    return count
 
 
 def _count_writer_completions_after_emitted_texts(
@@ -1775,20 +1853,21 @@ def _count_writer_completions_after_emitted_texts(
     prepared: SouthStarPreparedMol,
     emitted_texts: tuple[str, ...],
 ) -> int:
-    outcome = _checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
+    prefix = _checked_writer_snapshot_prefix_product_after_emitted_texts(
         snapshot,
         prepared=prepared,
         emitted_texts=emitted_texts,
         include_counts=True,
     )
+    count = prefix.prefix_read_certificate.completion_count
 
-    if outcome.completion_count is None:
+    if count is None:
         raise SouthStarError(
             SouthStarErrorKind.INTERNAL_INVARIANT,
             "checked prefix read did not contain a completion count",
         )
 
-    return outcome.completion_count
+    return count
 
 
 def _iter_writer_frontier_support_suffixes_after_emitted_texts(
@@ -1797,23 +1876,18 @@ def _iter_writer_frontier_support_suffixes_after_emitted_texts(
     prepared: SouthStarPreparedMol,
     emitted_texts: tuple[str, ...],
 ) -> Iterator[str]:
-    outcome = _checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
+    prefix = _checked_writer_snapshot_prefix_product_after_emitted_texts(
         snapshot,
         prepared=prepared,
         emitted_texts=emitted_texts,
         include_counts=False,
     )
 
-    if outcome.choice_snapshot is None:
-        raise SouthStarError(
-            SouthStarErrorKind.INTERNAL_INVARIANT,
-            "checked prefix read did not contain a choice snapshot",
-        )
-
-    yield from _iter_writer_frontier_support_suffixes_from_choice_snapshot(
-        prepared,
-        outcome.choice_snapshot,
-    )
+    for item in _iter_writer_snapshot_certified_support_strings(
+        prefix.final_snapshot,
+        prepared=prepared,
+    ):
+        yield item.string
 
 
 def _iter_writer_snapshot_certified_support_strings(

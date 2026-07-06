@@ -50,6 +50,7 @@ from grimace._south_star1.writer_snapshot import WriterSearchSnapshot
 from grimace._south_star1.writer_snapshot import _writer_snapshot_advance_outcome_by_emitted_text
 from grimace._south_star1.writer_snapshot import _writer_snapshot_advance_sequence_outcome_by_emitted_texts
 from grimace._south_star1.writer_snapshot import _checked_writer_snapshot_prefix_read_outcome_after_emitted_texts
+from grimace._south_star1.writer_snapshot import _checked_writer_snapshot_prefix_product_after_emitted_texts
 from grimace._south_star1.writer_snapshot import _prepared_identity
 from grimace._south_star1.writer_snapshot import advance_writer_frontier_snapshot
 from grimace._south_star1.writer_snapshot import capture_writer_frontier_snapshot
@@ -57,6 +58,9 @@ from grimace._south_star1.writer_snapshot import resume_writer_frontier_choices_
 from grimace._south_star1.writer_snapshot import validate_writer_cursor_against_prepared
 from grimace._south_star1.writer_snapshot import validate_writer_search_snapshot
 from grimace._south_star1.writer_snapshot import writer_frontier_cursor_from_snapshot
+from grimace._south_star1.writer_snapshot_certificates import (
+    writer_snapshot_prefix_read_certificate,
+)
 from grimace._south_star1.writer_snapshot_certificates import (
     writer_snapshot_replay_certificate,
 )
@@ -263,6 +267,111 @@ class WriterSnapshotTest(unittest.TestCase):
             outcome.step_certificates,
             outcome.replay_certificate.step_certificates,
         )
+
+    def test_prefix_read_certificate_binds_final_frontier_counts(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options()
+        snapshot = capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=initial_writer_frontier_cursor(prepared, options),
+        )
+
+        prefix = _checked_writer_snapshot_prefix_product_after_emitted_texts(
+            snapshot,
+            prepared=prepared,
+            emitted_texts=(),
+            include_counts=True,
+        )
+        certificate = prefix.prefix_read_certificate
+
+        self.assertIs(
+            certificate.support_count_certificate,
+            prefix.frontier_product.support_count_certificate,
+        )
+        self.assertIs(
+            certificate.completion_count_certificate,
+            prefix.frontier_product.count_certificate,
+        )
+        self.assertEqual(
+            certificate.support_count,
+            prefix.frontier_product.support_count_certificate.support_count,
+        )
+        self.assertEqual(
+            certificate.completion_count,
+            prefix.frontier_product.count_certificate.completion_count,
+        )
+        self.assertIs(
+            certificate.final_frontier_projection_certificate,
+            prefix.frontier_product.projection_certificate,
+        )
+
+    def test_prefix_read_certificate_binds_replay_final_snapshot(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options()
+        snapshot = capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=initial_writer_frontier_cursor(prepared, options),
+        )
+        emitted_text = writer_frontier_choices(
+            prepared,
+            snapshot.cursor,
+        ).choices[0].emitted_text
+
+        prefix = _checked_writer_snapshot_prefix_product_after_emitted_texts(
+            snapshot,
+            prepared=prepared,
+            emitted_texts=(emitted_text,),
+            include_counts=True,
+        )
+
+        self.assertEqual(prefix.replay_certificate.emitted_texts, (emitted_text,))
+        self.assertEqual(
+            prefix.replay_certificate.final_snapshot,
+            prefix.final_snapshot,
+        )
+        self.assertEqual(
+            prefix.frontier_product.cursor,
+            prefix.final_snapshot.cursor,
+        )
+
+    def test_prefix_read_certificate_rejects_replay_final_snapshot_mismatch(
+        self,
+    ) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options()
+        snapshot = capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=initial_writer_frontier_cursor(prepared, options),
+        )
+        emitted_text = writer_frontier_choices(
+            prepared,
+            snapshot.cursor,
+        ).choices[0].emitted_text
+        prefix = _checked_writer_snapshot_prefix_product_after_emitted_texts(
+            snapshot,
+            prepared=prepared,
+            emitted_texts=(emitted_text,),
+            include_counts=True,
+        )
+        bad_replay = replace(
+            prefix.replay_certificate,
+            final_snapshot=prefix.source_snapshot,
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "replay_final_snapshot_mismatch",
+        ):
+            writer_snapshot_prefix_read_certificate(
+                source_snapshot=prefix.source_snapshot,
+                emitted_texts=prefix.emitted_texts,
+                replay_certificate=bad_replay,
+                final_snapshot=prefix.final_snapshot,
+                final_frontier_product=prefix.frontier_product,
+            )
 
     def test_invalid_snapshot_advance_has_no_step_certificate(self) -> None:
         prepared = _prepare(cco_facts())

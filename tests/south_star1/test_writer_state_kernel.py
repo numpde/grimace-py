@@ -6858,12 +6858,18 @@ class WriterStateKernelTest(unittest.TestCase):
             completion_count=2,
         )
 
+        prefix_product = SimpleNamespace(
+            frontier_product=SimpleNamespace(
+                choices=choice_snapshot.public_choices,
+            ),
+        )
+
         with patch(
             (
                 "grimace._south_star1.writer_snapshot"
-                "._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts"
+                "._checked_writer_snapshot_prefix_product_after_emitted_texts"
             ),
-            return_value=read_outcome,
+            return_value=prefix_product,
         ) as checked_read:
             choices = writer_snapshot._writer_frontier_choices_after_emitted_texts(
                 snapshot,
@@ -8000,7 +8006,7 @@ class WriterStateKernelTest(unittest.TestCase):
         with patch(
             (
                 "grimace._south_star1.writer_snapshot"
-                "._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts"
+                "._checked_writer_snapshot_prefix_product_after_emitted_texts"
             ),
             side_effect=SouthStarError(
                 SouthStarErrorKind.UNSUPPORTED_POLICY,
@@ -8185,11 +8191,11 @@ class WriterStateKernelTest(unittest.TestCase):
         with patch(
             (
                 "grimace._south_star1.writer_snapshot"
-                "._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts"
+                "._checked_writer_snapshot_prefix_product_after_emitted_texts"
             ),
             wraps=(
                 writer_snapshot
-                ._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts
+                ._checked_writer_snapshot_prefix_product_after_emitted_texts
             ),
         ) as checked_read:
             tuple(
@@ -8222,11 +8228,11 @@ class WriterStateKernelTest(unittest.TestCase):
         with patch(
             (
                 "grimace._south_star1.writer_snapshot"
-                "._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts"
+                "._checked_writer_snapshot_prefix_product_after_emitted_texts"
             ),
             wraps=(
                 writer_snapshot
-                ._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts
+                ._checked_writer_snapshot_prefix_product_after_emitted_texts
             ),
         ) as checked_read:
             writer_snapshot._count_writer_frontier_support_after_emitted_texts(
@@ -10907,9 +10913,9 @@ class WriterStateKernelTest(unittest.TestCase):
             runtime_options=options,
             cursor=cursor,
         )
-        outcome = (
+        product = (
             writer_snapshot
-            ._writer_snapshot_prefix_read_outcome_after_emitted_texts(
+            ._checked_writer_snapshot_prefix_product_after_emitted_texts(
                 snapshot,
                 prepared=prepared,
                 emitted_texts=(),
@@ -10920,9 +10926,9 @@ class WriterStateKernelTest(unittest.TestCase):
         with patch(
             (
                 "grimace._south_star1.writer_snapshot"
-                "._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts"
+                "._checked_writer_snapshot_prefix_product_after_emitted_texts"
             ),
-            return_value=outcome,
+            return_value=product,
         ) as checked_read:
             writer_snapshot._writer_frontier_choices_after_emitted_texts(
                 snapshot,
@@ -10948,15 +10954,15 @@ class WriterStateKernelTest(unittest.TestCase):
         with patch(
             (
                 "grimace._south_star1.writer_snapshot"
-                "._checked_writer_snapshot_prefix_read_outcome_after_emitted_texts"
+                "._checked_writer_snapshot_prefix_product_after_emitted_texts"
             ),
-            return_value=outcome,
+            return_value=product,
         ) as checked_read, patch(
             (
                 "grimace._south_star1.writer_snapshot"
                 "._iter_writer_frontier_support_suffixes_from_choice_snapshot"
             ),
-            return_value=iter(("C",)),
+            side_effect=AssertionError("old suffix helper called"),
         ):
             tuple(
                 writer_snapshot

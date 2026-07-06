@@ -131,6 +131,26 @@ class SouthStar1BoundaryTest(unittest.TestCase):
         ):
             self.assertNotIn(name, source)
 
+    def test_support_string_envelope_boundary(self) -> None:
+        path = SOUTH_STAR1_ROOT / "writer_support_string_envelope.py"
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+
+        self.assertFalse(_imports_rdkit(tree))
+        self.assertNotIn("choice_snapshot", source)
+        for name in (
+            "_count_writer_frontier_choice_snapshot_supports",
+            "_count_writer_frontier_choice_snapshot_completions",
+            "_iter_writer_frontier_support_suffixes_from_choice_snapshot",
+            "iter_writer_runtime_support",
+            "enumerate_writer_snapshot_writer_shaped_support",
+            "enumerate_prepared_writer_shaped_support",
+            "support_image",
+        ):
+            self.assertNotIn(name, source)
+        verifier = _function_source(tree, "verify_writer_support_string_envelope")
+        self.assertNotIn("_iter_writer_snapshot_certified_support_strings", verifier)
+
     def test_private_package_is_not_publicly_exported(self) -> None:
         self.assertNotIn("_south_star1", grimace.__all__)
 
@@ -350,6 +370,13 @@ def _imports_rdkit(tree: ast.AST) -> bool:
             if node.module == "rdkit" or (node.module or "").startswith("rdkit."):
                 return True
     return False
+
+
+def _function_source(tree: ast.AST, name: str) -> str:
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == name:
+            return ast.unparse(node)
+    raise AssertionError(f"function {name} not found")
 
 
 if __name__ == "__main__":

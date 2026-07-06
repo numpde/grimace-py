@@ -81,6 +81,7 @@ CORE_MODULES: tuple[str, ...] = (
     "writer_snapshot",
     "writer_snapshot_certificates",
     "writer_snapshot_envelope",
+    "writer_snapshot_prefix_envelope",
     "writer_snapshot_replay_envelope",
     "writer_state_delta_certificates",
     "writer_state",

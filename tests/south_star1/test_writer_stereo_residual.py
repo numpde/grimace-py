@@ -56,8 +56,10 @@ from grimace._south_star1.ordinary_policy import OrdinaryPolicyOptions
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
 from grimace._south_star1.writer_frontier import iter_writer_frontier_support
+from grimace._south_star1.writer_frontier import WriterFrontierCursor
 from grimace._south_star1.writer_frontier import _initial_writer_transition_frontier_cursor
 from grimace._south_star1.writer_frontier import _writer_frontier_choice_snapshot
+from grimace._south_star1.writer_frontier import _writer_frontier_schedule_outcome
 from grimace._south_star1.writer_frontier import writer_frontier_choices
 from grimace._south_star1.writer_events import WriterBondEmitted
 from grimace._south_star1.writer_events import WriterRingEndpointEmitted
@@ -76,6 +78,9 @@ from grimace._south_star1.writer_stereo import initial_writer_stereo_state
 from grimace._south_star1.writer_stereo import reconstruct_writer_stereo_residual_snapshot
 from grimace._south_star1.writer_stereo import terminal_writer_stereo_state
 import grimace._south_star1.writer_stereo as writer_stereo_module
+from grimace._south_star1.writer_stereo_branch_certificates import (
+    writer_stereo_branch_certificates,
+)
 from tests.south_star1.helpers import atom
 from tests.south_star1.helpers import bond
 from tests.south_star1.helpers import cco_facts
@@ -1548,6 +1553,123 @@ class WriterStereoResidualTest(unittest.TestCase):
             writer_stereo_module.EMPTY_RESIDUAL_SNAPSHOT,
         )
 
+    def test_directional_ring_pair_certificate_accepts_endpoint_projection_noop(
+        self,
+    ) -> None:
+        prepared = _prepare_directional_ring_carrier_facts()
+        cursor = _initial_writer_transition_frontier_cursor(
+            prepared,
+            _writer_options(rooted_at_atom=0),
+        )
+        support = _first_schedule_support_with_capability(
+            prepared,
+            cursor,
+            _WriterExecutionCapabilityKind.DIRECTIONAL_RING_PAIR_COMPATIBILITY,
+            event_type=WriterRingEndpointEmitted,
+        )
+
+        certificates = writer_stereo_branch_certificates(
+            execution_capabilities=support.execution_capabilities,
+            stereo_lifecycle_evidence=(
+                support.schedule_support.transition.stereo_lifecycle_evidence
+            ),
+            events=support.schedule_support.transition.events,
+        )
+        certificate = _stereo_branch_certificate(
+            certificates,
+            _WriterExecutionCapabilityKind.DIRECTIONAL_RING_PAIR_COMPATIBILITY,
+        )
+
+        evidence = certificate.lifecycle_evidence
+        self.assertIsInstance(evidence.event, WriterRingEndpointEmitted)
+        self.assertEqual(
+            evidence.source_residual_snapshot,
+            evidence.successor_residual_snapshot,
+        )
+        self.assertTrue(
+            any(
+                item.operation == "directional ring endpoint projection"
+                for item in evidence.residual_work_evidence
+            )
+        )
+
+    def test_directional_ring_pair_certificate_rejects_stale_projection_work(
+        self,
+    ) -> None:
+        prepared = _prepare_directional_ring_carrier_facts()
+        cursor = _initial_writer_transition_frontier_cursor(
+            prepared,
+            _writer_options(rooted_at_atom=0),
+        )
+        support = _first_schedule_support_with_capability(
+            prepared,
+            cursor,
+            _WriterExecutionCapabilityKind.DIRECTIONAL_RING_PAIR_COMPATIBILITY,
+            event_type=WriterRingEndpointEmitted,
+        )
+        evidence = _stereo_lifecycle_evidence_with_operation(
+            support.schedule_support.transition.stereo_lifecycle_evidence,
+            "directional ring endpoint projection",
+        )
+        bad_work = replace(
+            evidence.residual_work_evidence[0],
+            operation="stale directional ring projection",
+        )
+        bad_evidence = replace(
+            evidence,
+            residual_work_evidence=(bad_work,),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "directional_ring_pair_compatibility_lacks_exact_lifecycle",
+        ):
+            writer_stereo_branch_certificates(
+                execution_capabilities=support.execution_capabilities,
+                stereo_lifecycle_evidence=(bad_evidence,),
+                events=support.schedule_support.transition.events,
+            )
+
+    def test_directional_carrier_certificate_accepts_ring_pair_restriction(
+        self,
+    ) -> None:
+        prepared = _prepare_directional_ring_carrier_facts()
+        cursor = _initial_writer_transition_frontier_cursor(
+            prepared,
+            _writer_options(rooted_at_atom=0),
+        )
+        support = _first_schedule_support_with_capability(
+            prepared,
+            cursor,
+            _WriterExecutionCapabilityKind.DIRECTIONAL_CARRIER_RESTRICTION,
+            event_type=WriterRingEndpointPaired,
+        )
+
+        certificates = writer_stereo_branch_certificates(
+            execution_capabilities=support.execution_capabilities,
+            stereo_lifecycle_evidence=(
+                support.schedule_support.transition.stereo_lifecycle_evidence
+            ),
+            events=support.schedule_support.transition.events,
+        )
+        certificate = _stereo_branch_certificate(
+            certificates,
+            _WriterExecutionCapabilityKind.DIRECTIONAL_CARRIER_RESTRICTION,
+        )
+
+        evidence = certificate.lifecycle_evidence
+        self.assertIsInstance(evidence.event, WriterRingEndpointPaired)
+        self.assertNotEqual(
+            evidence.source_residual_snapshot,
+            evidence.successor_residual_snapshot,
+        )
+        self.assertTrue(
+            any(
+                item.operation == "directional ring pair restriction"
+                for item in evidence.residual_work_evidence
+            )
+        )
+
     def test_terminal_eos_persists_final_stereo_closure(self) -> None:
         facts = terminal_tetra_center_facts()
         prepared = prepare_south_star_mol_from_facts(
@@ -1900,6 +2022,65 @@ def _private_terminal_paths(prepared, cursor):
         rec(writer_state_from_key(key), (), frozenset())
 
     return tuple(paths)
+
+
+def _first_schedule_support_with_capability(
+    prepared,
+    cursor,
+    capability,
+    *,
+    event_type,
+):
+    pending = [cursor]
+    seen = set()
+    while pending:
+        current = pending.pop(0)
+        if current in seen:
+            continue
+        seen.add(current)
+        outcome = _writer_frontier_schedule_outcome(
+            prepared,
+            current,
+            stop_after_first_blocked=True,
+        )
+        for support in outcome.next_token_supports:
+            transition = support.schedule_support.transition
+            if (
+                capability in support.execution_capabilities
+                and any(isinstance(event, event_type) for event in transition.events)
+            ):
+                return support
+            pending.append(
+                WriterFrontierCursor(
+                    weighted_states=((support.successor_key, support.parent_weight),)
+                )
+            )
+    raise AssertionError(f"missing schedule support for {capability.value}")
+
+
+def _stereo_branch_certificate(certificates, capability):
+    matches = tuple(
+        certificate
+        for certificate in certificates
+        if certificate.capability is capability
+    )
+    if len(matches) != 1:
+        raise AssertionError(f"missing unique certificate for {capability.value}")
+    return matches[0]
+
+
+def _stereo_lifecycle_evidence_with_operation(lifecycle_evidence, operation):
+    matches = tuple(
+        evidence
+        for evidence in lifecycle_evidence
+        if any(
+            item.operation == operation
+            for item in evidence.residual_work_evidence
+        )
+    )
+    if len(matches) != 1:
+        raise AssertionError(f"missing unique lifecycle evidence for {operation}")
+    return matches[0]
 
 
 def triangle_no_stereo_facts() -> MoleculeFacts:

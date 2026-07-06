@@ -120,8 +120,11 @@ def writer_stereo_branch_certificates(
                     .DIRECTIONAL_CARRIER_RESTRICTION
                 ),
                 lifecycle_evidence=stereo_lifecycle_evidence,
-                event_type=WriterBondEmitted,
-                operation="directional carrier-mark restriction",
+                event_type=(WriterBondEmitted, WriterRingEndpointPaired),
+                operation=(
+                    "directional carrier-mark restriction",
+                    "directional ring pair restriction",
+                ),
                 require_residual_delta=True,
             )
         )
@@ -146,7 +149,6 @@ def writer_stereo_branch_certificates(
                     "directional ring endpoint projection",
                     "directional ring pair restriction",
                 ),
-                require_residual_delta=True,
             )
         )
 

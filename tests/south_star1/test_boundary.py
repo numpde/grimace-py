@@ -114,6 +114,23 @@ class SouthStar1BoundaryTest(unittest.TestCase):
         )
         self.assertIn("verify_writer_snapshot_replay_envelope", source)
 
+    def test_frontier_count_envelope_boundary(self) -> None:
+        path = SOUTH_STAR1_ROOT / "writer_frontier_count_envelope.py"
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+
+        self.assertFalse(_imports_rdkit(tree))
+        self.assertNotIn("choice_snapshot", source)
+        for name in (
+            "_count_writer_frontier_choice_snapshot_supports",
+            "_count_writer_frontier_choice_snapshot_completions",
+            "_iter_writer_frontier_support_suffixes_from_choice_snapshot",
+            "iter_writer_frontier_support",
+            "writer_runtime_support_image",
+            "support_image",
+        ):
+            self.assertNotIn(name, source)
+
     def test_private_package_is_not_publicly_exported(self) -> None:
         self.assertNotIn("_south_star1", grimace.__all__)
 

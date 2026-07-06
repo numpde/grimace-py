@@ -7,6 +7,9 @@ from dataclasses import dataclass
 
 from .errors import SouthStarError
 from .errors import SouthStarErrorKind
+from .writer_choice_count_certificates import (
+    writer_frontier_choice_count_coverage_certificate,
+)
 from .writer_count_certificates import (
     writer_frontier_completion_count_certificate,
 )
@@ -40,6 +43,7 @@ class WriterCheckedFrontierCertificate:
     support_count_certificate: object | None = None
     support_count_term_coverage_certificate: object | None = None
     frontier_completion_count_certificate: object | None = None
+    choice_count_coverage_certificate: object | None = None
     diagnostic_certificate: object | None = None
 
 
@@ -176,6 +180,7 @@ def writer_checked_frontier_certificate(
     support_count_certificate: object | None = None,
     support_count_term_coverage_certificate: object | None = None,
     frontier_completion_count_certificate: object | None = None,
+    choice_count_coverage_certificate: object | None = None,
     terminal_projection_certificate=None,
     count_certificate=None,
     diagnostic_certificate=None,
@@ -408,6 +413,51 @@ def writer_checked_frontier_certificate(
     elif frontier_completion_count_certificate is not None:
         _frontier_violation("frontier_completion_count_without_count")
 
+    if (
+        support_count_term_coverage_certificate is not None
+        and frontier_completion_count_certificate is not None
+    ):
+        completion_coverage = (
+            frontier_completion_count_certificate.term_coverage_certificate
+        )
+        if choice_count_coverage_certificate is None:
+            choice_count_coverage_certificate = (
+                writer_frontier_choice_count_coverage_certificate(
+                    projection_certificate=projection_certificate,
+                    text_choice_count_certificates=(
+                        text_choice_count_certificates
+                    ),
+                    terminal_choice_count_certificate=(
+                        terminal_choice_count_certificate
+                    ),
+                    support_count_term_coverage_certificate=(
+                        support_count_term_coverage_certificate
+                    ),
+                    completion_count_term_coverage_certificate=(
+                        completion_coverage
+                    ),
+                )
+            )
+        if (
+            choice_count_coverage_certificate.projection_certificate
+            is not projection_certificate
+        ):
+            _frontier_violation("choice_count_coverage_projection_mismatch")
+        if (
+            choice_count_coverage_certificate.support_count
+            != support_count_certificate.support_count
+        ):
+            _frontier_violation("choice_count_coverage_support_total_mismatch")
+        if (
+            choice_count_coverage_certificate.completion_count
+            != count_certificate.completion_count
+        ):
+            _frontier_violation(
+                "choice_count_coverage_completion_total_mismatch"
+            )
+    elif choice_count_coverage_certificate is not None:
+        _frontier_violation("choice_count_coverage_without_count_coverage")
+
     if diagnostic_certificate is not None:
         if diagnostic_certificate.cursor != cursor:
             _frontier_violation("diagnostic_cursor_mismatch")
@@ -438,6 +488,7 @@ def writer_checked_frontier_certificate(
         frontier_completion_count_certificate=(
             frontier_completion_count_certificate
         ),
+        choice_count_coverage_certificate=choice_count_coverage_certificate,
         terminal_projection_certificate=terminal_projection_certificate,
         count_certificate=count_certificate,
         diagnostic_certificate=diagnostic_certificate,

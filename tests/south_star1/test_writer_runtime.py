@@ -44,6 +44,9 @@ from grimace._south_star1.writer_choice_count_certificates import (
     writer_text_choice_count_certificate,
 )
 from grimace._south_star1.writer_choice_count_certificates import (
+    writer_frontier_choice_count_coverage_certificate,
+)
+from grimace._south_star1.writer_choice_count_certificates import (
     writer_terminal_choice_count_certificate,
 )
 from grimace._south_star1.writer_diagnostic_certificates import (
@@ -1603,6 +1606,32 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             product.support_count_certificate.support_count,
         )
 
+    def test_frontier_choice_count_carries_coverage(self) -> None:
+        prepared = _prepare(cco_facts())
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+        product = _checked_writer_frontier_product(
+            prepared,
+            state.snapshot.cursor,
+        )
+
+        coverage = (
+            product.checked_frontier_certificate
+            .choice_count_coverage_certificate
+        )
+        self.assertIsNotNone(coverage)
+        self.assertIs(coverage.projection_certificate, product.projection_certificate)
+        self.assertEqual(
+            coverage.support_count,
+            product.support_count_certificate.support_count,
+        )
+        self.assertEqual(
+            coverage.completion_count,
+            product.count_certificate.completion_count,
+        )
+
     def test_choice_count_certificate_rejects_malformed(self) -> None:
         prepared = _prepare(cco_facts())
         state = initial_writer_runtime_state(
@@ -1734,6 +1763,86 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
                     support_count_certificate=replace(
                         product.support_count_certificate,
                         state_support_count_certificate=bad_state_support,
+                    ),
+                )
+
+        choice_coverage_kwargs = dict(
+            projection_certificate=product.projection_certificate,
+            terminal_choice_count_certificate=(
+                product.terminal_choice_count_certificate
+            ),
+            support_count_term_coverage_certificate=(
+                product.checked_frontier_certificate
+                .support_count_term_coverage_certificate
+            ),
+            completion_count_term_coverage_certificate=(
+                product.checked_frontier_certificate
+                .frontier_completion_count_certificate
+                .term_coverage_certificate
+            ),
+        )
+        bad_text_count = replace(
+            product.text_choice_count_certificates[0],
+            support_count=(
+                product.text_choice_count_certificates[0].support_count + 1
+            ),
+        )
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "text_choice_support_count_coverage_mismatch",
+        ):
+            writer_frontier_choice_count_coverage_certificate(
+                text_choice_count_certificates=(
+                    bad_text_count,
+                    *product.text_choice_count_certificates[1:],
+                ),
+                **choice_coverage_kwargs,
+            )
+
+        bad_text_count = replace(
+            product.text_choice_count_certificates[0],
+            completion_count=(
+                product.text_choice_count_certificates[0].completion_count + 1
+            ),
+        )
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "text_choice_completion_count_coverage_mismatch",
+        ):
+            writer_frontier_choice_count_coverage_certificate(
+                text_choice_count_certificates=(
+                    bad_text_count,
+                    *product.text_choice_count_certificates[1:],
+                ),
+                **choice_coverage_kwargs,
+            )
+
+        completion_coverage = (
+            product.checked_frontier_certificate
+            .frontier_completion_count_certificate
+            .term_coverage_certificate
+        )
+        if completion_coverage.branch_terms:
+            with self.assertRaisesRegex(
+                SouthStarError,
+                "text_choice_completion_branch_partition_mismatch|"
+                "choice_coverage_completion_total_mismatch",
+            ):
+                writer_frontier_choice_count_coverage_certificate(
+                    text_choice_count_certificates=(
+                        product.text_choice_count_certificates
+                    ),
+                    completion_count_term_coverage_certificate=replace(
+                        completion_coverage,
+                        branch_terms=completion_coverage.branch_terms[1:],
+                    ),
+                    projection_certificate=product.projection_certificate,
+                    terminal_choice_count_certificate=(
+                        product.terminal_choice_count_certificate
+                    ),
+                    support_count_term_coverage_certificate=(
+                        product.checked_frontier_certificate
+                        .support_count_term_coverage_certificate
                     ),
                 )
 
@@ -2308,6 +2417,34 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
                         .completion_count
                         + 1
                     ),
+                ),
+            )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "terminal_completion_count_coverage_mismatch",
+        ):
+            writer_frontier_choice_count_coverage_certificate(
+                projection_certificate=product.projection_certificate,
+                text_choice_count_certificates=(
+                    product.text_choice_count_certificates
+                ),
+                terminal_choice_count_certificate=replace(
+                    product.terminal_choice_count_certificate,
+                    completion_count=(
+                        product.terminal_choice_count_certificate
+                        .completion_count
+                        + 1
+                    ),
+                ),
+                support_count_term_coverage_certificate=(
+                    product.checked_frontier_certificate
+                    .support_count_term_coverage_certificate
+                ),
+                completion_count_term_coverage_certificate=(
+                    product.checked_frontier_certificate
+                    .frontier_completion_count_certificate
+                    .term_coverage_certificate
                 ),
             )
 

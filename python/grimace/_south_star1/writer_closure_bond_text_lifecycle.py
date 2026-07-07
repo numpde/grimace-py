@@ -9,7 +9,6 @@ from .errors import SouthStarError
 from .errors import SouthStarErrorKind
 from .ids import AtomId
 from .ids import BondId
-from .policy import DirectionMark
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,8 +124,6 @@ def _validate_endpoint_emitted(
         _lifecycle_violation("event_label_mismatch")
     if getattr(event, "bond_text", None) != marker:
         _lifecycle_violation("event_marker_mismatch")
-    if getattr(event, "direction_mark", None) is not DirectionMark.ABSENT:
-        _lifecycle_violation("directional_marker_not_supported")
     if evidence.closed_closure_record is not None:
         _lifecycle_violation("open_event_has_closed_closure_record")
     endpoint = _matching_open_endpoint(
@@ -168,10 +165,6 @@ def _validate_endpoint_paired(
         _lifecycle_violation("event_opening_marker_mismatch")
     if getattr(event, "bond_text", None) != evidence.closing_marker:
         _lifecycle_violation("event_closing_marker_mismatch")
-    if getattr(event, "direction_mark", None) is not DirectionMark.ABSENT:
-        _lifecycle_violation("directional_marker_not_supported")
-    if getattr(event, "first_endpoint_direction_mark", None) is not DirectionMark.ABSENT:
-        _lifecycle_violation("directional_marker_not_supported")
     if _matching_open_endpoint(
         evidence.source_ring_state,
         bond=evidence.bond,

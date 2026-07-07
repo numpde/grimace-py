@@ -27,6 +27,12 @@ from .writer_closure_bond_text_lifecycle import (
 from .writer_closure_bond_text_lifecycle import (
     validate_writer_closure_bond_text_lifecycle_transition,
 )
+from .writer_directional_ring_closure_lifecycle import (
+    directional_ring_closure_bond_text_lifecycle_evidence,
+)
+from .writer_directional_ring_closure_lifecycle import (
+    validate_writer_directional_ring_closure_bond_text_lifecycle_transition,
+)
 from .writer_residual_attachment_lifecycle import (
     WriterResidualAttachmentLifecycleOutcomeKind,
 )
@@ -84,6 +90,7 @@ class WriterBranchSuccessorStateCertificate:
     stereo_replay_certificate: object | None = None
     closure_candidate_lifecycle_replay_certificate: object | None = None
     residual_attachment_lifecycle_replay_certificate: object | None = None
+    directional_ring_closure_bond_text_lifecycle_evidence: tuple[object, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -394,6 +401,12 @@ def writer_branch_successor_state_certificate(
             graph_action_surface=graph_action_surface,
         )
     )
+    directional_ring_closure_lifecycle_evidence = (
+        _directional_ring_closure_bond_text_lifecycle_evidence(
+            ring_replay_certificate=ring_replay_certificate,
+            stereo_lifecycle_evidence=stereo_lifecycle_evidence,
+        )
+    )
 
     certificate = WriterBranchSuccessorStateCertificate(
         source_state=source_state,
@@ -427,6 +440,9 @@ def writer_branch_successor_state_certificate(
         ),
         residual_attachment_lifecycle_replay_certificate=(
             residual_attachment_lifecycle_replay_certificate
+        ),
+        directional_ring_closure_bond_text_lifecycle_evidence=(
+            directional_ring_closure_lifecycle_evidence
         ),
         **deltas,
     )
@@ -1039,6 +1055,21 @@ def _closure_bond_text_lifecycle_evidence(
         if item is not None:
             evidence.append(item)
     return tuple(evidence)
+
+
+def _directional_ring_closure_bond_text_lifecycle_evidence(
+    *,
+    ring_replay_certificate,
+    stereo_lifecycle_evidence: tuple[object, ...],
+) -> tuple[object, ...]:
+    if ring_replay_certificate is None:
+        return ()
+    return directional_ring_closure_bond_text_lifecycle_evidence(
+        closure_bond_text_lifecycle_evidence=(
+            ring_replay_certificate.closure_bond_text_lifecycle_evidence
+        ),
+        stereo_lifecycle_evidence=stereo_lifecycle_evidence,
+    )
 
 
 def _graph_state_replay_certificate(
@@ -1774,6 +1805,22 @@ def _validate_replay_certificate_values(certificate) -> None:
             _delta_violation("ring_replay_closure_bond_text_lifecycle_mismatch")
         for item in ring.closure_bond_text_lifecycle_evidence:
             validate_writer_closure_bond_text_lifecycle_transition(item)
+
+    expected_coupled = _directional_ring_closure_bond_text_lifecycle_evidence(
+        ring_replay_certificate=certificate.ring_replay_certificate,
+        stereo_lifecycle_evidence=certificate.stereo_lifecycle_evidence,
+    )
+    if (
+        certificate.directional_ring_closure_bond_text_lifecycle_evidence
+        != expected_coupled
+    ):
+        _delta_violation(
+            "directional_ring_closure_bond_text_lifecycle_mismatch"
+        )
+    for item in certificate.directional_ring_closure_bond_text_lifecycle_evidence:
+        validate_writer_directional_ring_closure_bond_text_lifecycle_transition(
+            item
+        )
 
     graph = certificate.graph_replay_certificate
     if graph is not None:

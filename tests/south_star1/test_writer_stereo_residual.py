@@ -57,15 +57,34 @@ from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
 from grimace._south_star1.writer_frontier import iter_writer_frontier_support
 from grimace._south_star1.writer_frontier import WriterFrontierCursor
+from grimace._south_star1.writer_frontier import _checked_writer_frontier_branch_supports
 from grimace._south_star1.writer_frontier import _initial_writer_transition_frontier_cursor
 from grimace._south_star1.writer_frontier import _writer_frontier_choice_snapshot
 from grimace._south_star1.writer_frontier import _writer_frontier_schedule_outcome
 from grimace._south_star1.writer_frontier import writer_frontier_choices
+from grimace._south_star1.writer_runtime import count_writer_runtime_completions
+from grimace._south_star1.writer_runtime import count_writer_runtime_support
+from grimace._south_star1.writer_runtime import initial_writer_runtime_state
 from grimace._south_star1.writer_events import WriterBondEmitted
 from grimace._south_star1.writer_events import WriterRingEndpointEmitted
 from grimace._south_star1.writer_events import WriterRingEndpointPaired
 from grimace._south_star1.writer_events import WriterAtomEmitted
 import grimace._south_star1.writer_transitions as writer_transitions
+import grimace._south_star1.writer_state_delta_certificates as writer_state_delta_certificates
+from grimace._south_star1.writer_snapshot import capture_writer_frontier_snapshot
+from grimace._south_star1.writer_support import enumerate_prepared_writer_shaped_support
+from grimace._south_star1.writer_support_artifact_envelope import (
+    verify_writer_support_artifact_consistency,
+)
+from grimace._south_star1.writer_support_artifact_envelope import (
+    verify_writer_support_artifact_envelope,
+)
+from grimace._south_star1.writer_support_artifact_envelope import (
+    writer_support_artifact_envelope_for_snapshot,
+)
+from grimace._south_star1.writer_support_artifact_fact_verifier import (
+    verify_writer_support_artifact_for_facts,
+)
 from grimace._south_star1.writer_state import WriterClosureLabel
 from grimace._south_star1.writer_state import WriterClosedClosure
 from grimace._south_star1.writer_state import WriterOpenClosureEndpoint
@@ -1670,6 +1689,197 @@ class WriterStereoResidualTest(unittest.TestCase):
             )
         )
 
+    def test_joint_directional_non_single_ring_closure_has_coupled_lifecycle(
+        self,
+    ) -> None:
+        prepared = _prepare_directional_non_single_ring_carrier_facts()
+        support = _first_checked_branch_support_with_coupled_lifecycle(
+            prepared,
+            event_type=WriterRingEndpointEmitted,
+        )
+        certificate = support.successor_state_certificate
+        evidence = certificate.directional_ring_closure_bond_text_lifecycle_evidence
+
+        self.assertTrue(evidence)
+        coupled = evidence[0]
+        self.assertIsInstance(coupled.event, WriterRingEndpointEmitted)
+        self.assertEqual(coupled.closure_bond_text_lifecycle.bond, BondId(3))
+        self.assertEqual(coupled.closure_bond_text_lifecycle.bond_order, "double")
+        self.assertIn(
+            coupled.closure_bond_text_lifecycle.marker_side,
+            {"opening", "closing"},
+        )
+        self.assertIs(
+            coupled.directional_stereo_lifecycle.event,
+            coupled.event,
+        )
+        self.assertIsNone(coupled.closed_closure_record)
+        self.assertTrue(
+            any(
+                item.operation == "directional ring endpoint projection"
+                for item in (
+                    coupled
+                    .directional_stereo_lifecycle
+                    .residual_work_evidence
+                )
+            )
+        )
+
+    def test_default_policy_blocks_directional_non_single_ring_carrier(
+        self,
+    ) -> None:
+        facts = _directional_non_single_ring_carrier_facts()
+
+        with self.assertRaisesRegex(SouthStarError, "non-single ring closures"):
+            ordinary_policy_for_facts(facts)
+
+    def test_joint_directional_non_single_ring_carrier_support_is_certified(
+        self,
+    ) -> None:
+        facts = _directional_non_single_ring_carrier_facts()
+        prepared = _prepare_directional_non_single_ring_carrier_facts()
+        options = _writer_options(rooted_at_atom=0)
+        image = enumerate_prepared_writer_shaped_support(
+            prepared=prepared,
+            runtime_options=options,
+        )
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=options,
+        )
+        snapshot = capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=initial_writer_frontier_cursor(prepared, options),
+        )
+
+        self.assertEqual(
+            count_writer_runtime_support(prepared=prepared, state=state),
+            image.distinct_count,
+        )
+        self.assertEqual(
+            count_writer_runtime_completions(prepared=prepared, state=state),
+            image.witness_count,
+        )
+
+        artifact = writer_support_artifact_envelope_for_snapshot(
+            prepared=prepared,
+            snapshot=snapshot,
+        )
+        structural = verify_writer_support_artifact_consistency(artifact)
+        live = verify_writer_support_artifact_envelope(
+            prepared=prepared,
+            envelope=artifact,
+        )
+        fact_bound = verify_writer_support_artifact_for_facts(
+            facts=facts,
+            runtime_options=options,
+            artifact=artifact,
+            policy=prepared.policy,
+        )
+
+        self.assertTrue(structural.accepted, structural.reason)
+        self.assertTrue(live.accepted, live.reason)
+        self.assertTrue(fact_bound.accepted, fact_bound.reason)
+        self.assertFalse(fact_bound.offline_replay_complete)
+
+    def test_coupled_lifecycle_rejects_tampered_marker_side(self) -> None:
+        prepared = _prepare_directional_non_single_ring_carrier_facts()
+        support = _first_checked_branch_support_with_coupled_lifecycle(
+            prepared,
+            event_type=WriterRingEndpointEmitted,
+        )
+        certificate = support.successor_state_certificate
+        coupled = certificate.directional_ring_closure_bond_text_lifecycle_evidence[0]
+        ring = certificate.ring_replay_certificate
+        closure = coupled.closure_bond_text_lifecycle
+        bad_closure = replace(
+            closure,
+            marker_side=(
+                "closing" if closure.marker_side == "opening" else "opening"
+            ),
+        )
+        bad_ring_lifecycle = tuple(
+            bad_closure if item == closure else item
+            for item in ring.closure_bond_text_lifecycle_evidence
+        )
+        bad_certificate = replace(
+            certificate,
+            ring_replay_certificate=replace(
+                ring,
+                closure_bond_text_lifecycle_evidence=bad_ring_lifecycle,
+            ),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "ring_replay_closure_bond_text_lifecycle_mismatch",
+        ):
+            (
+                writer_state_delta_certificates
+                .validate_writer_branch_successor_state_certificate(
+                    bad_certificate,
+                )
+            )
+
+    def test_coupled_lifecycle_rejects_stale_stereo_snapshot(self) -> None:
+        prepared = _prepare_directional_non_single_ring_carrier_facts()
+        support = _first_checked_branch_support_with_coupled_lifecycle(
+            prepared,
+            event_type=WriterRingEndpointEmitted,
+        )
+        certificate = support.successor_state_certificate
+        coupled = certificate.directional_ring_closure_bond_text_lifecycle_evidence[0]
+        bad_coupled = replace(
+            coupled,
+            source_stereo_residual_snapshot=(
+                writer_stereo_module.EMPTY_RESIDUAL_SNAPSHOT
+            ),
+        )
+        bad_certificate = replace(
+            certificate,
+            directional_ring_closure_bond_text_lifecycle_evidence=(bad_coupled,),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "directional_ring_closure_bond_text_lifecycle_mismatch",
+        ):
+            (
+                writer_state_delta_certificates
+                .validate_writer_branch_successor_state_certificate(
+                    bad_certificate,
+                )
+            )
+
+    def test_coupled_lifecycle_rejects_stale_successor_ring_state(self) -> None:
+        prepared = _prepare_directional_non_single_ring_carrier_facts()
+        support = _first_checked_branch_support_with_coupled_lifecycle(
+            prepared,
+            event_type=WriterRingEndpointEmitted,
+        )
+        certificate = support.successor_state_certificate
+        coupled = certificate.directional_ring_closure_bond_text_lifecycle_evidence[0]
+        bad_coupled = replace(
+            coupled,
+            successor_ring_state=certificate.source_state.ring_state,
+        )
+        bad_certificate = replace(
+            certificate,
+            directional_ring_closure_bond_text_lifecycle_evidence=(bad_coupled,),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "directional_ring_closure_bond_text_lifecycle_mismatch",
+        ):
+            (
+                writer_state_delta_certificates
+                .validate_writer_branch_successor_state_certificate(
+                    bad_certificate,
+                )
+            )
+
     def test_terminal_eos_persists_final_stereo_closure(self) -> None:
         facts = terminal_tetra_center_facts()
         prepared = prepare_south_star_mol_from_facts(
@@ -1919,6 +2129,18 @@ def _prepare_directional_ring_carrier_facts():
     )
 
 
+def _prepare_directional_non_single_ring_carrier_facts():
+    facts = _directional_non_single_ring_carrier_facts()
+    return prepare_south_star_mol_from_facts(
+        facts,
+        writer_surface=SouthStarWriterSurface(),
+        policy=ordinary_policy_for_facts(
+            facts,
+            OrdinaryPolicyOptions(non_single_ring_closures="joint"),
+        ),
+    )
+
+
 def _prepare_shared_directional_ring_carrier_facts():
     facts = _shared_directional_ring_carrier_facts()
     return prepare_south_star_mol_from_facts(
@@ -2058,6 +2280,42 @@ def _first_schedule_support_with_capability(
     raise AssertionError(f"missing schedule support for {capability.value}")
 
 
+def _first_checked_branch_support_with_coupled_lifecycle(
+    prepared,
+    *,
+    event_type,
+):
+    pending = [
+        initial_writer_frontier_cursor(
+            prepared,
+            _writer_options(rooted_at_atom=0),
+        )
+    ]
+    seen = set()
+    while pending:
+        current = pending.pop(0)
+        if current in seen:
+            continue
+        seen.add(current)
+        batch = _checked_writer_frontier_branch_supports(
+            prepared,
+            current,
+            include_counts=False,
+        )
+        for support in batch.supports:
+            evidence = (
+                support
+                .successor_state_certificate
+                .directional_ring_closure_bond_text_lifecycle_evidence
+            )
+            if evidence and any(
+                isinstance(item.event, event_type) for item in evidence
+            ):
+                return support
+            pending.append(support.successor_cursor)
+    raise AssertionError("missing coupled directional ring closure lifecycle")
+
+
 def _stereo_branch_certificate(certificates, capability):
     matches = tuple(
         certificate
@@ -2173,6 +2431,13 @@ def _directional_ring_carrier_facts() -> MoleculeFacts:
             ),
         ),
     )
+
+
+def _directional_non_single_ring_carrier_facts() -> MoleculeFacts:
+    facts = _directional_ring_carrier_facts()
+    bonds = list(facts.bonds)
+    bonds[3] = replace(bonds[3], order=BondOrder.DOUBLE)
+    return replace(facts, bonds=tuple(bonds))
 
 
 def _shared_directional_ring_carrier_facts() -> MoleculeFacts:

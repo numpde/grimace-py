@@ -10,6 +10,9 @@ from grimace._south_star1.writer_count_dag_envelope import (
     WriterEnvelopeWorkBudget,
 )
 from grimace._south_star1.writer_count_dag_envelope import (
+    WriterCountDagBuildDiagnostics,
+)
+from grimace._south_star1.writer_count_dag_envelope import (
     WriterEnvelopeWorkExceeded,
 )
 from grimace._south_star1.writer_count_dag_envelope import count_dag_node_by_id
@@ -135,6 +138,21 @@ class WriterCountDagEnvelopeTest(unittest.TestCase):
             len(envelope["coverage"]["branch_terms_covered"]),
             0,
         )
+
+    def test_count_dag_diagnostics_report_shared_subproof_hits(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        diagnostics = WriterCountDagBuildDiagnostics()
+        envelope = writer_frontier_count_envelope_for_snapshot(
+            prepared=prepared,
+            snapshot=_initial_snapshot(prepared),
+            count_dag_diagnostics=diagnostics,
+        )
+
+        self.assertGreater(
+            diagnostics.attempted_node_emissions,
+            envelope["count_dag"]["metrics"]["node_count"],
+        )
+        self.assertGreater(diagnostics.dedup_hits, 0)
 
     def test_support_image_and_consistency_verifiers_accept_dag_count_envelope(
         self,

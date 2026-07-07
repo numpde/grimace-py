@@ -1,5 +1,7 @@
 """Bounded DAG envelopes for recursive writer count certificates."""
 from __future__ import annotations
+from dataclasses import dataclass
+from dataclasses import field
 from .writer_envelope_terms import _canonical_json
 from .writer_envelope_terms import _cursor_envelope
 from .writer_envelope_terms import _digest
@@ -17,10 +19,49 @@ from .writer_snapshot_prefix_envelope import _text_projection_certificate_identi
 SCHEMA_NAME = 'writer_count_certificate_dag'
 SCHEMA_VERSION = 1
 
+@dataclass(slots=True)
+class WriterCountDagBuildDiagnostics:
+    attempted_node_emissions_by_kind: dict[str, int] = field(default_factory=dict)
+    dedup_hits_by_kind: dict[str, int] = field(default_factory=dict)
+    pre_digest_roots: dict[str, object] | None = None
+    pre_digest_metrics: dict[str, int] | None = None
+    pre_digest_nodes: tuple[dict[str, object], ...] = ()
+    pre_digest_depths: dict[str, int] = field(default_factory=dict)
+
+    def record_attempt(self, kind: str) -> None:
+        self.attempted_node_emissions_by_kind[kind] = (
+            self.attempted_node_emissions_by_kind.get(kind, 0) + 1
+        )
+
+    def record_hit(self, kind: str) -> None:
+        self.dedup_hits_by_kind[kind] = self.dedup_hits_by_kind.get(kind, 0) + 1
+
+    def record_pre_digest(
+        self,
+        *,
+        roots: dict[str, object],
+        metrics: dict[str, int],
+        nodes: dict[str, dict[str, object]],
+        depths: dict[str, int],
+    ) -> None:
+        self.pre_digest_roots = roots
+        self.pre_digest_metrics = metrics
+        self.pre_digest_nodes = tuple(nodes[node_id] for node_id in sorted(nodes))
+        self.pre_digest_depths = dict(depths)
+
+    @property
+    def attempted_node_emissions(self) -> int:
+        return sum(self.attempted_node_emissions_by_kind.values())
+
+    @property
+    def dedup_hits(self) -> int:
+        return sum(self.dedup_hits_by_kind.values())
+
 class _CountDagBuilder:
 
-    def __init__(self, *, budget: WriterEnvelopeWorkBudget):
+    def __init__(self, *, budget: WriterEnvelopeWorkBudget, diagnostics: WriterCountDagBuildDiagnostics | None=None):
         self._budget = budget
+        self._diagnostics = diagnostics
         self._nodes: dict[str, dict[str, object]] = {}
         self._depths: dict[str, int] = {}
         self._edge_count = 0
@@ -31,6 +72,13 @@ class _CountDagBuilder:
         self._check('count_node_count', metrics['node_count'], self._budget.max_count_nodes)
         self._check('count_edge_count', metrics['edge_count'], self._budget.max_count_edges)
         self._check('count_depth', metrics['max_depth'], self._budget.max_count_depth)
+        if self._diagnostics is not None:
+            self._diagnostics.record_pre_digest(
+                roots=roots,
+                metrics=metrics,
+                nodes=self._nodes,
+                depths=self._depths,
+            )
         envelope = {'schema_name': SCHEMA_NAME, 'schema_version': SCHEMA_VERSION, 'roots': roots, 'nodes': [self._nodes[node_id] for node_id in sorted(self._nodes)], 'metrics': metrics}
         envelope['digest'] = self._digest(_term(envelope), 'count_dag_envelope')
         return envelope
@@ -83,11 +131,15 @@ class _CountDagBuilder:
         return self._node('writer_terminal_choice_count', {'terminal_projection': _terminal_projection_certificate_identity_envelope(certificate.terminal_projection_certificate, budget=self._budget), 'support_count': certificate.support_count, 'completion_count': certificate.completion_count}, [])
 
     def _node(self, kind: str, payload: dict[str, object], children: list[str | None]) -> str:
+        if self._diagnostics is not None:
+            self._diagnostics.record_attempt(kind)
         child_ids = [child for child in children if child is not None]
         term = {'kind': kind, 'payload': payload, 'children': child_ids}
         digest = self._digest(term, 'count_dag_node')
         node_id = f'count:{digest}'
         if node_id in self._nodes:
+            if self._diagnostics is not None:
+                self._diagnostics.record_hit(kind)
             return node_id
         depth = 1 + max((self._depths[child] for child in child_ids), default=0)
         self._check('count_depth', depth, self._budget.max_count_depth)
@@ -120,8 +172,8 @@ class _CountDagBuilder:
                     limit = int(item.split('=', 1)[1])
             raise WriterEnvelopeWorkExceeded(WriterEnvelopeWorkViolation(operation=operation, metric=metric, actual=actual, limit=limit)) from exc
 
-def writer_count_certificate_dag_envelope_for_product(product, *, budget: WriterEnvelopeWorkBudget | None=None) -> dict[str, object]:
-    return _CountDagBuilder(budget=budget or WriterEnvelopeWorkBudget()).build(product)
+def writer_count_certificate_dag_envelope_for_product(product, *, budget: WriterEnvelopeWorkBudget | None=None, diagnostics: WriterCountDagBuildDiagnostics | None=None) -> dict[str, object]:
+    return _CountDagBuilder(budget=budget or WriterEnvelopeWorkBudget(), diagnostics=diagnostics).build(product)
 
 def count_dag_node_by_id(dag: dict[str, object]) -> dict[str, dict[str, object]]:
     return {node['node_id']: node for node in dag['nodes']}
@@ -232,4 +284,4 @@ def _check_budget(metrics: dict[str, int], budget: WriterEnvelopeWorkBudget) -> 
 
 def _dag_violation(kind: str) -> None:
     raise ValueError(f'writer count DAG envelope violation: {kind}')
-__all__ = ('SCHEMA_NAME', 'SCHEMA_VERSION', 'WriterEnvelopeWorkBudget', 'WriterEnvelopeWorkExceeded', 'WriterEnvelopeWorkViolation', 'count_dag_node_by_id', 'validate_writer_count_certificate_dag_envelope', 'writer_count_certificate_dag_envelope_for_product')
+__all__ = ('SCHEMA_NAME', 'SCHEMA_VERSION', 'WriterCountDagBuildDiagnostics', 'WriterEnvelopeWorkBudget', 'WriterEnvelopeWorkExceeded', 'WriterEnvelopeWorkViolation', 'count_dag_node_by_id', 'validate_writer_count_certificate_dag_envelope', 'writer_count_certificate_dag_envelope_for_product')

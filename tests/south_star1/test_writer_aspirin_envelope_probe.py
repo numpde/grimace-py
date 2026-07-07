@@ -404,6 +404,12 @@ def _count_metrics(
                 "edge_count": metrics["edge_count"],
                 "max_depth": metrics["max_depth"],
                 "digest_input_bytes": metrics["digest_input_bytes"],
+                "full_node_digest_input_bytes": metrics[
+                    "full_node_digest_input_bytes"
+                ],
+                "manifest_digest_input_bytes": metrics[
+                    "manifest_digest_input_bytes"
+                ],
                 "largest_node_digest_input_bytes": max(
                     (
                         node["digest_input_bytes"]
@@ -426,6 +432,8 @@ def _count_metrics(
         "edge_count": metrics["edge_count"],
         "max_depth": metrics["max_depth"],
         "digest_input_bytes": metrics["digest_input_bytes"],
+        "full_node_digest_input_bytes": metrics["full_node_digest_input_bytes"],
+        "manifest_digest_input_bytes": metrics["manifest_digest_input_bytes"],
         "largest_node_digest_input_bytes": max(
             (node["digest_input_bytes"] for node in dag["nodes"]),
             default=0,

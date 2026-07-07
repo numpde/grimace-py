@@ -47,7 +47,7 @@ def writer_frontier_count_envelope_for_snapshot(*, prepared: SouthStarPreparedMo
     budget = default_writer_envelope_work_budget(budget)
     product = _counted_frontier_product(prepared=prepared, snapshot=snapshot)
     envelope = _envelope_from_product(prepared=prepared, source_kind='snapshot', source_snapshot=snapshot, prefix_read_envelope=None, frontier_snapshot=snapshot, product=product, budget=budget, count_dag_diagnostics=count_dag_diagnostics)
-    _validate_envelope_shape(envelope)
+    _validate_envelope_shape(envelope, budget=budget)
     _assert_prepared_identity_matches(prepared, envelope, budget=budget)
     return envelope
 
@@ -62,14 +62,14 @@ def writer_frontier_count_envelope_for_prefix_read(*, prepared: SouthStarPrepare
         _count_envelope_violation('prefix_read_envelope_lacks_final_snapshot')
     product = _counted_frontier_product(prepared=prepared, snapshot=verification.final_snapshot)
     envelope = _envelope_from_product(prepared=prepared, source_kind='prefix_read', source_snapshot=None, prefix_read_envelope=prefix_read_envelope, frontier_snapshot=verification.final_snapshot, product=product, budget=budget, count_dag_diagnostics=count_dag_diagnostics)
-    _validate_envelope_shape(envelope)
+    _validate_envelope_shape(envelope, budget=budget)
     _assert_prepared_identity_matches(prepared, envelope, budget=budget)
     return envelope
 
 def verify_writer_frontier_count_envelope(*, prepared: SouthStarPreparedMol, envelope: object, budget: WriterEnvelopeWorkBudget | None=None) -> WriterFrontierCountEnvelopeVerification:
     try:
         budget = default_writer_envelope_work_budget(budget)
-        _validate_envelope_shape(envelope)
+        _validate_envelope_shape(envelope, budget=budget)
         assert isinstance(envelope, Mapping)
         _assert_prepared_identity_matches(prepared, envelope, budget=budget)
         source_kind = str(envelope['source_kind'])
@@ -154,7 +154,7 @@ def _branch_term_coverage_envelope(term, branch_term_node_by_key, nodes, *, budg
     successor_node_id = node['successor_count_node_id']
     return {'branch_support_identity': branch, 'count_branch_support_identity': count_branch, 'successor_count_certificate_digest': nodes[successor_node_id]['digest'], 'successor_count_certificate_node_id': successor_node_id, 'successor_completion_count': term.successor_completion_count, 'weighted_completion_count': term.weighted_completion_count}
 
-def _validate_envelope_shape(envelope: object) -> None:
+def _validate_envelope_shape(envelope: object, *, budget: WriterEnvelopeWorkBudget | None=None) -> None:
     if not isinstance(envelope, Mapping):
         _count_envelope_violation('envelope_not_mapping')
     if frozenset(envelope) != _TOP_LEVEL_FIELDS:
@@ -176,7 +176,7 @@ def _validate_envelope_shape(envelope: object) -> None:
         if envelope['prefix_read_envelope'] is None:
             _count_envelope_violation('prefix_source_missing_prefix_envelope')
     try:
-        validate_writer_count_certificate_dag_envelope(envelope['count_dag'])
+        validate_writer_count_certificate_dag_envelope(envelope['count_dag'], budget=budget)
     except ValueError as exc:
         _count_envelope_violation(str(exc))
 

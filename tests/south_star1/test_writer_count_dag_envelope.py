@@ -16,6 +16,7 @@ from grimace._south_star1.writer_count_dag_envelope import (
     WriterEnvelopeWorkExceeded,
 )
 from grimace._south_star1.writer_count_dag_envelope import count_dag_node_by_id
+from grimace._south_star1.writer_count_dag_envelope import count_dag_manifest
 from grimace._south_star1.writer_count_dag_envelope import (
     validate_writer_count_certificate_dag_envelope,
 )
@@ -78,6 +79,14 @@ class WriterCountDagEnvelopeTest(unittest.TestCase):
         )
         self.assertGreater(dag["metrics"]["node_count"], 0)
         self.assertGreater(dag["metrics"]["edge_count"], 0)
+        self.assertLess(
+            dag["metrics"]["manifest_digest_input_bytes"],
+            dag["metrics"]["full_node_digest_input_bytes"],
+        )
+        self.assertEqual(
+            dag["metrics"]["digest_input_bytes"],
+            dag["metrics"]["manifest_digest_input_bytes"],
+        )
 
     def test_count_dag_envelope_validates_for_prefix_read_source(self) -> None:
         prepared = _prepare(cco_facts())
@@ -214,6 +223,39 @@ class WriterCountDagEnvelopeTest(unittest.TestCase):
 
         self.assertFalse(_verify(envelope).accepted)
 
+    def test_changed_node_payload_with_stale_node_digest_is_rejected(self) -> None:
+        envelope = _count_envelope()
+        envelope["count_dag"]["nodes"][0]["support_count"] = 999
+
+        self.assertFalse(_verify(envelope).accepted)
+
+    def test_changed_child_reference_with_stale_dag_digest_is_rejected(self) -> None:
+        envelope = _count_envelope()
+        node = _first_node_with_multiple_children(envelope["count_dag"])
+        node["children"] = list(reversed(node["children"]))
+
+        self.assertFalse(_verify(envelope).accepted)
+
+    def test_changed_metrics_with_stale_dag_digest_is_rejected(self) -> None:
+        envelope = _count_envelope()
+        envelope["count_dag"]["metrics"]["node_count"] += 1
+
+        self.assertFalse(_verify(envelope).accepted)
+
+    def test_count_dag_manifest_excludes_full_node_payloads(self) -> None:
+        envelope = _count_envelope()
+        dag = envelope["count_dag"]
+        manifest = count_dag_manifest(dag)
+
+        self.assertEqual(
+            frozenset(manifest["nodes"][0]),
+            frozenset(("node_id", "kind", "digest", "children")),
+        )
+        self.assertLess(
+            dag["metrics"]["manifest_digest_input_bytes"],
+            dag["metrics"]["full_node_digest_input_bytes"],
+        )
+
     def test_choice_coverage_missing_node_is_rejected(self) -> None:
         envelope = _count_envelope()
         envelope["coverage"]["text_choices_covered"][0][
@@ -325,6 +367,13 @@ def _first_node_with_children(dag):
         if node["children"]:
             return node
     raise AssertionError("expected count DAG node with children")
+
+
+def _first_node_with_multiple_children(dag):
+    for node in dag["nodes"]:
+        if len(node["children"]) > 1:
+            return node
+    raise AssertionError("expected count DAG node with multiple children")
 
 
 if __name__ == "__main__":

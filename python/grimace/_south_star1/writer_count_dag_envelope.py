@@ -68,10 +68,17 @@ class _CountDagBuilder:
 
     def build(self, product) -> dict[str, object]:
         roots = {'support_count_root': self.support_count(product.support_count_certificate), 'completion_count_root': self.cursor_completion_count(product.count_certificate), 'choice_count_roots': [self.text_choice_count(certificate) for certificate in product.text_choice_count_certificates], 'terminal_choice_count_root': self.terminal_choice_count(product.terminal_choice_count_certificate)}
-        metrics = {'node_count': len(self._nodes), 'edge_count': self._edge_count, 'max_depth': max(self._depths.values(), default=0), 'digest_input_bytes': sum((int(node['digest_input_bytes']) for node in self._nodes.values()))}
+        envelope = {'schema_name': SCHEMA_NAME, 'schema_version': SCHEMA_VERSION, 'roots': roots, 'nodes': [self._nodes[node_id] for node_id in sorted(self._nodes)]}
+        metrics = _count_dag_metrics(
+            envelope,
+            node_count=len(self._nodes),
+            edge_count=self._edge_count,
+            max_depth=max(self._depths.values(), default=0),
+        )
         self._check('count_node_count', metrics['node_count'], self._budget.max_count_nodes)
         self._check('count_edge_count', metrics['edge_count'], self._budget.max_count_edges)
         self._check('count_depth', metrics['max_depth'], self._budget.max_count_depth)
+        envelope['metrics'] = metrics
         if self._diagnostics is not None:
             self._diagnostics.record_pre_digest(
                 roots=roots,
@@ -79,8 +86,7 @@ class _CountDagBuilder:
                 nodes=self._nodes,
                 depths=self._depths,
             )
-        envelope = {'schema_name': SCHEMA_NAME, 'schema_version': SCHEMA_VERSION, 'roots': roots, 'nodes': [self._nodes[node_id] for node_id in sorted(self._nodes)], 'metrics': metrics}
-        envelope['digest'] = self._digest(_term(envelope), 'count_dag_envelope')
+        envelope['digest'] = self._digest(_term(count_dag_manifest(envelope)), 'count_dag_envelope')
         return envelope
 
     def support_count(self, certificate) -> str | None:
@@ -178,6 +184,9 @@ def writer_count_certificate_dag_envelope_for_product(product, *, budget: Writer
 def count_dag_node_by_id(dag: dict[str, object]) -> dict[str, dict[str, object]]:
     return {node['node_id']: node for node in dag['nodes']}
 
+def count_dag_manifest(dag) -> dict[str, object]:
+    return {'schema_name': dag['schema_name'], 'schema_version': dag['schema_version'], 'roots': dag['roots'], 'metrics': dag['metrics'], 'nodes': [{'node_id': node['node_id'], 'kind': node['kind'], 'digest': node['digest'], 'children': node['children']} for node in dag['nodes']]}
+
 def validate_writer_count_certificate_dag_envelope(dag: object, *, budget: WriterEnvelopeWorkBudget | None=None) -> None:
     if not isinstance(dag, dict):
         _dag_violation('count_dag_not_mapping')
@@ -219,10 +228,16 @@ def validate_writer_count_certificate_dag_envelope(dag: object, *, budget: Write
     metrics = dag['metrics']
     if not isinstance(metrics, dict):
         _dag_violation('count_dag_metrics_not_mapping')
-    actual_metrics = {'node_count': len(node_by_id), 'edge_count': edge_count, 'max_depth': max(depths.values(), default=0), 'digest_input_bytes': sum((int(node['digest_input_bytes']) for node in node_by_id.values()))}
+    actual_metrics = _count_dag_metrics(
+        dag,
+        node_count=len(node_by_id),
+        edge_count=edge_count,
+        max_depth=max(depths.values(), default=0),
+    )
     if metrics != actual_metrics:
         _dag_violation('count_dag_metrics_mismatch')
-    digest_term = _term({k: v for k, v in dag.items() if k != 'digest'})
+    manifest = count_dag_manifest(dag)
+    digest_term = _term(manifest)
     digest = _digest_bounded(digest_term, budget=budget, operation='count_dag_validate.digest') if budget is not None else _digest(digest_term)
     if dag['digest'] != digest:
         _dag_violation('count_dag_digest_mismatch')
@@ -238,6 +253,46 @@ def _snapshot_or_cursor_envelope(value, *, budget):
 
 def _term_jsonish(term) -> bytes:
     return _canonical_json(_term(term)).encode('utf-8')
+
+def _count_dag_metrics(
+    dag,
+    *,
+    node_count: int,
+    edge_count: int,
+    max_depth: int,
+) -> dict[str, int]:
+    nodes = dag['nodes']
+    original_metrics = dag.get('metrics')
+    full_node_digest_input_bytes = sum((int(node['digest_input_bytes']) for node in nodes))
+    largest_node_digest_input_bytes = max((int(node['digest_input_bytes']) for node in nodes), default=0)
+    manifest_digest_input_bytes = 0
+    metrics = {
+        'node_count': node_count,
+        'edge_count': edge_count,
+        'max_depth': max_depth,
+        'digest_input_bytes': manifest_digest_input_bytes,
+        'full_node_digest_input_bytes': full_node_digest_input_bytes,
+        'manifest_digest_input_bytes': manifest_digest_input_bytes,
+        'largest_node_digest_input_bytes': largest_node_digest_input_bytes,
+    }
+    try:
+        for _ in range(4):
+            dag['metrics'] = metrics
+            next_size = len(_term_jsonish(count_dag_manifest(dag)))
+            if next_size == manifest_digest_input_bytes:
+                return metrics
+            manifest_digest_input_bytes = next_size
+            metrics = {
+                **metrics,
+                'digest_input_bytes': manifest_digest_input_bytes,
+                'manifest_digest_input_bytes': manifest_digest_input_bytes,
+            }
+        return metrics
+    finally:
+        if original_metrics is None:
+            dag.pop('metrics', None)
+        else:
+            dag['metrics'] = original_metrics
 
 def _validate_node_digest(node: dict[str, object], *, budget: WriterEnvelopeWorkBudget | None=None) -> None:
     required = frozenset(('node_id', 'kind', 'children', 'digest', 'digest_input_bytes'))
@@ -277,11 +332,11 @@ def _depth(node_id: str, node_by_id: dict[str, dict[str, object]], visiting: set
     return depth
 
 def _check_budget(metrics: dict[str, int], budget: WriterEnvelopeWorkBudget) -> None:
-    checks = (('count_node_count', metrics['node_count'], budget.max_count_nodes), ('count_edge_count', metrics['edge_count'], budget.max_count_edges), ('count_depth', metrics['max_depth'], budget.max_count_depth), ('digest_term_bytes', metrics['digest_input_bytes'], budget.max_digest_term_bytes))
+    checks = (('count_node_count', metrics['node_count'], budget.max_count_nodes), ('count_edge_count', metrics['edge_count'], budget.max_count_edges), ('count_depth', metrics['max_depth'], budget.max_count_depth), ('digest_term_bytes', metrics['manifest_digest_input_bytes'], budget.max_digest_term_bytes))
     for metric, actual, limit in checks:
         if actual > limit:
             check_writer_envelope_work(budget=budget, operation='count_dag_envelope', metric=metric, actual=actual, limit=limit)
 
 def _dag_violation(kind: str) -> None:
     raise ValueError(f'writer count DAG envelope violation: {kind}')
-__all__ = ('SCHEMA_NAME', 'SCHEMA_VERSION', 'WriterCountDagBuildDiagnostics', 'WriterEnvelopeWorkBudget', 'WriterEnvelopeWorkExceeded', 'WriterEnvelopeWorkViolation', 'count_dag_node_by_id', 'validate_writer_count_certificate_dag_envelope', 'writer_count_certificate_dag_envelope_for_product')
+__all__ = ('SCHEMA_NAME', 'SCHEMA_VERSION', 'WriterCountDagBuildDiagnostics', 'WriterEnvelopeWorkBudget', 'WriterEnvelopeWorkExceeded', 'WriterEnvelopeWorkViolation', 'count_dag_manifest', 'count_dag_node_by_id', 'validate_writer_count_certificate_dag_envelope', 'writer_count_certificate_dag_envelope_for_product')

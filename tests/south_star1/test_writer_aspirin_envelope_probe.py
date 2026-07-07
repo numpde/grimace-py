@@ -55,6 +55,9 @@ from grimace._south_star1.writer_support_artifact_envelope import (
     verify_writer_support_artifact_consistency,
 )
 from grimace._south_star1.writer_support_artifact_envelope import (
+    verify_writer_support_artifact_envelope,
+)
+from grimace._south_star1.writer_support_artifact_envelope import (
     writer_support_artifact_envelope_for_snapshot,
 )
 import grimace._south_star1.writer_execution_evidence as writer_execution_evidence
@@ -148,6 +151,7 @@ class WriterAspirinEnvelopeProbeResult:
     artifact_object_kind_counts: dict[str, int] | None
     artifact_total_payload_bytes: int | None
     artifact_largest_object_digest_bytes: int | None
+    artifact_live_verifier_accepted: bool | None
     timings: tuple[tuple[str, float], ...]
 
 
@@ -251,6 +255,33 @@ def _run_aspirin_probe() -> WriterAspirinEnvelopeProbeResult:
                     artifact_envelope=artifact_envelope,
                     diagnostics=diagnostics,
                     timings=timings,
+                    artifact_live_accepted=None,
+                )
+            artifact_live_verification = _timed(
+                timings,
+                "high_budget_support_artifact_live_verify",
+                lambda: verify_writer_support_artifact_envelope(
+                    prepared=prepared,
+                    envelope=artifact_envelope,
+                    budget=high_budget,
+                ),
+            )
+            if not artifact_live_verification.accepted:
+                return _probe_result(
+                    accepted=False,
+                    blocked_kind=artifact_live_verification.reason,
+                    work_violation=_work_violation_from_reason(
+                        artifact_live_verification.reason,
+                    ),
+                    default_budget_violation=default_budget_violation,
+                    high_budget_accepted=True,
+                    next_blocker=artifact_live_verification.reason,
+                    count_envelope=count_envelope,
+                    image_envelope=None,
+                    artifact_envelope=artifact_envelope,
+                    diagnostics=diagnostics,
+                    timings=timings,
+                    artifact_live_accepted=False,
                 )
             return _probe_result(
                 accepted=True,
@@ -264,6 +295,7 @@ def _run_aspirin_probe() -> WriterAspirinEnvelopeProbeResult:
                 artifact_envelope=artifact_envelope,
                 diagnostics=diagnostics,
                 timings=timings,
+                artifact_live_accepted=True,
             )
     except WriterEnvelopeWorkExceeded as exc:
         return _probe_result(
@@ -278,6 +310,7 @@ def _run_aspirin_probe() -> WriterAspirinEnvelopeProbeResult:
             artifact_envelope=None,
             diagnostics=diagnostics,
             timings=timings,
+            artifact_live_accepted=None,
         )
 
 
@@ -326,6 +359,7 @@ def _probe_result(
     artifact_envelope,
     diagnostics: WriterCountDagBuildDiagnostics,
     timings: list[tuple[str, float]],
+    artifact_live_accepted: bool | None,
 ) -> WriterAspirinEnvelopeProbeResult:
     count_metrics = _count_metrics(count_envelope, diagnostics)
     image_metrics = _image_metrics(image_envelope)
@@ -362,9 +396,21 @@ def _probe_result(
         next_blocker=next_blocker,
         support_count=_field(count_envelope, "support_count"),
         completion_count=_field(count_envelope, "completion_count"),
-        support_string_count=image_metrics["support_string_count"],
-        support_image_distinct_count=_field(image_envelope, "distinct_count"),
-        support_image_witness_count=_field(image_envelope, "witness_count"),
+        support_string_count=(
+            image_metrics["support_string_count"]
+            if image_metrics["support_string_count"] is not None
+            else artifact_metrics["support_string_count"]
+        ),
+        support_image_distinct_count=(
+            _field(image_envelope, "distinct_count")
+            if image_envelope is not None
+            else artifact_metrics["distinct_count"]
+        ),
+        support_image_witness_count=(
+            _field(image_envelope, "witness_count")
+            if image_envelope is not None
+            else artifact_metrics["witness_count"]
+        ),
         count_dag_node_count=count_metrics["node_count"],
         count_dag_edge_count=count_metrics["edge_count"],
         count_dag_max_depth=count_metrics["max_depth"],
@@ -375,8 +421,16 @@ def _probe_result(
         support_image_total_emitted_text_bytes=image_metrics[
             "total_emitted_text_bytes"
         ],
-        coverage_bucket_count=image_metrics["coverage_bucket_count"],
-        bucket_assignment_count=image_metrics["bucket_assignment_count"],
+        coverage_bucket_count=(
+            image_metrics["coverage_bucket_count"]
+            if image_metrics["coverage_bucket_count"] is not None
+            else artifact_metrics["coverage_bucket_count"]
+        ),
+        bucket_assignment_count=(
+            image_metrics["bucket_assignment_count"]
+            if image_metrics["bucket_assignment_count"] is not None
+            else artifact_metrics["bucket_assignment_count"]
+        ),
         nested_envelope_count=image_metrics["nested_envelope_count"],
         consistency_node_count=image_metrics["consistency_node_count"],
         artifact_object_count=artifact_metrics["object_count"],
@@ -385,6 +439,7 @@ def _probe_result(
         artifact_largest_object_digest_bytes=artifact_metrics[
             "largest_object_digest_bytes"
         ],
+        artifact_live_verifier_accepted=artifact_live_accepted,
         timings=tuple(timings),
     )
 
@@ -476,14 +531,42 @@ def _artifact_metrics(envelope) -> dict[str, object | None]:
             "object_kind_counts": None,
             "total_payload_bytes": None,
             "largest_object_digest_bytes": None,
+            "support_string_count": None,
+            "coverage_bucket_count": None,
+            "bucket_assignment_count": None,
+            "distinct_count": None,
+            "witness_count": None,
         }
     metrics = envelope["metrics"]
+    root = _artifact_root_payload(envelope)
+    coverage = _artifact_object(envelope, root["coverage_ref"])["payload"]
+    terminal = coverage["terminal_bucket"]
     return {
         "object_count": metrics["object_count"],
         "object_kind_counts": metrics["object_kind_counts"],
         "total_payload_bytes": metrics["total_payload_bytes"],
         "largest_object_digest_bytes": metrics["largest_object_digest_bytes"],
+        "support_string_count": metrics["support_string_count"],
+        "coverage_bucket_count": metrics["coverage_bucket_count"],
+        "bucket_assignment_count": sum(
+            len(bucket["string_refs"])
+            for bucket in coverage["text_buckets"]
+        )
+        + (1 if terminal is not None and terminal["string_ref"] is not None else 0),
+        "distinct_count": root["distinct_count"],
+        "witness_count": root["witness_count"],
     }
+
+
+def _artifact_root_payload(envelope):
+    return _artifact_object(
+        envelope,
+        envelope["roots"]["support_image_root"],
+    )["payload"]
+
+
+def _artifact_object(envelope, object_id):
+    return next(item for item in envelope["objects"] if item["object_id"] == object_id)
 
 
 def _count_dag_profile(

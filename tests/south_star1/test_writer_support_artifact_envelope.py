@@ -11,6 +11,8 @@ from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
 from grimace._south_star1.policy import SerializationLanguageMode
 from grimace._south_star1.writer_envelope_terms import _canonical_json
+from grimace._south_star1.writer_envelope_terms import _identity_digest
+from grimace._south_star1.writer_envelope_work import WriterEnvelopeWorkBudget
 from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
 from grimace._south_star1.writer_snapshot import capture_writer_frontier_snapshot
 from grimace._south_star1.writer_snapshot_prefix_envelope import (
@@ -18,6 +20,9 @@ from grimace._south_star1.writer_snapshot_prefix_envelope import (
 )
 from grimace._south_star1.writer_support_artifact_envelope import (
     verify_writer_support_artifact_consistency,
+)
+from grimace._south_star1.writer_support_artifact_envelope import (
+    verify_writer_support_artifact_envelope,
 )
 from grimace._south_star1.writer_support_artifact_envelope import (
     writer_support_artifact_envelope_for_prefix_read,
@@ -43,6 +48,22 @@ class WriterSupportArtifactEnvelopeTest(unittest.TestCase):
         self.assertEqual(verification.support_count, 1)
         self.assertEqual(verification.witness_count, 2)
 
+    def test_snapshot_source_artifact_live_verifier_accepts(self) -> None:
+        prepared = _prepare(two_atom_facts())
+        envelope = writer_support_artifact_envelope_for_snapshot(
+            prepared=prepared,
+            snapshot=_initial_snapshot(prepared),
+        )
+
+        verification = verify_writer_support_artifact_envelope(
+            prepared=prepared,
+            envelope=envelope,
+        )
+
+        self.assertTrue(verification.accepted, verification.reason)
+        self.assertEqual(verification.support_count, 1)
+        self.assertEqual(verification.witness_count, 2)
+
     def test_prefix_read_source_artifact_verifies(self) -> None:
         prepared = _prepare(two_atom_facts())
         prefix = writer_snapshot_prefix_read_envelope_for_emitted_texts(
@@ -58,6 +79,26 @@ class WriterSupportArtifactEnvelopeTest(unittest.TestCase):
         verification = verify_writer_support_artifact_consistency(envelope)
 
         self.assertTrue(verification.accepted)
+        self.assertEqual(verification.source_kind, "prefix_read")
+
+    def test_prefix_read_source_artifact_live_verifier_accepts(self) -> None:
+        prepared = _prepare(two_atom_facts())
+        prefix = writer_snapshot_prefix_read_envelope_for_emitted_texts(
+            prepared=prepared,
+            snapshot=_initial_snapshot(prepared),
+            emitted_texts=("C", "C"),
+        )
+        envelope = writer_support_artifact_envelope_for_prefix_read(
+            prepared=prepared,
+            prefix_read_envelope=prefix,
+        )
+
+        verification = verify_writer_support_artifact_envelope(
+            prepared=prepared,
+            envelope=envelope,
+        )
+
+        self.assertTrue(verification.accepted, verification.reason)
         self.assertEqual(verification.source_kind, "prefix_read")
 
     def test_branching_artifact_verifies(self) -> None:
@@ -79,6 +120,50 @@ class WriterSupportArtifactEnvelopeTest(unittest.TestCase):
         self.assertEqual(counts["count_envelope"], 1)
         self.assertEqual(counts["frontier_product"], 1)
         self.assertTrue(verify_writer_support_artifact_consistency(envelope).accepted)
+
+    def test_artifact_metrics_include_reachability_and_count_dag_summary(self) -> None:
+        envelope = _branching_artifact()
+        metrics = envelope["metrics"]
+
+        self.assertEqual(metrics["object_count"], metrics["reachable_object_count"])
+        self.assertEqual(metrics["unreferenced_object_count"], 0)
+        self.assertGreater(metrics["coverage_bucket_count"], 0)
+        self.assertGreater(metrics["count_dag_node_count"], 0)
+        self.assertGreater(metrics["count_dag_edge_count"], 0)
+        self.assertEqual(
+            metrics["total_payload_bytes"],
+            metrics["total_artifact_payload_bytes"],
+        )
+        self.assertEqual(
+            metrics["largest_object_digest_bytes"],
+            metrics["largest_object_digest_payload_bytes"],
+        )
+
+    def test_artifact_and_legacy_nested_support_image_agree_on_core_fixture(self) -> None:
+        prepared = _prepare(cco_facts())
+        snapshot = _initial_snapshot(prepared)
+        artifact = writer_support_artifact_envelope_for_snapshot(
+            prepared=prepared,
+            snapshot=snapshot,
+        )
+        nested = writer_support_image_envelope_for_snapshot(
+            prepared=prepared,
+            snapshot=snapshot,
+        )
+        root = _root_payload(artifact)
+        count = _object(artifact, root["count_ref"])["payload"]
+
+        self.assertEqual(root["support_strings"], nested["support_strings"])
+        self.assertEqual(root["distinct_count"], nested["distinct_count"])
+        self.assertEqual(root["witness_count"], nested["witness_count"])
+        self.assertEqual(
+            count["count_dag_digest"],
+            nested["count_envelope"]["count_dag"]["digest"],
+        )
+        self.assertEqual(
+            count["frontier_product_digest"],
+            nested["count_envelope"]["frontier_product"]["digest"],
+        )
 
     def test_table_artifact_is_smaller_than_nested_support_image(self) -> None:
         prepared = _prepare(cyclopropane_facts())
@@ -179,6 +264,37 @@ class WriterSupportArtifactEnvelopeTest(unittest.TestCase):
         )
 
         self.assertFalse(verify_writer_support_artifact_consistency(envelope).accepted)
+
+    def test_unreferenced_object_is_rejected(self) -> None:
+        envelope = _snapshot_artifact()
+        extra = deepcopy(_object(envelope, envelope["roots"]["source_ref"]))
+        extra["payload"]["digest"] = "1" * 64
+        digest = _identity_digest(
+            {"kind": extra["kind"], "payload": extra["payload"]},
+            budget=WriterEnvelopeWorkBudget(),
+            operation="test.unreferenced_object.digest",
+        )
+        extra["digest"] = digest
+        extra["object_id"] = f"obj:{digest}"
+        envelope["objects"].append(extra)
+
+        self.assertFalse(verify_writer_support_artifact_consistency(envelope).accepted)
+
+    def test_live_verifier_rejects_stale_structural_table(self) -> None:
+        prepared = _prepare(cco_facts())
+        envelope = writer_support_artifact_envelope_for_snapshot(
+            prepared=prepared,
+            snapshot=_initial_snapshot(prepared),
+        )
+        root = _root_payload(envelope)
+        root["support_strings"] = list(reversed(root["support_strings"]))
+
+        verification = verify_writer_support_artifact_envelope(
+            prepared=prepared,
+            envelope=envelope,
+        )
+
+        self.assertFalse(verification.accepted)
 
 
 def _snapshot_artifact():

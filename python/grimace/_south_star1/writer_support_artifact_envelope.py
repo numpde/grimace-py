@@ -21,6 +21,7 @@ from .writer_envelope_work import writer_envelope_work_reason
 from .writer_frontier import _checked_writer_frontier_product
 from .writer_frontier_count_envelope import writer_frontier_count_envelope_for_prefix_read
 from .writer_frontier_count_envelope import writer_frontier_count_envelope_for_snapshot
+from .writer_snapshot_envelope import _source_snapshot_from_envelope
 from .writer_snapshot_prefix_envelope import _terminal_projection_certificate_identity_envelope
 from .writer_snapshot_prefix_envelope import _terminal_support_identity_envelope_from_certificate
 from .writer_snapshot_prefix_envelope import _text_projection_certificate_identity_envelope
@@ -134,9 +135,10 @@ def verify_writer_support_artifact_consistency(
         budget = default_writer_envelope_work_budget(budget)
         _validate_shape(envelope)
         assert isinstance(envelope, Mapping)
-        objects = _object_by_id(envelope)
+        objects = _object_by_id(envelope, budget=budget)
         _validate_metrics(envelope, budget=budget)
         _validate_artifact_digest(envelope, budget=budget)
+        _validate_object_table_closed(envelope, objects)
         root = _require_object(objects, envelope["roots"]["support_image_root"])
         if root["kind"] != "support_image":
             _artifact_violation("support_image_root_kind_mismatch")
@@ -144,6 +146,87 @@ def verify_writer_support_artifact_consistency(
         return WriterSupportArtifactEnvelopeVerification(
             accepted=True,
             source_kind=str(envelope["source_kind"]),
+            support_count=int(root["payload"]["distinct_count"]),
+            witness_count=int(root["payload"]["witness_count"]),
+        )
+    except WriterEnvelopeWorkExceeded as exc:
+        return WriterSupportArtifactEnvelopeVerification(
+            accepted=False,
+            source_kind=(
+                envelope.get("source_kind", "unknown")
+                if isinstance(envelope, Mapping)
+                else "unknown"
+            ),
+            reason=writer_envelope_work_reason(exc),
+        )
+    except SouthStarError as exc:
+        return WriterSupportArtifactEnvelopeVerification(
+            accepted=False,
+            source_kind=(
+                envelope.get("source_kind", "unknown")
+                if isinstance(envelope, Mapping)
+                else "unknown"
+            ),
+            reason=exc.args[-1] if exc.args else "verification_error",
+        )
+    except (AssertionError, KeyError, TypeError, ValueError) as exc:
+        return WriterSupportArtifactEnvelopeVerification(
+            accepted=False,
+            source_kind=(
+                envelope.get("source_kind", "unknown")
+                if isinstance(envelope, Mapping)
+                else "unknown"
+            ),
+            reason=f"malformed_envelope:{type(exc).__name__}",
+        )
+
+
+def verify_writer_support_artifact_envelope(
+    *,
+    prepared: SouthStarPreparedMol,
+    envelope: object,
+    budget: WriterEnvelopeWorkBudget | None = None,
+) -> WriterSupportArtifactEnvelopeVerification:
+    try:
+        budget = default_writer_envelope_work_budget(budget)
+        structural = verify_writer_support_artifact_consistency(
+            envelope,
+            budget=budget,
+        )
+        if not structural.accepted:
+            return structural
+        assert isinstance(envelope, Mapping)
+        source_kind = str(envelope["source_kind"])
+        source_snapshot = _source_snapshot_for_artifact(
+            prepared=prepared,
+            envelope=envelope,
+            budget=budget,
+        )
+        if source_kind == "snapshot":
+            expected = writer_support_artifact_envelope_for_snapshot(
+                prepared=prepared,
+                snapshot=source_snapshot,
+                budget=budget,
+            )
+        else:
+            expected = writer_support_artifact_envelope_for_prefix_read(
+                prepared=prepared,
+                prefix_read_envelope=envelope["prefix_read_envelope"],
+                budget=budget,
+            )
+        if expected != envelope:
+            return WriterSupportArtifactEnvelopeVerification(
+                accepted=False,
+                source_kind=source_kind,
+                reason="artifact_terms_mismatch",
+            )
+        root = _require_object(
+            _raw_object_by_id(envelope),
+            envelope["roots"]["support_image_root"],
+        )
+        return WriterSupportArtifactEnvelopeVerification(
+            accepted=True,
+            source_kind=source_kind,
             support_count=int(root["payload"]["distinct_count"]),
             witness_count=int(root["payload"]["witness_count"]),
         )
@@ -265,7 +348,13 @@ def _artifact_from_image(
         operation="support_artifact.support_image.object",
     )
     objects = table.objects()
-    metrics = _artifact_metrics(objects, support_string_refs)
+    roots = {
+        "source_ref": source_ref,
+        "count_ref": count_ref,
+        "frontier_product_ref": frontier_ref,
+        "support_image_root": support_image_ref,
+    }
+    metrics = _artifact_metrics(objects, roots=roots)
     envelope = {
         "schema_name": SCHEMA_NAME,
         "schema_version": SCHEMA_VERSION,
@@ -278,12 +367,7 @@ def _artifact_from_image(
         "source_snapshot": source_identity if source_kind == "snapshot" else None,
         "prefix_read_envelope": prefix_read_envelope,
         "objects": objects,
-        "roots": {
-            "source_ref": source_ref,
-            "count_ref": count_ref,
-            "frontier_product_ref": frontier_ref,
-            "support_image_root": support_image_ref,
-        },
+        "roots": roots,
         "metrics": metrics,
     }
     envelope["digest"] = _digest_terms_bounded(
@@ -422,6 +506,7 @@ def _add_coverage(
 
 
 def _count_payload(count_envelope: Mapping[str, object]) -> dict[str, object]:
+    dag_metrics = count_envelope["count_dag"]["metrics"]
     return {
         "schema_name": count_envelope["schema_name"],
         "schema_version": count_envelope["schema_version"],
@@ -433,6 +518,8 @@ def _count_payload(count_envelope: Mapping[str, object]) -> dict[str, object]:
         "completion_count": count_envelope["completion_count"],
         "support_count_certificate_digest": count_envelope["support_count_certificate"]["digest"],
         "completion_count_certificate_digest": count_envelope["completion_count_certificate"]["digest"],
+        "count_dag_node_count": dag_metrics["node_count"],
+        "count_dag_edge_count": dag_metrics["edge_count"],
     }
 
 
@@ -461,7 +548,11 @@ class _ObjectTable:
         return sorted(self._objects_by_id.values(), key=lambda item: item["object_id"])
 
 
-def _artifact_metrics(objects: list[dict[str, object]], support_string_refs: list[str]) -> dict[str, object]:
+def _artifact_metrics(
+    objects: list[dict[str, object]],
+    *,
+    roots: Mapping[str, object] | None = None,
+) -> dict[str, object]:
     kind_counts: dict[str, int] = {}
     total_payload_bytes = 0
     largest_object_digest_bytes = 0
@@ -471,16 +562,47 @@ def _artifact_metrics(objects: list[dict[str, object]], support_string_refs: lis
         size = len(_canonical_json(item["payload"]).encode("utf-8"))
         total_payload_bytes += size
         largest_object_digest_bytes = max(largest_object_digest_bytes, size)
+    support_string_refs = []
+    coverage_bucket_count = 0
+    count_dag_node_count = None
+    count_dag_edge_count = None
+    reachable_object_count = 0
+    unreferenced_object_count = 0
+    raw_objects = {item["object_id"]: item for item in objects}
+    if roots is not None and "support_image_root" in roots:
+        root = raw_objects.get(roots["support_image_root"])
+        if root is not None and root.get("kind") == "support_image":
+            support_string_refs = list(root["payload"]["support_string_refs"])
+            coverage = raw_objects.get(root["payload"]["coverage_ref"])
+            if coverage is not None and coverage.get("kind") == "support_image_coverage":
+                payload = coverage["payload"]
+                coverage_bucket_count = len(payload["text_buckets"]) + (
+                    0 if payload["terminal_bucket"] is None else 1
+                )
+            count = raw_objects.get(root["payload"]["count_ref"])
+            if count is not None and count.get("kind") == "count_envelope":
+                count_dag_node_count = count["payload"].get("count_dag_node_count")
+                count_dag_edge_count = count["payload"].get("count_dag_edge_count")
+        reachable = _reachable_object_ids(raw_objects, roots["support_image_root"])
+        reachable_object_count = len(reachable)
+        unreferenced_object_count = len(set(raw_objects) - reachable)
     return {
         "object_count": len(objects),
         "object_kind_counts": kind_counts,
+        "reachable_object_count": reachable_object_count,
+        "unreferenced_object_count": unreferenced_object_count,
         "support_string_count": len(support_string_refs),
+        "coverage_bucket_count": coverage_bucket_count,
+        "count_dag_node_count": count_dag_node_count,
+        "count_dag_edge_count": count_dag_edge_count,
         "unique_replay_path_count": kind_counts.get("replay_path", 0),
         "unique_text_projection_count": kind_counts.get("text_projection", 0),
         "unique_terminal_projection_count": kind_counts.get("terminal_projection", 0),
         "unique_terminal_support_count": kind_counts.get("terminal_support", 0),
         "total_payload_bytes": total_payload_bytes,
+        "total_artifact_payload_bytes": total_payload_bytes,
         "largest_object_digest_bytes": largest_object_digest_bytes,
+        "largest_object_digest_payload_bytes": largest_object_digest_bytes,
     }
 
 
@@ -532,7 +654,11 @@ def _validate_shape(envelope: object) -> None:
         _artifact_violation("metrics_not_mapping")
 
 
-def _object_by_id(envelope: Mapping[str, object]) -> dict[str, Mapping[str, object]]:
+def _object_by_id(
+    envelope: Mapping[str, object],
+    *,
+    budget: WriterEnvelopeWorkBudget,
+) -> dict[str, Mapping[str, object]]:
     objects = {}
     for item in envelope["objects"]:
         if not isinstance(item, Mapping):
@@ -544,7 +670,7 @@ def _object_by_id(envelope: Mapping[str, object]) -> dict[str, Mapping[str, obje
             _artifact_violation("duplicate_object_id")
         expected_digest = _identity_digest(
             {"kind": item["kind"], "payload": item["payload"]},
-            budget=WriterEnvelopeWorkBudget(),
+            budget=budget,
             operation="support_artifact.object.digest",
         )
         if item["digest"] != expected_digest:
@@ -558,10 +684,7 @@ def _object_by_id(envelope: Mapping[str, object]) -> dict[str, Mapping[str, obje
 def _validate_metrics(envelope: Mapping[str, object], *, budget: WriterEnvelopeWorkBudget) -> None:
     metrics = _artifact_metrics(
         envelope["objects"],
-        _require_object(
-            _raw_object_by_id(envelope),
-            envelope["roots"]["support_image_root"],
-        )["payload"]["support_string_refs"],
+        roots=envelope["roots"],
     )
     if envelope["metrics"] != metrics:
         _artifact_violation("metrics_mismatch")
@@ -586,13 +709,34 @@ def _validate_artifact_digest(envelope: Mapping[str, object], *, budget: WriterE
 
 def _validate_support_image_root(root: Mapping[str, object], objects: Mapping[str, Mapping[str, object]]) -> None:
     payload = root["payload"]
+    _validate_object_payload_shape(root)
     count = _require_object(objects, payload["count_ref"])
     if count["kind"] != "count_envelope":
         _artifact_violation("count_ref_kind_mismatch")
+    source = _require_object(objects, payload["source_ref"])
+    if source["kind"] != "source_snapshot":
+        _artifact_violation("source_ref_kind_mismatch")
+    frontier = _require_object(objects, payload["frontier_product_ref"])
+    if frontier["kind"] != "frontier_product":
+        _artifact_violation("frontier_product_ref_kind_mismatch")
+    if source["payload"]["digest"] != count["payload"]["frontier_snapshot_digest"]:
+        _artifact_violation("source_count_snapshot_mismatch")
+    if frontier["payload"]["digest"] != count["payload"]["frontier_product_digest"]:
+        _artifact_violation("frontier_count_digest_mismatch")
     if payload["distinct_count"] != count["payload"]["support_count"]:
         _artifact_violation("distinct_count_mismatch")
     if payload["witness_count"] != count["payload"]["completion_count"]:
         _artifact_violation("witness_count_mismatch")
+    if (
+        payload["support_count_certificate_digest"]
+        != count["payload"]["support_count_certificate_digest"]
+    ):
+        _artifact_violation("support_count_certificate_mismatch")
+    if (
+        payload["witness_count_certificate_digest"]
+        != count["payload"]["completion_count_certificate_digest"]
+    ):
+        _artifact_violation("witness_count_certificate_mismatch")
     string_refs = payload["support_string_refs"]
     if len(string_refs) != len(payload["support_strings"]):
         _artifact_violation("support_string_count_mismatch")
@@ -617,6 +761,167 @@ def _validate_support_image_root(root: Mapping[str, object], objects: Mapping[st
     _validate_coverage(coverage, string_refs, objects)
     if Counter(seen) != Counter(string_refs):
         _artifact_violation("support_string_ref_mismatch")
+
+
+def _validate_object_table_closed(
+    envelope: Mapping[str, object],
+    objects: Mapping[str, Mapping[str, object]],
+) -> None:
+    roots = envelope["roots"]
+    for field in ("source_ref", "count_ref", "frontier_product_ref", "support_image_root"):
+        if field not in roots:
+            _artifact_violation("roots_fields_mismatch")
+        _require_object(objects, roots[field])
+    root = _require_object(objects, roots["support_image_root"])
+    if root["kind"] != "support_image":
+        _artifact_violation("support_image_root_kind_mismatch")
+    payload = root["payload"]
+    if payload["source_ref"] != roots["source_ref"]:
+        _artifact_violation("root_source_ref_mismatch")
+    if payload["count_ref"] != roots["count_ref"]:
+        _artifact_violation("root_count_ref_mismatch")
+    if payload["frontier_product_ref"] != roots["frontier_product_ref"]:
+        _artifact_violation("root_frontier_product_ref_mismatch")
+    for item in objects.values():
+        _validate_object_payload_shape(item)
+    reachable = _reachable_object_ids(objects, roots["support_image_root"])
+    missing = reachable - set(objects)
+    if missing:
+        _artifact_violation("dangling_object_ref")
+    if reachable != set(objects):
+        _artifact_violation("unreferenced_object")
+
+
+def _validate_object_payload_shape(item: Mapping[str, object]) -> None:
+    payload = item["payload"]
+    kind = item["kind"]
+    if not isinstance(payload, Mapping):
+        _artifact_violation("object_payload_not_mapping")
+    if kind == "source_snapshot":
+        _require_payload_fields(payload, ("digest", "cursor"))
+    elif kind == "count_envelope":
+        _require_payload_fields(
+            payload,
+            (
+                "schema_name",
+                "schema_version",
+                "source_kind",
+                "frontier_snapshot_digest",
+                "frontier_product_digest",
+                "count_dag_digest",
+                "support_count",
+                "completion_count",
+                "support_count_certificate_digest",
+                "completion_count_certificate_digest",
+                "count_dag_node_count",
+                "count_dag_edge_count",
+            ),
+        )
+    elif kind == "frontier_product":
+        _require_payload_fields(payload, ("kind", "digest"))
+    elif kind == "replay_path":
+        _require_payload_fields(
+            payload,
+            ("source_ref", "emitted_texts", "replay_certificate_digest", "final_snapshot_digest"),
+        )
+    elif kind in ("text_projection", "terminal_projection", "terminal_support"):
+        _require_payload_fields(payload, ("digest",))
+    elif kind == "support_string":
+        _require_payload_fields(
+            payload,
+            (
+                "index",
+                "string",
+                "emitted_texts",
+                "source_ref",
+                "count_ref",
+                "replay_path_ref",
+                "text_projection_refs",
+                "terminal_projection_ref",
+                "terminal_support_refs",
+            ),
+        )
+    elif kind == "support_image_coverage":
+        _require_payload_fields(
+            payload,
+            ("text_buckets", "terminal_bucket", "distinct_count", "support_count"),
+        )
+    elif kind == "support_image":
+        _require_payload_fields(
+            payload,
+            (
+                "source_ref",
+                "count_ref",
+                "frontier_product_ref",
+                "support_string_refs",
+                "coverage_ref",
+                "support_strings",
+                "distinct_count",
+                "witness_count",
+                "support_count_certificate_digest",
+                "witness_count_certificate_digest",
+            ),
+        )
+    else:
+        _artifact_violation("unknown_object_kind")
+
+
+def _require_payload_fields(payload: Mapping[str, object], fields: tuple[str, ...]) -> None:
+    if not all(field in payload for field in fields):
+        _artifact_violation("object_payload_fields_mismatch")
+
+
+def _reachable_object_ids(
+    objects: Mapping[str, Mapping[str, object]],
+    root_id: object,
+) -> set[str]:
+    reachable: set[str] = set()
+    pending = [str(root_id)]
+    while pending:
+        object_id = pending.pop()
+        if object_id in reachable:
+            continue
+        reachable.add(object_id)
+        item = objects.get(object_id)
+        if item is None:
+            continue
+        pending.extend(_object_refs(item))
+    return reachable
+
+
+def _object_refs(item: Mapping[str, object]) -> list[str]:
+    payload = item["payload"]
+    kind = item["kind"]
+    if kind == "support_image":
+        return [
+            payload["source_ref"],
+            payload["count_ref"],
+            payload["frontier_product_ref"],
+            payload["coverage_ref"],
+            *payload["support_string_refs"],
+        ]
+    if kind == "support_string":
+        return [
+            payload["source_ref"],
+            payload["count_ref"],
+            payload["replay_path_ref"],
+            payload["terminal_projection_ref"],
+            *payload["text_projection_refs"],
+            *payload["terminal_support_refs"],
+        ]
+    if kind == "replay_path":
+        return [payload["source_ref"]]
+    if kind == "support_image_coverage":
+        refs = [
+            ref
+            for bucket in payload["text_buckets"]
+            for ref in bucket["string_refs"]
+        ]
+        terminal = payload["terminal_bucket"]
+        if terminal is not None and terminal["string_ref"] is not None:
+            refs.append(terminal["string_ref"])
+        return refs
+    return []
 
 
 def _validate_support_string_refs(item: Mapping[str, object], objects: Mapping[str, Mapping[str, object]]) -> None:
@@ -682,6 +987,27 @@ def _require_object(objects: Mapping[str, Mapping[str, object]], object_id: str)
     return objects[object_id]
 
 
+def _source_snapshot_for_artifact(*, prepared, envelope, budget):
+    if envelope["source_kind"] == "snapshot":
+        return _source_snapshot_from_envelope(
+            prepared=prepared,
+            envelope=envelope,
+            budget=budget,
+        )
+    prefix = verify_writer_snapshot_prefix_read_envelope(
+        prepared=prepared,
+        envelope=envelope["prefix_read_envelope"],
+        budget=budget,
+    )
+    if not prefix.accepted:
+        _artifact_violation("prefix_read_envelope_rejected")
+    if prefix.read_kind != "readable":
+        _artifact_violation("prefix_read_envelope_not_readable")
+    if prefix.final_snapshot is None:
+        _artifact_violation("prefix_read_envelope_lacks_final_snapshot")
+    return prefix.final_snapshot
+
+
 def _checked_product(*, prepared, snapshot):
     return _checked_writer_frontier_product(
         prepared,
@@ -704,6 +1030,7 @@ __all__ = (
     "SCHEMA_VERSION",
     "WriterSupportArtifactEnvelopeVerification",
     "verify_writer_support_artifact_consistency",
+    "verify_writer_support_artifact_envelope",
     "writer_support_artifact_envelope_for_prefix_read",
     "writer_support_artifact_envelope_for_snapshot",
 )

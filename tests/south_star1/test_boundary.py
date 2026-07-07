@@ -199,6 +199,34 @@ class SouthStar1BoundaryTest(unittest.TestCase):
         ):
             self.assertNotIn(name, verifier)
 
+    def test_support_artifact_envelope_boundary(self) -> None:
+        path = SOUTH_STAR1_ROOT / "writer_support_artifact_envelope.py"
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+
+        self.assertFalse(_imports_rdkit(tree))
+        self.assertNotIn("choice_snapshot", source)
+        for name in (
+            "_count_writer_frontier_choice_snapshot_supports",
+            "_count_writer_frontier_choice_snapshot_completions",
+            "_iter_writer_frontier_support_suffixes_from_choice_snapshot",
+            "_writer_frontier_choice_snapshot_entry_for_emitted_text",
+            "_maybe_writer_frontier_choice_snapshot_entry_for_emitted_text",
+        ):
+            self.assertNotIn(name, source)
+        structural = _function_source(
+            tree,
+            "verify_writer_support_artifact_consistency",
+        )
+        for name in (
+            "_checked_writer_frontier_product",
+            "_support_image_certificate_for_source",
+            "_iter_writer_snapshot_certified_support_strings",
+            "writer_support_artifact_envelope_for_snapshot",
+            "writer_support_artifact_envelope_for_prefix_read",
+        ):
+            self.assertNotIn(name, structural)
+
     def test_envelope_consistency_verifier_boundary(self) -> None:
         path = SOUTH_STAR1_ROOT / "writer_envelope_consistency.py"
         source = path.read_text(encoding="utf-8")

@@ -10,7 +10,7 @@ class WriterEnvelopeWorkBudget:
     max_count_nodes: int = 10_000
     max_count_edges: int = 50_000
     max_count_depth: int = 1_000
-    max_digest_term_bytes: int = 5_000_000
+    max_digest_term_bytes: int = 25_000_000
     max_source_lookup_positions: int = 5_000
     max_nested_envelopes: int = 50_000
     max_support_strings: int = 10_000

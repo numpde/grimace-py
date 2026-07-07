@@ -249,24 +249,12 @@ class SouthStar1BoundaryTest(unittest.TestCase):
                 ]
                 self.assertEqual([], offenders)
 
-    def test_budgetless_identity_helper_inventory_is_classified(self) -> None:
-        expected = {
-            "writer_count_dag_envelope.py": 7,
-            "writer_frontier_count_envelope.py": 10,
-            "writer_snapshot_envelope.py": 7,
-            "writer_snapshot_prefix_envelope.py": 46,
-            "writer_snapshot_replay_envelope.py": 12,
-            "writer_support_image_envelope.py": 9,
-            "writer_support_string_envelope.py": 10,
-        }
-        actual = {}
+    def test_durable_envelope_identity_helpers_are_budgeted(self) -> None:
         for path in sorted(SOUTH_STAR1_ROOT.glob("*envelope*.py")):
             if path.name == "writer_envelope_terms.py":
                 continue
-            count = len(_budgetless_identity_helper_calls(path))
-            if count:
-                actual[path.name] = count
-        self.assertEqual(expected, actual)
+            with self.subTest(path=path.name):
+                self.assertEqual([], _budgetless_identity_helper_calls(path))
 
     def test_private_package_is_not_publicly_exported(self) -> None:
         self.assertNotIn("_south_star1", grimace.__all__)

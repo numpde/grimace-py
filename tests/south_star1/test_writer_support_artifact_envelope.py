@@ -5,6 +5,7 @@ from __future__ import annotations
 from copy import deepcopy
 import json
 import unittest
+from unittest.mock import patch
 
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
@@ -18,6 +19,13 @@ from grimace._south_star1.writer_snapshot import capture_writer_frontier_snapsho
 from grimace._south_star1.writer_snapshot_prefix_envelope import (
     writer_snapshot_prefix_read_envelope_for_emitted_texts,
 )
+from grimace._south_star1.writer_support_artifact_checker import (
+    verify_writer_support_artifact_consistency as check_support_artifact,
+)
+from grimace._south_star1.writer_support_artifact_checker import (
+    WriterSupportArtifactCheckResult,
+)
+import grimace._south_star1.writer_support_artifact_envelope as artifact_envelope_module
 from grimace._south_star1.writer_support_artifact_envelope import (
     verify_writer_support_artifact_consistency,
 )
@@ -43,10 +51,30 @@ class WriterSupportArtifactEnvelopeTest(unittest.TestCase):
         envelope = _json_round_trip(_snapshot_artifact())
 
         verification = verify_writer_support_artifact_consistency(envelope)
+        check = check_support_artifact(envelope)
 
         self.assertTrue(verification.accepted)
+        self.assertTrue(check.accepted)
         self.assertEqual(verification.support_count, 1)
         self.assertEqual(verification.witness_count, 2)
+        self.assertEqual(check.object_count, envelope["metrics"]["object_count"])
+
+    def test_producer_consistency_wrapper_delegates_to_checker(self) -> None:
+        envelope = _snapshot_artifact()
+
+        with patch.object(
+            artifact_envelope_module,
+            "_check_writer_support_artifact_consistency",
+            return_value=WriterSupportArtifactCheckResult(
+                accepted=False,
+                reason="sentinel_checker_rejection",
+            ),
+        ) as checker:
+            verification = verify_writer_support_artifact_consistency(envelope)
+
+        checker.assert_called_once()
+        self.assertFalse(verification.accepted)
+        self.assertEqual(verification.reason, "sentinel_checker_rejection")
 
     def test_snapshot_source_artifact_live_verifier_accepts(self) -> None:
         prepared = _prepare(two_atom_facts())
@@ -203,6 +231,19 @@ class WriterSupportArtifactEnvelopeTest(unittest.TestCase):
         envelope["objects"][0]["digest"] = "0" * 64
 
         self.assertFalse(verify_writer_support_artifact_consistency(envelope).accepted)
+
+    def test_unknown_payload_field_is_rejected(self) -> None:
+        envelope = _snapshot_artifact()
+        _root_payload(envelope)["unexpected"] = True
+
+        self.assertFalse(check_support_artifact(envelope).accepted)
+
+    def test_count_object_missing_count_dag_is_rejected(self) -> None:
+        envelope = _snapshot_artifact()
+        root = _root_payload(envelope)
+        del _object(envelope, root["count_ref"])["payload"]["count_dag_digest"]
+
+        self.assertFalse(check_support_artifact(envelope).accepted)
 
     def test_changed_support_string_ref_is_rejected(self) -> None:
         envelope = _branching_artifact()

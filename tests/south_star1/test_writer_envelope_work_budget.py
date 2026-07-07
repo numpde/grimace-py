@@ -22,6 +22,9 @@ from grimace._south_star1.writer_snapshot_replay_envelope import (
 from grimace._south_star1.writer_snapshot_replay_envelope import (
     writer_snapshot_replay_envelope_for_emitted_texts,
 )
+from grimace._south_star1.writer_snapshot_prefix_envelope import (
+    writer_snapshot_prefix_read_envelope_for_emitted_texts,
+)
 from grimace._south_star1.writer_support_image_envelope import (
     verify_writer_support_image_envelope,
 )
@@ -79,6 +82,80 @@ class WriterEnvelopeWorkBudgetTest(unittest.TestCase):
             "WRITER_ENVELOPE_WORK_EXCEEDED: .*digest_term_bytes",
         ):
             writer_frontier_count_envelope_for_snapshot(
+                prepared=prepared,
+                snapshot=snapshot,
+                budget=WriterEnvelopeWorkBudget(max_digest_term_bytes=1),
+            )
+
+    def test_advance_digest_budget_exceeded_is_typed(self) -> None:
+        prepared, snapshot = _prepared_snapshot()
+
+        with self.assertRaisesRegex(
+            Exception,
+            "WRITER_ENVELOPE_WORK_EXCEEDED: .*digest_term_bytes",
+        ):
+            writer_snapshot_advance_envelope_for_emitted_text(
+                prepared=prepared,
+                snapshot=snapshot,
+                emitted_text=_first_choice_text(prepared, snapshot),
+                budget=WriterEnvelopeWorkBudget(max_digest_term_bytes=1),
+            )
+
+    def test_replay_digest_budget_exceeded_is_typed(self) -> None:
+        prepared, snapshot = _prepared_snapshot()
+
+        with self.assertRaisesRegex(
+            Exception,
+            "WRITER_ENVELOPE_WORK_EXCEEDED: .*digest_term_bytes",
+        ):
+            writer_snapshot_replay_envelope_for_emitted_texts(
+                prepared=prepared,
+                snapshot=snapshot,
+                emitted_texts=(_first_choice_text(prepared, snapshot),),
+                budget=WriterEnvelopeWorkBudget(max_digest_term_bytes=1),
+            )
+
+    def test_prefix_digest_budget_exceeded_is_typed(self) -> None:
+        prepared, snapshot = _prepared_snapshot()
+
+        with self.assertRaisesRegex(
+            Exception,
+            "WRITER_ENVELOPE_WORK_EXCEEDED: .*digest_term_bytes",
+        ):
+            writer_snapshot_prefix_read_envelope_for_emitted_texts(
+                prepared=prepared,
+                snapshot=snapshot,
+                emitted_texts=(_first_choice_text(prepared, snapshot),),
+                budget=WriterEnvelopeWorkBudget(max_digest_term_bytes=1),
+            )
+
+    def test_support_string_digest_budget_exceeded_is_typed(self) -> None:
+        prepared, snapshot = _prepared_snapshot()
+        support_image = writer_support_image_envelope_for_snapshot(
+            prepared=prepared,
+            snapshot=snapshot,
+        )
+        target = _first_unique_string(support_image["support_strings"])
+
+        with self.assertRaisesRegex(
+            Exception,
+            "WRITER_ENVELOPE_WORK_EXCEEDED: .*digest_term_bytes",
+        ):
+            writer_support_string_envelope_for_string(
+                prepared=prepared,
+                snapshot=snapshot,
+                string=target,
+                budget=WriterEnvelopeWorkBudget(max_digest_term_bytes=1),
+            )
+
+    def test_support_image_digest_budget_exceeded_is_typed(self) -> None:
+        prepared, snapshot = _prepared_snapshot()
+
+        with self.assertRaisesRegex(
+            Exception,
+            "WRITER_ENVELOPE_WORK_EXCEEDED: .*digest_term_bytes",
+        ):
+            writer_support_image_envelope_for_snapshot(
                 prepared=prepared,
                 snapshot=snapshot,
                 budget=WriterEnvelopeWorkBudget(max_digest_term_bytes=1),
@@ -200,6 +277,13 @@ class WriterEnvelopeWorkBudgetTest(unittest.TestCase):
 def _prepared_snapshot():
     prepared = _prepare(cco_facts())
     return prepared, _initial_snapshot(prepared)
+
+
+def _first_unique_string(strings):
+    for string in strings:
+        if strings.count(string) == 1:
+            return string
+    raise AssertionError("fixture lacks a unique support string")
 
 
 if __name__ == "__main__":

@@ -10,6 +10,7 @@ from .errors import SouthStarErrorKind
 from .prepared_runtime import SouthStarPreparedMol
 from .writer_envelope_terms import _cursor_envelope
 from .writer_envelope_terms import _digest
+from .writer_envelope_terms import _identity_digest
 from .writer_envelope_terms import _identity_envelope
 from .writer_envelope_terms import _runtime_options_from_terms
 from .writer_envelope_terms import _snapshot_identity_envelope
@@ -531,7 +532,7 @@ def _support_string_certificate_envelope(
     envelope = {
         "string": certificate.string,
         "emitted_texts": list(certificate.emitted_texts),
-        "replay_certificate_digest": _digest(_term(certificate.replay_certificate)),
+        "replay_certificate_digest": _identity_digest(certificate.replay_certificate),
         "final_snapshot": _snapshot_identity_envelope(certificate.final_snapshot),
         "terminal_frontier_projection_digest": (
             _frontier_projection_certificate_identity_envelope(
@@ -549,7 +550,7 @@ def _support_string_certificate_envelope(
             step["text_projection"]["digest"] for step in text_projection_chain
         ],
     }
-    envelope["digest"] = _digest(_term(envelope))
+    envelope["digest"] = _identity_digest(envelope)
     return envelope
 
 
@@ -572,7 +573,7 @@ def _text_projection_chain_envelope(certificate):
                 "successor_cursor": _cursor_envelope(step.successor_cursor),
                 "text_projection": text_projection,
                 "frontier_projection": frontier_projection,
-                "step_certificate_digest": _digest(_term(step)),
+                "step_certificate_digest": _identity_digest(step),
                 "branch_certificate_identities": [
                     _branch_certificate_identity_envelope(branch)
                     for branch in step.branch_certificates

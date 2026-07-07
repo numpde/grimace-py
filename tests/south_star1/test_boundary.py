@@ -236,6 +236,14 @@ class SouthStar1BoundaryTest(unittest.TestCase):
         ):
             self.assertNotIn(name, source)
 
+    def test_durable_envelope_modules_do_not_raw_digest_terms(self) -> None:
+        for path in sorted(SOUTH_STAR1_ROOT.glob("*envelope*.py")):
+            if path.name == "writer_envelope_terms.py":
+                continue
+            with self.subTest(path=path.name):
+                source = path.read_text(encoding="utf-8")
+                self.assertNotIn("_digest(_term(", source)
+
     def test_private_package_is_not_publicly_exported(self) -> None:
         self.assertNotIn("_south_star1", grimace.__all__)
 

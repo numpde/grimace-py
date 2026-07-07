@@ -10,6 +10,7 @@ from .errors import SouthStarErrorKind
 from .prepared_runtime import SouthStarPreparedMol
 from .writer_envelope_terms import _cursor_envelope
 from .writer_envelope_terms import _digest
+from .writer_envelope_terms import _identity_digest
 from .writer_envelope_terms import _identity_envelope
 from .writer_envelope_terms import _runtime_options_from_terms
 from .writer_envelope_terms import _snapshot_identity_envelope
@@ -336,10 +337,10 @@ def _final_frontier_blocked_envelope(
             "blocked_frontier_certificate": {
                 "cursor": _cursor_envelope(blocked.cursor),
                 "blocked": blocked.blocked,
-                "diagnostic_certificate_digest": _digest(_term(diagnostic)),
-                "digest": _digest(_term(blocked)),
+                "diagnostic_certificate_digest": _identity_digest(diagnostic),
+                "digest": _identity_digest(blocked),
             },
-            "diagnostic_certificate_digest": _digest(_term(diagnostic)),
+            "diagnostic_certificate_digest": _identity_digest(diagnostic),
         },
     )
 
@@ -443,14 +444,14 @@ def _prefix_read_certificate_envelope(certificate) -> dict[str, object]:
         "support_count": certificate.support_count,
         "completion_count": certificate.completion_count,
     }
-    envelope["digest"] = _digest(_term(envelope))
+    envelope["digest"] = _identity_digest(envelope)
     return envelope
 
 
 def _full_term_digest(certificate) -> str | None:
     if certificate is None:
         return None
-    return _digest(_term(certificate))
+    return _identity_digest(certificate)
 
 
 def _writer_frontier_product_identity_envelope(product) -> dict[str, object]:
@@ -508,7 +509,7 @@ def _writer_frontier_product_identity_envelope(product) -> dict[str, object]:
                 for support in product.terminal_supports
             ],
         }
-    envelope["digest"] = _digest(_term(envelope))
+    envelope["digest"] = _identity_digest(envelope)
     return envelope
 
 
@@ -542,7 +543,7 @@ def _frontier_projection_certificate_identity_envelope(certificate):
             for certificate in certificate.terminal_certificates
         ],
     }
-    envelope["digest"] = _digest(_term(envelope))
+    envelope["digest"] = _identity_digest(envelope)
     return envelope
 
 
@@ -561,7 +562,7 @@ def _text_projection_certificate_identity_envelope(certificate):
             for branch in certificate.branch_certificates
         ],
     }
-    envelope["digest"] = _digest(_term(envelope))
+    envelope["digest"] = _identity_digest(envelope)
     return envelope
 
 
@@ -585,7 +586,7 @@ def _terminal_projection_certificate_identity_envelope(certificate):
             for terminal in certificate.terminal_certificates
         ],
     }
-    envelope["digest"] = _digest(_term(envelope))
+    envelope["digest"] = _identity_digest(envelope)
     return envelope
 
 
@@ -623,7 +624,7 @@ def _checked_frontier_certificate_identity_envelope(certificate):
             certificate.choice_count_coverage_certificate
         ),
     }
-    envelope["digest"] = _digest(_term(envelope))
+    envelope["digest"] = _identity_digest(envelope)
     return envelope
 
 
@@ -670,7 +671,7 @@ def _support_count_coverage_envelope(certificate):
         "terminal_support_count": certificate.terminal_support_count,
         "support_count": certificate.support_count,
     }
-    envelope["digest"] = _digest(_term(envelope))
+    envelope["digest"] = _identity_digest(envelope)
     return envelope
 
 
@@ -748,7 +749,7 @@ def _frontier_completion_count_envelope(certificate):
             }
         ),
     }
-    envelope["digest"] = _digest(_term(envelope))
+    envelope["digest"] = _identity_digest(envelope)
     return envelope
 
 
@@ -808,7 +809,7 @@ def _choice_count_coverage_envelope(certificate):
         "support_count": certificate.support_count,
         "completion_count": certificate.completion_count,
     }
-    envelope["digest"] = _digest(_term(envelope))
+    envelope["digest"] = _identity_digest(envelope)
     return envelope
 
 
@@ -832,7 +833,7 @@ def _completion_term_coverage_digest(certificate):
         "branch_term_count": len(certificate.branch_terms),
         "terminal_term_count": len(certificate.terminal_terms),
     }
-    return _digest(_term(envelope))
+    return _identity_digest(envelope)
 
 
 def _support_count_certificate_envelope(certificate):
@@ -845,7 +846,7 @@ def _support_count_certificate_envelope(certificate):
             certificate.state_support_count_certificate
         ),
     }
-    envelope["digest"] = _digest(_term(envelope))
+    envelope["digest"] = _identity_digest(envelope)
     return envelope
 
 
@@ -856,13 +857,13 @@ def _completion_count_certificate_envelope(certificate):
         "cursor": _cursor_envelope(certificate.cursor),
         "completion_count": certificate.completion_count,
         "state_count_certificate_digests": [
-            _digest(_term((state_key, weight, state_certificate)))
+            _identity_digest((state_key, weight, state_certificate))
             for state_key, weight, state_certificate in (
                 certificate.state_count_certificates
             )
         ],
     }
-    envelope["digest"] = _digest(_term(envelope))
+    envelope["digest"] = _identity_digest(envelope)
     return envelope
 
 
@@ -878,8 +879,8 @@ def _branch_support_identity_envelope(support):
 
 def _branch_certificate_identity_envelope(certificate):
     envelope = {
-        "source_state_digest": _digest(_term(certificate.source_state)),
-        "successor_state_digest": _digest(_term(certificate.successor_state)),
+        "source_state_digest": _identity_digest(certificate.source_state),
+        "successor_state_digest": _identity_digest(certificate.successor_state),
         "emitted_text": certificate.emitted_text,
         "parent_weight": certificate.parent_weight,
         "branch_ordinal": certificate.branch_ordinal,
@@ -893,7 +894,7 @@ def _branch_certificate_identity_envelope(certificate):
             certificate.successor_state_certificate
         ),
     }
-    envelope["digest"] = _digest(_term(envelope))
+    envelope["digest"] = _identity_digest(envelope)
     return envelope
 
 
@@ -915,8 +916,8 @@ def _terminal_support_identity_envelope(support):
 
 def _terminal_support_identity_envelope_from_certificate(certificate):
     envelope = {
-        "source_state_digest": _digest(_term(certificate.source_state)),
-        "finalized_state_digest": _digest(_term(certificate.finalized_state)),
+        "source_state_digest": _identity_digest(certificate.source_state),
+        "finalized_state_digest": _identity_digest(certificate.finalized_state),
         "parent_weight": certificate.parent_weight,
         "terminal_ordinal": certificate.terminal_ordinal,
         "terminal_support_key_digest": _digest(
@@ -939,15 +940,15 @@ def _terminal_support_identity_envelope_from_certificate(certificate):
             for terminal in certificate.terminal_certificates
         ],
     }
-    envelope["digest"] = _digest(_term(envelope))
+    envelope["digest"] = _identity_digest(envelope)
     return envelope
 
 
 def _terminal_certificate_identity_envelope(certificate):
     envelope = {
         "kind": _term(certificate.kind),
-        "source_state_digest": _digest(_term(certificate.source_state)),
-        "finalized_state_digest": _digest(_term(certificate.finalized_state)),
+        "source_state_digest": _identity_digest(certificate.source_state),
+        "finalized_state_digest": _identity_digest(certificate.finalized_state),
         "digest": _full_term_digest(certificate),
     }
     return envelope

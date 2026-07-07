@@ -9,6 +9,7 @@ from .errors import SouthStarError
 from .errors import SouthStarErrorKind
 from .prepared_runtime import SouthStarPreparedMol
 from .writer_envelope_terms import _digest
+from .writer_envelope_terms import _identity_digest
 from .writer_envelope_terms import _identity_envelope
 from .writer_envelope_terms import _runtime_options_from_terms
 from .writer_envelope_terms import _snapshot_identity_envelope
@@ -463,7 +464,7 @@ def _support_image_certificate_envelope(
         ),
         "enumeration_coverage_digest": coverage["digest"],
     }
-    envelope["digest"] = _digest(_term(envelope))
+    envelope["digest"] = _identity_digest(envelope)
     return envelope
 
 
@@ -483,7 +484,7 @@ def _enumeration_coverage_envelope_from_product(
             count_envelope["frontier_product"]["checked_frontier_certificate"]
         ),
         "support_count_certificate": count_envelope["support_count_certificate"],
-        "support_count_term_coverage_digest": _digest(_term(coverage)),
+        "support_count_term_coverage_digest": _identity_digest(coverage),
         "text_buckets": [
             _text_bucket_envelope_from_term(term, string_envelopes)
             for term in coverage.text_terms
@@ -501,7 +502,7 @@ def _enumeration_coverage_envelope_from_product(
     }
     _validate_bucket_partition(envelope, len(string_envelopes))
     _check_coverage_work(envelope, budget=budget)
-    envelope["digest"] = _digest(_term(envelope))
+    envelope["digest"] = _identity_digest(envelope)
     return envelope
 
 
@@ -522,7 +523,7 @@ def _text_bucket_envelope_from_term(term, string_envelopes):
     ]
     envelope = {
         "text_projection": projection_identity,
-        "support_count_term_digest": _digest(_term(term)),
+        "support_count_term_digest": _identity_digest(term),
         "support_count": term.support_count,
         "string_indices": string_indices,
         "string_digests": [
@@ -530,7 +531,7 @@ def _text_bucket_envelope_from_term(term, string_envelopes):
             for index in string_indices
         ],
     }
-    envelope["digest"] = _digest(_term(envelope))
+    envelope["digest"] = _identity_digest(envelope)
     return envelope
 
 
@@ -567,7 +568,7 @@ def _terminal_bucket_envelope_from_term(term, string_envelopes):
                 terminal_projection
             )
         ),
-        "terminal_support_term_digest": _digest(_term(term)),
+        "terminal_support_term_digest": _identity_digest(term),
         "terminal_support_identities": (
             []
             if terminal_projection is None
@@ -582,7 +583,7 @@ def _terminal_bucket_envelope_from_term(term, string_envelopes):
         "string_index": string_index,
         "string_digest": string_digest,
     }
-    envelope["digest"] = _digest(_term(envelope))
+    envelope["digest"] = _identity_digest(envelope)
     return envelope
 
 

@@ -10,6 +10,7 @@ from .errors import SouthStarErrorKind
 from .prepared_runtime import SouthStarPreparedMol
 from .writer_envelope_terms import _cursor_envelope
 from .writer_envelope_terms import _digest
+from .writer_envelope_terms import _identity_digest
 from .writer_envelope_terms import _identity_envelope
 from .writer_envelope_terms import _runtime_options_from_terms
 from .writer_envelope_terms import _snapshot_identity_envelope
@@ -338,7 +339,7 @@ def _frontier_product_count_identity_envelope(product, *, count_dag):
                         product.terminal_projection_certificate
                     )["digest"]
                 ),
-                "digest": _digest(_term(product.projection_certificate)),
+                "digest": _identity_digest(product.projection_certificate),
             }
         ),
         "text_projection_certificates": [
@@ -389,7 +390,7 @@ def _frontier_product_count_identity_envelope(product, *, count_dag):
     envelope["checked_frontier_certificate"]["digest"] = _digest(
         _term(envelope["checked_frontier_certificate"])
     )
-    envelope["digest"] = _digest(_term(envelope))
+    envelope["digest"] = _identity_digest(envelope)
     return envelope
 
 
@@ -487,7 +488,7 @@ def _coverage_envelope(product, *, count_dag):
         "support_count_total": support_coverage.support_count,
         "completion_count_total": completion_coverage.completion_count,
     }
-    envelope["digest"] = _digest(_term(envelope))
+    envelope["digest"] = _identity_digest(envelope)
     return envelope
 
 

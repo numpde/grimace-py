@@ -11,6 +11,8 @@ import json
 
 from .policy import SerializationLanguageMode
 from .prepared_runtime import SouthStarRuntimeOptions
+from .writer_envelope_work import WriterEnvelopeWorkExceeded
+from .writer_envelope_work import WriterEnvelopeWorkViolation
 
 
 def _term(value):
@@ -73,11 +75,42 @@ def _canonical_json(term) -> str:
     return json.dumps(term, sort_keys=True, separators=(",", ":"))
 
 
-def _identity_envelope(identity) -> dict[str, object]:
+def _identity_digest(identity, *, budget=None, operation: str = "identity_digest") -> str:
+    terms = _term(identity)
+    if budget is not None:
+        return _digest_terms_bounded(
+            terms,
+            budget=budget,
+            operation=operation,
+        )
+    return _digest(terms)
+
+
+def _digest_terms_bounded(term, *, budget, operation: str) -> str:
+    try:
+        return _digest_bounded(term, budget=budget, operation=operation)
+    except ValueError as exc:
+        raise _work_exceeded_from_digest_error(
+            exc,
+            operation=operation,
+            budget=budget,
+        ) from exc
+
+
+def _identity_envelope(
+    identity,
+    *,
+    budget=None,
+    operation: str = "identity_envelope",
+) -> dict[str, object]:
     terms = _term(identity)
     return {
         "terms": terms,
-        "digest": _digest(terms),
+        "digest": (
+            _digest_terms_bounded(terms, budget=budget, operation=operation)
+            if budget is not None
+            else _digest(terms)
+        ),
     }
 
 
@@ -107,32 +140,95 @@ def _decoder_boundary_terms(boundary) -> dict[str, object]:
     }
 
 
-def _cursor_envelope(cursor) -> dict[str, object]:
+def _cursor_envelope(
+    cursor,
+    *,
+    budget=None,
+    operation: str = "cursor_envelope",
+) -> dict[str, object]:
     terms = _term(cursor)
     return {
         "terms": terms,
-        "digest": _digest(terms),
+        "digest": (
+            _digest_terms_bounded(terms, budget=budget, operation=operation)
+            if budget is not None
+            else _digest(terms)
+        ),
     }
 
 
-def _snapshot_identity_envelope(snapshot) -> dict[str, object]:
+def _snapshot_identity_envelope(
+    snapshot,
+    *,
+    budget=None,
+    operation: str = "snapshot_identity_envelope",
+) -> dict[str, object]:
     prepared_terms = _term(snapshot.prepared_identity)
     return {
         "serialization_language": snapshot.serialization_language.value,
         "runtime_options": _runtime_options_terms(snapshot.runtime_options),
         "prepared_identity_terms": prepared_terms,
-        "prepared_identity_digest": _digest(prepared_terms),
-        "cursor": _cursor_envelope(snapshot.cursor),
+        "prepared_identity_digest": (
+            _digest_terms_bounded(
+                prepared_terms,
+                budget=budget,
+                operation=f"{operation}.prepared_identity",
+            )
+            if budget is not None
+            else _digest(prepared_terms)
+        ),
+        "cursor": _cursor_envelope(
+            snapshot.cursor,
+            budget=budget,
+            operation=f"{operation}.cursor",
+        ),
         "decoder_boundary": _decoder_boundary_terms(snapshot.decoder_boundary),
         "frame_stack_cursors": [
-            _cursor_envelope(frame.cursor) for frame in snapshot.frame_stack
+            _cursor_envelope(
+                frame.cursor,
+                budget=budget,
+                operation=f"{operation}.frame_stack_cursor",
+            )
+            for frame in snapshot.frame_stack
         ],
-        "digest": _digest(_term(snapshot)),
+        "digest": _identity_digest(
+            snapshot,
+            budget=budget,
+            operation=operation,
+        ),
     }
 
 
 def _envelope_violation(kind: str) -> None:
     raise ValueError(f"unsupported writer envelope term: {kind}")
+
+
+def _work_exceeded_from_digest_error(
+    exc: ValueError,
+    *,
+    operation: str,
+    budget,
+) -> WriterEnvelopeWorkExceeded:
+    message = str(exc)
+    metric = "digest_term_bytes"
+    actual = 0
+    limit = budget.max_digest_term_bytes
+    for item in message.split(";"):
+        item = item.strip()
+        if item.startswith("metric="):
+            metric = item.split("=", 1)[1].strip("'")
+        elif item.startswith("actual="):
+            actual = int(item.split("=", 1)[1])
+        elif item.startswith("limit="):
+            limit = int(item.split("=", 1)[1])
+    return WriterEnvelopeWorkExceeded(
+        WriterEnvelopeWorkViolation(
+            operation=operation,
+            metric=metric,
+            actual=actual,
+            limit=limit,
+        )
+    )
 
 
 __all__ = (
@@ -141,6 +237,8 @@ __all__ = (
     "_decoder_boundary_terms",
     "_digest",
     "_digest_bounded",
+    "_digest_terms_bounded",
+    "_identity_digest",
     "_identity_envelope",
     "_runtime_options_from_terms",
     "_runtime_options_terms",

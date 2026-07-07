@@ -9,6 +9,7 @@ from .errors import SouthStarError
 from .errors import SouthStarErrorKind
 from .writer_envelope_terms import _cursor_envelope
 from .writer_envelope_terms import _digest
+from .writer_envelope_terms import _identity_digest
 from .writer_envelope_terms import _identity_envelope
 from .writer_envelope_terms import _runtime_options_from_terms
 from .writer_envelope_terms import _snapshot_identity_envelope
@@ -68,6 +69,7 @@ def writer_snapshot_advance_envelope_for_emitted_text(
     return _envelope_from_outcome(
         prepared=prepared,
         outcome=outcome,
+        budget=budget,
     )
 
 
@@ -238,81 +240,129 @@ def _verify_writer_snapshot_advance_envelope_from_known_source(
         )
 
 
-def _envelope_from_outcome(*, prepared, outcome) -> dict[str, object]:
+def _envelope_from_outcome(*, prepared, outcome, budget) -> dict[str, object]:
     source_snapshot = outcome.source_snapshot
     product_kind = "blocked" if outcome.frontier_product.blocked else "legal"
     envelope = {
         "schema_name": SCHEMA_NAME,
         "schema_version": SCHEMA_VERSION,
-        "prepared_identity": _identity_envelope(source_snapshot.prepared_identity),
-        "source_snapshot": _snapshot_identity_envelope(source_snapshot),
+        "prepared_identity": _identity_envelope(
+            source_snapshot.prepared_identity,
+            budget=budget,
+            operation="snapshot_advance.prepared_identity",
+        ),
+        "source_snapshot": _snapshot_identity_envelope(
+            source_snapshot,
+            budget=budget,
+            operation="snapshot_advance.source_snapshot",
+        ),
         "emitted_text": outcome.emitted_text,
         "outcome_kind": outcome.kind.value,
         "frontier_product_kind": product_kind,
-        "advance_certificate": _advance_certificate_envelope(outcome),
+        "advance_certificate": _advance_certificate_envelope(
+            outcome,
+            budget=budget,
+        ),
     }
     _validate_envelope_shape(envelope)
     _assert_prepared_identity_matches(prepared, envelope)
     return envelope
 
 
-def _advance_certificate_envelope(outcome) -> dict[str, object]:
+def _advance_certificate_envelope(outcome, *, budget) -> dict[str, object]:
     if outcome.kind.value == "advanced":
         step = outcome.step_certificate
         return {
             "kind": "advanced",
             "frontier_projection": _frontier_projection_envelope(
-                outcome.frontier_projection_certificate
+                outcome.frontier_projection_certificate,
+                budget=budget,
             ),
             "selected_text_projection": _text_projection_envelope(
-                outcome.text_projection_certificate
+                outcome.text_projection_certificate,
+                budget=budget,
             ),
             "step_certificate": {
                 "source_snapshot": _snapshot_identity_envelope(
-                    step.source_snapshot
+                    step.source_snapshot,
+                    budget=budget,
+                    operation="snapshot_advance.step.source_snapshot",
                 ),
-                "source_cursor": _cursor_envelope(step.source_cursor),
-                "successor_cursor": _cursor_envelope(step.successor_cursor),
+                "source_cursor": _cursor_envelope(
+                    step.source_cursor,
+                    budget=budget,
+                    operation="snapshot_advance.step.source_cursor",
+                ),
+                "successor_cursor": _cursor_envelope(
+                    step.successor_cursor,
+                    budget=budget,
+                    operation="snapshot_advance.step.successor_cursor",
+                ),
                 "advanced_snapshot": _snapshot_identity_envelope(
-                    step.advanced_snapshot
+                    step.advanced_snapshot,
+                    budget=budget,
+                    operation="snapshot_advance.step.advanced_snapshot",
                 ),
                 "decoder_boundary_before": _term(
                     step.decoder_boundary_before
                 ),
                 "decoder_boundary_after": _term(step.decoder_boundary_after),
-                "frontier_projection_digest": _digest(
-                    _term(step.frontier_projection_certificate)
+                "frontier_projection_digest": _identity_digest(
+                    step.frontier_projection_certificate,
+                    budget=budget,
+                    operation="snapshot_advance.step.frontier_projection",
                 ),
-                "text_projection_digest": _digest(
-                    _term(step.text_projection_certificate)
+                "text_projection_digest": _identity_digest(
+                    step.text_projection_certificate,
+                    budget=budget,
+                    operation="snapshot_advance.step.text_projection",
                 ),
                 "branch_certificate_digests": [
-                    _digest(_term(certificate))
+                    _identity_digest(
+                        certificate,
+                        budget=budget,
+                        operation="snapshot_advance.step.branch_certificate",
+                    )
                     for certificate in step.branch_certificates
                 ],
             },
             "advanced_snapshot": _snapshot_identity_envelope(
-                outcome.advanced_snapshot
+                outcome.advanced_snapshot,
+                budget=budget,
+                operation="snapshot_advance.advanced_snapshot",
             ),
         }
     if outcome.kind.value == "invalid_emitted_text":
         projection = outcome.invalid_text_frontier_projection_certificate
         return {
             "kind": "invalid_emitted_text",
-            "frontier_projection": _frontier_projection_envelope(projection),
+            "frontier_projection": _frontier_projection_envelope(
+                projection,
+                budget=budget,
+            ),
             "invalid_text_certificate": {
                 "source_snapshot": _snapshot_identity_envelope(
-                    outcome.invalid_text_certificate.source_snapshot
+                    outcome.invalid_text_certificate.source_snapshot,
+                    budget=budget,
+                    operation="snapshot_advance.invalid.source_snapshot",
                 ),
                 "emitted_text": outcome.invalid_text_certificate.emitted_text,
-                "frontier_projection_digest": _digest(_term(projection)),
+                "frontier_projection_digest": _identity_digest(
+                    projection,
+                    budget=budget,
+                    operation="snapshot_advance.invalid.frontier_projection",
+                ),
             },
             "projected_emitted_texts": [
                 item.emitted_text
                 for item in projection.text_choice_projection_certificates
             ],
             "projected_text_projection_digests": [
-                _digest(_term(item))
+                _identity_digest(
+                    item,
+                    budget=budget,
+                    operation="snapshot_advance.invalid.text_projection",
+                )
                 for item in projection.text_choice_projection_certificates
             ],
         }
@@ -322,31 +372,54 @@ def _advance_certificate_envelope(outcome) -> dict[str, object]:
         return {
             "kind": "blocked",
             "blocked_frontier_certificate": {
-                "cursor": _cursor_envelope(blocked.cursor),
+                "cursor": _cursor_envelope(
+                    blocked.cursor,
+                    budget=budget,
+                    operation="snapshot_advance.blocked.cursor",
+                ),
                 "blocked": blocked.blocked,
-                "diagnostic_certificate_digest": _digest(_term(diagnostic)),
+                "diagnostic_certificate_digest": _identity_digest(
+                    diagnostic,
+                    budget=budget,
+                    operation="snapshot_advance.blocked.diagnostic",
+                ),
             },
             "blocked_advance_certificate": {
                 "source_snapshot": _snapshot_identity_envelope(
-                    outcome.blocked_advance_certificate.source_snapshot
+                    outcome.blocked_advance_certificate.source_snapshot,
+                    budget=budget,
+                    operation="snapshot_advance.blocked.source_snapshot",
                 ),
                 "emitted_text": (
                     outcome.blocked_advance_certificate.emitted_text
                 ),
-                "blocked_frontier_certificate_digest": _digest(
-                    _term(blocked)
+                "blocked_frontier_certificate_digest": _identity_digest(
+                    blocked,
+                    budget=budget,
+                    operation="snapshot_advance.blocked.frontier_certificate",
                 ),
             },
-            "diagnostic_certificate": _diagnostic_envelope(diagnostic),
+            "diagnostic_certificate": _diagnostic_envelope(
+                diagnostic,
+                budget=budget,
+            ),
         }
     _envelope_violation("unknown_outcome_kind")
 
 
-def _frontier_projection_envelope(projection) -> dict[str, object]:
+def _frontier_projection_envelope(projection, *, budget) -> dict[str, object]:
     return {
-        "cursor": _cursor_envelope(projection.cursor),
+        "cursor": _cursor_envelope(
+            projection.cursor,
+            budget=budget,
+            operation="snapshot_advance.frontier_projection.cursor",
+        ),
         "text_projection_digests": [
-            _digest(_term(item))
+            _identity_digest(
+                item,
+                budget=budget,
+                operation="snapshot_advance.frontier_projection.text_projection",
+            )
             for item in projection.text_choice_projection_certificates
         ],
         "text_projection_keys": [
@@ -356,29 +429,60 @@ def _frontier_projection_envelope(projection) -> dict[str, object]:
         "terminal_projection_digest": (
             None
             if projection.terminal_projection_certificate is None
-            else _digest(_term(projection.terminal_projection_certificate))
+            else _identity_digest(
+                projection.terminal_projection_certificate,
+                budget=budget,
+                operation=(
+                    "snapshot_advance.frontier_projection.terminal_projection"
+                ),
+            )
         ),
-        "digest": _digest(_term(projection)),
+        "digest": _identity_digest(
+            projection,
+            budget=budget,
+            operation="snapshot_advance.frontier_projection",
+        ),
     }
 
 
-def _text_projection_envelope(projection) -> dict[str, object]:
+def _text_projection_envelope(projection, *, budget) -> dict[str, object]:
     return {
-        "source_cursor": _cursor_envelope(projection.source_cursor),
+        "source_cursor": _cursor_envelope(
+            projection.source_cursor,
+            budget=budget,
+            operation="snapshot_advance.text_projection.source_cursor",
+        ),
         "emitted_text": projection.emitted_text,
-        "successor_cursor": _cursor_envelope(projection.successor_cursor),
+        "successor_cursor": _cursor_envelope(
+            projection.successor_cursor,
+            budget=budget,
+            operation="snapshot_advance.text_projection.successor_cursor",
+        ),
         "immediate_multiplicity": projection.immediate_multiplicity,
         "projection_key": _text_projection_key(projection),
         "branch_certificate_digests": [
-            _digest(_term(item)) for item in projection.branch_certificates
+            _identity_digest(
+                item,
+                budget=budget,
+                operation="snapshot_advance.text_projection.branch_certificate",
+            )
+            for item in projection.branch_certificates
         ],
-        "digest": _digest(_term(projection)),
+        "digest": _identity_digest(
+            projection,
+            budget=budget,
+            operation="snapshot_advance.text_projection",
+        ),
     }
 
 
-def _diagnostic_envelope(diagnostic) -> dict[str, object]:
+def _diagnostic_envelope(diagnostic, *, budget) -> dict[str, object]:
     return {
-        "cursor": _cursor_envelope(diagnostic.cursor),
+        "cursor": _cursor_envelope(
+            diagnostic.cursor,
+            budget=budget,
+            operation="snapshot_advance.diagnostic.cursor",
+        ),
         "unsupported_execution_capabilities": [
             *sorted(
                 _term(item.capability)
@@ -417,7 +521,11 @@ def _diagnostic_envelope(diagnostic) -> dict[str, object]:
             for item in diagnostic.work_envelope_violation_certificates
             if item.category == "graph_obligation"
         ],
-        "digest": _digest(_term(diagnostic)),
+        "digest": _identity_digest(
+            diagnostic,
+            budget=budget,
+            operation="snapshot_advance.diagnostic",
+        ),
     }
 
 
@@ -507,9 +615,9 @@ def _assert_prepared_identity_matches(prepared, envelope) -> None:
 
 def _text_projection_key(projection) -> dict[str, object]:
     return {
-        "source_cursor_digest": _digest(_term(projection.source_cursor)),
+        "source_cursor_digest": _identity_digest(projection.source_cursor),
         "emitted_text": projection.emitted_text,
-        "successor_cursor_digest": _digest(_term(projection.successor_cursor)),
+        "successor_cursor_digest": _identity_digest(projection.successor_cursor),
         "immediate_multiplicity": projection.immediate_multiplicity,
     }
 

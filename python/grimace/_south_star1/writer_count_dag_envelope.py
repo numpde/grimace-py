@@ -5,6 +5,7 @@ from __future__ import annotations
 from .writer_envelope_terms import _canonical_json
 from .writer_envelope_terms import _cursor_envelope
 from .writer_envelope_terms import _digest
+from .writer_envelope_terms import _identity_digest
 from .writer_envelope_terms import _digest_bounded
 from .writer_envelope_terms import _snapshot_identity_envelope
 from .writer_envelope_terms import _term
@@ -72,7 +73,10 @@ class _CountDagBuilder:
             ],
             "metrics": metrics,
         }
-        envelope["digest"] = self._digest(_term(envelope), "count_dag_envelope")
+        envelope["digest"] = self._digest(
+            _term(envelope),
+            "count_dag_envelope",
+        )
         return envelope
 
     def support_count(self, certificate) -> str | None:
@@ -143,7 +147,7 @@ class _CountDagBuilder:
             children.append(child)
             entries.append(
                 {
-                    "state_key_digest": _digest(_term(state_key)),
+                    "state_key_digest": _identity_digest(state_key),
                     "cursor_weight": weight,
                     "state_count_node_id": child,
                 }
@@ -168,7 +172,7 @@ class _CountDagBuilder:
         return self._node(
             "writer_state_completion_count",
             {
-                "state_key_digest": _digest(_term(certificate.state_key)),
+                "state_key_digest": _identity_digest(certificate.state_key),
                 "terminal_projection": (
                     _terminal_projection_certificate_identity_envelope(
                         certificate.terminal_projection_certificate
@@ -248,7 +252,7 @@ class _CountDagBuilder:
             "payload": payload,
             "children": child_ids,
         }
-        digest = self._digest(_term(term), "count_dag_node")
+        digest = self._digest(term, "count_dag_node")
         node_id = f"count:{digest}"
         if node_id in self._nodes:
             return node_id
@@ -365,7 +369,7 @@ def validate_writer_count_certificate_dag_envelope(
         if node_id in node_by_id:
             _dag_violation("duplicate_count_dag_node_id")
         node_by_id[node_id] = node
-        _validate_node_digest(node)
+        _validate_node_digest(node, budget=budget)
 
     root_ids = [
         roots["support_count_root"],
@@ -398,7 +402,17 @@ def validate_writer_count_certificate_dag_envelope(
     }
     if metrics != actual_metrics:
         _dag_violation("count_dag_metrics_mismatch")
-    if dag["digest"] != _digest(_term({k: v for k, v in dag.items() if k != "digest"})):
+    digest_term = _term({k: v for k, v in dag.items() if k != "digest"})
+    digest = (
+        _digest_bounded(
+            digest_term,
+            budget=budget,
+            operation="count_dag_validate.digest",
+        )
+        if budget is not None
+        else _digest(digest_term)
+    )
+    if dag["digest"] != digest:
         _dag_violation("count_dag_digest_mismatch")
     _check_budget(actual_metrics, budget or WriterEnvelopeWorkBudget())
 
@@ -417,7 +431,11 @@ def _term_jsonish(term) -> bytes:
     return _canonical_json(_term(term)).encode("utf-8")
 
 
-def _validate_node_digest(node: dict[str, object]) -> None:
+def _validate_node_digest(
+    node: dict[str, object],
+    *,
+    budget: WriterEnvelopeWorkBudget | None = None,
+) -> None:
     required = frozenset((
         "node_id",
         "kind",
@@ -438,7 +456,15 @@ def _validate_node_digest(node: dict[str, object]) -> None:
         "payload": payload,
         "children": children,
     }
-    digest = _digest(_term(term))
+    digest = (
+        _digest_bounded(
+            term,
+            budget=budget,
+            operation="count_dag_validate.node_digest",
+        )
+        if budget is not None
+        else _digest(term)
+    )
     if node["digest"] != digest:
         _dag_violation("count_dag_node_digest_mismatch")
     if node["node_id"] != f"count:{digest}":

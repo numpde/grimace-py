@@ -9,6 +9,7 @@ from .errors import SouthStarError
 from .errors import SouthStarErrorKind
 from .prepared_runtime import SouthStarPreparedMol
 from .writer_envelope_terms import _digest
+from .writer_envelope_terms import _identity_digest
 from .writer_envelope_terms import _identity_envelope
 from .writer_envelope_terms import _runtime_options_from_terms
 from .writer_envelope_terms import _snapshot_identity_envelope
@@ -310,16 +311,16 @@ def _replay_certificate_envelope(certificate) -> dict[str, object]:
         ),
         "emitted_texts": list(certificate.emitted_texts),
         "step_certificate_digests": [
-            _digest(_term(step)) for step in certificate.step_certificates
+            _identity_digest(step) for step in certificate.step_certificates
         ],
         "frontier_projection_digests": [
-            _digest(_term(projection))
+            _identity_digest(projection)
             for projection in certificate.frontier_projection_certificates
         ],
         "final_snapshot": _snapshot_identity_envelope(
             certificate.final_snapshot
         ),
-        "digest": _digest(_term(certificate)),
+        "digest": _identity_digest(certificate),
     }
 
 

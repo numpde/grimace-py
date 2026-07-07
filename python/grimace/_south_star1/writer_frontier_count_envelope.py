@@ -291,6 +291,7 @@ def _envelope_from_product(
         "frontier_product": _frontier_product_count_identity_envelope(
             product,
             count_dag=count_dag,
+            budget=budget,
         ),
         "support_count": support_count,
         "completion_count": completion_count,
@@ -310,10 +311,14 @@ def _envelope_from_product(
             if count_dag["roots"]["terminal_choice_count_root"] is None
             else nodes[count_dag["roots"]["terminal_choice_count_root"]]
         ),
-        "coverage": _coverage_envelope(product, count_dag=count_dag),
+        "coverage": _coverage_envelope(
+            product,
+            count_dag=count_dag,
+            budget=budget,
+        ),
     }
 
-def _frontier_product_count_identity_envelope(product, *, count_dag):
+def _frontier_product_count_identity_envelope(product, *, count_dag, budget):
     if product.blocked:
         _count_envelope_violation("count_product_identity_requires_legal_frontier")
     envelope = {
@@ -353,8 +358,12 @@ def _frontier_product_count_identity_envelope(product, *, count_dag):
         ),
         "checked_frontier_certificate": {
             "cursor": _cursor_envelope(product.checked_frontier_certificate.cursor),
-            "projection_certificate_digest": _digest(
-                _term(product.checked_frontier_certificate.projection_certificate)
+            "projection_certificate_digest": _identity_digest(
+                product.checked_frontier_certificate.projection_certificate,
+                budget=budget,
+                operation=(
+                    "frontier_count.checked_frontier.projection_certificate"
+                ),
             ),
             "support_count_certificate_node_id": (
                 count_dag["roots"]["support_count_root"]
@@ -387,14 +396,16 @@ def _frontier_product_count_identity_envelope(product, *, count_dag):
             for certificate in product.projection_certificate.terminal_certificates
         ],
     }
-    envelope["checked_frontier_certificate"]["digest"] = _digest(
-        _term(envelope["checked_frontier_certificate"])
+    envelope["checked_frontier_certificate"]["digest"] = _identity_digest(
+        envelope["checked_frontier_certificate"],
+        budget=budget,
+        operation="frontier_count.checked_frontier.digest",
     )
     envelope["digest"] = _identity_digest(envelope)
     return envelope
 
 
-def _coverage_envelope(product, *, count_dag):
+def _coverage_envelope(product, *, count_dag, budget):
     checked = product.checked_frontier_certificate
     support_coverage = checked.support_count_term_coverage_certificate
     completion_aggregate = checked.frontier_completion_count_certificate
@@ -426,6 +437,7 @@ def _coverage_envelope(product, *, count_dag):
             and _frontier_product_count_identity_envelope(
                 product,
                 count_dag=count_dag,
+                budget=budget,
             )[
                 "frontier_projection_certificate"
             ]["digest"]

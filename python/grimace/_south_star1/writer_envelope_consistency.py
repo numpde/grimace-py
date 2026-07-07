@@ -6,7 +6,7 @@ from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from .writer_envelope_terms import _digest
+from .writer_envelope_terms import _identity_digest
 from .writer_envelope_terms import _term
 from .writer_envelope_work import WriterEnvelopeWorkBudget
 from .writer_envelope_work import WriterEnvelopeWorkExceeded
@@ -820,12 +820,14 @@ def _check_prepared_identity(envelope: Mapping[str, object], snapshot) -> None:
 def _validate_self_digest(envelope: Mapping[str, object], label: str) -> None:
     if "digest" not in envelope:
         _fail(f"{label}_digest_missing")
-    expected = _digest(
-        _term({
+    expected = _identity_digest(
+        {
             key: value
             for key, value in envelope.items()
             if key != "digest"
-        })
+        },
+        budget=WriterEnvelopeWorkBudget(),
+        operation=f"consistency.{label}.digest",
     )
     if envelope["digest"] != expected:
         _fail(f"{label}_digest_mismatch")

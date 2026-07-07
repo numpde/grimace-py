@@ -241,8 +241,32 @@ class SouthStar1BoundaryTest(unittest.TestCase):
             if path.name == "writer_envelope_terms.py":
                 continue
             with self.subTest(path=path.name):
-                source = path.read_text(encoding="utf-8")
-                self.assertNotIn("_digest(_term(", source)
+                tree = ast.parse(path.read_text(encoding="utf-8"))
+                offenders = [
+                    node.lineno
+                    for node in ast.walk(tree)
+                    if _is_raw_digest_term_call(node)
+                ]
+                self.assertEqual([], offenders)
+
+    def test_budgetless_identity_helper_inventory_is_classified(self) -> None:
+        expected = {
+            "writer_count_dag_envelope.py": 7,
+            "writer_frontier_count_envelope.py": 10,
+            "writer_snapshot_envelope.py": 7,
+            "writer_snapshot_prefix_envelope.py": 46,
+            "writer_snapshot_replay_envelope.py": 12,
+            "writer_support_image_envelope.py": 9,
+            "writer_support_string_envelope.py": 10,
+        }
+        actual = {}
+        for path in sorted(SOUTH_STAR1_ROOT.glob("*envelope*.py")):
+            if path.name == "writer_envelope_terms.py":
+                continue
+            count = len(_budgetless_identity_helper_calls(path))
+            if count:
+                actual[path.name] = count
+        self.assertEqual(expected, actual)
 
     def test_private_package_is_not_publicly_exported(self) -> None:
         self.assertNotIn("_south_star1", grimace.__all__)
@@ -463,6 +487,39 @@ def _imports_rdkit(tree: ast.AST) -> bool:
             if node.module == "rdkit" or (node.module or "").startswith("rdkit."):
                 return True
     return False
+
+
+def _is_raw_digest_term_call(node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_digest"
+        and bool(node.args)
+        and isinstance(node.args[0], ast.Call)
+        and isinstance(node.args[0].func, ast.Name)
+        and node.args[0].func.id == "_term"
+    )
+
+
+def _budgetless_identity_helper_calls(path: Path) -> list[tuple[int, str]]:
+    helpers = {
+        "_identity_digest",
+        "_identity_envelope",
+        "_cursor_envelope",
+        "_snapshot_identity_envelope",
+        "_digest_terms_bounded",
+    }
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    return [
+        (node.lineno, node.func.id)
+        for node in ast.walk(tree)
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id in helpers
+            and not any(keyword.arg == "budget" for keyword in node.keywords)
+        )
+    ]
 
 
 def _function_source(tree: ast.AST, name: str) -> str:

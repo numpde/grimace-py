@@ -907,8 +907,10 @@ def _terminal_support_identity_envelope(support):
         _prefix_envelope_violation("terminal_support_parent_weight_mismatch")
     if envelope["terminal_ordinal"] != support.terminal_ordinal:
         _prefix_envelope_violation("terminal_support_ordinal_mismatch")
-    if envelope["terminal_support_key_digest"] != _digest(
-        _term(support.terminal_support_key)
+    if envelope["terminal_support_key_digest"] != _identity_digest(
+        support.terminal_support_key,
+        budget=WriterEnvelopeWorkBudget(),
+        operation="prefix.terminal_support.key",
     ):
         _prefix_envelope_violation("terminal_support_key_mismatch")
     return envelope
@@ -920,8 +922,10 @@ def _terminal_support_identity_envelope_from_certificate(certificate):
         "finalized_state_digest": _identity_digest(certificate.finalized_state),
         "parent_weight": certificate.parent_weight,
         "terminal_ordinal": certificate.terminal_ordinal,
-        "terminal_support_key_digest": _digest(
-            _term(certificate.terminal_support_key)
+        "terminal_support_key_digest": _identity_digest(
+            certificate.terminal_support_key,
+            budget=WriterEnvelopeWorkBudget(),
+            operation="prefix.terminal_support.key",
         ),
         "terminal_execution_capabilities_digest": _full_term_digest(
             certificate.terminal_execution_capabilities

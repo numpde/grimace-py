@@ -51,6 +51,12 @@ from grimace._south_star1.writer_support_image_envelope import (
 from grimace._south_star1.writer_support_image_envelope import (
     writer_support_image_envelope_for_snapshot,
 )
+from grimace._south_star1.writer_support_artifact_envelope import (
+    verify_writer_support_artifact_consistency,
+)
+from grimace._south_star1.writer_support_artifact_envelope import (
+    writer_support_artifact_envelope_for_snapshot,
+)
 import grimace._south_star1.writer_execution_evidence as writer_execution_evidence
 from tests.south_star1.helpers import cco_facts
 
@@ -138,6 +144,10 @@ class WriterAspirinEnvelopeProbeResult:
     bucket_assignment_count: int | None
     nested_envelope_count: int | None
     consistency_node_count: int | None
+    artifact_object_count: int | None
+    artifact_object_kind_counts: dict[str, int] | None
+    artifact_total_payload_bytes: int | None
+    artifact_largest_object_digest_bytes: int | None
     timings: tuple[tuple[str, float], ...]
 
 
@@ -209,59 +219,36 @@ def _run_aspirin_probe() -> WriterAspirinEnvelopeProbeResult:
                     count_dag_diagnostics=diagnostics,
                 ),
             )
-            image_envelope = _timed(
+            artifact_envelope = _timed(
                 timings,
-                "high_budget_support_image_envelope",
-                lambda: writer_support_image_envelope_for_snapshot(
+                "high_budget_support_artifact_envelope",
+                lambda: writer_support_artifact_envelope_for_snapshot(
                     prepared=prepared,
                     snapshot=snapshot,
                     budget=high_budget,
                 ),
             )
-            verification = _timed(
+            artifact_verification = _timed(
                 timings,
-                "high_budget_live_support_image_verify",
-                lambda: verify_writer_support_image_envelope(
-                    prepared=prepared,
-                    envelope=image_envelope,
+                "high_budget_support_artifact_consistency_verify",
+                lambda: verify_writer_support_artifact_consistency(
+                    artifact_envelope,
                     budget=high_budget,
                 ),
             )
-            if not verification.accepted:
+            if not artifact_verification.accepted:
                 return _probe_result(
                     accepted=False,
-                    blocked_kind=verification.reason,
+                    blocked_kind=artifact_verification.reason,
                     work_violation=_work_violation_from_reason(
-                        verification.reason,
+                        artifact_verification.reason,
                     ),
                     default_budget_violation=default_budget_violation,
                     high_budget_accepted=True,
-                    next_blocker=verification.reason,
+                    next_blocker=artifact_verification.reason,
                     count_envelope=count_envelope,
-                    image_envelope=image_envelope,
-                    diagnostics=diagnostics,
-                    timings=timings,
-                )
-            consistency = _timed(
-                timings,
-                "high_budget_structural_consistency_verify",
-                lambda: verify_writer_support_image_envelope_consistency(
-                    image_envelope,
-                    budget=high_budget,
-                ),
-            )
-            if not consistency.accepted:
-                return _probe_result(
-                    accepted=False,
-                    blocked_kind=consistency.reason,
-                    work_violation=_work_violation_from_reason(
-                        consistency.reason,
-                    ),
-                    default_budget_violation=default_budget_violation,
-                    high_budget_accepted=True,
-                    next_blocker=consistency.reason,
-                    count_envelope=count_envelope,
-                    image_envelope=image_envelope,
+                    image_envelope=None,
+                    artifact_envelope=artifact_envelope,
                     diagnostics=diagnostics,
                     timings=timings,
                 )
@@ -273,7 +260,8 @@ def _run_aspirin_probe() -> WriterAspirinEnvelopeProbeResult:
                 high_budget_accepted=True,
                 next_blocker=None,
                 count_envelope=count_envelope,
-                image_envelope=image_envelope,
+                image_envelope=None,
+                artifact_envelope=artifact_envelope,
                 diagnostics=diagnostics,
                 timings=timings,
             )
@@ -287,6 +275,7 @@ def _run_aspirin_probe() -> WriterAspirinEnvelopeProbeResult:
             next_blocker=asdict(exc.violation),
             count_envelope=count_envelope,
             image_envelope=None,
+            artifact_envelope=None,
             diagnostics=diagnostics,
             timings=timings,
         )
@@ -334,11 +323,13 @@ def _probe_result(
     next_blocker: dict[str, object] | str | None,
     count_envelope,
     image_envelope,
+    artifact_envelope,
     diagnostics: WriterCountDagBuildDiagnostics,
     timings: list[tuple[str, float]],
 ) -> WriterAspirinEnvelopeProbeResult:
     count_metrics = _count_metrics(count_envelope, diagnostics)
     image_metrics = _image_metrics(image_envelope)
+    artifact_metrics = _artifact_metrics(artifact_envelope)
     dag_profile = _count_dag_profile(
         None if count_envelope is None else count_envelope["count_dag"],
         diagnostics,
@@ -388,6 +379,12 @@ def _probe_result(
         bucket_assignment_count=image_metrics["bucket_assignment_count"],
         nested_envelope_count=image_metrics["nested_envelope_count"],
         consistency_node_count=image_metrics["consistency_node_count"],
+        artifact_object_count=artifact_metrics["object_count"],
+        artifact_object_kind_counts=artifact_metrics["object_kind_counts"],
+        artifact_total_payload_bytes=artifact_metrics["total_payload_bytes"],
+        artifact_largest_object_digest_bytes=artifact_metrics[
+            "largest_object_digest_bytes"
+        ],
         timings=tuple(timings),
     )
 
@@ -469,6 +466,23 @@ def _image_metrics(envelope) -> dict[str, int | None]:
         + (1 if terminal is not None and terminal["string_index"] is not None else 0),
         "nested_envelope_count": _count_nested_envelopes(envelope),
         "consistency_node_count": _count_json_nodes(envelope),
+    }
+
+
+def _artifact_metrics(envelope) -> dict[str, object | None]:
+    if envelope is None:
+        return {
+            "object_count": None,
+            "object_kind_counts": None,
+            "total_payload_bytes": None,
+            "largest_object_digest_bytes": None,
+        }
+    metrics = envelope["metrics"]
+    return {
+        "object_count": metrics["object_count"],
+        "object_kind_counts": metrics["object_kind_counts"],
+        "total_payload_bytes": metrics["total_payload_bytes"],
+        "largest_object_digest_bytes": metrics["largest_object_digest_bytes"],
     }
 
 

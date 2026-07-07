@@ -5,12 +5,10 @@ from dataclasses import dataclass
 from .errors import SouthStarError
 from .errors import SouthStarErrorKind
 from .prepared_runtime import SouthStarPreparedMol
-from .writer_envelope_terms import _digest
 from .writer_envelope_terms import _identity_digest
 from .writer_envelope_terms import _identity_envelope
 from .writer_envelope_terms import _runtime_options_from_terms
 from .writer_envelope_terms import _snapshot_identity_envelope
-from .writer_envelope_terms import _term
 from .writer_envelope_work import WriterEnvelopeWorkBudget
 from .writer_envelope_work import WriterEnvelopeWorkExceeded
 from .writer_envelope_work import check_writer_envelope_work
@@ -131,7 +129,7 @@ def _envelope_from_verified_strings(*, prepared, source_kind: str, source_snapsh
     del prepared
     _check_support_string_envelope_work(support_string_envelopes, budget=budget, operation='support_image_envelope')
     strings = [item['string'] for item in support_string_envelopes]
-    source_snapshot_identity = _snapshot_identity_envelope(source_snapshot, budget=budget, operation='envelope.identity') if source_snapshot is not None else count_envelope['frontier_snapshot']
+    source_snapshot_identity = _snapshot_identity_envelope(source_snapshot, budget=budget, operation='support_image.source_snapshot.digest') if source_snapshot is not None else count_envelope['frontier_snapshot']
     coverage = _enumeration_coverage_envelope_from_product(product, string_envelopes=support_string_envelopes, source_snapshot_identity=source_snapshot_identity, count_envelope=count_envelope, budget=budget)
     return {'schema_name': SCHEMA_NAME, 'schema_version': SCHEMA_VERSION, 'prepared_identity': count_envelope['prepared_identity'], 'source_kind': source_kind, 'source_snapshot': None if source_snapshot is None else source_snapshot_identity, 'prefix_read_envelope': prefix_read_envelope, 'count_envelope': count_envelope, 'support_strings': strings, 'support_string_envelopes': list(support_string_envelopes), 'distinct_count': len(strings), 'witness_count': product.count_certificate.completion_count, 'support_image_certificate': _support_image_certificate_envelope(source_snapshot=source_snapshot_identity, strings=strings, support_string_envelopes=support_string_envelopes, count_envelope=count_envelope, coverage=coverage, budget=budget), 'enumeration_coverage': coverage, 'frontier_product': count_envelope['frontier_product'], 'checked_frontier_certificate': count_envelope['frontier_product']['checked_frontier_certificate'], 'support_count_certificate': count_envelope['support_count_certificate'], 'witness_count_certificate': count_envelope['completion_count_certificate']}
 
@@ -139,17 +137,17 @@ def _support_string_envelopes_from_image(*, prepared, source_kind: str, source_s
     return [_writer_support_string_envelope_from_certificate(prepared=prepared, source_kind=source_kind, source_snapshot=source_snapshot, prefix_read_envelope=prefix_read_envelope, count_envelope=count_envelope, replay_envelope=writer_snapshot_replay_envelope_for_emitted_texts(prepared=prepared, snapshot=image.source_snapshot, emitted_texts=certificate.emitted_texts, budget=budget), certificate=certificate, budget=budget) for certificate in image.string_certificates]
 
 def _support_image_certificate_envelope(*, source_snapshot, strings, support_string_envelopes, count_envelope, coverage, budget):
-    envelope = {'source_snapshot': source_snapshot, 'strings': list(strings), 'string_certificate_digests': [envelope['support_string_certificate']['digest'] for envelope in support_string_envelopes], 'distinct_count': len(strings), 'witness_count': count_envelope['completion_count'], 'support_count_certificate_digest': count_envelope['support_count_certificate']['digest'], 'witness_count_certificate_digest': count_envelope['completion_count_certificate']['digest'], 'checked_frontier_certificate_digest': count_envelope['frontier_product']['checked_frontier_certificate']['digest'], 'enumeration_coverage_digest': coverage['digest']}
-    envelope['digest'] = _identity_digest(envelope, budget=budget, operation='envelope.identity')
+    envelope = {'source_snapshot': source_snapshot, 'strings': list(strings), 'string_certificate_digests': [envelope['support_string_certificate']['digest'] for envelope in support_string_envelopes], 'support_string_envelope_digests': [envelope['digest'] for envelope in support_string_envelopes], 'distinct_count': len(strings), 'witness_count': count_envelope['completion_count'], 'support_count_certificate_digest': count_envelope['support_count_certificate']['digest'], 'witness_count_certificate_digest': count_envelope['completion_count_certificate']['digest'], 'checked_frontier_certificate_digest': count_envelope['frontier_product']['checked_frontier_certificate']['digest'], 'count_dag_digest': count_envelope['count_dag']['digest'], 'frontier_product_digest': count_envelope['frontier_product']['digest'], 'enumeration_coverage_digest': coverage['digest']}
+    envelope['digest'] = _identity_digest(_support_image_certificate_manifest(envelope), budget=budget, operation='support_image.certificate.digest')
     return envelope
 
 def _enumeration_coverage_envelope_from_product(product, *, string_envelopes, source_snapshot_identity, count_envelope, budget):
     checked = product.checked_frontier_certificate
     coverage = checked.support_count_term_coverage_certificate
-    envelope = {'source_snapshot': source_snapshot_identity, 'checked_frontier_certificate': count_envelope['frontier_product']['checked_frontier_certificate'], 'support_count_certificate': count_envelope['support_count_certificate'], 'support_count_term_coverage_digest': _identity_digest(coverage, budget=budget, operation='envelope.identity'), 'text_buckets': [_text_bucket_envelope_from_term(term, string_envelopes, budget=budget) for term in coverage.text_terms], 'terminal_bucket': None if coverage.terminal_term is None else _terminal_bucket_envelope_from_term(coverage.terminal_term, string_envelopes, budget=budget), 'distinct_count': len(string_envelopes), 'support_count': coverage.support_count}
+    envelope = {'source_snapshot': source_snapshot_identity, 'checked_frontier_certificate': count_envelope['frontier_product']['checked_frontier_certificate'], 'support_count_certificate': count_envelope['support_count_certificate'], 'support_count_term_coverage_digest': _identity_digest(coverage, budget=budget, operation='support_image.support_count_term_coverage.digest'), 'text_buckets': [_text_bucket_envelope_from_term(term, string_envelopes, budget=budget) for term in coverage.text_terms], 'terminal_bucket': None if coverage.terminal_term is None else _terminal_bucket_envelope_from_term(coverage.terminal_term, string_envelopes, budget=budget), 'distinct_count': len(string_envelopes), 'support_count': coverage.support_count}
     _validate_bucket_partition(envelope, len(string_envelopes))
     _check_coverage_work(envelope, budget=budget)
-    envelope['digest'] = _identity_digest(envelope, budget=budget, operation='envelope.identity')
+    envelope['digest'] = _identity_digest(_enumeration_coverage_manifest(envelope), budget=budget, operation='support_image.enumeration_coverage.digest')
     return envelope
 
 def _text_bucket_envelope_from_term(term, string_envelopes, *, budget):
@@ -157,8 +155,8 @@ def _text_bucket_envelope_from_term(term, string_envelopes, *, budget):
     projection_identity = _text_projection_certificate_identity_envelope(projection, budget=budget)
     projection_key = _text_projection_bucket_key(projection_identity)
     string_indices = [index for index, envelope in enumerate(string_envelopes) if envelope['emitted_texts'] and _text_projection_bucket_key(envelope['text_projection_chain'][0]['text_projection']) == projection_key]
-    envelope = {'text_projection': projection_identity, 'support_count_term_digest': _identity_digest(term, budget=budget, operation='envelope.identity'), 'support_count': term.support_count, 'string_indices': string_indices, 'string_digests': [string_envelopes[index]['support_string_certificate']['digest'] for index in string_indices]}
-    envelope['digest'] = _identity_digest(envelope, budget=budget, operation='envelope.identity')
+    envelope = {'text_projection': projection_identity, 'support_count_term_digest': _identity_digest(term, budget=budget, operation='support_image.text_bucket.support_count_term.digest'), 'support_count': term.support_count, 'string_indices': string_indices, 'string_digests': [string_envelopes[index]['support_string_certificate']['digest'] for index in string_indices], 'support_string_envelope_digests': [string_envelopes[index]['digest'] for index in string_indices]}
+    envelope['digest'] = _identity_digest(_text_bucket_manifest(envelope), budget=budget, operation='support_image.text_bucket.digest')
     return envelope
 
 def _text_projection_bucket_key(identity):
@@ -171,9 +169,21 @@ def _terminal_bucket_envelope_from_term(term, string_envelopes, *, budget):
     string_index = empty_indices[0] if empty_indices else None
     string_digest = None if string_index is None else string_envelopes[string_index]['support_string_certificate']['digest']
     terminal_projection = term.terminal_projection_certificate
-    envelope = {'terminal_projection': _terminal_projection_certificate_identity_envelope(terminal_projection, budget=budget), 'terminal_support_term_digest': _identity_digest(term, budget=budget, operation='envelope.identity'), 'terminal_support_identities': [] if terminal_projection is None else [_terminal_support_identity_envelope_from_certificate(certificate, budget=budget) for certificate in terminal_projection.terminal_certificates], 'support_count': term.terminal_count, 'string_index': string_index, 'string_digest': string_digest}
-    envelope['digest'] = _identity_digest(envelope, budget=budget, operation='envelope.identity')
+    envelope = {'terminal_projection': _terminal_projection_certificate_identity_envelope(terminal_projection, budget=budget), 'terminal_support_term_digest': _identity_digest(term, budget=budget, operation='support_image.terminal_bucket.support_term.digest'), 'terminal_support_identities': [] if terminal_projection is None else [_terminal_support_identity_envelope_from_certificate(certificate, budget=budget) for certificate in terminal_projection.terminal_certificates], 'support_count': term.terminal_count, 'string_index': string_index, 'string_digest': string_digest, 'support_string_envelope_digest': None if string_index is None else string_envelopes[string_index]['digest']}
+    envelope['digest'] = _identity_digest(_terminal_bucket_manifest(envelope), budget=budget, operation='support_image.terminal_bucket.digest')
     return envelope
+
+def _support_image_certificate_manifest(envelope: Mapping[str, object]) -> dict[str, object]:
+    return {'source_snapshot_digest': envelope['source_snapshot']['digest'], 'strings': envelope['strings'], 'string_certificate_digests': envelope['string_certificate_digests'], 'support_string_envelope_digests': envelope['support_string_envelope_digests'], 'distinct_count': envelope['distinct_count'], 'witness_count': envelope['witness_count'], 'support_count_certificate_digest': envelope['support_count_certificate_digest'], 'witness_count_certificate_digest': envelope['witness_count_certificate_digest'], 'checked_frontier_certificate_digest': envelope['checked_frontier_certificate_digest'], 'count_dag_digest': envelope['count_dag_digest'], 'frontier_product_digest': envelope['frontier_product_digest'], 'enumeration_coverage_digest': envelope['enumeration_coverage_digest']}
+
+def _enumeration_coverage_manifest(envelope: Mapping[str, object]) -> dict[str, object]:
+    return {'source_snapshot_digest': envelope['source_snapshot']['digest'], 'checked_frontier_certificate_digest': envelope['checked_frontier_certificate']['digest'], 'support_count_certificate_digest': envelope['support_count_certificate']['digest'], 'support_count_term_coverage_digest': envelope['support_count_term_coverage_digest'], 'text_bucket_digests': [bucket['digest'] for bucket in envelope['text_buckets']], 'terminal_bucket_digest': None if envelope['terminal_bucket'] is None else envelope['terminal_bucket']['digest'], 'distinct_count': envelope['distinct_count'], 'support_count': envelope['support_count']}
+
+def _text_bucket_manifest(envelope: Mapping[str, object]) -> dict[str, object]:
+    return {'text_projection_digest': envelope['text_projection']['digest'], 'support_count_term_digest': envelope['support_count_term_digest'], 'support_count': envelope['support_count'], 'string_indices': envelope['string_indices'], 'string_digests': envelope['string_digests'], 'support_string_envelope_digests': envelope['support_string_envelope_digests']}
+
+def _terminal_bucket_manifest(envelope: Mapping[str, object]) -> dict[str, object]:
+    return {'terminal_projection_digest': None if envelope['terminal_projection'] is None else envelope['terminal_projection']['digest'], 'terminal_support_term_digest': envelope['terminal_support_term_digest'], 'terminal_support_identity_digests': [identity['digest'] for identity in envelope['terminal_support_identities']], 'support_count': envelope['support_count'], 'string_index': envelope['string_index'], 'string_digest': envelope['string_digest'], 'support_string_envelope_digest': envelope['support_string_envelope_digest']}
 
 def _validate_bucket_partition(envelope, expected_count: int) -> None:
     indices = []

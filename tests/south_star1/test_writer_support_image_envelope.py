@@ -25,6 +25,13 @@ from grimace._south_star1.writer_support_image_envelope import (
 from grimace._south_star1.writer_support_image_envelope import (
     writer_support_image_envelope_for_snapshot,
 )
+from grimace._south_star1.writer_envelope_terms import _canonical_json
+from grimace._south_star1.writer_support_image_envelope import (
+    _enumeration_coverage_manifest,
+)
+from grimace._south_star1.writer_support_image_envelope import (
+    _support_image_certificate_manifest,
+)
 from tests.south_star1.helpers import cyclopropane_facts
 from tests.south_star1.helpers import tetrahedral_facts
 from tests.south_star1.test_writer_snapshot import two_atom_facts
@@ -232,6 +239,48 @@ class WriterSupportImageEnvelopeTest(unittest.TestCase):
         envelope["witness_count_certificate"]["digest"] = "3" * 64
 
         self.assertFalse(_verify(envelope).accepted)
+
+    def test_changed_support_string_envelope_digest_is_rejected(self) -> None:
+        envelope = _snapshot_envelope()
+        envelope["support_string_envelopes"][0]["digest"] = "4" * 64
+
+        self.assertFalse(_verify(envelope).accepted)
+
+    def test_changed_support_image_certificate_digest_is_rejected(self) -> None:
+        envelope = _snapshot_envelope()
+        envelope["support_image_certificate"]["digest"] = "5" * 64
+
+        self.assertFalse(_verify(envelope).accepted)
+
+    def test_changed_enumeration_coverage_digest_is_rejected(self) -> None:
+        envelope = _snapshot_envelope()
+        envelope["enumeration_coverage"]["digest"] = "6" * 64
+
+        self.assertFalse(_verify(envelope).accepted)
+
+    def test_support_image_manifests_are_smaller_than_full_envelopes(self) -> None:
+        envelope = _snapshot_envelope()
+
+        self.assertLess(
+            len(
+                _canonical_json(
+                    _support_image_certificate_manifest(
+                        envelope["support_image_certificate"]
+                    )
+                )
+            ),
+            len(_canonical_json(envelope["support_image_certificate"])),
+        )
+        self.assertLess(
+            len(
+                _canonical_json(
+                    _enumeration_coverage_manifest(
+                        envelope["enumeration_coverage"]
+                    )
+                )
+            ),
+            len(_canonical_json(envelope["enumeration_coverage"])),
+        )
 
     def test_removed_text_bucket_is_rejected(self) -> None:
         envelope = _snapshot_envelope()

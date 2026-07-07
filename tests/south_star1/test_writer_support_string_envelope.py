@@ -31,6 +31,10 @@ from grimace._south_star1.writer_support_string_envelope import (
 from grimace._south_star1.writer_support_string_envelope import (
     writer_support_string_envelope_for_string,
 )
+from grimace._south_star1.writer_envelope_terms import _canonical_json
+from grimace._south_star1.writer_support_string_envelope import (
+    _support_string_manifest,
+)
 from tests.south_star1.helpers import cco_facts
 from tests.south_star1.helpers import cyclopropane_facts
 from tests.south_star1.helpers import tetrahedral_facts
@@ -258,6 +262,20 @@ class WriterSupportStringEnvelopeTest(unittest.TestCase):
         envelope["terminal_frontier_product"]["digest"] = "1" * 64
 
         self.assertFalse(_verify(envelope).accepted)
+
+    def test_changed_support_string_manifest_digest_is_rejected(self) -> None:
+        envelope = _snapshot_envelope()
+        envelope["digest"] = "4" * 64
+
+        self.assertFalse(_verify(envelope).accepted)
+
+    def test_support_string_manifest_is_smaller_than_full_envelope(self) -> None:
+        envelope = _snapshot_envelope()
+
+        self.assertLess(
+            len(_canonical_json(_support_string_manifest(envelope))),
+            len(_canonical_json(envelope)),
+        )
 
     def test_changed_terminal_projection_digest_is_rejected(self) -> None:
         envelope = _snapshot_envelope()

@@ -15,12 +15,6 @@ from .writer_envelope_terms import _snapshot_identity_envelope
 from .writer_envelope_terms import _term
 from .writer_frontier import _checked_writer_frontier_product
 from .writer_frontier_count_envelope import (
-    _cursor_completion_count_certificate_envelope,
-)
-from .writer_frontier_count_envelope import (
-    _text_support_count_certificate_envelope,
-)
-from .writer_frontier_count_envelope import (
     verify_writer_frontier_count_envelope,
 )
 from .writer_frontier_count_envelope import (
@@ -33,9 +27,6 @@ from .writer_snapshot import _iter_writer_snapshot_certified_support_strings
 from .writer_snapshot import _prepared_identity
 from .writer_snapshot_envelope import _source_snapshot_from_envelope
 from .writer_snapshot_prefix_envelope import (
-    _checked_frontier_certificate_identity_envelope,
-)
-from .writer_snapshot_prefix_envelope import (
     _terminal_projection_certificate_identity_envelope,
 )
 from .writer_snapshot_prefix_envelope import (
@@ -43,9 +34,6 @@ from .writer_snapshot_prefix_envelope import (
 )
 from .writer_snapshot_prefix_envelope import (
     _text_projection_certificate_identity_envelope,
-)
-from .writer_snapshot_prefix_envelope import (
-    _writer_frontier_product_identity_envelope,
 )
 from .writer_snapshot_prefix_envelope import (
     verify_writer_snapshot_prefix_read_envelope,
@@ -333,6 +321,7 @@ def _envelope_from_verified_strings(
         product,
         string_envelopes=support_string_envelopes,
         source_snapshot_identity=source_snapshot_identity,
+        count_envelope=count_envelope,
     )
     return {
         "schema_name": SCHEMA_NAME,
@@ -354,21 +343,17 @@ def _envelope_from_verified_strings(
             source_snapshot=source_snapshot_identity,
             strings=strings,
             support_string_envelopes=support_string_envelopes,
-            product=product,
+            count_envelope=count_envelope,
             coverage=coverage,
         ),
         "enumeration_coverage": coverage,
-        "frontier_product": _writer_frontier_product_identity_envelope(product),
+        "frontier_product": count_envelope["frontier_product"],
         "checked_frontier_certificate": (
-            _checked_frontier_certificate_identity_envelope(
-                product.checked_frontier_certificate
-            )
+            count_envelope["frontier_product"]["checked_frontier_certificate"]
         ),
-        "support_count_certificate": _text_support_count_certificate_envelope(
-            product.support_count_certificate
-        ),
+        "support_count_certificate": count_envelope["support_count_certificate"],
         "witness_count_certificate": (
-            _cursor_completion_count_certificate_envelope(product.count_certificate)
+            count_envelope["completion_count_certificate"]
         ),
     }
 
@@ -405,7 +390,7 @@ def _support_image_certificate_envelope(
     source_snapshot,
     strings,
     support_string_envelopes,
-    product,
+    count_envelope,
     coverage,
 ):
     envelope = {
@@ -416,21 +401,17 @@ def _support_image_certificate_envelope(
             for envelope in support_string_envelopes
         ],
         "distinct_count": len(strings),
-        "witness_count": product.count_certificate.completion_count,
+        "witness_count": count_envelope["completion_count"],
         "support_count_certificate_digest": (
-            _text_support_count_certificate_envelope(
-                product.support_count_certificate
-            )["digest"]
+            count_envelope["support_count_certificate"]["digest"]
         ),
         "witness_count_certificate_digest": (
-            _cursor_completion_count_certificate_envelope(
-                product.count_certificate
-            )["digest"]
+            count_envelope["completion_count_certificate"]["digest"]
         ),
         "checked_frontier_certificate_digest": (
-            _checked_frontier_certificate_identity_envelope(
-                product.checked_frontier_certificate
-            )["digest"]
+            count_envelope["frontier_product"]["checked_frontier_certificate"][
+                "digest"
+            ]
         ),
         "enumeration_coverage_digest": coverage["digest"],
     }
@@ -443,19 +424,16 @@ def _enumeration_coverage_envelope_from_product(
     *,
     string_envelopes,
     source_snapshot_identity,
+    count_envelope,
 ):
     checked = product.checked_frontier_certificate
     coverage = checked.support_count_term_coverage_certificate
     envelope = {
         "source_snapshot": source_snapshot_identity,
         "checked_frontier_certificate": (
-            _checked_frontier_certificate_identity_envelope(
-                checked
-            )
+            count_envelope["frontier_product"]["checked_frontier_certificate"]
         ),
-        "support_count_certificate": _text_support_count_certificate_envelope(
-            product.support_count_certificate
-        ),
+        "support_count_certificate": count_envelope["support_count_certificate"],
         "support_count_term_coverage_digest": _digest(_term(coverage)),
         "text_buckets": [
             _text_bucket_envelope_from_term(term, string_envelopes)

@@ -14,6 +14,11 @@ from .writer_envelope_terms import _identity_envelope
 from .writer_envelope_terms import _runtime_options_from_terms
 from .writer_envelope_terms import _snapshot_identity_envelope
 from .writer_envelope_terms import _term
+from .writer_count_dag_envelope import count_dag_node_by_id
+from .writer_count_dag_envelope import (
+    validate_writer_count_certificate_dag_envelope,
+)
+from .writer_count_dag_envelope import writer_count_certificate_dag_envelope_for_product
 from .writer_frontier import _checked_writer_frontier_product
 from .writer_snapshot import _capture_writer_frontier_snapshot_unchecked
 from .writer_snapshot import _prepared_identity
@@ -51,6 +56,7 @@ _TOP_LEVEL_FIELDS = frozenset((
     "frontier_product",
     "support_count",
     "completion_count",
+    "count_dag",
     "support_count_certificate",
     "completion_count_certificate",
     "choice_count_certificates",
@@ -233,6 +239,8 @@ def _envelope_from_product(
         _count_envelope_violation("missing_checked_frontier_certificate")
     support_count = product.support_count_certificate.support_count
     completion_count = product.count_certificate.completion_count
+    count_dag = writer_count_certificate_dag_envelope_for_product(product)
+    nodes = count_dag_node_by_id(count_dag)
     return {
         "schema_name": SCHEMA_NAME,
         "schema_version": SCHEMA_VERSION,
@@ -245,237 +253,163 @@ def _envelope_from_product(
         ),
         "prefix_read_envelope": prefix_read_envelope,
         "frontier_snapshot": _snapshot_identity_envelope(frontier_snapshot),
-        "frontier_product": _writer_frontier_product_identity_envelope(product),
+        "frontier_product": _frontier_product_count_identity_envelope(
+            product,
+            count_dag=count_dag,
+        ),
         "support_count": support_count,
         "completion_count": completion_count,
-        "support_count_certificate": _text_support_count_certificate_envelope(
-            product.support_count_certificate
-        ),
-        "completion_count_certificate": (
-            _cursor_completion_count_certificate_envelope(product.count_certificate)
-        ),
+        "count_dag": count_dag,
+        "support_count_certificate": nodes[
+            count_dag["roots"]["support_count_root"]
+        ],
+        "completion_count_certificate": nodes[
+            count_dag["roots"]["completion_count_root"]
+        ],
         "choice_count_certificates": [
-            _text_choice_count_certificate_envelope(certificate)
-            for certificate in product.text_choice_count_certificates
+            nodes[node_id]
+            for node_id in count_dag["roots"]["choice_count_roots"]
         ],
         "terminal_choice_count_certificate": (
-            _terminal_choice_count_certificate_envelope(
-                product.terminal_choice_count_certificate
-            )
+            None
+            if count_dag["roots"]["terminal_choice_count_root"] is None
+            else nodes[count_dag["roots"]["terminal_choice_count_root"]]
         ),
-        "coverage": _coverage_envelope(product),
+        "coverage": _coverage_envelope(product, count_dag=count_dag),
     }
 
-
-def _text_support_count_certificate_envelope(certificate):
-    if certificate is None:
-        return None
+def _frontier_product_count_identity_envelope(product, *, count_dag):
+    if product.blocked:
+        _count_envelope_violation("count_product_identity_requires_legal_frontier")
     envelope = {
-        "kind": "writer_text_support_count",
-        "source_snapshot": _snapshot_or_cursor_envelope(
-            certificate.source_snapshot
-        ),
-        "cursor": _cursor_envelope(certificate.cursor),
-        "state_support_count_certificate": (
-            _text_state_support_count_certificate_envelope(
-                certificate.state_support_count_certificate
-            )
-        ),
-        "support_count": certificate.support_count,
-    }
-    envelope["digest"] = _digest(_term(envelope))
-    return envelope
-
-
-def _text_state_support_count_certificate_envelope(certificate):
-    if certificate is None:
-        return None
-    envelope = {
-        "kind": "writer_text_state_support_count",
-        "cursor": _cursor_envelope(certificate.cursor),
-        "terminal_projection": (
-            _terminal_projection_certificate_identity_envelope(
-                certificate.terminal_projection_certificate
-            )
-        ),
-        "terminal_count": certificate.terminal_count,
-        "choice_terms": [
-            _text_choice_support_count_term_envelope(term)
-            for term in certificate.choice_terms
-        ],
-        "support_count": certificate.support_count,
-    }
-    envelope["digest"] = _digest(_term(envelope))
-    return envelope
-
-
-def _text_choice_support_count_term_envelope(certificate):
-    envelope = {
-        "kind": "writer_text_choice_support_count_term",
-        "text_projection": _text_projection_certificate_identity_envelope(
-            certificate.text_projection_certificate
-        ),
-        "successor_support_count_certificate": (
-            _text_state_support_count_certificate_envelope(
-                certificate.successor_support_count_certificate
-            )
-        ),
-        "support_count": certificate.support_count,
-    }
-    envelope["digest"] = _digest(_term(envelope))
-    return envelope
-
-
-def _cursor_completion_count_certificate_envelope(certificate):
-    if certificate is None:
-        return None
-    envelope = {
-        "kind": "writer_cursor_completion_count",
-        "cursor": _cursor_envelope(certificate.cursor),
-        "state_count_certificates": [
-            {
-                "state_key_digest": _digest(_term(state_key)),
-                "cursor_weight": weight,
-                "state_count_certificate": (
-                    _state_completion_count_certificate_envelope(
-                        state_certificate
+        "kind": "legal",
+        "cursor": _cursor_envelope(product.cursor),
+        "frontier_projection_certificate": (
+            product.projection_certificate
+            and {
+                "cursor": _cursor_envelope(product.projection_certificate.cursor),
+                "text_projection_digests": [
+                    _text_projection_certificate_identity_envelope(projection)[
+                        "digest"
+                    ]
+                    for projection in (
+                        product.projection_certificate
+                        .text_choice_projection_certificates
                     )
+                ],
+                "terminal_projection_digest": (
+                    None
+                    if product.terminal_projection_certificate is None
+                    else _terminal_projection_certificate_identity_envelope(
+                        product.terminal_projection_certificate
+                    )["digest"]
                 ),
+                "digest": _digest(_term(product.projection_certificate)),
             }
-            for state_key, weight, state_certificate in (
-                certificate.state_count_certificates
-            )
+        ),
+        "text_projection_certificates": [
+            _text_projection_certificate_identity_envelope(projection)
+            for projection in product.text_choice_projection_certificates
         ],
-        "completion_count": certificate.completion_count,
-    }
-    envelope["digest"] = _digest(_term(envelope))
-    return envelope
-
-
-def _state_completion_count_certificate_envelope(certificate):
-    if certificate is None:
-        return None
-    envelope = {
-        "kind": "writer_state_completion_count",
-        "state_key_digest": _digest(_term(certificate.state_key)),
-        "terminal_projection": (
+        "terminal_projection_certificate": (
             _terminal_projection_certificate_identity_envelope(
-                certificate.terminal_projection_certificate
+                product.terminal_projection_certificate
             )
         ),
-        "terminal_count": certificate.terminal_count,
-        "branch_terms": [
-            _branch_completion_term_certificate_envelope(term)
-            for term in certificate.branch_terms
+        "checked_frontier_certificate": {
+            "cursor": _cursor_envelope(product.checked_frontier_certificate.cursor),
+            "projection_certificate_digest": _digest(
+                _term(product.checked_frontier_certificate.projection_certificate)
+            ),
+            "support_count_certificate_node_id": (
+                count_dag["roots"]["support_count_root"]
+            ),
+            "completion_count_certificate_node_id": (
+                count_dag["roots"]["completion_count_root"]
+            ),
+            "support_count": product.support_count_certificate.support_count,
+            "completion_count": product.count_certificate.completion_count,
+        },
+        "support_count_certificate_node_id": (
+            count_dag["roots"]["support_count_root"]
+        ),
+        "completion_count_certificate_node_id": (
+            count_dag["roots"]["completion_count_root"]
+        ),
+        "choice_count_certificate_node_ids": (
+            count_dag["roots"]["choice_count_roots"]
+        ),
+        "terminal_choice_count_certificate_node_id": (
+            count_dag["roots"]["terminal_choice_count_root"]
+        ),
+        "count_dag_digest": count_dag["digest"],
+        "branch_support_identities": [
+            _branch_certificate_identity_envelope(certificate)
+            for certificate in product.projection_certificate.branch_certificates
         ],
-        "completion_count": certificate.completion_count,
+        "terminal_support_identities": [
+            _terminal_support_identity_envelope_from_certificate(certificate)
+            for certificate in product.projection_certificate.terminal_certificates
+        ],
     }
+    envelope["checked_frontier_certificate"]["digest"] = _digest(
+        _term(envelope["checked_frontier_certificate"])
+    )
     envelope["digest"] = _digest(_term(envelope))
     return envelope
 
 
-def _branch_completion_term_certificate_envelope(certificate):
-    envelope = {
-        "kind": "writer_branch_completion_term",
-        "branch_certificate": _branch_certificate_identity_envelope(
-            certificate.branch_certificate
-        ),
-        "successor_count_certificate": (
-            _cursor_completion_count_certificate_envelope(
-                certificate.successor_count_certificate
-            )
-        ),
-        "successor_count": certificate.successor_count,
-    }
-    envelope["digest"] = _digest(_term(envelope))
-    return envelope
-
-
-def _text_choice_count_certificate_envelope(certificate):
-    envelope = {
-        "kind": "writer_text_choice_count",
-        "text_projection": _text_projection_certificate_identity_envelope(
-            certificate.text_projection_certificate
-        ),
-        "support_count_certificate": (
-            _text_state_support_count_certificate_envelope(
-                certificate.support_count_certificate
-            )
-        ),
-        "completion_count_certificate": (
-            _cursor_completion_count_certificate_envelope(
-                certificate.completion_count_certificate
-            )
-        ),
-        "emitted_text": certificate.emitted_text,
-        "support_count": certificate.support_count,
-        "completion_count": certificate.completion_count,
-    }
-    envelope["digest"] = _digest(_term(envelope))
-    return envelope
-
-
-def _terminal_choice_count_certificate_envelope(certificate):
-    if certificate is None:
-        return None
-    envelope = {
-        "kind": "writer_terminal_choice_count",
-        "terminal_projection": _terminal_projection_certificate_identity_envelope(
-            certificate.terminal_projection_certificate
-        ),
-        "support_count": certificate.support_count,
-        "completion_count": certificate.completion_count,
-    }
-    envelope["digest"] = _digest(_term(envelope))
-    return envelope
-
-
-def _coverage_envelope(product):
+def _coverage_envelope(product, *, count_dag):
     checked = product.checked_frontier_certificate
     support_coverage = checked.support_count_term_coverage_certificate
     completion_aggregate = checked.frontier_completion_count_certificate
     completion_coverage = completion_aggregate.term_coverage_certificate
     choice_coverage = checked.choice_count_coverage_certificate
+    nodes = count_dag_node_by_id(count_dag)
+    choice_node_by_projection = {
+        node["text_projection"]["digest"]: node
+        for node in nodes.values()
+        if node["kind"] == "writer_text_choice_count"
+    }
+    branch_term_node_by_key = {
+        (
+            node["branch_certificate"]["digest"],
+            node["successor_count"],
+        ): node
+        for node in nodes.values()
+        if node["kind"] == "writer_branch_completion_term"
+    }
+
+    def node_digest(node_id):
+        return None if node_id is None else nodes[node_id]["digest"]
+
     envelope = {
         "frontier_projection_digest": (
             product
             .checked_frontier_certificate
             .choice_count_coverage_certificate
-            and _writer_frontier_product_identity_envelope(product)[
+            and _frontier_product_count_identity_envelope(
+                product,
+                count_dag=count_dag,
+            )[
                 "frontier_projection_certificate"
             ]["digest"]
         ),
         "terminal_covered": product.terminal_projection_certificate is not None,
         "text_choices_covered": [
-            {
-                "emitted_text": term.text_projection_certificate.emitted_text,
-                "projection_digest": (
-                    _text_projection_certificate_identity_envelope(
-                        term.text_projection_certificate
-                    )["digest"]
-                ),
-                "support_count": term.support_count,
-                "completion_count": term.completion_count,
-                "successor_support_count_digest": (
-                    _text_state_support_count_certificate_envelope(
-                        term
-                        .support_coverage_term
-                        .successor_support_count_certificate
-                    )["digest"]
-                ),
-                "completion_branch_digests": [
-                    _branch_certificate_identity_envelope(
-                        completion_term.projection_branch_certificate
-                    )["digest"]
-                    for completion_term in term.completion_coverage_terms
-                ],
-            }
+            _text_choice_coverage_envelope(term, choice_node_by_projection, nodes)
             for term in choice_coverage.text_choice_terms
         ],
         "terminal_choice_coverage": (
             None
             if choice_coverage.terminal_choice_term is None
             else {
+                "terminal_choice_count_node_id": (
+                    count_dag["roots"]["terminal_choice_count_root"]
+                ),
+                "terminal_choice_count_node_digest": node_digest(
+                    count_dag["roots"]["terminal_choice_count_root"]
+                ),
                 "terminal_projection_digest": (
                     _terminal_projection_certificate_identity_envelope(
                         choice_coverage
@@ -503,20 +437,11 @@ def _coverage_envelope(product):
             }
         ),
         "branch_terms_covered": [
-            {
-                "branch_support_identity": _branch_certificate_identity_envelope(
-                    term.projection_branch_certificate
-                ),
-                "successor_count_certificate_digest": (
-                    _cursor_completion_count_certificate_envelope(
-                        term
-                        .count_branch_term_certificate
-                        .successor_count_certificate
-                    )["digest"]
-                ),
-                "successor_completion_count": term.successor_completion_count,
-                "weighted_completion_count": term.weighted_completion_count,
-            }
+            _branch_term_coverage_envelope(
+                term,
+                branch_term_node_by_key,
+                nodes,
+            )
             for term in completion_coverage.branch_terms
         ],
         "support_text_term_count": len(support_coverage.text_terms),
@@ -532,12 +457,56 @@ def _coverage_envelope(product):
     return envelope
 
 
-def _snapshot_or_cursor_envelope(value):
-    if hasattr(value, "decoder_boundary"):
-        return _snapshot_identity_envelope(value)
-    if hasattr(value, "weighted_states"):
-        return _cursor_envelope(value)
-    return {"digest": _digest(_term(value)), "terms": _term(value)}
+def _text_choice_coverage_envelope(term, choice_node_by_projection, nodes):
+    projection = _text_projection_certificate_identity_envelope(
+        term.text_projection_certificate
+    )
+    choice_node = choice_node_by_projection[projection["digest"]]
+    support_node_id = choice_node["support_count_node_id"]
+    completion_node_id = choice_node["completion_count_node_id"]
+    return {
+        "emitted_text": term.text_projection_certificate.emitted_text,
+        "projection_digest": projection["digest"],
+        "support_count": term.support_count,
+        "completion_count": term.completion_count,
+        "successor_support_count_digest": nodes[support_node_id]["digest"],
+        "successor_support_count_node_id": support_node_id,
+        "completion_count_node_id": completion_node_id,
+        "completion_count_node_digest": nodes[completion_node_id]["digest"],
+        "completion_branch_digests": [
+            _branch_certificate_identity_envelope(
+                completion_term.projection_branch_certificate
+            )["digest"]
+            for completion_term in term.completion_coverage_terms
+        ],
+    }
+
+
+def _branch_term_coverage_envelope(
+    term,
+    branch_term_node_by_key,
+    nodes,
+):
+    branch = _branch_certificate_identity_envelope(
+        term.projection_branch_certificate
+    )
+    count_branch = _branch_certificate_identity_envelope(
+        term.count_branch_term_certificate.branch_certificate
+    )
+    node = branch_term_node_by_key.get(
+        (count_branch["digest"], term.successor_completion_count)
+    )
+    if node is None:
+        _count_envelope_violation("branch_completion_node_match_mismatch")
+    successor_node_id = node["successor_count_node_id"]
+    return {
+        "branch_support_identity": branch,
+        "count_branch_support_identity": count_branch,
+        "successor_count_certificate_digest": nodes[successor_node_id]["digest"],
+        "successor_count_certificate_node_id": successor_node_id,
+        "successor_completion_count": term.successor_completion_count,
+        "weighted_completion_count": term.weighted_completion_count,
+    }
 
 
 def _validate_envelope_shape(envelope: object) -> None:
@@ -561,6 +530,10 @@ def _validate_envelope_shape(envelope: object) -> None:
             _count_envelope_violation("prefix_source_has_source_snapshot")
         if envelope["prefix_read_envelope"] is None:
             _count_envelope_violation("prefix_source_missing_prefix_envelope")
+    try:
+        validate_writer_count_certificate_dag_envelope(envelope["count_dag"])
+    except ValueError as exc:
+        _count_envelope_violation(str(exc))
 
 
 def _assert_prepared_identity_matches(prepared, envelope) -> None:

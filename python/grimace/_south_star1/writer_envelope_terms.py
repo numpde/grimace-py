@@ -57,6 +57,18 @@ def _digest(term) -> str:
     return hashlib.sha256(_canonical_json(term).encode("utf-8")).hexdigest()
 
 
+def _digest_bounded(term, *, budget, operation: str) -> str:
+    payload = _canonical_json(term)
+    limit = getattr(budget, "max_digest_term_bytes", None)
+    if limit is not None and len(payload.encode("utf-8")) > limit:
+        raise ValueError(
+            "writer envelope work exceeded: "
+            f"operation={operation!r}; metric='digest_term_bytes'; "
+            f"actual={len(payload.encode('utf-8'))}; limit={limit}"
+        )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 def _canonical_json(term) -> str:
     return json.dumps(term, sort_keys=True, separators=(",", ":"))
 
@@ -128,6 +140,7 @@ __all__ = (
     "_cursor_envelope",
     "_decoder_boundary_terms",
     "_digest",
+    "_digest_bounded",
     "_identity_envelope",
     "_runtime_options_from_terms",
     "_runtime_options_terms",

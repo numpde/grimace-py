@@ -6,6 +6,13 @@ from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+from .writer_envelope_terms import _digest
+from .writer_envelope_terms import _term
+from .writer_count_dag_envelope import count_dag_node_by_id
+from .writer_count_dag_envelope import (
+    validate_writer_count_certificate_dag_envelope,
+)
+
 
 @dataclass(frozen=True, slots=True)
 class WriterEnvelopeConsistencyVerification:
@@ -117,6 +124,7 @@ _COUNT_FIELDS = frozenset((
     "frontier_product",
     "support_count",
     "completion_count",
+    "count_dag",
     "support_count_certificate",
     "completion_count_certificate",
     "choice_count_certificates",
@@ -245,6 +253,32 @@ def _validate_count_envelope(envelope: object) -> None:
         != envelope["frontier_snapshot"]["cursor"]
     ):
         _fail("count_frontier_cursor_mismatch")
+    _validate_self_digest(envelope["frontier_product"], "frontier_product")
+    _validate_self_digest(
+        envelope["frontier_product"]["checked_frontier_certificate"],
+        "checked_frontier_certificate",
+    )
+    try:
+        validate_writer_count_certificate_dag_envelope(envelope["count_dag"])
+    except (TypeError, ValueError) as exc:
+        _fail(f"count_dag_invalid:{exc}")
+    nodes = count_dag_node_by_id(envelope["count_dag"])
+    roots = envelope["count_dag"]["roots"]
+    if envelope["support_count_certificate"] != nodes[roots["support_count_root"]]:
+        _fail("support_count_root_mismatch")
+    if (
+        envelope["completion_count_certificate"]
+        != nodes[roots["completion_count_root"]]
+    ):
+        _fail("completion_count_root_mismatch")
+    if envelope["choice_count_certificates"] != [
+        nodes[node_id] for node_id in roots["choice_count_roots"]
+    ]:
+        _fail("choice_count_roots_mismatch")
+    terminal_root = roots["terminal_choice_count_root"]
+    expected_terminal = None if terminal_root is None else nodes[terminal_root]
+    if envelope["terminal_choice_count_certificate"] != expected_terminal:
+        _fail("terminal_choice_count_root_mismatch")
     if (
         envelope["support_count_certificate"]["support_count"]
         != envelope["support_count"]
@@ -260,6 +294,42 @@ def _validate_count_envelope(envelope: object) -> None:
         _fail("coverage_support_count_mismatch")
     if coverage["completion_count_total"] != envelope["completion_count"]:
         _fail("coverage_completion_count_mismatch")
+    _validate_count_coverage_node_references(coverage, nodes, terminal_root)
+
+
+def _validate_count_coverage_node_references(
+    coverage: Mapping[str, object],
+    nodes: Mapping[str, Mapping[str, object]],
+    terminal_root,
+) -> None:
+    for item in _require_list(coverage, "text_choices_covered"):
+        support_node_id = item["successor_support_count_node_id"]
+        completion_node_id = item["completion_count_node_id"]
+        if support_node_id not in nodes:
+            _fail("choice_coverage_missing_support_node")
+        if completion_node_id not in nodes:
+            _fail("choice_coverage_missing_completion_node")
+        if item["successor_support_count_digest"] != nodes[support_node_id]["digest"]:
+            _fail("choice_coverage_support_node_digest_mismatch")
+        if item["completion_count_node_digest"] != nodes[completion_node_id]["digest"]:
+            _fail("choice_coverage_completion_node_digest_mismatch")
+    for item in _require_list(coverage, "branch_terms_covered"):
+        node_id = item["successor_count_certificate_node_id"]
+        if node_id not in nodes:
+            _fail("branch_coverage_missing_successor_node")
+        if item["successor_count_certificate_digest"] != nodes[node_id]["digest"]:
+            _fail("branch_coverage_successor_digest_mismatch")
+    terminal = coverage["terminal_choice_coverage"]
+    if terminal is None:
+        if terminal_root is not None:
+            _fail("terminal_coverage_missing")
+    else:
+        if terminal["terminal_choice_count_node_id"] != terminal_root:
+            _fail("terminal_coverage_node_mismatch")
+        if terminal_root not in nodes:
+            _fail("terminal_coverage_missing_node")
+        if terminal["terminal_choice_count_node_digest"] != nodes[terminal_root]["digest"]:
+            _fail("terminal_coverage_node_digest_mismatch")
 
 
 def _validate_support_string_envelope(
@@ -629,6 +699,20 @@ def _check_common_source(
 def _check_prepared_identity(envelope: Mapping[str, object], snapshot) -> None:
     if envelope["prepared_identity"]["digest"] != snapshot["prepared_identity_digest"]:
         _fail("prepared_identity_snapshot_digest_mismatch")
+
+
+def _validate_self_digest(envelope: Mapping[str, object], label: str) -> None:
+    if "digest" not in envelope:
+        _fail(f"{label}_digest_missing")
+    expected = _digest(
+        _term({
+            key: value
+            for key, value in envelope.items()
+            if key != "digest"
+        })
+    )
+    if envelope["digest"] != expected:
+        _fail(f"{label}_digest_mismatch")
 
 
 def _require_schema(

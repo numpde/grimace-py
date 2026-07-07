@@ -131,6 +131,30 @@ class SouthStar1BoundaryTest(unittest.TestCase):
         ):
             self.assertNotIn(name, source)
 
+    def test_count_dag_envelope_boundary(self) -> None:
+        path = SOUTH_STAR1_ROOT / "writer_count_dag_envelope.py"
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+
+        self.assertFalse(_imports_rdkit(tree))
+        self.assertNotIn("choice_snapshot", source)
+        for name in (
+            "_iter_writer_snapshot_certified_support_strings",
+            "iter_writer_runtime_support",
+            "enumerate_writer_snapshot_writer_shaped_support",
+            "enumerate_prepared_writer_shaped_support",
+            "support_image",
+        ):
+            self.assertNotIn(name, source)
+        calls = {
+            node.func.id
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+        }
+        self.assertNotIn("repr", calls)
+        self.assertNotIn("id", calls)
+
     def test_support_string_envelope_boundary(self) -> None:
         path = SOUTH_STAR1_ROOT / "writer_support_string_envelope.py"
         source = path.read_text(encoding="utf-8")

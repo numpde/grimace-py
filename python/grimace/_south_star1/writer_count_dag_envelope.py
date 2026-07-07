@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from .writer_envelope_terms import _canonical_json
 from .writer_envelope_terms import _cursor_envelope
 from .writer_envelope_terms import _digest
 from .writer_envelope_terms import _digest_bounded
 from .writer_envelope_terms import _snapshot_identity_envelope
 from .writer_envelope_terms import _term
+from .writer_envelope_work import WriterEnvelopeWorkBudget
+from .writer_envelope_work import WriterEnvelopeWorkExceeded
+from .writer_envelope_work import WriterEnvelopeWorkViolation
+from .writer_envelope_work import check_writer_envelope_work
 from .writer_snapshot_prefix_envelope import (
     _branch_certificate_identity_envelope,
 )
@@ -23,34 +25,6 @@ from .writer_snapshot_prefix_envelope import (
 
 SCHEMA_NAME = "writer_count_certificate_dag"
 SCHEMA_VERSION = 1
-
-
-@dataclass(frozen=True, slots=True)
-class WriterEnvelopeWorkBudget:
-    max_count_nodes: int = 10_000
-    max_count_edges: int = 50_000
-    max_count_depth: int = 1_000
-    max_digest_term_bytes: int = 1_000_000
-    max_envelope_nodes: int = 50_000
-
-
-@dataclass(frozen=True, slots=True)
-class WriterEnvelopeWorkViolation:
-    operation: str
-    metric: str
-    actual: int
-    limit: int
-
-
-class WriterEnvelopeWorkExceeded(RuntimeError):
-    def __init__(self, violation: WriterEnvelopeWorkViolation):
-        self.violation = violation
-        super().__init__(
-            "WRITER_ENVELOPE_WORK_EXCEEDED: "
-            f"operation={violation.operation!r}; "
-            f"metric={violation.metric!r}; actual={violation.actual}; "
-            f"limit={violation.limit}"
-        )
 
 
 class _CountDagBuilder:
@@ -296,15 +270,13 @@ class _CountDagBuilder:
         return node_id
 
     def _check(self, metric: str, actual: int, limit: int) -> None:
-        if actual > limit:
-            raise WriterEnvelopeWorkExceeded(
-                WriterEnvelopeWorkViolation(
-                    operation="count_dag_envelope",
-                    metric=metric,
-                    actual=actual,
-                    limit=limit,
-                )
-            )
+        check_writer_envelope_work(
+            budget=self._budget,
+            operation="count_dag_envelope",
+            metric=metric,
+            actual=actual,
+            limit=limit,
+        )
 
     def _digest(self, term, operation: str) -> str:
         try:
@@ -523,13 +495,12 @@ def _check_budget(
     )
     for metric, actual, limit in checks:
         if actual > limit:
-            raise WriterEnvelopeWorkExceeded(
-                WriterEnvelopeWorkViolation(
-                    operation="count_dag_envelope",
-                    metric=metric,
-                    actual=actual,
-                    limit=limit,
-                )
+            check_writer_envelope_work(
+                budget=budget,
+                operation="count_dag_envelope",
+                metric=metric,
+                actual=actual,
+                limit=limit,
             )
 
 

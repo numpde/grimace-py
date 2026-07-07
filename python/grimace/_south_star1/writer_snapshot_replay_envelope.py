@@ -13,6 +13,11 @@ from .writer_envelope_terms import _identity_envelope
 from .writer_envelope_terms import _runtime_options_from_terms
 from .writer_envelope_terms import _snapshot_identity_envelope
 from .writer_envelope_terms import _term
+from .writer_envelope_work import WriterEnvelopeWorkBudget
+from .writer_envelope_work import WriterEnvelopeWorkExceeded
+from .writer_envelope_work import check_writer_envelope_work
+from .writer_envelope_work import default_writer_envelope_work_budget
+from .writer_envelope_work import writer_envelope_work_reason
 from .writer_snapshot import _prepared_identity
 from .writer_snapshot import (
     _writer_snapshot_advance_sequence_outcome_by_emitted_texts,
@@ -58,7 +63,14 @@ def writer_snapshot_replay_envelope_for_emitted_texts(
     prepared: SouthStarPreparedMol,
     snapshot,
     emitted_texts: tuple[str, ...],
+    budget: WriterEnvelopeWorkBudget | None = None,
 ) -> dict[str, object]:
+    budget = default_writer_envelope_work_budget(budget)
+    _check_emitted_text_work(
+        emitted_texts,
+        budget=budget,
+        operation="snapshot_replay_envelope",
+    )
     outcome = _writer_snapshot_advance_sequence_outcome_by_emitted_texts(
         snapshot,
         prepared=prepared,
@@ -69,6 +81,7 @@ def writer_snapshot_replay_envelope_for_emitted_texts(
             prepared=prepared,
             snapshot=step.source_snapshot,
             emitted_text=step.emitted_text,
+            budget=budget,
         )
         for step in outcome.advanced_step_outcomes
     )
@@ -79,6 +92,7 @@ def writer_snapshot_replay_envelope_for_emitted_texts(
             prepared=prepared,
             snapshot=failed.source_snapshot,
             emitted_text=failed.emitted_text,
+            budget=budget,
         )
     envelope = {
         "schema_name": SCHEMA_NAME,
@@ -109,25 +123,35 @@ def verify_writer_snapshot_replay_envelope(
     *,
     prepared: SouthStarPreparedMol,
     envelope: object,
+    budget: WriterEnvelopeWorkBudget | None = None,
 ) -> WriterSnapshotReplayEnvelopeVerification:
     try:
+        budget = default_writer_envelope_work_budget(budget)
         _validate_envelope_shape(envelope)
         assert isinstance(envelope, Mapping)
+        _check_emitted_text_work(
+            tuple(envelope["emitted_texts"]),
+            budget=budget,
+            operation="snapshot_replay_verify",
+        )
         outcome_kind = str(envelope["outcome_kind"])
         _assert_prepared_identity_matches(prepared, envelope)
         source_snapshot = _source_snapshot_from_envelope(
             prepared=prepared,
             envelope=envelope,
+            budget=budget,
         )
         current_snapshot, failed_step_index = _verify_step_chain(
             prepared=prepared,
             source_snapshot=source_snapshot,
             envelope=envelope,
+            budget=budget,
         )
         expected = writer_snapshot_replay_envelope_for_emitted_texts(
             prepared=prepared,
             snapshot=source_snapshot,
             emitted_texts=tuple(envelope["emitted_texts"]),
+            budget=budget,
         )
         if expected != envelope:
             return WriterSnapshotReplayEnvelopeVerification(
@@ -144,6 +168,18 @@ def verify_writer_snapshot_replay_envelope(
             source_snapshot=source_snapshot,
             current_snapshot=current_snapshot,
             failed_step_index=failed_step_index,
+        )
+    except WriterEnvelopeWorkExceeded as exc:
+        return WriterSnapshotReplayEnvelopeVerification(
+            accepted=False,
+            outcome_kind=(
+                envelope.get("outcome_kind", "unknown")
+                if isinstance(envelope, Mapping)
+                else "unknown"
+            ),
+            source_snapshot=None,
+            current_snapshot=None,
+            reason=writer_envelope_work_reason(exc),
         )
     except SouthStarError as exc:
         return WriterSnapshotReplayEnvelopeVerification(
@@ -171,9 +207,16 @@ def verify_writer_snapshot_replay_envelope(
         )
 
 
-def _verify_step_chain(*, prepared, source_snapshot, envelope):
+def _verify_step_chain(*, prepared, source_snapshot, envelope, budget):
     emitted_texts = tuple(envelope["emitted_texts"])
     step_envelopes = tuple(envelope["step_advance_envelopes"])
+    check_writer_envelope_work(
+        budget=budget,
+        operation="snapshot_replay_verify",
+        metric="replay_step_count",
+        actual=len(step_envelopes),
+        limit=budget.max_replay_steps,
+    )
     current = source_snapshot
     for index, step_envelope in enumerate(step_envelopes):
         _validate_step_source(step_envelope, current)
@@ -183,6 +226,7 @@ def _verify_step_chain(*, prepared, source_snapshot, envelope):
             prepared=prepared,
             source_snapshot=current,
             envelope=step_envelope,
+            budget=budget,
         )
         if not verification.accepted:
             _replay_envelope_violation("step_advance_envelope_rejected")
@@ -219,6 +263,7 @@ def _verify_step_chain(*, prepared, source_snapshot, envelope):
         prepared=prepared,
         source_snapshot=current,
         envelope=failed,
+        budget=budget,
     )
     if not verification.accepted:
         _replay_envelope_violation("failed_advance_envelope_rejected")
@@ -234,6 +279,28 @@ def _verify_step_chain(*, prepared, source_snapshot, envelope):
 def _validate_step_source(step_envelope, snapshot) -> None:
     if step_envelope["source_snapshot"] != _snapshot_identity_envelope(snapshot):
         _replay_envelope_violation("step_source_snapshot_mismatch")
+
+
+def _check_emitted_text_work(
+    emitted_texts: tuple[str, ...],
+    *,
+    budget: WriterEnvelopeWorkBudget,
+    operation: str,
+) -> None:
+    check_writer_envelope_work(
+        budget=budget,
+        operation=operation,
+        metric="replay_step_count",
+        actual=len(emitted_texts),
+        limit=budget.max_replay_steps,
+    )
+    check_writer_envelope_work(
+        budget=budget,
+        operation=operation,
+        metric="total_emitted_text_bytes",
+        actual=sum(len(text.encode("utf-8")) for text in emitted_texts),
+        limit=budget.max_total_emitted_text_bytes,
+    )
 
 
 def _replay_certificate_envelope(certificate) -> dict[str, object]:

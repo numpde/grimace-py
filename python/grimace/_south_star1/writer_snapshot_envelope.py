@@ -13,6 +13,11 @@ from .writer_envelope_terms import _identity_envelope
 from .writer_envelope_terms import _runtime_options_from_terms
 from .writer_envelope_terms import _snapshot_identity_envelope
 from .writer_envelope_terms import _term
+from .writer_envelope_work import WriterEnvelopeWorkBudget
+from .writer_envelope_work import WriterEnvelopeWorkExceeded
+from .writer_envelope_work import check_writer_envelope_work
+from .writer_envelope_work import default_writer_envelope_work_budget
+from .writer_envelope_work import writer_envelope_work_reason
 from .prepared_runtime import SouthStarPreparedMol
 from .writer_frontier import initial_writer_frontier_cursor
 from .writer_frontier import _snapshot_advance_writer_frontier_product
@@ -52,7 +57,9 @@ def writer_snapshot_advance_envelope_for_emitted_text(
     prepared: SouthStarPreparedMol,
     snapshot,
     emitted_text: str,
+    budget: WriterEnvelopeWorkBudget | None = None,
 ) -> dict[str, object]:
+    budget = default_writer_envelope_work_budget(budget)
     outcome = _writer_snapshot_advance_outcome_by_emitted_text(
         snapshot,
         prepared=prepared,
@@ -68,19 +75,23 @@ def verify_writer_snapshot_advance_envelope(
     *,
     prepared: SouthStarPreparedMol,
     envelope: object,
+    budget: WriterEnvelopeWorkBudget | None = None,
 ) -> WriterSnapshotAdvanceEnvelopeVerification:
     try:
+        budget = default_writer_envelope_work_budget(budget)
         _validate_envelope_shape(envelope)
         assert isinstance(envelope, Mapping)
         outcome_kind = envelope["outcome_kind"]
         source_snapshot = _source_snapshot_from_envelope(
             prepared=prepared,
             envelope=envelope,
+            budget=budget,
         )
         expected = writer_snapshot_advance_envelope_for_emitted_text(
             prepared=prepared,
             snapshot=source_snapshot,
             emitted_text=envelope["emitted_text"],
+            budget=budget,
         )
         if expected != envelope:
             return WriterSnapshotAdvanceEnvelopeVerification(
@@ -104,6 +115,18 @@ def verify_writer_snapshot_advance_envelope(
             outcome_kind=str(outcome_kind),
             source_snapshot=source_snapshot,
             advanced_snapshot=advanced_snapshot,
+        )
+    except WriterEnvelopeWorkExceeded as exc:
+        return WriterSnapshotAdvanceEnvelopeVerification(
+            accepted=False,
+            outcome_kind=(
+                envelope.get("outcome_kind", "unknown")
+                if isinstance(envelope, Mapping)
+                else "unknown"
+            ),
+            source_snapshot=None,
+            advanced_snapshot=None,
+            reason=writer_envelope_work_reason(exc),
         )
     except SouthStarError as exc:
         return WriterSnapshotAdvanceEnvelopeVerification(
@@ -136,8 +159,10 @@ def _verify_writer_snapshot_advance_envelope_from_known_source(
     prepared: SouthStarPreparedMol,
     source_snapshot,
     envelope: object,
+    budget: WriterEnvelopeWorkBudget | None = None,
 ) -> WriterSnapshotAdvanceEnvelopeVerification:
     try:
+        budget = default_writer_envelope_work_budget(budget)
         _validate_envelope_shape(envelope)
         assert isinstance(envelope, Mapping)
         outcome_kind = envelope["outcome_kind"]
@@ -150,6 +175,7 @@ def _verify_writer_snapshot_advance_envelope_from_known_source(
             prepared=prepared,
             snapshot=source_snapshot,
             emitted_text=envelope["emitted_text"],
+            budget=budget,
         )
         if expected != envelope:
             return WriterSnapshotAdvanceEnvelopeVerification(
@@ -173,6 +199,18 @@ def _verify_writer_snapshot_advance_envelope_from_known_source(
             outcome_kind=str(outcome_kind),
             source_snapshot=source_snapshot,
             advanced_snapshot=advanced_snapshot,
+        )
+    except WriterEnvelopeWorkExceeded as exc:
+        return WriterSnapshotAdvanceEnvelopeVerification(
+            accepted=False,
+            outcome_kind=(
+                envelope.get("outcome_kind", "unknown")
+                if isinstance(envelope, Mapping)
+                else "unknown"
+            ),
+            source_snapshot=None,
+            advanced_snapshot=None,
+            reason=writer_envelope_work_reason(exc),
         )
     except SouthStarError as exc:
         return WriterSnapshotAdvanceEnvelopeVerification(
@@ -383,7 +421,13 @@ def _diagnostic_envelope(diagnostic) -> dict[str, object]:
     }
 
 
-def _source_snapshot_from_envelope(*, prepared, envelope) -> object:
+def _source_snapshot_from_envelope(
+    *,
+    prepared,
+    envelope,
+    budget: WriterEnvelopeWorkBudget | None = None,
+) -> object:
+    budget = default_writer_envelope_work_budget(budget)
     _assert_prepared_identity_matches(prepared, envelope)
     snapshot_terms = envelope["source_snapshot"]
     runtime_options = _runtime_options_from_terms(
@@ -392,10 +436,13 @@ def _source_snapshot_from_envelope(*, prepared, envelope) -> object:
     cursor_digest = snapshot_terms["cursor"]["digest"]
     expected_boundary = snapshot_terms["decoder_boundary"]
     expected_depth = expected_boundary["consumed_token_count"]
+    positions = 0
     for cursor, depth in _reachable_snapshot_positions(
         prepared,
         runtime_options,
+        budget=budget,
     ):
+        positions += 1
         if depth != expected_depth:
             continue
         snapshot = _capture_writer_frontier_snapshot_unchecked(
@@ -413,16 +460,23 @@ def _source_snapshot_from_envelope(*, prepared, envelope) -> object:
     _envelope_violation("source_snapshot_position_not_reachable")
 
 
-def _reachable_snapshot_positions(prepared, runtime_options):
+def _reachable_snapshot_positions(prepared, runtime_options, *, budget):
     pending = [(initial_writer_frontier_cursor(prepared, runtime_options), 0)]
     seen = set()
-    while pending and len(seen) < 5000:
+    while pending:
         cursor, depth = pending.pop(0)
         cursor_digest = _cursor_envelope(cursor)["digest"]
         key = (cursor_digest, depth)
         if key in seen:
             continue
         seen.add(key)
+        check_writer_envelope_work(
+            budget=budget,
+            operation="source_snapshot_lookup",
+            metric="source_lookup_positions",
+            actual=len(seen),
+            limit=budget.max_source_lookup_positions,
+        )
         yield cursor, depth
         product = _snapshot_advance_writer_frontier_product(
             prepared,

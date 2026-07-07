@@ -13,6 +13,11 @@ from .writer_envelope_terms import _identity_envelope
 from .writer_envelope_terms import _runtime_options_from_terms
 from .writer_envelope_terms import _snapshot_identity_envelope
 from .writer_envelope_terms import _term
+from .writer_envelope_work import WriterEnvelopeWorkBudget
+from .writer_envelope_work import WriterEnvelopeWorkExceeded
+from .writer_envelope_work import check_writer_envelope_work
+from .writer_envelope_work import default_writer_envelope_work_budget
+from .writer_envelope_work import writer_envelope_work_reason
 from .writer_frontier import _checked_writer_frontier_product
 from .writer_frontier_count_envelope import (
     verify_writer_frontier_count_envelope,
@@ -88,10 +93,13 @@ def writer_support_image_envelope_for_snapshot(
     *,
     prepared: SouthStarPreparedMol,
     snapshot,
+    budget: WriterEnvelopeWorkBudget | None = None,
 ) -> dict[str, object]:
+    budget = default_writer_envelope_work_budget(budget)
     count_envelope = writer_frontier_count_envelope_for_snapshot(
         prepared=prepared,
         snapshot=snapshot,
+        budget=budget,
     )
     product = _checked_product(prepared=prepared, snapshot=snapshot)
     image = _support_image_certificate_for_source(
@@ -107,6 +115,7 @@ def writer_support_image_envelope_for_snapshot(
         count_envelope=count_envelope,
         product=product,
         image=image,
+        budget=budget,
     )
     _validate_envelope_shape(envelope)
     _assert_prepared_identity_matches(prepared, envelope)
@@ -117,10 +126,13 @@ def writer_support_image_envelope_for_prefix_read(
     *,
     prepared: SouthStarPreparedMol,
     prefix_read_envelope: Mapping[str, object],
+    budget: WriterEnvelopeWorkBudget | None = None,
 ) -> dict[str, object]:
+    budget = default_writer_envelope_work_budget(budget)
     prefix = verify_writer_snapshot_prefix_read_envelope(
         prepared=prepared,
         envelope=prefix_read_envelope,
+        budget=budget,
     )
     if not prefix.accepted:
         _image_envelope_violation("prefix_read_envelope_rejected")
@@ -131,6 +143,7 @@ def writer_support_image_envelope_for_prefix_read(
     count_envelope = writer_frontier_count_envelope_for_prefix_read(
         prepared=prepared,
         prefix_read_envelope=prefix_read_envelope,
+        budget=budget,
     )
     product = _checked_product(prepared=prepared, snapshot=prefix.final_snapshot)
     image = _support_image_certificate_for_source(
@@ -146,6 +159,7 @@ def writer_support_image_envelope_for_prefix_read(
         count_envelope=count_envelope,
         product=product,
         image=image,
+        budget=budget,
     )
     _validate_envelope_shape(envelope)
     _assert_prepared_identity_matches(prepared, envelope)
@@ -156,19 +170,24 @@ def verify_writer_support_image_envelope(
     *,
     prepared: SouthStarPreparedMol,
     envelope: object,
+    budget: WriterEnvelopeWorkBudget | None = None,
 ) -> WriterSupportImageEnvelopeVerification:
     try:
+        budget = default_writer_envelope_work_budget(budget)
         _validate_envelope_shape(envelope)
         assert isinstance(envelope, Mapping)
+        _check_support_image_work(envelope, budget=budget)
         _assert_prepared_identity_matches(prepared, envelope)
         source_kind = str(envelope["source_kind"])
         source_snapshot = _source_snapshot_for_envelope(
             prepared=prepared,
             envelope=envelope,
+            budget=budget,
         )
         count = verify_writer_frontier_count_envelope(
             prepared=prepared,
             envelope=envelope["count_envelope"],
+            budget=budget,
         )
         if not count.accepted:
             _image_envelope_violation("count_envelope_rejected")
@@ -184,6 +203,7 @@ def verify_writer_support_image_envelope(
             verification = verify_writer_support_string_envelope(
                 prepared=prepared,
                 envelope=string_envelope,
+                budget=budget,
             )
             if not verification.accepted:
                 _image_envelope_violation("support_string_envelope_rejected")
@@ -209,6 +229,7 @@ def verify_writer_support_image_envelope(
             count_envelope=envelope["count_envelope"],
             product=product,
             support_string_envelopes=string_envelopes,
+            budget=budget,
         )
         if expected != envelope:
             return WriterSupportImageEnvelopeVerification(
@@ -225,6 +246,19 @@ def verify_writer_support_image_envelope(
             source_snapshot=source_snapshot,
             distinct_count=envelope["distinct_count"],
             witness_count=envelope["witness_count"],
+        )
+    except WriterEnvelopeWorkExceeded as exc:
+        return WriterSupportImageEnvelopeVerification(
+            accepted=False,
+            source_kind=(
+                envelope.get("source_kind", "unknown")
+                if isinstance(envelope, Mapping)
+                else "unknown"
+            ),
+            source_snapshot=None,
+            distinct_count=None,
+            witness_count=None,
+            reason=writer_envelope_work_reason(exc),
         )
     except SouthStarError as exc:
         return WriterSupportImageEnvelopeVerification(
@@ -280,7 +314,9 @@ def _envelope_from_image(
     count_envelope,
     product,
     image,
+    budget,
 ) -> dict[str, object]:
+    _check_materialized_image_work(image, budget=budget)
     string_envelopes = _support_string_envelopes_from_image(
         prepared=prepared,
         source_kind=source_kind,
@@ -288,6 +324,7 @@ def _envelope_from_image(
         prefix_read_envelope=prefix_read_envelope,
         count_envelope=count_envelope,
         image=image,
+        budget=budget,
     )
     return _envelope_from_verified_strings(
         prepared=prepared,
@@ -297,6 +334,7 @@ def _envelope_from_image(
         count_envelope=count_envelope,
         product=product,
         support_string_envelopes=tuple(string_envelopes),
+        budget=budget,
     )
 
 
@@ -309,8 +347,14 @@ def _envelope_from_verified_strings(
     count_envelope,
     product,
     support_string_envelopes,
+    budget,
 ) -> dict[str, object]:
     del prepared
+    _check_support_string_envelope_work(
+        support_string_envelopes,
+        budget=budget,
+        operation="support_image_envelope",
+    )
     strings = [item["string"] for item in support_string_envelopes]
     source_snapshot_identity = (
         _snapshot_identity_envelope(source_snapshot)
@@ -322,6 +366,7 @@ def _envelope_from_verified_strings(
         string_envelopes=support_string_envelopes,
         source_snapshot_identity=source_snapshot_identity,
         count_envelope=count_envelope,
+        budget=budget,
     )
     return {
         "schema_name": SCHEMA_NAME,
@@ -366,6 +411,7 @@ def _support_string_envelopes_from_image(
     prefix_read_envelope,
     count_envelope,
     image,
+    budget,
 ) -> list[dict[str, object]]:
     return [
         _writer_support_string_envelope_from_certificate(
@@ -378,8 +424,10 @@ def _support_string_envelopes_from_image(
                 prepared=prepared,
                 snapshot=image.source_snapshot,
                 emitted_texts=certificate.emitted_texts,
+                budget=budget,
             ),
             certificate=certificate,
+            budget=budget,
         )
         for certificate in image.string_certificates
     ]
@@ -425,6 +473,7 @@ def _enumeration_coverage_envelope_from_product(
     string_envelopes,
     source_snapshot_identity,
     count_envelope,
+    budget,
 ):
     checked = product.checked_frontier_certificate
     coverage = checked.support_count_term_coverage_certificate
@@ -451,6 +500,7 @@ def _enumeration_coverage_envelope_from_product(
         "support_count": coverage.support_count,
     }
     _validate_bucket_partition(envelope, len(string_envelopes))
+    _check_coverage_work(envelope, budget=budget)
     envelope["digest"] = _digest(_term(envelope))
     return envelope
 
@@ -551,15 +601,102 @@ def _validate_bucket_partition(envelope, expected_count: int) -> None:
         _image_envelope_violation("bucket_partition_mismatch")
 
 
-def _source_snapshot_for_envelope(*, prepared, envelope):
+def _check_materialized_image_work(image, *, budget: WriterEnvelopeWorkBudget) -> None:
+    check_writer_envelope_work(
+        budget=budget,
+        operation="support_image_envelope",
+        metric="support_string_count",
+        actual=len(image.string_certificates),
+        limit=budget.max_support_strings,
+    )
+    check_writer_envelope_work(
+        budget=budget,
+        operation="support_image_envelope",
+        metric="total_emitted_text_bytes",
+        actual=sum(
+            len(text.encode("utf-8"))
+            for certificate in image.string_certificates
+            for text in certificate.emitted_texts
+        ),
+        limit=budget.max_total_emitted_text_bytes,
+    )
+
+
+def _check_support_string_envelope_work(
+    support_string_envelopes,
+    *,
+    budget: WriterEnvelopeWorkBudget,
+    operation: str,
+) -> None:
+    check_writer_envelope_work(
+        budget=budget,
+        operation=operation,
+        metric="support_string_envelope_count",
+        actual=len(support_string_envelopes),
+        limit=budget.max_support_string_envelopes,
+    )
+    check_writer_envelope_work(
+        budget=budget,
+        operation=operation,
+        metric="support_string_count",
+        actual=len(support_string_envelopes),
+        limit=budget.max_support_strings,
+    )
+    check_writer_envelope_work(
+        budget=budget,
+        operation=operation,
+        metric="total_emitted_text_bytes",
+        actual=sum(
+            len(text.encode("utf-8"))
+            for envelope in support_string_envelopes
+            for text in envelope["emitted_texts"]
+        ),
+        limit=budget.max_total_emitted_text_bytes,
+    )
+
+
+def _check_coverage_work(
+    coverage,
+    *,
+    budget: WriterEnvelopeWorkBudget,
+) -> None:
+    bucket_count = len(coverage["text_buckets"]) + (
+        0 if coverage["terminal_bucket"] is None else 1
+    )
+    assignment_count = sum(
+        len(bucket["string_indices"])
+        for bucket in coverage["text_buckets"]
+    )
+    terminal = coverage["terminal_bucket"]
+    if terminal is not None and terminal["string_index"] is not None:
+        assignment_count += 1
+    check_writer_envelope_work(
+        budget=budget,
+        operation="support_image_envelope",
+        metric="coverage_bucket_count",
+        actual=bucket_count,
+        limit=budget.max_coverage_buckets,
+    )
+    check_writer_envelope_work(
+        budget=budget,
+        operation="support_image_envelope",
+        metric="bucket_assignment_count",
+        actual=assignment_count,
+        limit=budget.max_bucket_assignments,
+    )
+
+
+def _source_snapshot_for_envelope(*, prepared, envelope, budget):
     if envelope["source_kind"] == "snapshot":
         return _source_snapshot_from_envelope(
             prepared=prepared,
             envelope=envelope,
+            budget=budget,
         )
     prefix = verify_writer_snapshot_prefix_read_envelope(
         prepared=prepared,
         envelope=envelope["prefix_read_envelope"],
+        budget=budget,
     )
     if not prefix.accepted:
         _image_envelope_violation("prefix_read_envelope_rejected")
@@ -601,6 +738,37 @@ def _validate_envelope_shape(envelope: object) -> None:
             _image_envelope_violation("prefix_source_has_source_snapshot")
         if envelope["prefix_read_envelope"] is None:
             _image_envelope_violation("prefix_source_missing_prefix")
+
+
+def _check_support_image_work(
+    envelope: Mapping[str, object],
+    *,
+    budget: WriterEnvelopeWorkBudget,
+) -> None:
+    _check_support_string_envelope_work(
+        envelope["support_string_envelopes"],
+        budget=budget,
+        operation="support_image_verify",
+    )
+    check_writer_envelope_work(
+        budget=budget,
+        operation="support_image_verify",
+        metric="support_string_count",
+        actual=len(envelope["support_strings"]),
+        limit=budget.max_support_strings,
+    )
+    check_writer_envelope_work(
+        budget=budget,
+        operation="support_image_verify",
+        metric="total_emitted_text_bytes",
+        actual=sum(
+            len(text.encode("utf-8"))
+            for string_envelope in envelope["support_string_envelopes"]
+            for text in string_envelope["emitted_texts"]
+        ),
+        limit=budget.max_total_emitted_text_bytes,
+    )
+    _check_coverage_work(envelope["enumeration_coverage"], budget=budget)
 
 
 def _assert_prepared_identity_matches(prepared, envelope) -> None:

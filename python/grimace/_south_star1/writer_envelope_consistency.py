@@ -8,6 +8,11 @@ from dataclasses import dataclass
 
 from .writer_envelope_terms import _digest
 from .writer_envelope_terms import _term
+from .writer_envelope_work import WriterEnvelopeWorkBudget
+from .writer_envelope_work import WriterEnvelopeWorkExceeded
+from .writer_envelope_work import check_writer_envelope_work
+from .writer_envelope_work import default_writer_envelope_work_budget
+from .writer_envelope_work import writer_envelope_work_reason
 from .writer_count_dag_envelope import count_dag_node_by_id
 from .writer_count_dag_envelope import (
     validate_writer_count_certificate_dag_envelope,
@@ -26,16 +31,36 @@ class WriterEnvelopeConsistencyVerification:
 
 def verify_writer_support_image_envelope_consistency(
     envelope: object,
+    *,
+    budget: WriterEnvelopeWorkBudget | None = None,
 ) -> WriterEnvelopeConsistencyVerification:
     try:
+        budget = default_writer_envelope_work_budget(budget)
         _validate_support_image_envelope(envelope)
         assert isinstance(envelope, Mapping)
+        _check_consistency_work(envelope, budget=budget)
         return WriterEnvelopeConsistencyVerification(
             accepted=True,
             schema_name=str(envelope["schema_name"]),
             schema_version=int(envelope["schema_version"]),
             support_count=int(envelope["distinct_count"]),
             witness_count=int(envelope["witness_count"]),
+        )
+    except WriterEnvelopeWorkExceeded as exc:
+        return WriterEnvelopeConsistencyVerification(
+            accepted=False,
+            schema_name=(
+                str(envelope.get("schema_name", "unknown"))
+                if isinstance(envelope, Mapping)
+                else "unknown"
+            ),
+            schema_version=(
+                envelope.get("schema_version")
+                if isinstance(envelope, Mapping)
+                and isinstance(envelope.get("schema_version"), int)
+                else None
+            ),
+            reason=writer_envelope_work_reason(exc),
         )
     except _ConsistencyViolation as exc:
         return WriterEnvelopeConsistencyVerification(
@@ -670,6 +695,97 @@ def _validate_enumeration_coverage(
         _fail("coverage_string_partition_mismatch")
     if bucket_total != envelope["distinct_count"]:
         _fail("coverage_bucket_total_mismatch")
+
+
+def _check_consistency_work(
+    envelope: Mapping[str, object],
+    *,
+    budget: WriterEnvelopeWorkBudget,
+) -> None:
+    nested_count = _count_nested_envelopes(envelope)
+    check_writer_envelope_work(
+        budget=budget,
+        operation="support_image_consistency",
+        metric="nested_envelope_count",
+        actual=nested_count,
+        limit=budget.max_nested_envelopes,
+    )
+    check_writer_envelope_work(
+        budget=budget,
+        operation="support_image_consistency",
+        metric="consistency_node_count",
+        actual=_count_json_nodes(envelope),
+        limit=budget.max_consistency_nodes,
+    )
+    strings = _require_list(envelope, "support_strings")
+    string_envelopes = _require_list(envelope, "support_string_envelopes")
+    check_writer_envelope_work(
+        budget=budget,
+        operation="support_image_consistency",
+        metric="support_string_count",
+        actual=len(strings),
+        limit=budget.max_support_strings,
+    )
+    check_writer_envelope_work(
+        budget=budget,
+        operation="support_image_consistency",
+        metric="support_string_envelope_count",
+        actual=len(string_envelopes),
+        limit=budget.max_support_string_envelopes,
+    )
+    check_writer_envelope_work(
+        budget=budget,
+        operation="support_image_consistency",
+        metric="total_emitted_text_bytes",
+        actual=sum(
+            len(text.encode("utf-8"))
+            for string_envelope in string_envelopes
+            for text in string_envelope["emitted_texts"]
+        ),
+        limit=budget.max_total_emitted_text_bytes,
+    )
+    coverage = envelope["enumeration_coverage"]
+    bucket_count = len(coverage["text_buckets"]) + (
+        0 if coverage["terminal_bucket"] is None else 1
+    )
+    assignment_count = sum(
+        len(bucket["string_indices"])
+        for bucket in coverage["text_buckets"]
+    )
+    terminal = coverage["terminal_bucket"]
+    if terminal is not None and terminal["string_index"] is not None:
+        assignment_count += 1
+    check_writer_envelope_work(
+        budget=budget,
+        operation="support_image_consistency",
+        metric="coverage_bucket_count",
+        actual=bucket_count,
+        limit=budget.max_coverage_buckets,
+    )
+    check_writer_envelope_work(
+        budget=budget,
+        operation="support_image_consistency",
+        metric="bucket_assignment_count",
+        actual=assignment_count,
+        limit=budget.max_bucket_assignments,
+    )
+
+
+def _count_nested_envelopes(value) -> int:
+    if isinstance(value, Mapping):
+        own = 1 if "schema_name" in value and "schema_version" in value else 0
+        return own + sum(_count_nested_envelopes(item) for item in value.values())
+    if isinstance(value, list):
+        return sum(_count_nested_envelopes(item) for item in value)
+    return 0
+
+
+def _count_json_nodes(value) -> int:
+    if isinstance(value, Mapping):
+        return 1 + sum(_count_json_nodes(item) for item in value.values())
+    if isinstance(value, list):
+        return 1 + sum(_count_json_nodes(item) for item in value)
+    return 1
 
 
 def _source_snapshot_identity(envelope: Mapping[str, object]):

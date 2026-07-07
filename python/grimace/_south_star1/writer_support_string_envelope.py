@@ -14,6 +14,11 @@ from .writer_envelope_terms import _identity_envelope
 from .writer_envelope_terms import _runtime_options_from_terms
 from .writer_envelope_terms import _snapshot_identity_envelope
 from .writer_envelope_terms import _term
+from .writer_envelope_work import WriterEnvelopeWorkBudget
+from .writer_envelope_work import WriterEnvelopeWorkExceeded
+from .writer_envelope_work import check_writer_envelope_work
+from .writer_envelope_work import default_writer_envelope_work_budget
+from .writer_envelope_work import writer_envelope_work_reason
 from .writer_frontier import _snapshot_advance_writer_frontier_product
 from .writer_frontier_count_envelope import (
     verify_writer_frontier_count_envelope,
@@ -99,20 +104,25 @@ def writer_support_string_envelope_for_string(
     prepared: SouthStarPreparedMol,
     snapshot,
     string: str,
+    budget: WriterEnvelopeWorkBudget | None = None,
 ) -> dict[str, object]:
+    budget = default_writer_envelope_work_budget(budget)
     certificate = _certified_support_string_for_string(
         prepared=prepared,
         snapshot=snapshot,
         string=string,
+        budget=budget,
     )
     count_envelope = writer_frontier_count_envelope_for_snapshot(
         prepared=prepared,
         snapshot=snapshot,
+        budget=budget,
     )
     replay_envelope = writer_snapshot_replay_envelope_for_emitted_texts(
         prepared=prepared,
         snapshot=snapshot,
         emitted_texts=certificate.emitted_texts,
+        budget=budget,
     )
     terminal_product = _terminal_product_for_certificate(
         prepared=prepared,
@@ -126,6 +136,7 @@ def writer_support_string_envelope_for_string(
         replay_envelope=replay_envelope,
         certificate=certificate,
         terminal_product=terminal_product,
+        budget=budget,
     )
     _validate_envelope_shape(envelope)
     _assert_prepared_identity_matches(prepared, envelope)
@@ -137,10 +148,13 @@ def writer_support_string_envelope_for_prefix_read(
     prepared: SouthStarPreparedMol,
     prefix_read_envelope: Mapping[str, object],
     string: str,
+    budget: WriterEnvelopeWorkBudget | None = None,
 ) -> dict[str, object]:
+    budget = default_writer_envelope_work_budget(budget)
     prefix = verify_writer_snapshot_prefix_read_envelope(
         prepared=prepared,
         envelope=prefix_read_envelope,
+        budget=budget,
     )
     if not prefix.accepted:
         _support_string_envelope_violation("prefix_read_envelope_rejected")
@@ -154,15 +168,18 @@ def writer_support_string_envelope_for_prefix_read(
         prepared=prepared,
         snapshot=prefix.final_snapshot,
         string=string,
+        budget=budget,
     )
     count_envelope = writer_frontier_count_envelope_for_prefix_read(
         prepared=prepared,
         prefix_read_envelope=prefix_read_envelope,
+        budget=budget,
     )
     replay_envelope = writer_snapshot_replay_envelope_for_emitted_texts(
         prepared=prepared,
         snapshot=prefix.final_snapshot,
         emitted_texts=certificate.emitted_texts,
+        budget=budget,
     )
     terminal_product = _terminal_product_for_certificate(
         prepared=prepared,
@@ -176,6 +193,7 @@ def writer_support_string_envelope_for_prefix_read(
         replay_envelope=replay_envelope,
         certificate=certificate,
         terminal_product=terminal_product,
+        budget=budget,
     )
     _validate_envelope_shape(envelope)
     _assert_prepared_identity_matches(prepared, envelope)
@@ -191,7 +209,9 @@ def _writer_support_string_envelope_from_certificate(
     count_envelope,
     replay_envelope,
     certificate,
+    budget: WriterEnvelopeWorkBudget | None = None,
 ) -> dict[str, object]:
+    budget = default_writer_envelope_work_budget(budget)
     terminal_product = _terminal_product_for_certificate(
         prepared=prepared,
         certificate=certificate,
@@ -204,6 +224,7 @@ def _writer_support_string_envelope_from_certificate(
         replay_envelope=replay_envelope,
         certificate=certificate,
         terminal_product=terminal_product,
+        budget=budget,
     )
     _validate_envelope_shape(envelope)
     _assert_prepared_identity_matches(prepared, envelope)
@@ -214,19 +235,24 @@ def verify_writer_support_string_envelope(
     *,
     prepared: SouthStarPreparedMol,
     envelope: object,
+    budget: WriterEnvelopeWorkBudget | None = None,
 ) -> WriterSupportStringEnvelopeVerification:
     try:
+        budget = default_writer_envelope_work_budget(budget)
         _validate_envelope_shape(envelope)
         assert isinstance(envelope, Mapping)
+        _check_support_string_work(envelope, budget=budget)
         _assert_prepared_identity_matches(prepared, envelope)
         source_kind = str(envelope["source_kind"])
         source_snapshot = _source_snapshot_for_envelope(
             prepared=prepared,
             envelope=envelope,
+            budget=budget,
         )
         count = verify_writer_frontier_count_envelope(
             prepared=prepared,
             envelope=envelope["count_envelope"],
+            budget=budget,
         )
         if not count.accepted:
             _support_string_envelope_violation("count_envelope_rejected")
@@ -237,6 +263,7 @@ def verify_writer_support_string_envelope(
         replay = verify_writer_snapshot_replay_envelope(
             prepared=prepared,
             envelope=envelope["replay_envelope"],
+            budget=budget,
         )
         if not replay.accepted:
             _support_string_envelope_violation("replay_envelope_rejected")
@@ -262,6 +289,7 @@ def verify_writer_support_string_envelope(
             replay_envelope=envelope["replay_envelope"],
             prepared=prepared,
             emitted_texts=tuple(envelope["emitted_texts"]),
+            budget=budget,
         )
         if expected != envelope:
             return WriterSupportStringEnvelopeVerification(
@@ -278,6 +306,24 @@ def verify_writer_support_string_envelope(
             string=str(envelope["string"]),
             source_snapshot=source_snapshot,
             final_snapshot=replay.current_snapshot,
+        )
+    except WriterEnvelopeWorkExceeded as exc:
+        return WriterSupportStringEnvelopeVerification(
+            accepted=False,
+            source_kind=(
+                envelope.get("source_kind", "unknown")
+                if isinstance(envelope, Mapping)
+                else "unknown"
+            ),
+            string=(
+                envelope.get("string")
+                if isinstance(envelope, Mapping)
+                and isinstance(envelope.get("string"), str)
+                else None
+            ),
+            source_snapshot=None,
+            final_snapshot=None,
+            reason=writer_envelope_work_reason(exc),
         )
     except SouthStarError as exc:
         return WriterSupportStringEnvelopeVerification(
@@ -317,15 +363,30 @@ def verify_writer_support_string_envelope(
         )
 
 
-def _certified_support_string_for_string(*, prepared, snapshot, string: str):
-    matches = tuple(
-        item
-        for item in _iter_writer_snapshot_certified_support_strings(
+def _certified_support_string_for_string(
+    *,
+    prepared,
+    snapshot,
+    string: str,
+    budget: WriterEnvelopeWorkBudget,
+):
+    matches = []
+    for visited, item in enumerate(
+        _iter_writer_snapshot_certified_support_strings(
             snapshot,
             prepared=prepared,
+        ),
+        start=1,
+    ):
+        check_writer_envelope_work(
+            budget=budget,
+            operation="support_string_search",
+            metric="visited_support_strings",
+            actual=visited,
+            limit=budget.max_support_search_strings,
         )
-        if item.string == string
-    )
+        if item.string == string:
+            matches.append(item)
     if len(matches) != 1:
         _support_string_envelope_violation("support_string_not_unique")
     return matches[0].certificate
@@ -340,7 +401,13 @@ def _expected_envelope_from_replay(
     replay_envelope,
     prepared,
     emitted_texts: tuple[str, ...],
+    budget: WriterEnvelopeWorkBudget,
 ) -> dict[str, object]:
+    _check_emitted_text_work(
+        emitted_texts,
+        budget=budget,
+        operation="support_string_envelope",
+    )
     outcome = _writer_snapshot_advance_sequence_outcome_by_emitted_texts(
         source_snapshot,
         prepared=prepared,
@@ -378,6 +445,7 @@ def _expected_envelope_from_replay(
         replay_envelope=replay_envelope,
         certificate=certificate,
         terminal_product=product,
+        budget=budget,
     )
 
 
@@ -390,7 +458,9 @@ def _envelope_from_certificate_with_product(
     replay_envelope,
     certificate,
     terminal_product,
+    budget: WriterEnvelopeWorkBudget,
 ) -> dict[str, object]:
+    _check_certificate_work(certificate, budget=budget)
     text_chain = _text_projection_chain_envelope(certificate)
     terminal_projection = _terminal_projection_certificate_identity_envelope(
         certificate.terminal_projection_certificate
@@ -512,15 +582,17 @@ def _text_projection_chain_envelope(certificate):
     return chain
 
 
-def _source_snapshot_for_envelope(*, prepared, envelope):
+def _source_snapshot_for_envelope(*, prepared, envelope, budget):
     if envelope["source_kind"] == "snapshot":
         return _source_snapshot_from_envelope(
             prepared=prepared,
             envelope=envelope,
+            budget=budget,
         )
     prefix = verify_writer_snapshot_prefix_read_envelope(
         prepared=prepared,
         envelope=envelope["prefix_read_envelope"],
+        budget=budget,
     )
     if not prefix.accepted:
         _support_string_envelope_violation("prefix_read_envelope_rejected")
@@ -562,6 +634,76 @@ def _validate_envelope_shape(envelope: object) -> None:
             )
         if envelope["prefix_read_envelope"] is None:
             _support_string_envelope_violation("prefix_source_missing_prefix")
+
+
+def _check_support_string_work(
+    envelope: Mapping[str, object],
+    *,
+    budget: WriterEnvelopeWorkBudget,
+) -> None:
+    _check_emitted_text_work(
+        tuple(envelope["emitted_texts"]),
+        budget=budget,
+        operation="support_string_verify",
+    )
+    check_writer_envelope_work(
+        budget=budget,
+        operation="support_string_verify",
+        metric="text_projection_chain_length",
+        actual=len(envelope["text_projection_chain"]),
+        limit=budget.max_text_projection_chain_length,
+    )
+    check_writer_envelope_work(
+        budget=budget,
+        operation="support_string_verify",
+        metric="terminal_support_identity_count",
+        actual=len(envelope["terminal_support_identities"]),
+        limit=budget.max_terminal_support_identities,
+    )
+
+
+def _check_certificate_work(certificate, *, budget: WriterEnvelopeWorkBudget) -> None:
+    _check_emitted_text_work(
+        tuple(certificate.emitted_texts),
+        budget=budget,
+        operation="support_string_envelope",
+    )
+    check_writer_envelope_work(
+        budget=budget,
+        operation="support_string_envelope",
+        metric="text_projection_chain_length",
+        actual=len(certificate.replay_certificate.step_certificates),
+        limit=budget.max_text_projection_chain_length,
+    )
+    check_writer_envelope_work(
+        budget=budget,
+        operation="support_string_envelope",
+        metric="terminal_support_identity_count",
+        actual=len(certificate.terminal_projection_certificate.terminal_certificates),
+        limit=budget.max_terminal_support_identities,
+    )
+
+
+def _check_emitted_text_work(
+    emitted_texts: tuple[str, ...],
+    *,
+    budget: WriterEnvelopeWorkBudget,
+    operation: str,
+) -> None:
+    check_writer_envelope_work(
+        budget=budget,
+        operation=operation,
+        metric="emitted_text_count",
+        actual=len(emitted_texts),
+        limit=budget.max_text_projection_chain_length,
+    )
+    check_writer_envelope_work(
+        budget=budget,
+        operation=operation,
+        metric="total_emitted_text_bytes",
+        actual=sum(len(text.encode("utf-8")) for text in emitted_texts),
+        limit=budget.max_total_emitted_text_bytes,
+    )
 
 
 def _assert_prepared_identity_matches(prepared, envelope) -> None:

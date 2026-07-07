@@ -14,6 +14,11 @@ from .writer_envelope_terms import _identity_envelope
 from .writer_envelope_terms import _runtime_options_from_terms
 from .writer_envelope_terms import _snapshot_identity_envelope
 from .writer_envelope_terms import _term
+from .writer_envelope_work import WriterEnvelopeWorkBudget
+from .writer_envelope_work import WriterEnvelopeWorkExceeded
+from .writer_envelope_work import check_writer_envelope_work
+from .writer_envelope_work import default_writer_envelope_work_budget
+from .writer_envelope_work import writer_envelope_work_reason
 from .writer_snapshot import _checked_writer_snapshot_prefix_product_after_emitted_texts
 from .writer_snapshot import _prepared_identity
 from .writer_frontier import _snapshot_advance_writer_frontier_product
@@ -70,15 +75,20 @@ def writer_snapshot_prefix_read_envelope_for_emitted_texts(
     snapshot,
     emitted_texts: tuple[str, ...],
     include_counts: bool = True,
+    budget: WriterEnvelopeWorkBudget | None = None,
 ) -> dict[str, object]:
+    budget = default_writer_envelope_work_budget(budget)
+    _check_prefix_text_work(emitted_texts, budget=budget)
     replay_envelope = writer_snapshot_replay_envelope_for_emitted_texts(
         prepared=prepared,
         snapshot=snapshot,
         emitted_texts=emitted_texts,
+        budget=budget,
     )
     replay_verification = verify_writer_snapshot_replay_envelope(
         prepared=prepared,
         envelope=replay_envelope,
+        budget=budget,
     )
     if not replay_verification.accepted:
         _prefix_envelope_violation("replay_envelope_rejected")
@@ -157,14 +167,21 @@ def verify_writer_snapshot_prefix_read_envelope(
     *,
     prepared: SouthStarPreparedMol,
     envelope: object,
+    budget: WriterEnvelopeWorkBudget | None = None,
 ) -> WriterSnapshotPrefixReadEnvelopeVerification:
     try:
+        budget = default_writer_envelope_work_budget(budget)
         _validate_envelope_shape(envelope)
         assert isinstance(envelope, Mapping)
+        _check_prefix_text_work(
+            tuple(envelope["emitted_texts"]),
+            budget=budget,
+        )
         _assert_prepared_identity_matches(prepared, envelope)
         replay = verify_writer_snapshot_replay_envelope(
             prepared=prepared,
             envelope=envelope["replay_envelope"],
+            budget=budget,
         )
         if not replay.accepted:
             _prefix_envelope_violation("replay_envelope_rejected")
@@ -198,6 +215,18 @@ def verify_writer_snapshot_prefix_read_envelope(
             ),
             support_count=envelope["support_count"],
             completion_count=envelope["completion_count"],
+        )
+    except WriterEnvelopeWorkExceeded as exc:
+        return WriterSnapshotPrefixReadEnvelopeVerification(
+            accepted=False,
+            read_kind=(
+                envelope.get("read_kind", "unknown")
+                if isinstance(envelope, Mapping)
+                else "unknown"
+            ),
+            source_snapshot=None,
+            final_snapshot=None,
+            reason=writer_envelope_work_reason(exc),
         )
     except SouthStarError as exc:
         return WriterSnapshotPrefixReadEnvelopeVerification(
@@ -252,6 +281,27 @@ def _failed_replay_envelope(
                 "failed_advance_envelope"
             ],
         },
+    )
+
+
+def _check_prefix_text_work(
+    emitted_texts: tuple[str, ...],
+    *,
+    budget: WriterEnvelopeWorkBudget,
+) -> None:
+    check_writer_envelope_work(
+        budget=budget,
+        operation="snapshot_prefix_read_envelope",
+        metric="prefix_emitted_text_count",
+        actual=len(emitted_texts),
+        limit=budget.max_prefix_emitted_texts,
+    )
+    check_writer_envelope_work(
+        budget=budget,
+        operation="snapshot_prefix_read_envelope",
+        metric="total_emitted_text_bytes",
+        actual=sum(len(text.encode("utf-8")) for text in emitted_texts),
+        limit=budget.max_total_emitted_text_bytes,
     )
 
 

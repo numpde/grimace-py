@@ -14,6 +14,10 @@ from .writer_envelope_terms import _identity_envelope
 from .writer_envelope_terms import _runtime_options_from_terms
 from .writer_envelope_terms import _snapshot_identity_envelope
 from .writer_envelope_terms import _term
+from .writer_envelope_work import WriterEnvelopeWorkBudget
+from .writer_envelope_work import WriterEnvelopeWorkExceeded
+from .writer_envelope_work import default_writer_envelope_work_budget
+from .writer_envelope_work import writer_envelope_work_reason
 from .writer_count_dag_envelope import count_dag_node_by_id
 from .writer_count_dag_envelope import (
     validate_writer_count_certificate_dag_envelope,
@@ -80,7 +84,9 @@ def writer_frontier_count_envelope_for_snapshot(
     *,
     prepared: SouthStarPreparedMol,
     snapshot,
+    budget: WriterEnvelopeWorkBudget | None = None,
 ) -> dict[str, object]:
+    budget = default_writer_envelope_work_budget(budget)
     product = _counted_frontier_product(prepared=prepared, snapshot=snapshot)
     envelope = _envelope_from_product(
         prepared=prepared,
@@ -89,6 +95,7 @@ def writer_frontier_count_envelope_for_snapshot(
         prefix_read_envelope=None,
         frontier_snapshot=snapshot,
         product=product,
+        budget=budget,
     )
     _validate_envelope_shape(envelope)
     _assert_prepared_identity_matches(prepared, envelope)
@@ -99,10 +106,13 @@ def writer_frontier_count_envelope_for_prefix_read(
     *,
     prepared: SouthStarPreparedMol,
     prefix_read_envelope: Mapping[str, object],
+    budget: WriterEnvelopeWorkBudget | None = None,
 ) -> dict[str, object]:
+    budget = default_writer_envelope_work_budget(budget)
     verification = verify_writer_snapshot_prefix_read_envelope(
         prepared=prepared,
         envelope=prefix_read_envelope,
+        budget=budget,
     )
     if not verification.accepted:
         _count_envelope_violation("prefix_read_envelope_rejected")
@@ -122,6 +132,7 @@ def writer_frontier_count_envelope_for_prefix_read(
         prefix_read_envelope=prefix_read_envelope,
         frontier_snapshot=verification.final_snapshot,
         product=product,
+        budget=budget,
     )
     _validate_envelope_shape(envelope)
     _assert_prepared_identity_matches(prepared, envelope)
@@ -132,8 +143,10 @@ def verify_writer_frontier_count_envelope(
     *,
     prepared: SouthStarPreparedMol,
     envelope: object,
+    budget: WriterEnvelopeWorkBudget | None = None,
 ) -> WriterFrontierCountEnvelopeVerification:
     try:
+        budget = default_writer_envelope_work_budget(budget)
         _validate_envelope_shape(envelope)
         assert isinstance(envelope, Mapping)
         _assert_prepared_identity_matches(prepared, envelope)
@@ -142,16 +155,19 @@ def verify_writer_frontier_count_envelope(
             frontier_snapshot = _source_snapshot_from_envelope(
                 prepared=prepared,
                 envelope=envelope,
+                budget=budget,
             )
             expected = writer_frontier_count_envelope_for_snapshot(
                 prepared=prepared,
                 snapshot=frontier_snapshot,
+                budget=budget,
             )
         elif source_kind == "prefix_read":
             prefix_envelope = envelope["prefix_read_envelope"]
             verification = verify_writer_snapshot_prefix_read_envelope(
                 prepared=prepared,
                 envelope=prefix_envelope,
+                budget=budget,
             )
             if not verification.accepted:
                 _count_envelope_violation("prefix_read_envelope_rejected")
@@ -165,6 +181,7 @@ def verify_writer_frontier_count_envelope(
             expected = writer_frontier_count_envelope_for_prefix_read(
                 prepared=prepared,
                 prefix_read_envelope=prefix_envelope,
+                budget=budget,
             )
         else:
             _count_envelope_violation("unknown_source_kind")
@@ -184,6 +201,19 @@ def verify_writer_frontier_count_envelope(
             support_count=envelope["support_count"],
             completion_count=envelope["completion_count"],
             frontier_snapshot=frontier_snapshot,
+        )
+    except WriterEnvelopeWorkExceeded as exc:
+        return WriterFrontierCountEnvelopeVerification(
+            accepted=False,
+            source_kind=(
+                envelope.get("source_kind", "unknown")
+                if isinstance(envelope, Mapping)
+                else "unknown"
+            ),
+            support_count=None,
+            completion_count=None,
+            frontier_snapshot=None,
+            reason=writer_envelope_work_reason(exc),
         )
     except SouthStarError as exc:
         return WriterFrontierCountEnvelopeVerification(
@@ -231,6 +261,7 @@ def _envelope_from_product(
     prefix_read_envelope,
     frontier_snapshot,
     product,
+    budget,
 ) -> dict[str, object]:
     if product.blocked:
         _count_envelope_violation("count_envelope_requires_legal_frontier")
@@ -239,7 +270,10 @@ def _envelope_from_product(
         _count_envelope_violation("missing_checked_frontier_certificate")
     support_count = product.support_count_certificate.support_count
     completion_count = product.count_certificate.completion_count
-    count_dag = writer_count_certificate_dag_envelope_for_product(product)
+    count_dag = writer_count_certificate_dag_envelope_for_product(
+        product,
+        budget=budget,
+    )
     nodes = count_dag_node_by_id(count_dag)
     return {
         "schema_name": SCHEMA_NAME,

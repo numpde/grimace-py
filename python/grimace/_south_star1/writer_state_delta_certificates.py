@@ -21,6 +21,12 @@ from .writer_events import WriterRingLabelReleased
 from .writer_closure_candidate_lifecycle import (
     WriterClosureCandidateLifecycleOutcomeKind,
 )
+from .writer_closure_bond_text_lifecycle import (
+    closure_bond_text_lifecycle_evidence_from_transition,
+)
+from .writer_closure_bond_text_lifecycle import (
+    validate_writer_closure_bond_text_lifecycle_transition,
+)
 from .writer_residual_attachment_lifecycle import (
     WriterResidualAttachmentLifecycleOutcomeKind,
 )
@@ -137,6 +143,7 @@ class WriterRingStateReplayCertificate:
     expected_successor_ring_state: object
     actual_successor_ring_state: object
     ring_events: tuple[object, ...]
+    closure_bond_text_lifecycle_evidence: tuple[object, ...] = ()
     replayed_open_endpoints: tuple[object, ...] = ()
     replayed_closed_closures: tuple[object, ...] = ()
     replayed_label_state: object | None = None
@@ -993,10 +1000,45 @@ def _ring_state_replay_certificate(
         expected_successor_ring_state=expected_ring_state,
         actual_successor_ring_state=successor_state.ring_state,
         ring_events=ring_events,
+        closure_bond_text_lifecycle_evidence=(
+            _closure_bond_text_lifecycle_evidence(
+                source_state=source_state,
+                successor_state=successor_state,
+                event_view=event_view,
+            )
+        ),
         replayed_open_endpoints=expected_ring_state.open_endpoints,
         replayed_closed_closures=expected_ring_state.closed_closures,
         replayed_label_state=expected_ring_state.label_state,
     )
+
+
+def _closure_bond_text_lifecycle_evidence(
+    *,
+    source_state,
+    successor_state,
+    event_view: WriterEventDeltaView,
+) -> tuple[object, ...]:
+    evidence = []
+    source_ring_state = source_state.ring_state
+    successor_ring_state = successor_state.ring_state
+    for event in event_view.ring_endpoint_emitted_events:
+        item = closure_bond_text_lifecycle_evidence_from_transition(
+            source_ring_state=source_ring_state,
+            successor_ring_state=successor_ring_state,
+            event=event,
+        )
+        if item is not None:
+            evidence.append(item)
+    for event in event_view.ring_endpoint_paired_events:
+        item = closure_bond_text_lifecycle_evidence_from_transition(
+            source_ring_state=source_ring_state,
+            successor_ring_state=successor_ring_state,
+            event=event,
+        )
+        if item is not None:
+            evidence.append(item)
+    return tuple(evidence)
 
 
 def _graph_state_replay_certificate(
@@ -1723,6 +1765,15 @@ def _validate_replay_certificate_values(certificate) -> None:
             _delta_violation("ring_replay_closed_closures_mismatch")
         if ring.replayed_label_state != ring.expected_successor_ring_state.label_state:
             _delta_violation("ring_replay_label_state_mismatch")
+        expected_lifecycle = _closure_bond_text_lifecycle_evidence(
+            source_state=certificate.source_state,
+            successor_state=certificate.successor_state,
+            event_view=writer_event_delta_view(certificate.events),
+        )
+        if ring.closure_bond_text_lifecycle_evidence != expected_lifecycle:
+            _delta_violation("ring_replay_closure_bond_text_lifecycle_mismatch")
+        for item in ring.closure_bond_text_lifecycle_evidence:
+            validate_writer_closure_bond_text_lifecycle_transition(item)
 
     graph = certificate.graph_replay_certificate
     if graph is not None:

@@ -23,6 +23,8 @@ from grimace._south_star1.facts import MoleculeFacts
 from grimace._south_star1.ids import AtomId
 from grimace._south_star1.ids import BondId
 from grimace._south_star1.ids import ComponentId
+from grimace._south_star1.ordinary_policy import OrdinaryPolicyOptions
+from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.policy import SerializationLanguageMode
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
@@ -130,6 +132,7 @@ from grimace._south_star1.writer_runtime import (
 )
 from grimace._south_star1.writer_snapshot import _writer_search_snapshot_after_checked_branch_support
 from grimace._south_star1.writer_snapshot import _writer_search_snapshot_after_checked_choice
+from grimace._south_star1.writer_snapshot import capture_writer_frontier_snapshot
 from grimace._south_star1.writer_state import ComponentCursor
 from grimace._south_star1.writer_state import ObligationState
 from grimace._south_star1.writer_state import PendingWriterEntry
@@ -142,6 +145,17 @@ from grimace._south_star1.writer_state import WriterRingState
 from grimace._south_star1.writer_state import WriterState
 from grimace._south_star1.writer_state import WriterStereoState
 from grimace._south_star1.writer_state import writer_state_key
+from grimace._south_star1.writer_support import enumerate_prepared_writer_shaped_support
+from grimace._south_star1.writer_support import count_writer_snapshot_writer_shaped_support
+from grimace._south_star1.writer_support_artifact_envelope import (
+    verify_writer_support_artifact_envelope,
+)
+from grimace._south_star1.writer_support_artifact_envelope import (
+    writer_support_artifact_envelope_for_snapshot,
+)
+from grimace._south_star1.writer_support_artifact_fact_verifier import (
+    verify_writer_support_artifact_for_facts,
+)
 from tests.south_star1.helpers import cco_facts
 from tests.south_star1.helpers import cyclopropane_facts
 from tests.south_star1.helpers import directional_facts
@@ -1873,7 +1887,7 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                                     .EVIDENCE_BOUND_INCOMPLETE
                                 ),
                             )
-                        pending.append(support.successor_cursor)
+                pending.append(support.successor_cursor)
 
     def test_directional_graph_obligation_replay_has_no_incomplete_cases(
         self,
@@ -1907,6 +1921,153 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                     ),
                 )
                 pending.append(support.successor_cursor)
+
+    def test_default_policy_rejects_non_single_ring_closure_candidate(self) -> None:
+        with self.assertRaisesRegex(SouthStarError, "non-single ring closures"):
+            ordinary_policy_for_facts(
+                _non_single_closure_triangle_facts(BondOrder.DOUBLE)
+            )
+
+    def test_joint_non_single_closure_pair_lifecycle_is_certified(self) -> None:
+        rows = (
+            (BondOrder.DOUBLE, "double", "="),
+            (BondOrder.TRIPLE, "triple", "#"),
+        )
+
+        for order, expected_order, marker in rows:
+            with self.subTest(order=order):
+                facts = _non_single_closure_triangle_facts(order)
+                prepared = _prepare_with_joint_non_single_ring_closures(facts)
+                initial = initial_writer_frontier_cursor(
+                    prepared,
+                    _writer_options(rooted_at_atom=0),
+                )
+                paired_evidence = _all_closure_bond_text_pair_evidence(
+                    prepared,
+                    initial,
+                )
+
+                self.assertEqual(
+                    {
+                        (
+                            evidence.bond_order,
+                            evidence.opening_marker,
+                            evidence.closing_marker,
+                            evidence.marker_side,
+                        )
+                        for evidence in paired_evidence
+                    },
+                    {
+                        (expected_order, marker, "", "opening"),
+                        (expected_order, "", marker, "closing"),
+                    },
+                )
+
+    def test_successor_state_rejects_tampered_closure_bond_text_lifecycle(
+        self,
+    ) -> None:
+        facts = _non_single_closure_triangle_facts(BondOrder.DOUBLE)
+        prepared = _prepare_with_joint_non_single_ring_closures(facts)
+        support = _find_checked_branch_support(
+            prepared,
+            initial_writer_frontier_cursor(
+                prepared,
+                _writer_options(rooted_at_atom=0),
+            ),
+            lambda support: (
+                support.successor_state_certificate.ring_replay_certificate
+                is not None
+                and bool(
+                    support
+                    .successor_state_certificate
+                    .ring_replay_certificate
+                    .closure_bond_text_lifecycle_evidence
+                )
+            ),
+        )
+        certificate = support.successor_state_certificate
+        ring = certificate.ring_replay_certificate
+        bad_evidence = (
+            replace(
+                ring.closure_bond_text_lifecycle_evidence[0],
+                marker_side="closing",
+            ),
+            *ring.closure_bond_text_lifecycle_evidence[1:],
+        )
+        bad_certificate = replace(
+            certificate,
+            ring_replay_certificate=replace(
+                ring,
+                closure_bond_text_lifecycle_evidence=bad_evidence,
+            ),
+        )
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "ring_replay_closure_bond_text_lifecycle_mismatch",
+        ):
+            (
+                writer_state_delta_certificates
+                .validate_writer_branch_successor_state_certificate(
+                    bad_certificate,
+                )
+            )
+
+    def test_joint_non_single_closure_support_count_matches_materialized_image(
+        self,
+    ) -> None:
+        facts = _non_single_closure_triangle_facts(BondOrder.DOUBLE)
+        prepared = _prepare_with_joint_non_single_ring_closures(facts)
+        options = _writer_options(rooted_at_atom=0)
+        image = enumerate_prepared_writer_shaped_support(
+            prepared=prepared,
+            runtime_options=options,
+        )
+        snapshot = capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=initial_writer_frontier_cursor(prepared, options),
+        )
+
+        self.assertEqual(
+            image.distinct_count,
+            count_writer_snapshot_writer_shaped_support(
+                snapshot=snapshot,
+                prepared=prepared,
+            ),
+        )
+
+    def test_joint_non_single_closure_support_artifact_verifies(self) -> None:
+        facts = _non_single_closure_triangle_facts(BondOrder.DOUBLE)
+        prepared = _prepare_with_joint_non_single_ring_closures(facts)
+        options = _writer_options(rooted_at_atom=0)
+        snapshot = capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=initial_writer_frontier_cursor(prepared, options),
+        )
+        artifact = writer_support_artifact_envelope_for_snapshot(
+            prepared=prepared,
+            snapshot=snapshot,
+        )
+
+        live = verify_writer_support_artifact_envelope(
+            prepared=prepared,
+            envelope=artifact,
+        )
+        facts_bound = verify_writer_support_artifact_for_facts(
+            facts=facts,
+            runtime_options=options,
+            artifact=artifact,
+            policy=ordinary_policy_for_facts(
+                facts,
+                OrdinaryPolicyOptions(non_single_ring_closures="joint"),
+            ),
+        )
+
+        self.assertTrue(live.accepted, live.reason)
+        self.assertTrue(facts_bound.accepted, facts_bound.reason)
+        self.assertFalse(facts_bound.offline_replay_complete)
 
     def test_obligation_replay_rejects_stale_expected_successor(self) -> None:
         prepared = _prepare(cco_facts())
@@ -5203,6 +5364,61 @@ def _prepare(facts):
     )
 
 
+def _prepare_with_joint_non_single_ring_closures(facts):
+    return prepare_south_star_mol_from_facts(
+        facts,
+        writer_surface=SouthStarWriterSurface(),
+        policy=ordinary_policy_for_facts(
+            facts,
+            OrdinaryPolicyOptions(non_single_ring_closures="joint"),
+        ),
+    )
+
+
+def _non_single_closure_triangle_facts(order: BondOrder) -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=(atom(0, "C"), atom(1, "C"), atom(2, "C")),
+        bonds=(
+            single_bond(0, 0, 1),
+            single_bond(1, 1, 2),
+            bond(2, 2, 0, order),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0), AtomId(1), AtomId(2)),
+                bonds=(BondId(0), BondId(1), BondId(2)),
+            ),
+        ),
+    )
+
+
+def _all_closure_bond_text_pair_evidence(prepared, cursor):
+    pending = [cursor]
+    seen: set[WriterFrontierCursor] = set()
+    out = []
+    while pending and len(seen) < 1000:
+        current = pending.pop(0)
+        if current in seen:
+            continue
+        seen.add(current)
+        batch = _checked_writer_frontier_branch_supports(
+            prepared,
+            current,
+            include_counts=False,
+        )
+        for support in batch.supports:
+            ring = support.successor_state_certificate.ring_replay_certificate
+            if ring is not None:
+                out.extend(
+                    item
+                    for item in ring.closure_bond_text_lifecycle_evidence
+                    if item.event_kind == "endpoint_paired"
+                )
+            pending.append(support.successor_cursor)
+    return tuple(out)
+
+
 def _single_closure_candidate_branch_certificate(
     support,
     kind: WriterClosureCandidateBranchCertificateKind,
@@ -5379,8 +5595,9 @@ def _replace_event_identity(events, old_event, new_event):
     )
 
 
-def _writer_options() -> SouthStarRuntimeOptions:
+def _writer_options(rooted_at_atom: int = -1) -> SouthStarRuntimeOptions:
     return SouthStarRuntimeOptions(
+        rooted_at_atom=rooted_at_atom,
         serialization_language=SerializationLanguageMode.WRITER_SHAPED,
     )
 

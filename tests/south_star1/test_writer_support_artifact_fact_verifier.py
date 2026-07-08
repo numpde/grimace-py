@@ -38,6 +38,9 @@ from grimace._south_star1.writer_support_artifact_offline_verifier import (
     verify_support_image_coverage_offline,
 )
 from grimace._south_star1.writer_support_artifact_offline_verifier import (
+    verify_support_string_replay_paths_offline,
+)
+from grimace._south_star1.writer_support_artifact_offline_verifier import (
     verify_writer_support_artifact_offline_replay,
 )
 from grimace._south_star1.writer_support_artifact_envelope import (
@@ -80,6 +83,10 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         )
         self.assertIn(
             "support_image_coverage",
+            verification.offline_checked_relation_families,
+        )
+        self.assertIn(
+            "support_string_replay_path",
             verification.offline_checked_relation_families,
         )
         self.assertIn("support_image", verification.offline_checked_object_kinds)
@@ -426,6 +433,185 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         self.assertFalse(wrong_projection.accepted)
         self.assertIn("coverage_terminal_projection_mismatch", wrong_projection.reason)
 
+    def test_support_string_replay_paths_accept_default_relation_fixtures(self) -> None:
+        for smiles in ("CCO", "C1CC1", "C1=CC1", "[NH4+]", "[13CH4]"):
+            with self.subTest(smiles=smiles):
+                artifact = _rdkit_artifact(smiles)
+
+                verification = _replay_path_verification(artifact)
+
+                self.assertTrue(verification.accepted, verification.reason)
+                self.assertGreater(verification.checked_support_strings, 0)
+                self.assertIn(
+                    "support_string_replay_path",
+                    verification.relation_families,
+                )
+
+    def test_support_string_replay_paths_accept_empty_terminal_path(self) -> None:
+        artifact = _two_atom_completed_prefix_artifact()
+
+        verification = _replay_path_verification(artifact)
+
+        self.assertTrue(verification.accepted, verification.reason)
+        self.assertEqual(verification.checked_support_strings, 1)
+        self.assertEqual(verification.checked_projection_steps, 0)
+
+    def test_replay_path_wrong_emitted_texts_and_join_are_rejected(self) -> None:
+        artifact = _rdkit_artifact("CCO")
+        support = _first_support_string_object(artifact)
+        replay = _object(artifact, support["payload"]["replay_path_ref"])
+        replay["payload"]["emitted_texts"] = ["C"]
+
+        wrong_replay = _replay_path_verification(artifact)
+
+        self.assertFalse(wrong_replay.accepted)
+        self.assertIn("replay_path_emitted_texts_mismatch", wrong_replay.reason)
+
+        artifact = _rdkit_artifact("CCO")
+        support = _first_support_string_object(artifact)
+        support["payload"]["string"] = "bad"
+
+        wrong_join = _replay_path_verification(artifact)
+
+        self.assertFalse(wrong_join.accepted)
+        self.assertIn("replay_path_support_string_join_mismatch", wrong_join.reason)
+
+    def test_replay_path_missing_and_extra_projection_refs_are_rejected(self) -> None:
+        artifact = _rdkit_artifact("CCO")
+        support = _first_support_string_object(artifact)
+        support["payload"]["text_projection_refs"] = (
+            support["payload"]["text_projection_refs"][:-1]
+        )
+
+        missing = _replay_path_verification(artifact)
+
+        self.assertFalse(missing.accepted)
+        self.assertIn("replay_path_text_projection_count_mismatch", missing.reason)
+
+        artifact = _rdkit_artifact("CCO")
+        support = _first_support_string_object(artifact)
+        support["payload"]["text_projection_refs"] = [
+            *support["payload"]["text_projection_refs"],
+            support["payload"]["text_projection_refs"][0],
+        ]
+
+        extra = _replay_path_verification(artifact)
+
+        self.assertFalse(extra.accepted)
+        self.assertIn("replay_path_text_projection_count_mismatch", extra.reason)
+
+    def test_replay_path_projection_chain_mutations_are_rejected(self) -> None:
+        artifact = _rdkit_artifact("CCO")
+        projection = _first_text_projection_object(artifact)
+        projection["payload"]["emitted_text"] = "N"
+
+        wrong_text = _replay_path_verification(artifact)
+
+        self.assertFalse(wrong_text.accepted)
+        self.assertIn("replay_path_projection_text_mismatch", wrong_text.reason)
+
+        artifact = _rdkit_artifact("CCO")
+        projection = _first_text_projection_object(artifact)
+        projection["payload"]["source_cursor"] = (
+            projection["payload"]["successor_cursor"]
+        )
+
+        wrong_source = _replay_path_verification(artifact)
+
+        self.assertFalse(wrong_source.accepted)
+        self.assertIn(
+            "replay_path_projection_source_cursor_mismatch",
+            wrong_source.reason,
+        )
+
+        artifact = _rdkit_artifact("CCO")
+        support = _first_support_string_object(artifact)
+        second = _object(artifact, support["payload"]["text_projection_refs"][1])
+        second["payload"]["source_cursor"] = second["payload"]["successor_cursor"]
+
+        broken_chain = _replay_path_verification(artifact)
+
+        self.assertFalse(broken_chain.accepted)
+        self.assertIn(
+            "replay_path_projection_source_cursor_mismatch",
+            broken_chain.reason,
+        )
+
+    def test_replay_path_terminal_and_final_cursor_mutations_are_rejected(self) -> None:
+        artifact = _rdkit_artifact("CCO")
+        support = _first_support_string_object(artifact)
+        replay = _object(artifact, support["payload"]["replay_path_ref"])
+        replay["payload"]["final_cursor_digest"] = "0" * 64
+
+        final_cursor = _replay_path_verification(artifact)
+
+        self.assertFalse(final_cursor.accepted)
+        self.assertIn("replay_path_final_cursor_mismatch", final_cursor.reason)
+
+        artifact = _rdkit_artifact("CCO")
+        support = _first_support_string_object(artifact)
+        terminal = _object(artifact, support["payload"]["terminal_projection_ref"])
+        terminal["payload"]["source_cursor"] = terminal["payload"]["finalized_cursor"]
+
+        terminal_source = _replay_path_verification(artifact)
+
+        self.assertFalse(terminal_source.accepted)
+        self.assertIn(
+            "replay_path_terminal_source_cursor_mismatch",
+            terminal_source.reason,
+        )
+
+        artifact = _rdkit_artifact("CCO")
+        support = _first_support_string_object(artifact)
+        support["payload"]["terminal_projection_ref"] = (
+            support["payload"]["replay_path_ref"]
+        )
+
+        missing_terminal = _replay_path_verification(artifact)
+
+        self.assertFalse(missing_terminal.accepted)
+        self.assertIn(
+            "replay_path_terminal_projection_ref_kind_mismatch",
+            missing_terminal.reason,
+        )
+
+    def test_replay_path_empty_and_terminal_support_mutations_are_rejected(self) -> None:
+        artifact = _two_atom_completed_prefix_artifact()
+        support = _first_support_string_object(artifact)
+        support["payload"]["text_projection_refs"] = ["missing"]
+
+        empty_text = _replay_path_verification(artifact)
+
+        self.assertFalse(empty_text.accepted)
+        self.assertIn("replay_path_text_projection_count_mismatch", empty_text.reason)
+
+        artifact = _rdkit_artifact("CCO")
+        support = _first_support_string_object(artifact)
+        support["payload"]["terminal_support_refs"] = [
+            support["payload"]["terminal_projection_ref"]
+        ]
+
+        wrong_support = _replay_path_verification(artifact)
+
+        self.assertFalse(wrong_support.accepted)
+        self.assertIn(
+            "replay_path_terminal_support_ref_kind_mismatch",
+            wrong_support.reason,
+        )
+
+        artifact = _rdkit_artifact("CCO")
+        support = _first_support_string_object(artifact)
+        terminal_support = _object(artifact, support["payload"]["terminal_support_refs"][0])
+        terminal_support["payload"]["digest"] = "0" * 64
+
+        stale_support = _replay_path_verification(artifact)
+
+        self.assertFalse(stale_support.accepted)
+        self.assertIn(
+            "replay_path_terminal_support_identity_mismatch",
+            stale_support.reason,
+        )
+
     def test_wrong_facts_are_rejected(self) -> None:
         artifact = _snapshot_artifact(cco_facts())
 
@@ -608,6 +794,23 @@ def _coverage_verification(artifact):
         artifact=artifact,
         objects={item["object_id"]: item for item in artifact["objects"]},
     )
+
+
+def _replay_path_verification(artifact):
+    return verify_support_string_replay_paths_offline(
+        artifact=artifact,
+        objects={item["object_id"]: item for item in artifact["objects"]},
+    )
+
+
+def _first_support_string_object(artifact):
+    root = _object(artifact, artifact["roots"]["support_image_root"])
+    return _object(artifact, root["payload"]["support_string_refs"][0])
+
+
+def _first_text_projection_object(artifact):
+    support = _first_support_string_object(artifact)
+    return _object(artifact, support["payload"]["text_projection_refs"][0])
 
 
 def _initial_snapshot(prepared, options):

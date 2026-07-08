@@ -356,23 +356,6 @@ def _add_support_string(
     count_ref: str,
     budget: WriterEnvelopeWorkBudget,
 ) -> str:
-    replay_ref = table.add(
-        "replay_path",
-        {
-            "source_ref": source_ref,
-            "emitted_texts": list(certificate.emitted_texts),
-            "replay_certificate_digest": _support_string_replay_certificate_digest(
-                certificate.replay_certificate,
-                budget=budget,
-            ),
-            "final_snapshot_digest": _snapshot_identity_envelope(
-                certificate.final_snapshot,
-                budget=budget,
-                operation="support_artifact.replay.final_snapshot.digest",
-            )["digest"],
-        },
-        operation="support_artifact.replay_path.object",
-    )
     text_projection_refs = [
         table.add(
             "text_projection",
@@ -387,6 +370,25 @@ def _add_support_string(
     terminal_projection = _terminal_projection_certificate_identity_envelope(
         certificate.terminal_projection_certificate,
         budget=budget,
+    )
+    replay_ref = table.add(
+        "replay_path",
+        {
+            "source_ref": source_ref,
+            "emitted_texts": list(certificate.emitted_texts),
+            "text_projection_refs": text_projection_refs,
+            "replay_certificate_digest": _support_string_replay_certificate_digest(
+                certificate.replay_certificate,
+                budget=budget,
+            ),
+            "final_cursor_digest": terminal_projection["source_cursor"]["digest"],
+            "final_snapshot_digest": _snapshot_identity_envelope(
+                certificate.final_snapshot,
+                budget=budget,
+                operation="support_artifact.replay.final_snapshot.digest",
+            )["digest"],
+        },
+        operation="support_artifact.replay_path.object",
     )
     terminal_projection_ref = table.add(
         "terminal_projection",

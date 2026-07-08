@@ -68,6 +68,15 @@ class SupportImageCoverageVerification:
     reason: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class SupportStringReplayPathVerification:
+    accepted: bool
+    checked_support_strings: int = 0
+    checked_projection_steps: int = 0
+    relation_families: tuple[str, ...] = ()
+    reason: str | None = None
+
+
 def verify_writer_support_artifact_offline_replay(
     *,
     facts: MoleculeFacts,
@@ -93,6 +102,12 @@ def verify_writer_support_artifact_offline_replay(
         )
         if not coverage.accepted:
             _offline_violation(coverage.reason or "support_image_coverage_rejected")
+        replay_paths = verify_support_string_replay_paths_offline(
+            artifact=artifact,
+            objects=objects,
+        )
+        if not replay_paths.accepted:
+            _offline_violation(replay_paths.reason or "support_string_replay_path_rejected")
         checked_object_kinds = {
             "count_dag",
             "count_envelope",
@@ -106,6 +121,7 @@ def verify_writer_support_artifact_offline_replay(
         checked_relations: set[str] = {
             "count_dag_arithmetic",
             *coverage.relation_families,
+            *replay_paths.relation_families,
         }
         support_refs = root["payload"]["support_string_refs"]
         for ref in support_refs:
@@ -330,6 +346,111 @@ def verify_support_image_coverage_offline(
             accepted=False,
             reason=f"malformed_coverage:{type(exc).__name__}",
         )
+
+
+def verify_support_string_replay_paths_offline(
+    *,
+    artifact: Mapping[str, object],
+    objects: Mapping[str, Mapping[str, object]],
+) -> SupportStringReplayPathVerification:
+    try:
+        root = _require_object(objects, artifact["roots"]["support_image_root"])
+        source = _require_object(objects, root["payload"]["source_ref"])
+        if source["kind"] != "source_snapshot":
+            _offline_violation("replay_path_source_ref_kind_mismatch")
+        source_cursor = source["payload"]["cursor"]
+        checked_steps = 0
+        for ref in root["payload"]["support_string_refs"]:
+            support = _require_object(objects, ref)
+            _check_support_string_replay_path(
+                support=support,
+                source_cursor=source_cursor,
+                objects=objects,
+            )
+            checked_steps += len(support["payload"]["text_projection_refs"])
+        return SupportStringReplayPathVerification(
+            accepted=True,
+            checked_support_strings=len(root["payload"]["support_string_refs"]),
+            checked_projection_steps=checked_steps,
+            relation_families=("support_string_replay_path",),
+        )
+    except SouthStarError as exc:
+        return SupportStringReplayPathVerification(
+            accepted=False,
+            reason=exc.args[-1] if exc.args else "support_string_replay_path_error",
+        )
+    except (AssertionError, KeyError, TypeError, ValueError) as exc:
+        return SupportStringReplayPathVerification(
+            accepted=False,
+            reason=f"malformed_replay_path:{type(exc).__name__}",
+        )
+
+
+def _check_support_string_replay_path(
+    *,
+    support: Mapping[str, object],
+    source_cursor: Mapping[str, object],
+    objects: Mapping[str, Mapping[str, object]],
+) -> None:
+    payload = support["payload"]
+    emitted_texts = payload["emitted_texts"]
+    text_refs = payload["text_projection_refs"]
+    if payload["string"] != "".join(emitted_texts):
+        _offline_violation("replay_path_support_string_join_mismatch")
+    if len(text_refs) != len(emitted_texts):
+        _offline_violation("replay_path_text_projection_count_mismatch")
+    replay = _require_object(objects, payload["replay_path_ref"])
+    if replay["kind"] != "replay_path":
+        _offline_violation("replay_path_ref_kind_mismatch")
+    replay_payload = replay["payload"]
+    if replay_payload["emitted_texts"] != emitted_texts:
+        _offline_violation("replay_path_emitted_texts_mismatch")
+    if replay_payload["text_projection_refs"] != text_refs:
+        _offline_violation("replay_path_text_projection_refs_mismatch")
+
+    current_cursor = source_cursor
+    for index, (projection_ref, emitted_text) in enumerate(
+        zip(text_refs, emitted_texts, strict=True)
+    ):
+        projection = _require_object(objects, projection_ref)
+        if projection["kind"] != "text_projection":
+            _offline_violation("replay_path_text_projection_ref_kind_mismatch")
+        projection_payload = projection["payload"]
+        if projection_payload["emitted_text"] != emitted_text:
+            _offline_violation("replay_path_projection_text_mismatch")
+        if projection_payload["source_cursor"] != current_cursor:
+            _offline_violation("replay_path_projection_source_cursor_mismatch")
+        current_cursor = projection_payload["successor_cursor"]
+        if (
+            index == len(text_refs) - 1
+            and current_cursor["digest"] != replay_payload["final_cursor_digest"]
+        ):
+            _offline_violation("replay_path_final_cursor_mismatch")
+    if (
+        not text_refs
+        and source_cursor["digest"] != replay_payload["final_cursor_digest"]
+    ):
+        _offline_violation("replay_path_empty_final_cursor_mismatch")
+
+    terminal = _require_object(objects, payload["terminal_projection_ref"])
+    if terminal["kind"] != "terminal_projection":
+        _offline_violation("replay_path_terminal_projection_ref_kind_mismatch")
+    terminal_payload = terminal["payload"]
+    if (
+        terminal_payload["source_cursor"]["digest"]
+        != replay_payload["final_cursor_digest"]
+    ):
+        _offline_violation("replay_path_terminal_source_cursor_mismatch")
+    terminal_identities = {
+        item["digest"]
+        for item in terminal_payload["terminal_support_identities"]
+    }
+    for terminal_ref in payload["terminal_support_refs"]:
+        terminal_support = _require_object(objects, terminal_ref)
+        if terminal_support["kind"] != "terminal_support":
+            _offline_violation("replay_path_terminal_support_ref_kind_mismatch")
+        if terminal_support["payload"]["digest"] not in terminal_identities:
+            _offline_violation("replay_path_terminal_support_identity_mismatch")
 
 
 def _node_count(
@@ -608,9 +729,11 @@ __all__ = (
     "OBJECT_KIND_OFFLINE_COVERAGE",
     "CountDagArithmeticVerification",
     "SupportImageCoverageVerification",
+    "SupportStringReplayPathVerification",
     "WriterSupportArtifactOfflineReplayResult",
     "validate_writer_bracket_atom_text_against_facts",
     "verify_count_dag_arithmetic",
     "verify_support_image_coverage_offline",
+    "verify_support_string_replay_paths_offline",
     "verify_writer_support_artifact_offline_replay",
 )

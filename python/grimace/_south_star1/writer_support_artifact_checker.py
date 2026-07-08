@@ -343,11 +343,16 @@ def _validate_object_payload_shape(item: Mapping[str, object]) -> None:
             (
                 "source_ref",
                 "emitted_texts",
+                "text_projection_refs",
                 "replay_certificate_digest",
+                "final_cursor_digest",
                 "final_snapshot_digest",
             ),
         )
         _require_string_list(payload["emitted_texts"], "replay_emitted_texts_not_strings")
+        _require_string_list(payload["text_projection_refs"], "replay_text_projection_refs_not_strings")
+        if not isinstance(payload["final_cursor_digest"], str):
+            _artifact_violation("replay_final_cursor_digest_not_string")
     elif kind in ("text_projection", "terminal_projection", "terminal_support"):
         _require_mapping(payload, "identity_payload_not_mapping")
         if "digest" not in payload:
@@ -615,7 +620,7 @@ def _object_refs(item: Mapping[str, object]) -> list[str]:
             *payload["terminal_support_refs"],
         ]
     if kind == "replay_path":
-        return [payload["source_ref"]]
+        return [payload["source_ref"], *payload["text_projection_refs"]]
     if kind == "support_image_coverage":
         refs = [
             ref

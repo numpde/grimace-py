@@ -23,7 +23,8 @@ from .policy import RingLabel
 from .policy import SmilesPolicy
 from .policy import TetraToken
 from .slots import BondSlotKind
-from .writer_atom_text_lifecycle import charged_nitrogen_bracket_atom_text
+from .writer_atom_text_lifecycle import bracket_atom_text
+from .writer_atom_text_lifecycle import is_supported_bracket_atom
 from .writer_atom_text_lifecycle import writer_bracket_atom_text_evidence
 
 
@@ -123,8 +124,8 @@ def _atom_text_choice(
     options: OrdinaryPolicyOptions,
 ) -> AtomTextChoice:
     _require_supported_atom_surface(atom)
-    if atom.formal_charge != 0:
-        return _charged_bracket_atom_choice(atom)
+    if atom.formal_charge != 0 or atom.isotope is not None:
+        return _bracket_atom_choice(atom)
     if atom.is_aromatic:
         return _aromatic_atom_choice(atom, options)
     if tetra_center:
@@ -133,10 +134,15 @@ def _atom_text_choice(
 
 
 def _require_supported_atom_surface(atom: AtomFacts) -> None:
-    if atom.isotope is not None:
+    if atom.isotope is not None and not is_supported_bracket_atom(atom):
         raise SouthStarError(
             SouthStarErrorKind.UNSUPPORTED_ATOM,
             f"isotopic atoms are unsupported: {atom.id!r}",
+        )
+    if atom.formal_charge != 0 and not is_supported_bracket_atom(atom):
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_ATOM,
+            f"charged atoms are unsupported: {atom.id!r}",
         )
     if atom.explicit_h_count != 0:
         raise SouthStarError(
@@ -150,29 +156,20 @@ def _require_supported_atom_surface(atom: AtomFacts) -> None:
         )
 
 
-def _charged_bracket_atom_choice(atom: AtomFacts) -> AtomTextChoice:
-    if not _is_supported_charged_bracket_atom(atom):
+def _bracket_atom_choice(atom: AtomFacts) -> AtomTextChoice:
+    if not is_supported_bracket_atom(atom):
         raise SouthStarError(
             SouthStarErrorKind.UNSUPPORTED_ATOM,
-            f"charged atoms are unsupported: {atom.id!r}",
+            f"bracket atom surface is unsupported: {atom.id!r}",
         )
-    text = charged_nitrogen_bracket_atom_text(atom)
+    text = bracket_atom_text(atom)
     writer_bracket_atom_text_evidence(atom, rendered_text=text)
     return AtomTextChoice(
         name=(
-            f"bracket_charged_{atom.symbol}_{atom.formal_charge:+d}"
-            f"_h{atom.implicit_h_count}"
+            f"bracket_{atom.symbol}_isotope{atom.isotope or 0}"
+            f"_charge{atom.formal_charge:+d}_h{atom.implicit_h_count}"
         ),
         text_by_tetra=((TetraToken.NONE, text),),
-    )
-
-
-def _is_supported_charged_bracket_atom(atom: AtomFacts) -> bool:
-    return (
-        atom.symbol == "N"
-        and atom.formal_charge == 1
-        and atom.implicit_h_count in {0, 1, 2, 3, 4}
-        and not atom.is_aromatic
     )
 
 

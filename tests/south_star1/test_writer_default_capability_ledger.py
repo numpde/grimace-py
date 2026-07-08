@@ -47,7 +47,8 @@ class WriterDefaultCapabilityLedgerTest(unittest.TestCase):
                 "non_single_ring_closure_triple",
                 "branched_ring",
                 "simple_bracket_charge",
-                "unsupported_isotope",
+                "simple_isotope_bracket_atom",
+                "unsupported_charged_isotope",
                 "unsupported_potential_directional_non_neighbor",
             },
         )

@@ -410,6 +410,10 @@ def _add_support_string(
                     budget=budget,
                 ),
                 "obligation_summary": _terminal_obligation_summary(terminal),
+                "obligation_manifests": _terminal_obligation_manifests(
+                    terminal,
+                    budget=budget,
+                ),
             },
             operation="support_artifact.terminal_support.object",
         )
@@ -503,6 +507,11 @@ def _add_branch_support(
             "local_evidence": local_evidence,
             "graph_ring_delta": graph_ring_delta,
             "obligation_summary": _branch_obligation_summary(branch),
+            "obligation_manifests": _branch_obligation_manifests(
+                branch,
+                branch_identity=envelope,
+                budget=budget,
+            ),
             "digest": envelope["digest"],
         },
         operation="support_artifact.branch_support.object",
@@ -609,6 +618,101 @@ def _branch_obligation_summary(branch) -> dict[str, int]:
     }
 
 
+def _branch_obligation_manifests(
+    branch,
+    *,
+    branch_identity: Mapping[str, object],
+    budget: WriterEnvelopeWorkBudget,
+) -> dict[str, list[dict[str, object]]]:
+    successor = branch.successor_state_certificate
+    graph_replay = getattr(successor, "graph_replay_certificate", None)
+    stereo_replay = getattr(successor, "stereo_replay_certificate", None)
+    residual_attachment_replay = getattr(
+        successor,
+        "residual_attachment_lifecycle_replay_certificate",
+        None,
+    )
+    closure_candidate_replay = getattr(
+        successor,
+        "closure_candidate_lifecycle_replay_certificate",
+        None,
+    )
+    return {
+        "residual_work": _obligation_family_manifests(
+            family="residual_work",
+            records=branch.residual_work_evidence,
+            source_digest=branch_identity["source_state_digest"],
+            successor_digest=branch_identity["successor_state_digest"],
+            replay_complete=False,
+            budget=budget,
+        ),
+        "finite_relation_work": _obligation_family_manifests(
+            family="finite_relation_work",
+            records=branch.finite_relation_work_evidence,
+            source_digest=branch_identity["source_state_digest"],
+            successor_digest=branch_identity["successor_state_digest"],
+            replay_complete=(
+                _replay_complete(residual_attachment_replay)
+                or _replay_complete(closure_candidate_replay)
+            ),
+            budget=budget,
+        ),
+        "graph_obligation_work": _obligation_family_manifests(
+            family="graph_obligation_work",
+            records=branch.graph_obligation_work_evidence,
+            source_digest=branch_identity["source_state_digest"],
+            successor_digest=branch_identity["successor_state_digest"],
+            replay_complete=_replay_complete(graph_replay),
+            budget=budget,
+        ),
+        "stereo_lifecycle": _obligation_family_manifests(
+            family="stereo_lifecycle",
+            records=(
+                *branch.stereo_lifecycle_evidence,
+                *branch.stereo_branch_certificates,
+            ),
+            source_digest=branch_identity["source_state_digest"],
+            successor_digest=branch_identity["successor_state_digest"],
+            replay_complete=_replay_complete(stereo_replay),
+            budget=budget,
+        ),
+        "residual_attachment_lifecycle": _obligation_family_manifests(
+            family="residual_attachment_lifecycle",
+            records=(
+                *branch.residual_attachment_lifecycle_evidence,
+                *branch.residual_attachment_branch_certificates,
+            ),
+            source_digest=branch_identity["source_state_digest"],
+            successor_digest=branch_identity["successor_state_digest"],
+            replay_complete=_replay_complete(residual_attachment_replay),
+            budget=budget,
+        ),
+        "closure_candidate_lifecycle": _obligation_family_manifests(
+            family="closure_candidate_lifecycle",
+            records=(
+                *branch.closure_candidate_lifecycle_evidence,
+                *branch.closure_candidate_branch_certificates,
+            ),
+            source_digest=branch_identity["source_state_digest"],
+            successor_digest=branch_identity["successor_state_digest"],
+            replay_complete=_replay_complete(closure_candidate_replay),
+            budget=budget,
+        ),
+        "directional_ring_closure_lifecycle": _obligation_family_manifests(
+            family="directional_ring_closure_lifecycle",
+            records=getattr(
+                successor,
+                "directional_ring_closure_bond_text_lifecycle_evidence",
+                (),
+            ),
+            source_digest=branch_identity["source_state_digest"],
+            successor_digest=branch_identity["successor_state_digest"],
+            replay_complete=False,
+            budget=budget,
+        ),
+    }
+
+
 def _terminal_obligation_summary(terminal) -> dict[str, int]:
     return {
         "terminal_residual_work_count": len(terminal.terminal_residual_work_evidence),
@@ -617,6 +721,87 @@ def _terminal_obligation_summary(terminal) -> dict[str, int]:
         ),
         "graph_obligation_work_count": len(terminal.graph_obligation_work_evidence),
     }
+
+
+def _terminal_obligation_manifests(
+    terminal,
+    *,
+    budget: WriterEnvelopeWorkBudget,
+) -> dict[str, list[dict[str, object]]]:
+    source_digest = _identity_digest(
+        terminal.source_state,
+        budget=budget,
+        operation="support_artifact.terminal_obligation.source.digest",
+    )
+    finalized_digest = _identity_digest(
+        terminal.finalized_state,
+        budget=budget,
+        operation="support_artifact.terminal_obligation.finalized.digest",
+    )
+    terminal_noop = terminal.source_state == terminal.finalized_state
+    return {
+        "terminal_residual_work": _obligation_family_manifests(
+            family="terminal_residual_work",
+            records=terminal.terminal_residual_work_evidence,
+            source_digest=source_digest,
+            successor_digest=finalized_digest,
+            replay_complete=False,
+            budget=budget,
+        ),
+        "terminal_stereo_lifecycle": _obligation_family_manifests(
+            family="terminal_stereo_lifecycle",
+            records=terminal.terminal_stereo_lifecycle_evidence,
+            source_digest=source_digest,
+            successor_digest=finalized_digest,
+            replay_complete=terminal_noop,
+            budget=budget,
+        ),
+        "terminal_graph_obligation_work": _obligation_family_manifests(
+            family="terminal_graph_obligation_work",
+            records=terminal.graph_obligation_work_evidence,
+            source_digest=source_digest,
+            successor_digest=finalized_digest,
+            replay_complete=terminal_noop,
+            budget=budget,
+        ),
+    }
+
+
+def _obligation_family_manifests(
+    *,
+    family: str,
+    records: tuple[object, ...],
+    source_digest: str,
+    successor_digest: str,
+    replay_complete: bool,
+    budget: WriterEnvelopeWorkBudget,
+) -> list[dict[str, object]]:
+    return [
+        {
+            "family": family,
+            "operation": getattr(record, "operation", record.__class__.__name__),
+            "source_digest": source_digest,
+            "successor_digest": successor_digest,
+            "is_noop": source_digest == successor_digest,
+            "is_empty": False,
+            "is_discharged": bool(replay_complete),
+            "evidence_digest": _identity_digest(
+                record,
+                budget=budget,
+                operation=f"support_artifact.obligation.{family}.evidence.digest",
+            ),
+        }
+        for record in records
+    ]
+
+
+def _replay_complete(certificate) -> bool:
+    if certificate is None:
+        return False
+    if getattr(certificate, "replay_complete", False):
+        return True
+    nested = getattr(certificate, "obligation_replay_certificate", None)
+    return bool(nested is not None and getattr(nested, "replay_complete", False))
 
 
 def _plain_atom_text(atom) -> str | None:

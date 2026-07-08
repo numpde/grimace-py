@@ -297,58 +297,42 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
     def test_default_corpus_obligations_are_classified(self) -> None:
         cases = {
             "CCO": (
-                "graph_obligation_work",
-                "stereo_lifecycle",
                 "terminal_graph_obligation_work",
                 "terminal_stereo_lifecycle",
             ),
             "CC(C)O": (
-                "graph_obligation_work",
-                "stereo_lifecycle",
                 "terminal_graph_obligation_work",
                 "terminal_stereo_lifecycle",
             ),
             "C1CC1": (
                 "finite_relation_work",
                 "graph_obligation_work",
-                "residual_attachment_lifecycle",
-                "stereo_lifecycle",
                 "terminal_graph_obligation_work",
                 "terminal_stereo_lifecycle",
             ),
             "C1CCC1": (
                 "finite_relation_work",
                 "graph_obligation_work",
-                "residual_attachment_lifecycle",
-                "stereo_lifecycle",
                 "terminal_graph_obligation_work",
                 "terminal_stereo_lifecycle",
             ),
             "C1=CC1": (
                 "finite_relation_work",
                 "graph_obligation_work",
-                "residual_attachment_lifecycle",
-                "stereo_lifecycle",
                 "terminal_graph_obligation_work",
                 "terminal_stereo_lifecycle",
             ),
             "C1#CC1": (
                 "finite_relation_work",
                 "graph_obligation_work",
-                "residual_attachment_lifecycle",
-                "stereo_lifecycle",
                 "terminal_graph_obligation_work",
                 "terminal_stereo_lifecycle",
             ),
             "[NH4+]": (
-                "graph_obligation_work",
-                "stereo_lifecycle",
                 "terminal_graph_obligation_work",
                 "terminal_stereo_lifecycle",
             ),
             "[13CH4]": (
-                "graph_obligation_work",
-                "stereo_lifecycle",
                 "terminal_graph_obligation_work",
                 "terminal_stereo_lifecycle",
             ),
@@ -367,11 +351,16 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
                 self.assertTrue(classification.accepted, classification.reason)
                 self.assertEqual(classification.unchecked_families, unchecked_families)
                 self.assertTrue(classification.stereo_obligations_present)
-                self.assertTrue(classification.graph_obligations_present)
+                self.assertEqual(
+                    classification.graph_obligations_present,
+                    "terminal_graph_obligation_work" in unchecked_families
+                    or "graph_obligation_work" in unchecked_families,
+                )
                 self.assertEqual(
                     classification.residual_obligations_present,
-                    "residual_attachment_lifecycle" in unchecked_families,
+                    smiles.startswith("C1"),
                 )
+                self.assertIn("stereo_lifecycle", classification.checked_families)
                 self.assertIn(
                     "residual_work_checked_empty",
                     classification.checked_empty_families,
@@ -379,11 +368,26 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
                 self.assertTrue(verification.accepted, verification.reason)
                 self.assertFalse(verification.offline_replay_complete)
                 self.assertEqual(verification.offline_unchecked_object_kinds, ())
+                self.assertEqual(
+                    verification.offline_unchecked_obligation_families,
+                    unchecked_families,
+                )
+                self.assertIn(
+                    "stereo_lifecycle",
+                    verification.offline_checked_obligation_families,
+                )
+                self.assertIn(
+                    "residual_work_checked_empty",
+                    verification.offline_empty_obligation_families,
+                )
 
     def test_synthetic_stereo_obligation_is_reported_unchecked(self) -> None:
         artifact = _rdkit_artifact("CCO")
         branch = _first_branch_support_object(artifact)
-        branch["payload"]["obligation_summary"]["stereo_lifecycle_count"] = 1
+        manifest = branch["payload"]["obligation_manifests"]["stereo_lifecycle"][0]
+        manifest["is_discharged"] = False
+        manifest["is_noop"] = False
+        manifest["is_empty"] = False
 
         classification = _obligation_classification(artifact)
 
@@ -391,10 +395,10 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         self.assertTrue(classification.stereo_obligations_present)
         self.assertIn("stereo_lifecycle", classification.unchecked_families)
 
-    def test_obligation_summary_mutation_is_reported_incomplete(self) -> None:
+    def test_obligation_summary_mutation_is_structurally_rejected(self) -> None:
         artifact = _rdkit_artifact("CCO")
         branch = _first_branch_support_object(artifact)
-        branch["payload"]["obligation_summary"]["stereo_lifecycle_count"] = 1
+        branch["payload"]["obligation_summary"]["stereo_lifecycle_count"] += 1
 
         verification = verify_writer_support_artifact_for_facts(
             facts=_rdkit_facts("CCO"),
@@ -402,8 +406,8 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             artifact=artifact,
         )
 
-        self.assertTrue(verification.accepted, verification.reason)
-        self.assertFalse(verification.offline_replay_complete)
+        self.assertFalse(verification.accepted)
+        self.assertIn("object_digest_mismatch", verification.reason)
 
     def test_count_dag_arithmetic_accepts_default_relation_fixtures(self) -> None:
         for smiles in ("CCO", "CC(C)O", "C1CC1", "C1=CC1", "[NH4+]", "[13CH4]"):

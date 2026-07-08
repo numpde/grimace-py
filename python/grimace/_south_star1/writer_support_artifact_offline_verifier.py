@@ -50,6 +50,9 @@ class WriterSupportArtifactOfflineReplayResult:
     checked_object_kinds: tuple[str, ...] = ()
     unchecked_object_kinds: tuple[str, ...] = ()
     checked_relation_families: tuple[str, ...] = ()
+    checked_obligation_families: tuple[str, ...] = ()
+    unchecked_obligation_families: tuple[str, ...] = ()
+    empty_obligation_families: tuple[str, ...] = ()
     offline_replay_complete: bool = False
     reason: str | None = None
 
@@ -61,6 +64,7 @@ class OfflineObligationClassification:
     stereo_obligations_present: bool = False
     graph_obligations_present: bool = False
     unchecked_families: tuple[str, ...] = ()
+    checked_families: tuple[str, ...] = ()
     checked_empty_families: tuple[str, ...] = ()
     reason: str | None = None
 
@@ -250,6 +254,9 @@ def verify_writer_support_artifact_offline_replay(
             checked_object_kinds=tuple(sorted(checked_object_kinds)),
             unchecked_object_kinds=unchecked,
             checked_relation_families=tuple(sorted(checked_relations)),
+            checked_obligation_families=obligations.checked_families,
+            unchecked_obligation_families=obligations.unchecked_families,
+            empty_obligation_families=obligations.checked_empty_families,
             offline_replay_complete=replay_complete,
         )
     except SouthStarError as exc:
@@ -656,62 +663,47 @@ def classify_residual_stereo_obligations_offline(
 ) -> OfflineObligationClassification:
     try:
         root = _require_object(objects, artifact["roots"]["support_image_root"])
-        totals = {
-            "residual_work": 0,
-            "finite_relation_work": 0,
-            "graph_obligation_work": 0,
-            "stereo_lifecycle": 0,
-            "residual_attachment_lifecycle": 0,
-            "closure_candidate_lifecycle": 0,
-            "directional_ring_closure_lifecycle": 0,
-            "terminal_residual_work": 0,
-            "terminal_stereo_lifecycle": 0,
-            "terminal_graph_obligation_work": 0,
+        manifests_by_family = {
+            "residual_work": [],
+            "finite_relation_work": [],
+            "graph_obligation_work": [],
+            "stereo_lifecycle": [],
+            "residual_attachment_lifecycle": [],
+            "closure_candidate_lifecycle": [],
+            "directional_ring_closure_lifecycle": [],
+            "terminal_residual_work": [],
+            "terminal_stereo_lifecycle": [],
+            "terminal_graph_obligation_work": [],
         }
         for branch_ref in _branch_support_refs_for_root(root=root, objects=objects):
             branch = _require_object(objects, branch_ref)
-            summary = branch["payload"]["obligation_summary"]
-            totals["residual_work"] += summary["residual_work_count"]
-            totals["finite_relation_work"] += summary["finite_relation_work_count"]
-            totals["graph_obligation_work"] += summary["graph_obligation_work_count"]
-            totals["stereo_lifecycle"] += summary["stereo_lifecycle_count"]
-            totals["residual_attachment_lifecycle"] += (
-                summary["residual_attachment_lifecycle_count"]
-            )
-            totals["closure_candidate_lifecycle"] += (
-                summary["closure_candidate_lifecycle_count"]
-            )
-            totals["directional_ring_closure_lifecycle"] += (
-                summary["directional_ring_closure_lifecycle_count"]
-            )
+            for family, items in branch["payload"]["obligation_manifests"].items():
+                manifests_by_family[family].extend(items)
         for support_ref in root["payload"]["support_string_refs"]:
             support = _require_object(objects, support_ref)
             for terminal_ref in support["payload"]["terminal_support_refs"]:
                 terminal = _require_object(objects, terminal_ref)
-                summary = terminal["payload"]["obligation_summary"]
-                totals["terminal_residual_work"] += (
-                    summary["terminal_residual_work_count"]
-                )
-                totals["terminal_stereo_lifecycle"] += (
-                    summary["terminal_stereo_lifecycle_count"]
-                )
-                totals["terminal_graph_obligation_work"] += (
-                    summary["graph_obligation_work_count"]
-                )
+                for family, items in terminal["payload"]["obligation_manifests"].items():
+                    manifests_by_family[family].extend(items)
         unchecked = tuple(
             family
-            for family, count in sorted(totals.items())
-            if count
+            for family, items in sorted(manifests_by_family.items())
+            if items and not _obligation_manifests_checked(items)
+        )
+        checked = tuple(
+            family
+            for family, items in sorted(manifests_by_family.items())
+            if items and _obligation_manifests_checked(items)
         )
         checked_empty = tuple(
             f"{family}_checked_empty"
-            for family, count in sorted(totals.items())
-            if not count
+            for family, items in sorted(manifests_by_family.items())
+            if not items
         )
         return OfflineObligationClassification(
             accepted=True,
             residual_obligations_present=any(
-                totals[family]
+                manifests_by_family[family]
                 for family in (
                     "residual_work",
                     "residual_attachment_lifecycle",
@@ -719,7 +711,7 @@ def classify_residual_stereo_obligations_offline(
                 )
             ),
             stereo_obligations_present=any(
-                totals[family]
+                manifests_by_family[family]
                 for family in (
                     "stereo_lifecycle",
                     "directional_ring_closure_lifecycle",
@@ -727,13 +719,14 @@ def classify_residual_stereo_obligations_offline(
                 )
             ),
             graph_obligations_present=any(
-                totals[family]
+                manifests_by_family[family]
                 for family in (
                     "graph_obligation_work",
                     "terminal_graph_obligation_work",
                 )
             ),
             unchecked_families=unchecked,
+            checked_families=checked,
             checked_empty_families=checked_empty,
         )
     except SouthStarError as exc:
@@ -746,6 +739,13 @@ def classify_residual_stereo_obligations_offline(
             accepted=False,
             reason=f"malformed_offline_obligation:{type(exc).__name__}",
         )
+
+
+def _obligation_manifests_checked(items: list[object]) -> bool:
+    return all(
+        bool(item["is_noop"] or item["is_empty"] or item["is_discharged"])
+        for item in items
+    )
 
 
 def verify_terminal_support_identities_offline(
@@ -870,7 +870,7 @@ def _terminal_support_identity_payload(payload: Mapping[str, object]) -> dict[st
     return {
         key: value
         for key, value in payload.items()
-        if key != "obligation_summary"
+        if key not in ("obligation_summary", "obligation_manifests")
     }
 
 

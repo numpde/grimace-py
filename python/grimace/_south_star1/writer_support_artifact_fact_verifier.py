@@ -38,6 +38,9 @@ class WriterSupportArtifactFactVerification:
     offline_checked_object_kinds: tuple[str, ...] = ()
     offline_unchecked_object_kinds: tuple[str, ...] = ()
     offline_checked_relation_families: tuple[str, ...] = ()
+    offline_checked_obligation_families: tuple[str, ...] = ()
+    offline_unchecked_obligation_families: tuple[str, ...] = ()
+    offline_empty_obligation_families: tuple[str, ...] = ()
 
 
 def verify_writer_support_artifact_for_facts(
@@ -107,6 +110,9 @@ def verify_writer_support_artifact_for_facts(
             offline_checked_object_kinds=offline.checked_object_kinds,
             offline_unchecked_object_kinds=offline.unchecked_object_kinds,
             offline_checked_relation_families=offline.checked_relation_families,
+            offline_checked_obligation_families=offline.checked_obligation_families,
+            offline_unchecked_obligation_families=offline.unchecked_obligation_families,
+            offline_empty_obligation_families=offline.empty_obligation_families,
         )
     except WriterEnvelopeWorkExceeded as exc:
         return WriterSupportArtifactFactVerification(

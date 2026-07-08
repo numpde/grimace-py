@@ -389,6 +389,7 @@ def _validate_object_payload_shape(
                 "local_evidence",
                 "graph_ring_delta",
                 "obligation_summary",
+                "obligation_manifests",
                 "digest",
             ),
         )
@@ -420,6 +421,21 @@ def _validate_object_payload_shape(
                 "closure_candidate_lifecycle_count",
                 "directional_ring_closure_lifecycle_count",
             ),
+        )
+        _validate_obligation_manifests(
+            payload["obligation_manifests"],
+            payload["obligation_summary"],
+            {
+                "residual_work": "residual_work_count",
+                "finite_relation_work": "finite_relation_work_count",
+                "graph_obligation_work": "graph_obligation_work_count",
+                "stereo_lifecycle": "stereo_lifecycle_count",
+                "residual_attachment_lifecycle": "residual_attachment_lifecycle_count",
+                "closure_candidate_lifecycle": "closure_candidate_lifecycle_count",
+                "directional_ring_closure_lifecycle": (
+                    "directional_ring_closure_lifecycle_count"
+                ),
+            },
         )
     elif kind == "terminal_projection":
         _require_exact_payload_fields(
@@ -758,7 +774,7 @@ def _validate_terminal_support_identity(
         "digest",
     )
     if include_obligation_summary:
-        fields = (*fields[:-1], "obligation_summary", fields[-1])
+        fields = (*fields[:-1], "obligation_summary", "obligation_manifests", fields[-1])
     _require_exact_payload_fields(
         identity,
         fields,
@@ -790,6 +806,15 @@ def _validate_terminal_support_identity(
                 "graph_obligation_work_count",
             ),
         )
+        _validate_obligation_manifests(
+            identity["obligation_manifests"],
+            identity["obligation_summary"],
+            {
+                "terminal_residual_work": "terminal_residual_work_count",
+                "terminal_stereo_lifecycle": "terminal_stereo_lifecycle_count",
+                "terminal_graph_obligation_work": "graph_obligation_work_count",
+            },
+        )
 
 
 def _validate_obligation_summary(summary: object, fields: tuple[str, ...]) -> None:
@@ -799,6 +824,49 @@ def _validate_obligation_summary(summary: object, fields: tuple[str, ...]) -> No
         _require_int(summary[field], "obligation_summary_value_not_int")
         if summary[field] < 0:
             _artifact_violation("obligation_summary_value_negative")
+
+
+def _validate_obligation_manifests(
+    manifests: object,
+    summary: Mapping[str, object],
+    family_to_count_field: Mapping[str, str],
+) -> None:
+    _require_mapping(manifests, "obligation_manifests_not_mapping")
+    _require_exact_payload_fields(manifests, tuple(family_to_count_field))
+    for family, count_field in family_to_count_field.items():
+        items = manifests[family]
+        if not isinstance(items, list):
+            _artifact_violation("obligation_manifest_items_not_list")
+        if len(items) != summary[count_field]:
+            _artifact_violation("obligation_manifest_count_mismatch")
+        for item in items:
+            _require_mapping(item, "obligation_manifest_not_mapping")
+            _require_exact_payload_fields(
+                item,
+                (
+                    "family",
+                    "operation",
+                    "source_digest",
+                    "successor_digest",
+                    "is_noop",
+                    "is_empty",
+                    "is_discharged",
+                    "evidence_digest",
+                ),
+            )
+            if item["family"] != family:
+                _artifact_violation("obligation_manifest_family_mismatch")
+            for field in (
+                "operation",
+                "source_digest",
+                "successor_digest",
+                "evidence_digest",
+            ):
+                if not isinstance(item[field], str):
+                    _artifact_violation("obligation_manifest_string_field_mismatch")
+            for field in ("is_noop", "is_empty", "is_discharged"):
+                if not isinstance(item[field], bool):
+                    _artifact_violation("obligation_manifest_bool_field_mismatch")
 
 
 def _require_exact_payload_fields(payload: Mapping[str, object], fields: tuple[str, ...]) -> None:

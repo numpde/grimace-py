@@ -23,6 +23,7 @@ OBJECT_KIND_OFFLINE_COVERAGE = {
     "count_dag": "arithmetic_checked",
     "frontier_product": "structurally_checked",
     "replay_path": "partially_offline_checked",
+    "branch_support": "projection_identity_checked",
     "text_projection": "partially_offline_checked",
     "terminal_projection": "identity_shape_checked",
     "terminal_support": "structurally_checked",
@@ -77,6 +78,14 @@ class SupportStringReplayPathVerification:
     reason: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class BranchProjectionIdentityVerification:
+    accepted: bool
+    checked_text_projections: int = 0
+    checked_branch_supports: int = 0
+    reason: str | None = None
+
+
 def verify_writer_support_artifact_offline_replay(
     *,
     facts: MoleculeFacts,
@@ -108,7 +117,16 @@ def verify_writer_support_artifact_offline_replay(
         )
         if not replay_paths.accepted:
             _offline_violation(replay_paths.reason or "support_string_replay_path_rejected")
+        branch_identities = verify_branch_projection_identities_offline(
+            artifact=artifact,
+            objects=objects,
+        )
+        if not branch_identities.accepted:
+            _offline_violation(
+                branch_identities.reason or "branch_projection_identity_rejected"
+            )
         checked_object_kinds = {
+            "branch_support",
             "count_dag",
             "count_envelope",
             "source_snapshot",
@@ -122,6 +140,7 @@ def verify_writer_support_artifact_offline_replay(
             "count_dag_arithmetic",
             *coverage.relation_families,
             *replay_paths.relation_families,
+            "branch_projection_identity",
         }
         support_refs = root["payload"]["support_string_refs"]
         for ref in support_refs:
@@ -384,6 +403,82 @@ def verify_support_string_replay_paths_offline(
             accepted=False,
             reason=f"malformed_replay_path:{type(exc).__name__}",
         )
+
+
+def verify_branch_projection_identities_offline(
+    *,
+    artifact: Mapping[str, object],
+    objects: Mapping[str, Mapping[str, object]],
+) -> BranchProjectionIdentityVerification:
+    try:
+        root = _require_object(objects, artifact["roots"]["support_image_root"])
+        seen_projection_refs: set[str] = set()
+        checked_branch_refs: set[str] = set()
+        for support_ref in root["payload"]["support_string_refs"]:
+            support = _require_object(objects, support_ref)
+            for projection_ref in support["payload"]["text_projection_refs"]:
+                if projection_ref in seen_projection_refs:
+                    continue
+                seen_projection_refs.add(projection_ref)
+                projection = _require_object(objects, projection_ref)
+                if projection["kind"] != "text_projection":
+                    _offline_violation("branch_projection_text_ref_kind_mismatch")
+                _check_text_projection_branch_identities(
+                    projection=projection,
+                    objects=objects,
+                    checked_branch_refs=checked_branch_refs,
+                )
+        return BranchProjectionIdentityVerification(
+            accepted=True,
+            checked_text_projections=len(seen_projection_refs),
+            checked_branch_supports=len(checked_branch_refs),
+        )
+    except SouthStarError as exc:
+        return BranchProjectionIdentityVerification(
+            accepted=False,
+            reason=exc.args[-1] if exc.args else "branch_projection_identity_error",
+        )
+    except (AssertionError, KeyError, TypeError, ValueError) as exc:
+        return BranchProjectionIdentityVerification(
+            accepted=False,
+            reason=f"malformed_branch_projection_identity:{type(exc).__name__}",
+        )
+
+
+def _check_text_projection_branch_identities(
+    *,
+    projection: Mapping[str, object],
+    objects: Mapping[str, Mapping[str, object]],
+    checked_branch_refs: set[str],
+) -> None:
+    payload = projection["payload"]
+    branch_refs = payload["branch_support_refs"]
+    if not branch_refs:
+        _offline_violation("branch_projection_support_refs_missing")
+    if len(set(branch_refs)) != len(branch_refs):
+        _offline_violation("branch_projection_duplicate_support_ref")
+    if int(payload["immediate_multiplicity"]) != len(branch_refs):
+        _offline_violation("branch_projection_multiplicity_mismatch")
+    branch_digests = set(payload["branch_certificate_digests"])
+    if len(branch_digests) != len(branch_refs):
+        _offline_violation("branch_projection_certificate_digest_count_mismatch")
+    for branch_ref in branch_refs:
+        branch = _require_object(objects, branch_ref)
+        if branch["kind"] != "branch_support":
+            _offline_violation("branch_projection_support_ref_kind_mismatch")
+        checked_branch_refs.add(branch_ref)
+        branch_payload = branch["payload"]
+        if branch_payload["emitted_text"] != payload["emitted_text"]:
+            _offline_violation("branch_projection_emitted_text_mismatch")
+        if branch_payload["source_cursor_digest"] != payload["source_cursor"]["digest"]:
+            _offline_violation("branch_projection_source_cursor_mismatch")
+        if (
+            branch_payload["successor_cursor_digest"]
+            != payload["successor_cursor"]["digest"]
+        ):
+            _offline_violation("branch_projection_successor_cursor_mismatch")
+        if branch_payload["checked_branch_certificate_digest"] not in branch_digests:
+            _offline_violation("branch_projection_certificate_digest_mismatch")
 
 
 def _check_support_string_replay_path(
@@ -727,11 +822,13 @@ def _offline_violation(kind: str) -> None:
 
 __all__ = (
     "OBJECT_KIND_OFFLINE_COVERAGE",
+    "BranchProjectionIdentityVerification",
     "CountDagArithmeticVerification",
     "SupportImageCoverageVerification",
     "SupportStringReplayPathVerification",
     "WriterSupportArtifactOfflineReplayResult",
     "validate_writer_bracket_atom_text_against_facts",
+    "verify_branch_projection_identities_offline",
     "verify_count_dag_arithmetic",
     "verify_support_image_coverage_offline",
     "verify_support_string_replay_paths_offline",

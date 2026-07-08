@@ -131,6 +131,7 @@ def artifact_metrics(
         "count_dag_node_count": count_dag_node_count,
         "count_dag_edge_count": count_dag_edge_count,
         "unique_replay_path_count": kind_counts.get("replay_path", 0),
+        "unique_branch_support_count": kind_counts.get("branch_support", 0),
         "unique_text_projection_count": kind_counts.get("text_projection", 0),
         "unique_terminal_projection_count": kind_counts.get("terminal_projection", 0),
         "unique_terminal_support_count": kind_counts.get("terminal_support", 0),
@@ -353,7 +354,50 @@ def _validate_object_payload_shape(item: Mapping[str, object]) -> None:
         _require_string_list(payload["text_projection_refs"], "replay_text_projection_refs_not_strings")
         if not isinstance(payload["final_cursor_digest"], str):
             _artifact_violation("replay_final_cursor_digest_not_string")
-    elif kind in ("text_projection", "terminal_projection", "terminal_support"):
+    elif kind == "text_projection":
+        _require_mapping(payload, "identity_payload_not_mapping")
+        if "digest" not in payload:
+            _artifact_violation("identity_payload_missing_digest")
+        if "branch_support_refs" not in payload:
+            _artifact_violation("text_projection_branch_support_refs_missing")
+        _require_string_list(
+            payload["branch_support_refs"],
+            "branch_support_refs_not_strings",
+        )
+    elif kind == "branch_support":
+        _require_exact_payload_fields(
+            payload,
+            (
+                "emitted_text",
+                "source_state_digest",
+                "successor_state_digest",
+                "source_cursor_digest",
+                "successor_cursor_digest",
+                "parent_weight",
+                "branch_ordinal",
+                "transition_kind",
+                "graph_action_surface_digest",
+                "successor_state_certificate_digest",
+                "checked_branch_certificate_digest",
+                "digest",
+            ),
+        )
+        for field in (
+            "emitted_text",
+            "source_state_digest",
+            "successor_state_digest",
+            "source_cursor_digest",
+            "successor_cursor_digest",
+            "graph_action_surface_digest",
+            "successor_state_certificate_digest",
+            "checked_branch_certificate_digest",
+            "digest",
+        ):
+            if not isinstance(payload[field], str):
+                _artifact_violation("branch_support_string_field_mismatch")
+        _require_int(payload["parent_weight"], "branch_support_parent_weight_not_int")
+        _require_int(payload["branch_ordinal"], "branch_support_ordinal_not_int")
+    elif kind in ("terminal_projection", "terminal_support"):
         _require_mapping(payload, "identity_payload_not_mapping")
         if "digest" not in payload:
             _artifact_violation("identity_payload_missing_digest")
@@ -621,6 +665,8 @@ def _object_refs(item: Mapping[str, object]) -> list[str]:
         ]
     if kind == "replay_path":
         return [payload["source_ref"], *payload["text_projection_refs"]]
+    if kind == "text_projection":
+        return [*payload["branch_support_refs"]]
     if kind == "support_image_coverage":
         refs = [
             ref

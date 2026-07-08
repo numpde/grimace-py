@@ -27,6 +27,7 @@ from .writer_frontier_count_envelope import writer_frontier_count_envelope_for_s
 from .writer_snapshot_envelope import _source_snapshot_from_envelope
 from .writer_snapshot_prefix_envelope import _terminal_projection_certificate_identity_envelope
 from .writer_snapshot_prefix_envelope import _terminal_support_identity_envelope_from_certificate
+from .writer_snapshot_prefix_envelope import _branch_certificate_identity_envelope
 from .writer_snapshot_prefix_envelope import _text_projection_certificate_identity_envelope
 from .writer_snapshot_prefix_envelope import verify_writer_snapshot_prefix_read_envelope
 from .writer_support_image_envelope import _support_image_certificate_for_source
@@ -357,13 +358,10 @@ def _add_support_string(
     budget: WriterEnvelopeWorkBudget,
 ) -> str:
     text_projection_refs = [
-        table.add(
-            "text_projection",
-            _text_projection_certificate_identity_envelope(
-                projection,
-                budget=budget,
-            ),
-            operation="support_artifact.text_projection.object",
+        _add_text_projection(
+            table,
+            projection=projection,
+            budget=budget,
         )
         for projection in certificate.text_projection_certificates
     ]
@@ -420,6 +418,65 @@ def _add_support_string(
             "terminal_support_refs": terminal_support_refs,
         },
         operation="support_artifact.support_string.object",
+    )
+
+
+def _add_text_projection(
+    table,
+    *,
+    projection,
+    budget: WriterEnvelopeWorkBudget,
+) -> str:
+    envelope = _text_projection_certificate_identity_envelope(
+        projection,
+        budget=budget,
+    )
+    branch_support_refs = [
+        _add_branch_support(
+            table,
+            branch=branch,
+            text_projection=envelope,
+            budget=budget,
+        )
+        for branch in projection.branch_certificates
+    ]
+    return table.add(
+        "text_projection",
+        {
+            **envelope,
+            "branch_support_refs": branch_support_refs,
+        },
+        operation="support_artifact.text_projection.object",
+    )
+
+
+def _add_branch_support(
+    table,
+    *,
+    branch,
+    text_projection: Mapping[str, object],
+    budget: WriterEnvelopeWorkBudget,
+) -> str:
+    envelope = _branch_certificate_identity_envelope(branch, budget=budget)
+    return table.add(
+        "branch_support",
+        {
+            "emitted_text": envelope["emitted_text"],
+            "source_state_digest": envelope["source_state_digest"],
+            "successor_state_digest": envelope["successor_state_digest"],
+            "source_cursor_digest": text_projection["source_cursor"]["digest"],
+            "successor_cursor_digest": text_projection["successor_cursor"]["digest"],
+            "parent_weight": envelope["parent_weight"],
+            "branch_ordinal": envelope["branch_ordinal"],
+            "transition_kind": envelope["transition_kind"],
+            "graph_action_surface_digest": envelope["graph_action_surface_digest"],
+            "successor_state_certificate_digest": (
+                envelope["successor_state_certificate_digest"]
+            ),
+            "checked_branch_certificate_digest": envelope["digest"],
+            "digest": envelope["digest"],
+        },
+        operation="support_artifact.branch_support.object",
     )
 
 

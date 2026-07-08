@@ -158,6 +158,7 @@ class WriterSupportArtifactEnvelopeTest(unittest.TestCase):
         self.assertGreater(metrics["coverage_bucket_count"], 0)
         self.assertGreater(metrics["count_dag_node_count"], 0)
         self.assertGreater(metrics["count_dag_edge_count"], 0)
+        self.assertGreater(metrics["unique_branch_support_count"], 0)
         self.assertEqual(
             metrics["total_payload_bytes"],
             metrics["total_artifact_payload_bytes"],

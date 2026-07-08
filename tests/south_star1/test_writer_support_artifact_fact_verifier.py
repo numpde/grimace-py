@@ -88,7 +88,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         self.assertTrue(verification.accepted, verification.reason)
         self.assertTrue(verification.structurally_checked)
         self.assertTrue(verification.facts_identity_checked)
-        self.assertFalse(verification.offline_replay_complete)
+        self.assertTrue(verification.offline_replay_complete)
         self.assertIn("support_string", verification.offline_checked_object_kinds)
         self.assertIn("replay_path", verification.offline_checked_object_kinds)
         self.assertIn("branch_support", verification.offline_checked_object_kinds)
@@ -152,7 +152,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         self.assertTrue(verification.accepted, verification.reason)
         self.assertTrue(verification.structurally_checked)
         self.assertTrue(verification.facts_identity_checked)
-        self.assertFalse(verification.offline_replay_complete)
+        self.assertTrue(verification.offline_replay_complete)
 
     def test_facts_bound_verifier_reports_bracket_atom_offline_check(self) -> None:
         verification = _rdkit_artifact_verification("[NH4+]")
@@ -163,7 +163,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             verification.offline_checked_relation_families,
         )
         self.assertIn("text_projection", verification.offline_checked_object_kinds)
-        self.assertFalse(verification.offline_replay_complete)
+        self.assertTrue(verification.offline_replay_complete)
 
     def test_facts_bound_verifier_reports_isotope_atom_offline_check(self) -> None:
         verification = _rdkit_artifact_verification("[13CH4]")
@@ -174,7 +174,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             verification.offline_checked_relation_families,
         )
         self.assertIn("text_projection", verification.offline_checked_object_kinds)
-        self.assertFalse(verification.offline_replay_complete)
+        self.assertTrue(verification.offline_replay_complete)
 
     def test_facts_bound_verifier_reports_joint_double_closure_offline_check(
         self,
@@ -296,46 +296,26 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
     def test_default_corpus_obligations_are_classified(self) -> None:
         cases = {
-            "CCO": (
-                "terminal_graph_obligation_work",
-                "terminal_stereo_lifecycle",
-            ),
-            "CC(C)O": (
-                "terminal_graph_obligation_work",
-                "terminal_stereo_lifecycle",
-            ),
+            "CCO": (),
+            "CC(C)O": (),
             "C1CC1": (
                 "finite_relation_work",
                 "graph_obligation_work",
-                "terminal_graph_obligation_work",
-                "terminal_stereo_lifecycle",
             ),
             "C1CCC1": (
                 "finite_relation_work",
                 "graph_obligation_work",
-                "terminal_graph_obligation_work",
-                "terminal_stereo_lifecycle",
             ),
             "C1=CC1": (
                 "finite_relation_work",
                 "graph_obligation_work",
-                "terminal_graph_obligation_work",
-                "terminal_stereo_lifecycle",
             ),
             "C1#CC1": (
                 "finite_relation_work",
                 "graph_obligation_work",
-                "terminal_graph_obligation_work",
-                "terminal_stereo_lifecycle",
             ),
-            "[NH4+]": (
-                "terminal_graph_obligation_work",
-                "terminal_stereo_lifecycle",
-            ),
-            "[13CH4]": (
-                "terminal_graph_obligation_work",
-                "terminal_stereo_lifecycle",
-            ),
+            "[NH4+]": (),
+            "[13CH4]": (),
         }
         for smiles, unchecked_families in cases.items():
             with self.subTest(smiles=smiles):
@@ -353,8 +333,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
                 self.assertTrue(classification.stereo_obligations_present)
                 self.assertEqual(
                     classification.graph_obligations_present,
-                    "terminal_graph_obligation_work" in unchecked_families
-                    or "graph_obligation_work" in unchecked_families,
+                    True,
                 )
                 self.assertEqual(
                     classification.residual_obligations_present,
@@ -366,7 +345,10 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
                     classification.checked_empty_families,
                 )
                 self.assertTrue(verification.accepted, verification.reason)
-                self.assertFalse(verification.offline_replay_complete)
+                self.assertEqual(
+                    verification.offline_replay_complete,
+                    not unchecked_families,
+                )
                 self.assertEqual(verification.offline_unchecked_object_kinds, ())
                 self.assertEqual(
                     verification.offline_unchecked_obligation_families,
@@ -377,9 +359,103 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
                     verification.offline_checked_obligation_families,
                 )
                 self.assertIn(
+                    "terminal_graph_obligation_work",
+                    verification.offline_checked_obligation_families,
+                )
+                self.assertIn(
+                    "terminal_stereo_lifecycle",
+                    verification.offline_checked_obligation_families,
+                )
+                self.assertIn(
                     "residual_work_checked_empty",
                     verification.offline_empty_obligation_families,
                 )
+
+    def test_terminal_clean_obligation_manifests_are_checked(self) -> None:
+        artifact = _rdkit_artifact("CCO")
+        classification = _obligation_classification(artifact)
+        terminal = _first_terminal_support_object(artifact)
+
+        self.assertTrue(classification.accepted, classification.reason)
+        self.assertNotIn(
+            "terminal_graph_obligation_work",
+            classification.unchecked_families,
+        )
+        self.assertNotIn(
+            "terminal_stereo_lifecycle",
+            classification.unchecked_families,
+        )
+        self.assertIn(
+            "terminal_graph_obligation_work",
+            classification.checked_families,
+        )
+        self.assertIn(
+            "terminal_stereo_lifecycle",
+            classification.checked_families,
+        )
+        self.assertTrue(
+            terminal["payload"]["obligation_manifests"][
+                "terminal_graph_obligation_work"
+            ][0]["terminal_clean"]
+        )
+        self.assertTrue(
+            terminal["payload"]["obligation_manifests"][
+                "terminal_stereo_lifecycle"
+            ][0]["terminal_clean"]
+        )
+
+    def test_terminal_clean_false_reports_unchecked(self) -> None:
+        artifact = _rdkit_artifact("CCO")
+        terminal = _first_terminal_support_object(artifact)
+        for family in (
+            "terminal_graph_obligation_work",
+            "terminal_stereo_lifecycle",
+        ):
+            manifest = terminal["payload"]["obligation_manifests"][family][0]
+            manifest["terminal_clean"] = False
+            manifest["is_noop"] = False
+            manifest["is_empty"] = False
+            manifest["is_discharged"] = False
+
+        classification = _obligation_classification(artifact)
+
+        self.assertTrue(classification.accepted, classification.reason)
+        self.assertIn(
+            "terminal_graph_obligation_work",
+            classification.unchecked_families,
+        )
+        self.assertIn(
+            "terminal_stereo_lifecycle",
+            classification.unchecked_families,
+        )
+
+    def test_terminal_obligation_manifest_count_mismatch_is_rejected(self) -> None:
+        artifact = _rdkit_artifact("CCO")
+        terminal = _first_terminal_support_object(artifact)
+        terminal["payload"]["obligation_summary"]["graph_obligation_work_count"] += 1
+
+        verification = verify_writer_support_artifact_for_facts(
+            facts=_rdkit_facts("CCO"),
+            runtime_options=_writer_options(),
+            artifact=artifact,
+        )
+
+        self.assertFalse(verification.accepted)
+        self.assertIn("object_digest_mismatch", verification.reason)
+
+    def test_terminal_obligation_manifest_unknown_family_is_rejected(self) -> None:
+        artifact = _rdkit_artifact("CCO")
+        terminal = _first_terminal_support_object(artifact)
+        terminal["payload"]["obligation_manifests"]["unknown_terminal_family"] = []
+
+        verification = verify_writer_support_artifact_for_facts(
+            facts=_rdkit_facts("CCO"),
+            runtime_options=_writer_options(),
+            artifact=artifact,
+        )
+
+        self.assertFalse(verification.accepted)
+        self.assertIn("object_digest_mismatch", verification.reason)
 
     def test_synthetic_stereo_obligation_is_reported_unchecked(self) -> None:
         artifact = _rdkit_artifact("CCO")

@@ -851,6 +851,7 @@ def _validate_obligation_manifests(
                     "is_noop",
                     "is_empty",
                     "is_discharged",
+                    "terminal_clean",
                     "evidence_digest",
                 ),
             )
@@ -864,7 +865,7 @@ def _validate_obligation_manifests(
             ):
                 if not isinstance(item[field], str):
                     _artifact_violation("obligation_manifest_string_field_mismatch")
-            for field in ("is_noop", "is_empty", "is_discharged"):
+            for field in ("is_noop", "is_empty", "is_discharged", "terminal_clean"):
                 if not isinstance(item[field], bool):
                     _artifact_violation("obligation_manifest_bool_field_mismatch")
 

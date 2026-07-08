@@ -739,6 +739,8 @@ def _terminal_obligation_manifests(
         operation="support_artifact.terminal_obligation.finalized.digest",
     )
     terminal_noop = terminal.source_state == terminal.finalized_state
+    terminal_graph_clean = _terminal_graph_clean(terminal)
+    terminal_stereo_clean = _terminal_stereo_clean(terminal)
     return {
         "terminal_residual_work": _obligation_family_manifests(
             family="terminal_residual_work",
@@ -754,6 +756,7 @@ def _terminal_obligation_manifests(
             source_digest=source_digest,
             successor_digest=finalized_digest,
             replay_complete=terminal_noop,
+            terminal_clean=terminal_stereo_clean,
             budget=budget,
         ),
         "terminal_graph_obligation_work": _obligation_family_manifests(
@@ -762,6 +765,7 @@ def _terminal_obligation_manifests(
             source_digest=source_digest,
             successor_digest=finalized_digest,
             replay_complete=terminal_noop,
+            terminal_clean=terminal_graph_clean,
             budget=budget,
         ),
     }
@@ -775,6 +779,7 @@ def _obligation_family_manifests(
     successor_digest: str,
     replay_complete: bool,
     budget: WriterEnvelopeWorkBudget,
+    terminal_clean: bool = False,
 ) -> list[dict[str, object]]:
     return [
         {
@@ -785,6 +790,7 @@ def _obligation_family_manifests(
             "is_noop": source_digest == successor_digest,
             "is_empty": False,
             "is_discharged": bool(replay_complete),
+            "terminal_clean": bool(terminal_clean),
             "evidence_digest": _identity_digest(
                 record,
                 budget=budget,
@@ -793,6 +799,32 @@ def _obligation_family_manifests(
         }
         for record in records
     ]
+
+
+def _terminal_graph_clean(terminal) -> bool:
+    for certificate in terminal.terminal_certificates:
+        if getattr(getattr(certificate, "kind", None), "value", None) != "graph_complete":
+            continue
+        status = getattr(certificate, "graph_completion_status", None)
+        if status is None:
+            continue
+        if (
+            getattr(status, "complete", False)
+            and not tuple(getattr(status, "unresolved_kinds", ()))
+            and not tuple(getattr(status, "unresolved_bonds", ()))
+        ):
+            return True
+    return False
+
+
+def _terminal_stereo_clean(terminal) -> bool:
+    for certificate in terminal.terminal_certificates:
+        if (
+            getattr(getattr(certificate, "kind", None), "value", None)
+            == "stereo_terminalized"
+        ):
+            return True
+    return False
 
 
 def _replay_complete(certificate) -> bool:

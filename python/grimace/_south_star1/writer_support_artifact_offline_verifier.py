@@ -743,7 +743,12 @@ def classify_residual_stereo_obligations_offline(
 
 def _obligation_manifests_checked(items: list[object]) -> bool:
     return all(
-        bool(item["is_noop"] or item["is_empty"] or item["is_discharged"])
+        bool(
+            item["is_noop"]
+            or item["is_empty"]
+            or item["is_discharged"]
+            or item["terminal_clean"]
+        )
         for item in items
     )
 

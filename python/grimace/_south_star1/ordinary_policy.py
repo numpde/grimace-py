@@ -23,6 +23,8 @@ from .policy import RingLabel
 from .policy import SmilesPolicy
 from .policy import TetraToken
 from .slots import BondSlotKind
+from .writer_atom_text_lifecycle import charged_nitrogen_bracket_atom_text
+from .writer_atom_text_lifecycle import writer_bracket_atom_text_evidence
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,7 +122,9 @@ def _atom_text_choice(
     implicit_h_count: int,
     options: OrdinaryPolicyOptions,
 ) -> AtomTextChoice:
-    _require_plain_neutral_atom(atom)
+    _require_supported_atom_surface(atom)
+    if atom.formal_charge != 0:
+        return _charged_bracket_atom_choice(atom)
     if atom.is_aromatic:
         return _aromatic_atom_choice(atom, options)
     if tetra_center:
@@ -128,16 +132,11 @@ def _atom_text_choice(
     return _organic_atom_choice(atom)
 
 
-def _require_plain_neutral_atom(atom: AtomFacts) -> None:
+def _require_supported_atom_surface(atom: AtomFacts) -> None:
     if atom.isotope is not None:
         raise SouthStarError(
             SouthStarErrorKind.UNSUPPORTED_ATOM,
             f"isotopic atoms are unsupported: {atom.id!r}",
-        )
-    if atom.formal_charge != 0:
-        raise SouthStarError(
-            SouthStarErrorKind.UNSUPPORTED_ATOM,
-            f"charged atoms are unsupported: {atom.id!r}",
         )
     if atom.explicit_h_count != 0:
         raise SouthStarError(
@@ -149,6 +148,32 @@ def _require_plain_neutral_atom(atom: AtomFacts) -> None:
             SouthStarErrorKind.UNSUPPORTED_ATOM,
             f"no-implicit atoms are unsupported: {atom.id!r}",
         )
+
+
+def _charged_bracket_atom_choice(atom: AtomFacts) -> AtomTextChoice:
+    if not _is_supported_charged_bracket_atom(atom):
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_ATOM,
+            f"charged atoms are unsupported: {atom.id!r}",
+        )
+    text = charged_nitrogen_bracket_atom_text(atom)
+    writer_bracket_atom_text_evidence(atom, rendered_text=text)
+    return AtomTextChoice(
+        name=(
+            f"bracket_charged_{atom.symbol}_{atom.formal_charge:+d}"
+            f"_h{atom.implicit_h_count}"
+        ),
+        text_by_tetra=((TetraToken.NONE, text),),
+    )
+
+
+def _is_supported_charged_bracket_atom(atom: AtomFacts) -> bool:
+    return (
+        atom.symbol == "N"
+        and atom.formal_charge == 1
+        and atom.implicit_h_count in {0, 1, 2, 3, 4}
+        and not atom.is_aromatic
+    )
 
 
 def _organic_atom_choice(atom: AtomFacts) -> AtomTextChoice:

@@ -92,11 +92,11 @@ Accepted surfaces currently covered by table-backed support artifacts:
 - simple single ring closures;
 - double and triple non-single ring closures via the joint endpoint marker
   lifecycle;
-- branched rings within the current graph/ring-order surface.
+- branched rings within the current graph/ring-order surface;
+- simple charged nitrogen bracket atoms such as `[NH4+]`.
 
 Typed blocked surfaces currently covered by the ledger:
 
-- unsupported bracket charge surfaces;
 - unsupported isotope surfaces;
 - potential directional non-neighbor stereo obligations when potential-site
   extraction is enabled.

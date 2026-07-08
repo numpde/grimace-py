@@ -72,6 +72,35 @@ The current dialect rejects or omits:
 - RDKit writer-parity quirks unless they are explicitly modeled at the adapter
   or audit boundary.
 
+## Default Ordinary Writer Support Ledger
+
+The checked default writer ledger is executable in
+`tests/south_star1/default_writer_capability_ledger.py`.
+
+Default extraction profile:
+
+- `RdkitOrdinaryExtractionOptions(include_potential_sites=False)`
+
+Default policy:
+
+- `OrdinaryPolicyOptions(non_single_ring_closures="joint")`
+
+Accepted surfaces currently covered by table-backed support artifacts:
+
+- acyclic ordinary graphs;
+- simple branches;
+- simple single ring closures;
+- double and triple non-single ring closures via the joint endpoint marker
+  lifecycle;
+- branched rings within the current graph/ring-order surface.
+
+Typed blocked surfaces currently covered by the ledger:
+
+- unsupported bracket charge surfaces;
+- unsupported isotope surfaces;
+- potential directional non-neighbor stereo obligations when potential-site
+  extraction is enabled.
+
 ## Conformance Corpus
 
 The executable v0 conformance corpus lives in `tests/south_star1`:

@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import unittest
 
 from grimace._south_star1.errors import SouthStarError
-from grimace._south_star1.errors import SouthStarErrorKind
 from grimace._south_star1.fact_isomorphism import facts_are_isomorphic
 from grimace._south_star1.ordinary_policy import OrdinaryPolicyOptions
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
@@ -14,7 +12,6 @@ from grimace._south_star1.policy import SerializationLanguageMode
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
-from grimace._south_star1.rdkit_adapter import RdkitOrdinaryExtractionOptions
 from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_smiles
 from grimace._south_star1.writer_envelope_work import (
     default_writer_envelope_work_budget,
@@ -51,74 +48,18 @@ from grimace._south_star1.writer_support_artifact_envelope import (
 from grimace._south_star1.writer_support_artifact_fact_verifier import (
     verify_writer_support_artifact_for_facts,
 )
-
-
-_GRAPH_EXTRACTION = RdkitOrdinaryExtractionOptions(include_potential_sites=False)
-_POTENTIAL_STEREO_EXTRACTION = RdkitOrdinaryExtractionOptions(
-    include_potential_sites=True,
+from tests.south_star1.default_writer_capability_ledger import (
+    ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES,
+)
+from tests.south_star1.default_writer_capability_ledger import (
+    BLOCKED_DEFAULT_WRITER_CAPABILITY_CASES,
+)
+from tests.south_star1.default_writer_capability_ledger import (
+    DefaultWriterCapabilityCase,
 )
 
-
-@dataclass(frozen=True, slots=True)
-class DefaultParityCase:
-    name: str
-    smiles: str
-    extraction_options: RdkitOrdinaryExtractionOptions
-    expected: str
-    expected_error_kind: SouthStarErrorKind | None = None
-    expected_blocker_kind: str | None = None
-    expected_blocker_operation: str | None = None
-
-
-ACCEPTED_CASES = (
-    DefaultParityCase("ethanol", "CCO", _GRAPH_EXTRACTION, "accepted"),
-    DefaultParityCase("branched_alcohol", "CC(C)O", _GRAPH_EXTRACTION, "accepted"),
-    DefaultParityCase("cyclopropane", "C1CC1", _GRAPH_EXTRACTION, "accepted"),
-    DefaultParityCase("cyclobutane", "C1CCC1", _GRAPH_EXTRACTION, "accepted"),
-    DefaultParityCase(
-        "cyclopropene_double_closure",
-        "C1=CC1",
-        _GRAPH_EXTRACTION,
-        "accepted",
-    ),
-    DefaultParityCase(
-        "cyclopropyne_triple_closure",
-        "C1#CC1",
-        _GRAPH_EXTRACTION,
-        "accepted",
-    ),
-    DefaultParityCase(
-        "branched_cyclobutane",
-        "C1CC(C)C1",
-        _GRAPH_EXTRACTION,
-        "accepted",
-    ),
-)
-
-BLOCKED_CASES = (
-    DefaultParityCase(
-        "ammonium_charge",
-        "[NH4+]",
-        _GRAPH_EXTRACTION,
-        "blocked",
-        expected_error_kind=SouthStarErrorKind.UNSUPPORTED_ATOM,
-    ),
-    DefaultParityCase(
-        "isotopic_methane",
-        "[13CH4]",
-        _GRAPH_EXTRACTION,
-        "blocked",
-        expected_error_kind=SouthStarErrorKind.UNSUPPORTED_ATOM,
-    ),
-    DefaultParityCase(
-        "cyclopropene_potential_directional_boundary",
-        "C1=CC1",
-        _POTENTIAL_STEREO_EXTRACTION,
-        "blocked",
-        expected_blocker_kind="unsupported_directional_non_neighbor_ligand",
-        expected_blocker_operation="directional carrier-mark restriction",
-    ),
-)
+ACCEPTED_CASES = ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES
+BLOCKED_CASES = BLOCKED_DEFAULT_WRITER_CAPABILITY_CASES
 
 
 class WriterDefaultParityCorpusTest(unittest.TestCase):
@@ -134,6 +75,14 @@ class WriterDefaultParityCorpusTest(unittest.TestCase):
                 self.assertEqual(
                     result["completion_count"],
                     result["artifact_witness_count"],
+                )
+                self.assertEqual(
+                    result["support_count"],
+                    case.expected_support_count,
+                )
+                self.assertEqual(
+                    result["completion_count"],
+                    case.expected_completion_count,
                 )
                 self.assertEqual(
                     result["support_count"],
@@ -183,19 +132,19 @@ class WriterDefaultParityCorpusTest(unittest.TestCase):
             with self.subTest(case=case.name):
                 blocked = _blocked_case_result(case)
 
-                if case.expected_error_kind is not None:
+                if case.blocker_error_kind is not None:
                     self.assertEqual(blocked["stage"], "prepare")
-                    self.assertIs(blocked["error_kind"], case.expected_error_kind)
+                    self.assertIs(blocked["error_kind"], case.blocker_error_kind)
                     continue
 
                 self.assertEqual(blocked["stage"], "frontier")
                 self.assertEqual(
                     {item.kind for item in blocked["blockers"]},
-                    {case.expected_blocker_kind},
+                    {case.blocker_kind},
                 )
                 self.assertEqual(
                     {item.operation for item in blocked["blockers"]},
-                    {case.expected_blocker_operation},
+                    {case.blocker_operation},
                 )
 
     def test_default_cyclopropene_artifact_policy_identity_is_default_joint(
@@ -220,7 +169,7 @@ class WriterDefaultParityCorpusTest(unittest.TestCase):
             )
 
 
-def _facts(case: DefaultParityCase):
+def _facts(case: DefaultWriterCapabilityCase):
     return ordinary_molecule_facts_from_smiles(
         case.smiles,
         case.extraction_options,
@@ -250,7 +199,7 @@ def _initial_snapshot(prepared):
     )
 
 
-def _support_image(case: DefaultParityCase):
+def _support_image(case: DefaultWriterCapabilityCase):
     return enumerate_prepared_writer_shaped_support(
         prepared=_prepare_default(_facts(case)),
         runtime_options=_writer_options(),
@@ -264,7 +213,7 @@ def _artifact(prepared):
     )
 
 
-def _accepted_case_result(case: DefaultParityCase) -> dict[str, object]:
+def _accepted_case_result(case: DefaultWriterCapabilityCase) -> dict[str, object]:
     facts = _facts(case)
     prepared = _prepare_default(facts)
     state = initial_writer_runtime_state(
@@ -321,7 +270,7 @@ def _accepted_case_result(case: DefaultParityCase) -> dict[str, object]:
     }
 
 
-def _blocked_case_result(case: DefaultParityCase) -> dict[str, object]:
+def _blocked_case_result(case: DefaultWriterCapabilityCase) -> dict[str, object]:
     facts = _facts(case)
     try:
         prepared = _prepare_default(facts)

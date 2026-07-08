@@ -14,6 +14,7 @@ from .facts import MoleculeFacts
 from .writer_atom_text_lifecycle import bracket_atom_text
 from .writer_count_dag_envelope import count_dag_node_by_id
 from .writer_count_dag_envelope import validate_writer_count_certificate_dag_envelope
+from .writer_envelope_terms import _term
 from .writer_envelope_work import WriterEnvelopeWorkBudget
 
 
@@ -23,7 +24,7 @@ OBJECT_KIND_OFFLINE_COVERAGE = {
     "count_dag": "arithmetic_checked",
     "frontier_product": "structurally_checked",
     "replay_path": "partially_offline_checked",
-    "branch_support": "projection_identity_checked",
+    "branch_support": "partially_offline_checked",
     "text_projection": "partially_offline_checked",
     "terminal_projection": "identity_shape_checked",
     "terminal_support": "structurally_checked",
@@ -86,6 +87,16 @@ class BranchProjectionIdentityVerification:
     reason: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class LocalBranchSuccessorEvidenceVerification:
+    accepted: bool
+    checked_branches: int = 0
+    checked_atom_text_branches: int = 0
+    checked_closure_bond_text_branches: int = 0
+    checked_directional_coupled_branches: int = 0
+    reason: str | None = None
+
+
 def verify_writer_support_artifact_offline_replay(
     *,
     facts: MoleculeFacts,
@@ -125,6 +136,15 @@ def verify_writer_support_artifact_offline_replay(
             _offline_violation(
                 branch_identities.reason or "branch_projection_identity_rejected"
             )
+        local_evidence = verify_local_branch_successor_evidence_offline(
+            facts=facts,
+            artifact=artifact,
+            objects=objects,
+        )
+        if not local_evidence.accepted:
+            _offline_violation(
+                local_evidence.reason or "local_branch_successor_evidence_rejected"
+            )
         checked_object_kinds = {
             "branch_support",
             "count_dag",
@@ -141,6 +161,7 @@ def verify_writer_support_artifact_offline_replay(
             *coverage.relation_families,
             *replay_paths.relation_families,
             "branch_projection_identity",
+            "local_branch_successor_evidence",
         }
         support_refs = root["payload"]["support_string_refs"]
         for ref in support_refs:
@@ -443,6 +464,171 @@ def verify_branch_projection_identities_offline(
             accepted=False,
             reason=f"malformed_branch_projection_identity:{type(exc).__name__}",
         )
+
+
+def verify_local_branch_successor_evidence_offline(
+    *,
+    facts: MoleculeFacts,
+    artifact: Mapping[str, object],
+    objects: Mapping[str, Mapping[str, object]],
+) -> LocalBranchSuccessorEvidenceVerification:
+    try:
+        root = _require_object(objects, artifact["roots"]["support_image_root"])
+        branch_refs = _branch_support_refs_for_root(root=root, objects=objects)
+        atom_count = 0
+        closure_count = 0
+        directional_count = 0
+        for branch_ref in branch_refs:
+            branch = _require_object(objects, branch_ref)
+            if branch["kind"] != "branch_support":
+                _offline_violation("local_branch_support_ref_kind_mismatch")
+            kind = _check_branch_local_evidence(
+                facts=facts,
+                branch=branch,
+            )
+            if kind == "atom_text":
+                atom_count += 1
+            elif kind == "closure_bond_text":
+                closure_count += 1
+            elif kind == "directional_ring_closure_bond_text":
+                directional_count += 1
+        return LocalBranchSuccessorEvidenceVerification(
+            accepted=True,
+            checked_branches=len(branch_refs),
+            checked_atom_text_branches=atom_count,
+            checked_closure_bond_text_branches=closure_count,
+            checked_directional_coupled_branches=directional_count,
+        )
+    except SouthStarError as exc:
+        return LocalBranchSuccessorEvidenceVerification(
+            accepted=False,
+            reason=exc.args[-1] if exc.args else "local_branch_evidence_error",
+        )
+    except (AssertionError, KeyError, TypeError, ValueError) as exc:
+        return LocalBranchSuccessorEvidenceVerification(
+            accepted=False,
+            reason=f"malformed_local_branch_evidence:{type(exc).__name__}",
+        )
+
+
+def _branch_support_refs_for_root(
+    *,
+    root: Mapping[str, object],
+    objects: Mapping[str, Mapping[str, object]],
+) -> tuple[str, ...]:
+    refs: set[str] = set()
+    for support_ref in root["payload"]["support_string_refs"]:
+        support = _require_object(objects, support_ref)
+        for projection_ref in support["payload"]["text_projection_refs"]:
+            projection = _require_object(objects, projection_ref)
+            refs.update(projection["payload"]["branch_support_refs"])
+    return tuple(sorted(refs))
+
+
+def _check_branch_local_evidence(
+    *,
+    facts: MoleculeFacts,
+    branch: Mapping[str, object],
+) -> str:
+    payload = branch["payload"]
+    evidence = payload["local_evidence"]
+    if not payload["successor_state_certificate_digest"]:
+        _offline_violation("local_branch_successor_certificate_digest_missing")
+    if not payload["checked_branch_certificate_digest"]:
+        _offline_violation("local_branch_checked_certificate_digest_missing")
+    kind = evidence["kind"]
+    if kind == "none":
+        if evidence["manifest"]:
+            _offline_violation("local_branch_none_manifest_not_empty")
+        return kind
+    if kind == "atom_text":
+        _check_atom_text_local_evidence(
+            facts=facts,
+            branch_payload=payload,
+            manifest=evidence["manifest"],
+        )
+        return kind
+    if kind == "closure_bond_text":
+        _check_closure_bond_text_local_evidence(
+            facts=facts,
+            branch_payload=payload,
+            items=evidence["manifest"]["items"],
+        )
+        return kind
+    if kind == "directional_ring_closure_bond_text":
+        manifest = evidence["manifest"]
+        _check_closure_bond_text_local_evidence(
+            facts=facts,
+            branch_payload=payload,
+            items=manifest["closure_bond_text"],
+        )
+        if manifest["directional_coupled_count"] != len(
+            manifest["directional_coupled_digests"]
+        ):
+            _offline_violation("local_directional_coupled_count_mismatch")
+        return kind
+    _offline_violation("local_branch_unknown_evidence_kind")
+
+
+def _check_atom_text_local_evidence(
+    *,
+    facts: MoleculeFacts,
+    branch_payload: Mapping[str, object],
+    manifest: Mapping[str, object],
+) -> None:
+    if branch_payload["emitted_text"] != manifest["rendered_text"]:
+        _offline_violation("local_atom_text_rendered_text_mismatch")
+    if not manifest["bracket_required"]:
+        _offline_violation("local_atom_text_bracket_not_required")
+    atom = _atom_by_term(facts, manifest["atom_id"])
+    if atom.symbol != manifest["element"]:
+        _offline_violation("local_atom_text_element_mismatch")
+    if atom.isotope != manifest["isotope"]:
+        _offline_violation("local_atom_text_isotope_mismatch")
+    if atom.formal_charge != manifest["formal_charge"]:
+        _offline_violation("local_atom_text_charge_mismatch")
+    if atom.implicit_h_count != manifest["hydrogen_count"]:
+        _offline_violation("local_atom_text_hydrogen_count_mismatch")
+    if atom.is_aromatic != manifest["aromatic"]:
+        _offline_violation("local_atom_text_aromatic_mismatch")
+    if bracket_atom_text(atom) != manifest["rendered_text"]:
+        _offline_violation("local_atom_text_facts_mismatch")
+
+
+def _check_closure_bond_text_local_evidence(
+    *,
+    facts: MoleculeFacts,
+    branch_payload: Mapping[str, object],
+    items: object,
+) -> None:
+    if not items:
+        _offline_violation("local_closure_bond_text_items_missing")
+    for item in items:
+        bond = _bond_by_term(facts, item["bond"])
+        expected_order = _bond_order_value(bond.order)
+        if item["bond_order"] != expected_order:
+            _offline_violation("local_closure_bond_order_mismatch")
+        marker = {"double": "=", "triple": "#"}[item["bond_order"]]
+        marker_count = (
+            int(item["opening_marker"] == marker)
+            + int(item["closing_marker"] == marker)
+        )
+        if marker_count == 0:
+            _offline_violation("local_closure_marker_missing")
+        if marker_count > 1:
+            _offline_violation("local_closure_marker_duplicate")
+        if item["marker_side"] == "opening" and item["opening_marker"] != marker:
+            _offline_violation("local_closure_marker_side_mismatch")
+        if item["marker_side"] == "closing" and item["closing_marker"] != marker:
+            _offline_violation("local_closure_marker_side_mismatch")
+        if (
+            item["event_kind"] == "endpoint_emitted"
+            and marker not in branch_payload["emitted_text"]
+        ):
+            _offline_violation("local_closure_branch_marker_missing")
+        if item["event_kind"] == "endpoint_paired" and item["closing_marker"]:
+            if marker not in branch_payload["emitted_text"]:
+                _offline_violation("local_closure_branch_marker_missing")
 
 
 def _check_text_projection_branch_identities(
@@ -749,6 +935,28 @@ def _check_non_single_ring_closure_text(
         _offline_violation("closure_bond_text_ring_label_missing")
 
 
+def _atom_by_term(facts: MoleculeFacts, atom_term: object) -> AtomFacts:
+    for atom in facts.atoms:
+        if _term(atom.id) == atom_term:
+            return atom
+    _offline_violation("local_atom_text_atom_missing")
+
+
+def _bond_by_term(facts: MoleculeFacts, bond_term: object) -> BondFacts:
+    for bond in facts.bonds:
+        if _term(bond.id) == bond_term:
+            return bond
+    _offline_violation("local_closure_bond_missing")
+
+
+def _bond_order_value(order: BondOrder) -> str:
+    if order == BondOrder.DOUBLE:
+        return "double"
+    if order == BondOrder.TRIPLE:
+        return "triple"
+    _offline_violation("local_closure_bond_order_unsupported")
+
+
 def _non_single_cyclic_bonds(facts: MoleculeFacts) -> tuple[BondFacts, ...]:
     return tuple(
         bond
@@ -824,12 +1032,14 @@ __all__ = (
     "OBJECT_KIND_OFFLINE_COVERAGE",
     "BranchProjectionIdentityVerification",
     "CountDagArithmeticVerification",
+    "LocalBranchSuccessorEvidenceVerification",
     "SupportImageCoverageVerification",
     "SupportStringReplayPathVerification",
     "WriterSupportArtifactOfflineReplayResult",
     "validate_writer_bracket_atom_text_against_facts",
     "verify_branch_projection_identities_offline",
     "verify_count_dag_arithmetic",
+    "verify_local_branch_successor_evidence_offline",
     "verify_support_image_coverage_offline",
     "verify_support_string_replay_paths_offline",
     "verify_writer_support_artifact_offline_replay",

@@ -11,6 +11,9 @@ from .writer_envelope_terms import _digest_terms_bounded
 from .writer_envelope_terms import _identity_digest
 from .writer_envelope_terms import _identity_envelope
 from .writer_envelope_terms import _snapshot_identity_envelope
+from .writer_envelope_terms import _term
+from .writer_atom_text_lifecycle import bracket_atom_text
+from .writer_atom_text_lifecycle import is_supported_bracket_atom
 from .writer_support_artifact_checker import SCHEMA_NAME
 from .writer_support_artifact_checker import SCHEMA_VERSION
 from .writer_support_artifact_checker import artifact_manifest
@@ -286,6 +289,7 @@ def _artifact_from_image(
                 certificate=certificate,
                 source_ref=source_ref,
                 count_ref=count_ref,
+                facts=prepared.facts,
                 budget=budget,
             )
         )
@@ -355,12 +359,14 @@ def _add_support_string(
     certificate,
     source_ref: str,
     count_ref: str,
+    facts,
     budget: WriterEnvelopeWorkBudget,
 ) -> str:
     text_projection_refs = [
         _add_text_projection(
             table,
             projection=projection,
+            facts=facts,
             budget=budget,
         )
         for projection in certificate.text_projection_certificates
@@ -425,6 +431,7 @@ def _add_text_projection(
     table,
     *,
     projection,
+    facts,
     budget: WriterEnvelopeWorkBudget,
 ) -> str:
     envelope = _text_projection_certificate_identity_envelope(
@@ -436,6 +443,7 @@ def _add_text_projection(
             table,
             branch=branch,
             text_projection=envelope,
+            facts=facts,
             budget=budget,
         )
         for branch in projection.branch_certificates
@@ -455,9 +463,15 @@ def _add_branch_support(
     *,
     branch,
     text_projection: Mapping[str, object],
+    facts,
     budget: WriterEnvelopeWorkBudget,
 ) -> str:
     envelope = _branch_certificate_identity_envelope(branch, budget=budget)
+    local_evidence = _branch_local_evidence_envelope(
+        branch,
+        facts=facts,
+        budget=budget,
+    )
     return table.add(
         "branch_support",
         {
@@ -474,10 +488,112 @@ def _add_branch_support(
                 envelope["successor_state_certificate_digest"]
             ),
             "checked_branch_certificate_digest": envelope["digest"],
+            "local_evidence": local_evidence,
             "digest": envelope["digest"],
         },
         operation="support_artifact.branch_support.object",
     )
+
+
+def _branch_local_evidence_envelope(
+    branch,
+    *,
+    facts,
+    budget: WriterEnvelopeWorkBudget,
+) -> dict[str, object]:
+    successor = branch.successor_state_certificate
+    directional = tuple(
+        getattr(successor, "directional_ring_closure_bond_text_lifecycle_evidence", ())
+    )
+    ring_replay = getattr(successor, "ring_replay_certificate", None)
+    closure = (
+        ()
+        if ring_replay is None
+        else tuple(getattr(ring_replay, "closure_bond_text_lifecycle_evidence", ()))
+    )
+    if directional:
+        manifest = {
+            "closure_bond_text": [
+                _closure_bond_text_evidence_manifest(item, budget=budget)
+                for item in closure
+            ],
+            "directional_coupled_digests": [
+                _identity_digest(
+                    item,
+                    budget=budget,
+                    operation="support_artifact.local_directional_evidence.digest",
+                )
+                for item in directional
+            ],
+            "directional_coupled_count": len(directional),
+        }
+        return _local_evidence("directional_ring_closure_bond_text", manifest, budget)
+    if closure:
+        manifest = {
+            "items": [
+                _closure_bond_text_evidence_manifest(item, budget=budget)
+                for item in closure
+            ],
+        }
+        return _local_evidence("closure_bond_text", manifest, budget)
+    atom_id = getattr(branch.transition_evidence, "atom", None)
+    atom_by_id = {atom.id: atom for atom in facts.atoms}
+    atom = atom_by_id.get(atom_id)
+    if atom is not None and is_supported_bracket_atom(atom):
+        rendered = bracket_atom_text(atom)
+        if rendered == branch.emitted_text:
+            manifest = {
+                "atom_id": _term(atom.id),
+                "element": atom.symbol,
+                "isotope": atom.isotope,
+                "formal_charge": atom.formal_charge,
+                "hydrogen_count": atom.implicit_h_count,
+                "aromatic": atom.is_aromatic,
+                "rendered_text": rendered,
+                "bracket_required": True,
+            }
+            return _local_evidence("atom_text", manifest, budget)
+    return _local_evidence("none", {}, budget)
+
+
+def _local_evidence(
+    kind: str,
+    manifest: Mapping[str, object],
+    budget: WriterEnvelopeWorkBudget,
+) -> dict[str, object]:
+    envelope = {
+        "kind": kind,
+        "manifest": dict(manifest),
+    }
+    envelope["digest"] = _identity_digest(
+        envelope,
+        budget=budget,
+        operation=f"support_artifact.local_evidence.{kind}.digest",
+    )
+    return envelope
+
+
+def _closure_bond_text_evidence_manifest(evidence, *, budget) -> dict[str, object]:
+    return {
+        "bond": _term(evidence.bond),
+        "bond_order": evidence.bond_order,
+        "label": _term(evidence.label),
+        "opening_atom": _term(evidence.opening_atom),
+        "closing_atom": _term(evidence.closing_atom),
+        "opening_marker": evidence.opening_marker,
+        "closing_marker": evidence.closing_marker,
+        "marker_side": evidence.marker_side,
+        "event_kind": evidence.event_kind,
+        "closed_closure_record_digest": (
+            None
+            if evidence.closed_closure_record is None
+            else _identity_digest(
+                evidence.closed_closure_record,
+                budget=budget,
+                operation="support_artifact.closed_closure_record.digest",
+            )
+        ),
+    }
 
 
 def _add_coverage(

@@ -379,6 +379,7 @@ def _validate_object_payload_shape(item: Mapping[str, object]) -> None:
                 "graph_action_surface_digest",
                 "successor_state_certificate_digest",
                 "checked_branch_certificate_digest",
+                "local_evidence",
                 "digest",
             ),
         )
@@ -397,6 +398,7 @@ def _validate_object_payload_shape(item: Mapping[str, object]) -> None:
                 _artifact_violation("branch_support_string_field_mismatch")
         _require_int(payload["parent_weight"], "branch_support_parent_weight_not_int")
         _require_int(payload["branch_ordinal"], "branch_support_ordinal_not_int")
+        _validate_local_evidence_payload(payload["local_evidence"])
     elif kind in ("terminal_projection", "terminal_support"):
         _require_mapping(payload, "identity_payload_not_mapping")
         if "digest" not in payload:
@@ -453,6 +455,121 @@ def _validate_object_payload_shape(item: Mapping[str, object]) -> None:
         _require_int(payload["witness_count"], "witness_count_not_int")
     else:
         _artifact_violation("unknown_object_kind")
+
+
+def _validate_local_evidence_payload(evidence: object) -> None:
+    _require_mapping(evidence, "local_evidence_not_mapping")
+    _require_exact_payload_fields(evidence, ("kind", "manifest", "digest"))
+    if not isinstance(evidence["kind"], str):
+        _artifact_violation("local_evidence_kind_not_string")
+    if not isinstance(evidence["digest"], str):
+        _artifact_violation("local_evidence_digest_not_string")
+    _require_mapping(evidence["manifest"], "local_evidence_manifest_not_mapping")
+    kind = evidence["kind"]
+    manifest = evidence["manifest"]
+    if kind == "none":
+        if manifest:
+            _artifact_violation("none_local_evidence_manifest_not_empty")
+        return
+    if kind == "atom_text":
+        _require_exact_payload_fields(
+            manifest,
+            (
+                "atom_id",
+                "element",
+                "isotope",
+                "formal_charge",
+                "hydrogen_count",
+                "aromatic",
+                "rendered_text",
+                "bracket_required",
+            ),
+        )
+        for field in ("element", "rendered_text"):
+            if not isinstance(manifest[field], str):
+                _artifact_violation("atom_text_local_evidence_string_mismatch")
+        _require_int(
+            manifest["formal_charge"],
+            "atom_text_local_evidence_charge_not_int",
+        )
+        _require_int(
+            manifest["hydrogen_count"],
+            "atom_text_local_evidence_hydrogen_not_int",
+        )
+        if not isinstance(manifest["aromatic"], bool):
+            _artifact_violation("atom_text_local_evidence_aromatic_not_bool")
+        if not isinstance(manifest["bracket_required"], bool):
+            _artifact_violation("atom_text_local_evidence_bracket_not_bool")
+        return
+    if kind == "closure_bond_text":
+        _require_exact_payload_fields(manifest, ("items",))
+        _validate_closure_evidence_items(manifest["items"])
+        return
+    if kind == "directional_ring_closure_bond_text":
+        _require_exact_payload_fields(
+            manifest,
+            (
+                "closure_bond_text",
+                "directional_coupled_digests",
+                "directional_coupled_count",
+            ),
+        )
+        _validate_closure_evidence_items(manifest["closure_bond_text"])
+        _require_string_list(
+            manifest["directional_coupled_digests"],
+            "directional_coupled_digests_not_strings",
+        )
+        _require_int(
+            manifest["directional_coupled_count"],
+            "directional_coupled_count_not_int",
+        )
+        if (
+            manifest["directional_coupled_count"]
+            != len(manifest["directional_coupled_digests"])
+        ):
+            _artifact_violation("directional_coupled_count_mismatch")
+        return
+    _artifact_violation("unknown_local_evidence_kind")
+
+
+def _validate_closure_evidence_items(items: object) -> None:
+    if not isinstance(items, list):
+        _artifact_violation("closure_evidence_items_not_list")
+    for item in items:
+        _require_mapping(item, "closure_evidence_item_not_mapping")
+        _require_exact_payload_fields(
+            item,
+            (
+                "bond",
+                "bond_order",
+                "label",
+                "opening_atom",
+                "closing_atom",
+                "opening_marker",
+                "closing_marker",
+                "marker_side",
+                "event_kind",
+                "closed_closure_record_digest",
+            ),
+        )
+        for field in (
+            "bond_order",
+            "opening_marker",
+            "closing_marker",
+            "marker_side",
+            "event_kind",
+        ):
+            if not isinstance(item[field], str):
+                _artifact_violation("closure_evidence_string_field_mismatch")
+        if item["bond_order"] not in ("double", "triple"):
+            _artifact_violation("closure_evidence_unknown_bond_order")
+        if item["marker_side"] not in ("opening", "closing"):
+            _artifact_violation("closure_evidence_unknown_marker_side")
+        if item["event_kind"] not in ("endpoint_emitted", "endpoint_paired"):
+            _artifact_violation("closure_evidence_unknown_event_kind")
+        digest = item["closed_closure_record_digest"]
+        if digest is not None and not isinstance(digest, str):
+            _artifact_violation("closure_evidence_closed_digest_not_string")
 
 
 def _require_exact_payload_fields(payload: Mapping[str, object], fields: tuple[str, ...]) -> None:

@@ -38,6 +38,9 @@ from grimace._south_star1.writer_support_artifact_offline_verifier import (
     verify_count_dag_arithmetic,
 )
 from grimace._south_star1.writer_support_artifact_offline_verifier import (
+    verify_local_branch_successor_evidence_offline,
+)
+from grimace._south_star1.writer_support_artifact_offline_verifier import (
     verify_support_image_coverage_offline,
 )
 from grimace._south_star1.writer_support_artifact_offline_verifier import (
@@ -95,6 +98,10 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         )
         self.assertIn(
             "branch_projection_identity",
+            verification.offline_checked_relation_families,
+        )
+        self.assertIn(
+            "local_branch_successor_evidence",
             verification.offline_checked_relation_families,
         )
         self.assertIn("support_image", verification.offline_checked_object_kinds)
@@ -196,7 +203,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         )
 
         self.assertFalse(verification.accepted)
-        self.assertIn("closure_bond_text_unexpected_marker", verification.reason)
+        self.assertIn("local_closure_bond_order_unsupported", verification.reason)
 
     def test_count_dag_arithmetic_accepts_default_relation_fixtures(self) -> None:
         for smiles in ("CCO", "CC(C)O", "C1CC1", "C1=CC1", "[NH4+]", "[13CH4]"):
@@ -710,6 +717,161 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         self.assertFalse(duplicate_ref.accepted)
         self.assertIn("branch_projection_duplicate_support_ref", duplicate_ref.reason)
 
+    def test_local_branch_successor_evidence_accepts_relation_fixtures(self) -> None:
+        for smiles, atom_count, closure_count in (
+            ("[NH4+]", 1, 0),
+            ("[13CH4]", 1, 0),
+            ("C1=CC1", 0, 1),
+            ("C1#CC1", 0, 1),
+            ("CCO", 0, 0),
+        ):
+            with self.subTest(smiles=smiles):
+                artifact = _rdkit_artifact(smiles)
+
+                verification = _local_branch_evidence_verification(
+                    _rdkit_facts(smiles),
+                    artifact,
+                )
+
+                self.assertTrue(verification.accepted, verification.reason)
+                self.assertGreaterEqual(
+                    verification.checked_atom_text_branches,
+                    atom_count,
+                )
+                self.assertGreaterEqual(
+                    verification.checked_closure_bond_text_branches,
+                    closure_count,
+                )
+
+    def test_local_atom_text_evidence_mutations_are_rejected(self) -> None:
+        artifact = _rdkit_artifact("[NH4+]")
+        evidence = _first_local_evidence(artifact, "atom_text")
+        evidence["manifest"]["rendered_text"] = "[NH3+]"
+
+        wrong_text = _local_branch_evidence_verification(_rdkit_facts("[NH4+]"), artifact)
+
+        self.assertFalse(wrong_text.accepted)
+        self.assertIn("local_atom_text_rendered_text_mismatch", wrong_text.reason)
+
+        artifact = _rdkit_artifact("[NH4+]")
+        evidence = _first_local_evidence(artifact, "atom_text")
+        evidence["manifest"]["formal_charge"] = 0
+
+        wrong_charge = _local_branch_evidence_verification(_rdkit_facts("[NH4+]"), artifact)
+
+        self.assertFalse(wrong_charge.accepted)
+        self.assertIn("local_atom_text_charge_mismatch", wrong_charge.reason)
+
+        artifact = _rdkit_artifact("[13CH4]")
+        evidence = _first_local_evidence(artifact, "atom_text")
+        evidence["manifest"]["isotope"] = 12
+
+        wrong_isotope = _local_branch_evidence_verification(
+            _rdkit_facts("[13CH4]"),
+            artifact,
+        )
+
+        self.assertFalse(wrong_isotope.accepted)
+        self.assertIn("local_atom_text_isotope_mismatch", wrong_isotope.reason)
+
+        artifact = _rdkit_artifact("[13CH4]")
+        evidence = _first_local_evidence(artifact, "atom_text")
+        evidence["manifest"]["hydrogen_count"] = 3
+
+        wrong_h_count = _local_branch_evidence_verification(
+            _rdkit_facts("[13CH4]"),
+            artifact,
+        )
+
+        self.assertFalse(wrong_h_count.accepted)
+        self.assertIn("local_atom_text_hydrogen_count_mismatch", wrong_h_count.reason)
+
+    def test_local_closure_bond_text_evidence_mutations_are_rejected(self) -> None:
+        artifact = _rdkit_artifact("C1#CC1")
+        item = _first_closure_evidence_item(artifact)
+        item["bond_order"] = "double"
+
+        wrong_order = _local_branch_evidence_verification(_rdkit_facts("C1#CC1"), artifact)
+
+        self.assertFalse(wrong_order.accepted)
+        self.assertIn("local_closure_bond_order_mismatch", wrong_order.reason)
+
+        artifact = _rdkit_artifact("C1#CC1")
+        item = _first_closure_evidence_item(artifact)
+        item["opening_marker"] = ""
+        item["closing_marker"] = ""
+
+        missing_marker = _local_branch_evidence_verification(
+            _rdkit_facts("C1#CC1"),
+            artifact,
+        )
+
+        self.assertFalse(missing_marker.accepted)
+        self.assertIn("local_closure_marker_missing", missing_marker.reason)
+
+        artifact = _rdkit_artifact("C1#CC1")
+        item = _first_closure_evidence_item(artifact)
+        item["opening_marker"] = "#"
+        item["closing_marker"] = "#"
+
+        duplicate_marker = _local_branch_evidence_verification(
+            _rdkit_facts("C1#CC1"),
+            artifact,
+        )
+
+        self.assertFalse(duplicate_marker.accepted)
+        self.assertIn("local_closure_marker_duplicate", duplicate_marker.reason)
+
+        artifact = _rdkit_artifact("C1#CC1")
+        item = _first_closure_evidence_item(artifact)
+        item["opening_marker"] = "="
+        item["closing_marker"] = "="
+
+        wrong_marker = _local_branch_evidence_verification(
+            _rdkit_facts("C1#CC1"),
+            artifact,
+        )
+
+        self.assertFalse(wrong_marker.accepted)
+        self.assertIn("local_closure_marker_missing", wrong_marker.reason)
+
+        artifact = _rdkit_artifact("C1#CC1")
+        item = _first_closure_evidence_item(artifact)
+        item["bond"] = "missing"
+
+        wrong_bond = _local_branch_evidence_verification(_rdkit_facts("C1#CC1"), artifact)
+
+        self.assertFalse(wrong_bond.accepted)
+        self.assertIn("local_closure_bond_missing", wrong_bond.reason)
+
+    def test_local_branch_evidence_rejects_wrong_facts(self) -> None:
+        artifact = _rdkit_artifact("[NH4+]")
+
+        atom = _local_branch_evidence_verification(_rdkit_facts("[13CH4]"), artifact)
+
+        self.assertFalse(atom.accepted)
+        self.assertIn("local_atom_text_element_mismatch", atom.reason)
+
+        artifact = _rdkit_artifact("C1=CC1")
+
+        closure = _local_branch_evidence_verification(_rdkit_facts("C1CC1"), artifact)
+
+        self.assertFalse(closure.accepted)
+        self.assertIn("local_closure_bond_order_unsupported", closure.reason)
+
+    def test_local_branch_evidence_unknown_kind_rejected(self) -> None:
+        artifact = _rdkit_artifact("[NH4+]")
+        evidence = _first_local_evidence(artifact, "atom_text")
+        evidence["kind"] = "unknown"
+
+        verification = _local_branch_evidence_verification(
+            _rdkit_facts("[NH4+]"),
+            artifact,
+        )
+
+        self.assertFalse(verification.accepted)
+        self.assertIn("local_branch_unknown_evidence_kind", verification.reason)
+
     def test_wrong_facts_are_rejected(self) -> None:
         artifact = _snapshot_artifact(cco_facts())
 
@@ -818,7 +980,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
                 "count_dag": "arithmetic_checked",
                 "frontier_product": "structurally_checked",
                 "replay_path": "partially_offline_checked",
-                "branch_support": "projection_identity_checked",
+                "branch_support": "partially_offline_checked",
                 "text_projection": "partially_offline_checked",
                 "terminal_projection": "identity_shape_checked",
                 "terminal_support": "structurally_checked",
@@ -909,6 +1071,14 @@ def _branch_projection_verification(artifact):
     )
 
 
+def _local_branch_evidence_verification(facts, artifact):
+    return verify_local_branch_successor_evidence_offline(
+        facts=facts,
+        artifact=artifact,
+        objects={item["object_id"]: item for item in artifact["objects"]},
+    )
+
+
 def _first_support_string_object(artifact):
     root = _object(artifact, artifact["roots"]["support_image_root"])
     return _object(artifact, root["payload"]["support_string_refs"][0])
@@ -922,6 +1092,21 @@ def _first_text_projection_object(artifact):
 def _first_branch_support_object(artifact):
     projection = _first_text_projection_object(artifact)
     return _object(artifact, projection["payload"]["branch_support_refs"][0])
+
+
+def _first_local_evidence(artifact, kind: str):
+    for item in artifact["objects"]:
+        if item["kind"] != "branch_support":
+            continue
+        evidence = item["payload"]["local_evidence"]
+        if evidence["kind"] == kind:
+            return evidence
+    raise AssertionError(f"missing local evidence kind: {kind}")
+
+
+def _first_closure_evidence_item(artifact):
+    evidence = _first_local_evidence(artifact, "closure_bond_text")
+    return evidence["manifest"]["items"][0]
 
 
 def _initial_snapshot(prepared, options):

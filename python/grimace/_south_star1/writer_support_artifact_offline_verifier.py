@@ -26,8 +26,8 @@ OBJECT_KIND_OFFLINE_COVERAGE = {
     "replay_path": "partially_offline_checked",
     "branch_support": "partially_offline_checked",
     "text_projection": "partially_offline_checked",
-    "terminal_projection": "identity_shape_checked",
-    "terminal_support": "structurally_checked",
+    "terminal_projection": "partially_offline_checked",
+    "terminal_support": "partially_offline_checked",
     "support_string": "partially_offline_checked",
     "support_image_coverage": "structurally_checked",
     "support_image": "structurally_checked",
@@ -97,6 +97,15 @@ class LocalBranchSuccessorEvidenceVerification:
     reason: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class TerminalSupportIdentityVerification:
+    accepted: bool
+    checked_terminal_projections: int = 0
+    checked_terminal_supports: int = 0
+    checked_terminal_paths: int = 0
+    reason: str | None = None
+
+
 def verify_writer_support_artifact_offline_replay(
     *,
     facts: MoleculeFacts,
@@ -145,6 +154,14 @@ def verify_writer_support_artifact_offline_replay(
             _offline_violation(
                 local_evidence.reason or "local_branch_successor_evidence_rejected"
             )
+        terminal = verify_terminal_support_identities_offline(
+            artifact=artifact,
+            objects=objects,
+        )
+        if not terminal.accepted:
+            _offline_violation(
+                terminal.reason or "terminal_support_identity_rejected"
+            )
         checked_object_kinds = {
             "branch_support",
             "count_dag",
@@ -162,6 +179,7 @@ def verify_writer_support_artifact_offline_replay(
             *replay_paths.relation_families,
             "branch_projection_identity",
             "local_branch_successor_evidence",
+            "terminal_support_identity",
         }
         support_refs = root["payload"]["support_string_refs"]
         for ref in support_refs:
@@ -509,6 +527,178 @@ def verify_local_branch_successor_evidence_offline(
             accepted=False,
             reason=f"malformed_local_branch_evidence:{type(exc).__name__}",
         )
+
+
+def verify_terminal_support_identities_offline(
+    *,
+    artifact: Mapping[str, object],
+    objects: Mapping[str, Mapping[str, object]],
+) -> TerminalSupportIdentityVerification:
+    try:
+        root = _require_object(objects, artifact["roots"]["support_image_root"])
+        terminal_projection_refs: set[str] = set()
+        terminal_support_refs: set[str] = set()
+        checked_paths = 0
+        for support_ref in root["payload"]["support_string_refs"]:
+            support = _require_object(objects, support_ref)
+            _check_support_terminal_path(
+                support=support,
+                objects=objects,
+                terminal_projection_refs=terminal_projection_refs,
+                terminal_support_refs=terminal_support_refs,
+            )
+            checked_paths += 1
+        for projection_ref in terminal_projection_refs:
+            projection = _require_object(objects, projection_ref)
+            _check_terminal_projection_identity(projection)
+        for support_ref in terminal_support_refs:
+            terminal_support = _require_object(objects, support_ref)
+            _check_terminal_support_identity(terminal_support)
+        _check_terminal_bucket_identity(
+            root=root,
+            objects=objects,
+        )
+        return TerminalSupportIdentityVerification(
+            accepted=True,
+            checked_terminal_projections=len(terminal_projection_refs),
+            checked_terminal_supports=len(terminal_support_refs),
+            checked_terminal_paths=checked_paths,
+        )
+    except SouthStarError as exc:
+        return TerminalSupportIdentityVerification(
+            accepted=False,
+            reason=exc.args[-1] if exc.args else "terminal_support_identity_error",
+        )
+    except (AssertionError, KeyError, TypeError, ValueError) as exc:
+        return TerminalSupportIdentityVerification(
+            accepted=False,
+            reason=f"malformed_terminal_support_identity:{type(exc).__name__}",
+        )
+
+
+def _check_support_terminal_path(
+    *,
+    support: Mapping[str, object],
+    objects: Mapping[str, Mapping[str, object]],
+    terminal_projection_refs: set[str],
+    terminal_support_refs: set[str],
+) -> None:
+    payload = support["payload"]
+    terminal = _require_object(objects, payload["terminal_projection_ref"])
+    if terminal["kind"] != "terminal_projection":
+        _offline_violation("terminal_projection_ref_kind_mismatch")
+    terminal_projection_refs.add(payload["terminal_projection_ref"])
+    replay = _require_object(objects, payload["replay_path_ref"])
+    if (
+        terminal["payload"]["source_cursor"]["digest"]
+        != replay["payload"]["final_cursor_digest"]
+    ):
+        _offline_violation("terminal_projection_source_cursor_mismatch")
+    refs = payload["terminal_support_refs"]
+    if not refs:
+        _offline_violation("terminal_support_refs_missing")
+    identity_by_digest = {
+        identity["digest"]: identity
+        for identity in terminal["payload"]["terminal_support_identities"]
+    }
+    if len(set(refs)) != len(refs):
+        _offline_violation("terminal_support_ref_duplicate")
+    support_digests: list[str] = []
+    for ref in refs:
+        terminal_support = _require_object(objects, ref)
+        if terminal_support["kind"] != "terminal_support":
+            _offline_violation("terminal_support_ref_kind_mismatch")
+        terminal_support_refs.add(ref)
+        digest = terminal_support["payload"]["digest"]
+        support_digests.append(digest)
+        if digest not in identity_by_digest:
+            _offline_violation("terminal_support_not_in_projection")
+        if terminal_support["payload"] != identity_by_digest[digest]:
+            _offline_violation("terminal_support_identity_mismatch")
+    if set(support_digests) != set(identity_by_digest):
+        _offline_violation("terminal_projection_support_set_mismatch")
+
+
+def _check_terminal_projection_identity(projection: Mapping[str, object]) -> None:
+    payload = projection["payload"]
+    if payload["support_count"] < 0:
+        _offline_violation("terminal_projection_negative_support_count")
+    if payload["completion_count"] < 0:
+        _offline_violation("terminal_projection_negative_completion_count")
+    identities = payload["terminal_support_identities"]
+    if payload["multiplicity"] != len(identities):
+        _offline_violation("terminal_projection_multiplicity_mismatch")
+    if len(payload["terminal_certificate_digests"]) != len(identities):
+        _offline_violation("terminal_projection_certificate_digest_count_mismatch")
+    ordinals = [identity["terminal_ordinal"] for identity in identities]
+    if len(set(ordinals)) != len(ordinals):
+        _offline_violation("terminal_projection_duplicate_ordinal")
+    keys = [identity["terminal_support_key_digest"] for identity in identities]
+    if len(set(keys)) != len(keys):
+        _offline_violation("terminal_projection_duplicate_key_digest")
+    for identity in identities:
+        _check_terminal_support_payload(identity)
+
+
+def _check_terminal_support_identity(terminal_support: Mapping[str, object]) -> None:
+    _check_terminal_support_payload(terminal_support["payload"])
+
+
+def _check_terminal_support_payload(payload: Mapping[str, object]) -> None:
+    if payload["parent_weight"] <= 0:
+        _offline_violation("terminal_support_parent_weight_nonpositive")
+    if payload["terminal_ordinal"] < 0:
+        _offline_violation("terminal_support_ordinal_negative")
+    for field in (
+        "source_state_digest",
+        "finalized_state_digest",
+        "terminal_support_key_digest",
+        "digest",
+    ):
+        if not payload[field]:
+            _offline_violation("terminal_support_identity_digest_missing")
+    if not payload["terminal_certificate_digests"]:
+        _offline_violation("terminal_support_certificate_digests_missing")
+
+
+def _check_terminal_bucket_identity(
+    *,
+    root: Mapping[str, object],
+    objects: Mapping[str, Mapping[str, object]],
+) -> None:
+    coverage = _require_object(objects, root["payload"]["coverage_ref"])
+    terminal_bucket = coverage["payload"]["terminal_bucket"]
+    empty_refs = [
+        ref
+        for ref in root["payload"]["support_string_refs"]
+        if not _require_object(objects, ref)["payload"]["emitted_texts"]
+    ]
+    if terminal_bucket is None:
+        if empty_refs:
+            _offline_violation("terminal_bucket_missing_for_empty_string")
+        return
+    if terminal_bucket["support_count"] != len(empty_refs):
+        _offline_violation("terminal_bucket_support_count_mismatch")
+    if not empty_refs:
+        if terminal_bucket["string_ref"] is not None:
+            _offline_violation("terminal_bucket_unexpected_string_ref")
+        return
+    if terminal_bucket["string_ref"] != empty_refs[0]:
+        _offline_violation("terminal_bucket_string_ref_mismatch")
+    support = _require_object(objects, empty_refs[0])
+    terminal = _require_object(objects, support["payload"]["terminal_projection_ref"])
+    if terminal_bucket["terminal_projection"] != terminal["payload"]:
+        _offline_violation("terminal_bucket_projection_mismatch")
+    terminal_digests = {
+        _require_object(objects, ref)["payload"]["digest"]
+        for ref in support["payload"]["terminal_support_refs"]
+    }
+    projection_digests = {
+        identity["digest"]
+        for identity in terminal["payload"]["terminal_support_identities"]
+    }
+    if terminal_digests != projection_digests:
+        _offline_violation("terminal_bucket_support_identity_mismatch")
 
 
 def _branch_support_refs_for_root(
@@ -1035,6 +1225,7 @@ __all__ = (
     "LocalBranchSuccessorEvidenceVerification",
     "SupportImageCoverageVerification",
     "SupportStringReplayPathVerification",
+    "TerminalSupportIdentityVerification",
     "WriterSupportArtifactOfflineReplayResult",
     "validate_writer_bracket_atom_text_against_facts",
     "verify_branch_projection_identities_offline",
@@ -1042,5 +1233,6 @@ __all__ = (
     "verify_local_branch_successor_evidence_offline",
     "verify_support_image_coverage_offline",
     "verify_support_string_replay_paths_offline",
+    "verify_terminal_support_identities_offline",
     "verify_writer_support_artifact_offline_replay",
 )

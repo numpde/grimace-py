@@ -47,6 +47,9 @@ from grimace._south_star1.writer_support_artifact_offline_verifier import (
     verify_support_string_replay_paths_offline,
 )
 from grimace._south_star1.writer_support_artifact_offline_verifier import (
+    verify_terminal_support_identities_offline,
+)
+from grimace._south_star1.writer_support_artifact_offline_verifier import (
     verify_writer_support_artifact_offline_replay,
 )
 from grimace._south_star1.writer_support_artifact_envelope import (
@@ -102,6 +105,10 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         )
         self.assertIn(
             "local_branch_successor_evidence",
+            verification.offline_checked_relation_families,
+        )
+        self.assertIn(
+            "terminal_support_identity",
             verification.offline_checked_relation_families,
         )
         self.assertIn("support_image", verification.offline_checked_object_kinds)
@@ -627,6 +634,162 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             stale_support.reason,
         )
 
+    def test_terminal_support_identities_accept_default_relation_fixtures(self) -> None:
+        for smiles in ("CCO", "C1CC1", "C1=CC1", "[NH4+]", "[13CH4]"):
+            with self.subTest(smiles=smiles):
+                artifact = _rdkit_artifact(smiles)
+
+                verification = _terminal_identity_verification(artifact)
+
+                self.assertTrue(verification.accepted, verification.reason)
+                self.assertGreater(verification.checked_terminal_projections, 0)
+                self.assertGreater(verification.checked_terminal_supports, 0)
+                self.assertGreater(verification.checked_terminal_paths, 0)
+
+    def test_terminal_support_identities_accept_empty_terminal_bucket(self) -> None:
+        artifact = _two_atom_completed_prefix_artifact()
+
+        verification = _terminal_identity_verification(artifact)
+
+        self.assertTrue(verification.accepted, verification.reason)
+        self.assertEqual(verification.checked_terminal_paths, 1)
+
+    def test_terminal_projection_cursor_and_support_mutations_are_rejected(self) -> None:
+        artifact = _rdkit_artifact("CCO")
+        terminal = _first_terminal_projection_object(artifact)
+        terminal["payload"].pop("source_cursor")
+
+        missing_source = _terminal_identity_verification(artifact)
+
+        self.assertFalse(missing_source.accepted)
+
+        artifact = _rdkit_artifact("CCO")
+        terminal = _first_terminal_projection_object(artifact)
+        terminal["payload"]["source_cursor"] = terminal["payload"]["finalized_cursor"]
+
+        wrong_source = _terminal_identity_verification(artifact)
+
+        self.assertFalse(wrong_source.accepted)
+        self.assertIn("terminal_projection_source_cursor_mismatch", wrong_source.reason)
+
+        artifact = _rdkit_artifact("CCO")
+        terminal = _first_terminal_projection_object(artifact)
+        terminal["payload"]["finalized_cursor"] = terminal["payload"]["source_cursor"]
+        terminal["payload"]["terminal_support_identities"][0][
+            "terminal_support_key_digest"
+        ] = "0" * 64
+
+        wrong_key = _terminal_identity_verification(artifact)
+
+        self.assertFalse(wrong_key.accepted)
+        self.assertIn("terminal_support_identity_mismatch", wrong_key.reason)
+
+    def test_terminal_support_ordinal_and_key_mutations_are_rejected(self) -> None:
+        artifact = _two_atom_completed_prefix_artifact()
+        support = _first_terminal_support_object(artifact)
+        support["payload"]["terminal_ordinal"] = -1
+        terminal = _first_terminal_projection_object(artifact)
+        terminal["payload"]["terminal_support_identities"][0]["terminal_ordinal"] = -1
+
+        wrong_ordinal = _terminal_identity_verification(artifact)
+
+        self.assertFalse(wrong_ordinal.accepted)
+        self.assertIn("terminal_support_ordinal_negative", wrong_ordinal.reason)
+
+        artifact = _two_atom_completed_prefix_artifact()
+        terminal = _first_terminal_projection_object(artifact)
+        identities = terminal["payload"]["terminal_support_identities"]
+        identities[1]["terminal_ordinal"] = identities[0]["terminal_ordinal"]
+        support = _first_support_string_object(artifact)
+        second_support = _object(artifact, support["payload"]["terminal_support_refs"][1])
+        second_support["payload"]["terminal_ordinal"] = identities[0]["terminal_ordinal"]
+
+        duplicate_ordinal = _terminal_identity_verification(artifact)
+
+        self.assertFalse(duplicate_ordinal.accepted)
+        self.assertIn("terminal_projection_duplicate_ordinal", duplicate_ordinal.reason)
+
+        artifact = _two_atom_completed_prefix_artifact()
+        terminal = _first_terminal_projection_object(artifact)
+        identities = terminal["payload"]["terminal_support_identities"]
+        identities[1]["terminal_support_key_digest"] = identities[0][
+            "terminal_support_key_digest"
+        ]
+        support = _first_support_string_object(artifact)
+        second_support = _object(artifact, support["payload"]["terminal_support_refs"][1])
+        second_support["payload"]["terminal_support_key_digest"] = identities[0][
+            "terminal_support_key_digest"
+        ]
+
+        duplicate_key = _terminal_identity_verification(artifact)
+
+        self.assertFalse(duplicate_key.accepted)
+        self.assertIn("terminal_projection_duplicate_key_digest", duplicate_key.reason)
+
+        artifact = _rdkit_artifact("CCO")
+        support = _first_terminal_support_object(artifact)
+        support["payload"]["parent_weight"] = 0
+        terminal = _first_terminal_projection_object(artifact)
+        terminal["payload"]["terminal_support_identities"][0]["parent_weight"] = 0
+
+        parent_weight = _terminal_identity_verification(artifact)
+
+        self.assertFalse(parent_weight.accepted)
+        self.assertIn(
+            "terminal_support_parent_weight_nonpositive",
+            parent_weight.reason,
+        )
+
+    def test_terminal_support_ref_and_bucket_mutations_are_rejected(self) -> None:
+        artifact = _rdkit_artifact("CCO")
+        support = _first_support_string_object(artifact)
+        support["payload"]["terminal_support_refs"] = []
+
+        missing_ref = _terminal_identity_verification(artifact)
+
+        self.assertFalse(missing_ref.accepted)
+        self.assertIn("terminal_support_refs_missing", missing_ref.reason)
+
+        artifact = _rdkit_artifact("CCO")
+        support = _first_support_string_object(artifact)
+        support["payload"]["terminal_support_refs"] = [
+            support["payload"]["terminal_projection_ref"]
+        ]
+
+        wrong_ref_kind = _terminal_identity_verification(artifact)
+
+        self.assertFalse(wrong_ref_kind.accepted)
+        self.assertIn("terminal_support_ref_kind_mismatch", wrong_ref_kind.reason)
+
+        artifact = _rdkit_artifact("CCO")
+        terminal_support = _first_terminal_support_object(artifact)
+        terminal_support["payload"]["digest"] = "0" * 64
+
+        stale_ref = _terminal_identity_verification(artifact)
+
+        self.assertFalse(stale_ref.accepted)
+        self.assertIn("terminal_support_not_in_projection", stale_ref.reason)
+
+        artifact = _two_atom_completed_prefix_artifact()
+        coverage = _coverage_object(artifact)
+        coverage["payload"]["terminal_bucket"]["terminal_projection"] = {}
+
+        wrong_bucket_projection = _terminal_identity_verification(artifact)
+
+        self.assertFalse(wrong_bucket_projection.accepted)
+        self.assertIn("terminal_bucket_projection_mismatch", wrong_bucket_projection.reason)
+
+        artifact = _two_atom_completed_prefix_artifact()
+        support = _first_support_string_object(artifact)
+        support["payload"]["terminal_support_refs"] = support["payload"][
+            "terminal_support_refs"
+        ][:-1]
+
+        wrong_bucket_support = _terminal_identity_verification(artifact)
+
+        self.assertFalse(wrong_bucket_support.accepted)
+        self.assertIn("terminal_projection_support_set_mismatch", wrong_bucket_support.reason)
+
     def test_branch_projection_identities_accept_default_relation_fixtures(self) -> None:
         for smiles in ("CCO", "CC(C)O", "C1=CC1"):
             with self.subTest(smiles=smiles):
@@ -982,8 +1145,8 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
                 "replay_path": "partially_offline_checked",
                 "branch_support": "partially_offline_checked",
                 "text_projection": "partially_offline_checked",
-                "terminal_projection": "identity_shape_checked",
-                "terminal_support": "structurally_checked",
+                "terminal_projection": "partially_offline_checked",
+                "terminal_support": "partially_offline_checked",
                 "support_string": "partially_offline_checked",
                 "support_image_coverage": "structurally_checked",
                 "support_image": "structurally_checked",
@@ -1079,6 +1242,13 @@ def _local_branch_evidence_verification(facts, artifact):
     )
 
 
+def _terminal_identity_verification(artifact):
+    return verify_terminal_support_identities_offline(
+        artifact=artifact,
+        objects={item["object_id"]: item for item in artifact["objects"]},
+    )
+
+
 def _first_support_string_object(artifact):
     root = _object(artifact, artifact["roots"]["support_image_root"])
     return _object(artifact, root["payload"]["support_string_refs"][0])
@@ -1092,6 +1262,16 @@ def _first_text_projection_object(artifact):
 def _first_branch_support_object(artifact):
     projection = _first_text_projection_object(artifact)
     return _object(artifact, projection["payload"]["branch_support_refs"][0])
+
+
+def _first_terminal_projection_object(artifact):
+    support = _first_support_string_object(artifact)
+    return _object(artifact, support["payload"]["terminal_projection_ref"])
+
+
+def _first_terminal_support_object(artifact):
+    support = _first_support_string_object(artifact)
+    return _object(artifact, support["payload"]["terminal_support_refs"][0])
 
 
 def _first_local_evidence(artifact, kind: str):

@@ -399,10 +399,39 @@ def _validate_object_payload_shape(item: Mapping[str, object]) -> None:
         _require_int(payload["parent_weight"], "branch_support_parent_weight_not_int")
         _require_int(payload["branch_ordinal"], "branch_support_ordinal_not_int")
         _validate_local_evidence_payload(payload["local_evidence"])
-    elif kind in ("terminal_projection", "terminal_support"):
-        _require_mapping(payload, "identity_payload_not_mapping")
-        if "digest" not in payload:
-            _artifact_violation("identity_payload_missing_digest")
+    elif kind == "terminal_projection":
+        _require_exact_payload_fields(
+            payload,
+            (
+                "source_cursor",
+                "finalized_cursor",
+                "multiplicity",
+                "support_count",
+                "completion_count",
+                "terminal_support_identities",
+                "terminal_certificate_digests",
+                "digest",
+            ),
+        )
+        _require_mapping(payload["source_cursor"], "terminal_source_cursor_not_mapping")
+        _require_mapping(
+            payload["finalized_cursor"],
+            "terminal_finalized_cursor_not_mapping",
+        )
+        _require_int(payload["multiplicity"], "terminal_multiplicity_not_int")
+        _require_int(payload["support_count"], "terminal_support_count_not_int")
+        _require_int(payload["completion_count"], "terminal_completion_count_not_int")
+        _validate_terminal_support_identities(
+            payload["terminal_support_identities"],
+        )
+        _require_string_list(
+            payload["terminal_certificate_digests"],
+            "terminal_certificate_digests_not_strings",
+        )
+        if not isinstance(payload["digest"], str):
+            _artifact_violation("terminal_projection_digest_not_string")
+    elif kind == "terminal_support":
+        _validate_terminal_support_identity(payload)
     elif kind == "support_string":
         _require_exact_payload_fields(
             payload,
@@ -570,6 +599,51 @@ def _validate_closure_evidence_items(items: object) -> None:
         digest = item["closed_closure_record_digest"]
         if digest is not None and not isinstance(digest, str):
             _artifact_violation("closure_evidence_closed_digest_not_string")
+
+
+def _validate_terminal_support_identities(identities: object) -> None:
+    if not isinstance(identities, list):
+        _artifact_violation("terminal_support_identities_not_list")
+    for identity in identities:
+        _validate_terminal_support_identity(identity)
+
+
+def _validate_terminal_support_identity(identity: object) -> None:
+    _require_mapping(identity, "terminal_support_identity_not_mapping")
+    _require_exact_payload_fields(
+        identity,
+        (
+            "source_state_digest",
+            "finalized_state_digest",
+            "parent_weight",
+            "terminal_ordinal",
+            "terminal_support_key_digest",
+            "terminal_execution_capabilities_digest",
+            "terminal_residual_work_evidence_digest",
+            "terminal_stereo_lifecycle_evidence_digest",
+            "graph_obligation_work_evidence_digest",
+            "terminal_certificate_digests",
+            "digest",
+        ),
+    )
+    for field in (
+        "source_state_digest",
+        "finalized_state_digest",
+        "terminal_support_key_digest",
+        "terminal_execution_capabilities_digest",
+        "terminal_residual_work_evidence_digest",
+        "terminal_stereo_lifecycle_evidence_digest",
+        "graph_obligation_work_evidence_digest",
+        "digest",
+    ):
+        if not isinstance(identity[field], str):
+            _artifact_violation("terminal_support_identity_string_field_mismatch")
+    _require_int(identity["parent_weight"], "terminal_parent_weight_not_int")
+    _require_int(identity["terminal_ordinal"], "terminal_ordinal_not_int")
+    _require_string_list(
+        identity["terminal_certificate_digests"],
+        "terminal_support_certificate_digests_not_strings",
+    )
 
 
 def _require_exact_payload_fields(payload: Mapping[str, object], fields: tuple[str, ...]) -> None:

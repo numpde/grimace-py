@@ -32,6 +32,9 @@ from grimace._south_star1.writer_support_artifact_offline_verifier import (
     validate_writer_bracket_atom_text_against_facts,
 )
 from grimace._south_star1.writer_support_artifact_offline_verifier import (
+    verify_count_dag_arithmetic,
+)
+from grimace._south_star1.writer_support_artifact_offline_verifier import (
     verify_writer_support_artifact_offline_replay,
 )
 from grimace._south_star1.writer_support_artifact_envelope import (
@@ -66,7 +69,12 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         self.assertFalse(verification.offline_replay_complete)
         self.assertIn("support_string", verification.offline_checked_object_kinds)
         self.assertIn("replay_path", verification.offline_checked_object_kinds)
-        self.assertIn("count_envelope", verification.offline_unchecked_object_kinds)
+        self.assertIn("count_envelope", verification.offline_checked_object_kinds)
+        self.assertIn("count_dag", verification.offline_checked_object_kinds)
+        self.assertIn(
+            "count_dag_arithmetic",
+            verification.offline_checked_relation_families,
+        )
         self.assertEqual(verification.support_count, 4)
 
     def test_prefix_artifact_verifies_against_matching_facts(self) -> None:
@@ -162,6 +170,89 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
         self.assertFalse(verification.accepted)
         self.assertIn("closure_bond_text_unexpected_marker", verification.reason)
+
+    def test_count_dag_arithmetic_accepts_default_relation_fixtures(self) -> None:
+        for smiles in ("CCO", "CC(C)O", "C1CC1", "C1=CC1", "[NH4+]", "[13CH4]"):
+            with self.subTest(smiles=smiles):
+                artifact = _rdkit_artifact(smiles)
+                count = _object(artifact, artifact["roots"]["count_ref"])
+                count_dag = _object(artifact, count["payload"]["count_dag_ref"])
+
+                verification = verify_count_dag_arithmetic(
+                    count_dag=count_dag["payload"],
+                    count_object=count["payload"],
+                )
+
+                self.assertTrue(verification.accepted, verification.reason)
+                self.assertEqual(verification.support_count, count["payload"]["support_count"])
+                self.assertEqual(
+                    verification.completion_count,
+                    count["payload"]["completion_count"],
+                )
+
+    def test_count_dag_arithmetic_rejects_changed_count_object_totals(self) -> None:
+        artifact = _rdkit_artifact("CCO")
+        count = deepcopy(_object(artifact, artifact["roots"]["count_ref"]))
+        count_dag = _object(artifact, count["payload"]["count_dag_ref"])
+        count["payload"]["support_count"] += 1
+
+        verification = verify_count_dag_arithmetic(
+            count_dag=count_dag["payload"],
+            count_object=count["payload"],
+        )
+
+        self.assertFalse(verification.accepted)
+        self.assertIn("count_dag_support_count_mismatch", verification.reason)
+
+    def test_count_dag_arithmetic_rejects_changed_root_node_count(self) -> None:
+        artifact = _rdkit_artifact("CCO")
+        count = _object(artifact, artifact["roots"]["count_ref"])
+        count_dag = deepcopy(_object(artifact, count["payload"]["count_dag_ref"]))
+        root_id = count_dag["payload"]["roots"]["support_count_root"]
+        root = next(
+            node
+            for node in count_dag["payload"]["nodes"]
+            if node["node_id"] == root_id
+        )
+        root["support_count"] += 1
+
+        verification = verify_count_dag_arithmetic(
+            count_dag=count_dag["payload"],
+            count_object=count["payload"],
+        )
+
+        self.assertFalse(verification.accepted)
+
+    def test_count_dag_arithmetic_rejects_missing_child_and_cycle(self) -> None:
+        artifact = _rdkit_artifact("CCO")
+        count = _object(artifact, artifact["roots"]["count_ref"])
+        count_dag = deepcopy(_object(artifact, count["payload"]["count_dag_ref"]))
+        child_id = next(
+            node["children"][0]
+            for node in count_dag["payload"]["nodes"]
+            if node["children"]
+        )
+        count_dag["payload"]["nodes"] = [
+            node for node in count_dag["payload"]["nodes"] if node["node_id"] != child_id
+        ]
+
+        missing = verify_count_dag_arithmetic(
+            count_dag=count_dag["payload"],
+            count_object=count["payload"],
+        )
+
+        self.assertFalse(missing.accepted)
+
+        count_dag = deepcopy(_object(artifact, count["payload"]["count_dag_ref"]))
+        count_dag["payload"]["nodes"][0]["children"].append(
+            count_dag["payload"]["nodes"][0]["node_id"]
+        )
+        cycle = verify_count_dag_arithmetic(
+            count_dag=count_dag["payload"],
+            count_object=count["payload"],
+        )
+
+        self.assertFalse(cycle.accepted)
 
     def test_wrong_facts_are_rejected(self) -> None:
         artifact = _snapshot_artifact(cco_facts())
@@ -267,7 +358,8 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             OBJECT_KIND_OFFLINE_COVERAGE,
             {
                 "source_snapshot": "identity_checked",
-                "count_envelope": "structurally_checked",
+                "count_envelope": "arithmetic_checked",
+                "count_dag": "arithmetic_checked",
                 "frontier_product": "structurally_checked",
                 "replay_path": "partially_offline_checked",
                 "text_projection": "partially_offline_checked",

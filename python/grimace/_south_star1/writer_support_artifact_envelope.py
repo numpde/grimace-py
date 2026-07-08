@@ -261,7 +261,14 @@ def _artifact_from_image(
     )
     count_ref = table.add(
         "count_envelope",
-        _count_payload(count_envelope),
+        _count_payload(
+            count_envelope,
+            count_dag_ref=table.add(
+                "count_dag",
+                count_envelope["count_dag"],
+                operation="support_artifact.count_dag.object",
+            ),
+        ),
         operation="support_artifact.count.object",
     )
     frontier_ref = table.add(
@@ -466,12 +473,17 @@ def _add_coverage(
     )
 
 
-def _count_payload(count_envelope: Mapping[str, object]) -> dict[str, object]:
+def _count_payload(
+    count_envelope: Mapping[str, object],
+    *,
+    count_dag_ref: str,
+) -> dict[str, object]:
     dag_metrics = count_envelope["count_dag"]["metrics"]
     return {
         "schema_name": count_envelope["schema_name"],
         "schema_version": count_envelope["schema_version"],
         "source_kind": count_envelope["source_kind"],
+        "count_dag_ref": count_dag_ref,
         "frontier_snapshot_digest": count_envelope["frontier_snapshot"]["digest"],
         "frontier_product_digest": count_envelope["frontier_product"]["digest"],
         "count_dag_digest": count_envelope["count_dag"]["digest"],

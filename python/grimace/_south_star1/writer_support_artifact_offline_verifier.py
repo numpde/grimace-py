@@ -12,11 +12,15 @@ from .facts import BondFacts
 from .facts import BondOrder
 from .facts import MoleculeFacts
 from .writer_atom_text_lifecycle import bracket_atom_text
+from .writer_count_dag_envelope import count_dag_node_by_id
+from .writer_count_dag_envelope import validate_writer_count_certificate_dag_envelope
+from .writer_envelope_work import WriterEnvelopeWorkBudget
 
 
 OBJECT_KIND_OFFLINE_COVERAGE = {
     "source_snapshot": "identity_checked",
-    "count_envelope": "structurally_checked",
+    "count_envelope": "arithmetic_checked",
+    "count_dag": "arithmetic_checked",
     "frontier_product": "structurally_checked",
     "replay_path": "partially_offline_checked",
     "text_projection": "partially_offline_checked",
@@ -46,22 +50,43 @@ class WriterSupportArtifactOfflineReplayResult:
     reason: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class CountDagArithmeticVerification:
+    accepted: bool
+    support_count: int | None = None
+    completion_count: int | None = None
+    checked_node_kinds: tuple[str, ...] = ()
+    reason: str | None = None
+
+
 def verify_writer_support_artifact_offline_replay(
     *,
     facts: MoleculeFacts,
     artifact: Mapping[str, object],
+    budget: WriterEnvelopeWorkBudget | None = None,
 ) -> WriterSupportArtifactOfflineReplayResult:
     try:
         objects = _object_by_id(artifact)
         _check_object_kinds_classified(objects)
+        root = _require_object(objects, artifact["roots"]["support_image_root"])
+        count = _require_object(objects, root["payload"]["count_ref"])
+        count_dag = _require_object(objects, count["payload"]["count_dag_ref"])
+        arithmetic = verify_count_dag_arithmetic(
+            count_dag=count_dag["payload"],
+            count_object=count["payload"],
+            budget=budget,
+        )
+        if not arithmetic.accepted:
+            _offline_violation(arithmetic.reason or "count_dag_arithmetic_rejected")
         checked_object_kinds = {
+            "count_dag",
+            "count_envelope",
             "source_snapshot",
             "support_string",
             "replay_path",
             "terminal_projection",
         }
-        checked_relations: set[str] = set()
-        root = _require_object(objects, artifact["roots"]["support_image_root"])
+        checked_relations: set[str] = {"count_dag_arithmetic"}
         support_refs = root["payload"]["support_string_refs"]
         for ref in support_refs:
             support = _require_object(objects, ref)
@@ -111,6 +136,184 @@ def validate_writer_bracket_atom_text_against_facts(
     if len(matches) != 1:
         _offline_violation("bracket_atom_text_facts_mismatch")
     return matches[0]
+
+
+def verify_count_dag_arithmetic(
+    *,
+    count_dag: Mapping[str, object],
+    count_object: Mapping[str, object],
+    budget: WriterEnvelopeWorkBudget | None = None,
+) -> CountDagArithmeticVerification:
+    try:
+        validate_writer_count_certificate_dag_envelope(count_dag, budget=budget)
+        nodes = count_dag_node_by_id(dict(count_dag))
+        checked: set[str] = set()
+        support_root = count_dag["roots"]["support_count_root"]
+        completion_root = count_dag["roots"]["completion_count_root"]
+        support_count = None if support_root is None else _node_count(
+            nodes,
+            support_root,
+            field="support_count",
+            checked=checked,
+        )
+        completion_count = None if completion_root is None else _node_count(
+            nodes,
+            completion_root,
+            field="completion_count",
+            checked=checked,
+        )
+        if support_count != count_object["support_count"]:
+            _offline_violation("count_dag_support_count_mismatch")
+        if completion_count != count_object["completion_count"]:
+            _offline_violation("count_dag_completion_count_mismatch")
+        for node_id in count_dag["roots"]["choice_count_roots"]:
+            _check_node_arithmetic(nodes, node_id, checked=checked)
+        terminal_root = count_dag["roots"]["terminal_choice_count_root"]
+        if terminal_root is not None:
+            _check_node_arithmetic(nodes, terminal_root, checked=checked)
+        if count_dag["digest"] != count_object["count_dag_digest"]:
+            _offline_violation("count_dag_digest_mismatch")
+        if count_dag["metrics"]["node_count"] != count_object["count_dag_node_count"]:
+            _offline_violation("count_dag_node_count_mismatch")
+        if count_dag["metrics"]["edge_count"] != count_object["count_dag_edge_count"]:
+            _offline_violation("count_dag_edge_count_mismatch")
+        return CountDagArithmeticVerification(
+            accepted=True,
+            support_count=int(support_count),
+            completion_count=int(completion_count),
+            checked_node_kinds=tuple(sorted(checked)),
+        )
+    except SouthStarError as exc:
+        return CountDagArithmeticVerification(
+            accepted=False,
+            reason=exc.args[-1] if exc.args else "count_dag_arithmetic_error",
+        )
+    except (AssertionError, KeyError, TypeError, ValueError) as exc:
+        return CountDagArithmeticVerification(
+            accepted=False,
+            reason=f"malformed_count_dag:{type(exc).__name__}",
+        )
+
+
+def _node_count(
+    nodes: Mapping[str, Mapping[str, object]],
+    node_id: str,
+    *,
+    field: str,
+    checked: set[str],
+) -> int:
+    _check_node_arithmetic(nodes, node_id, checked=checked)
+    node = nodes[node_id]
+    value = node[field]
+    if not isinstance(value, int):
+        _offline_violation("count_dag_node_count_not_int")
+    return value
+
+
+def _check_node_arithmetic(
+    nodes: Mapping[str, Mapping[str, object]],
+    node_id: str,
+    *,
+    checked: set[str],
+) -> None:
+    node = _require_count_node(nodes, node_id)
+    kind = str(node["kind"])
+    checked.add(kind)
+    if kind == "writer_text_support_count":
+        child = node["state_support_count_node_id"]
+        if node["support_count"] != _node_count(
+            nodes,
+            child,
+            field="support_count",
+            checked=checked,
+        ):
+            _offline_violation("text_support_count_mismatch")
+        return
+    if kind == "writer_text_state_support_count":
+        total = int(node["terminal_count"])
+        for child in node["choice_term_node_ids"]:
+            total += _node_count(nodes, child, field="support_count", checked=checked)
+        if node["support_count"] != total:
+            _offline_violation("state_support_count_mismatch")
+        return
+    if kind == "writer_text_choice_support_count_term":
+        child = node["successor_support_count_node_id"]
+        if node["support_count"] != _node_count(
+            nodes,
+            child,
+            field="support_count",
+            checked=checked,
+        ):
+            _offline_violation("choice_support_count_mismatch")
+        return
+    if kind == "writer_cursor_completion_count":
+        total = 0
+        for entry in node["state_count_entries"]:
+            total += int(entry["cursor_weight"]) * _node_count(
+                nodes,
+                entry["state_count_node_id"],
+                field="completion_count",
+                checked=checked,
+            )
+        if node["completion_count"] != total:
+            _offline_violation("cursor_completion_count_mismatch")
+        return
+    if kind == "writer_state_completion_count":
+        total = int(node["terminal_count"])
+        for child in node["branch_term_node_ids"]:
+            total += _node_count(
+                nodes,
+                child,
+                field="successor_count",
+                checked=checked,
+            )
+        if node["completion_count"] != total:
+            _offline_violation("state_completion_count_mismatch")
+        return
+    if kind == "writer_branch_completion_term":
+        child = node["successor_count_node_id"]
+        if node["successor_count"] != _node_count(
+            nodes,
+            child,
+            field="completion_count",
+            checked=checked,
+        ):
+            _offline_violation("branch_successor_count_mismatch")
+        return
+    if kind == "writer_text_choice_count":
+        support_child = node["support_count_node_id"]
+        completion_child = node["completion_count_node_id"]
+        if node["support_count"] != _node_count(
+            nodes,
+            support_child,
+            field="support_count",
+            checked=checked,
+        ):
+            _offline_violation("text_choice_support_count_mismatch")
+        if node["completion_count"] != _node_count(
+            nodes,
+            completion_child,
+            field="completion_count",
+            checked=checked,
+        ):
+            _offline_violation("text_choice_completion_count_mismatch")
+        return
+    if kind == "writer_terminal_choice_count":
+        if not isinstance(node["support_count"], int):
+            _offline_violation("terminal_choice_support_count_not_int")
+        if not isinstance(node["completion_count"], int):
+            _offline_violation("terminal_choice_completion_count_not_int")
+        return
+    _offline_violation("unknown_count_dag_node_kind")
+
+
+def _require_count_node(
+    nodes: Mapping[str, Mapping[str, object]],
+    node_id: object,
+) -> Mapping[str, object]:
+    if not isinstance(node_id, str) or node_id not in nodes:
+        _offline_violation("count_dag_child_missing")
+    return nodes[node_id]
 
 
 def _check_support_string_offline(
@@ -255,7 +458,9 @@ def _offline_violation(kind: str) -> None:
 
 __all__ = (
     "OBJECT_KIND_OFFLINE_COVERAGE",
+    "CountDagArithmeticVerification",
     "WriterSupportArtifactOfflineReplayResult",
     "validate_writer_bracket_atom_text_against_facts",
+    "verify_count_dag_arithmetic",
     "verify_writer_support_artifact_offline_replay",
 )

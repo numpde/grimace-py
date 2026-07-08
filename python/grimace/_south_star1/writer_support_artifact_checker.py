@@ -310,6 +310,7 @@ def _validate_object_payload_shape(item: Mapping[str, object]) -> None:
                 "schema_name",
                 "schema_version",
                 "source_kind",
+                "count_dag_ref",
                 "frontier_snapshot_digest",
                 "frontier_product_digest",
                 "count_dag_digest",
@@ -325,6 +326,13 @@ def _validate_object_payload_shape(item: Mapping[str, object]) -> None:
         _require_int(payload["completion_count"], "completion_count_not_int")
         _require_int(payload["count_dag_node_count"], "count_dag_node_count_not_int")
         _require_int(payload["count_dag_edge_count"], "count_dag_edge_count_not_int")
+        if not isinstance(payload["count_dag_ref"], str):
+            _artifact_violation("count_dag_ref_not_string")
+    elif kind == "count_dag":
+        _require_mapping(payload, "count_dag_payload_not_mapping")
+        for field in ("schema_name", "schema_version", "roots", "nodes", "metrics", "digest"):
+            if field not in payload:
+                _artifact_violation("count_dag_payload_fields_mismatch")
     elif kind == "frontier_product":
         _require_mapping(payload, "frontier_product_payload_not_mapping")
         if "kind" not in payload or "digest" not in payload:
@@ -427,6 +435,9 @@ def _validate_support_image_root(
     count = _require_object(objects, payload["count_ref"])
     if count["kind"] != "count_envelope":
         _artifact_violation("count_ref_kind_mismatch")
+    count_dag = _require_object(objects, count["payload"]["count_dag_ref"])
+    if count_dag["kind"] != "count_dag":
+        _artifact_violation("count_dag_ref_kind_mismatch")
     source = _require_object(objects, payload["source_ref"])
     if source["kind"] != "source_snapshot":
         _artifact_violation("source_ref_kind_mismatch")
@@ -437,6 +448,12 @@ def _validate_support_image_root(
         _artifact_violation("source_count_snapshot_mismatch")
     if frontier["payload"]["digest"] != count["payload"]["frontier_product_digest"]:
         _artifact_violation("frontier_count_digest_mismatch")
+    if count_dag["payload"]["digest"] != count["payload"]["count_dag_digest"]:
+        _artifact_violation("count_dag_digest_mismatch")
+    if count_dag["payload"]["metrics"]["node_count"] != count["payload"]["count_dag_node_count"]:
+        _artifact_violation("count_dag_node_count_mismatch")
+    if count_dag["payload"]["metrics"]["edge_count"] != count["payload"]["count_dag_edge_count"]:
+        _artifact_violation("count_dag_edge_count_mismatch")
     if payload["distinct_count"] != count["payload"]["support_count"]:
         _artifact_violation("distinct_count_mismatch")
     if payload["witness_count"] != count["payload"]["completion_count"]:
@@ -586,6 +603,8 @@ def _object_refs(item: Mapping[str, object]) -> list[str]:
             payload["coverage_ref"],
             *payload["support_string_refs"],
         ]
+    if kind == "count_envelope":
+        return [payload["count_dag_ref"]]
     if kind == "support_string":
         return [
             payload["source_ref"],

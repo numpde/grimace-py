@@ -108,11 +108,12 @@ relation replay for local atom/ring text lifecycles:
 
 - bracket atom text for `[NH4+]` and `[13CH4]`;
 - joint non-single ring-closure marker counts for cyclic double/triple bonds.
+- count DAG arithmetic for support/completion count roots and count-node terms.
 
 The facts-bound verifier still reports `offline_replay_complete=False`.
-Frontier products, count DAG arithmetic, full branch successor replay, stereo
-residual replay, and support-image coverage arithmetic remain structurally
-checked rather than fully replayed from facts.
+Frontier products, full branch successor replay, stereo residual replay, and
+support-image coverage arithmetic remain structurally checked rather than fully
+replayed from facts.
 
 ## Conformance Corpus
 

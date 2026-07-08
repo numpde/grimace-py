@@ -88,15 +88,30 @@ class OrdinaryPolicyTest(unittest.TestCase):
         self.assertEqual(choice.render(TetraToken.AT), "[C@H]")
         self.assertEqual(choice.render(TetraToken.ATAT), "[C@@H]")
 
-    def test_non_single_ring_closure_is_explicitly_unsupported(self) -> None:
+    def test_default_non_single_ring_closure_uses_joint_endpoint_domains(
+        self,
+    ) -> None:
         facts = _cyclopropene_facts()
 
-        with self.assertRaisesRegex(
-            SouthStarError,
-            "non-single ring closures",
-        ) as raised:
-            ordinary_policy_for_facts(facts)
-        self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+        policy = ordinary_policy_for_facts(facts)
+
+        ring_choices = policy.bond_text_domain(
+            facts,
+            BondId(0),
+            slot_kind=BondSlotKind.RING_ENDPOINT.value,
+        )
+        self.assertEqual({choice.base_text for choice in ring_choices}, {"", "="})
+
+    def test_explicit_unsupported_non_single_ring_closure_still_rejects(
+        self,
+    ) -> None:
+        facts = _cyclopropene_facts()
+
+        with self.assertRaisesRegex(SouthStarError, "non-single ring closures"):
+            ordinary_policy_for_facts(
+                facts,
+                OrdinaryPolicyOptions(non_single_ring_closures="unsupported"),
+            )
 
     def test_joint_non_single_ring_closure_builds_endpoint_domains(self) -> None:
         facts = _cyclopropene_facts()

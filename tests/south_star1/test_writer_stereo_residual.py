@@ -1725,13 +1725,19 @@ class WriterStereoResidualTest(unittest.TestCase):
             )
         )
 
-    def test_default_policy_blocks_directional_non_single_ring_carrier(
+    def test_default_policy_uses_joint_directional_non_single_ring_carrier(
         self,
     ) -> None:
         facts = _directional_non_single_ring_carrier_facts()
 
-        with self.assertRaisesRegex(SouthStarError, "non-single ring closures"):
-            ordinary_policy_for_facts(facts)
+        policy = ordinary_policy_for_facts(facts)
+
+        ring_choices = policy.bond_text_domain(
+            facts,
+            BondId(3),
+            slot_kind="ring_endpoint",
+        )
+        self.assertEqual({choice.base_text for choice in ring_choices}, {"", "="})
 
     def test_joint_directional_non_single_ring_carrier_support_is_certified(
         self,

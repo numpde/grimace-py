@@ -1922,10 +1922,13 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 )
                 pending.append(support.successor_cursor)
 
-    def test_default_policy_rejects_non_single_ring_closure_candidate(self) -> None:
+    def test_explicit_unsupported_policy_rejects_non_single_ring_closure_candidate(
+        self,
+    ) -> None:
         with self.assertRaisesRegex(SouthStarError, "non-single ring closures"):
             ordinary_policy_for_facts(
-                _non_single_closure_triangle_facts(BondOrder.DOUBLE)
+                _non_single_closure_triangle_facts(BondOrder.DOUBLE),
+                OrdinaryPolicyOptions(non_single_ring_closures="unsupported"),
             )
 
     def test_joint_non_single_closure_pair_lifecycle_is_certified(self) -> None:

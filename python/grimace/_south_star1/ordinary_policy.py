@@ -34,7 +34,10 @@ class OrdinaryPolicyOptions:
 
     single_bond_mode: Literal["elide", "explicit", "both"] = "elide"
     aromatic_bond_mode: Literal["elide", "explicit", "both"] = "elide"
-    non_single_ring_closures: Literal["unsupported", "joint"] = "unsupported"
+    # Joint non-single ring closures are the default graph/ring-order
+    # lifecycle. Potential directional stereo support is governed separately
+    # by extraction and stereo capability blockers.
+    non_single_ring_closures: Literal["unsupported", "joint"] = "joint"
 
     bracket_all_atoms: bool = False
     allow_aromatic_atoms: bool = True

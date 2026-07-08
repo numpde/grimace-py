@@ -59,6 +59,15 @@ class CountDagArithmeticVerification:
     reason: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class SupportImageCoverageVerification:
+    accepted: bool
+    support_count: int | None = None
+    witness_count: int | None = None
+    relation_families: tuple[str, ...] = ()
+    reason: str | None = None
+
+
 def verify_writer_support_artifact_offline_replay(
     *,
     facts: MoleculeFacts,
@@ -78,15 +87,26 @@ def verify_writer_support_artifact_offline_replay(
         )
         if not arithmetic.accepted:
             _offline_violation(arithmetic.reason or "count_dag_arithmetic_rejected")
+        coverage = verify_support_image_coverage_offline(
+            artifact=artifact,
+            objects=objects,
+        )
+        if not coverage.accepted:
+            _offline_violation(coverage.reason or "support_image_coverage_rejected")
         checked_object_kinds = {
             "count_dag",
             "count_envelope",
             "source_snapshot",
             "support_string",
             "replay_path",
+            "support_image",
+            "support_image_coverage",
             "terminal_projection",
         }
-        checked_relations: set[str] = {"count_dag_arithmetic"}
+        checked_relations: set[str] = {
+            "count_dag_arithmetic",
+            *coverage.relation_families,
+        }
         support_refs = root["payload"]["support_string_refs"]
         for ref in support_refs:
             support = _require_object(objects, ref)
@@ -195,6 +215,123 @@ def verify_count_dag_arithmetic(
         )
 
 
+def verify_support_image_coverage_offline(
+    *,
+    artifact: Mapping[str, object],
+    objects: Mapping[str, Mapping[str, object]],
+) -> SupportImageCoverageVerification:
+    try:
+        root = _require_object(objects, artifact["roots"]["support_image_root"])
+        if root["kind"] != "support_image":
+            _offline_violation("support_image_root_kind_mismatch")
+        root_payload = root["payload"]
+        support_refs = root_payload["support_string_refs"]
+        if len(set(support_refs)) != len(support_refs):
+            _offline_violation("coverage_duplicate_support_string_ref")
+        support_objects = [_require_object(objects, ref) for ref in support_refs]
+        support_strings = [item["payload"]["string"] for item in support_objects]
+        if root_payload["support_strings"] != support_strings:
+            _offline_violation("coverage_support_string_order_mismatch")
+        if len(set(support_strings)) != len(support_strings):
+            _offline_violation("coverage_duplicate_support_string_text")
+        if root_payload["distinct_count"] != len(support_refs):
+            _offline_violation("support_image_distinct_count_mismatch")
+
+        count = _require_object(objects, root_payload["count_ref"])
+        if count["kind"] != "count_envelope":
+            _offline_violation("coverage_count_ref_kind_mismatch")
+        count_payload = count["payload"]
+        if root_payload["distinct_count"] != count_payload["support_count"]:
+            _offline_violation("coverage_count_support_total_mismatch")
+        if root_payload["witness_count"] != count_payload["completion_count"]:
+            _offline_violation("coverage_count_completion_total_mismatch")
+
+        coverage = _require_object(objects, root_payload["coverage_ref"])
+        if coverage["kind"] != "support_image_coverage":
+            _offline_violation("coverage_ref_kind_mismatch")
+        payload = coverage["payload"]
+        if payload["distinct_count"] != root_payload["distinct_count"]:
+            _offline_violation("coverage_distinct_count_mismatch")
+        if payload["support_count"] != count_payload["support_count"]:
+            _offline_violation("coverage_support_count_mismatch")
+
+        assigned: list[str] = []
+        support_ref_set = set(support_refs)
+        for bucket in payload["text_buckets"]:
+            refs = bucket["string_refs"]
+            if bucket["support_count"] != len(refs):
+                _offline_violation("coverage_text_bucket_count_mismatch")
+            for ref in refs:
+                if ref not in support_ref_set:
+                    _offline_violation("coverage_text_bucket_unknown_ref")
+                support = _require_object(objects, ref)
+                emitted_texts = support["payload"]["emitted_texts"]
+                if not emitted_texts:
+                    _offline_violation("coverage_empty_string_in_text_bucket")
+                first_projection = _require_object(
+                    objects,
+                    support["payload"]["text_projection_refs"][0],
+                )
+                if not _same_text_projection_core(
+                    bucket["text_projection"],
+                    first_projection["payload"],
+                ):
+                    _offline_violation("coverage_text_projection_mismatch")
+            assigned.extend(refs)
+
+        empty_refs = [
+            ref
+            for ref in support_refs
+            if not _require_object(objects, ref)["payload"]["emitted_texts"]
+        ]
+        terminal = payload["terminal_bucket"]
+        if terminal is None:
+            if empty_refs:
+                _offline_violation("coverage_terminal_bucket_missing")
+        else:
+            if terminal["support_count"] != len(empty_refs):
+                _offline_violation("coverage_terminal_bucket_count_mismatch")
+            if empty_refs:
+                if terminal["string_ref"] != empty_refs[0]:
+                    _offline_violation("coverage_terminal_string_ref_mismatch")
+                support = _require_object(objects, empty_refs[0])
+                terminal_projection = _require_object(
+                    objects,
+                    support["payload"]["terminal_projection_ref"],
+                )
+                if terminal["terminal_projection"] != terminal_projection["payload"]:
+                    _offline_violation("coverage_terminal_projection_mismatch")
+                assigned.extend(empty_refs)
+            elif terminal["string_ref"] is not None:
+                _offline_violation("coverage_terminal_unexpected_string_ref")
+
+        if len(assigned) != len(set(assigned)):
+            _offline_violation("coverage_duplicate_assignment")
+        if sorted(assigned) != sorted(support_refs):
+            _offline_violation("coverage_partition_mismatch")
+        total = sum(int(bucket["support_count"]) for bucket in payload["text_buckets"])
+        if terminal is not None:
+            total += int(terminal["support_count"])
+        if total != root_payload["distinct_count"]:
+            _offline_violation("coverage_support_total_mismatch")
+        return SupportImageCoverageVerification(
+            accepted=True,
+            support_count=int(root_payload["distinct_count"]),
+            witness_count=int(root_payload["witness_count"]),
+            relation_families=("support_image_coverage",),
+        )
+    except SouthStarError as exc:
+        return SupportImageCoverageVerification(
+            accepted=False,
+            reason=exc.args[-1] if exc.args else "support_image_coverage_error",
+        )
+    except (AssertionError, KeyError, TypeError, ValueError) as exc:
+        return SupportImageCoverageVerification(
+            accepted=False,
+            reason=f"malformed_coverage:{type(exc).__name__}",
+        )
+
+
 def _node_count(
     nodes: Mapping[str, Mapping[str, object]],
     node_id: str,
@@ -208,6 +345,17 @@ def _node_count(
     if not isinstance(value, int):
         _offline_violation("count_dag_node_count_not_int")
     return value
+
+
+def _same_text_projection_core(
+    left: Mapping[str, object],
+    right: Mapping[str, object],
+) -> bool:
+    return (
+        left.get("emitted_text") == right.get("emitted_text")
+        and left.get("source_cursor") == right.get("source_cursor")
+        and left.get("successor_cursor") == right.get("successor_cursor")
+    )
 
 
 def _check_node_arithmetic(
@@ -459,8 +607,10 @@ def _offline_violation(kind: str) -> None:
 __all__ = (
     "OBJECT_KIND_OFFLINE_COVERAGE",
     "CountDagArithmeticVerification",
+    "SupportImageCoverageVerification",
     "WriterSupportArtifactOfflineReplayResult",
     "validate_writer_bracket_atom_text_against_facts",
     "verify_count_dag_arithmetic",
+    "verify_support_image_coverage_offline",
     "verify_writer_support_artifact_offline_replay",
 )

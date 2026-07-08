@@ -35,6 +35,9 @@ from grimace._south_star1.writer_support_artifact_offline_verifier import (
     verify_count_dag_arithmetic,
 )
 from grimace._south_star1.writer_support_artifact_offline_verifier import (
+    verify_support_image_coverage_offline,
+)
+from grimace._south_star1.writer_support_artifact_offline_verifier import (
     verify_writer_support_artifact_offline_replay,
 )
 from grimace._south_star1.writer_support_artifact_envelope import (
@@ -74,6 +77,15 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         self.assertIn(
             "count_dag_arithmetic",
             verification.offline_checked_relation_families,
+        )
+        self.assertIn(
+            "support_image_coverage",
+            verification.offline_checked_relation_families,
+        )
+        self.assertIn("support_image", verification.offline_checked_object_kinds)
+        self.assertIn(
+            "support_image_coverage",
+            verification.offline_checked_object_kinds,
         )
         self.assertEqual(verification.support_count, 4)
 
@@ -254,6 +266,166 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
         self.assertFalse(cycle.accepted)
 
+    def test_support_image_coverage_accepts_default_relation_fixtures(self) -> None:
+        for smiles in ("CCO", "C1CC1", "C1=CC1", "[NH4+]", "[13CH4]"):
+            with self.subTest(smiles=smiles):
+                artifact = _rdkit_artifact(smiles)
+
+                verification = _coverage_verification(artifact)
+
+                self.assertTrue(verification.accepted, verification.reason)
+                root = _object(artifact, artifact["roots"]["support_image_root"])
+                self.assertEqual(verification.support_count, root["payload"]["distinct_count"])
+                self.assertEqual(verification.witness_count, root["payload"]["witness_count"])
+
+    def test_support_image_coverage_accepts_terminal_bucket(self) -> None:
+        artifact = _two_atom_completed_prefix_artifact()
+
+        verification = _coverage_verification(artifact)
+
+        self.assertTrue(verification.accepted, verification.reason)
+        self.assertEqual(verification.support_count, 1)
+        self.assertEqual(verification.witness_count, 2)
+
+    def test_coverage_missing_or_extra_text_bucket_is_rejected(self) -> None:
+        artifact = _rdkit_artifact("CCO")
+        coverage = _coverage_object(artifact)
+        coverage["payload"]["text_buckets"] = []
+
+        missing = _coverage_verification(artifact)
+
+        self.assertFalse(missing.accepted)
+        self.assertIn("coverage_partition_mismatch", missing.reason)
+
+        artifact = _rdkit_artifact("CCO")
+        coverage = _coverage_object(artifact)
+        coverage["payload"]["text_buckets"].append(
+            deepcopy(coverage["payload"]["text_buckets"][0])
+        )
+
+        extra = _coverage_verification(artifact)
+
+        self.assertFalse(extra.accepted)
+        self.assertIn("coverage_duplicate_assignment", extra.reason)
+
+    def test_coverage_wrong_text_projection_ref_is_rejected(self) -> None:
+        artifact = _rdkit_artifact("CCO")
+        coverage = _coverage_object(artifact)
+        coverage["payload"]["text_buckets"][0]["text_projection"] = {
+            **coverage["payload"]["text_buckets"][0]["text_projection"],
+            "emitted_text": "N",
+        }
+
+        verification = _coverage_verification(artifact)
+
+        self.assertFalse(verification.accepted)
+        self.assertIn("coverage_text_projection_mismatch", verification.reason)
+
+    def test_coverage_wrong_duplicate_and_unassigned_refs_are_rejected(self) -> None:
+        artifact = _rdkit_artifact("CCO")
+        coverage = _coverage_object(artifact)
+        coverage["payload"]["text_buckets"][0]["string_refs"] = ["missing"]
+        coverage["payload"]["text_buckets"][0]["support_count"] = 1
+
+        wrong = _coverage_verification(artifact)
+
+        self.assertFalse(wrong.accepted)
+        self.assertIn("coverage_text_bucket_unknown_ref", wrong.reason)
+
+        artifact = _rdkit_artifact("CC(C)O")
+        root = _object(artifact, artifact["roots"]["support_image_root"])
+        coverage = _coverage_object(artifact)
+        first_ref = root["payload"]["support_string_refs"][0]
+        coverage["payload"]["text_buckets"][0]["string_refs"] = [first_ref, first_ref]
+        coverage["payload"]["text_buckets"][0]["support_count"] = 2
+
+        duplicate = _coverage_verification(artifact)
+
+        self.assertFalse(duplicate.accepted)
+        self.assertIn("coverage_duplicate_assignment", duplicate.reason)
+
+    def test_coverage_support_and_witness_totals_are_rejected(self) -> None:
+        artifact = _rdkit_artifact("CCO")
+        root = _object(artifact, artifact["roots"]["support_image_root"])
+        root["payload"]["distinct_count"] += 1
+
+        distinct = _coverage_verification(artifact)
+
+        self.assertFalse(distinct.accepted)
+        self.assertIn("support_image_distinct_count_mismatch", distinct.reason)
+
+        artifact = _rdkit_artifact("CCO")
+        root = _object(artifact, artifact["roots"]["support_image_root"])
+        root["payload"]["witness_count"] += 1
+
+        witness = _coverage_verification(artifact)
+
+        self.assertFalse(witness.accepted)
+        self.assertIn("coverage_count_completion_total_mismatch", witness.reason)
+
+        artifact = _rdkit_artifact("CCO")
+        count = _object(artifact, artifact["roots"]["count_ref"])
+        count["payload"]["support_count"] += 1
+
+        count_support = _coverage_verification(artifact)
+
+        self.assertFalse(count_support.accepted)
+        self.assertIn("coverage_count_support_total_mismatch", count_support.reason)
+
+        artifact = _rdkit_artifact("CCO")
+        count = _object(artifact, artifact["roots"]["count_ref"])
+        count["payload"]["completion_count"] += 1
+
+        count_completion = _coverage_verification(artifact)
+
+        self.assertFalse(count_completion.accepted)
+        self.assertIn(
+            "coverage_count_completion_total_mismatch",
+            count_completion.reason,
+        )
+
+    def test_coverage_terminal_bucket_mutations_are_rejected(self) -> None:
+        artifact = _two_atom_completed_prefix_artifact()
+        coverage = _coverage_object(artifact)
+        coverage["payload"]["terminal_bucket"] = None
+
+        missing = _coverage_verification(artifact)
+
+        self.assertFalse(missing.accepted)
+        self.assertIn("coverage_terminal_bucket_missing", missing.reason)
+
+        artifact = _two_atom_completed_prefix_artifact()
+        coverage = _coverage_object(artifact)
+        coverage["payload"]["text_buckets"].append(
+            {
+                "text_projection": {},
+                "support_count": 1,
+                "string_refs": [
+                    _object(
+                        artifact,
+                        artifact["roots"]["support_image_root"],
+                    )["payload"]["support_string_refs"][0]
+                ],
+            }
+        )
+
+        text_bucket = _coverage_verification(artifact)
+
+        self.assertFalse(text_bucket.accepted)
+        self.assertIn("coverage_empty_string_in_text_bucket", text_bucket.reason)
+
+        artifact = _two_atom_completed_prefix_artifact()
+        coverage = _coverage_object(artifact)
+        coverage["payload"]["terminal_bucket"]["terminal_projection"] = {
+            **coverage["payload"]["terminal_bucket"]["terminal_projection"],
+            "digest": "0" * 64,
+        }
+
+        wrong_projection = _coverage_verification(artifact)
+
+        self.assertFalse(wrong_projection.accepted)
+        self.assertIn("coverage_terminal_projection_mismatch", wrong_projection.reason)
+
     def test_wrong_facts_are_rejected(self) -> None:
         artifact = _snapshot_artifact(cco_facts())
 
@@ -406,6 +578,35 @@ def _rdkit_artifact_verification(smiles: str):
         facts=facts,
         runtime_options=_writer_options(),
         artifact=_snapshot_artifact(facts),
+    )
+
+
+def _two_atom_completed_prefix_artifact():
+    facts = two_atom_facts()
+    prepared = _prepare(facts)
+    options = _writer_options()
+    prefix = writer_snapshot_prefix_read_envelope_for_emitted_texts(
+        prepared=prepared,
+        snapshot=_initial_snapshot(prepared, options),
+        emitted_texts=("C", "C"),
+    )
+    return deepcopy(
+        writer_support_artifact_envelope_for_prefix_read(
+            prepared=prepared,
+            prefix_read_envelope=prefix,
+        )
+    )
+
+
+def _coverage_object(artifact):
+    root = _object(artifact, artifact["roots"]["support_image_root"])
+    return _object(artifact, root["payload"]["coverage_ref"])
+
+
+def _coverage_verification(artifact):
+    return verify_support_image_coverage_offline(
+        artifact=artifact,
+        objects={item["object_id"]: item for item in artifact["objects"]},
     )
 
 

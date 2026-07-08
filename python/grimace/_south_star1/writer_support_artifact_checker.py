@@ -55,11 +55,11 @@ def verify_writer_support_artifact_consistency(
         objects = _object_by_id(artifact, budget=budget)
         _validate_metrics(artifact, budget=budget)
         _validate_artifact_digest(artifact, budget=budget)
-        _validate_object_table_closed(artifact, objects)
+        _validate_object_table_closed(artifact, objects, budget=budget)
         root = _require_object(objects, artifact["roots"]["support_image_root"])
         if root["kind"] != "support_image":
             _artifact_violation("support_image_root_kind_mismatch")
-        _validate_support_image_root(root, objects)
+        _validate_support_image_root(root, objects, budget=budget)
         return WriterSupportArtifactCheckResult(
             accepted=True,
             support_count=int(root["payload"]["distinct_count"]),
@@ -254,6 +254,8 @@ def _validate_artifact_digest(
 def _validate_object_table_closed(
     artifact: Mapping[str, object],
     objects: Mapping[str, Mapping[str, object]],
+    *,
+    budget: WriterEnvelopeWorkBudget,
 ) -> None:
     roots = artifact["roots"]
     if frozenset(roots) != frozenset((
@@ -276,7 +278,7 @@ def _validate_object_table_closed(
     if payload["frontier_product_ref"] != roots["frontier_product_ref"]:
         _artifact_violation("root_frontier_product_ref_mismatch")
     for item in objects.values():
-        _validate_object_payload_shape(item)
+        _validate_object_payload_shape(item, budget=budget)
     reachable = _reachable_object_ids(objects, roots["support_image_root"])
     if reachable - set(objects):
         _artifact_violation("dangling_object_ref")
@@ -284,7 +286,12 @@ def _validate_object_table_closed(
         _artifact_violation("unreferenced_object")
 
 
-def _validate_object_payload_shape(item: Mapping[str, object]) -> None:
+def _validate_object_payload_shape(
+    item: Mapping[str, object],
+    *,
+    budget: WriterEnvelopeWorkBudget | None = None,
+) -> None:
+    budget = default_writer_envelope_work_budget(budget)
     payload = item["payload"]
     kind = item["kind"]
     if not isinstance(payload, Mapping):
@@ -398,7 +405,7 @@ def _validate_object_payload_shape(item: Mapping[str, object]) -> None:
                 _artifact_violation("branch_support_string_field_mismatch")
         _require_int(payload["parent_weight"], "branch_support_parent_weight_not_int")
         _require_int(payload["branch_ordinal"], "branch_support_ordinal_not_int")
-        _validate_local_evidence_payload(payload["local_evidence"])
+        _validate_local_evidence_payload(payload["local_evidence"], budget=budget)
     elif kind == "terminal_projection":
         _require_exact_payload_fields(
             payload,
@@ -486,7 +493,11 @@ def _validate_object_payload_shape(item: Mapping[str, object]) -> None:
         _artifact_violation("unknown_object_kind")
 
 
-def _validate_local_evidence_payload(evidence: object) -> None:
+def _validate_local_evidence_payload(
+    evidence: object,
+    *,
+    budget: WriterEnvelopeWorkBudget,
+) -> None:
     _require_mapping(evidence, "local_evidence_not_mapping")
     _require_exact_payload_fields(evidence, ("kind", "manifest", "digest"))
     if not isinstance(evidence["kind"], str):
@@ -496,11 +507,37 @@ def _validate_local_evidence_payload(evidence: object) -> None:
     _require_mapping(evidence["manifest"], "local_evidence_manifest_not_mapping")
     kind = evidence["kind"]
     manifest = evidence["manifest"]
-    if kind == "none":
+    expected_digest = _identity_digest(
+        {"kind": kind, "manifest": manifest},
+        budget=budget,
+        operation=f"support_artifact_check.local_evidence.{kind}.digest",
+    )
+    if evidence["digest"] != expected_digest:
+        _artifact_violation("local_evidence_digest_mismatch")
+    if kind == "other_structural":
         if manifest:
-            _artifact_violation("none_local_evidence_manifest_not_empty")
+            _artifact_violation("other_structural_local_evidence_manifest_not_empty")
         return
-    if kind == "atom_text":
+    if kind == "plain_atom_text":
+        _require_exact_payload_fields(
+            manifest,
+            (
+                "atom_id",
+                "element",
+                "aromatic",
+                "rendered_text",
+                "bracket_required",
+            ),
+        )
+        for field in ("element", "rendered_text"):
+            if not isinstance(manifest[field], str):
+                _artifact_violation("plain_atom_text_local_evidence_string_mismatch")
+        if not isinstance(manifest["aromatic"], bool):
+            _artifact_violation("plain_atom_text_local_evidence_aromatic_not_bool")
+        if not isinstance(manifest["bracket_required"], bool):
+            _artifact_violation("plain_atom_text_local_evidence_bracket_not_bool")
+        return
+    if kind == "bracket_atom_text":
         _require_exact_payload_fields(
             manifest,
             (
@@ -516,19 +553,19 @@ def _validate_local_evidence_payload(evidence: object) -> None:
         )
         for field in ("element", "rendered_text"):
             if not isinstance(manifest[field], str):
-                _artifact_violation("atom_text_local_evidence_string_mismatch")
+                _artifact_violation("bracket_atom_text_local_evidence_string_mismatch")
         _require_int(
             manifest["formal_charge"],
-            "atom_text_local_evidence_charge_not_int",
+            "bracket_atom_text_local_evidence_charge_not_int",
         )
         _require_int(
             manifest["hydrogen_count"],
-            "atom_text_local_evidence_hydrogen_not_int",
+            "bracket_atom_text_local_evidence_hydrogen_not_int",
         )
         if not isinstance(manifest["aromatic"], bool):
-            _artifact_violation("atom_text_local_evidence_aromatic_not_bool")
+            _artifact_violation("bracket_atom_text_local_evidence_aromatic_not_bool")
         if not isinstance(manifest["bracket_required"], bool):
-            _artifact_violation("atom_text_local_evidence_bracket_not_bool")
+            _artifact_violation("bracket_atom_text_local_evidence_bracket_not_bool")
         return
     if kind == "closure_bond_text":
         _require_exact_payload_fields(manifest, ("items",))
@@ -669,9 +706,11 @@ def _require_string_list(value: object, kind: str) -> None:
 def _validate_support_image_root(
     root: Mapping[str, object],
     objects: Mapping[str, Mapping[str, object]],
+    *,
+    budget: WriterEnvelopeWorkBudget,
 ) -> None:
     payload = root["payload"]
-    _validate_object_payload_shape(root)
+    _validate_object_payload_shape(root, budget=budget)
     count = _require_object(objects, payload["count_ref"])
     if count["kind"] != "count_envelope":
         _artifact_violation("count_ref_kind_mismatch")

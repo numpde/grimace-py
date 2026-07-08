@@ -14,8 +14,10 @@ from .facts import MoleculeFacts
 from .writer_atom_text_lifecycle import bracket_atom_text
 from .writer_count_dag_envelope import count_dag_node_by_id
 from .writer_count_dag_envelope import validate_writer_count_certificate_dag_envelope
+from .writer_envelope_terms import _identity_digest
 from .writer_envelope_terms import _term
 from .writer_envelope_work import WriterEnvelopeWorkBudget
+from .writer_envelope_work import default_writer_envelope_work_budget
 
 
 OBJECT_KIND_OFFLINE_COVERAGE = {
@@ -91,9 +93,11 @@ class BranchProjectionIdentityVerification:
 class LocalBranchSuccessorEvidenceVerification:
     accepted: bool
     checked_branches: int = 0
-    checked_atom_text_branches: int = 0
+    checked_plain_atom_text_branches: int = 0
+    checked_bracket_atom_text_branches: int = 0
     checked_closure_bond_text_branches: int = 0
     checked_directional_coupled_branches: int = 0
+    structurally_checked_branches: int = 0
     reason: str | None = None
 
 
@@ -149,6 +153,7 @@ def verify_writer_support_artifact_offline_replay(
             facts=facts,
             artifact=artifact,
             objects=objects,
+            budget=budget,
         )
         if not local_evidence.accepted:
             _offline_violation(
@@ -489,13 +494,17 @@ def verify_local_branch_successor_evidence_offline(
     facts: MoleculeFacts,
     artifact: Mapping[str, object],
     objects: Mapping[str, Mapping[str, object]],
+    budget: WriterEnvelopeWorkBudget | None = None,
 ) -> LocalBranchSuccessorEvidenceVerification:
     try:
+        budget = default_writer_envelope_work_budget(budget)
         root = _require_object(objects, artifact["roots"]["support_image_root"])
         branch_refs = _branch_support_refs_for_root(root=root, objects=objects)
-        atom_count = 0
+        plain_atom_count = 0
+        bracket_atom_count = 0
         closure_count = 0
         directional_count = 0
+        structural_count = 0
         for branch_ref in branch_refs:
             branch = _require_object(objects, branch_ref)
             if branch["kind"] != "branch_support":
@@ -503,19 +512,26 @@ def verify_local_branch_successor_evidence_offline(
             kind = _check_branch_local_evidence(
                 facts=facts,
                 branch=branch,
+                budget=budget,
             )
-            if kind == "atom_text":
-                atom_count += 1
+            if kind == "plain_atom_text":
+                plain_atom_count += 1
+            elif kind == "bracket_atom_text":
+                bracket_atom_count += 1
             elif kind == "closure_bond_text":
                 closure_count += 1
             elif kind == "directional_ring_closure_bond_text":
                 directional_count += 1
+            elif kind == "other_structural":
+                structural_count += 1
         return LocalBranchSuccessorEvidenceVerification(
             accepted=True,
             checked_branches=len(branch_refs),
-            checked_atom_text_branches=atom_count,
+            checked_plain_atom_text_branches=plain_atom_count,
+            checked_bracket_atom_text_branches=bracket_atom_count,
             checked_closure_bond_text_branches=closure_count,
             checked_directional_coupled_branches=directional_count,
+            structurally_checked_branches=structural_count,
         )
     except SouthStarError as exc:
         return LocalBranchSuccessorEvidenceVerification(
@@ -719,6 +735,7 @@ def _check_branch_local_evidence(
     *,
     facts: MoleculeFacts,
     branch: Mapping[str, object],
+    budget: WriterEnvelopeWorkBudget,
 ) -> str:
     payload = branch["payload"]
     evidence = payload["local_evidence"]
@@ -727,12 +744,26 @@ def _check_branch_local_evidence(
     if not payload["checked_branch_certificate_digest"]:
         _offline_violation("local_branch_checked_certificate_digest_missing")
     kind = evidence["kind"]
-    if kind == "none":
+    expected_digest = _identity_digest(
+        {"kind": kind, "manifest": evidence["manifest"]},
+        budget=budget,
+        operation=f"offline.local_branch_evidence.{kind}.digest",
+    )
+    if evidence["digest"] != expected_digest:
+        _offline_violation("local_branch_evidence_digest_mismatch")
+    if kind == "other_structural":
         if evidence["manifest"]:
-            _offline_violation("local_branch_none_manifest_not_empty")
+            _offline_violation("local_branch_other_structural_manifest_not_empty")
         return kind
-    if kind == "atom_text":
-        _check_atom_text_local_evidence(
+    if kind == "plain_atom_text":
+        _check_plain_atom_text_local_evidence(
+            facts=facts,
+            branch_payload=payload,
+            manifest=evidence["manifest"],
+        )
+        return kind
+    if kind == "bracket_atom_text":
+        _check_bracket_atom_text_local_evidence(
             facts=facts,
             branch_payload=payload,
             manifest=evidence["manifest"],
@@ -760,29 +791,52 @@ def _check_branch_local_evidence(
     _offline_violation("local_branch_unknown_evidence_kind")
 
 
-def _check_atom_text_local_evidence(
+def _check_plain_atom_text_local_evidence(
     *,
     facts: MoleculeFacts,
     branch_payload: Mapping[str, object],
     manifest: Mapping[str, object],
 ) -> None:
     if branch_payload["emitted_text"] != manifest["rendered_text"]:
-        _offline_violation("local_atom_text_rendered_text_mismatch")
-    if not manifest["bracket_required"]:
-        _offline_violation("local_atom_text_bracket_not_required")
+        _offline_violation("local_plain_atom_text_rendered_text_mismatch")
+    if manifest["bracket_required"]:
+        _offline_violation("local_plain_atom_text_bracket_required")
     atom = _atom_by_term(facts, manifest["atom_id"])
     if atom.symbol != manifest["element"]:
-        _offline_violation("local_atom_text_element_mismatch")
-    if atom.isotope != manifest["isotope"]:
-        _offline_violation("local_atom_text_isotope_mismatch")
-    if atom.formal_charge != manifest["formal_charge"]:
-        _offline_violation("local_atom_text_charge_mismatch")
-    if atom.implicit_h_count != manifest["hydrogen_count"]:
-        _offline_violation("local_atom_text_hydrogen_count_mismatch")
+        _offline_violation("local_plain_atom_text_element_mismatch")
     if atom.is_aromatic != manifest["aromatic"]:
-        _offline_violation("local_atom_text_aromatic_mismatch")
+        _offline_violation("local_plain_atom_text_aromatic_mismatch")
+    if atom.isotope is not None:
+        _offline_violation("local_plain_atom_text_isotope_present")
+    if atom.formal_charge != 0:
+        _offline_violation("local_plain_atom_text_charge_present")
+    if atom.symbol != manifest["rendered_text"]:
+        _offline_violation("local_plain_atom_text_facts_mismatch")
+
+
+def _check_bracket_atom_text_local_evidence(
+    *,
+    facts: MoleculeFacts,
+    branch_payload: Mapping[str, object],
+    manifest: Mapping[str, object],
+) -> None:
+    if branch_payload["emitted_text"] != manifest["rendered_text"]:
+        _offline_violation("local_bracket_atom_text_rendered_text_mismatch")
+    if not manifest["bracket_required"]:
+        _offline_violation("local_bracket_atom_text_bracket_not_required")
+    atom = _atom_by_term(facts, manifest["atom_id"])
+    if atom.symbol != manifest["element"]:
+        _offline_violation("local_bracket_atom_text_element_mismatch")
+    if atom.isotope != manifest["isotope"]:
+        _offline_violation("local_bracket_atom_text_isotope_mismatch")
+    if atom.formal_charge != manifest["formal_charge"]:
+        _offline_violation("local_bracket_atom_text_charge_mismatch")
+    if atom.implicit_h_count != manifest["hydrogen_count"]:
+        _offline_violation("local_bracket_atom_text_hydrogen_count_mismatch")
+    if atom.is_aromatic != manifest["aromatic"]:
+        _offline_violation("local_bracket_atom_text_aromatic_mismatch")
     if bracket_atom_text(atom) != manifest["rendered_text"]:
-        _offline_violation("local_atom_text_facts_mismatch")
+        _offline_violation("local_bracket_atom_text_facts_mismatch")
 
 
 def _check_closure_bond_text_local_evidence(

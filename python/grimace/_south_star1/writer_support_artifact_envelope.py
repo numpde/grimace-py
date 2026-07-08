@@ -37,6 +37,8 @@ from .writer_support_image_envelope import _support_image_certificate_for_source
 from .writer_support_image_envelope import _text_projection_bucket_key
 from .writer_support_string_envelope import _support_string_replay_certificate_digest
 
+_PLAIN_ATOM_TEXT_ELEMENTS = frozenset(("C", "N", "O"))
+
 
 @dataclass(frozen=True, slots=True)
 class WriterSupportArtifactEnvelopeVerification:
@@ -536,7 +538,7 @@ def _branch_local_evidence_envelope(
             ],
         }
         return _local_evidence("closure_bond_text", manifest, budget)
-    atom_id = getattr(branch.transition_evidence, "atom", None)
+    atom_id = _branch_atom_text_atom_id(branch)
     atom_by_id = {atom.id: atom for atom in facts.atoms}
     atom = atom_by_id.get(atom_id)
     if atom is not None and is_supported_bracket_atom(atom):
@@ -552,8 +554,50 @@ def _branch_local_evidence_envelope(
                 "rendered_text": rendered,
                 "bracket_required": True,
             }
-            return _local_evidence("atom_text", manifest, budget)
-    return _local_evidence("none", {}, budget)
+            return _local_evidence("bracket_atom_text", manifest, budget)
+    if atom is not None:
+        rendered = _plain_atom_text(atom)
+        if rendered is not None and rendered == branch.emitted_text:
+            manifest = {
+                "atom_id": _term(atom.id),
+                "element": atom.symbol,
+                "aromatic": atom.is_aromatic,
+                "rendered_text": rendered,
+                "bracket_required": False,
+            }
+            return _local_evidence("plain_atom_text", manifest, budget)
+    return _local_evidence("other_structural", {}, budget)
+
+
+def _plain_atom_text(atom) -> str | None:
+    if atom.symbol not in _PLAIN_ATOM_TEXT_ELEMENTS:
+        return None
+    if atom.is_aromatic:
+        return None
+    if atom.isotope is not None:
+        return None
+    if atom.formal_charge != 0:
+        return None
+    return atom.symbol
+
+
+def _branch_atom_text_atom_id(branch) -> object | None:
+    atom_id = getattr(branch.transition_evidence, "atom", None)
+    if atom_id is not None:
+        return atom_id
+    for event in branch.events:
+        if hasattr(event, "atom") and hasattr(event, "text"):
+            return event.atom
+    source_atoms = dict(branch.source_state.policy_state.atom_text)
+    successor_atoms = dict(branch.successor_state.policy_state.atom_text)
+    added = [
+        atom
+        for atom, text in successor_atoms.items()
+        if source_atoms.get(atom) != text and text == branch.emitted_text
+    ]
+    if len(added) == 1:
+        return added[0]
+    return None
 
 
 def _local_evidence(

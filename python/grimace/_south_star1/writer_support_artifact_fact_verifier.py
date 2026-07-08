@@ -20,20 +20,10 @@ from .writer_envelope_work import default_writer_envelope_work_budget
 from .writer_envelope_work import writer_envelope_work_reason
 from .writer_prepared_identity import writer_prepared_identity
 from .writer_support_artifact_checker import verify_writer_support_artifact_consistency
-
-
-OBJECT_KIND_OFFLINE_COVERAGE = {
-    "source_snapshot": "identity_checked",
-    "count_envelope": "structurally_checked",
-    "frontier_product": "structurally_checked",
-    "replay_path": "structurally_checked",
-    "text_projection": "structurally_checked",
-    "terminal_projection": "structurally_checked",
-    "terminal_support": "structurally_checked",
-    "support_string": "structurally_checked",
-    "support_image_coverage": "structurally_checked",
-    "support_image": "structurally_checked",
-}
+from .writer_support_artifact_offline_verifier import OBJECT_KIND_OFFLINE_COVERAGE
+from .writer_support_artifact_offline_verifier import (
+    verify_writer_support_artifact_offline_replay,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,6 +35,9 @@ class WriterSupportArtifactFactVerification:
     structurally_checked: bool = False
     facts_identity_checked: bool = False
     offline_replay_complete: bool = False
+    offline_checked_object_kinds: tuple[str, ...] = ()
+    offline_unchecked_object_kinds: tuple[str, ...] = ()
+    offline_checked_relation_families: tuple[str, ...] = ()
 
 
 def verify_writer_support_artifact_for_facts(
@@ -90,13 +83,29 @@ def verify_writer_support_artifact_for_facts(
             runtime_options=runtime_options,
         )
         _check_source_fields(artifact, source_payload)
+        offline = verify_writer_support_artifact_offline_replay(
+            facts=facts,
+            artifact=artifact,
+        )
+        if not offline.accepted:
+            return WriterSupportArtifactFactVerification(
+                accepted=False,
+                support_count=structural.support_count,
+                witness_count=structural.witness_count,
+                reason=offline.reason,
+                structurally_checked=True,
+                facts_identity_checked=True,
+            )
         return WriterSupportArtifactFactVerification(
             accepted=True,
             support_count=structural.support_count,
             witness_count=structural.witness_count,
             structurally_checked=True,
             facts_identity_checked=True,
-            offline_replay_complete=False,
+            offline_replay_complete=offline.offline_replay_complete,
+            offline_checked_object_kinds=offline.checked_object_kinds,
+            offline_unchecked_object_kinds=offline.unchecked_object_kinds,
+            offline_checked_relation_families=offline.checked_relation_families,
         )
     except WriterEnvelopeWorkExceeded as exc:
         return WriterSupportArtifactFactVerification(

@@ -102,6 +102,18 @@ Typed blocked surfaces currently covered by the ledger:
 - potential directional non-neighbor stereo obligations when potential-site
   extraction is enabled.
 
+Facts-bound support-artifact verification is intentionally layered. It first
+checks artifact-table structure and prepared identity, then begins offline
+relation replay for local atom/ring text lifecycles:
+
+- bracket atom text for `[NH4+]` and `[13CH4]`;
+- joint non-single ring-closure marker counts for cyclic double/triple bonds.
+
+The facts-bound verifier still reports `offline_replay_complete=False`.
+Frontier products, count DAG arithmetic, full branch successor replay, stereo
+residual replay, and support-image coverage arithmetic remain structurally
+checked rather than fully replayed from facts.
+
 ## Conformance Corpus
 
 The executable v0 conformance corpus lives in `tests/south_star1`:

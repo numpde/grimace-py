@@ -5,12 +5,15 @@ from __future__ import annotations
 from copy import deepcopy
 import unittest
 
+from grimace._south_star1.errors import SouthStarError
 from grimace._south_star1.ordinary_policy import OrdinaryPolicyOptions
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
 from grimace._south_star1.policy import SerializationLanguageMode
+from grimace._south_star1.rdkit_adapter import RdkitOrdinaryExtractionOptions
+from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_smiles
 from grimace._south_star1.writer_envelope_terms import _digest_terms_bounded
 from grimace._south_star1.writer_envelope_work import WriterEnvelopeWorkBudget
 from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
@@ -24,6 +27,12 @@ from grimace._south_star1.writer_support_artifact_fact_verifier import (
 )
 from grimace._south_star1.writer_support_artifact_fact_verifier import (
     verify_writer_support_artifact_for_facts,
+)
+from grimace._south_star1.writer_support_artifact_offline_verifier import (
+    validate_writer_bracket_atom_text_against_facts,
+)
+from grimace._south_star1.writer_support_artifact_offline_verifier import (
+    verify_writer_support_artifact_offline_replay,
 )
 from grimace._south_star1.writer_support_artifact_envelope import (
     writer_support_artifact_envelope_for_prefix_read,
@@ -55,6 +64,9 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         self.assertTrue(verification.structurally_checked)
         self.assertTrue(verification.facts_identity_checked)
         self.assertFalse(verification.offline_replay_complete)
+        self.assertIn("support_string", verification.offline_checked_object_kinds)
+        self.assertIn("replay_path", verification.offline_checked_object_kinds)
+        self.assertIn("count_envelope", verification.offline_unchecked_object_kinds)
         self.assertEqual(verification.support_count, 4)
 
     def test_prefix_artifact_verifies_against_matching_facts(self) -> None:
@@ -81,6 +93,75 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         self.assertTrue(verification.structurally_checked)
         self.assertTrue(verification.facts_identity_checked)
         self.assertFalse(verification.offline_replay_complete)
+
+    def test_facts_bound_verifier_reports_bracket_atom_offline_check(self) -> None:
+        verification = _rdkit_artifact_verification("[NH4+]")
+
+        self.assertTrue(verification.accepted, verification.reason)
+        self.assertIn(
+            "bracket_atom_text",
+            verification.offline_checked_relation_families,
+        )
+        self.assertIn("text_projection", verification.offline_checked_object_kinds)
+        self.assertFalse(verification.offline_replay_complete)
+
+    def test_facts_bound_verifier_reports_isotope_atom_offline_check(self) -> None:
+        verification = _rdkit_artifact_verification("[13CH4]")
+
+        self.assertTrue(verification.accepted, verification.reason)
+        self.assertIn(
+            "bracket_atom_text",
+            verification.offline_checked_relation_families,
+        )
+        self.assertIn("text_projection", verification.offline_checked_object_kinds)
+        self.assertFalse(verification.offline_replay_complete)
+
+    def test_facts_bound_verifier_reports_joint_double_closure_offline_check(
+        self,
+    ) -> None:
+        verification = _rdkit_artifact_verification("C1=CC1")
+
+        self.assertTrue(verification.accepted, verification.reason)
+        self.assertIn(
+            "closure_bond_text",
+            verification.offline_checked_relation_families,
+        )
+        self.assertFalse(verification.offline_replay_complete)
+
+    def test_facts_bound_verifier_reports_joint_triple_closure_offline_check(
+        self,
+    ) -> None:
+        verification = _rdkit_artifact_verification("C1#CC1")
+
+        self.assertTrue(verification.accepted, verification.reason)
+        self.assertIn(
+            "closure_bond_text",
+            verification.offline_checked_relation_families,
+        )
+        self.assertFalse(verification.offline_replay_complete)
+
+    def test_offline_bracket_atom_replay_rejects_wrong_facts(self) -> None:
+        with self.assertRaisesRegex(SouthStarError, "bracket_atom_text_facts_mismatch"):
+            validate_writer_bracket_atom_text_against_facts(
+                facts=_rdkit_facts("[NH3+]"),
+                rendered_text="[NH4+]",
+            )
+
+        with self.assertRaisesRegex(SouthStarError, "bracket_atom_text_facts_mismatch"):
+            validate_writer_bracket_atom_text_against_facts(
+                facts=_rdkit_facts("[12CH4]"),
+                rendered_text="[13CH4]",
+            )
+
+    def test_offline_joint_closure_replay_rejects_wrong_facts(self) -> None:
+        artifact = _rdkit_artifact("C1=CC1")
+        verification = verify_writer_support_artifact_offline_replay(
+            facts=_rdkit_facts("C1CC1"),
+            artifact=artifact,
+        )
+
+        self.assertFalse(verification.accepted)
+        self.assertIn("closure_bond_text_unexpected_marker", verification.reason)
 
     def test_wrong_facts_are_rejected(self) -> None:
         artifact = _snapshot_artifact(cco_facts())
@@ -181,22 +262,28 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         self.assertFalse(verification.accepted)
         self.assertFalse(verification.structurally_checked)
 
-    def test_offline_coverage_ledger_is_structural_only(self) -> None:
+    def test_offline_coverage_ledger_classifies_partial_replay(self) -> None:
         self.assertEqual(
             OBJECT_KIND_OFFLINE_COVERAGE,
             {
                 "source_snapshot": "identity_checked",
                 "count_envelope": "structurally_checked",
                 "frontier_product": "structurally_checked",
-                "replay_path": "structurally_checked",
-                "text_projection": "structurally_checked",
-                "terminal_projection": "structurally_checked",
+                "replay_path": "partially_offline_checked",
+                "text_projection": "partially_offline_checked",
+                "terminal_projection": "identity_shape_checked",
                 "terminal_support": "structurally_checked",
-                "support_string": "structurally_checked",
+                "support_string": "partially_offline_checked",
                 "support_image_coverage": "structurally_checked",
                 "support_image": "structurally_checked",
             },
         )
+
+    def test_offline_coverage_ledger_covers_artifact_object_kinds(self) -> None:
+        artifact = _rdkit_artifact("C1=CC1")
+        kinds = {item["kind"] for item in artifact["objects"]}
+
+        self.assertLessEqual(kinds, set(OBJECT_KIND_OFFLINE_COVERAGE))
 
 
 def _snapshot_artifact(facts):
@@ -207,6 +294,26 @@ def _snapshot_artifact(facts):
             prepared=prepared,
             snapshot=_initial_snapshot(prepared, options),
         )
+    )
+
+
+def _rdkit_facts(smiles: str):
+    return ordinary_molecule_facts_from_smiles(
+        smiles,
+        RdkitOrdinaryExtractionOptions(include_potential_sites=False),
+    )
+
+
+def _rdkit_artifact(smiles: str):
+    return _snapshot_artifact(_rdkit_facts(smiles))
+
+
+def _rdkit_artifact_verification(smiles: str):
+    facts = _rdkit_facts(smiles)
+    return verify_writer_support_artifact_for_facts(
+        facts=facts,
+        runtime_options=_writer_options(),
+        artifact=_snapshot_artifact(facts),
     )
 
 

@@ -388,6 +388,7 @@ def _validate_object_payload_shape(
                 "checked_branch_certificate_digest",
                 "local_evidence",
                 "graph_ring_delta",
+                "obligation_summary",
                 "digest",
             ),
         )
@@ -408,6 +409,18 @@ def _validate_object_payload_shape(
         _require_int(payload["branch_ordinal"], "branch_support_ordinal_not_int")
         _validate_local_evidence_payload(payload["local_evidence"], budget=budget)
         _validate_graph_ring_delta_payload(payload["graph_ring_delta"], budget=budget)
+        _validate_obligation_summary(
+            payload["obligation_summary"],
+            (
+                "residual_work_count",
+                "finite_relation_work_count",
+                "graph_obligation_work_count",
+                "stereo_lifecycle_count",
+                "residual_attachment_lifecycle_count",
+                "closure_candidate_lifecycle_count",
+                "directional_ring_closure_lifecycle_count",
+            ),
+        )
     elif kind == "terminal_projection":
         _require_exact_payload_fields(
             payload,
@@ -432,6 +445,7 @@ def _validate_object_payload_shape(
         _require_int(payload["completion_count"], "terminal_completion_count_not_int")
         _validate_terminal_support_identities(
             payload["terminal_support_identities"],
+            include_obligation_summary=False,
         )
         _require_string_list(
             payload["terminal_certificate_digests"],
@@ -440,7 +454,7 @@ def _validate_object_payload_shape(
         if not isinstance(payload["digest"], str):
             _artifact_violation("terminal_projection_digest_not_string")
     elif kind == "terminal_support":
-        _validate_terminal_support_identity(payload)
+        _validate_terminal_support_identity(payload, include_obligation_summary=True)
     elif kind == "support_string":
         _require_exact_payload_fields(
             payload,
@@ -710,30 +724,44 @@ def _validate_closure_evidence_items(items: object) -> None:
             _artifact_violation("closure_evidence_closed_digest_not_string")
 
 
-def _validate_terminal_support_identities(identities: object) -> None:
+def _validate_terminal_support_identities(
+    identities: object,
+    *,
+    include_obligation_summary: bool,
+) -> None:
     if not isinstance(identities, list):
         _artifact_violation("terminal_support_identities_not_list")
     for identity in identities:
-        _validate_terminal_support_identity(identity)
+        _validate_terminal_support_identity(
+            identity,
+            include_obligation_summary=include_obligation_summary,
+        )
 
 
-def _validate_terminal_support_identity(identity: object) -> None:
+def _validate_terminal_support_identity(
+    identity: object,
+    *,
+    include_obligation_summary: bool,
+) -> None:
     _require_mapping(identity, "terminal_support_identity_not_mapping")
+    fields = (
+        "source_state_digest",
+        "finalized_state_digest",
+        "parent_weight",
+        "terminal_ordinal",
+        "terminal_support_key_digest",
+        "terminal_execution_capabilities_digest",
+        "terminal_residual_work_evidence_digest",
+        "terminal_stereo_lifecycle_evidence_digest",
+        "graph_obligation_work_evidence_digest",
+        "terminal_certificate_digests",
+        "digest",
+    )
+    if include_obligation_summary:
+        fields = (*fields[:-1], "obligation_summary", fields[-1])
     _require_exact_payload_fields(
         identity,
-        (
-            "source_state_digest",
-            "finalized_state_digest",
-            "parent_weight",
-            "terminal_ordinal",
-            "terminal_support_key_digest",
-            "terminal_execution_capabilities_digest",
-            "terminal_residual_work_evidence_digest",
-            "terminal_stereo_lifecycle_evidence_digest",
-            "graph_obligation_work_evidence_digest",
-            "terminal_certificate_digests",
-            "digest",
-        ),
+        fields,
     )
     for field in (
         "source_state_digest",
@@ -753,6 +781,24 @@ def _validate_terminal_support_identity(identity: object) -> None:
         identity["terminal_certificate_digests"],
         "terminal_support_certificate_digests_not_strings",
     )
+    if include_obligation_summary:
+        _validate_obligation_summary(
+            identity["obligation_summary"],
+            (
+                "terminal_residual_work_count",
+                "terminal_stereo_lifecycle_count",
+                "graph_obligation_work_count",
+            ),
+        )
+
+
+def _validate_obligation_summary(summary: object, fields: tuple[str, ...]) -> None:
+    _require_mapping(summary, "obligation_summary_not_mapping")
+    _require_exact_payload_fields(summary, fields)
+    for field in fields:
+        _require_int(summary[field], "obligation_summary_value_not_int")
+        if summary[field] < 0:
+            _artifact_violation("obligation_summary_value_negative")
 
 
 def _require_exact_payload_fields(payload: Mapping[str, object], fields: tuple[str, ...]) -> None:

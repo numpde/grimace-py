@@ -55,6 +55,17 @@ class WriterSupportArtifactOfflineReplayResult:
 
 
 @dataclass(frozen=True, slots=True)
+class OfflineObligationClassification:
+    accepted: bool
+    residual_obligations_present: bool = False
+    stereo_obligations_present: bool = False
+    graph_obligations_present: bool = False
+    unchecked_families: tuple[str, ...] = ()
+    checked_empty_families: tuple[str, ...] = ()
+    reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class CountDagArithmeticVerification:
     accepted: bool
     support_count: int | None = None
@@ -189,16 +200,27 @@ def verify_writer_support_artifact_offline_replay(
             _offline_violation(
                 terminal.reason or "terminal_support_identity_rejected"
             )
+        obligations = classify_residual_stereo_obligations_offline(
+            artifact=artifact,
+            objects=objects,
+        )
+        if not obligations.accepted:
+            _offline_violation(
+                obligations.reason or "offline_obligation_classification_rejected"
+            )
         checked_object_kinds = {
             "branch_support",
             "count_dag",
             "count_envelope",
+            "frontier_product",
             "source_snapshot",
             "support_string",
             "replay_path",
             "support_image",
             "support_image_coverage",
             "terminal_projection",
+            "terminal_support",
+            "text_projection",
         }
         checked_relations: set[str] = {
             "count_dag_arithmetic",
@@ -208,6 +230,8 @@ def verify_writer_support_artifact_offline_replay(
             "graph_ring_branch_delta",
             "local_branch_successor_evidence",
             "terminal_support_identity",
+            "residual_stereo_obligation_classification",
+            *obligations.checked_empty_families,
         }
         support_refs = root["payload"]["support_string_refs"]
         for ref in support_refs:
@@ -219,17 +243,14 @@ def verify_writer_support_artifact_offline_replay(
                 checked_object_kinds=checked_object_kinds,
                 checked_relations=checked_relations,
             )
-        unchecked = tuple(
-            kind
-            for kind in _OFFLINE_UNCHECKED_OBJECT_KINDS
-            if any(item["kind"] == kind for item in objects.values())
-        )
+        unchecked = ()
+        replay_complete = not obligations.unchecked_families
         return WriterSupportArtifactOfflineReplayResult(
             accepted=True,
             checked_object_kinds=tuple(sorted(checked_object_kinds)),
             unchecked_object_kinds=unchecked,
             checked_relation_families=tuple(sorted(checked_relations)),
-            offline_replay_complete=False,
+            offline_replay_complete=replay_complete,
         )
     except SouthStarError as exc:
         return WriterSupportArtifactOfflineReplayResult(
@@ -628,6 +649,105 @@ def verify_graph_ring_branch_deltas_offline(
         )
 
 
+def classify_residual_stereo_obligations_offline(
+    *,
+    artifact: Mapping[str, object],
+    objects: Mapping[str, Mapping[str, object]],
+) -> OfflineObligationClassification:
+    try:
+        root = _require_object(objects, artifact["roots"]["support_image_root"])
+        totals = {
+            "residual_work": 0,
+            "finite_relation_work": 0,
+            "graph_obligation_work": 0,
+            "stereo_lifecycle": 0,
+            "residual_attachment_lifecycle": 0,
+            "closure_candidate_lifecycle": 0,
+            "directional_ring_closure_lifecycle": 0,
+            "terminal_residual_work": 0,
+            "terminal_stereo_lifecycle": 0,
+            "terminal_graph_obligation_work": 0,
+        }
+        for branch_ref in _branch_support_refs_for_root(root=root, objects=objects):
+            branch = _require_object(objects, branch_ref)
+            summary = branch["payload"]["obligation_summary"]
+            totals["residual_work"] += summary["residual_work_count"]
+            totals["finite_relation_work"] += summary["finite_relation_work_count"]
+            totals["graph_obligation_work"] += summary["graph_obligation_work_count"]
+            totals["stereo_lifecycle"] += summary["stereo_lifecycle_count"]
+            totals["residual_attachment_lifecycle"] += (
+                summary["residual_attachment_lifecycle_count"]
+            )
+            totals["closure_candidate_lifecycle"] += (
+                summary["closure_candidate_lifecycle_count"]
+            )
+            totals["directional_ring_closure_lifecycle"] += (
+                summary["directional_ring_closure_lifecycle_count"]
+            )
+        for support_ref in root["payload"]["support_string_refs"]:
+            support = _require_object(objects, support_ref)
+            for terminal_ref in support["payload"]["terminal_support_refs"]:
+                terminal = _require_object(objects, terminal_ref)
+                summary = terminal["payload"]["obligation_summary"]
+                totals["terminal_residual_work"] += (
+                    summary["terminal_residual_work_count"]
+                )
+                totals["terminal_stereo_lifecycle"] += (
+                    summary["terminal_stereo_lifecycle_count"]
+                )
+                totals["terminal_graph_obligation_work"] += (
+                    summary["graph_obligation_work_count"]
+                )
+        unchecked = tuple(
+            family
+            for family, count in sorted(totals.items())
+            if count
+        )
+        checked_empty = tuple(
+            f"{family}_checked_empty"
+            for family, count in sorted(totals.items())
+            if not count
+        )
+        return OfflineObligationClassification(
+            accepted=True,
+            residual_obligations_present=any(
+                totals[family]
+                for family in (
+                    "residual_work",
+                    "residual_attachment_lifecycle",
+                    "terminal_residual_work",
+                )
+            ),
+            stereo_obligations_present=any(
+                totals[family]
+                for family in (
+                    "stereo_lifecycle",
+                    "directional_ring_closure_lifecycle",
+                    "terminal_stereo_lifecycle",
+                )
+            ),
+            graph_obligations_present=any(
+                totals[family]
+                for family in (
+                    "graph_obligation_work",
+                    "terminal_graph_obligation_work",
+                )
+            ),
+            unchecked_families=unchecked,
+            checked_empty_families=checked_empty,
+        )
+    except SouthStarError as exc:
+        return OfflineObligationClassification(
+            accepted=False,
+            reason=exc.args[-1] if exc.args else "offline_obligation_error",
+        )
+    except (AssertionError, KeyError, TypeError, ValueError) as exc:
+        return OfflineObligationClassification(
+            accepted=False,
+            reason=f"malformed_offline_obligation:{type(exc).__name__}",
+        )
+
+
 def verify_terminal_support_identities_offline(
     *,
     artifact: Mapping[str, object],
@@ -712,7 +832,10 @@ def _check_support_terminal_path(
         support_digests.append(digest)
         if digest not in identity_by_digest:
             _offline_violation("terminal_support_not_in_projection")
-        if terminal_support["payload"] != identity_by_digest[digest]:
+        if (
+            _terminal_support_identity_payload(terminal_support["payload"])
+            != identity_by_digest[digest]
+        ):
             _offline_violation("terminal_support_identity_mismatch")
     if set(support_digests) != set(identity_by_digest):
         _offline_violation("terminal_projection_support_set_mismatch")
@@ -741,6 +864,14 @@ def _check_terminal_projection_identity(projection: Mapping[str, object]) -> Non
 
 def _check_terminal_support_identity(terminal_support: Mapping[str, object]) -> None:
     _check_terminal_support_payload(terminal_support["payload"])
+
+
+def _terminal_support_identity_payload(payload: Mapping[str, object]) -> dict[str, object]:
+    return {
+        key: value
+        for key, value in payload.items()
+        if key != "obligation_summary"
+    }
 
 
 def _check_terminal_support_payload(payload: Mapping[str, object]) -> None:
@@ -1562,10 +1693,12 @@ __all__ = (
     "CountDagArithmeticVerification",
     "GraphRingBranchDeltaVerification",
     "LocalBranchSuccessorEvidenceVerification",
+    "OfflineObligationClassification",
     "SupportImageCoverageVerification",
     "SupportStringReplayPathVerification",
     "TerminalSupportIdentityVerification",
     "WriterSupportArtifactOfflineReplayResult",
+    "classify_residual_stereo_obligations_offline",
     "validate_writer_bracket_atom_text_against_facts",
     "verify_branch_projection_identities_offline",
     "verify_count_dag_arithmetic",

@@ -404,10 +404,13 @@ def _add_support_string(
     terminal_support_refs = [
         table.add(
             "terminal_support",
-            _terminal_support_identity_envelope_from_certificate(
-                terminal,
-                budget=budget,
-            ),
+            {
+                **_terminal_support_identity_envelope_from_certificate(
+                    terminal,
+                    budget=budget,
+                ),
+                "obligation_summary": _terminal_obligation_summary(terminal),
+            },
             operation="support_artifact.terminal_support.object",
         )
         for terminal in certificate.terminal_projection_certificate.terminal_certificates
@@ -499,6 +502,7 @@ def _add_branch_support(
             "checked_branch_certificate_digest": envelope["digest"],
             "local_evidence": local_evidence,
             "graph_ring_delta": graph_ring_delta,
+            "obligation_summary": _branch_obligation_summary(branch),
             "digest": envelope["digest"],
         },
         operation="support_artifact.branch_support.object",
@@ -575,6 +579,44 @@ def _branch_local_evidence_envelope(
             }
             return _local_evidence("plain_atom_text", manifest, budget)
     return _local_evidence("other_structural", {}, budget)
+
+
+def _branch_obligation_summary(branch) -> dict[str, int]:
+    successor = branch.successor_state_certificate
+    return {
+        "residual_work_count": len(branch.residual_work_evidence),
+        "finite_relation_work_count": len(branch.finite_relation_work_evidence),
+        "graph_obligation_work_count": len(branch.graph_obligation_work_evidence),
+        "stereo_lifecycle_count": (
+            len(branch.stereo_lifecycle_evidence)
+            + len(branch.stereo_branch_certificates)
+        ),
+        "residual_attachment_lifecycle_count": (
+            len(branch.residual_attachment_lifecycle_evidence)
+            + len(branch.residual_attachment_branch_certificates)
+        ),
+        "closure_candidate_lifecycle_count": (
+            len(branch.closure_candidate_lifecycle_evidence)
+            + len(branch.closure_candidate_branch_certificates)
+        ),
+        "directional_ring_closure_lifecycle_count": len(
+            getattr(
+                successor,
+                "directional_ring_closure_bond_text_lifecycle_evidence",
+                (),
+            )
+        ),
+    }
+
+
+def _terminal_obligation_summary(terminal) -> dict[str, int]:
+    return {
+        "terminal_residual_work_count": len(terminal.terminal_residual_work_evidence),
+        "terminal_stereo_lifecycle_count": len(
+            terminal.terminal_stereo_lifecycle_evidence
+        ),
+        "graph_obligation_work_count": len(terminal.graph_obligation_work_evidence),
+    }
 
 
 def _plain_atom_text(atom) -> str | None:

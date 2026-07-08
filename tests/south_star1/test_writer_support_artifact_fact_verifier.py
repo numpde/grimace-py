@@ -30,6 +30,9 @@ from grimace._south_star1.writer_support_artifact_fact_verifier import (
     verify_writer_support_artifact_for_facts,
 )
 from grimace._south_star1.writer_support_artifact_offline_verifier import (
+    classify_residual_stereo_obligations_offline,
+)
+from grimace._south_star1.writer_support_artifact_offline_verifier import (
     validate_writer_bracket_atom_text_against_facts,
 )
 from grimace._south_star1.writer_support_artifact_offline_verifier import (
@@ -290,6 +293,117 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
         self.assertFalse(wrong_state.accepted)
         self.assertIn("graph_ring_delta_successor_state_digest_mismatch", wrong_state.reason)
+
+    def test_default_corpus_obligations_are_classified(self) -> None:
+        cases = {
+            "CCO": (
+                "graph_obligation_work",
+                "stereo_lifecycle",
+                "terminal_graph_obligation_work",
+                "terminal_stereo_lifecycle",
+            ),
+            "CC(C)O": (
+                "graph_obligation_work",
+                "stereo_lifecycle",
+                "terminal_graph_obligation_work",
+                "terminal_stereo_lifecycle",
+            ),
+            "C1CC1": (
+                "finite_relation_work",
+                "graph_obligation_work",
+                "residual_attachment_lifecycle",
+                "stereo_lifecycle",
+                "terminal_graph_obligation_work",
+                "terminal_stereo_lifecycle",
+            ),
+            "C1CCC1": (
+                "finite_relation_work",
+                "graph_obligation_work",
+                "residual_attachment_lifecycle",
+                "stereo_lifecycle",
+                "terminal_graph_obligation_work",
+                "terminal_stereo_lifecycle",
+            ),
+            "C1=CC1": (
+                "finite_relation_work",
+                "graph_obligation_work",
+                "residual_attachment_lifecycle",
+                "stereo_lifecycle",
+                "terminal_graph_obligation_work",
+                "terminal_stereo_lifecycle",
+            ),
+            "C1#CC1": (
+                "finite_relation_work",
+                "graph_obligation_work",
+                "residual_attachment_lifecycle",
+                "stereo_lifecycle",
+                "terminal_graph_obligation_work",
+                "terminal_stereo_lifecycle",
+            ),
+            "[NH4+]": (
+                "graph_obligation_work",
+                "stereo_lifecycle",
+                "terminal_graph_obligation_work",
+                "terminal_stereo_lifecycle",
+            ),
+            "[13CH4]": (
+                "graph_obligation_work",
+                "stereo_lifecycle",
+                "terminal_graph_obligation_work",
+                "terminal_stereo_lifecycle",
+            ),
+        }
+        for smiles, unchecked_families in cases.items():
+            with self.subTest(smiles=smiles):
+                artifact = _rdkit_artifact(smiles)
+
+                classification = _obligation_classification(artifact)
+                verification = verify_writer_support_artifact_for_facts(
+                    facts=_rdkit_facts(smiles),
+                    runtime_options=_writer_options(),
+                    artifact=artifact,
+                )
+
+                self.assertTrue(classification.accepted, classification.reason)
+                self.assertEqual(classification.unchecked_families, unchecked_families)
+                self.assertTrue(classification.stereo_obligations_present)
+                self.assertTrue(classification.graph_obligations_present)
+                self.assertEqual(
+                    classification.residual_obligations_present,
+                    "residual_attachment_lifecycle" in unchecked_families,
+                )
+                self.assertIn(
+                    "residual_work_checked_empty",
+                    classification.checked_empty_families,
+                )
+                self.assertTrue(verification.accepted, verification.reason)
+                self.assertFalse(verification.offline_replay_complete)
+                self.assertEqual(verification.offline_unchecked_object_kinds, ())
+
+    def test_synthetic_stereo_obligation_is_reported_unchecked(self) -> None:
+        artifact = _rdkit_artifact("CCO")
+        branch = _first_branch_support_object(artifact)
+        branch["payload"]["obligation_summary"]["stereo_lifecycle_count"] = 1
+
+        classification = _obligation_classification(artifact)
+
+        self.assertTrue(classification.accepted, classification.reason)
+        self.assertTrue(classification.stereo_obligations_present)
+        self.assertIn("stereo_lifecycle", classification.unchecked_families)
+
+    def test_obligation_summary_mutation_is_reported_incomplete(self) -> None:
+        artifact = _rdkit_artifact("CCO")
+        branch = _first_branch_support_object(artifact)
+        branch["payload"]["obligation_summary"]["stereo_lifecycle_count"] = 1
+
+        verification = verify_writer_support_artifact_for_facts(
+            facts=_rdkit_facts("CCO"),
+            runtime_options=_writer_options(),
+            artifact=artifact,
+        )
+
+        self.assertTrue(verification.accepted, verification.reason)
+        self.assertFalse(verification.offline_replay_complete)
 
     def test_count_dag_arithmetic_accepts_default_relation_fixtures(self) -> None:
         for smiles in ("CCO", "CC(C)O", "C1CC1", "C1=CC1", "[NH4+]", "[13CH4]"):
@@ -1378,6 +1492,13 @@ def _branch_projection_verification(artifact):
 def _graph_ring_delta_verification(facts, artifact):
     return verify_graph_ring_branch_deltas_offline(
         facts=facts,
+        artifact=artifact,
+        objects={item["object_id"]: item for item in artifact["objects"]},
+    )
+
+
+def _obligation_classification(artifact):
+    return classify_residual_stereo_obligations_offline(
         artifact=artifact,
         objects={item["object_id"]: item for item in artifact["objects"]},
     )

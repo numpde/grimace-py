@@ -39,6 +39,9 @@ from grimace._south_star1.writer_support_artifact_offline_verifier import (
     verify_count_dag_arithmetic,
 )
 from grimace._south_star1.writer_support_artifact_offline_verifier import (
+    verify_graph_ring_branch_deltas_offline,
+)
+from grimace._south_star1.writer_support_artifact_offline_verifier import (
     verify_local_branch_successor_evidence_offline,
 )
 from grimace._south_star1.writer_support_artifact_offline_verifier import (
@@ -102,6 +105,10 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         )
         self.assertIn(
             "branch_projection_identity",
+            verification.offline_checked_relation_families,
+        )
+        self.assertIn(
+            "graph_ring_branch_delta",
             verification.offline_checked_relation_families,
         )
         self.assertIn(
@@ -211,7 +218,78 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         )
 
         self.assertFalse(verification.accepted)
-        self.assertIn("local_closure_bond_order_unsupported", verification.reason)
+        self.assertIn("graph_ring_bond_marker_mismatch", verification.reason)
+
+    def test_graph_ring_branch_deltas_accept_default_relation_fixtures(self) -> None:
+        for smiles in (
+            "CCO",
+            "CC(C)O",
+            "C1CC1",
+            "C1CCC1",
+            "C1=CC1",
+            "C1#CC1",
+            "[NH4+]",
+            "[13CH4]",
+        ):
+            with self.subTest(smiles=smiles):
+                artifact = _rdkit_artifact(smiles)
+
+                verification = _graph_ring_delta_verification(
+                    _rdkit_facts(smiles),
+                    artifact,
+                )
+
+                self.assertTrue(verification.accepted, verification.reason)
+                self.assertGreater(verification.checked_branches, 0)
+
+    def test_graph_ring_branch_delta_mutations_are_rejected(self) -> None:
+        artifact = _rdkit_artifact("CCO")
+        branch = _first_graph_ring_delta_branch(artifact, "bond_advance")
+        event = _first_graph_ring_delta_event(branch, "bond_emitted")
+        event["bond"] = "missing"
+        _refresh_graph_ring_delta_digest(branch["payload"]["graph_ring_delta"])
+
+        wrong_bond = _graph_ring_delta_verification(_rdkit_facts("CCO"), artifact)
+
+        self.assertFalse(wrong_bond.accepted)
+        self.assertIn("local_closure_bond_missing", wrong_bond.reason)
+
+        artifact = _rdkit_artifact("CCO")
+        branch = _first_graph_ring_delta_branch(artifact, "atom_start")
+        event = _first_graph_ring_delta_event(branch, "atom_emitted")
+        event["atom"] = "missing"
+        _refresh_graph_ring_delta_digest(branch["payload"]["graph_ring_delta"])
+
+        wrong_atom = _graph_ring_delta_verification(_rdkit_facts("CCO"), artifact)
+
+        self.assertFalse(wrong_atom.accepted)
+        self.assertIn("local_atom_text_atom_missing", wrong_atom.reason)
+
+        artifact = _rdkit_artifact("C1=CC1")
+        branch = _first_graph_ring_delta_branch(
+            artifact,
+            "ring_endpoint_pair_non_single",
+        )
+        event = _first_graph_ring_delta_event(branch, "ring_endpoint_paired")
+        event["label"] = "wrong"
+        _refresh_graph_ring_delta_digest(branch["payload"]["graph_ring_delta"])
+
+        wrong_label = _graph_ring_delta_verification(_rdkit_facts("C1=CC1"), artifact)
+
+        self.assertFalse(wrong_label.accepted)
+        self.assertIn("graph_ring_endpoint_label_mismatch", wrong_label.reason)
+
+        artifact = _rdkit_artifact("C1=CC1")
+        branch = _first_graph_ring_delta_branch(
+            artifact,
+            "ring_endpoint_pair_non_single",
+        )
+        branch["payload"]["successor_state_digest"] = "wrong"
+
+        wrong_state = _graph_ring_delta_verification(_rdkit_facts("C1=CC1"), artifact)
+
+        self.assertFalse(wrong_state.accepted)
+        self.assertIn("graph_ring_delta_successor_state_digest_mismatch", wrong_state.reason)
 
     def test_count_dag_arithmetic_accepts_default_relation_fixtures(self) -> None:
         for smiles in ("CCO", "CC(C)O", "C1CC1", "C1=CC1", "[NH4+]", "[13CH4]"):
@@ -1297,6 +1375,14 @@ def _branch_projection_verification(artifact):
     )
 
 
+def _graph_ring_delta_verification(facts, artifact):
+    return verify_graph_ring_branch_deltas_offline(
+        facts=facts,
+        artifact=artifact,
+        objects={item["object_id"]: item for item in artifact["objects"]},
+    )
+
+
 def _local_branch_evidence_verification(facts, artifact):
     return verify_local_branch_successor_evidence_offline(
         facts=facts,
@@ -1327,6 +1413,22 @@ def _first_branch_support_object(artifact):
     return _object(artifact, projection["payload"]["branch_support_refs"][0])
 
 
+def _first_graph_ring_delta_branch(artifact, kind: str):
+    for item in artifact["objects"]:
+        if item["kind"] != "branch_support":
+            continue
+        if item["payload"]["graph_ring_delta"]["kind"] == kind:
+            return item
+    raise AssertionError(f"missing graph/ring delta kind: {kind}")
+
+
+def _first_graph_ring_delta_event(branch, kind: str):
+    for item in branch["payload"]["graph_ring_delta"]["manifest"]["event_manifests"]:
+        if item["kind"] == kind:
+            return item
+    raise AssertionError(f"missing graph/ring event kind: {kind}")
+
+
 def _first_terminal_projection_object(artifact):
     support = _first_support_string_object(artifact)
     return _object(artifact, support["payload"]["terminal_projection_ref"])
@@ -1350,6 +1452,12 @@ def _first_local_evidence(artifact, kind: str):
 def _refresh_local_evidence_digest(evidence) -> None:
     evidence["digest"] = _identity_digest(
         {"kind": evidence["kind"], "manifest": evidence["manifest"]},
+    )
+
+
+def _refresh_graph_ring_delta_digest(delta) -> None:
+    delta["digest"] = _identity_digest(
+        {"kind": delta["kind"], "manifest": delta["manifest"]},
     )
 
 

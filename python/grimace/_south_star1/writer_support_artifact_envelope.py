@@ -474,6 +474,13 @@ def _add_branch_support(
         facts=facts,
         budget=budget,
     )
+    graph_ring_delta = _branch_graph_ring_delta_envelope(
+        branch,
+        branch_identity=envelope,
+        text_projection=text_projection,
+        local_evidence=local_evidence,
+        budget=budget,
+    )
     return table.add(
         "branch_support",
         {
@@ -491,6 +498,7 @@ def _add_branch_support(
             ),
             "checked_branch_certificate_digest": envelope["digest"],
             "local_evidence": local_evidence,
+            "graph_ring_delta": graph_ring_delta,
             "digest": envelope["digest"],
         },
         operation="support_artifact.branch_support.object",
@@ -615,6 +623,169 @@ def _local_evidence(
         operation=f"support_artifact.local_evidence.{kind}.digest",
     )
     return envelope
+
+
+def _branch_graph_ring_delta_envelope(
+    branch,
+    *,
+    branch_identity: Mapping[str, object],
+    text_projection: Mapping[str, object],
+    local_evidence: Mapping[str, object],
+    budget: WriterEnvelopeWorkBudget,
+) -> dict[str, object]:
+    event_manifests = [
+        _writer_event_manifest(event, budget=budget)
+        for event in branch.events
+    ]
+    kind = _graph_ring_delta_kind(
+        transition_kind=branch.transition_kind.value,
+        event_manifests=event_manifests,
+        local_evidence=local_evidence,
+    )
+    manifest = {
+        "source_state_digest": branch_identity["source_state_digest"],
+        "successor_state_digest": branch_identity["successor_state_digest"],
+        "source_cursor_digest": text_projection["source_cursor"]["digest"],
+        "successor_cursor_digest": text_projection["successor_cursor"]["digest"],
+        "transition_kind": branch_identity["transition_kind"],
+        "emitted_text": branch_identity["emitted_text"],
+        "graph_action_surface_digest": branch_identity["graph_action_surface_digest"],
+        "successor_state_certificate_digest": (
+            branch_identity["successor_state_certificate_digest"]
+        ),
+        "checked_branch_certificate_digest": branch_identity["digest"],
+        "local_evidence_digest": local_evidence["digest"],
+        "event_manifests": event_manifests,
+    }
+    envelope = {
+        "kind": kind,
+        "manifest": manifest,
+    }
+    envelope["digest"] = _identity_digest(
+        envelope,
+        budget=budget,
+        operation=f"support_artifact.graph_ring_delta.{kind}.digest",
+    )
+    return envelope
+
+
+def _graph_ring_delta_kind(
+    *,
+    transition_kind: str,
+    event_manifests: list[dict[str, object]],
+    local_evidence: Mapping[str, object],
+) -> str:
+    event_kinds = {str(event["kind"]) for event in event_manifests}
+    if "ring_endpoint_paired" in event_kinds:
+        if local_evidence["kind"] in (
+            "closure_bond_text",
+            "directional_ring_closure_bond_text",
+        ):
+            return "ring_endpoint_pair_non_single"
+        return "ring_endpoint_pair"
+    if "ring_endpoint_emitted" in event_kinds:
+        return "ring_endpoint_open"
+    if "branch_opened" in event_kinds:
+        return "branch_open"
+    if "branch_closed" in event_kinds:
+        return "branch_return"
+    if "bond_emitted" in event_kinds:
+        return "bond_advance"
+    if "atom_emitted" in event_kinds:
+        if transition_kind == "atom":
+            return "atom_start"
+        return "atom_advance"
+    return "other_structural"
+
+
+def _writer_event_manifest(event, *, budget: WriterEnvelopeWorkBudget) -> dict[str, object]:
+    if event.__class__.__name__ == "WriterAtomEmitted":
+        return {
+            "kind": "atom_emitted",
+            "atom": _term(event.atom),
+            "text": event.text,
+            "tetra_token": _term(event.tetra_token),
+            "parent": _term(event.parent),
+            "incoming_bond": _term(event.incoming_bond),
+        }
+    if event.__class__.__name__ == "WriterBondEmitted":
+        return {
+            "kind": "bond_emitted",
+            "bond": _term(event.bond),
+            "parent": _term(event.parent),
+            "child": _term(event.child),
+            "text": event.text,
+            "direction_mark": _term(event.direction_mark),
+        }
+    if event.__class__.__name__ == "WriterBranchOpened":
+        return {
+            "kind": "branch_opened",
+            "parent": _term(event.parent),
+            "child": _term(event.child),
+            "bond": _term(event.bond),
+        }
+    if event.__class__.__name__ == "WriterBranchClosed":
+        return {
+            "kind": "branch_closed",
+            "atom": _term(event.atom),
+        }
+    if event.__class__.__name__ == "WriterComponentBoundaryEmitted":
+        return {
+            "kind": "component_boundary_emitted",
+            "next_root": _term(event.next_root),
+        }
+    if event.__class__.__name__ == "WriterLocalOrderClosed":
+        return {
+            "kind": "local_order_closed",
+            "atom": _term(event.atom),
+        }
+    if event.__class__.__name__ == "WriterRingLabelAllocated":
+        return {
+            "kind": "ring_label_allocated",
+            "label": _term(event.label),
+            "source": event.source,
+        }
+    if event.__class__.__name__ == "WriterRingLabelReleased":
+        return {
+            "kind": "ring_label_released",
+            "label": _term(event.label),
+            "destination": event.destination,
+        }
+    if event.__class__.__name__ == "WriterRingEndpointEmitted":
+        return {
+            "kind": "ring_endpoint_emitted",
+            "bond": _term(event.bond),
+            "endpoint_atom": _term(event.endpoint_atom),
+            "partner_atom": _term(event.partner_atom),
+            "label": _term(event.label),
+            "endpoint_text": event.endpoint_text,
+            "bond_text": event.bond_text,
+            "direction_mark": _term(event.direction_mark),
+            "side": event.side,
+        }
+    if event.__class__.__name__ == "WriterRingEndpointPaired":
+        return {
+            "kind": "ring_endpoint_paired",
+            "bond": _term(event.bond),
+            "endpoint_atom": _term(event.endpoint_atom),
+            "partner_atom": _term(event.partner_atom),
+            "label": _term(event.label),
+            "endpoint_text": event.endpoint_text,
+            "bond_text": event.bond_text,
+            "direction_mark": _term(event.direction_mark),
+            "first_endpoint_bond_text": event.first_endpoint_bond_text,
+            "first_endpoint_direction_mark": _term(event.first_endpoint_direction_mark),
+            "side": event.side,
+        }
+    return {
+        "kind": "unknown",
+        "class_name": event.__class__.__name__,
+        "digest": _identity_digest(
+            event,
+            budget=budget,
+            operation="support_artifact.unknown_event.digest",
+        ),
+    }
 
 
 def _closure_bond_text_evidence_manifest(evidence, *, budget) -> dict[str, object]:

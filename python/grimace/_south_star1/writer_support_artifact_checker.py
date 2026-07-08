@@ -387,6 +387,7 @@ def _validate_object_payload_shape(
                 "successor_state_certificate_digest",
                 "checked_branch_certificate_digest",
                 "local_evidence",
+                "graph_ring_delta",
                 "digest",
             ),
         )
@@ -406,6 +407,7 @@ def _validate_object_payload_shape(
         _require_int(payload["parent_weight"], "branch_support_parent_weight_not_int")
         _require_int(payload["branch_ordinal"], "branch_support_ordinal_not_int")
         _validate_local_evidence_payload(payload["local_evidence"], budget=budget)
+        _validate_graph_ring_delta_payload(payload["graph_ring_delta"], budget=budget)
     elif kind == "terminal_projection":
         _require_exact_payload_fields(
             payload,
@@ -596,6 +598,76 @@ def _validate_local_evidence_payload(
             _artifact_violation("directional_coupled_count_mismatch")
         return
     _artifact_violation("unknown_local_evidence_kind")
+
+
+def _validate_graph_ring_delta_payload(
+    delta: object,
+    *,
+    budget: WriterEnvelopeWorkBudget,
+) -> None:
+    _require_mapping(delta, "graph_ring_delta_not_mapping")
+    _require_exact_payload_fields(delta, ("kind", "manifest", "digest"))
+    if not isinstance(delta["kind"], str):
+        _artifact_violation("graph_ring_delta_kind_not_string")
+    if not isinstance(delta["digest"], str):
+        _artifact_violation("graph_ring_delta_digest_not_string")
+    _require_mapping(delta["manifest"], "graph_ring_delta_manifest_not_mapping")
+    kind = delta["kind"]
+    if kind not in {
+        "atom_start",
+        "atom_advance",
+        "bond_advance",
+        "branch_open",
+        "branch_return",
+        "ring_endpoint_open",
+        "ring_endpoint_pair",
+        "ring_endpoint_pair_non_single",
+        "other_structural",
+    }:
+        _artifact_violation("unknown_graph_ring_delta_kind")
+    manifest = delta["manifest"]
+    _require_exact_payload_fields(
+        manifest,
+        (
+            "source_state_digest",
+            "successor_state_digest",
+            "source_cursor_digest",
+            "successor_cursor_digest",
+            "transition_kind",
+            "emitted_text",
+            "graph_action_surface_digest",
+            "successor_state_certificate_digest",
+            "checked_branch_certificate_digest",
+            "local_evidence_digest",
+            "event_manifests",
+        ),
+    )
+    for field in (
+        "source_state_digest",
+        "successor_state_digest",
+        "source_cursor_digest",
+        "successor_cursor_digest",
+        "emitted_text",
+        "graph_action_surface_digest",
+        "successor_state_certificate_digest",
+        "checked_branch_certificate_digest",
+        "local_evidence_digest",
+    ):
+        if not isinstance(manifest[field], str):
+            _artifact_violation("graph_ring_delta_string_field_mismatch")
+    if not isinstance(manifest["event_manifests"], list):
+        _artifact_violation("graph_ring_delta_events_not_list")
+    for event in manifest["event_manifests"]:
+        _require_mapping(event, "graph_ring_delta_event_not_mapping")
+        if "kind" not in event or not isinstance(event["kind"], str):
+            _artifact_violation("graph_ring_delta_event_kind_missing")
+    expected_digest = _identity_digest(
+        {"kind": kind, "manifest": manifest},
+        budget=budget,
+        operation=f"support_artifact_check.graph_ring_delta.{kind}.digest",
+    )
+    if delta["digest"] != expected_digest:
+        _artifact_violation("graph_ring_delta_digest_mismatch")
 
 
 def _validate_closure_evidence_items(items: object) -> None:

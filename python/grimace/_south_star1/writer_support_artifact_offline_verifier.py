@@ -90,6 +90,18 @@ class BranchProjectionIdentityVerification:
 
 
 @dataclass(frozen=True, slots=True)
+class GraphRingBranchDeltaVerification:
+    accepted: bool
+    checked_branches: int = 0
+    checked_atom_steps: int = 0
+    checked_bond_steps: int = 0
+    checked_branch_steps: int = 0
+    checked_ring_steps: int = 0
+    structural_only_branches: int = 0
+    reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class LocalBranchSuccessorEvidenceVerification:
     accepted: bool
     checked_branches: int = 0
@@ -149,6 +161,16 @@ def verify_writer_support_artifact_offline_replay(
             _offline_violation(
                 branch_identities.reason or "branch_projection_identity_rejected"
             )
+        graph_ring = verify_graph_ring_branch_deltas_offline(
+            facts=facts,
+            artifact=artifact,
+            objects=objects,
+            budget=budget,
+        )
+        if not graph_ring.accepted:
+            _offline_violation(
+                graph_ring.reason or "graph_ring_branch_delta_rejected"
+            )
         local_evidence = verify_local_branch_successor_evidence_offline(
             facts=facts,
             artifact=artifact,
@@ -183,6 +205,7 @@ def verify_writer_support_artifact_offline_replay(
             *coverage.relation_families,
             *replay_paths.relation_families,
             "branch_projection_identity",
+            "graph_ring_branch_delta",
             "local_branch_successor_evidence",
             "terminal_support_identity",
         }
@@ -545,6 +568,66 @@ def verify_local_branch_successor_evidence_offline(
         )
 
 
+def verify_graph_ring_branch_deltas_offline(
+    *,
+    facts: MoleculeFacts,
+    artifact: Mapping[str, object],
+    objects: Mapping[str, Mapping[str, object]],
+    budget: WriterEnvelopeWorkBudget | None = None,
+) -> GraphRingBranchDeltaVerification:
+    try:
+        budget = default_writer_envelope_work_budget(budget)
+        root = _require_object(objects, artifact["roots"]["support_image_root"])
+        branch_refs = _branch_support_refs_for_root(root=root, objects=objects)
+        atom_count = 0
+        bond_count = 0
+        branch_count = 0
+        ring_count = 0
+        structural_count = 0
+        for branch_ref in branch_refs:
+            branch = _require_object(objects, branch_ref)
+            if branch["kind"] != "branch_support":
+                _offline_violation("graph_ring_branch_support_ref_kind_mismatch")
+            kind = _check_graph_ring_branch_delta(
+                facts=facts,
+                branch=branch,
+                budget=budget,
+            )
+            if kind in ("atom_start", "atom_advance"):
+                atom_count += 1
+            elif kind == "bond_advance":
+                bond_count += 1
+            elif kind in ("branch_open", "branch_return"):
+                branch_count += 1
+            elif kind in (
+                "ring_endpoint_open",
+                "ring_endpoint_pair",
+                "ring_endpoint_pair_non_single",
+            ):
+                ring_count += 1
+            elif kind == "other_structural":
+                structural_count += 1
+        return GraphRingBranchDeltaVerification(
+            accepted=True,
+            checked_branches=len(branch_refs),
+            checked_atom_steps=atom_count,
+            checked_bond_steps=bond_count,
+            checked_branch_steps=branch_count,
+            checked_ring_steps=ring_count,
+            structural_only_branches=structural_count,
+        )
+    except SouthStarError as exc:
+        return GraphRingBranchDeltaVerification(
+            accepted=False,
+            reason=exc.args[-1] if exc.args else "graph_ring_branch_delta_error",
+        )
+    except (AssertionError, KeyError, TypeError, ValueError) as exc:
+        return GraphRingBranchDeltaVerification(
+            accepted=False,
+            reason=f"malformed_graph_ring_branch_delta:{type(exc).__name__}",
+        )
+
+
 def verify_terminal_support_identities_offline(
     *,
     artifact: Mapping[str, object],
@@ -729,6 +812,197 @@ def _branch_support_refs_for_root(
             projection = _require_object(objects, projection_ref)
             refs.update(projection["payload"]["branch_support_refs"])
     return tuple(sorted(refs))
+
+
+def _check_graph_ring_branch_delta(
+    *,
+    facts: MoleculeFacts,
+    branch: Mapping[str, object],
+    budget: WriterEnvelopeWorkBudget,
+) -> str:
+    payload = branch["payload"]
+    delta = payload["graph_ring_delta"]
+    kind = delta["kind"]
+    manifest = delta["manifest"]
+    expected_digest = _identity_digest(
+        {"kind": kind, "manifest": manifest},
+        budget=budget,
+        operation=f"offline.graph_ring_delta.{kind}.digest",
+    )
+    if delta["digest"] != expected_digest:
+        _offline_violation("graph_ring_delta_digest_mismatch")
+    _check_graph_ring_delta_common(payload=payload, manifest=manifest)
+    events = manifest["event_manifests"]
+    if kind == "other_structural":
+        return kind
+    if kind in ("atom_start", "atom_advance"):
+        _check_atom_delta_events(facts=facts, branch_payload=payload, events=events)
+        return kind
+    if kind == "bond_advance":
+        _check_bond_delta_events(facts=facts, branch_payload=payload, events=events)
+        return kind
+    if kind in ("branch_open", "branch_return"):
+        _check_branch_delta_events(facts=facts, kind=kind, events=events)
+        return kind
+    if kind in (
+        "ring_endpoint_open",
+        "ring_endpoint_pair",
+        "ring_endpoint_pair_non_single",
+    ):
+        _check_ring_delta_events(
+            facts=facts,
+            branch_payload=payload,
+            kind=kind,
+            events=events,
+        )
+        return kind
+    _offline_violation("graph_ring_delta_unknown_kind")
+
+
+def _check_graph_ring_delta_common(
+    *,
+    payload: Mapping[str, object],
+    manifest: Mapping[str, object],
+) -> None:
+    for field in (
+        "source_state_digest",
+        "successor_state_digest",
+        "source_cursor_digest",
+        "successor_cursor_digest",
+        "transition_kind",
+        "emitted_text",
+        "graph_action_surface_digest",
+        "successor_state_certificate_digest",
+        "checked_branch_certificate_digest",
+    ):
+        if manifest[field] != payload[field]:
+            _offline_violation(f"graph_ring_delta_{field}_mismatch")
+    if manifest["local_evidence_digest"] != payload["local_evidence"]["digest"]:
+        _offline_violation("graph_ring_delta_local_evidence_digest_mismatch")
+    if payload["parent_weight"] <= 0:
+        _offline_violation("graph_ring_delta_parent_weight_nonpositive")
+    if payload["branch_ordinal"] < 0:
+        _offline_violation("graph_ring_delta_branch_ordinal_negative")
+    if not payload["source_state_digest"] or not payload["successor_state_digest"]:
+        _offline_violation("graph_ring_delta_state_digest_missing")
+    if not payload["successor_state_certificate_digest"]:
+        _offline_violation("graph_ring_delta_successor_certificate_digest_missing")
+    if not payload["checked_branch_certificate_digest"]:
+        _offline_violation("graph_ring_delta_checked_certificate_digest_missing")
+
+
+def _check_atom_delta_events(
+    *,
+    facts: MoleculeFacts,
+    branch_payload: Mapping[str, object],
+    events: object,
+) -> None:
+    atom_events = [event for event in events if event["kind"] == "atom_emitted"]
+    if len(atom_events) != 1:
+        _offline_violation("graph_ring_atom_event_count_mismatch")
+    event = atom_events[0]
+    atom = _atom_by_term(facts, event["atom"])
+    if event["text"] != branch_payload["emitted_text"]:
+        _offline_violation("graph_ring_atom_event_text_mismatch")
+    if atom.symbol not in event["text"]:
+        _offline_violation("graph_ring_atom_event_symbol_mismatch")
+    if event["incoming_bond"] is not None:
+        bond = _bond_by_term(facts, event["incoming_bond"])
+        if event["atom"] not in (_term(bond.a), _term(bond.b)):
+            _offline_violation("graph_ring_atom_incoming_bond_endpoint_mismatch")
+
+
+def _check_bond_delta_events(
+    *,
+    facts: MoleculeFacts,
+    branch_payload: Mapping[str, object],
+    events: object,
+) -> None:
+    bond_events = [event for event in events if event["kind"] == "bond_emitted"]
+    if len(bond_events) != 1:
+        _offline_violation("graph_ring_bond_event_count_mismatch")
+    event = bond_events[0]
+    bond = _bond_by_term(facts, event["bond"])
+    endpoints = {_term(bond.a), _term(bond.b)}
+    if {event["parent"], event["child"]} != endpoints:
+        _offline_violation("graph_ring_bond_endpoint_mismatch")
+    if event["text"] != _bond_order_marker(bond.order):
+        _offline_violation("graph_ring_bond_marker_mismatch")
+    if event["text"] and event["text"] not in branch_payload["emitted_text"]:
+        _offline_violation("graph_ring_bond_event_text_mismatch")
+
+
+def _check_branch_delta_events(
+    *,
+    facts: MoleculeFacts,
+    kind: str,
+    events: object,
+) -> None:
+    event_kind = "branch_opened" if kind == "branch_open" else "branch_closed"
+    branch_events = [event for event in events if event["kind"] == event_kind]
+    if len(branch_events) != 1:
+        _offline_violation("graph_ring_branch_event_count_mismatch")
+    event = branch_events[0]
+    if kind == "branch_open":
+        bond = _bond_by_term(facts, event["bond"])
+        if {event["parent"], event["child"]} != {_term(bond.a), _term(bond.b)}:
+            _offline_violation("graph_ring_branch_open_endpoint_mismatch")
+    else:
+        _atom_by_term(facts, event["atom"])
+
+
+def _check_ring_delta_events(
+    *,
+    facts: MoleculeFacts,
+    branch_payload: Mapping[str, object],
+    kind: str,
+    events: object,
+) -> None:
+    event_kind = (
+        "ring_endpoint_emitted"
+        if kind == "ring_endpoint_open"
+        else "ring_endpoint_paired"
+    )
+    ring_events = [event for event in events if event["kind"] == event_kind]
+    if len(ring_events) != 1:
+        _offline_violation("graph_ring_endpoint_event_count_mismatch")
+    event = ring_events[0]
+    bond = _bond_by_term(facts, event["bond"])
+    endpoints = {_term(bond.a), _term(bond.b)}
+    if {event["endpoint_atom"], event["partner_atom"]} != endpoints:
+        _offline_violation("graph_ring_endpoint_atoms_mismatch")
+    if event["endpoint_text"] not in branch_payload["emitted_text"]:
+        _offline_violation("graph_ring_endpoint_text_mismatch")
+    if event["bond_text"] and event["bond_text"] not in branch_payload["emitted_text"]:
+        _offline_violation("graph_ring_endpoint_bond_text_mismatch")
+    marker = _bond_order_marker(bond.order)
+    if marker and kind == "ring_endpoint_pair_non_single":
+        marker_count = int(event["bond_text"] == marker)
+        if event_kind == "ring_endpoint_paired":
+            marker_count += int(event["first_endpoint_bond_text"] == marker)
+        if marker_count != 1:
+            _offline_violation("graph_ring_non_single_marker_count_mismatch")
+    if kind == "ring_endpoint_pair_non_single":
+        local_kind = branch_payload["local_evidence"]["kind"]
+        if local_kind not in (
+            "closure_bond_text",
+            "directional_ring_closure_bond_text",
+        ):
+            _offline_violation("graph_ring_non_single_missing_closure_evidence")
+        labels = _closure_evidence_labels(branch_payload["local_evidence"])
+        if not any(event["label"] == label for label in labels):
+            _offline_violation("graph_ring_endpoint_label_mismatch")
+
+
+def _closure_evidence_labels(local_evidence: Mapping[str, object]) -> tuple[object, ...]:
+    manifest = local_evidence["manifest"]
+    if local_evidence["kind"] == "closure_bond_text":
+        items = manifest["items"]
+    elif local_evidence["kind"] == "directional_ring_closure_bond_text":
+        items = manifest["closure_bond_text"]
+    else:
+        return ()
+    return tuple(item["label"] for item in items)
 
 
 def _check_branch_local_evidence(
@@ -1201,6 +1475,16 @@ def _bond_order_value(order: BondOrder) -> str:
     _offline_violation("local_closure_bond_order_unsupported")
 
 
+def _bond_order_marker(order: BondOrder) -> str:
+    if order == BondOrder.SINGLE:
+        return ""
+    if order == BondOrder.DOUBLE:
+        return "="
+    if order == BondOrder.TRIPLE:
+        return "#"
+    _offline_violation("graph_ring_bond_order_unsupported")
+
+
 def _non_single_cyclic_bonds(facts: MoleculeFacts) -> tuple[BondFacts, ...]:
     return tuple(
         bond
@@ -1276,6 +1560,7 @@ __all__ = (
     "OBJECT_KIND_OFFLINE_COVERAGE",
     "BranchProjectionIdentityVerification",
     "CountDagArithmeticVerification",
+    "GraphRingBranchDeltaVerification",
     "LocalBranchSuccessorEvidenceVerification",
     "SupportImageCoverageVerification",
     "SupportStringReplayPathVerification",
@@ -1284,6 +1569,7 @@ __all__ = (
     "validate_writer_bracket_atom_text_against_facts",
     "verify_branch_projection_identities_offline",
     "verify_count_dag_arithmetic",
+    "verify_graph_ring_branch_deltas_offline",
     "verify_local_branch_successor_evidence_offline",
     "verify_support_image_coverage_offline",
     "verify_support_string_replay_paths_offline",

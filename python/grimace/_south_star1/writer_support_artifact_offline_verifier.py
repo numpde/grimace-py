@@ -11,6 +11,7 @@ from .facts import AtomFacts
 from .facts import BondFacts
 from .facts import BondOrder
 from .facts import MoleculeFacts
+from .policy import DirectionMark
 from .writer_atom_text_lifecycle import bracket_atom_text
 from .writer_count_dag_envelope import count_dag_node_by_id
 from .writer_count_dag_envelope import validate_writer_count_certificate_dag_envelope
@@ -1188,10 +1189,65 @@ def _check_bond_delta_events(
     endpoints = {_term(bond.a), _term(bond.b)}
     if {event["parent"], event["child"]} != endpoints:
         _offline_violation("graph_ring_bond_endpoint_mismatch")
-    if event["text"] != _bond_order_marker(bond.order):
-        _offline_violation("graph_ring_bond_marker_mismatch")
+    expected_marker = _bond_order_marker(bond.order)
+    if event["text"] != expected_marker:
+        expected_direction_text = _direction_mark_text(event["direction_mark"])
+        accepts_direction_text = (
+            expected_marker == ""
+            and expected_direction_text != ""
+            and event["text"] == expected_direction_text
+        )
+        if not accepts_direction_text:
+            _offline_violation(
+                "graph_ring_bond_marker_mismatch:"
+                f"bond={event['bond']};"
+                f"parent={event['parent']};"
+                f"child={event['child']};"
+                f"expected_marker={expected_marker!r};"
+                f"observed_text={event['text']!r};"
+                f"expected_direction_text={expected_direction_text!r};"
+                f"direction_mark={event['direction_mark']!r};"
+                f"emitted_text={branch_payload['emitted_text']!r};"
+                f"local_evidence_kind={branch_payload['local_evidence']['kind']};"
+                "expected_marker_side=bond_advance;"
+                "observed_marker_side=bond_advance;"
+                f"closure_text_pair={_closure_text_pair(branch_payload)};"
+                f"successor_certificate="
+                f"{branch_payload['successor_state_certificate_digest']};"
+                f"checked_branch_certificate="
+                f"{branch_payload['checked_branch_certificate_digest']}"
+            )
     if event["text"] and event["text"] not in branch_payload["emitted_text"]:
         _offline_violation("graph_ring_bond_event_text_mismatch")
+
+
+def _direction_mark_text(mark: object) -> str:
+    if mark == _term(DirectionMark.FWD):
+        return "/"
+    if mark == _term(DirectionMark.REV):
+        return "\\"
+    if mark == _term(DirectionMark.ABSENT):
+        return ""
+    _offline_violation("graph_ring_bond_direction_mark_unknown")
+
+
+def _closure_text_pair(branch_payload: Mapping[str, object]) -> object:
+    local_evidence = branch_payload["local_evidence"]
+    manifest = local_evidence["manifest"]
+    if local_evidence["kind"] == "closure_bond_text":
+        items = manifest["items"]
+    elif local_evidence["kind"] == "directional_ring_closure_bond_text":
+        items = manifest["closure_bond_text"]
+    else:
+        return None
+    return tuple(
+        (
+            item["opening_marker"],
+            item["closing_marker"],
+            item["marker_side"],
+        )
+        for item in items
+    )
 
 
 def _check_branch_delta_events(

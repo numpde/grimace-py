@@ -76,6 +76,9 @@ from grimace._south_star1.writer_support_artifact_envelope import (
 )
 from tests.south_star1.helpers import cco_facts
 from tests.south_star1.helpers import tetrahedral_facts
+from tests.south_star1.test_writer_stereo_residual import (
+    _directional_non_single_ring_carrier_facts,
+)
 from tests.south_star1.test_writer_snapshot import two_atom_facts
 
 
@@ -315,6 +318,34 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
         self.assertFalse(wrong_state.accepted)
         self.assertIn("graph_ring_delta_successor_state_digest_mismatch", wrong_state.reason)
+
+    def test_graph_ring_directional_carrier_text_is_replayed_by_direction_mark(
+        self,
+    ) -> None:
+        facts = _directional_non_single_ring_carrier_facts()
+        prepared = _prepare(facts)
+        options = _writer_options(rooted_at_atom=0)
+        artifact = writer_support_artifact_envelope_for_snapshot(
+            prepared=prepared,
+            snapshot=_initial_snapshot(prepared, options),
+        )
+
+        accepted = _graph_ring_delta_verification(facts, artifact)
+
+        self.assertTrue(accepted.accepted, accepted.reason)
+
+        branch = _first_directional_bond_delta_branch(artifact)
+        event = _first_graph_ring_delta_event(branch, "bond_emitted")
+        event["text"] = "="
+        _refresh_graph_ring_delta_digest(branch["payload"]["graph_ring_delta"])
+
+        wrong_direction_text = _graph_ring_delta_verification(facts, artifact)
+
+        self.assertFalse(wrong_direction_text.accepted)
+        self.assertIn("graph_ring_bond_marker_mismatch", wrong_direction_text.reason)
+        self.assertIn("expected_direction_text", wrong_direction_text.reason)
+        self.assertIn("direction_mark", wrong_direction_text.reason)
+        self.assertIn("successor_certificate", wrong_direction_text.reason)
 
     def test_default_corpus_obligations_are_classified(self) -> None:
         cases = {
@@ -1825,6 +1856,20 @@ def _first_graph_ring_delta_event(branch, kind: str):
         if item["kind"] == kind:
             return item
     raise AssertionError(f"missing graph/ring event kind: {kind}")
+
+
+def _first_directional_bond_delta_branch(artifact):
+    for item in artifact["objects"]:
+        if item["kind"] != "branch_support":
+            continue
+        delta = item["payload"]["graph_ring_delta"]
+        if delta["kind"] != "bond_advance":
+            continue
+        event = _first_graph_ring_delta_event(item, "bond_emitted")
+        direction_mark = event["direction_mark"]
+        if direction_mark["value"] != 0:
+            return item
+    raise AssertionError("missing directional bond delta branch")
 
 
 def _first_terminal_projection_object(artifact):

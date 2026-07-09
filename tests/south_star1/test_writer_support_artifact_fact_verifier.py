@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import replace
 import unittest
 
 from grimace._south_star1.errors import SouthStarError
 from grimace._south_star1.errors import SouthStarErrorKind
+from grimace._south_star1.facts import LigandKind
+from grimace._south_star1.facts import LigandOccurrence
 from grimace._south_star1.facts import SiteStatus
+from grimace._south_star1.facts import StereoFacts
 from grimace._south_star1.facts import TetraValue
+from grimace._south_star1.ids import OccurrenceId
+from grimace._south_star1.ids import SiteId
 from grimace._south_star1.ordinary_policy import OrdinaryPolicyOptions
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
@@ -238,6 +244,61 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
                 rendered_text="[NH3+]",
             )
 
+    def test_offline_tetra_bracket_atom_replay_rejects_wrong_facts(self) -> None:
+        facts = tetrahedral_facts()
+        validate_writer_bracket_atom_text_against_facts(
+            facts=facts,
+            rendered_text="[C@H]",
+        )
+        validate_writer_bracket_atom_text_against_facts(
+            facts=facts,
+            rendered_text="[C@@H]",
+        )
+        double_recorded_h_facts = replace(
+            facts,
+            atoms=(
+                replace(facts.atoms[0], implicit_h_count=1),
+                *facts.atoms[1:],
+            ),
+        )
+        validate_writer_bracket_atom_text_against_facts(
+            facts=double_recorded_h_facts,
+            rendered_text="[C@H]",
+        )
+
+        cases = (
+            replace(facts, stereo=StereoFacts()),
+            replace(facts, ligand_occurrences=facts.ligand_occurrences[:-1]),
+            _tetra_facts_with_implicit_h_only_outside_specified_site(facts),
+            replace(
+                facts,
+                atoms=(
+                    replace(facts.atoms[0], implicit_h_count=2),
+                    *facts.atoms[1:],
+                ),
+            ),
+        )
+        for wrong_facts in cases:
+            with self.subTest(facts=wrong_facts):
+                with self.assertRaisesRegex(
+                    SouthStarError,
+                    "bracket_atom_text_facts_mismatch",
+                ):
+                    validate_writer_bracket_atom_text_against_facts(
+                        facts=wrong_facts,
+                        rendered_text="[C@H]",
+                    )
+        for rendered_text in ("[N@H]", "[13C@H]", "[C@H+]"):
+            with self.subTest(rendered_text=rendered_text):
+                with self.assertRaisesRegex(
+                    SouthStarError,
+                    "bracket_atom_text_facts_mismatch",
+                ):
+                    validate_writer_bracket_atom_text_against_facts(
+                        facts=facts,
+                        rendered_text=rendered_text,
+                    )
+
     def test_offline_joint_closure_replay_rejects_wrong_facts(self) -> None:
         artifact = _rdkit_artifact("C1=CC1")
         verification = verify_writer_support_artifact_offline_replay(
@@ -426,7 +487,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
         self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_STEREO)
 
-    def test_supported_specified_tetra_artifact_is_blocked_before_residual_replay(
+    def test_supported_specified_tetra_artifact_stops_at_residual_replay_boundary(
         self,
     ) -> None:
         facts = tetrahedral_facts()
@@ -475,19 +536,21 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         self.assertTrue(classification.accepted, classification.reason)
         self.assertTrue(classification.residual_obligations_present)
         self.assertTrue(classification.stereo_obligations_present)
-        self.assertEqual(classification.unchecked_families, ("residual_work",))
+        self.assertEqual(classification.unchecked_families, ("tetra_residual_work",))
         self.assertIn("stereo_lifecycle", classification.checked_families)
         self.assertIn("terminal_stereo_lifecycle", classification.checked_families)
-        self.assertFalse(verification.accepted)
+        self.assertTrue(verification.accepted, verification.reason)
         self.assertTrue(verification.structurally_checked)
         self.assertTrue(verification.facts_identity_checked)
         self.assertFalse(verification.offline_replay_complete)
         self.assertEqual(verification.offline_unchecked_object_kinds, ())
-        self.assertEqual(verification.offline_unchecked_obligation_families, ())
         self.assertEqual(
-            verification.reason,
-            "writer support artifact offline replay violation: "
-            "bracket_atom_text_facts_mismatch",
+            verification.offline_unchecked_obligation_families,
+            ("tetra_residual_work",),
+        )
+        self.assertIn(
+            "bracket_atom_text",
+            verification.offline_checked_relation_families,
         )
 
     def test_terminal_clean_obligation_manifests_are_checked(self) -> None:
@@ -1914,6 +1977,31 @@ def _initial_snapshot(prepared, options):
         prepared=prepared,
         runtime_options=options,
         cursor=initial_writer_frontier_cursor(prepared, options),
+    )
+
+
+def _tetra_facts_with_implicit_h_only_outside_specified_site(facts):
+    site = facts.stereo.tetrahedral[0]
+    outside_occurrence = LigandOccurrence(
+        id=OccurrenceId(99),
+        site=SiteId(99),
+        kind=LigandKind.IMPLICIT_H,
+        atom=site.center,
+        bond=None,
+    )
+    return replace(
+        facts,
+        stereo=replace(
+            facts.stereo,
+            tetrahedral=(
+                replace(
+                    site,
+                    ligand_occurrences=site.ligand_occurrences[:-1],
+                    reference_order=site.reference_order[:-1],
+                ),
+            ),
+        ),
+        ligand_occurrences=facts.ligand_occurrences[:-1] + (outside_occurrence,),
     )
 
 

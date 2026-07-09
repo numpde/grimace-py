@@ -10,7 +10,10 @@ from .errors import SouthStarErrorKind
 from .facts import AtomFacts
 from .facts import BondFacts
 from .facts import BondOrder
+from .facts import LigandKind
 from .facts import MoleculeFacts
+from .facts import SiteStatus
+from .facts import TetrahedralSiteFacts
 from .policy import DirectionMark
 from .writer_atom_text_lifecycle import bracket_atom_text
 from .writer_count_dag_envelope import count_dag_node_by_id
@@ -280,13 +283,100 @@ def validate_writer_bracket_atom_text_against_facts(
     matches = []
     for atom in facts.atoms:
         try:
-            if bracket_atom_text(atom) == rendered_text:
+            if _bracket_atom_text_matches_facts(
+                facts=facts,
+                atom=atom,
+                rendered_text=rendered_text,
+            ):
                 matches.append(atom)
         except SouthStarError:
             continue
     if len(matches) != 1:
         _offline_violation("bracket_atom_text_facts_mismatch")
     return matches[0]
+
+
+def _bracket_atom_text_matches_facts(
+    *,
+    facts: MoleculeFacts,
+    atom: AtomFacts,
+    rendered_text: str,
+) -> bool:
+    try:
+        return bracket_atom_text(atom) == rendered_text
+    except SouthStarError:
+        pass
+    return _tetra_bracket_atom_text_matches_facts(
+        facts=facts,
+        atom=atom,
+        rendered_text=rendered_text,
+    )
+
+
+def _tetra_bracket_atom_text_matches_facts(
+    *,
+    facts: MoleculeFacts,
+    atom: AtomFacts,
+    rendered_text: str,
+) -> bool:
+    if not rendered_text.startswith("[") or not rendered_text.endswith("]"):
+        return False
+    inner = rendered_text[1:-1]
+    if "@" not in inner:
+        return False
+    if inner.startswith("C@@H"):
+        token = "@@"
+        suffix = inner[len("C@@H") :]
+    elif inner.startswith("C@H"):
+        token = "@"
+        suffix = inner[len("C@H") :]
+    else:
+        return False
+    if suffix:
+        return False
+    if token not in {"@", "@@"}:
+        return False
+    if atom.symbol != "C":
+        return False
+    if atom.isotope is not None:
+        return False
+    if atom.formal_charge != 0:
+        return False
+    if atom.is_aromatic:
+        return False
+    if atom.explicit_h_count != 0:
+        return False
+    if atom.no_implicit:
+        return False
+    return any(
+        site.center == atom.id
+        and site.status is SiteStatus.SPECIFIED
+        and _tetra_site_h_count(facts=facts, atom=atom, site=site) == 1
+        for site in facts.stereo.tetrahedral
+    )
+
+
+def _tetra_site_h_count(
+    *,
+    facts: MoleculeFacts,
+    atom: AtomFacts,
+    site: TetrahedralSiteFacts,
+) -> int:
+    site_occurrence_ids = set(site.ligand_occurrences)
+    occurrence_h_count = sum(
+        1
+        for occurrence in facts.ligand_occurrences
+        if occurrence.id in site_occurrence_ids
+        and occurrence.atom == atom.id
+        and occurrence.kind is LigandKind.IMPLICIT_H
+    )
+    if atom.implicit_h_count not in {0, 1}:
+        return atom.implicit_h_count
+    if occurrence_h_count not in {0, 1}:
+        return occurrence_h_count
+    if atom.implicit_h_count == 1 or occurrence_h_count == 1:
+        return 1
+    return 0
 
 
 def verify_count_dag_arithmetic(
@@ -688,7 +778,7 @@ def classify_residual_stereo_obligations_offline(
                 for family, items in terminal["payload"]["obligation_manifests"].items():
                     manifests_by_family[family].extend(items)
         unchecked = tuple(
-            family
+            _unchecked_obligation_family_name(family, items)
             for family, items in sorted(manifests_by_family.items())
             if items and not _obligation_manifests_checked(items)
         )
@@ -754,6 +844,22 @@ def _obligation_manifests_checked(items: list[object]) -> bool:
         )
         for item in items
     )
+
+
+def _unchecked_obligation_family_name(
+    family: str,
+    items: list[object],
+) -> str:
+    if family == "residual_work" and all(
+        item["operation"]
+        in {
+            "tetrahedral atom-token restriction",
+            "tetrahedral local-order factor closure",
+        }
+        for item in items
+    ):
+        return "tetra_residual_work"
+    return family
 
 
 def _ring_obligation_manifest_checked(item: Mapping[str, object]) -> bool:
@@ -1427,7 +1533,11 @@ def _check_bracket_atom_text_local_evidence(
         _offline_violation("local_bracket_atom_text_hydrogen_count_mismatch")
     if atom.is_aromatic != manifest["aromatic"]:
         _offline_violation("local_bracket_atom_text_aromatic_mismatch")
-    if bracket_atom_text(atom) != manifest["rendered_text"]:
+    if not _bracket_atom_text_matches_facts(
+        facts=facts,
+        atom=atom,
+        rendered_text=manifest["rendered_text"],
+    ):
         _offline_violation("local_bracket_atom_text_facts_mismatch")
 
 

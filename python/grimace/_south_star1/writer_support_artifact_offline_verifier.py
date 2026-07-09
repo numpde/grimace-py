@@ -852,8 +852,21 @@ def _obligation_manifests_checked(items: list[object]) -> bool:
             or item["is_discharged"]
             or item["terminal_clean"]
             or _ring_obligation_manifest_checked(item)
+            or _tetra_residual_manifest_checked(item)
         )
         for item in items
+    )
+
+
+def _tetra_residual_manifest_checked(item: Mapping[str, object]) -> bool:
+    return (
+        item["family"] == "residual_work"
+        and item["operation"]
+        in {
+            "tetrahedral atom-token restriction",
+            "tetrahedral local-order factor closure",
+        }
+        and bool(item["linked_lifecycle_digests"])
     )
 
 
@@ -863,6 +876,7 @@ def _classify_branch_residual_work_manifests(
     branch: Mapping[str, object],
     items: list[object],
 ) -> tuple[Mapping[str, object], ...]:
+    _check_branch_residual_lifecycle_links(branch=branch, residual_items=items)
     for item in items:
         _validate_tetra_residual_manifest_if_known(
             facts=facts,
@@ -870,6 +884,48 @@ def _classify_branch_residual_work_manifests(
             item=item,
         )
     return tuple(items)
+
+
+def _check_branch_residual_lifecycle_links(
+    *,
+    branch: Mapping[str, object],
+    residual_items: list[object],
+) -> None:
+    residual_by_digest = {}
+    for residual in residual_items:
+        digest = residual["evidence_digest"]
+        if digest in residual_by_digest:
+            _offline_violation("residual_lifecycle_residual_digest_duplicate")
+        residual_by_digest[digest] = residual
+        links = residual["linked_lifecycle_digests"]
+        if len(set(links)) != len(links):
+            _offline_violation("residual_lifecycle_forward_link_duplicate")
+    lifecycle_by_digest = {}
+    lifecycle_items = branch["payload"]["obligation_manifests"]["stereo_lifecycle"]
+    for lifecycle in lifecycle_items:
+        digest = lifecycle["evidence_digest"]
+        if digest in lifecycle_by_digest:
+            _offline_violation("residual_lifecycle_lifecycle_digest_duplicate")
+        lifecycle_by_digest[digest] = lifecycle
+        links = lifecycle["linked_residual_work_digests"]
+        if len(set(links)) != len(links):
+            _offline_violation("residual_lifecycle_reverse_link_duplicate")
+
+    for residual_digest, residual in residual_by_digest.items():
+        for lifecycle_digest in residual["linked_lifecycle_digests"]:
+            lifecycle = lifecycle_by_digest.get(lifecycle_digest)
+            if lifecycle is None:
+                _offline_violation("residual_lifecycle_forward_link_missing")
+            if residual_digest not in lifecycle["linked_residual_work_digests"]:
+                _offline_violation("residual_lifecycle_forward_link_unreciprocated")
+
+    for lifecycle_digest, lifecycle in lifecycle_by_digest.items():
+        for residual_digest in lifecycle["linked_residual_work_digests"]:
+            residual = residual_by_digest.get(residual_digest)
+            if residual is None:
+                _offline_violation("residual_lifecycle_reverse_link_missing")
+            if lifecycle_digest not in residual["linked_lifecycle_digests"]:
+                _offline_violation("residual_lifecycle_reverse_link_unreciprocated")
 
 
 def _validate_tetra_residual_manifest_if_known(
@@ -924,17 +980,43 @@ def _check_tetra_residual_manifest_core(
         _offline_violation("tetra_residual_unexpected_ring_summary")
     if not item["evidence_digest"]:
         _offline_violation("tetra_residual_evidence_digest_missing")
-    matching_lifecycle_operations = {
-        lifecycle["operation"]
-        for lifecycle in payload["obligation_manifests"]["stereo_lifecycle"]
-        if lifecycle["source_digest"] == item["source_digest"]
-        and lifecycle["successor_digest"] == item["successor_digest"]
-        and lifecycle["is_discharged"]
-    }
-    if not matching_lifecycle_operations <= set(required_lifecycle_operations):
+    linked_digests = item["linked_lifecycle_digests"]
+    if not linked_digests:
+        _offline_violation("tetra_residual_lifecycle_link_missing")
+    if len(set(linked_digests)) != len(linked_digests):
+        _offline_violation("tetra_residual_lifecycle_link_duplicate")
+    lifecycle_by_digest = {}
+    reverse_linked_digests = set()
+    for lifecycle in payload["obligation_manifests"]["stereo_lifecycle"]:
+        lifecycle_digest = lifecycle["evidence_digest"]
+        if lifecycle_digest in lifecycle_by_digest:
+            _offline_violation("tetra_residual_lifecycle_digest_duplicate")
+        lifecycle_by_digest[lifecycle_digest] = lifecycle
+        reverse_links = lifecycle["linked_residual_work_digests"]
+        if len(set(reverse_links)) != len(reverse_links):
+            _offline_violation("tetra_residual_reverse_link_duplicate")
+        if item["evidence_digest"] in reverse_links:
+            reverse_linked_digests.add(lifecycle_digest)
+    if set(linked_digests) != reverse_linked_digests:
+        _offline_violation("tetra_residual_lifecycle_link_mismatch")
+    linked_lifecycle_operations = set()
+    for digest in linked_digests:
+        lifecycle = lifecycle_by_digest.get(digest)
+        if lifecycle is None:
+            _offline_violation("tetra_residual_lifecycle_link_missing")
+        if item["evidence_digest"] not in lifecycle["linked_residual_work_digests"]:
+            _offline_violation("tetra_residual_reverse_link_missing")
+        if lifecycle["source_digest"] != item["source_digest"]:
+            _offline_violation("tetra_residual_lifecycle_source_mismatch")
+        if lifecycle["successor_digest"] != item["successor_digest"]:
+            _offline_violation("tetra_residual_lifecycle_successor_mismatch")
+        if not lifecycle["is_discharged"]:
+            _offline_violation("tetra_residual_lifecycle_not_discharged")
+        linked_lifecycle_operations.add(lifecycle["operation"])
+    if not linked_lifecycle_operations <= set(required_lifecycle_operations):
         _offline_violation("tetra_residual_lifecycle_operation_mismatch")
     for operation in required_lifecycle_operations:
-        if operation not in matching_lifecycle_operations:
+        if operation not in linked_lifecycle_operations:
             _offline_violation("tetra_residual_lifecycle_evidence_missing")
 
 

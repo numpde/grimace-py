@@ -854,6 +854,8 @@ def _validate_obligation_manifests(
                     "terminal_clean",
                     "ring_summary",
                     "evidence_digest",
+                    "linked_lifecycle_digests",
+                    "linked_residual_work_digests",
                 ),
             )
             if item["family"] != family:
@@ -869,6 +871,14 @@ def _validate_obligation_manifests(
             for field in ("is_noop", "is_empty", "is_discharged", "terminal_clean"):
                 if not isinstance(item[field], bool):
                     _artifact_violation("obligation_manifest_bool_field_mismatch")
+            _require_string_list(
+                item["linked_lifecycle_digests"],
+                "obligation_manifest_link_digests_mismatch",
+            )
+            _require_string_list(
+                item["linked_residual_work_digests"],
+                "obligation_manifest_reverse_link_digests_mismatch",
+            )
             _validate_ring_obligation_summary(item["ring_summary"])
 
 

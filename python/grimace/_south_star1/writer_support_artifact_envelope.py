@@ -647,6 +647,14 @@ def _branch_obligation_manifests(
         graph_ring_delta=graph_ring_delta,
         family="graph_obligation_work",
     )
+    stereo_lifecycle_records = (
+        *branch.stereo_lifecycle_evidence,
+        *branch.stereo_branch_certificates,
+    )
+    residual_lifecycle_links = _residual_lifecycle_digest_links(
+        lifecycle_records=stereo_lifecycle_records,
+        budget=budget,
+    )
     return {
         "residual_work": _obligation_family_manifests(
             family="residual_work",
@@ -654,6 +662,7 @@ def _branch_obligation_manifests(
             source_digest=branch_identity["source_state_digest"],
             successor_digest=branch_identity["successor_state_digest"],
             replay_complete=False,
+            linked_lifecycle_digests=residual_lifecycle_links,
             budget=budget,
         ),
         "finite_relation_work": _obligation_family_manifests(
@@ -679,13 +688,14 @@ def _branch_obligation_manifests(
         ),
         "stereo_lifecycle": _obligation_family_manifests(
             family="stereo_lifecycle",
-            records=(
-                *branch.stereo_lifecycle_evidence,
-                *branch.stereo_branch_certificates,
-            ),
+            records=stereo_lifecycle_records,
             source_digest=branch_identity["source_state_digest"],
             successor_digest=branch_identity["successor_state_digest"],
             replay_complete=_replay_complete(stereo_replay),
+            linked_residual_work_digests=_lifecycle_residual_digest_links(
+                lifecycle_records=stereo_lifecycle_records,
+                budget=budget,
+            ),
             budget=budget,
         ),
         "residual_attachment_lifecycle": _obligation_family_manifests(
@@ -793,6 +803,8 @@ def _obligation_family_manifests(
     budget: WriterEnvelopeWorkBudget,
     terminal_clean: bool = False,
     ring_summary: Mapping[str, object] | None = None,
+    linked_lifecycle_digests: Mapping[str, list[str]] | None = None,
+    linked_residual_work_digests: Mapping[str, list[str]] | None = None,
 ) -> list[dict[str, object]]:
     return [
         {
@@ -810,9 +822,91 @@ def _obligation_family_manifests(
                 budget=budget,
                 operation=f"support_artifact.obligation.{family}.evidence.digest",
             ),
+            "linked_lifecycle_digests": (
+                []
+                if linked_lifecycle_digests is None
+                else linked_lifecycle_digests.get(
+                    _identity_digest(
+                        record,
+                        budget=budget,
+                        operation=(
+                            f"support_artifact.obligation.{family}."
+                            "link.evidence.digest"
+                        ),
+                    )
+                    ,
+                    [],
+                )
+            ),
+            "linked_residual_work_digests": (
+                []
+                if linked_residual_work_digests is None
+                else linked_residual_work_digests.get(
+                    _identity_digest(
+                        record,
+                        budget=budget,
+                        operation=(
+                            f"support_artifact.obligation.{family}."
+                            "reverse_link.evidence.digest"
+                        ),
+                    ),
+                    [],
+                )
+            ),
         }
         for record in records
     ]
+
+
+def _residual_lifecycle_digest_links(
+    *,
+    lifecycle_records: tuple[object, ...],
+    budget: WriterEnvelopeWorkBudget,
+) -> dict[str, list[str]]:
+    links: dict[str, list[str]] = {}
+    for lifecycle in lifecycle_records:
+        lifecycle_digest = _identity_digest(
+            lifecycle,
+            budget=budget,
+            operation="support_artifact.obligation.lifecycle.link.digest",
+        )
+        for residual in getattr(lifecycle, "residual_work_evidence", ()):
+            residual_digest = _identity_digest(
+                residual,
+                budget=budget,
+                operation="support_artifact.obligation.residual.link.digest",
+            )
+            links.setdefault(residual_digest, [])
+            if lifecycle_digest not in links[residual_digest]:
+                links[residual_digest].append(lifecycle_digest)
+    return links
+
+
+def _lifecycle_residual_digest_links(
+    *,
+    lifecycle_records: tuple[object, ...],
+    budget: WriterEnvelopeWorkBudget,
+) -> dict[str, list[str]]:
+    links: dict[str, list[str]] = {}
+    for lifecycle in lifecycle_records:
+        lifecycle_digest = _identity_digest(
+            lifecycle,
+            budget=budget,
+            operation="support_artifact.obligation.lifecycle.reverse_link.digest",
+        )
+        residual_digests = []
+        for residual in getattr(lifecycle, "residual_work_evidence", ()):
+            residual_digest = _identity_digest(
+                residual,
+                budget=budget,
+                operation=(
+                    "support_artifact.obligation.residual.reverse_link.digest"
+                ),
+            )
+            if residual_digest not in residual_digests:
+                residual_digests.append(residual_digest)
+        links[lifecycle_digest] = residual_digests
+    return links
 
 
 def _ring_obligation_summary(

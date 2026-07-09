@@ -167,6 +167,12 @@ class WriterDefaultParityCorpusTest(unittest.TestCase):
                 if case.blocker_error_kind is not None:
                     self.assertEqual(blocked["stage"], "prepare")
                     self.assertIs(blocked["error_kind"], case.blocker_error_kind)
+                    self.assertIsNotNone(case.blocker_message_contains)
+                    blocker_message_contains = case.blocker_message_contains
+                    self.assertIn(
+                        blocker_message_contains,
+                        blocked["message"],
+                    )
                     continue
 
                 self.assertEqual(blocked["stage"], "frontier")

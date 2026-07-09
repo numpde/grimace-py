@@ -6,6 +6,7 @@ from dataclasses import replace
 import unittest
 
 from grimace._south_star1.errors import SouthStarError
+from grimace._south_star1.errors import SouthStarErrorKind
 from grimace._south_star1.fact_isomorphism import facts_are_isomorphic
 from grimace._south_star1.ids import AtomId
 from grimace._south_star1.policy import SerializationLanguageMode
@@ -399,16 +400,41 @@ class WriterBracketAtomTextTest(unittest.TestCase):
             validate_writer_branch_successor_state_certificate(bad_certificate)
 
     def test_charged_isotope_remains_out_of_scope(self) -> None:
-        facts = _facts("[13CH3+]")
-
-        with self.assertRaisesRegex(SouthStarError, "isotopic atoms"):
-            _prepare(facts)
+        self._assert_prepare_unsupported_atom(
+            "[13CH3+]",
+            "isotopic atoms are unsupported",
+        )
 
     def test_positive_oxygen_charge_remains_out_of_scope(self) -> None:
-        facts = _facts("[O+]")
+        self._assert_prepare_unsupported_atom(
+            "[O+]",
+            "charged atoms are unsupported",
+        )
 
-        with self.assertRaisesRegex(SouthStarError, "charged atoms"):
+    def test_negative_nitrogen_charge_remains_out_of_scope(self) -> None:
+        self._assert_prepare_unsupported_atom(
+            "[NH2-]",
+            "charged atoms are unsupported",
+        )
+
+    def test_charged_oxygen_isotope_remains_out_of_scope(self) -> None:
+        self._assert_prepare_unsupported_atom(
+            "[18OH-]",
+            "isotopic atoms are unsupported",
+        )
+
+    def _assert_prepare_unsupported_atom(
+        self,
+        smiles: str,
+        message_phrase: str,
+    ) -> None:
+        facts = _facts(smiles)
+
+        with self.assertRaises(SouthStarError) as caught:
             _prepare(facts)
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_ATOM)
+        self.assertIn(message_phrase, str(caught.exception))
 
 
 def _facts(smiles: str):

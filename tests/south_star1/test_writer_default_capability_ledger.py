@@ -61,6 +61,8 @@ class WriterDefaultCapabilityLedgerTest(unittest.TestCase):
                 "simple_bracket_charge",
                 "simple_isotope_bracket_atom",
                 "unsupported_charged_isotope",
+                "unsupported_charged_oxygen_isotope",
+                "unsupported_negative_nitrogen_charge",
                 "unsupported_positive_oxygen_charge",
                 "unsupported_potential_directional_non_neighbor",
             },
@@ -117,6 +119,10 @@ class WriterDefaultCapabilityLedgerTest(unittest.TestCase):
                 )
                 if case.blocker_phase == "frontier":
                     self.assertIsNotNone(case.blocker_operation)
+                    self.assertIsNone(case.blocker_message_contains)
+                if case.blocker_phase == "preparation":
+                    self.assertIsNotNone(case.blocker_error_kind)
+                    self.assertIsNotNone(case.blocker_message_contains)
 
     def test_cyclopropene_default_artifact_binds_default_joint_policy(
         self,

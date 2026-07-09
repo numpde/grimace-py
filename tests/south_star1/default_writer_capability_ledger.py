@@ -61,6 +61,7 @@ class DefaultWriterCapabilityCase:
     blocker_kind: str | None = None
     blocker_operation: str | None = None
     blocker_error_kind: SouthStarErrorKind | None = None
+    blocker_message_contains: str | None = None
     expected_structural_artifact: bool = False
     expected_live_artifact_verifier: bool = False
     expected_facts_bound_verifier: bool = False
@@ -352,6 +353,7 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         blocker_phase="preparation",
         blocker_kind="unsupported_atom",
         blocker_error_kind=SouthStarErrorKind.UNSUPPORTED_ATOM,
+        blocker_message_contains="isotopic atoms are unsupported",
     ),
     DefaultWriterCapabilityCase(
         name="oxygen_positive_charge",
@@ -363,6 +365,31 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         blocker_phase="preparation",
         blocker_kind="unsupported_atom",
         blocker_error_kind=SouthStarErrorKind.UNSUPPORTED_ATOM,
+        blocker_message_contains="charged atoms are unsupported",
+    ),
+    DefaultWriterCapabilityCase(
+        name="nitrogen_negative_charge",
+        smiles="[NH2-]",
+        extraction_profile="graph_no_potential_sites",
+        extraction_options=_GRAPH_EXTRACTION,
+        expected="blocked",
+        support_surface="unsupported_negative_nitrogen_charge",
+        blocker_phase="preparation",
+        blocker_kind="unsupported_atom",
+        blocker_error_kind=SouthStarErrorKind.UNSUPPORTED_ATOM,
+        blocker_message_contains="charged atoms are unsupported",
+    ),
+    DefaultWriterCapabilityCase(
+        name="oxygen_charged_isotope",
+        smiles="[18OH-]",
+        extraction_profile="graph_no_potential_sites",
+        extraction_options=_GRAPH_EXTRACTION,
+        expected="blocked",
+        support_surface="unsupported_charged_oxygen_isotope",
+        blocker_phase="preparation",
+        blocker_kind="unsupported_atom",
+        blocker_error_kind=SouthStarErrorKind.UNSUPPORTED_ATOM,
+        blocker_message_contains="isotopic atoms are unsupported",
     ),
     DefaultWriterCapabilityCase(
         name="cyclopropene_potential_directional_boundary",

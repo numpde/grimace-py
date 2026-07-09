@@ -102,18 +102,52 @@ Typed blocked surfaces currently covered by the ledger:
 - potential directional non-neighbor stereo obligations when potential-site
   extraction is enabled.
 
+### Default ordinary support: facts-bound offline-complete subset
+
+For the default ordinary parity profile, `include_potential_sites=False`, the
+accepted ledger entries are facts-bound offline-complete. Each accepted entry
+builds a table-backed support artifact, passes the structural checker, passes
+the live writer verifier, passes the facts-bound verifier, and reports
+`offline_replay_complete=True`.
+
+The current offline-complete accepted surfaces are:
+
+- acyclic ordinary graphs;
+- simple branched ordinary graphs;
+- simple single ring closures;
+- double and triple non-single ring closures via the joint endpoint marker
+  lifecycle;
+- branched rings within the current graph/ring-order surface;
+- simple charged nitrogen bracket atoms such as `[NH4+]`;
+- simple neutral isotope carbon bracket atoms such as `[13CH4]`;
+- table-backed support artifacts for the above.
+
+The default ledger still blocks, with typed evidence:
+
+- charged/isotope combinations outside the declared bracket classes;
+- potential directional non-neighbor stereo obligations when potential-site
+  extraction is enabled;
+- other unsupported atom or stereo surfaces outside the declared default
+  corpus.
+
 Facts-bound support-artifact verification is intentionally layered. It first
-checks artifact-table structure and prepared identity, then begins offline
-relation replay for local atom/ring text lifecycles:
+checks artifact-table structure and prepared identity, then replays the current
+offline-complete layers for the default accepted corpus:
 
 - bracket atom text for `[NH4+]` and `[13CH4]`;
 - joint non-single ring-closure marker counts for cyclic double/triple bonds.
 - count DAG arithmetic for support/completion count roots and count-node terms.
 - support-image coverage partition and support/witness total linkage.
+- support-string replay paths, projection chains, and branch projection
+  identities;
+- terminal support identities;
+- local branch successor evidence;
+- graph/ring branch deltas;
+- empty, terminal-clean, and ring finite-relation/graph-obligation summaries.
 
-The facts-bound verifier still reports `offline_replay_complete=False`.
-Frontier products, full branch successor replay, and stereo residual replay
-remain structurally checked rather than fully replayed from facts.
+Artifacts outside this declared subset may still be accepted structurally or by
+the live verifier while reporting `offline_replay_complete=False` until their
+remaining object families have facts-bound replay rules.
 
 ## Conformance Corpus
 

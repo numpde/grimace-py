@@ -27,6 +27,9 @@ from tests.south_star1.default_writer_capability_ledger import (
     BLOCKED_DEFAULT_WRITER_CAPABILITY_CASES,
 )
 from tests.south_star1.default_writer_capability_ledger import (
+    DEFAULT_OFFLINE_RELATION_FAMILIES,
+)
+from tests.south_star1.default_writer_capability_ledger import (
     DEFAULT_WRITER_CAPABILITY_CASES,
 )
 
@@ -63,6 +66,14 @@ class WriterDefaultCapabilityLedgerTest(unittest.TestCase):
                 self.assertIsNotNone(case.expected_completion_count)
                 self.assertIsNone(case.blocker_phase)
                 self.assertIsNone(case.blocker_kind)
+                self.assertTrue(case.expected_structural_artifact)
+                self.assertTrue(case.expected_live_artifact_verifier)
+                self.assertTrue(case.expected_facts_bound_verifier)
+                self.assertTrue(case.expected_offline_replay_complete)
+                self.assertEqual(
+                    case.expected_offline_relation_families,
+                    DEFAULT_OFFLINE_RELATION_FAMILIES,
+                )
 
     def test_blocked_entries_declare_typed_blockers(self) -> None:
         self.assertTrue(BLOCKED_DEFAULT_WRITER_CAPABILITY_CASES)
@@ -71,6 +82,11 @@ class WriterDefaultCapabilityLedgerTest(unittest.TestCase):
                 self.assertEqual(case.expected, "blocked")
                 self.assertIsNotNone(case.blocker_phase)
                 self.assertIsNotNone(case.blocker_kind)
+                self.assertFalse(case.expected_structural_artifact)
+                self.assertFalse(case.expected_live_artifact_verifier)
+                self.assertFalse(case.expected_facts_bound_verifier)
+                self.assertFalse(case.expected_offline_replay_complete)
+                self.assertEqual(case.expected_offline_relation_families, ())
                 if case.blocker_phase == "frontier":
                     self.assertIsNotNone(case.blocker_operation)
 

@@ -14,6 +14,17 @@ _POTENTIAL_STEREO_EXTRACTION = RdkitOrdinaryExtractionOptions(
     include_potential_sites=True,
 )
 
+DEFAULT_OFFLINE_RELATION_FAMILIES = (
+    "branch_projection_identity",
+    "count_dag_arithmetic",
+    "graph_ring_branch_delta",
+    "local_branch_successor_evidence",
+    "residual_stereo_obligation_classification",
+    "support_image_coverage",
+    "support_string_replay_path",
+    "terminal_support_identity",
+)
+
 
 @dataclass(frozen=True, slots=True)
 class DefaultWriterCapabilityCase:
@@ -32,6 +43,11 @@ class DefaultWriterCapabilityCase:
     blocker_kind: str | None = None
     blocker_operation: str | None = None
     blocker_error_kind: SouthStarErrorKind | None = None
+    expected_structural_artifact: bool = False
+    expected_live_artifact_verifier: bool = False
+    expected_facts_bound_verifier: bool = False
+    expected_offline_replay_complete: bool = False
+    expected_offline_relation_families: tuple[str, ...] = ()
 
 
 DEFAULT_WRITER_CAPABILITY_CASES = (
@@ -44,6 +60,11 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         support_surface="acyclic_graph",
         expected_support_count=1,
         expected_completion_count=1,
+        expected_structural_artifact=True,
+        expected_live_artifact_verifier=True,
+        expected_facts_bound_verifier=True,
+        expected_offline_replay_complete=True,
+        expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
     ),
     DefaultWriterCapabilityCase(
         name="branched_alcohol",
@@ -54,6 +75,11 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         support_surface="branched_graph",
         expected_support_count=2,
         expected_completion_count=2,
+        expected_structural_artifact=True,
+        expected_live_artifact_verifier=True,
+        expected_facts_bound_verifier=True,
+        expected_offline_replay_complete=True,
+        expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
     ),
     DefaultWriterCapabilityCase(
         name="cyclopropane",
@@ -64,6 +90,11 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         support_surface="single_ring_closure",
         expected_support_count=1,
         expected_completion_count=2,
+        expected_structural_artifact=True,
+        expected_live_artifact_verifier=True,
+        expected_facts_bound_verifier=True,
+        expected_offline_replay_complete=True,
+        expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
     ),
     DefaultWriterCapabilityCase(
         name="cyclobutane",
@@ -74,6 +105,11 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         support_surface="single_ring_closure",
         expected_support_count=1,
         expected_completion_count=2,
+        expected_structural_artifact=True,
+        expected_live_artifact_verifier=True,
+        expected_facts_bound_verifier=True,
+        expected_offline_replay_complete=True,
+        expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
     ),
     DefaultWriterCapabilityCase(
         name="cyclopropene_double_closure",
@@ -84,6 +120,11 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         support_surface="non_single_ring_closure_double",
         expected_support_count=3,
         expected_completion_count=3,
+        expected_structural_artifact=True,
+        expected_live_artifact_verifier=True,
+        expected_facts_bound_verifier=True,
+        expected_offline_replay_complete=True,
+        expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
     ),
     DefaultWriterCapabilityCase(
         name="cyclopropyne_triple_closure",
@@ -94,6 +135,11 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         support_surface="non_single_ring_closure_triple",
         expected_support_count=3,
         expected_completion_count=3,
+        expected_structural_artifact=True,
+        expected_live_artifact_verifier=True,
+        expected_facts_bound_verifier=True,
+        expected_offline_replay_complete=True,
+        expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
     ),
     DefaultWriterCapabilityCase(
         name="branched_cyclobutane",
@@ -104,6 +150,11 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         support_surface="branched_ring",
         expected_support_count=2,
         expected_completion_count=4,
+        expected_structural_artifact=True,
+        expected_live_artifact_verifier=True,
+        expected_facts_bound_verifier=True,
+        expected_offline_replay_complete=True,
+        expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
     ),
     DefaultWriterCapabilityCase(
         name="ammonium_charge",
@@ -114,6 +165,11 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         support_surface="simple_bracket_charge",
         expected_support_count=1,
         expected_completion_count=1,
+        expected_structural_artifact=True,
+        expected_live_artifact_verifier=True,
+        expected_facts_bound_verifier=True,
+        expected_offline_replay_complete=True,
+        expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
     ),
     DefaultWriterCapabilityCase(
         name="isotopic_methane",
@@ -124,6 +180,11 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         support_surface="simple_isotope_bracket_atom",
         expected_support_count=1,
         expected_completion_count=1,
+        expected_structural_artifact=True,
+        expected_live_artifact_verifier=True,
+        expected_facts_bound_verifier=True,
+        expected_offline_replay_complete=True,
+        expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
     ),
     DefaultWriterCapabilityCase(
         name="charged_isotope_methyl",
@@ -161,6 +222,7 @@ BLOCKED_DEFAULT_WRITER_CAPABILITY_CASES = tuple(
 __all__ = (
     "ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES",
     "BLOCKED_DEFAULT_WRITER_CAPABILITY_CASES",
+    "DEFAULT_OFFLINE_RELATION_FAMILIES",
     "DEFAULT_WRITER_CAPABILITY_CASES",
     "DefaultWriterCapabilityCase",
 )

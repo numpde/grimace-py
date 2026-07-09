@@ -110,7 +110,31 @@ class WriterDefaultParityCorpusTest(unittest.TestCase):
                     result["artifact_metrics"]["largest_object_digest_payload_bytes"],
                     default_writer_envelope_work_budget(None).max_digest_term_bytes,
                 )
-                self.assertTrue(result["facts_bound_offline_complete"])
+                self.assertEqual(
+                    result["structural_accepted"],
+                    case.expected_structural_artifact,
+                )
+                self.assertEqual(
+                    result["live_accepted"],
+                    case.expected_live_artifact_verifier,
+                )
+                self.assertEqual(
+                    result["facts_bound_accepted"],
+                    case.expected_facts_bound_verifier,
+                )
+                self.assertEqual(
+                    result["facts_bound_offline_complete"],
+                    case.expected_offline_replay_complete,
+                )
+                self.assertEqual(result["facts_bound_unchecked_object_kinds"], ())
+                self.assertEqual(
+                    result["facts_bound_unchecked_obligation_families"],
+                    (),
+                )
+                self.assertLessEqual(
+                    set(case.expected_offline_relation_families),
+                    set(result["facts_bound_relation_families"]),
+                )
 
     def test_accepted_default_corpus_reparses_to_isomorphic_facts(self) -> None:
         for case in ACCEPTED_CASES:
@@ -268,7 +292,17 @@ def _accepted_case_result(case: DefaultWriterCapabilityCase) -> dict[str, object
         "artifact_support_count": structural.support_count,
         "artifact_witness_count": structural.witness_count,
         "artifact_metrics": artifact["metrics"],
+        "structural_accepted": structural.accepted,
+        "live_accepted": live.accepted,
+        "facts_bound_accepted": fact_bound.accepted,
         "facts_bound_offline_complete": fact_bound.offline_replay_complete,
+        "facts_bound_unchecked_object_kinds": (
+            fact_bound.offline_unchecked_object_kinds
+        ),
+        "facts_bound_unchecked_obligation_families": (
+            fact_bound.offline_unchecked_obligation_families
+        ),
+        "facts_bound_relation_families": fact_bound.offline_checked_relation_families,
     }
 
 

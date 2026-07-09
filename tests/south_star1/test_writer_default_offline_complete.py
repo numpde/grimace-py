@@ -7,6 +7,9 @@ import unittest
 from grimace._south_star1.writer_support_artifact_offline_verifier import (
     classify_residual_stereo_obligations_offline,
 )
+from grimace._south_star1.writer_support_artifact_offline_verifier import (
+    verify_writer_support_artifact_offline_replay,
+)
 from tests.south_star1.default_writer_capability_ledger import (
     ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES,
 )
@@ -33,10 +36,17 @@ class WriterDefaultOfflineCompleteTest(unittest.TestCase):
                 self.assertTrue(result["live_accepted"])
                 self.assertTrue(result["facts_bound_accepted"])
                 self.assertTrue(result["facts_bound_offline_complete"])
-                self.assertEqual(result["facts_bound_unchecked_object_kinds"], ())
+                self.assertEqual(
+                    result["facts_bound_object_kinds"],
+                    case.expected_offline_object_kinds,
+                )
+                self.assertEqual(
+                    result["facts_bound_unchecked_object_kinds"],
+                    case.expected_offline_unchecked_object_kinds,
+                )
                 self.assertEqual(
                     result["facts_bound_unchecked_obligation_families"],
-                    (),
+                    case.expected_offline_unchecked_obligation_families,
                 )
                 self.assertLessEqual(
                     set(case.expected_offline_relation_families),
@@ -53,7 +63,13 @@ class WriterDefaultOfflineCompleteTest(unittest.TestCase):
                 self.assertFalse(case.expected_live_artifact_verifier)
                 self.assertFalse(case.expected_facts_bound_verifier)
                 self.assertFalse(case.expected_offline_replay_complete)
+                self.assertEqual(case.expected_offline_object_kinds, ())
+                self.assertEqual(case.expected_offline_unchecked_object_kinds, ())
                 self.assertEqual(case.expected_offline_relation_families, ())
+                self.assertEqual(
+                    case.expected_offline_unchecked_obligation_families,
+                    (),
+                )
 
     def test_incomplete_obligation_family_is_not_reported_complete(self) -> None:
         case = next(
@@ -79,6 +95,18 @@ class WriterDefaultOfflineCompleteTest(unittest.TestCase):
 
         self.assertTrue(classification.accepted, classification.reason)
         self.assertIn("stereo_lifecycle", classification.unchecked_families)
+
+        replay = verify_writer_support_artifact_offline_replay(
+            facts=_facts(case),
+            artifact=artifact,
+        )
+
+        self.assertTrue(replay.accepted, replay.reason)
+        self.assertFalse(replay.offline_replay_complete)
+        self.assertIn(
+            "stereo_lifecycle",
+            replay.unchecked_obligation_families,
+        )
 
 
 if __name__ == "__main__":

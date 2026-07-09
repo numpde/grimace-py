@@ -27,7 +27,16 @@ from tests.south_star1.default_writer_capability_ledger import (
     BLOCKED_DEFAULT_WRITER_CAPABILITY_CASES,
 )
 from tests.south_star1.default_writer_capability_ledger import (
+    DEFAULT_OFFLINE_OBJECT_KINDS,
+)
+from tests.south_star1.default_writer_capability_ledger import (
     DEFAULT_OFFLINE_RELATION_FAMILIES,
+)
+from tests.south_star1.default_writer_capability_ledger import (
+    DEFAULT_OFFLINE_UNCHECKED_OBJECT_KINDS,
+)
+from tests.south_star1.default_writer_capability_ledger import (
+    DEFAULT_OFFLINE_UNCHECKED_OBLIGATION_FAMILIES,
 )
 from tests.south_star1.default_writer_capability_ledger import (
     DEFAULT_WRITER_CAPABILITY_CASES,
@@ -72,8 +81,20 @@ class WriterDefaultCapabilityLedgerTest(unittest.TestCase):
                 self.assertTrue(case.expected_facts_bound_verifier)
                 self.assertTrue(case.expected_offline_replay_complete)
                 self.assertEqual(
+                    case.expected_offline_object_kinds,
+                    DEFAULT_OFFLINE_OBJECT_KINDS,
+                )
+                self.assertEqual(
+                    case.expected_offline_unchecked_object_kinds,
+                    DEFAULT_OFFLINE_UNCHECKED_OBJECT_KINDS,
+                )
+                self.assertEqual(
                     case.expected_offline_relation_families,
                     DEFAULT_OFFLINE_RELATION_FAMILIES,
+                )
+                self.assertEqual(
+                    case.expected_offline_unchecked_obligation_families,
+                    DEFAULT_OFFLINE_UNCHECKED_OBLIGATION_FAMILIES,
                 )
 
     def test_blocked_entries_declare_typed_blockers(self) -> None:
@@ -87,7 +108,13 @@ class WriterDefaultCapabilityLedgerTest(unittest.TestCase):
                 self.assertFalse(case.expected_live_artifact_verifier)
                 self.assertFalse(case.expected_facts_bound_verifier)
                 self.assertFalse(case.expected_offline_replay_complete)
+                self.assertEqual(case.expected_offline_object_kinds, ())
+                self.assertEqual(case.expected_offline_unchecked_object_kinds, ())
                 self.assertEqual(case.expected_offline_relation_families, ())
+                self.assertEqual(
+                    case.expected_offline_unchecked_obligation_families,
+                    (),
+                )
                 if case.blocker_phase == "frontier":
                     self.assertIsNotNone(case.blocker_operation)
 

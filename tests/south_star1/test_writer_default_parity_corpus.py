@@ -126,10 +126,17 @@ class WriterDefaultParityCorpusTest(unittest.TestCase):
                     result["facts_bound_offline_complete"],
                     case.expected_offline_replay_complete,
                 )
-                self.assertEqual(result["facts_bound_unchecked_object_kinds"], ())
+                self.assertEqual(
+                    result["facts_bound_object_kinds"],
+                    case.expected_offline_object_kinds,
+                )
+                self.assertEqual(
+                    result["facts_bound_unchecked_object_kinds"],
+                    case.expected_offline_unchecked_object_kinds,
+                )
                 self.assertEqual(
                     result["facts_bound_unchecked_obligation_families"],
-                    (),
+                    case.expected_offline_unchecked_obligation_families,
                 )
                 self.assertLessEqual(
                     set(case.expected_offline_relation_families),
@@ -296,6 +303,7 @@ def _accepted_case_result(case: DefaultWriterCapabilityCase) -> dict[str, object
         "live_accepted": live.accepted,
         "facts_bound_accepted": fact_bound.accepted,
         "facts_bound_offline_complete": fact_bound.offline_replay_complete,
+        "facts_bound_object_kinds": fact_bound.offline_checked_object_kinds,
         "facts_bound_unchecked_object_kinds": (
             fact_bound.offline_unchecked_object_kinds
         ),

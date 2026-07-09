@@ -25,6 +25,24 @@ DEFAULT_OFFLINE_RELATION_FAMILIES = (
     "terminal_support_identity",
 )
 
+DEFAULT_OFFLINE_OBJECT_KINDS = (
+    "branch_support",
+    "count_dag",
+    "count_envelope",
+    "frontier_product",
+    "replay_path",
+    "source_snapshot",
+    "support_image",
+    "support_image_coverage",
+    "support_string",
+    "terminal_projection",
+    "terminal_support",
+    "text_projection",
+)
+
+DEFAULT_OFFLINE_UNCHECKED_OBJECT_KINDS: tuple[str, ...] = ()
+DEFAULT_OFFLINE_UNCHECKED_OBLIGATION_FAMILIES: tuple[str, ...] = ()
+
 
 @dataclass(frozen=True, slots=True)
 class DefaultWriterCapabilityCase:
@@ -47,7 +65,10 @@ class DefaultWriterCapabilityCase:
     expected_live_artifact_verifier: bool = False
     expected_facts_bound_verifier: bool = False
     expected_offline_replay_complete: bool = False
+    expected_offline_object_kinds: tuple[str, ...] = ()
+    expected_offline_unchecked_object_kinds: tuple[str, ...] = ()
     expected_offline_relation_families: tuple[str, ...] = ()
+    expected_offline_unchecked_obligation_families: tuple[str, ...] = ()
 
 
 DEFAULT_WRITER_CAPABILITY_CASES = (
@@ -64,7 +85,10 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         expected_live_artifact_verifier=True,
         expected_facts_bound_verifier=True,
         expected_offline_replay_complete=True,
+        expected_offline_object_kinds=DEFAULT_OFFLINE_OBJECT_KINDS,
+        expected_offline_unchecked_object_kinds=DEFAULT_OFFLINE_UNCHECKED_OBJECT_KINDS,
         expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
+        expected_offline_unchecked_obligation_families=DEFAULT_OFFLINE_UNCHECKED_OBLIGATION_FAMILIES,
     ),
     DefaultWriterCapabilityCase(
         name="branched_alcohol",
@@ -79,7 +103,10 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         expected_live_artifact_verifier=True,
         expected_facts_bound_verifier=True,
         expected_offline_replay_complete=True,
+        expected_offline_object_kinds=DEFAULT_OFFLINE_OBJECT_KINDS,
+        expected_offline_unchecked_object_kinds=DEFAULT_OFFLINE_UNCHECKED_OBJECT_KINDS,
         expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
+        expected_offline_unchecked_obligation_families=DEFAULT_OFFLINE_UNCHECKED_OBLIGATION_FAMILIES,
     ),
     DefaultWriterCapabilityCase(
         name="cyclopropane",
@@ -94,7 +121,10 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         expected_live_artifact_verifier=True,
         expected_facts_bound_verifier=True,
         expected_offline_replay_complete=True,
+        expected_offline_object_kinds=DEFAULT_OFFLINE_OBJECT_KINDS,
+        expected_offline_unchecked_object_kinds=DEFAULT_OFFLINE_UNCHECKED_OBJECT_KINDS,
         expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
+        expected_offline_unchecked_obligation_families=DEFAULT_OFFLINE_UNCHECKED_OBLIGATION_FAMILIES,
     ),
     DefaultWriterCapabilityCase(
         name="cyclobutane",
@@ -109,7 +139,10 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         expected_live_artifact_verifier=True,
         expected_facts_bound_verifier=True,
         expected_offline_replay_complete=True,
+        expected_offline_object_kinds=DEFAULT_OFFLINE_OBJECT_KINDS,
+        expected_offline_unchecked_object_kinds=DEFAULT_OFFLINE_UNCHECKED_OBJECT_KINDS,
         expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
+        expected_offline_unchecked_obligation_families=DEFAULT_OFFLINE_UNCHECKED_OBLIGATION_FAMILIES,
     ),
     DefaultWriterCapabilityCase(
         name="cyclopropene_double_closure",
@@ -124,7 +157,10 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         expected_live_artifact_verifier=True,
         expected_facts_bound_verifier=True,
         expected_offline_replay_complete=True,
+        expected_offline_object_kinds=DEFAULT_OFFLINE_OBJECT_KINDS,
+        expected_offline_unchecked_object_kinds=DEFAULT_OFFLINE_UNCHECKED_OBJECT_KINDS,
         expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
+        expected_offline_unchecked_obligation_families=DEFAULT_OFFLINE_UNCHECKED_OBLIGATION_FAMILIES,
     ),
     DefaultWriterCapabilityCase(
         name="cyclopropyne_triple_closure",
@@ -139,7 +175,10 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         expected_live_artifact_verifier=True,
         expected_facts_bound_verifier=True,
         expected_offline_replay_complete=True,
+        expected_offline_object_kinds=DEFAULT_OFFLINE_OBJECT_KINDS,
+        expected_offline_unchecked_object_kinds=DEFAULT_OFFLINE_UNCHECKED_OBJECT_KINDS,
         expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
+        expected_offline_unchecked_obligation_families=DEFAULT_OFFLINE_UNCHECKED_OBLIGATION_FAMILIES,
     ),
     DefaultWriterCapabilityCase(
         name="branched_cyclobutane",
@@ -154,7 +193,10 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         expected_live_artifact_verifier=True,
         expected_facts_bound_verifier=True,
         expected_offline_replay_complete=True,
+        expected_offline_object_kinds=DEFAULT_OFFLINE_OBJECT_KINDS,
+        expected_offline_unchecked_object_kinds=DEFAULT_OFFLINE_UNCHECKED_OBJECT_KINDS,
         expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
+        expected_offline_unchecked_obligation_families=DEFAULT_OFFLINE_UNCHECKED_OBLIGATION_FAMILIES,
     ),
     DefaultWriterCapabilityCase(
         name="nitrogen_cation",
@@ -169,7 +211,10 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         expected_live_artifact_verifier=True,
         expected_facts_bound_verifier=True,
         expected_offline_replay_complete=True,
+        expected_offline_object_kinds=DEFAULT_OFFLINE_OBJECT_KINDS,
+        expected_offline_unchecked_object_kinds=DEFAULT_OFFLINE_UNCHECKED_OBJECT_KINDS,
         expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
+        expected_offline_unchecked_obligation_families=DEFAULT_OFFLINE_UNCHECKED_OBLIGATION_FAMILIES,
     ),
     DefaultWriterCapabilityCase(
         name="iminium_hydrogen_cation",
@@ -184,7 +229,10 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         expected_live_artifact_verifier=True,
         expected_facts_bound_verifier=True,
         expected_offline_replay_complete=True,
+        expected_offline_object_kinds=DEFAULT_OFFLINE_OBJECT_KINDS,
+        expected_offline_unchecked_object_kinds=DEFAULT_OFFLINE_UNCHECKED_OBJECT_KINDS,
         expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
+        expected_offline_unchecked_obligation_families=DEFAULT_OFFLINE_UNCHECKED_OBLIGATION_FAMILIES,
     ),
     DefaultWriterCapabilityCase(
         name="amino_cation",
@@ -199,7 +247,10 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         expected_live_artifact_verifier=True,
         expected_facts_bound_verifier=True,
         expected_offline_replay_complete=True,
+        expected_offline_object_kinds=DEFAULT_OFFLINE_OBJECT_KINDS,
+        expected_offline_unchecked_object_kinds=DEFAULT_OFFLINE_UNCHECKED_OBJECT_KINDS,
         expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
+        expected_offline_unchecked_obligation_families=DEFAULT_OFFLINE_UNCHECKED_OBLIGATION_FAMILIES,
     ),
     DefaultWriterCapabilityCase(
         name="ammonia_cation",
@@ -214,7 +265,10 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         expected_live_artifact_verifier=True,
         expected_facts_bound_verifier=True,
         expected_offline_replay_complete=True,
+        expected_offline_object_kinds=DEFAULT_OFFLINE_OBJECT_KINDS,
+        expected_offline_unchecked_object_kinds=DEFAULT_OFFLINE_UNCHECKED_OBJECT_KINDS,
         expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
+        expected_offline_unchecked_obligation_families=DEFAULT_OFFLINE_UNCHECKED_OBLIGATION_FAMILIES,
     ),
     DefaultWriterCapabilityCase(
         name="ammonium_charge",
@@ -229,7 +283,10 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         expected_live_artifact_verifier=True,
         expected_facts_bound_verifier=True,
         expected_offline_replay_complete=True,
+        expected_offline_object_kinds=DEFAULT_OFFLINE_OBJECT_KINDS,
+        expected_offline_unchecked_object_kinds=DEFAULT_OFFLINE_UNCHECKED_OBJECT_KINDS,
         expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
+        expected_offline_unchecked_obligation_families=DEFAULT_OFFLINE_UNCHECKED_OBLIGATION_FAMILIES,
     ),
     DefaultWriterCapabilityCase(
         name="oxide_anion",
@@ -244,7 +301,10 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         expected_live_artifact_verifier=True,
         expected_facts_bound_verifier=True,
         expected_offline_replay_complete=True,
+        expected_offline_object_kinds=DEFAULT_OFFLINE_OBJECT_KINDS,
+        expected_offline_unchecked_object_kinds=DEFAULT_OFFLINE_UNCHECKED_OBJECT_KINDS,
         expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
+        expected_offline_unchecked_obligation_families=DEFAULT_OFFLINE_UNCHECKED_OBLIGATION_FAMILIES,
     ),
     DefaultWriterCapabilityCase(
         name="hydroxide_anion",
@@ -259,7 +319,10 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         expected_live_artifact_verifier=True,
         expected_facts_bound_verifier=True,
         expected_offline_replay_complete=True,
+        expected_offline_object_kinds=DEFAULT_OFFLINE_OBJECT_KINDS,
+        expected_offline_unchecked_object_kinds=DEFAULT_OFFLINE_UNCHECKED_OBJECT_KINDS,
         expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
+        expected_offline_unchecked_obligation_families=DEFAULT_OFFLINE_UNCHECKED_OBLIGATION_FAMILIES,
     ),
     DefaultWriterCapabilityCase(
         name="isotopic_methane",
@@ -274,7 +337,10 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         expected_live_artifact_verifier=True,
         expected_facts_bound_verifier=True,
         expected_offline_replay_complete=True,
+        expected_offline_object_kinds=DEFAULT_OFFLINE_OBJECT_KINDS,
+        expected_offline_unchecked_object_kinds=DEFAULT_OFFLINE_UNCHECKED_OBJECT_KINDS,
         expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
+        expected_offline_unchecked_obligation_families=DEFAULT_OFFLINE_UNCHECKED_OBLIGATION_FAMILIES,
     ),
     DefaultWriterCapabilityCase(
         name="charged_isotope_methyl",
@@ -323,7 +389,10 @@ BLOCKED_DEFAULT_WRITER_CAPABILITY_CASES = tuple(
 __all__ = (
     "ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES",
     "BLOCKED_DEFAULT_WRITER_CAPABILITY_CASES",
+    "DEFAULT_OFFLINE_OBJECT_KINDS",
     "DEFAULT_OFFLINE_RELATION_FAMILIES",
+    "DEFAULT_OFFLINE_UNCHECKED_OBJECT_KINDS",
+    "DEFAULT_OFFLINE_UNCHECKED_OBLIGATION_FAMILIES",
     "DEFAULT_WRITER_CAPABILITY_CASES",
     "DefaultWriterCapabilityCase",
 )

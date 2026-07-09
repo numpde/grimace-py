@@ -147,6 +147,10 @@ Testing rules:
   requests revisions for overclaims, weak assertions, fixture drift, or scope
   creep, runs focused verification locally, and makes the commit only after the
   slice is coherent.
+- When practical for nontrivial subagent-authored slices, ask a separate
+  subagent to independently review the implemented diff before committing.
+  Treat that review as advisory but inspect and resolve any substantive
+  concern rather than rubber-stamping the implementation.
 - Do not modify unrelated files.
 - Do not revert user changes unless explicitly requested.
 - Stage one path or concept at a time and check `git status -sb` before each

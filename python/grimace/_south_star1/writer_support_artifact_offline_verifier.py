@@ -852,21 +852,8 @@ def _obligation_manifests_checked(items: list[object]) -> bool:
             or item["is_discharged"]
             or item["terminal_clean"]
             or _ring_obligation_manifest_checked(item)
-            or _tetra_residual_manifest_checked(item)
         )
         for item in items
-    )
-
-
-def _tetra_residual_manifest_checked(item: Mapping[str, object]) -> bool:
-    return (
-        item["family"] == "residual_work"
-        and item["operation"]
-        in {
-            "tetrahedral atom-token restriction",
-            "tetrahedral local-order factor closure",
-        }
-        and bool(item["linked_lifecycle_digests"])
     )
 
 
@@ -1164,7 +1151,7 @@ def _unchecked_obligation_family_name(
         }
         for item in items
     ):
-        return "tetra_residual_operation_replay"
+        return "tetra_residual_link_provenance_replay"
     return family
 
 

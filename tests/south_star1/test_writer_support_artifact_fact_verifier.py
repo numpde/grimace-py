@@ -488,7 +488,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
         self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_STEREO)
 
-    def test_supported_specified_tetra_artifact_is_facts_bound_offline_complete(
+    def test_supported_specified_tetra_artifact_stops_at_link_provenance_replay(
         self,
     ) -> None:
         facts = tetrahedral_facts()
@@ -537,18 +537,24 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         self.assertTrue(classification.accepted, classification.reason)
         self.assertTrue(classification.residual_obligations_present)
         self.assertTrue(classification.stereo_obligations_present)
-        self.assertEqual(classification.unchecked_families, ())
+        self.assertEqual(
+            classification.unchecked_families,
+            ("tetra_residual_link_provenance_replay",),
+        )
         self.assertNotIn("residual_work", classification.unchecked_families)
-        self.assertIn("residual_work", classification.checked_families)
+        self.assertNotIn("residual_work", classification.checked_families)
         self.assertIn("stereo_lifecycle", classification.checked_families)
         self.assertIn("terminal_stereo_lifecycle", classification.checked_families)
         self.assertTrue(verification.accepted, verification.reason)
         self.assertTrue(verification.structurally_checked)
         self.assertTrue(verification.facts_identity_checked)
-        self.assertTrue(verification.offline_replay_complete)
+        self.assertFalse(verification.offline_replay_complete)
         self.assertEqual(verification.offline_unchecked_object_kinds, ())
-        self.assertEqual(verification.offline_unchecked_obligation_families, ())
-        self.assertIn(
+        self.assertEqual(
+            verification.offline_unchecked_obligation_families,
+            ("tetra_residual_link_provenance_replay",),
+        )
+        self.assertNotIn(
             "residual_work",
             verification.offline_checked_obligation_families,
         )
@@ -922,6 +928,36 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         self.assertIn(
             "residual_lifecycle_reverse_link_unreciprocated",
             classification.reason,
+        )
+
+    def test_specified_tetra_residual_reciprocal_extra_link_stays_incomplete(
+        self,
+    ) -> None:
+        facts, artifact = _manual_tetra_artifact()
+        branch = _first_residual_work_branch(
+            artifact,
+            operation="tetrahedral atom-token restriction",
+        )
+        manifest = next(
+            item
+            for item in branch["payload"]["obligation_manifests"]["residual_work"]
+            if item["operation"] == "tetrahedral atom-token restriction"
+        )
+        unrelated = next(
+            item
+            for item in branch["payload"]["obligation_manifests"]["stereo_lifecycle"]
+            if item["operation"] == "WriterStereoLifecycleEvidence"
+            and item["evidence_digest"] not in manifest["linked_lifecycle_digests"]
+        )
+        manifest["linked_lifecycle_digests"].append(unrelated["evidence_digest"])
+        unrelated["linked_residual_work_digests"].append(manifest["evidence_digest"])
+
+        classification = _obligation_classification(artifact, facts=facts)
+
+        self.assertTrue(classification.accepted, classification.reason)
+        self.assertEqual(
+            classification.unchecked_families,
+            ("tetra_residual_link_provenance_replay",),
         )
 
     def test_terminal_clean_obligation_manifests_are_checked(self) -> None:

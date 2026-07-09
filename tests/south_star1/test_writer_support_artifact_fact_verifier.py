@@ -186,7 +186,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             "closure_bond_text",
             verification.offline_checked_relation_families,
         )
-        self.assertFalse(verification.offline_replay_complete)
+        self.assertTrue(verification.offline_replay_complete)
 
     def test_facts_bound_verifier_reports_joint_triple_closure_offline_check(
         self,
@@ -198,7 +198,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             "closure_bond_text",
             verification.offline_checked_relation_families,
         )
-        self.assertFalse(verification.offline_replay_complete)
+        self.assertTrue(verification.offline_replay_complete)
 
     def test_offline_bracket_atom_replay_rejects_wrong_facts(self) -> None:
         with self.assertRaisesRegex(SouthStarError, "bracket_atom_text_facts_mismatch"):
@@ -298,22 +298,10 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         cases = {
             "CCO": (),
             "CC(C)O": (),
-            "C1CC1": (
-                "finite_relation_work",
-                "graph_obligation_work",
-            ),
-            "C1CCC1": (
-                "finite_relation_work",
-                "graph_obligation_work",
-            ),
-            "C1=CC1": (
-                "finite_relation_work",
-                "graph_obligation_work",
-            ),
-            "C1#CC1": (
-                "finite_relation_work",
-                "graph_obligation_work",
-            ),
+            "C1CC1": (),
+            "C1CCC1": (),
+            "C1=CC1": (),
+            "C1#CC1": (),
             "[NH4+]": (),
             "[13CH4]": (),
         }
@@ -450,6 +438,115 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
         verification = verify_writer_support_artifact_for_facts(
             facts=_rdkit_facts("CCO"),
+            runtime_options=_writer_options(),
+            artifact=artifact,
+        )
+
+        self.assertFalse(verification.accepted)
+        self.assertIn("object_digest_mismatch", verification.reason)
+
+    def test_ring_finite_relation_and_graph_obligation_are_checked(self) -> None:
+        for smiles in ("C1CC1", "C1CCC1", "C1=CC1", "C1#CC1"):
+            with self.subTest(smiles=smiles):
+                artifact = _rdkit_artifact(smiles)
+                classification = _obligation_classification(artifact)
+                verification = verify_writer_support_artifact_for_facts(
+                    facts=_rdkit_facts(smiles),
+                    runtime_options=_writer_options(),
+                    artifact=artifact,
+                )
+
+                self.assertTrue(classification.accepted, classification.reason)
+                self.assertNotIn(
+                    "finite_relation_work",
+                    classification.unchecked_families,
+                )
+                self.assertNotIn(
+                    "graph_obligation_work",
+                    classification.unchecked_families,
+                )
+                self.assertIn("finite_relation_work", classification.checked_families)
+                self.assertIn("graph_obligation_work", classification.checked_families)
+                self.assertTrue(verification.accepted, verification.reason)
+                self.assertTrue(verification.offline_replay_complete)
+
+    def test_ring_obligation_manifest_mutations_are_classified(self) -> None:
+        artifact = _rdkit_artifact("C1=CC1")
+        branch = _first_graph_ring_delta_branch(
+            artifact,
+            "ring_endpoint_pair_non_single",
+        )
+        finite = branch["payload"]["obligation_manifests"]["finite_relation_work"][0]
+        finite["ring_summary"]["is_exact"] = False
+
+        not_exact = _obligation_classification(artifact)
+
+        self.assertTrue(not_exact.accepted, not_exact.reason)
+        self.assertIn("finite_relation_work", not_exact.unchecked_families)
+
+        artifact = _rdkit_artifact("C1=CC1")
+        branch = _first_graph_ring_delta_branch(
+            artifact,
+            "ring_endpoint_pair_non_single",
+        )
+        graph = branch["payload"]["obligation_manifests"]["graph_obligation_work"][0]
+        graph["ring_summary"]["is_complete"] = False
+
+        not_complete = _obligation_classification(artifact)
+
+        self.assertTrue(not_complete.accepted, not_complete.reason)
+        self.assertIn("graph_obligation_work", not_complete.unchecked_families)
+
+    def test_ring_obligation_cross_link_mutations_are_rejected(self) -> None:
+        artifact = _rdkit_artifact("C1=CC1")
+        branch = _first_graph_ring_delta_branch(
+            artifact,
+            "ring_endpoint_pair_non_single",
+        )
+        graph = branch["payload"]["obligation_manifests"]["graph_obligation_work"][0]
+        graph["ring_summary"]["bond"] = "wrong"
+
+        wrong_bond = _obligation_classification(artifact)
+
+        self.assertFalse(wrong_bond.accepted)
+        self.assertIn("ring_obligation_bond_mismatch", wrong_bond.reason)
+
+        artifact = _rdkit_artifact("C1=CC1")
+        branch = _first_graph_ring_delta_branch(
+            artifact,
+            "ring_endpoint_pair_non_single",
+        )
+        finite = branch["payload"]["obligation_manifests"]["finite_relation_work"][0]
+        finite["operation"] = "unknown closure operation"
+
+        wrong_operation = _obligation_classification(artifact)
+
+        self.assertFalse(wrong_operation.accepted)
+        self.assertIn("ring_obligation_operation_mismatch", wrong_operation.reason)
+
+        artifact = _rdkit_artifact("C1=CC1")
+        branch = _first_graph_ring_delta_branch(
+            artifact,
+            "ring_endpoint_pair_non_single",
+        )
+        graph = branch["payload"]["obligation_manifests"]["graph_obligation_work"][0]
+        graph["ring_summary"]["marker"] = "#"
+
+        wrong_marker = _obligation_classification(artifact)
+
+        self.assertFalse(wrong_marker.accepted)
+        self.assertIn("ring_obligation_marker_mismatch", wrong_marker.reason)
+
+    def test_ring_obligation_manifest_count_mismatch_is_rejected(self) -> None:
+        artifact = _rdkit_artifact("C1=CC1")
+        branch = _first_graph_ring_delta_branch(
+            artifact,
+            "ring_endpoint_pair_non_single",
+        )
+        branch["payload"]["obligation_summary"]["finite_relation_work_count"] += 1
+
+        verification = verify_writer_support_artifact_for_facts(
+            facts=_rdkit_facts("C1=CC1"),
             runtime_options=_writer_options(),
             artifact=artifact,
         )

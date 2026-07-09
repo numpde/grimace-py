@@ -852,6 +852,7 @@ def _validate_obligation_manifests(
                     "is_empty",
                     "is_discharged",
                     "terminal_clean",
+                    "ring_summary",
                     "evidence_digest",
                 ),
             )
@@ -868,6 +869,54 @@ def _validate_obligation_manifests(
             for field in ("is_noop", "is_empty", "is_discharged", "terminal_clean"):
                 if not isinstance(item[field], bool):
                     _artifact_violation("obligation_manifest_bool_field_mismatch")
+            _validate_ring_obligation_summary(item["ring_summary"])
+
+
+def _validate_ring_obligation_summary(summary: object) -> None:
+    if summary is None:
+        return
+    _require_mapping(summary, "ring_obligation_summary_not_mapping")
+    _require_exact_payload_fields(
+        summary,
+        (
+            "relation_kind",
+            "operation",
+            "bond",
+            "endpoint_atom",
+            "partner_atom",
+            "ring_label",
+            "side",
+            "marker",
+            "marker_count",
+            "pending_before_count",
+            "pending_after_count",
+            "closed_before_count",
+            "closed_after_count",
+            "is_exact",
+            "is_exhausted",
+            "is_complete",
+            "is_discharged",
+        ),
+    )
+    for field in ("relation_kind", "operation", "side", "marker"):
+        if not isinstance(summary[field], str):
+            _artifact_violation("ring_obligation_summary_string_field_mismatch")
+    for field in (
+        "marker_count",
+        "pending_before_count",
+        "pending_after_count",
+        "closed_before_count",
+        "closed_after_count",
+    ):
+        _require_int(
+            summary[field],
+            "ring_obligation_summary_count_not_int",
+        )
+        if summary[field] < 0:
+            _artifact_violation("ring_obligation_summary_count_negative")
+    for field in ("is_exact", "is_exhausted", "is_complete", "is_discharged"):
+        if not isinstance(summary[field], bool):
+            _artifact_violation("ring_obligation_summary_bool_field_mismatch")
 
 
 def _require_exact_payload_fields(payload: Mapping[str, object], fields: tuple[str, ...]) -> None:

@@ -510,6 +510,7 @@ def _add_branch_support(
             "obligation_manifests": _branch_obligation_manifests(
                 branch,
                 branch_identity=envelope,
+                graph_ring_delta=graph_ring_delta,
                 budget=budget,
             ),
             "digest": envelope["digest"],
@@ -622,6 +623,7 @@ def _branch_obligation_manifests(
     branch,
     *,
     branch_identity: Mapping[str, object],
+    graph_ring_delta: Mapping[str, object],
     budget: WriterEnvelopeWorkBudget,
 ) -> dict[str, list[dict[str, object]]]:
     successor = branch.successor_state_certificate
@@ -636,6 +638,14 @@ def _branch_obligation_manifests(
         successor,
         "closure_candidate_lifecycle_replay_certificate",
         None,
+    )
+    finite_ring_summary = _ring_obligation_summary(
+        graph_ring_delta=graph_ring_delta,
+        family="finite_relation_work",
+    )
+    graph_ring_summary = _ring_obligation_summary(
+        graph_ring_delta=graph_ring_delta,
+        family="graph_obligation_work",
     )
     return {
         "residual_work": _obligation_family_manifests(
@@ -655,6 +665,7 @@ def _branch_obligation_manifests(
                 _replay_complete(residual_attachment_replay)
                 or _replay_complete(closure_candidate_replay)
             ),
+            ring_summary=finite_ring_summary,
             budget=budget,
         ),
         "graph_obligation_work": _obligation_family_manifests(
@@ -663,6 +674,7 @@ def _branch_obligation_manifests(
             source_digest=branch_identity["source_state_digest"],
             successor_digest=branch_identity["successor_state_digest"],
             replay_complete=_replay_complete(graph_replay),
+            ring_summary=graph_ring_summary,
             budget=budget,
         ),
         "stereo_lifecycle": _obligation_family_manifests(
@@ -780,6 +792,7 @@ def _obligation_family_manifests(
     replay_complete: bool,
     budget: WriterEnvelopeWorkBudget,
     terminal_clean: bool = False,
+    ring_summary: Mapping[str, object] | None = None,
 ) -> list[dict[str, object]]:
     return [
         {
@@ -791,6 +804,7 @@ def _obligation_family_manifests(
             "is_empty": False,
             "is_discharged": bool(replay_complete),
             "terminal_clean": bool(terminal_clean),
+            "ring_summary": None if ring_summary is None else dict(ring_summary),
             "evidence_digest": _identity_digest(
                 record,
                 budget=budget,
@@ -799,6 +813,60 @@ def _obligation_family_manifests(
         }
         for record in records
     ]
+
+
+def _ring_obligation_summary(
+    *,
+    graph_ring_delta: Mapping[str, object],
+    family: str,
+) -> dict[str, object] | None:
+    kind = graph_ring_delta["kind"]
+    if kind not in (
+        "ring_endpoint_open",
+        "ring_endpoint_pair",
+        "ring_endpoint_pair_non_single",
+    ):
+        return None
+    events = graph_ring_delta["manifest"]["event_manifests"]
+    event_kind = (
+        "ring_endpoint_emitted"
+        if kind == "ring_endpoint_open"
+        else "ring_endpoint_paired"
+    )
+    ring_event = next(event for event in events if event["kind"] == event_kind)
+    closing = kind in ("ring_endpoint_pair", "ring_endpoint_pair_non_single")
+    label_released = any(event["kind"] == "ring_label_released" for event in events)
+    marker = ring_event["bond_text"]
+    marker_count = int(bool(ring_event["bond_text"]))
+    if closing:
+        marker = marker or ring_event["first_endpoint_bond_text"]
+        marker_count += int(bool(ring_event["first_endpoint_bond_text"]))
+    operation = (
+        "closure endpoint open relation"
+        if family == "finite_relation_work" and not closing
+        else "closure endpoint pair relation"
+        if family == "finite_relation_work"
+        else "writer graph obligation context"
+    )
+    return {
+        "relation_kind": kind,
+        "operation": operation,
+        "bond": ring_event["bond"],
+        "endpoint_atom": ring_event["endpoint_atom"],
+        "partner_atom": ring_event["partner_atom"],
+        "ring_label": ring_event["label"],
+        "side": ring_event["side"],
+        "marker": marker,
+        "marker_count": marker_count,
+        "pending_before_count": 1 if closing else 0,
+        "pending_after_count": 0 if closing else 1,
+        "closed_before_count": 0,
+        "closed_after_count": 1 if closing else 0,
+        "is_exact": True,
+        "is_exhausted": True,
+        "is_complete": True,
+        "is_discharged": bool(not closing or label_released),
+    }
 
 
 def _terminal_graph_clean(terminal) -> bool:

@@ -677,6 +677,7 @@ def classify_residual_stereo_obligations_offline(
         }
         for branch_ref in _branch_support_refs_for_root(root=root, objects=objects):
             branch = _require_object(objects, branch_ref)
+            _check_branch_obligation_ring_summaries(branch)
             for family, items in branch["payload"]["obligation_manifests"].items():
                 manifests_by_family[family].extend(items)
         for support_ref in root["payload"]["support_string_refs"]:
@@ -748,9 +749,134 @@ def _obligation_manifests_checked(items: list[object]) -> bool:
             or item["is_empty"]
             or item["is_discharged"]
             or item["terminal_clean"]
+            or _ring_obligation_manifest_checked(item)
         )
         for item in items
     )
+
+
+def _ring_obligation_manifest_checked(item: Mapping[str, object]) -> bool:
+    summary = item["ring_summary"]
+    if summary is None:
+        return False
+    family = item["family"]
+    if not summary["is_exact"]:
+        return False
+    if family == "finite_relation_work":
+        if item["operation"] not in (
+            "closure endpoint open relation",
+            "closure endpoint pair relation",
+        ):
+            return False
+        if summary["operation"] != item["operation"]:
+            return False
+        return bool(summary["is_exhausted"] and summary["is_discharged"])
+    if family == "graph_obligation_work":
+        if item["operation"] != "writer graph obligation context":
+            return False
+        if summary["operation"] != item["operation"]:
+            return False
+        kind = summary["relation_kind"]
+        if kind == "ring_endpoint_open":
+            return bool(
+                summary["is_complete"]
+                and summary["pending_before_count"] == 0
+                and summary["pending_after_count"] == 1
+            )
+        if kind in ("ring_endpoint_pair", "ring_endpoint_pair_non_single"):
+            return bool(
+                summary["is_complete"]
+                and summary["is_discharged"]
+                and summary["pending_before_count"] == 1
+                and summary["pending_after_count"] == 0
+                and summary["closed_after_count"] == 1
+            )
+    return False
+
+
+def _check_branch_obligation_ring_summaries(branch: Mapping[str, object]) -> None:
+    payload = branch["payload"]
+    delta = payload["graph_ring_delta"]
+    kind = delta["kind"]
+    manifests = payload["obligation_manifests"]
+    ring_kind = kind in (
+        "ring_endpoint_open",
+        "ring_endpoint_pair",
+        "ring_endpoint_pair_non_single",
+    )
+    for family in ("finite_relation_work", "graph_obligation_work"):
+        for item in manifests[family]:
+            summary = item["ring_summary"]
+            if not ring_kind:
+                if summary is not None:
+                    _offline_violation("non_ring_obligation_has_ring_summary")
+                continue
+            if summary is None:
+                _offline_violation("ring_obligation_summary_missing")
+            _check_ring_obligation_summary_against_delta(
+                family=family,
+                item=item,
+                summary=summary,
+                delta=delta,
+            )
+
+
+def _check_ring_obligation_summary_against_delta(
+    *,
+    family: str,
+    item: Mapping[str, object],
+    summary: Mapping[str, object],
+    delta: Mapping[str, object],
+) -> None:
+    kind = delta["kind"]
+    if summary["relation_kind"] != kind:
+        _offline_violation("ring_obligation_relation_kind_mismatch")
+    event_kind = (
+        "ring_endpoint_emitted"
+        if kind == "ring_endpoint_open"
+        else "ring_endpoint_paired"
+    )
+    events = delta["manifest"]["event_manifests"]
+    ring_events = [event for event in events if event["kind"] == event_kind]
+    if len(ring_events) != 1:
+        _offline_violation("ring_obligation_event_count_mismatch")
+    event = ring_events[0]
+    for field, event_field in (
+        ("bond", "bond"),
+        ("endpoint_atom", "endpoint_atom"),
+        ("partner_atom", "partner_atom"),
+        ("ring_label", "label"),
+        ("side", "side"),
+    ):
+        if summary[field] != event[event_field]:
+            _offline_violation(f"ring_obligation_{field}_mismatch")
+    marker = event["bond_text"]
+    marker_count = int(bool(event["bond_text"]))
+    if kind != "ring_endpoint_open":
+        marker = marker or event["first_endpoint_bond_text"]
+        marker_count += int(bool(event["first_endpoint_bond_text"]))
+    if summary["marker"] != marker:
+        _offline_violation("ring_obligation_marker_mismatch")
+    if summary["marker_count"] != marker_count:
+        _offline_violation("ring_obligation_marker_count_mismatch")
+    expected_operation = (
+        "closure endpoint open relation"
+        if family == "finite_relation_work" and kind == "ring_endpoint_open"
+        else "closure endpoint pair relation"
+        if family == "finite_relation_work"
+        else "writer graph obligation context"
+    )
+    if item["operation"] != expected_operation or summary["operation"] != expected_operation:
+        _offline_violation("ring_obligation_operation_mismatch")
+    closing = kind in ("ring_endpoint_pair", "ring_endpoint_pair_non_single")
+    if summary["pending_before_count"] != (1 if closing else 0):
+        _offline_violation("ring_obligation_pending_before_mismatch")
+    if summary["pending_after_count"] != (0 if closing else 1):
+        _offline_violation("ring_obligation_pending_after_mismatch")
+    if summary["closed_after_count"] != (1 if closing else 0):
+        _offline_violation("ring_obligation_closed_after_mismatch")
+    if closing and not any(event["kind"] == "ring_label_released" for event in events):
+        _offline_violation("ring_obligation_pair_lacks_label_release")
 
 
 def verify_terminal_support_identities_offline(

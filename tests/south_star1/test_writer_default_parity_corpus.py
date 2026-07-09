@@ -110,6 +110,7 @@ class WriterDefaultParityCorpusTest(unittest.TestCase):
                     result["artifact_metrics"]["largest_object_digest_payload_bytes"],
                     default_writer_envelope_work_budget(None).max_digest_term_bytes,
                 )
+                self.assertTrue(result["facts_bound_offline_complete"])
 
     def test_accepted_default_corpus_reparses_to_isomorphic_facts(self) -> None:
         for case in ACCEPTED_CASES:
@@ -267,6 +268,7 @@ def _accepted_case_result(case: DefaultWriterCapabilityCase) -> dict[str, object
         "artifact_support_count": structural.support_count,
         "artifact_witness_count": structural.witness_count,
         "artifact_metrics": artifact["metrics"],
+        "facts_bound_offline_complete": fact_bound.offline_replay_complete,
     }
 
 

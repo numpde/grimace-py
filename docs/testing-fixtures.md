@@ -65,6 +65,8 @@ Read a fixture case in this order:
 5. Expected fields: define the executable claim.
 
 Documentation explains intent; loaders and tests enforce it.
+For concrete examples of those executable claims, see
+[Parity examples](parity-examples.html).
 
 ## Fixture paths
 

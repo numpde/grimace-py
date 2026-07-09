@@ -43,6 +43,10 @@ Repository: [github.com/numpde/grimace-py](https://github.com/numpde/grimace-py)
       <td><a href="concepts.html">Concepts</a></td>
     </tr>
     <tr>
+      <td>See concrete RDKit parity examples</td>
+      <td><a href="parity-examples.html">Parity examples</a></td>
+    </tr>
+    <tr>
       <td>Choose supported flags and root behavior</td>
       <td><a href="runtime.html">Runtime</a></td>
     </tr>

@@ -45,6 +45,9 @@ The RDKit-source-tree traceability view is
 fixtures back to RDKit's own serializer tests and source blocks, including the
 RDKit #4582 / #3967 cases and manual bond-stereo wrapper tests.
 
+For a concrete failing parity case, see
+[Parity examples](parity-examples.html).
+
 ## How diagnostics run
 
 Known gaps are intentionally outside default passing test discovery. Run them

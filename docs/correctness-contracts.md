@@ -11,6 +11,9 @@ supported writer regime.
 | Chemical/language semantics | Is the string valid SMILES for the intended molecule, stereo assignment, and prefix language? | Parsed molecule checks, stereo checks, decoder-language checks. |
 | RDKit writer parity | Would RDKit emit this exact string under the supported writer flags? | RDKit-versioned fixtures and string-level parity tests. |
 
+For concrete fixture-backed cases, see
+[Parity examples](parity-examples.html).
+
 Semantic equivalence alone is not enough for `MolToSmilesEnum(...)` because
 Grimace also exposes token-level decoding. A terminal string that parses
 correctly does not prove that intermediate prefixes, token choices, or branch

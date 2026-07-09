@@ -20,6 +20,8 @@ title: Guides
   provenance counts, promotion rules, and fixture maintenance rules.
 - [RDKit serializer coverage](rdkit-serializer-coverage.html): trace reviewed
   RDKit source-tree serializer tests to executable Grimace fixture evidence.
+- [Parity examples](parity-examples.html): read concrete fixture-backed
+  passing, semantic-boundary, and known-gap examples.
 
 For signatures, see [API](api/python.html). For supported flags and roots, see
 [Runtime](runtime.html).

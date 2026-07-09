@@ -6,6 +6,9 @@ from copy import deepcopy
 import unittest
 
 from grimace._south_star1.errors import SouthStarError
+from grimace._south_star1.errors import SouthStarErrorKind
+from grimace._south_star1.facts import SiteStatus
+from grimace._south_star1.facts import TetraValue
 from grimace._south_star1.ordinary_policy import OrdinaryPolicyOptions
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
@@ -23,6 +26,9 @@ from grimace._south_star1.writer_snapshot_prefix_envelope import (
     writer_snapshot_prefix_read_envelope_for_emitted_texts,
 )
 from grimace._south_star1.writer_support_artifact_checker import artifact_manifest
+from grimace._south_star1.writer_support_artifact_checker import (
+    verify_writer_support_artifact_consistency,
+)
 from grimace._south_star1.writer_support_artifact_fact_verifier import (
     OBJECT_KIND_OFFLINE_COVERAGE,
 )
@@ -60,12 +66,16 @@ from grimace._south_star1.writer_support_artifact_offline_verifier import (
     verify_writer_support_artifact_offline_replay,
 )
 from grimace._south_star1.writer_support_artifact_envelope import (
+    verify_writer_support_artifact_envelope,
+)
+from grimace._south_star1.writer_support_artifact_envelope import (
     writer_support_artifact_envelope_for_prefix_read,
 )
 from grimace._south_star1.writer_support_artifact_envelope import (
     writer_support_artifact_envelope_for_snapshot,
 )
 from tests.south_star1.helpers import cco_facts
+from tests.south_star1.helpers import tetrahedral_facts
 from tests.south_star1.test_writer_snapshot import two_atom_facts
 
 
@@ -370,6 +380,84 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
                     "residual_work_checked_empty",
                     verification.offline_empty_obligation_families,
                 )
+
+    def test_specified_tetra_raw_smiles_blocks_without_potential_sites(
+        self,
+    ) -> None:
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "raw tetrahedral stereo has no ordinary potential site",
+        ) as raised:
+            ordinary_molecule_facts_from_smiles(
+                "[C@H](F)(Cl)Br",
+                RdkitOrdinaryExtractionOptions(include_potential_sites=False),
+            )
+
+        self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_STEREO)
+
+    def test_supported_specified_tetra_artifact_is_blocked_before_residual_replay(
+        self,
+    ) -> None:
+        facts = tetrahedral_facts()
+        site = facts.stereo.tetrahedral[0]
+        self.assertIs(site.status, SiteStatus.SPECIFIED)
+        self.assertIs(site.target, TetraValue.PLUS)
+        prepared = _prepare(facts)
+        options = _writer_options()
+        artifact = writer_support_artifact_envelope_for_snapshot(
+            prepared=prepared,
+            snapshot=_initial_snapshot(prepared, options),
+        )
+
+        structural = verify_writer_support_artifact_consistency(artifact)
+        live = verify_writer_support_artifact_envelope(
+            prepared=prepared,
+            envelope=artifact,
+        )
+        classification = _obligation_classification(artifact)
+        verification = verify_writer_support_artifact_for_facts(
+            facts=facts,
+            runtime_options=options,
+            artifact=artifact,
+        )
+
+        self.assertTrue(structural.accepted, structural.reason)
+        self.assertTrue(live.accepted, live.reason)
+        self.assertEqual(structural.support_count, 12)
+        self.assertEqual(
+            tuple(_support_strings(artifact)),
+            (
+                "Br[C@@H](Cl)F",
+                "Br[C@H](F)Cl",
+                "Cl[C@@H](F)Br",
+                "Cl[C@H](Br)F",
+                "F[C@@H](Br)Cl",
+                "F[C@H](Cl)Br",
+                "[C@@H](Br)(Cl)F",
+                "[C@@H](Cl)(F)Br",
+                "[C@@H](F)(Br)Cl",
+                "[C@H](Br)(F)Cl",
+                "[C@H](Cl)(Br)F",
+                "[C@H](F)(Cl)Br",
+            ),
+        )
+        self.assertTrue(classification.accepted, classification.reason)
+        self.assertTrue(classification.residual_obligations_present)
+        self.assertTrue(classification.stereo_obligations_present)
+        self.assertEqual(classification.unchecked_families, ("residual_work",))
+        self.assertIn("stereo_lifecycle", classification.checked_families)
+        self.assertIn("terminal_stereo_lifecycle", classification.checked_families)
+        self.assertFalse(verification.accepted)
+        self.assertTrue(verification.structurally_checked)
+        self.assertTrue(verification.facts_identity_checked)
+        self.assertFalse(verification.offline_replay_complete)
+        self.assertEqual(verification.offline_unchecked_object_kinds, ())
+        self.assertEqual(verification.offline_unchecked_obligation_families, ())
+        self.assertEqual(
+            verification.reason,
+            "writer support artifact offline replay violation: "
+            "bracket_atom_text_facts_mismatch",
+        )
 
     def test_terminal_clean_obligation_manifests_are_checked(self) -> None:
         artifact = _rdkit_artifact("CCO")
@@ -1802,6 +1890,11 @@ def _prepare(facts):
 
 def _object(artifact, object_id):
     return next(item for item in artifact["objects"] if item["object_id"] == object_id)
+
+
+def _support_strings(artifact):
+    root = _object(artifact, artifact["roots"]["support_image_root"])
+    return root["payload"]["support_strings"]
 
 
 def _refresh_artifact_digest(artifact):

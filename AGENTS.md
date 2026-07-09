@@ -141,6 +141,12 @@ Testing rules:
 - Make small, focused commits.
 - Split commits by conceptual unit; do not bundle code, tests, notes, and
   cleanup unless they are one inseparable change.
+- When explicitly using subagents for implementation, split the work into
+  narrow reviewable slices. The subagent implements and tests in its own
+  workspace but does not commit. The main agent reviews the diff critically,
+  requests revisions for overclaims, weak assertions, fixture drift, or scope
+  creep, runs focused verification locally, and makes the commit only after the
+  slice is coherent.
 - Do not modify unrelated files.
 - Do not revert user changes unless explicitly requested.
 - Stage one path or concept at a time and check `git status -sb` before each

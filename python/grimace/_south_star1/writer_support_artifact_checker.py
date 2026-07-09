@@ -17,7 +17,7 @@ from .writer_envelope_work import default_writer_envelope_work_budget
 from .writer_envelope_work import writer_envelope_work_reason
 
 SCHEMA_NAME = "writer_support_artifact"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 _TOP_LEVEL_FIELDS = frozenset((
     "schema_name",
     "schema_version",
@@ -856,6 +856,16 @@ def _validate_obligation_manifests(
                     "evidence_digest",
                     "linked_lifecycle_digests",
                     "linked_residual_work_digests",
+                    "lifecycle_event_kind",
+                    "lifecycle_capabilities",
+                    "lifecycle_outcome_kind",
+                    "residual_snapshot_changed",
+                    "local_orders_changed",
+                    "residual_work_digests",
+                    "residual_work_operations",
+                    "certificate_kind",
+                    "certificate_capability",
+                    "certificate_lifecycle_digest",
                 ),
             )
             if item["family"] != family:
@@ -879,7 +889,49 @@ def _validate_obligation_manifests(
                 item["linked_residual_work_digests"],
                 "obligation_manifest_reverse_link_digests_mismatch",
             )
+            _validate_lifecycle_provenance_manifest(item)
             _validate_ring_obligation_summary(item["ring_summary"])
+
+
+def _validate_lifecycle_provenance_manifest(item: Mapping[str, object]) -> None:
+    for field in (
+        "lifecycle_event_kind",
+        "lifecycle_outcome_kind",
+        "certificate_kind",
+        "certificate_capability",
+        "certificate_lifecycle_digest",
+    ):
+        if item[field] is not None and not isinstance(item[field], str):
+            _artifact_violation("obligation_manifest_lifecycle_string_mismatch")
+    _require_string_list(
+        item["lifecycle_capabilities"],
+        "obligation_manifest_lifecycle_capabilities_mismatch",
+    )
+    for field in ("residual_snapshot_changed", "local_orders_changed"):
+        if not isinstance(item[field], bool):
+            _artifact_violation("obligation_manifest_lifecycle_bool_mismatch")
+    _require_string_list(
+        item["residual_work_digests"],
+        "obligation_manifest_residual_work_digests_mismatch",
+    )
+    _require_string_list(
+        item["residual_work_operations"],
+        "obligation_manifest_residual_work_operations_mismatch",
+    )
+    if item["family"] != "stereo_lifecycle":
+        if (
+            item["lifecycle_event_kind"] is not None
+            or item["lifecycle_capabilities"]
+            or item["lifecycle_outcome_kind"] is not None
+            or item["residual_snapshot_changed"]
+            or item["local_orders_changed"]
+            or item["residual_work_digests"]
+            or item["residual_work_operations"]
+            or item["certificate_kind"] is not None
+            or item["certificate_capability"] is not None
+            or item["certificate_lifecycle_digest"] is not None
+        ):
+            _artifact_violation("obligation_manifest_lifecycle_neutral_mismatch")
 
 
 def _validate_ring_obligation_summary(summary: object) -> None:

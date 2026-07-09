@@ -488,7 +488,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
         self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_STEREO)
 
-    def test_supported_specified_tetra_artifact_stops_at_link_provenance_replay(
+    def test_supported_specified_tetra_artifact_is_offline_complete(
         self,
     ) -> None:
         facts = tetrahedral_facts()
@@ -537,24 +537,18 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         self.assertTrue(classification.accepted, classification.reason)
         self.assertTrue(classification.residual_obligations_present)
         self.assertTrue(classification.stereo_obligations_present)
-        self.assertEqual(
-            classification.unchecked_families,
-            ("tetra_residual_link_provenance_replay",),
-        )
+        self.assertEqual(classification.unchecked_families, ())
         self.assertNotIn("residual_work", classification.unchecked_families)
-        self.assertNotIn("residual_work", classification.checked_families)
+        self.assertIn("residual_work", classification.checked_families)
         self.assertIn("stereo_lifecycle", classification.checked_families)
         self.assertIn("terminal_stereo_lifecycle", classification.checked_families)
         self.assertTrue(verification.accepted, verification.reason)
         self.assertTrue(verification.structurally_checked)
         self.assertTrue(verification.facts_identity_checked)
-        self.assertFalse(verification.offline_replay_complete)
+        self.assertTrue(verification.offline_replay_complete)
         self.assertEqual(verification.offline_unchecked_object_kinds, ())
-        self.assertEqual(
-            verification.offline_unchecked_obligation_families,
-            ("tetra_residual_link_provenance_replay",),
-        )
-        self.assertNotIn(
+        self.assertEqual(verification.offline_unchecked_obligation_families, ())
+        self.assertIn(
             "residual_work",
             verification.offline_checked_obligation_families,
         )
@@ -731,7 +725,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
         self.assertFalse(classification.accepted)
         self.assertIn(
-            "residual_lifecycle_reverse_link_unreciprocated",
+            "residual_lifecycle_forward_link_provenance_mismatch",
             classification.reason,
         )
 
@@ -754,7 +748,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
         self.assertFalse(classification.accepted)
         self.assertIn(
-            "residual_lifecycle_forward_link_missing",
+            "residual_lifecycle_forward_link_provenance_mismatch",
             classification.reason,
         )
 
@@ -782,7 +776,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
         self.assertFalse(classification.accepted)
         self.assertIn(
-            "residual_lifecycle_forward_link_unreciprocated",
+            "residual_lifecycle_forward_link_provenance_mismatch",
             classification.reason,
         )
 
@@ -810,7 +804,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
         self.assertFalse(classification.accepted)
         self.assertIn(
-            "residual_lifecycle_forward_link_unreciprocated",
+            "residual_lifecycle_forward_link_provenance_mismatch",
             classification.reason,
         )
 
@@ -838,7 +832,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
         self.assertFalse(classification.accepted)
         self.assertIn(
-            "residual_lifecycle_forward_link_unreciprocated",
+            "residual_lifecycle_reverse_link_provenance_mismatch",
             classification.reason,
         )
 
@@ -866,7 +860,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
         self.assertFalse(classification.accepted)
         self.assertIn(
-            "residual_lifecycle_reverse_link_unreciprocated",
+            "residual_lifecycle_forward_link_provenance_mismatch",
             classification.reason,
         )
 
@@ -894,7 +888,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
         self.assertFalse(classification.accepted)
         self.assertIn(
-            "residual_lifecycle_reverse_link_missing",
+            "residual_lifecycle_reverse_link_provenance_mismatch",
             classification.reason,
         )
 
@@ -926,11 +920,11 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
         self.assertFalse(classification.accepted)
         self.assertIn(
-            "residual_lifecycle_reverse_link_unreciprocated",
+            "residual_lifecycle_reverse_link_provenance_mismatch",
             classification.reason,
         )
 
-    def test_specified_tetra_residual_reciprocal_extra_link_stays_incomplete(
+    def test_specified_tetra_residual_reciprocal_extra_link_is_rejected(
         self,
     ) -> None:
         facts, artifact = _manual_tetra_artifact()
@@ -954,10 +948,154 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
         classification = _obligation_classification(artifact, facts=facts)
 
-        self.assertTrue(classification.accepted, classification.reason)
-        self.assertEqual(
-            classification.unchecked_families,
-            ("tetra_residual_link_provenance_replay",),
+        self.assertFalse(classification.accepted)
+        self.assertIn(
+            "residual_lifecycle_reverse_link_provenance_mismatch",
+            classification.reason,
+        )
+
+    def test_specified_tetra_residual_lifecycle_provenance_mutations_are_rejected(
+        self,
+    ) -> None:
+        facts, artifact = _manual_tetra_artifact()
+        cases = (
+            (
+                "raw_event_kind",
+                "raw",
+                "lifecycle_event_kind",
+                "local_order_closed",
+                "tetra_residual_lifecycle_event_kind_mismatch",
+            ),
+            (
+                "raw_missing_capability",
+                "raw",
+                "lifecycle_capabilities",
+                ["tetra_token_restriction"],
+                "tetra_residual_lifecycle_capabilities_mismatch",
+            ),
+            (
+                "raw_extra_capability",
+                "raw",
+                "lifecycle_capabilities",
+                [
+                    "residual_factor_discharge",
+                    "residual_propagation",
+                    "tetra_token_restriction",
+                ],
+                "tetra_residual_lifecycle_capabilities_mismatch",
+            ),
+            (
+                "raw_outcome",
+                "raw",
+                "lifecycle_outcome_kind",
+                "event_recorded",
+                "tetra_residual_lifecycle_outcome_kind_mismatch",
+            ),
+            (
+                "raw_change_flag",
+                "raw",
+                "residual_snapshot_changed",
+                False,
+                "tetra_residual_lifecycle_change_flag_mismatch",
+            ),
+            (
+                "raw_work_digests",
+                "raw",
+                "residual_work_digests",
+                [],
+                "residual_lifecycle_reverse_link_provenance_mismatch",
+            ),
+            (
+                "raw_work_operations",
+                "raw",
+                "residual_work_operations",
+                ["wrong"],
+                "tetra_residual_lifecycle_work_operation_mismatch",
+            ),
+            (
+                "certificate_kind",
+                "certificate",
+                "certificate_kind",
+                "tetra_local_order_restricted",
+                "tetra_residual_lifecycle_evidence_missing",
+            ),
+            (
+                "certificate_capability",
+                "certificate",
+                "certificate_capability",
+                "tetra_local_order_restriction",
+                "tetra_residual_certificate_capability_mismatch",
+            ),
+            (
+                "certificate_lifecycle_digest",
+                "certificate",
+                "certificate_lifecycle_digest",
+                "wrong",
+                "tetra_residual_certificate_lifecycle_digest_mismatch",
+            ),
+        )
+        for name, lifecycle_kind, field, value, reason in cases:
+            with self.subTest(name=name):
+                mutated = deepcopy(artifact)
+                branch = _first_residual_work_branch(
+                    mutated,
+                    operation="tetrahedral atom-token restriction",
+                )
+                manifest = next(
+                    item
+                    for item in (
+                        branch["payload"]["obligation_manifests"]["residual_work"]
+                    )
+                    if item["operation"] == "tetrahedral atom-token restriction"
+                )
+                lifecycle = _linked_tetra_lifecycle_manifest(
+                    branch=branch,
+                    manifest=manifest,
+                    lifecycle_kind=lifecycle_kind,
+                    certificate_kind="tetra_token_restricted",
+                )
+                lifecycle[field] = value
+
+                classification = _obligation_classification(mutated, facts=facts)
+
+                self.assertFalse(classification.accepted)
+                self.assertIn(reason, classification.reason)
+
+    def test_specified_tetra_residual_rejects_coherently_forged_link_projection(
+        self,
+    ) -> None:
+        facts, artifact = _manual_tetra_artifact()
+        branch = _first_residual_work_branch(
+            artifact,
+            operation="tetrahedral atom-token restriction",
+        )
+        manifest = next(
+            item
+            for item in branch["payload"]["obligation_manifests"]["residual_work"]
+            if item["operation"] == "tetrahedral atom-token restriction"
+        )
+        unrelated = next(
+            item
+            for item in branch["payload"]["obligation_manifests"]["stereo_lifecycle"]
+            if item["operation"] == "WriterStereoLifecycleEvidence"
+            and item["evidence_digest"] not in manifest["linked_lifecycle_digests"]
+        )
+        unrelated["linked_residual_work_digests"].append(manifest["evidence_digest"])
+        unrelated["residual_work_digests"].append(manifest["evidence_digest"])
+        manifest["linked_lifecycle_digests"] = [
+            item["evidence_digest"]
+            for item in branch["payload"]["obligation_manifests"]["stereo_lifecycle"]
+            if manifest["evidence_digest"] in item["residual_work_digests"]
+        ]
+
+        # Public verification rejects this hand-edited artifact structurally via
+        # stale object digests; this isolates the offline classifier precondition.
+        classification = _obligation_classification(artifact, facts=facts)
+
+        self.assertFalse(classification.accepted)
+        self.assertIn(
+            "tetra_residual_lifecycle_evidence_missing",
+            classification.reason,
         )
 
     def test_terminal_clean_obligation_manifests_are_checked(self) -> None:
@@ -2348,6 +2486,29 @@ def _first_residual_work_branch(artifact, *, operation: str):
         if any(manifest["operation"] == operation for manifest in manifests):
             return item
     raise AssertionError(f"missing residual work operation: {operation}")
+
+
+def _linked_tetra_lifecycle_manifest(
+    *,
+    branch,
+    manifest,
+    lifecycle_kind: str,
+    certificate_kind: str,
+):
+    operation = (
+        "WriterStereoLifecycleEvidence"
+        if lifecycle_kind == "raw"
+        else "WriterStereoBranchCertificate"
+    )
+    for item in branch["payload"]["obligation_manifests"]["stereo_lifecycle"]:
+        if item["evidence_digest"] not in manifest["linked_lifecycle_digests"]:
+            continue
+        if item["operation"] != operation:
+            continue
+        if lifecycle_kind == "certificate" and item["certificate_kind"] != certificate_kind:
+            continue
+        return item
+    raise AssertionError(f"missing linked tetra lifecycle manifest: {lifecycle_kind}")
 
 
 def _first_graph_ring_delta_event(branch, kind: str):

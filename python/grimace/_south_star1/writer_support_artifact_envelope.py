@@ -833,8 +833,7 @@ def _obligation_family_manifests(
                             f"support_artifact.obligation.{family}."
                             "link.evidence.digest"
                         ),
-                    )
-                    ,
+                    ),
                     [],
                 )
             ),
@@ -853,9 +852,105 @@ def _obligation_family_manifests(
                     [],
                 )
             ),
+            **_lifecycle_provenance_manifest(
+                record=record,
+                family=family,
+                budget=budget,
+            ),
         }
         for record in records
     ]
+
+
+def _lifecycle_provenance_manifest(
+    *,
+    record: object,
+    family: str,
+    budget: WriterEnvelopeWorkBudget,
+) -> dict[str, object]:
+    empty = {
+        "lifecycle_event_kind": None,
+        "lifecycle_capabilities": [],
+        "lifecycle_outcome_kind": None,
+        "residual_snapshot_changed": False,
+        "local_orders_changed": False,
+        "residual_work_digests": [],
+        "residual_work_operations": [],
+        "certificate_kind": None,
+        "certificate_capability": None,
+        "certificate_lifecycle_digest": None,
+    }
+    if family != "stereo_lifecycle":
+        return empty
+    lifecycle = getattr(record, "lifecycle_evidence", record)
+    residuals = tuple(getattr(record, "residual_work_evidence", ()))
+    empty.update(
+        {
+            "lifecycle_event_kind": _writer_event_kind(
+                getattr(lifecycle, "event"),
+                budget=budget,
+            ),
+            "lifecycle_capabilities": sorted(
+                _compact_value(capability)
+                for capability in getattr(lifecycle, "capabilities")
+            ),
+            "lifecycle_outcome_kind": _compact_value(
+                getattr(lifecycle, "outcome_kind")
+            ),
+            "residual_snapshot_changed": (
+                getattr(lifecycle, "source_residual_snapshot")
+                != getattr(lifecycle, "successor_residual_snapshot")
+            ),
+            "local_orders_changed": (
+                getattr(lifecycle, "source_local_orders")
+                != getattr(lifecycle, "successor_local_orders")
+            ),
+            "residual_work_digests": [
+                _identity_digest(
+                    residual,
+                    budget=budget,
+                    operation=(
+                        "support_artifact.obligation.lifecycle."
+                        "provenance.residual.digest"
+                    ),
+                )
+                for residual in residuals
+            ],
+            "residual_work_operations": [
+                getattr(residual, "operation", residual.__class__.__name__)
+                for residual in residuals
+            ],
+        }
+    )
+    if hasattr(record, "kind") and hasattr(record, "lifecycle_evidence"):
+        empty["lifecycle_capabilities"] = [_compact_value(record.capability)]
+        empty["certificate_kind"] = _compact_value(record.kind)
+        empty["certificate_capability"] = _compact_value(record.capability)
+        empty["certificate_lifecycle_digest"] = _identity_digest(
+            record.lifecycle_evidence,
+            budget=budget,
+            operation=(
+                "support_artifact.obligation.lifecycle."
+                "provenance.certificate_lifecycle.digest"
+            ),
+        )
+    return empty
+
+
+def _compact_value(value: object) -> str:
+    raw = getattr(value, "value", value)
+    if not isinstance(raw, str):
+        _artifact_violation("lifecycle_provenance_value_not_string")
+    return raw
+
+
+def _writer_event_kind(
+    event: object,
+    *,
+    budget: WriterEnvelopeWorkBudget,
+) -> str:
+    manifest = _writer_event_manifest(event, budget=budget)
+    return str(manifest["kind"])
 
 
 def _residual_lifecycle_digest_links(

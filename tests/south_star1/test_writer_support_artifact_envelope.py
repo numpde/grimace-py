@@ -239,6 +239,27 @@ class WriterSupportArtifactEnvelopeTest(unittest.TestCase):
 
         self.assertFalse(check_support_artifact(envelope).accepted)
 
+    def test_obligation_manifest_missing_lifecycle_provenance_field_is_rejected(
+        self,
+    ) -> None:
+        envelope = _branching_artifact()
+        manifest = _first_obligation_manifest(envelope)
+        del manifest["certificate_capability"]
+
+        self.assertFalse(check_support_artifact(envelope).accepted)
+
+    def test_non_stereo_obligation_lifecycle_provenance_must_be_neutral(
+        self,
+    ) -> None:
+        envelope = _branching_artifact()
+        manifest = _first_obligation_manifest(
+            envelope,
+            excluded_family="stereo_lifecycle",
+        )
+        manifest["lifecycle_event_kind"] = "atom_emitted"
+
+        self.assertFalse(check_support_artifact(envelope).accepted)
+
     def test_count_object_missing_count_dag_is_rejected(self) -> None:
         envelope = _snapshot_artifact()
         root = _root_payload(envelope)
@@ -371,6 +392,17 @@ def _support_string_payload(envelope):
     return _object(envelope, _root_payload(envelope)["support_string_refs"][0])[
         "payload"
     ]
+
+
+def _first_obligation_manifest(envelope, *, excluded_family: str | None = None):
+    for item in envelope["objects"]:
+        if item["kind"] != "branch_support":
+            continue
+        for family, manifests in item["payload"]["obligation_manifests"].items():
+            if family == excluded_family or not manifests:
+                continue
+            return manifests[0]
+    raise AssertionError("missing obligation manifest")
 
 
 def _object(envelope, object_id):

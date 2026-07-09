@@ -852,9 +852,18 @@ def _obligation_manifests_checked(items: list[object]) -> bool:
             or item["is_discharged"]
             or item["terminal_clean"]
             or _ring_obligation_manifest_checked(item)
+            or _validated_tetra_residual_manifest_checked(item)
         )
         for item in items
     )
+
+
+def _validated_tetra_residual_manifest_checked(item: Mapping[str, object]) -> bool:
+    """Return true only after branch residual manifests were validated."""
+    return item["family"] == "residual_work" and item["operation"] in {
+        "tetrahedral atom-token restriction",
+        "tetrahedral local-order factor closure",
+    }
 
 
 def _classify_branch_residual_work_manifests(
@@ -897,8 +906,17 @@ def _check_branch_residual_lifecycle_links(
         links = lifecycle["linked_residual_work_digests"]
         if len(set(links)) != len(links):
             _offline_violation("residual_lifecycle_reverse_link_duplicate")
+        if links != lifecycle["residual_work_digests"]:
+            _offline_violation("residual_lifecycle_reverse_link_provenance_mismatch")
 
     for residual_digest, residual in residual_by_digest.items():
+        expected_links = [
+            lifecycle["evidence_digest"]
+            for lifecycle in lifecycle_items
+            if residual_digest in lifecycle["residual_work_digests"]
+        ]
+        if residual["linked_lifecycle_digests"] != expected_links:
+            _offline_violation("residual_lifecycle_forward_link_provenance_mismatch")
         for lifecycle_digest in residual["linked_lifecycle_digests"]:
             lifecycle = lifecycle_by_digest.get(lifecycle_digest)
             if lifecycle is None:
@@ -926,10 +944,14 @@ def _validate_tetra_residual_manifest_if_known(
         _check_tetra_residual_manifest_core(
             branch=branch,
             item=item,
-            required_lifecycle_operations=(
-                "WriterStereoLifecycleEvidence",
-                "WriterStereoBranchCertificate",
+            expected_event_kind="atom_emitted",
+            expected_capability="tetra_token_restriction",
+            expected_lifecycle_capabilities=(
+                "residual_propagation",
+                "tetra_token_restriction",
             ),
+            expected_certificate_kind="tetra_token_restricted",
+            expected_changed_field="residual_snapshot_changed",
         )
         _check_tetra_atom_token_residual(branch=branch, facts=facts)
         return
@@ -937,10 +959,15 @@ def _validate_tetra_residual_manifest_if_known(
         _check_tetra_residual_manifest_core(
             branch=branch,
             item=item,
-            required_lifecycle_operations=(
-                "WriterStereoLifecycleEvidence",
-                "WriterStereoBranchCertificate",
+            expected_event_kind="local_order_closed",
+            expected_capability="tetra_local_order_restriction",
+            expected_lifecycle_capabilities=(
+                "residual_factor_discharge",
+                "residual_propagation",
+                "tetra_local_order_restriction",
             ),
+            expected_certificate_kind="tetra_local_order_restricted",
+            expected_changed_field="local_orders_changed",
         )
         _check_tetra_local_order_residual(branch=branch, facts=facts)
         return
@@ -950,7 +977,11 @@ def _check_tetra_residual_manifest_core(
     *,
     branch: Mapping[str, object],
     item: Mapping[str, object],
-    required_lifecycle_operations: tuple[str, ...],
+    expected_event_kind: str,
+    expected_capability: str,
+    expected_lifecycle_capabilities: tuple[str, ...],
+    expected_certificate_kind: str,
+    expected_changed_field: str,
 ) -> None:
     payload = branch["payload"]
     if item["family"] != "residual_work":
@@ -986,7 +1017,7 @@ def _check_tetra_residual_manifest_core(
             reverse_linked_digests.add(lifecycle_digest)
     if set(linked_digests) != reverse_linked_digests:
         _offline_violation("tetra_residual_lifecycle_link_mismatch")
-    linked_lifecycle_operations = set()
+    linked_lifecycles = []
     for digest in linked_digests:
         lifecycle = lifecycle_by_digest.get(digest)
         if lifecycle is None:
@@ -999,12 +1030,105 @@ def _check_tetra_residual_manifest_core(
             _offline_violation("tetra_residual_lifecycle_successor_mismatch")
         if not lifecycle["is_discharged"]:
             _offline_violation("tetra_residual_lifecycle_not_discharged")
-        linked_lifecycle_operations.add(lifecycle["operation"])
-    if not linked_lifecycle_operations <= set(required_lifecycle_operations):
+        linked_lifecycles.append(lifecycle)
+    allowed_operations = {
+        "WriterStereoLifecycleEvidence",
+        "WriterStereoBranchCertificate",
+    }
+    if any(lifecycle["operation"] not in allowed_operations for lifecycle in linked_lifecycles):
         _offline_violation("tetra_residual_lifecycle_operation_mismatch")
-    for operation in required_lifecycle_operations:
-        if operation not in linked_lifecycle_operations:
-            _offline_violation("tetra_residual_lifecycle_evidence_missing")
+    raw = [
+        lifecycle
+        for lifecycle in linked_lifecycles
+        if lifecycle["operation"] == "WriterStereoLifecycleEvidence"
+    ]
+    certificates = [
+        lifecycle
+        for lifecycle in linked_lifecycles
+        if lifecycle["operation"] == "WriterStereoBranchCertificate"
+        and lifecycle["certificate_kind"] == expected_certificate_kind
+    ]
+    if len(raw) != 1 or len(certificates) != 1:
+        _offline_violation("tetra_residual_lifecycle_evidence_missing")
+    raw_lifecycle = raw[0]
+    certificate = certificates[0]
+    _check_tetra_raw_lifecycle_provenance(
+        lifecycle=raw_lifecycle,
+        item=item,
+        expected_event_kind=expected_event_kind,
+        expected_lifecycle_capabilities=expected_lifecycle_capabilities,
+        expected_changed_field=expected_changed_field,
+    )
+    _check_tetra_certificate_lifecycle_provenance(
+        certificate=certificate,
+        raw_lifecycle=raw_lifecycle,
+        item=item,
+        expected_capability=expected_capability,
+        expected_certificate_kind=expected_certificate_kind,
+    )
+
+
+def _check_tetra_raw_lifecycle_provenance(
+    *,
+    lifecycle: Mapping[str, object],
+    item: Mapping[str, object],
+    expected_event_kind: str,
+    expected_lifecycle_capabilities: tuple[str, ...],
+    expected_changed_field: str,
+) -> None:
+    if lifecycle["lifecycle_event_kind"] != expected_event_kind:
+        _offline_violation("tetra_residual_lifecycle_event_kind_mismatch")
+    if lifecycle["lifecycle_capabilities"] != list(expected_lifecycle_capabilities):
+        _offline_violation("tetra_residual_lifecycle_capabilities_mismatch")
+    if lifecycle["lifecycle_outcome_kind"] not in {
+        "residual_restricted",
+        "record_and_restrict",
+    }:
+        _offline_violation("tetra_residual_lifecycle_outcome_kind_mismatch")
+    if not lifecycle[expected_changed_field]:
+        _offline_violation("tetra_residual_lifecycle_change_flag_mismatch")
+    if lifecycle["residual_work_digests"] != [item["evidence_digest"]]:
+        _offline_violation("tetra_residual_lifecycle_work_digest_mismatch")
+    if lifecycle["residual_work_operations"] != [item["operation"]]:
+        _offline_violation("tetra_residual_lifecycle_work_operation_mismatch")
+    if lifecycle["certificate_kind"] is not None:
+        _offline_violation("tetra_residual_lifecycle_certificate_kind_mismatch")
+    if lifecycle["certificate_capability"] is not None:
+        _offline_violation("tetra_residual_lifecycle_certificate_capability_mismatch")
+    if lifecycle["certificate_lifecycle_digest"] is not None:
+        _offline_violation("tetra_residual_lifecycle_certificate_digest_mismatch")
+
+
+def _check_tetra_certificate_lifecycle_provenance(
+    *,
+    certificate: Mapping[str, object],
+    raw_lifecycle: Mapping[str, object],
+    item: Mapping[str, object],
+    expected_capability: str,
+    expected_certificate_kind: str,
+) -> None:
+    if certificate["lifecycle_event_kind"] != raw_lifecycle["lifecycle_event_kind"]:
+        _offline_violation("tetra_residual_certificate_event_kind_mismatch")
+    if certificate["lifecycle_capabilities"] != [expected_capability]:
+        _offline_violation("tetra_residual_certificate_capabilities_mismatch")
+    if certificate["certificate_capability"] != expected_capability:
+        _offline_violation("tetra_residual_certificate_capability_mismatch")
+    if certificate["lifecycle_outcome_kind"] != raw_lifecycle["lifecycle_outcome_kind"]:
+        _offline_violation("tetra_residual_certificate_outcome_kind_mismatch")
+    if certificate["residual_snapshot_changed"] != raw_lifecycle["residual_snapshot_changed"]:
+        _offline_violation("tetra_residual_certificate_change_flag_mismatch")
+    if certificate["local_orders_changed"] != raw_lifecycle["local_orders_changed"]:
+        _offline_violation("tetra_residual_certificate_change_flag_mismatch")
+    if certificate["residual_work_digests"] != raw_lifecycle["residual_work_digests"]:
+        _offline_violation("tetra_residual_certificate_work_digest_mismatch")
+    if certificate["residual_work_digests"] != [item["evidence_digest"]]:
+        _offline_violation("tetra_residual_certificate_work_digest_mismatch")
+    if certificate["residual_work_operations"] != raw_lifecycle["residual_work_operations"]:
+        _offline_violation("tetra_residual_certificate_work_operation_mismatch")
+    if certificate["certificate_kind"] != expected_certificate_kind:
+        _offline_violation("tetra_residual_certificate_kind_mismatch")
+    if certificate["certificate_lifecycle_digest"] != raw_lifecycle["evidence_digest"]:
+        _offline_violation("tetra_residual_certificate_lifecycle_digest_mismatch")
 
 
 def _specified_tetra_centers(facts: MoleculeFacts) -> set[object]:

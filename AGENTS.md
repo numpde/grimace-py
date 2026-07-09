@@ -155,6 +155,8 @@ Testing rules:
 - Do not revert user changes unless explicitly requested.
 - Stage one path or concept at a time and check `git status -sb` before each
   commit.
+- Commit with an explicit pathspec, e.g. `git commit -m "..." -- FILE`, so the
+  commit cannot accidentally include unrelated staged changes.
 - Use concrete commit messages that state the change.
 - Do not commit generated run outputs, plot/perf output directories, or
   unrelated untracked artifacts unless explicitly requested.

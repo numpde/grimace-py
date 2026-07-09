@@ -52,6 +52,7 @@ class WriterDefaultCapabilityLedgerTest(unittest.TestCase):
                 "simple_bracket_charge",
                 "simple_isotope_bracket_atom",
                 "unsupported_charged_isotope",
+                "unsupported_positive_oxygen_charge",
                 "unsupported_potential_directional_non_neighbor",
             },
         )

@@ -50,6 +50,15 @@ from grimace._south_star1.writer_support_artifact_fact_verifier import (
 
 
 _EXTRACTION = RdkitOrdinaryExtractionOptions(include_potential_sites=False)
+_SIMPLE_CHARGED_BRACKET_CASES = (
+    "[N+]",
+    "[NH+]",
+    "[NH2+]",
+    "[NH3+]",
+    "[NH4+]",
+    "[O-]",
+    "[OH-]",
+)
 
 
 class WriterBracketAtomTextTest(unittest.TestCase):
@@ -117,6 +126,79 @@ class WriterBracketAtomTextTest(unittest.TestCase):
         reparsed = _facts("[NH4+]")
 
         self.assertTrue(facts_are_isomorphic(source, reparsed).isomorphic)
+
+    def test_simple_charged_bracket_atoms_prepare_and_emit(self) -> None:
+        for smiles in _SIMPLE_CHARGED_BRACKET_CASES:
+            with self.subTest(smiles=smiles):
+                facts = _facts(smiles)
+                prepared = _prepare(facts)
+                support = _first_branch_support(smiles)
+
+                self.assertEqual(
+                    prepared.policy.atom_text_domain_unchecked(AtomId(0))[0].render(
+                        TetraToken.NONE
+                    ),
+                    smiles,
+                )
+                self.assertEqual(support.emitted_text, smiles)
+                self.assertEqual(support.events[0].text, smiles)
+
+    def test_simple_charged_bracket_atoms_support_and_artifact_verifiers(self) -> None:
+        for smiles in _SIMPLE_CHARGED_BRACKET_CASES:
+            with self.subTest(smiles=smiles):
+                facts = _facts(smiles)
+                prepared = _prepare(facts)
+                runtime_state = initial_writer_runtime_state(
+                    prepared=prepared,
+                    runtime_options=_writer_options(),
+                )
+                image = enumerate_prepared_writer_shaped_support(
+                    prepared=prepared,
+                    runtime_options=_writer_options(),
+                )
+
+                self.assertEqual(image.strings, (smiles,))
+                self.assertEqual(image.distinct_count, 1)
+                self.assertEqual(image.witness_count, 1)
+                self.assertEqual(
+                    count_writer_runtime_support(
+                        prepared=prepared,
+                        state=runtime_state,
+                    ),
+                    1,
+                )
+                self.assertEqual(
+                    count_writer_runtime_completions(
+                        prepared=prepared,
+                        state=runtime_state,
+                    ),
+                    1,
+                )
+
+                artifact = _artifact(prepared)
+                structural = verify_writer_support_artifact_consistency(artifact)
+                live = verify_writer_support_artifact_envelope(
+                    prepared=prepared,
+                    envelope=artifact,
+                )
+                fact_bound = verify_writer_support_artifact_for_facts(
+                    facts=facts,
+                    runtime_options=_writer_options(),
+                    artifact=artifact,
+                )
+
+                self.assertTrue(structural.accepted, structural.reason)
+                self.assertTrue(live.accepted, live.reason)
+                self.assertTrue(fact_bound.accepted, fact_bound.reason)
+                self.assertTrue(fact_bound.offline_replay_complete)
+
+    def test_simple_charged_bracket_atoms_rdkit_round_trip_audit_passes(self) -> None:
+        for smiles in _SIMPLE_CHARGED_BRACKET_CASES:
+            with self.subTest(smiles=smiles):
+                source = _facts(smiles)
+                reparsed = _facts(smiles)
+
+                self.assertTrue(facts_are_isomorphic(source, reparsed).isomorphic)
 
     def test_13ch4_prepares_under_default_policy(self) -> None:
         prepared = _prepare(_facts("[13CH4]"))
@@ -320,6 +402,12 @@ class WriterBracketAtomTextTest(unittest.TestCase):
         facts = _facts("[13CH3+]")
 
         with self.assertRaisesRegex(SouthStarError, "isotopic atoms"):
+            _prepare(facts)
+
+    def test_positive_oxygen_charge_remains_out_of_scope(self) -> None:
+        facts = _facts("[O+]")
+
+        with self.assertRaisesRegex(SouthStarError, "charged atoms"):
             _prepare(facts)
 
 

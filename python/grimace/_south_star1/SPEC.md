@@ -93,7 +93,9 @@ Accepted surfaces currently covered by table-backed support artifacts:
 - double and triple non-single ring closures via the joint endpoint marker
   lifecycle;
 - branched rings within the current graph/ring-order surface;
-- simple charged nitrogen bracket atoms such as `[NH4+]`;
+- simple charged nitrogen bracket atoms `[N+]`, `[NH+]`, `[NH2+]`,
+  `[NH3+]`, and `[NH4+]`;
+- simple charged oxygen bracket atoms `[O-]` and `[OH-]`;
 - simple neutral isotope carbon bracket atoms such as `[13CH4]`.
 
 Typed blocked surfaces currently covered by the ledger:
@@ -118,7 +120,9 @@ The current offline-complete accepted surfaces are:
 - double and triple non-single ring closures via the joint endpoint marker
   lifecycle;
 - branched rings within the current graph/ring-order surface;
-- simple charged nitrogen bracket atoms such as `[NH4+]`;
+- simple charged nitrogen bracket atoms `[N+]`, `[NH+]`, `[NH2+]`,
+  `[NH3+]`, and `[NH4+]`;
+- simple charged oxygen bracket atoms `[O-]` and `[OH-]`;
 - simple neutral isotope carbon bracket atoms such as `[13CH4]`;
 - table-backed support artifacts for the above.
 
@@ -134,7 +138,8 @@ Facts-bound support-artifact verification is intentionally layered. It first
 checks artifact-table structure and prepared identity, then replays the current
 offline-complete layers for the default accepted corpus:
 
-- bracket atom text for `[NH4+]` and `[13CH4]`;
+- bracket atom text for `[N+]`, `[NH+]`, `[NH2+]`, `[NH3+]`, `[NH4+]`,
+  `[O-]`, `[OH-]`, and `[13CH4]`;
 - joint non-single ring-closure marker counts for cyclic double/triple bonds.
 - count DAG arithmetic for support/completion count roots and count-node terms.
 - support-image coverage partition and support/witness total linkage.

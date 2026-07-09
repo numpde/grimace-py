@@ -82,8 +82,8 @@ def validate_writer_bracket_atom_text_transition(
 
 
 def bracket_atom_text(atom: AtomFacts) -> str:
-    if is_supported_charged_nitrogen_bracket_atom(atom):
-        return _charged_nitrogen_bracket_text(atom.implicit_h_count)
+    if is_supported_simple_charged_bracket_atom(atom):
+        return _simple_charged_bracket_text(atom)
     if is_supported_simple_isotope_carbon_bracket_atom(atom):
         isotope = atom.isotope
         if isotope is None:
@@ -91,9 +91,11 @@ def bracket_atom_text(atom: AtomFacts) -> str:
         return f"[{isotope}C{_hydrogen_suffix(atom.implicit_h_count)}]"
     if atom.isotope is not None:
         _atom_text_violation("bracket_atom_isotope_unsupported")
-    if atom.symbol != "N":
+    if atom.symbol not in {"N", "O"}:
         _atom_text_violation("bracket_atom_element_unsupported")
-    if atom.formal_charge != 1:
+    if atom.symbol == "N" and atom.formal_charge != 1:
+        _atom_text_violation("bracket_atom_charge_unsupported")
+    if atom.symbol == "O" and atom.formal_charge != -1:
         _atom_text_violation("bracket_atom_charge_unsupported")
     if atom.implicit_h_count not in {0, 1, 2, 3, 4}:
         _atom_text_violation("bracket_atom_hydrogen_count_unsupported")
@@ -108,8 +110,15 @@ def charged_nitrogen_bracket_atom_text(atom: AtomFacts) -> str:
 
 def is_supported_bracket_atom(atom: AtomFacts) -> bool:
     return (
-        is_supported_charged_nitrogen_bracket_atom(atom)
+        is_supported_simple_charged_bracket_atom(atom)
         or is_supported_simple_isotope_carbon_bracket_atom(atom)
+    )
+
+
+def is_supported_simple_charged_bracket_atom(atom: AtomFacts) -> bool:
+    return (
+        is_supported_charged_nitrogen_bracket_atom(atom)
+        or is_supported_charged_oxygen_bracket_atom(atom)
     )
 
 
@@ -122,6 +131,18 @@ def is_supported_charged_nitrogen_bracket_atom(atom: AtomFacts) -> bool:
         and not atom.no_implicit
         and not atom.is_aromatic
         and atom.implicit_h_count in {0, 1, 2, 3, 4}
+    )
+
+
+def is_supported_charged_oxygen_bracket_atom(atom: AtomFacts) -> bool:
+    return (
+        atom.symbol == "O"
+        and atom.formal_charge == -1
+        and atom.isotope is None
+        and atom.explicit_h_count == 0
+        and not atom.no_implicit
+        and not atom.is_aromatic
+        and atom.implicit_h_count in {0, 1}
     )
 
 
@@ -143,6 +164,14 @@ def _charged_nitrogen_bracket_text(hydrogen_count: int) -> str:
     return f"[N{_hydrogen_suffix(hydrogen_count)}+]"
 
 
+def _simple_charged_bracket_text(atom: AtomFacts) -> str:
+    if atom.symbol == "N":
+        return _charged_nitrogen_bracket_text(atom.implicit_h_count)
+    if atom.symbol == "O":
+        return f"[O{_hydrogen_suffix(atom.implicit_h_count)}-]"
+    _atom_text_violation("bracket_atom_element_unsupported")
+
+
 def _hydrogen_suffix(hydrogen_count: int) -> str:
     hydrogen = "H" if hydrogen_count == 1 else f"H{hydrogen_count}"
     if hydrogen_count == 0:
@@ -162,7 +191,9 @@ __all__ = (
     "bracket_atom_text",
     "charged_nitrogen_bracket_atom_text",
     "is_supported_bracket_atom",
+    "is_supported_charged_oxygen_bracket_atom",
     "is_supported_charged_nitrogen_bracket_atom",
+    "is_supported_simple_charged_bracket_atom",
     "is_supported_simple_isotope_carbon_bracket_atom",
     "validate_writer_bracket_atom_text_transition",
     "writer_bracket_atom_text_evidence",

@@ -155,15 +155,17 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         self.assertTrue(verification.offline_replay_complete)
 
     def test_facts_bound_verifier_reports_bracket_atom_offline_check(self) -> None:
-        verification = _rdkit_artifact_verification("[NH4+]")
+        for smiles in ("[N+]", "[NH+]", "[NH2+]", "[NH3+]", "[NH4+]", "[O-]", "[OH-]"):
+            with self.subTest(smiles=smiles):
+                verification = _rdkit_artifact_verification(smiles)
 
-        self.assertTrue(verification.accepted, verification.reason)
-        self.assertIn(
-            "bracket_atom_text",
-            verification.offline_checked_relation_families,
-        )
-        self.assertIn("text_projection", verification.offline_checked_object_kinds)
-        self.assertTrue(verification.offline_replay_complete)
+                self.assertTrue(verification.accepted, verification.reason)
+                self.assertIn(
+                    "bracket_atom_text",
+                    verification.offline_checked_relation_families,
+                )
+                self.assertIn("text_projection", verification.offline_checked_object_kinds)
+                self.assertTrue(verification.offline_replay_complete)
 
     def test_facts_bound_verifier_reports_isotope_atom_offline_check(self) -> None:
         verification = _rdkit_artifact_verification("[13CH4]")
@@ -211,6 +213,16 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             validate_writer_bracket_atom_text_against_facts(
                 facts=_rdkit_facts("[12CH4]"),
                 rendered_text="[13CH4]",
+            )
+        with self.assertRaisesRegex(SouthStarError, "bracket_atom_text_facts_mismatch"):
+            validate_writer_bracket_atom_text_against_facts(
+                facts=_rdkit_facts("[O-]"),
+                rendered_text="[OH-]",
+            )
+        with self.assertRaisesRegex(SouthStarError, "bracket_atom_text_facts_mismatch"):
+            validate_writer_bracket_atom_text_against_facts(
+                facts=_rdkit_facts("[NH4+]"),
+                rendered_text="[NH3+]",
             )
 
     def test_offline_joint_closure_replay_rejects_wrong_facts(self) -> None:

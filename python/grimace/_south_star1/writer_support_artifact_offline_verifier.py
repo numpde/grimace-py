@@ -209,6 +209,7 @@ def verify_writer_support_artifact_offline_replay(
                 terminal.reason or "terminal_support_identity_rejected"
             )
         obligations = classify_residual_stereo_obligations_offline(
+            facts=facts,
             artifact=artifact,
             objects=objects,
         )
@@ -749,6 +750,7 @@ def verify_graph_ring_branch_deltas_offline(
 
 def classify_residual_stereo_obligations_offline(
     *,
+    facts: MoleculeFacts,
     artifact: Mapping[str, object],
     objects: Mapping[str, Mapping[str, object]],
 ) -> OfflineObligationClassification:
@@ -770,7 +772,16 @@ def classify_residual_stereo_obligations_offline(
             branch = _require_object(objects, branch_ref)
             _check_branch_obligation_ring_summaries(branch)
             for family, items in branch["payload"]["obligation_manifests"].items():
-                manifests_by_family[family].extend(items)
+                if family == "residual_work":
+                    manifests_by_family[family].extend(
+                        _classify_branch_residual_work_manifests(
+                            facts=facts,
+                            branch=branch,
+                            items=items,
+                        )
+                    )
+                else:
+                    manifests_by_family[family].extend(items)
         for support_ref in root["payload"]["support_string_refs"]:
             support = _require_object(objects, support_ref)
             for terminal_ref in support["payload"]["terminal_support_refs"]:
@@ -846,6 +857,219 @@ def _obligation_manifests_checked(items: list[object]) -> bool:
     )
 
 
+def _classify_branch_residual_work_manifests(
+    *,
+    facts: MoleculeFacts,
+    branch: Mapping[str, object],
+    items: list[object],
+) -> tuple[Mapping[str, object], ...]:
+    for item in items:
+        _validate_tetra_residual_manifest_if_known(
+            facts=facts,
+            branch=branch,
+            item=item,
+        )
+    return tuple(items)
+
+
+def _validate_tetra_residual_manifest_if_known(
+    *,
+    facts: MoleculeFacts,
+    branch: Mapping[str, object],
+    item: Mapping[str, object],
+) -> None:
+    operation = item["operation"]
+    if operation == "tetrahedral atom-token restriction":
+        _check_tetra_residual_manifest_core(
+            branch=branch,
+            item=item,
+            required_lifecycle_operations=(
+                "WriterStereoLifecycleEvidence",
+                "WriterStereoBranchCertificate",
+            ),
+        )
+        _check_tetra_atom_token_residual(branch=branch, facts=facts)
+        return
+    if operation == "tetrahedral local-order factor closure":
+        _check_tetra_residual_manifest_core(
+            branch=branch,
+            item=item,
+            required_lifecycle_operations=(
+                "WriterStereoLifecycleEvidence",
+                "WriterStereoBranchCertificate",
+            ),
+        )
+        _check_tetra_local_order_residual(branch=branch, facts=facts)
+        return
+
+
+def _check_tetra_residual_manifest_core(
+    *,
+    branch: Mapping[str, object],
+    item: Mapping[str, object],
+    required_lifecycle_operations: tuple[str, ...],
+) -> None:
+    payload = branch["payload"]
+    if item["family"] != "residual_work":
+        _offline_violation("tetra_residual_family_mismatch")
+    if item["source_digest"] != payload["source_state_digest"]:
+        _offline_violation("tetra_residual_source_digest_mismatch")
+    if item["successor_digest"] != payload["successor_state_digest"]:
+        _offline_violation("tetra_residual_successor_digest_mismatch")
+    if item["is_noop"] or item["is_empty"] or item["is_discharged"]:
+        _offline_violation("tetra_residual_unexpected_discharge_flag")
+    if item["terminal_clean"]:
+        _offline_violation("tetra_residual_unexpected_terminal_clean")
+    if item["ring_summary"] is not None:
+        _offline_violation("tetra_residual_unexpected_ring_summary")
+    if not item["evidence_digest"]:
+        _offline_violation("tetra_residual_evidence_digest_missing")
+    matching_lifecycle_operations = {
+        lifecycle["operation"]
+        for lifecycle in payload["obligation_manifests"]["stereo_lifecycle"]
+        if lifecycle["source_digest"] == item["source_digest"]
+        and lifecycle["successor_digest"] == item["successor_digest"]
+        and lifecycle["is_discharged"]
+    }
+    if not matching_lifecycle_operations <= set(required_lifecycle_operations):
+        _offline_violation("tetra_residual_lifecycle_operation_mismatch")
+    for operation in required_lifecycle_operations:
+        if operation not in matching_lifecycle_operations:
+            _offline_violation("tetra_residual_lifecycle_evidence_missing")
+
+
+def _specified_tetra_centers(facts: MoleculeFacts) -> set[object]:
+    return {
+        _term(site.center)
+        for site in facts.stereo.tetrahedral
+        if site.status is SiteStatus.SPECIFIED
+    }
+
+
+def _tetra_token_from_rendered_text(text: str) -> str:
+    if text.startswith("[C@@H]"):
+        return "@@"
+    if text.startswith("[C@H]"):
+        return "@"
+    _offline_violation("tetra_atom_token_residual_text_mismatch")
+
+
+def _single_atom_emitted_event(
+    *,
+    events: list[Mapping[str, object]],
+    violation_prefix: str,
+) -> Mapping[str, object]:
+    atom_events = [
+        event
+        for event in events
+        if event["kind"] == "atom_emitted"
+    ]
+    if len(atom_events) != 1:
+        _offline_violation(f"{violation_prefix}_atom_event_count")
+    return atom_events[0]
+
+
+def _bond_between_facts_atoms(
+    *,
+    facts: MoleculeFacts,
+    bond_id: object,
+    left_atom: object,
+    right_atom: object,
+) -> bool:
+    for bond in facts.bonds:
+        if _term(bond.id) != bond_id:
+            continue
+        endpoints = {_term(bond.a), _term(bond.b)}
+        return endpoints == {left_atom, right_atom}
+    return False
+
+
+def _require_specified_tetra_center(
+    *,
+    facts: MoleculeFacts,
+    atom: object,
+    violation: str,
+) -> None:
+    if atom not in _specified_tetra_centers(facts):
+        _offline_violation(violation)
+
+
+def _check_tetra_atom_token_residual(
+    *,
+    branch: Mapping[str, object],
+    facts: MoleculeFacts,
+) -> None:
+    text = branch["payload"]["emitted_text"]
+    if text not in ("[C@H]", "[C@@H]"):
+        _offline_violation("tetra_atom_token_residual_text_mismatch")
+    matching_atom = validate_writer_bracket_atom_text_against_facts(
+        facts=facts,
+        rendered_text=text,
+    )
+    expected_token = _tetra_token_from_rendered_text(text)
+    delta = branch["payload"]["graph_ring_delta"]
+    if delta["kind"] not in ("atom_start", "atom_advance", "bond_advance"):
+        _offline_violation("tetra_atom_token_residual_delta_kind_mismatch")
+    event = _single_atom_emitted_event(
+        events=delta["manifest"]["event_manifests"],
+        violation_prefix="tetra_atom_token_residual",
+    )
+    if event["text"] != text:
+        _offline_violation("tetra_atom_token_residual_event_text_mismatch")
+    if event["atom"] != _term(matching_atom.id):
+        _offline_violation("tetra_atom_token_residual_atom_mismatch")
+    _require_specified_tetra_center(
+        facts=facts,
+        atom=event["atom"],
+        violation="tetra_atom_token_residual_center_mismatch",
+    )
+    token = event["tetra_token"]
+    if token["value"] not in ("@", "@@"):
+        _offline_violation("tetra_atom_token_residual_event_token_missing")
+    if token["value"] != expected_token:
+        _offline_violation("tetra_atom_token_residual_token_mismatch")
+
+
+def _check_tetra_local_order_residual(
+    *,
+    branch: Mapping[str, object],
+    facts: MoleculeFacts,
+) -> None:
+    if not facts.stereo.tetrahedral:
+        _offline_violation("tetra_local_order_residual_site_missing")
+    delta = branch["payload"]["graph_ring_delta"]
+    if delta["kind"] not in ("atom_start", "atom_advance", "bond_advance"):
+        _offline_violation("tetra_local_order_residual_delta_kind_mismatch")
+    events = delta["manifest"]["event_manifests"]
+    closed_atoms = [
+        event["atom"]
+        for event in events
+        if event["kind"] == "local_order_closed"
+    ]
+    if len(closed_atoms) != 1:
+        _offline_violation("tetra_local_order_residual_close_event_count")
+    specified_centers = {
+        _term(site.center)
+        for site in facts.stereo.tetrahedral
+        if site.status is SiteStatus.SPECIFIED
+    }
+    if closed_atoms[0] not in specified_centers:
+        _offline_violation("tetra_local_order_residual_center_mismatch")
+    emitted = _single_atom_emitted_event(
+        events=events,
+        violation_prefix="tetra_local_order_residual",
+    )
+    if emitted["parent"] != closed_atoms[0]:
+        _offline_violation("tetra_local_order_residual_parent_mismatch")
+    if not _bond_between_facts_atoms(
+        facts=facts,
+        bond_id=emitted["incoming_bond"],
+        left_atom=closed_atoms[0],
+        right_atom=emitted["atom"],
+    ):
+        _offline_violation("tetra_local_order_residual_bond_mismatch")
+
+
 def _unchecked_obligation_family_name(
     family: str,
     items: list[object],
@@ -858,7 +1082,7 @@ def _unchecked_obligation_family_name(
         }
         for item in items
     ):
-        return "tetra_residual_work"
+        return "tetra_residual_operation_replay"
     return family
 
 

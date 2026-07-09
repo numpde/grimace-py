@@ -421,11 +421,12 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         }
         for smiles, unchecked_families in cases.items():
             with self.subTest(smiles=smiles):
+                facts = _rdkit_facts(smiles)
                 artifact = _rdkit_artifact(smiles)
 
-                classification = _obligation_classification(artifact)
+                classification = _obligation_classification(artifact, facts=facts)
                 verification = verify_writer_support_artifact_for_facts(
-                    facts=_rdkit_facts(smiles),
+                    facts=facts,
                     runtime_options=_writer_options(),
                     artifact=artifact,
                 )
@@ -506,7 +507,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             prepared=prepared,
             envelope=artifact,
         )
-        classification = _obligation_classification(artifact)
+        classification = _obligation_classification(artifact, facts=facts)
         verification = verify_writer_support_artifact_for_facts(
             facts=facts,
             runtime_options=options,
@@ -536,7 +537,12 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         self.assertTrue(classification.accepted, classification.reason)
         self.assertTrue(classification.residual_obligations_present)
         self.assertTrue(classification.stereo_obligations_present)
-        self.assertEqual(classification.unchecked_families, ("tetra_residual_work",))
+        self.assertEqual(
+            classification.unchecked_families,
+            ("tetra_residual_operation_replay",),
+        )
+        self.assertNotIn("residual_work", classification.unchecked_families)
+        self.assertNotIn("residual_work", classification.checked_families)
         self.assertIn("stereo_lifecycle", classification.checked_families)
         self.assertIn("terminal_stereo_lifecycle", classification.checked_families)
         self.assertTrue(verification.accepted, verification.reason)
@@ -546,16 +552,170 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         self.assertEqual(verification.offline_unchecked_object_kinds, ())
         self.assertEqual(
             verification.offline_unchecked_obligation_families,
-            ("tetra_residual_work",),
+            ("tetra_residual_operation_replay",),
+        )
+        self.assertNotIn(
+            "residual_work",
+            verification.offline_checked_obligation_families,
         )
         self.assertIn(
             "bracket_atom_text",
             verification.offline_checked_relation_families,
         )
 
+    def test_specified_tetra_residual_manifest_digest_mismatch_is_rejected(
+        self,
+    ) -> None:
+        facts = tetrahedral_facts()
+        prepared = _prepare(facts)
+        options = _writer_options()
+        artifact = writer_support_artifact_envelope_for_snapshot(
+            prepared=prepared,
+            snapshot=_initial_snapshot(prepared, options),
+        )
+        branch = _first_residual_work_branch(
+            artifact,
+            operation="tetrahedral atom-token restriction",
+        )
+        manifest = branch["payload"]["obligation_manifests"]["residual_work"][0]
+        manifest["source_digest"] = "wrong"
+
+        classification = _obligation_classification(artifact, facts=facts)
+        verification = verify_writer_support_artifact_for_facts(
+            facts=facts,
+            runtime_options=options,
+            artifact=artifact,
+        )
+
+        self.assertFalse(classification.accepted)
+        self.assertIn("tetra_residual_source_digest_mismatch", classification.reason)
+        self.assertFalse(verification.accepted)
+        self.assertIn("object_digest_mismatch", verification.reason)
+
+    def test_specified_tetra_atom_token_residual_event_atom_is_bound(
+        self,
+    ) -> None:
+        facts, artifact = _manual_tetra_artifact()
+        branch = _first_residual_work_branch(
+            artifact,
+            operation="tetrahedral atom-token restriction",
+        )
+        event = _first_graph_ring_delta_event(branch, "atom_emitted")
+        event["atom"] = 1
+
+        classification = _obligation_classification(artifact, facts=facts)
+
+        self.assertFalse(classification.accepted)
+        self.assertIn(
+            "tetra_atom_token_residual_atom_mismatch",
+            classification.reason,
+        )
+
+    def test_specified_tetra_atom_token_residual_token_matches_text(
+        self,
+    ) -> None:
+        facts, artifact = _manual_tetra_artifact()
+        branch = _first_residual_work_branch(
+            artifact,
+            operation="tetrahedral atom-token restriction",
+        )
+        event = _first_graph_ring_delta_event(branch, "atom_emitted")
+        token = event["tetra_token"]
+        token["value"] = "@@" if token["value"] == "@" else "@"
+
+        classification = _obligation_classification(artifact, facts=facts)
+
+        self.assertFalse(classification.accepted)
+        self.assertIn(
+            "tetra_atom_token_residual_token_mismatch",
+            classification.reason,
+        )
+
+    def test_specified_tetra_local_order_closed_atom_is_center(
+        self,
+    ) -> None:
+        facts, artifact = _manual_tetra_artifact()
+        branch = _first_residual_work_branch(
+            artifact,
+            operation="tetrahedral local-order factor closure",
+        )
+        event = _first_graph_ring_delta_event(branch, "local_order_closed")
+        event["atom"] = 1
+
+        classification = _obligation_classification(artifact, facts=facts)
+
+        self.assertFalse(classification.accepted)
+        self.assertIn(
+            "tetra_local_order_residual_center_mismatch",
+            classification.reason,
+        )
+
+    def test_specified_tetra_local_order_event_parent_is_center(
+        self,
+    ) -> None:
+        facts, artifact = _manual_tetra_artifact()
+        branch = _first_residual_work_branch(
+            artifact,
+            operation="tetrahedral local-order factor closure",
+        )
+        event = _first_graph_ring_delta_event(branch, "atom_emitted")
+        event["parent"] = event["atom"]
+
+        classification = _obligation_classification(artifact, facts=facts)
+
+        self.assertFalse(classification.accepted)
+        self.assertIn(
+            "tetra_local_order_residual_parent_mismatch",
+            classification.reason,
+        )
+
+    def test_specified_tetra_local_order_event_bond_connects_ligand(
+        self,
+    ) -> None:
+        facts, artifact = _manual_tetra_artifact()
+        branch = _first_residual_work_branch(
+            artifact,
+            operation="tetrahedral local-order factor closure",
+        )
+        event = _first_graph_ring_delta_event(branch, "atom_emitted")
+        event["incoming_bond"] = 99
+
+        classification = _obligation_classification(artifact, facts=facts)
+
+        self.assertFalse(classification.accepted)
+        self.assertIn(
+            "tetra_local_order_residual_bond_mismatch",
+            classification.reason,
+        )
+
+    def test_specified_tetra_residual_requires_exact_lifecycle_operations(
+        self,
+    ) -> None:
+        facts, artifact = _manual_tetra_artifact()
+        branch = _first_residual_work_branch(
+            artifact,
+            operation="tetrahedral atom-token restriction",
+        )
+        lifecycle = branch["payload"]["obligation_manifests"]["stereo_lifecycle"]
+        branch_certificate = next(
+            item
+            for item in lifecycle
+            if item["operation"] == "WriterStereoBranchCertificate"
+        )
+        branch_certificate["operation"] = "UnexpectedStereoCertificate"
+
+        classification = _obligation_classification(artifact, facts=facts)
+
+        self.assertFalse(classification.accepted)
+        self.assertIn(
+            "tetra_residual_lifecycle_operation_mismatch",
+            classification.reason,
+        )
+
     def test_terminal_clean_obligation_manifests_are_checked(self) -> None:
+        facts = _rdkit_facts("CCO")
         artifact = _rdkit_artifact("CCO")
-        classification = _obligation_classification(artifact)
+        classification = _obligation_classification(artifact, facts=facts)
         terminal = _first_terminal_support_object(artifact)
 
         self.assertTrue(classification.accepted, classification.reason)
@@ -587,6 +747,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         )
 
     def test_terminal_clean_false_reports_unchecked(self) -> None:
+        facts = _rdkit_facts("CCO")
         artifact = _rdkit_artifact("CCO")
         terminal = _first_terminal_support_object(artifact)
         for family in (
@@ -599,7 +760,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             manifest["is_empty"] = False
             manifest["is_discharged"] = False
 
-        classification = _obligation_classification(artifact)
+        classification = _obligation_classification(artifact, facts=facts)
 
         self.assertTrue(classification.accepted, classification.reason)
         self.assertIn(
@@ -642,10 +803,11 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
     def test_ring_finite_relation_and_graph_obligation_are_checked(self) -> None:
         for smiles in ("C1CC1", "C1CCC1", "C1=CC1", "C1#CC1"):
             with self.subTest(smiles=smiles):
+                facts = _rdkit_facts(smiles)
                 artifact = _rdkit_artifact(smiles)
-                classification = _obligation_classification(artifact)
+                classification = _obligation_classification(artifact, facts=facts)
                 verification = verify_writer_support_artifact_for_facts(
-                    facts=_rdkit_facts(smiles),
+                    facts=facts,
                     runtime_options=_writer_options(),
                     artifact=artifact,
                 )
@@ -665,6 +827,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
                 self.assertTrue(verification.offline_replay_complete)
 
     def test_ring_obligation_manifest_mutations_are_classified(self) -> None:
+        facts = _rdkit_facts("C1=CC1")
         artifact = _rdkit_artifact("C1=CC1")
         branch = _first_graph_ring_delta_branch(
             artifact,
@@ -673,7 +836,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         finite = branch["payload"]["obligation_manifests"]["finite_relation_work"][0]
         finite["ring_summary"]["is_exact"] = False
 
-        not_exact = _obligation_classification(artifact)
+        not_exact = _obligation_classification(artifact, facts=facts)
 
         self.assertTrue(not_exact.accepted, not_exact.reason)
         self.assertIn("finite_relation_work", not_exact.unchecked_families)
@@ -686,12 +849,13 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         graph = branch["payload"]["obligation_manifests"]["graph_obligation_work"][0]
         graph["ring_summary"]["is_complete"] = False
 
-        not_complete = _obligation_classification(artifact)
+        not_complete = _obligation_classification(artifact, facts=facts)
 
         self.assertTrue(not_complete.accepted, not_complete.reason)
         self.assertIn("graph_obligation_work", not_complete.unchecked_families)
 
     def test_ring_obligation_cross_link_mutations_are_rejected(self) -> None:
+        facts = _rdkit_facts("C1=CC1")
         artifact = _rdkit_artifact("C1=CC1")
         branch = _first_graph_ring_delta_branch(
             artifact,
@@ -700,7 +864,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         graph = branch["payload"]["obligation_manifests"]["graph_obligation_work"][0]
         graph["ring_summary"]["bond"] = "wrong"
 
-        wrong_bond = _obligation_classification(artifact)
+        wrong_bond = _obligation_classification(artifact, facts=facts)
 
         self.assertFalse(wrong_bond.accepted)
         self.assertIn("ring_obligation_bond_mismatch", wrong_bond.reason)
@@ -713,7 +877,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         finite = branch["payload"]["obligation_manifests"]["finite_relation_work"][0]
         finite["operation"] = "unknown closure operation"
 
-        wrong_operation = _obligation_classification(artifact)
+        wrong_operation = _obligation_classification(artifact, facts=facts)
 
         self.assertFalse(wrong_operation.accepted)
         self.assertIn("ring_obligation_operation_mismatch", wrong_operation.reason)
@@ -726,7 +890,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         graph = branch["payload"]["obligation_manifests"]["graph_obligation_work"][0]
         graph["ring_summary"]["marker"] = "#"
 
-        wrong_marker = _obligation_classification(artifact)
+        wrong_marker = _obligation_classification(artifact, facts=facts)
 
         self.assertFalse(wrong_marker.accepted)
         self.assertIn("ring_obligation_marker_mismatch", wrong_marker.reason)
@@ -749,6 +913,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         self.assertIn("object_digest_mismatch", verification.reason)
 
     def test_synthetic_stereo_obligation_is_reported_unchecked(self) -> None:
+        facts = _rdkit_facts("CCO")
         artifact = _rdkit_artifact("CCO")
         branch = _first_branch_support_object(artifact)
         manifest = branch["payload"]["obligation_manifests"]["stereo_lifecycle"][0]
@@ -756,7 +921,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         manifest["is_noop"] = False
         manifest["is_empty"] = False
 
-        classification = _obligation_classification(artifact)
+        classification = _obligation_classification(artifact, facts=facts)
 
         self.assertTrue(classification.accepted, classification.reason)
         self.assertTrue(classification.stereo_obligations_present)
@@ -1868,8 +2033,9 @@ def _graph_ring_delta_verification(facts, artifact):
     )
 
 
-def _obligation_classification(artifact):
+def _obligation_classification(artifact, *, facts):
     return classify_residual_stereo_obligations_offline(
+        facts=facts,
         artifact=artifact,
         objects={item["object_id"]: item for item in artifact["objects"]},
     )
@@ -1887,6 +2053,18 @@ def _terminal_identity_verification(artifact):
     return verify_terminal_support_identities_offline(
         artifact=artifact,
         objects={item["object_id"]: item for item in artifact["objects"]},
+    )
+
+
+def _manual_tetra_artifact():
+    facts = tetrahedral_facts()
+    prepared = _prepare(facts)
+    return (
+        facts,
+        writer_support_artifact_envelope_for_snapshot(
+            prepared=prepared,
+            snapshot=_initial_snapshot(prepared, _writer_options()),
+        ),
     )
 
 
@@ -1912,6 +2090,16 @@ def _first_graph_ring_delta_branch(artifact, kind: str):
         if item["payload"]["graph_ring_delta"]["kind"] == kind:
             return item
     raise AssertionError(f"missing graph/ring delta kind: {kind}")
+
+
+def _first_residual_work_branch(artifact, *, operation: str):
+    for item in artifact["objects"]:
+        if item["kind"] != "branch_support":
+            continue
+        manifests = item["payload"]["obligation_manifests"]["residual_work"]
+        if any(manifest["operation"] == operation for manifest in manifests):
+            return item
+    raise AssertionError(f"missing residual work operation: {operation}")
 
 
 def _first_graph_ring_delta_event(branch, kind: str):

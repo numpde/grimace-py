@@ -89,6 +89,7 @@ class WriterDefaultOfflineCompleteTest(unittest.TestCase):
         manifest["terminal_clean"] = False
 
         classification = classify_residual_stereo_obligations_offline(
+            facts=_facts(case),
             artifact=artifact,
             objects=objects,
         )

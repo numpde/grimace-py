@@ -12,6 +12,7 @@ PINNED_RDKIT_KNOWN_QUIRKS = "rdkit_known_quirks"
 PINNED_RDKIT_ROOTED_RANDOM = "rdkit_rooted_random"
 PINNED_RDKIT_SERIALIZER_REGRESSIONS = "rdkit_serializer_regressions"
 PINNED_RDKIT_WRITER_MEMBERSHIP = "rdkit_writer_membership"
+PINNED_SOUTH_STAR_BRACKET_AUDIT = "rdkit_south_star_bracket_audit"
 PINNED_STEREO_CONSTRAINT_MODEL = "stereo_constraint_model"
 PINNED_RDKIT_PARITY_TARGETS: tuple[tuple[str, str], ...] = (
     (

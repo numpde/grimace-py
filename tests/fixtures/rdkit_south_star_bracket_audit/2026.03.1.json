@@ -1,0 +1,185 @@
+{
+  "rdkit_version": "2026.03.1",
+  "cases": [
+    {
+      "id": "durable_bracket_01_nitrogen_cation",
+      "source": "South Star default writer capability ledger bracket audit for RDKit canonical=False, doRandom=True support",
+      "name": "nitrogen_cation",
+      "smiles": "[N+]",
+      "extraction_profile": "graph_no_potential_sites",
+      "expected": "accepted",
+      "support_surface": "simple_bracket_charge",
+      "expected_support": [
+        "[N+]"
+      ],
+      "expected_support_count": 1,
+      "expected_completion_count": 1,
+      "note": "Durable accepted bracket atom case promoted from the default ledger."
+    },
+    {
+      "id": "durable_bracket_02_iminium_hydrogen_cation",
+      "source": "South Star default writer capability ledger bracket audit for RDKit canonical=False, doRandom=True support",
+      "name": "iminium_hydrogen_cation",
+      "smiles": "[NH+]",
+      "extraction_profile": "graph_no_potential_sites",
+      "expected": "accepted",
+      "support_surface": "simple_bracket_charge",
+      "expected_support": [
+        "[NH+]"
+      ],
+      "expected_support_count": 1,
+      "expected_completion_count": 1,
+      "note": "Durable accepted bracket atom case promoted from the default ledger."
+    },
+    {
+      "id": "durable_bracket_03_amino_cation",
+      "source": "South Star default writer capability ledger bracket audit for RDKit canonical=False, doRandom=True support",
+      "name": "amino_cation",
+      "smiles": "[NH2+]",
+      "extraction_profile": "graph_no_potential_sites",
+      "expected": "accepted",
+      "support_surface": "simple_bracket_charge",
+      "expected_support": [
+        "[NH2+]"
+      ],
+      "expected_support_count": 1,
+      "expected_completion_count": 1,
+      "note": "Durable accepted bracket atom case promoted from the default ledger."
+    },
+    {
+      "id": "durable_bracket_04_ammonia_cation",
+      "source": "South Star default writer capability ledger bracket audit for RDKit canonical=False, doRandom=True support",
+      "name": "ammonia_cation",
+      "smiles": "[NH3+]",
+      "extraction_profile": "graph_no_potential_sites",
+      "expected": "accepted",
+      "support_surface": "simple_bracket_charge",
+      "expected_support": [
+        "[NH3+]"
+      ],
+      "expected_support_count": 1,
+      "expected_completion_count": 1,
+      "note": "Durable accepted bracket atom case promoted from the default ledger."
+    },
+    {
+      "id": "durable_bracket_05_ammonium_charge",
+      "source": "South Star default writer capability ledger bracket audit for RDKit canonical=False, doRandom=True support",
+      "name": "ammonium_charge",
+      "smiles": "[NH4+]",
+      "extraction_profile": "graph_no_potential_sites",
+      "expected": "accepted",
+      "support_surface": "simple_bracket_charge",
+      "expected_support": [
+        "[NH4+]"
+      ],
+      "expected_support_count": 1,
+      "expected_completion_count": 1,
+      "note": "Durable accepted bracket atom case promoted from the default ledger."
+    },
+    {
+      "id": "durable_bracket_06_oxide_anion",
+      "source": "South Star default writer capability ledger bracket audit for RDKit canonical=False, doRandom=True support",
+      "name": "oxide_anion",
+      "smiles": "[O-]",
+      "extraction_profile": "graph_no_potential_sites",
+      "expected": "accepted",
+      "support_surface": "simple_bracket_charge",
+      "expected_support": [
+        "[O-]"
+      ],
+      "expected_support_count": 1,
+      "expected_completion_count": 1,
+      "note": "Durable accepted bracket atom case promoted from the default ledger."
+    },
+    {
+      "id": "durable_bracket_07_hydroxide_anion",
+      "source": "South Star default writer capability ledger bracket audit for RDKit canonical=False, doRandom=True support",
+      "name": "hydroxide_anion",
+      "smiles": "[OH-]",
+      "extraction_profile": "graph_no_potential_sites",
+      "expected": "accepted",
+      "support_surface": "simple_bracket_charge",
+      "expected_support": [
+        "[OH-]"
+      ],
+      "expected_support_count": 1,
+      "expected_completion_count": 1,
+      "note": "Durable accepted bracket atom case promoted from the default ledger."
+    },
+    {
+      "id": "durable_bracket_08_isotopic_methane",
+      "source": "South Star default writer capability ledger bracket audit for RDKit canonical=False, doRandom=True support",
+      "name": "isotopic_methane",
+      "smiles": "[13CH4]",
+      "extraction_profile": "graph_no_potential_sites",
+      "expected": "accepted",
+      "support_surface": "simple_isotope_bracket_atom",
+      "expected_support": [
+        "[13CH4]"
+      ],
+      "expected_support_count": 1,
+      "expected_completion_count": 1,
+      "note": "Durable accepted bracket atom case promoted from the default ledger."
+    },
+    {
+      "id": "durable_bracket_09_charged_isotope_methyl",
+      "source": "South Star default writer capability ledger bracket audit for RDKit canonical=False, doRandom=True support",
+      "name": "charged_isotope_methyl",
+      "smiles": "[13CH3+]",
+      "extraction_profile": "graph_no_potential_sites",
+      "expected": "blocked",
+      "support_surface": "unsupported_charged_isotope",
+      "expected_support": [],
+      "blocker_phase": "preparation",
+      "blocker_kind": "unsupported_atom",
+      "blocker_error_kind": "UNSUPPORTED_ATOM",
+      "blocker_message_contains": "isotopic atoms are unsupported",
+      "note": "Durable blocked bracket atom case promoted from the default ledger."
+    },
+    {
+      "id": "durable_bracket_10_oxygen_positive_charge",
+      "source": "South Star default writer capability ledger bracket audit for RDKit canonical=False, doRandom=True support",
+      "name": "oxygen_positive_charge",
+      "smiles": "[O+]",
+      "extraction_profile": "graph_no_potential_sites",
+      "expected": "blocked",
+      "support_surface": "unsupported_positive_oxygen_charge",
+      "expected_support": [],
+      "blocker_phase": "preparation",
+      "blocker_kind": "unsupported_atom",
+      "blocker_error_kind": "UNSUPPORTED_ATOM",
+      "blocker_message_contains": "charged atoms are unsupported",
+      "note": "Durable blocked bracket atom case promoted from the default ledger."
+    },
+    {
+      "id": "durable_bracket_11_nitrogen_negative_charge",
+      "source": "South Star default writer capability ledger bracket audit for RDKit canonical=False, doRandom=True support",
+      "name": "nitrogen_negative_charge",
+      "smiles": "[NH2-]",
+      "extraction_profile": "graph_no_potential_sites",
+      "expected": "blocked",
+      "support_surface": "unsupported_negative_nitrogen_charge",
+      "expected_support": [],
+      "blocker_phase": "preparation",
+      "blocker_kind": "unsupported_atom",
+      "blocker_error_kind": "UNSUPPORTED_ATOM",
+      "blocker_message_contains": "charged atoms are unsupported",
+      "note": "Durable blocked bracket atom case promoted from the default ledger."
+    },
+    {
+      "id": "durable_bracket_12_oxygen_charged_isotope",
+      "source": "South Star default writer capability ledger bracket audit for RDKit canonical=False, doRandom=True support",
+      "name": "oxygen_charged_isotope",
+      "smiles": "[18OH-]",
+      "extraction_profile": "graph_no_potential_sites",
+      "expected": "blocked",
+      "support_surface": "unsupported_charged_oxygen_isotope",
+      "expected_support": [],
+      "blocker_phase": "preparation",
+      "blocker_kind": "unsupported_atom",
+      "blocker_error_kind": "UNSUPPORTED_ATOM",
+      "blocker_message_contains": "isotopic atoms are unsupported",
+      "note": "Durable blocked bracket atom case promoted from the default ledger."
+    }
+  ]
+}

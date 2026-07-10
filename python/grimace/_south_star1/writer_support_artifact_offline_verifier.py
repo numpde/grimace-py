@@ -33,6 +33,7 @@ from .writer_atom_text_lifecycle import bracket_atom_text
 from .writer_count_dag_envelope import count_dag_node_by_id
 from .writer_count_dag_envelope import validate_writer_count_certificate_dag_envelope
 from .writer_envelope_terms import _identity_digest
+from .writer_envelope_terms import _digest_terms_bounded
 from .writer_envelope_terms import _term
 from .writer_envelope_work import WriterEnvelopeWorkBudget
 from .writer_envelope_work import default_writer_envelope_work_budget
@@ -917,6 +918,7 @@ def classify_residual_stereo_obligations_offline(
                             facts=facts,
                             branch=branch,
                             items=items,
+                            objects=objects,
                         )
                     )
                 else:
@@ -1014,6 +1016,7 @@ def _classify_branch_residual_work_manifests(
     facts: MoleculeFacts,
     branch: Mapping[str, object],
     items: list[object],
+    objects: Mapping[str, Mapping[str, object]],
 ) -> tuple[Mapping[str, object], ...]:
     _check_branch_residual_lifecycle_links(branch=branch, residual_items=items)
     for item in items:
@@ -1021,6 +1024,7 @@ def _classify_branch_residual_work_manifests(
             facts=facts,
             branch=branch,
             item=item,
+            objects=objects,
         )
     return tuple(items)
 
@@ -1081,6 +1085,7 @@ def _validate_tetra_residual_manifest_if_known(
     facts: MoleculeFacts,
     branch: Mapping[str, object],
     item: Mapping[str, object],
+    objects: Mapping[str, Mapping[str, object]],
 ) -> None:
     operation = item["operation"]
     if operation == "tetrahedral atom-token restriction":
@@ -1096,7 +1101,12 @@ def _validate_tetra_residual_manifest_if_known(
             expected_certificate_kind="tetra_token_restricted",
             expected_changed_field="residual_snapshot_changed",
         )
-        _replay_tetra_atom_token_transition(branch=branch, item=item, facts=facts)
+        _replay_tetra_atom_token_transition(
+            branch=branch,
+            item=item,
+            facts=facts,
+            objects=objects,
+        )
         return
     if operation == "tetrahedral local-order factor closure":
         _check_tetra_residual_manifest_core(
@@ -1113,7 +1123,12 @@ def _validate_tetra_residual_manifest_if_known(
             expected_changed_field="local_orders_changed",
         )
         _check_tetra_local_order_residual(branch=branch, facts=facts)
-        _replay_tetra_local_order_transition(branch=branch, item=item, facts=facts)
+        _replay_tetra_local_order_transition(
+            branch=branch,
+            item=item,
+            facts=facts,
+            objects=objects,
+        )
         return
 
 
@@ -1336,6 +1351,7 @@ def _replay_tetra_atom_token_transition(
     branch: Mapping[str, object],
     item: Mapping[str, object],
     facts: MoleculeFacts,
+    objects: Mapping[str, Mapping[str, object]],
 ) -> None:
     term = _transition_from_manifest(item)
     if not isinstance(term, TetraAtomTokenRestrictionTransitionTerm):
@@ -1352,6 +1368,16 @@ def _replay_tetra_atom_token_transition(
         item=item,
         source_digest=term.source_snapshot_digest,
         successor_digest=term.successor_snapshot_digest,
+    )
+    source_state, successor_state = _branch_writer_state_terms(
+        branch=branch,
+        objects=objects,
+    )
+    _check_transition_state_residual_anchors(
+        source_state=source_state,
+        successor_state=successor_state,
+        source_snapshot=term.source_snapshot,
+        successor_snapshot=term.successor_snapshot,
     )
     delta = branch["payload"]["graph_ring_delta"]
     if delta["kind"] not in ("atom_start", "atom_advance", "bond_advance"):
@@ -1397,6 +1423,7 @@ def _replay_tetra_local_order_transition(
     branch: Mapping[str, object],
     item: Mapping[str, object],
     facts: MoleculeFacts,
+    objects: Mapping[str, Mapping[str, object]],
 ) -> None:
     term = _transition_from_manifest(item)
     if not isinstance(term, TetraLocalOrderFactorClosureTransitionTerm):
@@ -1414,6 +1441,16 @@ def _replay_tetra_local_order_transition(
         source_digest=term.source_snapshot_digest,
         successor_digest=term.successor_snapshot_digest,
     )
+    source_state, successor_state = _branch_writer_state_terms(
+        branch=branch,
+        objects=objects,
+    )
+    _check_transition_state_residual_anchors(
+        source_state=source_state,
+        successor_state=successor_state,
+        source_snapshot=term.source_snapshot,
+        successor_snapshot=term.successor_snapshot,
+    )
     site = _specified_tetra_site_for_transition(
         facts=facts,
         site=int(term.site),
@@ -1428,7 +1465,12 @@ def _replay_tetra_local_order_transition(
         int(item) for item in site.reference_order
     ):
         _offline_violation("tetra_local_order_local_order_mismatch")
-    _check_transition_local_order_event_binding(branch=branch, term=term)
+    _check_transition_local_order_event_binding(
+        branch=branch,
+        term=term,
+        source_state=source_state,
+        successor_state=successor_state,
+    )
     expected_parity = _local_order_parity(
         reference_order=site.reference_order,
         local_order=term.local_order,
@@ -1500,6 +1542,100 @@ def _check_transition_lifecycle_residual_binding(
         _offline_violation("tetra_residual_transition_successor_lifecycle_mismatch")
 
 
+def _branch_writer_state_terms(
+    *,
+    branch: Mapping[str, object],
+    objects: Mapping[str, Mapping[str, object]],
+) -> tuple[Mapping[str, object], Mapping[str, object]]:
+    branch_ref = branch["object_id"]
+    projections = [
+        item
+        for item in objects.values()
+        if item["kind"] == "text_projection"
+        and branch_ref in item["payload"]["branch_support_refs"]
+    ]
+    if len(projections) != 1:
+        _offline_violation("branch_projection_support_ref_ambiguous")
+    projection_payload = projections[0]["payload"]
+    source_state = _state_term_from_cursor(
+        cursor=projection_payload["source_cursor"],
+        digest=branch["payload"]["source_state_digest"],
+        missing_reason="branch_source_state_term_missing",
+        ambiguous_reason="branch_source_state_term_ambiguous",
+    )
+    successor_state = _state_term_from_cursor(
+        cursor=projection_payload["successor_cursor"],
+        digest=branch["payload"]["successor_state_digest"],
+        missing_reason="branch_successor_state_term_missing",
+        ambiguous_reason="branch_successor_state_term_ambiguous",
+    )
+    return source_state, successor_state
+
+
+def _state_term_from_cursor(
+    *,
+    cursor: Mapping[str, object],
+    digest: str,
+    missing_reason: str,
+    ambiguous_reason: str,
+) -> Mapping[str, object]:
+    cursor_terms = cursor["terms"]
+    if (
+        not isinstance(cursor_terms, Mapping)
+        or cursor_terms.get("__dataclass__")
+        != "grimace._south_star1.writer_frontier.WriterFrontierCursor"
+    ):
+        _offline_violation("branch_cursor_term_kind_mismatch")
+    matches = [
+        state
+        for state, _weight in _term_field_value(cursor_terms, "weighted_states")
+        if _closed_term_digest(state) == digest
+    ]
+    if not matches:
+        _offline_violation(missing_reason)
+    if len(matches) != 1:
+        _offline_violation(ambiguous_reason)
+    return matches[0]
+
+
+def _check_transition_state_residual_anchors(
+    *,
+    source_state: Mapping[str, object],
+    successor_state: Mapping[str, object],
+    source_snapshot: ResidualStoreValueSnapshot,
+    successor_snapshot: ResidualStoreValueSnapshot,
+) -> None:
+    if _state_residual_snapshot(source_state) != _term(source_snapshot):
+        _offline_violation("tetra_residual_transition_source_state_anchor_mismatch")
+    if _state_residual_snapshot(successor_state) != _term(successor_snapshot):
+        _offline_violation("tetra_residual_transition_successor_state_anchor_mismatch")
+
+
+def _state_residual_snapshot(state: Mapping[str, object]) -> object:
+    stereo = _term_field_value(state, "stereo_state")
+    return _term_field_value(stereo, "residual_snapshot")
+
+
+def _state_local_order_records(state: Mapping[str, object]) -> tuple[object, ...]:
+    stereo = _term_field_value(state, "stereo_state")
+    return tuple(_term_field_value(stereo, "local_orders"))
+
+
+def _closed_term_digest(term: object) -> str:
+    return _digest_terms_bounded(
+        term,
+        budget=default_writer_envelope_work_budget(None),
+        operation="support_artifact.offline.closed_term_digest",
+    )
+
+
+def _term_field_value(term: Mapping[str, object], name: str) -> object:
+    for field_name, value in term["fields"]:
+        if field_name == name:
+            return value
+    _offline_violation("closed_term_field_missing")
+
+
 def _linked_raw_tetra_lifecycle(
     *,
     branch: Mapping[str, object],
@@ -1520,6 +1656,8 @@ def _check_transition_local_order_event_binding(
     *,
     branch: Mapping[str, object],
     term: TetraLocalOrderFactorClosureTransitionTerm,
+    source_state: Mapping[str, object],
+    successor_state: Mapping[str, object],
 ) -> None:
     events = branch["payload"]["graph_ring_delta"]["manifest"]["event_manifests"]
     closed = [
@@ -1564,6 +1702,60 @@ def _check_transition_local_order_event_binding(
     }
     if event["local_order_identity_digest"] != _identity_digest(identity):
         _offline_violation("tetra_local_order_event_identity_digest_mismatch")
+    _check_transition_local_order_state_record_anchors(
+        event=event,
+        term=term,
+        source_state=source_state,
+        successor_state=successor_state,
+    )
+
+
+def _check_transition_local_order_state_record_anchors(
+    *,
+    event: Mapping[str, object],
+    term: TetraLocalOrderFactorClosureTransitionTerm,
+    source_state: Mapping[str, object],
+    successor_state: Mapping[str, object],
+) -> None:
+    source_record = _local_order_record_for_site(
+        _state_local_order_records(source_state),
+        atom=int(term.atom),
+        digest=event["source_local_order_record_digest"],
+        mismatch_reason="tetra_local_order_source_record_anchor_mismatch",
+    )
+    successor_record = _local_order_record_for_site(
+        _state_local_order_records(successor_state),
+        atom=int(term.atom),
+        digest=event["successor_local_order_record_digest"],
+        mismatch_reason="tetra_local_order_successor_record_anchor_mismatch",
+    )
+    if _term_field_value(source_record, "closed"):
+        _offline_violation("tetra_local_order_source_record_not_open")
+    if not _term_field_value(successor_record, "closed"):
+        _offline_violation("tetra_local_order_successor_record_not_closed")
+    if tuple(_term_field_value(successor_record, "order")) != tuple(
+        int(item) for item in term.local_order
+    ):
+        _offline_violation("tetra_local_order_successor_record_order_mismatch")
+
+
+def _local_order_record_for_site(
+    records: tuple[object, ...],
+    *,
+    atom: int,
+    digest: str,
+    mismatch_reason: str,
+) -> Mapping[str, object]:
+    matches = [
+        record
+        for record in records
+        if isinstance(record, Mapping)
+        and int(_term_field_value(record, "atom")) == atom
+        and _closed_term_digest(record) == digest
+    ]
+    if len(matches) != 1:
+        _offline_violation(mismatch_reason)
+    return matches[0]
 
 
 def _transition_from_manifest(item: Mapping[str, object]) -> object:

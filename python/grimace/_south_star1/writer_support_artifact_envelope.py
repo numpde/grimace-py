@@ -1368,13 +1368,12 @@ def _local_order_closed_identity_manifest(
     site = _specified_tetra_site_for_atom(facts=facts, atom=getattr(event, "atom"))
     if site is None:
         return {}
-    lifecycle = _raw_lifecycle_for_event(branch=branch, event=event)
     source_record = _local_order_record_for_atom(
-        getattr(lifecycle, "source_local_orders"),
+        getattr(branch.source_state.stereo_state, "local_orders"),
         getattr(event, "atom"),
     )
     successor_record = _local_order_record_for_atom(
-        getattr(lifecycle, "successor_local_orders"),
+        getattr(branch.successor_state.stereo_state, "local_orders"),
         getattr(event, "atom"),
     )
     if successor_record is None:

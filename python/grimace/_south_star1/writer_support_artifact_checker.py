@@ -17,7 +17,7 @@ from .writer_envelope_work import default_writer_envelope_work_budget
 from .writer_envelope_work import writer_envelope_work_reason
 
 SCHEMA_NAME = "writer_support_artifact"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 _TOP_LEVEL_FIELDS = frozenset((
     "schema_name",
     "schema_version",

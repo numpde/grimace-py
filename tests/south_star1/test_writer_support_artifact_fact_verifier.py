@@ -587,7 +587,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         self.assertFalse(verification.accepted)
         self.assertIn("object_digest_mismatch", verification.reason)
 
-    def test_specified_tetra_transition_rejects_wrong_successor_token_domain(
+    def test_specified_tetra_transition_rejects_state_detached_successor_token_domain(
         self,
     ) -> None:
         facts, artifact = _manual_tetra_artifact()
@@ -635,7 +635,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
         self.assertFalse(classification.accepted)
         self.assertIn(
-            "tetra_atom_token_successor_residual_mismatch",
+            "tetra_residual_transition_successor_state_anchor_mismatch",
             classification.reason,
         )
 
@@ -722,6 +722,62 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             classification.reason,
         )
 
+    def test_specified_tetra_local_order_rejects_coherent_detached_record_identity(
+        self,
+    ) -> None:
+        facts, artifact = _manual_tetra_artifact()
+        branch = _first_residual_work_branch(
+            artifact,
+            operation="tetrahedral local-order factor closure",
+        )
+        event = _first_graph_ring_delta_event(branch, "local_order_closed")
+        event["successor_local_order_record_digest"] = _different_local_order_digest(
+            artifact,
+            branch=branch,
+            cursor_name="successor_cursor",
+            atom=event["atom"],
+        )
+        _refresh_local_order_event_identity_digest(event)
+        _refresh_graph_ring_delta_digest(branch["payload"]["graph_ring_delta"])
+        _refresh_object_and_artifact_digest(artifact, branch)
+        _assert_structural_checker_accepts(self, artifact)
+
+        classification = _obligation_classification(artifact, facts=facts)
+
+        self.assertFalse(classification.accepted)
+        self.assertIn(
+            "tetra_local_order_successor_record_anchor_mismatch",
+            classification.reason,
+        )
+
+    def test_specified_tetra_local_order_rejects_coherent_detached_source_record_identity(
+        self,
+    ) -> None:
+        facts, artifact = _manual_tetra_artifact()
+        branch = _first_residual_work_branch(
+            artifact,
+            operation="tetrahedral local-order factor closure",
+        )
+        event = _first_graph_ring_delta_event(branch, "local_order_closed")
+        event["source_local_order_record_digest"] = _different_local_order_digest(
+            artifact,
+            branch=branch,
+            cursor_name="source_cursor",
+            atom=event["atom"],
+        )
+        _refresh_local_order_event_identity_digest(event)
+        _refresh_graph_ring_delta_digest(branch["payload"]["graph_ring_delta"])
+        _refresh_object_and_artifact_digest(artifact, branch)
+        _assert_structural_checker_accepts(self, artifact)
+
+        classification = _obligation_classification(artifact, facts=facts)
+
+        self.assertFalse(classification.accepted)
+        self.assertIn(
+            "tetra_local_order_source_record_anchor_mismatch",
+            classification.reason,
+        )
+
     def test_specified_tetra_transition_rejects_missing_factor_discharge(
         self,
     ) -> None:
@@ -748,7 +804,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             classification.reason,
         )
 
-    def test_specified_tetra_transition_rejects_claimed_discharge_without_successor_discharge(
+    def test_specified_tetra_transition_rejects_state_detached_successor_discharge(
         self,
     ) -> None:
         facts, artifact = _manual_tetra_artifact()
@@ -791,11 +847,11 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
         self.assertFalse(classification.accepted)
         self.assertIn(
-            "tetra_local_order_successor_residual_mismatch",
+            "tetra_residual_transition_successor_state_anchor_mismatch",
             classification.reason,
         )
 
-    def test_specified_tetra_transition_rejects_projected_parity_before_closure(
+    def test_specified_tetra_transition_rejects_state_detached_source_projection(
         self,
     ) -> None:
         facts, artifact = _manual_tetra_artifact()
@@ -836,11 +892,11 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
         self.assertFalse(classification.accepted)
         self.assertIn(
-            "tetra_local_order_projected_before_closure",
+            "tetra_residual_transition_source_state_anchor_mismatch",
             classification.reason,
         )
 
-    def test_specified_tetra_transition_rejects_unrelated_residual_component_change(
+    def test_specified_tetra_transition_rejects_state_detached_successor_component(
         self,
     ) -> None:
         facts, artifact = _manual_tetra_artifact()
@@ -884,11 +940,11 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
         self.assertFalse(classification.accepted)
         self.assertIn(
-            "tetra_atom_token_successor_residual_mismatch",
+            "tetra_residual_transition_successor_state_anchor_mismatch",
             classification.reason,
         )
 
-    def test_specified_tetra_transition_rejects_correct_text_wrong_successor(
+    def test_specified_tetra_transition_rejects_state_detached_wrong_successor(
         self,
     ) -> None:
         facts, artifact = _manual_tetra_artifact()
@@ -924,7 +980,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
         self.assertFalse(classification.accepted)
         self.assertIn(
-            "tetra_atom_token_successor_residual_mismatch",
+            "tetra_residual_transition_successor_state_anchor_mismatch",
             classification.reason,
         )
 
@@ -957,6 +1013,59 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         self.assertFalse(classification.accepted)
         self.assertIn(
             "tetra_residual_transition_source_lifecycle_mismatch",
+            classification.reason,
+        )
+
+    def test_specified_tetra_atom_token_rejects_coherent_detached_residual_snapshots(
+        self,
+    ) -> None:
+        facts, artifact = _manual_tetra_artifact()
+        branch = _first_residual_work_branch(
+            artifact,
+            operation="tetrahedral atom-token restriction",
+        )
+        manifest = next(
+            item
+            for item in branch["payload"]["obligation_manifests"]["residual_work"]
+            if item["operation"] == "tetrahedral atom-token restriction"
+        )
+        for field in ("source_snapshot", "successor_snapshot"):
+            snapshot = _term_field(manifest["transition_term"], field)
+            _term_field(snapshot, "domains").append(
+                [
+                    {
+                        "__dataclass__": "grimace._south_star1.residual_constraints.VarId",
+                        "fields": [["kind", "detached_test_component"], ["key", [123]]],
+                    },
+                    [False, True],
+                ]
+            )
+            digest = _closed_term_digest(snapshot)
+            _set_term_field(
+                manifest["transition_term"],
+                f"{field}_digest",
+                digest,
+            )
+            lifecycle_field = (
+                "source_residual_snapshot_digest"
+                if field == "source_snapshot"
+                else "successor_residual_snapshot_digest"
+            )
+            _refresh_linked_raw_lifecycle_residual_digest(
+                branch,
+                manifest=manifest,
+                field=lifecycle_field,
+                digest=digest,
+            )
+        _refresh_transition_manifest_digest(manifest)
+        _refresh_object_and_artifact_digest(artifact, branch)
+        _assert_structural_checker_accepts(self, artifact)
+
+        classification = _obligation_classification(artifact, facts=facts)
+
+        self.assertFalse(classification.accepted)
+        self.assertIn(
+            "tetra_residual_transition_source_state_anchor_mismatch",
             classification.reason,
         )
 
@@ -3137,6 +3246,42 @@ def _refresh_linked_raw_lifecycle_residual_digest(
 def _first_closure_evidence_item(artifact):
     evidence = _first_local_evidence(artifact, "closure_bond_text")
     return evidence["manifest"]["items"][0]
+
+
+def _different_local_order_digest(artifact, *, branch, cursor_name: str, atom: int) -> str:
+    projection = _text_projection_for_branch(artifact, branch)
+    cursor = projection["payload"][cursor_name]
+    state = cursor["terms"]["fields"][0][1][0][0]
+    stereo = _term_field(state, "stereo_state")
+    for record in _term_field(stereo, "local_orders"):
+        if _term_field(record, "atom") != atom:
+            return _closed_term_digest(record)
+    raise AssertionError("missing alternate local-order record")
+
+
+def _text_projection_for_branch(artifact, branch):
+    for item in artifact["objects"]:
+        if item["kind"] != "text_projection":
+            continue
+        if branch["object_id"] in item["payload"]["branch_support_refs"]:
+            return item
+    raise AssertionError("missing text projection for branch")
+
+
+def _refresh_local_order_event_identity_digest(event) -> None:
+    identity = {
+        "site": event["site"],
+        "atom": event["atom"],
+        "local_order": event["local_order"],
+        "reference_order": event["reference_order"],
+        "source_local_order_record_digest": event[
+            "source_local_order_record_digest"
+        ],
+        "successor_local_order_record_digest": event[
+            "successor_local_order_record_digest"
+        ],
+    }
+    event["local_order_identity_digest"] = _identity_digest(identity)
 
 
 def _initial_snapshot(prepared, options):

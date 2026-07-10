@@ -12,12 +12,19 @@ from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
 from grimace._south_star1.policy import SerializationLanguageMode
 from grimace._south_star1.writer_envelope_terms import _canonical_json
+from grimace._south_star1.writer_envelope_terms import _digest_terms_bounded
 from grimace._south_star1.writer_envelope_terms import _identity_digest
 from grimace._south_star1.writer_envelope_work import WriterEnvelopeWorkBudget
 from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
 from grimace._south_star1.writer_snapshot import capture_writer_frontier_snapshot
 from grimace._south_star1.writer_snapshot_prefix_envelope import (
     writer_snapshot_prefix_read_envelope_for_emitted_texts,
+)
+from grimace._south_star1.writer_support_artifact_checker import (
+    artifact_manifest,
+)
+from grimace._south_star1.writer_support_artifact_checker import (
+    SCHEMA_VERSION,
 )
 from grimace._south_star1.writer_support_artifact_checker import (
     verify_writer_support_artifact_consistency as check_support_artifact,
@@ -58,6 +65,27 @@ class WriterSupportArtifactEnvelopeTest(unittest.TestCase):
         self.assertEqual(verification.support_count, 1)
         self.assertEqual(verification.witness_count, 2)
         self.assertEqual(check.object_count, envelope["metrics"]["object_count"])
+
+    def test_new_artifacts_use_schema_v3(self) -> None:
+        envelope = _snapshot_artifact()
+
+        self.assertEqual(SCHEMA_VERSION, 3)
+        self.assertEqual(envelope["schema_version"], 3)
+        self.assertTrue(check_support_artifact(envelope).accepted)
+
+    def test_v2_artifact_is_rejected_without_migration(self) -> None:
+        envelope = _snapshot_artifact()
+        envelope["schema_version"] = 2
+        envelope["digest"] = _digest_terms_bounded(
+            artifact_manifest(envelope),
+            budget=WriterEnvelopeWorkBudget(),
+            operation="test.artifact_manifest.digest",
+        )
+
+        check = check_support_artifact(envelope)
+
+        self.assertFalse(check.accepted)
+        self.assertIn("unknown_schema_version", check.reason)
 
     def test_producer_consistency_wrapper_delegates_to_checker(self) -> None:
         envelope = _snapshot_artifact()

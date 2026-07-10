@@ -1204,17 +1204,29 @@ def _validate_tetra_residual_manifest_if_known(
         )
         return
     if operation == "directional carrier-mark restriction":
+        expected_lifecycle_capabilities = (
+            "directional_carrier_restriction",
+            "directional_site_compatibility",
+            "residual_factor_discharge",
+            "residual_propagation",
+        )
+        if _directional_carrier_transition_site_count_offline(
+            facts=facts,
+            branch=branch,
+        ) == 2:
+            expected_lifecycle_capabilities = (
+                "directional_carrier_restriction",
+                "directional_site_compatibility",
+                "residual_factor_discharge",
+                "residual_propagation",
+                "shared_directional_carrier_restriction",
+            )
         _check_tetra_residual_manifest_core(
             branch=branch,
             item=item,
             expected_event_kind="bond_emitted",
             expected_capability="directional_carrier_restriction",
-            expected_lifecycle_capabilities=(
-                "directional_carrier_restriction",
-                "directional_site_compatibility",
-                "residual_factor_discharge",
-                "residual_propagation",
-            ),
+            expected_lifecycle_capabilities=expected_lifecycle_capabilities,
             expected_certificate_kind="directional_carrier_restricted",
             expected_changed_field="residual_snapshot_changed",
         )
@@ -1666,15 +1678,15 @@ def _replay_directional_carrier_transition(
     )
     if term.canonical_orientation != expected_orientation:
         _offline_violation("directional_carrier_canonical_orientation_mismatch")
-    sites = _directional_sites_for_facts_bond(facts=facts, bond=term.bond)
-    if len(sites) != 1:
-        _offline_violation("directional_carrier_site_scope_mismatch")
-    site = sites[0]
-    if site.status is not SiteStatus.SPECIFIED:
-        _offline_violation("directional_carrier_site_status_mismatch")
-    expected_models = _facts_directional_models_for_bond(
+    sites = _expected_directional_sites_for_facts_bond(
         facts=facts,
-        site=site,
+        bond=term.bond,
+    )
+    if not 1 <= len(sites) <= 2:
+        _offline_violation("directional_carrier_site_scope_mismatch")
+    expected_models = _expected_directional_models_for_facts_bond(
+        facts=facts,
+        sites=sites,
         bond=term.bond,
     )
     if term.carrier_models != expected_models:
@@ -1694,7 +1706,7 @@ def _replay_directional_carrier_transition(
         _offline_violation("directional_carrier_restriction_mismatch")
     _check_directional_source_factor_snapshots(
         facts=facts,
-        site=site,
+        sites=sites,
         bond=term.bond,
         source_snapshot=term.source_snapshot,
         models=expected_models,
@@ -1712,7 +1724,7 @@ def _replay_directional_carrier_transition(
         _offline_violation("directional_carrier_affected_factors_mismatch")
     expected_discharged = _expected_directional_discharge_keys(
         facts=facts,
-        site=site,
+        sites=sites,
         bond=term.bond,
         source_state=source_state,
     )
@@ -1753,15 +1765,43 @@ def _directional_carrier_transition_term_required_offline(
         return False
     if not _facts_bond_is_bridge(facts=facts, bond=bond):
         return False
-    sites = _directional_sites_for_facts_bond(facts=facts, bond=bond)
-    if len(sites) != 1:
+    sites = _expected_directional_sites_for_facts_bond(facts=facts, bond=bond)
+    if not 1 <= len(sites) <= 2:
         return False
-    models = _facts_directional_models_for_bond(
+    models = _expected_directional_models_for_facts_bond(
         facts=facts,
-        site=sites[0],
+        sites=sites,
         bond=bond,
     )
-    return len(models) == 1
+    return len(models) == len(sites)
+
+
+def _directional_carrier_transition_site_count_offline(
+    *,
+    facts: MoleculeFacts,
+    branch: Mapping[str, object],
+) -> int:
+    event = _single_bond_emitted_event(
+        events=branch["payload"]["graph_ring_delta"]["manifest"]["event_manifests"],
+        violation_prefix="directional_carrier_residual",
+    )
+    bond = event["bond"]
+    graph_bond = _facts_bond(facts=facts, bond=bond)
+    if graph_bond.order is not BondOrder.SINGLE:
+        return 0
+    if not _facts_bond_is_bridge(facts=facts, bond=bond):
+        return 0
+    sites = _expected_directional_sites_for_facts_bond(facts=facts, bond=bond)
+    if not 1 <= len(sites) <= 2:
+        return 0
+    models = _expected_directional_models_for_facts_bond(
+        facts=facts,
+        sites=sites,
+        bond=bond,
+    )
+    if len(models) != len(sites):
+        return 0
+    return len(sites)
 
 
 def _check_transition_manifest_digest(*, item: Mapping[str, object], term: object) -> None:
@@ -1952,6 +1992,50 @@ def _directional_sites_for_facts_bond(
     return tuple(sites)
 
 
+def _expected_directional_sites_for_facts_bond(
+    *,
+    facts: MoleculeFacts,
+    bond: object,
+) -> tuple[DirectionalSiteFacts, ...]:
+    sites = _directional_sites_for_facts_bond(facts=facts, bond=bond)
+    if len(sites) > 2:
+        _offline_violation("directional_carrier_site_scope_mismatch")
+    for site in sites:
+        if site.status is not SiteStatus.SPECIFIED:
+            _offline_violation("directional_carrier_site_status_mismatch")
+    return sites
+
+
+def _expected_directional_models_for_facts_bond(
+    *,
+    facts: MoleculeFacts,
+    sites: tuple[DirectionalSiteFacts, ...],
+    bond: object,
+) -> tuple[DirectionalSiteCarrierModel, ...]:
+    models = []
+    for site in sites:
+        site_models = _facts_directional_models_for_bond(
+            facts=facts,
+            site=site,
+            bond=bond,
+        )
+        if len(site_models) != 1:
+            _offline_violation("directional_carrier_model_mismatch")
+        models.extend(site_models)
+    return tuple(
+        sorted(
+            models,
+            key=lambda model: (
+                int(model.site),
+                int(model.bond),
+                model.side,
+                model.endpoint_orientation_factor,
+                model.ligand_factor,
+            ),
+        )
+    )
+
+
 def _facts_directional_models_for_bond(
     *,
     facts: MoleculeFacts,
@@ -2083,28 +2167,33 @@ def _facts_bond_is_bridge(*, facts: MoleculeFacts, bond: object) -> bool:
 def _check_directional_source_factor_snapshots(
     *,
     facts: MoleculeFacts,
-    site: DirectionalSiteFacts,
+    sites: tuple[DirectionalSiteFacts, ...],
     bond: object,
     source_snapshot: ResidualStoreValueSnapshot,
     models: tuple[DirectionalSiteCarrierModel, ...],
 ) -> None:
     factor_by_key = {factor.key: factor for factor in source_snapshot.factors}
-    site_key = ResidualFactorKey("directional_site", (int(site.id),))
-    site_factor = factor_by_key.get(site_key)
-    if not isinstance(site_factor, DirectionalSiteFactorValueSnapshot):
-        _offline_violation("directional_carrier_source_site_factor_mismatch")
-    expected_scope = tuple(
-        directional_site_carrier_var(model.site, model.bond)
-        for model in _facts_directional_models_for_site(facts=facts, site=site)
-    )
-    expected_sides = tuple((var, model.side) for var, model in zip(expected_scope, _facts_directional_models_for_site(facts=facts, site=site)))
-    if (
-        site_factor.scope != expected_scope
-        or site_factor.sides != expected_sides
-        or site_factor.status is not site.status
-        or site_factor.target is not site.target
-    ):
-        _offline_violation("directional_carrier_source_site_factor_mismatch")
+    for site in sites:
+        site_key = ResidualFactorKey("directional_site", (int(site.id),))
+        site_factor = factor_by_key.get(site_key)
+        if not isinstance(site_factor, DirectionalSiteFactorValueSnapshot):
+            _offline_violation("directional_carrier_source_site_factor_mismatch")
+        site_models = _facts_directional_models_for_site(facts=facts, site=site)
+        expected_scope = tuple(
+            directional_site_carrier_var(model.site, model.bond)
+            for model in site_models
+        )
+        expected_sides = tuple(
+            (var, model.side)
+            for var, model in zip(expected_scope, site_models)
+        )
+        if (
+            site_factor.scope != expected_scope
+            or site_factor.sides != expected_sides
+            or site_factor.status is not site.status
+            or site_factor.target is not site.target
+        ):
+            _offline_violation("directional_carrier_source_site_factor_mismatch")
     bond_key = ResidualFactorKey("directional_bond_emission", (int(bond),))
     bond_factor = factor_by_key.get(bond_key)
     if not isinstance(bond_factor, DirectionalBondEmissionFactorValueSnapshot):
@@ -2139,7 +2228,7 @@ def _facts_directional_models_for_site(
 def _expected_directional_discharge_keys(
     *,
     facts: MoleculeFacts,
-    site: DirectionalSiteFacts,
+    sites: tuple[DirectionalSiteFacts, ...],
     bond: object,
     source_state: Mapping[str, object],
 ) -> tuple[ResidualFactorKey, ...]:
@@ -2148,12 +2237,13 @@ def _expected_directional_discharge_keys(
         int(_term_field_value(record, "bond"))
         for record in _state_bond_occurrence_records(source_state)
     } | {int(bond)}
-    site_bonds = {
-        int(model.bond)
-        for model in _facts_directional_models_for_site(facts=facts, site=site)
-    }
-    if site_bonds.issubset(emitted):
-        keys.append(ResidualFactorKey("directional_site", (int(site.id),)))
+    for site in sorted(sites, key=lambda item: int(item.id)):
+        site_bonds = {
+            int(model.bond)
+            for model in _facts_directional_models_for_site(facts=facts, site=site)
+        }
+        if site_bonds.issubset(emitted):
+            keys.append(ResidualFactorKey("directional_site", (int(site.id),)))
     return tuple(keys)
 
 

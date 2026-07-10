@@ -135,6 +135,7 @@ from grimace._south_star1.writer_support_certificates import (
 )
 from tests.south_star1.helpers import cco_facts
 from tests.south_star1.helpers import directional_facts
+from tests.south_star1.helpers import shared_acyclic_directional_facts
 from tests.south_star1.helpers import tetrahedral_facts
 
 
@@ -235,6 +236,87 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
         )
         self.assertTrue(verification.accepted, verification.reason)
         self.assertTrue(verification.offline_replay_complete)
+
+    def test_shared_acyclic_directional_single_engine_support_agreement(self) -> None:
+        facts = shared_acyclic_directional_facts()
+        prepared = _prepare(facts)
+        options = _writer_options(rooted_at_atom=0)
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=options,
+        )
+
+        self.assertEqual(count_writer_runtime_support(prepared=prepared, state=state), 2)
+        self.assertEqual(
+            count_writer_runtime_branch_completions(prepared=prepared, state=state),
+            2,
+        )
+        certified = tuple(
+            iter_writer_runtime_certified_support(prepared=prepared, state=state)
+        )
+        self.assertEqual(
+            tuple(sorted(item.string for item in certified)),
+            ("F/C=C/C=C/Cl", "F\\C=C\\C=C\\Cl"),
+        )
+        image = writer_runtime_support_image_certificate(
+            prepared=prepared,
+            state=state,
+            witness_count=2,
+        )
+        self.assertEqual(tuple(sorted(image.strings)), ("F/C=C/C=C/Cl", "F\\C=C\\C=C\\Cl"))
+        self.assertEqual(image.support_count_certificate.support_count, 2)
+        self.assertEqual(image.witness_count_certificate.completion_count, 2)
+
+        resumed = writer_runtime_state_from_snapshot(
+            state.snapshot,
+            prepared=prepared,
+        )
+        self.assertEqual(
+            writer_runtime_choices(prepared=prepared, state=resumed),
+            writer_runtime_choices(prepared=prepared, state=state),
+        )
+
+        for target in ("F/C=C/C=C/Cl", "F\\C=C\\C=C\\Cl"):
+            replayed = state
+            remaining = target
+            while remaining:
+                choices = writer_runtime_choices(prepared=prepared, state=replayed)
+                branches = writer_runtime_branch_transitions(
+                    prepared=prepared,
+                    state=replayed,
+                )
+                choice_transitions = writer_runtime_choice_transitions(
+                    prepared=prepared,
+                    state=replayed,
+                )
+                self.assertEqual(
+                    _transition_snapshot_multiset_from_choices(
+                        choice_transitions.transitions
+                    ),
+                    _transition_snapshot_multiset_from_branches(branches.transitions),
+                )
+                choice = _longest_prefix_choice(prepared, replayed, remaining)
+                self.assertIn(choice, choices.choices)
+                replayed = advance_writer_runtime_state(
+                    prepared=prepared,
+                    state=replayed,
+                    emitted_text=choice.emitted_text,
+                )
+                remaining = remaining[len(choice.emitted_text) :]
+            self.assertTrue(writer_runtime_has_eos(prepared=prepared, state=replayed))
+
+        artifact = writer_support_artifact_envelope_for_snapshot(
+            prepared=prepared,
+            snapshot=state.snapshot,
+        )
+        verification = verify_writer_support_artifact_for_facts(
+            facts=facts,
+            runtime_options=options,
+            artifact=artifact,
+        )
+        self.assertTrue(verification.accepted, verification.reason)
+        self.assertTrue(verification.offline_replay_complete)
+        self.assertEqual(verification.offline_unchecked_obligation_families, ())
 
     def test_manual_specified_tetra_single_engine_support_agreement(self) -> None:
         facts = tetrahedral_facts()

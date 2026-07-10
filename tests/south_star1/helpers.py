@@ -270,6 +270,91 @@ def directional_facts() -> MoleculeFacts:
     )
 
 
+def shared_acyclic_directional_facts() -> MoleculeFacts:
+    left_site = SiteId(0)
+    right_site = SiteId(1)
+    return MoleculeFacts(
+        atoms=(
+            atom(0, "F"),
+            atom(1, "C"),
+            atom(2, "C"),
+            atom(3, "C"),
+            atom(4, "C"),
+            atom(5, "Cl"),
+        ),
+        bonds=(
+            single_bond(0, 0, 1),
+            bond(1, 1, 2, BondOrder.DOUBLE),
+            single_bond(2, 2, 3),
+            bond(3, 3, 4, BondOrder.DOUBLE),
+            single_bond(4, 4, 5),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=tuple(AtomId(index) for index in range(6)),
+                bonds=tuple(BondId(index) for index in range(5)),
+            ),
+        ),
+        stereo=StereoFacts(
+            directional=(
+                DirectionalSiteFacts(
+                    id=left_site,
+                    center_bond=BondId(1),
+                    left_endpoint=AtomId(1),
+                    right_endpoint=AtomId(2),
+                    status=SiteStatus.SPECIFIED,
+                    target=DirectionalValue.OPPOSITE,
+                    left_ligands=(OccurrenceId(0),),
+                    right_ligands=(OccurrenceId(1),),
+                    reference_pair=(OccurrenceId(0), OccurrenceId(1)),
+                ),
+                DirectionalSiteFacts(
+                    id=right_site,
+                    center_bond=BondId(3),
+                    left_endpoint=AtomId(3),
+                    right_endpoint=AtomId(4),
+                    status=SiteStatus.SPECIFIED,
+                    target=DirectionalValue.OPPOSITE,
+                    left_ligands=(OccurrenceId(2),),
+                    right_ligands=(OccurrenceId(3),),
+                    reference_pair=(OccurrenceId(2), OccurrenceId(3)),
+                ),
+            ),
+        ),
+        ligand_occurrences=(
+            LigandOccurrence(
+                id=OccurrenceId(0),
+                site=left_site,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(0),
+                bond=BondId(0),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(1),
+                site=left_site,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(3),
+                bond=BondId(2),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(2),
+                site=right_site,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(2),
+                bond=BondId(2),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(3),
+                site=right_site,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(5),
+                bond=BondId(4),
+            ),
+        ),
+    )
+
+
 def four_substituent_directional_facts() -> MoleculeFacts:
     site_id = SiteId(0)
     return MoleculeFacts(

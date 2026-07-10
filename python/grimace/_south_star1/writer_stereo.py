@@ -2058,7 +2058,30 @@ def _supports_acyclic_directional_carrier_transition_term(
     bond: BondId,
     models: tuple[DirectionalSiteCarrierModel, ...],
 ) -> bool:
-    if len(models) != 1:
+    if len(models) not in (1, 2):
+        return False
+    sites = tuple(model.site for model in models)
+    if len(set(sites)) != len(sites):
+        return False
+    if set(sites) != set(_directional_sites_for_carrier_bond(prepared, bond)):
+        return False
+    models_by_site: dict[SiteId, list[DirectionalSiteCarrierModel]] = {}
+    for model in _directional_models_for_bond(prepared, bond):
+        models_by_site.setdefault(model.site, []).append(model)
+    if any(len(models_by_site.get(site, ())) != 1 for site in sites):
+        return False
+    if tuple(
+        sorted(
+            (models_by_site[site][0] for site in sites),
+            key=lambda model: (
+                int(model.site),
+                int(model.bond),
+                model.side,
+                model.endpoint_orientation_factor,
+                model.ligand_factor,
+            ),
+        )
+    ) != models:
         return False
     graph_bond = prepared.graph_index.bond_by_id[bond]
     if graph_bond.order is not BondOrder.SINGLE:

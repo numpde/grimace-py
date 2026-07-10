@@ -80,6 +80,7 @@ CORE_MODULES: tuple[str, ...] = (
     "writer_online_stats_certificates",
     "writer_residual_attachment_branch_certificates",
     "writer_residual_attachment_lifecycle",
+    "writer_residual_transition_terms",
     "writer_ring_lifecycle",
     "writer_runtime",
     "writer_snapshot",

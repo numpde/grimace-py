@@ -691,6 +691,7 @@ def _validate_graph_ring_delta_payload(
         _require_mapping(event, "graph_ring_delta_event_not_mapping")
         if "kind" not in event or not isinstance(event["kind"], str):
             _artifact_violation("graph_ring_delta_event_kind_missing")
+        _validate_graph_ring_delta_event_manifest(event)
     expected_digest = _identity_digest(
         {"kind": kind, "manifest": manifest},
         budget=budget,
@@ -698,6 +699,42 @@ def _validate_graph_ring_delta_payload(
     )
     if delta["digest"] != expected_digest:
         _artifact_violation("graph_ring_delta_digest_mismatch")
+
+
+def _validate_graph_ring_delta_event_manifest(event: Mapping[str, object]) -> None:
+    if event["kind"] != "local_order_closed":
+        return
+    if frozenset(event) == frozenset(("kind", "atom")):
+        _require_int(event["atom"], "graph_ring_delta_local_order_atom_not_int")
+        return
+    _require_exact_payload_fields(
+        event,
+        (
+            "kind",
+            "atom",
+            "site",
+            "local_order",
+            "reference_order",
+            "source_local_order_record_digest",
+            "successor_local_order_record_digest",
+            "local_order_identity_digest",
+        ),
+    )
+    _require_int(event["atom"], "graph_ring_delta_local_order_atom_not_int")
+    _require_int(event["site"], "graph_ring_delta_local_order_site_not_int")
+    for field in ("local_order", "reference_order"):
+        values = event[field]
+        if not isinstance(values, list) or not all(
+            isinstance(item, int) for item in values
+        ):
+            _artifact_violation("graph_ring_delta_local_order_values_mismatch")
+    for field in (
+        "source_local_order_record_digest",
+        "successor_local_order_record_digest",
+        "local_order_identity_digest",
+    ):
+        if event[field] is not None and not isinstance(event[field], str):
+            _artifact_violation("graph_ring_delta_local_order_digest_mismatch")
 
 
 def _validate_closure_evidence_items(items: object) -> None:
@@ -854,12 +891,16 @@ def _validate_obligation_manifests(
                     "terminal_clean",
                     "ring_summary",
                     "evidence_digest",
+                    "transition_term",
+                    "transition_digest",
                     "linked_lifecycle_digests",
                     "linked_residual_work_digests",
                     "lifecycle_event_kind",
                     "lifecycle_capabilities",
                     "lifecycle_outcome_kind",
                     "residual_snapshot_changed",
+                    "source_residual_snapshot_digest",
+                    "successor_residual_snapshot_digest",
                     "local_orders_changed",
                     "residual_work_digests",
                     "residual_work_operations",
@@ -878,6 +919,7 @@ def _validate_obligation_manifests(
             ):
                 if not isinstance(item[field], str):
                     _artifact_violation("obligation_manifest_string_field_mismatch")
+            _validate_residual_transition_manifest(item)
             for field in ("is_noop", "is_empty", "is_discharged", "terminal_clean"):
                 if not isinstance(item[field], bool):
                     _artifact_violation("obligation_manifest_bool_field_mismatch")
@@ -897,6 +939,8 @@ def _validate_lifecycle_provenance_manifest(item: Mapping[str, object]) -> None:
     for field in (
         "lifecycle_event_kind",
         "lifecycle_outcome_kind",
+        "source_residual_snapshot_digest",
+        "successor_residual_snapshot_digest",
         "certificate_kind",
         "certificate_capability",
         "certificate_lifecycle_digest",
@@ -924,6 +968,8 @@ def _validate_lifecycle_provenance_manifest(item: Mapping[str, object]) -> None:
             or item["lifecycle_capabilities"]
             or item["lifecycle_outcome_kind"] is not None
             or item["residual_snapshot_changed"]
+            or item["source_residual_snapshot_digest"] is not None
+            or item["successor_residual_snapshot_digest"] is not None
             or item["local_orders_changed"]
             or item["residual_work_digests"]
             or item["residual_work_operations"]
@@ -932,6 +978,99 @@ def _validate_lifecycle_provenance_manifest(item: Mapping[str, object]) -> None:
             or item["certificate_lifecycle_digest"] is not None
         ):
             _artifact_violation("obligation_manifest_lifecycle_neutral_mismatch")
+
+
+def _validate_residual_transition_manifest(item: Mapping[str, object]) -> None:
+    term = item["transition_term"]
+    digest = item["transition_digest"]
+    if term is None:
+        if digest is not None:
+            _artifact_violation("obligation_manifest_transition_digest_mismatch")
+        return
+    if item["family"] != "residual_work":
+        _artifact_violation("obligation_manifest_transition_family_mismatch")
+    if not isinstance(digest, str):
+        _artifact_violation("obligation_manifest_transition_digest_mismatch")
+    _require_mapping(term, "obligation_manifest_transition_not_mapping")
+    if frozenset(term) != frozenset(("__dataclass__", "fields")):
+        _artifact_violation("obligation_manifest_transition_shape_mismatch")
+    expected_path, expected_kind, expected_fields = (
+        _expected_transition_manifest_shape(item["operation"])
+    )
+    if term["__dataclass__"] != expected_path:
+        _artifact_violation("obligation_manifest_transition_class_mismatch")
+    fields = term["fields"]
+    if not isinstance(fields, list):
+        _artifact_violation("obligation_manifest_transition_fields_mismatch")
+    field_values = {}
+    for field in fields:
+        if (
+            not isinstance(field, list)
+            or len(field) != 2
+            or not isinstance(field[0], str)
+        ):
+            _artifact_violation("obligation_manifest_transition_fields_mismatch")
+        if field[0] in field_values:
+            _artifact_violation("obligation_manifest_transition_fields_mismatch")
+        field_values[field[0]] = field[1]
+    if frozenset(field_values) != expected_fields:
+        _artifact_violation("obligation_manifest_transition_fields_mismatch")
+    kind = field_values["kind"]
+    if (
+        not isinstance(kind, Mapping)
+        or frozenset(kind) != frozenset(("__enum__", "value"))
+        or kind.get("__enum__")
+        != (
+            "grimace._south_star1.writer_residual_transition_terms."
+            "WriterResidualTransitionKind"
+        )
+        or kind.get("value") != expected_kind
+    ):
+        _artifact_violation("obligation_manifest_transition_kind_mismatch")
+    expected = _digest_terms_bounded(
+        term,
+        budget=default_writer_envelope_work_budget(None),
+        operation="support_artifact.obligation.transition.check.digest",
+    )
+    if digest != expected:
+        _artifact_violation("obligation_manifest_transition_digest_mismatch")
+
+
+def _expected_transition_manifest_shape(operation: object) -> tuple[str, str, frozenset[str]]:
+    common = frozenset(
+        (
+            "kind",
+            "source_snapshot",
+            "source_snapshot_digest",
+            "atom",
+            "site",
+            "constraint_var",
+            "constraint_value",
+            "affected_variables",
+            "affected_factor_keys",
+            "propagation_result",
+            "projected_variables",
+            "discharged_factor_keys",
+            "successor_snapshot",
+            "successor_snapshot_digest",
+        )
+    )
+    if operation == "tetrahedral atom-token restriction":
+        return (
+            "grimace._south_star1.writer_residual_transition_terms."
+            "TetraAtomTokenRestrictionTransitionTerm",
+            "tetra_atom_token_restriction",
+            common | frozenset(("token",)),
+        )
+    if operation == "tetrahedral local-order factor closure":
+        return (
+            "grimace._south_star1.writer_residual_transition_terms."
+            "TetraLocalOrderFactorClosureTransitionTerm",
+            "tetra_local_order_factor_closure",
+            common
+            | frozenset(("local_order", "reference_order", "target_parity")),
+        )
+    _artifact_violation("obligation_manifest_transition_operation_mismatch")
 
 
 def _validate_ring_obligation_summary(summary: object) -> None:

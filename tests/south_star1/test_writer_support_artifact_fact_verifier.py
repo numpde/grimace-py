@@ -32,6 +32,7 @@ from grimace._south_star1.writer_snapshot_prefix_envelope import (
     writer_snapshot_prefix_read_envelope_for_emitted_texts,
 )
 from grimace._south_star1.writer_support_artifact_checker import artifact_manifest
+from grimace._south_star1.writer_support_artifact_checker import artifact_metrics
 from grimace._south_star1.writer_support_artifact_checker import (
     verify_writer_support_artifact_consistency,
 )
@@ -585,6 +586,379 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         self.assertIn("tetra_residual_source_digest_mismatch", classification.reason)
         self.assertFalse(verification.accepted)
         self.assertIn("object_digest_mismatch", verification.reason)
+
+    def test_specified_tetra_transition_rejects_wrong_successor_token_domain(
+        self,
+    ) -> None:
+        facts, artifact = _manual_tetra_artifact()
+        branch = _first_residual_work_branch(
+            artifact,
+            operation="tetrahedral atom-token restriction",
+        )
+        manifest = next(
+            item
+            for item in branch["payload"]["obligation_manifests"]["residual_work"]
+            if item["operation"] == "tetrahedral atom-token restriction"
+        )
+        successor = _term_field(manifest["transition_term"], "successor_snapshot")
+        domains = _term_field(successor, "domains")
+        token_domain = next(
+            domain
+            for var, domain in domains
+            if _term_field(var, "kind") == "tetra_token"
+        )
+        token = _term_field(manifest["transition_term"], "token")
+        wrong_value = "@" if token["value"] == "@@" else "@@"
+        token_domain[:] = [
+            {
+                "__enum__": "grimace._south_star1.policy.TetraToken",
+                "value": wrong_value,
+            }
+        ]
+        successor_digest = _closed_term_digest(successor)
+        _set_term_field(
+            manifest["transition_term"],
+            "successor_snapshot_digest",
+            successor_digest,
+        )
+        _refresh_linked_raw_lifecycle_residual_digest(
+            branch,
+            manifest=manifest,
+            field="successor_residual_snapshot_digest",
+            digest=successor_digest,
+        )
+        _refresh_transition_manifest_digest(manifest)
+        _refresh_object_and_artifact_digest(artifact, branch)
+        _assert_structural_checker_accepts(self, artifact)
+
+        classification = _obligation_classification(artifact, facts=facts)
+
+        self.assertFalse(classification.accepted)
+        self.assertIn(
+            "tetra_atom_token_successor_residual_mismatch",
+            classification.reason,
+        )
+
+    def test_specified_tetra_transition_rejects_flipped_local_order_parity(
+        self,
+    ) -> None:
+        facts, artifact = _manual_tetra_artifact()
+        branch = _first_residual_work_branch(
+            artifact,
+            operation="tetrahedral local-order factor closure",
+        )
+        manifest = next(
+            item
+            for item in branch["payload"]["obligation_manifests"]["residual_work"]
+            if item["operation"] == "tetrahedral local-order factor closure"
+        )
+        target = _term_field(manifest["transition_term"], "target_parity")
+        target["value"] = "odd" if target["value"] == "even" else "even"
+        constraint = _term_field(manifest["transition_term"], "constraint_value")
+        constraint["value"] = target["value"]
+        _refresh_transition_manifest_digest(manifest)
+        _refresh_object_and_artifact_digest(artifact, branch)
+        _assert_structural_checker_accepts(self, artifact)
+
+        classification = _obligation_classification(artifact, facts=facts)
+
+        self.assertFalse(classification.accepted)
+        self.assertIn(
+            "tetra_local_order_target_parity_mismatch",
+            classification.reason,
+        )
+
+    def test_specified_tetra_transition_rejects_flipped_reference_order(
+        self,
+    ) -> None:
+        facts, artifact = _manual_tetra_artifact()
+        branch = _first_residual_work_branch(
+            artifact,
+            operation="tetrahedral local-order factor closure",
+        )
+        manifest = next(
+            item
+            for item in branch["payload"]["obligation_manifests"]["residual_work"]
+            if item["operation"] == "tetrahedral local-order factor closure"
+        )
+        reference_order = _term_field(manifest["transition_term"], "reference_order")
+        reference_order[:] = list(reversed(reference_order))
+        _refresh_transition_manifest_digest(manifest)
+        _refresh_object_and_artifact_digest(artifact, branch)
+        _assert_structural_checker_accepts(self, artifact)
+
+        classification = _obligation_classification(artifact, facts=facts)
+
+        self.assertFalse(classification.accepted)
+        self.assertIn(
+            "tetra_local_order_reference_order_mismatch",
+            classification.reason,
+        )
+
+    def test_specified_tetra_transition_rejects_event_detached_local_order(
+        self,
+    ) -> None:
+        facts, artifact = _manual_tetra_artifact()
+        branch = _first_residual_work_branch(
+            artifact,
+            operation="tetrahedral local-order factor closure",
+        )
+        manifest = next(
+            item
+            for item in branch["payload"]["obligation_manifests"]["residual_work"]
+            if item["operation"] == "tetrahedral local-order factor closure"
+        )
+        local_order = _term_field(manifest["transition_term"], "local_order")
+        local_order[:] = list(reversed(local_order))
+        _refresh_transition_manifest_digest(manifest)
+        _refresh_object_and_artifact_digest(artifact, branch)
+        _assert_structural_checker_accepts(self, artifact)
+
+        classification = _obligation_classification(artifact, facts=facts)
+
+        self.assertFalse(classification.accepted)
+        self.assertIn(
+            "tetra_local_order_event_order_mismatch",
+            classification.reason,
+        )
+
+    def test_specified_tetra_transition_rejects_missing_factor_discharge(
+        self,
+    ) -> None:
+        facts, artifact = _manual_tetra_artifact()
+        branch = _first_residual_work_branch(
+            artifact,
+            operation="tetrahedral local-order factor closure",
+        )
+        manifest = next(
+            item
+            for item in branch["payload"]["obligation_manifests"]["residual_work"]
+            if item["operation"] == "tetrahedral local-order factor closure"
+        )
+        _set_term_field(manifest["transition_term"], "discharged_factor_keys", [])
+        _refresh_transition_manifest_digest(manifest)
+        _refresh_object_and_artifact_digest(artifact, branch)
+        _assert_structural_checker_accepts(self, artifact)
+
+        classification = _obligation_classification(artifact, facts=facts)
+
+        self.assertFalse(classification.accepted)
+        self.assertIn(
+            "tetra_local_order_discharge_factor_mismatch",
+            classification.reason,
+        )
+
+    def test_specified_tetra_transition_rejects_claimed_discharge_without_successor_discharge(
+        self,
+    ) -> None:
+        facts, artifact = _manual_tetra_artifact()
+        branch = _first_residual_work_branch(
+            artifact,
+            operation="tetrahedral local-order factor closure",
+        )
+        manifest = next(
+            item
+            for item in branch["payload"]["obligation_manifests"]["residual_work"]
+            if item["operation"] == "tetrahedral local-order factor closure"
+        )
+        transition = manifest["transition_term"]
+        source = _term_field(transition, "source_snapshot")
+        successor = _term_field(transition, "successor_snapshot")
+        discharged = _term_field(transition, "discharged_factor_keys")
+        source_factor = next(
+            factor
+            for factor in _term_field(source, "factors")
+            if _term_field(factor, "key") == discharged[0]
+        )
+        _term_field(successor, "factors").append(source_factor)
+        successor_digest = _closed_term_digest(successor)
+        _set_term_field(
+            transition,
+            "successor_snapshot_digest",
+            successor_digest,
+        )
+        _refresh_linked_raw_lifecycle_residual_digest(
+            branch,
+            manifest=manifest,
+            field="successor_residual_snapshot_digest",
+            digest=successor_digest,
+        )
+        _refresh_transition_manifest_digest(manifest)
+        _refresh_object_and_artifact_digest(artifact, branch)
+        _assert_structural_checker_accepts(self, artifact)
+
+        classification = _obligation_classification(artifact, facts=facts)
+
+        self.assertFalse(classification.accepted)
+        self.assertIn(
+            "tetra_local_order_successor_residual_mismatch",
+            classification.reason,
+        )
+
+    def test_specified_tetra_transition_rejects_projected_parity_before_closure(
+        self,
+    ) -> None:
+        facts, artifact = _manual_tetra_artifact()
+        branch = _first_residual_work_branch(
+            artifact,
+            operation="tetrahedral local-order factor closure",
+        )
+        manifest = next(
+            item
+            for item in branch["payload"]["obligation_manifests"]["residual_work"]
+            if item["operation"] == "tetrahedral local-order factor closure"
+        )
+        source = _term_field(manifest["transition_term"], "source_snapshot")
+        constraint_var = _term_field(manifest["transition_term"], "constraint_var")
+        domains = _term_field(source, "domains")
+        domains[:] = [
+            item
+            for item in domains
+            if item[0] != constraint_var
+        ]
+        source_digest = _closed_term_digest(source)
+        _set_term_field(
+            manifest["transition_term"],
+            "source_snapshot_digest",
+            source_digest,
+        )
+        _refresh_linked_raw_lifecycle_residual_digest(
+            branch,
+            manifest=manifest,
+            field="source_residual_snapshot_digest",
+            digest=source_digest,
+        )
+        _refresh_transition_manifest_digest(manifest)
+        _refresh_object_and_artifact_digest(artifact, branch)
+        _assert_structural_checker_accepts(self, artifact)
+
+        classification = _obligation_classification(artifact, facts=facts)
+
+        self.assertFalse(classification.accepted)
+        self.assertIn(
+            "tetra_local_order_projected_before_closure",
+            classification.reason,
+        )
+
+    def test_specified_tetra_transition_rejects_unrelated_residual_component_change(
+        self,
+    ) -> None:
+        facts, artifact = _manual_tetra_artifact()
+        branch = _first_residual_work_branch(
+            artifact,
+            operation="tetrahedral atom-token restriction",
+        )
+        manifest = next(
+            item
+            for item in branch["payload"]["obligation_manifests"]["residual_work"]
+            if item["operation"] == "tetrahedral atom-token restriction"
+        )
+        successor = _term_field(manifest["transition_term"], "successor_snapshot")
+        domains = _term_field(successor, "domains")
+        domains.append(
+            [
+                {
+                    "__dataclass__": "grimace._south_star1.residual_constraints.VarId",
+                    "fields": [["kind", "unrelated_test_component"], ["key", [99]]],
+                },
+                [False, True],
+            ]
+        )
+        successor_digest = _closed_term_digest(successor)
+        _set_term_field(
+            manifest["transition_term"],
+            "successor_snapshot_digest",
+            successor_digest,
+        )
+        _refresh_linked_raw_lifecycle_residual_digest(
+            branch,
+            manifest=manifest,
+            field="successor_residual_snapshot_digest",
+            digest=successor_digest,
+        )
+        _refresh_transition_manifest_digest(manifest)
+        _refresh_object_and_artifact_digest(artifact, branch)
+        _assert_structural_checker_accepts(self, artifact)
+
+        classification = _obligation_classification(artifact, facts=facts)
+
+        self.assertFalse(classification.accepted)
+        self.assertIn(
+            "tetra_atom_token_successor_residual_mismatch",
+            classification.reason,
+        )
+
+    def test_specified_tetra_transition_rejects_correct_text_wrong_successor(
+        self,
+    ) -> None:
+        facts, artifact = _manual_tetra_artifact()
+        branch = _first_residual_work_branch(
+            artifact,
+            operation="tetrahedral atom-token restriction",
+        )
+        manifest = next(
+            item
+            for item in branch["payload"]["obligation_manifests"]["residual_work"]
+            if item["operation"] == "tetrahedral atom-token restriction"
+        )
+        successor = _term_field(manifest["transition_term"], "successor_snapshot")
+        assignments = _term_field(successor, "assignments")
+        assignments[:] = []
+        successor_digest = _closed_term_digest(successor)
+        _set_term_field(
+            manifest["transition_term"],
+            "successor_snapshot_digest",
+            successor_digest,
+        )
+        _refresh_linked_raw_lifecycle_residual_digest(
+            branch,
+            manifest=manifest,
+            field="successor_residual_snapshot_digest",
+            digest=successor_digest,
+        )
+        _refresh_transition_manifest_digest(manifest)
+        _refresh_object_and_artifact_digest(artifact, branch)
+        _assert_structural_checker_accepts(self, artifact)
+
+        classification = _obligation_classification(artifact, facts=facts)
+
+        self.assertFalse(classification.accepted)
+        self.assertIn(
+            "tetra_atom_token_successor_residual_mismatch",
+            classification.reason,
+        )
+
+    def test_specified_tetra_transition_rejects_branch_detached_snapshots(
+        self,
+    ) -> None:
+        facts, artifact = _manual_tetra_artifact()
+        branch = _first_residual_work_branch(
+            artifact,
+            operation="tetrahedral atom-token restriction",
+        )
+        manifest = next(
+            item
+            for item in branch["payload"]["obligation_manifests"]["residual_work"]
+            if item["operation"] == "tetrahedral atom-token restriction"
+        )
+        successor = _term_field(manifest["transition_term"], "successor_snapshot")
+        _set_term_field(manifest["transition_term"], "source_snapshot", successor)
+        _set_term_field(
+            manifest["transition_term"],
+            "source_snapshot_digest",
+            _closed_term_digest(successor),
+        )
+        _refresh_transition_manifest_digest(manifest)
+        _refresh_object_and_artifact_digest(artifact, branch)
+        _assert_structural_checker_accepts(self, artifact)
+
+        classification = _obligation_classification(artifact, facts=facts)
+
+        self.assertFalse(classification.accepted)
+        self.assertIn(
+            "tetra_residual_transition_source_lifecycle_mismatch",
+            classification.reason,
+        )
 
     def test_specified_tetra_atom_token_residual_event_atom_is_bound(
         self,
@@ -2670,6 +3044,94 @@ def _refresh_graph_ring_delta_digest(delta) -> None:
     delta["digest"] = _identity_digest(
         {"kind": delta["kind"], "manifest": delta["manifest"]},
     )
+
+
+def _term_field(term, name: str):
+    for field_name, value in term["fields"]:
+        if field_name == name:
+            return value
+    raise AssertionError(f"missing term field: {name}")
+
+
+def _set_term_field(term, name: str, value) -> None:
+    for field in term["fields"]:
+        if field[0] == name:
+            field[1] = value
+            return
+    raise AssertionError(f"missing term field: {name}")
+
+
+def _closed_term_digest(term) -> str:
+    return _digest_terms_bounded(
+        term,
+        budget=WriterEnvelopeWorkBudget(),
+        operation="test.closed_term.digest",
+    )
+
+
+def _refresh_transition_manifest_digest(manifest) -> None:
+    manifest["transition_digest"] = _closed_term_digest(manifest["transition_term"])
+
+
+def _refresh_object_and_artifact_digest(artifact, obj) -> None:
+    del obj
+    changed = True
+    while changed:
+        changed = False
+        for item in artifact["objects"]:
+            digest = _identity_digest(
+                {"kind": item["kind"], "payload": item["payload"]},
+            )
+            object_id = f"obj:{digest}"
+            if item["digest"] == digest and item["object_id"] == object_id:
+                continue
+            old_id = item["object_id"]
+            item["digest"] = digest
+            item["object_id"] = object_id
+            _replace_artifact_ref(artifact, old_id=old_id, new_id=object_id)
+            changed = True
+    artifact["metrics"] = artifact_metrics(
+        artifact["objects"],
+        roots=artifact["roots"],
+    )
+    _refresh_artifact_digest(artifact)
+
+
+def _replace_artifact_ref(value, *, old_id: str, new_id: str) -> None:
+    if isinstance(value, dict):
+        for key, item in list(value.items()):
+            if item == old_id:
+                value[key] = new_id
+            else:
+                _replace_artifact_ref(item, old_id=old_id, new_id=new_id)
+        return
+    if isinstance(value, list):
+        for index, item in enumerate(value):
+            if item == old_id:
+                value[index] = new_id
+            else:
+                _replace_artifact_ref(item, old_id=old_id, new_id=new_id)
+
+
+def _assert_structural_checker_accepts(test_case, artifact) -> None:
+    checked = verify_writer_support_artifact_consistency(artifact)
+    test_case.assertTrue(checked.accepted, checked.reason)
+
+
+def _refresh_linked_raw_lifecycle_residual_digest(
+    branch,
+    *,
+    manifest,
+    field: str,
+    digest: str,
+) -> None:
+    lifecycle = _linked_tetra_lifecycle_manifest(
+        branch=branch,
+        manifest=manifest,
+        lifecycle_kind="raw",
+        certificate_kind="",
+    )
+    lifecycle[field] = digest
 
 
 def _first_closure_evidence_item(artifact):

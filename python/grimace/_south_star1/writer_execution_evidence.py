@@ -22,6 +22,7 @@ class WriterResidualPropagationWorkEvidence:
     checked_candidate_rows: int
     largest_factor_scope: int
     largest_candidate_row_count: int
+    transition_term: object | None = None
 
     @property
     def component_variable_count(self) -> int:
@@ -244,6 +245,7 @@ def writer_residual_propagation_work_evidence(
     *,
     operation: str,
     result: ResidualPropagationResult,
+    transition_term: object | None = None,
 ) -> WriterResidualPropagationWorkEvidence:
     stats = result.stats
     return WriterResidualPropagationWorkEvidence(
@@ -254,6 +256,7 @@ def writer_residual_propagation_work_evidence(
         checked_candidate_rows=stats.checked_candidate_rows,
         largest_factor_scope=stats.largest_factor_scope,
         largest_candidate_row_count=stats.largest_candidate_row_count,
+        transition_term=transition_term,
     )
 
 

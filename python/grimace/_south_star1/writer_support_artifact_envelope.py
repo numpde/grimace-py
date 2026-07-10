@@ -486,6 +486,7 @@ def _add_branch_support(
         branch_identity=envelope,
         text_projection=text_projection,
         local_evidence=local_evidence,
+        facts=facts,
         budget=budget,
     )
     return table.add(
@@ -822,6 +823,23 @@ def _obligation_family_manifests(
                 budget=budget,
                 operation=f"support_artifact.obligation.{family}.evidence.digest",
             ),
+            "transition_term": (
+                None
+                if getattr(record, "transition_term", None) is None
+                else _term(record.transition_term)
+            ),
+            "transition_digest": (
+                None
+                if getattr(record, "transition_term", None) is None
+                else _identity_digest(
+                    record.transition_term,
+                    budget=budget,
+                    operation=(
+                        f"support_artifact.obligation.{family}."
+                        "transition.digest"
+                    ),
+                )
+            ),
             "linked_lifecycle_digests": (
                 []
                 if linked_lifecycle_digests is None
@@ -873,6 +891,8 @@ def _lifecycle_provenance_manifest(
         "lifecycle_capabilities": [],
         "lifecycle_outcome_kind": None,
         "residual_snapshot_changed": False,
+        "source_residual_snapshot_digest": None,
+        "successor_residual_snapshot_digest": None,
         "local_orders_changed": False,
         "residual_work_digests": [],
         "residual_work_operations": [],
@@ -900,6 +920,22 @@ def _lifecycle_provenance_manifest(
             "residual_snapshot_changed": (
                 getattr(lifecycle, "source_residual_snapshot")
                 != getattr(lifecycle, "successor_residual_snapshot")
+            ),
+            "source_residual_snapshot_digest": _identity_digest(
+                getattr(lifecycle, "source_residual_snapshot"),
+                budget=budget,
+                operation=(
+                    "support_artifact.obligation.lifecycle."
+                    "source_residual_snapshot.digest"
+                ),
+            ),
+            "successor_residual_snapshot_digest": _identity_digest(
+                getattr(lifecycle, "successor_residual_snapshot"),
+                budget=budget,
+                operation=(
+                    "support_artifact.obligation.lifecycle."
+                    "successor_residual_snapshot.digest"
+                ),
             ),
             "local_orders_changed": (
                 getattr(lifecycle, "source_local_orders")
@@ -1147,10 +1183,11 @@ def _branch_graph_ring_delta_envelope(
     branch_identity: Mapping[str, object],
     text_projection: Mapping[str, object],
     local_evidence: Mapping[str, object],
+    facts,
     budget: WriterEnvelopeWorkBudget,
 ) -> dict[str, object]:
     event_manifests = [
-        _writer_event_manifest(event, budget=budget)
+        _writer_event_manifest(event, branch=branch, facts=facts, budget=budget)
         for event in branch.events
     ]
     kind = _graph_ring_delta_kind(
@@ -1214,7 +1251,13 @@ def _graph_ring_delta_kind(
     return "other_structural"
 
 
-def _writer_event_manifest(event, *, budget: WriterEnvelopeWorkBudget) -> dict[str, object]:
+def _writer_event_manifest(
+    event,
+    *,
+    budget: WriterEnvelopeWorkBudget,
+    branch=None,
+    facts=None,
+) -> dict[str, object]:
     if event.__class__.__name__ == "WriterAtomEmitted":
         return {
             "kind": "atom_emitted",
@@ -1251,9 +1294,20 @@ def _writer_event_manifest(event, *, budget: WriterEnvelopeWorkBudget) -> dict[s
             "next_root": _term(event.next_root),
         }
     if event.__class__.__name__ == "WriterLocalOrderClosed":
-        return {
+        manifest = {
             "kind": "local_order_closed",
             "atom": _term(event.atom),
+        }
+        if branch is None or facts is None:
+            return manifest
+        return {
+            **manifest,
+            **_local_order_closed_identity_manifest(
+                branch=branch,
+                facts=facts,
+                event=event,
+                budget=budget,
+            ),
         }
     if event.__class__.__name__ == "WriterRingLabelAllocated":
         return {
@@ -1302,6 +1356,96 @@ def _writer_event_manifest(event, *, budget: WriterEnvelopeWorkBudget) -> dict[s
             operation="support_artifact.unknown_event.digest",
         ),
     }
+
+
+def _local_order_closed_identity_manifest(
+    *,
+    branch,
+    facts,
+    event,
+    budget: WriterEnvelopeWorkBudget,
+) -> dict[str, object]:
+    site = _specified_tetra_site_for_atom(facts=facts, atom=getattr(event, "atom"))
+    if site is None:
+        return {}
+    lifecycle = _raw_lifecycle_for_event(branch=branch, event=event)
+    source_record = _local_order_record_for_atom(
+        getattr(lifecycle, "source_local_orders"),
+        getattr(event, "atom"),
+    )
+    successor_record = _local_order_record_for_atom(
+        getattr(lifecycle, "successor_local_orders"),
+        getattr(event, "atom"),
+    )
+    if successor_record is None:
+        raise ValueError("local-order closed event has no successor record")
+    identity = {
+        "site": _term(site.id),
+        "atom": _term(event.atom),
+        "local_order": _term(getattr(successor_record, "order")),
+        "reference_order": _term(site.reference_order),
+        "source_local_order_record_digest": (
+            None
+            if source_record is None
+            else _identity_digest(
+                source_record,
+                budget=budget,
+                operation=(
+                    "support_artifact.graph_ring_delta.local_order."
+                    "source_record.digest"
+                ),
+            )
+        ),
+        "successor_local_order_record_digest": _identity_digest(
+            successor_record,
+            budget=budget,
+            operation=(
+                "support_artifact.graph_ring_delta.local_order."
+                "successor_record.digest"
+            ),
+        ),
+    }
+    identity["local_order_identity_digest"] = _identity_digest(
+        identity,
+        budget=budget,
+        operation="support_artifact.graph_ring_delta.local_order.identity.digest",
+    )
+    return identity
+
+
+def _raw_lifecycle_for_event(*, branch, event):
+    matches = [
+        lifecycle
+        for lifecycle in getattr(branch, "stereo_lifecycle_evidence", ())
+        if getattr(lifecycle, "event") is event
+    ]
+    if len(matches) != 1:
+        raise ValueError("local-order event lifecycle identity mismatch")
+    return matches[0]
+
+
+def _local_order_record_for_atom(records, atom):
+    matches = [
+        record
+        for record in records
+        if getattr(record, "atom") == atom
+    ]
+    if len(matches) > 1:
+        raise ValueError("duplicate local-order record for atom")
+    return None if not matches else matches[0]
+
+
+def _specified_tetra_site_for_atom(*, facts, atom):
+    matches = [
+        site
+        for site in facts.stereo.tetrahedral
+        if site.center == atom and _compact_value(site.status) == "specified"
+    ]
+    if not matches:
+        return None
+    if len(matches) != 1:
+        raise ValueError("local-order closed event tetra site mismatch")
+    return matches[0]
 
 
 def _closure_bond_text_evidence_manifest(evidence, *, budget) -> dict[str, object]:

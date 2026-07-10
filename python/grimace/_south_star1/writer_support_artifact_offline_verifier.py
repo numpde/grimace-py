@@ -14,7 +14,21 @@ from .facts import LigandKind
 from .facts import MoleculeFacts
 from .facts import SiteStatus
 from .facts import TetrahedralSiteFacts
+from .facts import TetraValue
 from .policy import DirectionMark
+from .policy import TetraToken
+from .residual_constraints import ResidualFactorKey
+from .residual_constraints import ResidualPropagationKind
+from .residual_constraints import ResidualPropagationResult
+from .residual_constraints import ResidualPropagationStats
+from .residual_constraints import ResidualStore
+from .residual_constraints import ResidualStoreValueSnapshot
+from .residual_constraints import TetraLocalParity
+from .residual_constraints import TetraResidualFactorValueSnapshot
+from .residual_constraints import TetraTokenParityFactorValueSnapshot
+from .residual_constraints import VarId
+from .residual_constraints import tetra_parity_var
+from .residual_constraints import tetra_token_var
 from .writer_atom_text_lifecycle import bracket_atom_text
 from .writer_count_dag_envelope import count_dag_node_by_id
 from .writer_count_dag_envelope import validate_writer_count_certificate_dag_envelope
@@ -22,6 +36,13 @@ from .writer_envelope_terms import _identity_digest
 from .writer_envelope_terms import _term
 from .writer_envelope_work import WriterEnvelopeWorkBudget
 from .writer_envelope_work import default_writer_envelope_work_budget
+from .writer_residual_transition_terms import (
+    TetraAtomTokenRestrictionTransitionTerm,
+)
+from .writer_residual_transition_terms import (
+    TetraLocalOrderFactorClosureTransitionTerm,
+)
+from .writer_residual_transition_terms import WriterResidualTransitionKind
 
 
 OBJECT_KIND_OFFLINE_COVERAGE = {
@@ -46,6 +67,124 @@ _OFFLINE_UNCHECKED_OBJECT_KINDS = (
     "support_image_coverage",
     "support_image",
 )
+
+_PATH_PREFIX = "grimace._south_star1."
+_ALLOWED_TETRA_TRANSITION_ENUMS = {
+    _PATH_PREFIX + "facts.SiteStatus": SiteStatus,
+    _PATH_PREFIX + "facts.TetraValue": TetraValue,
+    _PATH_PREFIX + "policy.TetraToken": TetraToken,
+    _PATH_PREFIX + "residual_constraints.ResidualPropagationKind": (
+        ResidualPropagationKind
+    ),
+    _PATH_PREFIX + "residual_constraints.TetraLocalParity": TetraLocalParity,
+    _PATH_PREFIX + "writer_residual_transition_terms.WriterResidualTransitionKind": (
+        WriterResidualTransitionKind
+    ),
+}
+_ALLOWED_TETRA_TRANSITION_DATACLASSES = {
+    _PATH_PREFIX + "residual_constraints.ResidualFactorKey": ResidualFactorKey,
+    _PATH_PREFIX + "residual_constraints.ResidualPropagationResult": (
+        ResidualPropagationResult
+    ),
+    _PATH_PREFIX + "residual_constraints.ResidualPropagationStats": (
+        ResidualPropagationStats
+    ),
+    _PATH_PREFIX + "residual_constraints.ResidualStoreValueSnapshot": (
+        ResidualStoreValueSnapshot
+    ),
+    _PATH_PREFIX + "residual_constraints.TetraResidualFactorValueSnapshot": (
+        TetraResidualFactorValueSnapshot
+    ),
+    _PATH_PREFIX + "residual_constraints.TetraTokenParityFactorValueSnapshot": (
+        TetraTokenParityFactorValueSnapshot
+    ),
+    _PATH_PREFIX + "residual_constraints.VarId": VarId,
+    _PATH_PREFIX + "writer_residual_transition_terms."
+    "TetraAtomTokenRestrictionTransitionTerm": (
+        TetraAtomTokenRestrictionTransitionTerm
+    ),
+    _PATH_PREFIX + "writer_residual_transition_terms."
+    "TetraLocalOrderFactorClosureTransitionTerm": (
+        TetraLocalOrderFactorClosureTransitionTerm
+    ),
+}
+_ALLOWED_TETRA_TRANSITION_DATACLASS_FIELDS = {
+    _PATH_PREFIX + "residual_constraints.ResidualFactorKey": (
+        frozenset(("kind", "key"))
+    ),
+    _PATH_PREFIX + "residual_constraints.ResidualPropagationResult": (
+        frozenset(("kind", "stats"))
+    ),
+    _PATH_PREFIX + "residual_constraints.ResidualPropagationStats": (
+        frozenset(
+            (
+                "component_variables",
+                "component_factor_keys",
+                "checked_candidate_rows",
+                "largest_factor_scope",
+                "largest_candidate_row_count",
+            )
+        )
+    ),
+    _PATH_PREFIX + "residual_constraints.ResidualStoreValueSnapshot": (
+        frozenset(("domains", "assignments", "factors"))
+    ),
+    _PATH_PREFIX + "residual_constraints.TetraResidualFactorValueSnapshot": (
+        frozenset(
+            ("key", "scope", "status", "target", "reference_order", "local_order")
+        )
+    ),
+    _PATH_PREFIX + "residual_constraints.TetraTokenParityFactorValueSnapshot": (
+        frozenset(("key", "scope", "status", "target"))
+    ),
+    _PATH_PREFIX + "residual_constraints.VarId": frozenset(("kind", "key")),
+    _PATH_PREFIX + "writer_residual_transition_terms."
+    "TetraAtomTokenRestrictionTransitionTerm": (
+        frozenset(
+            (
+                "kind",
+                "source_snapshot",
+                "source_snapshot_digest",
+                "atom",
+                "site",
+                "token",
+                "constraint_var",
+                "constraint_value",
+                "affected_variables",
+                "affected_factor_keys",
+                "propagation_result",
+                "projected_variables",
+                "discharged_factor_keys",
+                "successor_snapshot",
+                "successor_snapshot_digest",
+            )
+        )
+    ),
+    _PATH_PREFIX + "writer_residual_transition_terms."
+    "TetraLocalOrderFactorClosureTransitionTerm": (
+        frozenset(
+            (
+                "kind",
+                "source_snapshot",
+                "source_snapshot_digest",
+                "atom",
+                "site",
+                "local_order",
+                "reference_order",
+                "target_parity",
+                "constraint_var",
+                "constraint_value",
+                "affected_variables",
+                "affected_factor_keys",
+                "propagation_result",
+                "projected_variables",
+                "discharged_factor_keys",
+                "successor_snapshot",
+                "successor_snapshot_digest",
+            )
+        )
+    ),
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -859,11 +998,15 @@ def _obligation_manifests_checked(items: list[object]) -> bool:
 
 
 def _validated_tetra_residual_manifest_checked(item: Mapping[str, object]) -> bool:
-    """Return true only after branch residual manifests were validated."""
-    return item["family"] == "residual_work" and item["operation"] in {
-        "tetrahedral atom-token restriction",
-        "tetrahedral local-order factor closure",
-    }
+    return (
+        item["family"] == "residual_work"
+        and item["operation"]
+        in {
+            "tetrahedral atom-token restriction",
+            "tetrahedral local-order factor closure",
+        }
+        and item["transition_term"] is not None
+    )
 
 
 def _classify_branch_residual_work_manifests(
@@ -953,7 +1096,7 @@ def _validate_tetra_residual_manifest_if_known(
             expected_certificate_kind="tetra_token_restricted",
             expected_changed_field="residual_snapshot_changed",
         )
-        _check_tetra_atom_token_residual(branch=branch, facts=facts)
+        _replay_tetra_atom_token_transition(branch=branch, item=item, facts=facts)
         return
     if operation == "tetrahedral local-order factor closure":
         _check_tetra_residual_manifest_core(
@@ -970,6 +1113,7 @@ def _validate_tetra_residual_manifest_if_known(
             expected_changed_field="local_orders_changed",
         )
         _check_tetra_local_order_residual(branch=branch, facts=facts)
+        _replay_tetra_local_order_transition(branch=branch, item=item, facts=facts)
         return
 
 
@@ -1185,6 +1329,359 @@ def _require_specified_tetra_center(
 ) -> None:
     if atom not in _specified_tetra_centers(facts):
         _offline_violation(violation)
+
+
+def _replay_tetra_atom_token_transition(
+    *,
+    branch: Mapping[str, object],
+    item: Mapping[str, object],
+    facts: MoleculeFacts,
+) -> None:
+    term = _transition_from_manifest(item)
+    if not isinstance(term, TetraAtomTokenRestrictionTransitionTerm):
+        _offline_violation("tetra_atom_token_transition_kind_mismatch")
+    if term.kind is not WriterResidualTransitionKind.TETRA_ATOM_TOKEN_RESTRICTION:
+        _offline_violation("tetra_atom_token_transition_kind_mismatch")
+    if term.source_snapshot_digest != _identity_digest(term.source_snapshot):
+        _offline_violation("tetra_atom_token_source_residual_digest_mismatch")
+    if term.successor_snapshot_digest != _identity_digest(term.successor_snapshot):
+        _offline_violation("tetra_atom_token_successor_residual_digest_mismatch")
+    _check_transition_manifest_digest(item=item, term=term)
+    _check_transition_lifecycle_residual_binding(
+        branch=branch,
+        item=item,
+        source_digest=term.source_snapshot_digest,
+        successor_digest=term.successor_snapshot_digest,
+    )
+    delta = branch["payload"]["graph_ring_delta"]
+    if delta["kind"] not in ("atom_start", "atom_advance", "bond_advance"):
+        _offline_violation("tetra_atom_token_residual_delta_kind_mismatch")
+    event = _single_atom_emitted_event(
+        events=delta["manifest"]["event_manifests"],
+        violation_prefix="tetra_atom_token_residual",
+    )
+    if event["atom"] != int(term.atom):
+        _offline_violation("tetra_atom_token_residual_atom_mismatch")
+    if event["tetra_token"]["value"] != term.token.value:
+        _offline_violation("tetra_atom_token_residual_token_mismatch")
+    _specified_tetra_site_for_transition(
+        facts=facts,
+        site=int(term.site),
+        atom=int(term.atom),
+        violation_prefix="tetra_atom_token",
+    )
+    expected_var = tetra_token_var(term.site)
+    if term.constraint_var != expected_var or term.constraint_value is not term.token:
+        _offline_violation("tetra_atom_token_transition_constraint_mismatch")
+    store = ResidualStore.from_value_snapshot(term.source_snapshot)
+    result = store.restrict_many_and_propagate(
+        ((term.constraint_var, term.constraint_value),)
+    )
+    _check_transition_result(
+        expected=term.propagation_result,
+        actual=result,
+        violation_prefix="tetra_atom_token",
+    )
+    if result.stats.component_variables != term.affected_variables:
+        _offline_violation("tetra_atom_token_affected_variables_mismatch")
+    if result.stats.component_factor_keys != term.affected_factor_keys:
+        _offline_violation("tetra_atom_token_affected_factors_mismatch")
+    if term.projected_variables or term.discharged_factor_keys:
+        _offline_violation("tetra_atom_token_projection_or_discharge_mismatch")
+    if store.value_snapshot() != term.successor_snapshot:
+        _offline_violation("tetra_atom_token_successor_residual_mismatch")
+
+
+def _replay_tetra_local_order_transition(
+    *,
+    branch: Mapping[str, object],
+    item: Mapping[str, object],
+    facts: MoleculeFacts,
+) -> None:
+    term = _transition_from_manifest(item)
+    if not isinstance(term, TetraLocalOrderFactorClosureTransitionTerm):
+        _offline_violation("tetra_local_order_transition_kind_mismatch")
+    if term.kind is not WriterResidualTransitionKind.TETRA_LOCAL_ORDER_FACTOR_CLOSURE:
+        _offline_violation("tetra_local_order_transition_kind_mismatch")
+    if term.source_snapshot_digest != _identity_digest(term.source_snapshot):
+        _offline_violation("tetra_local_order_source_residual_digest_mismatch")
+    if term.successor_snapshot_digest != _identity_digest(term.successor_snapshot):
+        _offline_violation("tetra_local_order_successor_residual_digest_mismatch")
+    _check_transition_manifest_digest(item=item, term=term)
+    _check_transition_lifecycle_residual_binding(
+        branch=branch,
+        item=item,
+        source_digest=term.source_snapshot_digest,
+        successor_digest=term.successor_snapshot_digest,
+    )
+    site = _specified_tetra_site_for_transition(
+        facts=facts,
+        site=int(term.site),
+        atom=int(term.atom),
+        violation_prefix="tetra_local_order",
+    )
+    if tuple(int(item) for item in term.reference_order) != tuple(
+        int(item) for item in site.reference_order
+    ):
+        _offline_violation("tetra_local_order_reference_order_mismatch")
+    if set(int(item) for item in term.local_order) != set(
+        int(item) for item in site.reference_order
+    ):
+        _offline_violation("tetra_local_order_local_order_mismatch")
+    _check_transition_local_order_event_binding(branch=branch, term=term)
+    expected_parity = _local_order_parity(
+        reference_order=site.reference_order,
+        local_order=term.local_order,
+    )
+    if term.target_parity is not expected_parity:
+        _offline_violation("tetra_local_order_target_parity_mismatch")
+    expected_var = tetra_parity_var(term.site)
+    if (
+        term.constraint_var != expected_var
+        or term.constraint_value is not expected_parity
+    ):
+        _offline_violation("tetra_local_order_transition_constraint_mismatch")
+    expected_factor = ResidualFactorKey("tetra_site", (int(term.site),))
+    if term.discharged_factor_keys != (expected_factor,):
+        _offline_violation("tetra_local_order_discharge_factor_mismatch")
+    if term.projected_variables != (term.constraint_var,):
+        _offline_violation("tetra_local_order_projected_variables_mismatch")
+    if term.constraint_var not in dict(term.source_snapshot.domains):
+        _offline_violation("tetra_local_order_projected_before_closure")
+    store = ResidualStore.from_value_snapshot(term.source_snapshot)
+    result = store.restrict_many_and_propagate(
+        ((term.constraint_var, term.constraint_value),)
+    )
+    _check_transition_result(
+        expected=term.propagation_result,
+        actual=result,
+        violation_prefix="tetra_local_order",
+    )
+    if result.stats.component_variables != term.affected_variables:
+        _offline_violation("tetra_local_order_affected_variables_mismatch")
+    if result.stats.component_factor_keys != term.affected_factor_keys:
+        _offline_violation("tetra_local_order_affected_factors_mismatch")
+    try:
+        store.discharge_satisfied_factors(term.discharged_factor_keys)
+    except ValueError:
+        _offline_violation("tetra_local_order_discharge_replay_failed")
+    if store.value_snapshot() != term.successor_snapshot:
+        _offline_violation("tetra_local_order_successor_residual_mismatch")
+
+
+def _check_transition_manifest_digest(*, item: Mapping[str, object], term: object) -> None:
+    if item["transition_digest"] != _identity_digest(term):
+        _offline_violation("tetra_residual_transition_digest_mismatch")
+
+
+def _check_transition_result(
+    *,
+    expected: ResidualPropagationResult,
+    actual: ResidualPropagationResult,
+    violation_prefix: str,
+) -> None:
+    if actual.kind is not expected.kind:
+        _offline_violation(f"{violation_prefix}_result_kind_mismatch")
+    if actual.stats != expected.stats:
+        _offline_violation(f"{violation_prefix}_result_stats_mismatch")
+
+
+def _check_transition_lifecycle_residual_binding(
+    *,
+    branch: Mapping[str, object],
+    item: Mapping[str, object],
+    source_digest: str,
+    successor_digest: str,
+) -> None:
+    raw_lifecycle = _linked_raw_tetra_lifecycle(branch=branch, item=item)
+    if raw_lifecycle["source_residual_snapshot_digest"] != source_digest:
+        _offline_violation("tetra_residual_transition_source_lifecycle_mismatch")
+    if raw_lifecycle["successor_residual_snapshot_digest"] != successor_digest:
+        _offline_violation("tetra_residual_transition_successor_lifecycle_mismatch")
+
+
+def _linked_raw_tetra_lifecycle(
+    *,
+    branch: Mapping[str, object],
+    item: Mapping[str, object],
+) -> Mapping[str, object]:
+    matches = [
+        lifecycle
+        for lifecycle in branch["payload"]["obligation_manifests"]["stereo_lifecycle"]
+        if lifecycle["operation"] == "WriterStereoLifecycleEvidence"
+        and lifecycle["evidence_digest"] in item["linked_lifecycle_digests"]
+    ]
+    if len(matches) != 1:
+        _offline_violation("tetra_residual_raw_lifecycle_binding_mismatch")
+    return matches[0]
+
+
+def _check_transition_local_order_event_binding(
+    *,
+    branch: Mapping[str, object],
+    term: TetraLocalOrderFactorClosureTransitionTerm,
+) -> None:
+    events = branch["payload"]["graph_ring_delta"]["manifest"]["event_manifests"]
+    closed = [
+        event
+        for event in events
+        if event["kind"] == "local_order_closed"
+    ]
+    if len(closed) != 1:
+        _offline_violation("tetra_local_order_residual_close_event_count")
+    event = closed[0]
+    if event["atom"] != int(term.atom):
+        _offline_violation("tetra_local_order_event_atom_mismatch")
+    for field in (
+        "site",
+        "local_order",
+        "reference_order",
+        "source_local_order_record_digest",
+        "successor_local_order_record_digest",
+        "local_order_identity_digest",
+    ):
+        if field not in event:
+            _offline_violation("tetra_local_order_event_identity_missing")
+    if event["site"] != int(term.site):
+        _offline_violation("tetra_local_order_event_site_mismatch")
+    if tuple(event["local_order"]) != tuple(int(item) for item in term.local_order):
+        _offline_violation("tetra_local_order_event_order_mismatch")
+    if tuple(event["reference_order"]) != tuple(
+        int(item) for item in term.reference_order
+    ):
+        _offline_violation("tetra_local_order_event_reference_order_mismatch")
+    identity = {
+        "site": event["site"],
+        "atom": event["atom"],
+        "local_order": event["local_order"],
+        "reference_order": event["reference_order"],
+        "source_local_order_record_digest": event[
+            "source_local_order_record_digest"
+        ],
+        "successor_local_order_record_digest": event[
+            "successor_local_order_record_digest"
+        ],
+    }
+    if event["local_order_identity_digest"] != _identity_digest(identity):
+        _offline_violation("tetra_local_order_event_identity_digest_mismatch")
+
+
+def _transition_from_manifest(item: Mapping[str, object]) -> object:
+    if item["transition_term"] is None:
+        _offline_violation("tetra_residual_transition_missing")
+    operation = item["operation"]
+    if operation == "tetrahedral atom-token restriction":
+        return _decode_transition_term(
+            item["transition_term"],
+            expected_path=(
+                "grimace._south_star1.writer_residual_transition_terms."
+                "TetraAtomTokenRestrictionTransitionTerm"
+            ),
+        )
+    if operation == "tetrahedral local-order factor closure":
+        return _decode_transition_term(
+            item["transition_term"],
+            expected_path=(
+                "grimace._south_star1.writer_residual_transition_terms."
+                "TetraLocalOrderFactorClosureTransitionTerm"
+            ),
+        )
+    _offline_violation("tetra_residual_transition_operation_mismatch")
+
+
+def _decode_transition_term(term: object, *, expected_path: str) -> object:
+    if not isinstance(term, Mapping):
+        _offline_violation("transition_term_shape_mismatch")
+    if frozenset(term) != frozenset(("__dataclass__", "fields")):
+        _offline_violation("transition_term_shape_mismatch")
+    if term.get("__dataclass__") != expected_path:
+        _offline_violation("transition_term_class_mismatch")
+    return _value_from_term(term)
+
+
+def _value_from_term(term: object) -> object:
+    if term is None or isinstance(term, (str, bool, int)):
+        return term
+    if isinstance(term, Mapping):
+        if "__enum__" in term:
+            if frozenset(term) != frozenset(("__enum__", "value")):
+                _offline_violation("transition_term_enum_shape_mismatch")
+            enum_cls = _ALLOWED_TETRA_TRANSITION_ENUMS.get(term["__enum__"])
+            if enum_cls is None:
+                _offline_violation("transition_term_enum_class_mismatch")
+            try:
+                return enum_cls(term["value"])
+            except ValueError:
+                _offline_violation("transition_term_enum_value_mismatch")
+        if "__dataclass__" in term:
+            if frozenset(term) != frozenset(("__dataclass__", "fields")):
+                _offline_violation("transition_term_dataclass_shape_mismatch")
+            cls = _ALLOWED_TETRA_TRANSITION_DATACLASSES.get(term["__dataclass__"])
+            if cls is None:
+                _offline_violation("transition_term_dataclass_class_mismatch")
+            fields = term["fields"]
+            if not isinstance(fields, list):
+                _offline_violation("transition_term_dataclass_fields_mismatch")
+            values = {}
+            for item in fields:
+                if (
+                    not isinstance(item, list)
+                    or len(item) != 2
+                    or not isinstance(item[0], str)
+                ):
+                    _offline_violation("transition_term_dataclass_field_mismatch")
+                if item[0] in values:
+                    _offline_violation("transition_term_dataclass_field_duplicate")
+                values[item[0]] = _value_from_term(item[1])
+            expected = _ALLOWED_TETRA_TRANSITION_DATACLASS_FIELDS[
+                term["__dataclass__"]
+            ]
+            if frozenset(values) != expected:
+                _offline_violation("transition_term_dataclass_fields_mismatch")
+            return cls(**values)
+        _offline_violation("transition_term_mapping_shape_mismatch")
+    if isinstance(term, list):
+        return tuple(_value_from_term(item) for item in term)
+    _offline_violation("transition_term_shape_mismatch")
+
+
+def _local_order_parity(
+    *,
+    reference_order: tuple[object, ...],
+    local_order: tuple[object, ...],
+) -> TetraLocalParity:
+    if set(reference_order) != set(local_order):
+        _offline_violation("tetra_local_order_reference_order_mismatch")
+    positions = {item: index for index, item in enumerate(reference_order)}
+    indices = tuple(positions[item] for item in local_order)
+    inversions = 0
+    for index, left in enumerate(indices):
+        for right in indices[index + 1:]:
+            if left > right:
+                inversions += 1
+    return TetraLocalParity.EVEN if inversions % 2 == 0 else TetraLocalParity.ODD
+
+
+def _specified_tetra_site_for_transition(
+    *,
+    facts: MoleculeFacts,
+    site: int,
+    atom: int,
+    violation_prefix: str,
+) -> TetrahedralSiteFacts:
+    matches = [
+        item
+        for item in facts.stereo.tetrahedral
+        if int(item.id) == site
+    ]
+    if len(matches) != 1:
+        _offline_violation(f"{violation_prefix}_site_mismatch")
+    result = matches[0]
+    if result.status is not SiteStatus.SPECIFIED:
+        _offline_violation(f"{violation_prefix}_site_status_mismatch")
+    if int(result.center) != atom:
+        _offline_violation(f"{violation_prefix}_center_mismatch")
+    return result
 
 
 def _check_tetra_atom_token_residual(

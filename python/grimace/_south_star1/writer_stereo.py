@@ -15,6 +15,13 @@ from .facts import SiteStatus
 from .writer_capabilities import _WriterExecutionCapabilityKind
 from .writer_execution_evidence import WriterResidualPropagationWorkEvidence
 from .writer_execution_evidence import writer_residual_propagation_work_evidence
+from .writer_residual_transition_terms import (
+    TetraAtomTokenRestrictionTransitionTerm,
+)
+from .writer_residual_transition_terms import (
+    TetraLocalOrderFactorClosureTransitionTerm,
+)
+from .writer_residual_transition_terms import WriterResidualTransitionKind
 from .ids import AtomId
 from .ids import BondId
 from .ids import OccurrenceId
@@ -63,6 +70,12 @@ if TYPE_CHECKING:
 EMPTY_RESIDUAL_SNAPSHOT = ResidualStore().value_snapshot()
 _MAX_TETRA_RING_ENDPOINT_OCCURRENCES = 1
 _MAX_DIRECTIONAL_RING_CARRIER_SITES = 2
+
+
+def _residual_snapshot_digest(snapshot: ResidualStoreValueSnapshot) -> str:
+    from .writer_envelope_terms import _identity_digest
+
+    return _identity_digest(snapshot)
 
 
 @dataclass(frozen=True, slots=True)
@@ -999,16 +1012,36 @@ def _on_atom_emitted(
         result = store.restrict_many_and_propagate(
             (restriction,)
         )
-        evidence = writer_residual_propagation_work_evidence(
-            operation=operation,
-            result=result,
-        )
         if not _writer_residual_mutation_is_legal(
             result,
             operation=operation,
         ):
             store.rollback(checkpoint)
             return _WriterStereoMutation(state=None)
+        successor_snapshot = store.value_snapshot()
+        template = _tetra_template_by_center(prepared)[event.atom]
+        transition_term = TetraAtomTokenRestrictionTransitionTerm(
+            kind=WriterResidualTransitionKind.TETRA_ATOM_TOKEN_RESTRICTION,
+            source_snapshot=stereo_state.residual_snapshot,
+            source_snapshot_digest=_residual_snapshot_digest(stereo_state.residual_snapshot),
+            atom=event.atom,
+            site=template.site,
+            token=event.tetra_token,
+            constraint_var=restriction[0],
+            constraint_value=restriction[1],
+            affected_variables=result.stats.component_variables,
+            affected_factor_keys=result.stats.component_factor_keys,
+            propagation_result=result,
+            projected_variables=(),
+            discharged_factor_keys=(),
+            successor_snapshot=successor_snapshot,
+            successor_snapshot_digest=_residual_snapshot_digest(successor_snapshot),
+        )
+        evidence = writer_residual_propagation_work_evidence(
+            operation=operation,
+            result=result,
+            transition_term=transition_term,
+        )
         work_evidence.append(evidence)
         capabilities.update(
             {
@@ -1156,17 +1189,12 @@ def _on_local_order_closed(
         assert restriction is not None
         operation = "tetrahedral local-order factor closure"
         result = store.restrict_many_and_propagate((restriction,))
-        evidence = writer_residual_propagation_work_evidence(
-            operation=operation,
-            result=result,
-        )
         if not _writer_residual_mutation_is_legal(
             result,
             operation=operation,
         ):
             store.rollback(checkpoint)
             return _WriterStereoMutation(state=None)
-        work_evidence = (evidence,)
         capabilities.update(
             {
                 _WriterExecutionCapabilityKind.TETRA_LOCAL_ORDER_RESTRICTION,
@@ -1174,11 +1202,38 @@ def _on_local_order_closed(
             }
         )
         try:
-            store.discharge_satisfied_factors((_tetra_factor_key(template.site),))
+            discharged_factor_key = _tetra_factor_key(template.site)
+            store.discharge_satisfied_factors((discharged_factor_key,))
             capabilities.add(_WriterExecutionCapabilityKind.RESIDUAL_FACTOR_DISCHARGE)
         except ValueError:
             store.rollback(checkpoint)
             return _WriterStereoMutation(state=None)
+        successor_snapshot = store.value_snapshot()
+        transition_term = TetraLocalOrderFactorClosureTransitionTerm(
+            kind=WriterResidualTransitionKind.TETRA_LOCAL_ORDER_FACTOR_CLOSURE,
+            source_snapshot=stereo_state.residual_snapshot,
+            source_snapshot_digest=_residual_snapshot_digest(stereo_state.residual_snapshot),
+            atom=atom,
+            site=template.site,
+            local_order=closed_order.order,
+            reference_order=template.reference_order,
+            target_parity=restriction[1],
+            constraint_var=restriction[0],
+            constraint_value=restriction[1],
+            affected_variables=result.stats.component_variables,
+            affected_factor_keys=result.stats.component_factor_keys,
+            propagation_result=result,
+            projected_variables=(restriction[0],),
+            discharged_factor_keys=(discharged_factor_key,),
+            successor_snapshot=successor_snapshot,
+            successor_snapshot_digest=_residual_snapshot_digest(successor_snapshot),
+        )
+        evidence = writer_residual_propagation_work_evidence(
+            operation=operation,
+            result=result,
+            transition_term=transition_term,
+        )
+        work_evidence = (evidence,)
     else:
         capabilities = set()
         work_evidence = ()

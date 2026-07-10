@@ -29,7 +29,11 @@ from grimace._south_star1.writer_frontier_count_envelope import (
 from grimace._south_star1.writer_runtime import count_writer_runtime_completions
 from grimace._south_star1.writer_runtime import count_writer_runtime_support
 from grimace._south_star1.writer_runtime import initial_writer_runtime_state
+from grimace._south_star1.writer_runtime import writer_runtime_choices
+from grimace._south_star1.writer_runtime import writer_runtime_state_from_snapshot
+from grimace._south_star1.writer_snapshot import advance_writer_frontier_snapshot
 from grimace._south_star1.writer_snapshot import capture_writer_frontier_snapshot
+from grimace._south_star1.writer_snapshot import resume_writer_frontier_choices_from_snapshot
 from grimace._south_star1.writer_snapshot import (
     _writer_snapshot_advance_outcome_by_emitted_text,
 )
@@ -125,6 +129,18 @@ class WriterDefaultParityCorpusTest(unittest.TestCase):
                 self.assertEqual(
                     result["facts_bound_offline_complete"],
                     case.expected_offline_replay_complete,
+                )
+                self.assertEqual(
+                    result["live_frontier_agreement_complete"],
+                    case.expected_live_frontier_agreement_complete,
+                )
+                self.assertEqual(
+                    result["live_count_agreement_complete"],
+                    case.expected_live_count_agreement_complete,
+                )
+                self.assertEqual(
+                    result["snapshot_resume_agreement_complete"],
+                    case.expected_snapshot_resume_agreement_complete,
                 )
                 self.assertEqual(
                     result["facts_bound_object_kinds"],
@@ -291,6 +307,23 @@ def _accepted_case_result(case: DefaultWriterCapabilityCase) -> dict[str, object
     assert live.accepted, live.reason
     assert fact_bound.accepted, fact_bound.reason
 
+    snapshot_resume = _snapshot_resume_agreement(prepared, snapshot)
+    live_count_agreement_complete = (
+        count_writer_runtime_support(
+            prepared=prepared,
+            state=state,
+        )
+        == image.distinct_count
+        == structural.support_count
+        == artifact["metrics"]["support_string_count"]
+        and count_writer_runtime_completions(
+            prepared=prepared,
+            state=state,
+        )
+        == image.witness_count
+        == structural.witness_count
+    )
+
     return {
         "support_count": count_writer_runtime_support(
             prepared=prepared,
@@ -309,6 +342,16 @@ def _accepted_case_result(case: DefaultWriterCapabilityCase) -> dict[str, object
         "live_accepted": live.accepted,
         "facts_bound_accepted": fact_bound.accepted,
         "facts_bound_offline_complete": fact_bound.offline_replay_complete,
+        "live_frontier_agreement_complete": (
+            snapshot_resume["frontier_traversal_complete"]
+            and count_verification.accepted
+            and live.accepted
+        ),
+        "live_count_agreement_complete": live_count_agreement_complete,
+        "snapshot_resume_agreement_complete": (
+            snapshot_resume["frontier_traversal_complete"]
+            and snapshot_resume["strings"] == set(image.strings)
+        ),
         "facts_bound_object_kinds": fact_bound.offline_checked_object_kinds,
         "facts_bound_unchecked_object_kinds": (
             fact_bound.offline_unchecked_object_kinds
@@ -317,6 +360,62 @@ def _accepted_case_result(case: DefaultWriterCapabilityCase) -> dict[str, object
             fact_bound.offline_unchecked_obligation_families
         ),
         "facts_bound_relation_families": fact_bound.offline_checked_relation_families,
+    }
+
+
+def _snapshot_resume_agreement(prepared, snapshot) -> dict[str, object]:
+    pending = [(snapshot, "")]
+    seen = set()
+    strings = set()
+    frontier_traversal_complete = True
+    while pending:
+        current, emitted = pending.pop(0)
+        # A shared cursor can still represent distinct emitted prefixes.
+        seen_key = (current.cursor, emitted)
+        if seen_key in seen:
+            continue
+        seen.add(seen_key)
+        resumed_state = writer_runtime_state_from_snapshot(
+            current,
+            prepared=prepared,
+        )
+        resumed_choices = resume_writer_frontier_choices_from_snapshot(
+            current,
+            prepared=prepared,
+        )
+        runtime_choices = writer_runtime_choices(
+            prepared=prepared,
+            state=resumed_state,
+        )
+        if resumed_choices != runtime_choices:
+            frontier_traversal_complete = False
+            continue
+        product = _snapshot_advance_writer_frontier_product(
+            prepared,
+            current.cursor,
+        )
+        if product.blocked:
+            frontier_traversal_complete = False
+            continue
+        projection = product.projection_certificate
+        if projection.terminal_projection_certificate is not None:
+            strings.add(emitted)
+            continue
+        for choice in resumed_choices.choices:
+            advanced = advance_writer_frontier_snapshot(
+                current,
+                prepared=prepared,
+                emitted_text=choice.emitted_text,
+            )
+            pending.append(
+                (
+                    advanced,
+                    emitted + choice.emitted_text,
+                )
+            )
+    return {
+        "frontier_traversal_complete": frontier_traversal_complete,
+        "strings": strings,
     }
 
 

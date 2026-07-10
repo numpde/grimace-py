@@ -43,6 +43,12 @@ DEFAULT_OFFLINE_OBJECT_KINDS = (
 DEFAULT_OFFLINE_UNCHECKED_OBJECT_KINDS: tuple[str, ...] = ()
 DEFAULT_OFFLINE_UNCHECKED_OBLIGATION_FAMILIES: tuple[str, ...] = ()
 
+DEFAULT_ACCEPTED_AGREEMENT_TIERS = {
+    "expected_live_frontier_agreement_complete": True,
+    "expected_live_count_agreement_complete": True,
+    "expected_snapshot_resume_agreement_complete": True,
+}
+
 
 @dataclass(frozen=True, slots=True)
 class DefaultWriterCapabilityCase:
@@ -66,6 +72,10 @@ class DefaultWriterCapabilityCase:
     expected_live_artifact_verifier: bool = False
     expected_facts_bound_verifier: bool = False
     expected_offline_replay_complete: bool = False
+    expected_live_frontier_agreement_complete: bool = False
+    expected_live_count_agreement_complete: bool = False
+    expected_snapshot_resume_agreement_complete: bool = False
+    expected_rdkit_audit_version_pinned: bool = False
     expected_offline_object_kinds: tuple[str, ...] = ()
     expected_offline_unchecked_object_kinds: tuple[str, ...] = ()
     expected_offline_relation_families: tuple[str, ...] = ()
@@ -86,6 +96,7 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         expected_live_artifact_verifier=True,
         expected_facts_bound_verifier=True,
         expected_offline_replay_complete=True,
+        **DEFAULT_ACCEPTED_AGREEMENT_TIERS,
         expected_offline_object_kinds=DEFAULT_OFFLINE_OBJECT_KINDS,
         expected_offline_unchecked_object_kinds=DEFAULT_OFFLINE_UNCHECKED_OBJECT_KINDS,
         expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
@@ -104,6 +115,7 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         expected_live_artifact_verifier=True,
         expected_facts_bound_verifier=True,
         expected_offline_replay_complete=True,
+        **DEFAULT_ACCEPTED_AGREEMENT_TIERS,
         expected_offline_object_kinds=DEFAULT_OFFLINE_OBJECT_KINDS,
         expected_offline_unchecked_object_kinds=DEFAULT_OFFLINE_UNCHECKED_OBJECT_KINDS,
         expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
@@ -122,6 +134,7 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         expected_live_artifact_verifier=True,
         expected_facts_bound_verifier=True,
         expected_offline_replay_complete=True,
+        **DEFAULT_ACCEPTED_AGREEMENT_TIERS,
         expected_offline_object_kinds=DEFAULT_OFFLINE_OBJECT_KINDS,
         expected_offline_unchecked_object_kinds=DEFAULT_OFFLINE_UNCHECKED_OBJECT_KINDS,
         expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
@@ -140,6 +153,7 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         expected_live_artifact_verifier=True,
         expected_facts_bound_verifier=True,
         expected_offline_replay_complete=True,
+        **DEFAULT_ACCEPTED_AGREEMENT_TIERS,
         expected_offline_object_kinds=DEFAULT_OFFLINE_OBJECT_KINDS,
         expected_offline_unchecked_object_kinds=DEFAULT_OFFLINE_UNCHECKED_OBJECT_KINDS,
         expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
@@ -158,6 +172,7 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         expected_live_artifact_verifier=True,
         expected_facts_bound_verifier=True,
         expected_offline_replay_complete=True,
+        **DEFAULT_ACCEPTED_AGREEMENT_TIERS,
         expected_offline_object_kinds=DEFAULT_OFFLINE_OBJECT_KINDS,
         expected_offline_unchecked_object_kinds=DEFAULT_OFFLINE_UNCHECKED_OBJECT_KINDS,
         expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
@@ -176,6 +191,7 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         expected_live_artifact_verifier=True,
         expected_facts_bound_verifier=True,
         expected_offline_replay_complete=True,
+        **DEFAULT_ACCEPTED_AGREEMENT_TIERS,
         expected_offline_object_kinds=DEFAULT_OFFLINE_OBJECT_KINDS,
         expected_offline_unchecked_object_kinds=DEFAULT_OFFLINE_UNCHECKED_OBJECT_KINDS,
         expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
@@ -194,6 +210,7 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         expected_live_artifact_verifier=True,
         expected_facts_bound_verifier=True,
         expected_offline_replay_complete=True,
+        **DEFAULT_ACCEPTED_AGREEMENT_TIERS,
         expected_offline_object_kinds=DEFAULT_OFFLINE_OBJECT_KINDS,
         expected_offline_unchecked_object_kinds=DEFAULT_OFFLINE_UNCHECKED_OBJECT_KINDS,
         expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
@@ -212,6 +229,8 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         expected_live_artifact_verifier=True,
         expected_facts_bound_verifier=True,
         expected_offline_replay_complete=True,
+        **DEFAULT_ACCEPTED_AGREEMENT_TIERS,
+        expected_rdkit_audit_version_pinned=True,
         expected_offline_object_kinds=DEFAULT_OFFLINE_OBJECT_KINDS,
         expected_offline_unchecked_object_kinds=DEFAULT_OFFLINE_UNCHECKED_OBJECT_KINDS,
         expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
@@ -230,6 +249,8 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         expected_live_artifact_verifier=True,
         expected_facts_bound_verifier=True,
         expected_offline_replay_complete=True,
+        **DEFAULT_ACCEPTED_AGREEMENT_TIERS,
+        expected_rdkit_audit_version_pinned=True,
         expected_offline_object_kinds=DEFAULT_OFFLINE_OBJECT_KINDS,
         expected_offline_unchecked_object_kinds=DEFAULT_OFFLINE_UNCHECKED_OBJECT_KINDS,
         expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
@@ -248,6 +269,8 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         expected_live_artifact_verifier=True,
         expected_facts_bound_verifier=True,
         expected_offline_replay_complete=True,
+        **DEFAULT_ACCEPTED_AGREEMENT_TIERS,
+        expected_rdkit_audit_version_pinned=True,
         expected_offline_object_kinds=DEFAULT_OFFLINE_OBJECT_KINDS,
         expected_offline_unchecked_object_kinds=DEFAULT_OFFLINE_UNCHECKED_OBJECT_KINDS,
         expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
@@ -266,6 +289,8 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         expected_live_artifact_verifier=True,
         expected_facts_bound_verifier=True,
         expected_offline_replay_complete=True,
+        **DEFAULT_ACCEPTED_AGREEMENT_TIERS,
+        expected_rdkit_audit_version_pinned=True,
         expected_offline_object_kinds=DEFAULT_OFFLINE_OBJECT_KINDS,
         expected_offline_unchecked_object_kinds=DEFAULT_OFFLINE_UNCHECKED_OBJECT_KINDS,
         expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
@@ -284,6 +309,8 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         expected_live_artifact_verifier=True,
         expected_facts_bound_verifier=True,
         expected_offline_replay_complete=True,
+        **DEFAULT_ACCEPTED_AGREEMENT_TIERS,
+        expected_rdkit_audit_version_pinned=True,
         expected_offline_object_kinds=DEFAULT_OFFLINE_OBJECT_KINDS,
         expected_offline_unchecked_object_kinds=DEFAULT_OFFLINE_UNCHECKED_OBJECT_KINDS,
         expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
@@ -302,6 +329,8 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         expected_live_artifact_verifier=True,
         expected_facts_bound_verifier=True,
         expected_offline_replay_complete=True,
+        **DEFAULT_ACCEPTED_AGREEMENT_TIERS,
+        expected_rdkit_audit_version_pinned=True,
         expected_offline_object_kinds=DEFAULT_OFFLINE_OBJECT_KINDS,
         expected_offline_unchecked_object_kinds=DEFAULT_OFFLINE_UNCHECKED_OBJECT_KINDS,
         expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
@@ -320,6 +349,8 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         expected_live_artifact_verifier=True,
         expected_facts_bound_verifier=True,
         expected_offline_replay_complete=True,
+        **DEFAULT_ACCEPTED_AGREEMENT_TIERS,
+        expected_rdkit_audit_version_pinned=True,
         expected_offline_object_kinds=DEFAULT_OFFLINE_OBJECT_KINDS,
         expected_offline_unchecked_object_kinds=DEFAULT_OFFLINE_UNCHECKED_OBJECT_KINDS,
         expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
@@ -338,6 +369,8 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         expected_live_artifact_verifier=True,
         expected_facts_bound_verifier=True,
         expected_offline_replay_complete=True,
+        **DEFAULT_ACCEPTED_AGREEMENT_TIERS,
+        expected_rdkit_audit_version_pinned=True,
         expected_offline_object_kinds=DEFAULT_OFFLINE_OBJECT_KINDS,
         expected_offline_unchecked_object_kinds=DEFAULT_OFFLINE_UNCHECKED_OBJECT_KINDS,
         expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
@@ -354,6 +387,7 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         blocker_kind="unsupported_atom",
         blocker_error_kind=SouthStarErrorKind.UNSUPPORTED_ATOM,
         blocker_message_contains="isotopic atoms are unsupported",
+        expected_rdkit_audit_version_pinned=True,
     ),
     DefaultWriterCapabilityCase(
         name="oxygen_positive_charge",
@@ -366,6 +400,7 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         blocker_kind="unsupported_atom",
         blocker_error_kind=SouthStarErrorKind.UNSUPPORTED_ATOM,
         blocker_message_contains="charged atoms are unsupported",
+        expected_rdkit_audit_version_pinned=True,
     ),
     DefaultWriterCapabilityCase(
         name="nitrogen_negative_charge",
@@ -378,6 +413,7 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         blocker_kind="unsupported_atom",
         blocker_error_kind=SouthStarErrorKind.UNSUPPORTED_ATOM,
         blocker_message_contains="charged atoms are unsupported",
+        expected_rdkit_audit_version_pinned=True,
     ),
     DefaultWriterCapabilityCase(
         name="oxygen_charged_isotope",
@@ -390,6 +426,7 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         blocker_kind="unsupported_atom",
         blocker_error_kind=SouthStarErrorKind.UNSUPPORTED_ATOM,
         blocker_message_contains="isotopic atoms are unsupported",
+        expected_rdkit_audit_version_pinned=True,
     ),
     DefaultWriterCapabilityCase(
         name="cyclopropene_potential_directional_boundary",

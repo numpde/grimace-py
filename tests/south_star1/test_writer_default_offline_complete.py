@@ -32,10 +32,16 @@ class WriterDefaultOfflineCompleteTest(unittest.TestCase):
                 self.assertTrue(case.expected_live_artifact_verifier)
                 self.assertTrue(case.expected_facts_bound_verifier)
                 self.assertTrue(case.expected_offline_replay_complete)
+                self.assertTrue(case.expected_live_frontier_agreement_complete)
+                self.assertTrue(case.expected_live_count_agreement_complete)
+                self.assertTrue(case.expected_snapshot_resume_agreement_complete)
                 self.assertTrue(result["structural_accepted"])
                 self.assertTrue(result["live_accepted"])
                 self.assertTrue(result["facts_bound_accepted"])
                 self.assertTrue(result["facts_bound_offline_complete"])
+                self.assertTrue(result["live_frontier_agreement_complete"])
+                self.assertTrue(result["live_count_agreement_complete"])
+                self.assertTrue(result["snapshot_resume_agreement_complete"])
                 self.assertEqual(
                     result["facts_bound_object_kinds"],
                     case.expected_offline_object_kinds,
@@ -63,6 +69,9 @@ class WriterDefaultOfflineCompleteTest(unittest.TestCase):
                 self.assertFalse(case.expected_live_artifact_verifier)
                 self.assertFalse(case.expected_facts_bound_verifier)
                 self.assertFalse(case.expected_offline_replay_complete)
+                self.assertFalse(case.expected_live_frontier_agreement_complete)
+                self.assertFalse(case.expected_live_count_agreement_complete)
+                self.assertFalse(case.expected_snapshot_resume_agreement_complete)
                 self.assertEqual(case.expected_offline_object_kinds, ())
                 self.assertEqual(case.expected_offline_unchecked_object_kinds, ())
                 self.assertEqual(case.expected_offline_relation_families, ())

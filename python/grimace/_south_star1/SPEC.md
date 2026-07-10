@@ -107,10 +107,31 @@ Typed blocked surfaces currently covered by the ledger:
 ### Default ordinary support: facts-bound offline-complete subset
 
 For the default ordinary parity profile, `include_potential_sites=False`, the
-accepted ledger entries are facts-bound offline-complete. Each accepted entry
-builds a table-backed support artifact, passes the structural checker, passes
-the live writer verifier, passes the facts-bound verifier, and reports
-`offline_replay_complete=True`.
+accepted ledger entries are facts-bound offline-complete with tiered live
+agreement evidence. Each accepted entry builds a table-backed support artifact,
+passes the structural checker, passes the live writer verifier, passes the
+facts-bound verifier, and reports `offline_replay_complete=True`.
+
+The ledger names the support status tiers explicitly:
+
+- artifact shape: the table-backed support artifact is structurally consistent;
+- facts-bound offline replay: the artifact replay is bound to extracted facts
+  and reports `offline_replay_complete=True`;
+- live frontier agreement: the live frontier/count-envelope verifier accepts
+  the same prepared writer frontier used by the artifact;
+- live count agreement: runtime support and completion counts match the
+  materialized support image and artifact counts;
+- snapshot/resume agreement: lightweight snapshot advance/resume traversal
+  reaches the same terminal support strings as the materialized support image;
+- RDKit runtime reparse audit: generated strings are reparsed by the installed
+  RDKit adapter and compared to the source facts by fact isomorphism;
+- RDKit audit version pinned: only version-keyed fixture-backed cases carry
+  this tier. The current default ledger pins the durable bracket audit surfaces
+  covered by `tests/fixtures/rdkit_south_star_bracket_audit/2026.03.1.json`.
+
+The RDKit audit tiers are parity/audit evidence for the supported writer
+regime. They are not semantic authority and must not replace the facts-bound
+replay or the project's principled SMILES/chemistry semantics.
 
 The current offline-complete accepted surfaces are:
 

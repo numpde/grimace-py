@@ -42,6 +42,17 @@ from tests.south_star1.default_writer_capability_ledger import (
     DEFAULT_WRITER_CAPABILITY_CASES,
 )
 
+DURABLE_BRACKET_SUPPORT_SURFACES = frozenset(
+    {
+        "simple_bracket_charge",
+        "simple_isotope_bracket_atom",
+        "unsupported_charged_isotope",
+        "unsupported_charged_oxygen_isotope",
+        "unsupported_negative_nitrogen_charge",
+        "unsupported_positive_oxygen_charge",
+    }
+)
+
 
 class WriterDefaultCapabilityLedgerTest(unittest.TestCase):
     def test_ledger_names_and_support_surfaces_are_unique(self) -> None:
@@ -82,6 +93,13 @@ class WriterDefaultCapabilityLedgerTest(unittest.TestCase):
                 self.assertTrue(case.expected_live_artifact_verifier)
                 self.assertTrue(case.expected_facts_bound_verifier)
                 self.assertTrue(case.expected_offline_replay_complete)
+                self.assertTrue(case.expected_live_frontier_agreement_complete)
+                self.assertTrue(case.expected_live_count_agreement_complete)
+                self.assertTrue(case.expected_snapshot_resume_agreement_complete)
+                self.assertEqual(
+                    case.expected_rdkit_audit_version_pinned,
+                    case.support_surface in DURABLE_BRACKET_SUPPORT_SURFACES,
+                )
                 self.assertEqual(
                     case.expected_offline_object_kinds,
                     DEFAULT_OFFLINE_OBJECT_KINDS,
@@ -110,6 +128,13 @@ class WriterDefaultCapabilityLedgerTest(unittest.TestCase):
                 self.assertFalse(case.expected_live_artifact_verifier)
                 self.assertFalse(case.expected_facts_bound_verifier)
                 self.assertFalse(case.expected_offline_replay_complete)
+                self.assertFalse(case.expected_live_frontier_agreement_complete)
+                self.assertFalse(case.expected_live_count_agreement_complete)
+                self.assertFalse(case.expected_snapshot_resume_agreement_complete)
+                self.assertEqual(
+                    case.expected_rdkit_audit_version_pinned,
+                    case.support_surface in DURABLE_BRACKET_SUPPORT_SURFACES,
+                )
                 self.assertEqual(case.expected_offline_object_kinds, ())
                 self.assertEqual(case.expected_offline_unchecked_object_kinds, ())
                 self.assertEqual(case.expected_offline_relation_families, ())

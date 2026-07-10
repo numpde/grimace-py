@@ -90,6 +90,7 @@ class WriterDefaultBracketAuditFixtureTest(unittest.TestCase):
                     fixture_case.support_surface,
                     ledger_case.support_surface,
                 )
+                self.assertTrue(ledger_case.expected_rdkit_audit_version_pinned)
 
     def test_accepted_fixture_support_matches_generated_support_and_ledger(
         self,

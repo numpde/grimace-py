@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import unittest
 from collections import Counter
+from collections.abc import Mapping
 from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -94,6 +95,12 @@ from grimace._south_star1.writer_runtime import writer_runtime_has_eos
 from grimace._south_star1.writer_runtime import writer_runtime_state_from_snapshot
 from grimace._south_star1.writer_runtime import writer_runtime_terminal
 from grimace._south_star1.writer_runtime import writer_runtime_support_count_certificate
+from grimace._south_star1.writer_support_artifact_envelope import (
+    writer_support_artifact_envelope_for_snapshot,
+)
+from grimace._south_star1.writer_support_artifact_fact_verifier import (
+    verify_writer_support_artifact_for_facts,
+)
 from grimace._south_star1.writer_snapshot import advance_writer_frontier_snapshot
 from grimace._south_star1.writer_snapshot import resume_writer_frontier_choices_from_snapshot
 from grimace._south_star1.writer_snapshot_certificates import (
@@ -130,7 +137,258 @@ from tests.south_star1.helpers import cco_facts
 from tests.south_star1.helpers import tetrahedral_facts
 
 
+_EXPECTED_TETRA_OPERATION_CAPABILITIES = {
+    "tetrahedral atom-token restriction": (
+        _WriterExecutionCapabilityKind.TETRA_TOKEN_RESTRICTION
+    ),
+    "tetrahedral local-order factor closure": (
+        _WriterExecutionCapabilityKind.TETRA_LOCAL_ORDER_RESTRICTION
+    ),
+}
+_EXPECTED_TETRA_RESIDUAL_OPERATIONS = frozenset(
+    _EXPECTED_TETRA_OPERATION_CAPABILITIES
+)
+
+
 class WriterRuntimeFacadeTest(unittest.TestCase):
+    def test_manual_specified_tetra_single_engine_support_agreement(self) -> None:
+        facts = tetrahedral_facts()
+        prepared = _prepare(facts)
+        options = _writer_options()
+        state = initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=options,
+        )
+
+        self.assertEqual(
+            count_writer_runtime_support(prepared=prepared, state=state),
+            12,
+        )
+        self.assertEqual(
+            count_writer_runtime_branch_completions(
+                prepared=prepared,
+                state=state,
+            ),
+            12,
+        )
+        certified = tuple(
+            iter_writer_runtime_certified_support(
+                prepared=prepared,
+                state=state,
+            )
+        )
+        self.assertEqual(len(certified), 12)
+        self.assertEqual(len({item.string for item in certified}), 12)
+
+        image = writer_runtime_support_image_certificate(
+            prepared=prepared,
+            state=state,
+            witness_count=12,
+        )
+        self.assertEqual(image.distinct_count, 12)
+        self.assertEqual(image.witness_count, 12)
+        self.assertIsNotNone(image.support_count_certificate)
+        self.assertEqual(image.support_count_certificate.support_count, 12)
+        self.assertIsNotNone(image.witness_count_certificate)
+        self.assertEqual(image.witness_count_certificate.completion_count, 12)
+        for item in certified:
+            self.assertEqual(item.string, item.certificate.string)
+            self.assertEqual(
+                item.string,
+                "".join(item.certificate.emitted_texts),
+            )
+        self.assertEqual(
+            tuple(item.string for item in certified),
+            image.strings,
+        )
+        self.assertEqual(
+            tuple(item.certificate for item in certified),
+            image.string_certificates,
+        )
+
+        choices = writer_runtime_choice_transitions(
+            prepared=prepared,
+            state=state,
+        )
+        branches = writer_runtime_branch_transitions(
+            prepared=prepared,
+            state=state,
+        )
+        self.assertEqual(
+            _transition_snapshot_multiset_from_choices(choices.transitions),
+            _transition_snapshot_multiset_from_branches(branches.transitions),
+        )
+        self.assertTrue(
+            all(
+                transition.snapshot_step_certificate is not None
+                and transition.text_projection_certificate is not None
+                for transition in choices.transitions
+            )
+        )
+        self.assertTrue(
+            all(
+                branch.checked_branch_certificate is not None
+                and branch.successor_state_certificate is not None
+                for branch in branches.transitions
+            )
+        )
+
+        replayed_tetra_branches = []
+        for item in certified:
+            replayed = state
+            remaining = item.string
+            while remaining:
+                self.assertFalse(
+                    writer_runtime_has_eos(prepared=prepared, state=replayed)
+                )
+                branch_transitions = writer_runtime_branch_transitions(
+                    prepared=prepared,
+                    state=replayed,
+                )
+                replayed_tetra_branches.extend(
+                    _tetra_related_branches(branch_transitions.transitions)
+                )
+                choice = _longest_prefix_choice(prepared, replayed, remaining)
+                choice_transition = _single_choice_transition(
+                    prepared,
+                    replayed,
+                    choice.emitted_text,
+                )
+                advanced = advance_writer_runtime_state(
+                    prepared=prepared,
+                    state=replayed,
+                    emitted_text=choice.emitted_text,
+                )
+                self.assertEqual(advanced, choice_transition.next_state)
+                resumed = writer_runtime_state_from_snapshot(
+                    prepared=prepared,
+                    snapshot=advanced.snapshot,
+                )
+                self.assertEqual(resumed, advanced)
+                self.assertEqual(
+                    writer_runtime_choices(prepared=prepared, state=resumed),
+                    writer_runtime_choices(prepared=prepared, state=advanced),
+                )
+                replayed = resumed
+                remaining = remaining[len(choice.emitted_text) :]
+            self.assertTrue(
+                writer_runtime_has_eos(prepared=prepared, state=replayed)
+            )
+            self.assertTrue(
+                writer_runtime_terminal(prepared=prepared, state=replayed)
+            )
+
+        self.assertTrue(replayed_tetra_branches)
+        live_operations = {
+            evidence.operation
+            for branch in replayed_tetra_branches
+            for evidence in branch.residual_work_evidence
+        }
+        self.assertEqual(live_operations, _EXPECTED_TETRA_RESIDUAL_OPERATIONS)
+        for branch in replayed_tetra_branches:
+            expected_operation, expected_capability = (
+                _expected_tetra_branch_operation_and_capability(branch)
+            )
+            self.assertTrue(branch.stereo_lifecycle_evidence)
+            self.assertTrue(branch.stereo_branch_certificates)
+            self.assertTrue(branch.residual_work_evidence)
+            self.assertIn(
+                expected_operation,
+                {
+                    evidence.operation
+                    for evidence in branch.residual_work_evidence
+                },
+            )
+            self.assertIn(expected_capability, branch.execution_capabilities)
+            self.assertIn(
+                expected_capability,
+                {
+                    certificate.capability
+                    for certificate in branch.stereo_branch_certificates
+                },
+            )
+
+        artifact = writer_support_artifact_envelope_for_snapshot(
+            prepared=prepared,
+            snapshot=state.snapshot,
+        )
+        fact_bound = verify_writer_support_artifact_for_facts(
+            facts=facts,
+            runtime_options=options,
+            artifact=artifact,
+            policy=prepared.policy,
+        )
+        self.assertTrue(fact_bound.accepted, fact_bound.reason)
+        self.assertEqual(fact_bound.support_count, 12)
+        self.assertEqual(fact_bound.witness_count, 12)
+        self.assertTrue(fact_bound.offline_replay_complete)
+        self.assertIn(
+            "residual_work",
+            fact_bound.offline_checked_obligation_families,
+        )
+        self.assertIn(
+            "stereo_lifecycle",
+            fact_bound.offline_checked_obligation_families,
+        )
+
+        artifact_manifests = _branch_support_obligation_manifests(artifact)
+        artifact_operations = {
+            manifest.get("operation")
+            for family, manifest in artifact_manifests
+            if family == "residual_work"
+        }
+        self.assertEqual(live_operations, artifact_operations)
+        self.assertEqual(
+            {family for family, _ in artifact_manifests},
+            {"residual_work", "stereo_lifecycle"},
+        )
+        for operation, capability in _EXPECTED_TETRA_OPERATION_CAPABILITIES.items():
+            residual_manifests = tuple(
+                manifest
+                for family, manifest in artifact_manifests
+                if family == "residual_work"
+                and manifest.get("operation") == operation
+            )
+            self.assertTrue(residual_manifests, operation)
+            self.assertTrue(
+                all(
+                    manifest.get("linked_lifecycle_digests")
+                    for manifest in residual_manifests
+                ),
+                operation,
+            )
+            lifecycle_manifests = tuple(
+                manifest
+                for family, manifest in artifact_manifests
+                if family == "stereo_lifecycle"
+                if operation in manifest.get("residual_work_operations", ())
+                and capability.value in manifest.get("lifecycle_capabilities", ())
+            )
+            self.assertTrue(lifecycle_manifests, operation)
+            self.assertTrue(
+                any(
+                    manifest.get("linked_residual_work_digests")
+                    for manifest in lifecycle_manifests
+                ),
+                operation,
+            )
+            certificate_manifests = tuple(
+                manifest
+                for family, manifest in artifact_manifests
+                if family == "stereo_lifecycle"
+                if operation in manifest.get("residual_work_operations", ())
+                and manifest.get("certificate_capability") == capability.value
+            )
+            self.assertTrue(certificate_manifests, operation)
+            self.assertTrue(
+                all(
+                    manifest.get("certificate_lifecycle_digest")
+                    and manifest.get("linked_residual_work_digests")
+                    for manifest in certificate_manifests
+                ),
+                operation,
+            )
+
     def test_initial_runtime_support_matches_existing_writer_support_image(self) -> None:
         prepared = _prepare(cco_facts())
         options = _writer_options()
@@ -2879,6 +3137,118 @@ def _single_terminal_certificate(
             f"expected exactly one terminal certificate {kind!r}"
         )
     return matches[0]
+
+
+def _transition_snapshot_multiset_from_choices(transitions):
+    return Counter(
+        (transition.choice.emitted_text, transition.next_state.snapshot)
+        for transition in transitions
+    )
+
+
+def _transition_snapshot_multiset_from_branches(transitions):
+    return Counter(
+        (transition.emitted_text, transition.next_state.snapshot)
+        for transition in transitions
+    )
+
+
+def _tetra_related_branches(transitions):
+    return tuple(
+        branch
+        for branch in transitions
+        if (
+            "@" in branch.emitted_text
+        )
+        or (
+            branch.execution_capabilities
+            & frozenset(_EXPECTED_TETRA_OPERATION_CAPABILITIES.values())
+        )
+        or (
+            {
+                evidence.operation
+                for evidence in branch.residual_work_evidence
+            }
+            & _EXPECTED_TETRA_RESIDUAL_OPERATIONS
+        )
+    )
+
+
+def _expected_tetra_branch_operation_and_capability(branch):
+    operations = {
+        evidence.operation
+        for evidence in branch.residual_work_evidence
+    }
+    matches = tuple(
+        (operation, capability)
+        for operation, capability in _EXPECTED_TETRA_OPERATION_CAPABILITIES.items()
+        if operation in operations or capability in branch.execution_capabilities
+    )
+    if len(matches) != 1:
+        raise AssertionError(
+            "expected exactly one tetra residual operation/capability for "
+            f"{branch!r}"
+        )
+    return matches[0]
+
+
+def _single_choice_transition(prepared, state, emitted_text: str):
+    matches = tuple(
+        transition
+        for transition in writer_runtime_choice_transitions(
+            prepared=prepared,
+            state=state,
+        ).transitions
+        if transition.choice.emitted_text == emitted_text
+    )
+    if len(matches) != 1:
+        raise AssertionError(
+            f"expected one writer runtime choice transition for {emitted_text!r}"
+        )
+    return matches[0]
+
+
+def _branch_support_obligation_manifests(artifact):
+    manifests = []
+    for item in artifact["objects"]:
+        if item["kind"] != "branch_support":
+            continue
+        payload = item["payload"]
+        if not isinstance(payload, Mapping):
+            raise AssertionError("branch_support payload must be a mapping")
+        obligation_manifests = payload.get("obligation_manifests", {})
+        if not isinstance(obligation_manifests, Mapping):
+            raise AssertionError("obligation manifests must be a mapping")
+        for family in ("residual_work", "stereo_lifecycle"):
+            family_manifests = obligation_manifests.get(family, ())
+            for manifest in family_manifests:
+                if not isinstance(manifest, Mapping):
+                    raise AssertionError("obligation manifest must be a mapping")
+                if (
+                    family == "residual_work"
+                    and manifest.get("operation")
+                    in _EXPECTED_TETRA_RESIDUAL_OPERATIONS
+                ):
+                    manifests.append((family, manifest))
+                    continue
+                if family == "stereo_lifecycle":
+                    residual_operations = set(
+                        manifest.get("residual_work_operations", ())
+                    )
+                    if residual_operations & _EXPECTED_TETRA_RESIDUAL_OPERATIONS:
+                        manifests.append((family, manifest))
+    return tuple(manifests)
+
+
+def _longest_prefix_choice(prepared, state, remaining: str):
+    matches = tuple(
+        choice
+        for choice in writer_runtime_choices(prepared=prepared, state=state).choices
+        if remaining.startswith(choice.emitted_text)
+    )
+    if not matches:
+        raise AssertionError(f"no writer runtime choice can consume {remaining!r}")
+    return max(matches, key=lambda item: len(item.emitted_text))
 
 
 def _prepare(facts):

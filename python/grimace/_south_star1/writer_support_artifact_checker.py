@@ -15,9 +15,10 @@ from .writer_envelope_work import WriterEnvelopeWorkExceeded
 from .writer_envelope_work import check_writer_envelope_work
 from .writer_envelope_work import default_writer_envelope_work_budget
 from .writer_envelope_work import writer_envelope_work_reason
+from .writer_count_dag_envelope import validate_writer_count_certificate_dag_envelope
 
 SCHEMA_NAME = "writer_support_artifact"
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 _TOP_LEVEL_FIELDS = frozenset((
     "schema_name",
     "schema_version",
@@ -90,13 +91,25 @@ def artifact_metrics(
 ) -> dict[str, object]:
     kind_counts: dict[str, int] = {}
     total_payload_bytes = 0
-    largest_object_digest_bytes = 0
+    largest_object_payload_bytes = 0
+    total_object_identity_input_bytes = 0
+    largest_object_identity_input_bytes = 0
     for item in objects:
         kind = str(item["kind"])
         kind_counts[kind] = kind_counts.get(kind, 0) + 1
         size = len(_canonical_json(item["payload"]).encode("utf-8"))
         total_payload_bytes += size
-        largest_object_digest_bytes = max(largest_object_digest_bytes, size)
+        largest_object_payload_bytes = max(largest_object_payload_bytes, size)
+        identity_size = len(
+            _canonical_json(
+                support_artifact_object_identity_term(kind, item["payload"])
+            ).encode("utf-8")
+        )
+        total_object_identity_input_bytes += identity_size
+        largest_object_identity_input_bytes = max(
+            largest_object_identity_input_bytes,
+            identity_size,
+        )
     support_string_refs = []
     coverage_bucket_count = 0
     count_dag_node_count = None
@@ -137,9 +150,24 @@ def artifact_metrics(
         "unique_terminal_support_count": kind_counts.get("terminal_support", 0),
         "total_payload_bytes": total_payload_bytes,
         "total_artifact_payload_bytes": total_payload_bytes,
-        "largest_object_digest_bytes": largest_object_digest_bytes,
-        "largest_object_digest_payload_bytes": largest_object_digest_bytes,
+        "largest_object_payload_bytes": largest_object_payload_bytes,
+        "largest_object_identity_input_bytes": largest_object_identity_input_bytes,
+        "total_object_identity_input_bytes": total_object_identity_input_bytes,
+        "largest_object_digest_bytes": largest_object_identity_input_bytes,
+        "largest_object_digest_payload_bytes": largest_object_identity_input_bytes,
     }
+
+
+def support_artifact_object_identity_term(kind: object, payload: object) -> dict[str, object]:
+    if kind == "count_dag":
+        assert isinstance(payload, Mapping)
+        return {
+            "kind": kind,
+            "payload_schema_name": payload["schema_name"],
+            "payload_schema_version": payload["schema_version"],
+            "payload_digest": payload["digest"],
+        }
+    return {"kind": kind, "payload": payload}
 
 
 def artifact_manifest(artifact: Mapping[str, object]) -> dict[str, object]:
@@ -204,8 +232,9 @@ def _object_by_id(
         object_id = item["object_id"]
         if object_id in objects:
             _artifact_violation("duplicate_object_id")
+        _validate_object_payload_shape(item, budget=budget)
         expected_digest = _identity_digest(
-            {"kind": item["kind"], "payload": item["payload"]},
+            support_artifact_object_identity_term(item["kind"], item["payload"]),
             budget=budget,
             operation="support_artifact.object.digest",
         )
@@ -277,8 +306,6 @@ def _validate_object_table_closed(
         _artifact_violation("root_count_ref_mismatch")
     if payload["frontier_product_ref"] != roots["frontier_product_ref"]:
         _artifact_violation("root_frontier_product_ref_mismatch")
-    for item in objects.values():
-        _validate_object_payload_shape(item, budget=budget)
     reachable = _reachable_object_ids(objects, roots["support_image_root"])
     if reachable - set(objects):
         _artifact_violation("dangling_object_ref")
@@ -338,9 +365,17 @@ def _validate_object_payload_shape(
             _artifact_violation("count_dag_ref_not_string")
     elif kind == "count_dag":
         _require_mapping(payload, "count_dag_payload_not_mapping")
-        for field in ("schema_name", "schema_version", "roots", "nodes", "metrics", "digest"):
-            if field not in payload:
-                _artifact_violation("count_dag_payload_fields_mismatch")
+        try:
+            validate_writer_count_certificate_dag_envelope(payload, budget=budget)
+        except WriterEnvelopeWorkExceeded:
+            raise
+        except SouthStarError as exc:
+            _artifact_violation(exc.args[-1] if exc.args else "count_dag_payload_rejected")
+        except ValueError as exc:
+            reason = str(exc).rsplit(": ", 1)[-1]
+            _artifact_violation(reason or "count_dag_payload_rejected")
+        except (AssertionError, KeyError, TypeError) as exc:
+            _artifact_violation(f"malformed_count_dag:{type(exc).__name__}")
     elif kind == "frontier_product":
         _require_mapping(payload, "frontier_product_payload_not_mapping")
         if "kind" not in payload or "digest" not in payload:
@@ -1192,11 +1227,11 @@ def _validate_support_image_root(
     if frontier["payload"]["digest"] != count["payload"]["frontier_product_digest"]:
         _artifact_violation("frontier_count_digest_mismatch")
     if count_dag["payload"]["digest"] != count["payload"]["count_dag_digest"]:
-        _artifact_violation("count_dag_digest_mismatch")
+        _artifact_violation("count_dag_ref_digest_mismatch")
     if count_dag["payload"]["metrics"]["node_count"] != count["payload"]["count_dag_node_count"]:
-        _artifact_violation("count_dag_node_count_mismatch")
+        _artifact_violation("count_dag_ref_node_count_mismatch")
     if count_dag["payload"]["metrics"]["edge_count"] != count["payload"]["count_dag_edge_count"]:
-        _artifact_violation("count_dag_edge_count_mismatch")
+        _artifact_violation("count_dag_ref_edge_count_mismatch")
     if payload["distinct_count"] != count["payload"]["support_count"]:
         _artifact_violation("distinct_count_mismatch")
     if payload["witness_count"] != count["payload"]["completion_count"]:
@@ -1396,5 +1431,6 @@ __all__ = (
     "WriterSupportArtifactCheckResult",
     "artifact_manifest",
     "artifact_metrics",
+    "support_artifact_object_identity_term",
     "verify_writer_support_artifact_consistency",
 )

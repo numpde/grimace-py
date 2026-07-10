@@ -18,6 +18,7 @@ from .writer_support_artifact_checker import SCHEMA_NAME
 from .writer_support_artifact_checker import SCHEMA_VERSION
 from .writer_support_artifact_checker import artifact_manifest
 from .writer_support_artifact_checker import artifact_metrics
+from .writer_support_artifact_checker import support_artifact_object_identity_term
 from .writer_support_artifact_checker import verify_writer_support_artifact_consistency as _check_writer_support_artifact_consistency
 from .writer_envelope_work import WriterEnvelopeWorkBudget
 from .writer_envelope_work import WriterEnvelopeWorkExceeded
@@ -1552,7 +1553,7 @@ class _ObjectTable:
 
     def add(self, kind: str, payload, *, operation: str) -> str:
         digest = _identity_digest(
-            {"kind": kind, "payload": payload},
+            support_artifact_object_identity_term(kind, payload),
             budget=self._budget,
             operation=operation,
         )

@@ -24,6 +24,9 @@ from grimace._south_star1.writer_support_artifact_checker import (
     artifact_manifest,
 )
 from grimace._south_star1.writer_support_artifact_checker import (
+    support_artifact_object_identity_term,
+)
+from grimace._south_star1.writer_support_artifact_checker import (
     SCHEMA_VERSION,
 )
 from grimace._south_star1.writer_support_artifact_checker import (
@@ -66,16 +69,16 @@ class WriterSupportArtifactEnvelopeTest(unittest.TestCase):
         self.assertEqual(verification.witness_count, 2)
         self.assertEqual(check.object_count, envelope["metrics"]["object_count"])
 
-    def test_new_artifacts_use_schema_v4(self) -> None:
+    def test_new_artifacts_use_schema_v5(self) -> None:
         envelope = _snapshot_artifact()
 
-        self.assertEqual(SCHEMA_VERSION, 4)
-        self.assertEqual(envelope["schema_version"], 4)
+        self.assertEqual(SCHEMA_VERSION, 5)
+        self.assertEqual(envelope["schema_version"], 5)
         self.assertTrue(check_support_artifact(envelope).accepted)
 
-    def test_v3_artifact_is_rejected_without_migration(self) -> None:
+    def test_v4_artifact_is_rejected_without_migration(self) -> None:
         envelope = _snapshot_artifact()
-        envelope["schema_version"] = 3
+        envelope["schema_version"] = 4
         envelope["digest"] = _digest_terms_bounded(
             artifact_manifest(envelope),
             budget=WriterEnvelopeWorkBudget(),
@@ -195,6 +198,15 @@ class WriterSupportArtifactEnvelopeTest(unittest.TestCase):
             metrics["largest_object_digest_bytes"],
             metrics["largest_object_digest_payload_bytes"],
         )
+        self.assertEqual(
+            metrics["largest_object_digest_bytes"],
+            metrics["largest_object_identity_input_bytes"],
+        )
+        self.assertGreaterEqual(
+            metrics["largest_object_payload_bytes"],
+            metrics["largest_object_identity_input_bytes"],
+        )
+        self.assertGreater(metrics["total_object_identity_input_bytes"], 0)
 
     def test_artifact_and_legacy_nested_support_image_agree_on_core_fixture(self) -> None:
         prepared = _prepare(cco_facts())
@@ -260,6 +272,120 @@ class WriterSupportArtifactEnvelopeTest(unittest.TestCase):
         envelope["objects"][0]["digest"] = "0" * 64
 
         self.assertFalse(verify_writer_support_artifact_consistency(envelope).accepted)
+
+    def test_count_dag_object_identity_is_compact_manifest_digest(self) -> None:
+        envelope = _snapshot_artifact()
+        count = _object(envelope, envelope["roots"]["count_ref"])
+        count_dag = _object(envelope, count["payload"]["count_dag_ref"])
+
+        digest = _identity_digest(
+            support_artifact_object_identity_term(
+                count_dag["kind"],
+                count_dag["payload"],
+            ),
+            budget=WriterEnvelopeWorkBudget(),
+            operation="test.count_dag_object.digest",
+        )
+
+        self.assertEqual(count_dag["digest"], digest)
+        self.assertEqual(count_dag["object_id"], f"obj:{digest}")
+        self.assertLess(
+            envelope["metrics"]["largest_object_identity_input_bytes"],
+            envelope["metrics"]["largest_object_payload_bytes"],
+        )
+        self.assertTrue(check_support_artifact(envelope).accepted)
+
+    def test_stale_count_dag_internal_node_digest_is_rejected(self) -> None:
+        envelope = _snapshot_artifact()
+        count = _object(envelope, envelope["roots"]["count_ref"])
+        count_dag = _object(envelope, count["payload"]["count_dag_ref"])
+        node = next(
+            node for node in count_dag["payload"]["nodes"] if "support_count" in node
+        )
+        node["support_count"] = 999
+
+        check = check_support_artifact(envelope)
+
+        self.assertFalse(check.accepted)
+        self.assertIn("count_dag_node_digest_mismatch", check.reason)
+
+    def test_stale_count_dag_object_digest_is_rejected(self) -> None:
+        envelope = _snapshot_artifact()
+        count = _object(envelope, envelope["roots"]["count_ref"])
+        count_dag = _object(envelope, count["payload"]["count_dag_ref"])
+        replacement = _branching_artifact()
+        replacement_count = _object(replacement, replacement["roots"]["count_ref"])
+        replacement_dag = _object(
+            replacement,
+            replacement_count["payload"]["count_dag_ref"],
+        )
+        count_dag["payload"] = deepcopy(replacement_dag["payload"])
+
+        check = check_support_artifact(envelope)
+
+        self.assertFalse(check.accepted)
+        self.assertIn("object_digest_mismatch", check.reason)
+
+    def test_stale_count_envelope_count_dag_link_digest_is_rejected(self) -> None:
+        envelope = _snapshot_artifact()
+        count = _object(envelope, envelope["roots"]["count_ref"])
+        count_dag = _object(envelope, count["payload"]["count_dag_ref"])
+        replacement = _branching_artifact()
+        replacement_count = _object(replacement, replacement["roots"]["count_ref"])
+        replacement_dag = _object(
+            replacement,
+            replacement_count["payload"]["count_dag_ref"],
+        )
+        count_dag["payload"] = deepcopy(replacement_dag["payload"])
+        self.assertNotEqual(
+            count_dag["payload"]["digest"],
+            count["payload"]["count_dag_digest"],
+        )
+        _refresh_object_digest(envelope, count_dag)
+
+        check = check_support_artifact(envelope)
+
+        self.assertFalse(check.accepted)
+        self.assertIn("count_dag_ref_digest_mismatch", check.reason)
+
+    def test_count_envelope_count_dag_link_kind_mismatch_is_rejected(self) -> None:
+        envelope = _snapshot_artifact()
+        count = _object(envelope, envelope["roots"]["count_ref"])
+        original_count_dag_ref = count["payload"]["count_dag_ref"]
+        count["payload"]["count_dag_ref"] = envelope["roots"]["source_ref"]
+        _refresh_object_digest(envelope, count)
+        _drop_object(envelope, original_count_dag_ref)
+
+        check = check_support_artifact(envelope)
+
+        self.assertFalse(check.accepted)
+        self.assertIn("count_dag_ref_kind_mismatch", check.reason)
+
+    def test_count_envelope_count_dag_link_node_count_mismatch_is_rejected(
+        self,
+    ) -> None:
+        envelope = _snapshot_artifact()
+        count = _object(envelope, envelope["roots"]["count_ref"])
+        count["payload"]["count_dag_node_count"] += 1
+        _refresh_object_digest(envelope, count)
+
+        check = check_support_artifact(envelope)
+
+        self.assertFalse(check.accepted)
+        self.assertIn("count_dag_ref_node_count_mismatch", check.reason)
+
+    def test_count_envelope_count_dag_link_edge_count_mismatch_is_rejected(
+        self,
+    ) -> None:
+        envelope = _snapshot_artifact()
+        count = _object(envelope, envelope["roots"]["count_ref"])
+        count["payload"]["count_dag_edge_count"] += 1
+        _refresh_object_digest(envelope, count)
+
+        check = check_support_artifact(envelope)
+
+        self.assertFalse(check.accepted)
+        self.assertIn("count_dag_ref_edge_count_mismatch", check.reason)
 
     def test_unknown_payload_field_is_rejected(self) -> None:
         envelope = _snapshot_artifact()
@@ -361,7 +487,7 @@ class WriterSupportArtifactEnvelopeTest(unittest.TestCase):
         extra = deepcopy(_object(envelope, envelope["roots"]["source_ref"]))
         extra["payload"]["digest"] = "1" * 64
         digest = _identity_digest(
-            {"kind": extra["kind"], "payload": extra["payload"]},
+            support_artifact_object_identity_term(extra["kind"], extra["payload"]),
             budget=WriterEnvelopeWorkBudget(),
             operation="test.unreferenced_object.digest",
         )
@@ -435,6 +561,74 @@ def _first_obligation_manifest(envelope, *, excluded_family: str | None = None):
 
 def _object(envelope, object_id):
     return next(item for item in envelope["objects"] if item["object_id"] == object_id)
+
+
+def _refresh_object_digest(envelope, obj):
+    old_id = obj["object_id"]
+    digest = _identity_digest(
+        support_artifact_object_identity_term(obj["kind"], obj["payload"]),
+        budget=WriterEnvelopeWorkBudget(),
+        operation="test.object.digest",
+    )
+    obj["digest"] = digest
+    obj["object_id"] = f"obj:{digest}"
+    _replace_ref(envelope, old_id, obj["object_id"])
+    changed = True
+    while changed:
+        changed = False
+        for item in envelope["objects"]:
+            digest = _identity_digest(
+                support_artifact_object_identity_term(item["kind"], item["payload"]),
+                budget=WriterEnvelopeWorkBudget(),
+                operation="test.object.digest",
+            )
+            object_id = f"obj:{digest}"
+            if item["digest"] == digest and item["object_id"] == object_id:
+                continue
+            old_id = item["object_id"]
+            item["digest"] = digest
+            item["object_id"] = object_id
+            _replace_ref(envelope, old_id, object_id)
+            changed = True
+    envelope["metrics"] = artifact_envelope_module.artifact_metrics(
+        envelope["objects"],
+        roots=envelope["roots"],
+    )
+    envelope["digest"] = _digest_terms_bounded(
+        artifact_manifest(envelope),
+        budget=WriterEnvelopeWorkBudget(),
+        operation="test.artifact_manifest.digest",
+    )
+
+
+def _drop_object(envelope, object_id):
+    envelope["objects"] = [
+        item for item in envelope["objects"] if item["object_id"] != object_id
+    ]
+    envelope["metrics"] = artifact_envelope_module.artifact_metrics(
+        envelope["objects"],
+        roots=envelope["roots"],
+    )
+    envelope["digest"] = _digest_terms_bounded(
+        artifact_manifest(envelope),
+        budget=WriterEnvelopeWorkBudget(),
+        operation="test.artifact_manifest.digest",
+    )
+
+
+def _replace_ref(value, old_id, new_id):
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if item == old_id:
+                value[key] = new_id
+            else:
+                _replace_ref(item, old_id, new_id)
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            if item == old_id:
+                value[index] = new_id
+            else:
+                _replace_ref(item, old_id, new_id)
 
 
 def _json_round_trip(envelope):

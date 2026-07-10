@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import replace
+import os
 import unittest
 
 from grimace._south_star1.errors import SouthStarError
@@ -35,6 +36,9 @@ from grimace._south_star1.writer_snapshot_prefix_envelope import (
 import grimace._south_star1.writer_stereo as writer_stereo_module
 from grimace._south_star1.writer_support_artifact_checker import artifact_manifest
 from grimace._south_star1.writer_support_artifact_checker import artifact_metrics
+from grimace._south_star1.writer_support_artifact_checker import (
+    support_artifact_object_identity_term,
+)
 from grimace._south_star1.writer_support_artifact_checker import (
     verify_writer_support_artifact_consistency,
 )
@@ -91,9 +95,14 @@ from tests.south_star1.test_writer_stereo_residual import (
     _directional_non_single_ring_carrier_facts,
 )
 from tests.south_star1.test_writer_stereo_residual import (
+    _directional_ring_carrier_facts,
+)
+from tests.south_star1.test_writer_stereo_residual import (
     _shared_directional_ring_carrier_facts,
 )
 from tests.south_star1.test_writer_snapshot import two_atom_facts
+
+RUN_SLOW_ENV = "SOUTH_STAR1_RUN_SLOW"
 
 
 class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
@@ -415,6 +424,55 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         self.assertIn("expected_direction_text", wrong_direction_text.reason)
         self.assertIn("direction_mark", wrong_direction_text.reason)
         self.assertIn("successor_certificate", wrong_direction_text.reason)
+
+    def test_directional_ring_carrier_root_zero_artifact_builds_with_default_budget(
+        self,
+    ) -> None:
+        if os.environ.get(RUN_SLOW_ENV) != "1":
+            self.skipTest(
+                f"set {RUN_SLOW_ENV}=1 to run the directional ring carrier artifact probe"
+            )
+        facts = _directional_ring_carrier_facts()
+        options = _writer_options(rooted_at_atom=0)
+        prepared = _prepare(facts)
+        budget = WriterEnvelopeWorkBudget()
+
+        self.assertEqual(budget.max_digest_term_bytes, 25_000_000)
+
+        artifact = writer_support_artifact_envelope_for_snapshot(
+            prepared=prepared,
+            snapshot=_initial_snapshot(prepared, options),
+            budget=budget,
+        )
+        structural = verify_writer_support_artifact_consistency(
+            artifact,
+            budget=budget,
+        )
+        live = verify_writer_support_artifact_envelope(
+            prepared=prepared,
+            envelope=artifact,
+            budget=budget,
+        )
+        verification = verify_writer_support_artifact_for_facts(
+            facts=facts,
+            runtime_options=options,
+            artifact=artifact,
+            budget=budget,
+        )
+        classification = _obligation_classification(artifact, facts=facts)
+
+        self.assertTrue(structural.accepted, structural.reason)
+        self.assertTrue(live.accepted, live.reason)
+        self.assertTrue(verification.accepted, verification.reason)
+        self.assertFalse(verification.offline_replay_complete)
+        self.assertTrue(classification.accepted, classification.reason)
+        branch = _first_graph_ring_delta_branch(artifact, "ring_endpoint_open")
+        event = _first_graph_ring_delta_event(branch, "ring_endpoint_emitted")
+        self.assertEqual(event["bond"], 3)
+        self.assertLessEqual(
+            artifact["metrics"]["largest_object_identity_input_bytes"],
+            budget.max_digest_term_bytes,
+        )
 
     def test_directional_rooted_acyclic_artifact_replays_complete(self) -> None:
         facts, options, artifact = _directional_rooted_artifact()
@@ -3901,7 +3959,7 @@ def _refresh_object_and_artifact_digest(artifact, obj) -> None:
         changed = False
         for item in artifact["objects"]:
             digest = _identity_digest(
-                {"kind": item["kind"], "payload": item["payload"]},
+                support_artifact_object_identity_term(item["kind"], item["payload"]),
             )
             object_id = f"obj:{digest}"
             if item["digest"] == digest and item["object_id"] == object_id:

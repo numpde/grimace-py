@@ -729,6 +729,41 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             classification.reason,
         )
 
+    def test_specified_tetra_no_second_authority_from_atom_token_text(
+        self,
+    ) -> None:
+        facts, artifact = _manual_tetra_artifact()
+        branch = _first_residual_work_branch(
+            artifact,
+            operation="tetrahedral atom-token restriction",
+        )
+        manifest = next(
+            item
+            for item in branch["payload"]["obligation_manifests"]["residual_work"]
+            if item["operation"] == "tetrahedral atom-token restriction"
+        )
+        event = _first_graph_ring_delta_event(branch, "atom_emitted")
+        self.assertIn(event["tetra_token"]["value"], ("@", "@@"))
+        self.assertTrue(
+            any(event["tetra_token"]["value"] in text for text in _support_strings(artifact))
+        )
+        manifest["linked_lifecycle_digests"] = []
+
+        classification = _obligation_classification(artifact, facts=facts)
+        verification = verify_writer_support_artifact_for_facts(
+            facts=facts,
+            runtime_options=_writer_options(),
+            artifact=artifact,
+        )
+
+        self.assertFalse(classification.accepted)
+        self.assertIn(
+            "residual_lifecycle_forward_link_provenance_mismatch",
+            classification.reason,
+        )
+        self.assertFalse(verification.accepted)
+        self.assertIn("object_digest_mismatch", verification.reason)
+
     def test_specified_tetra_residual_rejects_wrong_lifecycle_link(
         self,
     ) -> None:
@@ -1060,6 +1095,79 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
                 self.assertFalse(classification.accepted)
                 self.assertIn(reason, classification.reason)
+
+    def test_specified_tetra_no_second_authority_from_stale_lifecycle_digest(
+        self,
+    ) -> None:
+        facts, artifact = _manual_tetra_artifact()
+        branch = _first_residual_work_branch(
+            artifact,
+            operation="tetrahedral atom-token restriction",
+        )
+        manifest = next(
+            item
+            for item in branch["payload"]["obligation_manifests"]["residual_work"]
+            if item["operation"] == "tetrahedral atom-token restriction"
+        )
+        lifecycle = _linked_tetra_lifecycle_manifest(
+            branch=branch,
+            manifest=manifest,
+            lifecycle_kind="raw",
+            certificate_kind="tetra_token_restricted",
+        )
+        lifecycle["source_digest"] = "stale_source_digest"
+
+        classification = _obligation_classification(artifact, facts=facts)
+        verification = verify_writer_support_artifact_for_facts(
+            facts=facts,
+            runtime_options=_writer_options(),
+            artifact=artifact,
+        )
+
+        self.assertFalse(classification.accepted)
+        self.assertIn(
+            "tetra_residual_lifecycle_source_mismatch",
+            classification.reason,
+        )
+        self.assertFalse(verification.accepted)
+        self.assertIn("object_digest_mismatch", verification.reason)
+
+    def test_specified_tetra_no_second_authority_from_final_support_strings(
+        self,
+    ) -> None:
+        facts, artifact = _manual_tetra_artifact()
+        branch = _first_residual_work_branch(
+            artifact,
+            operation="tetrahedral atom-token restriction",
+        )
+        manifest = next(
+            item
+            for item in branch["payload"]["obligation_manifests"]["residual_work"]
+            if item["operation"] == "tetrahedral atom-token restriction"
+        )
+        lifecycle = _linked_tetra_lifecycle_manifest(
+            branch=branch,
+            manifest=manifest,
+            lifecycle_kind="certificate",
+            certificate_kind="tetra_token_restricted",
+        )
+        self.assertTrue(any("@" in text for text in _support_strings(artifact)))
+        lifecycle["certificate_capability"] = "tetra_local_order_restriction"
+
+        classification = _obligation_classification(artifact, facts=facts)
+        verification = verify_writer_support_artifact_for_facts(
+            facts=facts,
+            runtime_options=_writer_options(),
+            artifact=artifact,
+        )
+
+        self.assertFalse(classification.accepted)
+        self.assertIn(
+            "tetra_residual_certificate_capability_mismatch",
+            classification.reason,
+        )
+        self.assertFalse(verification.accepted)
+        self.assertIn("object_digest_mismatch", verification.reason)
 
     def test_specified_tetra_residual_rejects_coherently_forged_link_projection(
         self,

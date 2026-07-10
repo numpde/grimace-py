@@ -6,9 +6,13 @@ from dataclasses import dataclass
 from enum import Enum
 
 from .ids import AtomId
+from .ids import BondId
 from .ids import OccurrenceId
 from .ids import SiteId
 from .policy import TetraToken
+from .policy import DirectionMark
+from .residual_constraints import DirectionalNormalizedSign
+from .residual_constraints import DirectionalSiteCarrierModel
 from .residual_constraints import ResidualFactorKey
 from .residual_constraints import ResidualPropagationResult
 from .residual_constraints import ResidualStoreValueSnapshot
@@ -19,6 +23,7 @@ from .residual_constraints import VarId
 class WriterResidualTransitionKind(Enum):
     TETRA_ATOM_TOKEN_RESTRICTION = "tetra_atom_token_restriction"
     TETRA_LOCAL_ORDER_FACTOR_CLOSURE = "tetra_local_order_factor_closure"
+    DIRECTIONAL_CARRIER_MARK_RESTRICTION = "directional_carrier_mark_restriction"
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,3 +65,23 @@ class TetraLocalOrderFactorClosureTransitionTerm:
     successor_snapshot: ResidualStoreValueSnapshot
     successor_snapshot_digest: str
 
+
+@dataclass(frozen=True, slots=True)
+class DirectionalCarrierMarkRestrictionTransitionTerm:
+    kind: WriterResidualTransitionKind
+    source_snapshot: ResidualStoreValueSnapshot
+    source_snapshot_digest: str
+    bond: BondId
+    parent: AtomId
+    child: AtomId
+    direction_mark: DirectionMark
+    canonical_orientation: int
+    carrier_models: tuple[DirectionalSiteCarrierModel, ...]
+    restrictions: tuple[tuple[VarId, DirectionalNormalizedSign], ...]
+    affected_variables: tuple[VarId, ...]
+    affected_factor_keys: tuple[ResidualFactorKey, ...]
+    propagation_result: ResidualPropagationResult
+    discharged_factor_keys: tuple[ResidualFactorKey, ...]
+    projected_variables: tuple[VarId, ...]
+    successor_snapshot: ResidualStoreValueSnapshot
+    successor_snapshot_digest: str

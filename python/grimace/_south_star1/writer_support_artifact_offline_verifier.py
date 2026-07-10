@@ -10,6 +10,8 @@ from .errors import SouthStarErrorKind
 from .facts import AtomFacts
 from .facts import BondFacts
 from .facts import BondOrder
+from .facts import DirectionalSiteFacts
+from .facts import DirectionalValue
 from .facts import LigandKind
 from .facts import MoleculeFacts
 from .facts import SiteStatus
@@ -18,6 +20,10 @@ from .facts import TetraValue
 from .policy import DirectionMark
 from .policy import TetraToken
 from .residual_constraints import ResidualFactorKey
+from .residual_constraints import DirectionalBondEmissionFactorValueSnapshot
+from .residual_constraints import DirectionalNormalizedSign
+from .residual_constraints import DirectionalSiteCarrierModel
+from .residual_constraints import DirectionalSiteFactorValueSnapshot
 from .residual_constraints import ResidualPropagationKind
 from .residual_constraints import ResidualPropagationResult
 from .residual_constraints import ResidualPropagationStats
@@ -27,8 +33,13 @@ from .residual_constraints import TetraLocalParity
 from .residual_constraints import TetraResidualFactorValueSnapshot
 from .residual_constraints import TetraTokenParityFactorValueSnapshot
 from .residual_constraints import VarId
+from .residual_constraints import directional_site_carrier_var
+from .residual_constraints import normalized_sign_from_mark
 from .residual_constraints import tetra_parity_var
 from .residual_constraints import tetra_token_var
+from .writer_residual_transition_terms import (
+    DirectionalCarrierMarkRestrictionTransitionTerm,
+)
 from .writer_atom_text_lifecycle import bracket_atom_text
 from .writer_count_dag_envelope import count_dag_node_by_id
 from .writer_count_dag_envelope import validate_writer_count_certificate_dag_envelope
@@ -73,11 +84,16 @@ _PATH_PREFIX = "grimace._south_star1."
 _ALLOWED_TETRA_TRANSITION_ENUMS = {
     _PATH_PREFIX + "facts.SiteStatus": SiteStatus,
     _PATH_PREFIX + "facts.TetraValue": TetraValue,
+    _PATH_PREFIX + "facts.DirectionalValue": DirectionalValue,
+    _PATH_PREFIX + "policy.DirectionMark": DirectionMark,
     _PATH_PREFIX + "policy.TetraToken": TetraToken,
     _PATH_PREFIX + "residual_constraints.ResidualPropagationKind": (
         ResidualPropagationKind
     ),
     _PATH_PREFIX + "residual_constraints.TetraLocalParity": TetraLocalParity,
+    _PATH_PREFIX + "residual_constraints.DirectionalNormalizedSign": (
+        DirectionalNormalizedSign
+    ),
     _PATH_PREFIX + "writer_residual_transition_terms.WriterResidualTransitionKind": (
         WriterResidualTransitionKind
     ),
@@ -99,7 +115,21 @@ _ALLOWED_TETRA_TRANSITION_DATACLASSES = {
     _PATH_PREFIX + "residual_constraints.TetraTokenParityFactorValueSnapshot": (
         TetraTokenParityFactorValueSnapshot
     ),
+    _PATH_PREFIX + "residual_constraints.DirectionalSiteCarrierModel": (
+        DirectionalSiteCarrierModel
+    ),
+    _PATH_PREFIX + "residual_constraints.DirectionalSiteFactorValueSnapshot": (
+        DirectionalSiteFactorValueSnapshot
+    ),
+    _PATH_PREFIX + "residual_constraints."
+    "DirectionalBondEmissionFactorValueSnapshot": (
+        DirectionalBondEmissionFactorValueSnapshot
+    ),
     _PATH_PREFIX + "residual_constraints.VarId": VarId,
+    _PATH_PREFIX + "writer_residual_transition_terms."
+    "DirectionalCarrierMarkRestrictionTransitionTerm": (
+        DirectionalCarrierMarkRestrictionTransitionTerm
+    ),
     _PATH_PREFIX + "writer_residual_transition_terms."
     "TetraAtomTokenRestrictionTransitionTerm": (
         TetraAtomTokenRestrictionTransitionTerm
@@ -138,7 +168,49 @@ _ALLOWED_TETRA_TRANSITION_DATACLASS_FIELDS = {
     _PATH_PREFIX + "residual_constraints.TetraTokenParityFactorValueSnapshot": (
         frozenset(("key", "scope", "status", "target"))
     ),
+    _PATH_PREFIX + "residual_constraints.DirectionalSiteCarrierModel": (
+        frozenset(
+            (
+                "site",
+                "bond",
+                "side",
+                "endpoint_orientation_factor",
+                "ligand_factor",
+            )
+        )
+    ),
+    _PATH_PREFIX + "residual_constraints.DirectionalSiteFactorValueSnapshot": (
+        frozenset(("key", "scope", "sides", "status", "target"))
+    ),
+    _PATH_PREFIX + "residual_constraints."
+    "DirectionalBondEmissionFactorValueSnapshot": (
+        frozenset(("key", "scope", "models", "allowed_marks"))
+    ),
     _PATH_PREFIX + "residual_constraints.VarId": frozenset(("kind", "key")),
+    _PATH_PREFIX + "writer_residual_transition_terms."
+    "DirectionalCarrierMarkRestrictionTransitionTerm": (
+        frozenset(
+            (
+                "kind",
+                "source_snapshot",
+                "source_snapshot_digest",
+                "bond",
+                "parent",
+                "child",
+                "direction_mark",
+                "canonical_orientation",
+                "carrier_models",
+                "restrictions",
+                "affected_variables",
+                "affected_factor_keys",
+                "propagation_result",
+                "discharged_factor_keys",
+                "projected_variables",
+                "successor_snapshot",
+                "successor_snapshot_digest",
+            )
+        )
+    ),
     _PATH_PREFIX + "writer_residual_transition_terms."
     "TetraAtomTokenRestrictionTransitionTerm": (
         frozenset(
@@ -1006,6 +1078,7 @@ def _validated_tetra_residual_manifest_checked(item: Mapping[str, object]) -> bo
         in {
             "tetrahedral atom-token restriction",
             "tetrahedral local-order factor closure",
+            "directional carrier-mark restriction",
         }
         and item["transition_term"] is not None
     )
@@ -1124,6 +1197,35 @@ def _validate_tetra_residual_manifest_if_known(
         )
         _check_tetra_local_order_residual(branch=branch, facts=facts)
         _replay_tetra_local_order_transition(
+            branch=branch,
+            item=item,
+            facts=facts,
+            objects=objects,
+        )
+        return
+    if operation == "directional carrier-mark restriction":
+        _check_tetra_residual_manifest_core(
+            branch=branch,
+            item=item,
+            expected_event_kind="bond_emitted",
+            expected_capability="directional_carrier_restriction",
+            expected_lifecycle_capabilities=(
+                "directional_carrier_restriction",
+                "directional_site_compatibility",
+                "residual_factor_discharge",
+                "residual_propagation",
+            ),
+            expected_certificate_kind="directional_carrier_restricted",
+            expected_changed_field="residual_snapshot_changed",
+        )
+        if item["transition_term"] is None:
+            if _directional_carrier_transition_term_required_offline(
+                facts=facts,
+                branch=branch,
+            ):
+                _offline_violation("tetra_residual_transition_missing")
+            return
+        _replay_directional_carrier_transition(
             branch=branch,
             item=item,
             facts=facts,
@@ -1511,6 +1613,157 @@ def _replay_tetra_local_order_transition(
         _offline_violation("tetra_local_order_successor_residual_mismatch")
 
 
+def _replay_directional_carrier_transition(
+    *,
+    branch: Mapping[str, object],
+    item: Mapping[str, object],
+    facts: MoleculeFacts,
+    objects: Mapping[str, Mapping[str, object]],
+) -> None:
+    term = _transition_from_manifest(item)
+    if not isinstance(term, DirectionalCarrierMarkRestrictionTransitionTerm):
+        _offline_violation("directional_carrier_transition_kind_mismatch")
+    if (
+        term.kind
+        is not WriterResidualTransitionKind.DIRECTIONAL_CARRIER_MARK_RESTRICTION
+    ):
+        _offline_violation("directional_carrier_transition_kind_mismatch")
+    if term.source_snapshot_digest != _identity_digest(term.source_snapshot):
+        _offline_violation("directional_carrier_source_residual_digest_mismatch")
+    if term.successor_snapshot_digest != _identity_digest(term.successor_snapshot):
+        _offline_violation("directional_carrier_successor_residual_digest_mismatch")
+    _check_transition_manifest_digest(item=item, term=term)
+    _check_transition_lifecycle_residual_binding(
+        branch=branch,
+        item=item,
+        source_digest=term.source_snapshot_digest,
+        successor_digest=term.successor_snapshot_digest,
+    )
+    source_state, successor_state = _branch_writer_state_terms(
+        branch=branch,
+        objects=objects,
+    )
+    _check_transition_state_residual_anchors(
+        source_state=source_state,
+        successor_state=successor_state,
+        source_snapshot=term.source_snapshot,
+        successor_snapshot=term.successor_snapshot,
+        violation_prefix="directional_carrier",
+    )
+    _check_directional_bond_event_binding(
+        branch=branch,
+        term=term,
+        source_state=source_state,
+        successor_state=successor_state,
+    )
+    if term.canonical_orientation not in (-1, 1):
+        _offline_violation("directional_carrier_canonical_orientation_mismatch")
+    expected_orientation = _facts_bond_orientation(
+        facts=facts,
+        bond=term.bond,
+        parent=term.parent,
+        child=term.child,
+    )
+    if term.canonical_orientation != expected_orientation:
+        _offline_violation("directional_carrier_canonical_orientation_mismatch")
+    sites = _directional_sites_for_facts_bond(facts=facts, bond=term.bond)
+    if len(sites) != 1:
+        _offline_violation("directional_carrier_site_scope_mismatch")
+    site = sites[0]
+    if site.status is not SiteStatus.SPECIFIED:
+        _offline_violation("directional_carrier_site_status_mismatch")
+    expected_models = _facts_directional_models_for_bond(
+        facts=facts,
+        site=site,
+        bond=term.bond,
+    )
+    if term.carrier_models != expected_models:
+        _offline_violation("directional_carrier_model_mismatch")
+    expected_restrictions = tuple(
+        (
+            directional_site_carrier_var(model.site, model.bond),
+            normalized_sign_from_mark(
+                mark=term.direction_mark,
+                canonical_orientation=term.canonical_orientation,
+                model=model,
+            ),
+        )
+        for model in expected_models
+    )
+    if term.restrictions != expected_restrictions:
+        _offline_violation("directional_carrier_restriction_mismatch")
+    _check_directional_source_factor_snapshots(
+        facts=facts,
+        site=site,
+        bond=term.bond,
+        source_snapshot=term.source_snapshot,
+        models=expected_models,
+    )
+    store = ResidualStore.from_value_snapshot(term.source_snapshot)
+    result = store.restrict_many_and_propagate(term.restrictions)
+    _check_transition_result(
+        expected=term.propagation_result,
+        actual=result,
+        violation_prefix="directional_carrier",
+    )
+    if result.stats.component_variables != term.affected_variables:
+        _offline_violation("directional_carrier_affected_variables_mismatch")
+    if result.stats.component_factor_keys != term.affected_factor_keys:
+        _offline_violation("directional_carrier_affected_factors_mismatch")
+    expected_discharged = _expected_directional_discharge_keys(
+        facts=facts,
+        site=site,
+        bond=term.bond,
+        source_state=source_state,
+    )
+    if term.discharged_factor_keys != expected_discharged:
+        _offline_violation("directional_carrier_discharge_factor_mismatch")
+    try:
+        store.discharge_satisfied_factors(term.discharged_factor_keys)
+    except ValueError:
+        _offline_violation("directional_carrier_discharge_replay_failed")
+    expected_projected = tuple(
+        sorted(
+            (
+                var
+                for var in dict(term.source_snapshot.domains)
+                if var not in dict(store.value_snapshot().domains)
+            ),
+            key=lambda var: (var.kind, tuple(repr(item) for item in var.key)),
+        )
+    )
+    if term.projected_variables != expected_projected:
+        _offline_violation("directional_carrier_projected_variables_mismatch")
+    if store.value_snapshot() != term.successor_snapshot:
+        _offline_violation("directional_carrier_successor_residual_mismatch")
+
+
+def _directional_carrier_transition_term_required_offline(
+    *,
+    facts: MoleculeFacts,
+    branch: Mapping[str, object],
+) -> bool:
+    event = _single_bond_emitted_event(
+        events=branch["payload"]["graph_ring_delta"]["manifest"]["event_manifests"],
+        violation_prefix="directional_carrier_residual",
+    )
+    bond = event["bond"]
+    graph_bond = _facts_bond(facts=facts, bond=bond)
+    if graph_bond.order is not BondOrder.SINGLE:
+        return False
+    if not _facts_bond_is_bridge(facts=facts, bond=bond):
+        return False
+    sites = _directional_sites_for_facts_bond(facts=facts, bond=bond)
+    if len(sites) != 1:
+        return False
+    models = _facts_directional_models_for_bond(
+        facts=facts,
+        site=sites[0],
+        bond=bond,
+    )
+    return len(models) == 1
+
+
 def _check_transition_manifest_digest(*, item: Mapping[str, object], term: object) -> None:
     if item["transition_digest"] != _identity_digest(term):
         _offline_violation("tetra_residual_transition_digest_mismatch")
@@ -1604,11 +1857,12 @@ def _check_transition_state_residual_anchors(
     successor_state: Mapping[str, object],
     source_snapshot: ResidualStoreValueSnapshot,
     successor_snapshot: ResidualStoreValueSnapshot,
+    violation_prefix: str = "tetra_residual_transition",
 ) -> None:
     if _state_residual_snapshot(source_state) != _term(source_snapshot):
-        _offline_violation("tetra_residual_transition_source_state_anchor_mismatch")
+        _offline_violation(f"{violation_prefix}_source_state_anchor_mismatch")
     if _state_residual_snapshot(successor_state) != _term(successor_snapshot):
-        _offline_violation("tetra_residual_transition_successor_state_anchor_mismatch")
+        _offline_violation(f"{violation_prefix}_successor_state_anchor_mismatch")
 
 
 def _state_residual_snapshot(state: Mapping[str, object]) -> object:
@@ -1619,6 +1873,288 @@ def _state_residual_snapshot(state: Mapping[str, object]) -> object:
 def _state_local_order_records(state: Mapping[str, object]) -> tuple[object, ...]:
     stereo = _term_field_value(state, "stereo_state")
     return tuple(_term_field_value(stereo, "local_orders"))
+
+
+def _state_bond_occurrence_records(state: Mapping[str, object]) -> tuple[object, ...]:
+    stereo = _term_field_value(state, "stereo_state")
+    return tuple(_term_field_value(stereo, "bond_occurrences"))
+
+
+def _check_directional_bond_event_binding(
+    *,
+    branch: Mapping[str, object],
+    term: DirectionalCarrierMarkRestrictionTransitionTerm,
+    source_state: Mapping[str, object],
+    successor_state: Mapping[str, object],
+) -> None:
+    delta = branch["payload"]["graph_ring_delta"]
+    if delta["kind"] != "bond_advance":
+        _offline_violation("directional_carrier_residual_delta_kind_mismatch")
+    event = _single_bond_emitted_event(
+        events=delta["manifest"]["event_manifests"],
+        violation_prefix="directional_carrier_residual",
+    )
+    if event["bond"] != int(term.bond):
+        _offline_violation("directional_carrier_residual_bond_mismatch")
+    if event["parent"] != int(term.parent) or event["child"] != int(term.child):
+        _offline_violation("directional_carrier_residual_endpoint_mismatch")
+    if event["direction_mark"]["value"] != term.direction_mark.value:
+        _offline_violation("directional_carrier_residual_mark_mismatch")
+    expected_record = {
+        "__dataclass__": "grimace._south_star1.writer_stereo.WriterBondOccurrenceRecord",
+        "fields": [
+            ["bond", int(term.bond)],
+            ["parent", int(term.parent)],
+            ["child", int(term.child)],
+            [
+                "mark",
+                {
+                    "__enum__": "grimace._south_star1.policy.DirectionMark",
+                    "value": term.direction_mark.value,
+                },
+            ],
+        ],
+    }
+    source_records = _state_bond_occurrence_records(source_state)
+    successor_records = _state_bond_occurrence_records(successor_state)
+    if any(int(_term_field_value(record, "bond")) == int(term.bond) for record in source_records):
+        _offline_violation("directional_carrier_source_bond_occurrence_mismatch")
+    if successor_records != source_records + (expected_record,):
+        _offline_violation("directional_carrier_successor_bond_occurrence_mismatch")
+
+
+def _single_bond_emitted_event(
+    *,
+    events: object,
+    violation_prefix: str,
+) -> Mapping[str, object]:
+    matches = [
+        event
+        for event in events
+        if isinstance(event, Mapping) and event.get("kind") == "bond_emitted"
+    ]
+    if len(matches) != 1:
+        _offline_violation(f"{violation_prefix}_event_mismatch")
+    return matches[0]
+
+
+def _directional_sites_for_facts_bond(
+    *,
+    facts: MoleculeFacts,
+    bond: object,
+) -> tuple[DirectionalSiteFacts, ...]:
+    occurrence_by_id = {occurrence.id: occurrence for occurrence in facts.ligand_occurrences}
+    sites = []
+    for site in facts.stereo.directional:
+        ligand_ids = site.left_ligands + site.right_ligands
+        if any(occurrence_by_id[item].bond == bond for item in ligand_ids):
+            sites.append(site)
+    return tuple(sites)
+
+
+def _facts_directional_models_for_bond(
+    *,
+    facts: MoleculeFacts,
+    site: DirectionalSiteFacts,
+    bond: object,
+) -> tuple[DirectionalSiteCarrierModel, ...]:
+    occurrence_by_id = {occurrence.id: occurrence for occurrence in facts.ligand_occurrences}
+    left_reference, right_reference = _directional_reference_pair_from_facts(site)
+    models = []
+    for side, endpoint, side_ligands, reference in (
+        ("left", site.left_endpoint, site.left_ligands, left_reference),
+        ("right", site.right_endpoint, site.right_ligands, right_reference),
+    ):
+        matches = [
+            occurrence_by_id[item]
+            for item in side_ligands
+            if occurrence_by_id[item].bond == bond
+        ]
+        if len(matches) > 1:
+            _offline_violation("directional_carrier_model_mismatch")
+        if not matches:
+            continue
+        occurrence = matches[0]
+        if occurrence.kind is not LigandKind.NEIGHBOR_ATOM:
+            _offline_violation("directional_carrier_non_neighbor_ligand")
+        models.append(
+            DirectionalSiteCarrierModel(
+                site=site.id,
+                bond=bond,
+                side=side,
+                endpoint_orientation_factor=_facts_endpoint_orientation_factor(
+                    facts=facts,
+                    bond=bond,
+                    endpoint=endpoint,
+                ),
+                ligand_factor=(
+                    1
+                    if tuple(side_ligands).index(occurrence.id)
+                    == tuple(side_ligands).index(reference)
+                    else -1
+                ),
+            )
+        )
+    return tuple(
+        sorted(
+            models,
+            key=lambda model: (
+                int(model.site),
+                int(model.bond),
+                model.side,
+                model.endpoint_orientation_factor,
+                model.ligand_factor,
+            ),
+        )
+    )
+
+
+def _directional_reference_pair_from_facts(
+    site: DirectionalSiteFacts,
+) -> tuple[object, object]:
+    if site.reference_pair is not None:
+        return site.reference_pair
+    if not site.left_ligands or not site.right_ligands:
+        _offline_violation("directional_carrier_reference_pair_mismatch")
+    return (site.left_ligands[0], site.right_ligands[0])
+
+
+def _facts_bond_orientation(
+    *,
+    facts: MoleculeFacts,
+    bond: object,
+    parent: object,
+    child: object,
+) -> int:
+    graph_bond = _facts_bond(facts=facts, bond=bond)
+    if graph_bond.a == parent and graph_bond.b == child:
+        return 1
+    if graph_bond.a == child and graph_bond.b == parent:
+        return -1
+    _offline_violation("directional_carrier_canonical_orientation_mismatch")
+
+
+def _facts_endpoint_orientation_factor(
+    *,
+    facts: MoleculeFacts,
+    bond: object,
+    endpoint: object,
+) -> int:
+    graph_bond = _facts_bond(facts=facts, bond=bond)
+    if graph_bond.a == endpoint:
+        return 1
+    if graph_bond.b == endpoint:
+        return -1
+    _offline_violation("directional_carrier_model_mismatch")
+
+
+def _facts_bond(*, facts: MoleculeFacts, bond: object) -> BondFacts:
+    matches = [item for item in facts.bonds if item.id == bond]
+    if len(matches) != 1:
+        _offline_violation("directional_carrier_bond_mismatch")
+    return matches[0]
+
+
+def _facts_bond_is_bridge(*, facts: MoleculeFacts, bond: object) -> bool:
+    graph_bond = _facts_bond(facts=facts, bond=bond)
+    target = graph_bond.b
+    seen = {graph_bond.a}
+    stack = [graph_bond.a]
+    while stack:
+        atom = stack.pop()
+        for incident in facts.bonds:
+            if incident.id == bond:
+                continue
+            if incident.a == atom:
+                neighbor = incident.b
+            elif incident.b == atom:
+                neighbor = incident.a
+            else:
+                continue
+            if neighbor == target:
+                return False
+            if neighbor in seen:
+                continue
+            seen.add(neighbor)
+            stack.append(neighbor)
+    return True
+
+
+def _check_directional_source_factor_snapshots(
+    *,
+    facts: MoleculeFacts,
+    site: DirectionalSiteFacts,
+    bond: object,
+    source_snapshot: ResidualStoreValueSnapshot,
+    models: tuple[DirectionalSiteCarrierModel, ...],
+) -> None:
+    factor_by_key = {factor.key: factor for factor in source_snapshot.factors}
+    site_key = ResidualFactorKey("directional_site", (int(site.id),))
+    site_factor = factor_by_key.get(site_key)
+    if not isinstance(site_factor, DirectionalSiteFactorValueSnapshot):
+        _offline_violation("directional_carrier_source_site_factor_mismatch")
+    expected_scope = tuple(
+        directional_site_carrier_var(model.site, model.bond)
+        for model in _facts_directional_models_for_site(facts=facts, site=site)
+    )
+    expected_sides = tuple((var, model.side) for var, model in zip(expected_scope, _facts_directional_models_for_site(facts=facts, site=site)))
+    if (
+        site_factor.scope != expected_scope
+        or site_factor.sides != expected_sides
+        or site_factor.status is not site.status
+        or site_factor.target is not site.target
+    ):
+        _offline_violation("directional_carrier_source_site_factor_mismatch")
+    bond_key = ResidualFactorKey("directional_bond_emission", (int(bond),))
+    bond_factor = factor_by_key.get(bond_key)
+    if not isinstance(bond_factor, DirectionalBondEmissionFactorValueSnapshot):
+        _offline_violation("directional_carrier_source_bond_factor_mismatch")
+    expected_vars = tuple(directional_site_carrier_var(model.site, model.bond) for model in models)
+    if (
+        bond_factor.scope != expected_vars
+        or bond_factor.models != models
+        or bond_factor.allowed_marks
+        != (DirectionMark.ABSENT, DirectionMark.FWD, DirectionMark.REV)
+    ):
+        _offline_violation("directional_carrier_source_bond_factor_mismatch")
+
+
+def _facts_directional_models_for_site(
+    *,
+    facts: MoleculeFacts,
+    site: DirectionalSiteFacts,
+) -> tuple[DirectionalSiteCarrierModel, ...]:
+    occurrence_by_id = {occurrence.id: occurrence for occurrence in facts.ligand_occurrences}
+    bonds = []
+    for occurrence_id in site.left_ligands + site.right_ligands:
+        occurrence = occurrence_by_id[occurrence_id]
+        if occurrence.kind is LigandKind.NEIGHBOR_ATOM:
+            bonds.append(occurrence.bond)
+    models = []
+    for bond in bonds:
+        models.extend(_facts_directional_models_for_bond(facts=facts, site=site, bond=bond))
+    return tuple(sorted(models, key=lambda model: (int(model.site), int(model.bond), model.side)))
+
+
+def _expected_directional_discharge_keys(
+    *,
+    facts: MoleculeFacts,
+    site: DirectionalSiteFacts,
+    bond: object,
+    source_state: Mapping[str, object],
+) -> tuple[ResidualFactorKey, ...]:
+    keys = [ResidualFactorKey("directional_bond_emission", (int(bond),))]
+    emitted = {
+        int(_term_field_value(record, "bond"))
+        for record in _state_bond_occurrence_records(source_state)
+    } | {int(bond)}
+    site_bonds = {
+        int(model.bond)
+        for model in _facts_directional_models_for_site(facts=facts, site=site)
+    }
+    if site_bonds.issubset(emitted):
+        keys.append(ResidualFactorKey("directional_site", (int(site.id),)))
+    return tuple(keys)
 
 
 def _closed_term_digest(term: object) -> str:
@@ -1776,6 +2312,14 @@ def _transition_from_manifest(item: Mapping[str, object]) -> object:
             expected_path=(
                 "grimace._south_star1.writer_residual_transition_terms."
                 "TetraLocalOrderFactorClosureTransitionTerm"
+            ),
+        )
+    if operation == "directional carrier-mark restriction":
+        return _decode_transition_term(
+            item["transition_term"],
+            expected_path=(
+                "grimace._south_star1.writer_residual_transition_terms."
+                "DirectionalCarrierMarkRestrictionTransitionTerm"
             ),
         )
     _offline_violation("tetra_residual_transition_operation_mismatch")
@@ -2956,11 +3500,7 @@ def _check_support_string_offline(
         _offline_violation("terminal_projection_ref_kind_mismatch")
     if "digest" not in terminal["payload"]:
         _offline_violation("terminal_projection_digest_missing")
-    if (
-        _non_single_cyclic_bonds(facts)
-        or "=" in payload["string"]
-        or "#" in payload["string"]
-    ):
+    if _non_single_cyclic_bonds(facts):
         _check_non_single_ring_closure_text(
             facts=facts,
             support_string=str(payload["string"]),

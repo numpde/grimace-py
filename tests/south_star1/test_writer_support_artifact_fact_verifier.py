@@ -82,6 +82,7 @@ from grimace._south_star1.writer_support_artifact_envelope import (
     writer_support_artifact_envelope_for_snapshot,
 )
 from tests.south_star1.helpers import cco_facts
+from tests.south_star1.helpers import directional_facts
 from tests.south_star1.helpers import tetrahedral_facts
 from tests.south_star1.test_writer_stereo_residual import (
     _directional_non_single_ring_carrier_facts,
@@ -408,6 +409,117 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         self.assertIn("expected_direction_text", wrong_direction_text.reason)
         self.assertIn("direction_mark", wrong_direction_text.reason)
         self.assertIn("successor_certificate", wrong_direction_text.reason)
+
+    def test_directional_rooted_acyclic_artifact_replays_complete(self) -> None:
+        facts, options, artifact = _directional_rooted_artifact()
+
+        structural = verify_writer_support_artifact_consistency(artifact)
+        verification = verify_writer_support_artifact_for_facts(
+            facts=facts,
+            runtime_options=options,
+            artifact=artifact,
+        )
+
+        self.assertTrue(structural.accepted, structural.reason)
+        self.assertEqual(structural.support_count, 2)
+        self.assertEqual(structural.witness_count, 2)
+        self.assertEqual(
+            tuple(sorted(_support_strings(artifact))),
+            ("F/C=C/Cl", "F\\C=C\\Cl"),
+        )
+        self.assertTrue(verification.accepted, verification.reason)
+        self.assertTrue(verification.offline_replay_complete)
+        first = _directional_transition_manifest(artifact, bond=1)
+        second = _directional_transition_manifest(artifact, bond=2)
+        self.assertEqual(
+            [_term_field(key, "kind") for key in _term_field(first["transition_term"], "discharged_factor_keys")],
+            ["directional_bond_emission"],
+        )
+        self.assertEqual(
+            [_term_field(key, "kind") for key in _term_field(second["transition_term"], "discharged_factor_keys")],
+            ["directional_bond_emission", "directional_site"],
+        )
+
+    def test_directional_carrier_coherent_forgeries_reject_semantically(self) -> None:
+        cases = (
+            (
+                "wrong_normalized_sign",
+                lambda artifact: _mutate_directional_restriction_sign(artifact, bond=1),
+                "directional_carrier_restriction_mismatch",
+            ),
+            (
+                "wrong_canonical_orientation",
+                lambda artifact: _mutate_directional_canonical_orientation(artifact, bond=1),
+                "directional_carrier_canonical_orientation_mismatch",
+            ),
+            (
+                "carrier_model_wrong_side",
+                lambda artifact: _mutate_directional_model_field(artifact, bond=1, field="side", value="right"),
+                "directional_carrier_model_mismatch",
+            ),
+            (
+                "carrier_model_wrong_ligand_factor",
+                lambda artifact: _mutate_directional_model_field(artifact, bond=1, field="ligand_factor", value=-1),
+                "directional_carrier_model_mismatch",
+            ),
+            (
+                "false_successor_snapshot",
+                lambda artifact: _mutate_directional_successor_snapshot(artifact, bond=1),
+                "directional_carrier_successor_state_anchor_mismatch",
+            ),
+            (
+                "missing_bond_emission_discharge",
+                lambda artifact: _set_directional_discharges(artifact, bond=1, kinds=()),
+                "directional_carrier_discharge_factor_mismatch",
+            ),
+            (
+                "premature_site_discharge",
+                lambda artifact: _set_directional_discharges(
+                    artifact,
+                    bond=1,
+                    kinds=("directional_bond_emission", "directional_site"),
+                ),
+                "directional_carrier_discharge_factor_mismatch",
+            ),
+            (
+                "missing_site_discharge",
+                lambda artifact: _set_directional_discharges(
+                    artifact,
+                    bond=2,
+                    kinds=("directional_bond_emission",),
+                ),
+                "directional_carrier_discharge_factor_mismatch",
+            ),
+            (
+                "successor_bond_occurrence_wrong_mark",
+                lambda artifact: _mutate_directional_term_mark(artifact, bond=1, value=1),
+                "directional_carrier_residual_mark_mismatch",
+            ),
+            (
+                "successor_bond_occurrence_absent",
+                lambda artifact: _remove_directional_successor_bond_occurrence(artifact, bond=1),
+                "directional_carrier_successor_bond_occurrence_mismatch",
+            ),
+            (
+                "unrelated_residual_component_changed",
+                lambda artifact: _mutate_directional_successor_snapshot_unrelated(artifact, bond=1),
+                "directional_carrier_successor_state_anchor_mismatch",
+            ),
+        )
+        for name, mutate, reason in cases:
+            with self.subTest(name=name):
+                facts, options, artifact = _directional_rooted_artifact()
+                mutate(artifact)
+                _assert_structural_checker_accepts(self, artifact)
+
+                verification = verify_writer_support_artifact_for_facts(
+                    facts=facts,
+                    runtime_options=options,
+                    artifact=artifact,
+                )
+
+                self.assertFalse(verification.accepted)
+                self.assertIn(reason, verification.reason)
 
     def test_default_corpus_obligations_are_classified(self) -> None:
         cases = {
@@ -3045,6 +3157,20 @@ def _manual_tetra_artifact():
     )
 
 
+def _directional_rooted_artifact():
+    facts = directional_facts()
+    options = _writer_options(rooted_at_atom=2)
+    prepared = _prepare(facts)
+    return (
+        facts,
+        options,
+        writer_support_artifact_envelope_for_snapshot(
+            prepared=prepared,
+            snapshot=_initial_snapshot(prepared, options),
+        ),
+    )
+
+
 def _first_support_string_object(artifact):
     root = _object(artifact, artifact["roots"]["support_image_root"])
     return _object(artifact, root["payload"]["support_string_refs"][0])
@@ -3077,6 +3203,163 @@ def _first_residual_work_branch(artifact, *, operation: str):
         if any(manifest["operation"] == operation for manifest in manifests):
             return item
     raise AssertionError(f"missing residual work operation: {operation}")
+
+
+def _directional_transition_branch_and_manifest(artifact, *, bond: int):
+    for branch in artifact["objects"]:
+        if branch["kind"] != "branch_support":
+            continue
+        for manifest in branch["payload"]["obligation_manifests"]["residual_work"]:
+            if manifest["operation"] != "directional carrier-mark restriction":
+                continue
+            if _term_field(manifest["transition_term"], "bond") == bond:
+                return branch, manifest
+    raise AssertionError(f"missing directional carrier transition for bond {bond}")
+
+
+def _directional_transition_manifest(artifact, *, bond: int):
+    return _directional_transition_branch_and_manifest(artifact, bond=bond)[1]
+
+
+def _mutate_directional_restriction_sign(artifact, *, bond: int) -> None:
+    branch, manifest = _directional_transition_branch_and_manifest(artifact, bond=bond)
+    sign = _term_field(manifest["transition_term"], "restrictions")[0][1]
+    sign["value"] = "negative" if sign["value"] == "positive" else "positive"
+    _refresh_transition_manifest_digest(manifest)
+    _refresh_object_and_artifact_digest(artifact, branch)
+
+
+def _mutate_directional_canonical_orientation(artifact, *, bond: int) -> None:
+    branch, manifest = _directional_transition_branch_and_manifest(artifact, bond=bond)
+    value = _term_field(manifest["transition_term"], "canonical_orientation")
+    _set_term_field(manifest["transition_term"], "canonical_orientation", -value)
+    _refresh_transition_manifest_digest(manifest)
+    _refresh_object_and_artifact_digest(artifact, branch)
+
+
+def _mutate_directional_model_field(artifact, *, bond: int, field: str, value) -> None:
+    branch, manifest = _directional_transition_branch_and_manifest(artifact, bond=bond)
+    model = _term_field(manifest["transition_term"], "carrier_models")[0]
+    _set_term_field(model, field, value)
+    _refresh_transition_manifest_digest(manifest)
+    _refresh_object_and_artifact_digest(artifact, branch)
+
+
+def _mutate_directional_successor_snapshot(artifact, *, bond: int) -> None:
+    branch, manifest = _directional_transition_branch_and_manifest(artifact, bond=bond)
+    successor = _term_field(manifest["transition_term"], "successor_snapshot")
+    domains = _term_field(successor, "domains")
+    domains[:] = list(reversed(domains))
+    digest = _closed_term_digest(successor)
+    _set_term_field(manifest["transition_term"], "successor_snapshot_digest", digest)
+    _refresh_linked_raw_lifecycle_residual_digest(
+        branch,
+        manifest=manifest,
+        field="successor_residual_snapshot_digest",
+        digest=digest,
+    )
+    _refresh_transition_manifest_digest(manifest)
+    _refresh_object_and_artifact_digest(artifact, branch)
+
+
+def _set_directional_discharges(
+    artifact,
+    *,
+    bond: int,
+    kinds: tuple[str, ...],
+) -> None:
+    branch, manifest = _directional_transition_branch_and_manifest(artifact, bond=bond)
+    source = _term_field(manifest["transition_term"], "source_snapshot")
+    factor_by_kind = {
+        _term_field(_term_field(factor, "key"), "kind"): _term_field(factor, "key")
+        for factor in _term_field(source, "factors")
+    }
+    _set_term_field(
+        manifest["transition_term"],
+        "discharged_factor_keys",
+        [factor_by_kind[kind] for kind in kinds],
+    )
+    _refresh_transition_manifest_digest(manifest)
+    _refresh_object_and_artifact_digest(artifact, branch)
+
+
+def _mutate_directional_term_mark(artifact, *, bond: int, value: int) -> None:
+    branch, manifest = _directional_transition_branch_and_manifest(artifact, bond=bond)
+    _term_field(manifest["transition_term"], "direction_mark")["value"] = value
+    _refresh_transition_manifest_digest(manifest)
+    _refresh_object_and_artifact_digest(artifact, branch)
+
+
+def _mutate_directional_term_bond(artifact, *, bond: int, value: int) -> None:
+    branch, manifest = _directional_transition_branch_and_manifest(artifact, bond=bond)
+    _set_term_field(manifest["transition_term"], "bond", value)
+    _refresh_transition_manifest_digest(manifest)
+    _refresh_object_and_artifact_digest(artifact, branch)
+
+
+def _remove_directional_successor_bond_occurrence(artifact, *, bond: int) -> None:
+    branch, manifest = _directional_transition_branch_and_manifest(artifact, bond=bond)
+    projection = _text_projection_for_branch(artifact, branch)
+    cursor = projection["payload"]["successor_cursor"]
+    state = _single_cursor_state(cursor)
+    stereo = _term_field(state, "stereo_state")
+    occurrences = _term_field(stereo, "bond_occurrences")
+    kept = [
+        occurrence
+        for occurrence in occurrences
+        if int(_term_field(occurrence, "bond")) != bond
+    ]
+    if len(kept) == len(occurrences):
+        raise AssertionError(f"missing successor bond occurrence for bond {bond}")
+    occurrences[:] = kept
+    _refresh_cursor_digest(cursor)
+    successor_state_digest = _closed_term_digest(state)
+    _propagate_text_projection_cursor_change(
+        artifact,
+        old_cursor_digest=branch["payload"]["successor_cursor_digest"],
+        new_cursor=cursor,
+    )
+    branch["payload"]["successor_state_digest"] = successor_state_digest
+    branch["payload"]["graph_ring_delta"]["manifest"]["successor_state_digest"] = (
+        successor_state_digest
+    )
+    manifest["successor_digest"] = successor_state_digest
+    for lifecycle in branch["payload"]["obligation_manifests"]["stereo_lifecycle"]:
+        if manifest["evidence_digest"] in lifecycle["linked_residual_work_digests"]:
+            lifecycle["successor_digest"] = successor_state_digest
+    branch["payload"]["successor_cursor_digest"] = cursor["digest"]
+    branch["payload"]["graph_ring_delta"]["manifest"]["successor_cursor_digest"] = (
+        cursor["digest"]
+    )
+    _refresh_graph_ring_delta_digest(branch["payload"]["graph_ring_delta"])
+    projection["payload"]["digest"] = _text_projection_identity_digest(
+        projection["payload"]
+    )
+    _refresh_object_and_artifact_digest(artifact, branch)
+
+
+def _mutate_directional_successor_snapshot_unrelated(artifact, *, bond: int) -> None:
+    branch, manifest = _directional_transition_branch_and_manifest(artifact, bond=bond)
+    successor = _term_field(manifest["transition_term"], "successor_snapshot")
+    _term_field(successor, "domains").append(
+        [
+            {
+                "__dataclass__": "grimace._south_star1.residual_constraints.VarId",
+                "fields": [["kind", "unrelated_directional_test"], ["key", [99]]],
+            },
+            [False, True],
+        ]
+    )
+    digest = _closed_term_digest(successor)
+    _set_term_field(manifest["transition_term"], "successor_snapshot_digest", digest)
+    _refresh_linked_raw_lifecycle_residual_digest(
+        branch,
+        manifest=manifest,
+        field="successor_residual_snapshot_digest",
+        digest=digest,
+    )
+    _refresh_transition_manifest_digest(manifest)
+    _refresh_object_and_artifact_digest(artifact, branch)
 
 
 def _linked_tetra_lifecycle_manifest(
@@ -3180,6 +3463,64 @@ def _closed_term_digest(term) -> str:
 
 def _refresh_transition_manifest_digest(manifest) -> None:
     manifest["transition_digest"] = _closed_term_digest(manifest["transition_term"])
+
+
+def _refresh_cursor_digest(cursor) -> None:
+    cursor["digest"] = _closed_term_digest(cursor["terms"])
+
+
+def _single_cursor_state(cursor):
+    weighted_states = _term_field(cursor["terms"], "weighted_states")
+    if len(weighted_states) != 1:
+        raise AssertionError("expected single-state cursor")
+    return weighted_states[0][0]
+
+
+def _text_projection_identity_digest(payload) -> str:
+    return _identity_digest(
+        {
+            "source_cursor_digest": payload["source_cursor"]["digest"],
+            "emitted_text": payload["emitted_text"],
+            "successor_cursor_digest": payload["successor_cursor"]["digest"],
+            "immediate_multiplicity": payload["immediate_multiplicity"],
+            "support_count": payload["support_count"],
+            "completion_count": payload["completion_count"],
+            "branch_certificate_digests": payload["branch_certificate_digests"],
+        },
+    )
+
+
+def _propagate_text_projection_cursor_change(
+    artifact,
+    *,
+    old_cursor_digest: str,
+    new_cursor,
+) -> None:
+    for item in artifact["objects"]:
+        if item["kind"] != "text_projection":
+            continue
+        payload = item["payload"]
+        if payload["source_cursor"]["digest"] == old_cursor_digest:
+            payload["source_cursor"] = new_cursor
+            payload["digest"] = _text_projection_identity_digest(payload)
+            for branch_ref in payload["branch_support_refs"]:
+                branch = _object(artifact, branch_ref)
+                branch["payload"]["source_cursor_digest"] = new_cursor["digest"]
+                branch["payload"]["graph_ring_delta"]["manifest"][
+                    "source_cursor_digest"
+                ] = new_cursor["digest"]
+                _refresh_graph_ring_delta_digest(branch["payload"]["graph_ring_delta"])
+    for item in artifact["objects"]:
+        if item["kind"] != "replay_path":
+            continue
+        if item["payload"]["final_cursor_digest"] == old_cursor_digest:
+            item["payload"]["final_cursor_digest"] = new_cursor["digest"]
+    for item in artifact["objects"]:
+        if item["kind"] != "terminal_projection":
+            continue
+        payload = item["payload"]
+        if payload["source_cursor"]["digest"] == old_cursor_digest:
+            payload["source_cursor"] = new_cursor
 
 
 def _refresh_object_and_artifact_digest(artifact, obj) -> None:

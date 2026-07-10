@@ -10,11 +10,15 @@ from typing import Literal
 
 from .errors import SouthStarError
 from .errors import SouthStarErrorKind
+from .facts import BondOrder
 from .facts import LigandKind
 from .facts import SiteStatus
 from .writer_capabilities import _WriterExecutionCapabilityKind
 from .writer_execution_evidence import WriterResidualPropagationWorkEvidence
 from .writer_execution_evidence import writer_residual_propagation_work_evidence
+from .writer_residual_transition_terms import (
+    DirectionalCarrierMarkRestrictionTransitionTerm,
+)
 from .writer_residual_transition_terms import (
     TetraAtomTokenRestrictionTransitionTerm,
 )
@@ -1095,6 +1099,8 @@ def _on_bond_emitted(
             mark=event.direction_mark,
         )
         result = store.restrict_many_and_propagate(restrictions)
+        transition_term = None
+        discharged_factor_keys: tuple[ResidualFactorKey, ...] = ()
         evidence = writer_residual_propagation_work_evidence(
             operation=operation,
             result=result,
@@ -1112,12 +1118,34 @@ def _on_bond_emitted(
                 _WriterExecutionCapabilityKind.DIRECTIONAL_SITE_COMPATIBILITY,
                 _WriterExecutionCapabilityKind.RESIDUAL_PROPAGATION,
             }
-        )
+            )
         if len(models) > 1:
             capabilities.add(
                 _WriterExecutionCapabilityKind
                 .SHARED_DIRECTIONAL_CARRIER_RESTRICTION
             )
+        produces_directional_transition_term = (
+            operation == "directional carrier-mark restriction"
+            and _supports_acyclic_directional_carrier_transition_term(
+                prepared,
+                event.bond,
+                models,
+            )
+        )
+        if produces_directional_transition_term:
+            emitted_bonds = {
+                record.bond
+                for record in stereo_state.bond_occurrences
+            } | {event.bond}
+            discharge_keys = [_directional_bond_factor_key(event.bond)]
+            for site in sorted({model.site for model in models}, key=int):
+                template = _directional_template_by_site(prepared)[site]
+                if _directional_template_substituent_bonds(
+                    prepared,
+                    template,
+                ).issubset(emitted_bonds):
+                    discharge_keys.append(_directional_site_factor_key(site))
+            discharged_factor_keys = tuple(discharge_keys)
     elif event.direction_mark is not DirectionMark.ABSENT:
         return _WriterStereoMutation(state=None)
     if models:
@@ -1143,6 +1171,51 @@ def _on_bond_emitted(
         except ValueError:
             store.rollback(checkpoint)
             return _WriterStereoMutation(state=None)
+        if produces_directional_transition_term:
+            successor_snapshot = store.value_snapshot()
+            source_domains = dict(stereo_state.residual_snapshot.domains)
+            successor_domains = dict(successor_snapshot.domains)
+            transition_term = DirectionalCarrierMarkRestrictionTransitionTerm(
+                kind=(
+                    WriterResidualTransitionKind
+                    .DIRECTIONAL_CARRIER_MARK_RESTRICTION
+                ),
+                source_snapshot=stereo_state.residual_snapshot,
+                source_snapshot_digest=_residual_snapshot_digest(
+                    stereo_state.residual_snapshot
+                ),
+                bond=event.bond,
+                parent=event.parent,
+                child=event.child,
+                direction_mark=event.direction_mark,
+                canonical_orientation=_canonical_bond_orientation(
+                    prepared,
+                    event,
+                ),
+                carrier_models=models,
+                restrictions=restrictions,
+                affected_variables=result.stats.component_variables,
+                affected_factor_keys=result.stats.component_factor_keys,
+                propagation_result=result,
+                discharged_factor_keys=discharged_factor_keys,
+                projected_variables=tuple(
+                    sorted(
+                        (
+                            var
+                            for var in source_domains
+                            if var not in successor_domains
+                        ),
+                        key=_var_sort_tuple,
+                    )
+                ),
+                successor_snapshot=successor_snapshot,
+                successor_snapshot_digest=_residual_snapshot_digest(successor_snapshot),
+            )
+            work_evidence[-1] = writer_residual_propagation_work_evidence(
+                operation=operation,
+                result=result,
+                transition_term=transition_term,
+            )
 
     return _WriterStereoMutation(
         state=WriterStereoState(
@@ -1978,6 +2051,42 @@ def _directional_models_for_bond(
             ),
         )
     )
+
+
+def _supports_acyclic_directional_carrier_transition_term(
+    prepared: SouthStarPreparedMol,
+    bond: BondId,
+    models: tuple[DirectionalSiteCarrierModel, ...],
+) -> bool:
+    if len(models) != 1:
+        return False
+    graph_bond = prepared.graph_index.bond_by_id[bond]
+    if graph_bond.order is not BondOrder.SINGLE:
+        return False
+    if not _is_graph_bridge(prepared, bond):
+        return False
+    return True
+
+
+def _is_graph_bridge(prepared: SouthStarPreparedMol, bond: BondId) -> bool:
+    graph_bond = prepared.graph_index.bond_by_id[bond]
+    target = graph_bond.b
+    seen = {graph_bond.a}
+    stack = [graph_bond.a]
+    while stack:
+        atom = stack.pop()
+        for incident in prepared.graph_index.incident_bonds[atom]:
+            if incident == bond:
+                continue
+            item = prepared.graph_index.bond_by_id[incident]
+            neighbor = item.b if item.a == atom else item.a
+            if neighbor == target:
+                return False
+            if neighbor in seen:
+                continue
+            seen.add(neighbor)
+            stack.append(neighbor)
+    return True
 
 
 def _bounded_directional_ring_models(

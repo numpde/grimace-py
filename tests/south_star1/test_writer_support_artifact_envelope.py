@@ -66,16 +66,16 @@ class WriterSupportArtifactEnvelopeTest(unittest.TestCase):
         self.assertEqual(verification.witness_count, 2)
         self.assertEqual(check.object_count, envelope["metrics"]["object_count"])
 
-    def test_new_artifacts_use_schema_v3(self) -> None:
+    def test_new_artifacts_use_schema_v4(self) -> None:
         envelope = _snapshot_artifact()
 
-        self.assertEqual(SCHEMA_VERSION, 3)
-        self.assertEqual(envelope["schema_version"], 3)
+        self.assertEqual(SCHEMA_VERSION, 4)
+        self.assertEqual(envelope["schema_version"], 4)
         self.assertTrue(check_support_artifact(envelope).accepted)
 
-    def test_v2_artifact_is_rejected_without_migration(self) -> None:
+    def test_v3_artifact_is_rejected_without_migration(self) -> None:
         envelope = _snapshot_artifact()
-        envelope["schema_version"] = 2
+        envelope["schema_version"] = 3
         envelope["digest"] = _digest_terms_bounded(
             artifact_manifest(envelope),
             budget=WriterEnvelopeWorkBudget(),

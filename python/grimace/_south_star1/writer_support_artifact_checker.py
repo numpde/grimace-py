@@ -17,7 +17,7 @@ from .writer_envelope_work import default_writer_envelope_work_budget
 from .writer_envelope_work import writer_envelope_work_reason
 
 SCHEMA_NAME = "writer_support_artifact"
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 _TOP_LEVEL_FIELDS = frozenset((
     "schema_name",
     "schema_version",
@@ -1069,6 +1069,33 @@ def _expected_transition_manifest_shape(operation: object) -> tuple[str, str, fr
             "tetra_local_order_factor_closure",
             common
             | frozenset(("local_order", "reference_order", "target_parity")),
+        )
+    if operation == "directional carrier-mark restriction":
+        return (
+            "grimace._south_star1.writer_residual_transition_terms."
+            "DirectionalCarrierMarkRestrictionTransitionTerm",
+            "directional_carrier_mark_restriction",
+            frozenset(
+                (
+                    "kind",
+                    "source_snapshot",
+                    "source_snapshot_digest",
+                    "bond",
+                    "parent",
+                    "child",
+                    "direction_mark",
+                    "canonical_orientation",
+                    "carrier_models",
+                    "restrictions",
+                    "affected_variables",
+                    "affected_factor_keys",
+                    "propagation_result",
+                    "discharged_factor_keys",
+                    "projected_variables",
+                    "successor_snapshot",
+                    "successor_snapshot_digest",
+                )
+            ),
         )
     _artifact_violation("obligation_manifest_transition_operation_mismatch")
 

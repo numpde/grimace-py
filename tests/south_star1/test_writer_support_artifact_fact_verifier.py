@@ -24,12 +24,14 @@ from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
 from grimace._south_star1.policy import SerializationLanguageMode
+from grimace._south_star1.policy import DirectionMark
 from grimace._south_star1.rdkit_adapter import RdkitOrdinaryExtractionOptions
 from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_smiles
 from grimace._south_star1.writer_envelope_terms import _digest_terms_bounded
 from grimace._south_star1.writer_envelope_terms import _identity_digest
 from grimace._south_star1.writer_envelope_work import WriterEnvelopeWorkBudget
 from grimace._south_star1.writer_events import WriterRingEndpointEmitted
+from grimace._south_star1.writer_events import WriterRingEndpointPaired
 from grimace._south_star1.writer_frontier import _checked_writer_frontier_branch_supports
 from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
 from grimace._south_star1.writer_snapshot import WriterDecoderBoundary
@@ -128,7 +130,10 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         self.assertTrue(verification.accepted, verification.reason)
         self.assertTrue(verification.structurally_checked)
         self.assertTrue(verification.facts_identity_checked)
-        self.assertTrue(verification.offline_replay_complete)
+        self.assertTrue(
+            verification.offline_replay_complete,
+            verification.offline_unchecked_obligation_families,
+        )
         self.assertIn("support_string", verification.offline_checked_object_kinds)
         self.assertIn("replay_path", verification.offline_checked_object_kinds)
         self.assertIn("branch_support", verification.offline_checked_object_kinds)
@@ -468,11 +473,11 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         self.assertTrue(structural.accepted, structural.reason)
         self.assertTrue(live.accepted, live.reason)
         self.assertTrue(verification.accepted, verification.reason)
-        self.assertFalse(verification.offline_replay_complete)
-        self.assertEqual(
+        self.assertTrue(
+            verification.offline_replay_complete,
             verification.offline_unchecked_obligation_families,
-            ("directional_ring_pair_transition_replay",),
         )
+        self.assertEqual(verification.offline_unchecked_obligation_families, ())
         self.assertTrue(classification.accepted, classification.reason)
         branch = _first_graph_ring_delta_branch(artifact, "ring_endpoint_open")
         event = _first_graph_ring_delta_event(branch, "ring_endpoint_emitted")
@@ -516,6 +521,63 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         ]
         self.assertTrue(any(source == successor for source, successor in snapshots))
         self.assertTrue(any(source != successor for source, successor in snapshots))
+
+    def test_reduced_directional_ring_pair_artifacts_replay_semantically(self) -> None:
+        for first_mark in (DirectionMark.ABSENT, DirectionMark.FWD):
+            with self.subTest(first_mark=first_mark):
+                facts, options, artifact = _directional_ring_pair_artifact(first_mark)
+                structural = verify_writer_support_artifact_consistency(artifact)
+                live = verify_writer_support_artifact_envelope(
+                    prepared=_prepare(facts),
+                    envelope=artifact,
+                )
+                verification = verify_writer_support_artifact_for_facts(
+                    facts=facts,
+                    runtime_options=options,
+                    artifact=artifact,
+                )
+
+                self.assertTrue(structural.accepted, structural.reason)
+                self.assertTrue(live.accepted, live.reason)
+                self.assertTrue(verification.accepted, verification.reason)
+                self.assertTrue(verification.offline_replay_complete)
+                self.assertEqual(verification.offline_unchecked_obligation_families, ())
+                branch, manifest = _ring_pair_branch_and_manifest(artifact)
+                self.assertEqual(
+                    _term_field(manifest["transition_term"], "first_endpoint_direction_mark")["value"],
+                    first_mark.value,
+                )
+                self.assertEqual(
+                    branch["payload"]["graph_ring_delta"]["kind"],
+                    "ring_endpoint_pair",
+                )
+
+    def test_directional_ring_pair_coherent_term_forgeries_are_rejected(self) -> None:
+        cases = (
+            ("missing_term", _forge_ring_pair_missing_term, "directional_ring_pair_transition_missing"),
+            ("compatible_choices", _forge_ring_pair_compatible_choices, "directional_ring_pair_compatible_choices_mismatch"),
+            ("first_mark", _forge_ring_pair_first_mark, "directional_ring_pair_event_first_endpoint_direction_mark_mismatch"),
+            ("second_mark", _forge_ring_pair_second_mark, "directional_ring_pair_event_direction_mark_mismatch"),
+            ("orientation", _forge_ring_pair_orientation, "directional_ring_pair_canonical_orientation_mismatch"),
+            ("carrier", _forge_ring_pair_carrier, "directional_ring_pair_carrier_model_mismatch"),
+            ("restriction", _forge_ring_pair_restriction, "directional_ring_pair_restriction_mismatch"),
+            ("occurrence", _forge_ring_pair_occurrence, "directional_ring_pair_bond_occurrence_mismatch"),
+            ("discharge", _forge_ring_pair_discharge, "directional_ring_pair_discharge_factor_mismatch"),
+            ("successor", _forge_ring_pair_successor, "directional_ring_pair_successor_state_anchor_mismatch"),
+        )
+        facts, options, original = _directional_ring_pair_artifact(DirectionMark.ABSENT)
+        for name, mutate, reason in cases:
+            with self.subTest(name=name):
+                artifact = deepcopy(original)
+                mutate(artifact)
+                _assert_structural_checker_accepts(self, artifact)
+                verification = verify_writer_support_artifact_for_facts(
+                    facts=facts,
+                    runtime_options=options,
+                    artifact=artifact,
+                )
+                self.assertFalse(verification.accepted)
+                self.assertIn(reason, verification.reason)
 
     def test_directional_ring_opening_coherent_term_forgeries_are_rejected(self) -> None:
         facts, options, original = _directional_ring_opening_artifact()
@@ -3569,6 +3631,57 @@ def _directional_ring_opening_artifact():
     return facts, options, artifact
 
 
+@lru_cache(maxsize=2)
+def _directional_ring_pair_artifact(first_mark: DirectionMark):
+    facts = _directional_ring_carrier_facts()
+    options = _writer_options(rooted_at_atom=0)
+    prepared = _prepare(facts)
+    initial = _initial_snapshot(prepared, options)
+    frontier = [(initial.cursor, 0)]
+    seen = set()
+    source = None
+    source_depth = None
+    while frontier and source is None:
+        cursor, depth = frontier.pop(0)
+        cursor_key = repr(cursor)
+        if cursor_key in seen:
+            continue
+        seen.add(cursor_key)
+        batch = _checked_writer_frontier_branch_supports(
+            prepared,
+            cursor,
+            include_counts=False,
+            include_frontier_certificate=False,
+            include_count_certificate=False,
+        )
+        for support in batch.supports:
+            if any(
+                isinstance(event, WriterRingEndpointPaired)
+                and event.bond == BondId(3)
+                and event.first_endpoint_direction_mark is first_mark
+                for event in support.events
+            ):
+                source = cursor
+                source_depth = depth
+                break
+            frontier.append((support.successor_cursor, depth + 1))
+    if source is None or source_depth is None:
+        raise AssertionError(
+            f"missing cursor before BondId(3) pair with first mark {first_mark}"
+        )
+    snapshot = capture_writer_frontier_snapshot(
+        prepared=prepared,
+        runtime_options=options,
+        cursor=source,
+        decoder_boundary=WriterDecoderBoundary(consumed_token_count=source_depth),
+    )
+    artifact = writer_support_artifact_envelope_for_snapshot(
+        prepared=prepared,
+        snapshot=snapshot,
+    )
+    return facts, options, artifact
+
+
 def _first_support_string_object(artifact):
     root = _object(artifact, artifact["roots"]["support_image_root"])
     return _object(artifact, root["payload"]["support_string_refs"][0])
@@ -3633,6 +3746,103 @@ def _ring_projection_branch_and_manifest(artifact, *, changed: bool | None = Non
             if changed is None or changed == is_changed:
                 return branch, manifest
     raise AssertionError("missing directional ring projection transition")
+
+
+def _ring_pair_branch_and_manifest(artifact):
+    for branch in artifact["objects"]:
+        if branch["kind"] != "branch_support":
+            continue
+        for manifest in branch["payload"]["obligation_manifests"]["residual_work"]:
+            if manifest["operation"] == "directional ring pair restriction":
+                return branch, manifest
+    raise AssertionError("missing directional ring pair transition")
+
+
+def _refresh_ring_pair_term(artifact, branch, manifest) -> None:
+    _refresh_transition_manifest_digest(manifest)
+    _refresh_object_and_artifact_digest(artifact, branch)
+
+
+def _forge_ring_pair_missing_term(artifact) -> None:
+    branch, manifest = _ring_pair_branch_and_manifest(artifact)
+    manifest["transition_term"] = None
+    manifest["transition_digest"] = None
+    _refresh_object_and_artifact_digest(artifact, branch)
+
+
+def _forge_ring_pair_compatible_choices(artifact) -> None:
+    branch, manifest = _ring_pair_branch_and_manifest(artifact)
+    del _term_field(manifest["transition_term"], "compatible_second_endpoint_choices")[-1]
+    _refresh_ring_pair_term(artifact, branch, manifest)
+
+
+def _forge_ring_pair_first_mark(artifact) -> None:
+    branch, manifest = _ring_pair_branch_and_manifest(artifact)
+    mark = _term_field(manifest["transition_term"], "first_endpoint_direction_mark")
+    mark["value"] = 1 if mark["value"] != 1 else -1
+    _refresh_ring_pair_term(artifact, branch, manifest)
+
+
+def _forge_ring_pair_second_mark(artifact) -> None:
+    branch, manifest = _ring_pair_branch_and_manifest(artifact)
+    mark = _term_field(manifest["transition_term"], "second_endpoint_direction_mark")
+    mark["value"] = -1 if mark["value"] != -1 else 1
+    _refresh_ring_pair_term(artifact, branch, manifest)
+
+
+def _forge_ring_pair_orientation(artifact) -> None:
+    branch, manifest = _ring_pair_branch_and_manifest(artifact)
+    term = manifest["transition_term"]
+    value = _term_field(term, "second_canonical_orientation")
+    _set_term_field(term, "second_canonical_orientation", -value)
+    _refresh_ring_pair_term(artifact, branch, manifest)
+
+
+def _forge_ring_pair_carrier(artifact) -> None:
+    branch, manifest = _ring_pair_branch_and_manifest(artifact)
+    model = _term_field(manifest["transition_term"], "carrier_models")[0]
+    value = _term_field(model, "ligand_factor")
+    _set_term_field(model, "ligand_factor", -value)
+    _refresh_ring_pair_term(artifact, branch, manifest)
+
+
+def _forge_ring_pair_restriction(artifact) -> None:
+    branch, manifest = _ring_pair_branch_and_manifest(artifact)
+    sign = _term_field(manifest["transition_term"], "restrictions")[0][1]
+    sign["value"] = "negative" if sign["value"] == "positive" else "positive"
+    _refresh_ring_pair_term(artifact, branch, manifest)
+
+
+def _forge_ring_pair_occurrence(artifact) -> None:
+    branch, manifest = _ring_pair_branch_and_manifest(artifact)
+    term = manifest["transition_term"]
+    parent = _term_field(term, "bond_occurrence_parent")
+    child = _term_field(term, "bond_occurrence_child")
+    _set_term_field(term, "bond_occurrence_parent", child)
+    _set_term_field(term, "bond_occurrence_child", parent)
+    _refresh_ring_pair_term(artifact, branch, manifest)
+
+
+def _forge_ring_pair_discharge(artifact) -> None:
+    branch, manifest = _ring_pair_branch_and_manifest(artifact)
+    del _term_field(manifest["transition_term"], "discharged_factor_keys")[-1]
+    _refresh_ring_pair_term(artifact, branch, manifest)
+
+
+def _forge_ring_pair_successor(artifact) -> None:
+    branch, manifest = _ring_pair_branch_and_manifest(artifact)
+    term = manifest["transition_term"]
+    successor = deepcopy(_term_field(term, "source_snapshot"))
+    digest = _closed_term_digest(successor)
+    _set_term_field(term, "successor_snapshot", successor)
+    _set_term_field(term, "successor_snapshot_digest", digest)
+    _refresh_linked_raw_lifecycle_residual_digest(
+        branch,
+        manifest=manifest,
+        field="successor_residual_snapshot_digest",
+        digest=digest,
+    )
+    _refresh_ring_pair_term(artifact, branch, manifest)
 
 
 def _refresh_ring_projection_term(artifact, branch, manifest) -> None:

@@ -23,6 +23,9 @@ from .writer_residual_transition_terms import (
     DirectionalRingEndpointProjectionTransitionTerm,
 )
 from .writer_residual_transition_terms import (
+    DirectionalRingPairRestrictionTransitionTerm,
+)
+from .writer_residual_transition_terms import (
     TetraAtomTokenRestrictionTransitionTerm,
 )
 from .writer_residual_transition_terms import (
@@ -165,6 +168,20 @@ class _WriterStereoMutation:
         ...
     ] = ()
     stereo_policy_blockers: tuple[WriterStereoPolicyBlocker, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class _DirectionalBondResidualTransition:
+    source_snapshot: ResidualStoreValueSnapshot
+    restrictions: tuple[tuple[VarId, DirectionalNormalizedSign], ...]
+    propagation_result: ResidualPropagationResult
+    affected_variables: tuple[VarId, ...]
+    affected_factor_keys: tuple[ResidualFactorKey, ...]
+    discharged_factor_keys: tuple[ResidualFactorKey, ...]
+    projected_variables: tuple[VarId, ...]
+    successor_snapshot: ResidualStoreValueSnapshot
+    bond_occurrence: WriterBondOccurrenceRecord
+    capabilities: frozenset[_WriterExecutionCapabilityKind]
 
 
 @dataclass(frozen=True, slots=True)
@@ -1079,165 +1096,164 @@ def _on_bond_emitted(
 ) -> _WriterStereoMutation:
     from .writer_state import WriterStereoState
 
-    store = ResidualStore.from_value_snapshot(stereo_state.residual_snapshot)
     models = _directional_models_for_bond(prepared, event.bond)
-    checkpoint = store.checkpoint()
-    capabilities: set[_WriterExecutionCapabilityKind] = set()
-    work_evidence: list[WriterResidualPropagationWorkEvidence] = []
-    if models:
-        blocker = _unsupported_directional_non_neighbor_ligand_blocker_for_bond(
+    if not models:
+        if event.direction_mark is not DirectionMark.ABSENT:
+            return _WriterStereoMutation(state=None)
+        record = WriterBondOccurrenceRecord(
+            event.bond,
+            event.parent,
+            event.child,
+            event.direction_mark,
+        )
+        return _WriterStereoMutation(
+            state=WriterStereoState(
+                residual_snapshot=stereo_state.residual_snapshot,
+                atom_occurrences=stereo_state.atom_occurrences,
+                bond_occurrences=stereo_state.bond_occurrences + (record,),
+                local_orders=stereo_state.local_orders,
+            )
+        )
+    blocker = _unsupported_directional_non_neighbor_ligand_blocker_for_bond(
+        prepared,
+        event.bond,
+        operation=operation,
+    )
+    if blocker is not None:
+        return _WriterStereoMutation(
+            state=None,
+            stereo_policy_blockers=(blocker,),
+        )
+    restrictions = _directional_bond_restrictions(
+        prepared,
+        bond=event.bond,
+        parent=event.parent,
+        child=event.child,
+        mark=event.direction_mark,
+    )
+    transition = _apply_directional_bond_residual_transition(
+        prepared=prepared,
+        source_state=stereo_state,
+        bond=event.bond,
+        bond_occurrence=WriterBondOccurrenceRecord(
+            event.bond,
+            event.parent,
+            event.child,
+            event.direction_mark,
+        ),
+        carrier_models=models,
+        restrictions=restrictions,
+        operation=operation,
+    )
+    if transition is None:
+        return _WriterStereoMutation(state=None)
+    transition_term = None
+    if (
+        operation == "directional carrier-mark restriction"
+        and _supports_acyclic_directional_carrier_transition_term(
             prepared,
             event.bond,
-            operation=operation,
+            models,
         )
-        if blocker is not None:
-            return _WriterStereoMutation(
-                state=None,
-                stereo_policy_blockers=(blocker,),
-            )
-        restrictions = _directional_bond_restrictions(
-            prepared,
+    ):
+        transition_term = DirectionalCarrierMarkRestrictionTransitionTerm(
+            kind=WriterResidualTransitionKind.DIRECTIONAL_CARRIER_MARK_RESTRICTION,
+            source_snapshot=transition.source_snapshot,
+            source_snapshot_digest=_residual_snapshot_digest(transition.source_snapshot),
             bond=event.bond,
             parent=event.parent,
             child=event.child,
-            mark=event.direction_mark,
+            direction_mark=event.direction_mark,
+            canonical_orientation=_canonical_bond_orientation(prepared, event),
+            carrier_models=models,
+            restrictions=transition.restrictions,
+            affected_variables=transition.affected_variables,
+            affected_factor_keys=transition.affected_factor_keys,
+            propagation_result=transition.propagation_result,
+            discharged_factor_keys=transition.discharged_factor_keys,
+            projected_variables=transition.projected_variables,
+            successor_snapshot=transition.successor_snapshot,
+            successor_snapshot_digest=_residual_snapshot_digest(
+                transition.successor_snapshot
+            ),
         )
-        result = store.restrict_many_and_propagate(restrictions)
-        transition_term = None
-        discharged_factor_keys: tuple[ResidualFactorKey, ...] = ()
-        evidence = writer_residual_propagation_work_evidence(
-            operation=operation,
-            result=result,
-        )
-        if not _writer_residual_mutation_is_legal(
-            result,
-            operation=operation,
-        ):
-            store.rollback(checkpoint)
-            return _WriterStereoMutation(state=None)
-        work_evidence.append(evidence)
-        capabilities.update(
-            {
-                _WriterExecutionCapabilityKind.DIRECTIONAL_CARRIER_RESTRICTION,
-                _WriterExecutionCapabilityKind.DIRECTIONAL_SITE_COMPATIBILITY,
-                _WriterExecutionCapabilityKind.RESIDUAL_PROPAGATION,
-            }
-            )
-        if len(models) > 1:
-            capabilities.add(
-                _WriterExecutionCapabilityKind
-                .SHARED_DIRECTIONAL_CARRIER_RESTRICTION
-            )
-        produces_directional_transition_term = (
-            operation == "directional carrier-mark restriction"
-            and _supports_acyclic_directional_carrier_transition_term(
-                prepared,
-                event.bond,
-                models,
-            )
-        )
-        if produces_directional_transition_term:
-            emitted_bonds = {
-                record.bond
-                for record in stereo_state.bond_occurrences
-            } | {event.bond}
-            discharge_keys = [_directional_bond_factor_key(event.bond)]
-            for site in sorted({model.site for model in models}, key=int):
-                template = _directional_template_by_site(prepared)[site]
-                if _directional_template_substituent_bonds(
-                    prepared,
-                    template,
-                ).issubset(emitted_bonds):
-                    discharge_keys.append(_directional_site_factor_key(site))
-            discharged_factor_keys = tuple(discharge_keys)
-    elif event.direction_mark is not DirectionMark.ABSENT:
-        return _WriterStereoMutation(state=None)
-    if models:
-        try:
-            store.discharge_satisfied_factors((_directional_bond_factor_key(event.bond),))
-            capabilities.add(_WriterExecutionCapabilityKind.RESIDUAL_FACTOR_DISCHARGE)
-            emitted_bonds = {
-                record.bond
-                for record in stereo_state.bond_occurrences
-            } | {event.bond}
-            for site in sorted({model.site for model in models}, key=int):
-                template = _directional_template_by_site(prepared)[site]
-                if _directional_template_substituent_bonds(
-                    prepared,
-                    template,
-                ).issubset(emitted_bonds):
-                    store.discharge_satisfied_factors(
-                        (_directional_site_factor_key(site),)
-                    )
-                    capabilities.add(
-                        _WriterExecutionCapabilityKind.RESIDUAL_FACTOR_DISCHARGE
-                    )
-        except ValueError:
-            store.rollback(checkpoint)
-            return _WriterStereoMutation(state=None)
-        if produces_directional_transition_term:
-            successor_snapshot = store.value_snapshot()
-            source_domains = dict(stereo_state.residual_snapshot.domains)
-            successor_domains = dict(successor_snapshot.domains)
-            transition_term = DirectionalCarrierMarkRestrictionTransitionTerm(
-                kind=(
-                    WriterResidualTransitionKind
-                    .DIRECTIONAL_CARRIER_MARK_RESTRICTION
-                ),
-                source_snapshot=stereo_state.residual_snapshot,
-                source_snapshot_digest=_residual_snapshot_digest(
-                    stereo_state.residual_snapshot
-                ),
-                bond=event.bond,
-                parent=event.parent,
-                child=event.child,
-                direction_mark=event.direction_mark,
-                canonical_orientation=_canonical_bond_orientation(
-                    prepared,
-                    event,
-                ),
-                carrier_models=models,
-                restrictions=restrictions,
-                affected_variables=result.stats.component_variables,
-                affected_factor_keys=result.stats.component_factor_keys,
-                propagation_result=result,
-                discharged_factor_keys=discharged_factor_keys,
-                projected_variables=tuple(
-                    sorted(
-                        (
-                            var
-                            for var in source_domains
-                            if var not in successor_domains
-                        ),
-                        key=_var_sort_tuple,
-                    )
-                ),
-                successor_snapshot=successor_snapshot,
-                successor_snapshot_digest=_residual_snapshot_digest(successor_snapshot),
-            )
-            work_evidence[-1] = writer_residual_propagation_work_evidence(
-                operation=operation,
-                result=result,
-                transition_term=transition_term,
-            )
+    evidence = writer_residual_propagation_work_evidence(
+        operation=operation,
+        result=transition.propagation_result,
+        transition_term=transition_term,
+    )
 
     return _WriterStereoMutation(
         state=WriterStereoState(
-            residual_snapshot=store.value_snapshot(),
+            residual_snapshot=transition.successor_snapshot,
             atom_occurrences=stereo_state.atom_occurrences,
-            bond_occurrences=stereo_state.bond_occurrences
-            + (
-                WriterBondOccurrenceRecord(
-                    event.bond,
-                    event.parent,
-                    event.child,
-                    event.direction_mark,
-                ),
+            bond_occurrences=(
+                stereo_state.bond_occurrences + (transition.bond_occurrence,)
             ),
             local_orders=stereo_state.local_orders,
         ),
+        capabilities=transition.capabilities,
+        residual_work_evidence=(evidence,),
+    )
+
+
+def _apply_directional_bond_residual_transition(
+    *,
+    prepared: SouthStarPreparedMol,
+    source_state: "WriterStereoState",
+    bond: BondId,
+    bond_occurrence: WriterBondOccurrenceRecord,
+    carrier_models: tuple[DirectionalSiteCarrierModel, ...],
+    restrictions: tuple[tuple[VarId, DirectionalNormalizedSign], ...],
+    operation: str,
+) -> _DirectionalBondResidualTransition | None:
+    store = ResidualStore.from_value_snapshot(source_state.residual_snapshot)
+    result = store.restrict_many_and_propagate(restrictions)
+    if not _writer_residual_mutation_is_legal(result, operation=operation):
+        return None
+    emitted_bonds = {
+        record.bond for record in source_state.bond_occurrences
+    } | {bond}
+    discharge_keys = [_directional_bond_factor_key(bond)]
+    for site in sorted({model.site for model in carrier_models}, key=int):
+        template = _directional_template_by_site(prepared)[site]
+        if _directional_template_substituent_bonds(
+            prepared,
+            template,
+        ).issubset(emitted_bonds):
+            discharge_keys.append(_directional_site_factor_key(site))
+    discharged_factor_keys = tuple(discharge_keys)
+    try:
+        store.discharge_satisfied_factors(discharged_factor_keys)
+    except ValueError:
+        return None
+    successor_snapshot = store.value_snapshot()
+    source_domains = dict(source_state.residual_snapshot.domains)
+    successor_domains = dict(successor_snapshot.domains)
+    capabilities = {
+        _WriterExecutionCapabilityKind.DIRECTIONAL_CARRIER_RESTRICTION,
+        _WriterExecutionCapabilityKind.DIRECTIONAL_SITE_COMPATIBILITY,
+        _WriterExecutionCapabilityKind.RESIDUAL_FACTOR_DISCHARGE,
+        _WriterExecutionCapabilityKind.RESIDUAL_PROPAGATION,
+    }
+    if len(carrier_models) > 1:
+        capabilities.add(
+            _WriterExecutionCapabilityKind.SHARED_DIRECTIONAL_CARRIER_RESTRICTION
+        )
+    return _DirectionalBondResidualTransition(
+        source_snapshot=source_state.residual_snapshot,
+        restrictions=restrictions,
+        propagation_result=result,
+        affected_variables=result.stats.component_variables,
+        affected_factor_keys=result.stats.component_factor_keys,
+        discharged_factor_keys=discharged_factor_keys,
+        projected_variables=tuple(sorted(
+            (var for var in source_domains if var not in successor_domains),
+            key=_var_sort_tuple,
+        )),
+        successor_snapshot=successor_snapshot,
+        bond_occurrence=bond_occurrence,
         capabilities=frozenset(capabilities),
-        residual_work_evidence=tuple(work_evidence),
     )
 
 
@@ -1586,6 +1602,9 @@ def _restrict_directional_ring_pair(
     stereo_state: "WriterStereoState",
     event: WriterRingEndpointPaired,
 ) -> _WriterStereoMutation:
+    from .writer_graph_obligations import WriterClosureEndpointChoice
+    from .writer_state import WriterStereoState
+
     models = _bounded_directional_ring_models(prepared, event.bond)
     if not models:
         if event.direction_mark is not DirectionMark.ABSENT:
@@ -1607,33 +1626,143 @@ def _restrict_directional_ring_pair(
     if record is None:
         return _WriterStereoMutation(state=None)
 
-    mutation = _on_bond_emitted(
+    blocker = _unsupported_directional_non_neighbor_ligand_blocker_for_bond(
         prepared,
-        stereo_state,
-        WriterBondEmitted(
-            bond=event.bond,
-            parent=record.parent,
-            child=record.child,
-            text=event.bond_text,
-            direction_mark=record.mark,
-        ),
+        event.bond,
         operation="directional ring pair restriction",
     )
-    if mutation.state is None:
-        return mutation
-    capabilities = set(mutation.capabilities)
-    if len(models) > 1:
-        capabilities.add(
-            _WriterExecutionCapabilityKind
-            .SHARED_DIRECTIONAL_CARRIER_RESTRICTION
+    if blocker is not None:
+        return _WriterStereoMutation(
+            state=None,
+            stereo_policy_blockers=(blocker,),
         )
+    operation = "directional ring pair restriction"
+    transition = _apply_directional_bond_residual_transition(
+        prepared=prepared,
+        source_state=stereo_state,
+        bond=event.bond,
+        bond_occurrence=record,
+        carrier_models=models,
+        restrictions=restrictions,
+        operation=operation,
+    )
+    if transition is None:
+        return _WriterStereoMutation(state=None)
+    transition_term = None
+    if _supports_directional_ring_pair_transition_term(
+        prepared,
+        event,
+        models,
+    ):
+        relation = writer_closure_endpoint_relation(
+            prepared,
+            bond=event.bond,
+            first_atom=event.partner_atom,
+            second_atom=event.endpoint_atom,
+        )
+        first_choice = WriterClosureEndpointChoice(
+            event.first_endpoint_bond_text,
+            event.first_endpoint_direction_mark,
+        )
+        compatible_seconds = relation.compatible_seconds(first_choice)
+        first_orientation = _canonical_bond_orientation(
+            prepared,
+            WriterBondEmitted(
+                bond=event.bond,
+                parent=event.partner_atom,
+                child=event.endpoint_atom,
+                text=event.first_endpoint_bond_text,
+                direction_mark=event.first_endpoint_direction_mark,
+            ),
+        )
+        transition_term = DirectionalRingPairRestrictionTransitionTerm(
+            kind=WriterResidualTransitionKind.DIRECTIONAL_RING_PAIR_RESTRICTION,
+            source_snapshot=transition.source_snapshot,
+            source_snapshot_digest=_residual_snapshot_digest(
+                transition.source_snapshot
+            ),
+            bond=event.bond,
+            first_atom=event.partner_atom,
+            second_atom=event.endpoint_atom,
+            ring_label_value=event.label.value,
+            ring_label_text=event.label.text,
+            first_endpoint_text=event.label.text,
+            first_endpoint_bond_text=event.first_endpoint_bond_text,
+            first_endpoint_direction_mark=event.first_endpoint_direction_mark,
+            second_endpoint_text=event.endpoint_text,
+            second_endpoint_bond_text=event.bond_text,
+            second_endpoint_direction_mark=event.direction_mark,
+            first_canonical_orientation=first_orientation,
+            second_canonical_orientation=-first_orientation,
+            carrier_models=models,
+            compatible_second_endpoint_choices=tuple(
+                (choice.bond_text, choice.direction_mark)
+                for choice in compatible_seconds
+            ),
+            restrictions=transition.restrictions,
+            bond_occurrence_parent=record.parent,
+            bond_occurrence_child=record.child,
+            bond_occurrence_mark=record.mark,
+            affected_variables=transition.affected_variables,
+            affected_factor_keys=transition.affected_factor_keys,
+            propagation_result=transition.propagation_result,
+            discharged_factor_keys=transition.discharged_factor_keys,
+            projected_variables=transition.projected_variables,
+            successor_snapshot=transition.successor_snapshot,
+            successor_snapshot_digest=_residual_snapshot_digest(
+                transition.successor_snapshot
+            ),
+        )
+    evidence = writer_residual_propagation_work_evidence(
+        operation=operation,
+        result=transition.propagation_result,
+        transition_term=transition_term,
+    )
     return _WriterStereoMutation(
-        state=mutation.state,
-        capabilities=frozenset(capabilities)
-        | frozenset((
+        state=WriterStereoState(
+            residual_snapshot=transition.successor_snapshot,
+            atom_occurrences=stereo_state.atom_occurrences,
+            bond_occurrences=(
+                stereo_state.bond_occurrences + (transition.bond_occurrence,)
+            ),
+            local_orders=stereo_state.local_orders,
+        ),
+        capabilities=transition.capabilities | frozenset((
             _WriterExecutionCapabilityKind.DIRECTIONAL_RING_PAIR_COMPATIBILITY,
         )),
-        residual_work_evidence=mutation.residual_work_evidence,
+        residual_work_evidence=(evidence,),
+    )
+
+
+def _supports_directional_ring_pair_transition_term(
+    prepared: SouthStarPreparedMol,
+    event: WriterRingEndpointPaired,
+    models: tuple[DirectionalSiteCarrierModel, ...],
+) -> bool:
+    if len(models) != 1:
+        return False
+    graph_bond = prepared.graph_index.bond_by_id[event.bond]
+    if graph_bond.order is not BondOrder.SINGLE or _is_graph_bridge(
+        prepared,
+        event.bond,
+    ):
+        return False
+    template = _directional_template_by_site(prepared).get(models[0].site)
+    if template is None or template.status is not SiteStatus.SPECIFIED:
+        return False
+    if (
+        event.first_endpoint_bond_text != ""
+        or event.bond_text != ""
+    ):
+        return False
+    choices = prepared.policy.bond_text_domain_unchecked(
+        event.bond,
+        slot_kind="ring_endpoint",
+    )
+    return bool(
+        len(choices) == 1
+        and choices[0].base_text == ""
+        and choices[0].permits_direction
     )
 
 

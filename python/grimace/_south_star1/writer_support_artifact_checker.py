@@ -18,7 +18,7 @@ from .writer_envelope_work import writer_envelope_work_reason
 from .writer_count_dag_envelope import validate_writer_count_certificate_dag_envelope
 
 SCHEMA_NAME = "writer_support_artifact"
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 _TOP_LEVEL_FIELDS = frozenset((
     "schema_name",
     "schema_version",
@@ -1150,6 +1150,27 @@ def _expected_transition_manifest_shape(operation: object) -> tuple[str, str, fr
                     "successor_snapshot_digest",
                 )
             ),
+        )
+    if operation == "directional ring pair restriction":
+        return (
+            "grimace._south_star1.writer_residual_transition_terms."
+            "DirectionalRingPairRestrictionTransitionTerm",
+            "directional_ring_pair_restriction",
+            frozenset((
+                "kind", "source_snapshot", "source_snapshot_digest", "bond",
+                "first_atom", "second_atom", "ring_label_value",
+                "ring_label_text", "first_endpoint_text",
+                "first_endpoint_bond_text", "first_endpoint_direction_mark",
+                "second_endpoint_text", "second_endpoint_bond_text",
+                "second_endpoint_direction_mark", "first_canonical_orientation",
+                "second_canonical_orientation", "carrier_models",
+                "compatible_second_endpoint_choices", "restrictions",
+                "bond_occurrence_parent", "bond_occurrence_child",
+                "bond_occurrence_mark", "affected_variables",
+                "affected_factor_keys", "propagation_result",
+                "discharged_factor_keys", "projected_variables",
+                "successor_snapshot", "successor_snapshot_digest",
+            )),
         )
     _artifact_violation("obligation_manifest_transition_operation_mismatch")
 

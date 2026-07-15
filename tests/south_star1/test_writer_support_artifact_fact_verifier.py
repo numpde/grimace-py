@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import replace
+from functools import lru_cache
 import os
 import unittest
 
@@ -28,7 +29,10 @@ from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_smil
 from grimace._south_star1.writer_envelope_terms import _digest_terms_bounded
 from grimace._south_star1.writer_envelope_terms import _identity_digest
 from grimace._south_star1.writer_envelope_work import WriterEnvelopeWorkBudget
+from grimace._south_star1.writer_events import WriterRingEndpointEmitted
+from grimace._south_star1.writer_frontier import _checked_writer_frontier_branch_supports
 from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
+from grimace._south_star1.writer_snapshot import WriterDecoderBoundary
 from grimace._south_star1.writer_snapshot import capture_writer_frontier_snapshot
 from grimace._south_star1.writer_snapshot_prefix_envelope import (
     writer_snapshot_prefix_read_envelope_for_emitted_texts,
@@ -465,6 +469,10 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         self.assertTrue(live.accepted, live.reason)
         self.assertTrue(verification.accepted, verification.reason)
         self.assertFalse(verification.offline_replay_complete)
+        self.assertEqual(
+            verification.offline_unchecked_obligation_families,
+            ("directional_ring_pair_transition_replay",),
+        )
         self.assertTrue(classification.accepted, classification.reason)
         branch = _first_graph_ring_delta_branch(artifact, "ring_endpoint_open")
         event = _first_graph_ring_delta_event(branch, "ring_endpoint_emitted")
@@ -473,6 +481,68 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             artifact["metrics"]["largest_object_identity_input_bytes"],
             budget.max_digest_term_bytes,
         )
+
+    def test_reduced_directional_ring_opening_artifact_replays_semantically(self) -> None:
+        facts, options, artifact = _directional_ring_opening_artifact()
+
+        structural = verify_writer_support_artifact_consistency(artifact)
+        live = verify_writer_support_artifact_envelope(
+            prepared=_prepare(facts),
+            envelope=artifact,
+        )
+        verification = verify_writer_support_artifact_for_facts(
+            facts=facts,
+            runtime_options=options,
+            artifact=artifact,
+        )
+
+        self.assertTrue(structural.accepted, structural.reason)
+        self.assertTrue(live.accepted, live.reason)
+        self.assertTrue(verification.accepted, verification.reason)
+        manifests = [
+            manifest
+            for obj in artifact["objects"]
+            if obj["kind"] == "branch_support"
+            for manifest in obj["payload"]["obligation_manifests"]["residual_work"]
+            if manifest["operation"] == "directional ring endpoint projection"
+        ]
+        self.assertTrue(manifests)
+        snapshots = [
+            (
+                _term_field(manifest["transition_term"], "source_snapshot"),
+                _term_field(manifest["transition_term"], "successor_snapshot"),
+            )
+            for manifest in manifests
+        ]
+        self.assertTrue(any(source == successor for source, successor in snapshots))
+        self.assertTrue(any(source != successor for source, successor in snapshots))
+
+    def test_directional_ring_opening_coherent_term_forgeries_are_rejected(self) -> None:
+        facts, options, original = _directional_ring_opening_artifact()
+        cases = (
+            ("compatible_seconds", _forge_ring_compatible_seconds),
+            ("domain_intersection", _forge_ring_domain_intersection),
+            ("carrier_orientation", _forge_ring_carrier_orientation),
+            ("event_mark_detached", _forge_ring_term_mark),
+            ("false_noop", _forge_ring_false_noop),
+            ("false_change", _forge_ring_false_change),
+            ("factor_discharge", _forge_ring_factor_discharge),
+            ("snapshot_detached", _forge_ring_source_snapshot),
+            ("successor_open_endpoint", _forge_ring_successor_open_endpoint),
+            ("bond_occurrence_added", _forge_ring_bond_occurrence_added),
+            ("missing_term", _forge_ring_missing_term),
+        )
+        for name, mutate in cases:
+            with self.subTest(name=name):
+                artifact = deepcopy(original)
+                mutate(artifact)
+                _assert_structural_checker_accepts(self, artifact)
+                verification = verify_writer_support_artifact_for_facts(
+                    facts=facts,
+                    runtime_options=options,
+                    artifact=artifact,
+                )
+                self.assertFalse(verification.accepted)
 
     def test_directional_rooted_acyclic_artifact_replays_complete(self) -> None:
         facts, options, artifact = _directional_rooted_artifact()
@@ -3455,6 +3525,50 @@ def _shared_acyclic_directional_artifact():
     )
 
 
+@lru_cache(maxsize=1)
+def _directional_ring_opening_artifact():
+    facts = _directional_ring_carrier_facts()
+    options = _writer_options(rooted_at_atom=0)
+    prepared = _prepare(facts)
+    initial = _initial_snapshot(prepared, options)
+    batch = _checked_writer_frontier_branch_supports(
+        prepared,
+        initial.cursor,
+        include_counts=False,
+        include_frontier_certificate=False,
+        include_count_certificate=False,
+    )
+    opening_sources = []
+    for support in batch.supports:
+        next_batch = _checked_writer_frontier_branch_supports(
+            prepared,
+            support.successor_cursor,
+            include_counts=False,
+            include_frontier_certificate=False,
+            include_count_certificate=False,
+        )
+        if any(
+            isinstance(event, WriterRingEndpointEmitted)
+            and event.bond == BondId(3)
+            for next_support in next_batch.supports
+            for event in next_support.events
+        ):
+            opening_sources.append(support)
+    if len(opening_sources) != 1:
+        raise AssertionError("missing unique cursor before BondId(3) ring opening")
+    snapshot = capture_writer_frontier_snapshot(
+        prepared=prepared,
+        runtime_options=options,
+        cursor=opening_sources[0].successor_cursor,
+        decoder_boundary=WriterDecoderBoundary(consumed_token_count=1),
+    )
+    artifact = writer_support_artifact_envelope_for_snapshot(
+        prepared=prepared,
+        snapshot=snapshot,
+    )
+    return facts, options, artifact
+
+
 def _first_support_string_object(artifact):
     root = _object(artifact, artifact["roots"]["support_image_root"])
     return _object(artifact, root["payload"]["support_string_refs"][0])
@@ -3503,6 +3617,201 @@ def _directional_transition_branch_and_manifest(artifact, *, bond: int):
 
 def _directional_transition_manifest(artifact, *, bond: int):
     return _directional_transition_branch_and_manifest(artifact, bond=bond)[1]
+
+
+def _ring_projection_branch_and_manifest(artifact, *, changed: bool | None = None):
+    for branch in artifact["objects"]:
+        if branch["kind"] != "branch_support":
+            continue
+        for manifest in branch["payload"]["obligation_manifests"]["residual_work"]:
+            if manifest["operation"] != "directional ring endpoint projection":
+                continue
+            term = manifest["transition_term"]
+            is_changed = _term_field(term, "source_snapshot") != _term_field(
+                term, "successor_snapshot"
+            )
+            if changed is None or changed == is_changed:
+                return branch, manifest
+    raise AssertionError("missing directional ring projection transition")
+
+
+def _refresh_ring_projection_term(artifact, branch, manifest) -> None:
+    _refresh_transition_manifest_digest(manifest)
+    _refresh_object_and_artifact_digest(artifact, branch)
+
+
+def _forge_ring_compatible_seconds(artifact) -> None:
+    branch, manifest = _ring_projection_branch_and_manifest(artifact)
+    choices = _term_field(manifest["transition_term"], "compatible_second_endpoint_choices")
+    del choices[-1]
+    _refresh_ring_projection_term(artifact, branch, manifest)
+
+
+def _forge_ring_domain_intersection(artifact) -> None:
+    branch, manifest = _ring_projection_branch_and_manifest(artifact, changed=True)
+    values = _term_field(manifest["transition_term"], "domain_intersections")[0][1]
+    values[0]["value"] = "negative" if values[0]["value"] == "positive" else "positive"
+    _refresh_ring_projection_term(artifact, branch, manifest)
+
+
+def _forge_ring_carrier_orientation(artifact) -> None:
+    branch, manifest = _ring_projection_branch_and_manifest(artifact)
+    model = _term_field(manifest["transition_term"], "carrier_model")
+    orientation = _term_field(model, "endpoint_orientation_factor")
+    _set_term_field(model, "endpoint_orientation_factor", -orientation)
+    _refresh_ring_projection_term(artifact, branch, manifest)
+
+
+def _forge_ring_term_mark(artifact) -> None:
+    branch, manifest = _ring_projection_branch_and_manifest(artifact)
+    mark = _term_field(manifest["transition_term"], "direction_mark")
+    mark["value"] = -1 if mark["value"] != -1 else 1
+    _refresh_ring_projection_term(artifact, branch, manifest)
+
+
+def _forge_ring_false_noop(artifact) -> None:
+    branch, manifest = _ring_projection_branch_and_manifest(artifact, changed=True)
+    term = manifest["transition_term"]
+    source = deepcopy(_term_field(term, "source_snapshot"))
+    _set_term_field(term, "successor_snapshot", source)
+    digest = _closed_term_digest(source)
+    _set_term_field(term, "successor_snapshot_digest", digest)
+    _refresh_linked_raw_lifecycle_residual_digest(
+        branch,
+        manifest=manifest,
+        field="successor_residual_snapshot_digest",
+        digest=digest,
+    )
+    _refresh_ring_projection_term(artifact, branch, manifest)
+
+
+def _forge_ring_false_change(artifact) -> None:
+    branch, manifest = _ring_projection_branch_and_manifest(artifact, changed=False)
+    _other_branch, other = _ring_projection_branch_and_manifest(artifact, changed=True)
+    term = manifest["transition_term"]
+    successor = deepcopy(_term_field(other["transition_term"], "successor_snapshot"))
+    _set_term_field(term, "successor_snapshot", successor)
+    digest = _closed_term_digest(successor)
+    _set_term_field(term, "successor_snapshot_digest", digest)
+    _refresh_linked_raw_lifecycle_residual_digest(
+        branch,
+        manifest=manifest,
+        field="successor_residual_snapshot_digest",
+        digest=digest,
+    )
+    _refresh_ring_projection_term(artifact, branch, manifest)
+
+
+def _forge_ring_factor_discharge(artifact) -> None:
+    branch, manifest = _ring_projection_branch_and_manifest(artifact)
+    term = manifest["transition_term"]
+    source = _term_field(term, "source_snapshot")
+    factor = _term_field(_term_field(source, "factors")[0], "key")
+    _set_term_field(term, "discharged_factor_keys", [factor])
+    _refresh_ring_projection_term(artifact, branch, manifest)
+
+
+def _forge_ring_source_snapshot(artifact) -> None:
+    branch, manifest = _ring_projection_branch_and_manifest(artifact)
+    term = manifest["transition_term"]
+    source = _term_field(term, "source_snapshot")
+    domains = _term_field(source, "domains")
+    domains[:] = list(reversed(domains))
+    digest = _closed_term_digest(source)
+    _set_term_field(term, "source_snapshot_digest", digest)
+    _refresh_linked_raw_lifecycle_residual_digest(
+        branch,
+        manifest=manifest,
+        field="source_residual_snapshot_digest",
+        digest=digest,
+    )
+    _refresh_ring_projection_term(artifact, branch, manifest)
+
+
+def _forge_ring_missing_term(artifact) -> None:
+    branch, manifest = _ring_projection_branch_and_manifest(artifact)
+    manifest["transition_term"] = None
+    manifest["transition_digest"] = None
+    _refresh_object_and_artifact_digest(artifact, branch)
+
+
+def _forge_ring_successor_open_endpoint(artifact) -> None:
+    branch, manifest = _ring_projection_branch_and_manifest(artifact)
+    projection = _text_projection_for_branch(artifact, branch)
+    cursor = projection["payload"]["successor_cursor"]
+    state = _single_cursor_state(cursor)
+    ring_state = _term_field(state, "ring_state")
+    endpoint = next(
+        endpoint
+        for endpoint in _term_field(ring_state, "open_endpoints")
+        if int(_term_field(endpoint, "bond")) == 3
+    )
+    _set_term_field(endpoint, "first_endpoint_text", "%01")
+    _refresh_ring_successor_cursor_change(
+        artifact=artifact,
+        branch=branch,
+        manifest=manifest,
+        projection=projection,
+        cursor=cursor,
+        state=state,
+    )
+
+
+def _forge_ring_bond_occurrence_added(artifact) -> None:
+    branch, manifest = _ring_projection_branch_and_manifest(artifact)
+    projection = _text_projection_for_branch(artifact, branch)
+    cursor = projection["payload"]["successor_cursor"]
+    state = _single_cursor_state(cursor)
+    stereo = _term_field(state, "stereo_state")
+    _term_field(stereo, "bond_occurrences").append(
+        {
+            "__dataclass__": "grimace._south_star1.writer_stereo.WriterBondOccurrenceRecord",
+            "fields": [
+                ["bond", 3],
+                ["parent", 0],
+                ["child", 2],
+                ["mark", {"__enum__": "grimace._south_star1.policy.DirectionMark", "value": 0}],
+            ],
+        }
+    )
+    _refresh_ring_successor_cursor_change(
+        artifact=artifact,
+        branch=branch,
+        manifest=manifest,
+        projection=projection,
+        cursor=cursor,
+        state=state,
+    )
+
+
+def _refresh_ring_successor_cursor_change(
+    *, artifact, branch, manifest, projection, cursor, state
+) -> None:
+    old_cursor_digest = branch["payload"]["successor_cursor_digest"]
+    _refresh_cursor_digest(cursor)
+    successor_state_digest = _closed_term_digest(state)
+    _propagate_text_projection_cursor_change(
+        artifact,
+        old_cursor_digest=old_cursor_digest,
+        new_cursor=cursor,
+    )
+    branch["payload"]["successor_state_digest"] = successor_state_digest
+    branch["payload"]["graph_ring_delta"]["manifest"]["successor_state_digest"] = (
+        successor_state_digest
+    )
+    manifest["successor_digest"] = successor_state_digest
+    for lifecycle in branch["payload"]["obligation_manifests"]["stereo_lifecycle"]:
+        if manifest["evidence_digest"] in lifecycle["linked_residual_work_digests"]:
+            lifecycle["successor_digest"] = successor_state_digest
+    branch["payload"]["successor_cursor_digest"] = cursor["digest"]
+    branch["payload"]["graph_ring_delta"]["manifest"]["successor_cursor_digest"] = (
+        cursor["digest"]
+    )
+    _refresh_graph_ring_delta_digest(branch["payload"]["graph_ring_delta"])
+    projection["payload"]["digest"] = _text_projection_identity_digest(
+        projection["payload"]
+    )
+    _refresh_object_and_artifact_digest(artifact, branch)
 
 
 def _directional_discharge_key_pairs(manifest):

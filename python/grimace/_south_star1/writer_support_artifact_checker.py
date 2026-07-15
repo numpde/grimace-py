@@ -18,7 +18,7 @@ from .writer_envelope_work import writer_envelope_work_reason
 from .writer_count_dag_envelope import validate_writer_count_certificate_dag_envelope
 
 SCHEMA_NAME = "writer_support_artifact"
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 _TOP_LEVEL_FIELDS = frozenset((
     "schema_name",
     "schema_version",
@@ -1128,6 +1128,25 @@ def _expected_transition_manifest_shape(operation: object) -> tuple[str, str, fr
                     "discharged_factor_keys",
                     "projected_variables",
                     "successor_snapshot",
+                    "successor_snapshot_digest",
+                )
+            ),
+        )
+    if operation == "directional ring endpoint projection":
+        return (
+            "grimace._south_star1.writer_residual_transition_terms."
+            "DirectionalRingEndpointProjectionTransitionTerm",
+            "directional_ring_endpoint_projection",
+            frozenset(
+                (
+                    "kind", "source_snapshot", "source_snapshot_digest",
+                    "bond", "endpoint_atom", "partner_atom", "ring_label_value",
+                    "ring_label_text", "endpoint_text", "bond_text",
+                    "direction_mark", "carrier_model",
+                    "compatible_second_endpoint_choices", "domain_intersections",
+                    "affected_variables", "affected_factor_keys",
+                    "propagation_result", "projected_variables",
+                    "discharged_factor_keys", "successor_snapshot",
                     "successor_snapshot_digest",
                 )
             ),

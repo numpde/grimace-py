@@ -40,6 +40,9 @@ from .residual_constraints import tetra_token_var
 from .writer_residual_transition_terms import (
     DirectionalCarrierMarkRestrictionTransitionTerm,
 )
+from .writer_residual_transition_terms import (
+    DirectionalRingEndpointProjectionTransitionTerm,
+)
 from .writer_atom_text_lifecycle import bracket_atom_text
 from .writer_count_dag_envelope import count_dag_node_by_id
 from .writer_count_dag_envelope import validate_writer_count_certificate_dag_envelope
@@ -131,6 +134,10 @@ _ALLOWED_TETRA_TRANSITION_DATACLASSES = {
         DirectionalCarrierMarkRestrictionTransitionTerm
     ),
     _PATH_PREFIX + "writer_residual_transition_terms."
+    "DirectionalRingEndpointProjectionTransitionTerm": (
+        DirectionalRingEndpointProjectionTransitionTerm
+    ),
+    _PATH_PREFIX + "writer_residual_transition_terms."
     "TetraAtomTokenRestrictionTransitionTerm": (
         TetraAtomTokenRestrictionTransitionTerm
     ),
@@ -207,6 +214,22 @@ _ALLOWED_TETRA_TRANSITION_DATACLASS_FIELDS = {
                 "discharged_factor_keys",
                 "projected_variables",
                 "successor_snapshot",
+                "successor_snapshot_digest",
+            )
+        )
+    ),
+    _PATH_PREFIX + "writer_residual_transition_terms."
+    "DirectionalRingEndpointProjectionTransitionTerm": (
+        frozenset(
+            (
+                "kind", "source_snapshot", "source_snapshot_digest", "bond",
+                "endpoint_atom", "partner_atom", "ring_label_value",
+                "ring_label_text", "endpoint_text", "bond_text",
+                "direction_mark", "carrier_model",
+                "compatible_second_endpoint_choices", "domain_intersections",
+                "affected_variables", "affected_factor_keys",
+                "propagation_result", "projected_variables",
+                "discharged_factor_keys", "successor_snapshot",
                 "successor_snapshot_digest",
             )
         )
@@ -1001,11 +1024,11 @@ def classify_residual_stereo_obligations_offline(
                 terminal = _require_object(objects, terminal_ref)
                 for family, items in terminal["payload"]["obligation_manifests"].items():
                     manifests_by_family[family].extend(items)
-        unchecked = tuple(
+        unchecked = tuple(dict.fromkeys(
             _unchecked_obligation_family_name(family, items)
             for family, items in sorted(manifests_by_family.items())
             if items and not _obligation_manifests_checked(items)
-        )
+        ))
         checked = tuple(
             family
             for family, items in sorted(manifests_by_family.items())
@@ -1058,16 +1081,39 @@ def classify_residual_stereo_obligations_offline(
 
 
 def _obligation_manifests_checked(items: list[object]) -> bool:
-    return all(
-        bool(
-            item["is_noop"]
-            or item["is_empty"]
-            or item["is_discharged"]
-            or item["terminal_clean"]
-            or _ring_obligation_manifest_checked(item)
-            or _validated_tetra_residual_manifest_checked(item)
+    return all(_obligation_manifest_checked(item) for item in items)
+
+
+def _obligation_manifest_checked(item: Mapping[str, object]) -> bool:
+    return bool(
+        item["is_noop"]
+        or item["is_empty"]
+        or item["is_discharged"]
+        or item["terminal_clean"]
+        or _ring_obligation_manifest_checked(item)
+        or _validated_tetra_residual_manifest_checked(item)
+        or _validated_transition_lifecycle_manifest_checked(item)
+    )
+
+
+def _validated_transition_lifecycle_manifest_checked(
+    item: Mapping[str, object],
+) -> bool:
+    operations = item.get("residual_work_operations")
+    return bool(
+        item.get("family") == "stereo_lifecycle"
+        and isinstance(operations, list)
+        and operations
+        and all(
+            operation
+            in {
+                "tetrahedral atom-token restriction",
+                "tetrahedral local-order factor closure",
+                "directional carrier-mark restriction",
+                "directional ring endpoint projection",
+            }
+            for operation in operations
         )
-        for item in items
     )
 
 
@@ -1079,6 +1125,7 @@ def _validated_tetra_residual_manifest_checked(item: Mapping[str, object]) -> bo
             "tetrahedral atom-token restriction",
             "tetrahedral local-order factor closure",
             "directional carrier-mark restriction",
+            "directional ring endpoint projection",
         }
         and item["transition_term"] is not None
     )
@@ -1238,6 +1285,15 @@ def _validate_tetra_residual_manifest_if_known(
                 _offline_violation("tetra_residual_transition_missing")
             return
         _replay_directional_carrier_transition(
+            branch=branch,
+            item=item,
+            facts=facts,
+            objects=objects,
+        )
+        return
+    if operation == "directional ring endpoint projection":
+        _check_directional_ring_projection_manifest_core(branch=branch, item=item)
+        _replay_directional_ring_endpoint_projection_transition(
             branch=branch,
             item=item,
             facts=facts,
@@ -1530,6 +1586,220 @@ def _replay_tetra_atom_token_transition(
         _offline_violation("tetra_atom_token_projection_or_discharge_mismatch")
     if store.value_snapshot() != term.successor_snapshot:
         _offline_violation("tetra_atom_token_successor_residual_mismatch")
+
+
+def _check_directional_ring_projection_manifest_core(
+    *,
+    branch: Mapping[str, object],
+    item: Mapping[str, object],
+) -> None:
+    payload = branch["payload"]
+    if item["family"] != "residual_work":
+        _offline_violation("directional_ring_projection_family_mismatch")
+    if item["source_digest"] != payload["source_state_digest"]:
+        _offline_violation("directional_ring_projection_source_digest_mismatch")
+    if item["successor_digest"] != payload["successor_state_digest"]:
+        _offline_violation("directional_ring_projection_successor_digest_mismatch")
+    if item["transition_term"] is None:
+        _offline_violation("directional_ring_projection_transition_missing")
+    raw = _linked_raw_tetra_lifecycle(branch=branch, item=item)
+    if raw["lifecycle_event_kind"] != "ring_endpoint_emitted":
+        _offline_violation("directional_ring_projection_lifecycle_event_mismatch")
+    expected_capabilities = [
+        "directional_ring_pair_compatibility",
+        "residual_propagation",
+    ]
+    if raw["lifecycle_capabilities"] != expected_capabilities:
+        _offline_violation("directional_ring_projection_lifecycle_capabilities_mismatch")
+    if raw["residual_work_digests"] != [item["evidence_digest"]]:
+        _offline_violation("directional_ring_projection_lifecycle_work_mismatch")
+    if raw["residual_work_operations"] != [item["operation"]]:
+        _offline_violation("directional_ring_projection_lifecycle_work_mismatch")
+
+
+def _replay_directional_ring_endpoint_projection_transition(
+    *,
+    branch: Mapping[str, object],
+    item: Mapping[str, object],
+    facts: MoleculeFacts,
+    objects: Mapping[str, Mapping[str, object]],
+) -> None:
+    term = _transition_from_manifest(item)
+    if not isinstance(term, DirectionalRingEndpointProjectionTransitionTerm):
+        _offline_violation("directional_ring_projection_transition_kind_mismatch")
+    if term.kind is not WriterResidualTransitionKind.DIRECTIONAL_RING_ENDPOINT_PROJECTION:
+        _offline_violation("directional_ring_projection_transition_kind_mismatch")
+    if term.source_snapshot_digest != _identity_digest(term.source_snapshot):
+        _offline_violation("directional_ring_projection_source_residual_digest_mismatch")
+    if term.successor_snapshot_digest != _identity_digest(term.successor_snapshot):
+        _offline_violation("directional_ring_projection_successor_residual_digest_mismatch")
+    _check_transition_manifest_digest(item=item, term=term)
+    _check_transition_lifecycle_residual_binding(
+        branch=branch,
+        item=item,
+        source_digest=term.source_snapshot_digest,
+        successor_digest=term.successor_snapshot_digest,
+    )
+    source_state, successor_state = _branch_writer_state_terms(
+        branch=branch,
+        objects=objects,
+    )
+    _check_transition_state_residual_anchors(
+        source_state=source_state,
+        successor_state=successor_state,
+        source_snapshot=term.source_snapshot,
+        successor_snapshot=term.successor_snapshot,
+        violation_prefix="directional_ring_projection",
+    )
+    _check_directional_ring_projection_event_and_state(
+        branch=branch,
+        term=term,
+        source_state=source_state,
+        successor_state=successor_state,
+    )
+    graph_bond = _facts_bond(facts=facts, bond=term.bond)
+    if graph_bond.order is not BondOrder.SINGLE or _facts_bond_is_bridge(
+        facts=facts,
+        bond=term.bond,
+    ):
+        _offline_violation("directional_ring_projection_bond_scope_mismatch")
+    if term.bond_text != "":
+        _offline_violation("directional_ring_projection_bond_text_mismatch")
+    sites = _expected_directional_sites_for_facts_bond(facts=facts, bond=term.bond)
+    models = _expected_directional_models_for_facts_bond(
+        facts=facts,
+        sites=sites,
+        bond=term.bond,
+    )
+    if len(sites) != 1 or len(models) != 1 or term.carrier_model != models[0]:
+        _offline_violation("directional_ring_projection_carrier_model_mismatch")
+    candidate_seconds = (
+        ("", DirectionMark.ABSENT),
+        ("", DirectionMark.FWD),
+        ("", DirectionMark.REV),
+    )
+    model = models[0]
+    values = []
+    expected_seconds = []
+    first_orientation = _facts_bond_orientation(
+        facts=facts,
+        bond=term.bond,
+        parent=term.endpoint_atom,
+        child=term.partner_atom,
+    )
+    second_orientation = -first_orientation
+    for bond_text, second_mark in candidate_seconds:
+        normalized = []
+        if term.direction_mark is not DirectionMark.ABSENT:
+            normalized.append(normalized_sign_from_mark(
+                mark=term.direction_mark,
+                canonical_orientation=first_orientation,
+                model=model,
+            ))
+        if second_mark is not DirectionMark.ABSENT:
+            normalized.append(normalized_sign_from_mark(
+                mark=second_mark,
+                canonical_orientation=second_orientation,
+                model=model,
+            ))
+        if not normalized:
+            value = DirectionalNormalizedSign.ABSENT
+        elif len(set(normalized)) == 1:
+            value = normalized[0]
+        else:
+            continue
+        expected_seconds.append((bond_text, second_mark))
+        if value not in values:
+            values.append(value)
+    expected_seconds = tuple(expected_seconds)
+    if term.compatible_second_endpoint_choices != expected_seconds:
+        _offline_violation("directional_ring_projection_compatible_seconds_mismatch")
+    expected_intersections = ((
+        directional_site_carrier_var(model.site, term.bond),
+        tuple(values),
+    ),)
+    if term.domain_intersections != expected_intersections:
+        _offline_violation("directional_ring_projection_domain_intersection_mismatch")
+    store = ResidualStore.from_value_snapshot(term.source_snapshot)
+    result = store.intersect_domains_and_propagate(expected_intersections)
+    _check_transition_result(
+        expected=term.propagation_result,
+        actual=result,
+        violation_prefix="directional_ring_projection",
+    )
+    if result.stats.component_variables != term.affected_variables:
+        _offline_violation("directional_ring_projection_affected_variables_mismatch")
+    if result.stats.component_factor_keys != term.affected_factor_keys:
+        _offline_violation("directional_ring_projection_affected_factors_mismatch")
+    if term.projected_variables or term.discharged_factor_keys:
+        _offline_violation("directional_ring_projection_projection_or_discharge_mismatch")
+    if store.value_snapshot() != term.successor_snapshot:
+        _offline_violation("directional_ring_projection_successor_residual_mismatch")
+
+
+def _check_directional_ring_projection_event_and_state(
+    *,
+    branch: Mapping[str, object],
+    term: DirectionalRingEndpointProjectionTransitionTerm,
+    source_state: Mapping[str, object],
+    successor_state: Mapping[str, object],
+) -> None:
+    delta = branch["payload"]["graph_ring_delta"]
+    if delta["kind"] != "ring_endpoint_open":
+        _offline_violation("directional_ring_projection_delta_kind_mismatch")
+    events = [
+        event for event in delta["manifest"]["event_manifests"]
+        if event["kind"] == "ring_endpoint_emitted"
+    ]
+    if len(events) != 1:
+        _offline_violation("directional_ring_projection_event_mismatch")
+    event = events[0]
+    expected_event = {
+        "bond": int(term.bond),
+        "endpoint_atom": int(term.endpoint_atom),
+        "partner_atom": int(term.partner_atom),
+        "label": {
+            "__dataclass__": "grimace._south_star1.writer_state.WriterClosureLabel",
+            "fields": [["value", term.ring_label_value], ["text", term.ring_label_text]],
+        },
+        "endpoint_text": term.endpoint_text,
+        "bond_text": term.bond_text,
+        "direction_mark": {"__enum__": "grimace._south_star1.policy.DirectionMark", "value": term.direction_mark.value},
+        "side": "open",
+    }
+    for field, expected in expected_event.items():
+        if event[field] != expected:
+            _offline_violation(f"directional_ring_projection_event_{field}_mismatch")
+    source_ring = _term_field_value(source_state, "ring_state")
+    successor_ring = _term_field_value(successor_state, "ring_state")
+    source_open = tuple(_term_field_value(source_ring, "open_endpoints"))
+    successor_open = tuple(_term_field_value(successor_ring, "open_endpoints"))
+    if any(int(_term_field_value(endpoint, "bond")) == int(term.bond) for endpoint in source_open):
+        _offline_violation("directional_ring_projection_source_open_endpoint_mismatch")
+    matching = [
+        endpoint for endpoint in successor_open
+        if int(_term_field_value(endpoint, "bond")) == int(term.bond)
+    ]
+    if len(matching) != 1:
+        _offline_violation("directional_ring_projection_successor_open_endpoint_mismatch")
+    endpoint = matching[0]
+    expected_fields = {
+        "first_atom": int(term.endpoint_atom),
+        "second_atom": int(term.partner_atom),
+        "label": expected_event["label"],
+        "first_endpoint_text": term.endpoint_text,
+        "first_endpoint_bond_text": term.bond_text,
+        "first_endpoint_direction_mark": expected_event["direction_mark"],
+    }
+    for field, expected in expected_fields.items():
+        if _term_field_value(endpoint, field) != expected:
+            _offline_violation("directional_ring_projection_successor_open_endpoint_mismatch")
+    if tuple(_term_field_value(source_ring, "closed_closures")) != tuple(
+        _term_field_value(successor_ring, "closed_closures")
+    ):
+        _offline_violation("directional_ring_projection_closed_closure_mismatch")
+    if _state_bond_occurrence_records(source_state) != _state_bond_occurrence_records(successor_state):
+        _offline_violation("directional_ring_projection_bond_occurrence_mismatch")
 
 
 def _replay_tetra_local_order_transition(
@@ -2412,6 +2682,14 @@ def _transition_from_manifest(item: Mapping[str, object]) -> object:
                 "DirectionalCarrierMarkRestrictionTransitionTerm"
             ),
         )
+    if operation == "directional ring endpoint projection":
+        return _decode_transition_term(
+            item["transition_term"],
+            expected_path=(
+                "grimace._south_star1.writer_residual_transition_terms."
+                "DirectionalRingEndpointProjectionTransitionTerm"
+            ),
+        )
     _offline_violation("tetra_residual_transition_operation_mismatch")
 
 
@@ -2599,6 +2877,17 @@ def _unchecked_obligation_family_name(
         for item in items
     ):
         return "tetra_residual_link_provenance_replay"
+    if family == "residual_work" and any(
+        item["operation"] == "directional ring pair restriction"
+        for item in items
+    ):
+        return "directional_ring_pair_transition_replay"
+    unchecked = [item for item in items if not _obligation_manifest_checked(item)]
+    if family == "stereo_lifecycle" and unchecked and all(
+        item["residual_work_operations"] == ["directional ring pair restriction"]
+        for item in unchecked
+    ):
+        return "directional_ring_pair_transition_replay"
     return family
 
 

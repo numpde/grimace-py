@@ -20,6 +20,9 @@ from .writer_residual_transition_terms import (
     DirectionalCarrierMarkRestrictionTransitionTerm,
 )
 from .writer_residual_transition_terms import (
+    DirectionalRingEndpointProjectionTransitionTerm,
+)
+from .writer_residual_transition_terms import (
     TetraAtomTokenRestrictionTransitionTerm,
 )
 from .writer_residual_transition_terms import (
@@ -381,9 +384,10 @@ def _replay_directional_ring_state_for_reconstruction(
             bond_text=endpoint.first_endpoint_bond_text,
             direction_mark=endpoint.first_endpoint_direction_mark,
         )
-        restriction = _directional_ring_endpoint_projection(prepared, event)
-        if restriction is None:
+        projection = _directional_ring_endpoint_projection(prepared, event)
+        if projection is None:
             raise ValueError("directional ring endpoint has no compatible partner")
+        _compatible_seconds, restriction = projection
         result = store.intersect_domains_and_propagate(restriction)
         _require_certified_reconstruction(
             result,
@@ -1447,9 +1451,10 @@ def _project_directional_ring_endpoint(
             return _WriterStereoMutation(state=None)
         return _WriterStereoMutation(state=stereo_state)
 
-    restriction = _directional_ring_endpoint_projection(prepared, event)
-    if restriction is None:
+    projection = _directional_ring_endpoint_projection(prepared, event)
+    if projection is None:
         return _WriterStereoMutation(state=None)
+    compatible_seconds, restriction = projection
 
     store = ResidualStore.from_value_snapshot(stereo_state.residual_snapshot)
     checkpoint = store.checkpoint()
@@ -1465,6 +1470,41 @@ def _project_directional_ring_endpoint(
     ):
         store.rollback(checkpoint)
         return _WriterStereoMutation(state=None)
+
+    successor_snapshot = store.value_snapshot()
+    transition_term = DirectionalRingEndpointProjectionTransitionTerm(
+        kind=WriterResidualTransitionKind.DIRECTIONAL_RING_ENDPOINT_PROJECTION,
+        source_snapshot=stereo_state.residual_snapshot,
+        source_snapshot_digest=_residual_snapshot_digest(
+            stereo_state.residual_snapshot
+        ),
+        bond=event.bond,
+        endpoint_atom=event.endpoint_atom,
+        partner_atom=event.partner_atom,
+        ring_label_value=event.label.value,
+        ring_label_text=event.label.text,
+        endpoint_text=event.endpoint_text,
+        bond_text=event.bond_text,
+        direction_mark=event.direction_mark,
+        carrier_model=models[0],
+        compatible_second_endpoint_choices=tuple(
+            (choice.bond_text, choice.direction_mark)
+            for choice in compatible_seconds
+        ),
+        domain_intersections=restriction,
+        affected_variables=result.stats.component_variables,
+        affected_factor_keys=result.stats.component_factor_keys,
+        propagation_result=result,
+        projected_variables=(),
+        discharged_factor_keys=(),
+        successor_snapshot=successor_snapshot,
+        successor_snapshot_digest=_residual_snapshot_digest(successor_snapshot),
+    )
+    evidence = writer_residual_propagation_work_evidence(
+        operation=operation,
+        result=result,
+        transition_term=transition_term,
+    )
 
     capabilities = {
         _WriterExecutionCapabilityKind.DIRECTIONAL_RING_PAIR_COMPATIBILITY,
@@ -1491,7 +1531,10 @@ def _project_directional_ring_endpoint(
 def _directional_ring_endpoint_projection(
     prepared: SouthStarPreparedMol,
     event: WriterRingEndpointEmitted,
-) -> tuple[tuple[VarId, tuple[object, ...]], ...] | None:
+) -> tuple[
+    tuple["WriterClosureEndpointChoice", ...],
+    tuple[tuple[VarId, tuple[object, ...]], ...],
+] | None:
     from .writer_graph_obligations import WriterClosureEndpointChoice
 
     models = _bounded_directional_ring_models(prepared, event.bond)
@@ -1511,7 +1554,8 @@ def _directional_ring_endpoint_projection(
         directional_site_carrier_var(model.site, event.bond): []
         for model in models
     }
-    for second in relation.compatible_seconds(first):
+    compatible_seconds = relation.compatible_seconds(first)
+    for second in compatible_seconds:
         restrictions = _directional_ring_pair_restrictions(
             prepared,
             bond=event.bond,
@@ -1534,7 +1578,7 @@ def _directional_ring_endpoint_projection(
     )
     if not projection or any(not values for _var, values in projection):
         return None
-    return projection
+    return compatible_seconds, projection
 
 
 def _restrict_directional_ring_pair(

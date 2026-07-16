@@ -1515,7 +1515,11 @@ def _project_directional_ring_endpoint(
         discharged_factor_keys=(),
         successor_snapshot=successor_snapshot,
         successor_snapshot_digest=_residual_snapshot_digest(successor_snapshot),
-    )
+    ) if _supports_directional_ring_endpoint_projection_transition_term(
+        prepared,
+        event,
+        models,
+    ) else None
     evidence = writer_residual_propagation_work_evidence(
         operation=operation,
         result=result,
@@ -1541,6 +1545,35 @@ def _project_directional_ring_endpoint(
         ),
         capabilities=frozenset(capabilities),
         residual_work_evidence=(evidence,),
+    )
+
+
+def _supports_directional_ring_endpoint_projection_transition_term(
+    prepared: SouthStarPreparedMol,
+    event: WriterRingEndpointEmitted,
+    models: tuple[DirectionalSiteCarrierModel, ...],
+) -> bool:
+    if len(models) != 1:
+        return False
+    graph_bond = prepared.graph_index.bond_by_id[event.bond]
+    if graph_bond.order is not BondOrder.SINGLE or _is_graph_bridge(
+        prepared,
+        event.bond,
+    ):
+        return False
+    template = _directional_template_by_site(prepared).get(models[0].site)
+    if template is None or template.status is not SiteStatus.SPECIFIED:
+        return False
+    if event.bond_text != "":
+        return False
+    choices = prepared.policy.bond_text_domain_unchecked(
+        event.bond,
+        slot_kind="ring_endpoint",
+    )
+    return bool(
+        len(choices) == 1
+        and choices[0].base_text == ""
+        and choices[0].permits_direction
     )
 
 
@@ -2258,8 +2291,6 @@ def _supports_acyclic_directional_carrier_transition_term(
         return False
     graph_bond = prepared.graph_index.bond_by_id[bond]
     if graph_bond.order is not BondOrder.SINGLE:
-        return False
-    if not _is_graph_bridge(prepared, bond):
         return False
     return True
 

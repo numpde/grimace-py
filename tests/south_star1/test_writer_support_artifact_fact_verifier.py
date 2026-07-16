@@ -6,6 +6,7 @@ from copy import deepcopy
 from dataclasses import replace
 from functools import lru_cache
 import os
+from types import SimpleNamespace
 import unittest
 
 from grimace._south_star1.errors import SouthStarError
@@ -593,6 +594,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             ("successor_open_endpoint", _forge_ring_successor_open_endpoint),
             ("bond_occurrence_added", _forge_ring_bond_occurrence_added),
             ("missing_term", _forge_ring_missing_term),
+            ("lifecycle_operation", _forge_ring_lifecycle_operation),
         )
         for name, mutate in cases:
             with self.subTest(name=name):
@@ -833,11 +835,19 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         )
 
         self.assertEqual(len(models), 2)
-        self.assertFalse(
+        self.assertTrue(
             writer_stereo_module
             ._supports_acyclic_directional_carrier_transition_term(
                 prepared,
                 BondId(1),
+                models,
+            )
+        )
+        self.assertFalse(
+            writer_stereo_module
+            ._supports_directional_ring_endpoint_projection_transition_term(
+                prepared,
+                SimpleNamespace(bond=BondId(1), bond_text=""),
                 models,
             )
         )
@@ -3593,36 +3603,38 @@ def _directional_ring_opening_artifact():
     options = _writer_options(rooted_at_atom=0)
     prepared = _prepare(facts)
     initial = _initial_snapshot(prepared, options)
-    batch = _checked_writer_frontier_branch_supports(
-        prepared,
-        initial.cursor,
-        include_counts=False,
-        include_frontier_certificate=False,
-        include_count_certificate=False,
-    )
+    frontier = [(initial.cursor, 0)]
+    seen = set()
     opening_sources = []
-    for support in batch.supports:
-        next_batch = _checked_writer_frontier_branch_supports(
+    while frontier:
+        cursor, depth = frontier.pop(0)
+        cursor_key = repr(cursor)
+        if cursor_key in seen:
+            continue
+        seen.add(cursor_key)
+        batch = _checked_writer_frontier_branch_supports(
             prepared,
-            support.successor_cursor,
+            cursor,
             include_counts=False,
             include_frontier_certificate=False,
             include_count_certificate=False,
         )
-        if any(
-            isinstance(event, WriterRingEndpointEmitted)
-            and event.bond == BondId(3)
-            for next_support in next_batch.supports
-            for event in next_support.events
-        ):
-            opening_sources.append(support)
-    if len(opening_sources) != 1:
-        raise AssertionError("missing unique cursor before BondId(3) ring opening")
+        for support in batch.supports:
+            if any(
+                isinstance(event, WriterRingEndpointEmitted)
+                and event.bond == BondId(3)
+                for event in support.events
+            ):
+                opening_sources.append((cursor, depth))
+            frontier.append((support.successor_cursor, depth + 1))
+    if not opening_sources:
+        raise AssertionError("missing cursor before BondId(3) ring opening")
+    source, source_depth = max(opening_sources, key=lambda item: item[1])
     snapshot = capture_writer_frontier_snapshot(
         prepared=prepared,
         runtime_options=options,
-        cursor=opening_sources[0].successor_cursor,
-        decoder_boundary=WriterDecoderBoundary(consumed_token_count=1),
+        cursor=source,
+        decoder_boundary=WriterDecoderBoundary(consumed_token_count=source_depth),
     )
     artifact = writer_support_artifact_envelope_for_snapshot(
         prepared=prepared,
@@ -3942,6 +3954,18 @@ def _forge_ring_missing_term(artifact) -> None:
     branch, manifest = _ring_projection_branch_and_manifest(artifact)
     manifest["transition_term"] = None
     manifest["transition_digest"] = None
+    _refresh_object_and_artifact_digest(artifact, branch)
+
+
+def _forge_ring_lifecycle_operation(artifact) -> None:
+    branch, manifest = _ring_projection_branch_and_manifest(artifact)
+    lifecycle = _linked_tetra_lifecycle_manifest(
+        branch=branch,
+        manifest=manifest,
+        lifecycle_kind="raw",
+        certificate_kind="",
+    )
+    lifecycle["residual_work_operations"] = ["wrong"]
     _refresh_object_and_artifact_digest(artifact, branch)
 
 

@@ -1788,6 +1788,21 @@ class WriterStereoResidualTest(unittest.TestCase):
         self.assertTrue(live.accepted, live.reason)
         self.assertTrue(fact_bound.accepted, fact_bound.reason)
         self.assertFalse(fact_bound.offline_replay_complete)
+        self.assertEqual(
+            fact_bound.offline_unchecked_obligation_families,
+            ("directional_non_single_ring_transition_replay",),
+        )
+        opening_manifests = [
+            manifest
+            for obj in artifact["objects"]
+            if obj["kind"] == "branch_support"
+            for manifest in obj["payload"]["obligation_manifests"]["residual_work"]
+            if manifest["operation"] == "directional ring endpoint projection"
+        ]
+        self.assertTrue(opening_manifests)
+        self.assertTrue(
+            any(manifest["transition_term"] is None for manifest in opening_manifests)
+        )
 
     def test_coupled_lifecycle_rejects_tampered_marker_side(self) -> None:
         prepared = _prepare_directional_non_single_ring_carrier_facts()

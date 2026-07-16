@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from enum import Enum
 
 from .errors import SouthStarError
 from .errors import SouthStarErrorKind
@@ -87,6 +88,13 @@ _OFFLINE_UNCHECKED_OBJECT_KINDS = (
 )
 
 _PATH_PREFIX = "grimace._south_star1."
+
+
+class OfflineResidualReplayDisposition(Enum):
+    SEMANTICALLY_REPLAYED = "semantically_replayed"
+    DECLARED_OUT_OF_SCOPE = "declared_out_of_scope"
+
+
 _ALLOWED_TETRA_TRANSITION_ENUMS = {
     _PATH_PREFIX + "facts.SiteStatus": SiteStatus,
     _PATH_PREFIX + "facts.TetraValue": TetraValue,
@@ -1032,6 +1040,8 @@ def classify_residual_stereo_obligations_offline(
             "terminal_stereo_lifecycle": [],
             "terminal_graph_obligation_work": [],
         }
+        replayed_residual_digests: set[str] = set()
+        replayed_lifecycle_digests: set[str] = set()
         for branch_ref in _branch_support_refs_for_root(root=root, objects=objects):
             branch = _require_object(objects, branch_ref)
             _check_branch_obligation_ring_summaries(branch)
@@ -1043,10 +1053,16 @@ def classify_residual_stereo_obligations_offline(
                             branch=branch,
                             items=items,
                             objects=objects,
+                            replayed_residual_digests=replayed_residual_digests,
                         )
                     )
                 else:
                     manifests_by_family[family].extend(items)
+            _classify_branch_replayed_lifecycle_manifests(
+                branch=branch,
+                replayed_residual_digests=replayed_residual_digests,
+                replayed_lifecycle_digests=replayed_lifecycle_digests,
+            )
         for support_ref in root["payload"]["support_string_refs"]:
             support = _require_object(objects, support_ref)
             for terminal_ref in support["payload"]["terminal_support_refs"]:
@@ -1054,14 +1070,22 @@ def classify_residual_stereo_obligations_offline(
                 for family, items in terminal["payload"]["obligation_manifests"].items():
                     manifests_by_family[family].extend(items)
         unchecked = tuple(dict.fromkeys(
-            _unchecked_obligation_family_name(family, items)
+            _unchecked_obligation_family_name(family, items, facts=facts)
             for family, items in sorted(manifests_by_family.items())
-            if items and not _obligation_manifests_checked(items)
+            if items and not _obligation_manifests_checked(
+                items,
+                replayed_residual_digests=replayed_residual_digests,
+                replayed_lifecycle_digests=replayed_lifecycle_digests,
+            )
         ))
         checked = tuple(
             family
             for family, items in sorted(manifests_by_family.items())
-            if items and _obligation_manifests_checked(items)
+            if items and _obligation_manifests_checked(
+                items,
+                replayed_residual_digests=replayed_residual_digests,
+                replayed_lifecycle_digests=replayed_lifecycle_digests,
+            )
         )
         checked_empty = tuple(
             f"{family}_checked_empty"
@@ -1109,62 +1133,45 @@ def classify_residual_stereo_obligations_offline(
         )
 
 
-def _obligation_manifests_checked(items: list[object]) -> bool:
-    return all(_obligation_manifest_checked(item) for item in items)
+def _obligation_manifests_checked(
+    items: list[object],
+    *,
+    replayed_residual_digests: set[str],
+    replayed_lifecycle_digests: set[str],
+) -> bool:
+    return all(
+        _obligation_manifest_checked(
+            item,
+            replayed_residual_digests=replayed_residual_digests,
+            replayed_lifecycle_digests=replayed_lifecycle_digests,
+        )
+        for item in items
+    )
 
 
-def _obligation_manifest_checked(item: Mapping[str, object]) -> bool:
+def _obligation_manifest_checked(
+    item: Mapping[str, object],
+    *,
+    replayed_residual_digests: set[str],
+    replayed_lifecycle_digests: set[str],
+) -> bool:
+    family = item["family"]
+    if family == "residual_work":
+        return item["evidence_digest"] in replayed_residual_digests
+    if family == "stereo_lifecycle":
+        return bool(
+            item["is_noop"]
+            or item["is_empty"]
+            or item["is_discharged"]
+            or item["terminal_clean"]
+            or item["evidence_digest"] in replayed_lifecycle_digests
+        )
     return bool(
         item["is_noop"]
         or item["is_empty"]
         or item["is_discharged"]
         or item["terminal_clean"]
         or _ring_obligation_manifest_checked(item)
-        or _validated_tetra_residual_manifest_checked(item)
-        or _validated_transition_lifecycle_manifest_checked(item)
-    )
-
-
-def _validated_transition_lifecycle_manifest_checked(
-    item: Mapping[str, object],
-) -> bool:
-    operations = item.get("residual_work_operations")
-    return bool(
-        item.get("family") == "stereo_lifecycle"
-        and isinstance(operations, list)
-        and operations
-        and all(
-            operation
-            in {
-                "tetrahedral atom-token restriction",
-                "tetrahedral local-order factor closure",
-                "directional carrier-mark restriction",
-                "directional ring endpoint projection",
-                "directional ring pair restriction",
-            }
-            for operation in operations
-        )
-    )
-
-
-def _validated_tetra_residual_manifest_checked(item: Mapping[str, object]) -> bool:
-    if item["family"] != "residual_work":
-        return False
-    if item["operation"] == "directional carrier-mark restriction":
-        # Facts-bound classification above has already required a term for
-        # every supported carrier emission. A missing term here is therefore
-        # an explicitly excluded non-bridge carrier surface, not unchecked
-        # replay work for the scoped artifact.
-        return True
-    return (
-        item["operation"]
-        in {
-            "tetrahedral atom-token restriction",
-            "tetrahedral local-order factor closure",
-            "directional ring endpoint projection",
-            "directional ring pair restriction",
-        }
-        and item["transition_term"] is not None
     )
 
 
@@ -1174,16 +1181,40 @@ def _classify_branch_residual_work_manifests(
     branch: Mapping[str, object],
     items: list[object],
     objects: Mapping[str, Mapping[str, object]],
+    replayed_residual_digests: set[str],
 ) -> tuple[Mapping[str, object], ...]:
     _check_branch_residual_lifecycle_links(branch=branch, residual_items=items)
     for item in items:
-        _validate_tetra_residual_manifest_if_known(
+        disposition = _validate_tetra_residual_manifest_if_known(
             facts=facts,
             branch=branch,
             item=item,
             objects=objects,
         )
+        if disposition is OfflineResidualReplayDisposition.SEMANTICALLY_REPLAYED:
+            replayed_residual_digests.add(item["evidence_digest"])
     return tuple(items)
+
+
+def _classify_branch_replayed_lifecycle_manifests(
+    *,
+    branch: Mapping[str, object],
+    replayed_residual_digests: set[str],
+    replayed_lifecycle_digests: set[str],
+) -> None:
+    residual_items = branch["payload"]["obligation_manifests"]["residual_work"]
+    residual_by_digest = {item["evidence_digest"]: item for item in residual_items}
+    for lifecycle in branch["payload"]["obligation_manifests"]["stereo_lifecycle"]:
+        linked = lifecycle["linked_residual_work_digests"]
+        if not linked or any(digest not in replayed_residual_digests for digest in linked):
+            continue
+        linked_items = [residual_by_digest.get(digest) for digest in linked]
+        if any(item is None for item in linked_items):
+            _offline_violation("residual_lifecycle_replayed_digest_missing")
+        expected_operations = [item["operation"] for item in linked_items]
+        if lifecycle["residual_work_operations"] != expected_operations:
+            _offline_violation("residual_lifecycle_replayed_operation_mismatch")
+        replayed_lifecycle_digests.add(lifecycle["evidence_digest"])
 
 
 def _check_branch_residual_lifecycle_links(
@@ -1243,7 +1274,7 @@ def _validate_tetra_residual_manifest_if_known(
     branch: Mapping[str, object],
     item: Mapping[str, object],
     objects: Mapping[str, Mapping[str, object]],
-) -> None:
+) -> OfflineResidualReplayDisposition:
     operation = item["operation"]
     if operation == "tetrahedral atom-token restriction":
         _check_tetra_residual_manifest_core(
@@ -1264,7 +1295,7 @@ def _validate_tetra_residual_manifest_if_known(
             facts=facts,
             objects=objects,
         )
-        return
+        return OfflineResidualReplayDisposition.SEMANTICALLY_REPLAYED
     if operation == "directional ring pair restriction":
         if item["transition_term"] is None:
             if _directional_ring_pair_transition_term_required_offline(
@@ -1272,7 +1303,7 @@ def _validate_tetra_residual_manifest_if_known(
                 branch=branch,
             ):
                 _offline_violation("directional_ring_pair_transition_missing")
-            return
+            return OfflineResidualReplayDisposition.DECLARED_OUT_OF_SCOPE
         _check_directional_ring_pair_manifest_core(branch=branch, item=item)
         _replay_directional_ring_pair_transition(
             branch=branch,
@@ -1280,7 +1311,7 @@ def _validate_tetra_residual_manifest_if_known(
             facts=facts,
             objects=objects,
         )
-        return
+        return OfflineResidualReplayDisposition.SEMANTICALLY_REPLAYED
     if operation == "tetrahedral local-order factor closure":
         _check_tetra_residual_manifest_core(
             branch=branch,
@@ -1302,7 +1333,7 @@ def _validate_tetra_residual_manifest_if_known(
             facts=facts,
             objects=objects,
         )
-        return
+        return OfflineResidualReplayDisposition.SEMANTICALLY_REPLAYED
     if operation == "directional carrier-mark restriction":
         expected_lifecycle_capabilities = (
             "directional_carrier_restriction",
@@ -1336,14 +1367,14 @@ def _validate_tetra_residual_manifest_if_known(
                 branch=branch,
             ):
                 _offline_violation("tetra_residual_transition_missing")
-            return
+            return OfflineResidualReplayDisposition.DECLARED_OUT_OF_SCOPE
         _replay_directional_carrier_transition(
             branch=branch,
             item=item,
             facts=facts,
             objects=objects,
         )
-        return
+        return OfflineResidualReplayDisposition.SEMANTICALLY_REPLAYED
     if operation == "directional ring endpoint projection":
         _check_directional_ring_projection_manifest_core(branch=branch, item=item)
         term_required = _directional_ring_endpoint_transition_term_required_offline(
@@ -1351,7 +1382,7 @@ def _validate_tetra_residual_manifest_if_known(
             branch=branch,
         )
         if not term_required:
-            return
+            return OfflineResidualReplayDisposition.DECLARED_OUT_OF_SCOPE
         if item["transition_term"] is None:
             _offline_violation("directional_ring_projection_transition_missing")
         _replay_directional_ring_endpoint_projection_transition(
@@ -1360,7 +1391,8 @@ def _validate_tetra_residual_manifest_if_known(
             facts=facts,
             objects=objects,
         )
-        return
+        return OfflineResidualReplayDisposition.SEMANTICALLY_REPLAYED
+    return OfflineResidualReplayDisposition.DECLARED_OUT_OF_SCOPE
 
 
 def _directional_ring_endpoint_transition_term_required_offline(
@@ -1731,8 +1763,6 @@ def _check_directional_ring_projection_manifest_core(
         _offline_violation("directional_ring_projection_source_digest_mismatch")
     if item["successor_digest"] != payload["successor_state_digest"]:
         _offline_violation("directional_ring_projection_successor_digest_mismatch")
-    if item["transition_term"] is None:
-        _offline_violation("directional_ring_projection_transition_missing")
     raw = _linked_raw_tetra_lifecycle(branch=branch, item=item)
     if raw["lifecycle_event_kind"] != "ring_endpoint_emitted":
         _offline_violation("directional_ring_projection_lifecycle_event_mismatch")
@@ -1743,6 +1773,8 @@ def _check_directional_ring_projection_manifest_core(
     if raw["lifecycle_capabilities"] != expected_capabilities:
         _offline_violation("directional_ring_projection_lifecycle_capabilities_mismatch")
     if raw["residual_work_digests"] != [item["evidence_digest"]]:
+        _offline_violation("directional_ring_projection_lifecycle_work_mismatch")
+    if raw["residual_work_operations"] != [item["operation"]]:
         _offline_violation("directional_ring_projection_lifecycle_work_mismatch")
 
 
@@ -1985,8 +2017,6 @@ def _expected_directional_ring_pair_occurrence(
             term.second_endpoint_direction_mark,
         )
     return (term.first_atom, term.second_atom, DirectionMark.ABSENT)
-    if raw["residual_work_operations"] != [item["operation"]]:
-        _offline_violation("directional_ring_projection_lifecycle_work_mismatch")
 
 
 def _replay_directional_ring_endpoint_projection_transition(
@@ -2581,8 +2611,6 @@ def _directional_carrier_transition_term_required_offline(
     graph_bond = _facts_bond(facts=facts, bond=bond)
     if graph_bond.order is not BondOrder.SINGLE:
         return False
-    if not _facts_bond_is_bridge(facts=facts, bond=bond):
-        return False
     sites = _expected_directional_sites_for_facts_bond(facts=facts, bond=bond)
     if not 1 <= len(sites) <= 2:
         return False
@@ -2606,8 +2634,6 @@ def _directional_carrier_transition_site_count_offline(
     bond = event["bond"]
     graph_bond = _facts_bond(facts=facts, bond=bond)
     if graph_bond.order is not BondOrder.SINGLE:
-        return 0
-    if not _facts_bond_is_bridge(facts=facts, bond=bond):
         return 0
     sites = _expected_directional_sites_for_facts_bond(facts=facts, bond=bond)
     if not 1 <= len(sites) <= 2:
@@ -3423,7 +3449,21 @@ def _check_tetra_local_order_residual(
 def _unchecked_obligation_family_name(
     family: str,
     items: list[object],
+    *,
+    facts: MoleculeFacts,
 ) -> str:
+    directional_bonds = [
+        bond
+        for bond in facts.bonds
+        if _expected_directional_sites_for_facts_bond(facts=facts, bond=bond.id)
+    ]
+    if any(bond.order is not BondOrder.SINGLE for bond in directional_bonds):
+        return "directional_non_single_ring_transition_replay"
+    if any(
+        len(_expected_directional_sites_for_facts_bond(facts=facts, bond=bond.id)) > 1
+        for bond in directional_bonds
+    ):
+        return "shared_directional_ring_transition_replay"
     if family == "residual_work" and all(
         item["operation"]
         in {
@@ -3438,10 +3478,9 @@ def _unchecked_obligation_family_name(
         for item in items
     ):
         return "directional_ring_pair_transition_replay"
-    unchecked = [item for item in items if not _obligation_manifest_checked(item)]
-    if family == "stereo_lifecycle" and unchecked and all(
+    if family == "stereo_lifecycle" and any(
         item["residual_work_operations"] == ["directional ring pair restriction"]
-        for item in unchecked
+        for item in items
     ):
         return "directional_ring_pair_transition_replay"
     return family

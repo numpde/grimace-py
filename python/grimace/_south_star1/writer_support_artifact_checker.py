@@ -965,6 +965,8 @@ def _validate_obligation_manifests(
                 if not isinstance(item["coupling_term"], Mapping):
                     _artifact_violation("directional_ring_coupling_term_missing")
                 term = item["coupling_term"]
+                if set(term) != {"__dataclass__", "fields"}:
+                    _artifact_violation("directional_ring_coupling_term_shape_mismatch")
                 if term.get("__dataclass__") != (
                     "grimace._south_star1.writer_directional_ring_closure_lifecycle."
                     "DirectionalRingClosureCouplingTerm"
@@ -985,6 +987,13 @@ def _validate_obligation_manifests(
                     or {field[0] for field in fields if isinstance(field, list) and len(field) == 2}
                     != expected_fields
                     or len(fields) != len(expected_fields)
+                ):
+                    _artifact_violation("directional_ring_coupling_term_shape_mismatch")
+                field_values = dict(fields)
+                if (
+                    field_values["event_kind"] not in ("ring_endpoint_emitted", "ring_endpoint_paired")
+                    or field_values["bond_order"] != "double"
+                    or field_values["marker_side"] not in ("opening", "closing")
                 ):
                     _artifact_violation("directional_ring_coupling_term_shape_mismatch")
                 expected = _digest_terms_bounded(

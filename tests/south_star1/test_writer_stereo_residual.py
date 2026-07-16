@@ -1810,6 +1810,19 @@ class WriterStereoResidualTest(unittest.TestCase):
         self.assertTrue(
             all(manifest["transition_term"] is not None for manifest in opening_manifests)
         )
+        coupling_manifests = [
+            manifest
+            for obj in artifact["objects"]
+            if obj["kind"] == "branch_support"
+            for manifest in obj["payload"]["obligation_manifests"]["directional_ring_closure_lifecycle"]
+        ]
+        self.assertTrue(coupling_manifests)
+        self.assertTrue(
+            all(
+                set(item["coupling_term"]) == {"__dataclass__", "fields"}
+                for item in coupling_manifests
+            )
+        )
 
     def test_coupled_lifecycle_rejects_tampered_marker_side(self) -> None:
         prepared = _prepare_directional_non_single_ring_carrier_facts()

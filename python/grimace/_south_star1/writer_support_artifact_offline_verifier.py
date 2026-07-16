@@ -1339,14 +1339,26 @@ def _classify_branch_directional_ring_closure_lifecycles(
         event_kind = _term_field_value(term, "event_kind")
         bond = _term_field_value(term, "bond")
         label = event["label"]
+        expected_opening_atom = (
+            event["endpoint_atom"]
+            if event_kind == "ring_endpoint_emitted"
+            else event["partner_atom"]
+        )
+        expected_closing_atom = (
+            event["partner_atom"]
+            if event_kind == "ring_endpoint_emitted"
+            else event["endpoint_atom"]
+        )
         if (
             event_kind != event["kind"]
             or bond != event["bond"]
             or _term_field_value(term, "bond_order") != "double"
             or _term_field_value(term, "label_value") != _term_field_value(label, "value")
             or _term_field_value(term, "label_text") != _term_field_value(label, "text")
+            or _term_field_value(term, "opening_atom") != expected_opening_atom
+            or _term_field_value(term, "closing_atom") != expected_closing_atom
         ):
-            _offline_violation("directional_ring_coupling_event_mismatch")
+            _offline_violation("directional_ring_coupling_event_identity_mismatch")
         graph_bond = _facts_bond(facts=facts, bond=bond)
         if graph_bond.order is not BondOrder.DOUBLE or _facts_bond_is_bridge(facts=facts, bond=bond):
             _offline_violation("directional_ring_coupling_event_mismatch")
@@ -1359,6 +1371,7 @@ def _classify_branch_directional_ring_closure_lifecycles(
             closure for closure in closure_manifests
             if closure["bond"] == bond
             and closure["event_kind"] == closure_event_kind
+            and closure["label"] == label
             and closure["opening_atom"] == _term_field_value(term, "opening_atom")
             and closure["closing_atom"] == _term_field_value(term, "closing_atom")
         ]
@@ -1371,6 +1384,7 @@ def _classify_branch_directional_ring_closure_lifecycles(
             _term_field_value(term, "opening_marker") != closure["opening_marker"]
             or _term_field_value(term, "closing_marker") != closure["closing_marker"]
             or _term_field_value(term, "marker_side") != closure["marker_side"]
+            or closure["bond_order"] != "double"
             or sorted((closure["opening_marker"], closure["closing_marker"])) != ["", "="]
         ):
             _offline_violation("directional_ring_coupling_marker_mismatch")
@@ -1381,8 +1395,16 @@ def _classify_branch_directional_ring_closure_lifecycles(
             _offline_violation("directional_ring_coupling_lifecycle_branch_mismatch")
         if stereo_digest not in replayed_lifecycle_digests:
             continue
+        expected_operation = (
+            "directional ring endpoint projection"
+            if event_kind == "ring_endpoint_emitted"
+            else "directional ring pair restriction"
+        )
         if (
-            lifecycle["lifecycle_event_kind"] != event_kind
+            lifecycle["operation"] != "WriterStereoLifecycleEvidence"
+            or lifecycle["lifecycle_event_kind"] != event_kind
+            or lifecycle["source_digest"] != payload["source_state_digest"]
+            or lifecycle["successor_digest"] != payload["successor_state_digest"]
             or lifecycle["source_residual_snapshot_digest"] != _term_field_value(term, "source_residual_snapshot_digest")
             or lifecycle["successor_residual_snapshot_digest"] != _term_field_value(term, "successor_residual_snapshot_digest")
         ):
@@ -1393,16 +1415,51 @@ def _classify_branch_directional_ring_closure_lifecycles(
             _offline_violation("directional_ring_coupling_residual_branch_mismatch")
         if any(digest not in replayed_residual_digests for digest in residual_digests):
             continue
+        if (
+            len(residual_digests) != 1
+            or residual_by_digest[residual_digests[0]]["operation"] != expected_operation
+            or lifecycle["residual_work_operations"] != [expected_operation]
+        ):
+            _offline_violation("directional_ring_coupling_residual_branch_mismatch")
         closed_digest = _term_field_value(term, "closed_closure_record_digest")
+        if closure["closed_closure_record_digest"] != closed_digest:
+            _offline_violation("directional_ring_coupling_closed_record_mismatch")
         if event_kind == "ring_endpoint_emitted":
             if closed_digest is not None:
                 _offline_violation("directional_ring_coupling_closed_record_mismatch")
+            source_open = [
+                record for record in _term_field_value(source_ring, "open_endpoints")
+                if int(_term_field_value(record, "bond")) == int(bond)
+            ]
+            successor_open = [
+                record for record in _term_field_value(successor_ring, "open_endpoints")
+                if int(_term_field_value(record, "bond")) == int(bond)
+            ]
+            if source_open or len(successor_open) != 1:
+                _offline_violation("directional_ring_coupling_closed_record_mismatch")
+            opened = successor_open[0]
+            if (
+                _term_field_value(opened, "first_atom") != expected_opening_atom
+                or _term_field_value(opened, "second_atom") != expected_closing_atom
+                or _term_field_value(opened, "label") != label
+                or _term_field_value(opened, "first_endpoint_bond_text") != closure["opening_marker"]
+            ):
+                _offline_violation("directional_ring_coupling_event_identity_mismatch")
         else:
             closed = [
                 record for record in _term_field_value(successor_ring, "closed_closures")
                 if int(_term_field_value(record, "bond")) == int(bond)
             ]
             if len(closed) != 1 or closed_digest != _closed_term_digest(closed[0]):
+                _offline_violation("directional_ring_coupling_closed_record_mismatch")
+            record = closed[0]
+            if (
+                _term_field_value(record, "first_atom") != expected_opening_atom
+                or _term_field_value(record, "second_atom") != expected_closing_atom
+                or _term_field_value(record, "label") != label
+                or _term_field_value(record, "first_endpoint_bond_text") != closure["opening_marker"]
+                or _term_field_value(record, "second_endpoint_bond_text") != closure["closing_marker"]
+            ):
                 _offline_violation("directional_ring_coupling_closed_record_mismatch")
         replayed_directional_ring_closure_digests.add(item["evidence_digest"])
 

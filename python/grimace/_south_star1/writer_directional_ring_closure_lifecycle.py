@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
+
+from .ids import AtomId
+from .ids import BondId
 
 from .errors import SouthStarError
 from .errors import SouthStarErrorKind
@@ -27,6 +31,30 @@ class WriterDirectionalRingClosureBondTextLifecycleEvidence:
     source_stereo_residual_snapshot: object
     successor_stereo_residual_snapshot: object
     closed_closure_record: object | None
+
+
+@dataclass(frozen=True, slots=True)
+class DirectionalRingClosureCouplingTerm:
+    event_kind: Literal["ring_endpoint_emitted", "ring_endpoint_paired"]
+    bond: BondId
+    bond_order: Literal["double"]
+    label_value: int
+    label_text: str
+    opening_atom: AtomId
+    closing_atom: AtomId
+    opening_marker: str
+    closing_marker: str
+    marker_side: Literal["opening", "closing"]
+    source_state_digest: str
+    successor_state_digest: str
+    source_ring_state_digest: str
+    successor_ring_state_digest: str
+    source_residual_snapshot_digest: str
+    successor_residual_snapshot_digest: str
+    closure_manifest_digest: str
+    stereo_lifecycle_digest: str
+    residual_work_digests: tuple[str, ...]
+    closed_closure_record_digest: str | None
 
 
 def directional_ring_closure_bond_text_lifecycle_evidence(
@@ -149,6 +177,7 @@ def _coupled_violation(kind: str) -> None:
 
 
 __all__ = (
+    "DirectionalRingClosureCouplingTerm",
     "WriterDirectionalRingClosureBondTextLifecycleEvidence",
     "directional_ring_closure_bond_text_lifecycle_evidence",
     "validate_writer_directional_ring_closure_bond_text_lifecycle_transition",

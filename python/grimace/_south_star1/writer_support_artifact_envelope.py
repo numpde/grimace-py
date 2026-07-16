@@ -26,6 +26,7 @@ from .writer_envelope_work import check_writer_envelope_work
 from .writer_envelope_work import default_writer_envelope_work_budget
 from .writer_envelope_work import writer_envelope_work_reason
 from .writer_frontier import _checked_writer_frontier_product
+from .writer_directional_ring_closure_lifecycle import DirectionalRingClosureCouplingTerm
 from .writer_frontier_count_envelope import writer_frontier_count_envelope_for_prefix_read
 from .writer_frontier_count_envelope import writer_frontier_count_envelope_for_snapshot
 from .writer_snapshot_envelope import _source_snapshot_from_envelope
@@ -479,6 +480,7 @@ def _add_branch_support(
     envelope = _branch_certificate_identity_envelope(branch, budget=budget)
     local_evidence = _branch_local_evidence_envelope(
         branch,
+        branch_identity=envelope,
         facts=facts,
         budget=budget,
     )
@@ -524,6 +526,7 @@ def _add_branch_support(
 def _branch_local_evidence_envelope(
     branch,
     *,
+    branch_identity,
     facts,
     budget: WriterEnvelopeWorkBudget,
 ) -> dict[str, object]:
@@ -545,7 +548,12 @@ def _branch_local_evidence_envelope(
             ],
             "directional_coupled_digests": [
                 _identity_digest(
-                    item,
+                    _directional_ring_coupling_term(
+                        item,
+                        source_state_digest=branch_identity["source_state_digest"],
+                        successor_state_digest=branch_identity["successor_state_digest"],
+                        budget=budget,
+                    ),
                     budget=budget,
                     operation="support_artifact.local_directional_evidence.digest",
                 )
@@ -841,6 +849,30 @@ def _obligation_family_manifests(
                     ),
                 )
             ),
+            "coupling_term": (
+                None
+                if family != "directional_ring_closure_lifecycle"
+                else _term(_directional_ring_coupling_term(
+                    record,
+                    source_state_digest=source_digest,
+                    successor_state_digest=successor_digest,
+                    budget=budget,
+                ))
+            ),
+            "coupling_term_digest": (
+                None
+                if family != "directional_ring_closure_lifecycle"
+                else _identity_digest(
+                    _directional_ring_coupling_term(
+                        record,
+                        source_state_digest=source_digest,
+                        successor_state_digest=successor_digest,
+                        budget=budget,
+                    ),
+                    budget=budget,
+                    operation="support_artifact.directional_ring_coupling.digest",
+                )
+            ),
             "linked_lifecycle_digests": (
                 []
                 if linked_lifecycle_digests is None
@@ -879,6 +911,35 @@ def _obligation_family_manifests(
         }
         for record in records
     ]
+
+
+def _directional_ring_coupling_term(record, *, source_state_digest, successor_state_digest, budget):
+    closure = record.closure_bond_text_lifecycle
+    stereo = record.directional_stereo_lifecycle
+    event = record.event
+    closure_manifest = _closure_bond_text_evidence_manifest(closure, budget=budget)
+    return DirectionalRingClosureCouplingTerm(
+        event_kind=_writer_event_kind(event, budget=budget),
+        bond=closure.bond,
+        bond_order=closure.bond_order,
+        label_value=closure.label.value,
+        label_text=closure.label.text,
+        opening_atom=closure.opening_atom,
+        closing_atom=closure.closing_atom,
+        opening_marker=closure.opening_marker,
+        closing_marker=closure.closing_marker,
+        marker_side=closure.marker_side,
+        source_state_digest=source_state_digest,
+        successor_state_digest=successor_state_digest,
+        source_ring_state_digest=_identity_digest(record.source_ring_state),
+        successor_ring_state_digest=_identity_digest(record.successor_ring_state),
+        source_residual_snapshot_digest=_identity_digest(record.source_stereo_residual_snapshot),
+        successor_residual_snapshot_digest=_identity_digest(record.successor_stereo_residual_snapshot),
+        closure_manifest_digest=_identity_digest(closure_manifest),
+        stereo_lifecycle_digest=_identity_digest(stereo),
+        residual_work_digests=tuple(_identity_digest(item) for item in stereo.residual_work_evidence),
+        closed_closure_record_digest=(None if record.closed_closure_record is None else _identity_digest(record.closed_closure_record)),
+    )
 
 
 def _lifecycle_provenance_manifest(

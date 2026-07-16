@@ -18,7 +18,7 @@ from .writer_envelope_work import writer_envelope_work_reason
 from .writer_count_dag_envelope import validate_writer_count_certificate_dag_envelope
 
 SCHEMA_NAME = "writer_support_artifact"
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 _TOP_LEVEL_FIELDS = frozenset((
     "schema_name",
     "schema_version",
@@ -471,6 +471,7 @@ def _validate_object_payload_shape(
                     "directional_ring_closure_lifecycle_count"
                 ),
             },
+            budget=budget,
         )
     elif kind == "terminal_projection":
         _require_exact_payload_fields(
@@ -902,7 +903,10 @@ def _validate_obligation_manifests(
     manifests: object,
     summary: Mapping[str, object],
     family_to_count_field: Mapping[str, str],
+    *,
+    budget: WriterEnvelopeWorkBudget | None = None,
 ) -> None:
+    budget = default_writer_envelope_work_budget(budget)
     _require_mapping(manifests, "obligation_manifests_not_mapping")
     _require_exact_payload_fields(manifests, tuple(family_to_count_field))
     for family, count_field in family_to_count_field.items():
@@ -928,6 +932,8 @@ def _validate_obligation_manifests(
                     "evidence_digest",
                     "transition_term",
                     "transition_digest",
+                    "coupling_term",
+                    "coupling_term_digest",
                     "linked_lifecycle_digests",
                     "linked_residual_work_digests",
                     "lifecycle_event_kind",
@@ -955,6 +961,18 @@ def _validate_obligation_manifests(
                 if not isinstance(item[field], str):
                     _artifact_violation("obligation_manifest_string_field_mismatch")
             _validate_residual_transition_manifest(item)
+            if family == "directional_ring_closure_lifecycle":
+                if not isinstance(item["coupling_term"], Mapping):
+                    _artifact_violation("directional_ring_coupling_term_missing")
+                expected = _digest_terms_bounded(
+                    item["coupling_term"],
+                    budget=budget,
+                    operation="support_artifact.directional_ring_coupling.check",
+                )
+                if item["coupling_term_digest"] != expected:
+                    _artifact_violation("directional_ring_coupling_term_digest_mismatch")
+            elif item["coupling_term"] is not None or item["coupling_term_digest"] is not None:
+                _artifact_violation("unexpected_directional_ring_coupling_term")
             for field in ("is_noop", "is_empty", "is_discharged", "terminal_clean"):
                 if not isinstance(item[field], bool):
                     _artifact_violation("obligation_manifest_bool_field_mismatch")

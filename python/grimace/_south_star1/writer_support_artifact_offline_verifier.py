@@ -1071,6 +1071,7 @@ def classify_residual_stereo_obligations_offline(
             )
             _classify_branch_directional_ring_closure_lifecycles(
                 branch=branch,
+                replayed_residual_digests=replayed_residual_digests,
                 replayed_lifecycle_digests=replayed_lifecycle_digests,
                 replayed_directional_ring_closure_digests=(
                     replayed_directional_ring_closure_digests
@@ -1272,6 +1273,7 @@ def _classify_branch_replayed_lifecycle_manifests(
 def _classify_branch_directional_ring_closure_lifecycles(
     *,
     branch: Mapping[str, object],
+    replayed_residual_digests: set[str],
     replayed_lifecycle_digests: set[str],
     replayed_directional_ring_closure_digests: set[str],
 ) -> None:
@@ -1282,16 +1284,24 @@ def _classify_branch_directional_ring_closure_lifecycles(
     local = payload["local_evidence"]
     if local["kind"] != "directional_ring_closure_bond_text":
         _offline_violation("directional_non_single_ring_coupled_digest_mismatch")
-    expected = [item["evidence_digest"] for item in items]
+    expected = [item["coupling_term_digest"] for item in items]
     if local["manifest"]["directional_coupled_digests"] != expected:
         _offline_violation("directional_non_single_ring_coupled_digest_mismatch")
-    linked_lifecycles = payload["obligation_manifests"]["stereo_lifecycle"]
-    if not any(
-        item["evidence_digest"] in replayed_lifecycle_digests
-        for item in linked_lifecycles
-    ):
-        return
-    replayed_directional_ring_closure_digests.update(expected)
+    for item in items:
+        term = item["coupling_term"]
+        if item["coupling_term_digest"] != _closed_term_digest(term):
+            _offline_violation("directional_non_single_ring_coupled_digest_mismatch")
+        if _term_field_value(term, "source_state_digest") != payload["source_state_digest"]:
+            _offline_violation("directional_non_single_ring_source_state_mismatch")
+        if _term_field_value(term, "successor_state_digest") != payload["successor_state_digest"]:
+            _offline_violation("directional_non_single_ring_successor_state_mismatch")
+        stereo_digest = _term_field_value(term, "stereo_lifecycle_digest")
+        residual_digests = tuple(_term_field_value(term, "residual_work_digests"))
+        if stereo_digest not in replayed_lifecycle_digests:
+            continue
+        if any(digest not in replayed_residual_digests for digest in residual_digests):
+            continue
+        replayed_directional_ring_closure_digests.add(item["evidence_digest"])
 
 
 def _check_branch_residual_lifecycle_links(

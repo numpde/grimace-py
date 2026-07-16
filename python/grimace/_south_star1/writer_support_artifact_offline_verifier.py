@@ -1071,6 +1071,8 @@ def classify_residual_stereo_obligations_offline(
             )
             _classify_branch_directional_ring_closure_lifecycles(
                 branch=branch,
+                facts=facts,
+                objects=objects,
                 replayed_residual_digests=replayed_residual_digests,
                 replayed_lifecycle_digests=replayed_lifecycle_digests,
                 replayed_directional_ring_closure_digests=(
@@ -1273,6 +1275,8 @@ def _classify_branch_replayed_lifecycle_manifests(
 def _classify_branch_directional_ring_closure_lifecycles(
     *,
     branch: Mapping[str, object],
+    facts: MoleculeFacts,
+    objects: Mapping[str, Mapping[str, object]],
     replayed_residual_digests: set[str],
     replayed_lifecycle_digests: set[str],
     replayed_directional_ring_closure_digests: set[str],
@@ -1285,22 +1289,121 @@ def _classify_branch_directional_ring_closure_lifecycles(
     if local["kind"] != "directional_ring_closure_bond_text":
         _offline_violation("directional_non_single_ring_coupled_digest_mismatch")
     expected = [item["coupling_term_digest"] for item in items]
+    if len(expected) != len(set(expected)):
+        _offline_violation("directional_ring_coupling_duplicate")
     if local["manifest"]["directional_coupled_digests"] != expected:
         _offline_violation("directional_non_single_ring_coupled_digest_mismatch")
+    residual_by_digest = {
+        value["evidence_digest"]: value
+        for value in payload["obligation_manifests"]["residual_work"]
+    }
+    lifecycle_by_digest = {
+        value["evidence_digest"]: value
+        for value in payload["obligation_manifests"]["stereo_lifecycle"]
+    }
+    source_state, successor_state = _branch_writer_state_terms(
+        branch=branch,
+        objects=objects,
+    )
+    source_ring = _term_field_value(source_state, "ring_state")
+    successor_ring = _term_field_value(successor_state, "ring_state")
+    source_residual = _term_field_value(_term_field_value(source_state, "stereo_state"), "residual_snapshot")
+    successor_residual = _term_field_value(_term_field_value(successor_state, "stereo_state"), "residual_snapshot")
+    closure_manifests = local["manifest"]["closure_bond_text"]
+    events = [
+        event for event in payload["graph_ring_delta"]["manifest"]["event_manifests"]
+        if event["kind"] in ("ring_endpoint_emitted", "ring_endpoint_paired")
+    ]
+    if len(events) != 1:
+        _offline_violation("directional_ring_coupling_event_mismatch")
+    event = events[0]
     for item in items:
         term = item["coupling_term"]
         if item["coupling_term_digest"] != _closed_term_digest(term):
             _offline_violation("directional_non_single_ring_coupled_digest_mismatch")
-        if _term_field_value(term, "source_state_digest") != payload["source_state_digest"]:
-            _offline_violation("directional_non_single_ring_source_state_mismatch")
-        if _term_field_value(term, "successor_state_digest") != payload["successor_state_digest"]:
-            _offline_violation("directional_non_single_ring_successor_state_mismatch")
+        if (
+            _term_field_value(term, "source_state_digest") != payload["source_state_digest"]
+            or _term_field_value(term, "successor_state_digest") != payload["successor_state_digest"]
+        ):
+            _offline_violation("directional_ring_coupling_state_mismatch")
+        if (
+            _term_field_value(term, "source_ring_state_digest") != _closed_term_digest(source_ring)
+            or _term_field_value(term, "successor_ring_state_digest") != _closed_term_digest(successor_ring)
+        ):
+            _offline_violation("directional_ring_coupling_ring_state_mismatch")
+        if (
+            _term_field_value(term, "source_residual_snapshot_digest") != _closed_term_digest(source_residual)
+            or _term_field_value(term, "successor_residual_snapshot_digest") != _closed_term_digest(successor_residual)
+        ):
+            _offline_violation("directional_ring_coupling_residual_state_mismatch")
+        event_kind = _term_field_value(term, "event_kind")
+        bond = _term_field_value(term, "bond")
+        label = event["label"]
+        if (
+            event_kind != event["kind"]
+            or bond != event["bond"]
+            or _term_field_value(term, "bond_order") != "double"
+            or _term_field_value(term, "label_value") != _term_field_value(label, "value")
+            or _term_field_value(term, "label_text") != _term_field_value(label, "text")
+        ):
+            _offline_violation("directional_ring_coupling_event_mismatch")
+        graph_bond = _facts_bond(facts=facts, bond=bond)
+        if graph_bond.order is not BondOrder.DOUBLE or _facts_bond_is_bridge(facts=facts, bond=bond):
+            _offline_violation("directional_ring_coupling_event_mismatch")
+        closure_event_kind = (
+            "endpoint_emitted"
+            if event_kind == "ring_endpoint_emitted"
+            else "endpoint_paired"
+        )
+        matching_closures = [
+            closure for closure in closure_manifests
+            if closure["bond"] == bond
+            and closure["event_kind"] == closure_event_kind
+            and closure["opening_atom"] == _term_field_value(term, "opening_atom")
+            and closure["closing_atom"] == _term_field_value(term, "closing_atom")
+        ]
+        if len(matching_closures) != 1:
+            _offline_violation("directional_ring_coupling_closure_manifest_mismatch")
+        closure = matching_closures[0]
+        if _term_field_value(term, "closure_manifest_digest") != _identity_digest(closure):
+            _offline_violation("directional_ring_coupling_closure_manifest_mismatch")
+        if (
+            _term_field_value(term, "opening_marker") != closure["opening_marker"]
+            or _term_field_value(term, "closing_marker") != closure["closing_marker"]
+            or _term_field_value(term, "marker_side") != closure["marker_side"]
+            or sorted((closure["opening_marker"], closure["closing_marker"])) != ["", "="]
+        ):
+            _offline_violation("directional_ring_coupling_marker_mismatch")
         stereo_digest = _term_field_value(term, "stereo_lifecycle_digest")
         residual_digests = tuple(_term_field_value(term, "residual_work_digests"))
+        lifecycle = lifecycle_by_digest.get(stereo_digest)
+        if lifecycle is None:
+            _offline_violation("directional_ring_coupling_lifecycle_branch_mismatch")
         if stereo_digest not in replayed_lifecycle_digests:
             continue
+        if (
+            lifecycle["lifecycle_event_kind"] != event_kind
+            or lifecycle["source_residual_snapshot_digest"] != _term_field_value(term, "source_residual_snapshot_digest")
+            or lifecycle["successor_residual_snapshot_digest"] != _term_field_value(term, "successor_residual_snapshot_digest")
+        ):
+            _offline_violation("directional_ring_coupling_lifecycle_branch_mismatch")
+        if lifecycle["residual_work_digests"] != list(residual_digests):
+            _offline_violation("directional_ring_coupling_residual_state_mismatch")
+        if any(digest not in residual_by_digest for digest in residual_digests):
+            _offline_violation("directional_ring_coupling_residual_branch_mismatch")
         if any(digest not in replayed_residual_digests for digest in residual_digests):
             continue
+        closed_digest = _term_field_value(term, "closed_closure_record_digest")
+        if event_kind == "ring_endpoint_emitted":
+            if closed_digest is not None:
+                _offline_violation("directional_ring_coupling_closed_record_mismatch")
+        else:
+            closed = [
+                record for record in _term_field_value(successor_ring, "closed_closures")
+                if int(_term_field_value(record, "bond")) == int(bond)
+            ]
+            if len(closed) != 1 or closed_digest != _closed_term_digest(closed[0]):
+                _offline_violation("directional_ring_coupling_closed_record_mismatch")
         replayed_directional_ring_closure_digests.add(item["evidence_digest"])
 
 

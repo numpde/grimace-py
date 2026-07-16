@@ -1787,13 +1787,16 @@ class WriterStereoResidualTest(unittest.TestCase):
         self.assertTrue(structural.accepted, structural.reason)
         self.assertTrue(live.accepted, live.reason)
         self.assertTrue(fact_bound.accepted, fact_bound.reason)
-        self.assertFalse(fact_bound.offline_replay_complete)
-        self.assertEqual(
-            fact_bound.offline_unchecked_obligation_families,
-            ("directional_non_single_ring_transition_replay",),
+        self.assertTrue(
+            fact_bound.offline_replay_complete,
+            (
+                fact_bound.offline_unchecked_obligation_families,
+                fact_bound.offline_checked_obligation_families,
+            ),
         )
-        self.assertNotIn(
-            "stereo_lifecycle",
+        self.assertEqual(fact_bound.offline_unchecked_obligation_families, ())
+        self.assertIn(
+            "directional_ring_closure_lifecycle",
             fact_bound.offline_checked_obligation_families,
         )
         opening_manifests = [
@@ -1805,7 +1808,7 @@ class WriterStereoResidualTest(unittest.TestCase):
         ]
         self.assertTrue(opening_manifests)
         self.assertTrue(
-            any(manifest["transition_term"] is None for manifest in opening_manifests)
+            all(manifest["transition_term"] is not None for manifest in opening_manifests)
         )
 
     def test_coupled_lifecycle_rejects_tampered_marker_side(self) -> None:

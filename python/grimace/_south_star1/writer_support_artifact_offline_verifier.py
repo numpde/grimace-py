@@ -1042,6 +1042,11 @@ def classify_residual_stereo_obligations_offline(
         }
         replayed_residual_digests: set[str] = set()
         replayed_lifecycle_digests: set[str] = set()
+        replayed_directional_ring_closure_digests: set[str] = set()
+        ring_endpoint_choices = _ring_endpoint_choices_from_artifact(
+            artifact=artifact,
+            objects=objects,
+        )
         for branch_ref in _branch_support_refs_for_root(root=root, objects=objects):
             branch = _require_object(objects, branch_ref)
             _check_branch_obligation_ring_summaries(branch)
@@ -1054,6 +1059,7 @@ def classify_residual_stereo_obligations_offline(
                             items=items,
                             objects=objects,
                             replayed_residual_digests=replayed_residual_digests,
+                            ring_endpoint_choices=ring_endpoint_choices,
                         )
                     )
                 else:
@@ -1062,6 +1068,13 @@ def classify_residual_stereo_obligations_offline(
                 branch=branch,
                 replayed_residual_digests=replayed_residual_digests,
                 replayed_lifecycle_digests=replayed_lifecycle_digests,
+            )
+            _classify_branch_directional_ring_closure_lifecycles(
+                branch=branch,
+                replayed_lifecycle_digests=replayed_lifecycle_digests,
+                replayed_directional_ring_closure_digests=(
+                    replayed_directional_ring_closure_digests
+                ),
             )
         for support_ref in root["payload"]["support_string_refs"]:
             support = _require_object(objects, support_ref)
@@ -1076,6 +1089,7 @@ def classify_residual_stereo_obligations_offline(
                 items,
                 replayed_residual_digests=replayed_residual_digests,
                 replayed_lifecycle_digests=replayed_lifecycle_digests,
+                replayed_directional_ring_closure_digests=replayed_directional_ring_closure_digests,
             )
         ))
         checked = tuple(
@@ -1085,6 +1099,7 @@ def classify_residual_stereo_obligations_offline(
                 items,
                 replayed_residual_digests=replayed_residual_digests,
                 replayed_lifecycle_digests=replayed_lifecycle_digests,
+                replayed_directional_ring_closure_digests=replayed_directional_ring_closure_digests,
             )
         )
         checked_empty = tuple(
@@ -1133,17 +1148,42 @@ def classify_residual_stereo_obligations_offline(
         )
 
 
+def _ring_endpoint_choices_from_artifact(
+    *,
+    artifact: Mapping[str, object],
+    objects: Mapping[str, Mapping[str, object]],
+) -> dict[int, tuple[tuple[str, DirectionMark], ...]]:
+    del objects
+    policy = _term_field_value(artifact["prepared_identity"]["terms"], "policy")
+    domains = policy[4]
+    out = {}
+    for bond, slot_kind, choices in domains:
+        if slot_kind != "ring_endpoint":
+            continue
+        expanded = []
+        for _name, base_text, permits_direction in choices:
+            expanded.append((base_text, DirectionMark.ABSENT))
+            if permits_direction:
+                expanded.extend(((base_text, DirectionMark.FWD), (base_text, DirectionMark.REV)))
+        if bond in out:
+            _offline_violation("directional_non_single_ring_policy_domain_duplicate")
+        out[bond] = tuple(expanded)
+    return out
+
+
 def _obligation_manifests_checked(
     items: list[object],
     *,
     replayed_residual_digests: set[str],
     replayed_lifecycle_digests: set[str],
+    replayed_directional_ring_closure_digests: set[str],
 ) -> bool:
     return all(
         _obligation_manifest_checked(
             item,
             replayed_residual_digests=replayed_residual_digests,
             replayed_lifecycle_digests=replayed_lifecycle_digests,
+            replayed_directional_ring_closure_digests=replayed_directional_ring_closure_digests,
         )
         for item in items
     )
@@ -1154,6 +1194,7 @@ def _obligation_manifest_checked(
     *,
     replayed_residual_digests: set[str],
     replayed_lifecycle_digests: set[str],
+    replayed_directional_ring_closure_digests: set[str],
 ) -> bool:
     family = item["family"]
     if family == "residual_work":
@@ -1169,6 +1210,8 @@ def _obligation_manifest_checked(
             or item["terminal_clean"]
             or item["evidence_digest"] in replayed_lifecycle_digests
         )
+    if family == "directional_ring_closure_lifecycle":
+        return item["evidence_digest"] in replayed_directional_ring_closure_digests
     return bool(
         item["is_noop"]
         or item["is_empty"]
@@ -1185,6 +1228,7 @@ def _classify_branch_residual_work_manifests(
     items: list[object],
     objects: Mapping[str, Mapping[str, object]],
     replayed_residual_digests: set[str],
+    ring_endpoint_choices: Mapping[int, tuple[tuple[str, DirectionMark], ...]],
 ) -> tuple[Mapping[str, object], ...]:
     _check_branch_residual_lifecycle_links(branch=branch, residual_items=items)
     for item in items:
@@ -1193,6 +1237,7 @@ def _classify_branch_residual_work_manifests(
             branch=branch,
             item=item,
             objects=objects,
+            ring_endpoint_choices=ring_endpoint_choices,
         )
         if disposition is OfflineResidualReplayDisposition.SEMANTICALLY_REPLAYED:
             replayed_residual_digests.add(item["evidence_digest"])
@@ -1222,6 +1267,31 @@ def _classify_branch_replayed_lifecycle_manifests(
         if lifecycle["residual_work_operations"] != expected_operations:
             _offline_violation("residual_lifecycle_replayed_operation_mismatch")
         replayed_lifecycle_digests.add(lifecycle["evidence_digest"])
+
+
+def _classify_branch_directional_ring_closure_lifecycles(
+    *,
+    branch: Mapping[str, object],
+    replayed_lifecycle_digests: set[str],
+    replayed_directional_ring_closure_digests: set[str],
+) -> None:
+    payload = branch["payload"]
+    items = payload["obligation_manifests"]["directional_ring_closure_lifecycle"]
+    if not items:
+        return
+    local = payload["local_evidence"]
+    if local["kind"] != "directional_ring_closure_bond_text":
+        _offline_violation("directional_non_single_ring_coupled_digest_mismatch")
+    expected = [item["evidence_digest"] for item in items]
+    if local["manifest"]["directional_coupled_digests"] != expected:
+        _offline_violation("directional_non_single_ring_coupled_digest_mismatch")
+    linked_lifecycles = payload["obligation_manifests"]["stereo_lifecycle"]
+    if not any(
+        item["evidence_digest"] in replayed_lifecycle_digests
+        for item in linked_lifecycles
+    ):
+        return
+    replayed_directional_ring_closure_digests.update(expected)
 
 
 def _check_branch_residual_lifecycle_links(
@@ -1281,6 +1351,7 @@ def _validate_tetra_residual_manifest_if_known(
     branch: Mapping[str, object],
     item: Mapping[str, object],
     objects: Mapping[str, Mapping[str, object]],
+    ring_endpoint_choices: Mapping[int, tuple[tuple[str, DirectionMark], ...]],
 ) -> OfflineResidualReplayDisposition:
     operation = item["operation"]
     if operation == "tetrahedral atom-token restriction":
@@ -1308,6 +1379,7 @@ def _validate_tetra_residual_manifest_if_known(
             if _directional_ring_pair_transition_term_required_offline(
                 facts=facts,
                 branch=branch,
+                ring_endpoint_choices=ring_endpoint_choices,
             ):
                 _offline_violation("directional_ring_pair_transition_missing")
             return OfflineResidualReplayDisposition.DECLARED_OUT_OF_SCOPE
@@ -1317,6 +1389,7 @@ def _validate_tetra_residual_manifest_if_known(
             item=item,
             facts=facts,
             objects=objects,
+            ring_endpoint_choices=ring_endpoint_choices,
         )
         return OfflineResidualReplayDisposition.SEMANTICALLY_REPLAYED
     if operation == "tetrahedral local-order factor closure":
@@ -1387,6 +1460,7 @@ def _validate_tetra_residual_manifest_if_known(
         term_required = _directional_ring_endpoint_transition_term_required_offline(
             facts=facts,
             branch=branch,
+            ring_endpoint_choices=ring_endpoint_choices,
         )
         if not term_required:
             return OfflineResidualReplayDisposition.DECLARED_OUT_OF_SCOPE
@@ -1397,6 +1471,7 @@ def _validate_tetra_residual_manifest_if_known(
             item=item,
             facts=facts,
             objects=objects,
+            ring_endpoint_choices=ring_endpoint_choices,
         )
         return OfflineResidualReplayDisposition.SEMANTICALLY_REPLAYED
     return OfflineResidualReplayDisposition.DECLARED_OUT_OF_SCOPE
@@ -1406,6 +1481,7 @@ def _directional_ring_endpoint_transition_term_required_offline(
     *,
     facts: MoleculeFacts,
     branch: Mapping[str, object],
+    ring_endpoint_choices: Mapping[int, tuple[tuple[str, DirectionMark], ...]],
 ) -> bool:
     delta = branch["payload"]["graph_ring_delta"]
     events = [
@@ -1416,12 +1492,22 @@ def _directional_ring_endpoint_transition_term_required_offline(
         return False
     event = events[0]
     bond = _facts_bond(facts=facts, bond=event["bond"])
-    if bond.order is not BondOrder.SINGLE or _facts_bond_is_bridge(
+    if bond.order not in (BondOrder.SINGLE, BondOrder.DOUBLE) or _facts_bond_is_bridge(
         facts=facts,
         bond=event["bond"],
     ):
         return False
-    if event["bond_text"] != "":
+    choices = ring_endpoint_choices.get(event["bond"], ())
+    if bond.order is BondOrder.SINGLE:
+        if event["bond_text"] != "" or set(choices) != {
+            ("", DirectionMark.ABSENT), ("", DirectionMark.FWD), ("", DirectionMark.REV)
+        }:
+            return False
+    elif (
+        event["bond_text"] not in ("", "=")
+        or event["direction_mark"]["value"] != DirectionMark.ABSENT.value
+        or set(choices) != {("", DirectionMark.ABSENT), ("=", DirectionMark.ABSENT)}
+    ):
         return False
     sites = _expected_directional_sites_for_facts_bond(
         facts=facts,
@@ -1439,9 +1525,10 @@ def _directional_ring_pair_transition_term_required_offline(
     *,
     facts: MoleculeFacts,
     branch: Mapping[str, object],
+    ring_endpoint_choices: Mapping[int, tuple[tuple[str, DirectionMark], ...]],
 ) -> bool:
     delta = branch["payload"]["graph_ring_delta"]
-    if delta["kind"] != "ring_endpoint_pair":
+    if delta["kind"] not in ("ring_endpoint_pair", "ring_endpoint_pair_non_single"):
         return False
     events = [
         event for event in delta["manifest"]["event_manifests"]
@@ -1451,12 +1538,21 @@ def _directional_ring_pair_transition_term_required_offline(
         return False
     event = events[0]
     bond = _facts_bond(facts=facts, bond=event["bond"])
-    if bond.order is not BondOrder.SINGLE or _facts_bond_is_bridge(
+    if bond.order not in (BondOrder.SINGLE, BondOrder.DOUBLE) or _facts_bond_is_bridge(
         facts=facts,
         bond=event["bond"],
     ):
         return False
-    if event["first_endpoint_bond_text"] != "" or event["bond_text"] != "":
+    choices = ring_endpoint_choices.get(event["bond"], ())
+    if bond.order is BondOrder.SINGLE:
+        if event["first_endpoint_bond_text"] != "" or event["bond_text"] != "":
+            return False
+    elif (
+        sorted((event["first_endpoint_bond_text"], event["bond_text"])) != ["", "="]
+        or event["first_endpoint_direction_mark"]["value"] != DirectionMark.ABSENT.value
+        or event["direction_mark"]["value"] != DirectionMark.ABSENT.value
+        or set(choices) != {("", DirectionMark.ABSENT), ("=", DirectionMark.ABSENT)}
+    ):
         return False
     sites = _expected_directional_sites_for_facts_bond(
         facts=facts,
@@ -1840,6 +1936,7 @@ def _replay_directional_ring_pair_transition(
     item: Mapping[str, object],
     facts: MoleculeFacts,
     objects: Mapping[str, Mapping[str, object]],
+    ring_endpoint_choices: Mapping[int, tuple[tuple[str, DirectionMark], ...]],
 ) -> None:
     term = _transition_from_manifest(item)
     if not isinstance(term, DirectionalRingPairRestrictionTransitionTerm):
@@ -1875,12 +1972,25 @@ def _replay_directional_ring_pair_transition(
         successor_state=successor_state,
     )
     graph_bond = _facts_bond(facts=facts, bond=term.bond)
-    if graph_bond.order is not BondOrder.SINGLE or _facts_bond_is_bridge(
+    if graph_bond.order not in (BondOrder.SINGLE, BondOrder.DOUBLE) or _facts_bond_is_bridge(
         facts=facts,
         bond=term.bond,
     ):
         _offline_violation("directional_ring_pair_bond_scope_mismatch")
-    if term.first_endpoint_bond_text != "" or term.second_endpoint_bond_text != "":
+    is_double = graph_bond.order is BondOrder.DOUBLE
+    if is_double:
+        if set(ring_endpoint_choices.get(int(term.bond), ())) != {
+            ("", DirectionMark.ABSENT), ("=", DirectionMark.ABSENT)
+        }:
+            _offline_violation("directional_non_single_ring_policy_domain_mismatch")
+        if (
+            term.first_endpoint_direction_mark is not DirectionMark.ABSENT
+            or term.second_endpoint_direction_mark is not DirectionMark.ABSENT
+        ):
+            _offline_violation("directional_non_single_ring_direction_mark_mismatch")
+        if sorted((term.first_endpoint_bond_text, term.second_endpoint_bond_text)) != ["", "="]:
+            _offline_violation("directional_non_single_ring_marker_count_mismatch")
+    elif term.first_endpoint_bond_text != "" or term.second_endpoint_bond_text != "":
         _offline_violation("directional_ring_pair_bond_text_mismatch")
     sites = _expected_directional_sites_for_facts_bond(facts=facts, bond=term.bond)
     models = _expected_directional_models_for_facts_bond(
@@ -1901,11 +2011,16 @@ def _replay_directional_ring_pair_transition(
         or term.second_canonical_orientation != -first_orientation
     ):
         _offline_violation("directional_ring_pair_canonical_orientation_mismatch")
-    compatible, values_by_choice = _expected_directional_ring_pair_choices(
-        term=term,
-        model=models[0],
-        first_orientation=first_orientation,
-    )
+    if is_double:
+        second = "" if term.first_endpoint_bond_text == "=" else "="
+        compatible = ((second, DirectionMark.ABSENT),)
+        values_by_choice = {compatible[0]: DirectionalNormalizedSign.ABSENT}
+    else:
+        compatible, values_by_choice = _expected_directional_ring_pair_choices(
+            term=term,
+            model=models[0],
+            first_orientation=first_orientation,
+        )
     if term.compatible_second_endpoint_choices != compatible:
         _offline_violation("directional_ring_pair_compatible_choices_mismatch")
     selected = (term.second_endpoint_bond_text, term.second_endpoint_direction_mark)
@@ -1917,13 +2032,14 @@ def _replay_directional_ring_pair_transition(
     ),)
     if term.restrictions != expected_restrictions:
         _offline_violation("directional_ring_pair_restriction_mismatch")
-    _check_directional_source_factor_snapshots(
-        facts=facts,
-        sites=sites,
-        bond=term.bond,
-        source_snapshot=term.source_snapshot,
-        models=models,
-    )
+    if not is_double:
+        _check_directional_source_factor_snapshots(
+            facts=facts,
+            sites=sites,
+            bond=term.bond,
+            source_snapshot=term.source_snapshot,
+            models=models,
+        )
     expected_occurrence = _expected_directional_ring_pair_occurrence(term)
     if (
         term.bond_occurrence_parent,
@@ -2032,6 +2148,7 @@ def _replay_directional_ring_endpoint_projection_transition(
     item: Mapping[str, object],
     facts: MoleculeFacts,
     objects: Mapping[str, Mapping[str, object]],
+    ring_endpoint_choices: Mapping[int, tuple[tuple[str, DirectionMark], ...]],
 ) -> None:
     term = _transition_from_manifest(item)
     if not isinstance(term, DirectionalRingEndpointProjectionTransitionTerm):
@@ -2067,12 +2184,20 @@ def _replay_directional_ring_endpoint_projection_transition(
         successor_state=successor_state,
     )
     graph_bond = _facts_bond(facts=facts, bond=term.bond)
-    if graph_bond.order is not BondOrder.SINGLE or _facts_bond_is_bridge(
+    if graph_bond.order not in (BondOrder.SINGLE, BondOrder.DOUBLE) or _facts_bond_is_bridge(
         facts=facts,
         bond=term.bond,
     ):
         _offline_violation("directional_ring_projection_bond_scope_mismatch")
-    if term.bond_text != "":
+    is_double = graph_bond.order is BondOrder.DOUBLE
+    if is_double:
+        if set(ring_endpoint_choices.get(int(term.bond), ())) != {
+            ("", DirectionMark.ABSENT), ("=", DirectionMark.ABSENT)
+        }:
+            _offline_violation("directional_non_single_ring_policy_domain_mismatch")
+        if term.direction_mark is not DirectionMark.ABSENT:
+            _offline_violation("directional_non_single_ring_direction_mark_mismatch")
+    elif term.bond_text != "":
         _offline_violation("directional_ring_projection_bond_text_mismatch")
     sites = _expected_directional_sites_for_facts_bond(facts=facts, bond=term.bond)
     models = _expected_directional_models_for_facts_bond(
@@ -2082,11 +2207,7 @@ def _replay_directional_ring_endpoint_projection_transition(
     )
     if len(sites) != 1 or len(models) != 1 or term.carrier_model != models[0]:
         _offline_violation("directional_ring_projection_carrier_model_mismatch")
-    candidate_seconds = (
-        ("", DirectionMark.ABSENT),
-        ("", DirectionMark.FWD),
-        ("", DirectionMark.REV),
-    )
+    candidate_seconds = ring_endpoint_choices.get(int(term.bond), ())
     model = models[0]
     values = []
     expected_seconds = []
@@ -2098,6 +2219,8 @@ def _replay_directional_ring_endpoint_projection_transition(
     )
     second_orientation = -first_orientation
     for bond_text, second_mark in candidate_seconds:
+        if is_double and sorted((term.bond_text, bond_text)) != ["", "="]:
+            continue
         normalized = []
         if term.direction_mark is not DirectionMark.ABSENT:
             normalized.append(normalized_sign_from_mark(
@@ -2229,7 +2352,7 @@ def _check_directional_ring_pair_event_and_state(
     successor_state: Mapping[str, object],
 ) -> None:
     delta = branch["payload"]["graph_ring_delta"]
-    if delta["kind"] != "ring_endpoint_pair":
+    if delta["kind"] not in ("ring_endpoint_pair", "ring_endpoint_pair_non_single"):
         _offline_violation("directional_ring_pair_delta_kind_mismatch")
     events = delta["manifest"]["event_manifests"]
     pair_events = [event for event in events if event["kind"] == "ring_endpoint_paired"]
@@ -2559,13 +2682,14 @@ def _replay_directional_carrier_transition(
     )
     if term.restrictions != expected_restrictions:
         _offline_violation("directional_carrier_restriction_mismatch")
-    _check_directional_source_factor_snapshots(
-        facts=facts,
-        sites=sites,
-        bond=term.bond,
-        source_snapshot=term.source_snapshot,
-        models=expected_models,
-    )
+    if _facts_bond(facts=facts, bond=term.bond).order is BondOrder.SINGLE:
+        _check_directional_source_factor_snapshots(
+            facts=facts,
+            sites=sites,
+            bond=term.bond,
+            source_snapshot=term.source_snapshot,
+            models=expected_models,
+        )
     store = ResidualStore.from_value_snapshot(term.source_snapshot)
     result = store.restrict_many_and_propagate(term.restrictions)
     _check_transition_result(
@@ -2616,7 +2740,7 @@ def _directional_carrier_transition_term_required_offline(
     )
     bond = event["bond"]
     graph_bond = _facts_bond(facts=facts, bond=bond)
-    if graph_bond.order is not BondOrder.SINGLE:
+    if graph_bond.order not in (BondOrder.SINGLE, BondOrder.DOUBLE):
         return False
     sites = _expected_directional_sites_for_facts_bond(facts=facts, bond=bond)
     if not 1 <= len(sites) <= 2:
@@ -2640,7 +2764,7 @@ def _directional_carrier_transition_site_count_offline(
     )
     bond = event["bond"]
     graph_bond = _facts_bond(facts=facts, bond=bond)
-    if graph_bond.order is not BondOrder.SINGLE:
+    if graph_bond.order not in (BondOrder.SINGLE, BondOrder.DOUBLE):
         return 0
     sites = _expected_directional_sites_for_facts_bond(facts=facts, bond=bond)
     if not 1 <= len(sites) <= 2:

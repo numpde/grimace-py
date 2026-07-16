@@ -1556,7 +1556,7 @@ def _supports_directional_ring_endpoint_projection_transition_term(
     if len(models) != 1:
         return False
     graph_bond = prepared.graph_index.bond_by_id[event.bond]
-    if graph_bond.order is not BondOrder.SINGLE or _is_graph_bridge(
+    if _is_graph_bridge(
         prepared,
         event.bond,
     ):
@@ -1564,16 +1564,23 @@ def _supports_directional_ring_endpoint_projection_transition_term(
     template = _directional_template_by_site(prepared).get(models[0].site)
     if template is None or template.status is not SiteStatus.SPECIFIED:
         return False
-    if event.bond_text != "":
-        return False
     choices = prepared.policy.bond_text_domain_unchecked(
         event.bond,
         slot_kind="ring_endpoint",
     )
+    if graph_bond.order is BondOrder.SINGLE:
+        return bool(
+            event.bond_text == ""
+            and len(choices) == 1
+            and choices[0].base_text == ""
+            and choices[0].permits_direction
+        )
     return bool(
-        len(choices) == 1
-        and choices[0].base_text == ""
-        and choices[0].permits_direction
+        graph_bond.order is BondOrder.DOUBLE
+        and event.bond_text in ("", "=")
+        and event.direction_mark is DirectionMark.ABSENT
+        and {(choice.base_text, choice.permits_direction) for choice in choices}
+        == {("", False), ("=", False)}
     )
 
 
@@ -1775,7 +1782,7 @@ def _supports_directional_ring_pair_transition_term(
     if len(models) != 1:
         return False
     graph_bond = prepared.graph_index.bond_by_id[event.bond]
-    if graph_bond.order is not BondOrder.SINGLE or _is_graph_bridge(
+    if _is_graph_bridge(
         prepared,
         event.bond,
     ):
@@ -1783,19 +1790,25 @@ def _supports_directional_ring_pair_transition_term(
     template = _directional_template_by_site(prepared).get(models[0].site)
     if template is None or template.status is not SiteStatus.SPECIFIED:
         return False
-    if (
-        event.first_endpoint_bond_text != ""
-        or event.bond_text != ""
-    ):
-        return False
     choices = prepared.policy.bond_text_domain_unchecked(
         event.bond,
         slot_kind="ring_endpoint",
     )
+    if graph_bond.order is BondOrder.SINGLE:
+        return bool(
+            event.first_endpoint_bond_text == ""
+            and event.bond_text == ""
+            and len(choices) == 1
+            and choices[0].base_text == ""
+            and choices[0].permits_direction
+        )
     return bool(
-        len(choices) == 1
-        and choices[0].base_text == ""
-        and choices[0].permits_direction
+        graph_bond.order is BondOrder.DOUBLE
+        and event.first_endpoint_direction_mark is DirectionMark.ABSENT
+        and event.direction_mark is DirectionMark.ABSENT
+        and sorted((event.first_endpoint_bond_text, event.bond_text)) == ["", "="]
+        and {(choice.base_text, choice.permits_direction) for choice in choices}
+        == {("", False), ("=", False)}
     )
 
 
@@ -2293,7 +2306,7 @@ def _supports_directional_bond_emission_transition_term(
     ) != models:
         return False
     graph_bond = prepared.graph_index.bond_by_id[bond]
-    if graph_bond.order is not BondOrder.SINGLE:
+    if graph_bond.order not in (BondOrder.SINGLE, BondOrder.DOUBLE):
         return False
     return True
 

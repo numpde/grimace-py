@@ -130,6 +130,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
                 lifecycle,
                 replayed_residual_digests=set(),
                 replayed_lifecycle_digests=set(),
+                replayed_directional_ring_closure_digests=set(),
             )
         )
         self.assertTrue(
@@ -137,6 +138,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
                 lifecycle,
                 replayed_residual_digests={"residual"},
                 replayed_lifecycle_digests={"lifecycle"},
+                replayed_directional_ring_closure_digests=set(),
             )
         )
         lifecycle["linked_residual_work_digests"] = []
@@ -145,6 +147,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
                 lifecycle,
                 replayed_residual_digests=set(),
                 replayed_lifecycle_digests=set(),
+                replayed_directional_ring_closure_digests=set(),
             )
         )
 

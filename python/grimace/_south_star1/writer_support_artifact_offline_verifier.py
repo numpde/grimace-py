@@ -1159,6 +1159,9 @@ def _obligation_manifest_checked(
     if family == "residual_work":
         return item["evidence_digest"] in replayed_residual_digests
     if family == "stereo_lifecycle":
+        linked = tuple(item["linked_residual_work_digests"])
+        if linked:
+            return item["evidence_digest"] in replayed_lifecycle_digests
         return bool(
             item["is_noop"]
             or item["is_empty"]
@@ -1206,11 +1209,15 @@ def _classify_branch_replayed_lifecycle_manifests(
     residual_by_digest = {item["evidence_digest"]: item for item in residual_items}
     for lifecycle in branch["payload"]["obligation_manifests"]["stereo_lifecycle"]:
         linked = lifecycle["linked_residual_work_digests"]
-        if not linked or any(digest not in replayed_residual_digests for digest in linked):
+        if not linked:
             continue
-        linked_items = [residual_by_digest.get(digest) for digest in linked]
-        if any(item is None for item in linked_items):
+        if any(digest not in residual_by_digest for digest in linked):
             _offline_violation("residual_lifecycle_replayed_digest_missing")
+        if lifecycle["residual_work_digests"] != linked:
+            _offline_violation("residual_lifecycle_replayed_digest_mismatch")
+        if any(digest not in replayed_residual_digests for digest in linked):
+            continue
+        linked_items = [residual_by_digest[digest] for digest in linked]
         expected_operations = [item["operation"] for item in linked_items]
         if lifecycle["residual_work_operations"] != expected_operations:
             _offline_violation("residual_lifecycle_replayed_operation_mismatch")

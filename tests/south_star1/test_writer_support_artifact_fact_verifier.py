@@ -41,6 +41,7 @@ from grimace._south_star1.writer_snapshot_prefix_envelope import (
     writer_snapshot_prefix_read_envelope_for_emitted_texts,
 )
 import grimace._south_star1.writer_stereo as writer_stereo_module
+import grimace._south_star1.writer_support_artifact_offline_verifier as offline_verifier_module
 from grimace._south_star1.writer_support_artifact_checker import artifact_manifest
 from grimace._south_star1.writer_support_artifact_checker import artifact_metrics
 from grimace._south_star1.writer_support_artifact_checker import (
@@ -113,6 +114,40 @@ RUN_SLOW_ENV = "SOUTH_STAR1_RUN_SLOW"
 
 
 class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
+    def test_linked_lifecycle_requires_replayed_residual_work(self) -> None:
+        lifecycle = {
+            "family": "stereo_lifecycle",
+            "evidence_digest": "lifecycle",
+            "linked_residual_work_digests": ["residual"],
+            "is_noop": False,
+            "is_empty": False,
+            "is_discharged": True,
+            "terminal_clean": False,
+        }
+
+        self.assertFalse(
+            offline_verifier_module._obligation_manifest_checked(
+                lifecycle,
+                replayed_residual_digests=set(),
+                replayed_lifecycle_digests=set(),
+            )
+        )
+        self.assertTrue(
+            offline_verifier_module._obligation_manifest_checked(
+                lifecycle,
+                replayed_residual_digests={"residual"},
+                replayed_lifecycle_digests={"lifecycle"},
+            )
+        )
+        lifecycle["linked_residual_work_digests"] = []
+        self.assertTrue(
+            offline_verifier_module._obligation_manifest_checked(
+                lifecycle,
+                replayed_residual_digests=set(),
+                replayed_lifecycle_digests=set(),
+            )
+        )
+
     def test_snapshot_artifact_verifies_against_matching_facts(self) -> None:
         facts = cco_facts()
         prepared = _prepare(facts)
@@ -479,6 +514,10 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             verification.offline_unchecked_obligation_families,
         )
         self.assertEqual(verification.offline_unchecked_obligation_families, ())
+        self.assertIn(
+            "stereo_lifecycle",
+            verification.offline_checked_obligation_families,
+        )
         self.assertTrue(classification.accepted, classification.reason)
         branch = _first_graph_ring_delta_branch(artifact, "ring_endpoint_open")
         event = _first_graph_ring_delta_event(branch, "ring_endpoint_emitted")
@@ -837,7 +876,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         self.assertEqual(len(models), 2)
         self.assertTrue(
             writer_stereo_module
-            ._supports_acyclic_directional_carrier_transition_term(
+            ._supports_directional_bond_emission_transition_term(
                 prepared,
                 BondId(1),
                 models,

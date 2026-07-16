@@ -1150,7 +1150,7 @@ def _on_bond_emitted(
     transition_term = None
     if (
         operation == "directional carrier-mark restriction"
-        and _supports_acyclic_directional_carrier_transition_term(
+        and _supports_directional_bond_emission_transition_term(
             prepared,
             event.bond,
             models,
@@ -2259,11 +2259,14 @@ def _directional_models_for_bond(
     )
 
 
-def _supports_acyclic_directional_carrier_transition_term(
+def _supports_directional_bond_emission_transition_term(
     prepared: SouthStarPreparedMol,
     bond: BondId,
     models: tuple[DirectionalSiteCarrierModel, ...],
 ) -> bool:
+    # This proof term follows WriterBondEmitted semantics, including ordinary
+    # bond emissions in cyclic graphs. Ring endpoints and pairs have dedicated
+    # transition terms and never enter through this event boundary.
     if len(models) not in (1, 2):
         return False
     sites = tuple(model.site for model in models)

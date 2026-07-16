@@ -1792,6 +1792,10 @@ class WriterStereoResidualTest(unittest.TestCase):
             fact_bound.offline_unchecked_obligation_families,
             ("directional_non_single_ring_transition_replay",),
         )
+        self.assertNotIn(
+            "stereo_lifecycle",
+            fact_bound.offline_checked_obligation_families,
+        )
         opening_manifests = [
             manifest
             for obj in artifact["objects"]

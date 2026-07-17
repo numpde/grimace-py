@@ -26,6 +26,9 @@ from .writer_residual_transition_terms import (
     DirectionalRingPairRestrictionTransitionTerm,
 )
 from .writer_residual_transition_terms import (
+    SharedDirectionalRingEndpointProjectionTransitionTerm,
+)
+from .writer_residual_transition_terms import (
     TetraAtomTokenRestrictionTransitionTerm,
 )
 from .writer_residual_transition_terms import (
@@ -1488,38 +1491,53 @@ def _project_directional_ring_endpoint(
         return _WriterStereoMutation(state=None)
 
     successor_snapshot = store.value_snapshot()
-    transition_term = DirectionalRingEndpointProjectionTransitionTerm(
-        kind=WriterResidualTransitionKind.DIRECTIONAL_RING_ENDPOINT_PROJECTION,
-        source_snapshot=stereo_state.residual_snapshot,
-        source_snapshot_digest=_residual_snapshot_digest(
-            stereo_state.residual_snapshot
-        ),
-        bond=event.bond,
-        endpoint_atom=event.endpoint_atom,
-        partner_atom=event.partner_atom,
-        ring_label_value=event.label.value,
-        ring_label_text=event.label.text,
-        endpoint_text=event.endpoint_text,
-        bond_text=event.bond_text,
-        direction_mark=event.direction_mark,
-        carrier_model=models[0],
-        compatible_second_endpoint_choices=tuple(
-            (choice.bond_text, choice.direction_mark)
-            for choice in compatible_seconds
-        ),
-        domain_intersections=restriction,
-        affected_variables=result.stats.component_variables,
-        affected_factor_keys=result.stats.component_factor_keys,
-        propagation_result=result,
-        projected_variables=(),
-        discharged_factor_keys=(),
-        successor_snapshot=successor_snapshot,
-        successor_snapshot_digest=_residual_snapshot_digest(successor_snapshot),
-    ) if _supports_directional_ring_endpoint_projection_transition_term(
+    transition_term = None
+    if _supports_directional_ring_endpoint_projection_transition_term(
         prepared,
         event,
         models,
-    ) else None
+    ):
+        common = dict(
+            kind=WriterResidualTransitionKind.DIRECTIONAL_RING_ENDPOINT_PROJECTION,
+            source_snapshot=stereo_state.residual_snapshot,
+            source_snapshot_digest=_residual_snapshot_digest(
+                stereo_state.residual_snapshot
+            ),
+            bond=event.bond,
+            endpoint_atom=event.endpoint_atom,
+            partner_atom=event.partner_atom,
+            ring_label_value=event.label.value,
+            ring_label_text=event.label.text,
+            endpoint_text=event.endpoint_text,
+            bond_text=event.bond_text,
+            direction_mark=event.direction_mark,
+            compatible_second_endpoint_choices=tuple(
+                (choice.bond_text, choice.direction_mark)
+                for choice in compatible_seconds
+            ),
+            domain_intersections=(
+                _canonical_directional_domain_intersections(restriction)
+                if len(models) == 2
+                else restriction
+            ),
+            affected_variables=result.stats.component_variables,
+            affected_factor_keys=result.stats.component_factor_keys,
+            propagation_result=result,
+            projected_variables=(),
+            discharged_factor_keys=(),
+            successor_snapshot=successor_snapshot,
+            successor_snapshot_digest=_residual_snapshot_digest(successor_snapshot),
+        )
+        if len(models) == 1:
+            transition_term = DirectionalRingEndpointProjectionTransitionTerm(
+                carrier_model=models[0],
+                **common,
+            )
+        else:
+            transition_term = SharedDirectionalRingEndpointProjectionTransitionTerm(
+                carrier_models=models,
+                **common,
+            )
     evidence = writer_residual_propagation_work_evidence(
         operation=operation,
         result=result,
@@ -1548,12 +1566,30 @@ def _project_directional_ring_endpoint(
     )
 
 
+def _canonical_directional_domain_intersections(
+    intersections: tuple[
+        tuple[VarId, tuple[DirectionalNormalizedSign, ...]], ...
+    ],
+) -> tuple[tuple[VarId, tuple[DirectionalNormalizedSign, ...]], ...]:
+    domain_order = _directional_normalized_domain()
+    return tuple(
+        (var, tuple(value for value in domain_order if value in values))
+        for var, values in intersections
+    )
+
+
 def _supports_directional_ring_endpoint_projection_transition_term(
     prepared: SouthStarPreparedMol,
     event: WriterRingEndpointEmitted,
     models: tuple[DirectionalSiteCarrierModel, ...],
 ) -> bool:
-    if len(models) != 1:
+    if len(models) not in (1, 2):
+        return False
+    if not _supports_directional_carrier_model_tuple(
+        prepared,
+        event.bond,
+        models,
+    ):
         return False
     graph_bond = prepared.graph_index.bond_by_id[event.bond]
     if _is_graph_bridge(
@@ -1561,8 +1597,15 @@ def _supports_directional_ring_endpoint_projection_transition_term(
         event.bond,
     ):
         return False
-    template = _directional_template_by_site(prepared).get(models[0].site)
-    if template is None or template.status is not SiteStatus.SPECIFIED:
+    templates = _directional_template_by_site(prepared)
+    if len({model.site for model in models}) != len(models):
+        return False
+    if any(
+        model.bond != event.bond
+        or templates.get(model.site) is None
+        or templates[model.site].status is not SiteStatus.SPECIFIED
+        for model in models
+    ):
         return False
     choices = prepared.policy.bond_text_domain_unchecked(
         event.bond,
@@ -1575,6 +1618,8 @@ def _supports_directional_ring_endpoint_projection_transition_term(
             and choices[0].base_text == ""
             and choices[0].permits_direction
         )
+    if len(models) != 1:
+        return False
     return bool(
         graph_bond.order is BondOrder.DOUBLE
         and event.bond_text in ("", "=")
@@ -1779,7 +1824,13 @@ def _supports_directional_ring_pair_transition_term(
     event: WriterRingEndpointPaired,
     models: tuple[DirectionalSiteCarrierModel, ...],
 ) -> bool:
-    if len(models) != 1:
+    if len(models) not in (1, 2):
+        return False
+    if not _supports_directional_carrier_model_tuple(
+        prepared,
+        event.bond,
+        models,
+    ):
         return False
     graph_bond = prepared.graph_index.bond_by_id[event.bond]
     if _is_graph_bridge(
@@ -1787,8 +1838,15 @@ def _supports_directional_ring_pair_transition_term(
         event.bond,
     ):
         return False
-    template = _directional_template_by_site(prepared).get(models[0].site)
-    if template is None or template.status is not SiteStatus.SPECIFIED:
+    templates = _directional_template_by_site(prepared)
+    if len({model.site for model in models}) != len(models):
+        return False
+    if any(
+        model.bond != event.bond
+        or templates.get(model.site) is None
+        or templates[model.site].status is not SiteStatus.SPECIFIED
+        for model in models
+    ):
         return False
     choices = prepared.policy.bond_text_domain_unchecked(
         event.bond,
@@ -1802,6 +1860,8 @@ def _supports_directional_ring_pair_transition_term(
             and choices[0].base_text == ""
             and choices[0].permits_direction
         )
+    if len(models) != 1:
+        return False
     return bool(
         graph_bond.order is BondOrder.DOUBLE
         and event.first_endpoint_direction_mark is DirectionMark.ABSENT
@@ -2280,6 +2340,14 @@ def _supports_directional_bond_emission_transition_term(
     # This proof term follows WriterBondEmitted semantics, including ordinary
     # bond emissions in cyclic graphs. Ring endpoints and pairs have dedicated
     # transition terms and never enter through this event boundary.
+    return _supports_directional_carrier_model_tuple(prepared, bond, models)
+
+
+def _supports_directional_carrier_model_tuple(
+    prepared: SouthStarPreparedMol,
+    bond: BondId,
+    models: tuple[DirectionalSiteCarrierModel, ...],
+) -> bool:
     if len(models) not in (1, 2):
         return False
     sites = tuple(model.site for model in models)

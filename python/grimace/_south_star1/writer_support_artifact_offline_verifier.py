@@ -47,6 +47,9 @@ from .writer_residual_transition_terms import (
 from .writer_residual_transition_terms import (
     DirectionalRingPairRestrictionTransitionTerm,
 )
+from .writer_residual_transition_terms import (
+    SharedDirectionalRingEndpointProjectionTransitionTerm,
+)
 from .writer_atom_text_lifecycle import bracket_atom_text
 from .writer_count_dag_envelope import count_dag_node_by_id
 from .writer_count_dag_envelope import validate_writer_count_certificate_dag_envelope
@@ -151,6 +154,10 @@ _ALLOWED_TETRA_TRANSITION_DATACLASSES = {
     _PATH_PREFIX + "writer_residual_transition_terms."
     "DirectionalRingPairRestrictionTransitionTerm": (
         DirectionalRingPairRestrictionTransitionTerm
+    ),
+    _PATH_PREFIX + "writer_residual_transition_terms."
+    "SharedDirectionalRingEndpointProjectionTransitionTerm": (
+        SharedDirectionalRingEndpointProjectionTransitionTerm
     ),
     _PATH_PREFIX + "writer_residual_transition_terms."
     "TetraAtomTokenRestrictionTransitionTerm": (
@@ -265,6 +272,22 @@ _ALLOWED_TETRA_TRANSITION_DATACLASS_FIELDS = {
             "projected_variables", "successor_snapshot",
             "successor_snapshot_digest",
         ))
+    ),
+    _PATH_PREFIX + "writer_residual_transition_terms."
+    "SharedDirectionalRingEndpointProjectionTransitionTerm": (
+        frozenset(
+            (
+                "kind", "source_snapshot", "source_snapshot_digest", "bond",
+                "endpoint_atom", "partner_atom", "ring_label_value",
+                "ring_label_text", "endpoint_text", "bond_text",
+                "direction_mark", "carrier_models",
+                "compatible_second_endpoint_choices", "domain_intersections",
+                "affected_variables", "affected_factor_keys",
+                "propagation_result", "projected_variables",
+                "discharged_factor_keys", "successor_snapshot",
+                "successor_snapshot_digest",
+            )
+        )
     ),
     _PATH_PREFIX + "writer_residual_transition_terms."
     "TetraAtomTokenRestrictionTransitionTerm": (
@@ -1613,7 +1636,11 @@ def _validate_tetra_residual_manifest_if_known(
             ):
                 _offline_violation("directional_ring_pair_transition_missing")
             return OfflineResidualReplayDisposition.DECLARED_OUT_OF_SCOPE
-        _check_directional_ring_pair_manifest_core(branch=branch, item=item)
+        _check_directional_ring_pair_manifest_core(
+            branch=branch,
+            item=item,
+            facts=facts,
+        )
         _replay_directional_ring_pair_transition(
             branch=branch,
             item=item,
@@ -1743,16 +1770,19 @@ def _directional_ring_endpoint_transition_term_required_offline(
         or set(choices) != {("", DirectionMark.ABSENT), ("=", DirectionMark.ABSENT)}
     ):
         return False
-    sites = _expected_directional_sites_for_facts_bond(
-        facts=facts,
-        bond=event["bond"],
-    )
+    sites = _directional_sites_for_facts_bond(facts=facts, bond=event["bond"])
+    if len(sites) not in (1, 2) or any(
+        site.status is not SiteStatus.SPECIFIED for site in sites
+    ):
+        return False
     models = _expected_directional_models_for_facts_bond(
         facts=facts,
         sites=sites,
         bond=event["bond"],
     )
-    return len(sites) == 1 and len(models) == 1
+    if bond.order is BondOrder.DOUBLE:
+        return len(sites) == 1 and len(models) == 1
+    return len(sites) in (1, 2) and len(models) == len(sites)
 
 
 def _directional_ring_pair_transition_term_required_offline(
@@ -1788,18 +1818,19 @@ def _directional_ring_pair_transition_term_required_offline(
         or set(choices) != {("", DirectionMark.ABSENT), ("=", DirectionMark.ABSENT)}
     ):
         return False
-    sites = _expected_directional_sites_for_facts_bond(
-        facts=facts,
-        bond=event["bond"],
-    )
-    if len(sites) != 1:
+    sites = _directional_sites_for_facts_bond(facts=facts, bond=event["bond"])
+    if len(sites) not in (1, 2) or any(
+        site.status is not SiteStatus.SPECIFIED for site in sites
+    ):
         return False
     models = _expected_directional_models_for_facts_bond(
         facts=facts,
         sites=sites,
         bond=event["bond"],
     )
-    return len(models) == 1
+    if bond.order is BondOrder.DOUBLE:
+        return len(models) == 1
+    return len(models) == len(sites)
 
 
 def _check_tetra_residual_manifest_core(
@@ -2125,6 +2156,7 @@ def _check_directional_ring_pair_manifest_core(
     *,
     branch: Mapping[str, object],
     item: Mapping[str, object],
+    facts: MoleculeFacts,
 ) -> None:
     payload = branch["payload"]
     if item["family"] != "residual_work":
@@ -2145,6 +2177,11 @@ def _check_directional_ring_pair_manifest_core(
         "residual_factor_discharge",
         "residual_propagation",
     ]
+    if _directional_ring_transition_site_count_offline(
+        facts=facts,
+        branch=branch,
+    ) == 2:
+        expected_capabilities.append("shared_directional_carrier_restriction")
     if raw["lifecycle_capabilities"] != expected_capabilities:
         _offline_violation("directional_ring_pair_lifecycle_capabilities_mismatch")
     if raw["residual_work_digests"] != [item["evidence_digest"]]:
@@ -2193,6 +2230,11 @@ def _replay_directional_ring_pair_transition(
         item=item,
         source_digest=term.source_snapshot_digest,
         successor_digest=term.successor_snapshot_digest,
+        violation_prefix=(
+            "shared_directional_ring_transition"
+            if len(term.carrier_models) == 2
+            else "directional_ring_pair_transition"
+        ),
     )
     source_state, successor_state = _branch_writer_state_terms(
         branch=branch,
@@ -2238,8 +2280,18 @@ def _replay_directional_ring_pair_transition(
         sites=sites,
         bond=term.bond,
     )
-    if len(sites) != 1 or len(models) != 1 or term.carrier_models != models:
-        _offline_violation("directional_ring_pair_carrier_model_mismatch")
+    expected_model_count = 1 if is_double else len(sites)
+    if (
+        expected_model_count not in (1, 2)
+        or len(models) != expected_model_count
+        or term.carrier_models != models
+    ):
+        reason = (
+            "shared_directional_ring_model_mismatch"
+            if len(sites) == 2
+            else "directional_ring_pair_carrier_model_mismatch"
+        )
+        _offline_violation(reason)
     first_orientation = _facts_bond_orientation(
         facts=facts,
         bond=term.bond,
@@ -2254,24 +2306,42 @@ def _replay_directional_ring_pair_transition(
     if is_double:
         second = "" if term.first_endpoint_bond_text == "=" else "="
         compatible = ((second, DirectionMark.ABSENT),)
-        values_by_choice = {compatible[0]: DirectionalNormalizedSign.ABSENT}
+        restrictions_by_choice = {
+            compatible[0]: ((
+                directional_site_carrier_var(models[0].site, term.bond),
+                DirectionalNormalizedSign.ABSENT,
+            ),)
+        }
     else:
-        compatible, values_by_choice = _expected_directional_ring_pair_choices(
-            term=term,
-            model=models[0],
-            first_orientation=first_orientation,
+        rows = _expected_shared_directional_ring_choice_rows(
+            facts=facts,
+            bond=term.bond,
+            first_atom=term.first_atom,
+            second_atom=term.second_atom,
+            first_mark=term.first_endpoint_direction_mark,
+            candidate_second_choices=ring_endpoint_choices.get(int(term.bond), ()),
+            models=models,
         )
+        compatible = tuple(choice for choice, _restrictions in rows)
+        restrictions_by_choice = dict(rows)
     if term.compatible_second_endpoint_choices != compatible:
-        _offline_violation("directional_ring_pair_compatible_choices_mismatch")
+        reason = (
+            "shared_directional_ring_choice_relation_mismatch"
+            if len(models) == 2
+            else "directional_ring_pair_compatible_choices_mismatch"
+        )
+        _offline_violation(reason)
     selected = (term.second_endpoint_bond_text, term.second_endpoint_direction_mark)
     if selected not in compatible:
         _offline_violation("directional_ring_pair_selected_choice_mismatch")
-    expected_restrictions = ((
-        directional_site_carrier_var(models[0].site, term.bond),
-        values_by_choice[selected],
-    ),)
+    expected_restrictions = restrictions_by_choice[selected]
     if term.restrictions != expected_restrictions:
-        _offline_violation("directional_ring_pair_restriction_mismatch")
+        reason = (
+            "shared_directional_ring_restriction_mismatch"
+            if len(models) == 2
+            else "directional_ring_pair_restriction_mismatch"
+        )
+        _offline_violation(reason)
     if not is_double:
         _check_directional_source_factor_snapshots(
             facts=facts,
@@ -2323,45 +2393,61 @@ def _replay_directional_ring_pair_transition(
         _offline_violation("directional_ring_pair_successor_residual_mismatch")
 
 
-def _expected_directional_ring_pair_choices(
+def _expected_shared_directional_ring_choice_rows(
     *,
-    term: DirectionalRingPairRestrictionTransitionTerm,
-    model: DirectionalSiteCarrierModel,
-    first_orientation: int,
+    facts: MoleculeFacts,
+    bond: object,
+    first_atom: object,
+    second_atom: object,
+    first_mark: DirectionMark,
+    candidate_second_choices: tuple[tuple[str, DirectionMark], ...],
+    models: tuple[DirectionalSiteCarrierModel, ...],
 ) -> tuple[
-    tuple[tuple[str, DirectionMark], ...],
-    dict[tuple[str, DirectionMark], DirectionalNormalizedSign],
+    tuple[
+        tuple[str, DirectionMark],
+        tuple[tuple[VarId, DirectionalNormalizedSign], ...],
+    ],
+    ...,
 ]:
-    compatible = []
-    values = {}
-    for bond_text, second_mark in (
-        ("", DirectionMark.ABSENT),
-        ("", DirectionMark.FWD),
-        ("", DirectionMark.REV),
-    ):
-        normalized = []
-        if term.first_endpoint_direction_mark is not DirectionMark.ABSENT:
-            normalized.append(normalized_sign_from_mark(
-                mark=term.first_endpoint_direction_mark,
-                canonical_orientation=first_orientation,
-                model=model,
+    first_orientation = _facts_bond_orientation(
+        facts=facts,
+        bond=bond,
+        parent=first_atom,
+        child=second_atom,
+    )
+    rows = []
+    for choice in candidate_second_choices:
+        _bond_text, second_mark = choice
+        restrictions = []
+        valid = True
+        for model in models:
+            normalized = []
+            if first_mark is not DirectionMark.ABSENT:
+                normalized.append(normalized_sign_from_mark(
+                    mark=first_mark,
+                    canonical_orientation=first_orientation,
+                    model=model,
+                ))
+            if second_mark is not DirectionMark.ABSENT:
+                normalized.append(normalized_sign_from_mark(
+                    mark=second_mark,
+                    canonical_orientation=-first_orientation,
+                    model=model,
+                ))
+            if not normalized:
+                value = DirectionalNormalizedSign.ABSENT
+            elif len(set(normalized)) == 1:
+                value = normalized[0]
+            else:
+                valid = False
+                break
+            restrictions.append((
+                directional_site_carrier_var(model.site, bond),
+                value,
             ))
-        if second_mark is not DirectionMark.ABSENT:
-            normalized.append(normalized_sign_from_mark(
-                mark=second_mark,
-                canonical_orientation=-first_orientation,
-                model=model,
-            ))
-        if not normalized:
-            value = DirectionalNormalizedSign.ABSENT
-        elif len(set(normalized)) == 1:
-            value = normalized[0]
-        else:
-            continue
-        choice = (bond_text, second_mark)
-        compatible.append(choice)
-        values[choice] = value
-    return tuple(compatible), values
+        if valid:
+            rows.append((choice, tuple(restrictions)))
+    return tuple(rows)
 
 
 def _expected_directional_ring_pair_occurrence(
@@ -2391,7 +2477,13 @@ def _replay_directional_ring_endpoint_projection_transition(
     ring_endpoint_choices: Mapping[int, tuple[tuple[str, DirectionMark], ...]],
 ) -> None:
     term = _transition_from_manifest(item)
-    if not isinstance(term, DirectionalRingEndpointProjectionTransitionTerm):
+    if not isinstance(
+        term,
+        (
+            DirectionalRingEndpointProjectionTransitionTerm,
+            SharedDirectionalRingEndpointProjectionTransitionTerm,
+        ),
+    ):
         _offline_violation("directional_ring_projection_transition_kind_mismatch")
     if term.kind is not WriterResidualTransitionKind.DIRECTIONAL_RING_ENDPOINT_PROJECTION:
         _offline_violation("directional_ring_projection_transition_kind_mismatch")
@@ -2405,6 +2497,14 @@ def _replay_directional_ring_endpoint_projection_transition(
         item=item,
         source_digest=term.source_snapshot_digest,
         successor_digest=term.successor_snapshot_digest,
+        violation_prefix=(
+            "shared_directional_ring_transition"
+            if isinstance(
+                term,
+                SharedDirectionalRingEndpointProjectionTransitionTerm,
+            )
+            else "directional_ring_projection_transition"
+        ),
     )
     source_state, successor_state = _branch_writer_state_terms(
         branch=branch,
@@ -2445,53 +2545,96 @@ def _replay_directional_ring_endpoint_projection_transition(
         sites=sites,
         bond=term.bond,
     )
-    if len(sites) != 1 or len(models) != 1 or term.carrier_model != models[0]:
-        _offline_violation("directional_ring_projection_carrier_model_mismatch")
+    if isinstance(term, SharedDirectionalRingEndpointProjectionTransitionTerm):
+        if len(sites) != 2 or len(models) != 2 or term.carrier_models != models:
+            _offline_violation("shared_directional_ring_model_mismatch")
+    elif len(sites) != 1 or len(models) != 1 or term.carrier_model != models[0]:
+        reason = (
+            "shared_directional_ring_model_mismatch"
+            if len(sites) == 2
+            else "directional_ring_projection_carrier_model_mismatch"
+        )
+        _offline_violation(reason)
     candidate_seconds = ring_endpoint_choices.get(int(term.bond), ())
-    model = models[0]
-    values = []
-    expected_seconds = []
-    first_orientation = _facts_bond_orientation(
-        facts=facts,
-        bond=term.bond,
-        parent=term.endpoint_atom,
-        child=term.partner_atom,
-    )
-    second_orientation = -first_orientation
-    for bond_text, second_mark in candidate_seconds:
-        if is_double and sorted((term.bond_text, bond_text)) != ["", "="]:
-            continue
-        normalized = []
-        if term.direction_mark is not DirectionMark.ABSENT:
-            normalized.append(normalized_sign_from_mark(
-                mark=term.direction_mark,
-                canonical_orientation=first_orientation,
-                model=model,
-            ))
-        if second_mark is not DirectionMark.ABSENT:
-            normalized.append(normalized_sign_from_mark(
-                mark=second_mark,
-                canonical_orientation=second_orientation,
-                model=model,
-            ))
-        if not normalized:
-            value = DirectionalNormalizedSign.ABSENT
-        elif len(set(normalized)) == 1:
-            value = normalized[0]
-        else:
-            continue
-        expected_seconds.append((bond_text, second_mark))
-        if value not in values:
-            values.append(value)
-    expected_seconds = tuple(expected_seconds)
+    if is_double:
+        expected_seconds = tuple(
+            choice
+            for choice in candidate_seconds
+            if sorted((term.bond_text, choice[0])) == ["", "="]
+        )
+        rows = tuple(
+            (
+                choice,
+                ((
+                    directional_site_carrier_var(models[0].site, term.bond),
+                    DirectionalNormalizedSign.ABSENT,
+                ),),
+            )
+            for choice in expected_seconds
+        )
+    else:
+        rows = _expected_shared_directional_ring_choice_rows(
+            facts=facts,
+            bond=term.bond,
+            first_atom=term.endpoint_atom,
+            second_atom=term.partner_atom,
+            first_mark=term.direction_mark,
+            candidate_second_choices=candidate_seconds,
+            models=models,
+        )
+        expected_seconds = tuple(choice for choice, _restrictions in rows)
     if term.compatible_second_endpoint_choices != expected_seconds:
-        _offline_violation("directional_ring_projection_compatible_seconds_mismatch")
-    expected_intersections = ((
-        directional_site_carrier_var(model.site, term.bond),
-        tuple(values),
-    ),)
+        reason = (
+            "shared_directional_ring_choice_relation_mismatch"
+            if len(models) == 2
+            else "directional_ring_projection_compatible_seconds_mismatch"
+        )
+        _offline_violation(reason)
+    values_by_var = {
+        directional_site_carrier_var(model.site, term.bond): []
+        for model in models
+    }
+    for _choice, restrictions in rows:
+        for var, value in restrictions:
+            if value not in values_by_var[var]:
+                values_by_var[var].append(value)
+    expected_intersections = tuple(
+        (
+            var,
+            (
+                tuple(
+                    value
+                    for value in (
+                        DirectionalNormalizedSign.ABSENT,
+                        DirectionalNormalizedSign.POSITIVE,
+                        DirectionalNormalizedSign.NEGATIVE,
+                    )
+                    if value in values
+                )
+                if len(models) == 2
+                else tuple(values)
+            ),
+        )
+        for var, values in sorted(
+            values_by_var.items(),
+            key=lambda item: (item[0].kind, tuple(repr(value) for value in item[0].key)),
+        )
+    )
     if term.domain_intersections != expected_intersections:
-        _offline_violation("directional_ring_projection_domain_intersection_mismatch")
+        reason = (
+            "shared_directional_ring_intersection_mismatch"
+            if len(models) == 2
+            else "directional_ring_projection_domain_intersection_mismatch"
+        )
+        _offline_violation(reason)
+    if not is_double:
+        _check_directional_source_factor_snapshots(
+            facts=facts,
+            sites=sites,
+            bond=term.bond,
+            source_snapshot=term.source_snapshot,
+            models=models,
+        )
     store = ResidualStore.from_value_snapshot(term.source_snapshot)
     result = store.intersect_domains_and_propagate(expected_intersections)
     _check_transition_result(
@@ -2505,6 +2648,10 @@ def _replay_directional_ring_endpoint_projection_transition(
         _offline_violation("directional_ring_projection_affected_factors_mismatch")
     if term.projected_variables or term.discharged_factor_keys:
         _offline_violation("directional_ring_projection_projection_or_discharge_mismatch")
+    if len(models) == 2 and (
+        term.source_snapshot.assignments or term.successor_snapshot.assignments
+    ):
+        _offline_violation("shared_directional_ring_assignment_materialized")
     if store.value_snapshot() != term.successor_snapshot:
         _offline_violation("directional_ring_projection_successor_residual_mismatch")
 
@@ -2512,7 +2659,10 @@ def _replay_directional_ring_endpoint_projection_transition(
 def _check_directional_ring_projection_event_and_state(
     *,
     branch: Mapping[str, object],
-    term: DirectionalRingEndpointProjectionTransitionTerm,
+    term: (
+        DirectionalRingEndpointProjectionTransitionTerm
+        | SharedDirectionalRingEndpointProjectionTransitionTerm
+    ),
     source_state: Mapping[str, object],
     successor_state: Mapping[str, object],
 ) -> None:
@@ -3032,7 +3182,11 @@ def _directional_ring_transition_site_count_offline(
     if len(events) != 1:
         return 0
     bond = events[0]["bond"]
-    sites = _expected_directional_sites_for_facts_bond(facts=facts, bond=bond)
+    sites = _directional_sites_for_facts_bond(facts=facts, bond=bond)
+    if len(sites) not in (1, 2) or any(
+        site.status is not SiteStatus.SPECIFIED for site in sites
+    ):
+        return 0
     models = _expected_directional_models_for_facts_bond(
         facts=facts,
         sites=sites,
@@ -3064,12 +3218,13 @@ def _check_transition_lifecycle_residual_binding(
     item: Mapping[str, object],
     source_digest: str,
     successor_digest: str,
+    violation_prefix: str = "tetra_residual_transition",
 ) -> None:
     raw_lifecycle = _linked_raw_tetra_lifecycle(branch=branch, item=item)
     if raw_lifecycle["source_residual_snapshot_digest"] != source_digest:
-        _offline_violation("tetra_residual_transition_source_lifecycle_mismatch")
+        _offline_violation(f"{violation_prefix}_source_lifecycle_mismatch")
     if raw_lifecycle["successor_residual_snapshot_digest"] != successor_digest:
-        _offline_violation("tetra_residual_transition_successor_lifecycle_mismatch")
+        _offline_violation(f"{violation_prefix}_successor_lifecycle_mismatch")
 
 
 def _branch_writer_state_terms(
@@ -3650,6 +3805,15 @@ def _transition_from_manifest(item: Mapping[str, object]) -> object:
             ),
         )
     if operation == "directional ring endpoint projection":
+        shared_path = (
+            "grimace._south_star1.writer_residual_transition_terms."
+            "SharedDirectionalRingEndpointProjectionTransitionTerm"
+        )
+        if item["transition_term"].get("__dataclass__") == shared_path:
+            return _decode_transition_term(
+                item["transition_term"],
+                expected_path=shared_path,
+            )
         return _decode_transition_term(
             item["transition_term"],
             expected_path=(

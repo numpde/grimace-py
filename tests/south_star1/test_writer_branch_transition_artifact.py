@@ -66,7 +66,7 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
                     1,
                 )
 
-    def test_shared_ring_opening_and_pair_branches_are_typed_incomplete(self) -> None:
+    def test_shared_ring_opening_and_pair_branches_replay_semantically(self) -> None:
         for phase in ("opening", "pair"):
             for mark in (DirectionMark.ABSENT, DirectionMark.FWD, DirectionMark.REV):
                 with self.subTest(phase=phase, mark=mark):
@@ -91,18 +91,212 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
                         artifact["metrics"]["largest_object_identity_input_bytes"],
                         WriterEnvelopeWorkBudget().max_digest_term_bytes,
                     )
+                    self.assertEqual(facts_bound.unchecked_obligation_families, ())
+                    operation = (
+                        "directional ring endpoint projection"
+                        if phase == "opening"
+                        else "directional ring pair restriction"
+                    )
                     self.assertEqual(
-                        facts_bound.unchecked_obligation_families,
-                        ("shared_directional_ring_transition_replay",),
-                    )
-                    self.assertNotIn(
-                        "directional ring endpoint projection",
                         facts_bound.semantically_replayed_operations,
+                        (operation,),
                     )
-                    self.assertNotIn(
-                        "directional ring pair restriction",
-                        facts_bound.semantically_replayed_operations,
+                    branch = next(
+                        item["payload"]
+                        for item in artifact["objects"]
+                        if item["kind"] == "branch_support"
                     )
+                    self.assertEqual(
+                        branch["obligation_manifests"][
+                            "directional_ring_closure_lifecycle"
+                        ],
+                        [],
+                    )
+                    manifest = next(
+                        item
+                        for item in branch["obligation_manifests"]["residual_work"]
+                        if item["operation"] == operation
+                    )
+                    raw_lifecycle = next(
+                        item
+                        for item in branch["obligation_manifests"][
+                            "stereo_lifecycle"
+                        ]
+                        if item["operation"] == "WriterStereoLifecycleEvidence"
+                    )
+                    expected_capabilities = (
+                        [
+                            "directional_ring_pair_compatibility",
+                            "residual_propagation",
+                            "shared_directional_carrier_restriction",
+                        ]
+                        if phase == "opening"
+                        else [
+                            "directional_carrier_restriction",
+                            "directional_ring_pair_compatibility",
+                            "directional_site_compatibility",
+                            "residual_factor_discharge",
+                            "residual_propagation",
+                            "shared_directional_carrier_restriction",
+                        ]
+                    )
+                    self.assertEqual(
+                        raw_lifecycle["lifecycle_capabilities"],
+                        expected_capabilities,
+                    )
+                    term = manifest["transition_term"]
+                    models = _closed_field(term, "carrier_models")
+                    self.assertEqual(len(models), 2)
+                    if phase == "opening":
+                        self.assertTrue(
+                            term["__dataclass__"].endswith(
+                                "SharedDirectionalRingEndpointProjectionTransitionTerm"
+                            )
+                        )
+                        self.assertEqual(
+                            len(_closed_field(term, "domain_intersections")),
+                            2,
+                        )
+                        self.assertEqual(_closed_field(term, "projected_variables"), [])
+                        self.assertEqual(
+                            _closed_field(term, "discharged_factor_keys"),
+                            [],
+                        )
+                        values = tuple(
+                            tuple(value["value"] for value in intersection[1])
+                            for intersection in _closed_field(
+                                term,
+                                "domain_intersections",
+                            )
+                        )
+                        expected_values = {
+                            DirectionMark.ABSENT: (
+                                ("absent", "positive", "negative"),
+                                ("absent", "positive", "negative"),
+                            ),
+                            DirectionMark.FWD: (("positive",), ("negative",)),
+                            DirectionMark.REV: (("negative",), ("positive",)),
+                        }
+                        self.assertEqual(values, expected_values[mark])
+                    else:
+                        self.assertEqual(len(_closed_field(term, "restrictions")), 2)
+
+    def test_shared_ring_transition_term_forgeries_reject_semantically(self) -> None:
+        opening_cases = (
+            ("missing", _forge_transition_missing, "directional_ring_projection_transition_missing"),
+            ("singular_term", _convert_shared_opening_to_singular, "shared_directional_ring_model_mismatch"),
+            ("remove_model", lambda term: _closed_field(term, "carrier_models").pop(), "shared_directional_ring_model_mismatch"),
+            ("duplicate_model", _duplicate_first_shared_model, "shared_directional_ring_model_mismatch"),
+            ("reverse_models", lambda term: _closed_field(term, "carrier_models").reverse(), "shared_directional_ring_model_mismatch"),
+            ("change_model_side", _change_first_model_side, "shared_directional_ring_model_mismatch"),
+            ("remove_choice", lambda term: _closed_field(term, "compatible_second_endpoint_choices").pop(), "shared_directional_ring_choice_relation_mismatch"),
+            ("add_incompatible_choice", _add_incompatible_shared_choice, "shared_directional_ring_choice_relation_mismatch"),
+            ("change_intersection", _remove_first_intersection_value, "shared_directional_ring_intersection_mismatch"),
+            ("forged_correlation", _change_shared_factor_correlation, "shared_directional_ring_transition_successor_lifecycle_mismatch"),
+            ("detached_successor", _change_successor_snapshot, "shared_directional_ring_transition_successor_lifecycle_mismatch"),
+        )
+        pair_cases = (
+            ("missing", _forge_transition_missing, "directional_ring_pair_transition_missing"),
+            ("remove_model", lambda term: _closed_field(term, "carrier_models").pop(), "shared_directional_ring_model_mismatch"),
+            ("remove_restriction", lambda term: _closed_field(term, "restrictions").pop(), "shared_directional_ring_restriction_mismatch"),
+            ("swap_restrictions", lambda term: _closed_field(term, "restrictions").reverse(), "shared_directional_ring_restriction_mismatch"),
+            ("remove_choice", lambda term: _closed_field(term, "compatible_second_endpoint_choices").pop(), "shared_directional_ring_choice_relation_mismatch"),
+            ("wrong_orientation", _change_pair_orientation, "directional_ring_pair_canonical_orientation_mismatch"),
+            ("wrong_occurrence_mark", _change_occurrence_mark, "directional_ring_pair_bond_occurrence_mismatch"),
+            ("missing_discharge", lambda term: _closed_field(term, "discharged_factor_keys").pop(0), "directional_ring_pair_discharge_factor_mismatch"),
+            ("forged_projection", _forge_projected_variable, "directional_ring_pair_projected_variables_mismatch"),
+            ("detached_successor", _change_successor_snapshot, "shared_directional_ring_transition_successor_lifecycle_mismatch"),
+        )
+        for phase, cases in (("opening", opening_cases), ("pair", pair_cases)):
+            for name, mutate, reason in cases:
+                with self.subTest(phase=phase, name=name):
+                    facts, options, _prepared, source = _shared_ring_branch_artifact(
+                        phase,
+                        DirectionMark.FWD,
+                    )
+                    forged = deepcopy(source)
+                    manifest = _branch_residual_manifest(forged)
+                    if mutate is _forge_transition_missing:
+                        mutate(manifest)
+                    else:
+                        mutate(manifest["transition_term"])
+                        _refresh_transition_digest(manifest)
+                    _redigest_branch_artifact(forged)
+                    structural = verify_writer_branch_transition_artifact_consistency(
+                        forged
+                    )
+                    replay = verify_writer_branch_transition_artifact_for_facts(
+                        facts=facts,
+                        runtime_options=options,
+                        artifact=forged,
+                    )
+                    self.assertTrue(structural.accepted, structural.reason)
+                    self.assertFalse(replay.accepted)
+                    self.assertIn(reason, replay.reason)
+
+    def test_shared_ring_term_borrowed_from_another_mark_rejects(self) -> None:
+        for phase in ("opening", "pair"):
+            with self.subTest(phase=phase):
+                facts, options, _prepared, source = _shared_ring_branch_artifact(
+                    phase,
+                    DirectionMark.FWD,
+                )
+                _facts, _options, _prepared, donor = _shared_ring_branch_artifact(
+                    phase,
+                    DirectionMark.REV,
+                )
+                forged = deepcopy(source)
+                target_manifest = _branch_residual_manifest(forged)
+                donor_manifest = _branch_residual_manifest(donor)
+                target_manifest["transition_term"] = deepcopy(
+                    donor_manifest["transition_term"]
+                )
+                target_manifest["transition_digest"] = donor_manifest[
+                    "transition_digest"
+                ]
+                _redigest_branch_artifact(forged)
+                structural = verify_writer_branch_transition_artifact_consistency(
+                    forged
+                )
+                replay = verify_writer_branch_transition_artifact_for_facts(
+                    facts=facts,
+                    runtime_options=options,
+                    artifact=forged,
+                )
+                self.assertTrue(structural.accepted, structural.reason)
+                self.assertFalse(replay.accepted)
+                self.assertIn("shared_directional_ring_transition", replay.reason)
+
+    def test_shared_ring_lifecycle_capability_requires_semantic_replay(self) -> None:
+        facts, options, _prepared, source = _shared_ring_branch_artifact(
+            "pair",
+            DirectionMark.FWD,
+        )
+        forged = deepcopy(source)
+        branch = next(
+            item for item in forged["objects"] if item["kind"] == "branch_support"
+        )
+        raw = next(
+            item
+            for item in branch["payload"]["obligation_manifests"]["stereo_lifecycle"]
+            if item["operation"] == "WriterStereoLifecycleEvidence"
+        )
+        raw["lifecycle_capabilities"].remove(
+            "shared_directional_carrier_restriction"
+        )
+        _redigest_branch_artifact(forged)
+        structural = verify_writer_branch_transition_artifact_consistency(forged)
+        replay = verify_writer_branch_transition_artifact_for_facts(
+            facts=facts,
+            runtime_options=options,
+            artifact=forged,
+        )
+        self.assertTrue(structural.accepted, structural.reason)
+        self.assertFalse(replay.accepted)
+        self.assertIn(
+            "directional_ring_pair_lifecycle_capabilities_mismatch",
+            replay.reason,
+        )
 
     def test_build_and_live_verification_do_not_enter_count_or_support_paths(self) -> None:
         facts, options, prepared, snapshot, support = _shared_ring_branch_sources()[
@@ -234,6 +428,7 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
             "opening",
             DirectionMark.ABSENT,
         )
+        self.assertEqual(artifact["schema_version"], 2)
         duplicate = deepcopy(artifact)
         duplicate["objects"].append(deepcopy(duplicate["objects"][0]))
         self.assertFalse(
@@ -247,7 +442,7 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
         )
 
         old_schema = deepcopy(artifact)
-        old_schema["schema_version"] = 0
+        old_schema["schema_version"] = 1
         rejected = verify_writer_branch_transition_artifact_consistency(old_schema)
         self.assertFalse(rejected.accepted)
         self.assertIn("unknown_schema_version", rejected.reason)
@@ -484,6 +679,150 @@ def _find_closed_term(value, marker: str):
             if found is not None:
                 return found
     return None
+
+
+def _closed_field(term, name: str):
+    for field_name, value in term["fields"]:
+        if field_name == name:
+            return value
+    raise AssertionError(f"missing closed field {name!r}")
+
+
+def _set_closed_field(term, name: str, value) -> None:
+    for field in term["fields"]:
+        if field[0] == name:
+            field[1] = value
+            return
+    raise AssertionError(f"missing closed field {name!r}")
+
+
+def _branch_residual_manifest(artifact):
+    branch = next(
+        item["payload"]
+        for item in artifact["objects"]
+        if item["kind"] == "branch_support"
+    )
+    matches = [
+        item
+        for item in branch["obligation_manifests"]["residual_work"]
+        if item["operation"] in (
+            "directional ring endpoint projection",
+            "directional ring pair restriction",
+        )
+    ]
+    if len(matches) != 1:
+        raise AssertionError("expected one directional ring residual manifest")
+    return matches[0]
+
+
+def _refresh_transition_digest(manifest) -> None:
+    manifest["transition_digest"] = _digest_terms_bounded(
+        manifest["transition_term"],
+        budget=WriterEnvelopeWorkBudget(),
+        operation="test.branch_transition.transition",
+    )
+
+
+def _forge_transition_missing(manifest) -> None:
+    manifest["transition_term"] = None
+    manifest["transition_digest"] = None
+
+
+def _duplicate_first_shared_model(term) -> None:
+    models = _closed_field(term, "carrier_models")
+    models[1] = deepcopy(models[0])
+
+
+def _convert_shared_opening_to_singular(term) -> None:
+    term["__dataclass__"] = (
+        "grimace._south_star1.writer_residual_transition_terms."
+        "DirectionalRingEndpointProjectionTransitionTerm"
+    )
+    for field in term["fields"]:
+        if field[0] == "carrier_models":
+            field[0] = "carrier_model"
+            field[1] = field[1][0]
+            return
+    raise AssertionError("missing shared carrier models")
+
+
+def _change_first_model_side(term) -> None:
+    model = _closed_field(term, "carrier_models")[0]
+    side = _closed_field(model, "side")
+    _set_closed_field(model, "side", "right" if side == "left" else "left")
+
+
+def _remove_first_intersection_value(term) -> None:
+    values = _closed_field(term, "domain_intersections")[0][1]
+    values.pop()
+
+
+def _add_incompatible_shared_choice(term) -> None:
+    choices = _closed_field(term, "compatible_second_endpoint_choices")
+    choices.append([
+        "",
+        {
+            "__enum__": "grimace._south_star1.policy.DirectionMark",
+            "value": DirectionMark.FWD.value,
+        },
+    ])
+
+
+def _change_pair_orientation(term) -> None:
+    _set_closed_field(
+        term,
+        "second_canonical_orientation",
+        _closed_field(term, "first_canonical_orientation"),
+    )
+
+
+def _change_occurrence_mark(term) -> None:
+    mark = _closed_field(term, "bond_occurrence_mark")
+    mark["value"] = -mark["value"] if mark["value"] else 1
+
+
+def _forge_projected_variable(term) -> None:
+    var = deepcopy(_closed_field(term, "restrictions")[0][0])
+    _closed_field(term, "projected_variables").append(var)
+
+
+def _change_successor_snapshot(term) -> None:
+    snapshot = _closed_field(term, "successor_snapshot")
+    domains = _closed_field(snapshot, "domains")
+    domains.reverse()
+    if len(domains) < 2:
+        domains.append(deepcopy(domains[0]))
+    _set_closed_field(
+        term,
+        "successor_snapshot_digest",
+        _digest_terms_bounded(
+            snapshot,
+            budget=WriterEnvelopeWorkBudget(),
+            operation="test.branch_transition.successor_snapshot",
+        ),
+    )
+
+
+def _change_shared_factor_correlation(term) -> None:
+    snapshot = _closed_field(term, "successor_snapshot")
+    shared_factor = next(
+        factor
+        for factor in _closed_field(snapshot, "factors")
+        if factor["__dataclass__"].endswith(
+            "DirectionalBondEmissionFactorValueSnapshot"
+        )
+        and len(_closed_field(factor, "models")) == 2
+    )
+    _closed_field(shared_factor, "models").reverse()
+    _set_closed_field(
+        term,
+        "successor_snapshot_digest",
+        _digest_terms_bounded(
+            snapshot,
+            budget=WriterEnvelopeWorkBudget(),
+            operation="test.branch_transition.successor_snapshot",
+        ),
+    )
 
 
 if __name__ == "__main__":

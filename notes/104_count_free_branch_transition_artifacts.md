@@ -24,6 +24,25 @@ count-free projection identity containing only the selected live branch.
 | Lifecycle links | exact branch-local lifecycle records |
 | Coupling term | event, marker manifest, states, and residual work |
 
+For a two-site shared directional ring carrier, the transition proof uses the
+following narrower field authorities.  The opening term is deliberately a
+distinct closed class from the singular one-site term.
+
+| Serialized field | Independent authority |
+| --- | --- |
+| Carrier models | all fact-derived models for the bond |
+| Compatible second choices | serialized policy plus the all-model relation |
+| Opening intersections | union of independently derived restriction rows |
+| Pair restrictions | selected independently derived restriction row |
+| Source/successor snapshots | branch-local writer-state terms |
+| Propagation result | producer-free residual-store execution |
+| Affected component | replay propagation statistics |
+| Discharged factors | facts plus source bond occurrences |
+| Projected variables | exact source/successor domain difference |
+| Bond occurrence | event endpoint roles and direction marks |
+| Open/closed ring records | source and successor ring-state terms |
+| Lifecycle capabilities | semantic operation and fact-derived model count |
+
 Structural checking owns the closed three-object graph and its digests.  Live
 checking reconstructs the immediate frontier with recursive counts disabled and
 requires exact equality.  Facts-bound checking reuses the branch-local graph,

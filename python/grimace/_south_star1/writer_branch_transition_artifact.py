@@ -27,7 +27,7 @@ from .writer_support_artifact_envelope import _ObjectTable
 from .writer_support_artifact_envelope import _add_branch_support
 
 SCHEMA_NAME = "writer_branch_transition_artifact"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 @dataclass(frozen=True, slots=True)

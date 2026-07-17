@@ -867,7 +867,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
                 self.assertFalse(verification.accepted)
                 self.assertIn(reason, verification.reason)
 
-    def test_shared_ring_carrier_artifact_remains_offline_incomplete(self) -> None:
+    def test_shared_ring_carrier_supports_ring_transition_terms(self) -> None:
         facts = _shared_directional_ring_carrier_facts()
         prepared = _prepare(facts)
 
@@ -885,7 +885,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
                 models,
             )
         )
-        self.assertFalse(
+        self.assertTrue(
             writer_stereo_module
             ._supports_directional_ring_endpoint_projection_transition_term(
                 prepared,

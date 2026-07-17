@@ -18,7 +18,7 @@ from .writer_envelope_work import writer_envelope_work_reason
 from .writer_count_dag_envelope import validate_writer_count_certificate_dag_envelope
 
 SCHEMA_NAME = "writer_support_artifact"
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 _TOP_LEVEL_FIELDS = frozenset((
     "schema_name",
     "schema_version",
@@ -1080,7 +1080,10 @@ def _validate_residual_transition_manifest(item: Mapping[str, object]) -> None:
     if frozenset(term) != frozenset(("__dataclass__", "fields")):
         _artifact_violation("obligation_manifest_transition_shape_mismatch")
     expected_path, expected_kind, expected_fields = (
-        _expected_transition_manifest_shape(item["operation"])
+        _expected_transition_manifest_shape(
+            item["operation"],
+            term_class=term["__dataclass__"],
+        )
     )
     if term["__dataclass__"] != expected_path:
         _artifact_violation("obligation_manifest_transition_class_mismatch")
@@ -1121,7 +1124,11 @@ def _validate_residual_transition_manifest(item: Mapping[str, object]) -> None:
         _artifact_violation("obligation_manifest_transition_digest_mismatch")
 
 
-def _expected_transition_manifest_shape(operation: object) -> tuple[str, str, frozenset[str]]:
+def _expected_transition_manifest_shape(
+    operation: object,
+    *,
+    term_class: object = None,
+) -> tuple[str, str, frozenset[str]]:
     common = frozenset(
         (
             "kind",
@@ -1183,6 +1190,28 @@ def _expected_transition_manifest_shape(operation: object) -> tuple[str, str, fr
             ),
         )
     if operation == "directional ring endpoint projection":
+        shared_path = (
+            "grimace._south_star1.writer_residual_transition_terms."
+            "SharedDirectionalRingEndpointProjectionTransitionTerm"
+        )
+        if term_class == shared_path:
+            return (
+                shared_path,
+                "directional_ring_endpoint_projection",
+                frozenset(
+                    (
+                        "kind", "source_snapshot", "source_snapshot_digest",
+                        "bond", "endpoint_atom", "partner_atom",
+                        "ring_label_value", "ring_label_text", "endpoint_text",
+                        "bond_text", "direction_mark", "carrier_models",
+                        "compatible_second_endpoint_choices",
+                        "domain_intersections", "affected_variables",
+                        "affected_factor_keys", "propagation_result",
+                        "projected_variables", "discharged_factor_keys",
+                        "successor_snapshot", "successor_snapshot_digest",
+                    )
+                ),
+            )
         return (
             "grimace._south_star1.writer_residual_transition_terms."
             "DirectionalRingEndpointProjectionTransitionTerm",

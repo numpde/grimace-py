@@ -35,7 +35,7 @@ def verify_writer_branch_transition_artifact_consistency(artifact, *, budget=Non
             _violation("top_level_fields_mismatch")
         if artifact["schema_name"] != "writer_branch_transition_artifact":
             _violation("unknown_schema_name")
-        if artifact["schema_version"] != 1:
+        if artifact["schema_version"] != 2:
             _violation("unknown_schema_version")
         if artifact["source_kind"] != "snapshot":
             _violation("unsupported_source_kind")

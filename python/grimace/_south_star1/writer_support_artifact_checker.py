@@ -18,7 +18,7 @@ from .writer_envelope_work import writer_envelope_work_reason
 from .writer_count_dag_envelope import validate_writer_count_certificate_dag_envelope
 
 SCHEMA_NAME = "writer_support_artifact"
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 _TOP_LEVEL_FIELDS = frozenset((
     "schema_name",
     "schema_version",
@@ -847,7 +847,14 @@ def _validate_terminal_support_identity(
         "digest",
     )
     if include_obligation_summary:
-        fields = (*fields[:-1], "obligation_summary", "obligation_manifests", fields[-1])
+        fields = (
+            *fields[:-1],
+            "terminalization_term",
+            "terminalization_term_digest",
+            "obligation_summary",
+            "obligation_manifests",
+            fields[-1],
+        )
     _require_exact_payload_fields(
         identity,
         fields,
@@ -871,6 +878,7 @@ def _validate_terminal_support_identity(
         "terminal_support_certificate_digests_not_strings",
     )
     if include_obligation_summary:
+        _validate_terminalization_term(identity)
         _validate_obligation_summary(
             identity["obligation_summary"],
             (
@@ -888,6 +896,61 @@ def _validate_terminal_support_identity(
                 "terminal_graph_obligation_work": "graph_obligation_work_count",
             },
         )
+
+
+def _validate_terminalization_term(identity: Mapping[str, object]) -> None:
+    term = identity["terminalization_term"]
+    if not isinstance(term, Mapping) or set(term) != {"__dataclass__", "fields"}:
+        _artifact_violation("terminalization_term_shape_mismatch")
+    if term["__dataclass__"] != (
+        "grimace._south_star1.writer_terminalization_terms."
+        "WriterTerminalizationTerm"
+    ):
+        _artifact_violation("terminalization_term_class_mismatch")
+    fields = term["fields"]
+    expected_fields = {
+        "source_state_digest",
+        "finalized_state_digest",
+        "active_atom",
+        "graph_completion_status",
+        "graph_obligation_work_digests",
+        "stereo_mode",
+        "source_residual_snapshot_digest",
+        "finalized_residual_snapshot_digest",
+        "terminal_residual_work_digests",
+        "terminal_stereo_lifecycle_digests",
+        "terminal_execution_capabilities",
+    }
+    if (
+        not isinstance(fields, list)
+        or len(fields) != len(expected_fields)
+        or any(not isinstance(field, list) or len(field) != 2 for field in fields)
+        or {field[0] for field in fields} != expected_fields
+    ):
+        _artifact_violation("terminalization_term_fields_mismatch")
+    values = {field[0]: field[1] for field in fields}
+    if values["stereo_mode"] not in (
+        "noop",
+        "tetra_local_order_factor_closure",
+    ):
+        _artifact_violation("terminalization_term_stereo_mode_mismatch")
+    status = values["graph_completion_status"]
+    if (
+        not isinstance(status, Mapping)
+        or set(status) != {"__dataclass__", "fields"}
+        or status["__dataclass__"]
+        != (
+            "grimace._south_star1.writer_graph_obligations."
+            "WriterGraphCompletionStatus"
+        )
+        or not isinstance(status["fields"], list)
+        or len(status["fields"]) != 3
+        or {field[0] for field in status["fields"]}
+        != {"complete", "unresolved_kinds", "unresolved_bonds"}
+    ):
+        _artifact_violation("terminalization_graph_status_shape_mismatch")
+    if identity["terminalization_term_digest"] != _identity_digest(term):
+        _artifact_violation("terminalization_term_digest_mismatch")
 
 
 def _validate_obligation_summary(summary: object, fields: tuple[str, ...]) -> None:
@@ -1047,7 +1110,7 @@ def _validate_lifecycle_provenance_manifest(item: Mapping[str, object]) -> None:
         item["residual_work_operations"],
         "obligation_manifest_residual_work_operations_mismatch",
     )
-    if item["family"] != "stereo_lifecycle":
+    if item["family"] not in ("stereo_lifecycle", "terminal_stereo_lifecycle"):
         if (
             item["lifecycle_event_kind"] is not None
             or item["lifecycle_capabilities"]
@@ -1072,7 +1135,7 @@ def _validate_residual_transition_manifest(item: Mapping[str, object]) -> None:
         if digest is not None:
             _artifact_violation("obligation_manifest_transition_digest_mismatch")
         return
-    if item["family"] != "residual_work":
+    if item["family"] not in ("residual_work", "terminal_residual_work"):
         _artifact_violation("obligation_manifest_transition_family_mismatch")
     if not isinstance(digest, str):
         _artifact_violation("obligation_manifest_transition_digest_mismatch")

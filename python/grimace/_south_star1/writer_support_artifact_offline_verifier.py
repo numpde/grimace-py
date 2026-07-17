@@ -41,6 +41,9 @@ from .residual_constraints import tetra_token_var
 from .writer_residual_transition_terms import (
     DirectionalCarrierMarkRestrictionTransitionTerm,
 )
+from .writer_graph_obligations import WriterGraphCompletionStatus
+from .writer_terminalization_terms import WriterTerminalizationTerm
+from .writer_snapshot_closed_terms import writer_frontier_cursor_from_closed_terms
 from .writer_residual_transition_terms import (
     DirectionalRingEndpointProjectionTransitionTerm,
 )
@@ -116,6 +119,12 @@ _ALLOWED_TETRA_TRANSITION_ENUMS = {
     ),
 }
 _ALLOWED_TETRA_TRANSITION_DATACLASSES = {
+    _PATH_PREFIX + "writer_graph_obligations.WriterGraphCompletionStatus": (
+        WriterGraphCompletionStatus
+    ),
+    _PATH_PREFIX + "writer_terminalization_terms.WriterTerminalizationTerm": (
+        WriterTerminalizationTerm
+    ),
     _PATH_PREFIX + "residual_constraints.ResidualFactorKey": ResidualFactorKey,
     _PATH_PREFIX + "residual_constraints.ResidualPropagationResult": (
         ResidualPropagationResult
@@ -169,6 +178,26 @@ _ALLOWED_TETRA_TRANSITION_DATACLASSES = {
     ),
 }
 _ALLOWED_TETRA_TRANSITION_DATACLASS_FIELDS = {
+    _PATH_PREFIX + "writer_graph_obligations.WriterGraphCompletionStatus": (
+        frozenset(("complete", "unresolved_kinds", "unresolved_bonds"))
+    ),
+    _PATH_PREFIX + "writer_terminalization_terms.WriterTerminalizationTerm": (
+        frozenset(
+            (
+                "source_state_digest",
+                "finalized_state_digest",
+                "active_atom",
+                "graph_completion_status",
+                "graph_obligation_work_digests",
+                "stereo_mode",
+                "source_residual_snapshot_digest",
+                "finalized_residual_snapshot_digest",
+                "terminal_residual_work_digests",
+                "terminal_stereo_lifecycle_digests",
+                "terminal_execution_capabilities",
+            )
+        )
+    ),
     _PATH_PREFIX + "residual_constraints.ResidualFactorKey": (
         frozenset(("kind", "key"))
     ),
@@ -1100,6 +1129,7 @@ def classify_residual_stereo_obligations_offline(
         replayed_residual_digests: set[str] = set()
         replayed_lifecycle_digests: set[str] = set()
         replayed_directional_ring_closure_digests: set[str] = set()
+        replayed_terminal_graph_digests: set[str] = set()
         replayed_operations: list[str] = []
         ring_endpoint_choices = _ring_endpoint_choices_from_artifact(
             artifact=artifact,
@@ -1142,10 +1172,26 @@ def classify_residual_stereo_obligations_offline(
             )
         if include_terminals:
             root = _require_object(objects, artifact["roots"]["support_image_root"])
+            replayed_terminal_refs: set[str] = set()
             for support_ref in root["payload"]["support_string_refs"]:
                 support = _require_object(objects, support_ref)
+                projection = _require_object(
+                    objects, support["payload"]["terminal_projection_ref"]
+                )
                 for terminal_ref in support["payload"]["terminal_support_refs"]:
+                    if terminal_ref in replayed_terminal_refs:
+                        continue
+                    replayed_terminal_refs.add(terminal_ref)
                     terminal = _require_object(objects, terminal_ref)
+                    _replay_terminal_support_offline(
+                        facts=facts,
+                        terminal=terminal,
+                        projection=projection,
+                        replayed_residual_digests=replayed_residual_digests,
+                        replayed_lifecycle_digests=replayed_lifecycle_digests,
+                        replayed_terminal_graph_digests=replayed_terminal_graph_digests,
+                        replayed_operations=replayed_operations,
+                    )
                     for family, items in terminal["payload"]["obligation_manifests"].items():
                         manifests_by_family[family].extend(items)
         unchecked = tuple(dict.fromkeys(
@@ -1156,6 +1202,7 @@ def classify_residual_stereo_obligations_offline(
                 replayed_residual_digests=replayed_residual_digests,
                 replayed_lifecycle_digests=replayed_lifecycle_digests,
                 replayed_directional_ring_closure_digests=replayed_directional_ring_closure_digests,
+                replayed_terminal_graph_digests=replayed_terminal_graph_digests,
             )
         ))
         checked = tuple(
@@ -1166,6 +1213,7 @@ def classify_residual_stereo_obligations_offline(
                 replayed_residual_digests=replayed_residual_digests,
                 replayed_lifecycle_digests=replayed_lifecycle_digests,
                 replayed_directional_ring_closure_digests=replayed_directional_ring_closure_digests,
+                replayed_terminal_graph_digests=replayed_terminal_graph_digests,
             )
         )
         checked_empty = tuple(
@@ -1232,6 +1280,51 @@ def verify_branch_obligations_offline(
     )
 
 
+def _replay_terminal_support_offline(
+    *,
+    facts,
+    terminal,
+    projection,
+    replayed_residual_digests,
+    replayed_lifecycle_digests,
+    replayed_terminal_graph_digests,
+    replayed_operations,
+) -> None:
+    from .writer_terminalization_artifact_fact_verifier import (
+        replay_terminal_support_payload_for_facts,
+    )
+
+    payload = terminal["payload"]
+    source_cursor = writer_frontier_cursor_from_closed_terms(
+        projection["payload"]["source_cursor"]["terms"]
+    )
+    finalized_cursor = writer_frontier_cursor_from_closed_terms(
+        projection["payload"]["finalized_cursor"]["terms"]
+    )
+    source_states = tuple(
+        state
+        for state, _weight in source_cursor.weighted_states
+        if _identity_digest(state) == payload["source_state_digest"]
+    )
+    finalized_states = tuple(
+        state
+        for state, _weight in finalized_cursor.weighted_states
+        if _identity_digest(state) == payload["finalized_state_digest"]
+    )
+    if len(source_states) != 1 or len(finalized_states) != 1:
+        _offline_violation("terminal_state_anchor_mismatch")
+    term, operations = replay_terminal_support_payload_for_facts(
+        facts=facts,
+        support=payload,
+        source_state=source_states[0],
+        finalized_state=finalized_states[0],
+    )
+    replayed_residual_digests.update(term.terminal_residual_work_digests)
+    replayed_lifecycle_digests.update(term.terminal_stereo_lifecycle_digests)
+    replayed_terminal_graph_digests.update(term.graph_obligation_work_digests)
+    replayed_operations.extend(operations)
+
+
 def _ring_endpoint_choices_from_artifact(
     *,
     artifact: Mapping[str, object],
@@ -1261,6 +1354,7 @@ def _obligation_manifests_checked(
     replayed_residual_digests: set[str],
     replayed_lifecycle_digests: set[str],
     replayed_directional_ring_closure_digests: set[str],
+    replayed_terminal_graph_digests: set[str],
 ) -> bool:
     return all(
         _obligation_manifest_checked(
@@ -1268,6 +1362,7 @@ def _obligation_manifests_checked(
             replayed_residual_digests=replayed_residual_digests,
             replayed_lifecycle_digests=replayed_lifecycle_digests,
             replayed_directional_ring_closure_digests=replayed_directional_ring_closure_digests,
+            replayed_terminal_graph_digests=replayed_terminal_graph_digests,
         )
         for item in items
     )
@@ -1279,6 +1374,7 @@ def _obligation_manifest_checked(
     replayed_residual_digests: set[str],
     replayed_lifecycle_digests: set[str],
     replayed_directional_ring_closure_digests: set[str],
+    replayed_terminal_graph_digests: set[str],
 ) -> bool:
     family = item["family"]
     if family == "residual_work":
@@ -1296,6 +1392,12 @@ def _obligation_manifest_checked(
         )
     if family == "directional_ring_closure_lifecycle":
         return item["evidence_digest"] in replayed_directional_ring_closure_digests
+    if family == "terminal_residual_work":
+        return item["evidence_digest"] in replayed_residual_digests
+    if family == "terminal_stereo_lifecycle":
+        return item["evidence_digest"] in replayed_lifecycle_digests
+    if family == "terminal_graph_obligation_work":
+        return item["evidence_digest"] in replayed_terminal_graph_digests
     return bool(
         item["is_noop"]
         or item["is_empty"]
@@ -4289,7 +4391,12 @@ def _terminal_support_identity_payload(payload: Mapping[str, object]) -> dict[st
     return {
         key: value
         for key, value in payload.items()
-        if key not in ("obligation_summary", "obligation_manifests")
+        if key not in (
+            "terminalization_term",
+            "terminalization_term_digest",
+            "obligation_summary",
+            "obligation_manifests",
+        )
     }
 
 

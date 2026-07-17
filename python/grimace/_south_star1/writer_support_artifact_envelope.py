@@ -38,6 +38,7 @@ from .writer_snapshot_prefix_envelope import verify_writer_snapshot_prefix_read_
 from .writer_support_image_envelope import _support_image_certificate_for_source
 from .writer_support_image_envelope import _text_projection_bucket_key
 from .writer_support_string_envelope import _support_string_replay_certificate_digest
+from .writer_terminalization_terms import WriterTerminalizationTerm
 
 _PLAIN_ATOM_TEXT_ELEMENTS = frozenset(("C", "N", "O"))
 
@@ -404,20 +405,10 @@ def _add_support_string(
         operation="support_artifact.terminal_projection.object",
     )
     terminal_support_refs = [
-        table.add(
-            "terminal_support",
-            {
-                **_terminal_support_identity_envelope_from_certificate(
-                    terminal,
-                    budget=budget,
-                ),
-                "obligation_summary": _terminal_obligation_summary(terminal),
-                "obligation_manifests": _terminal_obligation_manifests(
-                    terminal,
-                    budget=budget,
-                ),
-            },
-            operation="support_artifact.terminal_support.object",
+        _add_terminal_support(
+            table,
+            terminal=terminal,
+            budget=budget,
         )
         for terminal in certificate.terminal_projection_certificate.terminal_certificates
     ]
@@ -761,6 +752,120 @@ def _terminal_obligation_summary(terminal) -> dict[str, int]:
     }
 
 
+def _add_terminal_support(
+    table,
+    *,
+    terminal,
+    budget: WriterEnvelopeWorkBudget,
+) -> str:
+    return table.add(
+        "terminal_support",
+        _terminal_support_payload(terminal, budget=budget),
+        operation="support_artifact.terminal_support.object",
+    )
+
+
+def _terminal_support_payload(
+    terminal,
+    *,
+    budget: WriterEnvelopeWorkBudget,
+) -> dict[str, object]:
+    identity = _terminal_support_identity_envelope_from_certificate(
+        terminal,
+        budget=budget,
+    )
+    term = _writer_terminalization_term(
+        terminal,
+        identity=identity,
+        budget=budget,
+    )
+    return {
+        **identity,
+        "terminalization_term": _term(term),
+        "terminalization_term_digest": _identity_digest(
+            _term(term),
+            budget=budget,
+            operation="support_artifact.terminalization_term.digest",
+        ),
+        "obligation_summary": _terminal_obligation_summary(terminal),
+        "obligation_manifests": _terminal_obligation_manifests(
+            terminal,
+            budget=budget,
+        ),
+    }
+
+
+def _writer_terminalization_term(
+    terminal,
+    *,
+    identity: Mapping[str, object],
+    budget: WriterEnvelopeWorkBudget,
+) -> WriterTerminalizationTerm:
+    graph_certificates = tuple(
+        certificate
+        for certificate in terminal.terminal_certificates
+        if certificate.graph_completion_status is not None
+    )
+    if len(graph_certificates) != 1:
+        _artifact_violation("terminal_graph_completion_certificate_mismatch")
+    residual_work = terminal.terminal_residual_work_evidence
+    if not residual_work:
+        stereo_mode = "noop"
+    elif (
+        len(residual_work) == 1
+        and residual_work[0].operation
+        == "tetrahedral local-order factor closure"
+    ):
+        stereo_mode = "tetra_local_order_factor_closure"
+    else:
+        _artifact_violation("terminal_stereo_mode_unsupported")
+    return WriterTerminalizationTerm(
+        source_state_digest=identity["source_state_digest"],
+        finalized_state_digest=identity["finalized_state_digest"],
+        active_atom=terminal.source_state.active.atom,
+        graph_completion_status=graph_certificates[0].graph_completion_status,
+        graph_obligation_work_digests=tuple(
+            _identity_digest(
+                evidence,
+                budget=budget,
+                operation="support_artifact.terminal_graph_work.digest",
+            )
+            for evidence in terminal.graph_obligation_work_evidence
+        ),
+        stereo_mode=stereo_mode,
+        source_residual_snapshot_digest=_identity_digest(
+            terminal.source_state.stereo_state.residual_snapshot,
+            budget=budget,
+            operation="support_artifact.terminal_source_residual.digest",
+        ),
+        finalized_residual_snapshot_digest=_identity_digest(
+            terminal.finalized_state.stereo_state.residual_snapshot,
+            budget=budget,
+            operation="support_artifact.terminal_finalized_residual.digest",
+        ),
+        terminal_residual_work_digests=tuple(
+            _identity_digest(
+                evidence,
+                budget=budget,
+                operation="support_artifact.terminal_residual_work.digest",
+            )
+            for evidence in residual_work
+        ),
+        terminal_stereo_lifecycle_digests=tuple(
+            _identity_digest(
+                evidence,
+                budget=budget,
+                operation="support_artifact.terminal_stereo_lifecycle.digest",
+            )
+            for evidence in terminal.terminal_stereo_lifecycle_evidence
+        ),
+        terminal_execution_capabilities=tuple(sorted(
+            _compact_value(capability)
+            for capability in terminal.terminal_execution_capabilities
+        )),
+    )
+
+
 def _terminal_obligation_manifests(
     terminal,
     *,
@@ -779,6 +884,14 @@ def _terminal_obligation_manifests(
     terminal_noop = terminal.source_state == terminal.finalized_state
     terminal_graph_clean = _terminal_graph_clean(terminal)
     terminal_stereo_clean = _terminal_stereo_clean(terminal)
+    residual_lifecycle_links = _residual_lifecycle_digest_links(
+        lifecycle_records=terminal.terminal_stereo_lifecycle_evidence,
+        budget=budget,
+    )
+    lifecycle_residual_links = _lifecycle_residual_digest_links(
+        lifecycle_records=terminal.terminal_stereo_lifecycle_evidence,
+        budget=budget,
+    )
     return {
         "terminal_residual_work": _obligation_family_manifests(
             family="terminal_residual_work",
@@ -786,6 +899,7 @@ def _terminal_obligation_manifests(
             source_digest=source_digest,
             successor_digest=finalized_digest,
             replay_complete=False,
+            linked_lifecycle_digests=residual_lifecycle_links,
             budget=budget,
         ),
         "terminal_stereo_lifecycle": _obligation_family_manifests(
@@ -795,6 +909,7 @@ def _terminal_obligation_manifests(
             successor_digest=finalized_digest,
             replay_complete=terminal_noop,
             terminal_clean=terminal_stereo_clean,
+            linked_residual_work_digests=lifecycle_residual_links,
             budget=budget,
         ),
         "terminal_graph_obligation_work": _obligation_family_manifests(
@@ -968,7 +1083,7 @@ def _lifecycle_provenance_manifest(
         "certificate_capability": None,
         "certificate_lifecycle_digest": None,
     }
-    if family != "stereo_lifecycle":
+    if family not in ("stereo_lifecycle", "terminal_stereo_lifecycle"):
         return empty
     lifecycle = getattr(record, "lifecycle_evidence", record)
     residuals = tuple(getattr(record, "residual_work_evidence", ()))

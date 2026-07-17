@@ -72,13 +72,13 @@ class WriterSupportArtifactEnvelopeTest(unittest.TestCase):
     def test_new_artifacts_use_schema_v9(self) -> None:
         envelope = _snapshot_artifact()
 
-        self.assertEqual(SCHEMA_VERSION, 9)
-        self.assertEqual(envelope["schema_version"], 9)
+        self.assertEqual(SCHEMA_VERSION, 10)
+        self.assertEqual(envelope["schema_version"], 10)
         self.assertTrue(check_support_artifact(envelope).accepted)
 
-    def test_v8_artifact_is_rejected_without_migration(self) -> None:
+    def test_v9_artifact_is_rejected_without_migration(self) -> None:
         envelope = _snapshot_artifact()
-        envelope["schema_version"] = 8
+        envelope["schema_version"] = 9
         envelope["digest"] = _digest_terms_bounded(
             artifact_manifest(envelope),
             budget=WriterEnvelopeWorkBudget(),

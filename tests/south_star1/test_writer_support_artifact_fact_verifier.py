@@ -2271,7 +2271,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             ][0]["terminal_clean"]
         )
 
-    def test_terminal_clean_false_reports_unchecked(self) -> None:
+    def test_terminal_clean_flags_do_not_remove_replay_credit(self) -> None:
         facts = _rdkit_facts("CCO")
         artifact = _rdkit_artifact("CCO")
         terminal = _first_terminal_support_object(artifact)
@@ -2288,13 +2288,21 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         classification = _obligation_classification(artifact, facts=facts)
 
         self.assertTrue(classification.accepted, classification.reason)
-        self.assertIn(
+        self.assertNotIn(
             "terminal_graph_obligation_work",
             classification.unchecked_families,
         )
-        self.assertIn(
+        self.assertNotIn(
             "terminal_stereo_lifecycle",
             classification.unchecked_families,
+        )
+        self.assertIn(
+            "terminal_graph_obligation_work",
+            classification.checked_families,
+        )
+        self.assertIn(
+            "terminal_stereo_lifecycle",
+            classification.checked_families,
         )
 
     def test_terminal_obligation_manifest_count_mismatch_is_rejected(self) -> None:

@@ -19,6 +19,8 @@ from grimace._south_star1.writer_envelope_terms import _identity_digest
 from grimace._south_star1.writer_envelope_work import WriterEnvelopeWorkBudget
 from grimace._south_star1.writer_support_artifact_checker import artifact_metrics
 from grimace._south_star1.writer_support_artifact_checker import support_artifact_object_identity_term
+from grimace._south_star1.writer_support_artifact_envelope import _ObjectTable
+from grimace._south_star1.writer_support_artifact_envelope import _add_text_projection
 from grimace._south_star1.writer_events import WriterRingEndpointEmitted
 from grimace._south_star1.writer_events import WriterRingEndpointPaired
 from grimace._south_star1.writer_frontier import _checked_writer_frontier_branch_supports
@@ -59,6 +61,10 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
                 self.assertTrue(facts_bound.accepted, facts_bound.reason)
                 self.assertEqual(facts_bound.unchecked_obligation_families, ())
                 self.assertIn(operation, facts_bound.semantically_replayed_operations)
+                self.assertEqual(
+                    facts_bound.semantically_replayed_operations.count(operation),
+                    1,
+                )
 
     def test_shared_ring_opening_and_pair_branches_are_typed_incomplete(self) -> None:
         for phase in ("opening", "pair"):
@@ -88,6 +94,14 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
                     self.assertEqual(
                         facts_bound.unchecked_obligation_families,
                         ("shared_directional_ring_transition_replay",),
+                    )
+                    self.assertNotIn(
+                        "directional ring endpoint projection",
+                        facts_bound.semantically_replayed_operations,
+                    )
+                    self.assertNotIn(
+                        "directional ring pair restriction",
+                        facts_bound.semantically_replayed_operations,
                     )
 
     def test_build_and_live_verification_do_not_enter_count_or_support_paths(self) -> None:
@@ -146,6 +160,75 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
         self.assertFalse(live.accepted)
         self.assertIn("live_branch_artifact_mismatch", live.reason)
 
+    def test_coherent_graph_delta_and_obligation_substitutions_reject(self) -> None:
+        facts, options, prepared, artifact = _shared_ring_branch_artifact(
+            "opening", DirectionMark.FWD,
+        )
+        forged = deepcopy(artifact)
+        branch = next(item for item in forged["objects"] if item["kind"] == "branch_support")
+        delta = branch["payload"]["graph_ring_delta"]
+        ring_event = next(
+            event
+            for event in delta["manifest"]["event_manifests"]
+            if event["kind"] == "ring_endpoint_emitted"
+        )
+        ring_event["bond"] = 999
+        delta["digest"] = _identity_digest(
+            {"kind": delta["kind"], "manifest": delta["manifest"]}
+        )
+        _redigest_branch_artifact(forged)
+        self.assertTrue(
+            verify_writer_branch_transition_artifact_consistency(forged).accepted
+        )
+        rejected = verify_writer_branch_transition_artifact_for_facts(
+            facts=facts,
+            runtime_options=options,
+            artifact=forged,
+        )
+        self.assertFalse(rejected.accepted)
+        self.assertIn("local_closure_bond_missing", rejected.reason)
+
+        _other_facts, _other_options, _other_prepared, other = _shared_ring_branch_artifact(
+            "opening", DirectionMark.REV,
+        )
+        forged = deepcopy(artifact)
+        branch = next(item for item in forged["objects"] if item["kind"] == "branch_support")
+        other_branch = next(item for item in other["objects"] if item["kind"] == "branch_support")
+        branch["payload"]["obligation_manifests"] = deepcopy(
+            other_branch["payload"]["obligation_manifests"]
+        )
+        branch["payload"]["obligation_summary"] = deepcopy(
+            other_branch["payload"]["obligation_summary"]
+        )
+        _redigest_branch_artifact(forged)
+        self.assertTrue(
+            verify_writer_branch_transition_artifact_consistency(forged).accepted
+        )
+        rejected = verify_writer_branch_transition_artifact_envelope(
+            prepared=prepared,
+            artifact=forged,
+        )
+        self.assertFalse(rejected.accepted)
+        self.assertIn("live_branch_artifact_mismatch", rejected.reason)
+
+    def test_prepared_identity_detached_from_snapshot_is_facts_rejected(self) -> None:
+        facts, options, _prepared, artifact = _shared_ring_branch_artifact(
+            "opening", DirectionMark.ABSENT,
+        )
+        forged = deepcopy(artifact)
+        forged["prepared_identity"]["digest"] = "0" * 64
+        forged["source_snapshot"]["prepared_identity_digest"] = "0" * 64
+        _redigest_branch_artifact(forged)
+        structural = verify_writer_branch_transition_artifact_consistency(forged)
+        rejected = verify_writer_branch_transition_artifact_for_facts(
+            facts=facts,
+            runtime_options=options,
+            artifact=forged,
+        )
+        self.assertTrue(structural.accepted, structural.reason)
+        self.assertFalse(rejected.accepted)
+        self.assertIn("prepared_identity", rejected.reason)
+
     def test_count_object_and_duplicate_object_are_structurally_rejected(self) -> None:
         _facts, _options, _prepared, artifact = _shared_ring_branch_artifact(
             "opening",
@@ -168,6 +251,86 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
         rejected = verify_writer_branch_transition_artifact_consistency(old_schema)
         self.assertFalse(rejected.accepted)
         self.assertIn("unknown_schema_version", rejected.reason)
+
+    def test_snapshot_decoder_rejects_nonclosed_terms(self) -> None:
+        _facts, _options, _prepared, artifact = _shared_ring_branch_artifact(
+            "opening", DirectionMark.ABSENT,
+        )
+        cases = (
+            ("unknown_class", lambda term: term.__setitem__("__dataclass__", "unknown.Cursor")),
+            (
+                "unapproved_class",
+                lambda term: term.__setitem__(
+                    "__dataclass__",
+                    "grimace._south_star1.writer_frontier.WriterFrontierState",
+                ),
+            ),
+            ("extra_field", lambda term: term["fields"].append(["extra", 0])),
+            ("missing_field", lambda term: term["fields"].pop()),
+            ("duplicate_field", lambda term: term["fields"].append(deepcopy(term["fields"][0]))),
+        )
+        for name, mutate in cases:
+            with self.subTest(name=name):
+                forged = deepcopy(artifact)
+                term = forged["source_snapshot"]["cursor"]["terms"]
+                mutate(term)
+                _redigest_branch_artifact(forged)
+                checked = verify_writer_branch_transition_artifact_consistency(forged)
+                self.assertFalse(checked.accepted)
+                self.assertIn("writer snapshot closed term violation", checked.reason)
+
+        forged = deepcopy(artifact)
+        enum_term = _find_closed_term(forged["source_snapshot"]["cursor"]["terms"], "__enum__")
+        enum_term["__enum__"] = "grimace._south_star1.policy.TetraToken"
+        _redigest_branch_artifact(forged)
+        checked = verify_writer_branch_transition_artifact_consistency(forged)
+        self.assertFalse(checked.accepted)
+        self.assertIn("enum_value_mismatch", checked.reason)
+
+        forged = deepcopy(artifact)
+        cursor_fields = forged["source_snapshot"]["cursor"]["terms"]["fields"]
+        next(item for item in cursor_fields if item[0] == "weighted_states")[1] = {
+            "not": "a closed collection"
+        }
+        _redigest_branch_artifact(forged)
+        checked = verify_writer_branch_transition_artifact_consistency(forged)
+        self.assertFalse(checked.accepted)
+        self.assertIn("dataclass_shape_mismatch", checked.reason)
+
+    def test_support_projection_default_and_explicit_all_branches_are_identical(self) -> None:
+        facts, _options, prepared, snapshot, support = _shared_ring_branch_sources()[
+            ("opening", DirectionMark.FWD)
+        ]
+        batch = _checked_writer_frontier_branch_supports(
+            prepared,
+            snapshot.cursor,
+            include_counts=False,
+            include_frontier_certificate=True,
+            include_count_certificate=False,
+        )
+        projection = next(
+            item
+            for item in batch.text_choice_projection_certificates
+            if support.checked_branch_certificate in item.branch_certificates
+        )
+        budget = WriterEnvelopeWorkBudget()
+        default_table = _ObjectTable(budget)
+        explicit_table = _ObjectTable(budget)
+        default_ref = _add_text_projection(
+            default_table,
+            projection=projection,
+            facts=facts,
+            budget=budget,
+        )
+        explicit_ref = _add_text_projection(
+            explicit_table,
+            projection=projection,
+            facts=facts,
+            budget=budget,
+            branch_certificates=projection.branch_certificates,
+        )
+        self.assertEqual(default_ref, explicit_ref)
+        self.assertEqual(default_table.objects(), explicit_table.objects())
 
 
 @lru_cache(maxsize=6)
@@ -259,6 +422,14 @@ def _branch_artifact_for_operation(facts, options, operation):
 def _redigest_branch_artifact(artifact) -> None:
     budget = WriterEnvelopeWorkBudget()
     by_kind = {item["kind"]: item for item in artifact["objects"]}
+    source = by_kind["source_snapshot"]
+    source_digest = _identity_digest(
+        support_artifact_object_identity_term(source["kind"], source["payload"]),
+        budget=budget,
+        operation="test.branch_transition.source_object",
+    )
+    source["digest"] = source_digest
+    source["object_id"] = f"obj:{source_digest}"
     branch = by_kind["branch_support"]
     branch_digest = _identity_digest(
         support_artifact_object_identity_term(branch["kind"], branch["payload"]),
@@ -288,6 +459,7 @@ def _redigest_branch_artifact(artifact) -> None:
     projection["object_id"] = f"obj:{projection_digest}"
     artifact["roots"]["branch_support_ref"] = branch["object_id"]
     artifact["roots"]["text_projection_ref"] = projection["object_id"]
+    artifact["roots"]["source_ref"] = source["object_id"]
     artifact["objects"] = sorted(artifact["objects"], key=lambda item: item["object_id"])
     metrics = artifact_metrics(artifact["objects"])
     artifact["metrics"] = {**metrics, "reachable_object_count": 3, "unreferenced_object_count": 0}
@@ -296,6 +468,22 @@ def _redigest_branch_artifact(artifact) -> None:
         budget=budget,
         operation="test.branch_transition.artifact",
     )
+
+
+def _find_closed_term(value, marker: str):
+    if isinstance(value, dict):
+        if marker in value:
+            return value
+        for child in value.values():
+            found = _find_closed_term(child, marker)
+            if found is not None:
+                return found
+    elif isinstance(value, list):
+        for child in value:
+            found = _find_closed_term(child, marker)
+            if found is not None:
+                return found
+    return None
 
 
 if __name__ == "__main__":

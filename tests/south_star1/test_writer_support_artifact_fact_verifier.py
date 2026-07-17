@@ -946,7 +946,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             ),
             (
                 "successor_bond_occurrence_wrong_mark",
-                lambda artifact: _mutate_directional_term_mark(artifact, bond=1, value=1),
+                lambda artifact: _mutate_directional_term_mark(artifact, bond=1, value=-1),
                 "directional_carrier_residual_mark_mismatch",
             ),
             (
@@ -1849,11 +1849,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             for item in branch["payload"]["obligation_manifests"]["residual_work"]
             if item["operation"] == "tetrahedral atom-token restriction"
         )
-        unrelated = next(
-            item
-            for item in branch["payload"]["obligation_manifests"]["stereo_lifecycle"]
-            if item["evidence_digest"] not in manifest["linked_lifecycle_digests"]
-        )
+        unrelated = _append_unrelated_raw_lifecycle(branch, manifest=manifest)
         manifest["linked_lifecycle_digests"] = [unrelated["evidence_digest"]]
 
         classification = _obligation_classification(artifact, facts=facts)
@@ -1877,11 +1873,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             for item in branch["payload"]["obligation_manifests"]["residual_work"]
             if item["operation"] == "tetrahedral atom-token restriction"
         )
-        unrelated = next(
-            item
-            for item in branch["payload"]["obligation_manifests"]["stereo_lifecycle"]
-            if item["evidence_digest"] not in manifest["linked_lifecycle_digests"]
-        )
+        unrelated = _append_unrelated_raw_lifecycle(branch, manifest=manifest)
         manifest["linked_lifecycle_digests"].append(unrelated["evidence_digest"])
 
         classification = _obligation_classification(artifact, facts=facts)
@@ -2021,12 +2013,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             for item in branch["payload"]["obligation_manifests"]["residual_work"]
             if item["operation"] == "tetrahedral atom-token restriction"
         )
-        unrelated = next(
-            item
-            for item in branch["payload"]["obligation_manifests"]["stereo_lifecycle"]
-            if item["operation"] == "WriterStereoLifecycleEvidence"
-            and item["evidence_digest"] not in manifest["linked_lifecycle_digests"]
-        )
+        unrelated = _append_unrelated_raw_lifecycle(branch, manifest=manifest)
         manifest["linked_lifecycle_digests"].append(unrelated["evidence_digest"])
         unrelated["linked_residual_work_digests"].append(manifest["evidence_digest"])
 
@@ -2231,12 +2218,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             for item in branch["payload"]["obligation_manifests"]["residual_work"]
             if item["operation"] == "tetrahedral atom-token restriction"
         )
-        unrelated = next(
-            item
-            for item in branch["payload"]["obligation_manifests"]["stereo_lifecycle"]
-            if item["operation"] == "WriterStereoLifecycleEvidence"
-            and item["evidence_digest"] not in manifest["linked_lifecycle_digests"]
-        )
+        unrelated = _append_unrelated_raw_lifecycle(branch, manifest=manifest)
         unrelated["linked_residual_work_digests"].append(manifest["evidence_digest"])
         unrelated["residual_work_digests"].append(manifest["evidence_digest"])
         manifest["linked_lifecycle_digests"] = [
@@ -2327,7 +2309,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         )
 
         self.assertFalse(verification.accepted)
-        self.assertIn("object_digest_mismatch", verification.reason)
+        self.assertIn("obligation_manifest_count_mismatch", verification.reason)
 
     def test_terminal_obligation_manifest_unknown_family_is_rejected(self) -> None:
         artifact = _rdkit_artifact("CCO")
@@ -2341,7 +2323,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         )
 
         self.assertFalse(verification.accepted)
-        self.assertIn("object_digest_mismatch", verification.reason)
+        self.assertIn("object_payload_fields_mismatch", verification.reason)
 
     def test_ring_finite_relation_and_graph_obligation_are_checked(self) -> None:
         for smiles in ("C1CC1", "C1CCC1", "C1=CC1", "C1#CC1"):
@@ -2453,7 +2435,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         )
 
         self.assertFalse(verification.accepted)
-        self.assertIn("object_digest_mismatch", verification.reason)
+        self.assertIn("obligation_manifest_count_mismatch", verification.reason)
 
     def test_synthetic_stereo_obligation_is_reported_unchecked(self) -> None:
         facts = _rdkit_facts("CCO")
@@ -2482,7 +2464,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         )
 
         self.assertFalse(verification.accepted)
-        self.assertIn("object_digest_mismatch", verification.reason)
+        self.assertIn("obligation_manifest_count_mismatch", verification.reason)
 
     def test_count_dag_arithmetic_accepts_default_relation_fixtures(self) -> None:
         for smiles in ("CCO", "CC(C)O", "C1CC1", "C1=CC1", "[NH4+]", "[13CH4]"):
@@ -4015,7 +3997,10 @@ def _forge_ring_successor_open_endpoint(artifact) -> None:
     branch, manifest = _ring_projection_branch_and_manifest(artifact)
     projection = _text_projection_for_branch(artifact, branch)
     cursor = projection["payload"]["successor_cursor"]
-    state = _single_cursor_state(cursor)
+    state = _cursor_state_by_digest(
+        cursor,
+        branch["payload"]["successor_state_digest"],
+    )
     ring_state = _term_field(state, "ring_state")
     endpoint = next(
         endpoint
@@ -4037,7 +4022,10 @@ def _forge_ring_bond_occurrence_added(artifact) -> None:
     branch, manifest = _ring_projection_branch_and_manifest(artifact)
     projection = _text_projection_for_branch(artifact, branch)
     cursor = projection["payload"]["successor_cursor"]
-    state = _single_cursor_state(cursor)
+    state = _cursor_state_by_digest(
+        cursor,
+        branch["payload"]["successor_state_digest"],
+    )
     stereo = _term_field(state, "stereo_state")
     _term_field(stereo, "bond_occurrences").append(
         {
@@ -4399,6 +4387,22 @@ def _linked_tetra_lifecycle_manifest(
     raise AssertionError(f"missing linked tetra lifecycle manifest: {lifecycle_kind}")
 
 
+def _append_unrelated_raw_lifecycle(branch, *, manifest):
+    linked = _linked_tetra_lifecycle_manifest(
+        branch=branch,
+        manifest=manifest,
+        lifecycle_kind="raw",
+        certificate_kind="",
+    )
+    unrelated = deepcopy(linked)
+    unrelated["evidence_digest"] = f"unrelated:{linked['evidence_digest']}"
+    unrelated["linked_residual_work_digests"] = []
+    unrelated["residual_work_digests"] = []
+    unrelated["residual_work_operations"] = []
+    branch["payload"]["obligation_manifests"]["stereo_lifecycle"].append(unrelated)
+    return unrelated
+
+
 def _first_graph_ring_delta_event(branch, kind: str):
     for item in branch["payload"]["graph_ring_delta"]["manifest"]["event_manifests"]:
         if item["kind"] == kind:
@@ -4488,6 +4492,17 @@ def _single_cursor_state(cursor):
     if len(weighted_states) != 1:
         raise AssertionError("expected single-state cursor")
     return weighted_states[0][0]
+
+
+def _cursor_state_by_digest(cursor, digest: str):
+    matches = [
+        state
+        for state, _weight in _term_field(cursor["terms"], "weighted_states")
+        if _closed_term_digest(state) == digest
+    ]
+    if len(matches) != 1:
+        raise AssertionError(f"expected one cursor state for digest {digest}")
+    return matches[0]
 
 
 def _text_projection_identity_digest(payload) -> str:

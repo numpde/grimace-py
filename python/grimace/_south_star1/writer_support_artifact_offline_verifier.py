@@ -337,6 +337,7 @@ class OfflineObligationClassification:
     unchecked_families: tuple[str, ...] = ()
     checked_families: tuple[str, ...] = ()
     checked_empty_families: tuple[str, ...] = ()
+    semantically_replayed_operations: tuple[str, ...] = ()
     reason: str | None = None
 
 
@@ -870,22 +871,6 @@ def verify_branch_projection_identities_offline(
     objects: Mapping[str, Mapping[str, object]],
 ) -> BranchProjectionIdentityVerification:
     try:
-        if "branch_support_ref" in artifact["roots"]:
-            projection = _require_object(
-                objects,
-                artifact["roots"]["text_projection_ref"],
-            )
-            checked_branch_refs: set[str] = set()
-            _check_text_projection_branch_identities(
-                projection=projection,
-                objects=objects,
-                checked_branch_refs=checked_branch_refs,
-            )
-            return BranchProjectionIdentityVerification(
-                accepted=True,
-                checked_text_projections=1,
-                checked_branch_supports=len(checked_branch_refs),
-            )
         root = _require_object(objects, artifact["roots"]["support_image_root"])
         seen_projection_refs: set[str] = set()
         checked_branch_refs: set[str] = set()
@@ -920,19 +905,48 @@ def verify_branch_projection_identities_offline(
         )
 
 
+def verify_transition_branch_projection_identity_offline(
+    *, projection_ref: str, branch_ref: str, objects: Mapping[str, Mapping[str, object]]
+) -> BranchProjectionIdentityVerification:
+    try:
+        projection = _require_object(objects, projection_ref)
+        if projection["payload"]["branch_support_refs"] != [branch_ref]:
+            _offline_violation("branch_projection_selected_ref_mismatch")
+        checked_branch_refs: set[str] = set()
+        _check_text_projection_branch_identities(
+            projection=projection,
+            objects=objects,
+            checked_branch_refs=checked_branch_refs,
+        )
+        return BranchProjectionIdentityVerification(
+            accepted=True,
+            checked_text_projections=1,
+            checked_branch_supports=len(checked_branch_refs),
+        )
+    except SouthStarError as exc:
+        return BranchProjectionIdentityVerification(
+            accepted=False,
+            reason=exc.args[-1] if exc.args else "branch_projection_identity_error",
+        )
+    except (AssertionError, KeyError, TypeError, ValueError) as exc:
+        return BranchProjectionIdentityVerification(
+            accepted=False,
+            reason=f"malformed_branch_projection_identity:{type(exc).__name__}",
+        )
+
+
 def verify_local_branch_successor_evidence_offline(
     *,
     facts: MoleculeFacts,
     artifact: Mapping[str, object],
     objects: Mapping[str, Mapping[str, object]],
     budget: WriterEnvelopeWorkBudget | None = None,
+    branch_refs: tuple[str, ...] | None = None,
 ) -> LocalBranchSuccessorEvidenceVerification:
     try:
         budget = default_writer_envelope_work_budget(budget)
-        branch_refs = _branch_support_refs_for_artifact(
-            artifact=artifact,
-            objects=objects,
-        )
+        if branch_refs is None:
+            branch_refs = _branch_refs_from_support_artifact(artifact=artifact, objects=objects)
         plain_atom_count = 0
         bracket_atom_count = 0
         closure_count = 0
@@ -984,13 +998,12 @@ def verify_graph_ring_branch_deltas_offline(
     artifact: Mapping[str, object],
     objects: Mapping[str, Mapping[str, object]],
     budget: WriterEnvelopeWorkBudget | None = None,
+    branch_refs: tuple[str, ...] | None = None,
 ) -> GraphRingBranchDeltaVerification:
     try:
         budget = default_writer_envelope_work_budget(budget)
-        branch_refs = _branch_support_refs_for_artifact(
-            artifact=artifact,
-            objects=objects,
-        )
+        if branch_refs is None:
+            branch_refs = _branch_refs_from_support_artifact(artifact=artifact, objects=objects)
         atom_count = 0
         bond_count = 0
         branch_count = 0
@@ -1045,6 +1058,8 @@ def classify_residual_stereo_obligations_offline(
     facts: MoleculeFacts,
     artifact: Mapping[str, object],
     objects: Mapping[str, Mapping[str, object]],
+    branch_refs: tuple[str, ...] | None = None,
+    include_terminals: bool = True,
 ) -> OfflineObligationClassification:
     try:
         manifests_by_family = {
@@ -1062,14 +1077,14 @@ def classify_residual_stereo_obligations_offline(
         replayed_residual_digests: set[str] = set()
         replayed_lifecycle_digests: set[str] = set()
         replayed_directional_ring_closure_digests: set[str] = set()
+        replayed_operations: list[str] = []
         ring_endpoint_choices = _ring_endpoint_choices_from_artifact(
             artifact=artifact,
             objects=objects,
         )
-        for branch_ref in _branch_support_refs_for_artifact(
-            artifact=artifact,
-            objects=objects,
-        ):
+        if branch_refs is None:
+            branch_refs = _branch_refs_from_support_artifact(artifact=artifact, objects=objects)
+        for branch_ref in branch_refs:
             branch = _require_object(objects, branch_ref)
             _check_branch_obligation_ring_summaries(branch)
             for family, items in branch["payload"]["obligation_manifests"].items():
@@ -1081,6 +1096,7 @@ def classify_residual_stereo_obligations_offline(
                             items=items,
                             objects=objects,
                             replayed_residual_digests=replayed_residual_digests,
+                            replayed_operations=replayed_operations,
                             ring_endpoint_choices=ring_endpoint_choices,
                         )
                     )
@@ -1101,7 +1117,7 @@ def classify_residual_stereo_obligations_offline(
                     replayed_directional_ring_closure_digests
                 ),
             )
-        if "support_image_root" in artifact["roots"]:
+        if include_terminals:
             root = _require_object(objects, artifact["roots"]["support_image_root"])
             for support_ref in root["payload"]["support_string_refs"]:
                 support = _require_object(objects, support_ref)
@@ -1162,6 +1178,7 @@ def classify_residual_stereo_obligations_offline(
             unchecked_families=unchecked,
             checked_families=checked,
             checked_empty_families=checked_empty,
+            semantically_replayed_operations=tuple(replayed_operations),
         )
     except SouthStarError as exc:
         return OfflineObligationClassification(
@@ -1173,6 +1190,23 @@ def classify_residual_stereo_obligations_offline(
             accepted=False,
             reason=f"malformed_offline_obligation:{type(exc).__name__}",
         )
+
+
+def verify_branch_obligations_offline(
+    *,
+    facts: MoleculeFacts,
+    artifact: Mapping[str, object],
+    objects: Mapping[str, Mapping[str, object]],
+    branch_ref: str,
+) -> OfflineObligationClassification:
+    """Replay obligation evidence for one explicitly selected branch only."""
+    return classify_residual_stereo_obligations_offline(
+        facts=facts,
+        artifact=artifact,
+        objects=objects,
+        branch_refs=(branch_ref,),
+        include_terminals=False,
+    )
 
 
 def _ring_endpoint_choices_from_artifact(
@@ -1255,6 +1289,7 @@ def _classify_branch_residual_work_manifests(
     items: list[object],
     objects: Mapping[str, Mapping[str, object]],
     replayed_residual_digests: set[str],
+    replayed_operations: list[str],
     ring_endpoint_choices: Mapping[int, tuple[tuple[str, DirectionMark], ...]],
 ) -> tuple[Mapping[str, object], ...]:
     _check_branch_residual_lifecycle_links(branch=branch, residual_items=items)
@@ -1268,6 +1303,7 @@ def _classify_branch_residual_work_manifests(
         )
         if disposition is OfflineResidualReplayDisposition.SEMANTICALLY_REPLAYED:
             replayed_residual_digests.add(item["evidence_digest"])
+            replayed_operations.append(item["operation"])
     return tuple(items)
 
 
@@ -4164,16 +4200,23 @@ def _branch_support_refs_for_root(
     return tuple(sorted(refs))
 
 
-def _branch_support_refs_for_artifact(
+def _branch_refs_from_support_artifact(
     *,
     artifact: Mapping[str, object],
     objects: Mapping[str, Mapping[str, object]],
 ) -> tuple[str, ...]:
-    roots = artifact["roots"]
-    if "branch_support_ref" in roots:
-        return (roots["branch_support_ref"],)
-    root = _require_object(objects, roots["support_image_root"])
+    root = _require_object(objects, artifact["roots"]["support_image_root"])
     return _branch_support_refs_for_root(root=root, objects=objects)
+
+
+def _branch_ref_from_transition_artifact(
+    *, artifact: Mapping[str, object], objects: Mapping[str, Mapping[str, object]]
+) -> str:
+    branch_ref = artifact["roots"]["branch_support_ref"]
+    branch = _require_object(objects, branch_ref)
+    if branch["kind"] != "branch_support":
+        _offline_violation("transition_branch_support_ref_kind_mismatch")
+    return branch_ref
 
 
 def _check_graph_ring_branch_delta(
@@ -4988,11 +5031,13 @@ __all__ = (
     "classify_residual_stereo_obligations_offline",
     "validate_writer_bracket_atom_text_against_facts",
     "verify_branch_projection_identities_offline",
+    "verify_branch_obligations_offline",
     "verify_count_dag_arithmetic",
     "verify_graph_ring_branch_deltas_offline",
     "verify_local_branch_successor_evidence_offline",
     "verify_support_image_coverage_offline",
     "verify_support_string_replay_paths_offline",
     "verify_terminal_support_identities_offline",
+    "verify_transition_branch_projection_identity_offline",
     "verify_writer_support_artifact_offline_replay",
 )

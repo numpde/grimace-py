@@ -4,13 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from dataclasses import fields
-from dataclasses import is_dataclass
-from enum import Enum
-import importlib
-from typing import get_args
-from typing import get_origin
-from typing import get_type_hints
 
 from .errors import SouthStarError
 from .errors import SouthStarErrorKind
@@ -26,6 +19,7 @@ from .writer_envelope_work import writer_envelope_work_reason
 from .writer_frontier import _checked_writer_frontier_branch_supports
 from .writer_snapshot import WriterDecoderBoundary
 from .writer_snapshot import capture_writer_frontier_snapshot
+from .writer_snapshot_closed_terms import writer_frontier_cursor_from_closed_terms
 from .writer_snapshot_prefix_envelope import _branch_certificate_identity_envelope
 from .writer_snapshot_prefix_envelope import _text_projection_certificate_identity_envelope
 from .writer_support_artifact_checker import artifact_metrics
@@ -227,7 +221,7 @@ def _locate_live_branch(*, prepared, snapshot, support, budget):
 def _source_snapshot_from_branch_artifact(*, prepared, artifact, budget):
     terms = artifact["source_snapshot"]
     options = _runtime_options_from_terms(terms["runtime_options"])
-    cursor = _closed_value_from_term(terms["cursor"]["terms"])
+    cursor = writer_frontier_cursor_from_closed_terms(terms["cursor"]["terms"])
     depth = terms["decoder_boundary"]["consumed_token_count"]
     snapshot = capture_writer_frontier_snapshot(
         prepared=prepared,
@@ -243,56 +237,6 @@ def _source_snapshot_from_branch_artifact(*, prepared, artifact, budget):
     if expected != terms:
         _violation("source_snapshot_identity_mismatch")
     return snapshot
-
-
-def _closed_value_from_term(term, annotation=None):
-    origin = get_origin(annotation)
-    args = get_args(annotation)
-    if term is None or isinstance(term, (str, bool, int)):
-        return term
-    if isinstance(term, list):
-        if origin is frozenset:
-            item_type = args[0] if args else None
-            return frozenset(_closed_value_from_term(item, item_type) for item in term)
-        if origin is dict:
-            key_type, value_type = args if len(args) == 2 else (None, None)
-            return {
-                _closed_value_from_term(item[0], key_type): _closed_value_from_term(item[1], value_type)
-                for item in term
-            }
-        item_type = args[0] if origin is tuple and len(args) == 2 and args[1] is Ellipsis else None
-        return tuple(_closed_value_from_term(item, item_type) for item in term)
-    if not isinstance(term, Mapping):
-        _violation("closed_term_shape_mismatch")
-    if "__enum__" in term:
-        cls = _closed_term_class(term["__enum__"])
-        if not issubclass(cls, Enum):
-            _violation("closed_term_enum_class_mismatch")
-        return cls(term["value"])
-    if "__dataclass__" not in term or set(term) != {"__dataclass__", "fields"}:
-        _violation("closed_term_dataclass_shape_mismatch")
-    cls = _closed_term_class(term["__dataclass__"])
-    if not is_dataclass(cls):
-        _violation("closed_term_dataclass_class_mismatch")
-    raw_fields = dict(term["fields"])
-    if len(raw_fields) != len(term["fields"]) or set(raw_fields) != {field.name for field in fields(cls)}:
-        _violation("closed_term_dataclass_fields_mismatch")
-    hints = get_type_hints(cls)
-    values = {
-        field.name: _closed_value_from_term(raw_fields[field.name], hints.get(field.name))
-        for field in fields(cls)
-    }
-    return cls(**values)
-
-
-def _closed_term_class(path):
-    if not isinstance(path, str) or not path.startswith("grimace._south_star1."):
-        _violation("closed_term_class_path_mismatch")
-    module_name, class_name = path.rsplit(".", 1)
-    cls = getattr(importlib.import_module(module_name), class_name, None)
-    if not isinstance(cls, type):
-        _violation("closed_term_class_missing")
-    return cls
 
 
 def branch_transition_artifact_manifest(artifact):

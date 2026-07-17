@@ -19,8 +19,9 @@ from .writer_envelope_work import writer_envelope_work_reason
 from .writer_prepared_identity import writer_prepared_identity
 from .writer_support_artifact_fact_verifier import _check_prepared_identity
 from .writer_support_artifact_fact_verifier import _check_source_snapshot_identity
-from .writer_support_artifact_offline_verifier import classify_residual_stereo_obligations_offline
-from .writer_support_artifact_offline_verifier import verify_branch_projection_identities_offline
+from .writer_support_artifact_offline_verifier import _branch_ref_from_transition_artifact
+from .writer_support_artifact_offline_verifier import verify_branch_obligations_offline
+from .writer_support_artifact_offline_verifier import verify_transition_branch_projection_identity_offline
 from .writer_support_artifact_offline_verifier import verify_graph_ring_branch_deltas_offline
 from .writer_support_artifact_offline_verifier import verify_local_branch_successor_evidence_offline
 
@@ -66,41 +67,46 @@ def verify_writer_branch_transition_artifact_for_facts(
             runtime_options=runtime_options,
         )
         objects = {item["object_id"]: item for item in artifact["objects"]}
+        branch_ref = _branch_ref_from_transition_artifact(
+            artifact=artifact,
+            objects=objects,
+        )
+        branch_refs = (branch_ref,)
         checks = (
-            verify_branch_projection_identities_offline(artifact=artifact, objects=objects),
+            verify_transition_branch_projection_identity_offline(
+                projection_ref=artifact["roots"]["text_projection_ref"],
+                branch_ref=branch_ref,
+                objects=objects,
+            ),
             verify_graph_ring_branch_deltas_offline(
                 facts=facts,
                 artifact=artifact,
                 objects=objects,
                 budget=budget,
+                branch_refs=branch_refs,
             ),
             verify_local_branch_successor_evidence_offline(
                 facts=facts,
                 artifact=artifact,
                 objects=objects,
                 budget=budget,
+                branch_refs=branch_refs,
             ),
         )
         for check in checks:
             if not check.accepted:
                 return WriterBranchTransitionArtifactFactVerification(accepted=False, reason=check.reason)
-        obligations = classify_residual_stereo_obligations_offline(
+        obligations = verify_branch_obligations_offline(
             facts=facts,
             artifact=artifact,
             objects=objects,
+            branch_ref=branch_ref,
         )
         if not obligations.accepted:
             return WriterBranchTransitionArtifactFactVerification(accepted=False, reason=obligations.reason)
-        branch = objects[artifact["roots"]["branch_support_ref"]]["payload"]
-        operations = ()
-        if "residual_work" in obligations.checked_families:
-            operations = tuple(
-                item["operation"]
-                for item in branch["obligation_manifests"]["residual_work"]
-            )
         return WriterBranchTransitionArtifactFactVerification(
             accepted=True,
-            semantically_replayed_operations=operations,
+            semantically_replayed_operations=obligations.semantically_replayed_operations,
             checked_obligation_families=obligations.checked_families,
             unchecked_obligation_families=obligations.unchecked_families,
         )

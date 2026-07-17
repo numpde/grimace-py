@@ -14,6 +14,7 @@ from .writer_envelope_work import writer_envelope_work_reason
 from .writer_support_artifact_checker import _validate_object_payload_shape
 from .writer_support_artifact_checker import artifact_metrics
 from .writer_support_artifact_checker import support_artifact_object_identity_term
+from .writer_snapshot_closed_terms import writer_frontier_cursor_from_closed_terms
 
 _TOP_LEVEL_FIELDS = frozenset((
     "schema_name", "schema_version", "prepared_identity", "source_kind",
@@ -68,6 +69,7 @@ def verify_writer_branch_transition_artifact_consistency(artifact, *, budget=Non
         branch = _root(objects, artifact["roots"]["branch_support_ref"], "branch_support")
         if artifact["source_snapshot"] != source["payload"]:
             _violation("source_snapshot_root_mismatch")
+        writer_frontier_cursor_from_closed_terms(source["payload"]["cursor"]["terms"])
         if (
             source["payload"]["prepared_identity_digest"]
             != artifact["prepared_identity"]["digest"]

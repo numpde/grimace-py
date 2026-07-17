@@ -444,10 +444,16 @@ def _add_text_projection(
     projection,
     facts,
     budget: WriterEnvelopeWorkBudget,
+    branch_certificates=None,
 ) -> str:
     envelope = _text_projection_certificate_identity_envelope(
         projection,
         budget=budget,
+    )
+    selected_branches = (
+        projection.branch_certificates
+        if branch_certificates is None
+        else tuple(branch_certificates)
     )
     branch_support_refs = [
         _add_branch_support(
@@ -457,7 +463,7 @@ def _add_text_projection(
             facts=facts,
             budget=budget,
         )
-        for branch in projection.branch_certificates
+        for branch in selected_branches
     ]
     return table.add(
         "text_projection",

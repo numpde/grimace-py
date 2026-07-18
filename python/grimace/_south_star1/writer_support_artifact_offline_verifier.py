@@ -1374,8 +1374,9 @@ def _obligation_manifest_checked(
     replayed_residual_digests: set[str],
     replayed_lifecycle_digests: set[str],
     replayed_directional_ring_closure_digests: set[str],
-    replayed_terminal_graph_digests: set[str],
+    replayed_terminal_graph_digests: set[str] | None = None,
 ) -> bool:
+    replayed_terminal_graph_digests = replayed_terminal_graph_digests or set()
     family = item["family"]
     if family == "residual_work":
         return item["evidence_digest"] in replayed_residual_digests

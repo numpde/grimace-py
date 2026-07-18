@@ -36,3 +36,16 @@ projection, and the empty finalized residual snapshot.
 The support-artifact, branch-transition-artifact, count schemas, and production
 budgets otherwise retain their existing ownership boundaries. Branch artifacts
 remain v2; count schemas are unchanged.
+
+## Completion baseline
+
+Before the exact evidence reconstruction work, the complete legacy facts-bound
+module ran 111 tests in 4,339.457 seconds. It had no semantic failures and one
+compatibility error:
+
+| Test | Expected | Actual | First changed function |
+| --- | --- | --- | --- |
+| `test_linked_lifecycle_requires_replayed_residual_work` | linked lifecycle remains unchecked without replayed residual work | `TypeError` for a missing `replayed_terminal_graph_digests` keyword | `_obligation_manifest_checked` |
+
+The helper now treats an omitted terminal-graph replay set as empty, preserving
+the pre-terminalization direct-call contract without granting proof credit.

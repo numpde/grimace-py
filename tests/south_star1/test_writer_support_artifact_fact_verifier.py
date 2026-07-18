@@ -2271,7 +2271,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             ][0]["terminal_clean"]
         )
 
-    def test_terminal_clean_flags_do_not_remove_replay_credit(self) -> None:
+    def test_terminal_manifest_flags_are_reconstructed_not_credited(self) -> None:
         facts = _rdkit_facts("CCO")
         artifact = _rdkit_artifact("CCO")
         terminal = _first_terminal_support_object(artifact)
@@ -2287,23 +2287,75 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
         classification = _obligation_classification(artifact, facts=facts)
 
-        self.assertTrue(classification.accepted, classification.reason)
-        self.assertNotIn(
-            "terminal_graph_obligation_work",
-            classification.unchecked_families,
+        self.assertFalse(classification.accepted)
+        self.assertIn("terminal_graph_manifest_mismatch", classification.reason)
+
+    def test_terminal_support_identity_forgeries_reject_after_redigest(self) -> None:
+        facts = _rdkit_facts("CCO")
+        cases = (
+            (
+                "support_key",
+                lambda payload: payload.__setitem__(
+                    "terminal_support_key_digest", "0" * 64
+                ),
+                "terminal_support_terminal_support_key_digest_mismatch",
+            ),
+            (
+                "certificate",
+                lambda payload: payload["terminal_certificate_digests"].reverse(),
+                "terminal_support_terminal_certificate_digests_mismatch",
+            ),
+            (
+                "lifecycle_tuple",
+                lambda payload: payload.__setitem__(
+                    "terminal_stereo_lifecycle_evidence_digest", "0" * 64
+                ),
+                "terminal_support_terminal_stereo_lifecycle_evidence_digest_mismatch",
+            ),
+            (
+                "discharged_flag",
+                lambda payload: payload["obligation_manifests"]
+                ["terminal_graph_obligation_work"][0].__setitem__(
+                    "is_discharged", True
+                ),
+                "terminal_graph_manifest_mismatch",
+            ),
         )
-        self.assertNotIn(
-            "terminal_stereo_lifecycle",
-            classification.unchecked_families,
-        )
-        self.assertIn(
-            "terminal_graph_obligation_work",
-            classification.checked_families,
-        )
-        self.assertIn(
-            "terminal_stereo_lifecycle",
-            classification.checked_families,
-        )
+        for name, mutate, reason in cases:
+            with self.subTest(name=name):
+                artifact = deepcopy(_rdkit_artifact("CCO"))
+                terminal = _first_terminal_support_object(artifact)
+                mutate(terminal["payload"])
+                identity = {
+                    key: value
+                    for key, value in terminal["payload"].items()
+                    if key not in (
+                        "terminalization_term",
+                        "terminalization_term_digest",
+                        "obligation_summary",
+                        "obligation_manifests",
+                    )
+                }
+                for item in artifact["objects"]:
+                    if item["kind"] != "terminal_projection":
+                        continue
+                    for index, candidate in enumerate(
+                        item["payload"]["terminal_support_identities"]
+                    ):
+                        if candidate["digest"] == identity["digest"]:
+                            item["payload"]["terminal_support_identities"][index] = (
+                                deepcopy(identity)
+                            )
+                _refresh_object_and_artifact_digest(artifact, terminal)
+                structural = verify_writer_support_artifact_consistency(artifact)
+                checked = verify_writer_support_artifact_for_facts(
+                    facts=facts,
+                    runtime_options=_writer_options(),
+                    artifact=artifact,
+                )
+                self.assertTrue(structural.accepted, structural.reason)
+                self.assertFalse(checked.accepted)
+                self.assertIn(reason, checked.reason)
 
     def test_terminal_obligation_manifest_count_mismatch_is_rejected(self) -> None:
         artifact = _rdkit_artifact("CCO")

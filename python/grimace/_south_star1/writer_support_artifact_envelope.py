@@ -1052,14 +1052,53 @@ def _directional_ring_coupling_term(record, *, source_state_digest, successor_st
         marker_side=closure.marker_side,
         source_state_digest=source_state_digest,
         successor_state_digest=successor_state_digest,
-        source_ring_state_digest=_identity_digest(record.source_ring_state),
-        successor_ring_state_digest=_identity_digest(record.successor_ring_state),
-        source_residual_snapshot_digest=_identity_digest(record.source_stereo_residual_snapshot),
-        successor_residual_snapshot_digest=_identity_digest(record.successor_stereo_residual_snapshot),
-        closure_manifest_digest=_identity_digest(closure_manifest),
-        stereo_lifecycle_digest=_identity_digest(stereo),
-        residual_work_digests=tuple(_identity_digest(item) for item in stereo.residual_work_evidence),
-        closed_closure_record_digest=(None if record.closed_closure_record is None else _identity_digest(record.closed_closure_record)),
+        source_ring_state_digest=_identity_digest(
+            record.source_ring_state,
+            budget=budget,
+            operation="support_artifact.ring_coupling.source_ring_state",
+        ),
+        successor_ring_state_digest=_identity_digest(
+            record.successor_ring_state,
+            budget=budget,
+            operation="support_artifact.ring_coupling.successor_ring_state",
+        ),
+        source_residual_snapshot_digest=_identity_digest(
+            record.source_stereo_residual_snapshot,
+            budget=budget,
+            operation="support_artifact.ring_coupling.source_residual",
+        ),
+        successor_residual_snapshot_digest=_identity_digest(
+            record.successor_stereo_residual_snapshot,
+            budget=budget,
+            operation="support_artifact.ring_coupling.successor_residual",
+        ),
+        closure_manifest_digest=_identity_digest(
+            closure_manifest,
+            budget=budget,
+            operation="support_artifact.ring_coupling.closure_manifest",
+        ),
+        stereo_lifecycle_digest=_identity_digest(
+            stereo,
+            budget=budget,
+            operation="support_artifact.ring_coupling.stereo_lifecycle",
+        ),
+        residual_work_digests=tuple(
+            _identity_digest(
+                item,
+                budget=budget,
+                operation="support_artifact.ring_coupling.residual_work",
+            )
+            for item in stereo.residual_work_evidence
+        ),
+        closed_closure_record_digest=(
+            None
+            if record.closed_closure_record is None
+            else _identity_digest(
+                record.closed_closure_record,
+                budget=budget,
+                operation="support_artifact.ring_coupling.closed_record",
+            )
+        ),
     )
 
 

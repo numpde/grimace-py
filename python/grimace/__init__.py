@@ -19,6 +19,9 @@ except ImportError as exc:  # pragma: no cover - exercised only in broken instal
 else:  # pragma: no cover - exercised in environments with the extension available
     _CORE_IMPORT_ERROR = None
     _DEVIATION = importlib.import_module("grimace._deviation")
+    _CONTINUATION_RUNTIME = importlib.import_module(
+        "grimace._south_star1.writer_continuation_rust"
+    )
 
 
 def _require_runtime() -> Any:
@@ -167,6 +170,13 @@ def MolToSmilesDeviation(
 if _RUNTIME is not None:
     MolToSmilesChoice = _RUNTIME.MolToSmilesChoice
     SmilesDeviation = _DEVIATION.SmilesDeviation
+    MolToSmilesContinuationDecoder = (
+        _CONTINUATION_RUNTIME.MolToSmilesContinuationDecoder
+    )
+    MolToSmilesContinuationProbability = (
+        _CONTINUATION_RUNTIME.MolToSmilesContinuationProbability
+    )
+    MolToSmilesWeightedChoice = _CONTINUATION_RUNTIME.MolToSmilesWeightedChoice
 
     class _PublicDecoderBase(_RUNTIME._PublicDecoderBase):
         __slots__ = ()
@@ -248,13 +258,28 @@ else:
         pass
 
 
+    class MolToSmilesContinuationDecoder(_ImportErrorRuntimeBase):  # pragma: no cover - broken installs only
+        pass
+
+
+    class MolToSmilesContinuationProbability:  # pragma: no cover - broken installs only
+        __slots__ = ()
+
+
+    class MolToSmilesWeightedChoice:  # pragma: no cover - broken installs only
+        __slots__ = ()
+
+
 __all__ = [
     "MolToSmilesChoice",
+    "MolToSmilesContinuationDecoder",
+    "MolToSmilesContinuationProbability",
     "MolToSmilesDecoder",
     "MolToSmilesDeterminizedDecoder",
     "MolToSmilesDeviation",
     "MolToSmilesEnum",
     "MolToSmilesTokenInventory",
     "MolToSmilesTokenInventorySuperset",
+    "MolToSmilesWeightedChoice",
     "SmilesDeviation",
 ]

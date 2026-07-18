@@ -10,6 +10,7 @@ from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
 
+from grimace import MolToSmilesContinuationDecoder
 import grimace._south_star1.writer_continuation_asset as continuation_asset_module
 from grimace._south_star1.errors import SouthStarError
 
@@ -361,13 +362,14 @@ class WriterContinuationAssetTest(unittest.TestCase):
                 )
                 asset = open_writer_continuation_core(path)
                 terminal = asset.records("terminal_records")[0]
-                artifact = terminalization_artifact_from_continuation_asset(
-                    prepared=prepared,
+                decoder = _rust_decoder_at_raw_cursor(
+                    path=path,
                     asset=asset,
-                    source_raw_cursor_digest=terminal.source_raw_cursor_digest,
-                    terminal_support_identity_digest=(
-                        terminal.terminal_support_identity_digests[0]
-                    ),
+                    prepared=prepared,
+                    raw_cursor_digest=terminal.source_raw_cursor_digest,
+                )
+                artifact = decoder.terminalization_artifact(
+                    terminal.terminal_support_identity_digests[0]
                 )
                 self.assertEqual(
                     artifact["schema_name"],
@@ -443,17 +445,29 @@ class WriterContinuationAssetTest(unittest.TestCase):
             self.assertEqual(
                 writer_continuation_completion_count(asset.core), 3_744
             )
+            rust_decoder = MolToSmilesContinuationDecoder.from_asset(
+                path,
+                proof_capable=True,
+                prepared=prepared,
+            )
+            self.assertEqual(rust_decoder.support_count, 3_744)
+            self.assertEqual(rust_decoder.completion_count, 3_744)
+            self.assertLessEqual(rust_decoder.rust_resident_bytes, 16_000_000)
+            self.assertEqual(
+                _rust_decoder_strings(rust_decoder),
+                _core_strings(asset.core),
+            )
             sources = _shared_ring_branch_sources()
             for phase, mark in sources:
                 _facts, _options, _prepared, source, support = sources[(phase, mark)]
-                artifact = branch_transition_artifact_from_continuation_asset(
-                    prepared=prepared,
+                decoder = _rust_decoder_at_raw_cursor(
+                    path=path,
                     asset=asset,
-                    source_raw_cursor_digest=_identity_digest(source.cursor),
-                    emitted_text=support.emitted_text,
-                    branch_certificate_digest=_identity_digest(
-                        support.checked_branch_certificate
-                    ),
+                    prepared=prepared,
+                    raw_cursor_digest=_identity_digest(source.cursor),
+                )
+                artifact = decoder.branch_artifact(
+                    _identity_digest(support.checked_branch_certificate)
                 )
                 self.assertEqual(
                     artifact["schema_name"],
@@ -472,6 +486,59 @@ class WriterContinuationAssetTest(unittest.TestCase):
                 full=True,
             )
             self.assertTrue(live.accepted, live.reason)
+
+
+def _rust_decoder_at_raw_cursor(
+    *, path, asset, prepared, raw_cursor_digest
+):
+    emitted_texts = []
+    current = asset.raw_cursor_record(raw_cursor_digest)
+    while current.predecessor_edge_id is not None:
+        edge = asset.edge_record_by_id(current.predecessor_edge_id)
+        emitted_texts.append(edge.emitted_text)
+        current = asset.raw_cursor_record(edge.source_raw_cursor_digest)
+    decoder = MolToSmilesContinuationDecoder.from_asset(
+        path,
+        proof_capable=True,
+        prepared=prepared,
+    )
+    for text in reversed(emitted_texts):
+        decoder = decoder.advance(text)
+    if decoder._state.proof_cursor.raw_cursor_digest != raw_cursor_digest:
+        raise AssertionError("Rust proof cursor replay ended at the wrong cursor")
+    return decoder
+
+
+def _rust_decoder_strings(decoder):
+    values = []
+    pending = [decoder]
+    while pending:
+        current = pending.pop()
+        if current.is_terminal:
+            values.append(current.prefix)
+        pending.extend(choice.next_state for choice in current.next_choices)
+    return tuple(sorted(values))
+
+
+def _core_strings(core):
+    memo = {}
+
+    def visit(node_id):
+        known = memo.get(node_id)
+        if known is not None:
+            return known
+        node = core.nodes[node_id]
+        values = [""] if node.terminal_available else []
+        for choice in node.choices:
+            values.extend(
+                choice.emitted_text + suffix
+                for suffix in visit(choice.successor_node_id)
+            )
+        result = tuple(sorted(values))
+        memo[node_id] = result
+        return result
+
+    return visit(core.root.node_id)
 
 
 def _bundle_bytes(path):

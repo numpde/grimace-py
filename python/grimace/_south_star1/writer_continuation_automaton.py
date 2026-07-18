@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from collections import deque
 from dataclasses import dataclass
 from dataclasses import replace
 from math import gcd
@@ -57,17 +58,25 @@ class WriterContinuationCursor:
 
 
 @dataclass(frozen=True, slots=True)
-class WriterContinuationCursorProvenance:
-    raw_cursor: WriterFrontierCursor
+class WriterContinuationRawCursorRecord:
     raw_cursor_digest: str
-    primitive_cursor: WriterFrontierCursor
     primitive_cursor_digest: str
     normalization_scale: int
     compiled_node_id: int
+    token_depth: int
+    predecessor_edge_id: str | None
 
 
 @dataclass(frozen=True, slots=True)
-class WriterContinuationEdgeProvenance:
+class WriterContinuationPrimitiveRecord:
+    primitive_cursor_digest: str
+    compiled_node_id: int
+    representative_raw_cursor_digest: str
+
+
+@dataclass(frozen=True, slots=True)
+class WriterContinuationEdgeRecord:
+    edge_id: str
     source_raw_cursor_digest: str
     source_node_id: int
     emitted_text: str
@@ -79,7 +88,7 @@ class WriterContinuationEdgeProvenance:
 
 
 @dataclass(frozen=True, slots=True)
-class WriterContinuationTerminalProvenance:
+class WriterContinuationTerminalRecord:
     source_raw_cursor_digest: str
     source_node_id: int
     terminal_support_identity_digests: tuple[str, ...]
@@ -90,9 +99,10 @@ class WriterContinuationTerminalProvenance:
 class WriterContinuationProvenance:
     source_snapshot_digest: str
     root_raw_cursor_digest: str
-    cursors: tuple[WriterContinuationCursorProvenance, ...]
-    edges: tuple[WriterContinuationEdgeProvenance, ...]
-    terminals: tuple[WriterContinuationTerminalProvenance, ...]
+    raw_cursors: tuple[WriterContinuationRawCursorRecord, ...]
+    primitives: tuple[WriterContinuationPrimitiveRecord, ...]
+    edges: tuple[WriterContinuationEdgeRecord, ...]
+    terminals: tuple[WriterContinuationTerminalRecord, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,6 +134,13 @@ class WriterContinuationAutomaton:
 
 
 @dataclass(frozen=True, slots=True)
+class WriterContinuationCore:
+    root: WriterContinuationCursor
+    nodes: tuple[WriterContinuationNode, ...]
+    metrics: WriterContinuationMetrics
+
+
+@dataclass(frozen=True, slots=True)
 class WriterContinuationProbability:
     emitted_text: str | None
     numerator: int
@@ -143,30 +160,41 @@ class _CompiledCursor:
     depth: int
 
 
+@dataclass(frozen=True, slots=True)
+class _CursorTrace:
+    primitive_cursor: WriterFrontierCursor
+    normalization_scale: int
+    compiled_node_id: int
+
+
 class _Compiler:
-    def __init__(self, *, prepared, snapshot, enforce_limits: bool) -> None:
+    def __init__(
+        self,
+        *,
+        prepared,
+        snapshot,
+        enforce_limits: bool,
+        signature_digest_function,
+    ) -> None:
         self.prepared = prepared
         self.snapshot = snapshot
         self.enforce_limits = enforce_limits
+        self.signature_digest_function = signature_digest_function
         self.nodes: list[WriterContinuationNode] = []
         self.node_by_signature: dict[tuple[object, ...], int] = {}
         self.signature_by_node: dict[int, tuple[object, ...]] = {}
         self.primitive_memo: dict[WriterFrontierCursor, tuple[int, int]] = {}
         self.active: set[WriterFrontierCursor] = set()
-        self.cursor_provenance: dict[
-            WriterFrontierCursor, WriterContinuationCursorProvenance
-        ] = {}
+        self.cursor_traces: dict[WriterFrontierCursor, _CursorTrace] = {}
         self.edge_provenance: dict[
             tuple[WriterFrontierCursor, str],
-            WriterContinuationEdgeProvenance,
+            WriterContinuationEdgeRecord,
         ] = {}
         self.terminal_provenance: dict[
             WriterFrontierCursor,
-            WriterContinuationTerminalProvenance,
+            WriterContinuationTerminalRecord,
         ] = {}
         self.node_memberships: Counter[int] = Counter()
-        self.raw_cursors: set[WriterFrontierCursor] = set()
-        self.normalized_raw_cursors: set[WriterFrontierCursor] = set()
         self.peak_active_depth = 0
         self.peak_primitive_memo_size = 0
         self.peak_signature_memo_size = 0
@@ -175,60 +203,48 @@ class _Compiler:
         started = perf_counter_ns()
         validate_writer_search_snapshot(self.snapshot, prepared=self.prepared)
         compiled_root = self._compile_cursor(self.snapshot.cursor)
-        root = WriterContinuationCursor(
+        internal_root = WriterContinuationCursor(
             node_id=compiled_root.node_id,
             completion_scale=compiled_root.scale,
         )
-        nodes = tuple(self.nodes)
-        provenance = WriterContinuationProvenance(
-            source_snapshot_digest=_identity_digest(self.snapshot),
-            root_raw_cursor_digest=_identity_digest(self.snapshot.cursor),
-            cursors=tuple(
-                sorted(
-                    self.cursor_provenance.values(),
-                    key=lambda item: item.raw_cursor_digest,
-                )
-            ),
-            edges=tuple(
-                sorted(
-                    self.edge_provenance.values(),
-                    key=lambda item: (
-                        item.source_raw_cursor_digest,
-                        item.emitted_text,
-                        item.text_projection_digest,
-                    ),
-                )
-            ),
-            terminals=tuple(
-                sorted(
-                    self.terminal_provenance.values(),
-                    key=lambda item: item.source_raw_cursor_digest,
-                )
-            ),
+        root, nodes, canonical_ids = _canonicalize_nodes(
+            root=internal_root,
+            nodes=tuple(self.nodes),
+            signature_digest_function=self.signature_digest_function,
         )
+        provenance = self._compact_provenance(canonical_ids=canonical_ids)
         core_bytes = _canonical_size((root, nodes))
-        provenance_bytes = _canonical_size(provenance)
+        provenance_bytes = _provenance_record_bytes(provenance)
         edge_count = sum(len(node.choices) for node in nodes)
+        canonical_memberships = Counter(
+            {
+                canonical_ids[node_id]: count
+                for node_id, count in self.node_memberships.items()
+            }
+        )
         if self.enforce_limits and core_bytes >= _MAX_CANONICAL_CORE_BYTES:
             _violation("continuation_canonical_core_too_large")
         if self.enforce_limits and edge_count > _MAX_SEMANTIC_EDGES:
             _violation("continuation_semantic_edge_limit_exceeded")
         metrics = WriterContinuationMetrics(
-            raw_cursor_count=len(self.raw_cursors),
-            primitive_cursor_count=len(self.primitive_memo),
+            raw_cursor_count=len(provenance.raw_cursors),
+            primitive_cursor_count=len(provenance.primitives),
             semantic_node_count=len(nodes),
             semantic_edge_count=edge_count,
             terminal_node_count=sum(node.terminal_available for node in nodes),
             maximum_depth=compiled_root.depth,
             maximum_out_degree=max((len(node.choices) for node in nodes), default=0),
             largest_equivalence_class_membership=max(
-                self.node_memberships.values(), default=0
+                canonical_memberships.values(), default=0
             ),
             weight_normalization_merge_count=(
-                len(self.raw_cursors) - len(self.normalized_raw_cursors)
+                sum(
+                    item.normalization_scale > 1
+                    for item in provenance.raw_cursors
+                )
             ),
             semantic_minimization_merge_count=(
-                len(self.primitive_memo) - len(nodes)
+                len(provenance.primitives) - len(nodes)
             ),
             canonical_core_bytes=core_bytes,
             provenance_index_bytes=provenance_bytes,
@@ -244,10 +260,108 @@ class _Compiler:
             metrics=metrics,
         )
 
+    def _compact_provenance(
+        self, *, canonical_ids: dict[int, int]
+    ) -> WriterContinuationProvenance:
+        root_digest = _identity_digest(self.snapshot.cursor)
+        compact_edges: list[WriterContinuationEdgeRecord] = []
+        cursor_by_digest = {
+            _identity_digest(cursor): cursor for cursor in self.cursor_traces
+        }
+        for item in self.edge_provenance.values():
+            terms = (
+                item.source_raw_cursor_digest,
+                item.emitted_text,
+                item.text_projection_digest,
+                item.branch_certificate_digests,
+                item.successor_raw_cursor_digest,
+            )
+            compact_edges.append(
+                replace(
+                    item,
+                    edge_id=_identity_digest(terms),
+                    source_node_id=canonical_ids[item.source_node_id],
+                    successor_node_id=canonical_ids[item.successor_node_id],
+                )
+            )
+        compact_edges.sort(
+            key=lambda item: (
+                item.source_raw_cursor_digest,
+                item.emitted_text,
+                item.text_projection_digest,
+            )
+        )
+        reachable, depths, predecessors = _canonical_predecessor_tree(
+            root_raw_cursor_digest=root_digest,
+            edges=tuple(compact_edges),
+        )
+        raw_records = []
+        primitive_representatives: dict[str, list[str]] = {}
+        for raw_digest in sorted(reachable):
+            cursor = cursor_by_digest.get(raw_digest)
+            if cursor is None:
+                _violation("continuation_reachable_cursor_trace_missing")
+            trace = self.cursor_traces[cursor]
+            primitive_digest = _identity_digest(trace.primitive_cursor)
+            primitive_representatives.setdefault(primitive_digest, []).append(
+                raw_digest
+            )
+            raw_records.append(
+                WriterContinuationRawCursorRecord(
+                    raw_cursor_digest=raw_digest,
+                    primitive_cursor_digest=primitive_digest,
+                    normalization_scale=trace.normalization_scale,
+                    compiled_node_id=canonical_ids[trace.compiled_node_id],
+                    token_depth=depths[raw_digest],
+                    predecessor_edge_id=predecessors.get(raw_digest),
+                )
+            )
+        primitive_records = []
+        for primitive, (node_id, _depth) in self.primitive_memo.items():
+            primitive_digest = _identity_digest(primitive)
+            representatives = primitive_representatives.get(primitive_digest, ())
+            if not representatives:
+                _violation("continuation_primitive_representative_missing")
+            primitive_records.append(
+                WriterContinuationPrimitiveRecord(
+                    primitive_cursor_digest=primitive_digest,
+                    compiled_node_id=canonical_ids[node_id],
+                    representative_raw_cursor_digest=min(representatives),
+                )
+            )
+        compact_terminals = tuple(
+            sorted(
+                (
+                    replace(
+                        item,
+                        source_node_id=canonical_ids[item.source_node_id],
+                    )
+                    for cursor, item in self.terminal_provenance.items()
+                    if _identity_digest(cursor) in reachable
+                ),
+                key=lambda item: item.source_raw_cursor_digest,
+            )
+        )
+        return WriterContinuationProvenance(
+            source_snapshot_digest=_identity_digest(self.snapshot),
+            root_raw_cursor_digest=root_digest,
+            raw_cursors=tuple(raw_records),
+            primitives=tuple(
+                sorted(
+                    primitive_records,
+                    key=lambda item: item.primitive_cursor_digest,
+                )
+            ),
+            edges=tuple(
+                item
+                for item in compact_edges
+                if item.source_raw_cursor_digest in reachable
+            ),
+            terminals=compact_terminals,
+        )
+
     def _compile_cursor(self, raw_cursor: WriterFrontierCursor) -> _CompiledCursor:
         primitive, scale = _normalize_cursor(raw_cursor)
-        self.raw_cursors.add(raw_cursor)
-        self.normalized_raw_cursors.add(primitive)
         scaled_batch = None
         if scale > 1:
             scaled_batch = self._check_scaling(
@@ -310,7 +424,7 @@ class _Compiler:
                     choice.emitted_text,
                     choice.immediate_multiplicity,
                     choice.successor_scale,
-                    self.nodes[choice.successor_node_id].signature_digest,
+                    choice.successor_node_id,
                 )
                 for choice in choices
             )
@@ -325,7 +439,7 @@ class _Compiler:
                 node_id = len(self.nodes)
                 node = WriterContinuationNode(
                     node_id=node_id,
-                    signature_digest=_identity_digest(signature),
+                    signature_digest=self.signature_digest_function(signature),
                     terminal_available=terminal_available,
                     terminal_multiplicity=terminal_multiplicity,
                     terminal_completion_count=terminal_completion_count,
@@ -349,7 +463,7 @@ class _Compiler:
             else:
                 existing = self.nodes[node_id]
                 if self.signature_by_node[node_id] != signature:
-                    _violation("continuation_signature_digest_collision")
+                    _violation("continuation_semantic_signature_mismatch")
                 if (
                     existing.support_count
                     != int(terminal_available)
@@ -391,21 +505,15 @@ class _Compiler:
         scale: int,
         node_id: int,
     ) -> None:
-        self.raw_cursors.add(raw_cursor)
-        self.normalized_raw_cursors.add(primitive_cursor)
-        raw_digest = _identity_digest(raw_cursor)
-        item = WriterContinuationCursorProvenance(
-            raw_cursor=raw_cursor,
-            raw_cursor_digest=raw_digest,
+        item = _CursorTrace(
             primitive_cursor=primitive_cursor,
-            primitive_cursor_digest=_identity_digest(primitive_cursor),
             normalization_scale=scale,
             compiled_node_id=node_id,
         )
-        previous = self.cursor_provenance.get(raw_cursor)
+        previous = self.cursor_traces.get(raw_cursor)
         if previous is not None and previous != item:
             _violation("continuation_cursor_provenance_mismatch")
-        self.cursor_provenance[raw_cursor] = item
+        self.cursor_traces[raw_cursor] = item
 
     def _record_batch_provenance(
         self,
@@ -419,7 +527,8 @@ class _Compiler:
             successor_compiled = self._compile_cursor(
                 projection.successor_cursor
             )
-            item = WriterContinuationEdgeProvenance(
+            item = WriterContinuationEdgeRecord(
+                edge_id="",
                 source_raw_cursor_digest=source_digest,
                 source_node_id=source_node_id,
                 emitted_text=projection.emitted_text,
@@ -441,7 +550,7 @@ class _Compiler:
             self.edge_provenance[key] = item
         terminal = batch.choices.terminal
         if terminal is not None:
-            item = WriterContinuationTerminalProvenance(
+            item = WriterContinuationTerminalRecord(
                 source_raw_cursor_digest=source_digest,
                 source_node_id=source_node_id,
                 terminal_support_identity_digests=tuple(
@@ -515,12 +624,13 @@ class _Compiler:
 
 
 def compile_writer_continuation_automaton(
-    *, prepared, snapshot
+    *, prepared, snapshot, _signature_digest_function=_identity_digest
 ) -> WriterContinuationAutomaton:
     return _Compiler(
         prepared=prepared,
         snapshot=snapshot,
         enforce_limits=True,
+        signature_digest_function=_signature_digest_function,
     ).compile()
 
 
@@ -626,7 +736,7 @@ def writer_continuation_provenance_edge(
     *,
     source_raw_cursor_digest: str,
     emitted_text: str,
-) -> WriterContinuationEdgeProvenance:
+) -> WriterContinuationEdgeRecord:
     matches = tuple(
         item
         for item in automaton.provenance.edges
@@ -642,7 +752,7 @@ def writer_continuation_terminal_provenance(
     automaton: WriterContinuationAutomaton,
     *,
     source_raw_cursor_digest: str,
-) -> WriterContinuationTerminalProvenance:
+) -> WriterContinuationTerminalRecord:
     matches = tuple(
         item
         for item in automaton.provenance.terminals
@@ -654,10 +764,17 @@ def writer_continuation_terminal_provenance(
 
 
 def verify_writer_continuation_automaton_consistency(
-    *, automaton, prepared=None, snapshot=None
+    *,
+    automaton,
+    prepared=None,
+    snapshot=None,
+    _signature_digest_function=_identity_digest,
 ) -> WriterContinuationAutomatonVerification:
     try:
-        _verify_internal_consistency(automaton)
+        _verify_internal_consistency(
+            automaton,
+            signature_digest_function=_signature_digest_function,
+        )
         if (prepared is None) != (snapshot is None):
             _violation("continuation_live_authority_incomplete")
         if prepared is not None:
@@ -665,6 +782,7 @@ def verify_writer_continuation_automaton_consistency(
                 prepared=prepared,
                 snapshot=snapshot,
                 enforce_limits=True,
+                signature_digest_function=_signature_digest_function,
             ).compile()
             if (
                 automaton.root != expected.root
@@ -687,7 +805,21 @@ def verify_writer_continuation_automaton_consistency(
         )
 
 
-def _verify_internal_consistency(automaton: WriterContinuationAutomaton) -> None:
+def _verify_internal_consistency(
+    automaton: WriterContinuationAutomaton, *, signature_digest_function
+) -> None:
+    _verify_core_consistency(
+        automaton,
+        signature_digest_function=signature_digest_function,
+    )
+    if automaton.metrics.provenance_index_bytes != _provenance_record_bytes(
+        automaton.provenance
+    ):
+        _violation("continuation_provenance_size_metric_mismatch")
+    _verify_provenance(automaton)
+
+
+def _verify_core_consistency(automaton, *, signature_digest_function) -> None:
     nodes = automaton.nodes
     if tuple(node.node_id for node in nodes) != tuple(range(len(nodes))):
         _violation("continuation_node_id_mismatch")
@@ -740,7 +872,7 @@ def _verify_internal_consistency(automaton: WriterContinuationAutomaton) -> None
         ):
             _violation("continuation_completion_count_mismatch")
         signature = _signature_for_node(node=node, nodes=nodes)
-        if node.signature_digest != _identity_digest(signature):
+        if node.signature_digest != signature_digest_function(signature):
             _violation("continuation_signature_digest_mismatch")
         if signature in signatures:
             _violation("continuation_noncanonical_semantic_split")
@@ -773,23 +905,19 @@ def _verify_internal_consistency(automaton: WriterContinuationAutomaton) -> None
         (automaton.root, automaton.nodes)
     ):
         _violation("continuation_core_size_metric_mismatch")
-    if automaton.metrics.provenance_index_bytes != _canonical_size(
-        automaton.provenance
-    ):
-        _violation("continuation_provenance_size_metric_mismatch")
     if automaton.metrics.canonical_core_bytes >= _MAX_CANONICAL_CORE_BYTES:
         _violation("continuation_canonical_core_too_large")
     if automaton.metrics.semantic_edge_count > _MAX_SEMANTIC_EDGES:
         _violation("continuation_semantic_edge_limit_exceeded")
-    _verify_provenance(automaton)
+    _verify_canonical_node_order(nodes=nodes, depth_by_node=depth_by_node)
 
 
 def _verify_provenance(automaton: WriterContinuationAutomaton) -> None:
     cursors = {
         item.raw_cursor_digest: item
-        for item in automaton.provenance.cursors
+        for item in automaton.provenance.raw_cursors
     }
-    if len(cursors) != len(automaton.provenance.cursors):
+    if len(cursors) != len(automaton.provenance.raw_cursors):
         _violation("continuation_duplicate_cursor_provenance")
     root_cursor = cursors.get(automaton.provenance.root_raw_cursor_digest)
     if (
@@ -798,29 +926,59 @@ def _verify_provenance(automaton: WriterContinuationAutomaton) -> None:
         or root_cursor.normalization_scale != automaton.root.completion_scale
     ):
         _violation("continuation_root_provenance_mismatch")
+    edges_by_id = {item.edge_id: item for item in automaton.provenance.edges}
+    if len(edges_by_id) != len(automaton.provenance.edges):
+        _violation("continuation_duplicate_edge_id")
     for item in cursors.values():
-        primitive, scale = _normalize_cursor(item.raw_cursor)
         if (
-            item.raw_cursor_digest != _identity_digest(item.raw_cursor)
-            or item.primitive_cursor != primitive
-            or item.primitive_cursor_digest != _identity_digest(primitive)
-            or item.normalization_scale != scale
+            item.normalization_scale <= 0
+            or item.token_depth < 0
             or not 0 <= item.compiled_node_id < len(automaton.nodes)
         ):
             _violation("continuation_cursor_provenance_mismatch")
-    primitive_items = tuple(
-        item
-        for item in cursors.values()
-        if item.raw_cursor_digest == item.primitive_cursor_digest
-    )
-    memberships = Counter(item.compiled_node_id for item in primitive_items)
+        if item.raw_cursor_digest == automaton.provenance.root_raw_cursor_digest:
+            if item.token_depth != 0 or item.predecessor_edge_id is not None:
+                _violation("continuation_root_predecessor_mismatch")
+        else:
+            predecessor = edges_by_id.get(item.predecessor_edge_id)
+            source = None if predecessor is None else cursors.get(
+                predecessor.source_raw_cursor_digest
+            )
+            if (
+                predecessor is None
+                or source is None
+                or predecessor.successor_raw_cursor_digest
+                != item.raw_cursor_digest
+                or source.token_depth + 1 != item.token_depth
+            ):
+                _violation("continuation_predecessor_mismatch")
+    primitives = {
+        item.primitive_cursor_digest: item
+        for item in automaton.provenance.primitives
+    }
+    if len(primitives) != len(automaton.provenance.primitives):
+        _violation("continuation_duplicate_primitive_provenance")
+    for item in primitives.values():
+        representative = cursors.get(item.representative_raw_cursor_digest)
+        if (
+            representative is None
+            or representative.primitive_cursor_digest
+            != item.primitive_cursor_digest
+            or representative.compiled_node_id != item.compiled_node_id
+        ):
+            _violation("continuation_primitive_representative_mismatch")
+    if {item.primitive_cursor_digest for item in cursors.values()} != set(
+        primitives
+    ):
+        _violation("continuation_primitive_coverage_mismatch")
+    memberships = Counter(item.compiled_node_id for item in primitives.values())
     if (
         automaton.metrics.raw_cursor_count != len(cursors)
-        or automaton.metrics.primitive_cursor_count != len(primitive_items)
+        or automaton.metrics.primitive_cursor_count != len(primitives)
         or automaton.metrics.weight_normalization_merge_count
-        != len(cursors) - len(primitive_items)
+        != sum(item.normalization_scale > 1 for item in cursors.values())
         or automaton.metrics.semantic_minimization_merge_count
-        != len(primitive_items) - len(automaton.nodes)
+        != len(primitives) - len(automaton.nodes)
         or automaton.metrics.largest_equivalence_class_membership
         != max(memberships.values(), default=0)
     ):
@@ -851,11 +1009,19 @@ def _verify_provenance(automaton: WriterContinuationAutomaton) -> None:
             or choices[0].successor_node_id != item.successor_node_id
             or source.normalization_scale * choices[0].successor_scale
             != item.successor_scale
-            or source.normalization_scale * choices[0].immediate_multiplicity
-            != sum(weight for _state, weight in successor.raw_cursor.weighted_states)
             or not item.branch_certificate_digests
         ):
             _violation("continuation_edge_provenance_mismatch")
+        if item.edge_id != _identity_digest(
+            (
+                item.source_raw_cursor_digest,
+                item.emitted_text,
+                item.text_projection_digest,
+                item.branch_certificate_digests,
+                item.successor_raw_cursor_digest,
+            )
+        ):
+            _violation("continuation_edge_id_mismatch")
     expected_edge_keys = {
         (item.raw_cursor_digest, choice.emitted_text)
         for item in cursors.values()
@@ -883,6 +1049,145 @@ def _verify_provenance(automaton: WriterContinuationAutomaton) -> None:
     }
     if terminal_sources != expected_terminal_sources:
         _violation("continuation_terminal_provenance_coverage_mismatch")
+
+
+def _canonicalize_nodes(
+    *, root, nodes, signature_digest_function
+) -> tuple[
+    WriterContinuationCursor,
+    tuple[WriterContinuationNode, ...],
+    dict[int, int],
+]:
+    depths: dict[int, int] = {}
+
+    def depth(node_id: int) -> int:
+        known = depths.get(node_id)
+        if known is not None:
+            return known
+        value = 1 + max(
+            (depth(choice.successor_node_id) for choice in nodes[node_id].choices),
+            default=0,
+        )
+        depths[node_id] = value
+        return value
+
+    for node in nodes:
+        depth(node.node_id)
+    canonical_ids: dict[int, int] = {}
+    canonical_signatures: dict[int, tuple[object, ...]] = {}
+    next_id = 0
+    for current_depth in sorted(set(depths.values())):
+        at_depth = tuple(
+            node for node in nodes if depths[node.node_id] == current_depth
+        )
+        decorated = []
+        for node in at_depth:
+            signature = _signature_with_child_ids(
+                node=node,
+                child_ids=canonical_ids,
+            )
+            decorated.append((signature, node.node_id))
+        for signature, internal_id in sorted(decorated):
+            canonical_ids[internal_id] = next_id
+            canonical_signatures[internal_id] = signature
+            next_id += 1
+    rewritten: list[WriterContinuationNode | None] = [None] * len(nodes)
+    for node in nodes:
+        canonical_id = canonical_ids[node.node_id]
+        choices = tuple(
+            replace(
+                choice,
+                successor_node_id=canonical_ids[choice.successor_node_id],
+            )
+            for choice in node.choices
+        )
+        signature = canonical_signatures[node.node_id]
+        rewritten[canonical_id] = replace(
+            node,
+            node_id=canonical_id,
+            signature_digest=signature_digest_function(signature),
+            choices=choices,
+        )
+    if any(node is None for node in rewritten):
+        _violation("continuation_canonical_node_gap")
+    return (
+        WriterContinuationCursor(
+            node_id=canonical_ids[root.node_id],
+            completion_scale=root.completion_scale,
+        ),
+        tuple(rewritten),
+        canonical_ids,
+    )
+
+
+def _canonical_predecessor_tree(*, root_raw_cursor_digest, edges):
+    outgoing: dict[str, list[WriterContinuationEdgeRecord]] = {}
+    incoming: dict[str, list[WriterContinuationEdgeRecord]] = {}
+    for edge in edges:
+        outgoing.setdefault(edge.source_raw_cursor_digest, []).append(edge)
+        incoming.setdefault(edge.successor_raw_cursor_digest, []).append(edge)
+    depths = {root_raw_cursor_digest: 0}
+    pending = deque((root_raw_cursor_digest,))
+    while pending:
+        source = pending.popleft()
+        for edge in outgoing.get(source, ()):
+            candidate = depths[source] + 1
+            known = depths.get(edge.successor_raw_cursor_digest)
+            if known is None or candidate < known:
+                depths[edge.successor_raw_cursor_digest] = candidate
+                pending.append(edge.successor_raw_cursor_digest)
+    predecessors = {}
+    for raw_digest, depth in depths.items():
+        if raw_digest == root_raw_cursor_digest:
+            continue
+        candidates = tuple(
+            edge
+            for edge in incoming.get(raw_digest, ())
+            if depths.get(edge.source_raw_cursor_digest) == depth - 1
+        )
+        if not candidates:
+            _violation("continuation_predecessor_missing")
+        predecessor = min(
+            candidates,
+            key=lambda edge: (
+                edge.source_raw_cursor_digest,
+                edge.emitted_text,
+                edge.text_projection_digest,
+            ),
+        )
+        predecessors[raw_digest] = predecessor.edge_id
+    return frozenset(depths), depths, predecessors
+
+
+def _verify_canonical_node_order(*, nodes, depth_by_node) -> None:
+    expected_ids = []
+    for depth in sorted(set(depth_by_node.values())):
+        expected_ids.extend(
+            node.node_id
+            for node in sorted(
+                (node for node in nodes if depth_by_node[node.node_id] == depth),
+                key=lambda node: _signature_for_node(node=node, nodes=nodes),
+            )
+        )
+    if tuple(expected_ids) != tuple(range(len(nodes))):
+        _violation("continuation_canonical_node_order_mismatch")
+
+
+def _signature_with_child_ids(*, node, child_ids) -> tuple[object, ...]:
+    return (
+        node.terminal_available,
+        node.terminal_multiplicity,
+        node.terminal_completion_count,
+        tuple(
+            (
+                choice.emitted_text,
+                choice.immediate_multiplicity,
+                choice.successor_scale,
+                child_ids[choice.successor_node_id],
+            )
+            for choice in node.choices
+        ),
+    )
 
 
 def _frontier_batch(prepared, cursor):
@@ -956,7 +1261,7 @@ def _signature_for_node(*, node, nodes) -> tuple[object, ...]:
                 choice.emitted_text,
                 choice.immediate_multiplicity,
                 choice.successor_scale,
-                nodes[choice.successor_node_id].signature_digest,
+                choice.successor_node_id,
             )
             for choice in node.choices
         ),
@@ -975,6 +1280,18 @@ def _canonical_size(value) -> int:
     return len(_canonical_json(_term(value)).encode("utf-8"))
 
 
+def _provenance_record_bytes(provenance) -> int:
+    return sum(
+        _canonical_size(item)
+        for item in (
+            *provenance.raw_cursors,
+            *provenance.primitives,
+            *provenance.edges,
+            *provenance.terminals,
+        )
+    )
+
+
 def _violation(kind: str) -> None:
     raise SouthStarError(
         SouthStarErrorKind.INTERNAL_INVARIANT,
@@ -986,10 +1303,15 @@ __all__ = (
     "WriterContinuationAutomaton",
     "WriterContinuationAutomatonVerification",
     "WriterContinuationChoice",
+    "WriterContinuationCore",
     "WriterContinuationCursor",
     "WriterContinuationMetrics",
     "WriterContinuationNode",
     "WriterContinuationProbability",
+    "WriterContinuationEdgeRecord",
+    "WriterContinuationPrimitiveRecord",
+    "WriterContinuationRawCursorRecord",
+    "WriterContinuationTerminalRecord",
     "advance_writer_continuation",
     "compile_writer_continuation_automaton",
     "verify_writer_continuation_automaton_consistency",

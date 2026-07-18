@@ -201,9 +201,39 @@ class WriterContinuationAutomatonTest(unittest.TestCase):
         self.assertTrue(
             any(
                 item.normalization_scale == 2
-                for item in automaton.provenance.cursors
+                for item in automaton.provenance.raw_cursors
             )
         )
+
+    def test_signature_digest_collision_does_not_merge_semantic_classes(self) -> None:
+        prepared = _prepare(cco_facts())
+        snapshot = _initial_snapshot(prepared, _writer_options())
+        constant_digest = lambda _value: "0" * 64
+        automaton = compile_writer_continuation_automaton(
+            prepared=prepared,
+            snapshot=snapshot,
+            _signature_digest_function=constant_digest,
+        )
+        ordinary = compile_writer_continuation_automaton(
+            prepared=prepared,
+            snapshot=snapshot,
+        )
+        self.assertGreater(len(automaton.nodes), 1)
+        self.assertEqual(len(automaton.nodes), len(ordinary.nodes))
+        self.assertEqual(automaton.root, ordinary.root)
+        self.assertGreater(
+            automaton.metrics.semantic_minimization_merge_count,
+            0,
+        )
+        self.assertEqual(
+            {node.signature_digest for node in automaton.nodes},
+            {"0" * 64},
+        )
+        checked = verify_writer_continuation_automaton_consistency(
+            automaton=automaton,
+            _signature_digest_function=constant_digest,
+        )
+        self.assertTrue(checked.accepted, checked.reason)
 
     def test_compile_does_not_invoke_legacy_count_or_support_paths(self) -> None:
         prepared = _prepare(cco_facts())
@@ -346,7 +376,7 @@ class WriterContinuationAutomatonTest(unittest.TestCase):
             automaton.metrics.largest_equivalence_class_membership,
             3_744,
         )
-        self.assertEqual(automaton.metrics.canonical_core_bytes, 1_457_372)
+        self.assertEqual(automaton.metrics.canonical_core_bytes, 1_457_244)
         _assert_shared_ring_paths(
             prepared=prepared,
             snapshot=snapshot,
@@ -386,7 +416,7 @@ def _cursor_provenance(automaton, cursor):
     digest = _identity_digest(cursor)
     return next(
         item
-        for item in automaton.provenance.cursors
+        for item in automaton.provenance.raw_cursors
         if item.raw_cursor_digest == digest
     )
 
@@ -432,7 +462,7 @@ def _split_equal_signature(automaton):
 
 
 def _merge_unequal_provenance(automaton):
-    cursors = list(automaton.provenance.cursors)
+    cursors = list(automaton.provenance.raw_cursors)
     source = next(
         item
         for item in cursors
@@ -444,7 +474,7 @@ def _merge_unequal_provenance(automaton):
     )
     return replace(
         automaton,
-        provenance=replace(automaton.provenance, cursors=tuple(cursors)),
+        provenance=replace(automaton.provenance, raw_cursors=tuple(cursors)),
     )
 
 
@@ -471,7 +501,9 @@ def _detach_terminal_provenance(automaton):
     terminals[0] = replace(
         terminals[0],
         source_node_id=automaton.root.node_id,
-        source_raw_cursor_digest=automaton.provenance.cursors[-1].raw_cursor_digest,
+        source_raw_cursor_digest=(
+            automaton.provenance.raw_cursors[-1].raw_cursor_digest
+        ),
     )
     return replace(
         automaton,

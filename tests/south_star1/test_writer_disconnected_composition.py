@@ -204,7 +204,7 @@ class WriterDisconnectedCompositionTest(unittest.TestCase):
         self.assertFalse(replay.accepted)
         self.assertIn("component_boundary_next_root_mismatch", replay.reason)
 
-    def test_unreplayed_lifecycle_cannot_credit_component_boundary(self) -> None:
+    def test_lifecycle_flags_do_not_control_component_boundary_credit(self) -> None:
         case = next(
             item
             for item in DEFAULT_WRITER_CAPABILITY_CASES
@@ -242,8 +242,109 @@ class WriterDisconnectedCompositionTest(unittest.TestCase):
         )
         self.assertTrue(structural.accepted, structural.reason)
         self.assertTrue(replay.accepted, replay.reason)
-        self.assertEqual(replay.checked_relation_families, ())
-        self.assertIn("stereo_lifecycle", replay.unchecked_obligation_families)
+        self.assertEqual(
+            replay.checked_relation_families,
+            ("component_boundary_transition",),
+        )
+        self.assertIn("stereo_lifecycle", replay.checked_obligation_families)
+
+    def test_component_boundary_lifecycle_identity_is_replayed(self) -> None:
+        case = next(
+            item
+            for item in DEFAULT_WRITER_CAPABILITY_CASES
+            if item.name == "disconnected_cc_oxygen"
+        )
+        facts = ordinary_molecule_facts_from_smiles(
+            case.smiles, case.extraction_options
+        )
+        prepared = _prepare(facts)
+        options = _options(case.rooted_at_atom)
+        cursor, support = _dot_supports(prepared, options)[0]
+        artifact = writer_branch_transition_artifact_for_support(
+            prepared=prepared,
+            snapshot=capture_writer_frontier_snapshot(
+                prepared=prepared, runtime_options=options, cursor=cursor
+            ),
+            support=support,
+        )
+        forged = deepcopy(artifact)
+        branch = next(
+            item for item in forged["objects"] if item["kind"] == "branch_support"
+        )
+        lifecycle = branch["payload"]["obligation_manifests"][
+            "stereo_lifecycle"
+        ][0]
+        lifecycle["lifecycle_event_kind"] = "atom_emitted"
+        _redigest_branch_artifact(forged, branch)
+
+        structural = verify_writer_branch_transition_artifact_consistency(forged)
+        replay = verify_writer_branch_transition_artifact_for_facts(
+            facts=facts,
+            runtime_options=options,
+            artifact=forged,
+        )
+        self.assertTrue(structural.accepted, structural.reason)
+        self.assertFalse(replay.accepted)
+        self.assertIn("component_boundary_lifecycle_identity_mismatch", replay.reason)
+
+    def test_component_boundary_event_order_is_closed_structurally(self) -> None:
+        case = next(
+            item
+            for item in DEFAULT_WRITER_CAPABILITY_CASES
+            if item.name == "disconnected_cc_oxygen"
+        )
+        facts = ordinary_molecule_facts_from_smiles(
+            case.smiles, case.extraction_options
+        )
+        prepared = _prepare(facts)
+        options = _options(case.rooted_at_atom)
+        cursor, support = _dot_supports(prepared, options)[0]
+        artifact = writer_branch_transition_artifact_for_support(
+            prepared=prepared,
+            snapshot=capture_writer_frontier_snapshot(
+                prepared=prepared, runtime_options=options, cursor=cursor
+            ),
+            support=support,
+        )
+        forged = deepcopy(artifact)
+        branch = next(
+            item for item in forged["objects"] if item["kind"] == "branch_support"
+        )
+        delta = branch["payload"]["graph_ring_delta"]
+        delta["manifest"]["event_manifests"].reverse()
+        delta["digest"] = _identity_digest(
+            {"kind": delta["kind"], "manifest": delta["manifest"]}
+        )
+        _redigest_branch_artifact(forged, branch)
+
+        structural = verify_writer_branch_transition_artifact_consistency(forged)
+        self.assertFalse(structural.accepted)
+        self.assertIn("component_boundary_event_manifest_mismatch", structural.reason)
+
+    def test_three_components_replay_both_boundaries(self) -> None:
+        facts = ordinary_molecule_facts_from_smiles("CC.O.N")
+        prepared = _prepare(facts)
+        options = _options(0)
+        dot_supports = _dot_supports(prepared, options)
+        self.assertEqual(len(dot_supports), 2)
+        for cursor, support in dot_supports:
+            artifact = writer_branch_transition_artifact_for_support(
+                prepared=prepared,
+                snapshot=capture_writer_frontier_snapshot(
+                    prepared=prepared, runtime_options=options, cursor=cursor
+                ),
+                support=support,
+            )
+            replay = verify_writer_branch_transition_artifact_for_facts(
+                facts=facts,
+                runtime_options=options,
+                artifact=artifact,
+            )
+            self.assertTrue(replay.accepted, replay.reason)
+            self.assertEqual(
+                replay.checked_relation_families,
+                ("component_boundary_transition",),
+            )
 
     def test_rust_dot_choice_and_snapshot_resume_are_exact(self) -> None:
         ledger = {item.name: item for item in DEFAULT_WRITER_CAPABILITY_CASES}

@@ -739,9 +739,8 @@ def _validate_graph_ring_delta_payload(
             != "grimace._south_star1.writer_transitions.WriterTransitionKind"
             or transition_kind["value"] != "dot"
             or manifest["emitted_text"] != "."
-            or event_kinds.count("component_boundary_emitted") != 1
-            or event_kinds.count("local_order_closed") != 1
-            or len(event_kinds) != 2
+            or event_kinds
+            != ("local_order_closed", "component_boundary_emitted")
         ):
             _artifact_violation("component_boundary_event_manifest_mismatch")
     expected_digest = _identity_digest(

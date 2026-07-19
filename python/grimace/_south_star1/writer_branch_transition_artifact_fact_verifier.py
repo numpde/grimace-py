@@ -72,6 +72,7 @@ def verify_writer_branch_transition_artifact_for_facts(
             artifact=artifact,
             objects=objects,
         )
+        branch = objects[branch_ref]
         branch_refs = (branch_ref,)
         checks = (
             verify_transition_branch_projection_identity_offline(
@@ -111,8 +112,8 @@ def verify_writer_branch_transition_artifact_for_facts(
             checked_relation_families=(
                 ("component_boundary_transition",)
                 if checks[1].checked_component_boundary_steps == 1
-                and not obligations.unchecked_families
-                and "stereo_lifecycle" in obligations.checked_families
+                and branch["payload"]["digest"]
+                in obligations.replayed_component_boundary_branch_digests
                 else ()
             ),
             checked_obligation_families=obligations.checked_families,

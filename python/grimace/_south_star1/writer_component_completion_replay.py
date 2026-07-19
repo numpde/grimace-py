@@ -14,6 +14,8 @@ def replay_completed_component_prefix(
     completed_component_index: int,
     require_final: bool,
     rooted_at_atom: int,
+    allowed_ring_label_values: tuple[int, ...] | None = None,
+    ring_endpoint_choices: dict[int, tuple[tuple[str, object], ...]] | None = None,
 ) -> None:
     components = facts.components
     if (
@@ -45,6 +47,19 @@ def replay_completed_component_prefix(
     future_atoms = {atom for component in future for atom in component.atoms}
     future_bonds = {bond for component in future for bond in component.bonds}
     closure_bonds = tuple(item.bond for item in state.ring_state.closed_closures)
+    reusable_labels = state.ring_state.label_state.reusable
+    if len(reusable_labels) != len({label.value for label in reusable_labels}):
+        _fail("component_boundary_ring_state_mismatch")
+    for label in reusable_labels:
+        expected_text = str(label.value) if label.value < 10 else f"%{label.value}"
+        if (
+            label.text != expected_text
+            or (
+                allowed_ring_label_values is not None
+                and label.value not in allowed_ring_label_values
+            )
+        ):
+            _fail("component_boundary_ring_policy_mismatch")
 
     if set(state.visited_atoms) != completed_atoms:
         if set(state.visited_atoms) & future_atoms:
@@ -76,6 +91,10 @@ def replay_completed_component_prefix(
         )
         if (
             closure.label.value <= 0
+            or (
+                allowed_ring_label_values is not None
+                and closure.label.value not in allowed_ring_label_values
+            )
             or closure.label.text != expected_label_text
             or closure.first_endpoint_text != expected_label_text
             or closure.second_endpoint_text != expected_label_text
@@ -102,6 +121,22 @@ def replay_completed_component_prefix(
                 _fail("component_boundary_ring_state_mismatch")
         elif any(marker not in ("", "-") for marker in markers):
             _fail("component_boundary_ring_state_mismatch")
+        if ring_endpoint_choices is not None:
+            choices = ring_endpoint_choices.get(int(closure.bond))
+            endpoint_choices = (
+                (
+                    closure.first_endpoint_bond_text,
+                    closure.first_endpoint_direction_mark,
+                ),
+                (
+                    closure.second_endpoint_bond_text,
+                    closure.second_endpoint_direction_mark,
+                ),
+            )
+            if choices is None or any(
+                choice not in choices for choice in endpoint_choices
+            ):
+                _fail("component_boundary_ring_policy_mismatch")
 
     if (
         state.obligations.pending_entry is not None
@@ -136,6 +171,18 @@ def replay_completed_component_prefix(
         _fail("component_boundary_future_component_touched")
     if any(item.atom in future_atoms for item in stereo.local_orders):
         _fail("component_boundary_future_component_touched")
+    for record in stereo.local_orders:
+        component_index = component_by_atom.get(record.atom)
+        if component_index is None:
+            _fail("component_boundary_local_order_state_mismatch")
+        if component_index < completed_component_index and not record.closed:
+            _fail("component_boundary_local_order_state_mismatch")
+        if (
+            component_index == completed_component_index
+            and record.atom != state.active.atom
+            and not record.closed
+        ):
+            _fail("component_boundary_local_order_state_mismatch")
 
 
 def _fail(reason: str) -> None:

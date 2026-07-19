@@ -8,30 +8,23 @@ from collections.abc import Mapping
 
 from .errors import SouthStarError
 from .errors import SouthStarErrorKind
-from .residual_constraints import ResidualFactorKey
-from .residual_constraints import ResidualStore
-from .residual_constraints import tetra_parity_var
 from .writer_envelope_terms import _identity_digest
 from .writer_envelope_terms import _identity_envelope
 from .writer_graph_obligations import WriterGraphCompletionStatus
 from .writer_execution_evidence import WriterGraphObligationWorkEvidence
 from .writer_execution_evidence import WriterResidualPropagationWorkEvidence
 from .writer_capabilities import _WriterExecutionCapabilityKind
-from .writer_events import WriterLocalOrderClosed
 from .writer_stereo import WriterStereoLifecycleEvidence
-from .writer_stereo import WriterStereoLifecycleOutcomeKind
 from .writer_terminal_certificates import WriterTerminalCertificate
 from .writer_terminal_certificates import WriterTerminalCertificateKind
 from .writer_snapshot_closed_terms import writer_frontier_cursor_from_closed_terms
 from .writer_support_artifact_offline_verifier import _decode_transition_term
-from .writer_support_artifact_offline_verifier import _local_order_parity
-from .writer_support_artifact_offline_verifier import _specified_tetra_site_for_transition
-from .writer_support_artifact_offline_verifier import _check_transition_result
 from .writer_support_artifact_fact_verifier import _check_prepared_identity
 from .writer_support_artifact_fact_verifier import _check_source_snapshot_identity
 from .writer_prepared_identity import writer_prepared_identity
 from .prepared_runtime import prepare_south_star_mol_from_facts
 from .prepared_runtime import SouthStarWriterSurface
+from .policy import DirectionMark
 from .writer_terminalization_artifact_checker import verify_writer_terminalization_artifact_consistency
 from .writer_terminalization_terms import WriterTerminalizationTerm
 from .writer_stereo import EMPTY_RESIDUAL_SNAPSHOT
@@ -40,7 +33,10 @@ from .writer_component_completion_replay import (
     replay_completed_component_prefix,
 )
 from .writer_residual_transition_terms import TetraLocalOrderFactorClosureTransitionTerm
-from .writer_residual_transition_terms import WriterResidualTransitionKind
+from .writer_local_order_closure_replay import (
+    WriterLocalOrderClosureReplayError,
+    replay_writer_local_order_closure_for_facts,
+)
 
 _TERM_PATH = (
     "grimace._south_star1.writer_terminalization_terms."
@@ -115,6 +111,12 @@ def verify_writer_terminalization_artifact_for_facts(
             source=source_state,
             finalized=finalized_state,
             rooted_at_atom=runtime_options.rooted_at_atom,
+            allowed_ring_label_values=tuple(
+                label.value for label in prepared.policy.ring_labels
+            ),
+            ring_endpoint_choices=_ring_endpoint_choices_for_policy(
+                prepared.policy
+            ),
         )
         return WriterTerminalizationArtifactFactsVerification(
             accepted=True,
@@ -143,7 +145,14 @@ def verify_writer_terminalization_artifact_for_facts(
 
 
 def replay_terminal_support_payload_for_facts(
-    *, facts, support, source_state, finalized_state, rooted_at_atom: int = -1
+    *,
+    facts,
+    support,
+    source_state,
+    finalized_state,
+    rooted_at_atom: int,
+    allowed_ring_label_values,
+    ring_endpoint_choices,
 ):
     """Replay a shared terminal-support payload without artifact routing."""
     term = _decode_transition_term(
@@ -156,12 +165,22 @@ def replay_terminal_support_payload_for_facts(
         source=source_state,
         finalized=finalized_state,
         rooted_at_atom=rooted_at_atom,
+        allowed_ring_label_values=allowed_ring_label_values,
+        ring_endpoint_choices=ring_endpoint_choices,
     )
     return term, expected.operations
 
 
 def _reconstruct_terminalization_evidence_for_facts(
-    *, facts, term, support, source, finalized, rooted_at_atom: int
+    *,
+    facts,
+    term,
+    support,
+    source,
+    finalized,
+    rooted_at_atom: int,
+    allowed_ring_label_values,
+    ring_endpoint_choices,
 ) -> _ExpectedTerminalizationEvidence:
     graph_work = _check_term_and_graph(
         facts=facts,
@@ -170,6 +189,8 @@ def _reconstruct_terminalization_evidence_for_facts(
         source=source,
         finalized=finalized,
         rooted_at_atom=rooted_at_atom,
+        allowed_ring_label_values=allowed_ring_label_values,
+        ring_endpoint_choices=ring_endpoint_choices,
     )
     operations, residual_work, capabilities, lifecycle = _replay_stereo(
         facts=facts,
@@ -248,7 +269,15 @@ def _unique_state(cursor_terms, digest, role):
 
 
 def _check_term_and_graph(
-    *, facts, term, support, source, finalized, rooted_at_atom: int
+    *,
+    facts,
+    term,
+    support,
+    source,
+    finalized,
+    rooted_at_atom: int,
+    allowed_ring_label_values,
+    ring_endpoint_choices,
 ):
     if support["terminalization_term_digest"] != _identity_digest(
         support["terminalization_term"]
@@ -288,6 +317,8 @@ def _check_term_and_graph(
             completed_component_index=len(facts.components) - 1,
             require_final=True,
             rooted_at_atom=rooted_at_atom,
+            allowed_ring_label_values=allowed_ring_label_values,
+            ring_endpoint_choices=ring_endpoint_choices,
         )
     except WriterComponentCompletionReplayError as exc:
         if str(exc) == "component_boundary_root_vector_mismatch":
@@ -437,6 +468,86 @@ def _replay_stereo(*, facts, term, support, source, finalized):
         _violation("terminal_residual_work_digest_mismatch")
     if tuple(item["evidence_digest"] for item in lifecycle_items) != term.terminal_stereo_lifecycle_digests:
         _violation("terminal_lifecycle_digest_mismatch")
+    if term.stereo_mode == "noop" and (
+        source.stereo_state.residual_snapshot != EMPTY_RESIDUAL_SNAPSHOT
+        or finalized.stereo_state.residual_snapshot != EMPTY_RESIDUAL_SNAPSHOT
+    ):
+        _violation("terminal_false_noop")
+    if lifecycle_items and tuple(lifecycle_items[0]["lifecycle_capabilities"]) != (
+        term.terminal_execution_capabilities
+    ):
+        _violation("terminal_lifecycle_provenance_mismatch")
+    transition = None
+    if residual_items:
+        if len(residual_items) != 1:
+            _violation("terminal_residual_work_count_mismatch")
+        transition = _decode_transition_term(
+            residual_items[0]["transition_term"], expected_path=_TETRA_PATH
+        )
+        if not isinstance(transition, TetraLocalOrderFactorClosureTransitionTerm):
+            _violation("terminal_transition_term_kind_mismatch")
+    try:
+        replay = replay_writer_local_order_closure_for_facts(
+            facts=facts,
+            source_state=source,
+            successor_state=finalized,
+            atom=source.active.atom,
+            transition_term=transition,
+        )
+    except WriterLocalOrderClosureReplayError as exc:
+        reason = {
+            "local_order_transition_state_anchor_mismatch": (
+                "terminal_transition_state_anchor_mismatch"
+            ),
+            "local_order_tetra_site_mismatch": "terminal_tetra_site_mismatch",
+            "local_order_tetra_reference_order_mismatch": (
+                "terminal_tetra_reference_order_mismatch"
+            ),
+            "local_order_tetra_local_order_mismatch": (
+                "terminal_tetra_local_order_mismatch"
+            ),
+            "local_order_tetra_restriction_mismatch": (
+                "terminal_tetra_restriction_mismatch"
+            ),
+            "local_order_tetra_propagation_mismatch": (
+                "terminal_tetra_propagation_mismatch"
+            ),
+            "local_order_tetra_discharge_mismatch": (
+                "terminal_tetra_discharge_failed"
+            ),
+            "local_order_tetra_successor_residual_mismatch": (
+                "terminal_final_residual_not_empty"
+            ),
+        }.get(str(exc), f"terminal_{exc}")
+        _violation(reason)
+
+    capabilities = replay.capabilities
+    residual_work = replay.residual_work
+    operations = replay.semantically_replayed_operations
+    if term.terminal_execution_capabilities != tuple(
+        sorted(capability.value for capability in capabilities)
+    ):
+        _violation("terminal_capability_mismatch")
+    if replay.kind == "tetra_residual":
+        if term.stereo_mode != "tetra_local_order_factor_closure":
+            _violation("terminal_stereo_mode_mismatch")
+        item = residual_items[0]
+        if item["operation"] != operations[0]:
+            _violation("terminal_residual_operation_mismatch")
+        _check_tetra_residual_manifest(
+            item=item,
+            term=term,
+            residual_work=residual_work,
+        )
+    else:
+        if term.stereo_mode != "noop":
+            _violation("terminal_stereo_mode_mismatch")
+        _check_residual_manifests_noop(support=support, term=term)
+
+    if replay.lifecycle is None:
+        if lifecycle_items or term.terminal_stereo_lifecycle_digests:
+            _violation("terminal_lifecycle_count_mismatch")
+        return operations, residual_work, capabilities, ()
     if len(lifecycle_items) != 1:
         _violation("terminal_lifecycle_count_mismatch")
     lifecycle = lifecycle_items[0]
@@ -450,148 +561,15 @@ def _replay_stereo(*, facts, term, support, source, finalized):
         != term.terminal_execution_capabilities
     ):
         _violation("terminal_lifecycle_provenance_mismatch")
-    source_orders = source.stereo_state.local_orders
-    final_orders = finalized.stereo_state.local_orders
-    source_matches = tuple(item for item in source_orders if item.atom == source.active.atom)
-    final_matches = tuple(item for item in final_orders if item.atom == source.active.atom)
-    if len(final_matches) != 1 or not final_matches[0].closed:
-        _violation("terminal_local_order_lifecycle_mismatch")
-    if source_matches:
-        if source_matches[0].closed or (
-            final_matches[0].order[: len(source_matches[0].order)]
-            != source_matches[0].order
-        ):
-            _violation("terminal_local_order_lifecycle_mismatch")
-        expected_final = final_matches[0]
-    else:
-        expected_final = final_matches[0]
-        if final_matches[0].order:
-            _violation("terminal_local_order_lifecycle_mismatch")
-    if len(source_matches) > 1 or expected_final != final_matches[0]:
-        _violation("terminal_local_order_lifecycle_mismatch")
-    if term.stereo_mode == "noop":
-        if residual_items or term.terminal_execution_capabilities:
-            _violation("terminal_false_noop")
-        if (
-            source.stereo_state.residual_snapshot != EMPTY_RESIDUAL_SNAPSHOT
-            or finalized.stereo_state.residual_snapshot != EMPTY_RESIDUAL_SNAPSHOT
-        ):
-            _violation("terminal_false_noop")
-        _check_only_local_order_closed(source, finalized)
-        residual_work = ()
-        capabilities = frozenset()
-        operations = ()
-        outcome = WriterStereoLifecycleOutcomeKind.EVENT_RECORDED
-        _check_residual_manifests_noop(
-            support=support,
-            term=term,
-        )
-    else:
-        if term.stereo_mode != "tetra_local_order_factor_closure" or len(residual_items) != 1:
-            _violation("terminal_stereo_mode_mismatch")
-        item = residual_items[0]
-        if item["operation"] != "tetrahedral local-order factor closure":
-            _violation("terminal_residual_operation_mismatch")
-        transition = _decode_transition_term(item["transition_term"], expected_path=_TETRA_PATH)
-        if not isinstance(transition, TetraLocalOrderFactorClosureTransitionTerm):
-            _violation("terminal_transition_term_kind_mismatch")
-        _replay_tetra(facts, transition, source, finalized)
-        capabilities = frozenset((
-            _WriterExecutionCapabilityKind.RESIDUAL_FACTOR_DISCHARGE,
-            _WriterExecutionCapabilityKind.RESIDUAL_PROPAGATION,
-            _WriterExecutionCapabilityKind.TETRA_LOCAL_ORDER_RESTRICTION,
-        ))
-        expected_caps = tuple(sorted(capability.value for capability in capabilities))
-        if term.terminal_execution_capabilities != expected_caps:
-            _violation("terminal_capability_mismatch")
-        residual_work = (WriterResidualPropagationWorkEvidence(
-            operation="tetrahedral local-order factor closure",
-            result_kind=transition.propagation_result.kind,
-            component_variables=transition.propagation_result.stats.component_variables,
-            component_factor_keys=transition.propagation_result.stats.component_factor_keys,
-            checked_candidate_rows=transition.propagation_result.stats.checked_candidate_rows,
-            largest_factor_scope=transition.propagation_result.stats.largest_factor_scope,
-            largest_candidate_row_count=(
-                transition.propagation_result.stats.largest_candidate_row_count
-            ),
-            transition_term=transition,
-        ),)
-        operations = (item["operation"],)
-        outcome = WriterStereoLifecycleOutcomeKind.RECORD_AND_RESTRICT
-        _check_tetra_residual_manifest(
-            item=item,
-            term=term,
-            residual_work=residual_work,
-        )
-    lifecycle_evidence = WriterStereoLifecycleEvidence(
-        event=WriterLocalOrderClosed(source.active.atom),
-        source_residual_snapshot=source.stereo_state.residual_snapshot,
-        successor_residual_snapshot=finalized.stereo_state.residual_snapshot,
-        source_atom_occurrences=source.stereo_state.atom_occurrences,
-        successor_atom_occurrences=finalized.stereo_state.atom_occurrences,
-        source_bond_occurrences=source.stereo_state.bond_occurrences,
-        successor_bond_occurrences=finalized.stereo_state.bond_occurrences,
-        source_local_orders=source.stereo_state.local_orders,
-        successor_local_orders=finalized.stereo_state.local_orders,
-        capabilities=capabilities,
-        residual_work_evidence=residual_work,
-        outcome_kind=outcome,
-    )
     _check_lifecycle_manifest(
         item=lifecycle,
         term=term,
-        lifecycle=lifecycle_evidence,
+        lifecycle=replay.lifecycle,
         residual_work=residual_work,
         capabilities=capabilities,
-        outcome=outcome,
+        outcome=replay.lifecycle.outcome_kind,
     )
-    return operations, residual_work, capabilities, (lifecycle_evidence,)
-
-
-def _replay_tetra(facts, term, source, finalized):
-    if term.kind is not WriterResidualTransitionKind.TETRA_LOCAL_ORDER_FACTOR_CLOSURE:
-        _violation("terminal_transition_kind_mismatch")
-    if (
-        term.source_snapshot != source.stereo_state.residual_snapshot
-        or term.successor_snapshot != finalized.stereo_state.residual_snapshot
-        or int(term.atom) != int(source.active.atom)
-    ):
-        _violation("terminal_transition_state_anchor_mismatch")
-    site = _specified_tetra_site_for_transition(
-        facts=facts,
-        site=int(term.site),
-        atom=int(term.atom),
-        violation_prefix="terminal_tetra",
-    )
-    if tuple(term.reference_order) != tuple(site.reference_order):
-        _violation("terminal_tetra_reference_order_mismatch")
-    final_order = next(item.order for item in finalized.stereo_state.local_orders if item.atom == term.atom)
-    if tuple(term.local_order) != tuple(final_order):
-        _violation("terminal_tetra_local_order_mismatch")
-    parity = _local_order_parity(reference_order=site.reference_order, local_order=term.local_order)
-    if (
-        term.target_parity is not parity
-        or term.constraint_var != tetra_parity_var(term.site)
-        or term.constraint_value is not parity
-        or term.discharged_factor_keys != (ResidualFactorKey("tetra_site", (int(term.site),)),)
-        or term.projected_variables != (term.constraint_var,)
-    ):
-        _violation("terminal_tetra_restriction_mismatch")
-    store = ResidualStore.from_value_snapshot(term.source_snapshot)
-    result = store.restrict_many_and_propagate(((term.constraint_var, parity),))
-    _check_transition_result(expected=term.propagation_result, actual=result, violation_prefix="terminal_tetra")
-    if (
-        result.stats.component_variables != term.affected_variables
-        or result.stats.component_factor_keys != term.affected_factor_keys
-    ):
-        _violation("terminal_tetra_affected_component_mismatch")
-    try:
-        store.discharge_satisfied_factors(term.discharged_factor_keys)
-    except ValueError:
-        _violation("terminal_tetra_discharge_failed")
-    if store.value_snapshot() != term.successor_snapshot or term.successor_snapshot != EMPTY_RESIDUAL_SNAPSHOT:
-        _violation("terminal_final_residual_not_empty")
-    _check_only_local_order_closed(source, finalized)
+    return operations, residual_work, capabilities, (replay.lifecycle,)
 
 
 def _check_residual_manifests_noop(*, support, term) -> None:
@@ -709,37 +687,28 @@ def _check_reconstructed_support_identity(
         _violation("terminal_support_identity_digest_mismatch")
 
 
-def _check_only_local_order_closed(source, finalized):
-    if (
-        source.stereo_state.atom_occurrences != finalized.stereo_state.atom_occurrences
-        or source.stereo_state.bond_occurrences != finalized.stereo_state.bond_occurrences
-    ):
-        _violation("terminal_unrelated_stereo_state_changed")
-    source_orders = source.stereo_state.local_orders
-    final_active = tuple(
-        item for item in finalized.stereo_state.local_orders
-        if item.atom == source.active.atom
-    )
-    expected_orders = tuple(
-        final_active[0] if item.atom == source.active.atom else item
-        for item in source_orders
-    )
-    if not any(item.atom == source.active.atom for item in source_orders):
-        expected_orders += tuple(
-            item
-            for item in finalized.stereo_state.local_orders
-            if item.atom == source.active.atom
-        )
-        expected_orders = tuple(sorted(expected_orders, key=lambda item: int(item.atom)))
-    if expected_orders != finalized.stereo_state.local_orders:
-        _violation("terminal_unrelated_stereo_state_changed")
-
-
 def _violation(reason):
     raise SouthStarError(
         SouthStarErrorKind.INTERNAL_INVARIANT,
         f"writer terminalization facts violation: {reason}",
     )
+
+
+def _ring_endpoint_choices_for_policy(policy):
+    out = {}
+    for domain in policy.bond_text_domains:
+        if domain.slot_kind != "ring_endpoint":
+            continue
+        choices = []
+        for choice in domain.choices:
+            choices.append((choice.base_text, DirectionMark.ABSENT))
+            if choice.permits_direction:
+                choices.extend((
+                    (choice.base_text, DirectionMark.FWD),
+                    (choice.base_text, DirectionMark.REV),
+                ))
+        out[int(domain.bond)] = tuple(choices)
+    return out
 
 
 __all__ = (

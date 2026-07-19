@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from dataclasses import replace
 from enum import Enum
 
 from .errors import SouthStarError
@@ -72,6 +73,12 @@ from .writer_residual_transition_terms import (
     TetraLocalOrderFactorClosureTransitionTerm,
 )
 from .writer_residual_transition_terms import WriterResidualTransitionKind
+from .writer_local_order_closure_replay import (
+    WriterLocalOrderClosureReplayError,
+    replay_writer_local_order_closure_for_facts,
+)
+from .writer_state import ComponentCursor
+from .writer_state import WriterAtomFrame
 
 
 OBJECT_KIND_OFFLINE_COVERAGE = {
@@ -394,6 +401,7 @@ class OfflineObligationClassification:
     checked_families: tuple[str, ...] = ()
     checked_empty_families: tuple[str, ...] = ()
     semantically_replayed_operations: tuple[str, ...] = ()
+    replayed_component_boundary_branch_digests: tuple[str, ...] = ()
     reason: str | None = None
 
 
@@ -569,8 +577,8 @@ def verify_writer_support_artifact_offline_replay(
         }
         if (
             graph_ring.checked_component_boundary_steps
-            and not obligations.unchecked_families
-            and "stereo_lifecycle" in obligations.checked_families
+            and graph_ring.checked_component_boundary_steps
+            == len(obligations.replayed_component_boundary_branch_digests)
         ):
             checked_relations.add("component_boundary_transition")
         support_refs = root["payload"]["support_string_refs"]
@@ -707,13 +715,9 @@ def _tetra_site_h_count(
         and occurrence.atom == atom.id
         and occurrence.kind is LigandKind.IMPLICIT_H
     )
-    if atom.implicit_h_count not in {0, 1}:
-        return atom.implicit_h_count
-    if occurrence_h_count not in {0, 1}:
-        return occurrence_h_count
-    if atom.implicit_h_count == 1 or occurrence_h_count == 1:
-        return 1
-    return 0
+    if atom.implicit_h_count != occurrence_h_count:
+        return -1
+    return occurrence_h_count
 
 
 def verify_count_dag_arithmetic(
@@ -1153,11 +1157,13 @@ def classify_residual_stereo_obligations_offline(
         replayed_lifecycle_digests: set[str] = set()
         replayed_directional_ring_closure_digests: set[str] = set()
         replayed_terminal_graph_digests: set[str] = set()
+        replayed_component_boundary_branch_digests: set[str] = set()
         replayed_operations: list[str] = []
         ring_endpoint_choices = _ring_endpoint_choices_from_artifact(
             artifact=artifact,
             objects=objects,
         )
+        ring_label_values = _ring_label_values_from_artifact(artifact)
         if branch_refs is None:
             branch_refs = _branch_refs_from_support_artifact(artifact=artifact, objects=objects)
         for branch_ref in branch_refs:
@@ -1193,6 +1199,19 @@ def classify_residual_stereo_obligations_offline(
                     replayed_directional_ring_closure_digests
                 ),
             )
+            _replay_component_boundary_branch_obligations(
+                facts=facts,
+                branch=branch,
+                objects=objects,
+                rooted_at_atom=_artifact_rooted_at_atom(artifact),
+                allowed_ring_label_values=ring_label_values,
+                ring_endpoint_choices=ring_endpoint_choices,
+                replayed_residual_digests=replayed_residual_digests,
+                replayed_lifecycle_digests=replayed_lifecycle_digests,
+                replayed_component_boundary_branch_digests=(
+                    replayed_component_boundary_branch_digests
+                ),
+            )
         if include_terminals:
             root = _require_object(objects, artifact["roots"]["support_image_root"])
             replayed_terminal_refs: set[str] = set()
@@ -1209,6 +1228,8 @@ def classify_residual_stereo_obligations_offline(
                     _replay_terminal_support_offline(
                         facts=facts,
                         rooted_at_atom=_artifact_rooted_at_atom(artifact),
+                        allowed_ring_label_values=ring_label_values,
+                        ring_endpoint_choices=ring_endpoint_choices,
                         terminal=terminal,
                         projection=projection,
                         replayed_residual_digests=replayed_residual_digests,
@@ -1274,6 +1295,9 @@ def classify_residual_stereo_obligations_offline(
             checked_families=checked,
             checked_empty_families=checked_empty,
             semantically_replayed_operations=tuple(replayed_operations),
+            replayed_component_boundary_branch_digests=tuple(
+                sorted(replayed_component_boundary_branch_digests)
+            ),
         )
     except SouthStarError as exc:
         return OfflineObligationClassification(
@@ -1308,6 +1332,8 @@ def _replay_terminal_support_offline(
     *,
     facts,
     rooted_at_atom,
+    allowed_ring_label_values,
+    ring_endpoint_choices,
     terminal,
     projection,
     replayed_residual_digests,
@@ -1344,6 +1370,8 @@ def _replay_terminal_support_offline(
         source_state=source_states[0],
         finalized_state=finalized_states[0],
         rooted_at_atom=rooted_at_atom,
+        allowed_ring_label_values=allowed_ring_label_values,
+        ring_endpoint_choices=dict(ring_endpoint_choices),
     )
     replayed_residual_digests.update(term.terminal_residual_work_digests)
     replayed_lifecycle_digests.update(term.terminal_stereo_lifecycle_digests)
@@ -1372,6 +1400,20 @@ def _ring_endpoint_choices_from_artifact(
             _offline_violation("directional_non_single_ring_policy_domain_duplicate")
         out[bond] = tuple(expanded)
     return out
+
+
+def _ring_label_values_from_artifact(
+    artifact: Mapping[str, object],
+) -> tuple[int, ...]:
+    policy = _term_field_value(artifact["prepared_identity"]["terms"], "policy")
+    values = tuple(policy[0])
+    if (
+        not values
+        or len(values) != len(set(values))
+        or any(value < 1 for value in values)
+    ):
+        _offline_violation("component_boundary_ring_policy_mismatch")
+    return values
 
 
 def _obligation_manifests_checked(
@@ -1482,6 +1524,189 @@ def _classify_branch_replayed_lifecycle_manifests(
         if lifecycle["residual_work_operations"] != expected_operations:
             _offline_violation("residual_lifecycle_replayed_operation_mismatch")
         replayed_lifecycle_digests.add(lifecycle["evidence_digest"])
+
+
+def _replay_component_boundary_branch_obligations(
+    *,
+    facts: MoleculeFacts,
+    branch: Mapping[str, object],
+    objects: Mapping[str, Mapping[str, object]],
+    rooted_at_atom: int,
+    allowed_ring_label_values: tuple[int, ...],
+    ring_endpoint_choices: Mapping[int, tuple[tuple[str, DirectionMark], ...]],
+    replayed_residual_digests: set[str],
+    replayed_lifecycle_digests: set[str],
+    replayed_component_boundary_branch_digests: set[str],
+) -> None:
+    payload = branch["payload"]
+    delta = payload["graph_ring_delta"]
+    if delta["kind"] != "component_boundary":
+        return
+    events = delta["manifest"]["event_manifests"]
+    if tuple(event["kind"] for event in events) != (
+        "local_order_closed",
+        "component_boundary_emitted",
+    ):
+        _offline_violation("component_boundary_event_order_mismatch")
+    source, successor = _component_boundary_writer_states(
+        branch=branch,
+        objects=objects,
+    )
+    residual_items = payload["obligation_manifests"]["residual_work"]
+    transition = None
+    if residual_items:
+        if (
+            len(residual_items) != 1
+            or residual_items[0]["operation"]
+            != "tetrahedral local-order factor closure"
+        ):
+            _offline_violation("component_boundary_residual_state_mismatch")
+        transition = _decode_transition_term(
+            residual_items[0]["transition_term"],
+            expected_path=(
+                "grimace._south_star1.writer_residual_transition_terms."
+                "TetraLocalOrderFactorClosureTransitionTerm"
+            ),
+        )
+    try:
+        replay = replay_writer_local_order_closure_for_facts(
+            facts=facts,
+            source_state=source,
+            successor_state=successor,
+            atom=source.active.atom,
+            transition_term=transition,
+        )
+    except WriterLocalOrderClosureReplayError as exc:
+        _offline_violation(f"component_boundary_{exc}")
+    _validate_residual_component_partition(
+        facts=facts,
+        snapshot=source.stereo_state.residual_snapshot,
+        completed_component_index=None,
+    )
+    _validate_residual_component_partition(
+        facts=facts,
+        snapshot=successor.stereo_state.residual_snapshot,
+        completed_component_index=source.component_cursor.component_index,
+    )
+
+    lifecycle_items = payload["obligation_manifests"]["stereo_lifecycle"]
+    raw_lifecycles = [
+        item
+        for item in lifecycle_items
+        if item["operation"] == "WriterStereoLifecycleEvidence"
+    ]
+    if replay.lifecycle is None:
+        if residual_items or lifecycle_items:
+            _offline_violation("component_boundary_lifecycle_identity_mismatch")
+    else:
+        if len(raw_lifecycles) != 1 or (
+            replay.kind == "record_only" and len(lifecycle_items) != 1
+        ):
+            _offline_violation("component_boundary_lifecycle_identity_mismatch")
+        raw = raw_lifecycles[0]
+        residual_digests = tuple(
+            _identity_digest(item) for item in replay.residual_work
+        )
+        if (
+            raw["family"] != "stereo_lifecycle"
+            or raw["source_digest"] != payload["source_state_digest"]
+            or raw["successor_digest"] != payload["successor_state_digest"]
+            or raw["evidence_digest"] != _identity_digest(replay.lifecycle)
+            or raw["transition_term"] is not None
+            or raw["transition_digest"] is not None
+            or raw["coupling_term"] is not None
+            or raw["coupling_term_digest"] is not None
+            or tuple(raw["linked_residual_work_digests"]) != residual_digests
+            or raw["lifecycle_event_kind"] != "local_order_closed"
+            or tuple(raw["lifecycle_capabilities"])
+            != tuple(sorted(item.value for item in replay.capabilities))
+            or raw["lifecycle_outcome_kind"]
+            != replay.lifecycle.outcome_kind.value
+            or raw["residual_snapshot_changed"]
+            != (
+                replay.lifecycle.source_residual_snapshot
+                != replay.lifecycle.successor_residual_snapshot
+            )
+            or raw["source_residual_snapshot_digest"]
+            != _identity_digest(replay.lifecycle.source_residual_snapshot)
+            or raw["successor_residual_snapshot_digest"]
+            != _identity_digest(replay.lifecycle.successor_residual_snapshot)
+            or not raw["local_orders_changed"]
+            or tuple(raw["residual_work_digests"]) != residual_digests
+            or tuple(raw["residual_work_operations"])
+            != replay.semantically_replayed_operations
+            or raw["certificate_kind"] is not None
+            or raw["certificate_capability"] is not None
+            or raw["certificate_lifecycle_digest"] is not None
+        ):
+            _offline_violation("component_boundary_lifecycle_identity_mismatch")
+        if any(
+            digest not in replayed_residual_digests for digest in residual_digests
+        ):
+            return
+        replayed_lifecycle_digests.add(raw["evidence_digest"])
+
+    index = source.component_cursor.component_index
+    try:
+        replay_completed_component_prefix(
+            facts=facts,
+            state=source,
+            completed_component_index=index,
+            require_final=False,
+            rooted_at_atom=rooted_at_atom,
+            allowed_ring_label_values=allowed_ring_label_values,
+            ring_endpoint_choices=dict(ring_endpoint_choices),
+        )
+    except WriterComponentCompletionReplayError as exc:
+        _offline_violation(str(exc))
+    next_root = source.component_cursor.component_roots[index + 1]
+    expected_successor = replace(
+        source,
+        stereo_state=replay.successor_stereo_state,
+        component_cursor=ComponentCursor(
+            component_index=index + 1,
+            component_roots=source.component_cursor.component_roots,
+        ),
+        active=WriterAtomFrame(
+            atom=next_root,
+            parent=None,
+            incoming_bond=None,
+            atom_emitted=False,
+        ),
+    )
+    if successor != expected_successor:
+        _offline_violation("component_boundary_successor_state_mismatch")
+    replayed_component_boundary_branch_digests.add(payload["digest"])
+
+
+def _component_boundary_writer_states(*, branch, objects):
+    payload = branch["payload"]
+    matches = tuple(
+        item["payload"]
+        for item in objects.values()
+        if item["kind"] == "text_projection"
+        and branch["object_id"] in item["payload"]["branch_support_refs"]
+    )
+    if len(matches) != 1:
+        _offline_violation("component_boundary_state_anchor_mismatch")
+    source_cursor = writer_frontier_cursor_from_closed_terms(
+        matches[0]["source_cursor"]["terms"]
+    )
+    successor_cursor = writer_frontier_cursor_from_closed_terms(
+        matches[0]["successor_cursor"]["terms"]
+    )
+    return (
+        _unique_cursor_state(
+            source_cursor,
+            payload["source_state_digest"],
+            "component_boundary_source",
+        ),
+        _unique_cursor_state(
+            successor_cursor,
+            payload["successor_state_digest"],
+            "component_boundary_successor",
+        ),
+    )
 
 
 def _classify_branch_directional_ring_closure_lifecycles(
@@ -4717,14 +4942,13 @@ def _check_component_boundary_delta(
         or payload["emitted_text"] != "."
     ):
         _offline_violation("component_boundary_event_mismatch")
-    boundary_events = [
-        event for event in events if event["kind"] == "component_boundary_emitted"
-    ]
-    local_order_events = [
-        event for event in events if event["kind"] == "local_order_closed"
-    ]
-    if len(events) != 2 or len(boundary_events) != 1 or len(local_order_events) != 1:
-        _offline_violation("component_boundary_event_mismatch")
+    if tuple(event["kind"] for event in events) != (
+        "local_order_closed",
+        "component_boundary_emitted",
+    ):
+        _offline_violation("component_boundary_event_order_mismatch")
+    local_order_events = (events[0],)
+    boundary_events = (events[1],)
 
     projections = tuple(
         item
@@ -4823,42 +5047,89 @@ def _unique_cursor_state(cursor, digest: str, role: str):
 def _check_completed_component_residual_isolation(
     *, facts: MoleculeFacts, state, completed_component_index: int
 ) -> None:
-    completed_components = facts.components[: completed_component_index + 1]
-    completed_atoms = {
-        atom for component in completed_components for atom in component.atoms
+    _validate_residual_component_partition(
+        facts=facts,
+        snapshot=state.stereo_state.residual_snapshot,
+        completed_component_index=completed_component_index,
+    )
+
+
+def _validate_residual_component_partition(
+    *, facts: MoleculeFacts, snapshot, completed_component_index: int | None
+) -> None:
+    try:
+        ResidualStore.from_value_snapshot(snapshot)
+    except ValueError:
+        _offline_violation("component_boundary_residual_state_mismatch")
+    atom_component = {
+        int(atom): index
+        for index, component in enumerate(facts.components)
+        for atom in component.atoms
     }
-    completed_bonds = {
-        int(bond) for component in completed_components for bond in component.bonds
+    bond_component = {
+        int(bond): index
+        for index, component in enumerate(facts.components)
+        for bond in component.bonds
     }
-    completed_sites = {
-        int(site.id)
+    tetra_site_component = {
+        int(site.id): atom_component[int(site.center)]
         for site in facts.stereo.tetrahedral
-        if site.center in completed_atoms
-    } | {
-        int(site.id)
-        for site in facts.stereo.directional
-        if int(site.center_bond) in completed_bonds
     }
-    residual = state.stereo_state.residual_snapshot
-    for var, _domain in residual.domains:
-        if var.kind.startswith("tetra") and int(var.key[0]) in completed_sites:
-            _offline_violation("component_boundary_residual_isolation_mismatch")
+    directional_site_component = {
+        int(site.id): bond_component[int(site.center_bond)]
+        for site in facts.stereo.directional
+    }
+
+    def var_component(var):
+        if var.kind == "tetra":
+            return atom_component.get(int(var.key[0]))
+        if var.kind == "direction":
+            return bond_component.get(int(var.key[0]))
+        if var.kind in ("tetra_token", "tetra_local_parity"):
+            return tetra_site_component.get(int(var.key[0]))
+        if var.kind == "directional_site_carrier":
+            site_value = directional_site_component.get(int(var.key[0]))
+            bond_value = bond_component.get(int(var.key[1]))
+            return site_value if site_value == bond_value else None
+        return None
+
+    variables = tuple(var for var, _domain in snapshot.domains) + tuple(
+        var for var, _value in snapshot.assignments
+    )
+    for var in variables:
+        component = var_component(var)
+        if component is None:
+            _offline_violation("component_boundary_residual_component_mismatch")
         if (
-            var.kind == "directional_site_carrier"
-            and int(var.key[0]) in completed_sites
+            completed_component_index is not None
+            and component <= completed_component_index
         ):
-            _offline_violation("component_boundary_residual_isolation_mismatch")
-    for factor in residual.factors:
-        key = factor.key
-        if key.kind in ("tetra_site", "directional_site") and int(
-            key.key[0]
-        ) in completed_sites:
-            _offline_violation("component_boundary_residual_isolation_mismatch")
+            _offline_violation("component_boundary_residual_component_mismatch")
+
+    for factor in snapshot.factors:
+        if factor.key.kind == "tetra_site":
+            component = tetra_site_component.get(int(factor.key.key[0]))
+        elif factor.key.kind == "directional_site":
+            component = directional_site_component.get(int(factor.key.key[0]))
+        elif factor.key.kind == "directional_bond_emission":
+            component = bond_component.get(int(factor.key.key[0]))
+        else:
+            component = None
+        scope_components = {var_component(var) for var in factor.scope}
+        if component is None or scope_components != {component}:
+            _offline_violation("component_boundary_residual_component_mismatch")
         if (
-            key.kind == "directional_bond_emission"
-            and int(key.key[0]) in completed_bonds
+            completed_component_index is not None
+            and component <= completed_component_index
         ):
-            _offline_violation("component_boundary_residual_isolation_mismatch")
+            _offline_violation("component_boundary_residual_component_mismatch")
+        models = tuple(getattr(factor, "models", ()))
+        for model in models:
+            if (
+                directional_site_component.get(int(model.site)) != component
+                or bond_component.get(int(model.bond)) != component
+            ):
+                _offline_violation("component_boundary_residual_component_mismatch")
 
 
 def _check_atom_delta_events(

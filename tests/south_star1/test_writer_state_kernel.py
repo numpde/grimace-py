@@ -29340,9 +29340,16 @@ def _directional_non_neighbor_ligand_monocycle_facts() -> MoleculeFacts:
     occurrences[1] = replace(
         occurrences[1],
         kind=LigandKind.IMPLICIT_H,
+        atom=AtomId(0),
         bond=None,
     )
-    return replace(facts, ligand_occurrences=tuple(occurrences))
+    atoms = list(facts.atoms)
+    atoms[0] = replace(atoms[0], implicit_h_count=1)
+    return replace(
+        facts,
+        atoms=tuple(atoms),
+        ligand_occurrences=tuple(occurrences),
+    )
 
 
 def _prepare_directional_non_neighbor_ligand_monocycle() -> SouthStarPreparedMol:

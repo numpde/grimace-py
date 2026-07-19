@@ -145,6 +145,7 @@ class MoleculeFacts:
             raise ValueError("molecule facts must contain at least one component")
 
         bond_by_id = {bond.id: bond for bond in self.bonds}
+        atom_by_id = {atom.id: atom for atom in self.atoms}
         occurrence_by_id = {
             occurrence.id: occurrence for occurrence in self.ligand_occurrences
         }
@@ -159,10 +160,15 @@ class MoleculeFacts:
             bond_by_id,
             site_ids,
         )
-        _validate_tetrahedral_sites(self.stereo.tetrahedral, atom_ids, occurrence_by_id)
+        _validate_tetrahedral_sites(
+            self.stereo.tetrahedral,
+            atom_by_id,
+            bond_by_id,
+            occurrence_by_id,
+        )
         _validate_directional_sites(
             self.stereo.directional,
-            atom_ids,
+            atom_by_id,
             bond_by_id,
             occurrence_by_id,
         )
@@ -315,11 +321,12 @@ def _validate_ligand_occurrences(
 
 def _validate_tetrahedral_sites(
     sites: tuple[TetrahedralSiteFacts, ...],
-    atom_ids: set[object],
+    atom_by_id: dict[AtomId, AtomFacts],
+    bond_by_id: dict[BondId, BondFacts],
     occurrence_by_id: dict[OccurrenceId, LigandOccurrence],
 ) -> None:
     for site in sites:
-        if site.center not in atom_ids:
+        if site.center not in atom_by_id:
             raise ValueError(f"tetrahedral site {site.id!r} has unknown center")
         _validate_tetra_target(site)
         if len(site.ligand_occurrences) != 4:
@@ -333,18 +340,24 @@ def _validate_tetrahedral_sites(
                 f"tetrahedral site {site.id!r} reference order is inconsistent"
             )
         _validate_site_occurrences(site.id, site.ligand_occurrences, occurrence_by_id)
+        _validate_tetrahedral_ligand_geometry(
+            site,
+            atom_by_id=atom_by_id,
+            bond_by_id=bond_by_id,
+            occurrence_by_id=occurrence_by_id,
+        )
 
 
 def _validate_directional_sites(
     sites: tuple[DirectionalSiteFacts, ...],
-    atom_ids: set[object],
+    atom_by_id: dict[AtomId, AtomFacts],
     bond_by_id: dict[BondId, BondFacts],
     occurrence_by_id: dict[OccurrenceId, LigandOccurrence],
 ) -> None:
     for site in sites:
-        if site.left_endpoint not in atom_ids:
+        if site.left_endpoint not in atom_by_id:
             raise ValueError(f"directional site {site.id!r} has unknown left endpoint")
-        if site.right_endpoint not in atom_ids:
+        if site.right_endpoint not in atom_by_id:
             raise ValueError(f"directional site {site.id!r} has unknown right endpoint")
         bond = bond_by_id.get(site.center_bond)
         if bond is None:
@@ -364,6 +377,12 @@ def _validate_directional_sites(
             )
         ligand_ids = site.left_ligands + site.right_ligands
         _validate_site_occurrences(site.id, ligand_ids, occurrence_by_id)
+        _validate_directional_ligand_geometry(
+            site,
+            atom_by_id=atom_by_id,
+            bond_by_id=bond_by_id,
+            occurrence_by_id=occurrence_by_id,
+        )
         if site.reference_pair is not None:
             left, right = site.reference_pair
             if left not in site.left_ligands:
@@ -374,6 +393,105 @@ def _validate_directional_sites(
                 raise ValueError(
                     f"directional site {site.id!r} reference right ligand is invalid"
                 )
+
+
+def _validate_tetrahedral_ligand_geometry(
+    site: TetrahedralSiteFacts,
+    *,
+    atom_by_id: dict[AtomId, AtomFacts],
+    bond_by_id: dict[BondId, BondFacts],
+    occurrence_by_id: dict[OccurrenceId, LigandOccurrence],
+) -> None:
+    neighbor_bonds: set[BondId] = set()
+    implicit_h_count = 0
+    for occurrence_id in site.ligand_occurrences:
+        occurrence = occurrence_by_id[occurrence_id]
+        if occurrence.kind is LigandKind.NEIGHBOR_ATOM:
+            assert occurrence.bond is not None
+            bond = bond_by_id[occurrence.bond]
+            if site.center not in (bond.a, bond.b):
+                raise ValueError(
+                    f"tetrahedral site {site.id!r} neighbor ligand is not "
+                    "incident to its center"
+                )
+            opposite = bond.b if bond.a == site.center else bond.a
+            if occurrence.atom != opposite:
+                raise ValueError(
+                    f"tetrahedral site {site.id!r} neighbor ligand atom is not "
+                    "the opposite bond endpoint"
+                )
+            if occurrence.bond in neighbor_bonds:
+                raise ValueError(
+                    f"tetrahedral site {site.id!r} repeats a neighbor bond"
+                )
+            neighbor_bonds.add(occurrence.bond)
+        elif occurrence.kind is LigandKind.IMPLICIT_H:
+            if occurrence.atom != site.center or occurrence.bond is not None:
+                raise ValueError(
+                    f"tetrahedral site {site.id!r} implicit H is not on its center"
+                )
+            implicit_h_count += 1
+    expected = atom_by_id[site.center].implicit_h_count
+    if implicit_h_count != expected:
+        raise ValueError(
+            f"tetrahedral site {site.id!r} implicit-H count mismatch: "
+            f"occurrences={implicit_h_count}, atom={expected}"
+        )
+
+
+def _validate_directional_ligand_geometry(
+    site: DirectionalSiteFacts,
+    *,
+    atom_by_id: dict[AtomId, AtomFacts],
+    bond_by_id: dict[BondId, BondFacts],
+    occurrence_by_id: dict[OccurrenceId, LigandOccurrence],
+) -> None:
+    for side, endpoint, ligand_ids in (
+        ("left", site.left_endpoint, site.left_ligands),
+        ("right", site.right_endpoint, site.right_ligands),
+    ):
+        neighbor_bonds: set[BondId] = set()
+        implicit_h_count = 0
+        for occurrence_id in ligand_ids:
+            occurrence = occurrence_by_id[occurrence_id]
+            if occurrence.kind is LigandKind.NEIGHBOR_ATOM:
+                assert occurrence.bond is not None
+                if occurrence.bond == site.center_bond:
+                    raise ValueError(
+                        f"directional site {site.id!r} {side} ligand uses its "
+                        "center bond"
+                    )
+                bond = bond_by_id[occurrence.bond]
+                if endpoint not in (bond.a, bond.b):
+                    raise ValueError(
+                        f"directional site {site.id!r} {side} neighbor ligand "
+                        "is not incident to its endpoint"
+                    )
+                opposite = bond.b if bond.a == endpoint else bond.a
+                if occurrence.atom != opposite:
+                    raise ValueError(
+                        f"directional site {site.id!r} {side} neighbor ligand "
+                        "atom is not the opposite bond endpoint"
+                    )
+                if occurrence.bond in neighbor_bonds:
+                    raise ValueError(
+                        f"directional site {site.id!r} {side} repeats a "
+                        "neighbor bond"
+                    )
+                neighbor_bonds.add(occurrence.bond)
+            elif occurrence.kind is LigandKind.IMPLICIT_H:
+                if occurrence.atom != endpoint or occurrence.bond is not None:
+                    raise ValueError(
+                        f"directional site {site.id!r} {side} implicit H is not "
+                        "on its endpoint"
+                    )
+                implicit_h_count += 1
+        expected = atom_by_id[endpoint].implicit_h_count
+        if implicit_h_count != expected:
+            raise ValueError(
+                f"directional site {site.id!r} {side} implicit-H count mismatch: "
+                f"occurrences={implicit_h_count}, atom={expected}"
+            )
 
 
 def _validate_tetra_target(site: TetrahedralSiteFacts) -> None:

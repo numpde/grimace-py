@@ -3155,6 +3155,11 @@ def _replay_directional_carrier_transition(
     )
     if not 1 <= len(sites) <= 2:
         _offline_violation("directional_carrier_site_scope_mismatch")
+    if not _directional_implicit_h_scope_supported_for_facts(
+        facts=facts,
+        sites=sites,
+    ):
+        _offline_violation("directional_carrier_implicit_h_scope_mismatch")
     expected_models = _expected_directional_models_for_facts_bond(
         facts=facts,
         sites=sites,
@@ -3238,6 +3243,11 @@ def _directional_carrier_transition_term_required_offline(
     sites = _expected_directional_sites_for_facts_bond(facts=facts, bond=bond)
     if not 1 <= len(sites) <= 2:
         return False
+    if not _directional_implicit_h_scope_supported_for_facts(
+        facts=facts,
+        sites=sites,
+    ):
+        return False
     models = _expected_directional_models_for_facts_bond(
         facts=facts,
         sites=sites,
@@ -3261,6 +3271,11 @@ def _directional_carrier_transition_site_count_offline(
         return 0
     sites = _expected_directional_sites_for_facts_bond(facts=facts, bond=bond)
     if not 1 <= len(sites) <= 2:
+        return 0
+    if not _directional_implicit_h_scope_supported_for_facts(
+        facts=facts,
+        sites=sites,
+    ):
         return 0
     models = _expected_directional_models_for_facts_bond(
         facts=facts,
@@ -3499,6 +3514,63 @@ def _expected_directional_sites_for_facts_bond(
         if site.status is not SiteStatus.SPECIFIED:
             _offline_violation("directional_carrier_site_status_mismatch")
     return sites
+
+
+def _supports_specified_acyclic_directional_implicit_h_site_for_facts(
+    *,
+    facts: MoleculeFacts,
+    site: DirectionalSiteFacts,
+) -> bool:
+    occurrence_by_id = {
+        occurrence.id: occurrence for occurrence in facts.ligand_occurrences
+    }
+    if (
+        site.status is not SiteStatus.SPECIFIED
+        or site.reference_pair is None
+        or not _facts_bond_is_bridge(facts=facts, bond=site.center_bond)
+    ):
+        return False
+    for ligand_ids in (site.left_ligands, site.right_ligands):
+        occurrences = tuple(occurrence_by_id[item] for item in ligand_ids)
+        if not 1 <= len(occurrences) <= 2:
+            return False
+        if sum(item.kind is LigandKind.NEIGHBOR_ATOM for item in occurrences) != 1:
+            return False
+        if sum(item.kind is LigandKind.IMPLICIT_H for item in occurrences) > 1:
+            return False
+        if any(
+            item.kind not in (LigandKind.NEIGHBOR_ATOM, LigandKind.IMPLICIT_H)
+            for item in occurrences
+        ):
+            return False
+        if any(
+            item.kind is LigandKind.NEIGHBOR_ATOM
+            and not _facts_bond_is_bridge(facts=facts, bond=item.bond)
+            for item in occurrences
+        ):
+            return False
+    return True
+
+
+def _directional_implicit_h_scope_supported_for_facts(
+    *,
+    facts: MoleculeFacts,
+    sites: tuple[DirectionalSiteFacts, ...],
+) -> bool:
+    occurrence_by_id = {
+        occurrence.id: occurrence for occurrence in facts.ligand_occurrences
+    }
+    return all(
+        not any(
+            occurrence_by_id[item].kind is not LigandKind.NEIGHBOR_ATOM
+            for item in site.left_ligands + site.right_ligands
+        )
+        or _supports_specified_acyclic_directional_implicit_h_site_for_facts(
+            facts=facts,
+            site=site,
+        )
+        for site in sites
+    )
 
 
 def _expected_directional_models_for_facts_bond(

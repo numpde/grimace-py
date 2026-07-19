@@ -52,6 +52,10 @@ DURABLE_BRACKET_SUPPORT_SURFACES = frozenset(
         "unsupported_positive_oxygen_charge",
     }
 )
+VERSION_PINNED_SUPPORT_SURFACES = DURABLE_BRACKET_SUPPORT_SURFACES | {
+    "specified_tetrahedral",
+    "specified_directional_acyclic_implicit_h",
+}
 
 
 class WriterDefaultCapabilityLedgerTest(unittest.TestCase):
@@ -71,6 +75,8 @@ class WriterDefaultCapabilityLedgerTest(unittest.TestCase):
                 "branched_ring",
                 "simple_bracket_charge",
                 "simple_isotope_bracket_atom",
+                "specified_tetrahedral",
+                "specified_directional_acyclic_implicit_h",
                 "unsupported_charged_isotope",
                 "unsupported_charged_oxygen_isotope",
                 "unsupported_negative_nitrogen_charge",
@@ -84,7 +90,10 @@ class WriterDefaultCapabilityLedgerTest(unittest.TestCase):
         for case in ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES:
             with self.subTest(case=case.name):
                 self.assertEqual(case.expected, "accepted")
-                self.assertEqual(case.extraction_profile, "graph_no_potential_sites")
+                self.assertIn(
+                    case.extraction_profile,
+                    {"graph_no_potential_sites", "specified_stereo_closure"},
+                )
                 self.assertIsNotNone(case.expected_support_count)
                 self.assertIsNotNone(case.expected_completion_count)
                 self.assertIsNone(case.blocker_phase)
@@ -96,10 +105,16 @@ class WriterDefaultCapabilityLedgerTest(unittest.TestCase):
                 self.assertTrue(case.expected_live_frontier_agreement_complete)
                 self.assertTrue(case.expected_live_count_agreement_complete)
                 self.assertTrue(case.expected_snapshot_resume_agreement_complete)
+                self.assertTrue(case.expected_continuation_asset_complete)
+                self.assertTrue(case.expected_rust_runtime_agreement_complete)
+                self.assertTrue(case.expected_continuation_snapshot_resume_complete)
+                self.assertTrue(case.expected_lazy_branch_proof_complete)
+                self.assertTrue(case.expected_lazy_terminal_proof_complete)
                 self.assertEqual(
                     case.expected_rdkit_audit_version_pinned,
-                    case.support_surface in DURABLE_BRACKET_SUPPORT_SURFACES,
+                    case.support_surface in VERSION_PINNED_SUPPORT_SURFACES,
                 )
+                self.assertIsNotNone(case.expected_support_digest)
                 self.assertEqual(
                     case.expected_offline_object_kinds,
                     DEFAULT_OFFLINE_OBJECT_KINDS,
@@ -131,9 +146,15 @@ class WriterDefaultCapabilityLedgerTest(unittest.TestCase):
                 self.assertFalse(case.expected_live_frontier_agreement_complete)
                 self.assertFalse(case.expected_live_count_agreement_complete)
                 self.assertFalse(case.expected_snapshot_resume_agreement_complete)
+                self.assertFalse(case.expected_continuation_asset_complete)
+                self.assertFalse(case.expected_rust_runtime_agreement_complete)
+                self.assertFalse(case.expected_continuation_snapshot_resume_complete)
+                self.assertFalse(case.expected_lazy_branch_proof_complete)
+                self.assertFalse(case.expected_lazy_terminal_proof_complete)
+                self.assertIsNone(case.expected_support_digest)
                 self.assertEqual(
                     case.expected_rdkit_audit_version_pinned,
-                    case.support_surface in DURABLE_BRACKET_SUPPORT_SURFACES,
+                    case.support_surface in VERSION_PINNED_SUPPORT_SURFACES,
                 )
                 self.assertEqual(case.expected_offline_object_kinds, ())
                 self.assertEqual(case.expected_offline_unchecked_object_kinds, ())

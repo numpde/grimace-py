@@ -106,6 +106,87 @@ class MoleculeFactsTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "ligand occurrence coverage mismatch"):
             facts.validate()
 
+    def test_tetrahedral_implicit_h_must_match_center_atom(self) -> None:
+        facts = _tetrahedral_facts()
+        zero_h = dataclasses.replace(facts.atoms[0], implicit_h_count=0)
+
+        with self.assertRaisesRegex(ValueError, "implicit-H count mismatch"):
+            dataclasses.replace(facts, atoms=(zero_h, *facts.atoms[1:])).validate()
+
+        no_h_occurrence = dataclasses.replace(
+            facts.ligand_occurrences[-1],
+            kind=LigandKind.PSEUDO,
+            atom=None,
+        )
+        with self.assertRaisesRegex(ValueError, "implicit-H count mismatch"):
+            dataclasses.replace(
+                facts,
+                ligand_occurrences=(*facts.ligand_occurrences[:-1], no_h_occurrence),
+            ).validate()
+
+    def test_directional_implicit_h_must_match_its_endpoint(self) -> None:
+        facts = _directional_implicit_h_facts()
+        wrong_endpoint = dataclasses.replace(
+            facts.ligand_occurrences[1],
+            atom=AtomId(1),
+        )
+        with self.assertRaisesRegex(ValueError, "left implicit H is not on its endpoint"):
+            dataclasses.replace(
+                facts,
+                ligand_occurrences=(
+                    facts.ligand_occurrences[0],
+                    wrong_endpoint,
+                    *facts.ligand_occurrences[2:],
+                ),
+            ).validate()
+
+        detached_count = dataclasses.replace(facts.atoms[0], implicit_h_count=0)
+        with self.assertRaisesRegex(ValueError, "left implicit-H count mismatch"):
+            dataclasses.replace(
+                facts,
+                atoms=(detached_count, *facts.atoms[1:]),
+            ).validate()
+
+    def test_directional_neighbor_must_use_the_side_endpoint_once(self) -> None:
+        facts = _directional_implicit_h_facts()
+        wrong_side = dataclasses.replace(
+            facts.ligand_occurrences[0],
+            bond=BondId(2),
+            atom=AtomId(3),
+        )
+        with self.assertRaisesRegex(ValueError, "left neighbor ligand is not incident"):
+            dataclasses.replace(
+                facts,
+                ligand_occurrences=(wrong_side, *facts.ligand_occurrences[1:]),
+            ).validate()
+
+        site = facts.stereo.directional[0]
+        repeated = dataclasses.replace(
+            facts.ligand_occurrences[1],
+            kind=LigandKind.NEIGHBOR_ATOM,
+            atom=AtomId(2),
+            bond=BondId(1),
+        )
+        duplicate_site = dataclasses.replace(
+            site,
+            left_ligands=(OccurrenceId(0), OccurrenceId(1)),
+        )
+        duplicate_atoms = (
+            dataclasses.replace(facts.atoms[0], implicit_h_count=0),
+            *facts.atoms[1:],
+        )
+        with self.assertRaisesRegex(ValueError, "left repeats a neighbor bond"):
+            dataclasses.replace(
+                facts,
+                atoms=duplicate_atoms,
+                stereo=StereoFacts(directional=(duplicate_site,)),
+                ligand_occurrences=(
+                    facts.ligand_occurrences[0],
+                    repeated,
+                    *facts.ligand_occurrences[2:],
+                ),
+            ).validate()
+
 
 def _cco_facts() -> MoleculeFacts:
     return MoleculeFacts(
@@ -131,7 +212,12 @@ def _tetrahedral_facts(
     site_id = SiteId(0)
     occurrence_ids = tuple(OccurrenceId(i) for i in range(4))
     return MoleculeFacts(
-        atoms=(_atom(0, "C"), _atom(1, "F"), _atom(2, "Cl"), _atom(3, "Br")),
+        atoms=(
+            dataclasses.replace(_atom(0, "C"), implicit_h_count=1),
+            _atom(1, "F"),
+            _atom(2, "Cl"),
+            _atom(3, "Br"),
+        ),
         bonds=(
             _single_bond(0, 0, 1),
             _single_bond(1, 0, 2),
@@ -205,6 +291,63 @@ def _directional_facts() -> MoleculeFacts:
                 kind=LigandKind.NEIGHBOR_ATOM,
                 atom=AtomId(3),
                 bond=BondId(2),
+            ),
+        ),
+    )
+
+
+def _directional_implicit_h_facts() -> MoleculeFacts:
+    site_id = SiteId(0)
+    return MoleculeFacts(
+        atoms=(
+            dataclasses.replace(_atom(0, "C"), implicit_h_count=1),
+            dataclasses.replace(_atom(1, "C"), implicit_h_count=1),
+            _atom(2, "F"),
+            _atom(3, "Cl"),
+        ),
+        bonds=(
+            _bond(0, 0, 1, BondOrder.DOUBLE),
+            _single_bond(1, 0, 2),
+            _single_bond(2, 1, 3),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0), AtomId(1), AtomId(2), AtomId(3)),
+                bonds=(BondId(0), BondId(1), BondId(2)),
+            ),
+        ),
+        stereo=StereoFacts(
+            directional=(
+                DirectionalSiteFacts(
+                    id=site_id,
+                    center_bond=BondId(0),
+                    left_endpoint=AtomId(0),
+                    right_endpoint=AtomId(1),
+                    status=SiteStatus.SPECIFIED,
+                    target=DirectionalValue.OPPOSITE,
+                    left_ligands=(OccurrenceId(0), OccurrenceId(1)),
+                    right_ligands=(OccurrenceId(2), OccurrenceId(3)),
+                    reference_pair=(OccurrenceId(0), OccurrenceId(2)),
+                ),
+            ),
+        ),
+        ligand_occurrences=(
+            LigandOccurrence(
+                id=OccurrenceId(0), site=site_id,
+                kind=LigandKind.NEIGHBOR_ATOM, atom=AtomId(2), bond=BondId(1),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(1), site=site_id,
+                kind=LigandKind.IMPLICIT_H, atom=AtomId(0), bond=None,
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(2), site=site_id,
+                kind=LigandKind.NEIGHBOR_ATOM, atom=AtomId(3), bond=BondId(2),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(3), site=site_id,
+                kind=LigandKind.IMPLICIT_H, atom=AtomId(1), bond=None,
             ),
         ),
     )

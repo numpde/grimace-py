@@ -1,0 +1,70 @@
+{
+  "rdkit_version": "2026.03.1",
+  "audit_command": "PYTHONPATH=python:. python3 -m unittest tests.south_star1.test_writer_default_stereo_audit_fixture -q",
+  "cases": [
+    {
+      "id": "specified_stereo_01_tetra_plus",
+      "name": "tetra_plus",
+      "source_smiles": "[C@H](F)(Cl)Br",
+      "extraction_profile": "specified_stereo_closure",
+      "extraction_options": {"include_potential_sites": true, "stereo_site_discovery_mode": "specified_closure"},
+      "rooted_at_atom": 0,
+      "target_class": "tetrahedral",
+      "target": "plus",
+      "reference": [0, 1, 2, 3],
+      "expected_support": ["[C@@H](Br)(Cl)F", "[C@@H](Cl)(F)Br", "[C@@H](F)(Br)Cl", "[C@H](Br)(F)Cl", "[C@H](Cl)(Br)F", "[C@H](F)(Cl)Br"],
+      "support_count": 6,
+      "completion_count": 6,
+      "sorted_support_sha256": "216234e0ae01eef57744222590d56573b8e0c9f92e27dac0653b0372db4dae14",
+      "note": "Source-SMILES chiral tag extracted from the unsanitized RDKit parse viewpoint; facts-bound replay is the semantic authority."
+    },
+    {
+      "id": "specified_stereo_02_tetra_minus",
+      "name": "tetra_minus",
+      "source_smiles": "[C@@H](F)(Cl)Br",
+      "extraction_profile": "specified_stereo_closure",
+      "extraction_options": {"include_potential_sites": true, "stereo_site_discovery_mode": "specified_closure"},
+      "rooted_at_atom": 0,
+      "target_class": "tetrahedral",
+      "target": "minus",
+      "reference": [0, 1, 2, 3],
+      "expected_support": ["[C@@H](Br)(F)Cl", "[C@@H](Cl)(Br)F", "[C@@H](F)(Cl)Br", "[C@H](Br)(Cl)F", "[C@H](Cl)(F)Br", "[C@H](F)(Br)Cl"],
+      "support_count": 6,
+      "completion_count": 6,
+      "sorted_support_sha256": "61c45f124f99413fb8d8e32612acc7a9c027fc6d372c133cb7a6b9b22585035f",
+      "note": "Opposite source-SMILES chiral tag under the same parse-order reference; facts-bound replay is the semantic authority."
+    },
+    {
+      "id": "specified_stereo_03_directional_opposite",
+      "name": "directional_opposite",
+      "source_smiles": "F/C=C/Cl",
+      "extraction_profile": "specified_stereo_closure",
+      "extraction_options": {"include_potential_sites": true, "stereo_site_discovery_mode": "specified_closure"},
+      "rooted_at_atom": 0,
+      "target_class": "directional",
+      "target": "opposite",
+      "reference": [0, 2],
+      "expected_support": ["F/C=C/Cl", "F\\C=C\\Cl"],
+      "support_count": 2,
+      "completion_count": 2,
+      "sorted_support_sha256": "3f8f9edb2af9ff8964fa04e8ba6b8374177e773cceea2f1959cc27026bed7595",
+      "note": "Sanitized RDKit E/Z relation with explicit F and Cl reference occurrences; endpoint implicit hydrogens are fact ligands, not emitted carriers."
+    },
+    {
+      "id": "specified_stereo_04_directional_together",
+      "name": "directional_together",
+      "source_smiles": "F/C=C\\Cl",
+      "extraction_profile": "specified_stereo_closure",
+      "extraction_options": {"include_potential_sites": true, "stereo_site_discovery_mode": "specified_closure"},
+      "rooted_at_atom": 0,
+      "target_class": "directional",
+      "target": "together",
+      "reference": [0, 2],
+      "expected_support": ["F/C=C\\Cl", "F\\C=C/Cl"],
+      "support_count": 2,
+      "completion_count": 2,
+      "sorted_support_sha256": "a5ad275c56e9dfc9530d7985fc85428997509701c95e0c2f1249a01a9d103fd8",
+      "note": "Opposite sanitized RDKit E/Z target under the same explicit-neighbor reference pair; facts-bound replay is the semantic authority."
+    }
+  ]
+}

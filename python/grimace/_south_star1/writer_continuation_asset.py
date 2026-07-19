@@ -45,6 +45,7 @@ from .writer_envelope_terms import _snapshot_identity_envelope
 from .writer_snapshot import capture_writer_frontier_snapshot
 from .writer_snapshot import WriterDecoderBoundary
 from .writer_snapshot_closed_terms import writer_frontier_cursor_from_closed_terms
+from .writer_prepared_identity import writer_prepared_identity
 from .writer_terminalization_artifact import (
     writer_terminalization_artifact_for_support,
 )
@@ -994,10 +995,7 @@ def _source_snapshot_from_asset(*, prepared, asset):
         if cached_prepared is not prepared:
             _violation("continuation_asset_session_prepared_mismatch")
         return cached_snapshot
-    descriptor = asset.manifest["source_snapshot_chunk"]
-    chunk = _read_chunk(asset.path, descriptor)
-    terms = chunk["items"][0]
-    options = _runtime_options_from_terms(terms["runtime_options"])
+    terms, options = _source_terms_for_prepared(prepared=prepared, asset=asset)
     cursor = writer_frontier_cursor_from_closed_terms(terms["cursor"]["terms"])
     depth = terms["decoder_boundary"]["consumed_token_count"]
     snapshot = capture_writer_frontier_snapshot(
@@ -1014,6 +1012,19 @@ def _source_snapshot_from_asset(*, prepared, asset):
         _violation("continuation_asset_source_snapshot_mismatch")
     asset._source_snapshot_cache = (prepared, snapshot)
     return snapshot
+
+
+def _source_terms_for_prepared(*, prepared, asset):
+    descriptor = asset.manifest["source_snapshot_chunk"]
+    chunk = _read_chunk(asset.path, descriptor)
+    terms = chunk["items"][0]
+    options = _runtime_options_from_terms(terms["runtime_options"])
+    expected_identity = _identity_envelope(
+        writer_prepared_identity(prepared, options)
+    )
+    if expected_identity != asset.manifest["prepared_identity"]:
+        _violation("continuation_asset_prepared_identity_mismatch")
+    return terms, options
 
 
 def _snapshot_for_raw_cursor(*, prepared, asset, cursor, raw_cursor_digest):

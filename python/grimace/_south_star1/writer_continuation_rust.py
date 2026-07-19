@@ -14,9 +14,11 @@ from .writer_continuation_asset import (
     branch_transition_artifact_from_continuation_asset,
 )
 from .writer_continuation_asset import open_writer_continuation_core
+from .writer_continuation_asset import _source_snapshot_from_asset
 from .writer_continuation_asset import (
     terminalization_artifact_from_continuation_asset,
 )
+from .writer_envelope_terms import _identity_digest
 
 if TYPE_CHECKING:
     from .writer_continuation_asset import WriterContinuationAsset
@@ -231,6 +233,22 @@ class _ContinuationAssetStateAdapter:
             raise ValueError("continuation_asset_proof_prepared_required")
 
 
+def _verified_root_proof_cursor(*, asset, prepared):
+    source = _source_snapshot_from_asset(prepared=prepared, asset=asset)
+    proof_cursor = asset.root_proof_cursor
+    if _identity_digest(source.cursor) != proof_cursor.raw_cursor_digest:
+        raise ValueError("continuation_asset_proof_root_cursor_mismatch")
+    record = asset.raw_cursor_record(proof_cursor.raw_cursor_digest)
+    if record is None:
+        raise ValueError("continuation_asset_proof_root_record_missing")
+    if (
+        record.compiled_node_id != proof_cursor.node_id
+        or record.normalization_scale != proof_cursor.completion_scale
+    ):
+        raise ValueError("continuation_asset_proof_root_mapping_mismatch")
+    return proof_cursor
+
+
 class MolToSmilesContinuationDecoder:
     """Explicit decoder over one structurally verified continuation asset."""
 
@@ -261,6 +279,8 @@ class MolToSmilesContinuationDecoder:
     ) -> "MolToSmilesContinuationDecoder":
         if prepared is not None and not proof_capable:
             raise ValueError("continuation_asset_proof_prepared_without_mode")
+        if proof_capable and prepared is None:
+            raise ValueError("continuation_asset_proof_prepared_required")
         asset = open_writer_continuation_core(path)
         if (
             expected_manifest_digest is not None
@@ -268,7 +288,12 @@ class MolToSmilesContinuationDecoder:
         ):
             raise ValueError("continuation_asset_manifest_digest_mismatch")
         core = _rust_core_for_asset(asset)
-        proof_cursor = asset.root_proof_cursor if proof_capable else None
+        proof_cursor = None
+        if proof_capable:
+            proof_cursor = _verified_root_proof_cursor(
+                asset=asset,
+                prepared=prepared,
+            )
         return cls._from_state(
             _ContinuationAssetStateAdapter(
                 core=core,

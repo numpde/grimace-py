@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from grimace._south_star1.facts import AtomFacts
 from grimace._south_star1.facts import BondFacts
 from grimace._south_star1.facts import BondOrder
@@ -162,7 +164,12 @@ def tetrahedral_facts() -> MoleculeFacts:
     site_id = SiteId(0)
     occurrence_ids = tuple(OccurrenceId(i) for i in range(4))
     return MoleculeFacts(
-        atoms=(atom(0, "C"), atom(1, "F"), atom(2, "Cl"), atom(3, "Br")),
+        atoms=(
+            replace(atom(0, "C"), implicit_h_count=1),
+            atom(1, "F"),
+            atom(2, "Cl"),
+            atom(3, "Br"),
+        ),
         bonds=(
             single_bond(0, 0, 1),
             single_bond(1, 0, 2),
@@ -221,6 +228,11 @@ def tetrahedral_facts() -> MoleculeFacts:
 
 
 def directional_facts() -> MoleculeFacts:
+    """Return the synthetic zero-H directional proof-kernel fixture.
+
+    This intentionally differs from ordinary RDKit F/C=C/Cl ingestion, whose
+    alkene endpoints each carry an implicit-H ligand occurrence.
+    """
     site_id = SiteId(0)
     return MoleculeFacts(
         atoms=(atom(0, "C"), atom(1, "C"), atom(2, "F"), atom(3, "Cl")),

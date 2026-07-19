@@ -35,6 +35,10 @@ from .prepared_runtime import SouthStarWriterSurface
 from .writer_terminalization_artifact_checker import verify_writer_terminalization_artifact_consistency
 from .writer_terminalization_terms import WriterTerminalizationTerm
 from .writer_stereo import EMPTY_RESIDUAL_SNAPSHOT
+from .writer_component_completion_replay import (
+    WriterComponentCompletionReplayError,
+    replay_completed_component_prefix,
+)
 from .writer_residual_transition_terms import TetraLocalOrderFactorClosureTransitionTerm
 from .writer_residual_transition_terms import WriterResidualTransitionKind
 
@@ -110,6 +114,7 @@ def verify_writer_terminalization_artifact_for_facts(
             support=support,
             source=source_state,
             finalized=finalized_state,
+            rooted_at_atom=runtime_options.rooted_at_atom,
         )
         return WriterTerminalizationArtifactFactsVerification(
             accepted=True,
@@ -138,7 +143,7 @@ def verify_writer_terminalization_artifact_for_facts(
 
 
 def replay_terminal_support_payload_for_facts(
-    *, facts, support, source_state, finalized_state
+    *, facts, support, source_state, finalized_state, rooted_at_atom: int = -1
 ):
     """Replay a shared terminal-support payload without artifact routing."""
     term = _decode_transition_term(
@@ -150,12 +155,13 @@ def replay_terminal_support_payload_for_facts(
         support=support,
         source=source_state,
         finalized=finalized_state,
+        rooted_at_atom=rooted_at_atom,
     )
     return term, expected.operations
 
 
 def _reconstruct_terminalization_evidence_for_facts(
-    *, facts, term, support, source, finalized
+    *, facts, term, support, source, finalized, rooted_at_atom: int
 ) -> _ExpectedTerminalizationEvidence:
     graph_work = _check_term_and_graph(
         facts=facts,
@@ -163,6 +169,7 @@ def _reconstruct_terminalization_evidence_for_facts(
         support=support,
         source=source,
         finalized=finalized,
+        rooted_at_atom=rooted_at_atom,
     )
     operations, residual_work, capabilities, lifecycle = _replay_stereo(
         facts=facts,
@@ -240,7 +247,9 @@ def _unique_state(cursor_terms, digest, role):
     return matches[0]
 
 
-def _check_term_and_graph(*, facts, term, support, source, finalized):
+def _check_term_and_graph(
+    *, facts, term, support, source, finalized, rooted_at_atom: int
+):
     if support["terminalization_term_digest"] != _identity_digest(
         support["terminalization_term"]
     ):
@@ -271,6 +280,18 @@ def _check_term_and_graph(*, facts, term, support, source, finalized):
         or not source.active.atom_emitted
         or int(source.component_cursor.component_index) != len(facts.components) - 1
     ):
+        _violation("terminal_graph_completion_mismatch")
+    try:
+        replay_completed_component_prefix(
+            facts=facts,
+            state=source,
+            completed_component_index=len(facts.components) - 1,
+            require_final=True,
+            rooted_at_atom=rooted_at_atom,
+        )
+    except WriterComponentCompletionReplayError as exc:
+        if str(exc) == "component_boundary_root_vector_mismatch":
+            _violation("terminal_component_roots_mismatch")
         _violation("terminal_graph_completion_mismatch")
     _check_component_and_active_frame(facts=facts, source=source)
     graph_items = support["obligation_manifests"]["terminal_graph_obligation_work"]

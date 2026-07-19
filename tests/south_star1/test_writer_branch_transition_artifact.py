@@ -428,7 +428,7 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
             "opening",
             DirectionMark.ABSENT,
         )
-        self.assertEqual(artifact["schema_version"], 2)
+        self.assertEqual(artifact["schema_version"], 3)
         duplicate = deepcopy(artifact)
         duplicate["objects"].append(deepcopy(duplicate["objects"][0]))
         self.assertFalse(
@@ -442,7 +442,7 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
         )
 
         old_schema = deepcopy(artifact)
-        old_schema["schema_version"] = 1
+        old_schema["schema_version"] = 2
         rejected = verify_writer_branch_transition_artifact_consistency(old_schema)
         self.assertFalse(rejected.accepted)
         self.assertIn("unknown_schema_version", rejected.reason)

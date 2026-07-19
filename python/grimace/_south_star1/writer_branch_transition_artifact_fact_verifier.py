@@ -30,6 +30,7 @@ from .writer_support_artifact_offline_verifier import verify_local_branch_succes
 class WriterBranchTransitionArtifactFactVerification:
     accepted: bool
     semantically_replayed_operations: tuple[str, ...] = ()
+    checked_relation_families: tuple[str, ...] = ()
     checked_obligation_families: tuple[str, ...] = ()
     unchecked_obligation_families: tuple[str, ...] = ()
     reason: str | None = None
@@ -107,6 +108,13 @@ def verify_writer_branch_transition_artifact_for_facts(
         return WriterBranchTransitionArtifactFactVerification(
             accepted=True,
             semantically_replayed_operations=obligations.semantically_replayed_operations,
+            checked_relation_families=(
+                ("component_boundary_transition",)
+                if checks[1].checked_component_boundary_steps == 1
+                and not obligations.unchecked_families
+                and "stereo_lifecycle" in obligations.checked_families
+                else ()
+            ),
             checked_obligation_families=obligations.checked_families,
             unchecked_obligation_families=obligations.unchecked_families,
         )

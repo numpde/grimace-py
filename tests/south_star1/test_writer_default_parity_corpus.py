@@ -237,15 +237,15 @@ def _prepare_default(facts):
     )
 
 
-def _writer_options() -> SouthStarRuntimeOptions:
+def _writer_options(rooted_at_atom: int = 0) -> SouthStarRuntimeOptions:
     return SouthStarRuntimeOptions(
-        rooted_at_atom=0,
+        rooted_at_atom=rooted_at_atom,
         serialization_language=SerializationLanguageMode.WRITER_SHAPED,
     )
 
 
-def _initial_snapshot(prepared):
-    options = _writer_options()
+def _initial_snapshot(prepared, rooted_at_atom: int = 0):
+    options = _writer_options(rooted_at_atom)
     return capture_writer_frontier_snapshot(
         prepared=prepared,
         runtime_options=options,
@@ -256,29 +256,30 @@ def _initial_snapshot(prepared):
 def _support_image(case: DefaultWriterCapabilityCase):
     return enumerate_prepared_writer_shaped_support(
         prepared=_prepare_default(_facts(case)),
-        runtime_options=_writer_options(),
+        runtime_options=_writer_options(case.rooted_at_atom),
     )
 
 
-def _artifact(prepared):
+def _artifact(prepared, rooted_at_atom: int = 0):
     return writer_support_artifact_envelope_for_snapshot(
         prepared=prepared,
-        snapshot=_initial_snapshot(prepared),
+        snapshot=_initial_snapshot(prepared, rooted_at_atom),
     )
 
 
 def _accepted_case_result(case: DefaultWriterCapabilityCase) -> dict[str, object]:
     facts = _facts(case)
     prepared = _prepare_default(facts)
+    options = _writer_options(case.rooted_at_atom)
     state = initial_writer_runtime_state(
         prepared=prepared,
-        runtime_options=_writer_options(),
+        runtime_options=options,
     )
     image = enumerate_prepared_writer_shaped_support(
         prepared=prepared,
-        runtime_options=_writer_options(),
+        runtime_options=options,
     )
-    snapshot = _initial_snapshot(prepared)
+    snapshot = _initial_snapshot(prepared, case.rooted_at_atom)
     count_envelope = writer_frontier_count_envelope_for_snapshot(
         prepared=prepared,
         snapshot=snapshot,
@@ -298,7 +299,7 @@ def _accepted_case_result(case: DefaultWriterCapabilityCase) -> dict[str, object
     )
     fact_bound = verify_writer_support_artifact_for_facts(
         facts=facts,
-        runtime_options=_writer_options(),
+        runtime_options=options,
         artifact=artifact,
     )
 

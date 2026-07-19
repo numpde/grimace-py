@@ -34,9 +34,9 @@ from tests.south_star1.test_writer_default_parity_corpus import _writer_options
 
 class WriterDefaultContinuationCorpusTest(unittest.TestCase):
     def test_every_accepted_case_crosses_all_continuation_tiers(self) -> None:
-        options = _writer_options()
         for case in ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES:
             with self.subTest(case=case.name), TemporaryDirectory() as directory:
+                options = _writer_options(case.rooted_at_atom)
                 facts = _facts(case)
                 prepared = prepare_south_star_mol_from_facts(
                     facts,

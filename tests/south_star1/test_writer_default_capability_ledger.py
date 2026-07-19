@@ -53,6 +53,7 @@ DURABLE_BRACKET_SUPPORT_SURFACES = frozenset(
     }
 )
 VERSION_PINNED_SUPPORT_SURFACES = DURABLE_BRACKET_SUPPORT_SURFACES | {
+    "disconnected_fixed_order",
     "specified_tetrahedral",
     "specified_directional_acyclic_implicit_h",
 }
@@ -77,6 +78,7 @@ class WriterDefaultCapabilityLedgerTest(unittest.TestCase):
                 "simple_isotope_bracket_atom",
                 "specified_tetrahedral",
                 "specified_directional_acyclic_implicit_h",
+                "disconnected_fixed_order",
                 "unsupported_charged_isotope",
                 "unsupported_charged_oxygen_isotope",
                 "unsupported_negative_nitrogen_charge",
@@ -123,9 +125,14 @@ class WriterDefaultCapabilityLedgerTest(unittest.TestCase):
                     case.expected_offline_unchecked_object_kinds,
                     DEFAULT_OFFLINE_UNCHECKED_OBJECT_KINDS,
                 )
+                self.assertLessEqual(
+                    set(DEFAULT_OFFLINE_RELATION_FAMILIES),
+                    set(case.expected_offline_relation_families),
+                )
                 self.assertEqual(
-                    case.expected_offline_relation_families,
-                    DEFAULT_OFFLINE_RELATION_FAMILIES,
+                    "component_boundary_transition"
+                    in case.expected_offline_relation_families,
+                    case.support_surface == "disconnected_fixed_order",
                 )
                 self.assertEqual(
                     case.expected_offline_unchecked_obligation_families,

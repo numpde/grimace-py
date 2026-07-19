@@ -44,6 +44,10 @@ from .writer_residual_transition_terms import (
 from .writer_graph_obligations import WriterGraphCompletionStatus
 from .writer_terminalization_terms import WriterTerminalizationTerm
 from .writer_snapshot_closed_terms import writer_frontier_cursor_from_closed_terms
+from .writer_component_completion_replay import (
+    WriterComponentCompletionReplayError,
+    replay_completed_component_prefix,
+)
 from .writer_residual_transition_terms import (
     DirectionalRingEndpointProjectionTransitionTerm,
 )
@@ -436,6 +440,7 @@ class GraphRingBranchDeltaVerification:
     checked_bond_steps: int = 0
     checked_branch_steps: int = 0
     checked_ring_steps: int = 0
+    checked_component_boundary_steps: int = 0
     structural_only_branches: int = 0
     reason: str | None = None
 
@@ -562,6 +567,12 @@ def verify_writer_support_artifact_offline_replay(
             "residual_stereo_obligation_classification",
             *obligations.checked_empty_families,
         }
+        if (
+            graph_ring.checked_component_boundary_steps
+            and not obligations.unchecked_families
+            and "stereo_lifecycle" in obligations.checked_families
+        ):
+            checked_relations.add("component_boundary_transition")
         support_refs = root["payload"]["support_string_refs"]
         source = _require_object(objects, artifact["roots"]["source_ref"])
         source_is_initial = (
@@ -1051,6 +1062,7 @@ def verify_graph_ring_branch_deltas_offline(
     objects: Mapping[str, Mapping[str, object]],
     budget: WriterEnvelopeWorkBudget | None = None,
     branch_refs: tuple[str, ...] | None = None,
+    rooted_at_atom: int | None = None,
 ) -> GraphRingBranchDeltaVerification:
     try:
         budget = default_writer_envelope_work_budget(budget)
@@ -1060,6 +1072,7 @@ def verify_graph_ring_branch_deltas_offline(
         bond_count = 0
         branch_count = 0
         ring_count = 0
+        component_boundary_count = 0
         structural_count = 0
         for branch_ref in branch_refs:
             branch = _require_object(objects, branch_ref)
@@ -1068,7 +1081,14 @@ def verify_graph_ring_branch_deltas_offline(
             kind = _check_graph_ring_branch_delta(
                 facts=facts,
                 branch=branch,
+                branch_ref=branch_ref,
+                objects=objects,
                 budget=budget,
+                rooted_at_atom=(
+                    _artifact_rooted_at_atom(artifact)
+                    if rooted_at_atom is None
+                    else rooted_at_atom
+                ),
             )
             if kind in ("atom_start", "atom_advance"):
                 atom_count += 1
@@ -1082,6 +1102,8 @@ def verify_graph_ring_branch_deltas_offline(
                 "ring_endpoint_pair_non_single",
             ):
                 ring_count += 1
+            elif kind == "component_boundary":
+                component_boundary_count += 1
             elif kind == "other_structural":
                 structural_count += 1
         return GraphRingBranchDeltaVerification(
@@ -1091,6 +1113,7 @@ def verify_graph_ring_branch_deltas_offline(
             checked_bond_steps=bond_count,
             checked_branch_steps=branch_count,
             checked_ring_steps=ring_count,
+            checked_component_boundary_steps=component_boundary_count,
             structural_only_branches=structural_count,
         )
     except SouthStarError as exc:
@@ -1185,6 +1208,7 @@ def classify_residual_stereo_obligations_offline(
                     terminal = _require_object(objects, terminal_ref)
                     _replay_terminal_support_offline(
                         facts=facts,
+                        rooted_at_atom=_artifact_rooted_at_atom(artifact),
                         terminal=terminal,
                         projection=projection,
                         replayed_residual_digests=replayed_residual_digests,
@@ -1283,6 +1307,7 @@ def verify_branch_obligations_offline(
 def _replay_terminal_support_offline(
     *,
     facts,
+    rooted_at_atom,
     terminal,
     projection,
     replayed_residual_digests,
@@ -1318,6 +1343,7 @@ def _replay_terminal_support_offline(
         support=payload,
         source_state=source_states[0],
         finalized_state=finalized_states[0],
+        rooted_at_atom=rooted_at_atom,
     )
     replayed_residual_digests.update(term.terminal_residual_work_digests)
     replayed_lifecycle_digests.update(term.terminal_stereo_lifecycle_digests)
@@ -4553,6 +4579,24 @@ def _branch_refs_from_support_artifact(
     return _branch_support_refs_for_root(root=root, objects=objects)
 
 
+def _artifact_rooted_at_atom(artifact: Mapping[str, object]) -> int:
+    source = artifact.get("source_snapshot")
+    if source is None:
+        prefix = artifact.get("prefix_read_envelope")
+        if not isinstance(prefix, Mapping):
+            _offline_violation("artifact_runtime_options_missing")
+        source = prefix.get("source_snapshot")
+    if not isinstance(source, Mapping):
+        _offline_violation("artifact_runtime_options_missing")
+    runtime_options = source.get("runtime_options")
+    if not isinstance(runtime_options, Mapping):
+        _offline_violation("artifact_runtime_options_missing")
+    rooted_at_atom = runtime_options.get("rooted_at_atom")
+    if not isinstance(rooted_at_atom, int):
+        _offline_violation("artifact_rooted_at_atom_mismatch")
+    return rooted_at_atom
+
+
 def _branch_ref_from_transition_artifact(
     *, artifact: Mapping[str, object], objects: Mapping[str, Mapping[str, object]]
 ) -> str:
@@ -4567,7 +4611,10 @@ def _check_graph_ring_branch_delta(
     *,
     facts: MoleculeFacts,
     branch: Mapping[str, object],
+    branch_ref: str,
+    objects: Mapping[str, Mapping[str, object]],
     budget: WriterEnvelopeWorkBudget,
+    rooted_at_atom: int,
 ) -> str:
     payload = branch["payload"]
     delta = payload["graph_ring_delta"]
@@ -4583,6 +4630,16 @@ def _check_graph_ring_branch_delta(
     _check_graph_ring_delta_common(payload=payload, manifest=manifest)
     events = manifest["event_manifests"]
     if kind == "other_structural":
+        return kind
+    if kind == "component_boundary":
+        _check_component_boundary_delta(
+            facts=facts,
+            branch=branch,
+            branch_ref=branch_ref,
+            objects=objects,
+            events=events,
+            rooted_at_atom=rooted_at_atom,
+        )
         return kind
     if kind in ("atom_start", "atom_advance"):
         _check_atom_delta_events(facts=facts, branch_payload=payload, events=events)
@@ -4638,6 +4695,170 @@ def _check_graph_ring_delta_common(
         _offline_violation("graph_ring_delta_successor_certificate_digest_missing")
     if not payload["checked_branch_certificate_digest"]:
         _offline_violation("graph_ring_delta_checked_certificate_digest_missing")
+
+
+def _check_component_boundary_delta(
+    *,
+    facts: MoleculeFacts,
+    branch: Mapping[str, object],
+    branch_ref: str,
+    objects: Mapping[str, Mapping[str, object]],
+    events: object,
+    rooted_at_atom: int,
+) -> None:
+    payload = branch["payload"]
+    transition_kind = payload["transition_kind"]
+    if (
+        not isinstance(transition_kind, Mapping)
+        or set(transition_kind) != {"__enum__", "value"}
+        or transition_kind["__enum__"]
+        != "grimace._south_star1.writer_transitions.WriterTransitionKind"
+        or transition_kind["value"] != "dot"
+        or payload["emitted_text"] != "."
+    ):
+        _offline_violation("component_boundary_event_mismatch")
+    boundary_events = [
+        event for event in events if event["kind"] == "component_boundary_emitted"
+    ]
+    local_order_events = [
+        event for event in events if event["kind"] == "local_order_closed"
+    ]
+    if len(events) != 2 or len(boundary_events) != 1 or len(local_order_events) != 1:
+        _offline_violation("component_boundary_event_mismatch")
+
+    projections = tuple(
+        item
+        for item in objects.values()
+        if item["kind"] == "text_projection"
+        and branch_ref in item["payload"]["branch_support_refs"]
+    )
+    if len(projections) != 1:
+        _offline_violation("component_boundary_state_anchor_mismatch")
+    projection = projections[0]["payload"]
+    source_cursor = writer_frontier_cursor_from_closed_terms(
+        projection["source_cursor"]["terms"]
+    )
+    successor_cursor = writer_frontier_cursor_from_closed_terms(
+        projection["successor_cursor"]["terms"]
+    )
+    source = _unique_cursor_state(
+        source_cursor, payload["source_state_digest"], "component_boundary_source"
+    )
+    successor = _unique_cursor_state(
+        successor_cursor,
+        payload["successor_state_digest"],
+        "component_boundary_successor",
+    )
+    index = source.component_cursor.component_index
+    if (
+        successor.component_cursor.component_index != index + 1
+        or index + 1 >= len(facts.components)
+    ):
+        _offline_violation("component_boundary_index_mismatch")
+    if source.component_cursor.component_roots != successor.component_cursor.component_roots:
+        _offline_violation("component_boundary_root_vector_mismatch")
+    next_root = source.component_cursor.component_roots[index + 1]
+    if (
+        boundary_events[0]["next_root"] != _term(next_root)
+        or next_root not in facts.components[index + 1].atoms
+        or next_root in source.visited_atoms
+    ):
+        _offline_violation("component_boundary_next_root_mismatch")
+    try:
+        replay_completed_component_prefix(
+            facts=facts,
+            state=source,
+            completed_component_index=index,
+            require_final=False,
+            rooted_at_atom=rooted_at_atom,
+        )
+    except WriterComponentCompletionReplayError as exc:
+        _offline_violation(str(exc))
+
+    active = successor.active
+    if (
+        active.atom != next_root
+        or active.parent is not None
+        or active.incoming_bond is not None
+        or active.atom_emitted
+    ):
+        _offline_violation("component_boundary_successor_state_mismatch")
+    for field in (
+        "branch_stack",
+        "visited_atoms",
+        "written_bonds",
+        "obligations",
+        "ring_state",
+        "policy_state",
+    ):
+        if getattr(source, field) != getattr(successor, field):
+            _offline_violation("component_boundary_successor_state_mismatch")
+    if (
+        source.stereo_state.atom_occurrences
+        != successor.stereo_state.atom_occurrences
+        or source.stereo_state.bond_occurrences
+        != successor.stereo_state.bond_occurrences
+    ):
+        _offline_violation("component_boundary_local_order_mismatch")
+    if local_order_events[0]["atom"] != _term(source.active.atom):
+        _offline_violation("component_boundary_local_order_mismatch")
+    _check_completed_component_residual_isolation(
+        facts=facts,
+        state=successor,
+        completed_component_index=index,
+    )
+
+
+def _unique_cursor_state(cursor, digest: str, role: str):
+    states = tuple(
+        state
+        for state, _weight in cursor.weighted_states
+        if _identity_digest(state) == digest
+    )
+    if len(states) != 1:
+        _offline_violation(f"{role}_state_anchor_mismatch")
+    return states[0]
+
+
+def _check_completed_component_residual_isolation(
+    *, facts: MoleculeFacts, state, completed_component_index: int
+) -> None:
+    completed_components = facts.components[: completed_component_index + 1]
+    completed_atoms = {
+        atom for component in completed_components for atom in component.atoms
+    }
+    completed_bonds = {
+        int(bond) for component in completed_components for bond in component.bonds
+    }
+    completed_sites = {
+        int(site.id)
+        for site in facts.stereo.tetrahedral
+        if site.center in completed_atoms
+    } | {
+        int(site.id)
+        for site in facts.stereo.directional
+        if int(site.center_bond) in completed_bonds
+    }
+    residual = state.stereo_state.residual_snapshot
+    for var, _domain in residual.domains:
+        if var.kind.startswith("tetra") and int(var.key[0]) in completed_sites:
+            _offline_violation("component_boundary_residual_isolation_mismatch")
+        if (
+            var.kind == "directional_site_carrier"
+            and int(var.key[0]) in completed_sites
+        ):
+            _offline_violation("component_boundary_residual_isolation_mismatch")
+    for factor in residual.factors:
+        key = factor.key
+        if key.kind in ("tetra_site", "directional_site") and int(
+            key.key[0]
+        ) in completed_sites:
+            _offline_violation("component_boundary_residual_isolation_mismatch")
+        if (
+            key.kind == "directional_bond_emission"
+            and int(key.key[0]) in completed_bonds
+        ):
+            _offline_violation("component_boundary_residual_isolation_mismatch")
 
 
 def _check_atom_delta_events(

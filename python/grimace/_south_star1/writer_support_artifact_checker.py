@@ -18,7 +18,7 @@ from .writer_envelope_work import writer_envelope_work_reason
 from .writer_count_dag_envelope import validate_writer_count_certificate_dag_envelope
 
 SCHEMA_NAME = "writer_support_artifact"
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 _TOP_LEVEL_FIELDS = frozenset((
     "schema_name",
     "schema_version",
@@ -688,6 +688,7 @@ def _validate_graph_ring_delta_payload(
         "ring_endpoint_open",
         "ring_endpoint_pair",
         "ring_endpoint_pair_non_single",
+        "component_boundary",
         "other_structural",
     }:
         _artifact_violation("unknown_graph_ring_delta_kind")
@@ -728,6 +729,21 @@ def _validate_graph_ring_delta_payload(
         if "kind" not in event or not isinstance(event["kind"], str):
             _artifact_violation("graph_ring_delta_event_kind_missing")
         _validate_graph_ring_delta_event_manifest(event)
+    if kind == "component_boundary":
+        event_kinds = tuple(event["kind"] for event in manifest["event_manifests"])
+        transition_kind = manifest["transition_kind"]
+        if (
+            not isinstance(transition_kind, Mapping)
+            or set(transition_kind) != {"__enum__", "value"}
+            or transition_kind["__enum__"]
+            != "grimace._south_star1.writer_transitions.WriterTransitionKind"
+            or transition_kind["value"] != "dot"
+            or manifest["emitted_text"] != "."
+            or event_kinds.count("component_boundary_emitted") != 1
+            or event_kinds.count("local_order_closed") != 1
+            or len(event_kinds) != 2
+        ):
+            _artifact_violation("component_boundary_event_manifest_mismatch")
     expected_digest = _identity_digest(
         {"kind": kind, "manifest": manifest},
         budget=budget,
@@ -738,6 +754,10 @@ def _validate_graph_ring_delta_payload(
 
 
 def _validate_graph_ring_delta_event_manifest(event: Mapping[str, object]) -> None:
+    if event["kind"] == "component_boundary_emitted":
+        _require_exact_payload_fields(event, ("kind", "next_root"))
+        _require_int(event["next_root"], "graph_ring_delta_component_root_not_int")
+        return
     if event["kind"] != "local_order_closed":
         return
     if frozenset(event) == frozenset(("kind", "atom")):

@@ -1464,6 +1464,8 @@ def _graph_ring_delta_kind(
         return "branch_open"
     if "branch_closed" in event_kinds:
         return "branch_return"
+    if "component_boundary_emitted" in event_kinds:
+        return "component_boundary"
     if "bond_emitted" in event_kinds:
         return "bond_advance"
     if "atom_emitted" in event_kinds:

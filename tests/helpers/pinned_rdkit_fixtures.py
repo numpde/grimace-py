@@ -15,6 +15,7 @@ PINNED_RDKIT_WRITER_MEMBERSHIP = "rdkit_writer_membership"
 PINNED_SOUTH_STAR_BRACKET_AUDIT = "rdkit_south_star_bracket_audit"
 PINNED_SOUTH_STAR_STEREO_AUDIT = "rdkit_south_star_stereo_audit"
 PINNED_SOUTH_STAR_DISCONNECTED_AUDIT = "rdkit_south_star_disconnected_audit"
+PINNED_SOUTH_STAR_AROMATIC_AUDIT = "rdkit_south_star_aromatic_audit"
 PINNED_STEREO_CONSTRAINT_MODEL = "stereo_constraint_model"
 PINNED_RDKIT_PARITY_TARGETS: tuple[tuple[str, str], ...] = (
     (
@@ -41,6 +42,10 @@ PINNED_RDKIT_PARITY_TARGETS: tuple[tuple[str, str], ...] = (
     (
         PINNED_SOUTH_STAR_DISCONNECTED_AUDIT,
         "tests.south_star1.test_writer_disconnected_composition",
+    ),
+    (
+        PINNED_SOUTH_STAR_AROMATIC_AUDIT,
+        "tests.south_star1.test_writer_aromatic_product",
     ),
 )
 PINNED_RDKIT_PARITY_FIXTURE_FAMILIES = tuple(

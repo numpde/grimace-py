@@ -62,6 +62,16 @@ class OrdinarySmilesSemantics(ParserSemantics):
         direction_mark: DirectionMark,
     ) -> bool:
         bond_facts = _bond_by_id(facts)[bond]
+        atoms = {atom.id: atom for atom in facts.atoms}
+        both_aromatic = atoms[bond_facts.a].is_aromatic and atoms[bond_facts.b].is_aromatic
+        if bond_facts.order is BondOrder.SINGLE and both_aromatic:
+            return (
+                direction_mark is DirectionMark.ABSENT
+                and not bond_text.permits_direction
+                and bond_text.base_text == "-"
+            )
+        if bond_facts.order is BondOrder.AROMATIC and not both_aromatic:
+            return False
         if direction_mark is not DirectionMark.ABSENT:
             if not bond_text.permits_direction:
                 return False

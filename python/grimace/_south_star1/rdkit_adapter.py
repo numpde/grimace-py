@@ -89,6 +89,7 @@ def ordinary_molecule_facts_from_rdkit(
     """
 
     _validate_extraction_options(options)
+    _reject_atom_maps(mol)
     _validate_stereo_extraction_scope(mol, options)
     facts = _base_molecule_facts_from_rdkit(
         mol,
@@ -131,6 +132,7 @@ def ordinary_molecule_facts_from_smiles(
         sanitized=sanitized,
         unsanitized=unsanitized,
     )
+    _reject_atom_maps(sanitized)
     _validate_stereo_extraction_scope(sanitized, options)
     _validate_stereo_extraction_scope(unsanitized, options)
 
@@ -149,6 +151,15 @@ def ordinary_molecule_facts_from_smiles(
         raw=raw,
         options=options,
     )
+
+
+def _reject_atom_maps(mol: Chem.Mol) -> None:
+    mapped = tuple(atom.GetIdx() for atom in mol.GetAtoms() if atom.GetAtomMapNum())
+    if mapped:
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_ATOM,
+            f"atom-mapped ordinary ingestion is unsupported: atom indices {mapped!r}",
+        )
 
 
 def _effective_stereo_site_discovery_mode(

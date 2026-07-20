@@ -17391,15 +17391,16 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
 
-    def test_internal_transition_frontier_accepts_directional_implicit_h_surface(self) -> None:
+    def test_internal_transition_frontier_rejects_implicit_h_only_side(self) -> None:
         prepared = _prepare(unsupported_directional_implicit_h_facts())
 
-        cursor = _initial_writer_transition_frontier_cursor(
-            prepared,
-            _writer_options(rooted_at_atom=0),
-        )
+        with self.assertRaises(SouthStarError) as caught:
+            _initial_writer_transition_frontier_cursor(
+                prepared,
+                _writer_options(rooted_at_atom=0),
+            )
 
-        self.assertEqual(len(cursor.weighted_states), 1)
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_STEREO)
 
     def test_raw_legal_transitions_do_not_preflight_directional_ligands(
         self,
@@ -30067,6 +30068,10 @@ def unsupported_directional_implicit_h_facts() -> MoleculeFacts:
     facts = directional_facts()
     return replace(
         facts,
+        atoms=(
+            replace(facts.atoms[0], implicit_h_count=1),
+            *facts.atoms[1:],
+        ),
         ligand_occurrences=(
             LigandOccurrence(
                 id=OccurrenceId(0),

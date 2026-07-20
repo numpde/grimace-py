@@ -150,7 +150,7 @@ class MoleculeFacts:
             occurrence.id: occurrence for occurrence in self.ligand_occurrences
         }
 
-        _validate_bonds(self.bonds, atom_ids)
+        _validate_bonds(self.bonds, atom_ids, atom_by_id)
         _validate_components(self.components, atom_ids, bond_ids, bond_by_id)
         site_ids = _validate_site_ids(self.stereo)
         _validate_ligand_occurrences(
@@ -184,7 +184,11 @@ def _unique_ids(label: str, values: Iterable[object]) -> set[object]:
     return seen
 
 
-def _validate_bonds(bonds: tuple[BondFacts, ...], atom_ids: set[object]) -> None:
+def _validate_bonds(
+    bonds: tuple[BondFacts, ...],
+    atom_ids: set[object],
+    atom_by_id: dict[AtomId, AtomFacts],
+) -> None:
     pairs: set[tuple[AtomId, AtomId]] = set()
     for bond in bonds:
         if bond.a not in atom_ids:
@@ -193,6 +197,12 @@ def _validate_bonds(bonds: tuple[BondFacts, ...], atom_ids: set[object]) -> None
             raise ValueError(f"bond {bond.id!r} has unknown atom endpoint {bond.b!r}")
         if bond.a == bond.b:
             raise ValueError(f"bond {bond.id!r} is a self bond")
+        if bond.order is BondOrder.AROMATIC and not (
+            atom_by_id[bond.a].is_aromatic and atom_by_id[bond.b].is_aromatic
+        ):
+            raise ValueError(
+                f"aromatic bond {bond.id!r} must join two aromatic atoms"
+            )
         pair = atom_pair_key(bond.a, bond.b)
         if pair in pairs:
             raise ValueError(f"multiple bonds share atom pair {pair!r}")

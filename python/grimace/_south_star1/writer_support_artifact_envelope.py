@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from .errors import SouthStarError
 from .errors import SouthStarErrorKind
+from .ordinary_atom_text import ordinary_unbracketed_atom_text_for_facts
 from .prepared_runtime import SouthStarPreparedMol
 from .writer_envelope_terms import _digest_terms_bounded
 from .writer_envelope_terms import _identity_digest
@@ -39,9 +40,6 @@ from .writer_support_image_envelope import _support_image_certificate_for_source
 from .writer_support_image_envelope import _text_projection_bucket_key
 from .writer_support_string_envelope import _support_string_replay_certificate_digest
 from .writer_terminalization_terms import WriterTerminalizationTerm
-
-_PLAIN_ATOM_TEXT_ELEMENTS = frozenset(("C", "N", "O"))
-
 
 @dataclass(frozen=True, slots=True)
 class WriterSupportArtifactEnvelopeVerification:
@@ -1352,15 +1350,7 @@ def _replay_complete(certificate) -> bool:
 
 
 def _plain_atom_text(atom) -> str | None:
-    if atom.symbol not in _PLAIN_ATOM_TEXT_ELEMENTS:
-        return None
-    if atom.is_aromatic:
-        return None
-    if atom.isotope is not None:
-        return None
-    if atom.formal_charge != 0:
-        return None
-    return atom.symbol
+    return ordinary_unbracketed_atom_text_for_facts(atom)
 
 
 def _branch_atom_text_atom_id(branch) -> object | None:

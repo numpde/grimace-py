@@ -533,7 +533,12 @@ def implicit_h_directional_facts(
 ) -> MoleculeFacts:
     site_id = SiteId(0)
     return MoleculeFacts(
-        atoms=(atom(0, "C"), atom(1, "C"), atom(2, "F"), atom(3, "Cl")),
+        atoms=(
+            replace(atom(0, "C"), implicit_h_count=1),
+            atom(1, "C"),
+            atom(2, "F"),
+            atom(3, "Cl"),
+        ),
         bonds=(
             bond(0, 0, 1, BondOrder.DOUBLE),
             single_bond(1, 0, 2),

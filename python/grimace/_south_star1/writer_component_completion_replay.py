@@ -119,8 +119,10 @@ def replay_completed_component_prefix(
                 or closure.second_endpoint_direction_mark.value
             ):
                 _fail("component_boundary_ring_state_mismatch")
-        elif any(marker not in ("", "-") for marker in markers):
-            _fail("component_boundary_ring_state_mismatch")
+        elif ring_endpoint_choices is None:
+            allowed = ("", ":") if bond.order.value == "aromatic" else ("", "-")
+            if any(marker not in allowed for marker in markers):
+                _fail("component_boundary_ring_state_mismatch")
         if ring_endpoint_choices is not None:
             choices = ring_endpoint_choices.get(int(closure.bond))
             endpoint_choices = (

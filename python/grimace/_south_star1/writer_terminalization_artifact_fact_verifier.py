@@ -286,7 +286,11 @@ def _check_term_and_graph(
     fact_bonds = {bond.id: bond for bond in facts.bonds}
     closure_bonds = tuple(closure.bond for closure in source.ring_state.closed_closures)
     for closure in source.ring_state.closed_closures:
-        _check_closed_closure(fact_bonds=fact_bonds, closure=closure)
+        _check_closed_closure(
+            fact_bonds=fact_bonds,
+            closure=closure,
+            ring_endpoint_choices=ring_endpoint_choices,
+        )
     if (
         term.source_state_digest != _identity_digest(source)
         or term.finalized_state_digest != _identity_digest(finalized)
@@ -403,7 +407,7 @@ def _check_component_and_active_frame(*, facts, source) -> None:
         _violation("terminal_active_frame_mismatch")
 
 
-def _check_closed_closure(*, fact_bonds, closure) -> None:
+def _check_closed_closure(*, fact_bonds, closure, ring_endpoint_choices) -> None:
     bond = fact_bonds.get(closure.bond)
     if bond is None:
         _violation("terminal_closed_closure_unknown_bond")
@@ -422,6 +426,13 @@ def _check_closed_closure(*, fact_bonds, closure) -> None:
     ):
         _violation("terminal_closed_closure_label_mismatch")
     markers = (closure.first_endpoint_bond_text, closure.second_endpoint_bond_text)
+    endpoint_choices = (
+        (markers[0], closure.first_endpoint_direction_mark),
+        (markers[1], closure.second_endpoint_direction_mark),
+    )
+    choices = ring_endpoint_choices.get(int(bond.id))
+    if choices is None or any(choice not in choices for choice in endpoint_choices):
+        _violation("terminal_closed_closure_marker_mismatch")
     order = getattr(bond.order, "value", bond.order)
     required = "=" if order == "double" else "#" if order == "triple" else ""
     if required:
@@ -432,8 +443,6 @@ def _check_closed_closure(*, fact_bonds, closure) -> None:
             or closure.second_endpoint_direction_mark.value
         ):
             _violation("terminal_closed_closure_direction_mismatch")
-    elif any(item not in ("", "-") for item in markers):
-        _violation("terminal_closed_closure_marker_mismatch")
 
 
 def _check_graph_manifest(*, item, source_digest, successor_digest, evidence_digest):

@@ -64,6 +64,31 @@ class MoleculeFactsTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unknown atom endpoint"):
             facts.validate()
 
+    def test_aromatic_bond_requires_two_aromatic_endpoints(self) -> None:
+        facts = MoleculeFacts(
+            atoms=(_atom(0, "C"), _atom(1, "C")),
+            bonds=(
+                BondFacts(
+                    id=BondId(0),
+                    a=AtomId(0),
+                    b=AtomId(1),
+                    order=BondOrder.AROMATIC,
+                    is_aromatic=True,
+                    is_conjugated=True,
+                ),
+            ),
+            components=(
+                ComponentFacts(
+                    ComponentId(0),
+                    (AtomId(0), AtomId(1)),
+                    (BondId(0),),
+                ),
+            ),
+        )
+
+        with self.assertRaisesRegex(ValueError, "must join two aromatic atoms"):
+            facts.validate()
+
     def test_component_atom_partition_mismatch_fails(self) -> None:
         facts = MoleculeFacts(
             atoms=(_atom(0, "C"), _atom(1, "O")),

@@ -26,6 +26,7 @@ from .slots import BondSlotKind
 from .writer_atom_text_lifecycle import bracket_atom_text
 from .writer_atom_text_lifecycle import is_supported_bracket_atom
 from .writer_atom_text_lifecycle import writer_bracket_atom_text_evidence
+from .ordinary_atom_text import ordinary_unbracketed_atom_text_for_facts
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,6 +135,11 @@ def _atom_text_choice(
 
 
 def _require_supported_atom_surface(atom: AtomFacts) -> None:
+    if atom.is_aromatic and atom.symbol == "N" and atom.implicit_h_count:
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_ATOM,
+            f"bracketed aromatic [nH] atoms are unsupported: {atom.id!r}",
+        )
     if atom.isotope is not None and not is_supported_bracket_atom(atom):
         raise SouthStarError(
             SouthStarErrorKind.UNSUPPORTED_ATOM,
@@ -174,7 +180,8 @@ def _bracket_atom_choice(atom: AtomFacts) -> AtomTextChoice:
 
 
 def _organic_atom_choice(atom: AtomFacts) -> AtomTextChoice:
-    if atom.symbol not in _ORGANIC_SUBSET:
+    text = ordinary_unbracketed_atom_text_for_facts(atom)
+    if text is None or atom.is_aromatic:
         raise SouthStarError(
             SouthStarErrorKind.UNSUPPORTED_ATOM,
             "ordinary organic-subset spelling is unsupported for "
@@ -182,7 +189,7 @@ def _organic_atom_choice(atom: AtomFacts) -> AtomTextChoice:
         )
     return AtomTextChoice(
         name=f"organic_{atom.symbol}",
-        text_by_tetra=((TetraToken.NONE, atom.symbol),),
+        text_by_tetra=((TetraToken.NONE, text),),
     )
 
 
@@ -195,7 +202,7 @@ def _aromatic_atom_choice(
             SouthStarErrorKind.UNSUPPORTED_ATOM,
             f"aromatic atoms are disabled: {atom.id!r}",
         )
-    symbol = _AROMATIC_SYMBOLS.get(atom.symbol)
+    symbol = ordinary_unbracketed_atom_text_for_facts(atom)
     if symbol is None:
         raise SouthStarError(
             SouthStarErrorKind.UNSUPPORTED_ATOM,
@@ -246,7 +253,7 @@ def _bond_text_domains(
 ) -> tuple[BondTextDomain, ...]:
     domains: list[BondTextDomain] = []
     for bond in facts.bonds:
-        tree_choices = _tree_bond_choices(bond, options)
+        tree_choices = _tree_bond_choices(facts, bond, options)
         domains.append(
             BondTextDomain(
                 bond=bond.id,
@@ -255,7 +262,7 @@ def _bond_text_domains(
             )
         )
 
-        ring_choices = _ring_endpoint_bond_choices(bond, options)
+        ring_choices = _ring_endpoint_bond_choices(facts, bond, options)
         if ring_choices is not None:
             domains.append(
                 BondTextDomain(
@@ -269,10 +276,25 @@ def _bond_text_domains(
 
 
 def _tree_bond_choices(
+    facts: MoleculeFacts,
     bond: BondFacts,
     options: OrdinaryPolicyOptions,
 ) -> tuple[BondTextChoice, ...]:
     if bond.order is BondOrder.SINGLE:
+        if _both_endpoints_aromatic(facts, bond):
+            if _bond_can_be_ring_closure(facts, bond):
+                raise SouthStarError(
+                    SouthStarErrorKind.UNSUPPORTED_BOND,
+                    "aromatic/aromatic single bonds that can become ring "
+                    f"closures are unsupported: {bond.id!r}",
+                )
+            return (
+                BondTextChoice(
+                    name="aromatic_single_bridge",
+                    base_text="-",
+                    permits_direction=False,
+                ),
+            )
         return _single_bond_choices(options)
     if bond.order is BondOrder.DOUBLE:
         return (BondTextChoice(name="double", base_text="=", permits_direction=False),)
@@ -287,10 +309,13 @@ def _tree_bond_choices(
 
 
 def _ring_endpoint_bond_choices(
+    facts: MoleculeFacts,
     bond: BondFacts,
     options: OrdinaryPolicyOptions,
 ) -> tuple[BondTextChoice, ...] | None:
     if bond.order is BondOrder.SINGLE:
+        if _both_endpoints_aromatic(facts, bond):
+            return None
         return _single_bond_choices(options)
     if bond.order is BondOrder.AROMATIC:
         return _aromatic_bond_choices(options)
@@ -433,15 +458,10 @@ def _implicit_h_by_tetra_center(facts: MoleculeFacts) -> dict[AtomId, int]:
     return counts
 
 
+def _both_endpoints_aromatic(facts: MoleculeFacts, bond: BondFacts) -> bool:
+    atoms = {atom.id: atom for atom in facts.atoms}
+    return atoms[bond.a].is_aromatic and atoms[bond.b].is_aromatic
+
+
 _ORGANIC_SUBSET = frozenset({"B", "C", "N", "O", "P", "S", "F", "Cl", "Br", "I"})
-_AROMATIC_SYMBOLS = {
-    "B": "b",
-    "C": "c",
-    "N": "n",
-    "O": "o",
-    "P": "p",
-    "S": "s",
-}
-
-
 __all__ = ("OrdinaryPolicyOptions", "ordinary_policy_for_facts")

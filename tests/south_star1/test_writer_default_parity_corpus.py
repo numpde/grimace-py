@@ -421,8 +421,8 @@ def _snapshot_resume_agreement(prepared, snapshot) -> dict[str, object]:
 
 
 def _blocked_case_result(case: DefaultWriterCapabilityCase) -> dict[str, object]:
-    facts = _facts(case)
     try:
+        facts = _facts(case)
         prepared = _prepare_default(facts)
     except SouthStarError as error:
         return {

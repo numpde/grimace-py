@@ -54,6 +54,7 @@ from .writer_state import WriterBranchFrame
 from .writer_state import WriterClosedClosure
 from .writer_state import WriterClosureLabel
 from .writer_state import WriterOpenClosureEndpoint
+from .writer_state import WriterPolicyState
 from .writer_state import WriterRingLabelState
 from .writer_state import WriterRingState
 from .writer_state import WriterState
@@ -5271,6 +5272,10 @@ def _transition(
                 stereo_outcome.stereo_policy_blockers
             )
         return None
+    successor = replace(
+        successor,
+        policy_state=_policy_state_after_events(state.policy_state, events),
+    )
     return WriterTransition(
         emitted_text=emitted_text,
         successor=replace(successor, stereo_state=stereo_outcome.state),
@@ -5283,6 +5288,25 @@ def _transition(
         stereo_lifecycle_evidence=(
             stereo_outcome.stereo_lifecycle_evidence
         ),
+    )
+
+
+def _policy_state_after_events(
+    source: WriterPolicyState,
+    events: tuple[WriterEvent, ...],
+) -> WriterPolicyState:
+    atom_text = dict(source.atom_text)
+    bond_text = dict(source.bond_text)
+    for event in events:
+        if isinstance(event, WriterAtomEmitted):
+            atom_text[event.atom] = event.text
+        elif isinstance(event, WriterBondEmitted):
+            bond_text[event.bond] = event.text
+        elif isinstance(event, (WriterRingEndpointEmitted, WriterRingEndpointPaired)):
+            bond_text[event.bond] = event.bond_text
+    return WriterPolicyState(
+        atom_text=tuple(sorted(atom_text.items(), key=lambda item: int(item[0]))),
+        bond_text=tuple(sorted(bond_text.items(), key=lambda item: int(item[0]))),
     )
 
 

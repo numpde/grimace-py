@@ -4112,12 +4112,15 @@ def _refresh_ring_successor_cursor_change(
     *, artifact, branch, manifest, projection, cursor, state
 ) -> None:
     old_cursor_digest = branch["payload"]["successor_cursor_digest"]
+    old_state_digest = branch["payload"]["successor_state_digest"]
     _refresh_cursor_digest(cursor)
     successor_state_digest = _closed_term_digest(state)
     _propagate_text_projection_cursor_change(
         artifact,
         old_cursor_digest=old_cursor_digest,
         new_cursor=cursor,
+        old_state_digest=old_state_digest,
+        new_state_digest=successor_state_digest,
     )
     branch["payload"]["successor_state_digest"] = successor_state_digest
     branch["payload"]["graph_ring_delta"]["manifest"]["successor_state_digest"] = (
@@ -4306,7 +4309,8 @@ def _remove_raw_lifecycle_capability(
 
 def _mutate_directional_term_mark(artifact, *, bond: int, value: int) -> None:
     branch, manifest = _directional_transition_branch_and_manifest(artifact, bond=bond)
-    _term_field(manifest["transition_term"], "direction_mark")["value"] = value
+    mark = _term_field(manifest["transition_term"], "direction_mark")
+    mark["value"] = value if mark["value"] != value else -value
     _refresh_transition_manifest_digest(manifest)
     _refresh_object_and_artifact_digest(artifact, branch)
 
@@ -4333,12 +4337,15 @@ def _remove_directional_successor_bond_occurrence(artifact, *, bond: int) -> Non
     if len(kept) == len(occurrences):
         raise AssertionError(f"missing successor bond occurrence for bond {bond}")
     occurrences[:] = kept
+    old_state_digest = branch["payload"]["successor_state_digest"]
     _refresh_cursor_digest(cursor)
     successor_state_digest = _closed_term_digest(state)
     _propagate_text_projection_cursor_change(
         artifact,
         old_cursor_digest=branch["payload"]["successor_cursor_digest"],
         new_cursor=cursor,
+        old_state_digest=old_state_digest,
+        new_state_digest=successor_state_digest,
     )
     branch["payload"]["successor_state_digest"] = successor_state_digest
     branch["payload"]["graph_ring_delta"]["manifest"]["successor_state_digest"] = (
@@ -4374,12 +4381,15 @@ def _duplicate_directional_successor_bond_occurrence(artifact, *, bond: int) -> 
     if len(matches) != 1:
         raise AssertionError(f"expected one successor bond occurrence for bond {bond}")
     occurrences.append(deepcopy(matches[0]))
+    old_state_digest = branch["payload"]["successor_state_digest"]
     _refresh_cursor_digest(cursor)
     successor_state_digest = _closed_term_digest(state)
     _propagate_text_projection_cursor_change(
         artifact,
         old_cursor_digest=branch["payload"]["successor_cursor_digest"],
         new_cursor=cursor,
+        old_state_digest=old_state_digest,
+        new_state_digest=successor_state_digest,
     )
     branch["payload"]["successor_state_digest"] = successor_state_digest
     branch["payload"]["graph_ring_delta"]["manifest"]["successor_state_digest"] = (
@@ -4584,6 +4594,8 @@ def _propagate_text_projection_cursor_change(
     *,
     old_cursor_digest: str,
     new_cursor,
+    old_state_digest: str | None = None,
+    new_state_digest: str | None = None,
 ) -> None:
     for item in artifact["objects"]:
         if item["kind"] != "text_projection":
@@ -4598,6 +4610,15 @@ def _propagate_text_projection_cursor_change(
                 branch["payload"]["graph_ring_delta"]["manifest"][
                     "source_cursor_digest"
                 ] = new_cursor["digest"]
+                if (
+                    old_state_digest is not None
+                    and new_state_digest is not None
+                    and branch["payload"]["source_state_digest"] == old_state_digest
+                ):
+                    branch["payload"]["source_state_digest"] = new_state_digest
+                    branch["payload"]["graph_ring_delta"]["manifest"][
+                        "source_state_digest"
+                    ] = new_state_digest
                 _refresh_graph_ring_delta_digest(branch["payload"]["graph_ring_delta"])
     for item in artifact["objects"]:
         if item["kind"] != "replay_path":

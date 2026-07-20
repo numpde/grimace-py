@@ -56,6 +56,12 @@ VERSION_PINNED_SUPPORT_SURFACES = DURABLE_BRACKET_SUPPORT_SURFACES | {
     "disconnected_fixed_order",
     "specified_tetrahedral",
     "specified_directional_acyclic_implicit_h",
+    "aromatic_homocycle",
+    "aromatic_heterocycle",
+    "fused_aromatic",
+    "aromatic_substitution",
+    "aromatic_single_bridge",
+    "disconnected_aromatic",
 }
 
 
@@ -84,6 +90,16 @@ class WriterDefaultCapabilityLedgerTest(unittest.TestCase):
                 "unsupported_negative_nitrogen_charge",
                 "unsupported_positive_oxygen_charge",
                 "unsupported_potential_directional_non_neighbor",
+                "aromatic_homocycle",
+                "aromatic_heterocycle",
+                "fused_aromatic",
+                "aromatic_substitution",
+                "aromatic_single_bridge",
+                "disconnected_aromatic",
+                "unsupported_aromatic_bracketed_hydrogen",
+                "unsupported_aromatic_boron",
+                "unsupported_aromatic_phosphorus",
+                "unsupported_aromatic_atom_map",
             },
         )
 
@@ -132,7 +148,8 @@ class WriterDefaultCapabilityLedgerTest(unittest.TestCase):
                 self.assertEqual(
                     "component_boundary_transition"
                     in case.expected_offline_relation_families,
-                    case.support_surface == "disconnected_fixed_order",
+                    case.support_surface
+                    in {"disconnected_fixed_order", "disconnected_aromatic"},
                 )
                 self.assertEqual(
                     case.expected_offline_unchecked_obligation_families,

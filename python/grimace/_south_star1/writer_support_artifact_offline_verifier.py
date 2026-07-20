@@ -16,10 +16,13 @@ from .facts import DirectionalSiteFacts
 from .facts import DirectionalValue
 from .facts import LigandKind
 from .facts import MoleculeFacts
+from .ordinary_atom_text import ordinary_unbracketed_atom_text_for_facts
+from .ordinary_semantics import OrdinarySmilesSemantics
 from .facts import SiteStatus
 from .facts import TetrahedralSiteFacts
 from .facts import TetraValue
 from .policy import DirectionMark
+from .policy import BondTextChoice
 from .policy import TetraToken
 from .residual_constraints import ResidualFactorKey
 from .residual_constraints import DirectionalBondEmissionFactorValueSnapshot
@@ -1084,6 +1087,7 @@ def verify_graph_ring_branch_deltas_offline(
                 _offline_violation("graph_ring_branch_support_ref_kind_mismatch")
             kind = _check_graph_ring_branch_delta(
                 facts=facts,
+                artifact=artifact,
                 branch=branch,
                 branch_ref=branch_ref,
                 objects=objects,
@@ -4835,6 +4839,7 @@ def _branch_ref_from_transition_artifact(
 def _check_graph_ring_branch_delta(
     *,
     facts: MoleculeFacts,
+    artifact: Mapping[str, object],
     branch: Mapping[str, object],
     branch_ref: str,
     objects: Mapping[str, Mapping[str, object]],
@@ -4854,6 +4859,13 @@ def _check_graph_ring_branch_delta(
         _offline_violation("graph_ring_delta_digest_mismatch")
     _check_graph_ring_delta_common(payload=payload, manifest=manifest)
     events = manifest["event_manifests"]
+    _check_branch_policy_text_replay(
+        facts=facts,
+        artifact=artifact,
+        branch=branch,
+        objects=objects,
+        events=events,
+    )
     if kind == "other_structural":
         return kind
     if kind == "component_boundary":
@@ -5145,12 +5157,190 @@ def _check_atom_delta_events(
     atom = _atom_by_term(facts, event["atom"])
     if event["text"] != branch_payload["emitted_text"]:
         _offline_violation("graph_ring_atom_event_text_mismatch")
-    if atom.symbol not in event["text"]:
+    expected_text = ordinary_unbracketed_atom_text_for_facts(atom)
+    if (
+        expected_text is not None
+        and event["tetra_token"] == _term(TetraToken.NONE)
+        and event["text"] != expected_text
+    ):
         _offline_violation("graph_ring_atom_event_symbol_mismatch")
     if event["incoming_bond"] is not None:
         bond = _bond_by_term(facts, event["incoming_bond"])
         if event["atom"] not in (_term(bond.a), _term(bond.b)):
             _offline_violation("graph_ring_atom_incoming_bond_endpoint_mismatch")
+
+
+def _check_branch_policy_text_replay(
+    *,
+    facts: MoleculeFacts,
+    artifact: Mapping[str, object],
+    branch: Mapping[str, object],
+    objects: Mapping[str, Mapping[str, object]],
+    events: object,
+) -> None:
+    """Replay the exact finite atom/bond spelling and policy-state mutation."""
+
+    source_state, successor_state = _branch_writer_state_terms(
+        branch=branch,
+        objects=objects,
+    )
+    source_policy = _term_field_value(source_state, "policy_state")
+    successor_policy = _term_field_value(successor_state, "policy_state")
+    expected_atoms = dict(_term_field_value(source_policy, "atom_text"))
+    expected_bonds = dict(_term_field_value(source_policy, "bond_text"))
+    policy = _term_field_value(artifact["prepared_identity"]["terms"], "policy")
+    atom_domains = {atom: choices for atom, choices in policy[3]}
+    bond_domains = {
+        (bond, slot_kind): choices for bond, slot_kind, choices in policy[4]
+    }
+    semantics = OrdinarySmilesSemantics()
+
+    for event in events:
+        kind = event["kind"]
+        if kind == "atom_emitted":
+            atom = _atom_by_term(facts, event["atom"])
+            choices = atom_domains.get(int(atom.id))
+            if choices is None or not any(
+                token == event["tetra_token"]["value"] and text == event["text"]
+                for _name, texts in choices
+                for token, text in texts
+            ):
+                _offline_violation("aromatic_policy_domain_mismatch")
+            expected_text = ordinary_unbracketed_atom_text_for_facts(atom)
+            if expected_text is not None and event["tetra_token"] == _term(TetraToken.NONE):
+                if event["text"] != expected_text:
+                    _offline_violation("aromatic_atom_text_mismatch")
+            if int(atom.id) in expected_atoms:
+                _offline_violation("aromatic_atom_policy_state_mismatch")
+            expected_atoms[int(atom.id)] = event["text"]
+        elif kind == "bond_emitted":
+            bond = _bond_by_term(facts, event["bond"])
+            aromatic_endpoints = all(
+                _atom_by_term(facts, _term(endpoint)).is_aromatic
+                for endpoint in (bond.a, bond.b)
+            )
+            mark = _direction_mark_from_closed_term(event["direction_mark"])
+            matched = _matching_serialized_bond_choice(
+                choices=bond_domains.get((int(bond.id), "tree")),
+                text=event["text"],
+                mark=mark,
+            )
+            if matched is None or not semantics.bond_decode_ok(
+                facts, bond.id, matched, mark
+            ):
+                payload = branch["payload"]
+                expected_direction_text = (
+                    "/"
+                    if mark is DirectionMark.FWD
+                    else ("\\" if mark is DirectionMark.REV else "")
+                )
+                generic_reason = (
+                    "graph_ring_bond_marker_mismatch:"
+                    f"bond={event['bond']};"
+                    f"expected_direction_text={expected_direction_text!r};"
+                    f"direction_mark={event['direction_mark']!r};"
+                    f"successor_certificate={payload['successor_state_certificate_digest']}"
+                )
+                _offline_violation(
+                    "aromatic_single_bridge_text_mismatch"
+                    if bond.order is BondOrder.SINGLE and aromatic_endpoints
+                    else (
+                        "aromatic_bond_text_mismatch"
+                        if bond.order is BondOrder.AROMATIC
+                        else generic_reason
+                    )
+                )
+            if int(bond.id) in expected_bonds:
+                _offline_violation("aromatic_bond_policy_state_mismatch")
+            expected_bonds[int(bond.id)] = event["text"]
+        elif kind in ("ring_endpoint_emitted", "ring_endpoint_paired"):
+            bond = _bond_by_term(facts, event["bond"])
+            aromatic_surface = bond.order is BondOrder.AROMATIC
+            ring_relation_reason = (
+                "aromatic_ring_pair_relation_mismatch"
+                if aromatic_surface
+                else "graph_ring_bond_marker_mismatch"
+            )
+            bond_id = int(bond.id)
+            if kind == "ring_endpoint_emitted" and bond_id in expected_bonds:
+                _offline_violation("aromatic_bond_policy_state_mismatch")
+            if kind == "ring_endpoint_paired" and expected_bonds.get(bond_id) != event[
+                "first_endpoint_bond_text"
+            ]:
+                _offline_violation("aromatic_ring_state_mismatch")
+            mark = _direction_mark_from_closed_term(event["direction_mark"])
+            choices = bond_domains.get((int(bond.id), "ring_endpoint"))
+            matched = _matching_serialized_bond_choice(
+                choices=choices,
+                text=event["bond_text"],
+                mark=mark,
+                text_is_base=True,
+            )
+            if matched is None:
+                _offline_violation(ring_relation_reason)
+            if kind == "ring_endpoint_paired":
+                first_mark = _direction_mark_from_closed_term(
+                    event["first_endpoint_direction_mark"]
+                )
+                first = _matching_serialized_bond_choice(
+                    choices=choices,
+                    text=event["first_endpoint_bond_text"],
+                    mark=first_mark,
+                    text_is_base=True,
+                )
+                if first is None or not semantics.ring_pair_decode_ok(
+                    facts, bond.id, first, first_mark, matched, mark
+                ):
+                    _offline_violation(ring_relation_reason)
+            elif bond.order in (BondOrder.SINGLE, BondOrder.AROMATIC) and not semantics.bond_decode_ok(
+                facts, bond.id, matched, mark
+            ):
+                _offline_violation(ring_relation_reason)
+            expected_bonds[bond_id] = matched.base_text
+
+    actual_atoms = dict(_term_field_value(successor_policy, "atom_text"))
+    actual_bonds = dict(_term_field_value(successor_policy, "bond_text"))
+    if actual_atoms != expected_atoms:
+        _offline_violation("aromatic_atom_policy_state_mismatch")
+    if actual_bonds != expected_bonds:
+        _offline_violation("aromatic_bond_policy_state_mismatch")
+
+
+def _direction_mark_from_closed_term(term: object) -> DirectionMark:
+    if term == _term(DirectionMark.ABSENT):
+        return DirectionMark.ABSENT
+    if term == _term(DirectionMark.FWD):
+        return DirectionMark.FWD
+    if term == _term(DirectionMark.REV):
+        return DirectionMark.REV
+    _offline_violation("aromatic_bond_direction_mark_mismatch")
+
+
+def _matching_serialized_bond_choice(
+    *,
+    choices: object,
+    text: str,
+    mark: DirectionMark,
+    text_is_base: bool = False,
+) -> BondTextChoice | None:
+    if choices is None:
+        return None
+    for name, base_text, permits_direction in choices:
+        choice = BondTextChoice(
+            name=name,
+            base_text=base_text,
+            permits_direction=permits_direction,
+        )
+        rendered = base_text
+        if not text_is_base and mark is DirectionMark.FWD:
+            rendered = "/"
+        elif not text_is_base and mark is DirectionMark.REV:
+            rendered = "\\"
+        if rendered == text and (
+            mark is DirectionMark.ABSENT or permits_direction
+        ):
+            return choice
+    return None
 
 
 def _check_bond_delta_events(
@@ -5167,65 +5357,8 @@ def _check_bond_delta_events(
     endpoints = {_term(bond.a), _term(bond.b)}
     if {event["parent"], event["child"]} != endpoints:
         _offline_violation("graph_ring_bond_endpoint_mismatch")
-    expected_marker = _bond_order_marker(bond.order)
-    if event["text"] != expected_marker:
-        expected_direction_text = _direction_mark_text(event["direction_mark"])
-        accepts_direction_text = (
-            expected_marker == ""
-            and expected_direction_text != ""
-            and event["text"] == expected_direction_text
-        )
-        if not accepts_direction_text:
-            _offline_violation(
-                "graph_ring_bond_marker_mismatch:"
-                f"bond={event['bond']};"
-                f"parent={event['parent']};"
-                f"child={event['child']};"
-                f"expected_marker={expected_marker!r};"
-                f"observed_text={event['text']!r};"
-                f"expected_direction_text={expected_direction_text!r};"
-                f"direction_mark={event['direction_mark']!r};"
-                f"emitted_text={branch_payload['emitted_text']!r};"
-                f"local_evidence_kind={branch_payload['local_evidence']['kind']};"
-                "expected_marker_side=bond_advance;"
-                "observed_marker_side=bond_advance;"
-                f"closure_text_pair={_closure_text_pair(branch_payload)};"
-                f"successor_certificate="
-                f"{branch_payload['successor_state_certificate_digest']};"
-                f"checked_branch_certificate="
-                f"{branch_payload['checked_branch_certificate_digest']}"
-            )
     if event["text"] and event["text"] not in branch_payload["emitted_text"]:
         _offline_violation("graph_ring_bond_event_text_mismatch")
-
-
-def _direction_mark_text(mark: object) -> str:
-    if mark == _term(DirectionMark.FWD):
-        return "/"
-    if mark == _term(DirectionMark.REV):
-        return "\\"
-    if mark == _term(DirectionMark.ABSENT):
-        return ""
-    _offline_violation("graph_ring_bond_direction_mark_unknown")
-
-
-def _closure_text_pair(branch_payload: Mapping[str, object]) -> object:
-    local_evidence = branch_payload["local_evidence"]
-    manifest = local_evidence["manifest"]
-    if local_evidence["kind"] == "closure_bond_text":
-        items = manifest["items"]
-    elif local_evidence["kind"] == "directional_ring_closure_bond_text":
-        items = manifest["closure_bond_text"]
-    else:
-        return None
-    return tuple(
-        (
-            item["opening_marker"],
-            item["closing_marker"],
-            item["marker_side"],
-        )
-        for item in items
-    )
 
 
 def _check_branch_delta_events(
@@ -5367,6 +5500,22 @@ def _check_plain_atom_text_local_evidence(
     branch_payload: Mapping[str, object],
     manifest: Mapping[str, object],
 ) -> None:
+    atom_events = tuple(
+        event
+        for event in branch_payload["graph_ring_delta"]["manifest"][
+            "event_manifests"
+        ]
+        if event["kind"] == "atom_emitted"
+    )
+    if len(atom_events) != 1:
+        _offline_violation("aromatic_atom_event_identity_mismatch")
+    atom_event = atom_events[0]
+    if (
+        atom_event["atom"] != manifest["atom_id"]
+        or atom_event["text"] != manifest["rendered_text"]
+        or atom_event["tetra_token"] != _term(TetraToken.NONE)
+    ):
+        _offline_violation("aromatic_atom_event_identity_mismatch")
     if branch_payload["emitted_text"] != manifest["rendered_text"]:
         _offline_violation("local_plain_atom_text_rendered_text_mismatch")
     if manifest["bracket_required"]:
@@ -5380,8 +5529,9 @@ def _check_plain_atom_text_local_evidence(
         _offline_violation("local_plain_atom_text_isotope_present")
     if atom.formal_charge != 0:
         _offline_violation("local_plain_atom_text_charge_present")
-    if atom.symbol != manifest["rendered_text"]:
-        _offline_violation("local_plain_atom_text_facts_mismatch")
+    expected_text = ordinary_unbracketed_atom_text_for_facts(atom)
+    if expected_text is None or expected_text != manifest["rendered_text"]:
+        _offline_violation("aromatic_atom_text_mismatch")
 
 
 def _check_bracket_atom_text_local_evidence(
@@ -5779,6 +5929,8 @@ def _bond_order_marker(order: BondOrder) -> str:
         return "="
     if order == BondOrder.TRIPLE:
         return "#"
+    if order == BondOrder.AROMATIC:
+        return ""
     _offline_violation("graph_ring_bond_order_unsupported")
 
 

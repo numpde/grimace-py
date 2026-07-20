@@ -88,17 +88,17 @@ _EXPECTED_WITNESSES = {
     "residual_attachment_count": (
         "naphthalene",
         6,
-        "127b37d9d526efb046b3308584f4b30d8d408bd67553d8bd56ae498b8a96c0da",
+        "b499ab31beb4033f72000cd36cb526f58946d517de541d52fe7cbee5146687fb",
     ),
     "residual_attachment_action_count": (
         "naphthalene",
         6,
-        "127b37d9d526efb046b3308584f4b30d8d408bd67553d8bd56ae498b8a96c0da",
+        "b499ab31beb4033f72000cd36cb526f58946d517de541d52fe7cbee5146687fb",
     ),
     "boundary_incidence_count": (
         "biphenyl",
-        5,
-        "032927f9ce10d18275877cb82597b7c382d6214d0724b3f1bae158f9fbf22332",
+        6,
+        "bc98764b1ca31f961060eeed7937b8e8aaebe453282eed7ed761b649fa713b03",
     ),
     "closure_candidate_count": (
         "benzene",
@@ -128,12 +128,12 @@ _EXPECTED_WITNESSES = {
     "open_closure_count": (
         "naphthalene",
         5,
-        "eecd7a026ad70a8f87cf35a74e9f83f1295ea8e1b8be2ff000045a200b4ac202",
+        "a4141122e1600e797fd3eeb4974bde7c0dfdb44ba959fc9c9f4b143d3011b21d",
     ),
     "closed_closure_count": (
         "naphthalene",
         14,
-        "2813bc27f9e05f2861dda87366105b5e3d68e3cae335a3c03059a68819b284e7",
+        "a2f48ed12e505e17d6100740c064327e37b77ef551c7f7facc3dd6ef7184cd61",
     ),
     "max_attachment_atom_count": (
         "biphenyl",
@@ -143,7 +143,7 @@ _EXPECTED_WITNESSES = {
     "max_attachment_boundary_count": (
         "benzene",
         1,
-        "8e58d58fe0ce6b40afc7aef4717dffaa92ea41beba9a94651aa8ac343bffa8cc",
+        "aac1bc0a8d1c12f9d828501527a0db4e33f183c0e5dcf50e161f2ff9a40b0dec",
     ),
     "max_attachment_cyclic_rank": (
         "naphthalene",
@@ -236,7 +236,7 @@ class WriterAromaticGraphWorkEnvelopeTest(unittest.TestCase):
                 self.assertGreater(traversal.cursor_count, 0)
                 self.assertGreater(traversal.terminal_support_count, 0)
 
-    def test_biphenyl_bridge_is_live_but_keeps_known_policy_defect(self) -> None:
+    def test_biphenyl_bridge_is_live_and_explicit(self) -> None:
         facts, prepared = _prepare("c1ccccc1-c1ccccc1")
         bridge = next(
             bond
@@ -255,7 +255,7 @@ class WriterAromaticGraphWorkEnvelopeTest(unittest.TestCase):
                 (choice.base_text, choice.permits_direction)
                 for choice in choices
             ),
-            (("", True),),
+            (("-", False),),
         )
 
         traversal = _traverse_checked_frontiers("biphenyl", None, prepared=prepared)

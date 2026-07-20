@@ -23,6 +23,7 @@ from grimace._south_star1.writer_support_artifact_envelope import _ObjectTable
 from grimace._south_star1.writer_support_artifact_envelope import _add_text_projection
 from grimace._south_star1.writer_events import WriterRingEndpointEmitted
 from grimace._south_star1.writer_events import WriterRingEndpointPaired
+from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_smiles
 from grimace._south_star1.writer_frontier import _checked_writer_frontier_branch_supports
 from grimace._south_star1.writer_snapshot import WriterDecoderBoundary
 from grimace._south_star1.writer_snapshot import capture_writer_frontier_snapshot
@@ -38,6 +39,109 @@ from tests.south_star1.test_writer_support_artifact_fact_verifier import _writer
 
 
 class WriterBranchTransitionArtifactTest(unittest.TestCase):
+    def test_aromatic_plain_atom_evidence_forgeries_reject_facts_bound(self) -> None:
+        facts = ordinary_molecule_facts_from_smiles("c1ccccc1")
+        options = _writer_options(rooted_at_atom=0)
+        _prepared, source = _branch_artifact_for_event_kind(
+            facts, options, "atom_emitted"
+        )
+        mutations = (
+            ("atom_id", lambda manifest: manifest.__setitem__("atom_id", 1)),
+            ("element", lambda manifest: manifest.__setitem__("element", "N")),
+            ("aromatic", lambda manifest: manifest.__setitem__("aromatic", False)),
+        )
+        for name, mutate in mutations:
+            with self.subTest(field=name):
+                forged = deepcopy(source)
+                branch = next(
+                    item for item in forged["objects"] if item["kind"] == "branch_support"
+                )["payload"]
+                evidence = branch["local_evidence"]
+                mutate(evidence["manifest"])
+                evidence["digest"] = _identity_digest(
+                    {"kind": evidence["kind"], "manifest": evidence["manifest"]}
+                )
+                delta = branch["graph_ring_delta"]
+                delta["manifest"]["local_evidence_digest"] = evidence["digest"]
+                delta["digest"] = _identity_digest(
+                    {"kind": delta["kind"], "manifest": delta["manifest"]}
+                )
+                _redigest_branch_artifact(forged)
+
+                structural = verify_writer_branch_transition_artifact_consistency(forged)
+                replay = verify_writer_branch_transition_artifact_for_facts(
+                    facts=facts,
+                    runtime_options=options,
+                    artifact=forged,
+                )
+                self.assertTrue(structural.accepted, structural.reason)
+                self.assertFalse(replay.accepted)
+                self.assertTrue(
+                    "aromatic_atom" in replay.reason
+                    or "local_plain_atom_text" in replay.reason
+                )
+
+    def test_aromatic_atom_and_bond_forgeries_reject_facts_bound(self) -> None:
+        cases = (
+            ("c1ccccc1", "atom_emitted", "n", "aromatic_policy_domain_mismatch"),
+            (
+                "c1ccccc1-c1ccccc1",
+                "bond_emitted",
+                "",
+                "aromatic_single_bridge_text_mismatch",
+            ),
+        )
+        for smiles, event_kind, forged_text, reason in cases:
+            with self.subTest(smiles=smiles, event=event_kind):
+                facts = ordinary_molecule_facts_from_smiles(smiles)
+                options = _writer_options(rooted_at_atom=0)
+                prepared, artifact = _branch_artifact_for_event_kind(
+                    facts,
+                    options,
+                    event_kind,
+                    require_text="-" if event_kind == "bond_emitted" else None,
+                )
+                forged = deepcopy(artifact)
+                by_kind = {item["kind"]: item for item in forged["objects"]}
+                branch = by_kind["branch_support"]["payload"]
+                event = next(
+                    item
+                    for item in branch["graph_ring_delta"]["manifest"]["event_manifests"]
+                    if item["kind"] == event_kind
+                )
+                event["text"] = forged_text
+                branch["emitted_text"] = forged_text
+                branch["graph_ring_delta"]["manifest"]["emitted_text"] = forged_text
+                if event_kind == "atom_emitted":
+                    branch["local_evidence"]["manifest"]["rendered_text"] = forged_text
+                    branch["local_evidence"]["digest"] = _identity_digest(
+                        {
+                            "kind": branch["local_evidence"]["kind"],
+                            "manifest": branch["local_evidence"]["manifest"],
+                        }
+                    )
+                    branch["graph_ring_delta"]["manifest"][
+                        "local_evidence_digest"
+                    ] = branch["local_evidence"]["digest"]
+                branch["graph_ring_delta"]["digest"] = _identity_digest(
+                    {
+                        "kind": branch["graph_ring_delta"]["kind"],
+                        "manifest": branch["graph_ring_delta"]["manifest"],
+                    }
+                )
+                by_kind["text_projection"]["payload"]["emitted_text"] = forged_text
+                _redigest_branch_artifact(forged)
+
+                structural = verify_writer_branch_transition_artifact_consistency(forged)
+                replay = verify_writer_branch_transition_artifact_for_facts(
+                    facts=facts,
+                    runtime_options=options,
+                    artifact=forged,
+                )
+                self.assertTrue(structural.accepted, structural.reason)
+                self.assertFalse(replay.accepted)
+                self.assertIn(reason, replay.reason)
+
     def test_supported_transition_matrix_replays_facts_bound(self) -> None:
         cases = (
             (tetrahedral_facts(), _writer_options(), "tetrahedral atom-token restriction"),
@@ -612,6 +716,56 @@ def _branch_artifact_for_operation(facts, options, operation):
                 )
             pending.append((support.successor_cursor, depth + 1))
     raise AssertionError(f"missing branch operation {operation!r}")
+
+
+def _branch_artifact_for_event_kind(
+    facts,
+    options,
+    event_kind: str,
+    *,
+    require_text: str | None = None,
+):
+    prepared = _prepare(facts)
+    initial = _initial_snapshot(prepared, options)
+    pending = [(initial.cursor, 0)]
+    seen = set()
+    while pending:
+        cursor, depth = pending.pop()
+        key = repr(cursor)
+        if key in seen:
+            continue
+        seen.add(key)
+        batch = _checked_writer_frontier_branch_supports(
+            prepared,
+            cursor,
+            include_counts=False,
+            include_frontier_certificate=True,
+            include_count_certificate=False,
+        )
+        for support in batch.supports:
+            matching = tuple(
+                event
+                for event in support.events
+                if event.__class__.__name__ == {
+                    "atom_emitted": "WriterAtomEmitted",
+                    "bond_emitted": "WriterBondEmitted",
+                }[event_kind]
+                and (require_text is None or getattr(event, "text", None) == require_text)
+            )
+            if matching:
+                snapshot = capture_writer_frontier_snapshot(
+                    prepared=prepared,
+                    runtime_options=options,
+                    cursor=cursor,
+                    decoder_boundary=WriterDecoderBoundary(consumed_token_count=depth),
+                )
+                return prepared, writer_branch_transition_artifact_for_support(
+                    prepared=prepared,
+                    snapshot=snapshot,
+                    support=support,
+                )
+            pending.append((support.successor_cursor, depth + 1))
+    raise AssertionError(f"missing branch event {event_kind!r}")
 
 
 def _redigest_branch_artifact(artifact) -> None:

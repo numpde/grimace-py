@@ -80,7 +80,7 @@ class WriterDefaultOfflineCompleteTest(unittest.TestCase):
                     (),
                 )
 
-    def test_incomplete_obligation_family_is_not_reported_complete(self) -> None:
+    def test_descriptive_lifecycle_flags_do_not_remove_replay_credit(self) -> None:
         case = next(
             item
             for item in ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES
@@ -104,7 +104,7 @@ class WriterDefaultOfflineCompleteTest(unittest.TestCase):
         )
 
         self.assertTrue(classification.accepted, classification.reason)
-        self.assertIn("stereo_lifecycle", classification.unchecked_families)
+        self.assertNotIn("stereo_lifecycle", classification.unchecked_families)
 
         replay = verify_writer_support_artifact_offline_replay(
             facts=_facts(case),
@@ -112,8 +112,8 @@ class WriterDefaultOfflineCompleteTest(unittest.TestCase):
         )
 
         self.assertTrue(replay.accepted, replay.reason)
-        self.assertFalse(replay.offline_replay_complete)
-        self.assertIn(
+        self.assertTrue(replay.offline_replay_complete)
+        self.assertNotIn(
             "stereo_lifecycle",
             replay.unchecked_obligation_families,
         )

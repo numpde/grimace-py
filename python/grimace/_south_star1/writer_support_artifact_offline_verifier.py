@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from dataclasses import field
 from dataclasses import replace
 from enum import Enum
 
@@ -21,6 +22,8 @@ from .ordinary_semantics import OrdinarySmilesSemantics
 from .facts import SiteStatus
 from .facts import TetrahedralSiteFacts
 from .facts import TetraValue
+from .ids import AtomId
+from .ids import BondId
 from .policy import DirectionMark
 from .policy import BondTextChoice
 from .policy import TetraToken
@@ -45,7 +48,38 @@ from .residual_constraints import tetra_token_var
 from .writer_residual_transition_terms import (
     DirectionalCarrierMarkRestrictionTransitionTerm,
 )
+from .writer_residual_attachment_lifecycle import (
+    writer_residual_attachment_lifecycle_evidence_for_transition,
+)
+from .writer_residual_attachment_branch_certificates import (
+    writer_residual_attachment_branch_certificates,
+)
+from .writer_closure_candidate_lifecycle import (
+    writer_closure_candidate_lifecycle_evidence_for_transition,
+)
+from .writer_closure_candidate_branch_certificates import (
+    writer_closure_candidate_branch_certificates,
+)
+from .writer_capabilities import _WriterExecutionCapabilityKind
+from .writer_execution_evidence import WriterFiniteRelationWorkEvidence
+from .writer_events import WriterAtomEmitted
+from .writer_events import WriterBondEmitted
+from .writer_events import WriterBranchClosed
+from .writer_events import WriterBranchOpened
+from .writer_events import WriterComponentBoundaryEmitted
+from .writer_events import WriterLocalOrderClosed
+from .writer_events import WriterRingEndpointEmitted
+from .writer_events import WriterRingEndpointPaired
+from .writer_events import WriterRingLabelAllocated
+from .writer_events import WriterRingLabelReleased
+from .writer_graph_obligations import build_writer_graph_obligation_context
+from .writer_graph_obligations import WriterClosureCandidateResolutionKind
 from .writer_graph_obligations import WriterGraphCompletionStatus
+from .writer_graph_obligations import writer_closure_candidate_resolutions
+from .writer_graph_obligations import writer_graph_obligation_work_evidence
+from .prepared_runtime import SouthStarPreparedMol
+from .prepared_runtime import SouthStarWriterSurface
+from .prepared_runtime import prepare_south_star_mol_from_facts
 from .writer_terminalization_terms import WriterTerminalizationTerm
 from .writer_snapshot_closed_terms import writer_frontier_cursor_from_closed_terms
 from .writer_component_completion_replay import (
@@ -82,6 +116,18 @@ from .writer_local_order_closure_replay import (
 )
 from .writer_state import ComponentCursor
 from .writer_state import WriterAtomFrame
+from .writer_state import WriterClosureLabel
+from .writer_state import writer_state_from_key
+from .writer_stereo import WriterBondOccurrenceRecord
+from .writer_stereo import WriterLocalOrderRecord
+from .writer_stereo import WriterStereoLifecycleEvidence
+from .writer_stereo import WriterStereoLifecycleOutcomeKind
+from .writer_stereo import advance_writer_stereo_state_with_evidence
+from .writer_stereo_branch_certificates import writer_stereo_branch_certificates
+from .writer_transitions import _WriterClosureOpenObligationSourceKind
+from .writer_transitions import _WriterScheduledActionKind
+from .writer_transitions import _WriterScheduledGraphActionSurface
+from .writer_transitions import WriterTransitionKind
 
 
 OBJECT_KIND_OFFLINE_COVERAGE = {
@@ -113,6 +159,23 @@ _PATH_PREFIX = "grimace._south_star1."
 class OfflineResidualReplayDisposition(Enum):
     SEMANTICALLY_REPLAYED = "semantically_replayed"
     DECLARED_OUT_OF_SCOPE = "declared_out_of_scope"
+
+
+@dataclass(slots=True)
+class _BranchObligationReplayLedger:
+    """Facts-reconstructed evidence credited only to its owning branch."""
+
+    digests: dict[tuple[str, str], set[str]] = field(default_factory=dict)
+
+    def register(self, branch_ref: str, family: str, evidence_digest: str) -> None:
+        key = (branch_ref, family)
+        family_digests = self.digests.setdefault(key, set())
+        if evidence_digest in family_digests:
+            _offline_violation("branch_obligation_replay_duplicate")
+        family_digests.add(evidence_digest)
+
+    def contains(self, branch_ref: str, family: str, evidence_digest: str) -> bool:
+        return evidence_digest in self.digests.get((branch_ref, family), set())
 
 
 _ALLOWED_TETRA_TRANSITION_ENUMS = {
@@ -481,9 +544,15 @@ def verify_writer_support_artifact_offline_replay(
     *,
     facts: MoleculeFacts,
     artifact: Mapping[str, object],
+    prepared: SouthStarPreparedMol | None = None,
     budget: WriterEnvelopeWorkBudget | None = None,
 ) -> WriterSupportArtifactOfflineReplayResult:
     try:
+        if prepared is None:
+            prepared = prepare_south_star_mol_from_facts(
+                facts,
+                writer_surface=SouthStarWriterSurface(),
+            )
         objects = _object_by_id(artifact)
         _check_object_kinds_classified(objects)
         root = _require_object(objects, artifact["roots"]["support_image_root"])
@@ -546,6 +615,7 @@ def verify_writer_support_artifact_offline_replay(
             )
         obligations = classify_residual_stereo_obligations_offline(
             facts=facts,
+            prepared=prepared,
             artifact=artifact,
             objects=objects,
         )
@@ -1139,12 +1209,18 @@ def verify_graph_ring_branch_deltas_offline(
 def classify_residual_stereo_obligations_offline(
     *,
     facts: MoleculeFacts,
+    prepared: SouthStarPreparedMol | None = None,
     artifact: Mapping[str, object],
     objects: Mapping[str, Mapping[str, object]],
     branch_refs: tuple[str, ...] | None = None,
     include_terminals: bool = True,
 ) -> OfflineObligationClassification:
     try:
+        if prepared is None:
+            prepared = prepare_south_star_mol_from_facts(
+                facts,
+                writer_surface=SouthStarWriterSurface(),
+            )
         manifests_by_family = {
             "residual_work": [],
             "finite_relation_work": [],
@@ -1162,6 +1238,10 @@ def classify_residual_stereo_obligations_offline(
         replayed_directional_ring_closure_digests: set[str] = set()
         replayed_terminal_graph_digests: set[str] = set()
         replayed_component_boundary_branch_digests: set[str] = set()
+        branch_replay_ledger = _BranchObligationReplayLedger()
+        branch_manifest_owners: dict[str, list[tuple[str, Mapping[str, object]]]] = {
+            family: [] for family in manifests_by_family
+        }
         replayed_operations: list[str] = []
         ring_endpoint_choices = _ring_endpoint_choices_from_artifact(
             artifact=artifact,
@@ -1174,6 +1254,9 @@ def classify_residual_stereo_obligations_offline(
             branch = _require_object(objects, branch_ref)
             _check_branch_obligation_ring_summaries(branch)
             for family, items in branch["payload"]["obligation_manifests"].items():
+                branch_manifest_owners[family].extend(
+                    (branch_ref, item) for item in items
+                )
                 if family == "residual_work":
                     manifests_by_family[family].extend(
                         _classify_branch_residual_work_manifests(
@@ -1184,24 +1267,21 @@ def classify_residual_stereo_obligations_offline(
                             replayed_residual_digests=replayed_residual_digests,
                             replayed_operations=replayed_operations,
                             ring_endpoint_choices=ring_endpoint_choices,
+                            branch_ref=branch_ref,
+                            branch_replay_ledger=branch_replay_ledger,
                         )
                     )
                 else:
                     manifests_by_family[family].extend(items)
-            _classify_branch_replayed_lifecycle_manifests(
-                branch=branch,
-                replayed_residual_digests=replayed_residual_digests,
-                replayed_lifecycle_digests=replayed_lifecycle_digests,
-            )
             _classify_branch_directional_ring_closure_lifecycles(
                 branch=branch,
+                branch_ref=branch_ref,
                 facts=facts,
                 objects=objects,
-                replayed_residual_digests=replayed_residual_digests,
-                replayed_lifecycle_digests=replayed_lifecycle_digests,
                 replayed_directional_ring_closure_digests=(
                     replayed_directional_ring_closure_digests
                 ),
+                branch_replay_ledger=branch_replay_ledger,
             )
             _replay_component_boundary_branch_obligations(
                 facts=facts,
@@ -1215,6 +1295,16 @@ def classify_residual_stereo_obligations_offline(
                 replayed_component_boundary_branch_digests=(
                     replayed_component_boundary_branch_digests
                 ),
+            )
+            _reconstruct_branch_nonresidual_obligations(
+                facts=facts,
+                prepared=prepared,
+                branch=branch,
+                branch_ref=branch_ref,
+                objects=objects,
+                ring_endpoint_choices=ring_endpoint_choices,
+                branch_replay_ledger=branch_replay_ledger,
+                replayed_lifecycle_digests=replayed_lifecycle_digests,
             )
         if include_terminals:
             root = _require_object(objects, artifact["roots"]["support_image_root"])
@@ -1248,6 +1338,8 @@ def classify_residual_stereo_obligations_offline(
             for family, items in sorted(manifests_by_family.items())
             if items and not _obligation_manifests_checked(
                 items,
+                owners=branch_manifest_owners[family],
+                branch_replay_ledger=branch_replay_ledger,
                 replayed_residual_digests=replayed_residual_digests,
                 replayed_lifecycle_digests=replayed_lifecycle_digests,
                 replayed_directional_ring_closure_digests=replayed_directional_ring_closure_digests,
@@ -1259,6 +1351,8 @@ def classify_residual_stereo_obligations_offline(
             for family, items in sorted(manifests_by_family.items())
             if items and _obligation_manifests_checked(
                 items,
+                owners=branch_manifest_owners[family],
+                branch_replay_ledger=branch_replay_ledger,
                 replayed_residual_digests=replayed_residual_digests,
                 replayed_lifecycle_digests=replayed_lifecycle_digests,
                 replayed_directional_ring_closure_digests=replayed_directional_ring_closure_digests,
@@ -1318,6 +1412,7 @@ def classify_residual_stereo_obligations_offline(
 def verify_branch_obligations_offline(
     *,
     facts: MoleculeFacts,
+    prepared: SouthStarPreparedMol | None = None,
     artifact: Mapping[str, object],
     objects: Mapping[str, Mapping[str, object]],
     branch_ref: str,
@@ -1325,6 +1420,7 @@ def verify_branch_obligations_offline(
     """Replay obligation evidence for one explicitly selected branch only."""
     return classify_residual_stereo_obligations_offline(
         facts=facts,
+        prepared=prepared,
         artifact=artifact,
         objects=objects,
         branch_refs=(branch_ref,),
@@ -1423,11 +1519,24 @@ def _ring_label_values_from_artifact(
 def _obligation_manifests_checked(
     items: list[object],
     *,
+    owners: list[tuple[str, Mapping[str, object]]],
+    branch_replay_ledger: _BranchObligationReplayLedger,
     replayed_residual_digests: set[str],
     replayed_lifecycle_digests: set[str],
     replayed_directional_ring_closure_digests: set[str],
     replayed_terminal_graph_digests: set[str],
 ) -> bool:
+    if owners:
+        if len(owners) != len(items):
+            _offline_violation("branch_obligation_owner_count_mismatch")
+        return all(
+            branch_replay_ledger.contains(
+                branch_ref,
+                item["family"],
+                item["evidence_digest"],
+            )
+            for branch_ref, item in owners
+        )
     return all(
         _obligation_manifest_checked(
             item,
@@ -1453,16 +1562,7 @@ def _obligation_manifest_checked(
     if family == "residual_work":
         return item["evidence_digest"] in replayed_residual_digests
     if family == "stereo_lifecycle":
-        linked = tuple(item["linked_residual_work_digests"])
-        if linked:
-            return item["evidence_digest"] in replayed_lifecycle_digests
-        return bool(
-            item["is_noop"]
-            or item["is_empty"]
-            or item["is_discharged"]
-            or item["terminal_clean"]
-            or item["evidence_digest"] in replayed_lifecycle_digests
-        )
+        return item["evidence_digest"] in replayed_lifecycle_digests
     if family == "directional_ring_closure_lifecycle":
         return item["evidence_digest"] in replayed_directional_ring_closure_digests
     if family == "terminal_residual_work":
@@ -1471,13 +1571,7 @@ def _obligation_manifest_checked(
         return item["evidence_digest"] in replayed_lifecycle_digests
     if family == "terminal_graph_obligation_work":
         return item["evidence_digest"] in replayed_terminal_graph_digests
-    return bool(
-        item["is_noop"]
-        or item["is_empty"]
-        or item["is_discharged"]
-        or item["terminal_clean"]
-        or _ring_obligation_manifest_checked(item)
-    )
+    return False
 
 
 def _classify_branch_residual_work_manifests(
@@ -1489,6 +1583,8 @@ def _classify_branch_residual_work_manifests(
     replayed_residual_digests: set[str],
     replayed_operations: list[str],
     ring_endpoint_choices: Mapping[int, tuple[tuple[str, DirectionMark], ...]],
+    branch_ref: str,
+    branch_replay_ledger: _BranchObligationReplayLedger,
 ) -> tuple[Mapping[str, object], ...]:
     _check_branch_residual_lifecycle_links(branch=branch, residual_items=items)
     for item in items:
@@ -1501,33 +1597,769 @@ def _classify_branch_residual_work_manifests(
         )
         if disposition is OfflineResidualReplayDisposition.SEMANTICALLY_REPLAYED:
             replayed_residual_digests.add(item["evidence_digest"])
+            branch_replay_ledger.register(
+                branch_ref,
+                "residual_work",
+                item["evidence_digest"],
+            )
             replayed_operations.append(item["operation"])
     return tuple(items)
 
 
-def _classify_branch_replayed_lifecycle_manifests(
+def _reconstruct_branch_nonresidual_obligations(
     *,
+    facts: MoleculeFacts,
+    prepared: SouthStarPreparedMol,
     branch: Mapping[str, object],
-    replayed_residual_digests: set[str],
+    branch_ref: str,
+    objects: Mapping[str, Mapping[str, object]],
+    ring_endpoint_choices: Mapping[int, tuple[tuple[str, DirectionMark], ...]],
+    branch_replay_ledger: _BranchObligationReplayLedger,
     replayed_lifecycle_digests: set[str],
 ) -> None:
+    source, successor = _branch_writer_states(branch=branch, objects=objects)
+    payload = branch["payload"]
+    manifests = payload["obligation_manifests"]
+    _reconstruct_graph_work_manifests(
+        prepared=prepared,
+        source=source,
+        successor=successor,
+        items=manifests["graph_obligation_work"],
+        branch_ref=branch_ref,
+        branch_replay_ledger=branch_replay_ledger,
+    )
+    _reconstruct_finite_relation_manifests(
+        facts=facts,
+        branch=branch,
+        items=manifests["finite_relation_work"],
+        ring_endpoint_choices=ring_endpoint_choices,
+        branch_ref=branch_ref,
+        branch_replay_ledger=branch_replay_ledger,
+    )
+    _reconstruct_stereo_lifecycle_manifests(
+        prepared=prepared,
+        branch=branch,
+        source=source,
+        successor=successor,
+        items=manifests["stereo_lifecycle"],
+        branch_ref=branch_ref,
+        branch_replay_ledger=branch_replay_ledger,
+        replayed_lifecycle_digests=replayed_lifecycle_digests,
+    )
+    _reconstruct_graph_lifecycle_manifests(
+        prepared=prepared,
+        branch=branch,
+        source=source,
+        successor=successor,
+        branch_ref=branch_ref,
+        branch_replay_ledger=branch_replay_ledger,
+    )
+
+
+def _branch_writer_states(*, branch, objects):
+    branch_ref = branch["object_id"]
+    projections = [
+        item
+        for item in objects.values()
+        if item["kind"] == "text_projection"
+        and branch_ref in item["payload"]["branch_support_refs"]
+    ]
+    if len(projections) != 1:
+        _offline_violation("branch_projection_support_ref_ambiguous")
+    projection = projections[0]["payload"]
+    source_cursor = writer_frontier_cursor_from_closed_terms(
+        projection["source_cursor"]["terms"]
+    )
+    successor_cursor = writer_frontier_cursor_from_closed_terms(
+        projection["successor_cursor"]["terms"]
+    )
+    source = [
+        state
+        for state, _weight in source_cursor.weighted_states
+        if _identity_digest(state) == branch["payload"]["source_state_digest"]
+    ]
+    successor = [
+        state
+        for state, _weight in successor_cursor.weighted_states
+        if _identity_digest(state) == branch["payload"]["successor_state_digest"]
+    ]
+    if len(source) != 1 or len(successor) != 1:
+        _offline_violation("branch_obligation_state_anchor_mismatch")
+    return source[0], successor[0]
+
+
+def _reconstruct_graph_work_manifests(
+    *, prepared, source, successor, items, branch_ref, branch_replay_ledger
+) -> None:
+    if not items:
+        return
+    if len(items) != 1:
+        _offline_violation("graph_obligation_work_manifest_count_mismatch")
+    item = items[0]
+    if item["operation"] != "writer graph obligation context":
+        _offline_violation("graph_obligation_work_operation_mismatch")
+    context = build_writer_graph_obligation_context(prepared, source)
+    expected = writer_graph_obligation_work_evidence(
+        operation="writer graph obligation context",
+        prepared=prepared,
+        key=source,
+        context=context,
+    )
+    if (
+        item["family"] != "graph_obligation_work"
+        or item["source_digest"] != _identity_digest(source)
+        or item["successor_digest"] != _identity_digest(successor)
+        or item["evidence_digest"] != _identity_digest(expected)
+    ):
+        _offline_violation("graph_obligation_work_identity_mismatch")
+    branch_replay_ledger.register(
+        branch_ref, "graph_obligation_work", item["evidence_digest"]
+    )
+
+
+def _reconstruct_finite_relation_manifests(
+    *,
+    facts,
+    branch,
+    items,
+    ring_endpoint_choices,
+    branch_ref,
+    branch_replay_ledger,
+) -> None:
+    delta = branch["payload"]["graph_ring_delta"]
+    ring_events = [
+        event
+        for event in delta["manifest"]["event_manifests"]
+        if event["kind"] in ("ring_endpoint_emitted", "ring_endpoint_paired")
+    ]
+    if not items:
+        if ring_events:
+            _offline_violation("finite_relation_work_manifest_missing")
+        return
+    if len(items) != 1 or len(ring_events) != 1:
+        _offline_violation("finite_relation_work_manifest_count_mismatch")
+    item = items[0]
+    event = ring_events[0]
+    bond = _bond_by_term(facts, event["bond"])
+    choices = ring_endpoint_choices.get(int(bond.id))
+    if not choices:
+        _offline_violation("finite_relation_work_policy_domain_missing")
+    semantics = OrdinarySmilesSemantics()
+    permits_direction_by_text = {
+        text: any(
+            candidate_text == text and mark is not DirectionMark.ABSENT
+            for candidate_text, mark in choices
+        )
+        for text, _mark in choices
+    }
+    sites = _directional_sites_for_facts_bond(facts=facts, bond=bond.id)
+    models = (
+        _expected_directional_models_for_facts_bond(
+            facts=facts,
+            sites=sites,
+            bond=bond.id,
+        )
+        if sites
+        else ()
+    )
+    scoped_choices = tuple(
+        choice
+        for choice in choices
+        if models or choice[1] is DirectionMark.ABSENT
+    )
+    candidate_counts = []
+    for first_text, first_mark in scoped_choices:
+        first = BondTextChoice(
+            name="offline_first",
+            base_text=first_text,
+            permits_direction=permits_direction_by_text[first_text],
+        )
+        seconds = 0
+        first_atom = (
+            AtomId(event["endpoint_atom"])
+            if event["kind"] == "ring_endpoint_emitted"
+            else AtomId(event["partner_atom"])
+        )
+        second_atom = (
+            AtomId(event["partner_atom"])
+            if event["kind"] == "ring_endpoint_emitted"
+            else AtomId(event["endpoint_atom"])
+        )
+        model_compatible = {
+            choice
+            for choice, _restrictions in _expected_shared_directional_ring_choice_rows(
+                facts=facts,
+                bond=bond.id,
+                first_atom=first_atom,
+                second_atom=second_atom,
+                first_mark=first_mark,
+                candidate_second_choices=scoped_choices,
+                models=models,
+            )
+        }
+        for second_text, second_mark in scoped_choices:
+            second = BondTextChoice(
+                name="offline_second",
+                base_text=second_text,
+                permits_direction=permits_direction_by_text[second_text],
+            )
+            if (second_text, second_mark) in model_compatible and semantics.ring_pair_decode_ok(
+                facts,
+                bond.id,
+                first,
+                first_mark,
+                second,
+                second_mark,
+            ):
+                seconds += 1
+        candidate_counts.append(seconds)
+    expected_operation = (
+        "closure endpoint open relation"
+        if event["kind"] == "ring_endpoint_emitted"
+        else "closure endpoint pair relation"
+    )
+    expected = WriterFiniteRelationWorkEvidence(
+        operation=expected_operation,
+        relation_kind="closure_endpoint",
+        bond=bond.id,
+        row_count=len(scoped_choices),
+        total_candidate_count=sum(candidate_counts),
+        largest_candidate_count=max(candidate_counts, default=0),
+        include_direction_marks=any(
+            mark is not DirectionMark.ABSENT for _text, mark in scoped_choices
+        ),
+    )
+    if (
+        item["family"] != "finite_relation_work"
+        or item["operation"] != expected_operation
+        or item["source_digest"] != branch["payload"]["source_state_digest"]
+        or item["successor_digest"]
+        != branch["payload"]["successor_state_digest"]
+        or item["evidence_digest"] != _identity_digest(expected)
+    ):
+        _offline_violation("finite_relation_work_identity_mismatch")
+    branch_replay_ledger.register(
+        branch_ref, "finite_relation_work", item["evidence_digest"]
+    )
+
+
+def _reconstruct_stereo_lifecycle_manifests(
+    *,
+    prepared,
+    branch,
+    source,
+    successor,
+    items,
+    branch_ref,
+    branch_replay_ledger,
+    replayed_lifecycle_digests,
+) -> None:
+    if (
+        not items
+        and not branch["payload"]["obligation_manifests"]["residual_work"]
+        and source.stereo_state == successor.stereo_state
+    ):
+        return
+    events = tuple(
+        _writer_event_from_manifest(item)
+        for item in branch["payload"]["graph_ring_delta"]["manifest"][
+            "event_manifests"
+        ]
+    )
+    outcome = advance_writer_stereo_state_with_evidence(
+        prepared,
+        writer_state_from_key(source).stereo_state,
+        events,
+    )
+    expected_successor_stereo = writer_state_from_key(successor).stereo_state
+    if outcome.state != expected_successor_stereo:
+        _offline_violation("stereo_lifecycle_successor_state_mismatch")
+    certificates = writer_stereo_branch_certificates(
+        execution_capabilities=outcome.execution_capabilities,
+        stereo_lifecycle_evidence=outcome.stereo_lifecycle_evidence,
+        events=events,
+    )
+    expected = (*outcome.stereo_lifecycle_evidence, *certificates)
+    if len(items) != len(expected):
+        _offline_violation("stereo_lifecycle_manifest_count_mismatch")
+    expected_by_digest = {_identity_digest(record): record for record in expected}
+    if len(expected_by_digest) != len(expected):
+        _offline_violation("stereo_lifecycle_reconstruction_duplicate")
     residual_items = branch["payload"]["obligation_manifests"]["residual_work"]
-    residual_by_digest = {item["evidence_digest"]: item for item in residual_items}
-    for lifecycle in branch["payload"]["obligation_manifests"]["stereo_lifecycle"]:
-        linked = lifecycle["linked_residual_work_digests"]
-        if not linked:
-            continue
+    residual_by_digest = {
+        item["evidence_digest"]: item for item in residual_items
+    }
+    for item in items:
+        record = expected_by_digest.get(item["evidence_digest"])
+        if record is None:
+            _offline_violation("stereo_lifecycle_identity_mismatch")
+        _check_reconstructed_lifecycle_manifest(
+            branch=branch,
+            item=item,
+            record=record,
+        )
+        linked = tuple(item["linked_residual_work_digests"])
         if any(digest not in residual_by_digest for digest in linked):
-            _offline_violation("residual_lifecycle_replayed_digest_missing")
-        if lifecycle["residual_work_digests"] != linked:
-            _offline_violation("residual_lifecycle_replayed_digest_mismatch")
-        if any(digest not in replayed_residual_digests for digest in linked):
+            _offline_violation("stereo_lifecycle_residual_branch_mismatch")
+        if any(
+            not branch_replay_ledger.contains(
+                branch_ref, "residual_work", digest
+            )
+            for digest in linked
+        ):
             continue
-        linked_items = [residual_by_digest[digest] for digest in linked]
-        expected_operations = [item["operation"] for item in linked_items]
-        if lifecycle["residual_work_operations"] != expected_operations:
-            _offline_violation("residual_lifecycle_replayed_operation_mismatch")
-        replayed_lifecycle_digests.add(lifecycle["evidence_digest"])
+        branch_replay_ledger.register(
+            branch_ref, "stereo_lifecycle", item["evidence_digest"]
+        )
+        replayed_lifecycle_digests.add(item["evidence_digest"])
+
+
+def _check_reconstructed_lifecycle_manifest(*, branch, item, record) -> None:
+    lifecycle = getattr(record, "lifecycle_evidence", record)
+    residuals = tuple(getattr(record, "residual_work_evidence", ()))
+    residual_digests = tuple(_identity_digest(work) for work in residuals)
+    event = getattr(lifecycle, "event")
+    certificate = record is not lifecycle
+    if (
+        item["family"] != "stereo_lifecycle"
+        or item["source_digest"] != branch["payload"]["source_state_digest"]
+        or item["successor_digest"]
+        != branch["payload"]["successor_state_digest"]
+        or item["operation"] != record.__class__.__name__
+        or item["lifecycle_event_kind"]
+        != _writer_event_kind_from_instance(event)
+        or tuple(item["lifecycle_capabilities"])
+        != (
+            (record.capability.value,)
+            if certificate
+            else tuple(sorted(capability.value for capability in lifecycle.capabilities))
+        )
+        or item["lifecycle_outcome_kind"] != lifecycle.outcome_kind.value
+        or item["residual_snapshot_changed"]
+        != (
+            lifecycle.source_residual_snapshot
+            != lifecycle.successor_residual_snapshot
+        )
+        or item["source_residual_snapshot_digest"]
+        != _identity_digest(lifecycle.source_residual_snapshot)
+        or item["successor_residual_snapshot_digest"]
+        != _identity_digest(lifecycle.successor_residual_snapshot)
+        or item["local_orders_changed"]
+        != (lifecycle.source_local_orders != lifecycle.successor_local_orders)
+        or tuple(item["residual_work_digests"]) != residual_digests
+        or tuple(item["residual_work_operations"])
+        != tuple(work.operation for work in residuals)
+        or tuple(item["linked_residual_work_digests"]) != residual_digests
+        or item["certificate_kind"]
+        != (record.kind.value if certificate else None)
+        or item["certificate_capability"]
+        != (record.capability.value if certificate else None)
+        or item["certificate_lifecycle_digest"]
+        != (_identity_digest(lifecycle) if certificate else None)
+    ):
+        _offline_violation("stereo_lifecycle_identity_mismatch")
+
+
+def _writer_event_kind_from_instance(event) -> str:
+    name = event.__class__.__name__
+    mapping = {
+        "WriterAtomEmitted": "atom_emitted",
+        "WriterBondEmitted": "bond_emitted",
+        "WriterBranchOpened": "branch_opened",
+        "WriterBranchClosed": "branch_closed",
+        "WriterComponentBoundaryEmitted": "component_boundary_emitted",
+        "WriterLocalOrderClosed": "local_order_closed",
+        "WriterRingLabelAllocated": "ring_label_allocated",
+        "WriterRingLabelReleased": "ring_label_released",
+        "WriterRingEndpointEmitted": "ring_endpoint_emitted",
+        "WriterRingEndpointPaired": "ring_endpoint_paired",
+    }
+    kind = mapping.get(name)
+    if kind is None:
+        _offline_violation("stereo_lifecycle_event_kind_unknown")
+    return kind
+
+
+def _writer_event_from_manifest(item):
+    kind = item["kind"]
+    if kind == "atom_emitted":
+        return WriterAtomEmitted(
+            atom=AtomId(item["atom"]),
+            text=item["text"],
+            tetra_token=_tetra_token_from_closed_term(item["tetra_token"]),
+            parent=None if item["parent"] is None else AtomId(item["parent"]),
+            incoming_bond=(
+                None
+                if item["incoming_bond"] is None
+                else BondId(item["incoming_bond"])
+            ),
+        )
+    if kind == "bond_emitted":
+        return WriterBondEmitted(
+            bond=BondId(item["bond"]),
+            parent=AtomId(item["parent"]),
+            child=AtomId(item["child"]),
+            text=item["text"],
+            direction_mark=_direction_mark_from_closed_term(item["direction_mark"]),
+        )
+    if kind == "branch_opened":
+        return WriterBranchOpened(
+            parent=AtomId(item["parent"]),
+            child=AtomId(item["child"]),
+            bond=BondId(item["bond"]),
+        )
+    if kind == "branch_closed":
+        return WriterBranchClosed(atom=AtomId(item["atom"]))
+    if kind == "component_boundary_emitted":
+        return WriterComponentBoundaryEmitted(next_root=AtomId(item["next_root"]))
+    if kind == "local_order_closed":
+        return WriterLocalOrderClosed(atom=AtomId(item["atom"]))
+    if kind == "ring_label_allocated":
+        return WriterRingLabelAllocated(
+            label=_closure_label_from_closed_term(item["label"]),
+            source=item["source"],
+        )
+    if kind == "ring_label_released":
+        return WriterRingLabelReleased(
+            label=_closure_label_from_closed_term(item["label"]),
+            destination=item["destination"],
+        )
+    if kind == "ring_endpoint_emitted":
+        return WriterRingEndpointEmitted(
+            bond=BondId(item["bond"]),
+            endpoint_atom=AtomId(item["endpoint_atom"]),
+            partner_atom=AtomId(item["partner_atom"]),
+            label=_closure_label_from_closed_term(item["label"]),
+            endpoint_text=item["endpoint_text"],
+            bond_text=item["bond_text"],
+            direction_mark=_direction_mark_from_closed_term(item["direction_mark"]),
+            side=item["side"],
+        )
+    if kind == "ring_endpoint_paired":
+        return WriterRingEndpointPaired(
+            bond=BondId(item["bond"]),
+            endpoint_atom=AtomId(item["endpoint_atom"]),
+            partner_atom=AtomId(item["partner_atom"]),
+            label=_closure_label_from_closed_term(item["label"]),
+            endpoint_text=item["endpoint_text"],
+            bond_text=item["bond_text"],
+            direction_mark=_direction_mark_from_closed_term(item["direction_mark"]),
+            first_endpoint_bond_text=item["first_endpoint_bond_text"],
+            first_endpoint_direction_mark=_direction_mark_from_closed_term(
+                item["first_endpoint_direction_mark"]
+            ),
+            side=item["side"],
+        )
+    _offline_violation("branch_obligation_event_kind_unknown")
+
+
+def _tetra_token_from_closed_term(term) -> TetraToken:
+    for token in TetraToken:
+        if term == _term(token):
+            return token
+    _offline_violation("stereo_lifecycle_tetra_token_mismatch")
+
+
+def _closure_label_from_closed_term(term) -> WriterClosureLabel:
+    if (
+        not isinstance(term, Mapping)
+        or term.get("__dataclass__")
+        != "grimace._south_star1.writer_state.WriterClosureLabel"
+    ):
+        _offline_violation("branch_obligation_ring_label_shape_mismatch")
+    return WriterClosureLabel(
+        value=_term_field_value(term, "value"),
+        text=_term_field_value(term, "text"),
+    )
+
+
+def _reconstruct_graph_lifecycle_manifests(
+    *, prepared, branch, source, successor, branch_ref, branch_replay_ledger
+) -> None:
+    payload = branch["payload"]
+    event_manifests = payload["graph_ring_delta"]["manifest"]["event_manifests"]
+    events = tuple(_writer_event_from_manifest(item) for item in event_manifests)
+    source_context = build_writer_graph_obligation_context(prepared, source)
+    surface = _reconstruct_graph_action_surface(
+        source=source,
+        context=source_context,
+        events=events,
+        transition_kind=WriterTransitionKind(payload["transition_kind"]["value"]),
+    )
+    if _identity_digest(surface) != payload["graph_action_surface_digest"]:
+        _offline_violation("branch_graph_action_surface_identity_mismatch")
+
+    residual_evidence = writer_residual_attachment_lifecycle_evidence_for_transition(
+        prepared=prepared,
+        source_state=source,
+        successor_state=successor,
+        graph_action_surface=surface,
+    )
+    residual_capabilities = set()
+    if residual_evidence:
+        lifecycle = residual_evidence[0]
+        if (
+            lifecycle.source_closure_deficit == 2
+            and lifecycle.successor_closure_deficit == 1
+            and len(lifecycle.source_attachment.block_ids) == 1
+        ):
+            residual_capabilities.add(
+                _WriterExecutionCapabilityKind.COUPLED_CYCLIC_ATTACHMENT_RESTRICTION
+            )
+    residual_certificates = writer_residual_attachment_branch_certificates(
+        execution_capabilities=frozenset(residual_capabilities),
+        graph_action_surface=surface,
+        residual_attachment_lifecycle_evidence=residual_evidence,
+    )
+    _register_reconstructed_graph_family(
+        branch=branch,
+        branch_ref=branch_ref,
+        family="residual_attachment_lifecycle",
+        expected=(*residual_evidence, *residual_certificates),
+        branch_replay_ledger=branch_replay_ledger,
+    )
+
+    closure_evidence = writer_closure_candidate_lifecycle_evidence_for_transition(
+        prepared=prepared,
+        source_state=source,
+        successor_state=successor,
+        graph_action_surface=surface,
+    )
+    resolutions = writer_closure_candidate_resolutions(
+        source,
+        source_context.edge_partition,
+    )
+    closure_capabilities = set()
+    if surface.closure_open_source_kind is (
+        _WriterClosureOpenObligationSourceKind
+        .LIVE_BRANCH_RETURN_CLOSURE_CANDIDATE
+    ):
+        closure_capabilities.add(
+            _WriterExecutionCapabilityKind
+            .LIVE_BRANCH_RETURN_CLOSURE_CANDIDATE_OPEN
+        )
+    if any(
+        item.resolution_kind
+        is WriterClosureCandidateResolutionKind.DEFERRED_BRANCH_RETURN
+        for item in resolutions
+    ):
+        closure_capabilities.add(
+            _WriterExecutionCapabilityKind
+            .DEFERRED_BRANCH_RETURN_CLOSURE_CANDIDATE
+        )
+    if any(
+        item.resolution_kind
+        is WriterClosureCandidateResolutionKind.DEFERRED_CONTROL_LIVE
+        for item in resolutions
+    ):
+        closure_capabilities.add(
+            _WriterExecutionCapabilityKind
+            .DEFERRED_CONTROL_LIVE_CLOSURE_CANDIDATE
+        )
+    graph_work = tuple(
+        writer_graph_obligation_work_evidence(
+            operation=item["operation"],
+            prepared=prepared,
+            key=source,
+            context=source_context,
+        )
+        for item in payload["obligation_manifests"]["graph_obligation_work"]
+    )
+    closure_certificates = writer_closure_candidate_branch_certificates(
+        execution_capabilities=frozenset(closure_capabilities),
+        transition_kind=WriterTransitionKind(payload["transition_kind"]["value"]),
+        graph_action_surface=surface,
+        graph_obligation_work_evidence=graph_work,
+        closure_candidate_resolution_evidence=resolutions,
+        closure_candidate_lifecycle_evidence=closure_evidence,
+        events=events,
+    )
+    _register_reconstructed_graph_family(
+        branch=branch,
+        branch_ref=branch_ref,
+        family="closure_candidate_lifecycle",
+        expected=(*closure_evidence, *closure_certificates),
+        branch_replay_ledger=branch_replay_ledger,
+    )
+
+
+def _register_reconstructed_graph_family(
+    *, branch, branch_ref, family, expected, branch_replay_ledger
+) -> None:
+    items = branch["payload"]["obligation_manifests"][family]
+    expected_by_digest = {_identity_digest(record): record for record in expected}
+    if len(expected_by_digest) != len(expected) or len(items) != len(expected):
+        _offline_violation(f"{family}_manifest_count_mismatch")
+    for item in items:
+        record = expected_by_digest.get(item["evidence_digest"])
+        if record is None:
+            _offline_violation(f"{family}_identity_mismatch")
+        if (
+            item["family"] != family
+            or item["operation"] != record.__class__.__name__
+            or item["source_digest"]
+            != branch["payload"]["source_state_digest"]
+            or item["successor_digest"]
+            != branch["payload"]["successor_state_digest"]
+        ):
+            _offline_violation(f"{family}_identity_mismatch")
+        branch_replay_ledger.register(
+            branch_ref, family, item["evidence_digest"]
+        )
+
+
+def _reconstruct_graph_action_surface(
+    *, source, context, events, transition_kind
+) -> _WriterScheduledGraphActionSurface:
+    atom_events = [event for event in events if isinstance(event, WriterAtomEmitted)]
+    bond_events = [event for event in events if isinstance(event, WriterBondEmitted)]
+    open_events = [
+        event for event in events if isinstance(event, WriterRingEndpointEmitted)
+    ]
+    pair_events = [
+        event for event in events if isinstance(event, WriterRingEndpointPaired)
+    ]
+    branch_open_events = [
+        event for event in events if isinstance(event, WriterBranchOpened)
+    ]
+    if open_events:
+        event = open_events[0]
+        attachment = _attachment_incidence_for_bond(
+            context=context,
+            bond=event.bond,
+            written_atom=event.endpoint_atom,
+        )
+        if attachment is None:
+            source_kind = (
+                _WriterClosureOpenObligationSourceKind
+                .LIVE_BRANCH_RETURN_CLOSURE_CANDIDATE
+            )
+            attachment_id = None
+            action_kind = None
+            owner_kind = None
+        else:
+            source_kind = _WriterClosureOpenObligationSourceKind.RESIDUAL_ATTACHMENT
+            attachment_id, action_kind, owner_kind = attachment
+        return _WriterScheduledGraphActionSurface(
+            kind=_WriterScheduledActionKind.OPEN_CLOSURE_ENDPOINT,
+            active_atom=source.active.atom,
+            bond=event.bond,
+            partner_atom=event.partner_atom,
+            boundary_atom=event.endpoint_atom,
+            attachment_id=attachment_id,
+            attachment_action_kind=action_kind,
+            owner_kind=owner_kind,
+            closure_label=event.label,
+            closure_open_source_kind=source_kind,
+        )
+    if pair_events:
+        event = pair_events[0]
+        return _WriterScheduledGraphActionSurface(
+            kind=_WriterScheduledActionKind.PAIR_CLOSURE_ENDPOINT,
+            active_atom=source.active.atom,
+            bond=event.bond,
+            partner_atom=event.partner_atom,
+            boundary_atom=event.endpoint_atom,
+            closure_label=event.label,
+        )
+    pending = source.obligations.pending_entry
+    if pending is not None and (atom_events or bond_events):
+        return _WriterScheduledGraphActionSurface(
+            kind=_WriterScheduledActionKind.CONSUME_PENDING_ENTRY,
+            active_atom=source.active.atom,
+            bond=pending.bond,
+            partner_atom=pending.child,
+            boundary_atom=pending.parent,
+            pending_entry=True,
+        )
+    if atom_events and atom_events[0].parent is None:
+        return _WriterScheduledGraphActionSurface(
+            kind=_WriterScheduledActionKind.EMIT_ROOT_ATOM,
+            active_atom=source.active.atom,
+        )
+    if branch_open_events:
+        event = branch_open_events[0]
+        pending = source.obligations.pending_entry
+        if (
+            pending is not None
+            and pending.bond == event.bond
+            and pending.parent == event.parent
+            and pending.child == event.child
+        ):
+            return _WriterScheduledGraphActionSurface(
+                kind=_WriterScheduledActionKind.OPEN_BRANCH,
+                active_atom=source.active.atom,
+                bond=event.bond,
+                partner_atom=event.child,
+                boundary_atom=event.parent,
+                pending_entry=True,
+            )
+        attachment = _attachment_incidence_for_bond(
+            context=context,
+            bond=event.bond,
+            written_atom=event.parent,
+        )
+        attachment_id = action_kind = owner_kind = None
+        if attachment is not None:
+            attachment_id, action_kind, owner_kind = attachment
+        return _WriterScheduledGraphActionSurface(
+            kind=_WriterScheduledActionKind.OPEN_BRANCH,
+            active_atom=source.active.atom,
+            bond=event.bond,
+            partner_atom=event.child,
+            boundary_atom=event.parent,
+            attachment_id=attachment_id,
+            attachment_action_kind=action_kind,
+            owner_kind=owner_kind,
+        )
+    if bond_events:
+        bond_event = bond_events[0]
+        attachment = _attachment_incidence_for_bond(
+            context=context,
+            bond=bond_event.bond,
+            written_atom=bond_event.parent,
+        )
+        attachment_id = action_kind = owner_kind = None
+        if attachment is not None:
+            attachment_id, action_kind, owner_kind = attachment
+        return _WriterScheduledGraphActionSurface(
+            kind=(
+                _WriterScheduledActionKind.OPEN_BRANCH
+                if branch_open_events
+                else _WriterScheduledActionKind.ENTER_INLINE_CHILD
+            ),
+            active_atom=source.active.atom,
+            bond=bond_event.bond,
+            partner_atom=bond_event.child,
+            boundary_atom=bond_event.parent,
+            attachment_id=attachment_id,
+            attachment_action_kind=action_kind,
+            owner_kind=owner_kind,
+        )
+    if transition_kind in (WriterTransitionKind.CLOSE_BRANCH, WriterTransitionKind.DOT):
+        return _WriterScheduledGraphActionSurface(
+            kind=_WriterScheduledActionKind.FINISH_ACTIVE,
+            active_atom=source.active.atom,
+        )
+    _offline_violation("branch_graph_action_surface_kind_unknown")
+
+
+def _attachment_incidence_for_bond(*, context, bond, written_atom):
+    matches = []
+    actions = {
+        action.attachment_id: action
+        for action in context.residual_summary.attachment_actions
+    }
+    for attachment in context.residual_summary.attachments.attachments:
+        for incidence in attachment.boundary:
+            if incidence.bond == bond and incidence.written_atom == written_atom:
+                action = actions[attachment.attachment_id]
+                matches.append(
+                    (attachment.attachment_id, action.kind, incidence.owner_kind)
+                )
+    if len(matches) > 1:
+        _offline_violation("branch_graph_action_attachment_ambiguous")
+    return matches[0] if matches else None
 
 
 def _replay_component_boundary_branch_obligations(
@@ -1716,11 +2548,11 @@ def _component_boundary_writer_states(*, branch, objects):
 def _classify_branch_directional_ring_closure_lifecycles(
     *,
     branch: Mapping[str, object],
+    branch_ref: str,
     facts: MoleculeFacts,
     objects: Mapping[str, Mapping[str, object]],
-    replayed_residual_digests: set[str],
-    replayed_lifecycle_digests: set[str],
     replayed_directional_ring_closure_digests: set[str],
+    branch_replay_ledger: _BranchObligationReplayLedger,
 ) -> None:
     payload = branch["payload"]
     items = payload["obligation_manifests"]["directional_ring_closure_lifecycle"]
@@ -1834,7 +2666,9 @@ def _classify_branch_directional_ring_closure_lifecycles(
         lifecycle = lifecycle_by_digest.get(stereo_digest)
         if lifecycle is None:
             _offline_violation("directional_ring_coupling_lifecycle_branch_mismatch")
-        if stereo_digest not in replayed_lifecycle_digests:
+        if not branch_replay_ledger.contains(
+            branch_ref, "stereo_lifecycle", stereo_digest
+        ):
             continue
         expected_operation = (
             "directional ring endpoint projection"
@@ -1854,7 +2688,10 @@ def _classify_branch_directional_ring_closure_lifecycles(
             _offline_violation("directional_ring_coupling_residual_state_mismatch")
         if any(digest not in residual_by_digest for digest in residual_digests):
             _offline_violation("directional_ring_coupling_residual_branch_mismatch")
-        if any(digest not in replayed_residual_digests for digest in residual_digests):
+        if any(
+            not branch_replay_ledger.contains(branch_ref, "residual_work", digest)
+            for digest in residual_digests
+        ):
             continue
         if (
             len(residual_digests) != 1
@@ -1903,6 +2740,11 @@ def _classify_branch_directional_ring_closure_lifecycles(
             ):
                 _offline_violation("directional_ring_coupling_closed_record_mismatch")
         replayed_directional_ring_closure_digests.add(item["evidence_digest"])
+        branch_replay_ledger.register(
+            branch_ref,
+            "directional_ring_closure_lifecycle",
+            item["evidence_digest"],
+        )
 
 
 def _check_branch_residual_lifecycle_links(
@@ -4471,45 +5313,6 @@ def _unchecked_obligation_family_name(
     ):
         return "directional_ring_pair_transition_replay"
     return family
-
-
-def _ring_obligation_manifest_checked(item: Mapping[str, object]) -> bool:
-    summary = item["ring_summary"]
-    if summary is None:
-        return False
-    family = item["family"]
-    if not summary["is_exact"]:
-        return False
-    if family == "finite_relation_work":
-        if item["operation"] not in (
-            "closure endpoint open relation",
-            "closure endpoint pair relation",
-        ):
-            return False
-        if summary["operation"] != item["operation"]:
-            return False
-        return bool(summary["is_exhausted"] and summary["is_discharged"])
-    if family == "graph_obligation_work":
-        if item["operation"] != "writer graph obligation context":
-            return False
-        if summary["operation"] != item["operation"]:
-            return False
-        kind = summary["relation_kind"]
-        if kind == "ring_endpoint_open":
-            return bool(
-                summary["is_complete"]
-                and summary["pending_before_count"] == 0
-                and summary["pending_after_count"] == 1
-            )
-        if kind in ("ring_endpoint_pair", "ring_endpoint_pair_non_single"):
-            return bool(
-                summary["is_complete"]
-                and summary["is_discharged"]
-                and summary["pending_before_count"] == 1
-                and summary["pending_after_count"] == 0
-                and summary["closed_after_count"] == 1
-            )
-    return False
 
 
 def _check_branch_obligation_ring_summaries(branch: Mapping[str, object]) -> None:

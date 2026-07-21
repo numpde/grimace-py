@@ -100,6 +100,7 @@ def verify_writer_branch_transition_artifact_for_facts(
                 return WriterBranchTransitionArtifactFactVerification(accepted=False, reason=check.reason)
         obligations = verify_branch_obligations_offline(
             facts=facts,
+            prepared=prepared,
             artifact=artifact,
             objects=objects,
             branch_ref=branch_ref,

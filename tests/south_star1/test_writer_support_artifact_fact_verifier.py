@@ -114,7 +114,7 @@ RUN_SLOW_ENV = "SOUTH_STAR1_RUN_SLOW"
 
 
 class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
-    def test_linked_lifecycle_requires_replayed_residual_work(self) -> None:
+    def test_stereo_lifecycle_requires_exact_replay_credit(self) -> None:
         lifecycle = {
             "family": "stereo_lifecycle",
             "evidence_digest": "lifecycle",
@@ -142,7 +142,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             )
         )
         lifecycle["linked_residual_work_digests"] = []
-        self.assertTrue(
+        self.assertFalse(
             offline_verifier_module._obligation_manifest_checked(
                 lifecycle,
                 replayed_residual_digests=set(),
@@ -2411,7 +2411,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
                 self.assertTrue(verification.accepted, verification.reason)
                 self.assertTrue(verification.offline_replay_complete)
 
-    def test_ring_obligation_manifest_mutations_are_classified(self) -> None:
+    def test_ring_summary_flags_do_not_control_replay_credit(self) -> None:
         facts = _rdkit_facts("C1=CC1")
         artifact = _rdkit_artifact("C1=CC1")
         branch = _first_graph_ring_delta_branch(
@@ -2424,7 +2424,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         not_exact = _obligation_classification(artifact, facts=facts)
 
         self.assertTrue(not_exact.accepted, not_exact.reason)
-        self.assertIn("finite_relation_work", not_exact.unchecked_families)
+        self.assertNotIn("finite_relation_work", not_exact.unchecked_families)
 
         artifact = _rdkit_artifact("C1=CC1")
         branch = _first_graph_ring_delta_branch(
@@ -2437,7 +2437,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         not_complete = _obligation_classification(artifact, facts=facts)
 
         self.assertTrue(not_complete.accepted, not_complete.reason)
-        self.assertIn("graph_obligation_work", not_complete.unchecked_families)
+        self.assertNotIn("graph_obligation_work", not_complete.unchecked_families)
 
     def test_ring_obligation_cross_link_mutations_are_rejected(self) -> None:
         facts = _rdkit_facts("C1=CC1")
@@ -2497,7 +2497,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         self.assertFalse(verification.accepted)
         self.assertIn("obligation_manifest_count_mismatch", verification.reason)
 
-    def test_synthetic_stereo_obligation_is_reported_unchecked(self) -> None:
+    def test_stereo_lifecycle_flags_do_not_control_replay_credit(self) -> None:
         facts = _rdkit_facts("CCO")
         artifact = _rdkit_artifact("CCO")
         branch = _first_branch_support_object(artifact)
@@ -2510,7 +2510,93 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
         self.assertTrue(classification.accepted, classification.reason)
         self.assertTrue(classification.stereo_obligations_present)
-        self.assertIn("stereo_lifecycle", classification.unchecked_families)
+        self.assertNotIn("stereo_lifecycle", classification.unchecked_families)
+
+    def test_descriptive_flags_cannot_credit_forged_graph_work(self) -> None:
+        facts = _rdkit_facts("CCO")
+        artifact = deepcopy(_rdkit_artifact("CCO"))
+        branch = _first_branch_support_object(artifact)
+        manifest = branch["payload"]["obligation_manifests"][
+            "graph_obligation_work"
+        ][0]
+        manifest["operation"] = "forged graph obligation context"
+        for name in ("is_noop", "is_empty", "is_discharged", "terminal_clean"):
+            manifest[name] = True
+        _refresh_object_and_artifact_digest(artifact, branch)
+
+        structural = verify_writer_support_artifact_consistency(artifact)
+        verification = verify_writer_support_artifact_for_facts(
+            facts=facts,
+            runtime_options=_writer_options(),
+            artifact=artifact,
+        )
+
+        self.assertTrue(structural.accepted, structural.reason)
+        self.assertFalse(verification.accepted)
+        self.assertIn("graph_obligation_work_operation_mismatch", verification.reason)
+
+    def test_branch_local_ledger_rejects_transplanted_graph_manifest(self) -> None:
+        facts = _rdkit_facts("CCO")
+        artifact = deepcopy(_rdkit_artifact("CCO"))
+        branches = [item for item in artifact["objects"] if item["kind"] == "branch_support"]
+        source = branches[0]
+        target = next(
+            branch
+            for branch in branches[1:]
+            if branch["payload"]["source_state_digest"]
+            != source["payload"]["source_state_digest"]
+        )
+        target_manifest = target["payload"]["obligation_manifests"][
+            "graph_obligation_work"
+        ][0]
+        source["payload"]["obligation_manifests"]["graph_obligation_work"] = [
+            deepcopy(target_manifest)
+        ]
+        for name in ("is_noop", "is_empty", "is_discharged", "terminal_clean"):
+            source["payload"]["obligation_manifests"]["graph_obligation_work"][0][
+                name
+            ] = True
+        _refresh_object_and_artifact_digest(artifact, source)
+
+        structural = verify_writer_support_artifact_consistency(artifact)
+        verification = verify_writer_support_artifact_for_facts(
+            facts=facts,
+            runtime_options=_writer_options(),
+            artifact=artifact,
+        )
+
+        self.assertTrue(structural.accepted, structural.reason)
+        self.assertFalse(verification.accepted)
+        self.assertIn("graph_obligation_work_identity_mismatch", verification.reason)
+
+    def test_ring_summary_and_flags_cannot_credit_forged_relation_work(self) -> None:
+        facts = _rdkit_facts("C1CC1")
+        artifact = deepcopy(_rdkit_artifact("C1CC1"))
+        branch = next(
+            item
+            for item in artifact["objects"]
+            if item["kind"] == "branch_support"
+            and item["payload"]["obligation_manifests"]["finite_relation_work"]
+        )
+        manifest = branch["payload"]["obligation_manifests"][
+            "finite_relation_work"
+        ][0]
+        manifest["operation"] = "forged closure relation"
+        for name in ("is_noop", "is_empty", "is_discharged", "terminal_clean"):
+            manifest[name] = True
+        manifest["ring_summary"] = deepcopy(manifest["ring_summary"])
+        _refresh_object_and_artifact_digest(artifact, branch)
+
+        structural = verify_writer_support_artifact_consistency(artifact)
+        verification = verify_writer_support_artifact_for_facts(
+            facts=facts,
+            runtime_options=_writer_options(),
+            artifact=artifact,
+        )
+
+        self.assertTrue(structural.accepted, structural.reason)
+        self.assertFalse(verification.accepted)
+        self.assertIn("ring_obligation_operation_mismatch", verification.reason)
 
     def test_obligation_summary_mutation_is_structurally_rejected(self) -> None:
         artifact = _rdkit_artifact("CCO")

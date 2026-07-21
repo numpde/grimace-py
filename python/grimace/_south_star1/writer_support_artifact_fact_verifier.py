@@ -89,6 +89,7 @@ def verify_writer_support_artifact_for_facts(
         offline = verify_writer_support_artifact_offline_replay(
             facts=facts,
             artifact=artifact,
+            prepared=prepared,
             budget=budget,
         )
         if not offline.accepted:

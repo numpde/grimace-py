@@ -33,10 +33,13 @@ serialized outside the single source snapshot.
 
 The manifest commits to ordered chunk descriptors rather than repeating the
 records. Chunks are canonical JSON capped at 4 MB and are written through
-temporary files before the verified directory is atomically renamed. Online
-loading reads only the manifest and core chunk. A proof cursor additionally
-tracks the raw cursor digest; local branch and terminal artifacts are rebuilt
-on demand by replaying the canonical predecessor path through the
+temporary files. Before the directory is atomically renamed, publication runs
+structural verification, full live provenance replay, and the structural,
+live, and producer-free facts verifiers for every exact branch and terminal
+locator. A failed proof removes the temporary bundle and publishes nothing.
+Online loading reads only the manifest and core chunk. A proof cursor
+additionally tracks the raw cursor digest; local branch and terminal artifacts
+are rebuilt on demand by replaying the canonical predecessor path through the
 counts-disabled frontier.
 
 Authority stays deliberately split:
@@ -46,6 +49,10 @@ Authority stays deliberately split:
 - live verification owns genuine cursor, projection, branch, and terminal
   identities;
 - existing local artifact verifiers own chemistry and transition semantics.
+
+Publication composes all three authorities; it does not serialize a
+certification flag. Proof credit remains keyed to each exact source cursor and
+branch-certificate or terminal-support identity.
 
 ## Baseline
 

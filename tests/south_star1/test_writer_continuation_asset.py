@@ -18,6 +18,9 @@ from grimace._south_star1.writer_continuation_asset import (
     advance_writer_continuation_proof,
 )
 from grimace._south_star1.writer_branch_transition_artifact_fact_verifier import (
+    WriterBranchTransitionArtifactFactVerification,
+)
+from grimace._south_star1.writer_branch_transition_artifact_fact_verifier import (
     verify_writer_branch_transition_artifact_for_facts,
 )
 from grimace._south_star1.writer_continuation_asset import (
@@ -34,6 +37,9 @@ from grimace._south_star1.writer_continuation_asset import (
 )
 from grimace._south_star1.writer_continuation_asset import (
     verify_writer_continuation_asset_live,
+)
+from grimace._south_star1.writer_continuation_asset import (
+    verify_writer_continuation_asset_for_prepared,
 )
 from grimace._south_star1.writer_continuation_asset import (
     verify_writer_continuation_cursor_envelope,
@@ -55,9 +61,13 @@ from grimace._south_star1.writer_continuation_automaton import (
 )
 from grimace._south_star1.writer_envelope_terms import _identity_digest
 from grimace._south_star1.writer_terminalization_artifact_fact_verifier import (
+    WriterTerminalizationArtifactFactsVerification,
+)
+from grimace._south_star1.writer_terminalization_artifact_fact_verifier import (
     verify_writer_terminalization_artifact_for_facts,
 )
 from tests.south_star1.helpers import cco_facts
+from tests.south_star1.helpers import directional_facts
 from tests.south_star1.test_writer_branch_transition_artifact import (
     _shared_ring_branch_sources,
 )
@@ -145,6 +155,28 @@ class WriterContinuationAssetTest(unittest.TestCase):
                 self.assertTrue(choices)
 
             asset = open_writer_continuation_core(first)
+            semantic = verify_writer_continuation_asset_for_prepared(
+                prepared=prepared,
+                asset=asset,
+            )
+            self.assertTrue(semantic.accepted, semantic.reason)
+            self.assertTrue(semantic.structurally_verified)
+            self.assertTrue(semantic.live_replay_complete)
+            self.assertEqual(
+                semantic.branch_locator_count,
+                semantic.branch_proof_count,
+            )
+            self.assertEqual(
+                semantic.terminal_locator_count,
+                semantic.terminal_proof_count,
+            )
+            self.assertEqual(semantic.unchecked_obligation_families, ())
+            mismatched = verify_writer_continuation_asset_for_prepared(
+                prepared=_prepare(_directional_non_single_ring_carrier_facts()),
+                asset=open_writer_continuation_core(first),
+            )
+            self.assertFalse(mismatched.accepted)
+            self.assertIn("prepared_identity_mismatch", mismatched.reason)
             root = asset.root_proof_cursor
             cursor_envelope = writer_continuation_cursor_envelope(
                 asset=asset,
@@ -280,6 +312,121 @@ class WriterContinuationAssetTest(unittest.TestCase):
             )
             self.assertFalse(live.accepted)
             self.assertIn("live_projection_mismatch", live.reason)
+
+    def test_semantic_certifier_rejects_coherent_locator_substitution(self) -> None:
+        cases = (
+            (
+                cco_facts(),
+                _writer_options(),
+                _forge_branch_digest_transplant,
+            ),
+            (
+                directional_facts(),
+                _writer_options(rooted_at_atom=2),
+                _forge_terminal_identity_transplant,
+            ),
+        )
+        for facts, options, forge in cases:
+            with (
+                self.subTest(forge=forge.__name__),
+                TemporaryDirectory() as directory,
+            ):
+                prepared = _prepare(facts)
+                snapshot = _initial_snapshot(prepared, options)
+                path = Path(directory) / "asset"
+                write_writer_continuation_asset(
+                    path=path,
+                    prepared=prepared,
+                    snapshot=snapshot,
+                )
+                forge(path)
+                structural = verify_writer_continuation_asset_consistency(path)
+                self.assertTrue(structural.accepted, structural.reason)
+                semantic = verify_writer_continuation_asset_for_prepared(
+                    prepared=prepared,
+                    asset=open_writer_continuation_core(path),
+                )
+                self.assertFalse(semantic.accepted)
+                self.assertTrue(semantic.structurally_verified)
+                self.assertIn("continuation_asset", semantic.reason)
+
+    def test_publication_requires_branch_and_terminal_facts_proofs(self) -> None:
+        prepared = _prepare(cco_facts())
+        snapshot = _initial_snapshot(prepared, _writer_options())
+        cases = (
+            (
+                "verify_writer_branch_transition_artifact_for_facts",
+                WriterBranchTransitionArtifactFactVerification(
+                    accepted=False,
+                    reason="forced_facts_rejection",
+                ),
+            ),
+            (
+                "verify_writer_terminalization_artifact_for_facts",
+                WriterTerminalizationArtifactFactsVerification(
+                    accepted=False,
+                    reason="forced_facts_rejection",
+                ),
+            ),
+        )
+        for verifier_name, rejection in cases:
+            with (
+                self.subTest(verifier=verifier_name),
+                TemporaryDirectory() as directory,
+            ):
+                path = Path(directory) / "asset"
+                with patch.object(
+                    continuation_asset_module,
+                    verifier_name,
+                    return_value=rejection,
+                ):
+                    with self.assertRaises(SouthStarError) as raised:
+                        write_writer_continuation_asset(
+                            path=path,
+                            prepared=prepared,
+                            snapshot=snapshot,
+                        )
+                self.assertIn("forced_facts_rejection", str(raised.exception))
+                self.assertFalse(path.exists())
+                self.assertEqual(
+                    tuple(Path(directory).glob(f".{path.name}.*")),
+                    (),
+                )
+
+    def test_certification_uses_no_rich_support_or_count_path(self) -> None:
+        prepared = _prepare(cco_facts())
+        snapshot = _initial_snapshot(prepared, _writer_options())
+        blocked = AssertionError("legacy materialization path invoked")
+        with (
+            TemporaryDirectory() as directory,
+            patch(
+                "grimace._south_star1.writer_support_artifact_envelope."
+                "writer_support_artifact_envelope_for_snapshot",
+                side_effect=blocked,
+            ),
+            patch(
+                "grimace._south_star1.writer_frontier_count_envelope."
+                "writer_frontier_count_envelope_for_snapshot",
+                side_effect=blocked,
+            ),
+            patch(
+                "grimace._south_star1.writer_count_dag_envelope."
+                "writer_count_certificate_dag_envelope_for_product",
+                side_effect=blocked,
+            ),
+            patch(
+                "grimace._south_star1.writer_snapshot."
+                "_iter_writer_snapshot_certified_support_strings",
+                side_effect=blocked,
+            ),
+        ):
+            path = Path(directory) / "asset"
+            write_writer_continuation_asset(
+                path=path,
+                prepared=prepared,
+                snapshot=snapshot,
+            )
+            self.assertTrue(path.is_dir())
 
     def test_missing_and_extra_chunks_reject(self) -> None:
         prepared = _prepare(cco_facts())
@@ -772,6 +919,100 @@ def _forge_unused_projection_digest(path):
             chunk_index=index,
             mutate=replace_predecessor,
         )
+
+
+def _forge_branch_digest_transplant(path):
+    manifest = json.loads((path / "manifest.json").read_text())
+    branch_digests = []
+    for descriptor in manifest["edge_chunks"]:
+        chunk = json.loads(
+            (path / "chunks" / f"{descriptor['digest']}.json").read_text()
+        )
+        branch_digests.extend(
+            item["branch_certificate_digests"][0]
+            for item in chunk["items"]
+            if item["branch_certificate_digests"]
+        )
+    if len(set(branch_digests)) < 2:
+        raise AssertionError("fixture needs two distinct branch identities")
+    replacement = next(
+        item for item in branch_digests if item != branch_digests[0]
+    )
+    changed = {}
+
+    def mutate(chunk):
+        item = next(
+            item
+            for item in chunk["items"]
+            if item["branch_certificate_digests"]
+        )
+        changed["old"] = item["edge_id"]
+        item["branch_certificate_digests"] = [replacement]
+        identity = (
+            item["source_raw_cursor_digest"],
+            item["emitted_text"],
+            item["text_projection_digest"],
+            item["branch_certificate_digests"],
+            item["successor_raw_cursor_digest"],
+        )
+        item["edge_id"] = hashlib.sha256(
+            _canonical(_dataclass_term(identity))
+        ).hexdigest()
+        changed["new"] = item["edge_id"]
+
+    _refresh_chunk(
+        path,
+        descriptor_field="edge_chunks",
+        chunk_index=0,
+        mutate=mutate,
+    )
+    manifest = json.loads((path / "manifest.json").read_text())
+    for index, descriptor in enumerate(manifest["raw_cursor_chunks"]):
+        chunk = json.loads(
+            (path / "chunks" / f"{descriptor['digest']}.json").read_text()
+        )
+        if not any(
+            item["predecessor_edge_id"] == changed["old"]
+            for item in chunk["items"]
+        ):
+            continue
+
+        def replace_predecessor(value):
+            for item in value["items"]:
+                if item["predecessor_edge_id"] == changed["old"]:
+                    item["predecessor_edge_id"] = changed["new"]
+
+        _refresh_chunk(
+            path,
+            descriptor_field="raw_cursor_chunks",
+            chunk_index=index,
+            mutate=replace_predecessor,
+        )
+
+
+def _forge_terminal_identity_transplant(path):
+    manifest = json.loads((path / "manifest.json").read_text())
+    identities = []
+    for descriptor in manifest["terminal_chunks"]:
+        chunk = json.loads(
+            (path / "chunks" / f"{descriptor['digest']}.json").read_text()
+        )
+        identities.extend(
+            digest
+            for item in chunk["items"]
+            for digest in item["terminal_support_identity_digests"]
+        )
+    if len(set(identities)) < 2:
+        raise AssertionError("fixture needs two distinct terminal identities")
+    replacement = next(item for item in identities if item != identities[0])
+    _refresh_chunk(
+        path,
+        descriptor_field="terminal_chunks",
+        chunk_index=0,
+        mutate=lambda chunk: chunk["items"][0].__setitem__(
+            "terminal_support_identity_digests", [replacement]
+        ),
+    )
 
 
 def _dataclass_term(value):

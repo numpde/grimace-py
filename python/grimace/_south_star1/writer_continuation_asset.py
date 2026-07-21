@@ -15,10 +15,16 @@ import tempfile
 from .errors import SouthStarError
 from .errors import SouthStarErrorKind
 from .writer_branch_transition_artifact import (
+    verify_writer_branch_transition_artifact_envelope,
+)
+from .writer_branch_transition_artifact import (
     writer_branch_transition_artifact_for_support,
 )
 from .writer_branch_transition_artifact_checker import (
     verify_writer_branch_transition_artifact_consistency,
+)
+from .writer_branch_transition_artifact_fact_verifier import (
+    verify_writer_branch_transition_artifact_for_facts,
 )
 from .writer_continuation_automaton import _canonical_predecessor_tree
 from .writer_continuation_automaton import _frontier_batch
@@ -47,10 +53,16 @@ from .writer_snapshot import WriterDecoderBoundary
 from .writer_snapshot_closed_terms import writer_frontier_cursor_from_closed_terms
 from .writer_prepared_identity import writer_prepared_identity
 from .writer_terminalization_artifact import (
+    verify_writer_terminalization_artifact_envelope,
+)
+from .writer_terminalization_artifact import (
     writer_terminalization_artifact_for_support,
 )
 from .writer_terminalization_artifact_checker import (
     verify_writer_terminalization_artifact_consistency,
+)
+from .writer_terminalization_artifact_fact_verifier import (
+    verify_writer_terminalization_artifact_for_facts,
 )
 
 
@@ -169,6 +181,22 @@ class WriterContinuationProofCursor:
 @dataclass(frozen=True, slots=True)
 class WriterContinuationAssetVerification:
     accepted: bool
+    reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class WriterContinuationAssetSemanticVerification:
+    accepted: bool
+    structurally_verified: bool = False
+    live_replay_complete: bool = False
+    raw_cursor_count: int = 0
+    edge_locator_count: int = 0
+    branch_locator_count: int = 0
+    branch_proof_count: int = 0
+    terminal_record_count: int = 0
+    terminal_locator_count: int = 0
+    terminal_proof_count: int = 0
+    unchecked_obligation_families: tuple[str, ...] = ()
     reason: str | None = None
 
 
@@ -398,6 +426,15 @@ def write_writer_continuation_asset(
         checked = verify_writer_continuation_asset_consistency(temporary)
         if not checked.accepted:
             _violation(checked.reason or "continuation_asset_structural_rejection")
+        asset = open_writer_continuation_core(temporary)
+        semantic = verify_writer_continuation_asset_for_prepared(
+            prepared=prepared,
+            asset=asset,
+        )
+        if not semantic.accepted:
+            _violation(
+                semantic.reason or "continuation_asset_semantic_certification_rejection"
+            )
         os.replace(temporary, destination)
         return manifest
     except BaseException:
@@ -845,6 +882,214 @@ def verify_writer_continuation_asset_live(*, prepared, asset, full):
         return WriterContinuationAssetVerification(
             accepted=False,
             reason=f"malformed_live_continuation_asset:{type(exc).__name__}:{exc}",
+        )
+
+
+def verify_writer_continuation_asset_for_prepared(
+    *, prepared, asset
+) -> WriterContinuationAssetSemanticVerification:
+    """Certify every live branch and terminal locator in one continuation asset."""
+    structurally_verified = False
+    live_replay_complete = False
+    raw_cursor_count = 0
+    edge_locator_count = 0
+    branch_locator_count = 0
+    branch_proof_count = 0
+    terminal_record_count = 0
+    terminal_locator_count = 0
+    terminal_proof_count = 0
+    unchecked_families: set[str] = set()
+    try:
+        structural = verify_writer_continuation_asset_consistency(asset.path)
+        if not structural.accepted:
+            _violation(
+                structural.reason or "continuation_asset_structural_rejection"
+            )
+        structurally_verified = True
+
+        source = _source_snapshot_from_asset(prepared=prepared, asset=asset)
+        if (
+            _identity_digest(source.cursor)
+            != asset.manifest["root_raw_cursor_digest"]
+        ):
+            _violation("continuation_asset_semantic_root_cursor_mismatch")
+
+        live = verify_writer_continuation_asset_live(
+            prepared=prepared,
+            asset=asset,
+            full=True,
+        )
+        if not live.accepted:
+            _violation(live.reason or "continuation_asset_live_replay_rejection")
+        live_replay_complete = True
+
+        raw_records = asset.records("raw_cursor_records")
+        edge_records = asset.records("edge_records")
+        terminal_records = asset.records("terminal_records")
+        raw_cursor_count = len(raw_records)
+        edge_locator_count = len(edge_records)
+        terminal_record_count = len(terminal_records)
+
+        branch_locators = tuple(
+            (
+                edge.source_raw_cursor_digest,
+                edge.emitted_text,
+                digest,
+            )
+            for edge in edge_records
+            for digest in edge.branch_certificate_digests
+        )
+        terminal_locators = tuple(
+            (terminal.source_raw_cursor_digest, digest)
+            for terminal in terminal_records
+            for digest in terminal.terminal_support_identity_digests
+        )
+        branch_locator_count = len(branch_locators)
+        terminal_locator_count = len(terminal_locators)
+        if len(set(branch_locators)) != branch_locator_count:
+            _violation("continuation_asset_duplicate_branch_locator")
+        if len(set(terminal_locators)) != terminal_locator_count:
+            _violation("continuation_asset_duplicate_terminal_locator")
+
+        proved_branches = set()
+        for source_digest, emitted_text, certificate_digest in branch_locators:
+            artifact = branch_transition_artifact_from_continuation_asset(
+                prepared=prepared,
+                asset=asset,
+                source_raw_cursor_digest=source_digest,
+                emitted_text=emitted_text,
+                branch_certificate_digest=certificate_digest,
+            )
+            structural_branch = (
+                verify_writer_branch_transition_artifact_consistency(artifact)
+            )
+            if not structural_branch.accepted:
+                _violation(
+                    structural_branch.reason
+                    or "continuation_asset_branch_structural_rejection"
+                )
+            live_branch = verify_writer_branch_transition_artifact_envelope(
+                prepared=prepared,
+                artifact=artifact,
+            )
+            if not live_branch.accepted:
+                _violation(
+                    live_branch.reason or "continuation_asset_branch_live_rejection"
+                )
+            facts_branch = verify_writer_branch_transition_artifact_for_facts(
+                facts=prepared.facts,
+                runtime_options=source.runtime_options,
+                artifact=artifact,
+                policy=prepared.policy,
+            )
+            unchecked_families.update(facts_branch.unchecked_obligation_families)
+            if not facts_branch.accepted:
+                _violation(
+                    facts_branch.reason or "continuation_asset_branch_facts_rejection"
+                )
+            if facts_branch.unchecked_obligation_families:
+                _violation("continuation_asset_branch_obligations_unchecked")
+            locator = (source_digest, emitted_text, certificate_digest)
+            if locator in proved_branches:
+                _violation("continuation_asset_duplicate_branch_proof_credit")
+            proved_branches.add(locator)
+            branch_proof_count = len(proved_branches)
+
+        proved_terminals = set()
+        for source_digest, support_digest in terminal_locators:
+            artifact = terminalization_artifact_from_continuation_asset(
+                prepared=prepared,
+                asset=asset,
+                source_raw_cursor_digest=source_digest,
+                terminal_support_identity_digest=support_digest,
+            )
+            structural_terminal = (
+                verify_writer_terminalization_artifact_consistency(artifact)
+            )
+            if not structural_terminal.accepted:
+                _violation(
+                    structural_terminal.reason
+                    or "continuation_asset_terminal_structural_rejection"
+                )
+            live_terminal = verify_writer_terminalization_artifact_envelope(
+                prepared=prepared,
+                artifact=artifact,
+            )
+            if not live_terminal.accepted:
+                _violation(
+                    live_terminal.reason
+                    or "continuation_asset_terminal_live_rejection"
+                )
+            facts_terminal = verify_writer_terminalization_artifact_for_facts(
+                facts=prepared.facts,
+                runtime_options=source.runtime_options,
+                artifact=artifact,
+                policy=prepared.policy,
+            )
+            unchecked_families.update(
+                facts_terminal.unchecked_obligation_families
+            )
+            if not facts_terminal.accepted:
+                _violation(
+                    facts_terminal.reason
+                    or "continuation_asset_terminal_facts_rejection"
+                )
+            if facts_terminal.unchecked_obligation_families:
+                _violation("continuation_asset_terminal_obligations_unchecked")
+            locator = (source_digest, support_digest)
+            if locator in proved_terminals:
+                _violation("continuation_asset_duplicate_terminal_proof_credit")
+            proved_terminals.add(locator)
+            terminal_proof_count = len(proved_terminals)
+
+        if proved_branches != set(branch_locators):
+            _violation("continuation_asset_branch_proof_coverage_mismatch")
+        if proved_terminals != set(terminal_locators):
+            _violation("continuation_asset_terminal_proof_coverage_mismatch")
+        return WriterContinuationAssetSemanticVerification(
+            accepted=True,
+            structurally_verified=True,
+            live_replay_complete=True,
+            raw_cursor_count=raw_cursor_count,
+            edge_locator_count=edge_locator_count,
+            branch_locator_count=branch_locator_count,
+            branch_proof_count=branch_proof_count,
+            terminal_record_count=terminal_record_count,
+            terminal_locator_count=terminal_locator_count,
+            terminal_proof_count=terminal_proof_count,
+        )
+    except SouthStarError as exc:
+        return WriterContinuationAssetSemanticVerification(
+            accepted=False,
+            structurally_verified=structurally_verified,
+            live_replay_complete=live_replay_complete,
+            raw_cursor_count=raw_cursor_count,
+            edge_locator_count=edge_locator_count,
+            branch_locator_count=branch_locator_count,
+            branch_proof_count=branch_proof_count,
+            terminal_record_count=terminal_record_count,
+            terminal_locator_count=terminal_locator_count,
+            terminal_proof_count=terminal_proof_count,
+            unchecked_obligation_families=tuple(sorted(unchecked_families)),
+            reason=exc.args[-1] if exc.args else "continuation_asset_semantic_error",
+        )
+    except (AssertionError, KeyError, OSError, TypeError, ValueError) as exc:
+        return WriterContinuationAssetSemanticVerification(
+            accepted=False,
+            structurally_verified=structurally_verified,
+            live_replay_complete=live_replay_complete,
+            raw_cursor_count=raw_cursor_count,
+            edge_locator_count=edge_locator_count,
+            branch_locator_count=branch_locator_count,
+            branch_proof_count=branch_proof_count,
+            terminal_record_count=terminal_record_count,
+            terminal_locator_count=terminal_locator_count,
+            terminal_proof_count=terminal_proof_count,
+            unchecked_obligation_families=tuple(sorted(unchecked_families)),
+            reason=(
+                "malformed_semantic_continuation_asset:"
+                f"{type(exc).__name__}:{exc}"
+            ),
         )
 
 
@@ -1379,6 +1624,7 @@ def _violation(kind):
 
 __all__ = (
     "WriterContinuationAsset",
+    "WriterContinuationAssetSemanticVerification",
     "WriterContinuationAssetVerification",
     "WriterContinuationProofCursor",
     "advance_writer_continuation_proof",
@@ -1387,6 +1633,7 @@ __all__ = (
     "reconstruct_writer_cursor_from_asset",
     "terminalization_artifact_from_continuation_asset",
     "verify_writer_continuation_asset_consistency",
+    "verify_writer_continuation_asset_for_prepared",
     "verify_writer_continuation_asset_live",
     "verify_writer_continuation_cursor_envelope",
     "write_writer_continuation_asset",

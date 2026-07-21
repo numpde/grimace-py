@@ -28,7 +28,10 @@ Proof-capable states additionally carry the asset's raw-cursor identity. Rust
 advance and replay-addressed provenance advance are checked against one another
 at every token. Existing branch-transition and terminalization artifacts remain
 the only local semantic proof vocabularies and are reconstructed lazily by
-Python.
+Python. Asset publication has already reconstructed and verified every exact
+branch and terminal locator structurally, live, and against facts before the
+bundle becomes visible; lazy reconstruction retains the same proof boundary
+for later callers.
 
 ## Field authorities
 

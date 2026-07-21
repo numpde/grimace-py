@@ -150,7 +150,6 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
             (shared_acyclic_directional_facts(), _writer_options(rooted_at_atom=0), "directional carrier-mark restriction"),
             (_directional_ring_carrier_facts(), _writer_options(rooted_at_atom=0), "directional ring endpoint projection"),
             (_directional_ring_carrier_facts(), _writer_options(rooted_at_atom=0), "directional ring pair restriction"),
-            (_directional_non_single_ring_carrier_facts(), _writer_options(rooted_at_atom=0), "directional ring pair restriction"),
         )
         for facts, options, operation in cases:
             with self.subTest(operation=operation, facts=type(facts).__name__):
@@ -169,6 +168,34 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
                     facts_bound.semantically_replayed_operations.count(operation),
                     1,
                 )
+
+    def test_non_single_ring_pair_retains_typed_incomplete_boundary(self) -> None:
+        facts = _directional_non_single_ring_carrier_facts()
+        options = _writer_options(rooted_at_atom=0)
+        prepared, artifact = _branch_artifact_for_operation(
+            facts,
+            options,
+            "directional ring pair restriction",
+        )
+        live = verify_writer_branch_transition_artifact_envelope(
+            prepared=prepared,
+            artifact=artifact,
+        )
+        facts_bound = verify_writer_branch_transition_artifact_for_facts(
+            facts=facts,
+            runtime_options=options,
+            artifact=artifact,
+        )
+        self.assertTrue(live.accepted, live.reason)
+        self.assertTrue(facts_bound.accepted, facts_bound.reason)
+        self.assertEqual(
+            facts_bound.unchecked_obligation_families,
+            ("directional_non_single_ring_transition_replay",),
+        )
+        self.assertEqual(
+            facts_bound.semantically_replayed_operations,
+            ("directional ring pair restriction",),
+        )
 
     def test_shared_ring_opening_and_pair_branches_replay_semantically(self) -> None:
         for phase in ("opening", "pair"):

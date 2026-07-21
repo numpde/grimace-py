@@ -9,6 +9,7 @@ import unittest
 from unittest.mock import patch
 
 from grimace import MolToSmilesContinuationDecoder
+from grimace._south_star1.errors import SouthStarError
 from grimace._south_star1.writer_continuation_asset import (
     open_writer_continuation_core,
 )
@@ -214,10 +215,6 @@ class WriterContinuationRustTest(unittest.TestCase):
                 _directional_ring_carrier_facts(),
                 _writer_options(rooted_at_atom=0),
             ),
-            (
-                _directional_non_single_ring_carrier_facts(),
-                _writer_options(rooted_at_atom=0),
-            ),
         )
         for facts, options in cases:
             with self.subTest(facts=facts), TemporaryDirectory() as directory:
@@ -238,6 +235,24 @@ class WriterContinuationRustTest(unittest.TestCase):
                         )
                     ),
                 )
+
+    def test_asset_publication_rejects_typed_incomplete_local_proof(self) -> None:
+        facts = _directional_non_single_ring_carrier_facts()
+        options = _writer_options(rooted_at_atom=0)
+        prepared = _prepare(facts)
+        snapshot = _initial_snapshot(prepared, options)
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "asset"
+            with self.assertRaisesRegex(
+                SouthStarError,
+                "continuation_asset_branch_obligations_unchecked",
+            ):
+                write_writer_continuation_asset(
+                    path=path,
+                    prepared=prepared,
+                    snapshot=snapshot,
+                )
+            self.assertFalse(path.exists())
 
     def test_proof_mode_reconstructs_branch_and_terminal_lazily(self) -> None:
         decoder = MolToSmilesContinuationDecoder.from_asset(

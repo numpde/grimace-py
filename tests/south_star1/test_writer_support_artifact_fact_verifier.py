@@ -530,6 +530,45 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             budget.max_digest_term_bytes,
         )
 
+    def test_non_single_directional_ring_root_zero_artifact_replays_completely(
+        self,
+    ) -> None:
+        if os.environ.get(RUN_SLOW_ENV) != "1":
+            self.skipTest(
+                f"set {RUN_SLOW_ENV}=1 to run the non-single directional ring artifact probe"
+            )
+        facts = _directional_non_single_ring_carrier_facts()
+        options = _writer_options(rooted_at_atom=0)
+        prepared = _prepare(facts)
+        artifact = writer_support_artifact_envelope_for_snapshot(
+            prepared=prepared,
+            snapshot=_initial_snapshot(prepared, options),
+        )
+        structural = verify_writer_support_artifact_consistency(artifact)
+        live = verify_writer_support_artifact_envelope(
+            prepared=prepared,
+            envelope=artifact,
+        )
+        verification = verify_writer_support_artifact_for_facts(
+            facts=facts,
+            runtime_options=options,
+            artifact=artifact,
+        )
+
+        self.assertTrue(structural.accepted, structural.reason)
+        self.assertTrue(live.accepted, live.reason)
+        self.assertTrue(verification.accepted, verification.reason)
+        self.assertEqual(
+            (verification.support_count, verification.witness_count),
+            (72, 72),
+        )
+        self.assertTrue(verification.offline_replay_complete)
+        self.assertEqual(verification.offline_unchecked_obligation_families, ())
+        self.assertIn(
+            "directional_ring_closure_lifecycle",
+            verification.offline_checked_obligation_families,
+        )
+
     def test_reduced_directional_ring_opening_artifact_replays_semantically(self) -> None:
         facts, options, artifact = _directional_ring_opening_artifact()
 

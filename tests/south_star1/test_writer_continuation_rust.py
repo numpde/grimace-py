@@ -9,7 +9,6 @@ import unittest
 from unittest.mock import patch
 
 from grimace import MolToSmilesContinuationDecoder
-from grimace._south_star1.errors import SouthStarError
 from grimace._south_star1.writer_continuation_asset import (
     open_writer_continuation_core,
 )
@@ -236,23 +235,41 @@ class WriterContinuationRustTest(unittest.TestCase):
                     ),
                 )
 
-    def test_asset_publication_rejects_typed_incomplete_local_proof(self) -> None:
+    def test_non_single_ring_asset_publishes_after_complete_local_proof(self) -> None:
         facts = _directional_non_single_ring_carrier_facts()
         options = _writer_options(rooted_at_atom=0)
         prepared = _prepare(facts)
         snapshot = _initial_snapshot(prepared, options)
         with TemporaryDirectory() as directory:
             path = Path(directory) / "asset"
-            with self.assertRaisesRegex(
-                SouthStarError,
-                "continuation_asset_branch_obligations_unchecked",
-            ):
-                write_writer_continuation_asset(
-                    path=path,
-                    prepared=prepared,
-                    snapshot=snapshot,
-                )
-            self.assertFalse(path.exists())
+            write_writer_continuation_asset(
+                path=path,
+                prepared=prepared,
+                snapshot=snapshot,
+            )
+            self.assertTrue(path.is_dir())
+            asset = open_writer_continuation_core(path)
+            edges = asset.records("edge_records")
+            terminals = asset.records("terminal_records")
+            self.assertEqual(len(asset.records("raw_cursor_records")), 456)
+            self.assertEqual(len(edges), 455)
+            self.assertEqual(
+                sum(len(edge.branch_certificate_digests) for edge in edges),
+                491,
+            )
+            self.assertEqual(len(terminals), 72)
+            self.assertEqual(
+                sum(
+                    len(terminal.terminal_support_identity_digests)
+                    for terminal in terminals
+                ),
+                72,
+            )
+            decoder = MolToSmilesContinuationDecoder.from_asset(path)
+            self.assertEqual(
+                _enumerate_decoder(decoder),
+                tuple(iter_writer_frontier_support(prepared, snapshot.cursor)),
+            )
 
     def test_proof_mode_reconstructs_branch_and_terminal_lazily(self) -> None:
         decoder = MolToSmilesContinuationDecoder.from_asset(

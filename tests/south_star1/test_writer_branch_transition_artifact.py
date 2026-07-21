@@ -169,33 +169,178 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
                     1,
                 )
 
-    def test_non_single_ring_pair_retains_typed_incomplete_boundary(self) -> None:
+    def test_non_single_ring_opening_and_pair_replay_semantically(self) -> None:
         facts = _directional_non_single_ring_carrier_facts()
         options = _writer_options(rooted_at_atom=0)
-        prepared, artifact = _branch_artifact_for_operation(
+        for operation in (
+            "directional ring endpoint projection",
+            "directional ring pair restriction",
+        ):
+            with self.subTest(operation=operation):
+                prepared, artifact = _branch_artifact_for_operation(
+                    facts,
+                    options,
+                    operation,
+                )
+                live = verify_writer_branch_transition_artifact_envelope(
+                    prepared=prepared,
+                    artifact=artifact,
+                )
+                facts_bound = verify_writer_branch_transition_artifact_for_facts(
+                    facts=facts,
+                    runtime_options=options,
+                    artifact=artifact,
+                )
+                self.assertTrue(live.accepted, live.reason)
+                self.assertTrue(facts_bound.accepted, facts_bound.reason)
+                self.assertEqual(facts_bound.unchecked_obligation_families, ())
+                self.assertEqual(
+                    facts_bound.semantically_replayed_operations,
+                    (operation,),
+                )
+                if operation == "directional ring pair restriction":
+                    branch = next(
+                        item["payload"]
+                        for item in artifact["objects"]
+                        if item["kind"] == "branch_support"
+                    )
+                    coupling = branch["obligation_manifests"][
+                        "directional_ring_closure_lifecycle"
+                    ][0]["coupling_term"]
+                    raw_lifecycle = next(
+                        manifest
+                        for manifest in branch["obligation_manifests"][
+                            "stereo_lifecycle"
+                        ]
+                        if manifest["operation"] == "WriterStereoLifecycleEvidence"
+                    )
+                    residual = branch["obligation_manifests"]["residual_work"][0]
+                    self.assertEqual(
+                        _closed_field(coupling, "stereo_lifecycle_digest"),
+                        raw_lifecycle["evidence_digest"],
+                    )
+                    self.assertEqual(
+                        _closed_field(coupling, "residual_work_digests"),
+                        [residual["evidence_digest"]],
+                    )
+                    self.assertIn(
+                        "directional_ring_closure_lifecycle",
+                        facts_bound.checked_obligation_families,
+                    )
+
+    def test_non_single_ring_pair_coupling_forgeries_reject_facts_bound(self) -> None:
+        facts = _directional_non_single_ring_carrier_facts()
+        options = _writer_options(rooted_at_atom=0)
+        _prepared, source = _branch_artifact_for_operation(
             facts,
             options,
             "directional ring pair restriction",
         )
-        live = verify_writer_branch_transition_artifact_envelope(
-            prepared=prepared,
-            artifact=artifact,
+        _opening_prepared, opening = _branch_artifact_for_operation(
+            facts,
+            options,
+            "directional ring endpoint projection",
         )
-        facts_bound = verify_writer_branch_transition_artifact_for_facts(
-            facts=facts,
-            runtime_options=options,
-            artifact=artifact,
+        opening_branch = next(
+            item["payload"]
+            for item in opening["objects"]
+            if item["kind"] == "branch_support"
         )
-        self.assertTrue(live.accepted, live.reason)
-        self.assertTrue(facts_bound.accepted, facts_bound.reason)
-        self.assertEqual(
-            facts_bound.unchecked_obligation_families,
-            ("directional_non_single_ring_transition_replay",),
+        opening_lifecycle_digest = next(
+            manifest["evidence_digest"]
+            for manifest in opening_branch["obligation_manifests"]["stereo_lifecycle"]
+            if manifest["operation"] == "WriterStereoLifecycleEvidence"
         )
-        self.assertEqual(
-            facts_bound.semantically_replayed_operations,
-            ("directional ring pair restriction",),
+        opening_residual_digest = opening_branch["obligation_manifests"][
+            "residual_work"
+        ][0]["evidence_digest"]
+
+        def mutate_marker_side(branch, item, term):
+            closure = branch["local_evidence"]["manifest"]["closure_bond_text"][0]
+            closure["marker_side"] = "closing"
+            _set_closed_field(term, "marker_side", "closing")
+            _set_closed_field(term, "closure_manifest_digest", _identity_digest(closure))
+
+        def mutate_lifecycle(branch, _item, term):
+            certificate = next(
+                manifest
+                for manifest in branch["obligation_manifests"]["stereo_lifecycle"]
+                if manifest["operation"] == "WriterStereoBranchCertificate"
+            )
+            _set_closed_field(term, "stereo_lifecycle_digest", certificate["evidence_digest"])
+
+        def mutate_residual(_branch, _item, term):
+            _set_closed_field(term, "residual_work_digests", ["0" * 64])
+
+        def mutate_closed_record(_branch, _item, term):
+            _set_closed_field(term, "closed_closure_record_digest", "0" * 64)
+
+        def mutate_both_markers(branch, _item, term):
+            closure = branch["local_evidence"]["manifest"]["closure_bond_text"][0]
+            closure["opening_marker"] = "="
+            closure["closing_marker"] = "="
+            _set_closed_field(term, "opening_marker", "=")
+            _set_closed_field(term, "closing_marker", "=")
+            _set_closed_field(term, "closure_manifest_digest", _identity_digest(closure))
+
+        def mutate_no_markers(branch, _item, term):
+            closure = branch["local_evidence"]["manifest"]["closure_bond_text"][0]
+            closure["opening_marker"] = ""
+            closure["closing_marker"] = ""
+            _set_closed_field(term, "opening_marker", "")
+            _set_closed_field(term, "closing_marker", "")
+            _set_closed_field(term, "closure_manifest_digest", _identity_digest(closure))
+
+        def mutate_direction_mark(branch, _item, _term):
+            event = next(
+                event
+                for event in branch["graph_ring_delta"]["manifest"]["event_manifests"]
+                if event["kind"] == "ring_endpoint_paired"
+            )
+            event["direction_mark"]["value"] = 1
+
+        def mutate_cross_branch_lifecycle(_branch, _item, term):
+            _set_closed_field(term, "stereo_lifecycle_digest", opening_lifecycle_digest)
+
+        def mutate_cross_branch_residual(_branch, _item, term):
+            _set_closed_field(term, "residual_work_digests", [opening_residual_digest])
+
+        cases = (
+            ("marker_side", mutate_marker_side, "local_closure_marker_side_mismatch"),
+            ("wrong_lifecycle", mutate_lifecycle, "directional_ring_coupling_lifecycle_branch_mismatch"),
+            ("wrong_residual", mutate_residual, "directional_ring_coupling_residual_state_mismatch"),
+            ("stale_closed_record", mutate_closed_record, "directional_ring_coupling_closed_record_mismatch"),
+            ("both_markers", mutate_both_markers, "local_closure_marker_duplicate"),
+            ("no_markers", mutate_no_markers, "local_closure_marker_missing"),
+            ("direction_mark", mutate_direction_mark, "graph_ring_bond_marker_mismatch"),
+            ("cross_branch_lifecycle", mutate_cross_branch_lifecycle, "directional_ring_coupling_lifecycle_branch_mismatch"),
+            ("cross_branch_residual", mutate_cross_branch_residual, "directional_ring_coupling_residual_state_mismatch"),
         )
+        for name, mutate, reason in cases:
+            with self.subTest(name=name):
+                forged = deepcopy(source)
+                branch = next(
+                    item["payload"]
+                    for item in forged["objects"]
+                    if item["kind"] == "branch_support"
+                )
+                item = branch["obligation_manifests"][
+                    "directional_ring_closure_lifecycle"
+                ][0]
+                term = item["coupling_term"]
+                mutate(branch, item, term)
+                _refresh_directional_ring_coupling(branch, item)
+                _redigest_branch_artifact(forged)
+
+                structural = verify_writer_branch_transition_artifact_consistency(forged)
+                replay = verify_writer_branch_transition_artifact_for_facts(
+                    facts=facts,
+                    runtime_options=options,
+                    artifact=forged,
+                )
+                self.assertTrue(structural.accepted, structural.reason)
+                self.assertFalse(replay.accepted)
+                self.assertIn(reason, replay.reason)
 
     def test_shared_ring_opening_and_pair_branches_replay_semantically(self) -> None:
         for phase in ("opening", "pair"):
@@ -843,6 +988,26 @@ def _redigest_branch_artifact(artifact) -> None:
         branch_transition_artifact_manifest(artifact),
         budget=budget,
         operation="test.branch_transition.artifact",
+    )
+
+
+def _refresh_directional_ring_coupling(branch, item) -> None:
+    budget = WriterEnvelopeWorkBudget()
+    digest = _digest_terms_bounded(
+        item["coupling_term"],
+        budget=budget,
+        operation="test.branch_transition.coupling_term",
+    )
+    item["coupling_term_digest"] = digest
+    local = branch["local_evidence"]
+    local["manifest"]["directional_coupled_digests"] = [digest]
+    local["digest"] = _identity_digest(
+        {"kind": local["kind"], "manifest": local["manifest"]}
+    )
+    delta = branch["graph_ring_delta"]
+    delta["manifest"]["local_evidence_digest"] = local["digest"]
+    delta["digest"] = _identity_digest(
+        {"kind": delta["kind"], "manifest": delta["manifest"]}
     )
 
 

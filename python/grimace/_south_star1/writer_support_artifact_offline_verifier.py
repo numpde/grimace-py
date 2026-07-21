@@ -1273,16 +1273,6 @@ def classify_residual_stereo_obligations_offline(
                     )
                 else:
                     manifests_by_family[family].extend(items)
-            _classify_branch_directional_ring_closure_lifecycles(
-                branch=branch,
-                branch_ref=branch_ref,
-                facts=facts,
-                objects=objects,
-                replayed_directional_ring_closure_digests=(
-                    replayed_directional_ring_closure_digests
-                ),
-                branch_replay_ledger=branch_replay_ledger,
-            )
             _replay_component_boundary_branch_obligations(
                 facts=facts,
                 branch=branch,
@@ -1305,6 +1295,16 @@ def classify_residual_stereo_obligations_offline(
                 ring_endpoint_choices=ring_endpoint_choices,
                 branch_replay_ledger=branch_replay_ledger,
                 replayed_lifecycle_digests=replayed_lifecycle_digests,
+            )
+            _classify_branch_directional_ring_closure_lifecycles(
+                branch=branch,
+                branch_ref=branch_ref,
+                facts=facts,
+                objects=objects,
+                replayed_directional_ring_closure_digests=(
+                    replayed_directional_ring_closure_digests
+                ),
+                branch_replay_ledger=branch_replay_ledger,
             )
         if include_terminals:
             root = _require_object(objects, artifact["roots"]["support_image_root"])
@@ -2659,6 +2659,8 @@ def _classify_branch_directional_ring_closure_lifecycles(
             or _term_field_value(term, "marker_side") != closure["marker_side"]
             or closure["bond_order"] != "double"
             or sorted((closure["opening_marker"], closure["closing_marker"])) != ["", "="]
+            or closure["marker_side"]
+            != ("opening" if closure["opening_marker"] == "=" else "closing")
         ):
             _offline_violation("directional_ring_coupling_marker_mismatch")
         stereo_digest = _term_field_value(term, "stereo_lifecycle_digest")

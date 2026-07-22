@@ -15,7 +15,7 @@ import tempfile
 from .errors import SouthStarError
 from .errors import SouthStarErrorKind
 from .writer_branch_transition_artifact import (
-    verify_writer_branch_transition_artifact_envelope,
+    _writer_branch_transition_artifact_and_live_verification_for_selected_support,
 )
 from .writer_branch_transition_artifact import (
     writer_branch_transition_artifact_for_support,
@@ -24,7 +24,7 @@ from .writer_branch_transition_artifact_checker import (
     verify_writer_branch_transition_artifact_consistency,
 )
 from .writer_branch_transition_artifact_fact_verifier import (
-    verify_writer_branch_transition_artifact_for_facts,
+    _verify_writer_branch_transition_artifact_for_facts_with_context,
 )
 from .writer_continuation_automaton import _canonical_predecessor_tree
 from .writer_continuation_automaton import _frontier_batch
@@ -48,12 +48,14 @@ from .writer_envelope_terms import _identity_envelope
 from .writer_envelope_terms import _identity_digest
 from .writer_envelope_terms import _runtime_options_from_terms
 from .writer_envelope_terms import _snapshot_identity_envelope
+from .writer_envelope_terms import _with_memoized_writer_envelope_terms
 from .writer_snapshot import capture_writer_frontier_snapshot
 from .writer_snapshot import WriterDecoderBoundary
 from .writer_snapshot_closed_terms import writer_frontier_cursor_from_closed_terms
 from .writer_prepared_identity import writer_prepared_identity
+from .writer_facts_replay_context import _writer_facts_replay_context
 from .writer_terminalization_artifact import (
-    verify_writer_terminalization_artifact_envelope,
+    _writer_terminalization_artifact_and_live_verification_for_selected_support,
 )
 from .writer_terminalization_artifact import (
     writer_terminalization_artifact_for_support,
@@ -62,7 +64,7 @@ from .writer_terminalization_artifact_checker import (
     verify_writer_terminalization_artifact_consistency,
 )
 from .writer_terminalization_artifact_fact_verifier import (
-    verify_writer_terminalization_artifact_for_facts,
+    _verify_writer_terminalization_artifact_for_facts_with_context,
 )
 
 
@@ -806,72 +808,14 @@ def verify_writer_continuation_asset_live(*, prepared, asset, full):
                     asset=asset,
                     raw_cursor_digest=record.raw_cursor_digest,
                 )
-            primitive, scale = _normalize_cursor(cursor)
-            if (
-                _identity_digest(primitive) != record.primitive_cursor_digest
-                or scale != record.normalization_scale
-            ):
-                _violation("continuation_asset_live_cursor_mismatch")
             batch = _frontier_batch(prepared, cursor)
-            edge_records = asset.edges_from(record.raw_cursor_digest)
-            if tuple(item.emitted_text for item in edge_records) != tuple(
-                item.emitted_text
-                for item in batch.text_choice_projection_certificates
-            ):
-                _violation("continuation_asset_live_edge_coverage_mismatch")
-            node = asset.core.nodes[record.compiled_node_id]
-            projections = batch.text_choice_projection_certificates
-            if tuple(
-                record.normalization_scale * choice.immediate_multiplicity
-                for choice in node.choices
-            ) != tuple(item.immediate_multiplicity for item in projections):
-                _violation("continuation_asset_live_multiplicity_mismatch")
-            for edge, projection in zip(edge_records, projections):
-                if (
-                    edge.text_projection_digest != _identity_digest(projection)
-                    or edge.branch_certificate_digests
-                    != tuple(
-                        _identity_digest(item)
-                        for item in projection.branch_certificates
-                    )
-                    or edge.successor_raw_cursor_digest
-                    != _identity_digest(projection.successor_cursor)
-                ):
-                    _violation("continuation_asset_live_projection_mismatch")
-                known_successor = asset._cursor_cache.get(
-                    edge.successor_raw_cursor_digest
-                )
-                if (
-                    known_successor is not None
-                    and known_successor != projection.successor_cursor
-                ):
-                    _violation("continuation_asset_live_successor_alias_mismatch")
-                asset._cursor_cache[edge.successor_raw_cursor_digest] = (
-                    projection.successor_cursor
-                )
-            terminal_record = asset.terminal_record(record.raw_cursor_digest)
-            if (terminal_record is not None) != bool(batch.terminal_supports):
-                _violation("continuation_asset_live_terminal_coverage_mismatch")
-            terminal = batch.choices.terminal
-            expected_terminal_multiplicity = (
-                0 if terminal is None else terminal.multiplicity
+            _verify_live_cursor_batch(
+                asset=asset,
+                record=record,
+                cursor=cursor,
+                batch=batch,
+                successor_cursors=asset._cursor_cache,
             )
-            if (
-                record.normalization_scale * node.terminal_multiplicity
-                != expected_terminal_multiplicity
-            ):
-                _violation("continuation_asset_live_terminal_multiplicity_mismatch")
-            if terminal_record is not None:
-                if (
-                    terminal_record.terminal_support_identity_digests
-                    != tuple(
-                        _identity_digest(item.checked_terminal_certificate)
-                        for item in batch.terminal_supports
-                    )
-                    or terminal_record.finalized_cursor_digest
-                    != _identity_digest(terminal.finalized_cursor)
-                ):
-                    _violation("continuation_asset_live_terminal_mismatch")
         return WriterContinuationAssetVerification(accepted=True)
     except SouthStarError as exc:
         return WriterContinuationAssetVerification(
@@ -883,6 +827,71 @@ def verify_writer_continuation_asset_live(*, prepared, asset, full):
             accepted=False,
             reason=f"malformed_live_continuation_asset:{type(exc).__name__}:{exc}",
         )
+
+
+def _verify_live_cursor_batch(
+    *, asset, record, cursor, batch, successor_cursors
+):
+    primitive, scale = _normalize_cursor(cursor)
+    if (
+        _identity_digest(primitive) != record.primitive_cursor_digest
+        or scale != record.normalization_scale
+    ):
+        _violation("continuation_asset_live_cursor_mismatch")
+    edge_records = asset.edges_from(record.raw_cursor_digest)
+    projections = batch.text_choice_projection_certificates
+    if tuple(item.emitted_text for item in edge_records) != tuple(
+        item.emitted_text for item in projections
+    ):
+        _violation("continuation_asset_live_edge_coverage_mismatch")
+    node = asset.core.nodes[record.compiled_node_id]
+    if tuple(
+        record.normalization_scale * choice.immediate_multiplicity
+        for choice in node.choices
+    ) != tuple(item.immediate_multiplicity for item in projections):
+        _violation("continuation_asset_live_multiplicity_mismatch")
+    for edge, projection in zip(edge_records, projections):
+        if (
+            edge.text_projection_digest != _identity_digest(projection)
+            or edge.branch_certificate_digests
+            != tuple(
+                _identity_digest(item)
+                for item in projection.branch_certificates
+            )
+            or edge.successor_raw_cursor_digest
+            != _identity_digest(projection.successor_cursor)
+        ):
+            _violation("continuation_asset_live_projection_mismatch")
+        known_successor = successor_cursors.get(edge.successor_raw_cursor_digest)
+        if (
+            known_successor is not None
+            and known_successor != projection.successor_cursor
+        ):
+            _violation("continuation_asset_live_successor_alias_mismatch")
+        successor_cursors[edge.successor_raw_cursor_digest] = (
+            projection.successor_cursor
+        )
+    terminal_record = asset.terminal_record(record.raw_cursor_digest)
+    if (terminal_record is not None) != bool(batch.terminal_supports):
+        _violation("continuation_asset_live_terminal_coverage_mismatch")
+    terminal = batch.choices.terminal
+    expected_terminal_multiplicity = 0 if terminal is None else terminal.multiplicity
+    if (
+        record.normalization_scale * node.terminal_multiplicity
+        != expected_terminal_multiplicity
+    ):
+        _violation("continuation_asset_live_terminal_multiplicity_mismatch")
+    if terminal_record is not None and (
+        terminal_record.terminal_support_identity_digests
+        != tuple(
+            _identity_digest(item.checked_terminal_certificate)
+            for item in batch.terminal_supports
+        )
+        or terminal_record.finalized_cursor_digest
+        != _identity_digest(terminal.finalized_cursor)
+    ):
+        _violation("continuation_asset_live_terminal_mismatch")
+    return edge_records, terminal_record
 
 
 def verify_writer_continuation_asset_for_prepared(
@@ -914,15 +923,6 @@ def verify_writer_continuation_asset_for_prepared(
         ):
             _violation("continuation_asset_semantic_root_cursor_mismatch")
 
-        live = verify_writer_continuation_asset_live(
-            prepared=prepared,
-            asset=asset,
-            full=True,
-        )
-        if not live.accepted:
-            _violation(live.reason or "continuation_asset_live_replay_rejection")
-        live_replay_complete = True
-
         raw_records = asset.records("raw_cursor_records")
         edge_records = asset.records("edge_records")
         terminal_records = asset.records("terminal_records")
@@ -951,96 +951,185 @@ def verify_writer_continuation_asset_for_prepared(
         if len(set(terminal_locators)) != terminal_locator_count:
             _violation("continuation_asset_duplicate_terminal_locator")
 
-        proved_branches = set()
-        for source_digest, emitted_text, certificate_digest in branch_locators:
-            artifact = branch_transition_artifact_from_continuation_asset(
-                prepared=prepared,
-                asset=asset,
-                source_raw_cursor_digest=source_digest,
-                emitted_text=emitted_text,
-                branch_certificate_digest=certificate_digest,
-            )
-            structural_branch = (
-                verify_writer_branch_transition_artifact_consistency(artifact)
-            )
-            if not structural_branch.accepted:
-                _violation(
-                    structural_branch.reason
-                    or "continuation_asset_branch_structural_rejection"
-                )
-            live_branch = verify_writer_branch_transition_artifact_envelope(
-                prepared=prepared,
-                artifact=artifact,
-            )
-            if not live_branch.accepted:
-                _violation(
-                    live_branch.reason or "continuation_asset_branch_live_rejection"
-                )
-            facts_branch = verify_writer_branch_transition_artifact_for_facts(
-                facts=prepared.facts,
-                runtime_options=source.runtime_options,
-                artifact=artifact,
-                policy=prepared.policy,
-            )
-            unchecked_families.update(facts_branch.unchecked_obligation_families)
-            if not facts_branch.accepted:
-                _violation(
-                    facts_branch.reason or "continuation_asset_branch_facts_rejection"
-                )
-            if facts_branch.unchecked_obligation_families:
-                _violation("continuation_asset_branch_obligations_unchecked")
-            locator = (source_digest, emitted_text, certificate_digest)
-            if locator in proved_branches:
-                _violation("continuation_asset_duplicate_branch_proof_credit")
-            proved_branches.add(locator)
-            branch_proof_count = len(proved_branches)
+        context = _writer_facts_replay_context(
+            facts=prepared.facts,
+            runtime_options=source.runtime_options,
+            policy=prepared.policy,
+        )
+        roots = tuple(record for record in raw_records if record.token_depth == 0)
+        if len(roots) != 1:
+            _violation("continuation_asset_semantic_root_record_mismatch")
+        root_record = roots[0]
+        if root_record.raw_cursor_digest != asset.manifest["root_raw_cursor_digest"]:
+            _violation("continuation_asset_semantic_root_record_mismatch")
 
+        successor_cursors = {root_record.raw_cursor_digest: source.cursor}
+        proved_branches = set()
         proved_terminals = set()
-        for source_digest, support_digest in terminal_locators:
-            artifact = terminalization_artifact_from_continuation_asset(
-                prepared=prepared,
+        for record in sorted(
+            raw_records,
+            key=lambda item: (item.token_depth, item.raw_cursor_digest),
+        ):
+            cursor = successor_cursors.pop(record.raw_cursor_digest, None)
+            if cursor is None:
+                _violation("continuation_asset_live_cursor_path_missing")
+            batch = _frontier_batch(prepared, cursor)
+            cursor_edges, terminal_record = _with_memoized_writer_envelope_terms(
+                _verify_live_cursor_batch,
                 asset=asset,
-                source_raw_cursor_digest=source_digest,
-                terminal_support_identity_digest=support_digest,
+                record=record,
+                cursor=cursor,
+                batch=batch,
+                successor_cursors=successor_cursors,
             )
-            structural_terminal = (
-                verify_writer_terminalization_artifact_consistency(artifact)
-            )
-            if not structural_terminal.accepted:
-                _violation(
-                    structural_terminal.reason
-                    or "continuation_asset_terminal_structural_rejection"
-                )
-            live_terminal = verify_writer_terminalization_artifact_envelope(
-                prepared=prepared,
-                artifact=artifact,
-            )
-            if not live_terminal.accepted:
-                _violation(
-                    live_terminal.reason
-                    or "continuation_asset_terminal_live_rejection"
-                )
-            facts_terminal = verify_writer_terminalization_artifact_for_facts(
-                facts=prepared.facts,
-                runtime_options=source.runtime_options,
-                artifact=artifact,
-                policy=prepared.policy,
-            )
-            unchecked_families.update(
-                facts_terminal.unchecked_obligation_families
-            )
-            if not facts_terminal.accepted:
-                _violation(
-                    facts_terminal.reason
-                    or "continuation_asset_terminal_facts_rejection"
-                )
-            if facts_terminal.unchecked_obligation_families:
-                _violation("continuation_asset_terminal_obligations_unchecked")
-            locator = (source_digest, support_digest)
-            if locator in proved_terminals:
-                _violation("continuation_asset_duplicate_terminal_proof_credit")
-            proved_terminals.add(locator)
-            terminal_proof_count = len(proved_terminals)
+            snapshot = None
+
+            for edge, projection in zip(
+                cursor_edges,
+                batch.text_choice_projection_certificates,
+                strict=True,
+            ):
+                for certificate_digest in edge.branch_certificate_digests:
+                    matches = tuple(
+                        support
+                        for support in batch.supports
+                        if support.emitted_text == edge.emitted_text
+                        and _identity_digest(
+                            support.checked_branch_certificate
+                        )
+                        == certificate_digest
+                    )
+                    if len(matches) != 1:
+                        _violation(
+                            "continuation_asset_branch_locator_membership_mismatch"
+                        )
+                    if snapshot is None:
+                        snapshot = _snapshot_for_replayed_cursor(
+                            prepared=prepared,
+                            source=source,
+                            record=record,
+                            cursor=cursor,
+                        )
+                    branch = matches[0].checked_branch_certificate
+                    artifact, live_branch = _with_memoized_writer_envelope_terms(
+                        _writer_branch_transition_artifact_and_live_verification_for_selected_support,
+                            prepared=prepared,
+                            artifact=None,
+                            snapshot=snapshot,
+                            projection=projection,
+                            branch=branch,
+                    )
+                    if not live_branch.accepted:
+                        _violation(
+                            live_branch.reason
+                            or "continuation_asset_branch_live_rejection"
+                        )
+                    structural_branch = _with_memoized_writer_envelope_terms(
+                        verify_writer_branch_transition_artifact_consistency,
+                        artifact,
+                    )
+                    if not structural_branch.accepted:
+                        _violation(
+                            structural_branch.reason
+                            or "continuation_asset_branch_structural_rejection"
+                        )
+                    facts_branch = _with_memoized_writer_envelope_terms(
+                        _verify_writer_branch_transition_artifact_for_facts_with_context,
+                            context=context,
+                            artifact=artifact,
+                    )
+                    unchecked_families.update(
+                        facts_branch.unchecked_obligation_families
+                    )
+                    if not facts_branch.accepted:
+                        _violation(
+                            facts_branch.reason
+                            or "continuation_asset_branch_facts_rejection"
+                        )
+                    if facts_branch.unchecked_obligation_families:
+                        _violation(
+                            "continuation_asset_branch_obligations_unchecked"
+                        )
+                    locator = (
+                        record.raw_cursor_digest,
+                        edge.emitted_text,
+                        certificate_digest,
+                    )
+                    if locator in proved_branches:
+                        _violation(
+                            "continuation_asset_duplicate_branch_proof_credit"
+                        )
+                    proved_branches.add(locator)
+                    branch_proof_count = len(proved_branches)
+
+            if terminal_record is not None:
+                for support_digest in terminal_record.terminal_support_identity_digests:
+                    matches = tuple(
+                        support
+                        for support in batch.terminal_supports
+                        if _identity_digest(support.checked_terminal_certificate)
+                        == support_digest
+                    )
+                    if len(matches) != 1:
+                        _violation(
+                            "continuation_asset_terminal_locator_membership_mismatch"
+                        )
+                    if snapshot is None:
+                        snapshot = _snapshot_for_replayed_cursor(
+                            prepared=prepared,
+                            source=source,
+                            record=record,
+                            cursor=cursor,
+                        )
+                    artifact, live_terminal = _with_memoized_writer_envelope_terms(
+                        _writer_terminalization_artifact_and_live_verification_for_selected_support,
+                            prepared=prepared,
+                            artifact=None,
+                            snapshot=snapshot,
+                            selected=matches[0],
+                    )
+                    if not live_terminal.accepted:
+                        _violation(
+                            live_terminal.reason
+                            or "continuation_asset_terminal_live_rejection"
+                        )
+                    structural_terminal = _with_memoized_writer_envelope_terms(
+                        verify_writer_terminalization_artifact_consistency,
+                        artifact,
+                    )
+                    if not structural_terminal.accepted:
+                        _violation(
+                            structural_terminal.reason
+                            or "continuation_asset_terminal_structural_rejection"
+                        )
+                    facts_terminal = _with_memoized_writer_envelope_terms(
+                        _verify_writer_terminalization_artifact_for_facts_with_context,
+                            context=context,
+                            artifact=artifact,
+                    )
+                    unchecked_families.update(
+                        facts_terminal.unchecked_obligation_families
+                    )
+                    if not facts_terminal.accepted:
+                        _violation(
+                            facts_terminal.reason
+                            or "continuation_asset_terminal_facts_rejection"
+                        )
+                    if facts_terminal.unchecked_obligation_families:
+                        _violation(
+                            "continuation_asset_terminal_obligations_unchecked"
+                        )
+                    locator = (record.raw_cursor_digest, support_digest)
+                    if locator in proved_terminals:
+                        _violation(
+                            "continuation_asset_duplicate_terminal_proof_credit"
+                        )
+                    proved_terminals.add(locator)
+                    terminal_proof_count = len(proved_terminals)
+
+        if successor_cursors:
+            _violation("continuation_asset_live_cursor_coverage_mismatch")
+        live_replay_complete = True
 
         if proved_branches != set(branch_locators):
             _violation("continuation_asset_branch_proof_coverage_mismatch")
@@ -1277,6 +1366,15 @@ def _snapshot_for_raw_cursor(*, prepared, asset, cursor, raw_cursor_digest):
     record = asset.raw_cursor_record(raw_cursor_digest)
     if record is None:
         _violation("continuation_asset_snapshot_cursor_record_missing")
+    return _snapshot_for_replayed_cursor(
+        prepared=prepared,
+        source=source,
+        record=record,
+        cursor=cursor,
+    )
+
+
+def _snapshot_for_replayed_cursor(*, prepared, source, record, cursor):
     return capture_writer_frontier_snapshot(
         prepared=prepared,
         runtime_options=source.runtime_options,

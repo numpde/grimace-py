@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import fields
 from dataclasses import is_dataclass
 from enum import Enum
@@ -13,6 +15,27 @@ from .policy import SerializationLanguageMode
 from .prepared_runtime import SouthStarRuntimeOptions
 from .writer_envelope_work import WriterEnvelopeWorkExceeded
 from .writer_envelope_work import WriterEnvelopeWorkViolation
+
+
+_TERM_CACHE: ContextVar[dict[int, tuple[object, object]] | None] = ContextVar(
+    "writer_envelope_term_cache",
+    default=None,
+)
+
+
+@contextmanager
+def _memoize_writer_envelope_terms():
+    """Reuse immutable dataclass terms within one bounded serialization batch."""
+    token = _TERM_CACHE.set({})
+    try:
+        yield
+    finally:
+        _TERM_CACHE.reset(token)
+
+
+def _with_memoized_writer_envelope_terms(function, /, *args, **kwargs):
+    with _memoize_writer_envelope_terms():
+        return function(*args, **kwargs)
 
 
 def _term(value):
@@ -39,7 +62,18 @@ def _term(value):
             for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
         ]
     if is_dataclass(value):
-        return {
+        parameters = getattr(value.__class__, "__dataclass_params__", None)
+        cache = (
+            _TERM_CACHE.get()
+            if parameters is not None and parameters.frozen
+            else None
+        )
+        cache_key = id(value)
+        if cache is not None:
+            cached = cache.get(cache_key)
+            if cached is not None and cached[0] is value:
+                return cached[1]
+        term = {
             "__dataclass__": (
                 f"{value.__class__.__module__}.{value.__class__.__name__}"
             ),
@@ -48,6 +82,9 @@ def _term(value):
                 for field in fields(value)
             ],
         }
+        if cache is not None:
+            cache[cache_key] = (value, term)
+        return term
     _envelope_violation(f"unsupported_term_type:{type(value).__name__}")
 
 

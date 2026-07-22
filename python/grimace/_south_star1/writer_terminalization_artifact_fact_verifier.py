@@ -9,7 +9,6 @@ from collections.abc import Mapping
 from .errors import SouthStarError
 from .errors import SouthStarErrorKind
 from .writer_envelope_terms import _identity_digest
-from .writer_envelope_terms import _identity_envelope
 from .writer_graph_obligations import WriterGraphCompletionStatus
 from .writer_execution_evidence import WriterGraphObligationWorkEvidence
 from .writer_execution_evidence import WriterResidualPropagationWorkEvidence
@@ -21,9 +20,8 @@ from .writer_snapshot_closed_terms import writer_frontier_cursor_from_closed_ter
 from .writer_support_artifact_offline_verifier import _decode_transition_term
 from .writer_support_artifact_fact_verifier import _check_prepared_identity
 from .writer_support_artifact_fact_verifier import _check_source_snapshot_identity
-from .writer_prepared_identity import writer_prepared_identity
-from .prepared_runtime import prepare_south_star_mol_from_facts
-from .prepared_runtime import SouthStarWriterSurface
+from .writer_facts_replay_context import _WriterFactsReplayContext
+from .writer_facts_replay_context import _writer_facts_replay_context
 from .policy import DirectionMark
 from .writer_terminalization_artifact_checker import verify_writer_terminalization_artifact_consistency
 from .writer_terminalization_terms import WriterTerminalizationTerm
@@ -76,12 +74,35 @@ def verify_writer_terminalization_artifact_for_facts(
         structural = verify_writer_terminalization_artifact_consistency(artifact)
         if not structural.accepted:
             _violation(structural.reason or "structural_rejection")
-        prepared = prepare_south_star_mol_from_facts(
-            facts, writer_surface=SouthStarWriterSurface(), policy=policy
+        context = _writer_facts_replay_context(
+            facts=facts,
+            runtime_options=runtime_options,
+            policy=policy,
         )
-        expected_identity = _identity_envelope(
-            writer_prepared_identity(prepared, runtime_options)
+        return _verify_writer_terminalization_artifact_for_facts_with_context(
+            context=context,
+            artifact=artifact,
         )
+    except SouthStarError as exc:
+        return WriterTerminalizationArtifactFactsVerification(
+            accepted=False,
+            reason=exc.args[-1] if exc.args else "terminalization_verification_error",
+        )
+    except (AssertionError, KeyError, TypeError, ValueError) as exc:
+        return WriterTerminalizationArtifactFactsVerification(
+            accepted=False,
+            reason=f"malformed_terminalization_artifact:{type(exc).__name__}:{exc}",
+        )
+
+
+def _verify_writer_terminalization_artifact_for_facts_with_context(
+    *, context: _WriterFactsReplayContext, artifact
+) -> WriterTerminalizationArtifactFactsVerification:
+    try:
+        facts = context.facts
+        runtime_options = context.runtime_options
+        prepared = context.prepared
+        expected_identity = context.expected_identity
         _check_prepared_identity(artifact, expected_identity)
         _check_source_snapshot_identity(
             artifact["source_snapshot"],
@@ -722,6 +743,7 @@ def _ring_endpoint_choices_for_policy(policy):
 
 __all__ = (
     "WriterTerminalizationArtifactFactsVerification",
+    "_verify_writer_terminalization_artifact_for_facts_with_context",
     "verify_writer_terminalization_artifact_for_facts",
     "replay_terminal_support_payload_for_facts",
 )

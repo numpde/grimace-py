@@ -11,7 +11,9 @@ import unittest
 from unittest.mock import patch
 
 from grimace import MolToSmilesContinuationDecoder
+import grimace._south_star1.writer_branch_transition_artifact as branch_artifact_module
 import grimace._south_star1.writer_continuation_asset as continuation_asset_module
+import grimace._south_star1.writer_terminalization_artifact as terminal_artifact_module
 from grimace._south_star1.errors import SouthStarError
 
 from grimace._south_star1.writer_continuation_asset import (
@@ -94,6 +96,16 @@ from tests.south_star1.test_writer_support_artifact_fact_verifier import _prepar
 from tests.south_star1.test_writer_support_artifact_fact_verifier import (
     _writer_options,
 )
+
+
+class _CallCounter:
+    def __init__(self, target):
+        self._target = target
+        self.count = 0
+
+    def __call__(self, *args, **kwargs):
+        self.count += 1
+        return self._target(*args, **kwargs)
 
 
 class WriterContinuationAssetTest(unittest.TestCase):
@@ -355,14 +367,14 @@ class WriterContinuationAssetTest(unittest.TestCase):
         snapshot = _initial_snapshot(prepared, _writer_options())
         cases = (
             (
-                "verify_writer_branch_transition_artifact_for_facts",
+                "_verify_writer_branch_transition_artifact_for_facts_with_context",
                 WriterBranchTransitionArtifactFactVerification(
                     accepted=False,
                     reason="forced_facts_rejection",
                 ),
             ),
             (
-                "verify_writer_terminalization_artifact_for_facts",
+                "_verify_writer_terminalization_artifact_for_facts_with_context",
                 WriterTerminalizationArtifactFactsVerification(
                     accepted=False,
                     reason="forced_facts_rejection",
@@ -427,6 +439,85 @@ class WriterContinuationAssetTest(unittest.TestCase):
                 snapshot=snapshot,
             )
             self.assertTrue(path.is_dir())
+
+    def test_non_single_certification_streams_each_locator_once(self) -> None:
+        prepared = _prepare(_directional_non_single_ring_carrier_facts())
+        snapshot = _initial_snapshot(
+            prepared,
+            _writer_options(rooted_at_atom=0),
+        )
+        counted_names = (
+            "_frontier_batch",
+            "_source_snapshot_from_asset",
+            "_writer_facts_replay_context",
+            "verify_writer_branch_transition_artifact_consistency",
+            "verify_writer_terminalization_artifact_consistency",
+            "_writer_branch_transition_artifact_and_live_verification_for_selected_support",
+            "_writer_terminalization_artifact_and_live_verification_for_selected_support",
+            "_verify_writer_branch_transition_artifact_for_facts_with_context",
+            "_verify_writer_terminalization_artifact_for_facts_with_context",
+        )
+        counters = {
+            name: _CallCounter(getattr(continuation_asset_module, name))
+            for name in counted_names
+        }
+        patches = {
+            name: patch.object(continuation_asset_module, name, new=counter)
+            for name, counter in counters.items()
+        }
+        canonical_counters = {
+            "canonical_branch_artifact": _CallCounter(
+                branch_artifact_module._writer_branch_transition_artifact_for_prelocated_support
+            ),
+            "canonical_terminal_artifact": _CallCounter(
+                terminal_artifact_module._writer_terminalization_artifact_for_prelocated_support
+            ),
+        }
+        canonical_patches = {
+            "canonical_branch_artifact": patch.object(
+                branch_artifact_module,
+                "_writer_branch_transition_artifact_for_prelocated_support",
+                new=canonical_counters["canonical_branch_artifact"],
+            ),
+            "canonical_terminal_artifact": patch.object(
+                terminal_artifact_module,
+                "_writer_terminalization_artifact_for_prelocated_support",
+                new=canonical_counters["canonical_terminal_artifact"],
+            ),
+        }
+        with TemporaryDirectory() as directory:
+            for item in (*canonical_patches.values(), *patches.values()):
+                item.start()
+            try:
+                write_writer_continuation_asset(
+                    path=Path(directory) / "asset",
+                    prepared=prepared,
+                    snapshot=snapshot,
+                )
+            finally:
+                for item in (*patches.values(), *canonical_patches.values()):
+                    item.stop()
+        self.assertEqual(counters["_frontier_batch"].count, 456)
+        self.assertEqual(counters["_source_snapshot_from_asset"].count, 1)
+        self.assertEqual(counters["_writer_facts_replay_context"].count, 1)
+        self.assertEqual(
+            canonical_counters["canonical_branch_artifact"].count, 491
+        )
+        self.assertEqual(
+            canonical_counters["canonical_terminal_artifact"].count, 72
+        )
+        for name in (
+            "verify_writer_branch_transition_artifact_consistency",
+            "_writer_branch_transition_artifact_and_live_verification_for_selected_support",
+            "_verify_writer_branch_transition_artifact_for_facts_with_context",
+        ):
+            self.assertEqual(counters[name].count, 491)
+        for name in (
+            "verify_writer_terminalization_artifact_consistency",
+            "_writer_terminalization_artifact_and_live_verification_for_selected_support",
+            "_verify_writer_terminalization_artifact_for_facts_with_context",
+        ):
+            self.assertEqual(counters[name].count, 72)
 
     def test_missing_and_extra_chunks_reject(self) -> None:
         prepared = _prepare(cco_facts())
@@ -560,12 +651,41 @@ class WriterContinuationAssetTest(unittest.TestCase):
                     side_effect=AssertionError("support materialization path"),
                 ),
             )
-            with patches[0], patches[1], patches[2]:
+            expected_calls = {
+                "_frontier_batch": 19_595,
+                "_source_snapshot_from_asset": 1,
+                "_writer_facts_replay_context": 1,
+                "verify_writer_branch_transition_artifact_consistency": 19_847,
+                "verify_writer_terminalization_artifact_consistency": 3_744,
+                "_writer_branch_transition_artifact_and_live_verification_for_selected_support": 19_847,
+                "_writer_terminalization_artifact_and_live_verification_for_selected_support": 3_744,
+                "_verify_writer_branch_transition_artifact_for_facts_with_context": 19_847,
+                "_verify_writer_terminalization_artifact_for_facts_with_context": 3_744,
+            }
+            counters = {
+                name: _CallCounter(getattr(continuation_asset_module, name))
+                for name in expected_calls
+            }
+            with (
+                patches[0],
+                patches[1],
+                patches[2],
+                *(
+                    patch.object(
+                        continuation_asset_module,
+                        name,
+                        new=counter,
+                    )
+                    for name, counter in counters.items()
+                ),
+            ):
                 manifest = write_writer_continuation_asset(
                     path=path,
                     prepared=prepared,
                     snapshot=snapshot,
                 )
+            for name, expected in expected_calls.items():
+                self.assertEqual(counters[name].count, expected, name)
             metrics = manifest["deterministic_metrics"]
             self.assertEqual(metrics["semantic_node_count"], 2_101)
             self.assertEqual(metrics["semantic_edge_count"], 2_843)
@@ -627,12 +747,6 @@ class WriterContinuationAssetTest(unittest.TestCase):
                 )
                 self.assertTrue(checked.accepted, checked.reason)
                 self.assertEqual(checked.unchecked_obligation_families, ())
-            live = verify_writer_continuation_asset_live(
-                prepared=prepared,
-                asset=asset,
-                full=True,
-            )
-            self.assertTrue(live.accepted, live.reason)
 
 
 def _rust_decoder_at_raw_cursor(

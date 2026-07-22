@@ -2662,8 +2662,8 @@ def _two_independent_tetra_facts() -> MoleculeFacts:
     right_site = SiteId(1)
     return MoleculeFacts(
         atoms=(
-            atom(0, "C"),
-            atom(1, "C"),
+            replace(atom(0, "C"), implicit_h_count=1),
+            replace(atom(1, "C"), implicit_h_count=1),
             atom(2, "F"),
             atom(3, "Cl"),
             atom(4, "Br"),

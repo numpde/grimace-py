@@ -47,6 +47,31 @@ def writer_branch_transition_artifact_for_support(
         support=support,
         budget=budget,
     )
+    artifact = _writer_branch_transition_artifact_for_prelocated_support(
+        prepared=prepared,
+        snapshot=snapshot,
+        projection=projection,
+        branch=branch,
+        budget=budget,
+    )
+    checked = verify_writer_branch_transition_artifact_consistency(
+        artifact,
+        budget=budget,
+    )
+    if not checked.accepted:
+        _violation(checked.reason or "branch_transition_checker_rejected")
+    return artifact
+
+
+def _writer_branch_transition_artifact_for_prelocated_support(
+    *, prepared, snapshot, projection, branch, budget=None
+) -> Mapping[str, object]:
+    budget = default_writer_envelope_work_budget(budget)
+    if (
+        projection.source_cursor != snapshot.cursor
+        or branch not in projection.branch_certificates
+    ):
+        _violation("prelocated_branch_projection_mismatch")
     table = _ObjectTable(budget)
     source_payload = _snapshot_identity_envelope(
         snapshot,
@@ -115,12 +140,6 @@ def writer_branch_transition_artifact_for_support(
         budget=budget,
         operation="branch_transition.manifest.digest",
     )
-    checked = verify_writer_branch_transition_artifact_consistency(
-        artifact,
-        budget=budget,
-    )
-    if not checked.accepted:
-        _violation(checked.reason or "branch_transition_checker_rejected")
     return artifact
 
 
@@ -159,15 +178,19 @@ def verify_writer_branch_transition_artifact_envelope(
         )
         if len(matches) != 1:
             _violation("live_branch_identity_not_unique")
-        expected = writer_branch_transition_artifact_for_support(
+        return _verify_writer_branch_transition_artifact_for_selected_support(
             prepared=prepared,
+            artifact=artifact,
             snapshot=snapshot,
-            support=matches[0],
+            projection=next(
+                projection
+                for projection in batch.text_choice_projection_certificates
+                if matches[0].checked_branch_certificate
+                in projection.branch_certificates
+            ),
+            branch=matches[0].checked_branch_certificate,
             budget=budget,
         )
-        if expected != artifact:
-            _violation("live_branch_artifact_mismatch")
-        return WriterBranchTransitionArtifactVerification(accepted=True, object_count=3)
     except WriterEnvelopeWorkExceeded as exc:
         return WriterBranchTransitionArtifactVerification(
             accepted=False,
@@ -182,6 +205,72 @@ def verify_writer_branch_transition_artifact_envelope(
         return WriterBranchTransitionArtifactVerification(
             accepted=False,
             reason=f"malformed_branch_transition_artifact:{type(exc).__name__}",
+        )
+
+
+def _verify_writer_branch_transition_artifact_for_selected_support(
+    *, prepared, artifact, snapshot, projection, branch, budget=None
+) -> WriterBranchTransitionArtifactVerification:
+    _expected, verification = (
+        _writer_branch_transition_artifact_and_live_verification_for_selected_support(
+            prepared=prepared,
+            artifact=artifact,
+            snapshot=snapshot,
+            projection=projection,
+            branch=branch,
+            budget=budget,
+        )
+    )
+    return verification
+
+
+def _writer_branch_transition_artifact_and_live_verification_for_selected_support(
+    *, prepared, artifact, snapshot, projection, branch, budget=None
+):
+    try:
+        budget = default_writer_envelope_work_budget(budget)
+        expected = _writer_branch_transition_artifact_for_prelocated_support(
+            prepared=prepared,
+            snapshot=snapshot,
+            projection=projection,
+            branch=branch,
+            budget=budget,
+        )
+        if artifact is not None and expected != artifact:
+            _violation("live_branch_artifact_mismatch")
+        return (
+            expected,
+            WriterBranchTransitionArtifactVerification(
+                accepted=True,
+                object_count=3,
+            ),
+        )
+    except WriterEnvelopeWorkExceeded as exc:
+        return (
+            None,
+            WriterBranchTransitionArtifactVerification(
+                accepted=False,
+                reason=writer_envelope_work_reason(exc),
+            ),
+        )
+    except SouthStarError as exc:
+        return (
+            None,
+            WriterBranchTransitionArtifactVerification(
+                accepted=False,
+                reason=exc.args[-1] if exc.args else "verification_error",
+            ),
+        )
+    except (AssertionError, KeyError, TypeError, ValueError) as exc:
+        return (
+            None,
+            WriterBranchTransitionArtifactVerification(
+                accepted=False,
+                reason=(
+                    "malformed_branch_transition_artifact:"
+                    f"{type(exc).__name__}"
+                ),
+            ),
         )
 
 

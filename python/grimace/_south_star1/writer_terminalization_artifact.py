@@ -50,6 +50,25 @@ def writer_terminalization_artifact_for_support(
         support=support,
         budget=budget,
     )
+    artifact = _writer_terminalization_artifact_for_prelocated_support(
+        prepared=prepared,
+        snapshot=snapshot,
+        selected=selected,
+        budget=budget,
+    )
+    checked = verify_writer_terminalization_artifact_consistency(
+        artifact,
+        budget=budget,
+    )
+    if not checked.accepted:
+        _violation(checked.reason or "terminalization_checker_rejected")
+    return artifact
+
+
+def _writer_terminalization_artifact_for_prelocated_support(
+    *, prepared, snapshot, selected, budget=None
+) -> Mapping[str, object]:
+    budget = default_writer_envelope_work_budget(budget)
     terminal = selected.checked_terminal_certificate
     table = _ObjectTable(budget)
     source_payload = _snapshot_identity_envelope(
@@ -129,12 +148,6 @@ def writer_terminalization_artifact_for_support(
         budget=budget,
         operation="terminalization.manifest.digest",
     )
-    checked = verify_writer_terminalization_artifact_consistency(
-        artifact,
-        budget=budget,
-    )
-    if not checked.accepted:
-        _violation(checked.reason or "terminalization_checker_rejected")
     return artifact
 
 
@@ -173,17 +186,12 @@ def verify_writer_terminalization_artifact_envelope(
         )
         if len(matches) != 1:
             _violation("live_terminal_identity_not_unique")
-        expected = writer_terminalization_artifact_for_support(
+        return _verify_writer_terminalization_artifact_for_selected_support(
             prepared=prepared,
+            artifact=artifact,
             snapshot=snapshot,
-            support=matches[0],
+            selected=matches[0],
             budget=budget,
-        )
-        if expected != artifact:
-            _violation("live_terminalization_artifact_mismatch")
-        return WriterTerminalizationArtifactVerification(
-            accepted=True,
-            object_count=3,
         )
     except WriterEnvelopeWorkExceeded as exc:
         return WriterTerminalizationArtifactVerification(
@@ -199,6 +207,70 @@ def verify_writer_terminalization_artifact_envelope(
         return WriterTerminalizationArtifactVerification(
             accepted=False,
             reason=f"malformed_terminalization_artifact:{type(exc).__name__}",
+        )
+
+
+def _verify_writer_terminalization_artifact_for_selected_support(
+    *, prepared, artifact, snapshot, selected, budget=None
+) -> WriterTerminalizationArtifactVerification:
+    _expected, verification = (
+        _writer_terminalization_artifact_and_live_verification_for_selected_support(
+            prepared=prepared,
+            artifact=artifact,
+            snapshot=snapshot,
+            selected=selected,
+            budget=budget,
+        )
+    )
+    return verification
+
+
+def _writer_terminalization_artifact_and_live_verification_for_selected_support(
+    *, prepared, artifact, snapshot, selected, budget=None
+):
+    try:
+        budget = default_writer_envelope_work_budget(budget)
+        expected = _writer_terminalization_artifact_for_prelocated_support(
+            prepared=prepared,
+            snapshot=snapshot,
+            selected=selected,
+            budget=budget,
+        )
+        if artifact is not None and expected != artifact:
+            _violation("live_terminalization_artifact_mismatch")
+        return (
+            expected,
+            WriterTerminalizationArtifactVerification(
+                accepted=True,
+                object_count=3,
+            ),
+        )
+    except WriterEnvelopeWorkExceeded as exc:
+        return (
+            None,
+            WriterTerminalizationArtifactVerification(
+                accepted=False,
+                reason=writer_envelope_work_reason(exc),
+            ),
+        )
+    except SouthStarError as exc:
+        return (
+            None,
+            WriterTerminalizationArtifactVerification(
+                accepted=False,
+                reason=exc.args[-1] if exc.args else "verification_error",
+            ),
+        )
+    except (AssertionError, KeyError, TypeError, ValueError) as exc:
+        return (
+            None,
+            WriterTerminalizationArtifactVerification(
+                accepted=False,
+                reason=(
+                    "malformed_terminalization_artifact:"
+                    f"{type(exc).__name__}"
+                ),
+            ),
         )
 
 

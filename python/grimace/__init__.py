@@ -9,7 +9,11 @@ from __future__ import annotations
 
 import importlib
 from collections.abc import Iterator, Sequence
+from pathlib import Path
 from typing import Any
+
+from ._south_star1.errors import SouthStarError
+from ._south_star1.errors import SouthStarErrorKind
 
 try:
     _RUNTIME = importlib.import_module("grimace._runtime")
@@ -32,6 +36,40 @@ def _require_runtime() -> Any:
             "extension enabled."
         ) from _CORE_IMPORT_ERROR
     return _RUNTIME
+
+
+def BuildMolToSmilesContinuationAsset(
+    mol: object,
+    path: str | Path,
+    *,
+    isomericSmiles: bool = True,
+    kekuleSmiles: bool = False,
+    rootedAtAtom: int = -1,
+    canonical: bool = False,
+    allBondsExplicit: bool = False,
+    allHsExplicit: bool = False,
+    doRandom: bool = True,
+    ignoreAtomMapNumbers: bool = False,
+) -> str:
+    """Build and atomically publish a certified continuation asset."""
+
+    _require_runtime()
+    from ._south_star1.public_continuation_asset import (
+        build_mol_to_smiles_continuation_asset,
+    )
+
+    return build_mol_to_smiles_continuation_asset(
+        mol,
+        path,
+        isomeric_smiles=isomericSmiles,
+        kekule_smiles=kekuleSmiles,
+        rooted_at_atom=rootedAtAtom,
+        canonical=canonical,
+        all_bonds_explicit=allBondsExplicit,
+        all_hs_explicit=allHsExplicit,
+        do_random=doRandom,
+        ignore_atom_map_numbers=ignoreAtomMapNumbers,
+    )
 
 
 def MolToSmilesEnum(
@@ -271,6 +309,7 @@ else:
 
 
 __all__ = [
+    "BuildMolToSmilesContinuationAsset",
     "MolToSmilesChoice",
     "MolToSmilesContinuationDecoder",
     "MolToSmilesContinuationProbability",
@@ -282,4 +321,6 @@ __all__ = [
     "MolToSmilesTokenInventorySuperset",
     "MolToSmilesWeightedChoice",
     "SmilesDeviation",
+    "SouthStarError",
+    "SouthStarErrorKind",
 ]

@@ -367,6 +367,8 @@ def _validate_writer_surface(
         unsupported.append("all_bonds_explicit=True")
     if writer_surface.all_hs_explicit:
         unsupported.append("all_hs_explicit=True")
+    if writer_surface.ignore_atom_map_numbers:
+        unsupported.append("ignore_atom_map_numbers=True")
     if unsupported:
         raise SouthStarError(
             SouthStarErrorKind.UNSUPPORTED_POLICY,

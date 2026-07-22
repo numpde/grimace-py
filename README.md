@@ -37,3 +37,26 @@ South Star remains work in progress. The branch is about making graph syntax,
 closure lifecycles, and stereo constraints share one inspectable state model,
 so future widening can be expressed as local relations instead of special-case
 enumeration.
+
+Build a certified continuation asset directly from an RDKit molecule, then
+open its Rust-backed decoder:
+
+```python
+from pathlib import Path
+
+from rdkit import Chem
+
+import grimace
+
+asset_path = Path("molecule.continuation")
+digest = grimace.BuildMolToSmilesContinuationAsset(
+    Chem.MolFromSmiles("F/C=C/Cl"),
+    asset_path,
+    canonical=False,
+    doRandom=True,
+)
+decoder = grimace.MolToSmilesContinuationDecoder.from_asset(
+    asset_path,
+    expected_manifest_digest=digest,
+)
+```

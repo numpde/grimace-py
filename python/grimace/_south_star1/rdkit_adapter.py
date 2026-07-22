@@ -58,6 +58,17 @@ class RdkitOrdinaryExtractionOptions:
     ] = "one_pass"
 
 
+def require_rdkit_molecule(mol: object) -> Chem.Mol:
+    """Validate and return the RDKit molecule owned by this adapter."""
+
+    if not isinstance(mol, Chem.Mol):
+        raise SouthStarError(
+            SouthStarErrorKind.INVALID_FACTS,
+            "ordinary South Star ingestion requires an RDKit Chem.Mol",
+        )
+    return mol
+
+
 def molecule_facts_from_rdkit(mol: Chem.Mol) -> MoleculeFacts:
     """Snapshot a supported non-stereo RDKit molecule into South Star facts."""
 
@@ -102,6 +113,12 @@ def ordinary_molecule_facts_from_rdkit(
         raw_mol=mol,
         options=options,
     )
+
+
+def rdkit_molecule_has_specified_stereo(mol: Chem.Mol) -> bool:
+    """Return whether ordinary ingestion must retain specified stereo."""
+
+    return _has_rdkit_atom_stereo(mol) or _has_rdkit_bond_stereo(mol)
 
 
 def ordinary_molecule_facts_from_smiles(
@@ -1003,4 +1020,6 @@ __all__ = (
     "molecule_facts_from_rdkit",
     "ordinary_molecule_facts_from_rdkit",
     "ordinary_molecule_facts_from_smiles",
+    "rdkit_molecule_has_specified_stereo",
+    "require_rdkit_molecule",
 )

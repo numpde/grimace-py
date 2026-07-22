@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from itertools import permutations
 import unittest
 
 from rdkit import Chem
@@ -28,6 +29,7 @@ from grimace._south_star1.policy import TetraToken
 from grimace._south_star1.rdkit_adapter import RdkitOrdinaryExtractionOptions
 from grimace._south_star1.rdkit_adapter import molecule_facts_from_rdkit
 from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_rdkit
+from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_smiles
 from grimace._south_star1.render import render_stereo_traversal
 from grimace._south_star1.skeleton import enumerate_traversal_skeletons
 from grimace._south_star1.slots import allocate_traversal_slots
@@ -116,7 +118,7 @@ class RdkitAdapterTest(unittest.TestCase):
         self.assertEqual(set(site.reference_order), set(site.ligand_occurrences))
         ordinary_policy_for_facts(facts)
 
-    def test_ordinary_adapter_declares_smiles_parse_order_viewpoint_mode(self) -> None:
+    def test_ordinary_adapter_preserves_public_tetra_viewpoint_option(self) -> None:
         options = RdkitOrdinaryExtractionOptions()
 
         self.assertEqual(options.tetra_viewpoint_mode, "smiles_parse_order")
@@ -300,16 +302,98 @@ class RdkitAdapterTest(unittest.TestCase):
                 )
                 self.assertEqual(set(one_support.strings), set(two_support.strings))
 
-    def test_ordinary_adapter_tetra_viewpoint_is_not_renumbering_invariant(
+    def test_ordinary_adapter_stereo_is_invariant_under_atom_renumbering(
         self,
     ) -> None:
-        mol = Chem.MolFromSmiles("C[C@H](F)Cl")
-        renumbered = Chem.RenumberAtoms(mol, [1, 0, 2, 3])
+        exact_stereo = RdkitOrdinaryExtractionOptions(
+            stereo_site_options=OrdinaryStereoSiteOptions(
+                ligand_equivalence="exact_stereochemical_graph_automorphism",
+            ),
+            stereo_site_discovery_mode="specified_closure",
+        )
+        cases = (
+            ("[C@H](F)(Cl)Br", RdkitOrdinaryExtractionOptions(), True),
+            ("C[C@H](F)Cl", RdkitOrdinaryExtractionOptions(), True),
+            ("[C@H]1(F)CO1", RdkitOrdinaryExtractionOptions(), True),
+            ("[C@H](F)(Cl)[C@@H](Br)I", RdkitOrdinaryExtractionOptions(), False),
+            (
+                "[C@H](F)([C@](F)(Cl)Br)[C@@](F)(Cl)Br",
+                exact_stereo,
+                False,
+            ),
+            ("[C@H](F)(Cl)Br.O", RdkitOrdinaryExtractionOptions(), True),
+            ("F/C=C/Cl", RdkitOrdinaryExtractionOptions(), True),
+            ("F/C=C\\Cl", RdkitOrdinaryExtractionOptions(), True),
+            ("CCO", RdkitOrdinaryExtractionOptions(), True),
+        )
 
-        original = ordinary_molecule_facts_from_rdkit(mol)
-        changed = ordinary_molecule_facts_from_rdkit(renumbered)
+        for text, options, exhaust in cases:
+            mol = Chem.MolFromSmiles(text)
+            expected = ordinary_molecule_facts_from_rdkit(mol, options)
+            source = ordinary_molecule_facts_from_smiles(text, options)
+            self.assertTrue(
+                facts_are_isomorphic(expected, source).isomorphic,
+                text,
+            )
+            atom_orders = (
+                tuple(permutations(range(mol.GetNumAtoms())))
+                if exhaust
+                else (
+                    tuple(reversed(range(mol.GetNumAtoms()))),
+                    tuple(range(1, mol.GetNumAtoms())) + (0,),
+                )
+            )
+            for order in atom_orders:
+                with self.subTest(text=text, order=order):
+                    renumbered = Chem.RenumberAtoms(mol, list(order))
+                    actual = ordinary_molecule_facts_from_rdkit(
+                        renumbered,
+                        options,
+                    )
+                    comparison = facts_are_isomorphic(expected, actual)
+                    self.assertTrue(comparison.isomorphic, comparison.reason)
+            chiral_atoms = tuple(
+                atom
+                for atom in mol.GetAtoms()
+                if atom.GetChiralTag() != Chem.ChiralType.CHI_UNSPECIFIED
+            )
+            if chiral_atoms and all(
+                not any(bond.IsInRing() for bond in atom.GetBonds())
+                for atom in chiral_atoms
+            ):
+                reordered_bonds = _reverse_bond_order_preserving_tetra(mol)
+                reordered_facts = ordinary_molecule_facts_from_rdkit(
+                    reordered_bonds,
+                    options,
+                )
+                comparison = facts_are_isomorphic(expected, reordered_facts)
+                self.assertTrue(comparison.isomorphic, comparison.reason)
 
-        self.assertFalse(facts_are_isomorphic(original, changed).isomorphic)
+    def test_ordinary_adapter_rejects_ambiguous_tetra_predecessor_identity(
+        self,
+    ) -> None:
+        source = Chem.MolFromSmiles("[C@H](F)(Cl)Br")
+        editable = Chem.RWMol()
+        for atom in source.GetAtoms():
+            editable.AddAtom(Chem.Atom(atom))
+        for bond in source.GetBonds():
+            editable.AddBond(
+                bond.GetEndAtomIdx(),
+                bond.GetBeginAtomIdx(),
+                bond.GetBondType(),
+            )
+        ambiguous = editable.GetMol()
+        Chem.SanitizeMol(ambiguous)
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "predecessor identity is ambiguous",
+        ) as raised:
+            ordinary_molecule_facts_from_rdkit(ambiguous)
+        self.assertIs(
+            raised.exception.kind,
+            SouthStarErrorKind.UNSUPPORTED_STEREO,
+        )
 
     def test_rdkit_tetra_adapter_tag_matches_semantics_for_root_and_nonroot(self) -> None:
         semantics = OrdinarySmilesSemantics()
@@ -703,6 +787,35 @@ def _occurrence_signature(facts, occurrence):
             atom.no_implicit,
         )
     raise AssertionError(f"unsupported occurrence kind: {occurrence.kind!r}")
+
+
+def _reverse_bond_order_preserving_tetra(mol):
+    source = Chem.Mol(mol)
+    Chem.AssignStereochemistry(source, cleanIt=True, force=True)
+    expected_cip = {
+        atom.GetIdx(): atom.GetProp("_CIPCode")
+        for atom in source.GetAtoms()
+        if atom.HasProp("_CIPCode")
+    }
+    editable = Chem.RWMol()
+    for atom in source.GetAtoms():
+        editable.AddAtom(Chem.Atom(atom))
+    for bond in reversed(tuple(source.GetBonds())):
+        editable.AddBond(
+            bond.GetBeginAtomIdx(),
+            bond.GetEndAtomIdx(),
+            bond.GetBondType(),
+        )
+    reordered = editable.GetMol()
+    Chem.SanitizeMol(reordered)
+    Chem.AssignStereochemistry(reordered, cleanIt=True, force=True)
+    for atom_idx, expected in expected_cip.items():
+        atom = reordered.GetAtomWithIdx(atom_idx)
+        actual = atom.GetProp("_CIPCode") if atom.HasProp("_CIPCode") else None
+        if actual != expected:
+            atom.InvertChirality()
+    Chem.AssignStereochemistry(reordered, cleanIt=True, force=True)
+    return reordered
 
 
 if __name__ == "__main__":

@@ -28,10 +28,11 @@ The core input is a fixed finite `MoleculeFacts` graph:
 - ring-label domains are finite and least-free normalized.
 
 RDKit Mol-state ingestion is available through
-`ordinary_molecule_facts_from_rdkit`. For tetrahedral stereo, that adapter
-currently assumes RDKit atom ids preserve the lexical order produced by
-`Chem.MolFromSmiles`. Arbitrarily renumbered RDKit `Mol` objects are not
-supported stereo-ingestion provenance in v0.
+`ordinary_molecule_facts_from_rdkit`. Tetrahedral stereo is derived from
+RDKit's chiral tag, ordered physical ligand identities, and the exact
+permutation into the South Star reference order. Numeric atom and bond ids are
+not stereo authority, so atom-renumbered RDKit molecules retain the same
+stereochemical facts.
 
 SMILES-source ingestion is available through
 `ordinary_molecule_facts_from_smiles`. It uses RDKit's sanitized parse for
@@ -64,7 +65,6 @@ The current dialect rejects or omits:
 - non-tetrahedral atom stereo;
 - atropisomerism;
 - `STEREOANY` and unknown/unspecified RDKit bond stereo classes;
-- arbitrary-renumbered RDKit `Mol` stereo ingestion;
 - potential-but-unspecified directional stereo sites outside the current
   directional carrier capability envelope;
 - recursive ligand-equivalence refinement beyond the current immediate ligand

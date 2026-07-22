@@ -46,6 +46,8 @@ class RdkitOrdinaryExtractionOptions:
     extract_specified_directional: bool = True
     normalize_non_graph_hydrogens: bool = True
     reject_unsupported_stereo: bool = True
+    # Retained as a public option value; ingestion now derives parity from
+    # RDKit's ordered physical bonds rather than numeric SMILES parse indices.
     tetra_viewpoint_mode: Literal["smiles_parse_order"] = "smiles_parse_order"
     stereo_site_options: OrdinaryStereoSiteOptions = OrdinaryStereoSiteOptions()
     stereo_site_discovery_passes: Literal[1, 2] = 1
@@ -83,9 +85,9 @@ def ordinary_molecule_facts_from_rdkit(
 ) -> MoleculeFacts:
     """Snapshot RDKit molecules into the ordinary South Star fact convention.
 
-    Tetrahedral extraction currently assumes RDKit atom ids preserve the
-    lexical order produced by ``Chem.MolFromSmiles``.  Arbitrarily renumbered
-    RDKit molecules are not a supported stereo-ingestion provenance yet.
+    RDKit's tetrahedral tag is interpreted relative to the atom's physical
+    neighbor order.  RDKit updates that tag/order pair together when atoms or
+    bonds are renumbered, so atom indices are never stereo authority here.
     """
 
     _validate_extraction_options(options)
@@ -463,15 +465,18 @@ def _raw_rdkit_tetrahedral_records(
             )
         center = AtomId(atom.GetIdx())
         implicit_h_count = atom_facts_by_id[center].implicit_h_count
+        reference_atoms = tuple(
+            AtomId(neighbor.GetIdx())
+            for neighbor in atom.GetNeighbors()
+        ) + (None,) * implicit_h_count
         records.append(
             RawTetraStereoRecord(
                 center=center,
-                target=_rdkit_tetra_target_for_south_star_reference_order(atom),
-                reference_atoms=tuple(
-                    AtomId(neighbor.GetIdx())
-                    for neighbor in atom.GetNeighbors()
-                )
-                + (None,) * implicit_h_count,
+                target=_rdkit_tetra_target_for_south_star_reference_order(
+                    atom,
+                    reference_atoms=reference_atoms,
+                ),
+                reference_atoms=reference_atoms,
             )
         )
     return tuple(records)
@@ -546,7 +551,10 @@ def _overlay_rdkit_tetrahedral_stereo(
             id=site.id,
             center=site.center,
             status=SiteStatus.SPECIFIED,
-            target=_rdkit_tetra_target_for_south_star_reference_order(atom),
+            target=_rdkit_tetra_target_for_south_star_reference_order(
+                atom,
+                reference_atoms=_rdkit_tetra_reference_atoms(atom, facts, site),
+            ),
             ligand_occurrences=site.ligand_occurrences,
             reference_order=_rdkit_tetra_reference_order(atom, facts, site),
         )
@@ -559,7 +567,24 @@ def _overlay_rdkit_tetrahedral_stereo(
     return out
 
 
-def _rdkit_tetra_target_for_south_star_reference_order(atom: Chem.Atom) -> TetraValue:
+def _rdkit_tetra_target_for_south_star_reference_order(
+    atom: Chem.Atom,
+    *,
+    reference_atoms: tuple[AtomId | None, ...],
+) -> TetraValue:
+    """Interpret RDKit's tag in the matching South Star ligand order.
+
+    RDKit stores the SMILES predecessor as the first incident bond directed
+    into a non-root atom.  Away from rings, its unique incoming non-ring bond
+    retains the same identity if bond ids are reordered.  A later incoming
+    ring bond is a closure, not the predecessor.  The predecessor viewpoint is
+    an odd permutation relative to South Star's explicit neighbor order.
+    ``RenumberAtoms``
+    preserves the ordered bond and its endpoint roles even though atom ids
+    change.  We therefore apply the exact physical-ligand permutation and
+    never infer a predecessor from numeric atom ids.
+    """
+
     tag = atom.GetChiralTag()
     if tag == Chem.ChiralType.CHI_TETRAHEDRAL_CW:
         target = TetraValue.PLUS
@@ -571,24 +596,59 @@ def _rdkit_tetra_target_for_south_star_reference_order(atom: Chem.Atom) -> Tetra
             f"unsupported RDKit tetrahedral tag: {tag!r}",
         )
 
-    if _rdkit_tetra_atom_has_predecessor(atom):
-        # RDKit's parsed non-root chiral tag is interpreted from the
-        # predecessor-atom viewpoint.  South Star stores a reference-order
-        # target, so this aligns the adapter target with local SMILES order.
-        return _flip_tetra_target(target)
+    if reference_atoms.count(None) not in {0, 1}:
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_STEREO,
+            "RDKit tetrahedral center has ambiguous implicit-H identity",
+        )
+    rdkit_order = reference_atoms
+    bonds = tuple(atom.GetBonds())
+    incoming_nonring_bonds = tuple(
+        bond
+        for bond in bonds
+        if bond.GetEndAtomIdx() == atom.GetIdx() and not bond.IsInRing()
+    )
+    if len(incoming_nonring_bonds) > 1:
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_STEREO,
+            "RDKit tetrahedral predecessor identity is ambiguous",
+        )
+    predecessor_viewpoint = bool(
+        bonds and bonds[0].GetEndAtomIdx() == atom.GetIdx()
+    ) or bool(incoming_nonring_bonds)
+    if predecessor_viewpoint:
+        if len(rdkit_order) < 2:
+            raise SouthStarError(
+                SouthStarErrorKind.UNSUPPORTED_STEREO,
+                "RDKit tetrahedral predecessor order is ambiguous",
+            )
+        rdkit_order = (
+            rdkit_order[1],
+            rdkit_order[0],
+            *rdkit_order[2:],
+        )
+    if _permutation_is_odd(rdkit_order, reference_atoms):
+        target = _flip_tetra_target(target)
     return target
 
 
-def _rdkit_tetra_atom_has_predecessor(atom: Chem.Atom) -> bool:
-    """Whether RDKit parsed the tetra atom as a non-root SMILES atom.
-
-    RDKit atom indices follow lexical parse order at this boundary.  For
-    non-root tetra atoms, RDKit's stored chiral tag is interpreted from the
-    predecessor bond's viewpoint, which is a one-bit parity difference from the
-    South Star occurrence reference order used below.
-    """
-
-    return any(neighbor.GetIdx() < atom.GetIdx() for neighbor in atom.GetNeighbors())
+def _permutation_is_odd(
+    source: tuple[AtomId | None, ...],
+    target: tuple[AtomId | None, ...],
+) -> bool:
+    if len(source) != len(target) or set(source) != set(target):
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_STEREO,
+            "RDKit tetrahedral ligand order is ambiguous",
+        )
+    positions = {value: index for index, value in enumerate(source)}
+    permutation = tuple(positions[value] for value in target)
+    inversions = sum(
+        permutation[left] > permutation[right]
+        for left in range(len(permutation))
+        for right in range(left + 1, len(permutation))
+    )
+    return inversions % 2 == 1
 
 
 def _flip_tetra_target(value: TetraValue) -> TetraValue:
@@ -597,6 +657,25 @@ def _flip_tetra_target(value: TetraValue) -> TetraValue:
     if value is TetraValue.MINUS:
         return TetraValue.PLUS
     return value
+
+
+def _rdkit_tetra_reference_atoms(
+    atom: Chem.Atom,
+    facts: MoleculeFacts,
+    site: TetrahedralSiteFacts,
+) -> tuple[AtomId | None, ...]:
+    occurrence_by_id = {
+        occurrence.id: occurrence
+        for occurrence in facts.ligand_occurrences
+    }
+    implicit_h_count = sum(
+        occurrence_by_id[occurrence_id].kind is LigandKind.IMPLICIT_H
+        for occurrence_id in site.ligand_occurrences
+    )
+    return tuple(
+        AtomId(neighbor.GetIdx())
+        for neighbor in atom.GetNeighbors()
+    ) + (None,) * implicit_h_count
 
 
 def _rdkit_tetra_reference_order(

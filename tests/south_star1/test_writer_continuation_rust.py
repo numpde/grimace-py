@@ -9,6 +9,7 @@ import unittest
 from unittest.mock import patch
 
 from grimace import MolToSmilesContinuationDecoder
+from grimace import SouthStarError
 from grimace._south_star1.writer_continuation_asset import (
     open_writer_continuation_core,
 )
@@ -394,7 +395,7 @@ class WriterContinuationRustTest(unittest.TestCase):
             forged[field] = value
             forged["digest"] = _snapshot_digest_for_test(forged)
             with self.subTest(field=field):
-                with self.assertRaises(ValueError):
+                with self.assertRaises((ValueError, SouthStarError)):
                     MolToSmilesContinuationDecoder.from_snapshot(
                         self.path, forged
                     )

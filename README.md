@@ -60,3 +60,16 @@ decoder = grimace.MolToSmilesContinuationDecoder.from_asset(
     expected_manifest_digest=digest,
 )
 ```
+
+Bind the asset to the exact molecule when local transition proofs are needed:
+
+```python
+proof_decoder = grimace.MolToSmilesContinuationDecoder.from_asset(
+    asset_path,
+    expected_manifest_digest=digest,
+    proof_capable=True,
+    mol=Chem.MolFromSmiles("F/C=C/Cl"),
+)
+for locator in proof_decoder.branch_proof_locators:
+    branch_artifact = proof_decoder.branch_artifact(locator)
+```

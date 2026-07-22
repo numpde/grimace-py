@@ -11,6 +11,7 @@ from .policy import SerializationLanguageMode
 from .prepared_runtime import SouthStarRuntimeOptions
 from .prepared_runtime import SouthStarWriterSurface
 from .prepared_runtime import prepare_south_star_mol_from_rdkit
+from .prepared_runtime import runtime_root_atom_for_prepared
 from .rdkit_adapter import RdkitOrdinaryExtractionOptions
 from .rdkit_adapter import rdkit_molecule_has_specified_stereo
 from .rdkit_adapter import require_rdkit_molecule
@@ -33,7 +34,6 @@ def build_mol_to_smiles_continuation_asset(
 ) -> str:
     """Build and atomically publish one semantically certified asset."""
 
-    mol = require_rdkit_molecule(mol)
     if not isinstance(rooted_at_atom, int) or rooted_at_atom < -1:
         raise SouthStarError(
             SouthStarErrorKind.INVALID_FACTS,
@@ -53,6 +53,32 @@ def build_mol_to_smiles_continuation_asset(
         do_random=bool(do_random),
         serialization_language=SerializationLanguageMode.WRITER_SHAPED,
     )
+    prepared = prepare_public_continuation_molecule(
+        mol,
+        writer_surface=writer_surface,
+        runtime_options=runtime_options,
+    )
+    snapshot = capture_initial_writer_frontier_snapshot(
+        prepared=prepared,
+        runtime_options=runtime_options,
+    )
+    manifest = write_writer_continuation_asset(
+        path=path,
+        prepared=prepared,
+        snapshot=snapshot,
+    )
+    return cast(str, manifest["digest"])
+
+
+def prepare_public_continuation_molecule(
+    mol: object,
+    *,
+    writer_surface: SouthStarWriterSurface,
+    runtime_options: SouthStarRuntimeOptions,
+):
+    """Prepare one public RDKit molecule under the asset's fixed policy."""
+
+    mol = require_rdkit_molecule(mol)
     has_specified_stereo = rdkit_molecule_has_specified_stereo(mol)
     if has_specified_stereo and not writer_surface.isomeric_smiles:
         raise SouthStarError(
@@ -76,16 +102,13 @@ def build_mol_to_smiles_continuation_asset(
         writer_surface=writer_surface,
         extraction_options=extraction_options,
     )
-    snapshot = capture_initial_writer_frontier_snapshot(
-        prepared=prepared,
-        runtime_options=runtime_options,
-    )
-    manifest = write_writer_continuation_asset(
-        path=path,
-        prepared=prepared,
-        snapshot=snapshot,
-    )
-    return cast(str, manifest["digest"])
+    # Root and runtime-mode validation belong to the same preparation boundary
+    # for both publication and later molecule-bound proof sessions.
+    runtime_root_atom_for_prepared(runtime_options, prepared=prepared)
+    return prepared
 
 
-__all__ = ("build_mol_to_smiles_continuation_asset",)
+__all__ = (
+    "build_mol_to_smiles_continuation_asset",
+    "prepare_public_continuation_molecule",
+)

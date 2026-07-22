@@ -202,6 +202,12 @@ class WriterContinuationAssetSemanticVerification:
     reason: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class _WriterContinuationAssetProofBatch:
+    batch: object
+    snapshot: object
+
+
 class WriterContinuationAsset:
     """A core-first asset session whose provenance indexes load on demand."""
 
@@ -699,6 +705,158 @@ def terminalization_artifact_from_continuation_asset(
     if not checked.accepted:
         _violation(checked.reason or "continuation_asset_terminal_artifact_rejected")
     return artifact
+
+
+def verified_branch_artifact_from_continuation_asset(
+    *, context, prepared, asset, source_raw_cursor_digest, emitted_text,
+    branch_certificate_digest, proof_batch=None
+):
+    edge = asset.edge_record(source_raw_cursor_digest, emitted_text)
+    if (
+        edge is None
+        or branch_certificate_digest not in edge.branch_certificate_digests
+    ):
+        _violation("continuation_asset_branch_locator_mismatch")
+    proof_batch = proof_batch or _continuation_asset_proof_batch(
+        prepared=prepared,
+        asset=asset,
+        source_raw_cursor_digest=source_raw_cursor_digest,
+    )
+    batch = proof_batch.batch
+    projections = tuple(
+        item
+        for item in batch.text_choice_projection_certificates
+        if item.emitted_text == emitted_text
+    )
+    if len(projections) != 1:
+        _violation("continuation_asset_branch_projection_not_unique")
+    projection = projections[0]
+    if (
+        _identity_digest(projection) != edge.text_projection_digest
+        or tuple(
+            _identity_digest(item) for item in projection.branch_certificates
+        )
+        != edge.branch_certificate_digests
+    ):
+        _violation("continuation_asset_branch_projection_mismatch")
+    matches = tuple(
+        support.checked_branch_certificate
+        for support in batch.supports
+        if support.emitted_text == emitted_text
+        and _identity_digest(support.checked_branch_certificate)
+        == branch_certificate_digest
+    )
+    if len(matches) != 1:
+        _violation("continuation_asset_branch_identity_not_unique")
+    artifact, live = _with_memoized_writer_envelope_terms(
+        _writer_branch_transition_artifact_and_live_verification_for_selected_support,
+        prepared=prepared,
+        artifact=None,
+        snapshot=proof_batch.snapshot,
+        projection=projection,
+        branch=matches[0],
+    )
+    if not live.accepted:
+        _violation(live.reason or "continuation_asset_branch_live_rejection")
+    structural = _with_memoized_writer_envelope_terms(
+        verify_writer_branch_transition_artifact_consistency,
+        artifact,
+    )
+    if not structural.accepted:
+        _violation(
+            structural.reason or "continuation_asset_branch_structural_rejection"
+        )
+    facts = _with_memoized_writer_envelope_terms(
+        _verify_writer_branch_transition_artifact_for_facts_with_context,
+        context=context,
+        artifact=artifact,
+    )
+    if not facts.accepted:
+        _violation(facts.reason or "continuation_asset_branch_facts_rejection")
+    if facts.unchecked_obligation_families:
+        _violation("continuation_asset_branch_obligations_unchecked")
+    return artifact
+
+
+def verified_terminal_artifact_from_continuation_asset(
+    *, context, prepared, asset, source_raw_cursor_digest,
+    terminal_support_identity_digest, proof_batch=None
+):
+    terminal = asset.terminal_record(source_raw_cursor_digest)
+    if (
+        terminal is None
+        or terminal_support_identity_digest
+        not in terminal.terminal_support_identity_digests
+    ):
+        _violation("continuation_asset_terminal_locator_mismatch")
+    proof_batch = proof_batch or _continuation_asset_proof_batch(
+        prepared=prepared,
+        asset=asset,
+        source_raw_cursor_digest=source_raw_cursor_digest,
+    )
+    batch = proof_batch.batch
+    matches = tuple(
+        support
+        for support in batch.terminal_supports
+        if _identity_digest(support.checked_terminal_certificate)
+        == terminal_support_identity_digest
+    )
+    if len(matches) != 1:
+        _violation("continuation_asset_terminal_identity_not_unique")
+    artifact, live = _with_memoized_writer_envelope_terms(
+        _writer_terminalization_artifact_and_live_verification_for_selected_support,
+        prepared=prepared,
+        artifact=None,
+        snapshot=proof_batch.snapshot,
+        selected=matches[0],
+    )
+    if not live.accepted:
+        _violation(live.reason or "continuation_asset_terminal_live_rejection")
+    structural = _with_memoized_writer_envelope_terms(
+        verify_writer_terminalization_artifact_consistency,
+        artifact,
+    )
+    if not structural.accepted:
+        _violation(
+            structural.reason or "continuation_asset_terminal_structural_rejection"
+        )
+    facts = _with_memoized_writer_envelope_terms(
+        _verify_writer_terminalization_artifact_for_facts_with_context,
+        context=context,
+        artifact=artifact,
+    )
+    if not facts.accepted:
+        _violation(facts.reason or "continuation_asset_terminal_facts_rejection")
+    if facts.unchecked_obligation_families:
+        _violation("continuation_asset_terminal_obligations_unchecked")
+    return artifact
+
+
+def _continuation_asset_proof_batch(
+    *, prepared, asset, source_raw_cursor_digest
+):
+    cursor = reconstruct_writer_cursor_from_asset(
+        prepared=prepared,
+        asset=asset,
+        raw_cursor_digest=source_raw_cursor_digest,
+    )
+    return _WriterContinuationAssetProofBatch(
+        batch=_frontier_batch(prepared, cursor),
+        snapshot=_snapshot_for_raw_cursor(
+            prepared=prepared,
+            asset=asset,
+            cursor=cursor,
+            raw_cursor_digest=source_raw_cursor_digest,
+        ),
+    )
+
+
+def writer_continuation_asset_runtime_options(asset):
+    descriptor = asset.manifest["source_snapshot_chunk"]
+    chunk = _read_chunk(asset.path, descriptor)
+    if len(chunk["items"]) != 1:
+        _violation("continuation_asset_source_snapshot_item_count_mismatch")
+    return _runtime_options_from_terms(chunk["items"][0]["runtime_options"])
 
 
 def verify_writer_continuation_asset_consistency(path):
@@ -1730,10 +1888,13 @@ __all__ = (
     "open_writer_continuation_core",
     "reconstruct_writer_cursor_from_asset",
     "terminalization_artifact_from_continuation_asset",
+    "verified_branch_artifact_from_continuation_asset",
+    "verified_terminal_artifact_from_continuation_asset",
     "verify_writer_continuation_asset_consistency",
     "verify_writer_continuation_asset_for_prepared",
     "verify_writer_continuation_asset_live",
     "verify_writer_continuation_cursor_envelope",
     "write_writer_continuation_asset",
     "writer_continuation_cursor_envelope",
+    "writer_continuation_asset_runtime_options",
 )

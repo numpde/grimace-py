@@ -246,7 +246,7 @@ class PublicContinuationAssetTest(unittest.TestCase):
                 expected_manifest_digest=digest,
             )
             with self.assertRaisesRegex(
-                ValueError,
+                grimace.SouthStarError,
                 "continuation_asset_manifest_digest_mismatch",
             ):
                 grimace.MolToSmilesContinuationDecoder.from_asset(

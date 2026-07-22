@@ -214,6 +214,12 @@ if _RUNTIME is not None:
     MolToSmilesContinuationProbability = (
         _CONTINUATION_RUNTIME.MolToSmilesContinuationProbability
     )
+    MolToSmilesBranchProofLocator = (
+        _CONTINUATION_RUNTIME.MolToSmilesBranchProofLocator
+    )
+    MolToSmilesTerminalProofLocator = (
+        _CONTINUATION_RUNTIME.MolToSmilesTerminalProofLocator
+    )
     MolToSmilesWeightedChoice = _CONTINUATION_RUNTIME.MolToSmilesWeightedChoice
 
     class _PublicDecoderBase(_RUNTIME._PublicDecoderBase):
@@ -304,12 +310,21 @@ else:
         __slots__ = ()
 
 
+    class MolToSmilesBranchProofLocator:  # pragma: no cover - broken installs only
+        __slots__ = ()
+
+
+    class MolToSmilesTerminalProofLocator:  # pragma: no cover - broken installs only
+        __slots__ = ()
+
+
     class MolToSmilesWeightedChoice:  # pragma: no cover - broken installs only
         __slots__ = ()
 
 
 __all__ = [
     "BuildMolToSmilesContinuationAsset",
+    "MolToSmilesBranchProofLocator",
     "MolToSmilesChoice",
     "MolToSmilesContinuationDecoder",
     "MolToSmilesContinuationProbability",
@@ -319,6 +334,7 @@ __all__ = [
     "MolToSmilesEnum",
     "MolToSmilesTokenInventory",
     "MolToSmilesTokenInventorySuperset",
+    "MolToSmilesTerminalProofLocator",
     "MolToSmilesWeightedChoice",
     "SmilesDeviation",
     "SouthStarError",

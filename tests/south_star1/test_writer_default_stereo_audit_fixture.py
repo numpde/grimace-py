@@ -11,6 +11,7 @@ from unittest.mock import patch
 from rdkit import rdBase
 
 from grimace import MolToSmilesContinuationDecoder
+from grimace import SouthStarError
 from grimace._south_star1.fact_isomorphism import facts_are_isomorphic
 from grimace._south_star1.facts import DirectionalValue
 from grimace._south_star1.policy import SerializationLanguageMode
@@ -274,7 +275,7 @@ class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
         )
 
     def test_proof_decoder_binds_prepared_at_construction(self) -> None:
-        with self.assertRaisesRegex(ValueError, "proof_prepared_required"):
+        with self.assertRaisesRegex(SouthStarError, "proof_molecule_required"):
             MolToSmilesContinuationDecoder.from_asset(
                 self.assets["tetra_plus"].path,
                 proof_capable=True,

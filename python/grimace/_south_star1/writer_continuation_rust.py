@@ -9,16 +9,26 @@ from typing import TYPE_CHECKING
 
 from grimace import _core
 
+from .errors import SouthStarError
+from .errors import SouthStarErrorKind
+from .prepared_runtime import SouthStarWriterSurface
+from .public_continuation_asset import prepare_public_continuation_molecule
 from .writer_continuation_asset import advance_writer_continuation_proof
-from .writer_continuation_asset import (
-    branch_transition_artifact_from_continuation_asset,
-)
+from .writer_continuation_asset import _continuation_asset_proof_batch
 from .writer_continuation_asset import open_writer_continuation_core
 from .writer_continuation_asset import _source_snapshot_from_asset
 from .writer_continuation_asset import (
-    terminalization_artifact_from_continuation_asset,
+    verified_branch_artifact_from_continuation_asset,
+)
+from .writer_continuation_asset import (
+    verified_terminal_artifact_from_continuation_asset,
+)
+from .writer_continuation_asset import verify_writer_continuation_asset_consistency
+from .writer_continuation_asset import (
+    writer_continuation_asset_runtime_options,
 )
 from .writer_envelope_terms import _identity_digest
+from .writer_facts_replay_context import _writer_facts_replay_context
 
 if TYPE_CHECKING:
     from .writer_continuation_asset import WriterContinuationAsset
@@ -116,6 +126,42 @@ class MolToSmilesWeightedChoice:
 
 
 @dataclass(frozen=True, slots=True)
+class MolToSmilesBranchProofLocator:
+    asset_manifest_digest: str
+    source_raw_cursor_digest: str
+    emitted_text: str
+    branch_certificate_digest: str
+
+
+@dataclass(frozen=True, slots=True)
+class MolToSmilesTerminalProofLocator:
+    asset_manifest_digest: str
+    source_raw_cursor_digest: str
+    terminal_support_identity_digest: str
+
+
+class _ContinuationProofSession:
+    __slots__ = ("asset", "prepared", "facts_context", "_batches")
+
+    def __init__(self, *, asset, prepared, facts_context) -> None:
+        self.asset = asset
+        self.prepared = prepared
+        self.facts_context = facts_context
+        self._batches = {}
+
+    def batch(self, raw_cursor_digest: str):
+        value = self._batches.get(raw_cursor_digest)
+        if value is None:
+            value = _continuation_asset_proof_batch(
+                prepared=self.prepared,
+                asset=self.asset,
+                source_raw_cursor_digest=raw_cursor_digest,
+            )
+            self._batches[raw_cursor_digest] = value
+        return value
+
+
+@dataclass(frozen=True, slots=True)
 class _ContinuationAssetStateAdapter:
     core: object
     cursor: object
@@ -123,7 +169,7 @@ class _ContinuationAssetStateAdapter:
     asset_manifest_digest: str
     proof_asset: "WriterContinuationAsset | None" = None
     proof_cursor: object | None = None
-    proof_prepared: object | None = None
+    proof_session: object | None = None
 
     def prefix(self) -> str:
         return "".join(self.emitted_texts)
@@ -139,7 +185,7 @@ class _ContinuationAssetStateAdapter:
             asset_manifest_digest=self.asset_manifest_digest,
             proof_asset=self.proof_asset,
             proof_cursor=self.proof_cursor,
-            proof_prepared=self.proof_prepared,
+            proof_session=self.proof_session,
         )
 
     def cache_key(self) -> tuple[object, ...]:
@@ -179,7 +225,7 @@ class _ContinuationAssetStateAdapter:
             asset_manifest_digest=self.asset_manifest_digest,
             proof_asset=self.proof_asset,
             proof_cursor=proof_cursor,
-            proof_prepared=self.proof_prepared,
+            proof_session=self.proof_session,
         )
 
     def choice_successor_states(
@@ -195,57 +241,131 @@ class _ContinuationAssetStateAdapter:
     ) -> tuple[tuple[str, "_ContinuationAssetStateAdapter"], ...]:
         return self.choice_successor_states()
 
-    def branch_artifact(self, branch_certificate_digest: str):
+    @property
+    def branch_proof_locators(self) -> tuple[MolToSmilesBranchProofLocator, ...]:
         self._require_proof_context()
-        return branch_transition_artifact_from_continuation_asset(
-            prepared=self.proof_prepared,
-            asset=self.proof_asset,
-            source_raw_cursor_digest=self.proof_cursor.raw_cursor_digest,
-            emitted_text=self._branch_text(branch_certificate_digest),
-            branch_certificate_digest=branch_certificate_digest,
-        )
-
-    def terminalization_artifact(self, terminal_support_identity_digest: str):
-        self._require_proof_context()
-        return terminalization_artifact_from_continuation_asset(
-            prepared=self.proof_prepared,
-            asset=self.proof_asset,
-            source_raw_cursor_digest=self.proof_cursor.raw_cursor_digest,
-            terminal_support_identity_digest=terminal_support_identity_digest,
-        )
-
-    def _branch_text(self, branch_certificate_digest: str) -> str:
-        matches = tuple(
-            edge.emitted_text
-            for edge in self.proof_asset.edges_from(
-                self.proof_cursor.raw_cursor_digest
+        raw = self.proof_cursor.raw_cursor_digest
+        return tuple(
+            MolToSmilesBranchProofLocator(
+                asset_manifest_digest=self.asset_manifest_digest,
+                source_raw_cursor_digest=raw,
+                emitted_text=edge.emitted_text,
+                branch_certificate_digest=digest,
             )
-            if branch_certificate_digest in edge.branch_certificate_digests
+            for edge in self.proof_asset.edges_from(raw)
+            for digest in edge.branch_certificate_digests
         )
-        if len(matches) != 1:
-            raise ValueError("continuation_asset_branch_proof_identity_not_unique")
-        return matches[0]
+
+    @property
+    def terminal_proof_locators(
+        self,
+    ) -> tuple[MolToSmilesTerminalProofLocator, ...]:
+        self._require_proof_context()
+        raw = self.proof_cursor.raw_cursor_digest
+        record = self.proof_asset.terminal_record(raw)
+        if record is None:
+            return ()
+        return tuple(
+            MolToSmilesTerminalProofLocator(
+                asset_manifest_digest=self.asset_manifest_digest,
+                source_raw_cursor_digest=raw,
+                terminal_support_identity_digest=digest,
+            )
+            for digest in record.terminal_support_identity_digests
+        )
+
+    def branch_artifact(self, locator):
+        self._require_proof_context()
+        locator = self._resolve_branch_locator(locator)
+        return verified_branch_artifact_from_continuation_asset(
+            context=self.proof_session.facts_context,
+            prepared=self.proof_session.prepared,
+            asset=self.proof_asset,
+            source_raw_cursor_digest=locator.source_raw_cursor_digest,
+            emitted_text=locator.emitted_text,
+            branch_certificate_digest=locator.branch_certificate_digest,
+            proof_batch=self.proof_session.batch(
+                locator.source_raw_cursor_digest
+            ),
+        )
+
+    def terminalization_artifact(self, locator):
+        self._require_proof_context()
+        locator = self._resolve_terminal_locator(locator)
+        return verified_terminal_artifact_from_continuation_asset(
+            context=self.proof_session.facts_context,
+            prepared=self.proof_session.prepared,
+            asset=self.proof_asset,
+            source_raw_cursor_digest=locator.source_raw_cursor_digest,
+            terminal_support_identity_digest=(
+                locator.terminal_support_identity_digest
+            ),
+            proof_batch=self.proof_session.batch(
+                locator.source_raw_cursor_digest
+            ),
+        )
+
+    def _resolve_branch_locator(self, locator) -> MolToSmilesBranchProofLocator:
+        if isinstance(locator, str):
+            matches = tuple(
+                item
+                for item in self.branch_proof_locators
+                if item.branch_certificate_digest == locator
+            )
+            if len(matches) != 1:
+                _proof_error("continuation_asset_branch_proof_identity_not_unique")
+            return matches[0]
+        if not isinstance(locator, MolToSmilesBranchProofLocator):
+            _proof_error("continuation_asset_branch_proof_locator_type_mismatch")
+        if locator not in self.branch_proof_locators:
+            _proof_error("continuation_asset_branch_proof_locator_mismatch")
+        return locator
+
+    def _resolve_terminal_locator(
+        self, locator
+    ) -> MolToSmilesTerminalProofLocator:
+        if isinstance(locator, str):
+            matches = tuple(
+                item
+                for item in self.terminal_proof_locators
+                if item.terminal_support_identity_digest == locator
+            )
+            if len(matches) != 1:
+                _proof_error("continuation_asset_terminal_proof_identity_not_unique")
+            return matches[0]
+        if not isinstance(locator, MolToSmilesTerminalProofLocator):
+            _proof_error("continuation_asset_terminal_proof_locator_type_mismatch")
+        if locator not in self.terminal_proof_locators:
+            _proof_error("continuation_asset_terminal_proof_locator_mismatch")
+        return locator
 
     def _require_proof_context(self) -> None:
         if self.proof_asset is None or self.proof_cursor is None:
-            raise ValueError("continuation_asset_proof_mode_required")
-        if self.proof_prepared is None:
-            raise ValueError("continuation_asset_proof_prepared_required")
+            _proof_error(
+                "continuation_asset_proof_mode_required",
+                kind=SouthStarErrorKind.UNSUPPORTED_POLICY,
+            )
+        if self.proof_session is None:
+            _proof_error("continuation_asset_proof_session_required")
+
+
+def _proof_error(reason: str, *, kind=SouthStarErrorKind.SEMANTIC_MISMATCH):
+    raise SouthStarError(kind, reason)
 
 
 def _verified_root_proof_cursor(*, asset, prepared):
     source = _source_snapshot_from_asset(prepared=prepared, asset=asset)
     proof_cursor = asset.root_proof_cursor
     if _identity_digest(source.cursor) != proof_cursor.raw_cursor_digest:
-        raise ValueError("continuation_asset_proof_root_cursor_mismatch")
+        _proof_error("continuation_asset_proof_root_cursor_mismatch")
     record = asset.raw_cursor_record(proof_cursor.raw_cursor_digest)
     if record is None:
-        raise ValueError("continuation_asset_proof_root_record_missing")
+        _proof_error("continuation_asset_proof_root_record_missing")
     if (
         record.compiled_node_id != proof_cursor.node_id
         or record.normalization_scale != proof_cursor.completion_scale
     ):
-        raise ValueError("continuation_asset_proof_root_mapping_mismatch")
+        _proof_error("continuation_asset_proof_root_mapping_mismatch")
     return proof_cursor
 
 
@@ -276,23 +396,63 @@ class MolToSmilesContinuationDecoder:
         expected_manifest_digest: str | None = None,
         proof_capable: bool = False,
         prepared=None,
+        mol=None,
     ) -> "MolToSmilesContinuationDecoder":
-        if prepared is not None and not proof_capable:
-            raise ValueError("continuation_asset_proof_prepared_without_mode")
-        if proof_capable and prepared is None:
-            raise ValueError("continuation_asset_proof_prepared_required")
+        if prepared is not None and mol is not None:
+            _proof_error(
+                "continuation_asset_proof_multiple_molecule_bindings",
+                kind=SouthStarErrorKind.UNSUPPORTED_POLICY,
+            )
+        if (prepared is not None or mol is not None) and not proof_capable:
+            _proof_error(
+                "continuation_asset_proof_binding_without_mode",
+                kind=SouthStarErrorKind.UNSUPPORTED_POLICY,
+            )
+        if proof_capable and prepared is None and mol is None:
+            _proof_error(
+                "continuation_asset_proof_molecule_required",
+                kind=SouthStarErrorKind.UNSUPPORTED_POLICY,
+            )
         asset = open_writer_continuation_core(path)
         if (
             expected_manifest_digest is not None
             and asset.manifest_digest != expected_manifest_digest
         ):
-            raise ValueError("continuation_asset_manifest_digest_mismatch")
+            _proof_error("continuation_asset_manifest_digest_mismatch")
         core = _rust_core_for_asset(asset)
         proof_cursor = None
+        facts_context = None
+        proof_session = None
         if proof_capable:
+            structural = verify_writer_continuation_asset_consistency(asset.path)
+            if not structural.accepted:
+                _proof_error(
+                    structural.reason
+                    or "continuation_asset_proof_structural_rejection"
+                )
+            runtime_options = writer_continuation_asset_runtime_options(asset)
+            if mol is not None:
+                prepared = prepare_public_continuation_molecule(
+                    mol,
+                    writer_surface=SouthStarWriterSurface(),
+                    runtime_options=runtime_options,
+                )
+            facts_context = _writer_facts_replay_context(
+                facts=prepared.facts,
+                runtime_options=runtime_options,
+                policy=prepared.policy,
+            )
+            if facts_context.expected_identity != asset.manifest["prepared_identity"]:
+                _proof_error("continuation_asset_proof_prepared_identity_mismatch")
             proof_cursor = _verified_root_proof_cursor(
                 asset=asset,
+                prepared=facts_context.prepared,
+            )
+            prepared = facts_context.prepared
+            proof_session = _ContinuationProofSession(
+                asset=asset,
                 prepared=prepared,
+                facts_context=facts_context,
             )
         return cls._from_state(
             _ContinuationAssetStateAdapter(
@@ -302,7 +462,7 @@ class MolToSmilesContinuationDecoder:
                 asset_manifest_digest=asset.manifest_digest,
                 proof_asset=asset if proof_capable else None,
                 proof_cursor=proof_cursor,
-                proof_prepared=prepared,
+                proof_session=proof_session,
             )
         )
 
@@ -314,6 +474,7 @@ class MolToSmilesContinuationDecoder:
         *,
         proof_capable: bool = False,
         prepared=None,
+        mol=None,
     ) -> "MolToSmilesContinuationDecoder":
         _validate_snapshot_shape(snapshot)
         if snapshot["digest"] != _snapshot_digest(snapshot):
@@ -323,6 +484,7 @@ class MolToSmilesContinuationDecoder:
             expected_manifest_digest=snapshot["asset_manifest_digest"],
             proof_capable=proof_capable,
             prepared=prepared,
+            mol=mol,
         )
         emitted_texts = tuple(snapshot["emitted_texts"])
         state = decoder._state
@@ -438,13 +600,21 @@ class MolToSmilesContinuationDecoder:
         snapshot["digest"] = _snapshot_digest(snapshot)
         return snapshot
 
-    def branch_artifact(self, branch_certificate_digest: str):
-        return self._state.branch_artifact(branch_certificate_digest)
+    @property
+    def branch_proof_locators(self) -> tuple[MolToSmilesBranchProofLocator, ...]:
+        return self._state.branch_proof_locators
 
-    def terminalization_artifact(self, terminal_support_identity_digest: str):
-        return self._state.terminalization_artifact(
-            terminal_support_identity_digest
-        )
+    @property
+    def terminal_proof_locators(
+        self,
+    ) -> tuple[MolToSmilesTerminalProofLocator, ...]:
+        return self._state.terminal_proof_locators
+
+    def branch_artifact(self, locator):
+        return self._state.branch_artifact(locator)
+
+    def terminalization_artifact(self, locator):
+        return self._state.terminalization_artifact(locator)
 
     @property
     def rust_resident_bytes(self) -> int:

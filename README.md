@@ -73,3 +73,17 @@ proof_decoder = grimace.MolToSmilesContinuationDecoder.from_asset(
 for locator in proof_decoder.branch_proof_locators:
     branch_artifact = proof_decoder.branch_artifact(locator)
 ```
+
+Use whole-asset recertification when an asset has been transported or copied:
+
+```python
+verification = grimace.VerifyMolToSmilesContinuationAsset(
+    Chem.MolFromSmiles("F/C=C/Cl"),
+    asset_path,
+    expected_manifest_digest=digest,
+)
+```
+
+`from_asset()` opens the structural/core asset, molecule-bound proof mode verifies
+local proofs on demand, and `VerifyMolToSmilesContinuationAsset()` completes the
+independent whole-asset recertification.

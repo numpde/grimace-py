@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
@@ -15,8 +16,95 @@ from .prepared_runtime import runtime_root_atom_for_prepared
 from .rdkit_adapter import RdkitOrdinaryExtractionOptions
 from .rdkit_adapter import rdkit_molecule_has_specified_stereo
 from .rdkit_adapter import require_rdkit_molecule
+from .writer_continuation_asset import open_writer_continuation_core
 from .writer_continuation_asset import write_writer_continuation_asset
+from .writer_continuation_asset import verify_writer_continuation_asset_consistency
+from .writer_continuation_asset import verify_writer_continuation_asset_for_prepared
+from .writer_continuation_asset import writer_continuation_asset_runtime_options
+from .writer_envelope_terms import _identity_envelope
+from .writer_prepared_identity import writer_prepared_identity
 from .writer_snapshot import capture_initial_writer_frontier_snapshot
+
+
+@dataclass(frozen=True, slots=True)
+class MolToSmilesContinuationAssetVerification:
+    """Ephemeral proof report for one molecule-bound continuation asset."""
+
+    accepted: bool
+    manifest_digest: str
+    raw_cursor_count: int
+    edge_locator_count: int
+    branch_locator_count: int
+    branch_proof_count: int
+    terminal_record_count: int
+    terminal_locator_count: int
+    terminal_proof_count: int
+    live_replay_complete: bool
+    unchecked_obligation_families: tuple[str, ...]
+
+
+def verify_mol_to_smiles_continuation_asset(
+    mol: object,
+    path: str | Path,
+    *,
+    expected_manifest_digest: str | None = None,
+) -> MolToSmilesContinuationAssetVerification:
+    """Recertify one transported asset against the exact supplied RDKit molecule."""
+
+    asset = open_writer_continuation_core(path)
+    if (
+        expected_manifest_digest is not None
+        and asset.manifest_digest != expected_manifest_digest
+    ):
+        raise SouthStarError(
+            SouthStarErrorKind.SEMANTIC_MISMATCH,
+            "continuation_asset_manifest_digest_mismatch",
+        )
+
+    structural = verify_writer_continuation_asset_consistency(asset.path)
+    if not structural.accepted:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            structural.reason or "continuation_asset_structural_rejection",
+        )
+
+    runtime_options = writer_continuation_asset_runtime_options(asset)
+    prepared = prepare_public_continuation_molecule(
+        mol,
+        writer_surface=SouthStarWriterSurface(),
+        runtime_options=runtime_options,
+    )
+    expected_identity = _identity_envelope(
+        writer_prepared_identity(prepared, runtime_options)
+    )
+    if expected_identity != asset.manifest["prepared_identity"]:
+        raise SouthStarError(
+            SouthStarErrorKind.SEMANTIC_MISMATCH,
+            "continuation_asset_prepared_identity_mismatch",
+        )
+
+    semantic = verify_writer_continuation_asset_for_prepared(
+        prepared=prepared,
+        asset=asset,
+    )
+    if not semantic.accepted:
+        raise SouthStarError(
+            SouthStarErrorKind.SEMANTIC_MISMATCH,
+            semantic.reason or "continuation_asset_semantic_rejection",
+        )
+    return MolToSmilesContinuationAssetVerification(
+        accepted=True,
+        manifest_digest=asset.manifest_digest,
+        raw_cursor_count=semantic.raw_cursor_count,
+        edge_locator_count=semantic.edge_locator_count,
+        branch_locator_count=semantic.branch_locator_count,
+        branch_proof_count=semantic.branch_proof_count,
+        terminal_record_count=semantic.terminal_record_count,
+        terminal_locator_count=semantic.terminal_locator_count,
+        terminal_proof_count=semantic.terminal_proof_count,
+        live_replay_complete=semantic.live_replay_complete,
+        unchecked_obligation_families=semantic.unchecked_obligation_families,
+    )
 
 
 def build_mol_to_smiles_continuation_asset(
@@ -110,5 +198,7 @@ def prepare_public_continuation_molecule(
 
 __all__ = (
     "build_mol_to_smiles_continuation_asset",
+    "MolToSmilesContinuationAssetVerification",
     "prepare_public_continuation_molecule",
+    "verify_mol_to_smiles_continuation_asset",
 )

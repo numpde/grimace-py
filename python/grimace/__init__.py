@@ -72,6 +72,26 @@ def BuildMolToSmilesContinuationAsset(
     )
 
 
+def VerifyMolToSmilesContinuationAsset(
+    mol: object,
+    path: str | Path,
+    *,
+    expected_manifest_digest: str | None = None,
+) -> "MolToSmilesContinuationAssetVerification":
+    """Independently recertify one continuation asset against an RDKit molecule."""
+
+    _require_runtime()
+    from ._south_star1.public_continuation_asset import (
+        verify_mol_to_smiles_continuation_asset,
+    )
+
+    return verify_mol_to_smiles_continuation_asset(
+        mol,
+        path,
+        expected_manifest_digest=expected_manifest_digest,
+    )
+
+
 def MolToSmilesEnum(
     mol: object,
     *,
@@ -214,6 +234,9 @@ if _RUNTIME is not None:
     MolToSmilesContinuationProbability = (
         _CONTINUATION_RUNTIME.MolToSmilesContinuationProbability
     )
+    from ._south_star1.public_continuation_asset import (
+        MolToSmilesContinuationAssetVerification,
+    )
     MolToSmilesBranchProofLocator = (
         _CONTINUATION_RUNTIME.MolToSmilesBranchProofLocator
     )
@@ -310,6 +333,10 @@ else:
         __slots__ = ()
 
 
+    class MolToSmilesContinuationAssetVerification:  # pragma: no cover - broken installs only
+        __slots__ = ()
+
+
     class MolToSmilesBranchProofLocator:  # pragma: no cover - broken installs only
         __slots__ = ()
 
@@ -324,6 +351,7 @@ else:
 
 __all__ = [
     "BuildMolToSmilesContinuationAsset",
+    "MolToSmilesContinuationAssetVerification",
     "MolToSmilesBranchProofLocator",
     "MolToSmilesChoice",
     "MolToSmilesContinuationDecoder",
@@ -339,4 +367,5 @@ __all__ = [
     "SmilesDeviation",
     "SouthStarError",
     "SouthStarErrorKind",
+    "VerifyMolToSmilesContinuationAsset",
 ]

@@ -12,6 +12,13 @@ from unittest.mock import patch
 import grimace
 from rdkit import Chem
 
+from grimace._south_star1.policy import SerializationLanguageMode
+from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
+from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
+from grimace._south_star1.public_continuation_asset import (
+    prepare_public_continuation_molecule,
+)
+
 from tests.south_star1.default_writer_capability_ledger import (
     ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES,
 )
@@ -187,21 +194,20 @@ class PublicContinuationAssetTest(unittest.TestCase):
             self.assertFalse(path.exists())
             self.assertEqual(tuple(Path(directory).glob(".asset.*")), ())
 
-    def test_remote_coupled_tetra_surface_remains_outside_public_boundary(self) -> None:
+    def test_remote_coupled_tetra_surface_enters_public_preparation(self) -> None:
         mol = Chem.MolFromSmiles("[C@H](F)([C@](F)(Cl)Br)[C@@](F)(Cl)Br")
-        with TemporaryDirectory() as directory:
-            path = Path(directory) / "asset"
-            with self.assertRaises(grimace.SouthStarError) as raised:
-                grimace.BuildMolToSmilesContinuationAsset(
-                    mol,
-                    path,
-                    rootedAtAtom=0,
-                )
-            self.assertIs(
-                raised.exception.kind,
-                grimace.SouthStarErrorKind.UNSUPPORTED_STEREO,
-            )
-            self.assertFalse(path.exists())
+        prepared = prepare_public_continuation_molecule(
+            mol,
+            writer_surface=SouthStarWriterSurface(),
+            runtime_options=SouthStarRuntimeOptions(
+                rooted_at_atom=0,
+                serialization_language=SerializationLanguageMode.WRITER_SHAPED,
+            ),
+        )
+        self.assertEqual(
+            tuple(int(site.center) for site in prepared.facts.stereo.tetrahedral),
+            (0, 2, 6),
+        )
 
     def test_public_builder_does_not_invoke_legacy_materialization(self) -> None:
         with TemporaryDirectory() as directory:

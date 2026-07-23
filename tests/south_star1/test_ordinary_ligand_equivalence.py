@@ -6,6 +6,7 @@ from dataclasses import replace
 import unittest
 
 from grimace._south_star1.facts import BondOrder
+from grimace._south_star1.errors import SouthStarError
 from grimace._south_star1.facts import ComponentFacts
 from grimace._south_star1.facts import DirectionalSiteFacts
 from grimace._south_star1.facts import DirectionalValue
@@ -22,6 +23,7 @@ from grimace._south_star1.ids import SiteId
 from grimace._south_star1.ordinary_ligand_equivalence import AutomorphismAnchor
 from grimace._south_star1.ordinary_ligand_equivalence import LigandEquivalenceCache
 from grimace._south_star1.ordinary_ligand_equivalence import LigandEquivalenceStats
+from grimace._south_star1.ordinary_ligand_equivalence import LigandEquivalenceWorkEnvelope
 from grimace._south_star1.ordinary_ligand_equivalence import (
     ligand_occurrences_equivalent,
 )
@@ -35,6 +37,65 @@ from tests.south_star1.helpers import single_bond
 
 
 class OrdinaryLigandEquivalenceTest(unittest.TestCase):
+    def test_work_envelope_accepts_exact_and_rejects_each_metric_overrun(self) -> None:
+        facts = deep_tetra_ligand_facts(right_terminal="Br")
+        kwargs = {
+            "facts": facts,
+            "anchor": AutomorphismAnchor(fixed_atoms=frozenset({AtomId(0)})),
+            "left": _neighbor_occurrence(atom=2, bond_id=1),
+            "right": _neighbor_occurrence(atom=5, bond_id=3),
+        }
+        stats = LigandEquivalenceStats()
+        cache = LigandEquivalenceCache()
+        self.assertTrue(
+            ligand_occurrences_equivalent(
+                **kwargs, cache=cache, stats=stats
+            )
+        )
+        observed = {
+            "searches_started": stats.searches_started,
+            "atom_maps_considered": stats.atom_maps_considered,
+            "complete_automorphisms_considered": (
+                stats.complete_automorphisms_considered
+            ),
+            "cache_entry_count": len(cache.by_key),
+            "maximum_search_depth": stats.maximum_search_depth,
+        }
+        for metric, value in observed.items():
+            with self.subTest(metric=metric):
+                envelope = LigandEquivalenceWorkEnvelope(
+                    **{
+                        ("max_search_depth" if name == "maximum_search_depth" else f"max_{name}"): (
+                            value if name == metric else 10_000
+                        )
+                        for name in observed
+                    }
+                )
+                self.assertTrue(
+                    ligand_occurrences_equivalent(
+                        **kwargs,
+                        cache=LigandEquivalenceCache(),
+                        work_envelope=envelope,
+                    )
+                )
+                if value:
+                    failing = replace(
+                        envelope,
+                        **{
+                            "max_search_depth"
+                            if metric == "maximum_search_depth"
+                            else f"max_{metric}": value - 1
+                        },
+                    )
+                    with self.assertRaisesRegex(
+                        SouthStarError,
+                        rf"metric={metric}.*actual={value}.*limit={value - 1}",
+                    ):
+                        ligand_occurrences_equivalent(
+                            **kwargs,
+                            cache=LigandEquivalenceCache(),
+                            work_envelope=failing,
+                        )
     def test_deep_distinct_tetra_ligands_are_not_equivalent(self) -> None:
         facts = deep_tetra_ligand_facts(right_terminal="Cl")
 

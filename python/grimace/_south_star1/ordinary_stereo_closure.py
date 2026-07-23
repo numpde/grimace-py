@@ -25,6 +25,7 @@ from .ids import BondId
 from .ids import OccurrenceId
 from .ids import SiteId
 from .ordinary_stereo_sites import OrdinaryStereoSiteOptions
+from .ordinary_ligand_equivalence import LigandEquivalenceCache
 from .ordinary_stereo_sites import add_ordinary_potential_sites
 
 
@@ -95,10 +96,12 @@ def build_ordinary_stereo_specified_closure(
 
     materialized = _materialize_raw_specified_stereo(base_facts, raw_specified)
     context = materialized.facts
+    ligand_equivalence_cache = LigandEquivalenceCache()
     probe = add_ordinary_potential_sites(
         context,
         preserve_specified=False,
         options=site_options,
+        ligand_equivalence_cache=ligand_equivalence_cache,
     )
     certificates = _closure_certificates(
         context,
@@ -122,6 +125,7 @@ def build_ordinary_stereo_specified_closure(
         context,
         preserve_specified=True,
         options=site_options,
+        ligand_equivalence_cache=ligand_equivalence_cache,
     )
     return StereoDiscoveryResult(
         facts=out,
@@ -142,10 +146,12 @@ def certify_ordinary_stereo_specified_closure(
     """Return specified-closure certificates without promoting final facts."""
 
     materialized = _materialize_raw_specified_stereo(base_facts, raw_specified)
+    ligand_equivalence_cache = LigandEquivalenceCache()
     probe = add_ordinary_potential_sites(
         materialized.facts,
         preserve_specified=False,
         options=site_options,
+        ligand_equivalence_cache=ligand_equivalence_cache,
     )
     return _closure_certificates(
         materialized.facts,

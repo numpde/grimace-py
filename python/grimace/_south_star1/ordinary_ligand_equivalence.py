@@ -17,6 +17,8 @@ from .ids import AtomId
 from .ids import BondId
 from .ids import SiteId
 from .stereo_mapping import specified_stereo_compatible_under_mapping
+from .errors import SouthStarError
+from .errors import SouthStarErrorKind
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +45,18 @@ class LigandEquivalenceStats:
     searches_started: int = 0
     atom_maps_considered: int = 0
     complete_automorphisms_considered: int = 0
+    maximum_search_depth: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class LigandEquivalenceWorkEnvelope:
+    """Production ceiling for exact anchored-automorphism work."""
+
+    max_searches_started: int = 15
+    max_atom_maps_considered: int = 282
+    max_complete_automorphisms_considered: int = 20
+    max_cache_entry_count: int = 20
+    max_search_depth: int = 10
 
 
 def ligand_occurrences_equivalent(
@@ -55,6 +69,7 @@ def ligand_occurrences_equivalent(
     ignore_site_ids: frozenset[SiteId] = frozenset(),
     cache: LigandEquivalenceCache | None = None,
     stats: LigandEquivalenceStats | None = None,
+    work_envelope: LigandEquivalenceWorkEnvelope | None = None,
 ) -> bool:
     """Return whether an anchored graph automorphism maps ``left`` to ``right``.
 
@@ -65,6 +80,8 @@ def ligand_occurrences_equivalent(
     """
 
     facts.validate()
+    if work_envelope is not None and stats is None:
+        stats = LigandEquivalenceStats()
     _validate_stereo_mode(stereo_mode)
     key = _cache_key(
         facts,
@@ -82,12 +99,12 @@ def ligand_occurrences_equivalent(
         stats.cache_misses += 1
 
     if left.kind is not right.kind:
-        return _cache_result(cache, key, False)
+        return _cache_result(cache, key, False, stats, work_envelope)
     if left.kind is LigandKind.PSEUDO:
-        return _cache_result(cache, key, False)
+        return _cache_result(cache, key, False, stats, work_envelope)
     if left.kind is LigandKind.IMPLICIT_H:
         if left.atom is None or right.atom is None:
-            return _cache_result(cache, key, False)
+            return _cache_result(cache, key, False, stats, work_envelope)
     if left.kind is LigandKind.NEIGHBOR_ATOM:
         if (
             left.atom is None
@@ -95,12 +112,15 @@ def ligand_occurrences_equivalent(
             or left.bond is None
             or right.bond is None
         ):
-            return _cache_result(cache, key, False)
+            return _cache_result(cache, key, False, stats, work_envelope)
 
     _validate_anchor(facts, anchor)
     if stats is not None:
         stats.searches_started += 1
-    for atom_map in _iter_anchored_atom_automorphisms(facts, anchor, stats):
+        _check_work_limit("searches_started", stats.searches_started, work_envelope)
+    for atom_map in _iter_anchored_atom_automorphisms(
+        facts, anchor, stats, work_envelope
+    ):
         bond_map = _bond_map_for_atom_map(facts, atom_map)
         if bond_map is None:
             continue
@@ -117,16 +137,22 @@ def ligand_occurrences_equivalent(
                 )
             ):
                 continue
-            return _cache_result(cache, key, True)
-    return _cache_result(cache, key, False)
+            return _cache_result(cache, key, True, stats, work_envelope)
+    return _cache_result(cache, key, False, stats, work_envelope)
 
 
 def _cache_result(
     cache: LigandEquivalenceCache | None,
     key: tuple[object, ...],
     value: bool,
+    stats: LigandEquivalenceStats | None,
+    work_envelope: LigandEquivalenceWorkEnvelope | None,
 ) -> bool:
     if cache is not None:
+        if key not in cache.by_key and stats is not None:
+            _check_work_limit(
+                "cache_entry_count", len(cache.by_key) + 1, work_envelope
+            )
         cache.by_key[key] = value
     return value
 
@@ -180,6 +206,7 @@ def _iter_anchored_atom_automorphisms(
     facts: MoleculeFacts,
     anchor: AutomorphismAnchor,
     stats: LigandEquivalenceStats | None = None,
+    work_envelope: LigandEquivalenceWorkEnvelope | None = None,
 ) -> Iterator[dict[AtomId, AtomId]]:
     candidates_by_atom: dict[AtomId, tuple[AtomId, ...]] = {}
     atoms_by_signature: dict[tuple[object, ...], list[AtomId]] = {}
@@ -218,9 +245,17 @@ def _iter_anchored_atom_automorphisms(
         atom_map: dict[AtomId, AtomId],
         used: set[AtomId],
     ) -> Iterator[dict[AtomId, AtomId]]:
+        if stats is not None:
+            stats.maximum_search_depth = max(stats.maximum_search_depth, index)
+            _check_work_limit("maximum_search_depth", index, work_envelope)
         if index == len(order):
             if stats is not None:
                 stats.complete_automorphisms_considered += 1
+                _check_work_limit(
+                    "complete_automorphisms_considered",
+                    stats.complete_automorphisms_considered,
+                    work_envelope,
+                )
             yield dict(atom_map)
             return
 
@@ -230,6 +265,9 @@ def _iter_anchored_atom_automorphisms(
                 continue
             if stats is not None:
                 stats.atom_maps_considered += 1
+                _check_work_limit(
+                    "atom_maps_considered", stats.atom_maps_considered, work_envelope
+                )
             if not _mapped_bonds_match(
                 atom.id,
                 candidate,
@@ -245,6 +283,25 @@ def _iter_anchored_atom_automorphisms(
             del atom_map[atom.id]
 
     yield from search(0, {}, set())
+
+
+def _check_work_limit(
+    metric: str,
+    actual: int,
+    envelope: LigandEquivalenceWorkEnvelope | None,
+) -> None:
+    if envelope is None:
+        return
+    limit = getattr(
+        envelope,
+        "max_search_depth" if metric == "maximum_search_depth" else f"max_{metric}",
+    )
+    if actual > limit:
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            "exact ligand-equivalence work envelope exceeded: "
+            f"metric={metric}, actual={actual}, limit={limit}",
+        )
 
 
 def _mapped_bonds_match(

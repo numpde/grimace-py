@@ -745,9 +745,19 @@ def _tetra_bracket_atom_text_matches_facts(
     if inner.startswith("C@@H"):
         token = "@@"
         suffix = inner[len("C@@H") :]
+        expected_h_count = 1
+    elif inner.startswith("C@@"):
+        token = "@@"
+        suffix = inner[len("C@@") :]
+        expected_h_count = 0
     elif inner.startswith("C@H"):
         token = "@"
         suffix = inner[len("C@H") :]
+        expected_h_count = 1
+    elif inner.startswith("C@"):
+        token = "@"
+        suffix = inner[len("C@") :]
+        expected_h_count = 0
     else:
         return False
     if suffix:
@@ -769,7 +779,8 @@ def _tetra_bracket_atom_text_matches_facts(
     return any(
         site.center == atom.id
         and site.status is SiteStatus.SPECIFIED
-        and _tetra_site_h_count(facts=facts, atom=atom, site=site) == 1
+        and _tetra_site_h_count(facts=facts, atom=atom, site=site)
+        == expected_h_count
         for site in facts.stereo.tetrahedral
     )
 
@@ -1587,13 +1598,19 @@ def _classify_branch_residual_work_manifests(
     branch_replay_ledger: _BranchObligationReplayLedger,
 ) -> tuple[Mapping[str, object], ...]:
     _check_branch_residual_lifecycle_links(branch=branch, residual_items=items)
-    for item in items:
+    ordered_items = _order_residual_transition_chain(
+        branch=branch,
+        items=items,
+        objects=objects,
+    )
+    for item in ordered_items:
         disposition = _validate_tetra_residual_manifest_if_known(
             facts=facts,
             branch=branch,
             item=item,
             objects=objects,
             ring_endpoint_choices=ring_endpoint_choices,
+            allow_intermediate_state_anchors=len(ordered_items) > 1,
         )
         if disposition is OfflineResidualReplayDisposition.SEMANTICALLY_REPLAYED:
             replayed_residual_digests.add(item["evidence_digest"])
@@ -1603,7 +1620,72 @@ def _classify_branch_residual_work_manifests(
                 item["evidence_digest"],
             )
             replayed_operations.append(item["operation"])
-    return tuple(items)
+    return tuple(ordered_items)
+
+
+def _order_residual_transition_chain(
+    *,
+    branch: Mapping[str, object],
+    items: list[object],
+    objects: Mapping[str, Mapping[str, object]],
+) -> tuple[Mapping[str, object], ...]:
+    """Order residual transitions by their serialized event identity and chain them."""
+    if len(items) <= 1:
+        return tuple(items)
+    events = branch["payload"]["graph_ring_delta"]["manifest"]["event_manifests"]
+    event_positions = {
+        (event["kind"], event.get("atom"), event.get("bond")): index
+        for index, event in enumerate(events)
+    }
+    keyed = []
+    for item in items:
+        term = (
+            None
+            if item["transition_term"] is None
+            else _transition_from_manifest(item)
+        )
+        if term is None:
+            _offline_violation("residual_transition_chain_term_missing")
+        if isinstance(term, TetraAtomTokenRestrictionTransitionTerm):
+            key = ("atom_emitted", int(term.atom), None)
+        elif isinstance(term, TetraLocalOrderFactorClosureTransitionTerm):
+            key = ("local_order_closed", int(term.atom), None)
+        elif isinstance(term, DirectionalCarrierMarkRestrictionTransitionTerm):
+            key = ("bond_emitted", None, int(term.bond))
+        elif isinstance(term, (DirectionalRingEndpointProjectionTransitionTerm, DirectionalRingPairRestrictionTransitionTerm)):
+            key = (
+                "ring_endpoint_emitted"
+                if isinstance(term, DirectionalRingEndpointProjectionTransitionTerm)
+                else "ring_endpoint_paired",
+                None,
+                int(term.bond),
+            )
+        else:
+            _offline_violation("residual_transition_chain_term_unknown")
+        if key not in event_positions:
+            _offline_violation("residual_transition_chain_event_missing")
+        keyed.append((event_positions[key], item))
+    if len({position for position, _item in keyed}) != len(keyed):
+        _offline_violation("residual_transition_chain_event_duplicate")
+    ordered = tuple(item for _position, item in sorted(keyed, key=lambda pair: pair[0]))
+    first_term = _transition_from_manifest(ordered[0])
+    source_state, successor_state = _branch_writer_states(
+        branch=branch,
+        objects=objects,
+    )
+    if _identity_digest(source_state.stereo_state.residual_snapshot) != first_term.source_snapshot_digest:
+        _offline_violation("residual_transition_chain_branch_source_mismatch")
+    source_snapshot_digest = first_term.source_snapshot_digest
+    for index, item in enumerate(ordered):
+        term = None if item["transition_term"] is None else _transition_from_manifest(item)
+        if term is None:
+            _offline_violation("residual_transition_chain_term_missing")
+        if term.source_snapshot_digest != source_snapshot_digest:
+            _offline_violation("residual_transition_chain_source_mismatch")
+        source_snapshot_digest = term.successor_snapshot_digest
+    if source_snapshot_digest != _identity_digest(successor_state.stereo_state.residual_snapshot):
+        _offline_violation("residual_transition_chain_successor_mismatch")
+    return ordered
 
 
 def _reconstruct_branch_nonresidual_obligations(
@@ -2807,6 +2889,7 @@ def _validate_tetra_residual_manifest_if_known(
     item: Mapping[str, object],
     objects: Mapping[str, Mapping[str, object]],
     ring_endpoint_choices: Mapping[int, tuple[tuple[str, DirectionMark], ...]],
+    allow_intermediate_state_anchors: bool = False,
 ) -> OfflineResidualReplayDisposition:
     operation = item["operation"]
     if operation == "tetrahedral atom-token restriction":
@@ -2827,6 +2910,7 @@ def _validate_tetra_residual_manifest_if_known(
             item=item,
             facts=facts,
             objects=objects,
+            allow_intermediate_state_anchors=allow_intermediate_state_anchors,
         )
         return OfflineResidualReplayDisposition.SEMANTICALLY_REPLAYED
     if operation == "directional ring pair restriction":
@@ -2871,6 +2955,7 @@ def _validate_tetra_residual_manifest_if_known(
             item=item,
             facts=facts,
             objects=objects,
+            allow_intermediate_state_anchors=allow_intermediate_state_anchors,
         )
         return OfflineResidualReplayDisposition.SEMANTICALLY_REPLAYED
     if operation == "directional carrier-mark restriction":
@@ -3202,9 +3287,9 @@ def _specified_tetra_centers(facts: MoleculeFacts) -> set[object]:
 
 
 def _tetra_token_from_rendered_text(text: str) -> str:
-    if text.startswith("[C@@H]"):
+    if text in ("[C@@]", "[C@@H]"):
         return "@@"
-    if text.startswith("[C@H]"):
+    if text in ("[C@]", "[C@H]"):
         return "@"
     _offline_violation("tetra_atom_token_residual_text_mismatch")
 
@@ -3255,6 +3340,7 @@ def _replay_tetra_atom_token_transition(
     item: Mapping[str, object],
     facts: MoleculeFacts,
     objects: Mapping[str, Mapping[str, object]],
+    allow_intermediate_state_anchors: bool = False,
 ) -> None:
     term = _transition_from_manifest(item)
     if not isinstance(term, TetraAtomTokenRestrictionTransitionTerm):
@@ -3281,6 +3367,7 @@ def _replay_tetra_atom_token_transition(
         successor_state=successor_state,
         source_snapshot=term.source_snapshot,
         successor_snapshot=term.successor_snapshot,
+        allow_intermediate=allow_intermediate_state_anchors,
     )
     delta = branch["payload"]["graph_ring_delta"]
     if delta["kind"] not in ("atom_start", "atom_advance", "bond_advance"):
@@ -4108,6 +4195,7 @@ def _replay_tetra_local_order_transition(
     item: Mapping[str, object],
     facts: MoleculeFacts,
     objects: Mapping[str, Mapping[str, object]],
+    allow_intermediate_state_anchors: bool = False,
 ) -> None:
     term = _transition_from_manifest(item)
     if not isinstance(term, TetraLocalOrderFactorClosureTransitionTerm):
@@ -4134,6 +4222,7 @@ def _replay_tetra_local_order_transition(
         successor_state=successor_state,
         source_snapshot=term.source_snapshot,
         successor_snapshot=term.successor_snapshot,
+        allow_intermediate=allow_intermediate_state_anchors,
     )
     site = _specified_tetra_site_for_transition(
         facts=facts,
@@ -4507,7 +4596,10 @@ def _check_transition_state_residual_anchors(
     source_snapshot: ResidualStoreValueSnapshot,
     successor_snapshot: ResidualStoreValueSnapshot,
     violation_prefix: str = "tetra_residual_transition",
+    allow_intermediate: bool = False,
 ) -> None:
+    if allow_intermediate:
+        return
     if _state_residual_snapshot(source_state) != _term(source_snapshot):
         _offline_violation(f"{violation_prefix}_source_state_anchor_mismatch")
     if _state_residual_snapshot(successor_state) != _term(successor_snapshot):
@@ -5207,7 +5299,7 @@ def _check_tetra_atom_token_residual(
     facts: MoleculeFacts,
 ) -> None:
     text = branch["payload"]["emitted_text"]
-    if text not in ("[C@H]", "[C@@H]"):
+    if text not in ("[C@]", "[C@@]", "[C@H]", "[C@@H]"):
         _offline_violation("tetra_atom_token_residual_text_mismatch")
     matching_atom = validate_writer_bracket_atom_text_against_facts(
         facts=facts,

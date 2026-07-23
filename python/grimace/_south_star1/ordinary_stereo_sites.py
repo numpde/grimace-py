@@ -27,6 +27,7 @@ from .ids import OccurrenceId
 from .ids import SiteId
 from .ordinary_ligand_equivalence import AutomorphismAnchor
 from .ordinary_ligand_equivalence import LigandEquivalenceCache
+from .ordinary_ligand_equivalence import LigandEquivalenceWorkEnvelope
 from .ordinary_ligand_equivalence import ligand_occurrences_equivalent
 
 
@@ -39,6 +40,9 @@ class OrdinaryStereoSiteOptions:
         "exact_graph_automorphism",
         "exact_stereochemical_graph_automorphism",
     ] = "immediate_color"
+    ligand_equivalence_work_envelope: LigandEquivalenceWorkEnvelope = (
+        LigandEquivalenceWorkEnvelope()
+    )
 
 
 def ordinary_tetrahedral_candidates(
@@ -454,6 +458,7 @@ def _ligands_are_distinguishable(
             stereo_mode=stereo_mode,
             ignore_site_ids=ignore_site_ids,
             cache=cache,
+            work_envelope=options.ligand_equivalence_work_envelope,
         )
         for left, right in combinations(occurrences, 2)
     )

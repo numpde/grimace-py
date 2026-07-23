@@ -14,6 +14,7 @@ from .prepared_runtime import SouthStarWriterSurface
 from .prepared_runtime import prepare_south_star_mol_from_rdkit
 from .prepared_runtime import runtime_root_atom_for_prepared
 from .rdkit_adapter import RdkitOrdinaryExtractionOptions
+from .ordinary_stereo_sites import OrdinaryStereoSiteOptions
 from .rdkit_adapter import rdkit_molecule_has_specified_stereo
 from .rdkit_adapter import require_rdkit_molecule
 from .writer_continuation_asset import open_writer_continuation_core
@@ -177,6 +178,9 @@ def prepare_public_continuation_molecule(
         RdkitOrdinaryExtractionOptions(
             include_potential_sites=True,
             stereo_site_discovery_mode="specified_closure",
+            stereo_site_options=OrdinaryStereoSiteOptions(
+                ligand_equivalence="exact_stereochemical_graph_automorphism",
+            ),
         )
         if has_specified_stereo
         else RdkitOrdinaryExtractionOptions(

@@ -8,6 +8,7 @@ import unittest
 from rdkit import Chem
 
 from grimace._south_star1.ordinary_stereo_sites import OrdinaryStereoSiteOptions
+from grimace._south_star1.fact_isomorphism import facts_are_isomorphic
 from grimace._south_star1.policy import SerializationLanguageMode
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
@@ -29,6 +30,30 @@ from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_fa
 
 
 class CoupledTetrahedralWriterTest(unittest.TestCase):
+    def test_remote_identity_matrix_quotients_only_symmetry_equivalents(self) -> None:
+        sources = {
+            "A": "[C@H](F)([C@](F)(Cl)Br)[C@@](F)(Cl)Br",
+            "B": "[C@@H](F)([C@](F)(Cl)Br)[C@@](F)(Cl)Br",
+            "C": "[C@H](F)([C@@](F)(Cl)Br)[C@](F)(Cl)Br",
+            "D": "[C@@H](F)([C@@](F)(Cl)Br)[C@](F)(Cl)Br",
+        }
+        facts = {
+            name: ordinary_molecule_facts_from_rdkit(
+                Chem.MolFromSmiles(smiles),
+                options=RdkitOrdinaryExtractionOptions(
+                    stereo_site_options=OrdinaryStereoSiteOptions(
+                        ligand_equivalence="exact_stereochemical_graph_automorphism"
+                    ),
+                    stereo_site_discovery_mode="specified_closure",
+                ),
+            )
+            for name, smiles in sources.items()
+        }
+        self.assertTrue(facts_are_isomorphic(facts["A"], facts["D"]).isomorphic)
+        self.assertTrue(facts_are_isomorphic(facts["B"], facts["C"]).isomorphic)
+        self.assertFalse(facts_are_isomorphic(facts["A"], facts["B"]).isomorphic)
+        self.assertFalse(facts_are_isomorphic(facts["A"], facts["C"]).isomorphic)
+
     def test_all_multi_transition_branches_replay_as_ordered_chains(self) -> None:
         smiles = "[C@H](F)([C@](F)(Cl)Br)[C@@](F)(Cl)Br"
         facts = ordinary_molecule_facts_from_rdkit(
@@ -101,4 +126,3 @@ class CoupledTetrahedralWriterTest(unittest.TestCase):
                 for projection in batch.text_choice_projection_certificates
             )
         self.assertEqual(checked, 48)
-

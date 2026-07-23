@@ -7,6 +7,7 @@ from typing import Literal
 
 from grimace._south_star1.errors import SouthStarErrorKind
 from grimace._south_star1.rdkit_adapter import RdkitOrdinaryExtractionOptions
+from grimace._south_star1.ordinary_stereo_sites import OrdinaryStereoSiteOptions
 
 
 _GRAPH_EXTRACTION = RdkitOrdinaryExtractionOptions(include_potential_sites=False)
@@ -16,6 +17,13 @@ _POTENTIAL_STEREO_EXTRACTION = RdkitOrdinaryExtractionOptions(
 _SPECIFIED_STEREO_EXTRACTION = RdkitOrdinaryExtractionOptions(
     include_potential_sites=True,
     stereo_site_discovery_mode="specified_closure",
+)
+_COUPLED_TETRA_EXTRACTION = RdkitOrdinaryExtractionOptions(
+    include_potential_sites=True,
+    stereo_site_discovery_mode="specified_closure",
+    stereo_site_options=OrdinaryStereoSiteOptions(
+        ligand_equivalence="exact_stereochemical_graph_automorphism",
+    ),
 )
 
 DEFAULT_OFFLINE_RELATION_FAMILIES = (
@@ -446,6 +454,83 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         expected_offline_unchecked_object_kinds=DEFAULT_OFFLINE_UNCHECKED_OBJECT_KINDS,
         expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
         expected_offline_unchecked_obligation_families=DEFAULT_OFFLINE_UNCHECKED_OBLIGATION_FAMILIES,
+    ),
+    DefaultWriterCapabilityCase(
+        name="zero_h_tetrahedral",
+        smiles="C[C@](F)(Cl)Br",
+        extraction_profile="specified_stereo_closure",
+        extraction_options=_COUPLED_TETRA_EXTRACTION,
+        expected="accepted",
+        support_surface="specified_tetrahedral_zero_h",
+        rooted_at_atom=1,
+        expected_support_count=24,
+        expected_completion_count=24,
+        expected_support_digest="ba947a23b358660cbd77689f5f60be8f1cc4a069f0e543bccee8955f3b9fcacb",
+        expected_structural_artifact=True,
+        expected_live_artifact_verifier=True,
+        expected_facts_bound_verifier=True,
+        expected_offline_replay_complete=True,
+        **DEFAULT_ACCEPTED_AGREEMENT_TIERS,
+        expected_rdkit_audit_version_pinned=True,
+        expected_offline_object_kinds=DEFAULT_OFFLINE_OBJECT_KINDS,
+        expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
+    ),
+    DefaultWriterCapabilityCase(
+        name="adjacent_specified_tetrahedral",
+        smiles="[C@H](F)(Cl)[C@@](F)(Cl)Br",
+        extraction_profile="specified_stereo_closure",
+        extraction_options=_COUPLED_TETRA_EXTRACTION,
+        expected="accepted",
+        support_surface="specified_tetrahedral_adjacent",
+        expected_support_count=36,
+        expected_completion_count=36,
+        expected_support_digest="1c0cf5b5a125fb9c8685d6d18c9bebb0fb0569fcf8411bceb4d7219b3a525a8a9",
+        expected_structural_artifact=True,
+        expected_live_artifact_verifier=True,
+        expected_facts_bound_verifier=True,
+        expected_offline_replay_complete=True,
+        **DEFAULT_ACCEPTED_AGREEMENT_TIERS,
+        expected_rdkit_audit_version_pinned=True,
+        expected_offline_object_kinds=DEFAULT_OFFLINE_OBJECT_KINDS,
+        expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
+    ),
+    DefaultWriterCapabilityCase(
+        name="remote_coupled_tetrahedral_a",
+        smiles="[C@H](F)([C@](F)(Cl)Br)[C@@](F)(Cl)Br",
+        extraction_profile="specified_stereo_closure",
+        extraction_options=_COUPLED_TETRA_EXTRACTION,
+        expected="accepted",
+        support_surface="specified_tetrahedral_coupled",
+        expected_support_count=216,
+        expected_completion_count=216,
+        expected_support_digest="9fd3f7a1b862f6fadc534098c61c072448a7aa70b45ffadc4257bbe2dac70533",
+        expected_structural_artifact=True,
+        expected_live_artifact_verifier=True,
+        expected_facts_bound_verifier=True,
+        expected_offline_replay_complete=True,
+        **DEFAULT_ACCEPTED_AGREEMENT_TIERS,
+        expected_rdkit_audit_version_pinned=True,
+        expected_offline_object_kinds=DEFAULT_OFFLINE_OBJECT_KINDS,
+        expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
+    ),
+    DefaultWriterCapabilityCase(
+        name="remote_coupled_tetrahedral_b",
+        smiles="[C@@H](F)([C@](F)(Cl)Br)[C@@](F)(Cl)Br",
+        extraction_profile="specified_stereo_closure",
+        extraction_options=_COUPLED_TETRA_EXTRACTION,
+        expected="accepted",
+        support_surface="specified_tetrahedral_coupled",
+        expected_support_count=216,
+        expected_completion_count=216,
+        expected_support_digest="0e16f5133e74556aeebc06817368c7e7e377672bcbcf2827d9285417eb3c8094",
+        expected_structural_artifact=True,
+        expected_live_artifact_verifier=True,
+        expected_facts_bound_verifier=True,
+        expected_offline_replay_complete=True,
+        **DEFAULT_ACCEPTED_AGREEMENT_TIERS,
+        expected_rdkit_audit_version_pinned=True,
+        expected_offline_object_kinds=DEFAULT_OFFLINE_OBJECT_KINDS,
+        expected_offline_relation_families=DEFAULT_OFFLINE_RELATION_FAMILIES,
     ),
     DefaultWriterCapabilityCase(
         name="tetra_plus",

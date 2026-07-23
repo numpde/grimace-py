@@ -52,6 +52,9 @@ class LigandEquivalenceStats:
 class LigandEquivalenceWorkEnvelope:
     """Production ceiling for exact anchored-automorphism work."""
 
+    # The coupled A/B witnesses peak at 267/18/18.  The larger map/cache
+    # ceilings retain the measured headroom required by the same-remote
+    # polarity control (282/20) without changing the accepted identity.
     max_searches_started: int = 15
     max_atom_maps_considered: int = 282
     max_complete_automorphisms_considered: int = 20

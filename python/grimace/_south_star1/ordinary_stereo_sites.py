@@ -28,6 +28,7 @@ from .ids import SiteId
 from .ordinary_ligand_equivalence import AutomorphismAnchor
 from .ordinary_ligand_equivalence import LigandEquivalenceCache
 from .ordinary_ligand_equivalence import LigandEquivalenceWorkEnvelope
+from .ordinary_ligand_equivalence import LigandEquivalenceStats
 from .ordinary_ligand_equivalence import ligand_occurrences_equivalent
 
 
@@ -49,10 +50,11 @@ def ordinary_tetrahedral_candidates(
     facts: MoleculeFacts,
     options: OrdinaryStereoSiteOptions = OrdinaryStereoSiteOptions(),
     ligand_equivalence_cache: LigandEquivalenceCache | None = None,
+    ligand_equivalence_stats: LigandEquivalenceStats | None = None,
 ) -> tuple[tuple[TetrahedralSiteFacts, ...], tuple[LigandOccurrence, ...]]:
     """Return ordinary potential tetrahedral sites implied by graph facts."""
 
-    builder = _SiteBuilder(facts, options, ligand_equivalence_cache)
+    builder = _SiteBuilder(facts, options, ligand_equivalence_cache, ligand_equivalence_stats)
     builder.add_tetrahedral_candidates(skip_centers=frozenset())
     _assert_unique_tetrahedral_centers(builder.tetrahedral)
     return tuple(builder.tetrahedral), tuple(builder.occurrences)
@@ -62,10 +64,11 @@ def ordinary_directional_candidates(
     facts: MoleculeFacts,
     options: OrdinaryStereoSiteOptions = OrdinaryStereoSiteOptions(),
     ligand_equivalence_cache: LigandEquivalenceCache | None = None,
+    ligand_equivalence_stats: LigandEquivalenceStats | None = None,
 ) -> tuple[tuple[DirectionalSiteFacts, ...], tuple[LigandOccurrence, ...]]:
     """Return ordinary potential directional sites implied by graph facts."""
 
-    builder = _SiteBuilder(facts, options, ligand_equivalence_cache)
+    builder = _SiteBuilder(facts, options, ligand_equivalence_cache, ligand_equivalence_stats)
     builder.add_directional_candidates(skip_center_bonds=frozenset())
     _assert_unique_directional_center_bonds(builder.directional)
     return tuple(builder.directional), tuple(builder.occurrences)
@@ -77,6 +80,7 @@ def add_ordinary_potential_sites(
     preserve_specified: bool = True,
     options: OrdinaryStereoSiteOptions = OrdinaryStereoSiteOptions(),
     ligand_equivalence_cache: LigandEquivalenceCache | None = None,
+    ligand_equivalence_stats: LigandEquivalenceStats | None = None,
 ) -> MoleculeFacts:
     """Add ordinary potential stereo sites without using RDKit perception."""
 
@@ -91,7 +95,7 @@ def add_ordinary_potential_sites(
         skip_tetra_centers = frozenset()
         skip_directional_bonds = frozenset()
 
-    builder = _SiteBuilder(facts, options, ligand_equivalence_cache)
+    builder = _SiteBuilder(facts, options, ligand_equivalence_cache, ligand_equivalence_stats)
     builder.add_tetrahedral_candidates(skip_centers=skip_tetra_centers)
     builder.add_directional_candidates(skip_center_bonds=skip_directional_bonds)
     _assert_unique_tetrahedral_centers(builder.tetrahedral)
@@ -115,6 +119,7 @@ class _SiteBuilder:
         facts: MoleculeFacts,
         options: OrdinaryStereoSiteOptions,
         ligand_equivalence_cache: LigandEquivalenceCache | None,
+        ligand_equivalence_stats: LigandEquivalenceStats | None,
     ) -> None:
         facts.validate()
         _validate_options(options)
@@ -130,6 +135,7 @@ class _SiteBuilder:
         ):
             ligand_equivalence_cache = LigandEquivalenceCache()
         self.ligand_equivalence_cache = ligand_equivalence_cache
+        self.ligand_equivalence_stats = ligand_equivalence_stats
         self.bonds_by_atom = _bonds_by_atom(facts)
         self.tetrahedral: list[TetrahedralSiteFacts] = []
         self.directional: list[DirectionalSiteFacts] = []
@@ -156,6 +162,7 @@ class _SiteBuilder:
                 ignore_site_ids=_tetra_site_ids_for_center(self.facts, atom.id),
                 options=self.options,
                 cache=self.ligand_equivalence_cache,
+                stats=self.ligand_equivalence_stats,
             ):
                 continue
 
@@ -211,6 +218,7 @@ class _SiteBuilder:
                 ),
                 options=self.options,
                 cache=self.ligand_equivalence_cache,
+                stats=self.ligand_equivalence_stats,
             ):
                 continue
             if not _eligible_directional_ligands(
@@ -224,6 +232,7 @@ class _SiteBuilder:
                 ),
                 options=self.options,
                 cache=self.ligand_equivalence_cache,
+                stats=self.ligand_equivalence_stats,
             ):
                 continue
 
@@ -365,6 +374,7 @@ def _eligible_tetrahedral_ligands(
     ignore_site_ids: frozenset[SiteId],
     options: OrdinaryStereoSiteOptions,
     cache: LigandEquivalenceCache | None,
+    stats: LigandEquivalenceStats | None,
 ) -> bool:
     if len(occurrences) != 4:
         return False
@@ -378,6 +388,7 @@ def _eligible_tetrahedral_ligands(
         ignore_site_ids=ignore_site_ids,
         options=options,
         cache=cache,
+        stats=stats,
     )
 
 
@@ -390,6 +401,7 @@ def _eligible_directional_ligands(
     ignore_site_ids: frozenset[SiteId],
     options: OrdinaryStereoSiteOptions,
     cache: LigandEquivalenceCache | None,
+    stats: LigandEquivalenceStats | None,
 ) -> bool:
     if len(occurrences) not in {1, 2}:
         return False
@@ -412,6 +424,7 @@ def _eligible_directional_ligands(
         ignore_site_ids=ignore_site_ids,
         options=options,
         cache=cache,
+        stats=stats,
     )
 
 
@@ -431,6 +444,7 @@ def _ligands_are_distinguishable(
     ignore_site_ids: frozenset[SiteId],
     options: OrdinaryStereoSiteOptions,
     cache: LigandEquivalenceCache | None,
+    stats: LigandEquivalenceStats | None,
 ) -> bool:
     if options.ligand_equivalence == "immediate_color":
         return _ligand_colors_are_unique(facts, center=center, occurrences=occurrences)
@@ -458,6 +472,7 @@ def _ligands_are_distinguishable(
             stereo_mode=stereo_mode,
             ignore_site_ids=ignore_site_ids,
             cache=cache,
+            stats=stats,
             work_envelope=options.ligand_equivalence_work_envelope,
         )
         for left, right in combinations(occurrences, 2)

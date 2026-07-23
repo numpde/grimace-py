@@ -159,6 +159,12 @@ _CHANGED_LIMIT_FIELDS = {
     "max_attachment_atom_count": "max_attachment_atom_count",
 }
 
+_RAISED_GRAPH_LIMIT_FIELDS = {
+    "residual_attachment_count": "max_residual_attachment_count",
+    "residual_attachment_action_count": "max_residual_attachment_action_count",
+    "boundary_incidence_count": "max_boundary_incidence_count",
+}
+
 
 @dataclass(frozen=True, slots=True)
 class _GraphWorkWitness:
@@ -235,6 +241,24 @@ class WriterAromaticGraphWorkEnvelopeTest(unittest.TestCase):
                 traversal = _traverse_checked_frontiers(name, smiles)
                 self.assertGreater(traversal.cursor_count, 0)
                 self.assertGreater(traversal.terminal_support_count, 0)
+
+    def test_coupled_graph_requalified_limits_accept_exact_and_reject_plus_one(
+        self,
+    ) -> None:
+        envelope = writer_execution_evidence._PUBLIC_WRITER_GRAPH_OBLIGATION_WORK_ENVELOPE
+        baseline = _zero_graph_work_evidence()
+        for metric, limit_field in _RAISED_GRAPH_LIMIT_FIELDS.items():
+            with self.subTest(metric=metric):
+                limit = getattr(envelope, limit_field)
+                exact = replace(baseline, **{metric: limit})
+                self.assertIsNone(writer_graph_obligation_work_envelope_violation(exact))
+                over = replace(exact, **{metric: limit + 1})
+                violation = writer_graph_obligation_work_envelope_violation(over)
+                self.assertIsNotNone(violation)
+                assert violation is not None
+                self.assertEqual(violation.metric, metric)
+                self.assertEqual(violation.actual, limit + 1)
+                self.assertEqual(violation.limit, limit)
 
     def test_biphenyl_bridge_is_live_and_explicit(self) -> None:
         facts, prepared = _prepare("c1ccccc1-c1ccccc1")

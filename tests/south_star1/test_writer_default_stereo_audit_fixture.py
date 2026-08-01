@@ -38,10 +38,12 @@ from tests.south_star1.default_writer_qualification_shards import SLOW_COUPLED_C
 from tests.south_star1.default_writer_qualification_shards import (
     selected_slow_qualification_cases,
 )
+from tests.south_star1.slow_qualification_assets import require_slow_qualification_asset
 
 
 class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
     QUALIFICATION_CASES = FAST_ACCEPTED_CASES
+    USE_CACHED_SLOW_ASSETS = False
 
     def setUp(self) -> None:
         if self.QUALIFICATION_CASES is not FAST_ACCEPTED_CASES and self._testMethodName not in {
@@ -52,7 +54,7 @@ class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.temporary = TemporaryDirectory()
+        cls.temporary = None if cls.USE_CACHED_SLOW_ASSETS else TemporaryDirectory()
         all_fixture_cases = load_pinned_south_star_stereo_audit_cases(rdBase.rdkitVersion)
         allowed = {case.name for case in cls.QUALIFICATION_CASES}
         cls.fixture_cases = tuple(item for item in all_fixture_cases if item.name in allowed)
@@ -94,13 +96,19 @@ class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
                     runtime_options=options,
                     cursor=initial_writer_frontier_cursor(prepared, options),
                 )
-                path = Path(cls.temporary.name) / item.name
-                write_writer_continuation_asset(
-                    path=path,
-                    prepared=prepared,
-                    snapshot=snapshot,
-                )
-                cls.assets[item.name] = open_writer_continuation_core(path)
+                if cls.USE_CACHED_SLOW_ASSETS:
+                    cached = require_slow_qualification_asset(cls.ledger[item.name])
+                    cls.assets[item.name] = open_writer_continuation_core(
+                        cached.asset_path
+                    )
+                else:
+                    path = Path(cls.temporary.name) / item.name
+                    write_writer_continuation_asset(
+                        path=path,
+                        prepared=prepared,
+                        snapshot=snapshot,
+                    )
+                    cls.assets[item.name] = open_writer_continuation_core(path)
                 cls.facts[item.name] = facts
                 cls.prepared[item.name] = prepared
                 cls.snapshots[item.name] = snapshot
@@ -108,7 +116,8 @@ class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls) -> None:
-        cls.temporary.cleanup()
+        if cls.temporary is not None:
+            cls.temporary.cleanup()
 
     def test_fixture_ledger_and_full_runtime_agree(self) -> None:
         tetra_comparison = facts_are_isomorphic(
@@ -328,13 +337,24 @@ class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
 
 class WriterDefaultStereoAuditSlowTest(WriterDefaultStereoAuditFixtureTest):
     QUALIFICATION_CASES = None
+    USE_CACHED_SLOW_ASSETS = True
 
     @classmethod
     def setUpClass(cls) -> None:
         if os.environ.get("SOUTH_STAR1_RUN_SLOW") != "1":
             raise unittest.SkipTest("set SOUTH_STAR1_RUN_SLOW=1 to run coupled cases")
         cls.QUALIFICATION_CASES = selected_slow_qualification_cases()
-        super().setUpClass()
+        with (
+            patch(
+                "grimace.BuildMolToSmilesContinuationAsset",
+                side_effect=AssertionError("public asset build invoked"),
+            ),
+            patch(
+                "grimace._south_star1.writer_continuation_asset.write_writer_continuation_asset",
+                side_effect=AssertionError("asset writer invoked"),
+            ),
+        ):
+            super().setUpClass()
 
 
 def _decoder_support(decoder) -> tuple[str, ...]:

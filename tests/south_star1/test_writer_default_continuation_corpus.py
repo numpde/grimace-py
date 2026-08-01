@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import hashlib
 import json
+import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
@@ -31,6 +32,7 @@ from tests.south_star1.default_writer_qualification_shards import (
     selected_slow_qualification_cases,
 )
 from tests.south_star1.default_writer_qualification_shards import SLOW_COUPLED_CASE_NAMES
+from tests.south_star1.slow_qualification_assets import require_slow_qualification_asset
 from tests.south_star1.test_writer_default_parity_corpus import _facts
 from tests.south_star1.test_writer_default_parity_corpus import _support_image
 from tests.south_star1.test_writer_default_parity_corpus import _writer_options
@@ -179,7 +181,89 @@ class WriterDefaultContinuationCorpusTest(unittest.TestCase):
     def test_slow_coupled_cases_cross_all_continuation_tiers(self) -> None:
         if os.environ.get("SOUTH_STAR1_RUN_SLOW") != "1":
             self.skipTest("set SOUTH_STAR1_RUN_SLOW=1 to run coupled cases")
-        self._cross_all_continuation_tiers(selected_slow_qualification_cases())
+        self._cross_cached_continuation_tiers(selected_slow_qualification_cases())
+
+    def _cross_cached_continuation_tiers(self, cases) -> None:
+        for case in cases:
+            with self.subTest(case=case.name):
+                cache_started = time.monotonic()
+                cached = require_slow_qualification_asset(case)
+                cache_validation_seconds = time.monotonic() - cache_started
+                prepared_started = time.monotonic()
+                options = _writer_options(case.rooted_at_atom)
+                facts = _facts(case)
+                prepared = prepare_south_star_mol_from_facts(
+                    facts,
+                    writer_surface=SouthStarWriterSurface(),
+                )
+                capture_writer_frontier_snapshot(
+                    prepared=prepared,
+                    runtime_options=options,
+                    cursor=initial_writer_frontier_cursor(prepared, options),
+                )
+                prepared_reconstruction_seconds = time.monotonic() - prepared_started
+                asset = open_writer_continuation_core(cached.asset_path)
+                live_started = time.monotonic()
+                structural = verify_writer_continuation_asset_consistency(asset.path)
+                live = verify_writer_continuation_asset_for_prepared(
+                    prepared=prepared,
+                    asset=asset,
+                )
+                live_replay_seconds = time.monotonic() - live_started
+                self.assertEqual(structural.accepted, case.expected_continuation_asset_complete)
+                self.assertTrue(live.accepted, live.reason)
+                self.assertTrue(live.structurally_verified)
+                self.assertTrue(live.live_replay_complete)
+                self.assertEqual(live.branch_locator_count, live.branch_proof_count)
+                self.assertEqual(live.terminal_locator_count, live.terminal_proof_count)
+                self.assertEqual(live.unchecked_obligation_families, ())
+                if case.name in {"remote_coupled_tetrahedral_a", "remote_coupled_tetrahedral_b"}:
+                    self.assertEqual(live.raw_cursor_count, 3075)
+                    self.assertEqual(live.edge_locator_count, 3074)
+                    self.assertEqual(live.branch_locator_count, 3848)
+                    self.assertEqual(live.terminal_locator_count, 216)
+                    self.assertEqual(live.terminal_record_count, 216)
+
+                rust_started = time.monotonic()
+                with patch(
+                    "grimace.BuildMolToSmilesContinuationAsset",
+                    side_effect=AssertionError("public asset build invoked"),
+                ), patch(
+                    "grimace._south_star1.writer_continuation_asset.write_writer_continuation_asset",
+                    side_effect=AssertionError("asset writer invoked"),
+                ):
+                    decoder = MolToSmilesContinuationDecoder.from_asset(
+                        cached.asset_path,
+                        expected_manifest_digest=cached.manifest_digest,
+                    )
+                    support = _decoder_support(decoder)
+                    expected = tuple(sorted(_support_image(case).strings))
+                    self.assertEqual(support, expected)
+                    self.assertEqual(decoder.support_count, case.expected_support_count)
+                    self.assertEqual(decoder.completion_count, case.expected_completion_count)
+                    self.assertEqual(
+                        sum(item.numerator for item in decoder.exact_probabilities()),
+                        decoder.completion_count,
+                    )
+                    if case.expected_support_digest is not None:
+                        self.assertEqual(_support_digest(support), case.expected_support_digest)
+                    advanced = decoder.next_choices[0].next_state
+                    resumed = MolToSmilesContinuationDecoder.from_snapshot(
+                        cached.asset_path,
+                        advanced.snapshot(),
+                    )
+                    self.assertEqual(resumed.cache_key(), advanced.cache_key())
+                    proof_decoder = MolToSmilesContinuationDecoder.from_asset(
+                        cached.asset_path,
+                        proof_capable=True,
+                        prepared=prepared,
+                    )
+                    self.assertIsNotNone(proof_decoder._state.proof_cursor)
+                rust_decoder_seconds = time.monotonic() - rust_started
+                print(f"cache_validation_seconds={cache_validation_seconds:.3f}", flush=True)
+                print(f"prepared_reconstruction_seconds={prepared_reconstruction_seconds:.3f}", flush=True)
+                print(f"live_replay_seconds={live_replay_seconds:.3f}", flush=True)
+                print(f"rust_decoder_seconds={rust_decoder_seconds:.3f}", flush=True)
 
     def test_renumbered_rdkit_stereo_keeps_certified_rust_language(self) -> None:
         cases = (

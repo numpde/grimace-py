@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import time
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 import unittest
@@ -18,6 +19,7 @@ from rdkit import Chem
 from grimace._south_star1.writer_terminalization_artifact import (
     _writer_terminalization_artifact_and_live_verification_for_selected_support,
 )
+from grimace._south_star1.writer_continuation_asset import open_writer_continuation_core
 from grimace._south_star1.writer_snapshot_prefix_envelope import (
     _terminal_support_identity_envelope_from_certificate,
 )
@@ -32,6 +34,9 @@ from tests.south_star1.default_writer_qualification_shards import FAST_ACCEPTED_
 from tests.south_star1.default_writer_qualification_shards import SLOW_COUPLED_CASES
 from tests.south_star1.default_writer_qualification_shards import (
     selected_slow_qualification_cases,
+)
+from tests.south_star1.slow_qualification_assets import (
+    require_slow_qualification_asset,
 )
 
 
@@ -64,9 +69,53 @@ class PublicContinuationProofTest(unittest.TestCase):
         "set SOUTH_STAR1_RUN_SLOW=1 to run coupled cases",
     )
     def test_slow_coupled_cases_expose_and_verify_every_local_proof(self) -> None:
-        self._assert_cases_expose_and_verify_every_local_proof(
-            selected_slow_qualification_cases()
-        )
+        for case in selected_slow_qualification_cases():
+            with self.subTest(case=case.name):
+                cache_started = time.monotonic()
+                cached = require_slow_qualification_asset(case)
+                cache_validation_seconds = time.monotonic() - cache_started
+                mol = Chem.MolFromSmiles(case.smiles)
+                decoder_started = time.monotonic()
+                with (
+                    patch(
+                        "grimace.BuildMolToSmilesContinuationAsset",
+                        side_effect=AssertionError("public asset build invoked"),
+                    ),
+                    patch(
+                        "grimace._south_star1.writer_continuation_asset.write_writer_continuation_asset",
+                        side_effect=AssertionError("asset writer invoked"),
+                    ),
+                ):
+                    decoder = grimace.MolToSmilesContinuationDecoder.from_asset(
+                        cached.asset_path,
+                        expected_manifest_digest=cached.manifest_digest,
+                        proof_capable=True,
+                        mol=mol,
+                    )
+                proof_decoder_open_seconds = time.monotonic() - decoder_started
+                asset = open_writer_continuation_core(cached.asset_path)
+                expected_branch_count = sum(
+                    len(edge.branch_certificate_digests)
+                    for edge in asset.records("edge_records")
+                )
+                expected_terminal_count = sum(
+                    len(record.terminal_support_identity_digests)
+                    for record in asset.records("terminal_records")
+                )
+                branch_count, terminal_count, timings = _verify_all_public_proofs_timed(
+                    decoder
+                )
+                self.assertEqual(branch_count, expected_branch_count)
+                self.assertEqual(terminal_count, expected_terminal_count)
+                self.assertEqual(branch_count, len(decoder.branch_proof_locators))
+                self.assertEqual(terminal_count, len(decoder.terminal_proof_locators))
+                print(f"cache_validation_seconds={cache_validation_seconds:.3f}", flush=True)
+                print(f"proof_decoder_open_seconds={proof_decoder_open_seconds:.3f}", flush=True)
+                print(f"decoder_state_traversal_seconds={timings['traversal']:.3f}", flush=True)
+                print(f"branch_proof_seconds={timings['branch']:.3f}", flush=True)
+                print(f"terminal_proof_seconds={timings['terminal']:.3f}", flush=True)
+                print(f"branch_proof_count={branch_count}", flush=True)
+                print(f"terminal_proof_count={terminal_count}", flush=True)
 
     def test_copy_and_snapshot_resume_share_the_molecule_bound_session(self) -> None:
         with TemporaryDirectory() as directory:
@@ -514,6 +563,42 @@ def _verify_all_public_proofs(decoder) -> tuple[int, int]:
             terminal_count += 1
         pending.extend(choice.next_state for choice in state.next_choices)
     return branch_count, terminal_count
+
+
+def _verify_all_public_proofs_timed(decoder):
+    pending = [decoder]
+    visited = set()
+    branch_count = 0
+    terminal_count = 0
+    branch_started = time.monotonic()
+    branch_seconds = 0.0
+    terminal_seconds = 0.0
+    traversal_started = branch_started
+    while pending:
+        state = pending.pop()
+        if state.cache_key() in visited:
+            continue
+        visited.add(state.cache_key())
+        for locator in state.branch_proof_locators:
+            artifact = state.branch_artifact(locator)
+            if artifact["schema_name"] != "writer_branch_transition_artifact":
+                raise AssertionError("unexpected public branch artifact")
+            branch_count += 1
+        branch_seconds += time.monotonic() - branch_started
+        terminal_started = time.monotonic()
+        for locator in state.terminal_proof_locators:
+            artifact = state.terminalization_artifact(locator)
+            if artifact["schema_name"] != "writer_terminalization_artifact":
+                raise AssertionError("unexpected public terminal artifact")
+            terminal_count += 1
+        terminal_seconds += time.monotonic() - terminal_started
+        branch_started = time.monotonic()
+        pending.extend(choice.next_state for choice in state.next_choices)
+    return branch_count, terminal_count, {
+        "traversal": time.monotonic() - traversal_started,
+        "branch": branch_seconds,
+        "terminal": terminal_seconds,
+    }
 
 
 def _first_terminal_state(decoder):

@@ -12,6 +12,8 @@ from tests.south_star1.default_writer_qualification_shards import (
     FAST_ACCEPTED_CASES,
     SLOW_COUPLED_CASES,
     SLOW_COUPLED_CASE_NAMES,
+    SLOW_QUALIFICATION_SHARDS,
+    slow_cases_for_shard,
 )
 
 
@@ -52,7 +54,35 @@ class DefaultWriterQualificationShardsTest(unittest.TestCase):
             "tests.south_star1.test_writer_default_stereo_audit_fixture"
         )
         self.assertIs(audit.WriterDefaultStereoAuditFixtureTest.QUALIFICATION_CASES, FAST_ACCEPTED_CASES)
-        self.assertIs(audit.WriterDefaultStereoAuditSlowTest.QUALIFICATION_CASES, SLOW_COUPLED_CASES)
+        self.assertIsNone(audit.WriterDefaultStereoAuditSlowTest.QUALIFICATION_CASES)
+
+    def test_slow_case_shards_are_disjoint_complete_and_ordered(self) -> None:
+        shard_names = tuple(SLOW_QUALIFICATION_SHARDS)
+        self.assertEqual(
+            set(shard_names), {"zero-h-adjacent", "remote-a", "remote-b"}
+        )
+        shard_sets = [set(SLOW_QUALIFICATION_SHARDS[name]) for name in shard_names]
+        for index, left in enumerate(shard_sets):
+            for right in shard_sets[index + 1 :]:
+                self.assertTrue(left.isdisjoint(right))
+        self.assertEqual(
+            set().union(*shard_sets), {case.name for case in SLOW_COUPLED_CASES}
+        )
+        for name in shard_names:
+            self.assertEqual(
+                tuple(case.name for case in slow_cases_for_shard(name)),
+                tuple(
+                    case.name
+                    for case in SLOW_COUPLED_CASES
+                    if case.name in SLOW_QUALIFICATION_SHARDS[name]
+                ),
+            )
+
+    def test_unknown_or_empty_slow_case_shards_are_rejected(self) -> None:
+        for name in ("", "unknown"):
+            with self.subTest(name=name):
+                with self.assertRaises(ValueError):
+                    slow_cases_for_shard(name)
 
 
 if __name__ == "__main__":

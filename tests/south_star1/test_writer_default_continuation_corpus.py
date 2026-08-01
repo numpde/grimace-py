@@ -27,6 +27,9 @@ from grimace._south_star1.writer_snapshot import capture_writer_frontier_snapsho
 from tests.south_star1.default_writer_capability_ledger import ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES
 from tests.south_star1.default_writer_qualification_shards import FAST_ACCEPTED_CASES
 from tests.south_star1.default_writer_qualification_shards import SLOW_COUPLED_CASES
+from tests.south_star1.default_writer_qualification_shards import (
+    selected_slow_qualification_cases,
+)
 from tests.south_star1.default_writer_qualification_shards import SLOW_COUPLED_CASE_NAMES
 from tests.south_star1.test_writer_default_parity_corpus import _facts
 from tests.south_star1.test_writer_default_parity_corpus import _support_image
@@ -176,7 +179,7 @@ class WriterDefaultContinuationCorpusTest(unittest.TestCase):
     def test_slow_coupled_cases_cross_all_continuation_tiers(self) -> None:
         if os.environ.get("SOUTH_STAR1_RUN_SLOW") != "1":
             self.skipTest("set SOUTH_STAR1_RUN_SLOW=1 to run coupled cases")
-        self._cross_all_continuation_tiers(SLOW_COUPLED_CASES)
+        self._cross_all_continuation_tiers(selected_slow_qualification_cases())
 
     def test_renumbered_rdkit_stereo_keeps_certified_rust_language(self) -> None:
         cases = (

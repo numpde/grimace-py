@@ -35,6 +35,9 @@ from tests.south_star1.helpers import directional_facts
 from tests.south_star1.helpers import tetrahedral_facts
 from tests.south_star1.default_writer_qualification_shards import FAST_ACCEPTED_CASES
 from tests.south_star1.default_writer_qualification_shards import SLOW_COUPLED_CASES
+from tests.south_star1.default_writer_qualification_shards import (
+    selected_slow_qualification_cases,
+)
 
 
 class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
@@ -324,12 +327,13 @@ class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
                     )
 
 class WriterDefaultStereoAuditSlowTest(WriterDefaultStereoAuditFixtureTest):
-    QUALIFICATION_CASES = SLOW_COUPLED_CASES
+    QUALIFICATION_CASES = None
 
     @classmethod
     def setUpClass(cls) -> None:
         if os.environ.get("SOUTH_STAR1_RUN_SLOW") != "1":
             raise unittest.SkipTest("set SOUTH_STAR1_RUN_SLOW=1 to run coupled cases")
+        cls.QUALIFICATION_CASES = selected_slow_qualification_cases()
         super().setUpClass()
 
 

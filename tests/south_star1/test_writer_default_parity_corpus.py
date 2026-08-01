@@ -63,6 +63,9 @@ from tests.south_star1.default_writer_capability_ledger import DefaultWriterCapa
 from tests.south_star1.default_writer_qualification_shards import FAST_ACCEPTED_CASES
 from tests.south_star1.default_writer_qualification_shards import SLOW_COUPLED_CASES
 from tests.south_star1.default_writer_qualification_shards import SLOW_COUPLED_CASE_NAMES
+from tests.south_star1.default_writer_qualification_shards import (
+    selected_slow_qualification_cases,
+)
 
 ACCEPTED_CASES = ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES
 BLOCKED_CASES = BLOCKED_DEFAULT_WRITER_CAPABILITY_CASES
@@ -146,7 +149,7 @@ class WriterDefaultParityCorpusTest(unittest.TestCase):
     def test_slow_coupled_corpus_verifies_support_artifacts(self) -> None:
         if os.environ.get(RUN_SLOW_ENV) != "1":
             self.skipTest(f"set {RUN_SLOW_ENV}=1 to run coupled cases")
-        for case in SLOW_COUPLED_CASES:
+        for case in selected_slow_qualification_cases():
             with self.subTest(case=case.name):
                 result = _accepted_case_result(case)
                 self._assert_accepted_case_result(case, result)
@@ -154,7 +157,7 @@ class WriterDefaultParityCorpusTest(unittest.TestCase):
     def test_slow_coupled_corpus_reparses_to_isomorphic_facts(self) -> None:
         if os.environ.get(RUN_SLOW_ENV) != "1":
             self.skipTest(f"set {RUN_SLOW_ENV}=1 to run coupled cases")
-        for case in SLOW_COUPLED_CASES:
+        for case in selected_slow_qualification_cases():
             with self.subTest(case=case.name):
                 facts = _facts(case)
                 for text in _support_image(case).strings:

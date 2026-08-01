@@ -17,6 +17,9 @@ from tests.south_star1.default_writer_capability_ledger import (
 )
 from tests.south_star1.default_writer_qualification_shards import FAST_ACCEPTED_CASES
 from tests.south_star1.default_writer_qualification_shards import SLOW_COUPLED_CASES
+from tests.south_star1.default_writer_qualification_shards import (
+    selected_slow_qualification_cases,
+)
 
 
 class PublicContinuationAssetVerificationTest(unittest.TestCase):
@@ -57,7 +60,7 @@ class PublicContinuationAssetVerificationTest(unittest.TestCase):
         "set SOUTH_STAR1_RUN_SLOW=1 to run coupled cases",
     )
     def test_slow_coupled_cases_recertify_copied_assets(self) -> None:
-        self._assert_cases_recertify_copied_assets(SLOW_COUPLED_CASES)
+        self._assert_cases_recertify_copied_assets(selected_slow_qualification_cases())
 
     def test_copied_asset_is_recertified_without_mutation(self) -> None:
         with TemporaryDirectory() as directory:

@@ -30,6 +30,9 @@ from tests.south_star1.default_writer_capability_ledger import (
 )
 from tests.south_star1.default_writer_qualification_shards import FAST_ACCEPTED_CASES
 from tests.south_star1.default_writer_qualification_shards import SLOW_COUPLED_CASES
+from tests.south_star1.default_writer_qualification_shards import (
+    selected_slow_qualification_cases,
+)
 
 
 class PublicContinuationProofTest(unittest.TestCase):
@@ -61,7 +64,9 @@ class PublicContinuationProofTest(unittest.TestCase):
         "set SOUTH_STAR1_RUN_SLOW=1 to run coupled cases",
     )
     def test_slow_coupled_cases_expose_and_verify_every_local_proof(self) -> None:
-        self._assert_cases_expose_and_verify_every_local_proof(SLOW_COUPLED_CASES)
+        self._assert_cases_expose_and_verify_every_local_proof(
+            selected_slow_qualification_cases()
+        )
 
     def test_copy_and_snapshot_resume_share_the_molecule_bound_session(self) -> None:
         with TemporaryDirectory() as directory:

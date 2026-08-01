@@ -28,6 +28,9 @@ from tests.south_star1.default_writer_capability_ledger import (
 )
 from tests.south_star1.default_writer_qualification_shards import FAST_ACCEPTED_CASES
 from tests.south_star1.default_writer_qualification_shards import SLOW_COUPLED_CASES
+from tests.south_star1.default_writer_qualification_shards import (
+    selected_slow_qualification_cases,
+)
 
 
 class PublicContinuationAssetTest(unittest.TestCase):
@@ -66,7 +69,9 @@ class PublicContinuationAssetTest(unittest.TestCase):
         "set SOUTH_STAR1_RUN_SLOW=1 to run coupled cases",
     )
     def test_slow_coupled_cases_build_through_public_api(self) -> None:
-        self._assert_accepted_cases_build_through_public_api(SLOW_COUPLED_CASES)
+        self._assert_accepted_cases_build_through_public_api(
+            selected_slow_qualification_cases()
+        )
 
     def test_renumbered_stereo_builds_the_same_mapped_root_language(self) -> None:
         cases = (

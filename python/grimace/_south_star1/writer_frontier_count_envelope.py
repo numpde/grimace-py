@@ -75,7 +75,6 @@ def verify_writer_frontier_count_envelope(*, prepared: SouthStarPreparedMol, env
         source_kind = str(envelope['source_kind'])
         if source_kind == 'snapshot':
             frontier_snapshot = _source_snapshot_from_envelope(prepared=prepared, envelope=envelope, budget=budget)
-            expected = writer_frontier_count_envelope_for_snapshot(prepared=prepared, snapshot=frontier_snapshot, budget=budget)
         elif source_kind == 'prefix_read':
             prefix_envelope = envelope['prefix_read_envelope']
             verification = verify_writer_snapshot_prefix_read_envelope(prepared=prepared, envelope=prefix_envelope, budget=budget)
@@ -86,11 +85,16 @@ def verify_writer_frontier_count_envelope(*, prepared: SouthStarPreparedMol, env
             frontier_snapshot = verification.final_snapshot
             if frontier_snapshot is None:
                 _count_envelope_violation('prefix_read_envelope_lacks_final_snapshot')
-            expected = writer_frontier_count_envelope_for_prefix_read(prepared=prepared, prefix_read_envelope=prefix_envelope, budget=budget)
         else:
             _count_envelope_violation('unknown_source_kind')
-        if expected != envelope:
-            return WriterFrontierCountEnvelopeVerification(accepted=False, source_kind=source_kind, support_count=None, completion_count=None, frontier_snapshot=frontier_snapshot, reason='envelope_terms_mismatch')
+        product = _counted_frontier_product(prepared=prepared, snapshot=frontier_snapshot)
+        _verify_writer_frontier_count_envelope_against_product(
+            prepared=prepared,
+            frontier_snapshot=frontier_snapshot,
+            product=product,
+            envelope=envelope,
+            budget=budget,
+        )
         return WriterFrontierCountEnvelopeVerification(accepted=True, source_kind=source_kind, support_count=envelope['support_count'], completion_count=envelope['completion_count'], frontier_snapshot=frontier_snapshot)
     except WriterEnvelopeWorkExceeded as exc:
         return WriterFrontierCountEnvelopeVerification(accepted=False, source_kind=envelope.get('source_kind', 'unknown') if isinstance(envelope, Mapping) else 'unknown', support_count=None, completion_count=None, frontier_snapshot=None, reason=writer_envelope_work_reason(exc))
@@ -98,6 +102,33 @@ def verify_writer_frontier_count_envelope(*, prepared: SouthStarPreparedMol, env
         return WriterFrontierCountEnvelopeVerification(accepted=False, source_kind=envelope.get('source_kind', 'unknown') if isinstance(envelope, Mapping) else 'unknown', support_count=None, completion_count=None, frontier_snapshot=None, reason=exc.args[-1] if exc.args else 'verification_error')
     except (AssertionError, KeyError, TypeError, ValueError) as exc:
         return WriterFrontierCountEnvelopeVerification(accepted=False, source_kind=envelope.get('source_kind', 'unknown') if isinstance(envelope, Mapping) else 'unknown', support_count=None, completion_count=None, frontier_snapshot=None, reason=f'malformed_envelope:{type(exc).__name__}')
+
+def _verify_writer_frontier_count_envelope_against_product(*, prepared, frontier_snapshot, product, envelope, budget):
+    """Verify count terms against a fresh product without rebuilding the DAG."""
+    _validate_envelope_shape(envelope, budget=budget)
+    assert isinstance(envelope, Mapping)
+    _assert_prepared_identity_matches(prepared, envelope, budget=budget)
+    nodes = count_dag_node_by_id(envelope['count_dag'])
+    expected = {
+        'schema_name': SCHEMA_NAME,
+        'schema_version': SCHEMA_VERSION,
+        'prepared_identity': _identity_envelope(frontier_snapshot.prepared_identity, budget=budget, operation='envelope.identity'),
+        'source_kind': envelope['source_kind'],
+        'source_snapshot': envelope['source_snapshot'],
+        'prefix_read_envelope': envelope['prefix_read_envelope'],
+        'frontier_snapshot': envelope['frontier_snapshot'],
+        'frontier_product': _frontier_product_count_identity_envelope(product, count_dag=envelope['count_dag'], budget=budget),
+        'support_count': product.support_count_certificate.support_count,
+        'completion_count': product.count_certificate.completion_count,
+        'count_dag': envelope['count_dag'],
+        'support_count_certificate': nodes[envelope['count_dag']['roots']['support_count_root']],
+        'completion_count_certificate': nodes[envelope['count_dag']['roots']['completion_count_root']],
+        'choice_count_certificates': [nodes[node_id] for node_id in envelope['count_dag']['roots']['choice_count_roots']],
+        'terminal_choice_count_certificate': None if envelope['count_dag']['roots']['terminal_choice_count_root'] is None else nodes[envelope['count_dag']['roots']['terminal_choice_count_root']],
+        'coverage': _coverage_envelope(product, count_dag=envelope['count_dag'], budget=budget),
+    }
+    if expected != envelope:
+        _count_envelope_violation('envelope_terms_mismatch')
 
 def _counted_frontier_product(*, prepared, snapshot):
     return _checked_writer_frontier_product(prepared, snapshot.cursor, include_counts=True, include_frontier_certificate=True, include_count_certificate=True)

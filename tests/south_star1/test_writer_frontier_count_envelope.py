@@ -5,6 +5,7 @@ from __future__ import annotations
 from copy import deepcopy
 import json
 import unittest
+from unittest.mock import patch
 
 from grimace._south_star1.policy import SerializationLanguageMode
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
@@ -37,6 +38,21 @@ from tests.south_star1.test_writer_snapshot import two_atom_facts
 
 
 class WriterFrontierCountEnvelopeTest(unittest.TestCase):
+    def test_verification_does_not_rebuild_count_dag(self) -> None:
+        prepared = _prepare(cco_facts())
+        snapshot = _initial_snapshot(prepared)
+        envelope = writer_frontier_count_envelope_for_snapshot(
+            prepared=prepared, snapshot=snapshot
+        )
+        with patch(
+            "grimace._south_star1.writer_frontier_count_envelope.writer_count_certificate_dag_envelope_for_product",
+            side_effect=AssertionError("count DAG regenerated"),
+        ):
+            verification = verify_writer_frontier_count_envelope(
+                prepared=prepared, envelope=envelope
+            )
+        self.assertTrue(verification.accepted, verification.reason)
+
     def test_initial_snapshot_count_envelope_json_round_trips(self) -> None:
         prepared = _prepare(cco_facts())
         envelope = _json_round_trip(

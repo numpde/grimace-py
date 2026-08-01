@@ -17,7 +17,7 @@ from .writer_envelope_work import WriterEnvelopeWorkExceeded
 from .writer_envelope_work import WriterEnvelopeWorkViolation
 
 
-_TERM_CACHE: ContextVar[dict[int, object] | None] = ContextVar(
+_TERM_CACHE: ContextVar[dict[int, tuple[object, object]] | None] = ContextVar(
     "writer_envelope_term_cache",
     default=None,
 )
@@ -45,6 +45,16 @@ def _with_memoized_writer_envelope_terms(function, /, *args, **kwargs):
 
 
 def _term(value):
+    if _TERM_IN_PROGRESS.get() is not None:
+        return _term_with_progress(value)
+    token = _TERM_IN_PROGRESS.set({})
+    try:
+        return _term_with_progress(value)
+    finally:
+        _TERM_IN_PROGRESS.reset(token)
+
+
+def _term_with_progress(value):
     if value is None or isinstance(value, (str, bool)):
         return value
     if isinstance(value, int):
@@ -58,20 +68,15 @@ def _term(value):
         }
 
     cache = _TERM_CACHE.get()
-    if cache is None:
-        cache = {}
     in_progress = _TERM_IN_PROGRESS.get()
-    if in_progress is None:
-        in_progress = {}
     value_id = id(value)
-    if value_id in cache:
-        return cache[value_id]
-    if isinstance(value, (tuple, list, frozenset, set, Mapping)) and in_progress.get(
-        value_id
-    ):
+    cached = None if cache is None else cache.get(value_id)
+    if cached is not None and cached[0] is value:
+        return cached[1]
+    if in_progress.get(value_id):
         _envelope_violation("cyclic_writer_envelope_term")
     if is_dataclass(value):
-        return _dataclass_term(value, in_progress, value_id)
+        return _dataclass_term(value, in_progress, value_id, cache)
     if isinstance(value, (tuple, list)):
         if in_progress.get(value_id):
             _envelope_violation("cyclic_writer_envelope_term")
@@ -80,7 +85,6 @@ def _term(value):
             term = [_term(item) for item in value]
         finally:
             in_progress.pop(value_id, None)
-        cache[value_id] = term
         return term
     if isinstance(value, (frozenset, set)):
         if in_progress.get(value_id):
@@ -92,7 +96,6 @@ def _term(value):
             ]
         finally:
             in_progress.pop(value_id, None)
-        cache[value_id] = term
         return term
     if isinstance(value, Mapping):
         if in_progress.get(value_id):
@@ -105,21 +108,19 @@ def _term(value):
             ]
         finally:
             in_progress.pop(value_id, None)
-        cache[value_id] = term
         return term
     _envelope_violation(f"unsupported_term_type:{type(value).__name__}")
 
 
-def _dataclass_term(value, in_progress, value_id):
+def _dataclass_term(value, in_progress, value_id, cache):
     if is_dataclass(value):
         if in_progress.get(value_id):
             _envelope_violation("cyclic_writer_envelope_term")
-        cache = _TERM_CACHE.get()
-        if cache is None:
-            cache = {}
-        cached = cache.get(value_id)
-        if cached is not None:
-            return cached
+        frozen = getattr(value.__dataclass_params__, "frozen", False)
+        if frozen and cache is not None:
+            cached = cache.get(value_id)
+            if cached is not None and cached[0] is value:
+                return cached[1]
         in_progress[value_id] = True
         try:
             term = {
@@ -133,7 +134,8 @@ def _dataclass_term(value, in_progress, value_id):
             }
         finally:
             in_progress.pop(value_id, None)
-        cache[value_id] = term
+        if frozen and cache is not None:
+            cache[value_id] = (value, term)
         return term
     _envelope_violation(f"unsupported_term_type:{type(value).__name__}")
 

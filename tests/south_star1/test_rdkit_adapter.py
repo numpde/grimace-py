@@ -7,6 +7,7 @@ from itertools import permutations
 import unittest
 
 from rdkit import Chem
+from rdkit import rdBase
 
 from grimace._south_star1.errors import SouthStarError
 from grimace._south_star1.errors import SouthStarErrorKind
@@ -36,9 +37,54 @@ from grimace._south_star1.slots import allocate_traversal_slots
 from grimace._south_star1.stereo_csp import enumerate_stereo_assignments_for_prefix
 from grimace._south_star1.stereo_witness import enumerate_presentation_prefixes
 from grimace._south_star1.support_enumeration import enumerate_exhaustive_stereo_support
+from tests.helpers.rdkit_south_star_stereo_audit import (
+    load_pinned_south_star_stereo_audit_cases,
+)
 
 
 class RdkitAdapterTest(unittest.TestCase):
+    def test_zero_h_tetrahedral_source_parity_and_pinned_support_reparse(self) -> None:
+        fixture = next(
+            item
+            for item in load_pinned_south_star_stereo_audit_cases(rdBase.rdkitVersion)
+            if item.name == "zero_h_tetrahedral"
+        )
+        options = RdkitOrdinaryExtractionOptions(
+            include_potential_sites=True,
+            extract_specified_tetrahedral=True,
+            extract_specified_directional=True,
+            stereo_site_discovery_mode="specified_closure",
+            stereo_site_options=OrdinaryStereoSiteOptions(
+                ligand_equivalence="exact_stereochemical_graph_automorphism",
+            ),
+        )
+        source = ordinary_molecule_facts_from_smiles(fixture.source_smiles, options)
+        self.assertEqual(source.stereo.tetrahedral[0].target, TetraValue.PLUS)
+        self.assertEqual(fixture.sorted_support_sha256, "ba947a23b358660cbd77689f5f60be8f1cc4a069f0e543bccee8955f3b9fcacb")
+        for text in fixture.expected_support:
+            with self.subTest(text=text):
+                reparsed = ordinary_molecule_facts_from_smiles(text, options)
+                self.assertTrue(facts_are_isomorphic(source, reparsed).isomorphic)
+                from_rdkit = ordinary_molecule_facts_from_rdkit(
+                    Chem.MolFromSmiles(text), options
+                )
+                self.assertTrue(facts_are_isomorphic(reparsed, from_rdkit).isomorphic)
+
+    def test_zero_h_tetrahedral_opposite_is_not_stereo_isomorphic(self) -> None:
+        options = RdkitOrdinaryExtractionOptions()
+        source = ordinary_molecule_facts_from_smiles("C[C@](F)(Cl)Br", options)
+        opposite = ordinary_molecule_facts_from_smiles(
+            "[C@](Br)(C)(F)Cl", options
+        )
+        self.assertFalse(facts_are_isomorphic(source, opposite).isomorphic)
+
+    def test_zero_h_tetrahedral_nonzero_h_adapter_targets_remain_stable(self) -> None:
+        options = RdkitOrdinaryExtractionOptions()
+        root = ordinary_molecule_facts_from_smiles("[C@H](F)(Cl)Br", options)
+        non_root = ordinary_molecule_facts_from_smiles("C[C@H](F)Cl", options)
+        self.assertEqual(root.stereo.tetrahedral[0].target, TetraValue.PLUS)
+        self.assertEqual(non_root.stereo.tetrahedral[0].target, TetraValue.PLUS)
+
     def test_snapshots_simple_nonstereo_molecule_facts(self) -> None:
         mol = Chem.MolFromSmiles("CCO")
 

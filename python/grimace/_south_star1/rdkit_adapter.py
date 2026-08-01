@@ -594,12 +594,9 @@ def _rdkit_tetra_target_for_south_star_reference_order(
     RDKit stores the SMILES predecessor as the first incident bond directed
     into a non-root atom.  Away from rings, its unique incoming non-ring bond
     retains the same identity if bond ids are reordered.  A later incoming
-    ring bond is a closure, not the predecessor.  The predecessor viewpoint is
-    an odd permutation relative to South Star's explicit neighbor order.
-    ``RenumberAtoms``
-    preserves the ordered bond and its endpoint roles even though atom ids
-    change.  We therefore apply the exact physical-ligand permutation and
-    never infer a predecessor from numeric atom ids.
+    ring bond is a closure, not the predecessor.  Zero-H centers use the
+    explicit South Star reference order directly; predecessor-viewpoint
+    handling is applied as one target flip below.
     """
 
     tag = atom.GetChiralTag()
@@ -613,12 +610,12 @@ def _rdkit_tetra_target_for_south_star_reference_order(
             f"unsupported RDKit tetrahedral tag: {tag!r}",
         )
 
-    if reference_atoms.count(None) not in {0, 1}:
+    implicit_h_reference_count = reference_atoms.count(None)
+    if implicit_h_reference_count not in {0, 1}:
         raise SouthStarError(
             SouthStarErrorKind.UNSUPPORTED_STEREO,
             "RDKit tetrahedral center has ambiguous implicit-H identity",
         )
-    rdkit_order = reference_atoms
     bonds = tuple(atom.GetBonds())
     incoming_nonring_bonds = tuple(
         bond
@@ -633,39 +630,9 @@ def _rdkit_tetra_target_for_south_star_reference_order(
     predecessor_viewpoint = bool(
         bonds and bonds[0].GetEndAtomIdx() == atom.GetIdx()
     ) or bool(incoming_nonring_bonds)
-    if predecessor_viewpoint:
-        if len(rdkit_order) < 2:
-            raise SouthStarError(
-                SouthStarErrorKind.UNSUPPORTED_STEREO,
-                "RDKit tetrahedral predecessor order is ambiguous",
-            )
-        rdkit_order = (
-            rdkit_order[1],
-            rdkit_order[0],
-            *rdkit_order[2:],
-        )
-    if _permutation_is_odd(rdkit_order, reference_atoms):
+    if implicit_h_reference_count == 0 or predecessor_viewpoint:
         target = _flip_tetra_target(target)
     return target
-
-
-def _permutation_is_odd(
-    source: tuple[AtomId | None, ...],
-    target: tuple[AtomId | None, ...],
-) -> bool:
-    if len(source) != len(target) or set(source) != set(target):
-        raise SouthStarError(
-            SouthStarErrorKind.UNSUPPORTED_STEREO,
-            "RDKit tetrahedral ligand order is ambiguous",
-        )
-    positions = {value: index for index, value in enumerate(source)}
-    permutation = tuple(positions[value] for value in target)
-    inversions = sum(
-        permutation[left] > permutation[right]
-        for left in range(len(permutation))
-        for right in range(left + 1, len(permutation))
-    )
-    return inversions % 2 == 1
 
 
 def _flip_tetra_target(value: TetraValue) -> TetraValue:

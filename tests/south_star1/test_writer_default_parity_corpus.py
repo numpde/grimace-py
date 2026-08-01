@@ -182,12 +182,10 @@ class WriterDefaultParityCorpusTest(unittest.TestCase):
                             text,
                             case.extraction_options,
                         )
-                        comparison = facts_are_isomorphic(
-                            facts,
-                            reparsed,
-                            compare_stereo=case.name != "zero_h_tetrahedral",
+                        self.assertTrue(
+                            facts_are_isomorphic(facts, reparsed).isomorphic,
+                            text,
                         )
-                        self.assertTrue(comparison.isomorphic, text)
 
     def _assert_accepted_case_result(
         self,

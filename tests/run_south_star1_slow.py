@@ -37,6 +37,12 @@ SLOW_QUALIFICATION_LAYERS = {
     "support-artifact": (
         "tests.south_star1.test_writer_default_parity_corpus.WriterDefaultParityCorpusTest.test_slow_coupled_corpus_verifies_support_artifacts",
     ),
+    "support-zero-h": (
+        "tests.south_star1.test_writer_default_parity_corpus.WriterDefaultParityCorpusTest.test_zero_h_tetrahedral_support_artifact",
+    ),
+    "support-adjacent": (
+        "tests.south_star1.test_writer_default_parity_corpus.WriterDefaultParityCorpusTest.test_adjacent_specified_tetrahedral_support_artifact",
+    ),
     "support-reparse": (
         "tests.south_star1.test_writer_default_parity_corpus.WriterDefaultParityCorpusTest.test_slow_coupled_corpus_reparses_to_isomorphic_facts",
     ),

@@ -150,9 +150,25 @@ class WriterDefaultParityCorpusTest(unittest.TestCase):
         if os.environ.get(RUN_SLOW_ENV) != "1":
             self.skipTest(f"set {RUN_SLOW_ENV}=1 to run coupled cases")
         for case in selected_slow_qualification_cases():
-            with self.subTest(case=case.name):
-                result = _accepted_case_result(case)
-                self._assert_accepted_case_result(case, result)
+            self._assert_slow_support_case(case)
+
+    def test_zero_h_tetrahedral_support_artifact(self) -> None:
+        self._assert_slow_support_case_named("zero_h_tetrahedral")
+
+    def test_adjacent_specified_tetrahedral_support_artifact(self) -> None:
+        self._assert_slow_support_case_named("adjacent_specified_tetrahedral")
+
+    def _assert_slow_support_case_named(self, name: str) -> None:
+        if os.environ.get(RUN_SLOW_ENV) != "1":
+            self.skipTest(f"set {RUN_SLOW_ENV}=1 to run coupled cases")
+        cases = tuple(case for case in selected_slow_qualification_cases() if case.name == name)
+        self.assertEqual(tuple(case.name for case in cases), (name,))
+        self._assert_slow_support_case(cases[0])
+
+    def _assert_slow_support_case(self, case) -> None:
+        with self.subTest(case=case.name):
+            result = _accepted_case_result(case)
+            self._assert_accepted_case_result(case, result)
 
     def test_slow_coupled_corpus_reparses_to_isomorphic_facts(self) -> None:
         if os.environ.get(RUN_SLOW_ENV) != "1":

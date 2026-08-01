@@ -3,7 +3,7 @@
 PYTHON ?= python3
 MATURIN ?= $(dir $(PYTHON))maturin
 SLOW_SHARDS := zero-h-adjacent remote-a remote-b
-SLOW_LAYERS := public-build public-certify public-runtime public-recertification public-proofs offline-complete support-artifact support-reparse continuation stereo-audit
+SLOW_LAYERS := public-build public-certify public-runtime public-recertification public-proofs count-dag-envelope offline-complete support-artifact support-reparse continuation stereo-audit
 SLOW_LAYERS_ZERO_H := public-build public-certify public-runtime public-recertification public-proofs offline-zero-h offline-adjacent support-zero-h support-adjacent support-reparse continuation stereo-audit
 SLOW_ASSET_ROOT := .south-star1-qualification/$(shell git rev-parse HEAD)
 

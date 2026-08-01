@@ -31,6 +31,9 @@ SLOW_QUALIFICATION_LAYERS = {
     "public-proofs": (
         "tests.south_star1.test_public_continuation_proofs.PublicContinuationProofTest.test_slow_coupled_cases_expose_and_verify_every_local_proof",
     ),
+    "count-dag-envelope": (
+        "tests.south_star1.test_writer_count_dag_envelope.WriterCountDagEnvelopeTest.test_slow_coupled_count_dag_envelope_diagnostics",
+    ),
     "offline-complete": (
         "tests.south_star1.test_writer_default_offline_complete.WriterDefaultOfflineCompleteTest.test_slow_coupled_cases_are_offline_complete",
     ),

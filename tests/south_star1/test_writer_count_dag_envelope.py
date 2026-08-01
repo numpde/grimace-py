@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import replace
 import json
+import os
+import time
 import unittest
 
 from grimace._south_star1.writer_count_dag_envelope import (
@@ -23,6 +26,7 @@ from grimace._south_star1.writer_count_dag_envelope import (
 from grimace._south_star1.writer_count_dag_envelope import (
     writer_count_certificate_dag_envelope_for_product,
 )
+from grimace._south_star1.writer_count_dag_envelope import _CountDagBuilder
 from grimace._south_star1.writer_envelope_consistency import (
     verify_writer_support_image_envelope_consistency,
 )
@@ -52,12 +56,88 @@ from tests.south_star1.test_writer_frontier_count_envelope import _prepare
 from tests.south_star1.test_writer_frontier_count_envelope import (
     _terminal_prefix_read_envelope,
 )
+from tests.south_star1.default_writer_qualification_shards import (
+    selected_slow_qualification_cases,
+)
+from tests.south_star1.test_writer_default_parity_corpus import _facts
+from tests.south_star1.test_writer_default_parity_corpus import _initial_snapshot as _default_initial_snapshot
+from tests.south_star1.test_writer_default_parity_corpus import _prepare_default
 from grimace._south_star1.writer_snapshot_prefix_envelope import (
     writer_snapshot_prefix_read_envelope_for_emitted_texts,
 )
 
 
 class WriterCountDagEnvelopeTest(unittest.TestCase):
+    @unittest.skipUnless(
+        os.environ.get("SOUTH_STAR1_RUN_SLOW") == "1",
+        "set SOUTH_STAR1_RUN_SLOW=1 to run coupled cases",
+    )
+    def test_slow_coupled_count_dag_envelope_diagnostics(self) -> None:
+        probe_budget = replace(WriterEnvelopeWorkBudget(), max_count_nodes=50_000)
+        for case in selected_slow_qualification_cases():
+            with self.subTest(case=case.name):
+                prepared = _prepare_default(_facts(case))
+                snapshot = _default_initial_snapshot(prepared, case.rooted_at_atom)
+                diagnostics = WriterCountDagBuildDiagnostics()
+                started = time.monotonic()
+                envelope = writer_frontier_count_envelope_for_snapshot(
+                    prepared=prepared,
+                    snapshot=snapshot,
+                    budget=probe_budget,
+                    count_dag_diagnostics=diagnostics,
+                )
+                metrics = envelope["count_dag"]["metrics"]
+                for field in (
+                    "node_count",
+                    "edge_count",
+                    "max_depth",
+                    "manifest_digest_input_bytes",
+                    "full_node_digest_input_bytes",
+                    "largest_node_digest_input_bytes",
+                ):
+                    print(f"{field}={metrics[field]}", flush=True)
+                print(
+                    f"attempted_node_emissions_by_kind={diagnostics.attempted_node_emissions_by_kind}",
+                    flush=True,
+                )
+                print(f"dedup_hits_by_kind={diagnostics.dedup_hits_by_kind}", flush=True)
+                print(f"elapsed_seconds={time.monotonic() - started:.3f}", flush=True)
+                self.assertLessEqual(metrics["node_count"], 20_000)
+                self.assertLessEqual(metrics["edge_count"], probe_budget.max_count_edges)
+                self.assertLessEqual(metrics["max_depth"], probe_budget.max_count_depth)
+                self.assertLessEqual(
+                    metrics["manifest_digest_input_bytes"],
+                    probe_budget.max_digest_term_bytes,
+                )
+                validate_writer_count_certificate_dag_envelope(
+                    envelope["count_dag"],
+                    budget=replace(
+                        WriterEnvelopeWorkBudget(),
+                        max_count_nodes=metrics["node_count"],
+                    ),
+                )
+                validate_writer_count_certificate_dag_envelope(
+                    envelope["count_dag"],
+                    budget=WriterEnvelopeWorkBudget(),
+                )
+                with self.assertRaises(WriterEnvelopeWorkExceeded) as raised:
+                    validate_writer_count_certificate_dag_envelope(
+                        envelope["count_dag"],
+                        budget=replace(
+                            WriterEnvelopeWorkBudget(),
+                            max_count_nodes=metrics["node_count"] - 1,
+                        ),
+                    )
+                self.assertEqual(raised.exception.violation.metric, "count_node_count")
+
+    def test_twenty_thousand_one_synthetic_nodes_remain_rejected(self) -> None:
+        builder = _CountDagBuilder(budget=WriterEnvelopeWorkBudget())
+        with self.assertRaises(WriterEnvelopeWorkExceeded) as raised:
+            for index in range(20_001):
+                builder._node("synthetic", {"index": index}, [])
+        self.assertEqual(raised.exception.violation.metric, "count_node_count")
+        self.assertEqual(raised.exception.violation.limit, 20_000)
+
     def test_count_dag_envelope_validates_for_initial_snapshot(self) -> None:
         prepared = _prepare(cco_facts())
         envelope = writer_frontier_count_envelope_for_snapshot(

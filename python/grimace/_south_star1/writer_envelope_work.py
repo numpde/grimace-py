@@ -7,7 +7,8 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True, slots=True)
 class WriterEnvelopeWorkBudget:
-    max_count_nodes: int = 10_000
+    # Coupled-stereo count DAGs measured 17,698 nodes for both Remote-A and Remote-B.
+    max_count_nodes: int = 20_000
     max_count_edges: int = 50_000
     max_count_depth: int = 1_000
     max_digest_term_bytes: int = 25_000_000

@@ -36,7 +36,7 @@ jobs:
           source-tree-test-env: "true"
           install-z3: "true"
       - name: Run South Star source-tree semantics suite
-        run: env -u CONDA_PREFIX "$GRIMACE_CI_PYTHON" -m unittest tests.run_south_star_semantics -q
+        run: make test-south-star1-fast PYTHON="$GRIMACE_CI_PYTHON"
 
   south-star1-slow:
     runs-on: ubuntu-latest
@@ -48,7 +48,7 @@ jobs:
           source-tree-test-env: "true"
           install-z3: "true"
       - name: Run South Star coupled qualification shards
-        run: make slow-south-star1 PYTHON="$GRIMACE_CI_PYTHON"
+        run: make test-south-star1-slow PYTHON="$GRIMACE_CI_PYTHON"
 
   rdkit-parity:
     runs-on: ubuntu-latest

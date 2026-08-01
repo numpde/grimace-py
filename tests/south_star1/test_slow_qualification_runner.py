@@ -28,7 +28,7 @@ class SlowQualificationRunnerTest(unittest.TestCase):
         self.assertTrue(all(layers.values()))
         ids = [test_id for layer in layers.values() for test_id in layer]
         self.assertEqual(len(ids), len(set(ids)))
-        self.assertEqual(len(ids), 15)
+        self.assertEqual(len(ids), 16)
 
     def test_all_declared_slow_tests_are_in_one_layer(self) -> None:
         expected = {
@@ -38,12 +38,13 @@ class SlowQualificationRunnerTest(unittest.TestCase):
             "tests.south_star1.test_public_continuation_asset_verification.PublicContinuationAssetVerificationTest.test_slow_coupled_cases_recertify_copied_assets",
             "tests.south_star1.test_public_continuation_proofs.PublicContinuationProofTest.test_slow_coupled_cases_expose_and_verify_every_local_proof",
             "tests.south_star1.test_writer_count_dag_envelope.WriterCountDagEnvelopeTest.test_slow_coupled_count_dag_envelope_diagnostics",
-            "tests.south_star1.test_writer_default_offline_complete.WriterDefaultOfflineCompleteTest.test_slow_coupled_cases_are_offline_complete",
+            "tests.south_star1.test_slow_support_artifact_qualification.SlowSupportArtifactQualificationTest.test_slow_support_artifact_offline_complete",
             "tests.south_star1.test_writer_default_offline_complete.WriterDefaultOfflineCompleteTest.test_zero_h_tetrahedral_is_offline_complete",
             "tests.south_star1.test_writer_default_offline_complete.WriterDefaultOfflineCompleteTest.test_adjacent_specified_tetrahedral_is_offline_complete",
             "tests.south_star1.test_writer_default_parity_corpus.WriterDefaultParityCorpusTest.test_zero_h_tetrahedral_support_artifact",
             "tests.south_star1.test_writer_default_parity_corpus.WriterDefaultParityCorpusTest.test_adjacent_specified_tetrahedral_support_artifact",
-            "tests.south_star1.test_writer_default_parity_corpus.WriterDefaultParityCorpusTest.test_slow_coupled_corpus_verifies_support_artifacts",
+            "tests.south_star1.test_slow_support_artifact_qualification.SlowSupportArtifactQualificationTest.test_slow_support_artifact_build",
+            "tests.south_star1.test_slow_support_artifact_qualification.SlowSupportArtifactQualificationTest.test_slow_support_artifact_live",
             "tests.south_star1.test_writer_default_parity_corpus.WriterDefaultParityCorpusTest.test_slow_coupled_corpus_reparses_to_isomorphic_facts",
             "tests.south_star1.test_writer_default_continuation_corpus.WriterDefaultContinuationCorpusTest.test_slow_coupled_cases_cross_all_continuation_tiers",
             "tests.south_star1.test_writer_default_stereo_audit_fixture.WriterDefaultStereoAuditSlowTest",

@@ -35,7 +35,7 @@ SLOW_QUALIFICATION_LAYERS = {
         "tests.south_star1.test_writer_count_dag_envelope.WriterCountDagEnvelopeTest.test_slow_coupled_count_dag_envelope_diagnostics",
     ),
     "offline-complete": (
-        "tests.south_star1.test_writer_default_offline_complete.WriterDefaultOfflineCompleteTest.test_slow_coupled_cases_are_offline_complete",
+        "tests.south_star1.test_slow_support_artifact_qualification.SlowSupportArtifactQualificationTest.test_slow_support_artifact_offline_complete",
     ),
     "offline-zero-h": (
         "tests.south_star1.test_writer_default_offline_complete.WriterDefaultOfflineCompleteTest.test_zero_h_tetrahedral_is_offline_complete",
@@ -43,8 +43,11 @@ SLOW_QUALIFICATION_LAYERS = {
     "offline-adjacent": (
         "tests.south_star1.test_writer_default_offline_complete.WriterDefaultOfflineCompleteTest.test_adjacent_specified_tetrahedral_is_offline_complete",
     ),
-    "support-artifact": (
-        "tests.south_star1.test_writer_default_parity_corpus.WriterDefaultParityCorpusTest.test_slow_coupled_corpus_verifies_support_artifacts",
+    "support-artifact-build": (
+        "tests.south_star1.test_slow_support_artifact_qualification.SlowSupportArtifactQualificationTest.test_slow_support_artifact_build",
+    ),
+    "support-artifact-live": (
+        "tests.south_star1.test_slow_support_artifact_qualification.SlowSupportArtifactQualificationTest.test_slow_support_artifact_live",
     ),
     "support-zero-h": (
         "tests.south_star1.test_writer_default_parity_corpus.WriterDefaultParityCorpusTest.test_zero_h_tetrahedral_support_artifact",

@@ -59,6 +59,7 @@ from tests.south_star1.test_writer_frontier_count_envelope import (
 from tests.south_star1.default_writer_qualification_shards import (
     selected_slow_qualification_cases,
 )
+from tests.south_star1.slow_qualification_assets import store_slow_count_envelope
 from tests.south_star1.test_writer_default_parity_corpus import _facts
 from tests.south_star1.test_writer_default_parity_corpus import _initial_snapshot as _default_initial_snapshot
 from tests.south_star1.test_writer_default_parity_corpus import _prepare_default
@@ -129,6 +130,7 @@ class WriterCountDagEnvelopeTest(unittest.TestCase):
                         ),
                     )
                 self.assertEqual(raised.exception.violation.metric, "count_node_count")
+                store_slow_count_envelope(case, envelope)
 
     def test_twenty_thousand_one_synthetic_nodes_remain_rejected(self) -> None:
         builder = _CountDagBuilder(budget=WriterEnvelopeWorkBudget())

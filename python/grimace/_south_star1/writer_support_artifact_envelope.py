@@ -30,6 +30,11 @@ from .writer_frontier import _checked_writer_frontier_product
 from .writer_directional_ring_closure_lifecycle import DirectionalRingClosureCouplingTerm
 from .writer_frontier_count_envelope import writer_frontier_count_envelope_for_prefix_read
 from .writer_frontier_count_envelope import writer_frontier_count_envelope_for_snapshot
+from .writer_frontier_count_envelope import _envelope_from_product
+from .writer_frontier_count_envelope import _verify_writer_frontier_count_envelope_against_product
+from .writer_frontier_count_envelope import _counted_frontier_product
+from .writer_frontier_count_envelope import _coverage_envelope
+from .writer_count_dag_envelope import count_dag_node_by_id
 from .writer_snapshot_envelope import _source_snapshot_from_envelope
 from .writer_snapshot_prefix_envelope import _terminal_projection_certificate_identity_envelope
 from .writer_snapshot_prefix_envelope import _terminal_support_identity_envelope_from_certificate
@@ -58,25 +63,39 @@ def writer_support_artifact_envelope_for_snapshot(
 ) -> dict[str, object]:
     budget = default_writer_envelope_work_budget(budget)
     product = _checked_product(prepared=prepared, snapshot=snapshot)
-    count_envelope = writer_frontier_count_envelope_for_snapshot(
-        prepared=prepared,
-        snapshot=snapshot,
+    count_envelope = _envelope_from_product(
+        prepared=prepared, source_kind="snapshot", source_snapshot=snapshot,
+        prefix_read_envelope=None, frontier_snapshot=snapshot, product=product,
         budget=budget,
     )
-    image = _support_image_certificate_for_source(
+    return _writer_support_artifact_envelope_from_product_with_count_envelope(
         prepared=prepared,
         snapshot=snapshot,
-        product=product,
-    )
-    return _artifact_from_image(
-        prepared=prepared,
-        source_kind="snapshot",
-        source_snapshot=snapshot,
-        prefix_read_envelope=None,
         count_envelope=count_envelope,
         product=product,
-        image=image,
         budget=budget,
+    )
+
+def _writer_support_artifact_envelope_for_snapshot_with_count_envelope(*, prepared, snapshot, count_envelope, budget=None):
+    budget = default_writer_envelope_work_budget(budget)
+    product = _checked_product(prepared=prepared, snapshot=snapshot)
+    return _writer_support_artifact_envelope_from_product_with_count_envelope(
+        prepared=prepared, snapshot=snapshot, count_envelope=count_envelope,
+        product=product, budget=budget,
+    )
+
+def _writer_support_artifact_envelope_from_product_with_count_envelope(*, prepared, snapshot, count_envelope, product, budget):
+    _verify_writer_frontier_count_envelope_against_product(
+        prepared=prepared, frontier_snapshot=snapshot, product=product,
+        envelope=count_envelope, budget=budget,
+    )
+    image = _support_image_certificate_for_source(
+        prepared=prepared, snapshot=snapshot, product=product
+    )
+    return _artifact_from_image(
+        prepared=prepared, source_kind="snapshot", source_snapshot=snapshot,
+        prefix_read_envelope=None, count_envelope=count_envelope,
+        product=product, image=image, budget=budget,
     )
 
 
@@ -159,18 +178,25 @@ def verify_writer_support_artifact_envelope(
             envelope=envelope,
             budget=budget,
         )
-        if source_kind == "snapshot":
-            expected = writer_support_artifact_envelope_for_snapshot(
-                prepared=prepared,
-                snapshot=source_snapshot,
-                budget=budget,
-            )
-        else:
-            expected = writer_support_artifact_envelope_for_prefix_read(
-                prepared=prepared,
-                prefix_read_envelope=envelope["prefix_read_envelope"],
-                budget=budget,
-            )
+        product = _checked_product(prepared=prepared, snapshot=source_snapshot)
+        count_envelope = _count_envelope_from_artifact(
+            prepared=prepared, envelope=envelope, source_snapshot=source_snapshot,
+            product=product, budget=budget,
+        )
+        _verify_writer_frontier_count_envelope_against_product(
+            prepared=prepared, frontier_snapshot=source_snapshot, product=product,
+            envelope=count_envelope, budget=budget,
+        )
+        image = _support_image_certificate_for_source(
+            prepared=prepared, snapshot=source_snapshot, product=product
+        )
+        expected = _artifact_from_image(
+            prepared=prepared, source_kind=source_kind,
+            source_snapshot=source_snapshot,
+            prefix_read_envelope=envelope["prefix_read_envelope"],
+            count_envelope=count_envelope, product=product, image=image,
+            budget=budget,
+        )
         if expected != envelope:
             return WriterSupportArtifactEnvelopeVerification(
                 accepted=False,
@@ -1812,6 +1838,44 @@ def _source_snapshot_for_artifact(*, prepared, envelope, budget):
     if prefix.final_snapshot is None:
         _artifact_violation("prefix_read_envelope_lacks_final_snapshot")
     return prefix.final_snapshot
+
+def _count_envelope_from_artifact(*, prepared, envelope, source_snapshot, product, budget):
+    objects = {item["object_id"]: item for item in envelope["objects"]}
+    count_object = objects[envelope["roots"]["count_ref"]]
+    if count_object["kind"] != "count_envelope":
+        _artifact_violation("count_ref_kind_mismatch")
+    payload = count_object["payload"]
+    dag_object = objects[payload["count_dag_ref"]]
+    if dag_object["kind"] != "count_dag":
+        _artifact_violation("count_dag_ref_kind_mismatch")
+    dag = dag_object["payload"]
+    nodes = count_dag_node_by_id(dag)
+    snapshot_identity = _snapshot_identity_envelope(
+        source_snapshot, budget=budget, operation="support_artifact.count.source_snapshot"
+    )
+    if payload["frontier_snapshot_digest"] != snapshot_identity["digest"]:
+        _artifact_violation("count_frontier_snapshot_mismatch")
+    frontier_object = objects[envelope["roots"]["frontier_product_ref"]]
+    if frontier_object["kind"] != "frontier_product":
+        _artifact_violation("frontier_product_ref_kind_mismatch")
+    return {
+        "schema_name": payload["schema_name"],
+        "schema_version": payload["schema_version"],
+        "prepared_identity": envelope["prepared_identity"],
+        "source_kind": payload["source_kind"],
+        "source_snapshot": snapshot_identity if payload["source_kind"] == "snapshot" else None,
+        "prefix_read_envelope": envelope["prefix_read_envelope"],
+        "frontier_snapshot": snapshot_identity,
+        "frontier_product": frontier_object["payload"],
+        "support_count": payload["support_count"],
+        "completion_count": payload["completion_count"],
+        "count_dag": dag,
+        "support_count_certificate": nodes[dag["roots"]["support_count_root"]],
+        "completion_count_certificate": nodes[dag["roots"]["completion_count_root"]],
+        "choice_count_certificates": [nodes[node_id] for node_id in dag["roots"]["choice_count_roots"]],
+        "terminal_choice_count_certificate": None if dag["roots"]["terminal_choice_count_root"] is None else nodes[dag["roots"]["terminal_choice_count_root"]],
+        "coverage": _coverage_envelope(product, count_dag=dag, budget=budget),
+    }
 
 
 def _checked_product(*, prepared, snapshot):

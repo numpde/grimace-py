@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from hashlib import sha256
 import json
 import os
 from pathlib import Path
@@ -21,6 +22,21 @@ from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.writer_continuation_asset import (
     _certify_writer_continuation_asset_candidate,
 )
+from grimace._south_star1.writer_frontier import _checked_writer_frontier_product
+from grimace._south_star1.writer_frontier_count_envelope import (
+    _envelope_from_product,
+    verify_writer_frontier_count_envelope,
+    writer_frontier_count_envelope_for_snapshot,
+)
+from grimace._south_star1.writer_support_artifact_checker import (
+    verify_writer_support_artifact_consistency,
+)
+from grimace._south_star1.writer_support_artifact_envelope import (
+    _writer_support_artifact_envelope_for_snapshot_with_count_envelope,
+    verify_writer_support_artifact_envelope,
+)
+from grimace._south_star1.writer_count_dag_envelope import WriterCountDagBuildDiagnostics
+from grimace._south_star1.writer_envelope_work import WriterEnvelopeWorkBudget
 from grimace._south_star1.writer_continuation_asset import (
     _materialize_writer_continuation_asset_candidate,
 )
@@ -37,6 +53,8 @@ from tests.south_star1.default_writer_capability_ledger import (
 
 _ASSET_SCHEMA = "south_star1_slow_qualification_asset"
 _CANDIDATE_SCHEMA = "south_star1_slow_qualification_candidate"
+_COUNT_SCHEMA = "south_star1_slow_count_envelope"
+_ARTIFACT_SCHEMA = "south_star1_slow_support_artifact"
 _METADATA_VERSION = 1
 _ASSET_ROOT_ENV = "SOUTH_STAR1_SLOW_ASSET_ROOT"
 
@@ -56,6 +74,134 @@ class CachedQualificationAsset:
     metadata_path: Path
     manifest_digest: str
     cache_reused: bool = False
+
+@dataclass(frozen=True, slots=True)
+class CachedQualificationCountEnvelope:
+    case: DefaultWriterCapabilityCase
+    envelope_path: Path
+    metadata_path: Path
+    dag_digest: str
+
+@dataclass(frozen=True, slots=True)
+class CachedQualificationSupportArtifact:
+    case: DefaultWriterCapabilityCase
+    artifact_path: Path
+    metadata_path: Path
+    artifact_digest: str
+
+def build_slow_count_envelope(case):
+    case_dir = _case_dir(case)
+    case_dir.mkdir(parents=True, exist_ok=True)
+    prepared, snapshot = _prepared_and_snapshot(case)
+    product = _checked_writer_frontier_product(
+        prepared, snapshot.cursor, include_counts=True,
+        include_frontier_certificate=True, include_count_certificate=True,
+    )
+    envelope = _envelope_from_product(
+        prepared=prepared, source_kind="snapshot", source_snapshot=snapshot,
+        prefix_read_envelope=None, frontier_snapshot=snapshot, product=product,
+        budget=WriterEnvelopeWorkBudget(),
+    )
+    envelope_path = case_dir / "count-envelope.json"
+    metadata_path = case_dir / "count-envelope-metadata.json"
+    _atomic_json(envelope_path, envelope)
+    _atomic_json(metadata_path, _count_metadata(case, envelope))
+    return require_slow_count_envelope(case)
+
+def store_slow_count_envelope(case, envelope):
+    case_dir = _case_dir(case)
+    case_dir.mkdir(parents=True, exist_ok=True)
+    _atomic_json(case_dir / "count-envelope.json", envelope)
+    _atomic_json(case_dir / "count-envelope-metadata.json", _count_metadata(case, envelope))
+    return require_slow_count_envelope(case)
+
+def require_slow_count_envelope(case):
+    case_dir = _case_dir(case)
+    envelope_path = case_dir / "count-envelope.json"
+    metadata_path = case_dir / "count-envelope-metadata.json"
+    if not envelope_path.is_file() or not metadata_path.is_file():
+        raise AssertionError(f"slow count envelope is absent: {case.name}")
+    envelope = json.loads(envelope_path.read_text())
+    metadata = json.loads(metadata_path.read_text())
+    expected = _count_metadata(case, envelope)
+    if metadata != expected:
+        raise AssertionError(f"slow count envelope metadata mismatch: {case.name}")
+    prepared, snapshot = _prepared_and_snapshot(case)
+    verification = verify_writer_frontier_count_envelope(
+        prepared=prepared, envelope=envelope, budget=WriterEnvelopeWorkBudget()
+    )
+    if not verification.accepted:
+        raise AssertionError(verification.reason)
+    return CachedQualificationCountEnvelope(
+        case, envelope_path, metadata_path, envelope["count_dag"]["digest"]
+    )
+
+def build_slow_support_artifact(case):
+    cached = require_slow_count_envelope(case)
+    prepared, snapshot = _prepared_and_snapshot(case)
+    envelope = json.loads(cached.envelope_path.read_text())
+    artifact = _writer_support_artifact_envelope_for_snapshot_with_count_envelope(
+        prepared=prepared, snapshot=snapshot, count_envelope=envelope,
+        budget=WriterEnvelopeWorkBudget(),
+    )
+    case_dir = _case_dir(case)
+    artifact_path = case_dir / "support-artifact.json"
+    metadata_path = case_dir / "support-artifact-metadata.json"
+    _atomic_json(artifact_path, artifact)
+    _atomic_json(metadata_path, _artifact_metadata(case, artifact))
+    return require_slow_support_artifact(case)
+
+def require_slow_support_artifact(case):
+    case_dir = _case_dir(case)
+    artifact_path = case_dir / "support-artifact.json"
+    metadata_path = case_dir / "support-artifact-metadata.json"
+    if not artifact_path.is_file() or not metadata_path.is_file():
+        raise AssertionError(f"slow support artifact is absent: {case.name}")
+    artifact = json.loads(artifact_path.read_text())
+    metadata = json.loads(metadata_path.read_text())
+    if metadata != _artifact_metadata(case, artifact):
+        raise AssertionError(f"slow support artifact metadata mismatch: {case.name}")
+    structural = verify_writer_support_artifact_consistency(artifact)
+    if not structural.accepted:
+        raise AssertionError(structural.reason)
+    return CachedQualificationSupportArtifact(
+        case, artifact_path, metadata_path, artifact["digest"]
+    )
+
+def _count_metadata(case, envelope):
+    digest = envelope["count_dag"]["digest"]
+    return {
+        "schema": _COUNT_SCHEMA, "schema_version": _METADATA_VERSION,
+        "git_head": _git_head(), "case_name": case.name,
+        "source_smiles": case.smiles, "rooted_atom": case.rooted_at_atom,
+        "prepared_identity_digest": envelope["prepared_identity"]["digest"],
+        "support_count": envelope["support_count"],
+        "completion_count": envelope["completion_count"],
+        "count_dag_digest": digest,
+        "count_dag_node_count": envelope["count_dag"]["metrics"]["node_count"],
+        "count_envelope_sha256": _json_sha256(envelope),
+    }
+
+def _artifact_metadata(case, artifact):
+    objects = {item["object_id"]: item for item in artifact["objects"]}
+    root = objects[artifact["roots"]["support_image_root"]]["payload"]
+    return {
+        "schema": _ARTIFACT_SCHEMA, "schema_version": _METADATA_VERSION,
+        "git_head": _git_head(), "case_name": case.name,
+        "source_smiles": case.smiles, "rooted_atom": case.rooted_at_atom,
+        "support_count": root["distinct_count"],
+        "completion_count": root["witness_count"],
+        "support_digest": sha256(json.dumps(root["support_strings"], sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
+        "artifact_sha256": _json_sha256(artifact),
+    }
+
+def _json_sha256(value):
+    return sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+def _atomic_json(path, value):
+    temporary = path.with_name(f".{path.name}.tmp")
+    temporary.write_text(json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n")
+    os.replace(temporary, path)
 
 
 def build_slow_qualification_candidate(case: DefaultWriterCapabilityCase):
@@ -322,9 +468,16 @@ def _mol(case):
 __all__ = (
     "CachedQualificationAsset",
     "CachedQualificationCandidate",
+    "CachedQualificationCountEnvelope",
+    "CachedQualificationSupportArtifact",
     "build_slow_qualification_asset",
     "build_slow_qualification_candidate",
+    "build_slow_count_envelope",
+    "build_slow_support_artifact",
+    "store_slow_count_envelope",
     "certify_slow_qualification_candidate",
     "require_slow_qualification_asset",
     "require_slow_qualification_candidate",
+    "require_slow_count_envelope",
+    "require_slow_support_artifact",
 )

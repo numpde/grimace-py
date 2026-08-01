@@ -72,6 +72,12 @@ _REMOTE_COUPLED_B = ("remote_coupled_tetrahedral_b",)
 _SPECIAL_CASES = (
     _ZERO_H_AND_ADJACENT + _REMOTE_COUPLED_A + _REMOTE_COUPLED_B
 )
+FAST_ACCEPTED_CASES = tuple(
+    case for case in ACCEPTED_CASES if case.name not in _SPECIAL_CASES
+)
+SLOW_COUPLED_CASES = tuple(
+    case for case in ACCEPTED_CASES if case.name in _SPECIAL_CASES
+)
 
 
 def _accepted_case_shards() -> dict[str, tuple[str, ...]]:
@@ -84,20 +90,6 @@ def _accepted_case_shards() -> dict[str, tuple[str, ...]]:
         "remote coupled A": _REMOTE_COUPLED_A,
         "remote coupled B": _REMOTE_COUPLED_B,
     }
-
-
-def _accepted_case_names_for_slow_remote() -> frozenset[str]:
-    return frozenset().union(
-        _ZERO_H_AND_ADJACENT,
-        _REMOTE_COUPLED_A,
-        _REMOTE_COUPLED_B,
-    )
-
-
-def _run_case_slow(case_name: str) -> bool:
-    if os.environ.get(RUN_SLOW_ENV) == "1":
-        return False
-    return case_name in _accepted_case_names_for_slow_remote()
 
 
 class WriterDefaultParityCorpusTest(unittest.TestCase):
@@ -134,13 +126,7 @@ class WriterDefaultParityCorpusTest(unittest.TestCase):
             self.assertEqual(positions, sorted(positions))
 
     def _run_cases(self):
-        for case in ACCEPTED_CASES:
-            if _run_case_slow(case.name):
-                continue
-            yield case
-        if os.environ.get(RUN_SLOW_ENV) == "1":
-            for name in _accepted_case_names_for_slow_remote():
-                yield next(item for item in ACCEPTED_CASES if item.name == name)
+        yield from FAST_ACCEPTED_CASES
 
     def test_accepted_default_corpus_verifies_support_artifacts(self) -> None:
         for case in self._run_cases():
@@ -155,6 +141,31 @@ class WriterDefaultParityCorpusTest(unittest.TestCase):
                 image = _support_image(case)
                 for text in image.strings:
                     with self.subTest(case=case.name, text=text):
+                        reparsed = ordinary_molecule_facts_from_smiles(
+                            text,
+                            case.extraction_options,
+                        )
+                        self.assertTrue(
+                            facts_are_isomorphic(facts, reparsed).isomorphic,
+                            text,
+                        )
+
+    def test_slow_coupled_corpus_verifies_support_artifacts(self) -> None:
+        if os.environ.get(RUN_SLOW_ENV) != "1":
+            self.skipTest(f"set {RUN_SLOW_ENV}=1 to run coupled cases")
+        for case in SLOW_COUPLED_CASES:
+            with self.subTest(case=case.name):
+                result = _accepted_case_result(case)
+                self._assert_accepted_case_result(case, result)
+
+    def test_slow_coupled_corpus_reparses_to_isomorphic_facts(self) -> None:
+        if os.environ.get(RUN_SLOW_ENV) != "1":
+            self.skipTest(f"set {RUN_SLOW_ENV}=1 to run coupled cases")
+        for case in SLOW_COUPLED_CASES:
+            with self.subTest(case=case.name):
+                facts = _facts(case)
+                for text in _support_image(case).strings:
+                    with self.subTest(text=text):
                         reparsed = ordinary_molecule_facts_from_smiles(
                             text,
                             case.extraction_options,

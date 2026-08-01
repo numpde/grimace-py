@@ -34,6 +34,16 @@ _ZERO_H_AND_ADJACENT = ("zero_h_tetrahedral", "adjacent_specified_tetrahedral")
 _REMOTE_COUPLED_A = ("remote_coupled_tetrahedral_a",)
 _REMOTE_COUPLED_B = ("remote_coupled_tetrahedral_b",)
 _SPECIAL_CASES = _ZERO_H_AND_ADJACENT + _REMOTE_COUPLED_A + _REMOTE_COUPLED_B
+FAST_ACCEPTED_CASES = tuple(
+    case
+    for case in ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES
+    if case.name not in _SPECIAL_CASES
+)
+SLOW_COUPLED_CASES = tuple(
+    case
+    for case in ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES
+    if case.name in _SPECIAL_CASES
+)
 
 
 def _accepted_case_shards() -> dict[str, tuple[str, ...]]:
@@ -46,20 +56,6 @@ def _accepted_case_shards() -> dict[str, tuple[str, ...]]:
         "remote coupled A": _REMOTE_COUPLED_A,
         "remote coupled B": _REMOTE_COUPLED_B,
     }
-
-
-def _accepted_case_names_for_slow_remote() -> frozenset[str]:
-    return frozenset().union(
-        _ZERO_H_AND_ADJACENT,
-        _REMOTE_COUPLED_A,
-        _REMOTE_COUPLED_B,
-    )
-
-
-def _run_case_slow(case_name: str) -> bool:
-    if os.environ.get("SOUTH_STAR1_RUN_SLOW") == "1":
-        return False
-    return case_name in _accepted_case_names_for_slow_remote()
 
 
 class WriterDefaultContinuationCorpusTest(unittest.TestCase):
@@ -96,18 +92,7 @@ class WriterDefaultContinuationCorpusTest(unittest.TestCase):
             self.assertEqual(positions, sorted(positions))
 
     def _run_cases(self):
-        for case in ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES:
-            if _run_case_slow(case.name):
-                continue
-            yield case
-
-        if os.environ.get("SOUTH_STAR1_RUN_SLOW") == "1":
-            for name in _accepted_case_names_for_slow_remote():
-                yield next(
-                    item
-                    for item in ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES
-                    if item.name == name
-                )
+        yield from FAST_ACCEPTED_CASES
 
     def _cross_all_continuation_tiers(self, cases) -> None:
         for case in cases:
@@ -195,15 +180,10 @@ class WriterDefaultContinuationCorpusTest(unittest.TestCase):
         self.assertTrue(cases)
         self._cross_all_continuation_tiers(cases)
 
-    def test_remote_coupled_cases_cross_all_continuation_tiers(self) -> None:
+    def test_slow_coupled_cases_cross_all_continuation_tiers(self) -> None:
         if os.environ.get("SOUTH_STAR1_RUN_SLOW") != "1":
-            self.skipTest("set SOUTH_STAR1_RUN_SLOW=1 to run remote-coupled cases")
-        cases = tuple(
-            case
-            for case in ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES
-            if case.name in _accepted_case_names_for_slow_remote()
-        )
-        self._cross_all_continuation_tiers(cases)
+            self.skipTest("set SOUTH_STAR1_RUN_SLOW=1 to run coupled cases")
+        self._cross_all_continuation_tiers(SLOW_COUPLED_CASES)
 
     def test_renumbered_rdkit_stereo_keeps_certified_rust_language(self) -> None:
         cases = (

@@ -1282,13 +1282,13 @@ def verify_writer_continuation_asset_for_prepared(
                             record=record,
                             cursor=cursor,
                         )
-                        artifact, live_terminal = _with_memoized_writer_envelope_terms(
-                            _writer_terminalization_artifact_and_live_verification_for_selected_support,
-                            prepared=prepared,
-                            artifact=None,
-                            snapshot=snapshot,
-                            selected=support,
-                        )
+                    artifact, live_terminal = _with_memoized_writer_envelope_terms(
+                        _writer_terminalization_artifact_and_live_verification_for_selected_support,
+                        prepared=prepared,
+                        artifact=None,
+                        snapshot=snapshot,
+                        selected=support,
+                    )
                     if not live_terminal.accepted:
                         _violation(
                             live_terminal.reason

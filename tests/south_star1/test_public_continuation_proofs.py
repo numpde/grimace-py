@@ -14,6 +14,16 @@ from unittest.mock import patch
 import grimace
 from rdkit import Chem
 
+from grimace._south_star1.writer_terminalization_artifact import (
+    _writer_terminalization_artifact_and_live_verification_for_selected_support,
+)
+from grimace._south_star1.writer_snapshot_prefix_envelope import (
+    _terminal_support_identity_envelope_from_certificate,
+)
+from grimace._south_star1.writer_envelope_work import (
+    default_writer_envelope_work_budget,
+)
+
 from tests.south_star1.default_writer_capability_ledger import (
     ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES,
 )
@@ -276,6 +286,67 @@ class PublicContinuationProofTest(unittest.TestCase):
                     )
             self.assertEqual(mol.ToBinary(), before)
 
+    def test_cc_dot_cc_terminal_proofs_are_individually_bound(self) -> None:
+        with TemporaryDirectory() as directory:
+            mol = Chem.MolFromSmiles("CC.CC")
+            path = Path(directory) / "asset"
+            digest = grimace.BuildMolToSmilesContinuationAsset(
+                mol,
+                path,
+                rootedAtAtom=0,
+            )
+            decoder = grimace.MolToSmilesContinuationDecoder.from_asset(
+                path,
+                expected_manifest_digest=digest,
+                proof_capable=True,
+                mol=mol,
+            )
+            self.assertEqual(decoder.support_count, 1)
+            self.assertEqual(decoder.completion_count, 2)
+            state = _first_terminal_state(decoder)
+            locators = state.terminal_proof_locators
+            self.assertEqual(len(locators), 2)
+            proof_state = state._state
+            batch = proof_state.proof_session.batch(
+                locators[0].source_raw_cursor_digest
+            )
+
+            artifacts = tuple(
+                state.terminalization_artifact(locator) for locator in locators
+            )
+            self.assertEqual(
+                tuple(
+                    _terminal_identity_digest(artifact)
+                    for artifact in artifacts
+                ),
+                tuple(
+                    _terminal_support_identity_envelope_from_certificate(
+                        batch.index.terminal_support_by_digest[
+                            locator.terminal_support_identity_digest
+                        ].checked_terminal_certificate,
+                        budget=default_writer_envelope_work_budget(None),
+                    )
+                    for locator in locators
+                ),
+            )
+            self.assertNotEqual(artifacts[0], artifacts[1])
+
+            selected = batch.index.terminal_support_by_digest[
+                locators[1].terminal_support_identity_digest
+            ]
+            reused, live = (
+                _writer_terminalization_artifact_and_live_verification_for_selected_support(
+                    prepared=proof_state.proof_session.prepared,
+                    artifact=artifacts[0],
+                    snapshot=batch.snapshot,
+                    selected=selected,
+                )
+            )
+            self.assertIsNone(reused)
+            self.assertFalse(live.accepted)
+
+            self.assertEqual(len(set(locators)), 2)
+
     def test_core_only_open_reads_no_proof_inputs(self) -> None:
         with TemporaryDirectory() as directory:
             mol = Chem.MolFromSmiles("CCO")
@@ -435,6 +506,27 @@ def _first_terminal_state(decoder):
             return state
         pending.extend(choice.next_state for choice in state.next_choices)
     raise AssertionError("no terminal proof locator")
+
+
+def _terminal_identity_digest(artifact) -> dict[str, object]:
+    objects = {item["object_id"]: item for item in artifact["objects"]}
+    payload = objects[artifact["roots"]["terminal_support_ref"]]["payload"]
+    return {
+        key: payload[key]
+        for key in (
+            "source_state_digest",
+            "finalized_state_digest",
+            "parent_weight",
+            "terminal_ordinal",
+            "terminal_support_key_digest",
+            "terminal_execution_capabilities_digest",
+            "terminal_residual_work_evidence_digest",
+            "terminal_stereo_lifecycle_evidence_digest",
+            "graph_obligation_work_evidence_digest",
+            "terminal_certificate_digests",
+            "digest",
+        )
+    }
 
 
 if __name__ == "__main__":

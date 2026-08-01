@@ -17,6 +17,12 @@ import grimace._south_star1.writer_terminalization_artifact as terminal_artifact
 from grimace._south_star1.errors import SouthStarError
 
 from grimace._south_star1.writer_continuation_asset import (
+    _certify_writer_continuation_asset_candidate,
+)
+from grimace._south_star1.writer_continuation_asset import (
+    _materialize_writer_continuation_asset_candidate,
+)
+from grimace._south_star1.writer_continuation_asset import (
     advance_writer_continuation_proof,
 )
 from grimace._south_star1.writer_branch_transition_artifact_fact_verifier import (
@@ -109,6 +115,74 @@ class _CallCounter:
 
 
 class WriterContinuationAssetTest(unittest.TestCase):
+    def test_staged_candidate_matches_public_composition_and_is_not_published(self) -> None:
+        prepared = _prepare(cco_facts())
+        snapshot = _initial_snapshot(prepared, _writer_options())
+        with TemporaryDirectory() as directory:
+            candidate = Path(directory) / "candidate"
+            destination = Path(directory) / "asset"
+            manifest = _materialize_writer_continuation_asset_candidate(
+                path=candidate, prepared=prepared, snapshot=snapshot
+            )
+            self.assertTrue(open_writer_continuation_core(candidate).manifest_digest)
+            self.assertFalse(destination.exists())
+            certified = _certify_writer_continuation_asset_candidate(
+                path=candidate,
+                prepared=prepared,
+                expected_manifest_digest=manifest["digest"],
+            )
+            self.assertTrue(certified.accepted)
+            public_manifest = write_writer_continuation_asset(
+                path=destination, prepared=prepared, snapshot=snapshot
+            )
+            self.assertEqual(manifest, public_manifest)
+            self.assertEqual(_bundle_bytes(candidate), _bundle_bytes(destination))
+
+    def test_public_composition_orders_materialize_certify_publish_and_cleans_failures(self) -> None:
+        prepared = _prepare(cco_facts())
+        snapshot = _initial_snapshot(prepared, _writer_options())
+        with TemporaryDirectory() as directory:
+            destination = Path(directory) / "asset"
+            events = []
+            original_materialize = continuation_asset_module._materialize_writer_continuation_asset_candidate
+            original_certify = continuation_asset_module._certify_writer_continuation_asset_candidate
+            original_replace = continuation_asset_module.os.replace
+
+            def materialize(*args, **kwargs):
+                events.append("materialize")
+                return original_materialize(*args, **kwargs)
+
+            def certify(*args, **kwargs):
+                events.append("certify")
+                return original_certify(*args, **kwargs)
+
+            def publish(*args, **kwargs):
+                if len(args) >= 2 and Path(args[1]) == destination:
+                    events.append("publish")
+                return original_replace(*args, **kwargs)
+
+            with (
+                patch.object(continuation_asset_module, "_materialize_writer_continuation_asset_candidate", materialize),
+                patch.object(continuation_asset_module, "_certify_writer_continuation_asset_candidate", certify),
+                patch.object(continuation_asset_module.os, "replace", publish),
+            ):
+                write_writer_continuation_asset(path=destination, prepared=prepared, snapshot=snapshot)
+            self.assertEqual(events, ["materialize", "certify", "publish"])
+
+            for phase in ("materialize", "certify", "publish"):
+                failed = Path(directory) / f"{phase}-failure"
+                target = {
+                    "materialize": "grimace._south_star1.writer_continuation_asset._materialize_writer_continuation_asset_candidate",
+                    "certify": "grimace._south_star1.writer_continuation_asset._certify_writer_continuation_asset_candidate",
+                    "publish": "grimace._south_star1.writer_continuation_asset.os.replace",
+                }[phase]
+                with patch(target, side_effect=AssertionError(phase)):
+                    with self.assertRaises(AssertionError):
+                        write_writer_continuation_asset(
+                            path=failed, prepared=prepared, snapshot=snapshot
+                        )
+                self.assertFalse(failed.exists())
+
     def test_asset_is_deterministic_core_first_and_lazily_provable(self) -> None:
         prepared = _prepare(cco_facts())
         snapshot = _initial_snapshot(prepared, _writer_options())

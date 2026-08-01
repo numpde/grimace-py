@@ -28,11 +28,12 @@ class SlowQualificationRunnerTest(unittest.TestCase):
         self.assertTrue(all(layers.values()))
         ids = [test_id for layer in layers.values() for test_id in layer]
         self.assertEqual(len(ids), len(set(ids)))
-        self.assertEqual(len(ids), 13)
+        self.assertEqual(len(ids), 14)
 
     def test_all_declared_slow_tests_are_in_one_layer(self) -> None:
         expected = {
             "tests.south_star1.test_public_continuation_asset.PublicContinuationAssetTest.test_slow_coupled_cases_build_through_public_api",
+            "tests.south_star1.test_public_continuation_asset.PublicContinuationAssetTest.test_slow_coupled_cases_certify_public_candidates",
             "tests.south_star1.test_public_continuation_asset.PublicContinuationAssetTest.test_slow_coupled_cases_run_public_runtime",
             "tests.south_star1.test_public_continuation_asset_verification.PublicContinuationAssetVerificationTest.test_slow_coupled_cases_recertify_copied_assets",
             "tests.south_star1.test_public_continuation_proofs.PublicContinuationProofTest.test_slow_coupled_cases_expose_and_verify_every_local_proof",

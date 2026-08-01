@@ -307,6 +307,36 @@ def write_writer_continuation_asset(
     destination = Path(path)
     if destination.exists():
         _violation("continuation_asset_destination_exists")
+    parent = destination.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    temporary = Path(tempfile.mkdtemp(prefix=f".{destination.name}.", dir=parent))
+    try:
+        manifest = _materialize_writer_continuation_asset_candidate(
+            path=temporary,
+            prepared=prepared,
+            snapshot=snapshot,
+            automaton=automaton,
+        )
+        semantic = _certify_writer_continuation_asset_candidate(
+            path=temporary,
+            prepared=prepared,
+            expected_manifest_digest=manifest["digest"],
+        )
+        if not semantic.accepted:
+            _violation(semantic.reason or "continuation_asset_semantic_rejection")
+        os.replace(temporary, destination)
+        return manifest
+    except BaseException:
+        if temporary.exists():
+            shutil.rmtree(temporary)
+        raise
+
+
+def _materialize_writer_continuation_asset_candidate(
+    *, path, prepared, snapshot, automaton=None
+) -> Mapping[str, object]:
+    """Write and structurally verify a candidate without semantic replay."""
+    path = Path(path)
     automaton = (
         compile_writer_continuation_automaton(prepared=prepared, snapshot=snapshot)
         if automaton is None
@@ -316,44 +346,30 @@ def write_writer_continuation_asset(
         automaton,
         signature_digest_function=_identity_digest,
     )
-    parent = destination.parent
-    parent.mkdir(parents=True, exist_ok=True)
-    temporary = Path(tempfile.mkdtemp(prefix=f".{destination.name}.", dir=parent))
-    try:
-        (temporary / "chunks").mkdir()
-        source = _snapshot_identity_envelope(
-            snapshot,
-            operation="continuation_asset.source_snapshot",
-        )
-        source_descriptor, source_peak = _write_singleton_chunk(
-            temporary,
-            kind="source_snapshot",
-            item=source,
-            key="source_snapshot",
-        )
-        core_item = _core_mapping(automaton)
-        core_descriptor, core_peak = _write_singleton_chunk(
-            temporary,
-            kind="automaton_core",
-            item=core_item,
-            key="automaton_core",
-        )
-        raw_descriptors, raw_peak, raw_bytes, raw_largest = _write_record_chunks(
-            temporary,
-            kind="raw_cursor_records",
-            records=(
-                _raw_record_mapping(item)
-                for item in automaton.provenance.raw_cursors
-            ),
-            key_function=lambda item: item["raw_cursor_digest"],
-        )
-        (
-            primitive_descriptors,
-            primitive_peak,
-            primitive_bytes,
-            primitive_largest,
-        ) = _write_record_chunks(
-            temporary,
+    path.mkdir(parents=True, exist_ok=True)
+    (path / "chunks").mkdir()
+    source = _snapshot_identity_envelope(
+        snapshot,
+        operation="continuation_asset.source_snapshot",
+    )
+    source_descriptor, source_peak = _write_singleton_chunk(
+        path, kind="source_snapshot", item=source, key="source_snapshot"
+    )
+    core_descriptor, core_peak = _write_singleton_chunk(
+        path,
+        kind="automaton_core",
+        item=_core_mapping(automaton),
+        key="automaton_core",
+    )
+    raw_descriptors, raw_peak, raw_bytes, raw_largest = _write_record_chunks(
+        path,
+        kind="raw_cursor_records",
+        records=(_raw_record_mapping(item) for item in automaton.provenance.raw_cursors),
+        key_function=lambda item: item["raw_cursor_digest"],
+    )
+    primitive_descriptors, primitive_peak, primitive_bytes, primitive_largest = (
+        _write_record_chunks(
+            path,
             kind="primitive_records",
             records=(
                 _primitive_record_mapping(item)
@@ -361,25 +377,20 @@ def write_writer_continuation_asset(
             ),
             key_function=lambda item: item["primitive_cursor_digest"],
         )
-        edge_descriptors, edge_peak, edge_bytes, edge_largest = _write_record_chunks(
-            temporary,
-            kind="edge_records",
-            records=(
-                _edge_record_mapping(item) for item in automaton.provenance.edges
-            ),
-            key_function=lambda item: (
-                item["source_raw_cursor_digest"],
-                item["emitted_text"],
-                item["text_projection_digest"],
-            ),
-        )
-        (
-            terminal_descriptors,
-            terminal_peak,
-            terminal_bytes,
-            terminal_largest,
-        ) = _write_record_chunks(
-            temporary,
+    )
+    edge_descriptors, edge_peak, edge_bytes, edge_largest = _write_record_chunks(
+        path,
+        kind="edge_records",
+        records=(_edge_record_mapping(item) for item in automaton.provenance.edges),
+        key_function=lambda item: (
+            item["source_raw_cursor_digest"],
+            item["emitted_text"],
+            item["text_projection_digest"],
+        ),
+    )
+    terminal_descriptors, terminal_peak, terminal_bytes, terminal_largest = (
+        _write_record_chunks(
+            path,
             kind="terminal_records",
             records=(
                 _terminal_record_mapping(item)
@@ -387,76 +398,72 @@ def write_writer_continuation_asset(
             ),
             key_function=lambda item: item["source_raw_cursor_digest"],
         )
-        compact_bytes = raw_bytes + primitive_bytes + edge_bytes + terminal_bytes
-        if compact_bytes > _MAX_COMPACT_PROVENANCE_BYTES:
-            _violation("continuation_asset_compact_provenance_too_large")
-        descriptors = (
-            raw_descriptors
-            + primitive_descriptors
-            + edge_descriptors
-            + terminal_descriptors
-        )
-        metrics = {
-            **_deterministic_metrics(automaton),
-            "source_snapshot_bytes": source_descriptor["canonical_bytes"],
-            "core_chunk_bytes": core_descriptor["canonical_bytes"],
-            "raw_cursor_record_bytes": raw_bytes,
-            "primitive_record_bytes": primitive_bytes,
-            "edge_record_bytes": edge_bytes,
-            "terminal_record_bytes": terminal_bytes,
-            "compact_provenance_bytes": compact_bytes,
-            "largest_record_bytes": max(
-                raw_largest,
-                primitive_largest,
-                edge_largest,
-                terminal_largest,
-            ),
-            "chunk_count": 2 + len(descriptors),
-            "peak_serialization_buffer_bytes": max(
-                source_peak,
-                core_peak,
-                raw_peak,
-                primitive_peak,
-                edge_peak,
-                terminal_peak,
-            ),
-        }
-        manifest = {
-            "schema_name": SCHEMA_NAME,
-            "schema_version": SCHEMA_VERSION,
-            "prepared_identity": _identity_envelope(snapshot.prepared_identity),
-            "root_raw_cursor_digest": automaton.provenance.root_raw_cursor_digest,
-            "source_snapshot_chunk": source_descriptor,
-            "core_chunk": core_descriptor,
-            "raw_cursor_chunks": list(raw_descriptors),
-            "primitive_chunks": list(primitive_descriptors),
-            "edge_chunks": list(edge_descriptors),
-            "terminal_chunks": list(terminal_descriptors),
-            "deterministic_metrics": metrics,
-        }
-        manifest["digest"] = _digest_mapping(manifest)
-        payload = _canonical_bytes(manifest)
-        if len(payload) > _MAX_MANIFEST_BYTES:
-            _violation("continuation_asset_manifest_too_large")
-        (temporary / "manifest.json").write_bytes(payload)
-        checked = verify_writer_continuation_asset_consistency(temporary)
-        if not checked.accepted:
-            _violation(checked.reason or "continuation_asset_structural_rejection")
-        asset = open_writer_continuation_core(temporary)
-        semantic = verify_writer_continuation_asset_for_prepared(
-            prepared=prepared,
-            asset=asset,
-        )
-        if not semantic.accepted:
-            _violation(
-                semantic.reason or "continuation_asset_semantic_certification_rejection"
-            )
-        os.replace(temporary, destination)
-        return manifest
-    except BaseException:
-        if temporary.exists():
-            shutil.rmtree(temporary)
-        raise
+    )
+    compact_bytes = raw_bytes + primitive_bytes + edge_bytes + terminal_bytes
+    if compact_bytes > _MAX_COMPACT_PROVENANCE_BYTES:
+        _violation("continuation_asset_compact_provenance_too_large")
+    descriptors = raw_descriptors + primitive_descriptors + edge_descriptors + terminal_descriptors
+    metrics = {
+        **_deterministic_metrics(automaton),
+        "source_snapshot_bytes": source_descriptor["canonical_bytes"],
+        "core_chunk_bytes": core_descriptor["canonical_bytes"],
+        "raw_cursor_record_bytes": raw_bytes,
+        "primitive_record_bytes": primitive_bytes,
+        "edge_record_bytes": edge_bytes,
+        "terminal_record_bytes": terminal_bytes,
+        "compact_provenance_bytes": compact_bytes,
+        "largest_record_bytes": max(raw_largest, primitive_largest, edge_largest, terminal_largest),
+        "chunk_count": 2 + len(descriptors),
+        "peak_serialization_buffer_bytes": max(
+            source_peak, core_peak, raw_peak, primitive_peak, edge_peak, terminal_peak
+        ),
+    }
+    manifest = {
+        "schema_name": SCHEMA_NAME,
+        "schema_version": SCHEMA_VERSION,
+        "prepared_identity": _identity_envelope(snapshot.prepared_identity),
+        "root_raw_cursor_digest": automaton.provenance.root_raw_cursor_digest,
+        "source_snapshot_chunk": source_descriptor,
+        "core_chunk": core_descriptor,
+        "raw_cursor_chunks": list(raw_descriptors),
+        "primitive_chunks": list(primitive_descriptors),
+        "edge_chunks": list(edge_descriptors),
+        "terminal_chunks": list(terminal_descriptors),
+        "deterministic_metrics": metrics,
+    }
+    manifest["digest"] = _digest_mapping(manifest)
+    payload = _canonical_bytes(manifest)
+    if len(payload) > _MAX_MANIFEST_BYTES:
+        _violation("continuation_asset_manifest_too_large")
+    (path / "manifest.json").write_bytes(payload)
+    checked = verify_writer_continuation_asset_consistency(path)
+    if not checked.accepted:
+        _violation(checked.reason or "continuation_asset_structural_rejection")
+    return manifest
+
+
+def _certify_writer_continuation_asset_candidate(
+    *, path, prepared, expected_manifest_digest
+) -> WriterContinuationAssetSemanticVerification:
+    """Semantically certify an already materialized candidate."""
+    structural = verify_writer_continuation_asset_consistency(path)
+    if not structural.accepted:
+        _violation(structural.reason or "continuation_asset_structural_rejection")
+    asset = open_writer_continuation_core(path)
+    if asset.manifest_digest != expected_manifest_digest:
+        _violation("continuation_asset_manifest_digest_mismatch")
+    semantic = verify_writer_continuation_asset_for_prepared(
+        prepared=prepared, asset=asset
+    )
+    if not semantic.accepted:
+        _violation(semantic.reason or "continuation_asset_semantic_rejection")
+    if semantic.branch_locator_count != semantic.branch_proof_count:
+        _violation("continuation_asset_incomplete_branch_proof_coverage")
+    if semantic.terminal_locator_count != semantic.terminal_proof_count:
+        _violation("continuation_asset_incomplete_terminal_proof_coverage")
+    if semantic.unchecked_obligation_families:
+        _violation("continuation_asset_unchecked_obligation_families")
+    return semantic
 
 
 def open_writer_continuation_core(path) -> WriterContinuationAsset:

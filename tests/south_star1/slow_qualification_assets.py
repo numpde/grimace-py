@@ -1,4 +1,4 @@
-"""Revision-bound asset cache for the explicitly slow public qualification lane."""
+"""Revision-bound candidate and asset caches for slow qualification."""
 
 from __future__ import annotations
 
@@ -9,23 +9,44 @@ from pathlib import Path
 import shutil
 import subprocess
 import time
+from unittest.mock import patch
 
 import grimace
 
-from grimace._south_star1.writer_continuation_asset import (
-    open_writer_continuation_core,
+from grimace._south_star1.public_continuation_asset import (
+    prepare_public_continuation_molecule,
 )
+from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
+from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
+from grimace._south_star1.writer_continuation_asset import (
+    _certify_writer_continuation_asset_candidate,
+)
+from grimace._south_star1.writer_continuation_asset import (
+    _materialize_writer_continuation_asset_candidate,
+)
+from grimace._south_star1.writer_continuation_asset import open_writer_continuation_core
 from grimace._south_star1.writer_continuation_asset import (
     verify_writer_continuation_asset_consistency,
 )
+import grimace._south_star1.writer_continuation_asset as asset_module
+from grimace._south_star1.writer_snapshot import capture_initial_writer_frontier_snapshot
 from tests.south_star1.default_writer_capability_ledger import (
     DefaultWriterCapabilityCase,
 )
 
 
-_METADATA_SCHEMA = "south_star1_slow_qualification_asset"
+_ASSET_SCHEMA = "south_star1_slow_qualification_asset"
+_CANDIDATE_SCHEMA = "south_star1_slow_qualification_candidate"
 _METADATA_VERSION = 1
 _ASSET_ROOT_ENV = "SOUTH_STAR1_SLOW_ASSET_ROOT"
+
+
+@dataclass(frozen=True, slots=True)
+class CachedQualificationCandidate:
+    case: DefaultWriterCapabilityCase
+    candidate_path: Path
+    metadata_path: Path
+    manifest_digest: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,62 +55,166 @@ class CachedQualificationAsset:
     asset_path: Path
     metadata_path: Path
     manifest_digest: str
-    cache_reused: bool
+    cache_reused: bool = False
 
 
-def build_slow_qualification_asset(
-    case: DefaultWriterCapabilityCase,
-) -> CachedQualificationAsset:
+def build_slow_qualification_candidate(case: DefaultWriterCapabilityCase):
     case_dir = _case_dir(case)
+    _clean_interrupted_state(case_dir)
+    candidate = case_dir / "candidate"
+    metadata_path = case_dir / "candidate-metadata.json"
+    if candidate.exists() or metadata_path.exists():
+        try:
+            return require_slow_qualification_candidate(case)
+        except Exception:
+            _clean_interrupted_state(case_dir)
+    case_dir.mkdir(parents=True, exist_ok=True)
+    prepared, snapshot = _prepared_and_snapshot(case)
+    manifest = _materialize_candidate_timed(candidate, prepared, snapshot)
+    metadata_path.write_text(
+        json.dumps(_candidate_metadata(case, manifest["digest"]), sort_keys=True,
+                   separators=(",", ":")) + "\n"
+    )
+    return CachedQualificationCandidate(case, candidate, metadata_path, manifest["digest"])
+
+
+def build_slow_qualification_asset(case: DefaultWriterCapabilityCase):
+    """Compatibility helper for the older temporary-asset unit tests."""
+    from grimace._south_star1 import public_continuation_asset as public_asset
+
+    case_dir = _case_dir(case)
+    _clean_interrupted_state(case_dir)
+    case_dir.mkdir(parents=True, exist_ok=True)
+    asset_path = case_dir / "asset"
+    digest = grimace.BuildMolToSmilesContinuationAsset(
+        _mol(case), asset_path, rootedAtAtom=case.rooted_at_atom
+    )
+    structural = verify_writer_continuation_asset_consistency(asset_path)
+    if not structural.accepted:
+        raise AssertionError(structural.reason)
+    metadata_path = case_dir / "metadata.json"
+    metadata_path.write_text(
+        json.dumps(_asset_metadata(case, digest), sort_keys=True, separators=(",", ":")) + "\n"
+    )
+    return CachedQualificationAsset(case, asset_path, metadata_path, digest)
+
+
+def require_slow_qualification_candidate(case: DefaultWriterCapabilityCase):
+    case_dir = _case_dir(case)
+    candidate = case_dir / "candidate"
+    metadata_path = case_dir / "candidate-metadata.json"
+    if not candidate.is_dir() or not metadata_path.is_file():
+        raise AssertionError(f"slow qualification candidate is absent: {case.name}")
+    metadata = json.loads(metadata_path.read_text())
+    expected = _candidate_metadata(case, metadata.get("candidate_manifest_digest"))
+    if metadata != expected:
+        raise AssertionError(f"slow qualification candidate metadata mismatch: {case.name}")
+    structural = verify_writer_continuation_asset_consistency(candidate)
+    if not structural.accepted:
+        raise AssertionError(structural.reason)
+    opened = open_writer_continuation_core(candidate)
+    if opened.manifest_digest != metadata["candidate_manifest_digest"]:
+        raise AssertionError(f"slow qualification candidate manifest mismatch: {case.name}")
+    return CachedQualificationCandidate(case, candidate, metadata_path, opened.manifest_digest)
+
+
+def certify_slow_qualification_candidate(case: DefaultWriterCapabilityCase):
+    cached = require_slow_qualification_candidate(case)
+    validation_started = time.monotonic()
+    require_slow_qualification_candidate(case)
+    print(f"candidate_cache_validation_seconds={time.monotonic() - validation_started:.3f}", flush=True)
+    prepared, _snapshot = _prepared_and_snapshot(case)
+    print("candidate_semantic_verification_started", flush=True)
+    semantic_started = time.monotonic()
+    semantic = _certify_writer_continuation_asset_candidate(
+        path=cached.candidate_path,
+        prepared=prepared,
+        expected_manifest_digest=cached.manifest_digest,
+    )
+    if not semantic.accepted:
+        raise AssertionError(semantic.reason)
+    print(f"candidate_semantic_verification_seconds={time.monotonic() - semantic_started:.3f}", flush=True)
+    case_dir = cached.candidate_path.parent
     asset_path = case_dir / "asset"
     metadata_path = case_dir / "metadata.json"
     if asset_path.exists() or metadata_path.exists():
-        try:
-            cached = require_slow_qualification_asset(case)
-            return CachedQualificationAsset(
-                cached.case,
-                cached.asset_path,
-                cached.metadata_path,
-                cached.manifest_digest,
-                True,
-            )
-        except Exception:
-            shutil.rmtree(case_dir, ignore_errors=True)
-
-    case_dir.mkdir(parents=True, exist_ok=True)
-    digest = grimace.BuildMolToSmilesContinuationAsset(
-        _mol(case),
-        asset_path,
-        rootedAtAtom=case.rooted_at_atom,
-    )
-    validation_started = time.monotonic()
-    structural = verify_writer_continuation_asset_consistency(asset_path)
-    print(
-        f"cache_postwrite_validation_seconds={time.monotonic() - validation_started:.3f}",
-        flush=True,
-    )
-    if not structural.accepted:
-        raise AssertionError(structural.reason)
-    opened = open_writer_continuation_core(asset_path)
-    if opened.manifest_digest != digest:
-        raise AssertionError("slow qualification asset manifest digest mismatch")
-    metadata = _metadata(case, digest)
+        raise AssertionError(f"slow qualification final asset already exists: {case.name}")
+    publish_started = time.monotonic()
+    os.replace(cached.candidate_path, asset_path)
+    final_metadata = _asset_metadata(case, cached.manifest_digest)
     metadata_path.write_text(
-        json.dumps(metadata, sort_keys=True, separators=(",", ":")) + "\n"
+        json.dumps(final_metadata, sort_keys=True, separators=(",", ":")) + "\n"
     )
-    return CachedQualificationAsset(case, asset_path, metadata_path, digest, False)
+    cached.metadata_path.unlink()
+    print(f"candidate_publish_seconds={time.monotonic() - publish_started:.3f}", flush=True)
+    return CachedQualificationAsset(case, asset_path, metadata_path, cached.manifest_digest)
 
 
-def require_slow_qualification_asset(
-    case: DefaultWriterCapabilityCase,
-) -> CachedQualificationAsset:
+def _materialize_candidate_timed(candidate, prepared, snapshot):
+    started = time.monotonic()
+    compile_started = None
+    serialization_started = None
+    structural_started = None
+    original_compile = asset_module.compile_writer_continuation_automaton
+    original_verify_internal = asset_module._verify_internal_consistency
+    original_structural = asset_module.verify_writer_continuation_asset_consistency
+
+    def compile_wrapper(*args, **kwargs):
+        nonlocal compile_started
+        compile_started = time.monotonic()
+        print("automaton_compile_started", flush=True)
+        result = original_compile(*args, **kwargs)
+        print(f"automaton_compile_seconds={time.monotonic() - compile_started:.3f}", flush=True)
+        return result
+
+    def verify_internal_wrapper(*args, **kwargs):
+        print("automaton_internal_verification_started", flush=True)
+        check_started = time.monotonic()
+        result = original_verify_internal(*args, **kwargs)
+        print(f"automaton_internal_verification_seconds={time.monotonic() - check_started:.3f}", flush=True)
+        return result
+
+    def structural_wrapper(path, *args, **kwargs):
+        nonlocal serialization_started, structural_started
+        if serialization_started is not None and structural_started is None:
+            print(f"candidate_serialization_seconds={time.monotonic() - serialization_started:.3f}", flush=True)
+            print("candidate_structural_verification_started", flush=True)
+            structural_started = time.monotonic()
+        result = original_structural(path, *args, **kwargs)
+        if structural_started is not None:
+            print(f"candidate_structural_verification_seconds={time.monotonic() - structural_started:.3f}", flush=True)
+        return result
+
+    original_singleton = asset_module._write_singleton_chunk
+
+    def singleton_wrapper(*args, **kwargs):
+        nonlocal serialization_started
+        if serialization_started is None:
+            serialization_started = time.monotonic()
+            print("candidate_serialization_started", flush=True)
+        return original_singleton(*args, **kwargs)
+
+    with (
+        patch.object(asset_module, "compile_writer_continuation_automaton", compile_wrapper),
+        patch.object(asset_module, "_verify_internal_consistency", verify_internal_wrapper),
+        patch.object(asset_module, "_write_singleton_chunk", singleton_wrapper),
+        patch.object(asset_module, "verify_writer_continuation_asset_consistency", structural_wrapper),
+    ):
+        manifest = _materialize_writer_continuation_asset_candidate(
+            path=candidate, prepared=prepared, snapshot=snapshot
+        )
+    print(f"candidate_total_seconds={time.monotonic() - started:.3f}", flush=True)
+    return manifest
+
+
+def require_slow_qualification_asset(case: DefaultWriterCapabilityCase):
     case_dir = _case_dir(case)
     asset_path = case_dir / "asset"
     metadata_path = case_dir / "metadata.json"
     if not asset_path.is_dir() or not metadata_path.is_file():
         raise AssertionError(f"slow qualification asset is absent: {case.name}")
     metadata = json.loads(metadata_path.read_text())
-    expected = _metadata(case, metadata.get("asset_manifest_digest"))
+    expected = _asset_metadata(case, metadata.get("asset_manifest_digest"))
     if metadata != expected:
         raise AssertionError(f"slow qualification metadata mismatch: {case.name}")
     structural = verify_writer_continuation_asset_consistency(asset_path)
@@ -98,23 +223,69 @@ def require_slow_qualification_asset(
     opened = open_writer_continuation_core(asset_path)
     if opened.manifest_digest != metadata["asset_manifest_digest"]:
         raise AssertionError(f"slow qualification manifest mismatch: {case.name}")
-    return CachedQualificationAsset(
-        case, asset_path, metadata_path, opened.manifest_digest, False
+    return CachedQualificationAsset(case, asset_path, metadata_path, opened.manifest_digest)
+
+
+def _prepared_and_snapshot(case):
+    from grimace._south_star1.policy import SerializationLanguageMode
+
+    options = SouthStarRuntimeOptions(
+        rooted_at_atom=case.rooted_at_atom,
+        canonical=False,
+        do_random=True,
+        serialization_language=SerializationLanguageMode.WRITER_SHAPED,
     )
+    prepared = prepare_public_continuation_molecule(
+        _mol(case),
+        writer_surface=SouthStarWriterSurface(),
+        runtime_options=options,
+    )
+    snapshot = capture_initial_writer_frontier_snapshot(
+        prepared=prepared, runtime_options=options
+    )
+    return prepared, snapshot
 
 
-def _case_dir(case: DefaultWriterCapabilityCase) -> Path:
+def _clean_interrupted_state(case_dir: Path) -> None:
+    if not case_dir.exists():
+        return
+    candidate = case_dir / "candidate"
+    candidate_metadata = case_dir / "candidate-metadata.json"
+    asset = case_dir / "asset"
+    metadata = case_dir / "metadata.json"
+    if candidate.exists() and not candidate_metadata.exists() or candidate_metadata.exists() and not candidate.exists():
+        _report_stale_candidate(candidate)
+        shutil.rmtree(candidate, ignore_errors=True)
+        candidate_metadata.unlink(missing_ok=True)
+    if asset.exists() and not metadata.exists() or metadata.exists() and not asset.exists():
+        shutil.rmtree(asset, ignore_errors=True)
+        metadata.unlink(missing_ok=True)
+    for stale in case_dir.glob(".asset.*"):
+        _report_stale_candidate(stale)
+        shutil.rmtree(stale, ignore_errors=True)
+    for stale in case_dir.glob(".candidate.*"):
+        _report_stale_candidate(stale)
+        shutil.rmtree(stale, ignore_errors=True)
+
+
+def _report_stale_candidate(path: Path) -> None:
+    files = [item for item in path.rglob("*") if item.is_file()] if path.is_dir() else []
+    print(f"stale_candidate_manifest_present={'true' if (path / 'manifest.json').is_file() else 'false'}")
+    print(f"stale_candidate_chunk_count={sum(1 for item in files if item.parent.name == 'chunks')}")
+    print(f"stale_candidate_total_bytes={sum(item.stat().st_size for item in files)}")
+
+
+def _case_dir(case):
     root = os.environ.get(_ASSET_ROOT_ENV)
     if not root:
         raise RuntimeError(f"{_ASSET_ROOT_ENV} is required for slow asset qualification")
     return Path(root) / case.name
 
 
-def _metadata(case: DefaultWriterCapabilityCase, manifest_digest: str | None) -> dict:
+def _metadata_common(case, manifest_digest):
     if not isinstance(manifest_digest, str):
         raise AssertionError(f"missing asset manifest digest: {case.name}")
     return {
-        "schema": _METADATA_SCHEMA,
         "schema_version": _METADATA_VERSION,
         "git_head": _git_head(),
         "case_name": case.name,
@@ -123,19 +294,26 @@ def _metadata(case: DefaultWriterCapabilityCase, manifest_digest: str | None) ->
         "expected_support_count": case.expected_support_count,
         "expected_completion_count": case.expected_completion_count,
         "expected_support_digest": case.expected_support_digest,
-        "asset_manifest_digest": manifest_digest,
     }
 
 
-def _git_head() -> str:
+def _candidate_metadata(case, digest):
+    return {"schema": _CANDIDATE_SCHEMA, **_metadata_common(case, digest),
+            "candidate_manifest_digest": digest, "stage": "structurally_verified_candidate"}
+
+
+def _asset_metadata(case, digest):
+    return {"schema": _ASSET_SCHEMA, **_metadata_common(case, digest),
+            "asset_manifest_digest": digest}
+
+
+def _git_head():
     return subprocess.check_output(
-        ["git", "rev-parse", "HEAD"],
-        cwd=Path(__file__).resolve().parents[2],
-        text=True,
+        ["git", "rev-parse", "HEAD"], cwd=Path(__file__).resolve().parents[2], text=True
     ).strip()
 
 
-def _mol(case: DefaultWriterCapabilityCase):
+def _mol(case):
     from rdkit import Chem
 
     return Chem.MolFromSmiles(case.smiles)
@@ -143,6 +321,10 @@ def _mol(case: DefaultWriterCapabilityCase):
 
 __all__ = (
     "CachedQualificationAsset",
+    "CachedQualificationCandidate",
     "build_slow_qualification_asset",
+    "build_slow_qualification_candidate",
+    "certify_slow_qualification_candidate",
     "require_slow_qualification_asset",
+    "require_slow_qualification_candidate",
 )

@@ -33,7 +33,9 @@ from tests.south_star1.default_writer_qualification_shards import (
     selected_slow_qualification_cases,
 )
 from tests.south_star1.slow_qualification_assets import (
-    build_slow_qualification_asset,
+    build_slow_qualification_candidate,
+    certify_slow_qualification_candidate,
+    require_slow_qualification_candidate,
     require_slow_qualification_asset,
 )
 
@@ -76,12 +78,21 @@ class PublicContinuationAssetTest(unittest.TestCase):
     def test_slow_coupled_cases_build_through_public_api(self) -> None:
         for case in selected_slow_qualification_cases():
             with self.subTest(case=case.name):
-                cached = self._build_instrumented_slow_asset(case)
-                self.assertFalse(cached.cache_reused)
-                required = require_slow_qualification_asset(case)
+                cached = build_slow_qualification_candidate(case)
+                required = require_slow_qualification_candidate(case)
                 self.assertEqual(required.manifest_digest, cached.manifest_digest)
-                self.assertTrue(cached.asset_path.is_dir())
+                self.assertTrue(cached.candidate_path.is_dir())
                 self.assertTrue(cached.metadata_path.is_file())
+
+    @unittest.skipUnless(
+        os.environ.get("SOUTH_STAR1_RUN_SLOW") == "1",
+        "set SOUTH_STAR1_RUN_SLOW=1 to run coupled cases",
+    )
+    def test_slow_coupled_cases_certify_public_candidates(self) -> None:
+        for case in selected_slow_qualification_cases():
+            with self.subTest(case=case.name):
+                certify_slow_qualification_candidate(case)
+                require_slow_qualification_asset(case)
 
     @unittest.skipUnless(
         os.environ.get("SOUTH_STAR1_RUN_SLOW") == "1",
@@ -120,43 +131,6 @@ class PublicContinuationAssetTest(unittest.TestCase):
                         successor.snapshot(),
                     )
                     self.assertEqual(resumed.cache_key(), successor.cache_key())
-
-    def _build_instrumented_slow_asset(self, case):
-        from grimace._south_star1 import public_continuation_asset as public_asset
-
-        def timed(name, function):
-            def wrapped(*args, **kwargs):
-                print(f"{name}_started", flush=True)
-                started = time.monotonic()
-                try:
-                    return function(*args, **kwargs)
-                finally:
-                    print(f"{name}_seconds={time.monotonic() - started:.3f}", flush=True)
-
-            return wrapped
-
-        started = time.monotonic()
-        with (
-            patch.object(
-                public_asset,
-                "prepare_public_continuation_molecule",
-                timed("public_preparation", public_asset.prepare_public_continuation_molecule),
-            ),
-            patch.object(
-                public_asset,
-                "capture_initial_writer_frontier_snapshot",
-                timed("public_snapshot", public_asset.capture_initial_writer_frontier_snapshot),
-            ),
-            patch.object(
-                public_asset,
-                "write_writer_continuation_asset",
-                timed("public_asset_write", public_asset.write_writer_continuation_asset),
-            ),
-        ):
-            cached = build_slow_qualification_asset(case)
-        print(f"cache_reused={'true' if cached.cache_reused else 'false'}", flush=True)
-        print(f"total_public_build_seconds={time.monotonic() - started:.3f}", flush=True)
-        return cached
 
     def test_renumbered_stereo_builds_the_same_mapped_root_language(self) -> None:
         cases = (

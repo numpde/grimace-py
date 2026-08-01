@@ -104,7 +104,7 @@ class SlowQualificationAssetsTest(unittest.TestCase):
         )
 
         self.assertIn(
-            "_build_instrumented_slow_asset",
+            "build_slow_qualification_candidate",
             inspect.getsource(PublicContinuationAssetTest.test_slow_coupled_cases_build_through_public_api),
         )
         self.assertIn(

@@ -25,25 +25,18 @@ from grimace._south_star1.writer_continuation_asset import write_writer_continua
 from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
 from grimace._south_star1.writer_snapshot import capture_writer_frontier_snapshot
 from tests.south_star1.default_writer_capability_ledger import ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES
+from tests.south_star1.default_writer_qualification_shards import FAST_ACCEPTED_CASES
+from tests.south_star1.default_writer_qualification_shards import SLOW_COUPLED_CASES
+from tests.south_star1.default_writer_qualification_shards import SLOW_COUPLED_CASE_NAMES
 from tests.south_star1.test_writer_default_parity_corpus import _facts
 from tests.south_star1.test_writer_default_parity_corpus import _support_image
 from tests.south_star1.test_writer_default_parity_corpus import _writer_options
 
 
-_ZERO_H_AND_ADJACENT = ("zero_h_tetrahedral", "adjacent_specified_tetrahedral")
-_REMOTE_COUPLED_A = ("remote_coupled_tetrahedral_a",)
-_REMOTE_COUPLED_B = ("remote_coupled_tetrahedral_b",)
-_SPECIAL_CASES = _ZERO_H_AND_ADJACENT + _REMOTE_COUPLED_A + _REMOTE_COUPLED_B
-FAST_ACCEPTED_CASES = tuple(
-    case
-    for case in ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES
-    if case.name not in _SPECIAL_CASES
-)
-SLOW_COUPLED_CASES = tuple(
-    case
-    for case in ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES
-    if case.name in _SPECIAL_CASES
-)
+_SPECIAL_CASES = tuple(case.name for case in SLOW_COUPLED_CASES)
+_ZERO_H_AND_ADJACENT = SLOW_COUPLED_CASE_NAMES[:2]
+_REMOTE_COUPLED_A = SLOW_COUPLED_CASE_NAMES[2:3]
+_REMOTE_COUPLED_B = SLOW_COUPLED_CASE_NAMES[3:]
 
 
 def _accepted_case_shards() -> dict[str, tuple[str, ...]]:

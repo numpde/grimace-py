@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import time
 
 import grimace
 
@@ -33,6 +34,7 @@ class CachedQualificationAsset:
     asset_path: Path
     metadata_path: Path
     manifest_digest: str
+    cache_reused: bool
 
 
 def build_slow_qualification_asset(
@@ -43,7 +45,14 @@ def build_slow_qualification_asset(
     metadata_path = case_dir / "metadata.json"
     if asset_path.exists() or metadata_path.exists():
         try:
-            return require_slow_qualification_asset(case)
+            cached = require_slow_qualification_asset(case)
+            return CachedQualificationAsset(
+                cached.case,
+                cached.asset_path,
+                cached.metadata_path,
+                cached.manifest_digest,
+                True,
+            )
         except Exception:
             shutil.rmtree(case_dir, ignore_errors=True)
 
@@ -53,7 +62,12 @@ def build_slow_qualification_asset(
         asset_path,
         rootedAtAtom=case.rooted_at_atom,
     )
+    validation_started = time.monotonic()
     structural = verify_writer_continuation_asset_consistency(asset_path)
+    print(
+        f"cache_postwrite_validation_seconds={time.monotonic() - validation_started:.3f}",
+        flush=True,
+    )
     if not structural.accepted:
         raise AssertionError(structural.reason)
     opened = open_writer_continuation_core(asset_path)
@@ -63,7 +77,7 @@ def build_slow_qualification_asset(
     metadata_path.write_text(
         json.dumps(metadata, sort_keys=True, separators=(",", ":")) + "\n"
     )
-    return CachedQualificationAsset(case, asset_path, metadata_path, digest)
+    return CachedQualificationAsset(case, asset_path, metadata_path, digest, False)
 
 
 def require_slow_qualification_asset(
@@ -85,7 +99,7 @@ def require_slow_qualification_asset(
     if opened.manifest_digest != metadata["asset_manifest_digest"]:
         raise AssertionError(f"slow qualification manifest mismatch: {case.name}")
     return CachedQualificationAsset(
-        case, asset_path, metadata_path, opened.manifest_digest
+        case, asset_path, metadata_path, opened.manifest_digest, False
     )
 
 

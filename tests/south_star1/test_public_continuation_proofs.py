@@ -64,6 +64,21 @@ class PublicContinuationProofTest(unittest.TestCase):
     def test_fast_cases_expose_and_verify_every_local_proof(self) -> None:
         self._assert_cases_expose_and_verify_every_local_proof(FAST_ACCEPTED_CASES)
 
+    def test_whole_asset_proof_count_exceeds_root_state_locator_count(self) -> None:
+        with TemporaryDirectory() as directory:
+            mol = Chem.MolFromSmiles("CCO")
+            path = Path(directory) / "asset"
+            digest = grimace.BuildMolToSmilesContinuationAsset(mol, path, rootedAtAtom=0)
+            decoder = grimace.MolToSmilesContinuationDecoder.from_asset(
+                path,
+                expected_manifest_digest=digest,
+                proof_capable=True,
+                mol=mol,
+            )
+            whole_branch_count, whole_terminal_count = _verify_all_public_proofs(decoder)
+            self.assertGreater(whole_branch_count, len(decoder.branch_proof_locators))
+            self.assertGreaterEqual(whole_terminal_count, len(decoder.terminal_proof_locators))
+
     @unittest.skipUnless(
         os.environ.get("SOUTH_STAR1_RUN_SLOW") == "1",
         "set SOUTH_STAR1_RUN_SLOW=1 to run coupled cases",
@@ -102,13 +117,13 @@ class PublicContinuationProofTest(unittest.TestCase):
                     len(record.terminal_support_identity_digests)
                     for record in asset.records("terminal_records")
                 )
-                branch_count, terminal_count, timings = _verify_all_public_proofs_timed(
-                    decoder
+                branch_count, terminal_count, seen_branches, seen_terminals, timings = (
+                    _verify_all_public_proofs_timed(decoder)
                 )
                 self.assertEqual(branch_count, expected_branch_count)
                 self.assertEqual(terminal_count, expected_terminal_count)
-                self.assertEqual(branch_count, len(decoder.branch_proof_locators))
-                self.assertEqual(terminal_count, len(decoder.terminal_proof_locators))
+                self.assertEqual(branch_count, len(seen_branches))
+                self.assertEqual(terminal_count, len(seen_terminals))
                 print(f"cache_validation_seconds={cache_validation_seconds:.3f}", flush=True)
                 print(f"proof_decoder_open_seconds={proof_decoder_open_seconds:.3f}", flush=True)
                 print(f"decoder_state_traversal_seconds={timings['traversal']:.3f}", flush=True)
@@ -568,37 +583,55 @@ def _verify_all_public_proofs(decoder) -> tuple[int, int]:
 def _verify_all_public_proofs_timed(decoder):
     pending = [decoder]
     visited = set()
+    seen_branch_locators = set()
+    seen_terminal_locators = set()
+    branch_targets = []
+    terminal_targets = []
     branch_count = 0
     terminal_count = 0
-    branch_started = time.monotonic()
-    branch_seconds = 0.0
-    terminal_seconds = 0.0
-    traversal_started = branch_started
+    traversal_started = time.monotonic()
     while pending:
         state = pending.pop()
         if state.cache_key() in visited:
             continue
         visited.add(state.cache_key())
         for locator in state.branch_proof_locators:
-            artifact = state.branch_artifact(locator)
-            if artifact["schema_name"] != "writer_branch_transition_artifact":
-                raise AssertionError("unexpected public branch artifact")
-            branch_count += 1
-        branch_seconds += time.monotonic() - branch_started
-        terminal_started = time.monotonic()
+            if locator in seen_branch_locators:
+                raise AssertionError("duplicate public branch proof locator")
+            seen_branch_locators.add(locator)
+            branch_targets.append((state, locator))
         for locator in state.terminal_proof_locators:
-            artifact = state.terminalization_artifact(locator)
-            if artifact["schema_name"] != "writer_terminalization_artifact":
-                raise AssertionError("unexpected public terminal artifact")
-            terminal_count += 1
-        terminal_seconds += time.monotonic() - terminal_started
-        branch_started = time.monotonic()
+            if locator in seen_terminal_locators:
+                raise AssertionError("duplicate public terminal proof locator")
+            seen_terminal_locators.add(locator)
+            terminal_targets.append((state, locator))
         pending.extend(choice.next_state for choice in state.next_choices)
-    return branch_count, terminal_count, {
-        "traversal": time.monotonic() - traversal_started,
-        "branch": branch_seconds,
-        "terminal": terminal_seconds,
-    }
+    traversal_seconds = time.monotonic() - traversal_started
+    branch_started = time.monotonic()
+    for state, locator in branch_targets:
+        artifact = state.branch_artifact(locator)
+        if artifact["schema_name"] != "writer_branch_transition_artifact":
+            raise AssertionError("unexpected public branch artifact")
+        branch_count += 1
+    branch_seconds = time.monotonic() - branch_started
+    terminal_started = time.monotonic()
+    for state, locator in terminal_targets:
+        artifact = state.terminalization_artifact(locator)
+        if artifact["schema_name"] != "writer_terminalization_artifact":
+            raise AssertionError("unexpected public terminal artifact")
+        terminal_count += 1
+    terminal_seconds = time.monotonic() - terminal_started
+    return (
+        branch_count,
+        terminal_count,
+        seen_branch_locators,
+        seen_terminal_locators,
+        {
+            "traversal": traversal_seconds,
+            "branch": branch_seconds,
+            "terminal": terminal_seconds,
+        },
+    )
 
 
 def _first_terminal_state(decoder):

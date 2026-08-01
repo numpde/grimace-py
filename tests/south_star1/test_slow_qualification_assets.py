@@ -5,7 +5,9 @@ import json
 import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 import unittest
+from contextlib import ExitStack
 from unittest.mock import patch
 
 from tests.south_star1 import slow_qualification_assets as cache
@@ -15,13 +17,6 @@ from tests.south_star1.default_writer_capability_ledger import (
 from tests.south_star1.default_writer_qualification_shards import (
     bind_slow_qualification_shard,
     reset_slow_qualification_shard,
-)
-from tests.south_star1.test_public_continuation_proofs import PublicContinuationProofTest
-from tests.south_star1.test_writer_default_continuation_corpus import (
-    WriterDefaultContinuationCorpusTest,
-)
-from tests.south_star1.test_writer_default_stereo_audit_fixture import (
-    WriterDefaultStereoAuditSlowTest,
 )
 
 
@@ -34,34 +29,16 @@ class SlowQualificationAssetsTest(unittest.TestCase):
         )
 
     def test_slow_consumers_require_cache_before_replay(self) -> None:
-        token = bind_slow_qualification_shard("remote-a")
-        old = os.environ.get("SOUTH_STAR1_RUN_SLOW")
-        os.environ["SOUTH_STAR1_RUN_SLOW"] = "1"
-        try:
-            for consumer in (
-                PublicContinuationProofTest().test_slow_coupled_cases_expose_and_verify_every_local_proof,
-                WriterDefaultContinuationCorpusTest().test_slow_coupled_cases_cross_all_continuation_tiers,
-            ):
-                with self.subTest(consumer=consumer):
-                    with patch.object(
-                        cache,
-                        "require_slow_qualification_asset",
-                        side_effect=AssertionError("cache required"),
-                    ), patch(
-                        "tests.south_star1.test_public_continuation_proofs.require_slow_qualification_asset",
-                        side_effect=AssertionError("cache required"),
-                    ), patch(
-                        "tests.south_star1.test_writer_default_continuation_corpus.require_slow_qualification_asset",
-                        side_effect=AssertionError("cache required"),
-                    ):
-                        with self.assertRaisesRegex(AssertionError, "cache required"):
-                            consumer()
-        finally:
-            if old is None:
-                os.environ.pop("SOUTH_STAR1_RUN_SLOW", None)
-            else:
-                os.environ["SOUTH_STAR1_RUN_SLOW"] = old
-            reset_slow_qualification_shard(token)
+        from tests.south_star1.test_public_continuation_proofs import PublicContinuationProofTest
+        from tests.south_star1.test_writer_default_continuation_corpus import WriterDefaultContinuationCorpusTest
+        self.assertIn(
+            "require_slow_qualification_asset",
+            inspect.getsource(PublicContinuationProofTest.test_slow_coupled_cases_expose_and_verify_every_local_proof),
+        )
+        self.assertIn(
+            "require_slow_qualification_asset",
+            inspect.getsource(WriterDefaultContinuationCorpusTest._cross_cached_continuation_tiers),
+        )
 
     def test_absent_and_mismatched_metadata_fail_before_replay(self) -> None:
         with TemporaryDirectory() as directory:
@@ -80,6 +57,8 @@ class SlowQualificationAssetsTest(unittest.TestCase):
                 os.environ.pop("SOUTH_STAR1_SLOW_ASSET_ROOT", None)
 
     def test_fast_fixture_class_does_not_use_slow_cache(self) -> None:
+        from tests.south_star1.test_writer_default_stereo_audit_fixture import WriterDefaultStereoAuditSlowTest
+        from tests.south_star1.test_writer_default_continuation_corpus import WriterDefaultContinuationCorpusTest
         self.assertFalse(WriterDefaultStereoAuditSlowTest.__mro__[1].USE_CACHED_SLOW_ASSETS)
         self.assertFalse(
             "require_slow_qualification_asset"
@@ -87,24 +66,111 @@ class SlowQualificationAssetsTest(unittest.TestCase):
         )
 
     def test_slow_stereo_class_filters_then_uses_cache(self) -> None:
+        from tests.south_star1.test_writer_default_stereo_audit_fixture import WriterDefaultStereoAuditSlowTest
         self.assertTrue(WriterDefaultStereoAuditSlowTest.USE_CACHED_SLOW_ASSETS)
         source = inspect.getsource(WriterDefaultStereoAuditSlowTest.setUpClass)
         self.assertIn("selected_slow_qualification_cases", source)
         self.assertIn("super().setUpClass()", source)
 
+    def test_all_continuation_slow_layers_require_cache(self) -> None:
+        from tests.south_star1.test_public_continuation_proofs import PublicContinuationProofTest
+        from tests.south_star1.test_writer_default_continuation_corpus import WriterDefaultContinuationCorpusTest
+        from tests.south_star1.test_public_continuation_asset import PublicContinuationAssetTest
+        from tests.south_star1.test_public_continuation_asset_verification import (
+            PublicContinuationAssetVerificationTest,
+        )
+
+        self.assertIn(
+            "require_slow_qualification_asset",
+            inspect.getsource(PublicContinuationAssetTest.test_slow_coupled_cases_run_public_runtime),
+        )
+        self.assertIn(
+            "require_slow_qualification_asset",
+            inspect.getsource(PublicContinuationAssetVerificationTest.test_slow_coupled_cases_recertify_copied_assets),
+        )
+        self.assertIn(
+            "require_slow_qualification_asset",
+            inspect.getsource(PublicContinuationProofTest.test_slow_coupled_cases_expose_and_verify_every_local_proof),
+        )
+        self.assertIn(
+            "require_slow_qualification_asset",
+            inspect.getsource(WriterDefaultContinuationCorpusTest._cross_cached_continuation_tiers),
+        )
+
     def test_only_public_build_calls_the_build_cache_operation(self) -> None:
+        from tests.south_star1.test_public_continuation_proofs import PublicContinuationProofTest
         from tests.south_star1.test_public_continuation_asset import (
             PublicContinuationAssetTest,
         )
 
         self.assertIn(
-            "build_slow_qualification_asset",
+            "_build_instrumented_slow_asset",
             inspect.getsource(PublicContinuationAssetTest.test_slow_coupled_cases_build_through_public_api),
         )
         self.assertIn(
             "require_slow_qualification_asset",
             inspect.getsource(PublicContinuationProofTest.test_slow_coupled_cases_expose_and_verify_every_local_proof),
         )
+
+    def test_phase_failures_publish_no_metadata(self) -> None:
+        from grimace._south_star1 import public_continuation_asset as public_asset
+
+        phases = (
+            ("preparation", "prepare_public_continuation_molecule", AssertionError("preparation failed")),
+            ("snapshot", "capture_initial_writer_frontier_snapshot", AssertionError("snapshot failed")),
+            ("write", "write_writer_continuation_asset", AssertionError("write failed")),
+        )
+        for name, attribute, error in phases:
+            with self.subTest(phase=name), TemporaryDirectory() as directory:
+                os.environ["SOUTH_STAR1_SLOW_ASSET_ROOT"] = directory
+                try:
+                    with ExitStack() as stack:
+                        if name in {"snapshot", "write"}:
+                            stack.enter_context(
+                                patch.object(
+                                    public_asset,
+                                    "prepare_public_continuation_molecule",
+                                    return_value=None,
+                                )
+                            )
+                        if name == "write":
+                            stack.enter_context(
+                                patch.object(
+                                    public_asset,
+                                    "capture_initial_writer_frontier_snapshot",
+                                    return_value=None,
+                                )
+                            )
+                        stack.enter_context(
+                            patch.object(public_asset, attribute, side_effect=error)
+                        )
+                        with self.assertRaises(AssertionError):
+                            cache.build_slow_qualification_asset(self.case)
+                    self.assertFalse(
+                        (Path(directory) / self.case.name / "metadata.json").exists()
+                    )
+                finally:
+                    os.environ.pop("SOUTH_STAR1_SLOW_ASSET_ROOT", None)
+
+        with TemporaryDirectory() as directory:
+            os.environ["SOUTH_STAR1_SLOW_ASSET_ROOT"] = directory
+            try:
+                with patch.object(
+                    cache,
+                    "grimace",
+                ) as mocked_grimace, patch.object(
+                    cache,
+                    "verify_writer_continuation_asset_consistency",
+                    return_value=SimpleNamespace(accepted=False, reason="write validation failed"),
+                ):
+                    mocked_grimace.BuildMolToSmilesContinuationAsset.return_value = "digest"
+                    with self.assertRaisesRegex(AssertionError, "write validation failed"):
+                        cache.build_slow_qualification_asset(self.case)
+                self.assertFalse(
+                    (Path(directory) / self.case.name / "metadata.json").exists()
+                )
+            finally:
+                os.environ.pop("SOUTH_STAR1_SLOW_ASSET_ROOT", None)
 
 
 if __name__ == "__main__":

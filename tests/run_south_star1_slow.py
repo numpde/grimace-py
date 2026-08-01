@@ -19,6 +19,9 @@ SLOW_QUALIFICATION_LAYERS = {
     "public-build": (
         "tests.south_star1.test_public_continuation_asset.PublicContinuationAssetTest.test_slow_coupled_cases_build_through_public_api",
     ),
+    "public-runtime": (
+        "tests.south_star1.test_public_continuation_asset.PublicContinuationAssetTest.test_slow_coupled_cases_run_public_runtime",
+    ),
     "public-recertification": (
         "tests.south_star1.test_public_continuation_asset_verification.PublicContinuationAssetVerificationTest.test_slow_coupled_cases_recertify_copied_assets",
     ),

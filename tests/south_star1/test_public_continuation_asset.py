@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
@@ -25,11 +26,13 @@ from tests.south_star1.default_writer_capability_ledger import (
 from tests.south_star1.default_writer_capability_ledger import (
     BLOCKED_DEFAULT_WRITER_CAPABILITY_CASES,
 )
+from tests.south_star1.default_writer_qualification_shards import FAST_ACCEPTED_CASES
+from tests.south_star1.default_writer_qualification_shards import SLOW_COUPLED_CASES
 
 
 class PublicContinuationAssetTest(unittest.TestCase):
-    def test_every_accepted_default_case_builds_through_public_api(self) -> None:
-        for case in ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES:
+    def _assert_accepted_cases_build_through_public_api(self, cases) -> None:
+        for case in cases:
             with self.subTest(case=case.name), TemporaryDirectory() as directory:
                 path = Path(directory) / "asset"
                 digest = grimace.BuildMolToSmilesContinuationAsset(
@@ -54,6 +57,16 @@ class PublicContinuationAssetTest(unittest.TestCase):
                     successor.snapshot(),
                 )
                 self.assertEqual(resumed.cache_key(), successor.cache_key())
+
+    def test_fast_accepted_cases_build_through_public_api(self) -> None:
+        self._assert_accepted_cases_build_through_public_api(FAST_ACCEPTED_CASES)
+
+    @unittest.skipUnless(
+        os.environ.get("SOUTH_STAR1_RUN_SLOW") == "1",
+        "set SOUTH_STAR1_RUN_SLOW=1 to run coupled cases",
+    )
+    def test_slow_coupled_cases_build_through_public_api(self) -> None:
+        self._assert_accepted_cases_build_through_public_api(SLOW_COUPLED_CASES)
 
     def test_renumbered_stereo_builds_the_same_mapped_root_language(self) -> None:
         cases = (

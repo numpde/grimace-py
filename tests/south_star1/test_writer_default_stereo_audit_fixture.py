@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
@@ -32,15 +33,26 @@ from tests.helpers.rdkit_south_star_stereo_audit import load_pinned_south_star_s
 from tests.south_star1.default_writer_capability_ledger import DEFAULT_WRITER_CAPABILITY_CASES
 from tests.south_star1.helpers import directional_facts
 from tests.south_star1.helpers import tetrahedral_facts
+from tests.south_star1.default_writer_qualification_shards import FAST_ACCEPTED_CASES
+from tests.south_star1.default_writer_qualification_shards import SLOW_COUPLED_CASES
 
 
 class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
+    QUALIFICATION_CASES = FAST_ACCEPTED_CASES
+
+    def setUp(self) -> None:
+        if self.QUALIFICATION_CASES is not FAST_ACCEPTED_CASES and self._testMethodName not in {
+            "test_ledger_stereo_pinning_has_fixture_coverage",
+            "test_every_local_stereo_case_passes_full_asset_semantic_replay",
+        }:
+            self.skipTest("case-specific stereo audit is outside the slow shard")
+
     @classmethod
     def setUpClass(cls) -> None:
         cls.temporary = TemporaryDirectory()
-        cls.fixture_cases = load_pinned_south_star_stereo_audit_cases(
-            rdBase.rdkitVersion
-        )
+        all_fixture_cases = load_pinned_south_star_stereo_audit_cases(rdBase.rdkitVersion)
+        allowed = {case.name for case in cls.QUALIFICATION_CASES}
+        cls.fixture_cases = tuple(item for item in all_fixture_cases if item.name in allowed)
         cls.ledger = {item.name: item for item in DEFAULT_WRITER_CAPABILITY_CASES}
         cls.assets = {}
         cls.facts = {}
@@ -164,6 +176,7 @@ class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
         pinned_ledger = {
             case.name
             for case in self.ledger.values()
+            if case.name in {item.name for item in self.fixture_cases}
             if case.extraction_profile == "specified_stereo_closure"
             and case.expected_rdkit_audit_version_pinned
         }
@@ -309,6 +322,15 @@ class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
                         proof_capable=True,
                         prepared=self.prepared[prepared_name],
                     )
+
+class WriterDefaultStereoAuditSlowTest(WriterDefaultStereoAuditFixtureTest):
+    QUALIFICATION_CASES = SLOW_COUPLED_CASES
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        if os.environ.get("SOUTH_STAR1_RUN_SLOW") != "1":
+            raise unittest.SkipTest("set SOUTH_STAR1_RUN_SLOW=1 to run coupled cases")
+        super().setUpClass()
 
 
 def _decoder_support(decoder) -> tuple[str, ...]:

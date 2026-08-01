@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
 import shutil
 from tempfile import TemporaryDirectory
 import unittest
@@ -14,11 +15,13 @@ from rdkit import Chem
 from tests.south_star1.default_writer_capability_ledger import (
     ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES,
 )
+from tests.south_star1.default_writer_qualification_shards import FAST_ACCEPTED_CASES
+from tests.south_star1.default_writer_qualification_shards import SLOW_COUPLED_CASES
 
 
 class PublicContinuationAssetVerificationTest(unittest.TestCase):
-    def test_all_accepted_default_cases_recertify_copied_assets(self) -> None:
-        for case in ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES:
+    def _assert_cases_recertify_copied_assets(self, cases) -> None:
+        for case in cases:
             with self.subTest(case=case.name), TemporaryDirectory() as directory:
                 source = Path(directory) / "source"
                 copied = Path(directory) / "copied"
@@ -45,6 +48,16 @@ class PublicContinuationAssetVerificationTest(unittest.TestCase):
                     report.terminal_locator_count,
                     report.terminal_proof_count,
                 )
+
+    def test_fast_cases_recertify_copied_assets(self) -> None:
+        self._assert_cases_recertify_copied_assets(FAST_ACCEPTED_CASES)
+
+    @unittest.skipUnless(
+        os.environ.get("SOUTH_STAR1_RUN_SLOW") == "1",
+        "set SOUTH_STAR1_RUN_SLOW=1 to run coupled cases",
+    )
+    def test_slow_coupled_cases_recertify_copied_assets(self) -> None:
+        self._assert_cases_recertify_copied_assets(SLOW_COUPLED_CASES)
 
     def test_copied_asset_is_recertified_without_mutation(self) -> None:
         with TemporaryDirectory() as directory:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 import json
+import os
 from pathlib import Path
 import shutil
 from tempfile import TemporaryDirectory
@@ -27,11 +28,13 @@ from grimace._south_star1.writer_envelope_work import (
 from tests.south_star1.default_writer_capability_ledger import (
     ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES,
 )
+from tests.south_star1.default_writer_qualification_shards import FAST_ACCEPTED_CASES
+from tests.south_star1.default_writer_qualification_shards import SLOW_COUPLED_CASES
 
 
 class PublicContinuationProofTest(unittest.TestCase):
-    def test_every_accepted_case_exposes_and_verifies_every_local_proof(self) -> None:
-        for case in ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES:
+    def _assert_cases_expose_and_verify_every_local_proof(self, cases) -> None:
+        for case in cases:
             with self.subTest(case=case.name), TemporaryDirectory() as directory:
                 mol = Chem.MolFromSmiles(case.smiles)
                 path = Path(directory) / "asset"
@@ -49,6 +52,16 @@ class PublicContinuationProofTest(unittest.TestCase):
                 branch_count, terminal_count = _verify_all_public_proofs(decoder)
                 self.assertGreater(branch_count, 0)
                 self.assertGreater(terminal_count, 0)
+
+    def test_fast_cases_expose_and_verify_every_local_proof(self) -> None:
+        self._assert_cases_expose_and_verify_every_local_proof(FAST_ACCEPTED_CASES)
+
+    @unittest.skipUnless(
+        os.environ.get("SOUTH_STAR1_RUN_SLOW") == "1",
+        "set SOUTH_STAR1_RUN_SLOW=1 to run coupled cases",
+    )
+    def test_slow_coupled_cases_expose_and_verify_every_local_proof(self) -> None:
+        self._assert_cases_expose_and_verify_every_local_proof(SLOW_COUPLED_CASES)
 
     def test_copy_and_snapshot_resume_share_the_molecule_bound_session(self) -> None:
         with TemporaryDirectory() as directory:

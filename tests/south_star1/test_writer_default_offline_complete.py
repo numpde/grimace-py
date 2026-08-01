@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+import os
 
 from grimace._south_star1.writer_support_artifact_offline_verifier import (
     classify_residual_stereo_obligations_offline,
@@ -16,6 +17,8 @@ from tests.south_star1.default_writer_capability_ledger import (
 from tests.south_star1.default_writer_capability_ledger import (
     BLOCKED_DEFAULT_WRITER_CAPABILITY_CASES,
 )
+from tests.south_star1.default_writer_qualification_shards import FAST_ACCEPTED_CASES
+from tests.south_star1.default_writer_qualification_shards import SLOW_COUPLED_CASES
 from tests.south_star1.test_writer_default_parity_corpus import _accepted_case_result
 from tests.south_star1.test_writer_default_parity_corpus import _artifact
 from tests.south_star1.test_writer_default_parity_corpus import _facts
@@ -23,8 +26,8 @@ from tests.south_star1.test_writer_default_parity_corpus import _prepare_default
 
 
 class WriterDefaultOfflineCompleteTest(unittest.TestCase):
-    def test_accepted_default_cases_are_offline_complete(self) -> None:
-        for case in ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES:
+    def _assert_cases_are_offline_complete(self, cases) -> None:
+        for case in cases:
             with self.subTest(case=case.name):
                 result = _accepted_case_result(case)
 
@@ -58,6 +61,16 @@ class WriterDefaultOfflineCompleteTest(unittest.TestCase):
                     set(case.expected_offline_relation_families),
                     set(result["facts_bound_relation_families"]),
                 )
+
+    def test_fast_cases_are_offline_complete(self) -> None:
+        self._assert_cases_are_offline_complete(FAST_ACCEPTED_CASES)
+
+    @unittest.skipUnless(
+        os.environ.get("SOUTH_STAR1_RUN_SLOW") == "1",
+        "set SOUTH_STAR1_RUN_SLOW=1 to run coupled cases",
+    )
+    def test_slow_coupled_cases_are_offline_complete(self) -> None:
+        self._assert_cases_are_offline_complete(SLOW_COUPLED_CASES)
 
     def test_blocked_default_cases_have_no_artifact_contract(self) -> None:
         for case in BLOCKED_DEFAULT_WRITER_CAPABILITY_CASES:

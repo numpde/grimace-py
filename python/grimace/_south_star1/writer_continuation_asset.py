@@ -212,11 +212,8 @@ class WriterContinuationAssetSemanticVerification:
 
 @dataclass(frozen=True, slots=True)
 class _WriterContinuationAssetProofBatch:
-    batch: object
     snapshot: object
-    branch_support_by_text_and_digest: Mapping[tuple[str, str], object]
-    terminal_support_by_digest: Mapping[str, object]
-    projection_by_text: Mapping[str, object]
+    index: _FrontierBatchProofIndex
 
 
 class WriterContinuationAsset:
@@ -729,11 +726,10 @@ def verified_branch_artifact_from_continuation_asset(
         asset=asset,
         source_raw_cursor_digest=source_raw_cursor_digest,
     )
-    batch = proof_batch.batch
-    projection = proof_batch.projection_by_text.get(emitted_text)
+    indexed = proof_batch.index
+    projection = indexed.projection_by_text.get(emitted_text)
     if projection is None:
         _violation("continuation_asset_branch_projection_not_unique")
-    projections = (projection,)
     if (
         _text_projection_manifest_digest_with_digests(
             projection=projection,
@@ -742,7 +738,7 @@ def verified_branch_artifact_from_continuation_asset(
         != edge.text_projection_digest
     ):
         _violation("continuation_asset_branch_projection_mismatch")
-    support = proof_batch.branch_support_by_text_and_digest.get(
+    support = indexed.branch_support_by_text_and_digest.get(
         (edge.emitted_text, branch_certificate_digest)
     )
     if support is None:
@@ -757,7 +753,7 @@ def verified_branch_artifact_from_continuation_asset(
         snapshot=proof_batch.snapshot,
         projection=projection,
         branch=matches[0],
-        branch_identity=proof_batch.branch_identity_by_text_and_digest[
+        branch_identity=indexed.branch_identity_by_text_and_digest[
             (edge.emitted_text, branch_certificate_digest)
         ],
     )
@@ -799,8 +795,9 @@ def verified_terminal_artifact_from_continuation_asset(
         asset=asset,
         source_raw_cursor_digest=source_raw_cursor_digest,
     )
-    batch = proof_batch.batch
-    support = proof_batch.terminal_support_by_digest.get(terminal_support_identity_digest)
+    support = proof_batch.index.terminal_support_by_digest.get(
+        terminal_support_identity_digest
+    )
     if support is None:
         _violation("continuation_asset_terminal_identity_not_unique")
     matches = (support,)
@@ -844,16 +841,13 @@ def _continuation_asset_proof_batch(
     batch = _frontier_batch(prepared, cursor)
     proof_batch = _preindexed_frontier_batch(batch)
     return _WriterContinuationAssetProofBatch(
-        batch=batch,
         snapshot=_snapshot_for_raw_cursor(
             prepared=prepared,
             asset=asset,
             cursor=cursor,
             raw_cursor_digest=source_raw_cursor_digest,
         ),
-        branch_support_by_text_and_digest=proof_batch.branch_support_by_text_and_digest,
-        terminal_support_by_digest=proof_batch.terminal_support_by_digest,
-        projection_by_text=proof_batch.projection_by_text,
+        index=proof_batch,
     )
 
 

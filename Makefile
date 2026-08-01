@@ -5,6 +5,7 @@ MATURIN ?= $(dir $(PYTHON))maturin
 SLOW_SHARDS := zero-h-adjacent remote-a remote-b
 SLOW_LAYERS := public-build public-recertification public-proofs offline-complete support-artifact support-reparse continuation stereo-audit
 SLOW_LAYERS_ZERO_H := public-build public-recertification public-proofs offline-zero-h offline-adjacent support-zero-h support-adjacent support-reparse continuation stereo-audit
+SLOW_ASSET_ROOT := .south-star1-qualification/$(shell git rev-parse HEAD)
 
 rebuild-south-star1:
 	$(MATURIN) develop --release --skip-install
@@ -15,8 +16,8 @@ test-south-star1-fast:
 test-south-star1-slow-one:
 	@test -n "$(SLOW_SHARD)" || (echo "SLOW_SHARD is required" >&2; exit 2)
 	@test -n "$(SLOW_LAYER)" || (echo "SLOW_LAYER is required" >&2; exit 2)
-	@echo "SOUTH_STAR1_RUN_SLOW=1 SOUTH_STAR1_SLOW_SHARD=$(SLOW_SHARD) SOUTH_STAR1_SLOW_LAYER=$(SLOW_LAYER) PYTHONPATH=python:. $(PYTHON) -m tests.run_south_star1_slow"
-	SOUTH_STAR1_RUN_SLOW=1 SOUTH_STAR1_SLOW_SHARD=$(SLOW_SHARD) SOUTH_STAR1_SLOW_LAYER=$(SLOW_LAYER) PYTHONPATH=python:. $(PYTHON) -m tests.run_south_star1_slow
+	@echo "SOUTH_STAR1_RUN_SLOW=1 SOUTH_STAR1_SLOW_SHARD=$(SLOW_SHARD) SOUTH_STAR1_SLOW_LAYER=$(SLOW_LAYER) SOUTH_STAR1_SLOW_ASSET_ROOT=$(SLOW_ASSET_ROOT) PYTHONPATH=python:. $(PYTHON) -m tests.run_south_star1_slow"
+	SOUTH_STAR1_RUN_SLOW=1 SOUTH_STAR1_SLOW_SHARD=$(SLOW_SHARD) SOUTH_STAR1_SLOW_LAYER=$(SLOW_LAYER) SOUTH_STAR1_SLOW_ASSET_ROOT=$(SLOW_ASSET_ROOT) PYTHONPATH=python:. $(PYTHON) -m tests.run_south_star1_slow
 
 test-south-star1-slow-shard:
 	@test -n "$(SLOW_SHARD)" || (echo "SLOW_SHARD is required" >&2; exit 2)

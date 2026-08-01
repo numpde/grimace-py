@@ -31,6 +31,9 @@ from tests.south_star1.default_writer_qualification_shards import SLOW_COUPLED_C
 from tests.south_star1.default_writer_qualification_shards import (
     selected_slow_qualification_cases,
 )
+from tests.south_star1.slow_qualification_assets import (
+    build_slow_qualification_asset,
+)
 
 
 class PublicContinuationAssetTest(unittest.TestCase):
@@ -69,9 +72,23 @@ class PublicContinuationAssetTest(unittest.TestCase):
         "set SOUTH_STAR1_RUN_SLOW=1 to run coupled cases",
     )
     def test_slow_coupled_cases_build_through_public_api(self) -> None:
-        self._assert_accepted_cases_build_through_public_api(
-            selected_slow_qualification_cases()
-        )
+        for case in selected_slow_qualification_cases():
+            with self.subTest(case=case.name):
+                cached = build_slow_qualification_asset(case)
+                decoder = grimace.MolToSmilesContinuationDecoder.from_asset(
+                    cached.asset_path,
+                    expected_manifest_digest=cached.manifest_digest,
+                )
+                support = _decoder_support(decoder)
+                self.assertEqual(decoder.support_count, case.expected_support_count)
+                self.assertEqual(decoder.completion_count, case.expected_completion_count)
+                self.assertEqual(_support_digest(support), case.expected_support_digest)
+                successor = decoder.next_choices[0].next_state
+                resumed = grimace.MolToSmilesContinuationDecoder.from_snapshot(
+                    cached.asset_path,
+                    successor.snapshot(),
+                )
+                self.assertEqual(resumed.cache_key(), successor.cache_key())
 
     def test_renumbered_stereo_builds_the_same_mapped_root_language(self) -> None:
         cases = (

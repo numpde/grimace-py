@@ -26,3 +26,5 @@ Cargo.lock
 .codex
 .idea/
 .vscode/
+
+.south-star1-qualification/

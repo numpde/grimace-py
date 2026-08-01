@@ -20,6 +20,10 @@ from tests.south_star1.default_writer_qualification_shards import SLOW_COUPLED_C
 from tests.south_star1.default_writer_qualification_shards import (
     selected_slow_qualification_cases,
 )
+from tests.south_star1.slow_qualification_assets import (
+    require_slow_qualification_asset,
+)
+import time
 
 
 class PublicContinuationAssetVerificationTest(unittest.TestCase):
@@ -60,7 +64,49 @@ class PublicContinuationAssetVerificationTest(unittest.TestCase):
         "set SOUTH_STAR1_RUN_SLOW=1 to run coupled cases",
     )
     def test_slow_coupled_cases_recertify_copied_assets(self) -> None:
-        self._assert_cases_recertify_copied_assets(selected_slow_qualification_cases())
+        for case in selected_slow_qualification_cases():
+            with self.subTest(case=case.name), TemporaryDirectory() as directory:
+                cache_started = time.monotonic()
+                cached = require_slow_qualification_asset(case)
+                cache_validation_seconds = time.monotonic() - cache_started
+                copied = Path(directory) / "copied"
+                copy_started = time.monotonic()
+                shutil.copytree(cached.asset_path, copied)
+                copy_seconds = time.monotonic() - copy_started
+                before = _bundle_bytes(copied)
+                recert_started = time.monotonic()
+                with (
+                    patch(
+                        "grimace.BuildMolToSmilesContinuationAsset",
+                        side_effect=AssertionError("public asset build invoked"),
+                    ),
+                    patch(
+                        "grimace._south_star1.public_continuation_asset.write_writer_continuation_asset",
+                        side_effect=AssertionError("lower-level asset writer invoked"),
+                    ),
+                    patch(
+                        "grimace._south_star1.writer_continuation_asset.write_writer_continuation_asset",
+                        side_effect=AssertionError("asset writer invoked"),
+                    ),
+                ):
+                    report = grimace.VerifyMolToSmilesContinuationAsset(
+                        Chem.MolFromSmiles(case.smiles),
+                        copied,
+                        expected_manifest_digest=cached.manifest_digest,
+                    )
+                public_recertification_seconds = time.monotonic() - recert_started
+                self.assertTrue(report.accepted)
+                self.assertTrue(report.live_replay_complete)
+                self.assertEqual(report.branch_locator_count, report.branch_proof_count)
+                self.assertEqual(report.terminal_locator_count, report.terminal_proof_count)
+                self.assertEqual(report.unchecked_obligation_families, ())
+                self.assertEqual(_bundle_bytes(copied), before)
+                print(f"cache_validation_seconds={cache_validation_seconds:.3f}", flush=True)
+                print(f"copy_seconds={copy_seconds:.3f}", flush=True)
+                print(
+                    f"public_recertification_seconds={public_recertification_seconds:.3f}",
+                    flush=True,
+                )
 
     def test_copied_asset_is_recertified_without_mutation(self) -> None:
         with TemporaryDirectory() as directory:

@@ -88,6 +88,15 @@ _ALLOWED_CLASSES = (
 _CLASS_BY_PATH = {
     f"{cls.__module__}.{cls.__qualname__}": cls for cls in _ALLOWED_CLASSES
 }
+_TYPE_HINTS_CACHE: dict[type, dict[str, object]] = {}
+
+
+def _type_hints(cls: type) -> dict[str, object]:
+    cached = _TYPE_HINTS_CACHE.get(cls)
+    if cached is None:
+        cached = get_type_hints(cls)
+        _TYPE_HINTS_CACHE[cls] = cached
+    return cached
 
 
 def writer_frontier_cursor_from_closed_terms(term: object) -> WriterFrontierCursor:
@@ -147,7 +156,7 @@ def _closed_value(term: object, annotation: object = None) -> object:
     declared = {field.name for field in fields(cls)}
     if len(raw_fields) != len(raw_items) or set(raw_fields) != declared:
         _violation("dataclass_fields_mismatch")
-    hints = get_type_hints(cls)
+    hints = _type_hints(cls)
     return cls(**{
         field.name: _closed_value(raw_fields[field.name], hints.get(field.name))
         for field in fields(cls)

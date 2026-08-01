@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import unittest
 
 from grimace._south_star1.errors import SouthStarError
@@ -64,103 +65,91 @@ from tests.south_star1.default_writer_capability_ledger import (
 
 ACCEPTED_CASES = ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES
 BLOCKED_CASES = BLOCKED_DEFAULT_WRITER_CAPABILITY_CASES
+RUN_SLOW_ENV = "SOUTH_STAR1_RUN_SLOW"
+_ZERO_H_AND_ADJACENT = ("zero_h_tetrahedral", "adjacent_specified_tetrahedral")
+_REMOTE_COUPLED_A = ("remote_coupled_tetrahedral_a",)
+_REMOTE_COUPLED_B = ("remote_coupled_tetrahedral_b",)
+_SPECIAL_CASES = (
+    _ZERO_H_AND_ADJACENT + _REMOTE_COUPLED_A + _REMOTE_COUPLED_B
+)
+
+
+def _accepted_case_shards() -> dict[str, tuple[str, ...]]:
+    accepted = tuple(case.name for case in ACCEPTED_CASES)
+    return {
+        "legacy/default cases": tuple(
+            name for name in accepted if name not in _SPECIAL_CASES
+        ),
+        "zero-H and adjacent tetra": _ZERO_H_AND_ADJACENT,
+        "remote coupled A": _REMOTE_COUPLED_A,
+        "remote coupled B": _REMOTE_COUPLED_B,
+    }
+
+
+def _accepted_case_names_for_slow_remote() -> frozenset[str]:
+    return frozenset().union(
+        _ZERO_H_AND_ADJACENT,
+        _REMOTE_COUPLED_A,
+        _REMOTE_COUPLED_B,
+    )
+
+
+def _run_case_slow(case_name: str) -> bool:
+    if os.environ.get(RUN_SLOW_ENV) == "1":
+        return False
+    return case_name in _accepted_case_names_for_slow_remote()
 
 
 class WriterDefaultParityCorpusTest(unittest.TestCase):
-    def test_accepted_default_corpus_verifies_support_artifacts(self) -> None:
+    def test_accepted_default_shards_are_complete_and_deterministic(self) -> None:
+        shards = _accepted_case_shards()
+        self.assertEqual(
+            tuple(shards),
+            (
+                "legacy/default cases",
+                "zero-H and adjacent tetra",
+                "remote coupled A",
+                "remote coupled B",
+            ),
+        )
+
+        shard_names = tuple(
+            case_name
+            for names in shards.values()
+            for case_name in names
+        )
+        accepted_names = tuple(case.name for case in ACCEPTED_CASES)
+        accepted_positions = {name: i for i, name in enumerate(accepted_names)}
+        self.assertEqual(len(shard_names), len(set(shard_names)))
+        self.assertEqual(set(shard_names), set(accepted_names))
+        self.assertEqual(
+            tuple(name for name in accepted_names if name in _SPECIAL_CASES),
+            _SPECIAL_CASES,
+        )
+
+        for names in shards.values():
+            for name in names:
+                self.assertIn(name, accepted_names)
+            positions = [accepted_positions[name] for name in names]
+            self.assertEqual(positions, sorted(positions))
+
+    def _run_cases(self):
         for case in ACCEPTED_CASES:
+            if _run_case_slow(case.name):
+                continue
+            yield case
+        if os.environ.get(RUN_SLOW_ENV) == "1":
+            for name in _accepted_case_names_for_slow_remote():
+                yield next(item for item in ACCEPTED_CASES if item.name == name)
+
+    def test_accepted_default_corpus_verifies_support_artifacts(self) -> None:
+        for case in self._run_cases():
             with self.subTest(case=case.name):
                 result = _accepted_case_result(case)
-
-                self.assertEqual(
-                    result["support_count"],
-                    result["artifact_support_count"],
-                )
-                self.assertEqual(
-                    result["completion_count"],
-                    result["artifact_witness_count"],
-                )
-                self.assertEqual(
-                    result["support_count"],
-                    case.expected_support_count,
-                )
-                self.assertEqual(
-                    result["completion_count"],
-                    case.expected_completion_count,
-                )
-                self.assertEqual(
-                    result["support_count"],
-                    result["materialized_support_count"],
-                )
-                self.assertEqual(
-                    result["completion_count"],
-                    result["materialized_witness_count"],
-                )
-                self.assertEqual(
-                    result["support_count"],
-                    result["artifact_metrics"]["support_string_count"],
-                )
-                self.assertGreater(result["artifact_metrics"]["object_count"], 0)
-                self.assertEqual(
-                    result["artifact_metrics"]["reachable_object_count"],
-                    result["artifact_metrics"]["object_count"],
-                )
-                self.assertEqual(
-                    result["artifact_metrics"]["unreferenced_object_count"],
-                    0,
-                )
-                self.assertIsNotNone(result["artifact_metrics"]["count_dag_node_count"])
-                self.assertLessEqual(
-                    result["artifact_metrics"]["largest_object_digest_payload_bytes"],
-                    default_writer_envelope_work_budget(None).max_digest_term_bytes,
-                )
-                self.assertEqual(
-                    result["structural_accepted"],
-                    case.expected_structural_artifact,
-                )
-                self.assertEqual(
-                    result["live_accepted"],
-                    case.expected_live_artifact_verifier,
-                )
-                self.assertEqual(
-                    result["facts_bound_accepted"],
-                    case.expected_facts_bound_verifier,
-                )
-                self.assertEqual(
-                    result["facts_bound_offline_complete"],
-                    case.expected_offline_replay_complete,
-                )
-                self.assertEqual(
-                    result["live_frontier_agreement_complete"],
-                    case.expected_live_frontier_agreement_complete,
-                )
-                self.assertEqual(
-                    result["live_count_agreement_complete"],
-                    case.expected_live_count_agreement_complete,
-                )
-                self.assertEqual(
-                    result["snapshot_resume_agreement_complete"],
-                    case.expected_snapshot_resume_agreement_complete,
-                )
-                self.assertEqual(
-                    result["facts_bound_object_kinds"],
-                    case.expected_offline_object_kinds,
-                )
-                self.assertEqual(
-                    result["facts_bound_unchecked_object_kinds"],
-                    case.expected_offline_unchecked_object_kinds,
-                )
-                self.assertEqual(
-                    result["facts_bound_unchecked_obligation_families"],
-                    case.expected_offline_unchecked_obligation_families,
-                )
-                self.assertLessEqual(
-                    set(case.expected_offline_relation_families),
-                    set(result["facts_bound_relation_families"]),
-                )
+                self._assert_accepted_case_result(case, result)
 
     def test_accepted_default_corpus_reparses_to_isomorphic_facts(self) -> None:
-        for case in ACCEPTED_CASES:
+        for case in self._run_cases():
             with self.subTest(case=case.name):
                 facts = _facts(case)
                 image = _support_image(case)
@@ -174,6 +163,98 @@ class WriterDefaultParityCorpusTest(unittest.TestCase):
                             facts_are_isomorphic(facts, reparsed).isomorphic,
                             text,
                         )
+
+    def _assert_accepted_case_result(
+        self,
+        case: DefaultWriterCapabilityCase,
+        result: dict[str, object],
+    ) -> None:
+        self.assertEqual(
+            result["support_count"],
+            result["artifact_support_count"],
+        )
+        self.assertEqual(
+            result["completion_count"],
+            result["artifact_witness_count"],
+        )
+        self.assertEqual(
+            result["support_count"],
+            case.expected_support_count,
+        )
+        self.assertEqual(
+            result["completion_count"],
+            case.expected_completion_count,
+        )
+        self.assertEqual(
+            result["support_count"],
+            result["materialized_support_count"],
+        )
+        self.assertEqual(
+            result["completion_count"],
+            result["materialized_witness_count"],
+        )
+        self.assertEqual(
+            result["support_count"],
+            result["artifact_metrics"]["support_string_count"],
+        )
+        self.assertGreater(result["artifact_metrics"]["object_count"], 0)
+        self.assertEqual(
+            result["artifact_metrics"]["reachable_object_count"],
+            result["artifact_metrics"]["object_count"],
+        )
+        self.assertEqual(
+            result["artifact_metrics"]["unreferenced_object_count"],
+            0,
+        )
+        self.assertIsNotNone(result["artifact_metrics"]["count_dag_node_count"])
+        self.assertLessEqual(
+            result["artifact_metrics"]["largest_object_digest_payload_bytes"],
+            default_writer_envelope_work_budget(None).max_digest_term_bytes,
+        )
+        self.assertEqual(
+            result["structural_accepted"],
+            case.expected_structural_artifact,
+        )
+        self.assertEqual(
+            result["live_accepted"],
+            case.expected_live_artifact_verifier,
+        )
+        self.assertEqual(
+            result["facts_bound_accepted"],
+            case.expected_facts_bound_verifier,
+        )
+        self.assertEqual(
+            result["facts_bound_offline_complete"],
+            case.expected_offline_replay_complete,
+        )
+        self.assertEqual(
+            result["live_frontier_agreement_complete"],
+            case.expected_live_frontier_agreement_complete,
+        )
+        self.assertEqual(
+            result["live_count_agreement_complete"],
+            case.expected_live_count_agreement_complete,
+        )
+        self.assertEqual(
+            result["snapshot_resume_agreement_complete"],
+            case.expected_snapshot_resume_agreement_complete,
+        )
+        self.assertEqual(
+            result["facts_bound_object_kinds"],
+            case.expected_offline_object_kinds,
+        )
+        self.assertEqual(
+            result["facts_bound_unchecked_object_kinds"],
+            case.expected_offline_unchecked_object_kinds,
+        )
+        self.assertEqual(
+            result["facts_bound_unchecked_obligation_families"],
+            case.expected_offline_unchecked_obligation_families,
+        )
+        self.assertLessEqual(
+            set(case.expected_offline_relation_families),
+            set(result["facts_bound_relation_families"]),
+        )
 
     def test_blocked_default_corpus_has_typed_blockers(self) -> None:
         for case in BLOCKED_CASES:

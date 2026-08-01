@@ -21,6 +21,7 @@ class SouthStarStereoAuditCase:
     target_class: str
     target: str
     reference: tuple[int, ...]
+    ligand_equivalence: str
     expected_support: tuple[str, ...]
     support_count: int
     completion_count: int
@@ -59,11 +60,58 @@ def load_pinned_south_star_stereo_audit_cases(
         ).hexdigest()
         if digest != item.get("sorted_support_sha256"):
             raise ValueError(f"stereo audit support digest mismatch: {case_id}")
-        if item.get("extraction_options") != {
-            "include_potential_sites": True,
-            "stereo_site_discovery_mode": "specified_closure",
-        }:
+        extraction_options = item.get("extraction_options")
+        if type(extraction_options) is not dict:
+            raise ValueError(
+                f"stereo audit extraction options must be an object: {case_id}"
+            )
+        if (
+            extraction_options.get("include_potential_sites") is not True
+            or extraction_options.get("stereo_site_discovery_mode")
+            != "specified_closure"
+        ):
             raise ValueError(f"stereo audit extraction options mismatch: {case_id}")
+        known_keys = {
+            "include_potential_sites",
+            "stereo_site_discovery_mode",
+            "stereo_site_options",
+        }
+        if set(extraction_options) - known_keys:
+            raise ValueError(f"stereo audit extraction options mismatch: {case_id}")
+        stereo_site_options = extraction_options.get("stereo_site_options")
+        if stereo_site_options is not None:
+            if type(stereo_site_options) is not dict:
+                raise ValueError(
+                    f"stereo site options must be an object: {case_id}"
+                )
+            if set(stereo_site_options) != {"ligand_equivalence"}:
+                raise ValueError(
+                    f"stereo site options mismatch: {case_id}"
+                )
+            expected = stereo_site_options["ligand_equivalence"]
+            if type(expected) is not str or not expected:
+                raise ValueError(
+                    f"stereo audit ligand equivalence invalid: {case_id}"
+                )
+        ligand_equivalence = item.get("ligand_equivalence")
+        if type(ligand_equivalence) is not str or not ligand_equivalence:
+            raise ValueError(
+                f"stereo audit ligand equivalence invalid: {case_id}"
+            )
+        if ligand_equivalence == "immediate_color":
+            if stereo_site_options is not None:
+                raise ValueError(
+                    f"stereo audit ligand equivalence mismatch: {case_id}"
+                )
+        else:
+            if stereo_site_options is None:
+                raise ValueError(
+                    f"stereo audit ligand equivalence mismatch: {case_id}"
+                )
+            if stereo_site_options["ligand_equivalence"] != ligand_equivalence:
+                raise ValueError(
+                    f"stereo audit ligand equivalence mismatch: {case_id}"
+                )
         cases.append(
             SouthStarStereoAuditCase(
                 case_id=case_id,
@@ -74,6 +122,7 @@ def load_pinned_south_star_stereo_audit_cases(
                 target_class=item["target_class"],
                 target=item["target"],
                 reference=tuple(item["reference"]),
+                ligand_equivalence=ligand_equivalence,
                 expected_support=support,
                 support_count=item["support_count"],
                 completion_count=item["completion_count"],

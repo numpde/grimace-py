@@ -64,7 +64,7 @@ def writer_branch_transition_artifact_for_support(
 
 
 def _writer_branch_transition_artifact_for_prelocated_support(
-    *, prepared, snapshot, projection, branch, budget=None
+    *, prepared, snapshot, projection, branch, budget=None, branch_identity=None
 ) -> Mapping[str, object]:
     budget = default_writer_envelope_work_budget(budget)
     if (
@@ -72,6 +72,12 @@ def _writer_branch_transition_artifact_for_prelocated_support(
         or branch not in projection.branch_certificates
     ):
         _violation("prelocated_branch_projection_mismatch")
+    branch_identity = (
+        branch_identity if branch_identity is not None else _branch_certificate_identity_envelope(
+            branch,
+            budget=budget,
+        )
+    )
     table = _ObjectTable(budget)
     source_payload = _snapshot_identity_envelope(
         snapshot,
@@ -86,8 +92,8 @@ def _writer_branch_transition_artifact_for_prelocated_support(
     full_projection = _text_projection_certificate_identity_envelope(
         projection,
         budget=budget,
+        branch_certificate_digests=(branch_identity["digest"],),
     )
-    branch_identity = _branch_certificate_identity_envelope(branch, budget=budget)
     projection_payload = {
         "source_cursor": full_projection["source_cursor"],
         "emitted_text": full_projection["emitted_text"],
@@ -103,6 +109,7 @@ def _writer_branch_transition_artifact_for_prelocated_support(
     branch_ref = _add_branch_support(
         table,
         branch=branch,
+        branch_identity=branch_identity,
         text_projection=projection_payload,
         facts=prepared.facts,
         budget=budget,
@@ -225,7 +232,7 @@ def _verify_writer_branch_transition_artifact_for_selected_support(
 
 
 def _writer_branch_transition_artifact_and_live_verification_for_selected_support(
-    *, prepared, artifact, snapshot, projection, branch, budget=None
+    *, prepared, artifact, snapshot, projection, branch, budget=None, branch_identity=None
 ):
     try:
         budget = default_writer_envelope_work_budget(budget)
@@ -234,6 +241,7 @@ def _writer_branch_transition_artifact_and_live_verification_for_selected_suppor
             snapshot=snapshot,
             projection=projection,
             branch=branch,
+            branch_identity=branch_identity,
             budget=budget,
         )
         if artifact is not None and expected != artifact:

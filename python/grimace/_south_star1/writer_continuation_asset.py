@@ -18,7 +18,7 @@ from .writer_branch_transition_artifact import (
     _writer_branch_transition_artifact_and_live_verification_for_selected_support,
 )
 from .writer_branch_transition_artifact import (
-    writer_branch_transition_artifact_for_support,
+    _writer_branch_transition_artifact_for_prelocated_support,
 )
 from .writer_branch_transition_artifact_checker import (
     verify_writer_branch_transition_artifact_consistency,
@@ -33,6 +33,10 @@ from .writer_continuation_automaton import _verify_internal_consistency
 from .writer_continuation_automaton import _verify_core_consistency
 from .writer_continuation_automaton import advance_writer_continuation
 from .writer_continuation_automaton import compile_writer_continuation_automaton
+from .writer_continuation_automaton import _text_projection_manifest_digest
+from .writer_continuation_automaton import (
+    _text_projection_manifest_digest_with_digests,
+)
 from .writer_continuation_automaton import WriterContinuationAutomaton
 from .writer_continuation_automaton import WriterContinuationChoice
 from .writer_continuation_automaton import WriterContinuationCore
@@ -49,6 +53,7 @@ from .writer_envelope_terms import _identity_digest
 from .writer_envelope_terms import _runtime_options_from_terms
 from .writer_envelope_terms import _snapshot_identity_envelope
 from .writer_envelope_terms import _with_memoized_writer_envelope_terms
+from .writer_envelope_work import default_writer_envelope_work_budget
 from .writer_snapshot import capture_writer_frontier_snapshot
 from .writer_snapshot import WriterDecoderBoundary
 from .writer_snapshot_closed_terms import writer_frontier_cursor_from_closed_terms
@@ -65,6 +70,9 @@ from .writer_terminalization_artifact_checker import (
 )
 from .writer_terminalization_artifact_fact_verifier import (
     _verify_writer_terminalization_artifact_for_facts_with_context,
+)
+from .writer_snapshot_prefix_envelope import (
+    _branch_certificate_identity_envelope,
 )
 
 
@@ -206,6 +214,9 @@ class WriterContinuationAssetSemanticVerification:
 class _WriterContinuationAssetProofBatch:
     batch: object
     snapshot: object
+    branch_support_by_text_and_digest: Mapping[tuple[str, str], object]
+    terminal_support_by_digest: Mapping[str, object]
+    projection_by_text: Mapping[str, object]
 
 
 class WriterContinuationAsset:
@@ -588,20 +599,16 @@ def reconstruct_writer_cursor_from_asset(*, prepared, asset, raw_cursor_digest):
         if _identity_digest(cursor) != edge.source_raw_cursor_digest:
             _violation("continuation_asset_replay_source_mismatch")
         batch = _frontier_batch(prepared, cursor)
-        projections = tuple(
-            item
-            for item in batch.text_choice_projection_certificates
-            if item.emitted_text == edge.emitted_text
-        )
-        if len(projections) != 1:
+        proof_batch = _preindexed_frontier_batch(batch)
+        projection = proof_batch.projection_by_text.get(edge.emitted_text)
+        if projection is None:
             _violation("continuation_asset_replay_projection_not_unique")
-        projection = projections[0]
         if (
-            _identity_digest(projection) != edge.text_projection_digest
-            or tuple(
-                _identity_digest(item) for item in projection.branch_certificates
+            _text_projection_manifest_digest_with_digests(
+                projection=projection,
+                branch_certificate_digests=edge.branch_certificate_digests,
             )
-            != edge.branch_certificate_digests
+            != edge.text_projection_digest
             or _identity_digest(projection.successor_cursor)
             != edge.successor_raw_cursor_digest
         ):
@@ -640,14 +647,11 @@ def branch_transition_artifact_from_continuation_asset(
         raw_cursor_digest=source_raw_cursor_digest,
     )
     batch = _frontier_batch(prepared, cursor)
-    matches = tuple(
-        support
-        for support in batch.supports
-        if support.emitted_text == emitted_text
-        and _identity_digest(support.checked_branch_certificate)
-        == branch_certificate_digest
+    indexed = _preindexed_frontier_batch(batch)
+    matches = indexed.branch_support_by_text_and_digest.get(
+        (emitted_text, branch_certificate_digest)
     )
-    if len(matches) != 1:
+    if matches is None:
         _violation("continuation_asset_branch_identity_not_unique")
     snapshot = _snapshot_for_raw_cursor(
         prepared=prepared,
@@ -655,10 +659,17 @@ def branch_transition_artifact_from_continuation_asset(
         cursor=cursor,
         raw_cursor_digest=source_raw_cursor_digest,
     )
-    artifact = writer_branch_transition_artifact_for_support(
+    projection = indexed.projection_by_text.get(emitted_text)
+    if projection is None:
+        _violation("continuation_asset_branch_projection_not_unique")
+    artifact = _writer_branch_transition_artifact_for_prelocated_support(
         prepared=prepared,
         snapshot=snapshot,
-        support=matches[0],
+        projection=projection,
+        branch=matches.checked_branch_certificate,
+        branch_identity=indexed.branch_identity_by_text_and_digest[
+            (emitted_text, branch_certificate_digest)
+        ],
     )
     checked = verify_writer_branch_transition_artifact_consistency(artifact)
     if not checked.accepted:
@@ -682,13 +693,9 @@ def terminalization_artifact_from_continuation_asset(
         raw_cursor_digest=source_raw_cursor_digest,
     )
     batch = _frontier_batch(prepared, cursor)
-    matches = tuple(
-        support
-        for support in batch.terminal_supports
-        if _identity_digest(support.checked_terminal_certificate)
-        == terminal_support_identity_digest
-    )
-    if len(matches) != 1:
+    indexed = _preindexed_frontier_batch(batch)
+    matches = indexed.terminal_support_by_digest.get(terminal_support_identity_digest)
+    if matches is None:
         _violation("continuation_asset_terminal_identity_not_unique")
     snapshot = _snapshot_for_raw_cursor(
         prepared=prepared,
@@ -699,7 +706,7 @@ def terminalization_artifact_from_continuation_asset(
     artifact = writer_terminalization_artifact_for_support(
         prepared=prepared,
         snapshot=snapshot,
-        support=matches[0],
+        support=matches,
     )
     checked = verify_writer_terminalization_artifact_consistency(artifact)
     if not checked.accepted:
@@ -723,29 +730,24 @@ def verified_branch_artifact_from_continuation_asset(
         source_raw_cursor_digest=source_raw_cursor_digest,
     )
     batch = proof_batch.batch
-    projections = tuple(
-        item
-        for item in batch.text_choice_projection_certificates
-        if item.emitted_text == emitted_text
-    )
-    if len(projections) != 1:
+    projection = proof_batch.projection_by_text.get(emitted_text)
+    if projection is None:
         _violation("continuation_asset_branch_projection_not_unique")
-    projection = projections[0]
+    projections = (projection,)
     if (
-        _identity_digest(projection) != edge.text_projection_digest
-        or tuple(
-            _identity_digest(item) for item in projection.branch_certificates
+        _text_projection_manifest_digest_with_digests(
+            projection=projection,
+            branch_certificate_digests=edge.branch_certificate_digests,
         )
-        != edge.branch_certificate_digests
+        != edge.text_projection_digest
     ):
         _violation("continuation_asset_branch_projection_mismatch")
-    matches = tuple(
-        support.checked_branch_certificate
-        for support in batch.supports
-        if support.emitted_text == emitted_text
-        and _identity_digest(support.checked_branch_certificate)
-        == branch_certificate_digest
+    support = proof_batch.branch_support_by_text_and_digest.get(
+        (edge.emitted_text, branch_certificate_digest)
     )
+    if support is None:
+        _violation("continuation_asset_branch_identity_not_unique")
+    matches = (support.checked_branch_certificate,)
     if len(matches) != 1:
         _violation("continuation_asset_branch_identity_not_unique")
     artifact, live = _with_memoized_writer_envelope_terms(
@@ -755,6 +757,9 @@ def verified_branch_artifact_from_continuation_asset(
         snapshot=proof_batch.snapshot,
         projection=projection,
         branch=matches[0],
+        branch_identity=proof_batch.branch_identity_by_text_and_digest[
+            (edge.emitted_text, branch_certificate_digest)
+        ],
     )
     if not live.accepted:
         _violation(live.reason or "continuation_asset_branch_live_rejection")
@@ -795,14 +800,10 @@ def verified_terminal_artifact_from_continuation_asset(
         source_raw_cursor_digest=source_raw_cursor_digest,
     )
     batch = proof_batch.batch
-    matches = tuple(
-        support
-        for support in batch.terminal_supports
-        if _identity_digest(support.checked_terminal_certificate)
-        == terminal_support_identity_digest
-    )
-    if len(matches) != 1:
+    support = proof_batch.terminal_support_by_digest.get(terminal_support_identity_digest)
+    if support is None:
         _violation("continuation_asset_terminal_identity_not_unique")
+    matches = (support,)
     artifact, live = _with_memoized_writer_envelope_terms(
         _writer_terminalization_artifact_and_live_verification_for_selected_support,
         prepared=prepared,
@@ -840,14 +841,68 @@ def _continuation_asset_proof_batch(
         asset=asset,
         raw_cursor_digest=source_raw_cursor_digest,
     )
+    batch = _frontier_batch(prepared, cursor)
+    proof_batch = _preindexed_frontier_batch(batch)
     return _WriterContinuationAssetProofBatch(
-        batch=_frontier_batch(prepared, cursor),
+        batch=batch,
         snapshot=_snapshot_for_raw_cursor(
             prepared=prepared,
             asset=asset,
             cursor=cursor,
             raw_cursor_digest=source_raw_cursor_digest,
         ),
+        branch_support_by_text_and_digest=proof_batch.branch_support_by_text_and_digest,
+        terminal_support_by_digest=proof_batch.terminal_support_by_digest,
+        projection_by_text=proof_batch.projection_by_text,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _FrontierBatchProofIndex:
+    branch_support_by_text_and_digest: Mapping[tuple[str, str], object]
+    branch_identity_by_text_and_digest: Mapping[
+        tuple[str, str], Mapping[str, object]
+    ]
+    terminal_support_by_digest: Mapping[str, object]
+    projection_by_text: Mapping[str, object]
+
+
+def _preindexed_frontier_batch(
+    batch,
+    *,
+    budget=None,
+) -> _FrontierBatchProofIndex:
+    budget = default_writer_envelope_work_budget(budget)
+    branch_support_by_text_and_digest = {}
+    branch_identity_by_text_and_digest = {}
+    terminal_support_by_digest = {}
+    projection_by_text = {}
+    for projection in batch.text_choice_projection_certificates:
+        if projection.emitted_text in projection_by_text:
+            _violation("continuation_asset_batch_projection_duplicate")
+        projection_by_text[projection.emitted_text] = projection
+    for support in batch.supports:
+        key = (
+            support.emitted_text,
+            _identity_digest(support.checked_branch_certificate),
+        )
+        if key in branch_support_by_text_and_digest:
+            _violation("continuation_asset_batch_branch_support_duplicate")
+        branch_support_by_text_and_digest[key] = support
+        branch_identity_by_text_and_digest[key] = _branch_certificate_identity_envelope(
+            support.checked_branch_certificate,
+            budget=budget,
+        )
+    for support in batch.terminal_supports:
+        terminal_support = _identity_digest(support.checked_terminal_certificate)
+        if terminal_support in terminal_support_by_digest:
+            _violation("continuation_asset_batch_terminal_support_duplicate")
+        terminal_support_by_digest[terminal_support] = support
+    return _FrontierBatchProofIndex(
+        branch_support_by_text_and_digest=branch_support_by_text_and_digest,
+        branch_identity_by_text_and_digest=branch_identity_by_text_and_digest,
+        terminal_support_by_digest=terminal_support_by_digest,
+        projection_by_text=projection_by_text,
     )
 
 
@@ -1010,11 +1065,10 @@ def _verify_live_cursor_batch(
         _violation("continuation_asset_live_multiplicity_mismatch")
     for edge, projection in zip(edge_records, projections):
         if (
-            edge.text_projection_digest != _identity_digest(projection)
-            or edge.branch_certificate_digests
-            != tuple(
-                _identity_digest(item)
-                for item in projection.branch_certificates
+            edge.text_projection_digest
+            != _text_projection_manifest_digest_with_digests(
+                projection=projection,
+                branch_certificate_digests=edge.branch_certificate_digests,
             )
             or edge.successor_raw_cursor_digest
             != _identity_digest(projection.successor_cursor)
@@ -1132,6 +1186,7 @@ def verify_writer_continuation_asset_for_prepared(
             if cursor is None:
                 _violation("continuation_asset_live_cursor_path_missing")
             batch = _frontier_batch(prepared, cursor)
+            proof_batch = _preindexed_frontier_batch(batch)
             cursor_edges, terminal_record = _with_memoized_writer_envelope_terms(
                 _verify_live_cursor_batch,
                 asset=asset,
@@ -1148,16 +1203,10 @@ def verify_writer_continuation_asset_for_prepared(
                 strict=True,
             ):
                 for certificate_digest in edge.branch_certificate_digests:
-                    matches = tuple(
-                        support
-                        for support in batch.supports
-                        if support.emitted_text == edge.emitted_text
-                        and _identity_digest(
-                            support.checked_branch_certificate
-                        )
-                        == certificate_digest
+                    support = proof_batch.branch_support_by_text_and_digest.get(
+                        (edge.emitted_text, certificate_digest)
                     )
-                    if len(matches) != 1:
+                    if support is None:
                         _violation(
                             "continuation_asset_branch_locator_membership_mismatch"
                         )
@@ -1168,7 +1217,7 @@ def verify_writer_continuation_asset_for_prepared(
                             record=record,
                             cursor=cursor,
                         )
-                    branch = matches[0].checked_branch_certificate
+                    branch = support.checked_branch_certificate
                     artifact, live_branch = _with_memoized_writer_envelope_terms(
                         _writer_branch_transition_artifact_and_live_verification_for_selected_support,
                             prepared=prepared,
@@ -1176,6 +1225,9 @@ def verify_writer_continuation_asset_for_prepared(
                             snapshot=snapshot,
                             projection=projection,
                             branch=branch,
+                            branch_identity=proof_batch.branch_identity_by_text_and_digest[
+                                (edge.emitted_text, certificate_digest)
+                            ],
                     )
                     if not live_branch.accepted:
                         _violation(
@@ -1222,13 +1274,10 @@ def verify_writer_continuation_asset_for_prepared(
 
             if terminal_record is not None:
                 for support_digest in terminal_record.terminal_support_identity_digests:
-                    matches = tuple(
-                        support
-                        for support in batch.terminal_supports
-                        if _identity_digest(support.checked_terminal_certificate)
-                        == support_digest
+                    support = proof_batch.terminal_support_by_digest.get(
+                        support_digest
                     )
-                    if len(matches) != 1:
+                    if support is None:
                         _violation(
                             "continuation_asset_terminal_locator_membership_mismatch"
                         )
@@ -1239,13 +1288,13 @@ def verify_writer_continuation_asset_for_prepared(
                             record=record,
                             cursor=cursor,
                         )
-                    artifact, live_terminal = _with_memoized_writer_envelope_terms(
-                        _writer_terminalization_artifact_and_live_verification_for_selected_support,
+                        artifact, live_terminal = _with_memoized_writer_envelope_terms(
+                            _writer_terminalization_artifact_and_live_verification_for_selected_support,
                             prepared=prepared,
                             artifact=None,
                             snapshot=snapshot,
-                            selected=matches[0],
-                    )
+                            selected=support,
+                        )
                     if not live_terminal.accepted:
                         _violation(
                             live_terminal.reason

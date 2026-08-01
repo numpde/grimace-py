@@ -527,16 +527,20 @@ class _Compiler:
             successor_compiled = self._compile_cursor(
                 projection.successor_cursor
             )
+            branch_certificate_digests = tuple(
+                _identity_digest(certificate)
+                for certificate in projection.branch_certificates
+            )
             item = WriterContinuationEdgeRecord(
                 edge_id="",
                 source_raw_cursor_digest=source_digest,
                 source_node_id=source_node_id,
                 emitted_text=projection.emitted_text,
-                text_projection_digest=_identity_digest(projection),
-                branch_certificate_digests=tuple(
-                    _identity_digest(certificate)
-                    for certificate in projection.branch_certificates
+                text_projection_digest=_text_projection_manifest_digest_with_digests(
+                    projection=projection,
+                    branch_certificate_digests=branch_certificate_digests,
                 ),
+                branch_certificate_digests=branch_certificate_digests,
                 successor_raw_cursor_digest=_identity_digest(
                     projection.successor_cursor
                 ),
@@ -621,6 +625,35 @@ class _Compiler:
             ):
                 _violation("continuation_cursor_scaling_mismatch")
         return raw
+
+
+def _text_projection_manifest_digest(projection) -> str:
+    return _text_projection_manifest_digest_with_digests(
+        projection=projection,
+        branch_certificate_digests=None,
+    )
+
+
+def _text_projection_manifest_digest_with_digests(
+    projection,
+    branch_certificate_digests: tuple[str, ...] | None,
+) -> str:
+    if branch_certificate_digests is None:
+        branch_certificate_digests = tuple(
+            _identity_digest(certificate)
+            for certificate in projection.branch_certificates
+        )
+    return _identity_digest(
+        {
+            "source_cursor_digest": _identity_digest(projection.source_cursor),
+            "emitted_text": projection.emitted_text,
+            "successor_cursor_digest": _identity_digest(projection.successor_cursor),
+            "immediate_multiplicity": projection.immediate_multiplicity,
+            "support_count": projection.support_count,
+            "completion_count": projection.completion_count,
+            "branch_certificate_digests": branch_certificate_digests,
+        }
+    )
 
 
 def compile_writer_continuation_automaton(

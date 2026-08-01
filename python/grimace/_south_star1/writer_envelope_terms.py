@@ -17,8 +17,12 @@ from .writer_envelope_work import WriterEnvelopeWorkExceeded
 from .writer_envelope_work import WriterEnvelopeWorkViolation
 
 
-_TERM_CACHE: ContextVar[dict[int, tuple[object, object]] | None] = ContextVar(
+_TERM_CACHE: ContextVar[dict[int, object] | None] = ContextVar(
     "writer_envelope_term_cache",
+    default=None,
+)
+_TERM_IN_PROGRESS: ContextVar[dict[int, bool] | None] = ContextVar(
+    "writer_envelope_term_in_progress",
     default=None,
 )
 
@@ -26,11 +30,13 @@ _TERM_CACHE: ContextVar[dict[int, tuple[object, object]] | None] = ContextVar(
 @contextmanager
 def _memoize_writer_envelope_terms():
     """Reuse immutable dataclass terms within one bounded serialization batch."""
-    token = _TERM_CACHE.set({})
+    token_cache = _TERM_CACHE.set({})
+    token_progress = _TERM_IN_PROGRESS.set({})
     try:
         yield
     finally:
-        _TERM_CACHE.reset(token)
+        _TERM_CACHE.reset(token_cache)
+        _TERM_IN_PROGRESS.reset(token_progress)
 
 
 def _with_memoized_writer_envelope_terms(function, /, *args, **kwargs):
@@ -50,40 +56,84 @@ def _term(value):
             ),
             "value": value.value,
         }
-    if isinstance(value, (tuple, list)):
-        return [_term(item) for item in value]
-    if isinstance(value, (frozenset, set)):
-        return [
-            *_sorted_terms((_term(item) for item in value))
-        ]
-    if isinstance(value, Mapping):
-        return [
-            [str(key), _term(item)]
-            for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
-        ]
+
+    cache = _TERM_CACHE.get()
+    if cache is None:
+        cache = {}
+    in_progress = _TERM_IN_PROGRESS.get()
+    if in_progress is None:
+        in_progress = {}
+    value_id = id(value)
+    if value_id in cache:
+        return cache[value_id]
+    if isinstance(value, (tuple, list, frozenset, set, Mapping)) and in_progress.get(
+        value_id
+    ):
+        _envelope_violation("cyclic_writer_envelope_term")
     if is_dataclass(value):
-        parameters = getattr(value.__class__, "__dataclass_params__", None)
-        cache = (
-            _TERM_CACHE.get()
-            if parameters is not None and parameters.frozen
-            else None
-        )
-        cache_key = id(value)
-        if cache is not None:
-            cached = cache.get(cache_key)
-            if cached is not None and cached[0] is value:
-                return cached[1]
-        term = {
-            "__dataclass__": (
-                f"{value.__class__.__module__}.{value.__class__.__name__}"
-            ),
-            "fields": [
-                [field.name, _term(getattr(value, field.name))]
-                for field in fields(value)
-            ],
-        }
-        if cache is not None:
-            cache[cache_key] = (value, term)
+        return _dataclass_term(value, in_progress, value_id)
+    if isinstance(value, (tuple, list)):
+        if in_progress.get(value_id):
+            _envelope_violation("cyclic_writer_envelope_term")
+        in_progress[value_id] = True
+        try:
+            term = [_term(item) for item in value]
+        finally:
+            in_progress.pop(value_id, None)
+        cache[value_id] = term
+        return term
+    if isinstance(value, (frozenset, set)):
+        if in_progress.get(value_id):
+            _envelope_violation("cyclic_writer_envelope_term")
+        in_progress[value_id] = True
+        try:
+            term = [
+                *_sorted_terms((_term(item) for item in value))
+            ]
+        finally:
+            in_progress.pop(value_id, None)
+        cache[value_id] = term
+        return term
+    if isinstance(value, Mapping):
+        if in_progress.get(value_id):
+            _envelope_violation("cyclic_writer_envelope_term")
+        in_progress[value_id] = True
+        try:
+            term = [
+                [str(key), _term(item)]
+                for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+            ]
+        finally:
+            in_progress.pop(value_id, None)
+        cache[value_id] = term
+        return term
+    _envelope_violation(f"unsupported_term_type:{type(value).__name__}")
+
+
+def _dataclass_term(value, in_progress, value_id):
+    if is_dataclass(value):
+        if in_progress.get(value_id):
+            _envelope_violation("cyclic_writer_envelope_term")
+        cache = _TERM_CACHE.get()
+        if cache is None:
+            cache = {}
+        cached = cache.get(value_id)
+        if cached is not None:
+            return cached
+        in_progress[value_id] = True
+        try:
+            term = {
+                "__dataclass__": (
+                    f"{value.__class__.__module__}.{value.__class__.__name__}"
+                ),
+                "fields": [
+                    [field.name, _term(getattr(value, field.name))]
+                    for field in fields(value)
+                ],
+            }
+        finally:
+            in_progress.pop(value_id, None)
+        cache[value_id] = term
         return term
     _envelope_violation(f"unsupported_term_type:{type(value).__name__}")
 

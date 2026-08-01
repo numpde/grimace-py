@@ -19,21 +19,15 @@ from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
 from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_smiles
-from grimace._south_star1.writer_branch_transition_artifact import verify_writer_branch_transition_artifact_envelope
-from grimace._south_star1.writer_branch_transition_artifact_checker import verify_writer_branch_transition_artifact_consistency
-from grimace._south_star1.writer_branch_transition_artifact_fact_verifier import verify_writer_branch_transition_artifact_for_facts
-from grimace._south_star1.writer_continuation_asset import branch_transition_artifact_from_continuation_asset
 from grimace._south_star1.writer_continuation_asset import open_writer_continuation_core
-from grimace._south_star1.writer_continuation_asset import terminalization_artifact_from_continuation_asset
 from grimace._south_star1.writer_continuation_asset import verify_writer_continuation_asset_consistency
-from grimace._south_star1.writer_continuation_asset import verify_writer_continuation_asset_live
+from grimace._south_star1.writer_continuation_asset import (
+    verify_writer_continuation_asset_for_prepared,
+)
 from grimace._south_star1.writer_continuation_asset import write_writer_continuation_asset
 from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
 from grimace._south_star1.writer_snapshot import capture_writer_frontier_snapshot
 from grimace._south_star1.writer_support import enumerate_prepared_writer_shaped_support
-from grimace._south_star1.writer_terminalization_artifact import verify_writer_terminalization_artifact_envelope
-from grimace._south_star1.writer_terminalization_artifact_checker import verify_writer_terminalization_artifact_consistency
-from grimace._south_star1.writer_terminalization_artifact_fact_verifier import verify_writer_terminalization_artifact_for_facts
 from tests.helpers.rdkit_south_star_stereo_audit import load_pinned_south_star_stereo_audit_cases
 from tests.south_star1.default_writer_capability_ledger import DEFAULT_WRITER_CAPABILITY_CASES
 from tests.south_star1.helpers import directional_facts
@@ -48,14 +42,11 @@ class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
             rdBase.rdkitVersion
         )
         cls.ledger = {item.name: item for item in DEFAULT_WRITER_CAPABILITY_CASES}
-        cls.options = SouthStarRuntimeOptions(
-            rooted_at_atom=0,
-            serialization_language=SerializationLanguageMode.WRITER_SHAPED,
-        )
         cls.assets = {}
         cls.facts = {}
         cls.prepared = {}
         cls.snapshots = {}
+        cls.options = {}
         with (
             patch(
                 "grimace._south_star1.writer_frontier_count_envelope.writer_frontier_count_envelope_for_snapshot",
@@ -71,6 +62,10 @@ class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
             ),
         ):
             for item in cls.fixture_cases:
+                options = SouthStarRuntimeOptions(
+                    rooted_at_atom=cls.ledger[item.name].rooted_at_atom,
+                    serialization_language=SerializationLanguageMode.WRITER_SHAPED,
+                )
                 facts = ordinary_molecule_facts_from_smiles(
                     item.source_smiles,
                     cls.ledger[item.name].extraction_options,
@@ -81,8 +76,8 @@ class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
                 )
                 snapshot = capture_writer_frontier_snapshot(
                     prepared=prepared,
-                    runtime_options=cls.options,
-                    cursor=initial_writer_frontier_cursor(prepared, cls.options),
+                    runtime_options=options,
+                    cursor=initial_writer_frontier_cursor(prepared, options),
                 )
                 path = Path(cls.temporary.name) / item.name
                 write_writer_continuation_asset(
@@ -94,6 +89,7 @@ class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
                 cls.facts[item.name] = facts
                 cls.prepared[item.name] = prepared
                 cls.snapshots[item.name] = snapshot
+                cls.options[item.name] = options
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -118,16 +114,24 @@ class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
                 asset = self.assets[item.name]
                 self.assertEqual(item.source_smiles, ledger.smiles)
                 self.assertEqual(item.extraction_profile, ledger.extraction_profile)
+                self.assertEqual(item.support_count, ledger.expected_support_count)
+                self.assertEqual(item.completion_count, ledger.expected_completion_count)
                 self.assertEqual(item.sorted_support_sha256, ledger.expected_support_digest)
                 self.assertTrue(
                     verify_writer_continuation_asset_consistency(asset.path).accepted
                 )
-                live = verify_writer_continuation_asset_live(
+                live = verify_writer_continuation_asset_for_prepared(
                     prepared=self.prepared[item.name],
                     asset=asset,
-                    full=True,
                 )
                 self.assertTrue(live.accepted, live.reason)
+                self.assertTrue(live.structurally_verified)
+                self.assertTrue(live.live_replay_complete)
+                self.assertEqual(live.branch_locator_count, live.branch_proof_count)
+                self.assertEqual(
+                    live.terminal_locator_count, live.terminal_proof_count
+                )
+                self.assertEqual(live.unchecked_obligation_families, ())
 
                 decoder = MolToSmilesContinuationDecoder.from_asset(asset.path)
                 self.assertEqual(decoder.support_count, item.support_count)
@@ -156,81 +160,65 @@ class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
                         {"directional_site", "directional_bond_emission"},
                     )
 
-    def test_every_local_stereo_proof_replays_facts_bound(self) -> None:
-        expected_operations = {
-            "tetra_plus": {
-                "tetrahedral atom-token restriction",
-                "tetrahedral local-order factor closure",
-            },
-            "tetra_minus": {
-                "tetrahedral atom-token restriction",
-                "tetrahedral local-order factor closure",
-            },
-            "directional_opposite": {"directional carrier-mark restriction"},
-            "directional_together": {"directional carrier-mark restriction"},
+    def test_ledger_stereo_pinning_has_fixture_coverage(self) -> None:
+        pinned_ledger = {
+            case.name
+            for case in self.ledger.values()
+            if case.extraction_profile == "specified_stereo_closure"
+            and case.expected_rdkit_audit_version_pinned
         }
+        fixture_names = {item.name for item in self.fixture_cases}
+
+        self.assertEqual(pinned_ledger, fixture_names)
+
         for item in self.fixture_cases:
-            asset = self.assets[item.name]
-            prepared = self.prepared[item.name]
-            facts = self.facts[item.name]
-            operations = set()
-            for edge in asset.records("edge_records"):
-                for certificate_digest in edge.branch_certificate_digests:
-                    branch = branch_transition_artifact_from_continuation_asset(
-                        prepared=prepared,
-                        asset=asset,
-                        source_raw_cursor_digest=edge.source_raw_cursor_digest,
-                        emitted_text=edge.emitted_text,
-                        branch_certificate_digest=certificate_digest,
-                    )
-                    structural = verify_writer_branch_transition_artifact_consistency(branch)
-                    live = verify_writer_branch_transition_artifact_envelope(
-                        prepared=prepared,
-                        artifact=branch,
-                    )
-                    offline = verify_writer_branch_transition_artifact_for_facts(
-                        facts=facts,
-                        runtime_options=self.options,
-                        artifact=branch,
-                    )
-                    self.assertTrue(structural.accepted, structural.reason)
-                    self.assertTrue(live.accepted, live.reason)
-                    self.assertTrue(offline.accepted, offline.reason)
-                    self.assertEqual(offline.unchecked_obligation_families, ())
-                    operations.update(offline.semantically_replayed_operations)
-            for terminal in asset.records("terminal_records"):
-                for support_digest in terminal.terminal_support_identity_digests:
-                    proof = terminalization_artifact_from_continuation_asset(
-                        prepared=prepared,
-                        asset=asset,
-                        source_raw_cursor_digest=terminal.source_raw_cursor_digest,
-                        terminal_support_identity_digest=support_digest,
-                    )
-                    structural = verify_writer_terminalization_artifact_consistency(proof)
-                    live = verify_writer_terminalization_artifact_envelope(
-                        prepared=prepared,
-                        artifact=proof,
-                    )
-                    offline = verify_writer_terminalization_artifact_for_facts(
-                        facts=facts,
-                        runtime_options=self.options,
-                        artifact=proof,
-                    )
-                    self.assertTrue(structural.accepted, structural.reason)
-                    self.assertTrue(live.accepted, live.reason)
-                    self.assertTrue(offline.accepted, offline.reason)
-                    self.assertEqual(offline.unchecked_obligation_families, ())
-                    operations.update(offline.semantically_replayed_operations)
-            self.assertLessEqual(expected_operations[item.name], operations)
+            with self.subTest(case=item.name):
+                ledger = self.ledger[item.name]
+                self.assertTrue(ledger.expected_rdkit_audit_version_pinned)
+                self.assertEqual(
+                    ledger.extraction_profile,
+                    "specified_stereo_closure",
+                )
+
+    def test_every_local_stereo_case_passes_full_asset_semantic_replay(self) -> None:
+        for item in self.fixture_cases:
+            with self.subTest(case=item.name):
+                verification = verify_writer_continuation_asset_for_prepared(
+                    prepared=self.prepared[item.name],
+                    asset=self.assets[item.name],
+                )
+                self.assertTrue(verification.accepted, verification.unchecked_obligation_families)
+                self.assertTrue(verification.live_replay_complete)
+                self.assertEqual(
+                    verification.branch_locator_count,
+                    verification.branch_proof_count,
+                )
+                self.assertEqual(
+                    verification.terminal_locator_count,
+                    verification.terminal_proof_count,
+                )
+                self.assertEqual(verification.unchecked_obligation_families, ())
 
     def test_polarities_are_disjoint_and_reparse_only_to_their_source(self) -> None:
-        pairs = (("tetra_plus", "tetra_minus"), ("directional_opposite", "directional_together"))
+        pairs = (
+            ("tetra_plus", "tetra_minus"),
+            ("directional_opposite", "directional_together"),
+            (
+                "remote_coupled_tetrahedral_a",
+                "remote_coupled_tetrahedral_b",
+            ),
+        )
+        remote_pairs = (("remote_coupled_tetrahedral_a", "remote_coupled_tetrahedral_b"),)
         fixture_by_name = {item.name: item for item in self.fixture_cases}
         for left, right in pairs:
             self.assertTrue(
                 set(fixture_by_name[left].expected_support).isdisjoint(
                     fixture_by_name[right].expected_support
                 )
+            )
+            self.assertNotEqual(
+                fixture_by_name[left].sorted_support_sha256,
+                fixture_by_name[right].sorted_support_sha256,
             )
             for name, opposite in ((left, right), (right, left)):
                 for text in fixture_by_name[name].expected_support:
@@ -246,6 +234,16 @@ class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
                         facts_are_isomorphic(self.facts[opposite], reparsed).isomorphic,
                         (opposite, text),
                     )
+        for left, right in remote_pairs:
+            self.assertTrue(
+                set(fixture_by_name[left].expected_support).isdisjoint(
+                    fixture_by_name[right].expected_support
+                )
+            )
+            self.assertEqual(fixture_by_name[left].support_count, 216)
+            self.assertEqual(fixture_by_name[left].completion_count, 216)
+            self.assertEqual(fixture_by_name[right].support_count, 216)
+            self.assertEqual(fixture_by_name[right].completion_count, 216)
 
     def test_directional_reference_pair_and_target_transform_together(self) -> None:
         facts = self.facts["directional_opposite"]
@@ -260,11 +258,23 @@ class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
             target=site.target,
         )
         self.assertEqual(
-            _support_for_replaced_directional_site(facts, transformed, self.options),
-            _support_for_replaced_directional_site(facts, site, self.options),
+            _support_for_replaced_directional_site(
+                facts,
+                transformed,
+                self.options["directional_opposite"],
+            ),
+            _support_for_replaced_directional_site(
+                facts,
+                site,
+                self.options["directional_opposite"],
+            ),
         )
         self.assertEqual(
-            _support_for_replaced_directional_site(facts, detached, self.options),
+            _support_for_replaced_directional_site(
+                facts,
+                detached,
+                self.options["directional_opposite"],
+            ),
             set(
                 next(
                     item.expected_support
@@ -285,6 +295,12 @@ class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
             ("tetra_minus", "tetra_plus"),
             ("directional_opposite", "directional_together"),
             ("directional_together", "directional_opposite"),
+            ("zero_h_tetrahedral", "tetra_plus"),
+            ("adjacent_specified_tetrahedral", "tetra_plus"),
+            ("remote_coupled_tetrahedral_a", "remote_coupled_tetrahedral_b"),
+            ("remote_coupled_tetrahedral_b", "remote_coupled_tetrahedral_a"),
+            ("disconnected_tetra_oxygen", "tetra_plus"),
+            ("disconnected_directional_oxygen", "directional_opposite"),
         ):
             with self.subTest(asset=asset_name, prepared=prepared_name):
                 with self.assertRaisesRegex(Exception, "prepared_identity_mismatch"):

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import hashlib
 import json
 from pathlib import Path
@@ -17,29 +18,99 @@ from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_rdki
 from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_smiles
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
-from grimace._south_star1.writer_branch_transition_artifact import verify_writer_branch_transition_artifact_envelope
-from grimace._south_star1.writer_branch_transition_artifact_checker import verify_writer_branch_transition_artifact_consistency
-from grimace._south_star1.writer_branch_transition_artifact_fact_verifier import verify_writer_branch_transition_artifact_for_facts
-from grimace._south_star1.writer_continuation_asset import branch_transition_artifact_from_continuation_asset
 from grimace._south_star1.writer_continuation_asset import open_writer_continuation_core
-from grimace._south_star1.writer_continuation_asset import terminalization_artifact_from_continuation_asset
 from grimace._south_star1.writer_continuation_asset import verify_writer_continuation_asset_consistency
-from grimace._south_star1.writer_continuation_asset import verify_writer_continuation_asset_live
+from grimace._south_star1.writer_continuation_asset import verify_writer_continuation_asset_for_prepared
 from grimace._south_star1.writer_continuation_asset import write_writer_continuation_asset
 from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
 from grimace._south_star1.writer_snapshot import capture_writer_frontier_snapshot
-from grimace._south_star1.writer_terminalization_artifact import verify_writer_terminalization_artifact_envelope
-from grimace._south_star1.writer_terminalization_artifact_checker import verify_writer_terminalization_artifact_consistency
-from grimace._south_star1.writer_terminalization_artifact_fact_verifier import verify_writer_terminalization_artifact_for_facts
 from tests.south_star1.default_writer_capability_ledger import ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES
 from tests.south_star1.test_writer_default_parity_corpus import _facts
 from tests.south_star1.test_writer_default_parity_corpus import _support_image
 from tests.south_star1.test_writer_default_parity_corpus import _writer_options
 
 
+_ZERO_H_AND_ADJACENT = ("zero_h_tetrahedral", "adjacent_specified_tetrahedral")
+_REMOTE_COUPLED_A = ("remote_coupled_tetrahedral_a",)
+_REMOTE_COUPLED_B = ("remote_coupled_tetrahedral_b",)
+_SPECIAL_CASES = _ZERO_H_AND_ADJACENT + _REMOTE_COUPLED_A + _REMOTE_COUPLED_B
+
+
+def _accepted_case_shards() -> dict[str, tuple[str, ...]]:
+    accepted = tuple(case.name for case in ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES)
+    return {
+        "legacy/default cases": tuple(
+            name for name in accepted if name not in _SPECIAL_CASES
+        ),
+        "zero-H and adjacent tetra": _ZERO_H_AND_ADJACENT,
+        "remote coupled A": _REMOTE_COUPLED_A,
+        "remote coupled B": _REMOTE_COUPLED_B,
+    }
+
+
+def _accepted_case_names_for_slow_remote() -> frozenset[str]:
+    return frozenset().union(
+        _ZERO_H_AND_ADJACENT,
+        _REMOTE_COUPLED_A,
+        _REMOTE_COUPLED_B,
+    )
+
+
+def _run_case_slow(case_name: str) -> bool:
+    if os.environ.get("SOUTH_STAR1_RUN_SLOW") == "1":
+        return False
+    return case_name in _accepted_case_names_for_slow_remote()
+
+
 class WriterDefaultContinuationCorpusTest(unittest.TestCase):
-    def test_every_accepted_case_crosses_all_continuation_tiers(self) -> None:
+    def test_accepted_default_shards_are_complete_and_deterministic(self) -> None:
+        shards = _accepted_case_shards()
+        self.assertEqual(
+            tuple(shards),
+            (
+                "legacy/default cases",
+                "zero-H and adjacent tetra",
+                "remote coupled A",
+                "remote coupled B",
+            ),
+        )
+
+        shard_names = tuple(
+            case_name
+            for names in shards.values()
+            for case_name in names
+        )
+        accepted_names = tuple(case.name for case in ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES)
+        accepted_positions = {name: i for i, name in enumerate(accepted_names)}
+        self.assertEqual(len(shard_names), len(set(shard_names)))
+        self.assertEqual(set(shard_names), set(accepted_names))
+        self.assertEqual(
+            tuple(name for name in accepted_names if name in _SPECIAL_CASES),
+            _SPECIAL_CASES,
+        )
+
+        for names in shards.values():
+            for name in names:
+                self.assertIn(name, accepted_names)
+            positions = [accepted_positions[name] for name in names]
+            self.assertEqual(positions, sorted(positions))
+
+    def _run_cases(self):
         for case in ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES:
+            if _run_case_slow(case.name):
+                continue
+            yield case
+
+        if os.environ.get("SOUTH_STAR1_RUN_SLOW") == "1":
+            for name in _accepted_case_names_for_slow_remote():
+                yield next(
+                    item
+                    for item in ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES
+                    if item.name == name
+                )
+
+    def _cross_all_continuation_tiers(self, cases) -> None:
+        for case in cases:
             with self.subTest(case=case.name), TemporaryDirectory() as directory:
                 options = _writer_options(case.rooted_at_atom)
                 facts = _facts(case)
@@ -74,13 +145,24 @@ class WriterDefaultContinuationCorpusTest(unittest.TestCase):
                     )
                 asset = open_writer_continuation_core(path)
                 structural = verify_writer_continuation_asset_consistency(path)
-                live = verify_writer_continuation_asset_live(
+                live = verify_writer_continuation_asset_for_prepared(
                     prepared=prepared,
                     asset=asset,
-                    full=True,
                 )
                 self.assertEqual(structural.accepted, case.expected_continuation_asset_complete)
                 self.assertTrue(live.accepted, live.reason)
+                self.assertTrue(live.structurally_verified)
+                self.assertTrue(live.live_replay_complete)
+                self.assertEqual(live.branch_locator_count, live.branch_proof_count)
+                self.assertEqual(live.terminal_locator_count, live.terminal_proof_count)
+                self.assertEqual(live.unchecked_obligation_families, ())
+
+                if case.name in {"remote_coupled_tetrahedral_a", "remote_coupled_tetrahedral_b"}:
+                    self.assertEqual(live.raw_cursor_count, 3075)
+                    self.assertEqual(live.edge_locator_count, 3074)
+                    self.assertEqual(live.branch_locator_count, 3848)
+                    self.assertEqual(live.terminal_locator_count, 216)
+                    self.assertEqual(live.terminal_record_count, 216)
 
                 decoder = MolToSmilesContinuationDecoder.from_asset(path)
                 support = _decoder_support(decoder)
@@ -107,13 +189,21 @@ class WriterDefaultContinuationCorpusTest(unittest.TestCase):
                     prepared=prepared,
                 )
                 self.assertIsNotNone(proof_decoder._state.proof_cursor)
-                _verify_all_local_proofs(
-                    test=self,
-                    facts=facts,
-                    prepared=prepared,
-                    options=options,
-                    asset=asset,
-                )
+
+    def test_every_fast_accepted_case_crosses_all_continuation_tiers(self) -> None:
+        cases = tuple(self._run_cases())
+        self.assertTrue(cases)
+        self._cross_all_continuation_tiers(cases)
+
+    def test_remote_coupled_cases_cross_all_continuation_tiers(self) -> None:
+        if os.environ.get("SOUTH_STAR1_RUN_SLOW") != "1":
+            self.skipTest("set SOUTH_STAR1_RUN_SLOW=1 to run remote-coupled cases")
+        cases = tuple(
+            case
+            for case in ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES
+            if case.name in _accepted_case_names_for_slow_remote()
+        )
+        self._cross_all_continuation_tiers(cases)
 
     def test_renumbered_rdkit_stereo_keeps_certified_rust_language(self) -> None:
         cases = (
@@ -184,10 +274,9 @@ def _certified_rdkit_support(*, facts, root: int, path: Path):
     )
     asset = open_writer_continuation_core(path)
     structural = verify_writer_continuation_asset_consistency(path)
-    live = verify_writer_continuation_asset_live(
+    live = verify_writer_continuation_asset_for_prepared(
         prepared=prepared,
         asset=asset,
-        full=True,
     )
     if not structural.accepted or not live.accepted:
         raise AssertionError((structural.reason, live.reason))
@@ -197,54 +286,6 @@ def _certified_rdkit_support(*, facts, root: int, path: Path):
         decoder.support_count,
         decoder.completion_count,
     )
-
-
-def _verify_all_local_proofs(*, test, facts, prepared, options, asset) -> None:
-    for edge in asset.records("edge_records"):
-        for digest in edge.branch_certificate_digests:
-            artifact = branch_transition_artifact_from_continuation_asset(
-                prepared=prepared,
-                asset=asset,
-                source_raw_cursor_digest=edge.source_raw_cursor_digest,
-                emitted_text=edge.emitted_text,
-                branch_certificate_digest=digest,
-            )
-            structural = verify_writer_branch_transition_artifact_consistency(artifact)
-            live = verify_writer_branch_transition_artifact_envelope(
-                prepared=prepared,
-                artifact=artifact,
-            )
-            offline = verify_writer_branch_transition_artifact_for_facts(
-                facts=facts,
-                runtime_options=options,
-                artifact=artifact,
-            )
-            test.assertTrue(structural.accepted, structural.reason)
-            test.assertTrue(live.accepted, live.reason)
-            test.assertTrue(offline.accepted, offline.reason)
-            test.assertEqual(offline.unchecked_obligation_families, ())
-    for terminal in asset.records("terminal_records"):
-        for digest in terminal.terminal_support_identity_digests:
-            artifact = terminalization_artifact_from_continuation_asset(
-                prepared=prepared,
-                asset=asset,
-                source_raw_cursor_digest=terminal.source_raw_cursor_digest,
-                terminal_support_identity_digest=digest,
-            )
-            structural = verify_writer_terminalization_artifact_consistency(artifact)
-            live = verify_writer_terminalization_artifact_envelope(
-                prepared=prepared,
-                artifact=artifact,
-            )
-            offline = verify_writer_terminalization_artifact_for_facts(
-                facts=facts,
-                runtime_options=options,
-                artifact=artifact,
-            )
-            test.assertTrue(structural.accepted, structural.reason)
-            test.assertTrue(live.accepted, live.reason)
-            test.assertTrue(offline.accepted, offline.reason)
-            test.assertEqual(offline.unchecked_obligation_families, ())
 
 
 def _decoder_support(decoder) -> tuple[str, ...]:

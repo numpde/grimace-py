@@ -432,6 +432,7 @@ def _add_text_projection(
     *,
     projection,
     facts,
+    branch_identities: Mapping[int, Mapping[str, object]] | None = None,
     budget: WriterEnvelopeWorkBudget,
     branch_certificates=None,
 ) -> str:
@@ -448,6 +449,11 @@ def _add_text_projection(
         _add_branch_support(
             table,
             branch=branch,
+            branch_identity=(
+                None
+                if branch_identities is None
+                else branch_identities.get(id(branch))
+            ),
             text_projection=envelope,
             facts=facts,
             budget=budget,
@@ -468,11 +474,14 @@ def _add_branch_support(
     table,
     *,
     branch,
+    branch_identity: Mapping[str, object] | None = None,
     text_projection: Mapping[str, object],
     facts,
     budget: WriterEnvelopeWorkBudget,
 ) -> str:
-    envelope = _branch_certificate_identity_envelope(branch, budget=budget)
+    envelope = (
+        branch_identity if branch_identity is not None else _branch_certificate_identity_envelope(branch, budget=budget)
+    )
     local_evidence = _branch_local_evidence_envelope(
         branch,
         branch_identity=envelope,

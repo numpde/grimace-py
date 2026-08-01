@@ -139,10 +139,36 @@ def _frontier_projection_certificate_identity_envelope(certificate, *, budget):
     envelope['digest'] = _identity_digest(envelope, budget=budget, operation='envelope.identity')
     return envelope
 
-def _text_projection_certificate_identity_envelope(certificate, *, budget):
+def _text_projection_certificate_identity_envelope(
+    certificate,
+    *,
+    budget,
+    branch_certificate_digests: tuple[str, ...] | None = None,
+):
     if certificate is None:
         return None
-    envelope = {'source_cursor': _cursor_envelope(certificate.source_cursor, budget=budget, operation='envelope.identity'), 'emitted_text': certificate.emitted_text, 'successor_cursor': _cursor_envelope(certificate.successor_cursor, budget=budget, operation='envelope.identity'), 'immediate_multiplicity': certificate.immediate_multiplicity, 'support_count': certificate.support_count, 'completion_count': certificate.completion_count, 'branch_certificate_digests': [_branch_certificate_identity_envelope(branch, budget=budget)['digest'] for branch in certificate.branch_certificates]}
+    if branch_certificate_digests is None:
+        branch_certificate_digests = tuple(
+            _branch_certificate_identity_envelope(branch, budget=budget)["digest"]
+            for branch in certificate.branch_certificates
+        )
+    envelope = {
+        'source_cursor': _cursor_envelope(
+            certificate.source_cursor,
+            budget=budget,
+            operation='envelope.identity',
+        ),
+        'emitted_text': certificate.emitted_text,
+        'successor_cursor': _cursor_envelope(
+            certificate.successor_cursor,
+            budget=budget,
+            operation='envelope.identity',
+        ),
+        'immediate_multiplicity': certificate.immediate_multiplicity,
+        'support_count': certificate.support_count,
+        'completion_count': certificate.completion_count,
+        'branch_certificate_digests': list(branch_certificate_digests),
+    }
     envelope['digest'] = _identity_digest(envelope, budget=budget, operation='envelope.identity')
     return envelope
 

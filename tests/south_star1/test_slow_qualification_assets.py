@@ -33,7 +33,7 @@ class SlowQualificationAssetsTest(unittest.TestCase):
         from tests.south_star1.test_writer_default_continuation_corpus import WriterDefaultContinuationCorpusTest
         self.assertIn(
             "require_slow_qualification_asset",
-            inspect.getsource(PublicContinuationProofTest.test_slow_coupled_cases_expose_and_verify_every_local_proof),
+            inspect.getsource(PublicContinuationProofTest.test_slow_coupled_public_proof_shard_0),
         )
         self.assertIn(
             "require_slow_qualification_asset",
@@ -136,7 +136,7 @@ class SlowQualificationAssetsTest(unittest.TestCase):
         )
         self.assertIn(
             "require_slow_qualification_asset",
-            inspect.getsource(PublicContinuationProofTest.test_slow_coupled_cases_expose_and_verify_every_local_proof),
+            inspect.getsource(PublicContinuationProofTest.test_slow_coupled_public_proof_shard_0),
         )
         self.assertIn(
             "require_slow_qualification_asset",
@@ -155,7 +155,7 @@ class SlowQualificationAssetsTest(unittest.TestCase):
         )
         self.assertIn(
             "require_slow_qualification_asset",
-            inspect.getsource(PublicContinuationProofTest.test_slow_coupled_cases_expose_and_verify_every_local_proof),
+            inspect.getsource(PublicContinuationProofTest.test_slow_coupled_public_proof_shard_0),
         )
 
     def test_phase_failures_publish_no_metadata(self) -> None:

@@ -31,7 +31,10 @@ class SlowQualificationRunnerTest(unittest.TestCase):
                 "public-certify",
                 "public-runtime",
                 "public-recertification",
-                "public-proofs",
+                "public-proofs-0",
+                "public-proofs-1",
+                "public-proofs-2",
+                "public-proofs-3",
                 "support-reparse",
                 "continuation",
                 "stereo-audit",
@@ -59,7 +62,7 @@ class SlowQualificationRunnerTest(unittest.TestCase):
         self.assertTrue(all(layers.values()))
         ids = [test_id for layer in layers.values() for test_id in layer]
         self.assertEqual(len(ids), len(set(ids)))
-        self.assertEqual(len(ids), 17)
+        self.assertEqual(len(ids), 20)
 
     def test_all_declared_slow_tests_are_in_one_layer(self) -> None:
         expected = {
@@ -67,7 +70,10 @@ class SlowQualificationRunnerTest(unittest.TestCase):
             "tests.south_star1.test_public_continuation_asset.PublicContinuationAssetTest.test_slow_coupled_cases_certify_public_candidates",
             "tests.south_star1.test_public_continuation_asset.PublicContinuationAssetTest.test_slow_coupled_cases_run_public_runtime",
             "tests.south_star1.test_public_continuation_asset_verification.PublicContinuationAssetVerificationTest.test_slow_coupled_cases_recertify_copied_assets",
-            "tests.south_star1.test_public_continuation_proofs.PublicContinuationProofTest.test_slow_coupled_cases_expose_and_verify_every_local_proof",
+            "tests.south_star1.test_public_continuation_proofs.PublicContinuationProofTest.test_slow_coupled_public_proof_shard_0",
+            "tests.south_star1.test_public_continuation_proofs.PublicContinuationProofTest.test_slow_coupled_public_proof_shard_1",
+            "tests.south_star1.test_public_continuation_proofs.PublicContinuationProofTest.test_slow_coupled_public_proof_shard_2",
+            "tests.south_star1.test_public_continuation_proofs.PublicContinuationProofTest.test_slow_coupled_public_proof_shard_3",
             "tests.south_star1.test_writer_count_dag_envelope.WriterCountDagEnvelopeTest.test_slow_coupled_count_dag_build",
             "tests.south_star1.test_writer_count_dag_envelope.WriterCountDagEnvelopeTest.test_slow_coupled_count_dag_validate",
             "tests.south_star1.test_slow_support_artifact_qualification.SlowSupportArtifactQualificationTest.test_slow_support_artifact_offline_complete",
@@ -101,8 +107,8 @@ class SlowQualificationRunnerTest(unittest.TestCase):
             ),
             (
                 "remote-b",
-                "public-proofs",
-                runner.SLOW_QUALIFICATION_LAYERS["public-proofs"][0],
+                "public-proofs-2",
+                runner.SLOW_QUALIFICATION_LAYERS["public-proofs-2"][0],
                 "remote_coupled_tetrahedral_b",
             ),
         ):

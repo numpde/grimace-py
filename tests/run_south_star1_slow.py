@@ -28,8 +28,17 @@ SLOW_QUALIFICATION_LAYERS = {
     "public-recertification": (
         "tests.south_star1.test_public_continuation_asset_verification.PublicContinuationAssetVerificationTest.test_slow_coupled_cases_recertify_copied_assets",
     ),
-    "public-proofs": (
-        "tests.south_star1.test_public_continuation_proofs.PublicContinuationProofTest.test_slow_coupled_cases_expose_and_verify_every_local_proof",
+    "public-proofs-0": (
+        "tests.south_star1.test_public_continuation_proofs.PublicContinuationProofTest.test_slow_coupled_public_proof_shard_0",
+    ),
+    "public-proofs-1": (
+        "tests.south_star1.test_public_continuation_proofs.PublicContinuationProofTest.test_slow_coupled_public_proof_shard_1",
+    ),
+    "public-proofs-2": (
+        "tests.south_star1.test_public_continuation_proofs.PublicContinuationProofTest.test_slow_coupled_public_proof_shard_2",
+    ),
+    "public-proofs-3": (
+        "tests.south_star1.test_public_continuation_proofs.PublicContinuationProofTest.test_slow_coupled_public_proof_shard_3",
     ),
     "count-dag-build": (
         "tests.south_star1.test_writer_count_dag_envelope.WriterCountDagEnvelopeTest.test_slow_coupled_count_dag_build",
@@ -74,7 +83,10 @@ CONTINUATION_AUTHORITY_PRODUCT_LAYERS = (
     "public-certify",
     "public-runtime",
     "public-recertification",
-    "public-proofs",
+    "public-proofs-0",
+    "public-proofs-1",
+    "public-proofs-2",
+    "public-proofs-3",
     "support-reparse",
     "continuation",
     "stereo-audit",

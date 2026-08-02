@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
@@ -50,6 +51,120 @@ from tests.south_star1.slow_qualification_assets import (
 )
 
 
+PUBLIC_PROOF_SHARD_COUNT = 4
+
+
+@dataclass(frozen=True, slots=True)
+class PublicProofCursorTargets:
+    source_raw_cursor_digest: str
+    state: grimace.MolToSmilesContinuationDecoder
+    branch_locators: tuple[grimace.MolToSmilesBranchProofLocator, ...]
+    terminal_locators: tuple[grimace.MolToSmilesTerminalProofLocator, ...]
+
+
+def _branch_locator_key(locator):
+    return (
+        locator.source_raw_cursor_digest,
+        locator.emitted_text,
+        locator.branch_certificate_digest,
+    )
+
+
+def _terminal_locator_key(locator):
+    return (
+        locator.source_raw_cursor_digest,
+        locator.terminal_support_identity_digest,
+    )
+
+
+def public_proof_cursor_targets(decoder, *, asset=None):
+    pending = [decoder]
+    visited_states = set()
+    groups = []
+    seen_branches = set()
+    seen_terminals = set()
+    while pending:
+        state = pending.pop()
+        if state.cache_key() in visited_states:
+            continue
+        visited_states.add(state.cache_key())
+        branches = tuple(state.branch_proof_locators)
+        terminals = tuple(state.terminal_proof_locators)
+        locators = (*branches, *terminals)
+        if locators:
+            source_digests = {
+                locator.source_raw_cursor_digest for locator in locators
+            }
+            if len(source_digests) != 1:
+                raise AssertionError("proof locators split source cursor")
+            source = next(iter(source_digests))
+            if any(_branch_locator_key(item) in seen_branches for item in branches):
+                raise AssertionError("duplicate public branch locator")
+            if any(_terminal_locator_key(item) in seen_terminals for item in terminals):
+                raise AssertionError("duplicate public terminal locator")
+            seen_branches.update(_branch_locator_key(item) for item in branches)
+            seen_terminals.update(_terminal_locator_key(item) for item in terminals)
+            if any(group.source_raw_cursor_digest == source for group in groups):
+                raise AssertionError("duplicate public source cursor group")
+            groups.append(
+                PublicProofCursorTargets(
+                    source_raw_cursor_digest=source,
+                    state=state,
+                    branch_locators=tuple(sorted(branches, key=_branch_locator_key)),
+                    terminal_locators=tuple(sorted(terminals, key=_terminal_locator_key)),
+                )
+            )
+        pending.extend(choice.next_state for choice in state.next_choices)
+
+    if asset is not None:
+        asset_branches = {
+            (edge.source_raw_cursor_digest, edge.emitted_text, digest)
+            for edge in asset.records("edge_records")
+            for digest in edge.branch_certificate_digests
+        }
+        asset_terminals = {
+            (record.source_raw_cursor_digest, digest)
+            for record in asset.records("terminal_records")
+            for digest in record.terminal_support_identity_digests
+        }
+        if seen_branches != asset_branches:
+            raise AssertionError("public branch inventory mismatch")
+        if seen_terminals != asset_terminals:
+            raise AssertionError("public terminal inventory mismatch")
+    return tuple(sorted(groups, key=lambda item: item.source_raw_cursor_digest))
+
+
+def partition_public_proof_targets(
+    groups, *, shard_count=PUBLIC_PROOF_SHARD_COUNT
+):
+    if shard_count != PUBLIC_PROOF_SHARD_COUNT:
+        raise ValueError("South Star public proof qualification requires four shards")
+    if any(
+        len({_branch_locator_key(item) for item in group.branch_locators})
+        != len(group.branch_locators)
+        or len({_terminal_locator_key(item) for item in group.terminal_locators})
+        != len(group.terminal_locators)
+        for group in groups
+    ):
+        raise AssertionError("duplicate locator in source cursor group")
+    shards = [[] for _ in range(shard_count)]
+    weights = [0] * shard_count
+    for group in sorted(
+        groups,
+        key=lambda item: (
+            -(len(item.branch_locators) + len(item.terminal_locators)),
+            item.source_raw_cursor_digest,
+        ),
+    ):
+        index = min(range(shard_count), key=lambda item: (weights[item], item))
+        shards[index].append(group)
+        weights[index] += len(group.branch_locators) + len(group.terminal_locators)
+    return tuple(
+        tuple(sorted(shard, key=lambda item: item.source_raw_cursor_digest))
+        for shard in shards
+    )
+
+
 class PublicContinuationProofTest(unittest.TestCase):
     def _assert_cases_expose_and_verify_every_local_proof(self, cases) -> None:
         for case in cases:
@@ -89,100 +204,146 @@ class PublicContinuationProofTest(unittest.TestCase):
             self.assertGreater(whole_branch_count, len(decoder.branch_proof_locators))
             self.assertGreaterEqual(whole_terminal_count, len(decoder.terminal_proof_locators))
 
-    @unittest.skipUnless(
-        os.environ.get("SOUTH_STAR1_RUN_SLOW") == "1",
-        "set SOUTH_STAR1_RUN_SLOW=1 to run coupled cases",
-    )
-    def test_slow_coupled_cases_expose_and_verify_every_local_proof(self) -> None:
+    def _assert_slow_public_proof_shard(self, shard_index: int) -> None:
         for case in selected_slow_qualification_cases():
-            with self.subTest(case=case.name):
+            with self.subTest(case=case.name, shard=shard_index):
+                self.assertIn(case, CONTINUATION_PROOF_QUALIFIED_CASES)
                 cache_started = time.monotonic()
                 cached = require_slow_qualification_asset(case)
                 cache_validation_seconds = time.monotonic() - cache_started
                 mol = Chem.MolFromSmiles(case.smiles)
-                decoder_started = time.monotonic()
-                with (
-                    patch.object(
-                        grimace,
-                        "BuildMolToSmilesContinuationAsset",
-                        side_effect=AssertionError("public asset build invoked"),
-                    ),
-                    patch.object(
-                        writer_continuation_asset,
-                        "write_writer_continuation_asset",
-                        side_effect=AssertionError("asset writer invoked"),
-                    ),
-                    patch.object(
-                        grimace,
-                        "VerifyMolToSmilesContinuationAsset",
-                        side_effect=AssertionError("whole-asset recertification invoked"),
-                    ),
-                    patch.object(
-                        writer_support_artifact_envelope,
-                        "writer_support_artifact_envelope_for_snapshot",
-                        side_effect=AssertionError("rich support artifact invoked"),
-                    ),
-                    patch.object(
-                        writer_support_artifact_envelope,
-                        "_writer_support_artifact_envelope_for_snapshot_with_count_envelope",
-                        side_effect=AssertionError("cached rich support artifact invoked"),
-                    ),
-                    patch.object(
-                        writer_frontier_count_envelope,
-                        "writer_frontier_count_envelope_for_snapshot",
-                        side_effect=AssertionError("count envelope invoked"),
-                    ),
-                    patch.object(
-                        writer_count_dag_envelope,
-                        "writer_count_certificate_dag_envelope_for_product",
-                        side_effect=AssertionError("count DAG invoked"),
-                    ),
-                    patch.object(
-                        writer_snapshot,
-                        "_iter_writer_snapshot_certified_support_strings",
-                        side_effect=AssertionError("support strings materialized"),
-                    ),
-                    patch.object(
-                        writer_support,
-                        "enumerate_prepared_writer_shaped_support",
-                        side_effect=AssertionError("legacy support enumeration invoked"),
-                    ),
-                ):
+                forbidden = []
+                with patch.object(
+                    grimace,
+                    "BuildMolToSmilesContinuationAsset",
+                    side_effect=AssertionError("public asset build invoked"),
+                ) as build_guard, patch.object(
+                    writer_continuation_asset,
+                    "write_writer_continuation_asset",
+                    side_effect=AssertionError("asset writer invoked"),
+                ) as write_guard, patch.object(
+                    grimace,
+                    "VerifyMolToSmilesContinuationAsset",
+                    side_effect=AssertionError("whole-asset recertification invoked"),
+                ) as verify_guard, patch.object(
+                    writer_support_artifact_envelope,
+                    "writer_support_artifact_envelope_for_snapshot",
+                    side_effect=AssertionError("rich support artifact invoked"),
+                ) as artifact_guard, patch.object(
+                    writer_support_artifact_envelope,
+                    "_writer_support_artifact_envelope_for_snapshot_with_count_envelope",
+                    side_effect=AssertionError("cached rich support artifact invoked"),
+                ) as cached_artifact_guard, patch.object(
+                    writer_frontier_count_envelope,
+                    "writer_frontier_count_envelope_for_snapshot",
+                    side_effect=AssertionError("count envelope invoked"),
+                ) as count_guard, patch.object(
+                    writer_count_dag_envelope,
+                    "writer_count_certificate_dag_envelope_for_product",
+                    side_effect=AssertionError("count DAG invoked"),
+                ) as dag_guard, patch.object(
+                    writer_snapshot,
+                    "_iter_writer_snapshot_certified_support_strings",
+                    side_effect=AssertionError("support strings materialized"),
+                ) as strings_guard, patch.object(
+                    writer_support,
+                    "enumerate_prepared_writer_shaped_support",
+                    side_effect=AssertionError("legacy support enumeration invoked"),
+                ) as enumerate_guard:
+                    forbidden.extend(
+                        (
+                            build_guard,
+                            write_guard,
+                            verify_guard,
+                            artifact_guard,
+                            cached_artifact_guard,
+                            count_guard,
+                            dag_guard,
+                            strings_guard,
+                            enumerate_guard,
+                        )
+                    )
+                    decoder_started = time.monotonic()
                     decoder = grimace.MolToSmilesContinuationDecoder.from_asset(
                         cached.asset_path,
                         expected_manifest_digest=cached.manifest_digest,
                         proof_capable=True,
                         mol=mol,
                     )
-                proof_decoder_open_seconds = time.monotonic() - decoder_started
-                asset = open_writer_continuation_core(cached.asset_path)
-                expected_branch_count = sum(
-                    len(edge.branch_certificate_digests)
-                    for edge in asset.records("edge_records")
-                )
-                expected_terminal_count = sum(
-                    len(record.terminal_support_identity_digests)
-                    for record in asset.records("terminal_records")
-                )
-                branch_count, terminal_count, seen_branches, seen_terminals, timings = (
-                    _verify_all_public_proofs_timed(decoder)
-                )
-                self.assertEqual(branch_count, expected_branch_count)
-                self.assertEqual(terminal_count, expected_terminal_count)
-                self.assertIn(case, CONTINUATION_PROOF_QUALIFIED_CASES)
-                self.assertEqual(branch_count, case.expected_continuation_branch_locator_count)
-                self.assertEqual(terminal_count, case.expected_continuation_terminal_locator_count)
-                self.assertEqual(len(seen_branches), case.expected_continuation_branch_locator_count)
-                self.assertEqual(len(seen_terminals), case.expected_continuation_terminal_locator_count)
-                self.assertEqual(branch_count, len(seen_branches))
-                self.assertEqual(terminal_count, len(seen_terminals))
+                    proof_decoder_open_seconds = time.monotonic() - decoder_started
+                    asset = open_writer_continuation_core(cached.asset_path)
+                    print("proof_inventory_started", flush=True)
+                    inventory_started = time.monotonic()
+                    groups = public_proof_cursor_targets(decoder, asset=asset)
+                    branch_inventory = sum(len(group.branch_locators) for group in groups)
+                    terminal_inventory = sum(len(group.terminal_locators) for group in groups)
+                    self.assertEqual(branch_inventory, case.expected_continuation_branch_locator_count)
+                    self.assertEqual(terminal_inventory, case.expected_continuation_terminal_locator_count)
+                    inventory_seconds = time.monotonic() - inventory_started
+                    print(f"decoder_state_traversal_seconds={inventory_seconds:.3f}", flush=True)
+                    print(f"inventory_source_cursor_count={len(groups)}", flush=True)
+                    print(f"inventory_branch_locator_count={branch_inventory}", flush=True)
+                    print(f"inventory_terminal_locator_count={terminal_inventory}", flush=True)
+                    partition_started = time.monotonic()
+                    shards = partition_public_proof_targets(groups)
+                    partition_seconds = time.monotonic() - partition_started
+                    selected = shards[shard_index]
+                    selected_branches = sum(len(group.branch_locators) for group in selected)
+                    selected_terminals = sum(len(group.terminal_locators) for group in selected)
+                    self.assertGreater(selected_branches + selected_terminals, 0)
+                    print(f"proof_partition_seconds={partition_seconds:.3f}", flush=True)
+                    print(f"proof_shard_index={shard_index}", flush=True)
+                    print(f"proof_shard_source_cursor_count={len(selected)}", flush=True)
+                    print(f"proof_shard_branch_locator_count={selected_branches}", flush=True)
+                    print(f"proof_shard_terminal_locator_count={selected_terminals}", flush=True)
+                    print("branch_proof_retrieval_started", flush=True)
+                    branch_started = time.monotonic()
+                    branches_verified = 0
+                    for group in selected:
+                        for locator in group.branch_locators:
+                            artifact = group.state.branch_artifact(locator)
+                            self.assertEqual(artifact["schema_name"], "writer_branch_transition_artifact")
+                            branches_verified += 1
+                            if branches_verified % 100 == 0:
+                                print(f"branch_proofs_verified={branches_verified}", flush=True)
+                    branch_seconds = time.monotonic() - branch_started
+                    print(f"branch_proofs_verified={branches_verified}", flush=True)
+                    print(f"branch_proof_seconds={branch_seconds:.3f}", flush=True)
+                    print("terminal_proof_retrieval_started", flush=True)
+                    terminal_started = time.monotonic()
+                    terminals_verified = 0
+                    for group in selected:
+                        for locator in group.terminal_locators:
+                            artifact = group.state.terminalization_artifact(locator)
+                            self.assertEqual(artifact["schema_name"], "writer_terminalization_artifact")
+                            terminals_verified += 1
+                            if terminals_verified % 50 == 0:
+                                print(f"terminal_proofs_verified={terminals_verified}", flush=True)
+                    terminal_seconds = time.monotonic() - terminal_started
+                    print(f"terminal_proofs_verified={terminals_verified}", flush=True)
+                    print(f"terminal_proof_seconds={terminal_seconds:.3f}", flush=True)
+                    self.assertEqual(branches_verified, selected_branches)
+                    self.assertEqual(terminals_verified, selected_terminals)
+                    self.assertEqual(sum(item.call_count for item in forbidden), 0)
+                    print("forbidden_path_calls=0", flush=True)
                 print(f"cache_validation_seconds={cache_validation_seconds:.3f}", flush=True)
                 print(f"proof_decoder_open_seconds={proof_decoder_open_seconds:.3f}", flush=True)
-                print(f"decoder_state_traversal_seconds={timings['traversal']:.3f}", flush=True)
-                print(f"branch_proof_seconds={timings['branch']:.3f}", flush=True)
-                print(f"terminal_proof_seconds={timings['terminal']:.3f}", flush=True)
-                print(f"branch_proof_count={branch_count}", flush=True)
-                print(f"terminal_proof_count={terminal_count}", flush=True)
+
+    @unittest.skipUnless(os.environ.get("SOUTH_STAR1_RUN_SLOW") == "1", "slow lane")
+    def test_slow_coupled_public_proof_shard_0(self):
+        self._assert_slow_public_proof_shard(0)
+
+    @unittest.skipUnless(os.environ.get("SOUTH_STAR1_RUN_SLOW") == "1", "slow lane")
+    def test_slow_coupled_public_proof_shard_1(self):
+        self._assert_slow_public_proof_shard(1)
+
+    @unittest.skipUnless(os.environ.get("SOUTH_STAR1_RUN_SLOW") == "1", "slow lane")
+    def test_slow_coupled_public_proof_shard_2(self):
+        self._assert_slow_public_proof_shard(2)
+
+    @unittest.skipUnless(os.environ.get("SOUTH_STAR1_RUN_SLOW") == "1", "slow lane")
+    def test_slow_coupled_public_proof_shard_3(self):
+        self._assert_slow_public_proof_shard(3)
 
     def test_copy_and_snapshot_resume_share_the_molecule_bound_session(self) -> None:
         with TemporaryDirectory() as directory:

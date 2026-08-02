@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from types import SimpleNamespace
 
 from tests.south_star1.default_writer_qualification_shards import (
     CONTINUATION_PROOF_QUALIFIED_CASES,
@@ -11,6 +12,10 @@ from tests.south_star1.default_writer_qualification_shards import (
 from tests.run_south_star1_slow import (
     CONTINUATION_AUTHORITY_DIAGNOSTIC_LAYERS,
     CONTINUATION_AUTHORITY_PRODUCT_LAYERS,
+)
+from tests.south_star1.test_public_continuation_proofs import (
+    PublicProofCursorTargets,
+    partition_public_proof_targets,
 )
 
 
@@ -39,6 +44,72 @@ def assert_continuation_recertification_matches_case(
 
 
 class ContinuationQualificationContractTest(unittest.TestCase):
+    def test_four_way_cursor_partition_is_deterministic_and_disjoint(self):
+        groups = tuple(
+            PublicProofCursorTargets(
+                source_raw_cursor_digest=f"cursor-{index}",
+                state=None,
+                branch_locators=tuple(
+                    SimpleNamespace(
+                        source_raw_cursor_digest=f"cursor-{index}",
+                        emitted_text=f"text-{offset}",
+                        branch_certificate_digest=f"branch-{index}-{offset}",
+                    )
+                    for offset in range(index + 1)
+                ),
+                terminal_locators=(
+                    SimpleNamespace(
+                        source_raw_cursor_digest=f"cursor-{index}",
+                        terminal_support_identity_digest=f"terminal-{index}",
+                    ),
+                ) if index % 2 == 0 else (),
+            )
+            for index in range(9)
+        )
+        first = partition_public_proof_targets(groups)
+        second = partition_public_proof_targets(tuple(reversed(groups)))
+        self.assertEqual(first, second)
+        self.assertEqual(len(first), 4)
+        cursors = [
+            group.source_raw_cursor_digest
+            for shard in first
+            for group in shard
+        ]
+        self.assertEqual(len(cursors), len(set(cursors)))
+        self.assertEqual(
+            set(cursors),
+            {group.source_raw_cursor_digest for group in groups},
+        )
+        self.assertEqual(
+            sum(len(group.branch_locators) for shard in first for group in shard),
+            sum(len(group.branch_locators) for group in groups),
+        )
+        self.assertEqual(
+            sum(len(group.terminal_locators) for shard in first for group in shard),
+            sum(len(group.terminal_locators) for group in groups),
+        )
+
+    def test_duplicate_partition_locator_rejects(self):
+        group = PublicProofCursorTargets(
+            source_raw_cursor_digest="cursor",
+            state=None,
+            branch_locators=(
+                SimpleNamespace(
+                    source_raw_cursor_digest="cursor",
+                    emitted_text="C",
+                    branch_certificate_digest="branch",
+                ),
+                SimpleNamespace(
+                    source_raw_cursor_digest="cursor",
+                    emitted_text="C",
+                    branch_certificate_digest="branch",
+                ),
+            ),
+            terminal_locators=(),
+        )
+        with self.assertRaisesRegex(AssertionError, "duplicate"):
+            partition_public_proof_targets((group,))
+
     def test_product_and_diagnostic_layers_are_disjoint_and_exact(self):
         self.assertEqual(
             CONTINUATION_AUTHORITY_PRODUCT_LAYERS,
@@ -47,7 +118,10 @@ class ContinuationQualificationContractTest(unittest.TestCase):
                 "public-certify",
                 "public-runtime",
                 "public-recertification",
-                "public-proofs",
+                "public-proofs-0",
+                "public-proofs-1",
+                "public-proofs-2",
+                "public-proofs-3",
                 "support-reparse",
                 "continuation",
                 "stereo-audit",

@@ -16,6 +16,7 @@ from grimace._south_star1.writer_support_artifact_checker import (
     verify_writer_support_artifact_consistency,
 )
 from grimace._south_star1.writer_support_artifact_envelope import (
+    writer_support_artifact_envelope_for_snapshot,
     verify_writer_support_artifact_envelope,
 )
 from grimace._south_star1.writer_support_artifact_fact_verifier import (
@@ -51,10 +52,6 @@ class SlowSupportArtifactQualificationTest(unittest.TestCase):
     def test_slow_support_artifact_build(self):
         for case in selected_slow_qualification_cases():
             with self.subTest(case=case.name):
-                count_started = time.monotonic()
-                count = require_slow_count_envelope(case)
-                print(f"count_cache_validation_seconds={time.monotonic() - count_started:.3f}", flush=True)
-                checked_started = time.monotonic()
                 with (
                     patch.object(
                         writer_support_artifact_envelope,
@@ -68,14 +65,10 @@ class SlowSupportArtifactQualificationTest(unittest.TestCase):
                     ),
                 ):
                     cached = build_slow_support_artifact(case)
-                print(f"checked_product_seconds={time.monotonic() - checked_started:.3f}", flush=True)
-                artifact = json.loads(cached.artifact_path.read_text())
-                structural_started = time.monotonic()
-                structural = verify_writer_support_artifact_consistency(artifact)
-                print(f"structural_verification_seconds={time.monotonic() - structural_started:.3f}", flush=True)
-                self.assertTrue(structural.accepted, structural.reason)
-                self.assertEqual(structural.support_count, case.expected_support_count)
-                self.assertEqual(structural.witness_count, case.expected_completion_count)
+                self.assertEqual(cached.support_count, case.expected_support_count)
+                self.assertEqual(cached.completion_count, case.expected_completion_count)
+                self.assertTrue(cached.artifact_path.is_file())
+                self.assertTrue(cached.metadata_path.is_file())
 
     @unittest.skipUnless(os.environ.get("SOUTH_STAR1_RUN_SLOW") == "1", "slow lane")
     def test_slow_support_artifact_live(self):
@@ -172,6 +165,79 @@ class SlowSupportArtifactQualificationTest(unittest.TestCase):
                 self.assertTrue(offline.accepted, offline.reason)
                 self.assertEqual(count_constructor.call_count, 0)
                 self.assertEqual(dag_constructor.call_count, 0)
+            finally:
+                if previous is None:
+                    os.environ.pop("SOUTH_STAR1_SLOW_ASSET_ROOT", None)
+                else:
+                    os.environ["SOUTH_STAR1_SLOW_ASSET_ROOT"] = previous
+
+    def test_fresh_support_artifact_build_is_single_pass_for_small_case(self):
+        case = next(
+            item for item in __import__(
+                "tests.south_star1.default_writer_capability_ledger",
+                fromlist=["ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES"],
+            ).ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES
+            if item.name == "ethanol"
+        )
+        import tempfile
+        import tests.south_star1.slow_qualification_assets as cache
+
+        with tempfile.TemporaryDirectory() as directory:
+            previous = os.environ.get("SOUTH_STAR1_SLOW_ASSET_ROOT")
+            os.environ["SOUTH_STAR1_SLOW_ASSET_ROOT"] = directory
+            try:
+                build_slow_count_envelope(case)
+                with (
+                    patch.object(cache, "require_slow_count_envelope", side_effect=AssertionError("count cache reread")),
+                    patch.object(cache, "require_slow_support_artifact", side_effect=AssertionError("artifact reread")),
+                    patch.object(cache, "_prepared_and_snapshot", wraps=cache._prepared_and_snapshot) as prepared,
+                    patch.object(cache, "_checked_writer_frontier_product", wraps=cache._checked_writer_frontier_product) as product,
+                    patch.object(cache, "_verify_writer_frontier_count_envelope_against_product", wraps=cache._verify_writer_frontier_count_envelope_against_product) as binding,
+                    patch.object(cache, "_support_image_certificate_for_source", wraps=cache._support_image_certificate_for_source) as image,
+                    patch.object(cache, "_artifact_from_image", wraps=cache._artifact_from_image) as assembly,
+                    patch.object(writer_support_artifact_envelope, "writer_frontier_count_envelope_for_snapshot", side_effect=AssertionError("count envelope regenerated")),
+                    patch.object(writer_frontier_count_envelope, "writer_count_certificate_dag_envelope_for_product", side_effect=AssertionError("count DAG regenerated")),
+                ):
+                    cached = cache.build_slow_support_artifact(case)
+                self.assertFalse(cached.cache_reused)
+                self.assertEqual(prepared.call_count, 1)
+                self.assertEqual(product.call_count, 1)
+                self.assertEqual(binding.call_count, 1)
+                self.assertEqual(image.call_count, 1)
+                self.assertEqual(assembly.call_count, 1)
+            finally:
+                if previous is None:
+                    os.environ.pop("SOUTH_STAR1_SLOW_ASSET_ROOT", None)
+                else:
+                    os.environ["SOUTH_STAR1_SLOW_ASSET_ROOT"] = previous
+
+    def test_single_pass_artifact_matches_public_builder_for_small_case(self):
+        case = next(
+            item for item in __import__(
+                "tests.south_star1.default_writer_capability_ledger",
+                fromlist=["ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES"],
+            ).ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES
+            if item.name == "ethanol"
+        )
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as directory:
+            previous = os.environ.get("SOUTH_STAR1_SLOW_ASSET_ROOT")
+            os.environ["SOUTH_STAR1_SLOW_ASSET_ROOT"] = directory
+            try:
+                build_slow_count_envelope(case)
+                cached = build_slow_support_artifact(case)
+                artifact = json.loads(cached.artifact_path.read_text())
+                prepared, snapshot = _prepared_and_snapshot(case)
+                expected = writer_support_artifact_envelope_for_snapshot(
+                    prepared=prepared,
+                    snapshot=snapshot,
+                    budget=WriterEnvelopeWorkBudget(),
+                )
+                self.assertEqual(
+                    json.dumps(artifact, sort_keys=True, separators=(",", ":")),
+                    json.dumps(expected, sort_keys=True, separators=(",", ":")),
+                )
             finally:
                 if previous is None:
                     os.environ.pop("SOUTH_STAR1_SLOW_ASSET_ROOT", None)

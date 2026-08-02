@@ -25,17 +25,18 @@ from grimace._south_star1.writer_continuation_asset import (
 from grimace._south_star1.writer_frontier import _checked_writer_frontier_product
 from grimace._south_star1.writer_frontier_count_envelope import (
     _envelope_from_product,
+    _verify_writer_frontier_count_envelope_against_product,
     verify_writer_frontier_count_envelope,
-    writer_frontier_count_envelope_for_snapshot,
 )
 from grimace._south_star1.writer_support_artifact_checker import (
     verify_writer_support_artifact_consistency,
 )
 from grimace._south_star1.writer_support_artifact_envelope import (
-    _writer_support_artifact_envelope_for_snapshot_with_count_envelope,
-    verify_writer_support_artifact_envelope,
+    _artifact_from_image,
 )
-from grimace._south_star1.writer_count_dag_envelope import WriterCountDagBuildDiagnostics
+from grimace._south_star1.writer_support_image_envelope import (
+    _support_image_certificate_for_source,
+)
 from grimace._south_star1.writer_envelope_work import WriterEnvelopeWorkBudget
 from grimace._south_star1.writer_continuation_asset import (
     _materialize_writer_continuation_asset_candidate,
@@ -82,12 +83,26 @@ class CachedQualificationCountEnvelope:
     metadata_path: Path
     dag_digest: str
 
+
+@dataclass(frozen=True, slots=True)
+class LoadedQualificationCountEnvelope:
+    cached: CachedQualificationCountEnvelope
+    envelope: dict[str, object]
+    metadata: dict[str, object]
+
+
 @dataclass(frozen=True, slots=True)
 class CachedQualificationSupportArtifact:
     case: DefaultWriterCapabilityCase
     artifact_path: Path
     metadata_path: Path
     artifact_digest: str
+    support_count: int
+    completion_count: int
+    support_digest: str
+    object_count: int
+    canonical_bytes: int
+    cache_reused: bool
 
 def build_slow_count_envelope(case):
     case_dir = _case_dir(case)
@@ -145,11 +160,8 @@ def require_slow_count_envelope(case):
     metadata_path = case_dir / "count-envelope-metadata.json"
     if not envelope_path.is_file() or not metadata_path.is_file():
         raise AssertionError(f"slow count envelope is absent: {case.name}")
-    envelope = json.loads(envelope_path.read_text())
-    metadata = json.loads(metadata_path.read_text())
-    expected = _count_metadata(case, envelope)
-    if metadata != expected:
-        raise AssertionError(f"slow count envelope metadata mismatch: {case.name}")
+    loaded = load_slow_count_envelope(case)
+    envelope = loaded.envelope
     prepared, snapshot = _prepared_and_snapshot(case)
     verification = verify_writer_frontier_count_envelope(
         prepared=prepared, envelope=envelope, budget=WriterEnvelopeWorkBudget()
@@ -160,20 +172,125 @@ def require_slow_count_envelope(case):
         case, envelope_path, metadata_path, envelope["count_dag"]["digest"]
     )
 
-def build_slow_support_artifact(case):
-    cached = require_slow_count_envelope(case)
-    prepared, snapshot = _prepared_and_snapshot(case)
-    envelope = json.loads(cached.envelope_path.read_text())
-    artifact = _writer_support_artifact_envelope_for_snapshot_with_count_envelope(
-        prepared=prepared, snapshot=snapshot, count_envelope=envelope,
-        budget=WriterEnvelopeWorkBudget(),
+
+def load_slow_count_envelope(case):
+    case_dir = _case_dir(case)
+    envelope_path = case_dir / "count-envelope.json"
+    metadata_path = case_dir / "count-envelope-metadata.json"
+    if not envelope_path.is_file() or not metadata_path.is_file():
+        raise AssertionError(f"slow count envelope is absent: {case.name}")
+    envelope = json.loads(envelope_path.read_text())
+    metadata = json.loads(metadata_path.read_text())
+    if not isinstance(envelope, dict) or not isinstance(metadata, dict):
+        raise AssertionError(f"slow count envelope is not a JSON mapping: {case.name}")
+    if metadata != _count_metadata(case, envelope):
+        raise AssertionError(f"slow count envelope metadata mismatch: {case.name}")
+    return LoadedQualificationCountEnvelope(
+        cached=CachedQualificationCountEnvelope(
+            case, envelope_path, metadata_path, envelope["count_dag"]["digest"]
+        ),
+        envelope=envelope,
+        metadata=metadata,
     )
+
+
+def build_slow_support_artifact(case):
     case_dir = _case_dir(case)
     artifact_path = case_dir / "support-artifact.json"
     metadata_path = case_dir / "support-artifact-metadata.json"
-    _atomic_json(artifact_path, artifact)
-    _atomic_json(metadata_path, _artifact_metadata(case, artifact))
-    return require_slow_support_artifact(case)
+    both = artifact_path.is_file() and metadata_path.is_file()
+    either = artifact_path.exists() or metadata_path.exists()
+    if both:
+        cached = require_slow_support_artifact(case)
+        return CachedQualificationSupportArtifact(
+            case=case,
+            artifact_path=cached.artifact_path,
+            metadata_path=cached.metadata_path,
+            artifact_digest=cached.artifact_digest,
+            support_count=cached.support_count,
+            completion_count=cached.completion_count,
+            support_digest=cached.support_digest,
+            object_count=cached.object_count,
+            canonical_bytes=cached.canonical_bytes,
+            cache_reused=True,
+        )
+    if either:
+        artifact_path.unlink(missing_ok=True)
+        metadata_path.unlink(missing_ok=True)
+
+    budget = WriterEnvelopeWorkBudget()
+    started = time.monotonic()
+    loaded = load_slow_count_envelope(case)
+    print(f"count_cache_load_seconds={time.monotonic() - started:.3f}", flush=True)
+
+    started = time.monotonic()
+    prepared, snapshot = _prepared_and_snapshot(case)
+    print(f"prepared_snapshot_seconds={time.monotonic() - started:.3f}", flush=True)
+
+    started = time.monotonic()
+    product = _checked_writer_frontier_product(
+        prepared, snapshot.cursor, include_counts=True,
+        include_frontier_certificate=True, include_count_certificate=True,
+    )
+    print(f"counted_product_seconds={time.monotonic() - started:.3f}", flush=True)
+
+    started = time.monotonic()
+    _verify_writer_frontier_count_envelope_against_product(
+        prepared=prepared,
+        frontier_snapshot=snapshot,
+        product=product,
+        envelope=loaded.envelope,
+        budget=budget,
+    )
+    print(f"count_binding_verification_seconds={time.monotonic() - started:.3f}", flush=True)
+
+    started = time.monotonic()
+    image = _support_image_certificate_for_source(
+        prepared=prepared, snapshot=snapshot, product=product
+    )
+    print(f"support_image_seconds={time.monotonic() - started:.3f}", flush=True)
+
+    started = time.monotonic()
+    artifact = _artifact_from_image(
+        prepared=prepared,
+        source_kind="snapshot",
+        source_snapshot=snapshot,
+        prefix_read_envelope=None,
+        count_envelope=loaded.envelope,
+        product=product,
+        image=image,
+        budget=budget,
+    )
+    print(f"artifact_assembly_seconds={time.monotonic() - started:.3f}", flush=True)
+    structural = verify_writer_support_artifact_consistency(artifact)
+    if not structural.accepted:
+        raise AssertionError(structural.reason)
+    canonical_started = time.monotonic()
+    artifact_text = _canonical_json_text(artifact)
+    artifact_digest = sha256(artifact_text.encode()).hexdigest()
+    metadata = _artifact_metadata(
+        case, artifact, artifact_digest=artifact_digest,
+        canonical_bytes=len(artifact_text.encode()),
+    )
+    metadata_text = _canonical_json_text(metadata)
+    print(f"canonical_serialization_seconds={time.monotonic() - canonical_started:.3f}", flush=True)
+    publish_started = time.monotonic()
+    _atomic_text(artifact_path, artifact_text + "\n")
+    _atomic_text(metadata_path, metadata_text + "\n")
+    print(f"cache_publish_seconds={time.monotonic() - publish_started:.3f}", flush=True)
+    objects = artifact["objects"]
+    root = {item["object_id"]: item for item in objects}[artifact["roots"]["support_image_root"]]["payload"]
+    result = CachedQualificationSupportArtifact(
+        case=case, artifact_path=artifact_path, metadata_path=metadata_path,
+        artifact_digest=artifact["digest"], support_count=root["distinct_count"],
+        completion_count=root["witness_count"], support_digest=metadata["support_digest"],
+        object_count=len(objects), canonical_bytes=len(artifact_text.encode()),
+        cache_reused=False,
+    )
+    print(f"artifact_object_count={result.object_count}", flush=True)
+    print(f"artifact_canonical_bytes={result.canonical_bytes}", flush=True)
+    print("cache_reused=false", flush=True)
+    return result
 
 def require_slow_support_artifact(case):
     case_dir = _case_dir(case)
@@ -188,8 +305,15 @@ def require_slow_support_artifact(case):
     structural = verify_writer_support_artifact_consistency(artifact)
     if not structural.accepted:
         raise AssertionError(structural.reason)
+    objects = artifact["objects"]
+    root = {item["object_id"]: item for item in objects}[artifact["roots"]["support_image_root"]]["payload"]
+    canonical_bytes = len(_canonical_json_text(artifact).encode())
     return CachedQualificationSupportArtifact(
-        case, artifact_path, metadata_path, artifact["digest"]
+        case=case, artifact_path=artifact_path, metadata_path=metadata_path,
+        artifact_digest=artifact["digest"], support_count=root["distinct_count"],
+        completion_count=root["witness_count"], support_digest=_support_digest(root),
+        object_count=len(objects), canonical_bytes=canonical_bytes,
+        cache_reused=True,
     )
 
 def _count_metadata(case, envelope):
@@ -206,7 +330,7 @@ def _count_metadata(case, envelope):
         "count_envelope_sha256": _json_sha256(envelope),
     }
 
-def _artifact_metadata(case, artifact):
+def _artifact_metadata(case, artifact, *, artifact_digest=None, canonical_bytes=None):
     objects = {item["object_id"]: item for item in artifact["objects"]}
     root = objects[artifact["roots"]["support_image_root"]]["payload"]
     return {
@@ -216,8 +340,18 @@ def _artifact_metadata(case, artifact):
         "support_count": root["distinct_count"],
         "completion_count": root["witness_count"],
         "support_digest": sha256(json.dumps(root["support_strings"], sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
-        "artifact_sha256": _json_sha256(artifact),
+        "artifact_sha256": artifact_digest if artifact_digest is not None else _json_sha256(artifact),
+        "object_count": len(artifact["objects"]),
+        "canonical_bytes": canonical_bytes if canonical_bytes is not None else len(_canonical_json_text(artifact).encode()),
     }
+
+
+def _support_digest(root):
+    return sha256(json.dumps(root["support_strings"], sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def _canonical_json_text(value):
+    return json.dumps(value, sort_keys=True, separators=(",", ":"))
 
 def _json_sha256(value):
     return sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()

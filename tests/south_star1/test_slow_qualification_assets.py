@@ -56,6 +56,52 @@ class SlowQualificationAssetsTest(unittest.TestCase):
             finally:
                 os.environ.pop("SOUTH_STAR1_SLOW_ASSET_ROOT", None)
 
+    def test_complete_count_cache_reuses_without_builders(self) -> None:
+        with TemporaryDirectory() as directory:
+            os.environ["SOUTH_STAR1_SLOW_ASSET_ROOT"] = directory
+            try:
+                case_dir = Path(directory) / self.case.name
+                case_dir.mkdir()
+                (case_dir / "count-envelope.json").write_text("{}")
+                (case_dir / "count-envelope-metadata.json").write_text("{}")
+                cached = cache.CachedQualificationCountEnvelope(
+                    self.case,
+                    case_dir / "count-envelope.json",
+                    case_dir / "count-envelope-metadata.json",
+                    "digest",
+                )
+                with (
+                    patch.object(cache, "require_slow_count_envelope", return_value=cached) as require,
+                    patch.object(cache, "_checked_writer_frontier_product", side_effect=AssertionError("builder called")),
+                    patch.object(cache, "_envelope_from_product", side_effect=AssertionError("DAG builder called")),
+                ):
+                    self.assertIs(cache.build_slow_count_envelope(self.case), cached)
+                require.assert_called_once_with(self.case)
+            finally:
+                os.environ.pop("SOUTH_STAR1_SLOW_ASSET_ROOT", None)
+
+    def test_new_count_cache_does_not_require_after_publish(self) -> None:
+        envelope = {
+            "prepared_identity": {"digest": "prepared"},
+            "support_count": 1,
+            "completion_count": 1,
+            "count_dag": {"digest": "dag", "metrics": {"node_count": 1}},
+        }
+        with TemporaryDirectory() as directory:
+            os.environ["SOUTH_STAR1_SLOW_ASSET_ROOT"] = directory
+            try:
+                with (
+                    patch.object(cache, "_prepared_and_snapshot", return_value=(None, SimpleNamespace(cursor=object()))),
+                    patch.object(cache, "_checked_writer_frontier_product", return_value=object()),
+                    patch.object(cache, "_envelope_from_product", return_value=envelope),
+                    patch.object(cache, "require_slow_count_envelope", side_effect=AssertionError("require called after publish")),
+                ):
+                    cached = cache.build_slow_count_envelope(self.case)
+                self.assertTrue(cached.envelope_path.is_file())
+                self.assertTrue(cached.metadata_path.is_file())
+            finally:
+                os.environ.pop("SOUTH_STAR1_SLOW_ASSET_ROOT", None)
+
     def test_fast_fixture_class_does_not_use_slow_cache(self) -> None:
         from tests.south_star1.test_writer_default_stereo_audit_fixture import WriterDefaultStereoAuditSlowTest
         from tests.south_star1.test_writer_default_continuation_corpus import WriterDefaultContinuationCorpusTest

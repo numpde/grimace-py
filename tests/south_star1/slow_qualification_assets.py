@@ -92,7 +92,22 @@ class CachedQualificationSupportArtifact:
 def build_slow_count_envelope(case):
     case_dir = _case_dir(case)
     case_dir.mkdir(parents=True, exist_ok=True)
+    envelope_path = case_dir / "count-envelope.json"
+    metadata_path = case_dir / "count-envelope-metadata.json"
+    lookup_started = time.monotonic()
+    both = envelope_path.exists() and metadata_path.exists()
+    either = envelope_path.exists() or metadata_path.exists()
+    print(f"cache_lookup_seconds={time.monotonic() - lookup_started:.3f}", flush=True)
+    if both:
+        cached = require_slow_count_envelope(case)
+        print("cache_reused=true", flush=True)
+        return cached
+    if either:
+        print("incomplete_count_cache=true", flush=True)
+        envelope_path.unlink(missing_ok=True)
+        metadata_path.unlink(missing_ok=True)
     prepared, snapshot = _prepared_and_snapshot(case)
+    build_started = time.monotonic()
     product = _checked_writer_frontier_product(
         prepared, snapshot.cursor, include_counts=True,
         include_frontier_certificate=True, include_count_certificate=True,
@@ -102,11 +117,20 @@ def build_slow_count_envelope(case):
         prefix_read_envelope=None, frontier_snapshot=snapshot, product=product,
         budget=WriterEnvelopeWorkBudget(),
     )
-    envelope_path = case_dir / "count-envelope.json"
-    metadata_path = case_dir / "count-envelope-metadata.json"
-    _atomic_json(envelope_path, envelope)
-    _atomic_json(metadata_path, _count_metadata(case, envelope))
-    return require_slow_count_envelope(case)
+    metrics = envelope["count_dag"]["metrics"]
+    if metrics["node_count"] > 20_000:
+        raise AssertionError("count DAG exceeds requalified node ceiling")
+    print(f"count_envelope_build_seconds={time.monotonic() - build_started:.3f}", flush=True)
+    serialization_started = time.monotonic()
+    envelope_json = json.dumps(envelope, sort_keys=True, separators=(",", ":")) + "\n"
+    metadata_json = json.dumps(_count_metadata(case, envelope), sort_keys=True, separators=(",", ":")) + "\n"
+    print(f"canonical_serialization_seconds={time.monotonic() - serialization_started:.3f}", flush=True)
+    publish_started = time.monotonic()
+    _atomic_text(envelope_path, envelope_json)
+    _atomic_text(metadata_path, metadata_json)
+    print(f"cache_publish_seconds={time.monotonic() - publish_started:.3f}", flush=True)
+    print("cache_reused=false", flush=True)
+    return CachedQualificationCountEnvelope(case, envelope_path, metadata_path, envelope["count_dag"]["digest"])
 
 def store_slow_count_envelope(case, envelope):
     case_dir = _case_dir(case)
@@ -199,8 +223,11 @@ def _json_sha256(value):
     return sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 def _atomic_json(path, value):
+    _atomic_text(path, json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n")
+
+def _atomic_text(path, text):
     temporary = path.with_name(f".{path.name}.tmp")
-    temporary.write_text(json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n")
+    temporary.write_text(text)
     os.replace(temporary, path)
 
 

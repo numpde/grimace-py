@@ -8,6 +8,7 @@ import json
 import os
 import time
 import unittest
+from unittest.mock import patch
 
 from grimace._south_star1.writer_count_dag_envelope import (
     WriterEnvelopeWorkBudget,
@@ -59,7 +60,10 @@ from tests.south_star1.test_writer_frontier_count_envelope import (
 from tests.south_star1.default_writer_qualification_shards import (
     selected_slow_qualification_cases,
 )
-from tests.south_star1.slow_qualification_assets import store_slow_count_envelope
+from tests.south_star1.slow_qualification_assets import (
+    build_slow_count_envelope,
+    require_slow_count_envelope,
+)
 from tests.south_star1.test_writer_default_parity_corpus import _facts
 from tests.south_star1.test_writer_default_parity_corpus import _initial_snapshot as _default_initial_snapshot
 from tests.south_star1.test_writer_default_parity_corpus import _prepare_default
@@ -73,64 +77,51 @@ class WriterCountDagEnvelopeTest(unittest.TestCase):
         os.environ.get("SOUTH_STAR1_RUN_SLOW") == "1",
         "set SOUTH_STAR1_RUN_SLOW=1 to run coupled cases",
     )
-    def test_slow_coupled_count_dag_envelope_diagnostics(self) -> None:
-        probe_budget = replace(WriterEnvelopeWorkBudget(), max_count_nodes=50_000)
+    def test_slow_coupled_count_dag_build(self) -> None:
         for case in selected_slow_qualification_cases():
             with self.subTest(case=case.name):
+                cached = build_slow_count_envelope(case)
+                self.assertTrue(cached.envelope_path.is_file())
+                self.assertTrue(cached.metadata_path.is_file())
+
+    @unittest.skipUnless(
+        os.environ.get("SOUTH_STAR1_RUN_SLOW") == "1",
+        "set SOUTH_STAR1_RUN_SLOW=1 to run coupled cases",
+    )
+    def test_slow_coupled_count_dag_validate(self) -> None:
+        for case in selected_slow_qualification_cases():
+            with self.subTest(case=case.name):
+                cache_started = time.monotonic()
+                cached = require_slow_count_envelope(case)
+                print(f"cache_read_seconds={time.monotonic() - cache_started:.3f}", flush=True)
+                envelope = json.loads(cached.envelope_path.read_text())
                 prepared = _prepare_default(_facts(case))
                 snapshot = _default_initial_snapshot(prepared, case.rooted_at_atom)
-                diagnostics = WriterCountDagBuildDiagnostics()
-                started = time.monotonic()
-                envelope = writer_frontier_count_envelope_for_snapshot(
-                    prepared=prepared,
-                    snapshot=snapshot,
-                    budget=probe_budget,
-                    count_dag_diagnostics=diagnostics,
-                )
-                metrics = envelope["count_dag"]["metrics"]
-                for field in (
-                    "node_count",
-                    "edge_count",
-                    "max_depth",
-                    "manifest_digest_input_bytes",
-                    "full_node_digest_input_bytes",
-                    "largest_node_digest_input_bytes",
+                with (
+                    patch("grimace._south_star1.writer_frontier_count_envelope.writer_frontier_count_envelope_for_snapshot", side_effect=AssertionError("count envelope built")),
+                    patch("grimace._south_star1.writer_frontier_count_envelope.writer_count_certificate_dag_envelope_for_product", side_effect=AssertionError("count DAG built")),
                 ):
-                    print(f"{field}={metrics[field]}", flush=True)
-                print(
-                    f"attempted_node_emissions_by_kind={diagnostics.attempted_node_emissions_by_kind}",
-                    flush=True,
-                )
-                print(f"dedup_hits_by_kind={diagnostics.dedup_hits_by_kind}", flush=True)
-                print(f"elapsed_seconds={time.monotonic() - started:.3f}", flush=True)
-                self.assertLessEqual(metrics["node_count"], 20_000)
-                self.assertLessEqual(metrics["edge_count"], probe_budget.max_count_edges)
-                self.assertLessEqual(metrics["max_depth"], probe_budget.max_count_depth)
-                self.assertLessEqual(
-                    metrics["manifest_digest_input_bytes"],
-                    probe_budget.max_digest_term_bytes,
-                )
-                validate_writer_count_certificate_dag_envelope(
-                    envelope["count_dag"],
-                    budget=replace(
-                        WriterEnvelopeWorkBudget(),
-                        max_count_nodes=metrics["node_count"],
-                    ),
-                )
-                validate_writer_count_certificate_dag_envelope(
-                    envelope["count_dag"],
-                    budget=WriterEnvelopeWorkBudget(),
-                )
-                with self.assertRaises(WriterEnvelopeWorkExceeded) as raised:
+                    default_started = time.monotonic()
+                    verification = verify_writer_frontier_count_envelope(
+                        prepared=prepared, envelope=envelope,
+                        budget=WriterEnvelopeWorkBudget(),
+                    )
+                    print(f"default_validation_seconds={time.monotonic() - default_started:.3f}", flush=True)
+                    exact_started = time.monotonic()
                     validate_writer_count_certificate_dag_envelope(
                         envelope["count_dag"],
-                        budget=replace(
-                            WriterEnvelopeWorkBudget(),
-                            max_count_nodes=metrics["node_count"] - 1,
-                        ),
+                        budget=replace(WriterEnvelopeWorkBudget(), max_count_nodes=17_698),
                     )
+                    print(f"exact_boundary_validation_seconds={time.monotonic() - exact_started:.3f}", flush=True)
+                    rejecting_started = time.monotonic()
+                    with self.assertRaises(WriterEnvelopeWorkExceeded) as raised:
+                        validate_writer_count_certificate_dag_envelope(
+                            envelope["count_dag"],
+                            budget=replace(WriterEnvelopeWorkBudget(), max_count_nodes=17_697),
+                        )
+                    print(f"rejecting_boundary_validation_seconds={time.monotonic() - rejecting_started:.3f}", flush=True)
+                self.assertTrue(verification.accepted, verification.reason)
                 self.assertEqual(raised.exception.violation.metric, "count_node_count")
-                store_slow_count_envelope(case, envelope)
 
     def test_twenty_thousand_one_synthetic_nodes_remain_rejected(self) -> None:
         builder = _CountDagBuilder(budget=WriterEnvelopeWorkBudget())

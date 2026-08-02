@@ -41,6 +41,9 @@ class MolToSmilesContinuationAssetVerification:
     terminal_locator_count: int
     terminal_proof_count: int
     live_replay_complete: bool
+    semantically_replayed_operations: tuple[str, ...]
+    checked_relation_families: tuple[str, ...]
+    checked_obligation_families: tuple[str, ...]
     unchecked_obligation_families: tuple[str, ...]
 
 
@@ -104,6 +107,9 @@ def verify_mol_to_smiles_continuation_asset(
         terminal_locator_count=semantic.terminal_locator_count,
         terminal_proof_count=semantic.terminal_proof_count,
         live_replay_complete=semantic.live_replay_complete,
+        semantically_replayed_operations=semantic.semantically_replayed_operations,
+        checked_relation_families=semantic.checked_relation_families,
+        checked_obligation_families=semantic.checked_obligation_families,
         unchecked_obligation_families=semantic.unchecked_obligation_families,
     )
 

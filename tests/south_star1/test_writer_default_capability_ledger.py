@@ -115,6 +115,10 @@ class WriterDefaultCapabilityLedgerTest(unittest.TestCase):
             with self.subTest(case=case.name):
                 self.assertEqual(case.expected, "accepted")
                 self.assertIn(
+                    case.qualification_authority,
+                    {"materialized_support_artifact", "continuation_proof_complete"},
+                )
+                self.assertIn(
                     case.extraction_profile,
                     {"graph_no_potential_sites", "specified_stereo_closure"},
                 )
@@ -167,6 +171,7 @@ class WriterDefaultCapabilityLedgerTest(unittest.TestCase):
         for case in BLOCKED_DEFAULT_WRITER_CAPABILITY_CASES:
             with self.subTest(case=case.name):
                 self.assertEqual(case.expected, "blocked")
+                self.assertIsNone(case.qualification_authority)
                 self.assertIsNotNone(case.blocker_phase)
                 self.assertIsNotNone(case.blocker_kind)
                 self.assertFalse(case.expected_structural_artifact)

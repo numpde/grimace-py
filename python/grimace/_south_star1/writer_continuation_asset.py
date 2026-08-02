@@ -206,6 +206,9 @@ class WriterContinuationAssetSemanticVerification:
     terminal_record_count: int = 0
     terminal_locator_count: int = 0
     terminal_proof_count: int = 0
+    semantically_replayed_operations: tuple[str, ...] = ()
+    checked_relation_families: tuple[str, ...] = ()
+    checked_obligation_families: tuple[str, ...] = ()
     unchecked_obligation_families: tuple[str, ...] = ()
     reason: str | None = None
 
@@ -1120,6 +1123,9 @@ def verify_writer_continuation_asset_for_prepared(
     terminal_record_count = 0
     terminal_locator_count = 0
     terminal_proof_count = 0
+    replayed_operations: set[str] = set()
+    checked_relations: set[str] = set()
+    checked_obligations: set[str] = set()
     unchecked_families: set[str] = set()
     try:
         structural = verify_writer_continuation_asset_consistency(asset.path)
@@ -1252,6 +1258,13 @@ def verify_writer_continuation_asset_for_prepared(
                     unchecked_families.update(
                         facts_branch.unchecked_obligation_families
                     )
+                    replayed_operations.update(
+                        facts_branch.semantically_replayed_operations
+                    )
+                    checked_relations.update(facts_branch.checked_relation_families)
+                    checked_obligations.update(
+                        facts_branch.checked_obligation_families
+                    )
                     if not facts_branch.accepted:
                         _violation(
                             facts_branch.reason
@@ -1318,6 +1331,12 @@ def verify_writer_continuation_asset_for_prepared(
                     unchecked_families.update(
                         facts_terminal.unchecked_obligation_families
                     )
+                    replayed_operations.update(
+                        facts_terminal.semantically_replayed_operations
+                    )
+                    checked_obligations.update(
+                        facts_terminal.checked_obligation_families
+                    )
                     if not facts_terminal.accepted:
                         _violation(
                             facts_terminal.reason
@@ -1354,6 +1373,9 @@ def verify_writer_continuation_asset_for_prepared(
             terminal_record_count=terminal_record_count,
             terminal_locator_count=terminal_locator_count,
             terminal_proof_count=terminal_proof_count,
+            semantically_replayed_operations=tuple(sorted(replayed_operations)),
+            checked_relation_families=tuple(sorted(checked_relations)),
+            checked_obligation_families=tuple(sorted(checked_obligations)),
         )
     except SouthStarError as exc:
         return WriterContinuationAssetSemanticVerification(
@@ -1367,6 +1389,9 @@ def verify_writer_continuation_asset_for_prepared(
             terminal_record_count=terminal_record_count,
             terminal_locator_count=terminal_locator_count,
             terminal_proof_count=terminal_proof_count,
+            semantically_replayed_operations=tuple(sorted(replayed_operations)),
+            checked_relation_families=tuple(sorted(checked_relations)),
+            checked_obligation_families=tuple(sorted(checked_obligations)),
             unchecked_obligation_families=tuple(sorted(unchecked_families)),
             reason=exc.args[-1] if exc.args else "continuation_asset_semantic_error",
         )
@@ -1382,6 +1407,9 @@ def verify_writer_continuation_asset_for_prepared(
             terminal_record_count=terminal_record_count,
             terminal_locator_count=terminal_locator_count,
             terminal_proof_count=terminal_proof_count,
+            semantically_replayed_operations=tuple(sorted(replayed_operations)),
+            checked_relation_families=tuple(sorted(checked_relations)),
+            checked_obligation_families=tuple(sorted(checked_obligations)),
             unchecked_obligation_families=tuple(sorted(unchecked_families)),
             reason=(
                 "malformed_semantic_continuation_asset:"

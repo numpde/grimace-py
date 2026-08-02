@@ -70,6 +70,25 @@ DEFAULT_ACCEPTED_AGREEMENT_TIERS = {
     "expected_lazy_terminal_proof_complete": True,
 }
 
+QualificationAuthority = Literal[
+    "materialized_support_artifact",
+    "continuation_proof_complete",
+]
+
+REMOTE_COUPLED_CONTINUATION_REPLAYED_OPERATIONS = (
+    "tetrahedral atom-token restriction",
+    "tetrahedral local-order factor closure",
+)
+REMOTE_COUPLED_CONTINUATION_CHECKED_RELATION_FAMILIES: tuple[str, ...] = ()
+REMOTE_COUPLED_CONTINUATION_CHECKED_OBLIGATION_FAMILIES = (
+    "graph_obligation_work",
+    "residual_work",
+    "stereo_lifecycle",
+    "terminal_graph_obligation_work",
+    "terminal_stereo_lifecycle",
+)
+REMOTE_COUPLED_CONTINUATION_UNCHECKED_OBLIGATION_FAMILIES: tuple[str, ...] = ()
+
 
 @dataclass(frozen=True, slots=True)
 class DefaultWriterCapabilityCase:
@@ -83,6 +102,7 @@ class DefaultWriterCapabilityCase:
     extraction_options: RdkitOrdinaryExtractionOptions
     expected: Literal["accepted", "blocked"]
     support_surface: str
+    qualification_authority: QualificationAuthority | None = "materialized_support_artifact"
     rooted_at_atom: int = 0
     expected_support_count: int | None = None
     expected_completion_count: int | None = None
@@ -109,6 +129,15 @@ class DefaultWriterCapabilityCase:
     expected_offline_unchecked_object_kinds: tuple[str, ...] = ()
     expected_offline_relation_families: tuple[str, ...] = ()
     expected_offline_unchecked_obligation_families: tuple[str, ...] = ()
+    expected_continuation_raw_cursor_count: int | None = None
+    expected_continuation_edge_locator_count: int | None = None
+    expected_continuation_branch_locator_count: int | None = None
+    expected_continuation_terminal_record_count: int | None = None
+    expected_continuation_terminal_locator_count: int | None = None
+    expected_continuation_replayed_operations: tuple[str, ...] = ()
+    expected_continuation_checked_relation_families: tuple[str, ...] = ()
+    expected_continuation_checked_obligation_families: tuple[str, ...] = ()
+    expected_continuation_unchecked_obligation_families: tuple[str, ...] = ()
 
 
 def _accepted_aromatic_case(
@@ -501,9 +530,19 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         extraction_options=_COUPLED_TETRA_EXTRACTION,
         expected="accepted",
         support_surface="specified_tetrahedral_coupled",
+        qualification_authority="continuation_proof_complete",
         expected_support_count=216,
         expected_completion_count=216,
         expected_support_digest="9fd3f7a1b862f6fadc534098c61c072448a7aa70b45ffadc4257bbe2dac70533",
+        expected_continuation_raw_cursor_count=3075,
+        expected_continuation_edge_locator_count=3074,
+        expected_continuation_branch_locator_count=3848,
+        expected_continuation_terminal_record_count=216,
+        expected_continuation_terminal_locator_count=216,
+        expected_continuation_replayed_operations=REMOTE_COUPLED_CONTINUATION_REPLAYED_OPERATIONS,
+        expected_continuation_checked_relation_families=REMOTE_COUPLED_CONTINUATION_CHECKED_RELATION_FAMILIES,
+        expected_continuation_checked_obligation_families=REMOTE_COUPLED_CONTINUATION_CHECKED_OBLIGATION_FAMILIES,
+        expected_continuation_unchecked_obligation_families=REMOTE_COUPLED_CONTINUATION_UNCHECKED_OBLIGATION_FAMILIES,
         expected_structural_artifact=True,
         expected_live_artifact_verifier=True,
         expected_facts_bound_verifier=True,
@@ -520,9 +559,19 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         extraction_options=_COUPLED_TETRA_EXTRACTION,
         expected="accepted",
         support_surface="specified_tetrahedral_coupled",
+        qualification_authority="continuation_proof_complete",
         expected_support_count=216,
         expected_completion_count=216,
         expected_support_digest="0e16f5133e74556aeebc06817368c7e7e377672bcbcf2827d9285417eb3c8094",
+        expected_continuation_raw_cursor_count=3075,
+        expected_continuation_edge_locator_count=3074,
+        expected_continuation_branch_locator_count=3848,
+        expected_continuation_terminal_record_count=216,
+        expected_continuation_terminal_locator_count=216,
+        expected_continuation_replayed_operations=REMOTE_COUPLED_CONTINUATION_REPLAYED_OPERATIONS,
+        expected_continuation_checked_relation_families=REMOTE_COUPLED_CONTINUATION_CHECKED_RELATION_FAMILIES,
+        expected_continuation_checked_obligation_families=REMOTE_COUPLED_CONTINUATION_CHECKED_OBLIGATION_FAMILIES,
+        expected_continuation_unchecked_obligation_families=REMOTE_COUPLED_CONTINUATION_UNCHECKED_OBLIGATION_FAMILIES,
         expected_structural_artifact=True,
         expected_live_artifact_verifier=True,
         expected_facts_bound_verifier=True,
@@ -821,6 +870,7 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         extraction_profile="graph_no_potential_sites",
         extraction_options=_GRAPH_EXTRACTION,
         expected="blocked",
+        qualification_authority=None,
         support_surface="unsupported_aromatic_bracketed_hydrogen",
         blocker_phase="preparation",
         blocker_kind="unsupported_atom",
@@ -833,6 +883,7 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         extraction_profile="graph_no_potential_sites",
         extraction_options=_GRAPH_EXTRACTION,
         expected="blocked",
+        qualification_authority=None,
         support_surface="unsupported_aromatic_boron",
         blocker_phase="preparation",
         blocker_kind="unsupported_atom",
@@ -845,6 +896,7 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         extraction_profile="graph_no_potential_sites",
         extraction_options=_GRAPH_EXTRACTION,
         expected="blocked",
+        qualification_authority=None,
         support_surface="unsupported_aromatic_phosphorus",
         blocker_phase="preparation",
         blocker_kind="unsupported_atom",
@@ -857,6 +909,7 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         extraction_profile="graph_no_potential_sites",
         extraction_options=_GRAPH_EXTRACTION,
         expected="blocked",
+        qualification_authority=None,
         support_surface="unsupported_aromatic_atom_map",
         blocker_phase="preparation",
         blocker_kind="unsupported_atom",
@@ -869,6 +922,7 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         extraction_profile="graph_no_potential_sites",
         extraction_options=_GRAPH_EXTRACTION,
         expected="blocked",
+        qualification_authority=None,
         support_surface="unsupported_charged_isotope",
         blocker_phase="preparation",
         blocker_kind="unsupported_atom",
@@ -882,6 +936,7 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         extraction_profile="graph_no_potential_sites",
         extraction_options=_GRAPH_EXTRACTION,
         expected="blocked",
+        qualification_authority=None,
         support_surface="unsupported_positive_oxygen_charge",
         blocker_phase="preparation",
         blocker_kind="unsupported_atom",
@@ -895,6 +950,7 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         extraction_profile="graph_no_potential_sites",
         extraction_options=_GRAPH_EXTRACTION,
         expected="blocked",
+        qualification_authority=None,
         support_surface="unsupported_negative_nitrogen_charge",
         blocker_phase="preparation",
         blocker_kind="unsupported_atom",
@@ -908,6 +964,7 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         extraction_profile="graph_no_potential_sites",
         extraction_options=_GRAPH_EXTRACTION,
         expected="blocked",
+        qualification_authority=None,
         support_surface="unsupported_charged_oxygen_isotope",
         blocker_phase="preparation",
         blocker_kind="unsupported_atom",
@@ -921,6 +978,7 @@ DEFAULT_WRITER_CAPABILITY_CASES = (
         extraction_profile="with_potential_sites",
         extraction_options=_POTENTIAL_STEREO_EXTRACTION,
         expected="blocked",
+        qualification_authority=None,
         support_surface="unsupported_potential_directional_non_neighbor",
         blocker_phase="frontier",
         blocker_kind="unsupported_directional_non_neighbor_ligand",
@@ -946,4 +1004,9 @@ __all__ = (
     "DEFAULT_OFFLINE_UNCHECKED_OBLIGATION_FAMILIES",
     "DEFAULT_WRITER_CAPABILITY_CASES",
     "DefaultWriterCapabilityCase",
+    "QualificationAuthority",
+    "REMOTE_COUPLED_CONTINUATION_REPLAYED_OPERATIONS",
+    "REMOTE_COUPLED_CONTINUATION_CHECKED_RELATION_FAMILIES",
+    "REMOTE_COUPLED_CONTINUATION_CHECKED_OBLIGATION_FAMILIES",
+    "REMOTE_COUPLED_CONTINUATION_UNCHECKED_OBLIGATION_FAMILIES",
 )

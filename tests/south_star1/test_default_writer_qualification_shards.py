@@ -9,7 +9,9 @@ from tests.south_star1.default_writer_capability_ledger import (
     ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES,
 )
 from tests.south_star1.default_writer_qualification_shards import (
+    CONTINUATION_PROOF_QUALIFIED_CASES,
     FAST_ACCEPTED_CASES,
+    MATERIALIZED_ARTIFACT_QUALIFIED_CASES,
     SLOW_COUPLED_CASES,
     SLOW_COUPLED_CASE_NAMES,
     SLOW_QUALIFICATION_SHARDS,
@@ -18,6 +20,17 @@ from tests.south_star1.default_writer_qualification_shards import (
 
 
 class DefaultWriterQualificationShardsTest(unittest.TestCase):
+    def test_qualification_authorities_partition_accepted_cases(self) -> None:
+        accepted = {case.name for case in ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES}
+        materialized = {case.name for case in MATERIALIZED_ARTIFACT_QUALIFIED_CASES}
+        continuation = {case.name for case in CONTINUATION_PROOF_QUALIFIED_CASES}
+        self.assertTrue(materialized.isdisjoint(continuation))
+        self.assertEqual(materialized | continuation, accepted)
+        self.assertEqual(
+            continuation,
+            {"remote_coupled_tetrahedral_a", "remote_coupled_tetrahedral_b"},
+        )
+
     def test_partition_is_disjoint_complete_and_ledger_ordered(self) -> None:
         accepted = tuple(ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES)
         fast_names = tuple(case.name for case in FAST_ACCEPTED_CASES)

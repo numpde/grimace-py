@@ -257,6 +257,17 @@ class WriterContinuationAssetTest(unittest.TestCase):
                 semantic.terminal_proof_count,
             )
             self.assertEqual(semantic.unchecked_obligation_families, ())
+            self.assertEqual(semantic.semantically_replayed_operations, ())
+            self.assertEqual(semantic.checked_relation_families, ())
+            self.assertEqual(
+                semantic.checked_obligation_families,
+                (
+                    "graph_obligation_work",
+                    "stereo_lifecycle",
+                    "terminal_graph_obligation_work",
+                    "terminal_stereo_lifecycle",
+                ),
+            )
             mismatched = verify_writer_continuation_asset_for_prepared(
                 prepared=_prepare(_directional_non_single_ring_carrier_facts()),
                 asset=open_writer_continuation_core(first),

@@ -30,6 +30,33 @@ SLOW_COUPLED_CASES = tuple(
     if case.name in SLOW_COUPLED_CASE_NAMES
 )
 
+MATERIALIZED_ARTIFACT_QUALIFIED_CASES = tuple(
+    case
+    for case in ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES
+    if case.qualification_authority == "materialized_support_artifact"
+)
+CONTINUATION_PROOF_QUALIFIED_CASES = tuple(
+    case
+    for case in ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES
+    if case.qualification_authority == "continuation_proof_complete"
+)
+assert not {
+    case.name for case in MATERIALIZED_ARTIFACT_QUALIFIED_CASES
+} & {
+    case.name for case in CONTINUATION_PROOF_QUALIFIED_CASES
+}
+assert {
+    case.name for case in MATERIALIZED_ARTIFACT_QUALIFIED_CASES
+} | {
+    case.name for case in CONTINUATION_PROOF_QUALIFIED_CASES
+} == {
+    case.name for case in ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES
+}
+assert all(
+    case.qualification_authority is not None
+    for case in ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES
+)
+
 SLOW_QUALIFICATION_SHARDS = {
     "zero-h-adjacent": (
         "zero_h_tetrahedral",

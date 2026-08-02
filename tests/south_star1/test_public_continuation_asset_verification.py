@@ -136,6 +136,17 @@ class PublicContinuationAssetVerificationTest(unittest.TestCase):
             self.assertEqual(report.manifest_digest, digest)
             self.assertTrue(report.live_replay_complete)
             self.assertEqual(report.unchecked_obligation_families, ())
+            self.assertEqual(report.semantically_replayed_operations, ())
+            self.assertEqual(report.checked_relation_families, ())
+            self.assertEqual(
+                report.checked_obligation_families,
+                (
+                    "graph_obligation_work",
+                    "stereo_lifecycle",
+                    "terminal_graph_obligation_work",
+                    "terminal_stereo_lifecycle",
+                ),
+            )
             self.assertEqual(report.branch_locator_count, report.branch_proof_count)
             self.assertEqual(
                 report.terminal_locator_count,

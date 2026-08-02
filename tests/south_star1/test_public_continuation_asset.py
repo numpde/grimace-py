@@ -14,6 +14,13 @@ from unittest.mock import patch
 import grimace
 from rdkit import Chem
 
+from grimace._south_star1 import writer_continuation_asset
+from grimace._south_star1 import writer_count_dag_envelope
+from grimace._south_star1 import writer_frontier_count_envelope
+from grimace._south_star1 import writer_snapshot
+from grimace._south_star1 import writer_support
+from grimace._south_star1 import writer_support_artifact_envelope
+
 from grimace._south_star1.policy import SerializationLanguageMode
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
@@ -104,13 +111,50 @@ class PublicContinuationAssetTest(unittest.TestCase):
                 cached = require_slow_qualification_asset(case)
                 mol = Chem.MolFromSmiles(case.smiles)
                 with (
-                    patch(
-                        "grimace.BuildMolToSmilesContinuationAsset",
+                    patch.object(
+                        grimace,
+                        "BuildMolToSmilesContinuationAsset",
                         side_effect=AssertionError("public asset build invoked"),
                     ),
-                    patch(
-                        "grimace._south_star1.writer_continuation_asset.write_writer_continuation_asset",
+                    patch.object(
+                        writer_continuation_asset,
+                        "write_writer_continuation_asset",
                         side_effect=AssertionError("asset writer invoked"),
+                    ),
+                    patch.object(
+                        grimace,
+                        "VerifyMolToSmilesContinuationAsset",
+                        side_effect=AssertionError("whole-asset recertification invoked"),
+                    ),
+                    patch.object(
+                        writer_support_artifact_envelope,
+                        "writer_support_artifact_envelope_for_snapshot",
+                        side_effect=AssertionError("rich support artifact invoked"),
+                    ),
+                    patch.object(
+                        writer_support_artifact_envelope,
+                        "_writer_support_artifact_envelope_for_snapshot_with_count_envelope",
+                        side_effect=AssertionError("cached rich support artifact invoked"),
+                    ),
+                    patch.object(
+                        writer_frontier_count_envelope,
+                        "writer_frontier_count_envelope_for_snapshot",
+                        side_effect=AssertionError("count envelope invoked"),
+                    ),
+                    patch.object(
+                        writer_count_dag_envelope,
+                        "writer_count_certificate_dag_envelope_for_product",
+                        side_effect=AssertionError("count DAG invoked"),
+                    ),
+                    patch.object(
+                        writer_snapshot,
+                        "_iter_writer_snapshot_certified_support_strings",
+                        side_effect=AssertionError("support strings materialized"),
+                    ),
+                    patch.object(
+                        writer_support,
+                        "enumerate_prepared_writer_shaped_support",
+                        side_effect=AssertionError("legacy support enumeration invoked"),
                     ),
                 ):
                     decoder = grimace.MolToSmilesContinuationDecoder.from_asset(

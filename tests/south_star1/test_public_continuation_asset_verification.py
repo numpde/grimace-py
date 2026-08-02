@@ -12,6 +12,13 @@ from unittest.mock import patch
 import grimace
 from rdkit import Chem
 
+from grimace._south_star1 import writer_count_dag_envelope
+from grimace._south_star1 import writer_continuation_asset
+from grimace._south_star1 import writer_frontier_count_envelope
+from grimace._south_star1 import writer_snapshot
+from grimace._south_star1 import writer_support
+from grimace._south_star1 import writer_support_artifact_envelope
+
 from tests.south_star1.default_writer_capability_ledger import (
     ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES,
 )
@@ -22,6 +29,9 @@ from tests.south_star1.default_writer_qualification_shards import (
 )
 from tests.south_star1.slow_qualification_assets import (
     require_slow_qualification_asset,
+)
+from tests.south_star1.test_continuation_qualification_contract import (
+    assert_continuation_recertification_matches_case,
 )
 import time
 
@@ -76,16 +86,44 @@ class PublicContinuationAssetVerificationTest(unittest.TestCase):
                 before = _bundle_bytes(copied)
                 recert_started = time.monotonic()
                 with (
-                    patch(
-                        "grimace.BuildMolToSmilesContinuationAsset",
+                    patch.object(
+                        grimace,
+                        "BuildMolToSmilesContinuationAsset",
                         side_effect=AssertionError("public asset build invoked"),
                     ),
-                    patch(
-                        "grimace._south_star1.public_continuation_asset.write_writer_continuation_asset",
-                        side_effect=AssertionError("lower-level asset writer invoked"),
+                    patch.object(
+                        writer_count_dag_envelope,
+                        "writer_count_certificate_dag_envelope_for_product",
+                        side_effect=AssertionError("count DAG invoked"),
                     ),
-                    patch(
-                        "grimace._south_star1.writer_continuation_asset.write_writer_continuation_asset",
+                    patch.object(
+                        writer_frontier_count_envelope,
+                        "writer_frontier_count_envelope_for_snapshot",
+                        side_effect=AssertionError("count envelope invoked"),
+                    ),
+                    patch.object(
+                        writer_support_artifact_envelope,
+                        "writer_support_artifact_envelope_for_snapshot",
+                        side_effect=AssertionError("rich support artifact invoked"),
+                    ),
+                    patch.object(
+                        writer_support_artifact_envelope,
+                        "_writer_support_artifact_envelope_for_snapshot_with_count_envelope",
+                        side_effect=AssertionError("cached rich support artifact invoked"),
+                    ),
+                    patch.object(
+                        writer_snapshot,
+                        "_iter_writer_snapshot_certified_support_strings",
+                        side_effect=AssertionError("support strings materialized"),
+                    ),
+                    patch.object(
+                        writer_support,
+                        "enumerate_prepared_writer_shaped_support",
+                        side_effect=AssertionError("legacy support enumeration invoked"),
+                    ),
+                    patch.object(
+                        writer_continuation_asset,
+                        "write_writer_continuation_asset",
                         side_effect=AssertionError("asset writer invoked"),
                     ),
                 ):
@@ -95,11 +133,9 @@ class PublicContinuationAssetVerificationTest(unittest.TestCase):
                         expected_manifest_digest=cached.manifest_digest,
                     )
                 public_recertification_seconds = time.monotonic() - recert_started
-                self.assertTrue(report.accepted)
-                self.assertTrue(report.live_replay_complete)
-                self.assertEqual(report.branch_locator_count, report.branch_proof_count)
-                self.assertEqual(report.terminal_locator_count, report.terminal_proof_count)
-                self.assertEqual(report.unchecked_obligation_families, ())
+                assert_continuation_recertification_matches_case(
+                    self, case=case, report=report
+                )
                 self.assertEqual(_bundle_bytes(copied), before)
                 print(f"cache_validation_seconds={cache_validation_seconds:.3f}", flush=True)
                 print(f"copy_seconds={copy_seconds:.3f}", flush=True)
@@ -107,6 +143,20 @@ class PublicContinuationAssetVerificationTest(unittest.TestCase):
                     f"public_recertification_seconds={public_recertification_seconds:.3f}",
                     flush=True,
                 )
+                for name in (
+                    "raw_cursor_count",
+                    "edge_locator_count",
+                    "branch_locator_count",
+                    "branch_proof_count",
+                    "terminal_record_count",
+                    "terminal_locator_count",
+                    "terminal_proof_count",
+                    "semantically_replayed_operations",
+                    "checked_relation_families",
+                    "checked_obligation_families",
+                    "unchecked_obligation_families",
+                ):
+                    print(f"{name}={getattr(report, name)}", flush=True)
 
     def test_copied_asset_is_recertified_without_mutation(self) -> None:
         with TemporaryDirectory() as directory:

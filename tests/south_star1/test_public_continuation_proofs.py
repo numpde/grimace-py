@@ -16,6 +16,13 @@ from unittest.mock import patch
 import grimace
 from rdkit import Chem
 
+from grimace._south_star1 import writer_count_dag_envelope
+from grimace._south_star1 import writer_continuation_asset
+from grimace._south_star1 import writer_frontier_count_envelope
+from grimace._south_star1 import writer_snapshot
+from grimace._south_star1 import writer_support
+from grimace._south_star1 import writer_support_artifact_envelope
+
 from grimace._south_star1.writer_terminalization_artifact import (
     _writer_terminalization_artifact_and_live_verification_for_selected_support,
 )
@@ -31,6 +38,9 @@ from tests.south_star1.default_writer_capability_ledger import (
     ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES,
 )
 from tests.south_star1.default_writer_qualification_shards import FAST_ACCEPTED_CASES
+from tests.south_star1.default_writer_qualification_shards import (
+    CONTINUATION_PROOF_QUALIFIED_CASES,
+)
 from tests.south_star1.default_writer_qualification_shards import SLOW_COUPLED_CASES
 from tests.south_star1.default_writer_qualification_shards import (
     selected_slow_qualification_cases,
@@ -92,13 +102,50 @@ class PublicContinuationProofTest(unittest.TestCase):
                 mol = Chem.MolFromSmiles(case.smiles)
                 decoder_started = time.monotonic()
                 with (
-                    patch(
-                        "grimace.BuildMolToSmilesContinuationAsset",
+                    patch.object(
+                        grimace,
+                        "BuildMolToSmilesContinuationAsset",
                         side_effect=AssertionError("public asset build invoked"),
                     ),
-                    patch(
-                        "grimace._south_star1.writer_continuation_asset.write_writer_continuation_asset",
+                    patch.object(
+                        writer_continuation_asset,
+                        "write_writer_continuation_asset",
                         side_effect=AssertionError("asset writer invoked"),
+                    ),
+                    patch.object(
+                        grimace,
+                        "VerifyMolToSmilesContinuationAsset",
+                        side_effect=AssertionError("whole-asset recertification invoked"),
+                    ),
+                    patch.object(
+                        writer_support_artifact_envelope,
+                        "writer_support_artifact_envelope_for_snapshot",
+                        side_effect=AssertionError("rich support artifact invoked"),
+                    ),
+                    patch.object(
+                        writer_support_artifact_envelope,
+                        "_writer_support_artifact_envelope_for_snapshot_with_count_envelope",
+                        side_effect=AssertionError("cached rich support artifact invoked"),
+                    ),
+                    patch.object(
+                        writer_frontier_count_envelope,
+                        "writer_frontier_count_envelope_for_snapshot",
+                        side_effect=AssertionError("count envelope invoked"),
+                    ),
+                    patch.object(
+                        writer_count_dag_envelope,
+                        "writer_count_certificate_dag_envelope_for_product",
+                        side_effect=AssertionError("count DAG invoked"),
+                    ),
+                    patch.object(
+                        writer_snapshot,
+                        "_iter_writer_snapshot_certified_support_strings",
+                        side_effect=AssertionError("support strings materialized"),
+                    ),
+                    patch.object(
+                        writer_support,
+                        "enumerate_prepared_writer_shaped_support",
+                        side_effect=AssertionError("legacy support enumeration invoked"),
                     ),
                 ):
                     decoder = grimace.MolToSmilesContinuationDecoder.from_asset(
@@ -122,6 +169,11 @@ class PublicContinuationProofTest(unittest.TestCase):
                 )
                 self.assertEqual(branch_count, expected_branch_count)
                 self.assertEqual(terminal_count, expected_terminal_count)
+                self.assertIn(case, CONTINUATION_PROOF_QUALIFIED_CASES)
+                self.assertEqual(branch_count, case.expected_continuation_branch_locator_count)
+                self.assertEqual(terminal_count, case.expected_continuation_terminal_locator_count)
+                self.assertEqual(len(seen_branches), case.expected_continuation_branch_locator_count)
+                self.assertEqual(len(seen_terminals), case.expected_continuation_terminal_locator_count)
                 self.assertEqual(branch_count, len(seen_branches))
                 self.assertEqual(terminal_count, len(seen_terminals))
                 print(f"cache_validation_seconds={cache_validation_seconds:.3f}", flush=True)

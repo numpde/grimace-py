@@ -23,12 +23,43 @@ def _test_ids(suite: unittest.TestSuite) -> tuple[str, ...]:
 
 
 class SlowQualificationRunnerTest(unittest.TestCase):
+    def test_continuation_authority_layer_topology_is_exact(self) -> None:
+        self.assertEqual(
+            runner.CONTINUATION_AUTHORITY_PRODUCT_LAYERS,
+            (
+                "public-build",
+                "public-certify",
+                "public-runtime",
+                "public-recertification",
+                "public-proofs",
+                "support-reparse",
+                "continuation",
+                "stereo-audit",
+            ),
+        )
+        self.assertEqual(
+            runner.CONTINUATION_AUTHORITY_DIAGNOSTIC_LAYERS,
+            (
+                "count-dag-build",
+                "count-dag-validate",
+                "support-artifact-build",
+                "support-artifact-live",
+                "offline-complete",
+            ),
+        )
+        self.assertNotIn("continuation-proof-complete", runner.SLOW_QUALIFICATION_LAYERS)
+        self.assertTrue(
+            set(runner.CONTINUATION_AUTHORITY_PRODUCT_LAYERS).isdisjoint(
+                runner.CONTINUATION_AUTHORITY_DIAGNOSTIC_LAYERS
+            )
+        )
+
     def test_layers_are_nonempty_and_disjoint(self) -> None:
         layers = runner.SLOW_QUALIFICATION_LAYERS
         self.assertTrue(all(layers.values()))
         ids = [test_id for layer in layers.values() for test_id in layer]
         self.assertEqual(len(ids), len(set(ids)))
-        self.assertEqual(len(ids), 18)
+        self.assertEqual(len(ids), 17)
 
     def test_all_declared_slow_tests_are_in_one_layer(self) -> None:
         expected = {
@@ -37,7 +68,6 @@ class SlowQualificationRunnerTest(unittest.TestCase):
             "tests.south_star1.test_public_continuation_asset.PublicContinuationAssetTest.test_slow_coupled_cases_run_public_runtime",
             "tests.south_star1.test_public_continuation_asset_verification.PublicContinuationAssetVerificationTest.test_slow_coupled_cases_recertify_copied_assets",
             "tests.south_star1.test_public_continuation_proofs.PublicContinuationProofTest.test_slow_coupled_cases_expose_and_verify_every_local_proof",
-            "tests.south_star1.test_continuation_proof_qualification.ContinuationProofQualificationTest.test_slow_continuation_proof_complete",
             "tests.south_star1.test_writer_count_dag_envelope.WriterCountDagEnvelopeTest.test_slow_coupled_count_dag_build",
             "tests.south_star1.test_writer_count_dag_envelope.WriterCountDagEnvelopeTest.test_slow_coupled_count_dag_validate",
             "tests.south_star1.test_slow_support_artifact_qualification.SlowSupportArtifactQualificationTest.test_slow_support_artifact_offline_complete",
@@ -60,7 +90,6 @@ class SlowQualificationRunnerTest(unittest.TestCase):
         self.assertLess(names.index("count-dag-validate"), names.index("support-artifact-build"))
         self.assertLess(names.index("support-artifact-build"), names.index("support-artifact-live"))
         self.assertLess(names.index("support-artifact-live"), names.index("offline-complete"))
-        self.assertLess(names.index("public-proofs"), names.index("continuation-proof-complete"))
 
     def test_selected_public_layers_are_case_sharded(self) -> None:
         for shard, layer, test_id, expected_case in (

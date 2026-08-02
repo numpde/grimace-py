@@ -31,6 +31,9 @@ SLOW_QUALIFICATION_LAYERS = {
     "public-proofs": (
         "tests.south_star1.test_public_continuation_proofs.PublicContinuationProofTest.test_slow_coupled_cases_expose_and_verify_every_local_proof",
     ),
+    "continuation-proof-complete": (
+        "tests.south_star1.test_continuation_proof_qualification.ContinuationProofQualificationTest.test_slow_continuation_proof_complete",
+    ),
     "count-dag-build": (
         "tests.south_star1.test_writer_count_dag_envelope.WriterCountDagEnvelopeTest.test_slow_coupled_count_dag_build",
     ),
@@ -68,6 +71,21 @@ SLOW_QUALIFICATION_LAYERS = {
         "tests.south_star1.test_writer_default_stereo_audit_fixture.WriterDefaultStereoAuditSlowTest",
     ),
 }
+
+SLOW_PRODUCT_LAYERS = (
+    "public-build",
+    "public-certify",
+    "public-runtime",
+    "public-recertification",
+    "public-proofs",
+    "continuation-proof-complete",
+    "support-reparse",
+    "continuation",
+    "stereo-audit",
+)
+SLOW_DIAGNOSTIC_LAYERS = tuple(
+    name for name in SLOW_QUALIFICATION_LAYERS if name not in SLOW_PRODUCT_LAYERS
+)
 
 
 def validate_selection(shard: str | None, layer: str | None) -> None:

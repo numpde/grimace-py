@@ -861,3 +861,19 @@ Treat the live transition kernel, local proof artifacts, continuation asset, and
 Rust decoder as established architecture. Add new chemistry by extending facts,
 policy, typed blockers, and producer-free proof relations—not by redesigning the
 online engine.
+
+## Qualification authority
+
+The continuation asset is the scalable South Star product authority. Its exact
+counts, completion counts, support digest, snapshot/resume behavior, and public
+proof retrieval are qualified independently of exhaustive support-string
+materialization. Every continuation branch and terminal locator is independently
+checked through live, structural, and facts-bound producer-free verification.
+
+The exhaustive materialized support artifact remains a stronger auxiliary
+representation for small bounded cases. It is not a universal scalability gate.
+Each accepted ledger case declares its qualification authority explicitly;
+authority is selected by product surface, never because a test timed out.
+Continuation qualification still requires exact support and completion counts,
+support digest, public proof retrieval, and complete branch and terminal locator
+coverage with no unchecked obligation families.

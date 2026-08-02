@@ -30,6 +30,13 @@ class DefaultWriterQualificationShardsTest(unittest.TestCase):
             continuation,
             {"remote_coupled_tetrahedral_a", "remote_coupled_tetrahedral_b"},
         )
+        for case in CONTINUATION_PROOF_QUALIFIED_CASES:
+            with self.subTest(case=case.name):
+                self.assertEqual(case.expected_continuation_raw_cursor_count, 3075)
+                self.assertEqual(case.expected_continuation_edge_locator_count, 3074)
+                self.assertEqual(case.expected_continuation_branch_locator_count, 3848)
+                self.assertEqual(case.expected_continuation_terminal_record_count, 216)
+                self.assertEqual(case.expected_continuation_terminal_locator_count, 216)
 
     def test_partition_is_disjoint_complete_and_ledger_ordered(self) -> None:
         accepted = tuple(ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES)

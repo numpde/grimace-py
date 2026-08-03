@@ -60,10 +60,10 @@ from tests.south_star1.default_writer_capability_ledger import (
     BLOCKED_DEFAULT_WRITER_CAPABILITY_CASES,
 )
 from tests.south_star1.default_writer_capability_ledger import DefaultWriterCapabilityCase
-from tests.south_star1.default_writer_qualification_shards import FAST_ACCEPTED_CASES
-from tests.south_star1.default_writer_qualification_shards import SLOW_COUPLED_CASES
-from tests.south_star1.default_writer_qualification_shards import SLOW_COUPLED_CASE_NAMES
-from tests.south_star1.default_writer_qualification_shards import (
+from tests.south_star1.qualification_plan import FAST_ACCEPTED_CASES
+from tests.south_star1.qualification_plan import SLOW_COUPLED_CASES
+from tests.south_star1.qualification_plan import SLOW_COUPLED_CASE_NAMES
+from tests.south_star1.qualification_plan import (
     selected_slow_qualification_cases,
 )
 

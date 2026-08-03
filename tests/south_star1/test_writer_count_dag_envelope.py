@@ -57,7 +57,7 @@ from tests.south_star1.test_writer_frontier_count_envelope import _prepare
 from tests.south_star1.test_writer_frontier_count_envelope import (
     _terminal_prefix_read_envelope,
 )
-from tests.south_star1.default_writer_qualification_shards import (
+from tests.south_star1.qualification_plan import (
     selected_slow_qualification_cases,
 )
 from tests.south_star1.slow_qualification_assets import (

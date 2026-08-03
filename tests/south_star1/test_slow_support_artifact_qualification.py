@@ -22,7 +22,7 @@ from grimace._south_star1.writer_support_artifact_envelope import (
 from grimace._south_star1.writer_support_artifact_fact_verifier import (
     verify_writer_support_artifact_for_facts,
 )
-from tests.south_star1.default_writer_qualification_shards import (
+from tests.south_star1.qualification_plan import (
     selected_slow_qualification_cases,
 )
 from tests.south_star1.slow_qualification_assets import (

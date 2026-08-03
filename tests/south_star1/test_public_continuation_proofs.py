@@ -38,12 +38,12 @@ from grimace._south_star1.writer_envelope_work import (
 from tests.south_star1.default_writer_capability_ledger import (
     ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES,
 )
-from tests.south_star1.default_writer_qualification_shards import FAST_ACCEPTED_CASES
-from tests.south_star1.default_writer_qualification_shards import (
+from tests.south_star1.qualification_plan import FAST_ACCEPTED_CASES
+from tests.south_star1.qualification_plan import (
     CONTINUATION_PROOF_QUALIFIED_CASES,
 )
-from tests.south_star1.default_writer_qualification_shards import SLOW_COUPLED_CASES
-from tests.south_star1.default_writer_qualification_shards import (
+from tests.south_star1.qualification_plan import SLOW_COUPLED_CASES
+from tests.south_star1.qualification_plan import (
     selected_slow_qualification_cases,
 )
 from tests.south_star1.slow_qualification_assets import (

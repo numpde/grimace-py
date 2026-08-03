@@ -14,7 +14,7 @@ from tests.south_star1 import slow_qualification_assets as cache
 from tests.south_star1.default_writer_capability_ledger import (
     ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES,
 )
-from tests.south_star1.default_writer_qualification_shards import (
+from tests.south_star1.qualification_plan import (
     bind_slow_qualification_shard,
     reset_slow_qualification_shard,
 )

@@ -33,9 +33,9 @@ from tests.helpers.rdkit_south_star_stereo_audit import load_pinned_south_star_s
 from tests.south_star1.default_writer_capability_ledger import DEFAULT_WRITER_CAPABILITY_CASES
 from tests.south_star1.helpers import directional_facts
 from tests.south_star1.helpers import tetrahedral_facts
-from tests.south_star1.default_writer_qualification_shards import FAST_ACCEPTED_CASES
-from tests.south_star1.default_writer_qualification_shards import SLOW_COUPLED_CASES
-from tests.south_star1.default_writer_qualification_shards import (
+from tests.south_star1.qualification_plan import FAST_ACCEPTED_CASES
+from tests.south_star1.qualification_plan import SLOW_COUPLED_CASES
+from tests.south_star1.qualification_plan import (
     selected_slow_qualification_cases,
 )
 from tests.south_star1.slow_qualification_assets import require_slow_qualification_asset

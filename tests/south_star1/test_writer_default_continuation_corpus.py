@@ -26,12 +26,12 @@ from grimace._south_star1.writer_continuation_asset import write_writer_continua
 from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
 from grimace._south_star1.writer_snapshot import capture_writer_frontier_snapshot
 from tests.south_star1.default_writer_capability_ledger import ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES
-from tests.south_star1.default_writer_qualification_shards import FAST_ACCEPTED_CASES
-from tests.south_star1.default_writer_qualification_shards import SLOW_COUPLED_CASES
-from tests.south_star1.default_writer_qualification_shards import (
+from tests.south_star1.qualification_plan import FAST_ACCEPTED_CASES
+from tests.south_star1.qualification_plan import SLOW_COUPLED_CASES
+from tests.south_star1.qualification_plan import (
     selected_slow_qualification_cases,
 )
-from tests.south_star1.default_writer_qualification_shards import SLOW_COUPLED_CASE_NAMES
+from tests.south_star1.qualification_plan import SLOW_COUPLED_CASE_NAMES
 from tests.south_star1.slow_qualification_assets import require_slow_qualification_asset
 from tests.south_star1.test_writer_default_parity_corpus import _facts
 from tests.south_star1.test_writer_default_parity_corpus import _support_image

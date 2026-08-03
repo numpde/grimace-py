@@ -5,7 +5,7 @@ from __future__ import annotations
 import unittest
 from types import SimpleNamespace
 
-from tests.south_star1.default_writer_qualification_shards import (
+from tests.south_star1.qualification_plan import (
     CONTINUATION_PROOF_QUALIFIED_CASES,
     MATERIALIZED_ARTIFACT_QUALIFIED_CASES,
 )

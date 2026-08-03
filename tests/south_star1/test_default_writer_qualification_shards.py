@@ -8,18 +8,22 @@ import importlib
 from tests.south_star1.default_writer_capability_ledger import (
     ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES,
 )
-from tests.south_star1.default_writer_qualification_shards import (
+from tests.south_star1.qualification_plan import (
     CONTINUATION_PROOF_QUALIFIED_CASES,
     FAST_ACCEPTED_CASES,
     MATERIALIZED_ARTIFACT_QUALIFIED_CASES,
     SLOW_COUPLED_CASES,
     SLOW_COUPLED_CASE_NAMES,
     SLOW_QUALIFICATION_SHARDS,
+    validate_qualification_plan,
     slow_cases_for_shard,
 )
 
 
 class DefaultWriterQualificationShardsTest(unittest.TestCase):
+    def test_plan_validates(self) -> None:
+        validate_qualification_plan()
+
     def test_qualification_authorities_partition_accepted_cases(self) -> None:
         accepted = {case.name for case in ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES}
         materialized = {case.name for case in MATERIALIZED_ARTIFACT_QUALIFIED_CASES}
@@ -81,7 +85,7 @@ class DefaultWriterQualificationShardsTest(unittest.TestCase):
         self.assertEqual(
             set(shard_names), {"zero-h-adjacent", "remote-a", "remote-b"}
         )
-        shard_sets = [set(SLOW_QUALIFICATION_SHARDS[name]) for name in shard_names]
+        shard_sets = [set(SLOW_QUALIFICATION_SHARDS[name].case_names) for name in shard_names]
         for index, left in enumerate(shard_sets):
             for right in shard_sets[index + 1 :]:
                 self.assertTrue(left.isdisjoint(right))
@@ -94,7 +98,7 @@ class DefaultWriterQualificationShardsTest(unittest.TestCase):
                 tuple(
                     case.name
                     for case in SLOW_COUPLED_CASES
-                    if case.name in SLOW_QUALIFICATION_SHARDS[name]
+                    if case.name in SLOW_QUALIFICATION_SHARDS[name].case_names
                 ),
             )
 

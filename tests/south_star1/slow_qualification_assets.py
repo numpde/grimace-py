@@ -50,6 +50,7 @@ from grimace._south_star1.writer_snapshot import capture_initial_writer_frontier
 from tests.south_star1.default_writer_capability_ledger import (
     DefaultWriterCapabilityCase,
 )
+from tests.south_star1.qualification_support import support_strings_digest
 
 
 _ASSET_SCHEMA = "south_star1_slow_qualification_asset"
@@ -339,7 +340,7 @@ def _artifact_metadata(case, artifact, *, artifact_digest=None, canonical_bytes=
         "source_smiles": case.smiles, "rooted_atom": case.rooted_at_atom,
         "support_count": root["distinct_count"],
         "completion_count": root["witness_count"],
-        "support_digest": sha256(json.dumps(root["support_strings"], sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
+        "support_digest": support_strings_digest(tuple(root["support_strings"])),
         "artifact_sha256": artifact_digest if artifact_digest is not None else _json_sha256(artifact),
         "object_count": len(artifact["objects"]),
         "canonical_bytes": canonical_bytes if canonical_bytes is not None else len(_canonical_json_text(artifact).encode()),
@@ -347,7 +348,7 @@ def _artifact_metadata(case, artifact, *, artifact_digest=None, canonical_bytes=
 
 
 def _support_digest(root):
-    return sha256(json.dumps(root["support_strings"], sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    return support_strings_digest(tuple(root["support_strings"]))
 
 
 def _canonical_json_text(value):

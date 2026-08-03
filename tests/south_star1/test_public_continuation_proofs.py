@@ -51,6 +51,8 @@ from tests.south_star1.slow_qualification_assets import (
 from tests.south_star1.qualification_support import PublicProofCursorTargets
 from tests.south_star1.qualification_support import partition_public_proof_targets
 from tests.south_star1.qualification_support import public_proof_cursor_targets
+from tests.south_star1.qualification_guards import guard_profile
+from tests.south_star1.qualification_guards import forbid_qualification_paths
 
 
 class PublicContinuationProofTest(unittest.TestCase):
@@ -577,28 +579,7 @@ class PublicContinuationProofTest(unittest.TestCase):
             mol = Chem.MolFromSmiles("CCO")
             path = Path(directory) / "asset"
             grimace.BuildMolToSmilesContinuationAsset(mol, path, rootedAtAtom=0)
-            with (
-                patch(
-                    "grimace._runtime.mol_to_smiles_enum",
-                    side_effect=AssertionError("legacy decoder invoked"),
-                ),
-                patch(
-                    "grimace._south_star1.writer_support_artifact_envelope.writer_support_artifact_envelope_for_snapshot",
-                    side_effect=AssertionError("rich support invoked"),
-                ),
-                patch(
-                    "grimace._south_star1.writer_frontier_count_envelope.writer_frontier_count_envelope_for_snapshot",
-                    side_effect=AssertionError("count envelope invoked"),
-                ),
-                patch(
-                    "grimace._south_star1.writer_count_dag_envelope.writer_count_certificate_dag_envelope_for_product",
-                    side_effect=AssertionError("count DAG invoked"),
-                ),
-                patch(
-                    "grimace._south_star1.writer_snapshot._iter_writer_snapshot_certified_support_strings",
-                    side_effect=AssertionError("support materialization invoked"),
-                ),
-            ):
+            with forbid_qualification_paths(*guard_profile("public-proofs")) as report:
                 decoder = grimace.MolToSmilesContinuationDecoder.from_asset(
                     path,
                     proof_capable=True,
@@ -609,6 +590,7 @@ class PublicContinuationProofTest(unittest.TestCase):
                 terminal.terminalization_artifact(
                     terminal.terminal_proof_locators[0]
                 )
+            report.assert_unused(self)
 
     def test_multiple_locators_share_one_live_frontier_batch(self) -> None:
         from grimace._south_star1 import writer_continuation_rust

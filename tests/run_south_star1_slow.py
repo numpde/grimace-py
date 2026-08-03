@@ -10,8 +10,6 @@ import time
 import unittest
 
 from tests.south_star1.qualification_plan import (
-    CONTINUATION_AUTHORITY_DIAGNOSTIC_LAYERS,
-    CONTINUATION_AUTHORITY_PRODUCT_LAYERS,
     SLOW_QUALIFICATION_LAYERS,
     SLOW_QUALIFICATION_SHARDS,
     bind_slow_qualification_shard,
@@ -19,10 +17,6 @@ from tests.south_star1.qualification_plan import (
     slow_cases_for_shard,
     validate_qualification_plan,
 )
-
-SLOW_PRODUCT_LAYERS = CONTINUATION_AUTHORITY_PRODUCT_LAYERS
-SLOW_DIAGNOSTIC_LAYERS = CONTINUATION_AUTHORITY_DIAGNOSTIC_LAYERS
-
 
 def validate_selection(shard: str | None, layer: str | None) -> None:
     validate_qualification_plan()
@@ -104,7 +98,7 @@ def main(argv: list[str] | None = None) -> int:
     if arguments.run_shard and arguments.run_all_product:
         parser.error("--run-shard and --run-all-product are mutually exclusive")
     if arguments.run_shard:
-        validate_selection(arguments.run_shard, SLOW_PRODUCT_LAYERS[0])
+        validate_selection(arguments.run_shard, next(iter(SLOW_QUALIFICATION_LAYERS)))
         return _run_child_layers(
             arguments.run_shard,
             SLOW_QUALIFICATION_SHARDS[arguments.run_shard].product_layers,
@@ -112,7 +106,7 @@ def main(argv: list[str] | None = None) -> int:
     if arguments.run_all_product:
         shard = os.environ.get("SOUTH_STAR1_SLOW_SHARD")
         if shard:
-            validate_selection(shard, SLOW_PRODUCT_LAYERS[0])
+            validate_selection(shard, next(iter(SLOW_QUALIFICATION_LAYERS)))
             return _run_child_layers(shard, SLOW_QUALIFICATION_SHARDS[shard].product_layers)
         for shard_definition in SLOW_QUALIFICATION_SHARDS.values():
             status = _run_child_layers(

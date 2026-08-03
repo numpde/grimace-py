@@ -33,61 +33,18 @@ from tests.south_star1.qualification_plan import (
 )
 from tests.south_star1.qualification_plan import SLOW_COUPLED_CASE_NAMES
 from tests.south_star1.slow_qualification_assets import require_slow_qualification_asset
-from tests.south_star1.test_writer_default_parity_corpus import _facts
-from tests.south_star1.test_writer_default_parity_corpus import _support_image
-from tests.south_star1.test_writer_default_parity_corpus import _writer_options
-
-
-_SPECIAL_CASES = tuple(case.name for case in SLOW_COUPLED_CASES)
-_ZERO_H_AND_ADJACENT = SLOW_COUPLED_CASE_NAMES[:2]
-_REMOTE_COUPLED_A = SLOW_COUPLED_CASE_NAMES[2:3]
-_REMOTE_COUPLED_B = SLOW_COUPLED_CASE_NAMES[3:]
-
-
-def _accepted_case_shards() -> dict[str, tuple[str, ...]]:
-    accepted = tuple(case.name for case in ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES)
-    return {
-        "legacy/default cases": tuple(
-            name for name in accepted if name not in _SPECIAL_CASES
-        ),
-        "zero-H and adjacent tetra": _ZERO_H_AND_ADJACENT,
-        "remote coupled A": _REMOTE_COUPLED_A,
-        "remote coupled B": _REMOTE_COUPLED_B,
-    }
+from tests.south_star1.qualification_support import case_facts as _facts
+from tests.south_star1.qualification_support import decoder_support_strings as _decoder_support
+from tests.south_star1.qualification_support import support_image_for_case as _support_image
+from tests.south_star1.qualification_support import support_strings_digest as _support_digest
+from tests.south_star1.qualification_support import _writer_options
 
 
 class WriterDefaultContinuationCorpusTest(unittest.TestCase):
     def test_accepted_default_shards_are_complete_and_deterministic(self) -> None:
-        shards = _accepted_case_shards()
-        self.assertEqual(
-            tuple(shards),
-            (
-                "legacy/default cases",
-                "zero-H and adjacent tetra",
-                "remote coupled A",
-                "remote coupled B",
-            ),
-        )
-
-        shard_names = tuple(
-            case_name
-            for names in shards.values()
-            for case_name in names
-        )
         accepted_names = tuple(case.name for case in ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES)
-        accepted_positions = {name: i for i, name in enumerate(accepted_names)}
-        self.assertEqual(len(shard_names), len(set(shard_names)))
-        self.assertEqual(set(shard_names), set(accepted_names))
-        self.assertEqual(
-            tuple(name for name in accepted_names if name in _SPECIAL_CASES),
-            _SPECIAL_CASES,
-        )
-
-        for names in shards.values():
-            for name in names:
-                self.assertIn(name, accepted_names)
-            positions = [accepted_positions[name] for name in names]
-            self.assertEqual(positions, sorted(positions))
+        self.assertEqual(tuple(case.name for case in FAST_ACCEPTED_CASES), tuple(name for name in accepted_names if name not in SLOW_COUPLED_CASE_NAMES))
+        self.assertEqual(tuple(case.name for case in SLOW_COUPLED_CASES), tuple(name for name in accepted_names if name in SLOW_COUPLED_CASE_NAMES))
 
     def _run_cases(self):
         yield from FAST_ACCEPTED_CASES
@@ -346,28 +303,6 @@ def _certified_rdkit_support(*, facts, root: int, path: Path):
         decoder.support_count,
         decoder.completion_count,
     )
-
-
-def _decoder_support(decoder) -> tuple[str, ...]:
-    pending = [decoder]
-    values = []
-    while pending:
-        state = pending.pop()
-        if state.is_terminal:
-            values.append(state.prefix)
-        pending.extend(choice.next_state for choice in state.next_choices)
-    return tuple(sorted(values))
-
-
-def _support_digest(strings: tuple[str, ...]) -> str:
-    return hashlib.sha256(
-        json.dumps(
-            strings,
-            sort_keys=True,
-            separators=(",", ":"),
-            ensure_ascii=True,
-        ).encode()
-    ).hexdigest()
 
 
 if __name__ == "__main__":

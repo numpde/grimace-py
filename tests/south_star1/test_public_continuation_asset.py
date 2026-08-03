@@ -45,6 +45,9 @@ from tests.south_star1.slow_qualification_assets import (
     require_slow_qualification_candidate,
     require_slow_qualification_asset,
 )
+from tests.south_star1.qualification_support import bundle_bytes as _bundle_bytes
+from tests.south_star1.qualification_support import decoder_support_strings as _decoder_support
+from tests.south_star1.qualification_support import support_strings_digest as _support_digest
 
 
 class PublicContinuationAssetTest(unittest.TestCase):
@@ -393,36 +396,6 @@ def _build_support(mol, *, root: int, path: Path):
         expected_manifest_digest=digest,
     )
     return _decoder_support(decoder), decoder.support_count, decoder.completion_count
-
-
-def _decoder_support(decoder) -> tuple[str, ...]:
-    pending = [decoder]
-    support: list[str] = []
-    while pending:
-        state = pending.pop()
-        if state.is_terminal:
-            support.append(state.prefix)
-        pending.extend(choice.next_state for choice in state.next_choices)
-    return tuple(sorted(support))
-
-
-def _support_digest(support: tuple[str, ...]) -> str:
-    return hashlib.sha256(
-        json.dumps(
-            support,
-            sort_keys=True,
-            separators=(",", ":"),
-            ensure_ascii=True,
-        ).encode()
-    ).hexdigest()
-
-
-def _bundle_bytes(path: Path) -> tuple[tuple[str, bytes], ...]:
-    return tuple(
-        (str(item.relative_to(path)), item.read_bytes())
-        for item in sorted(path.rglob("*"))
-        if item.is_file()
-    )
 
 
 if __name__ == "__main__":

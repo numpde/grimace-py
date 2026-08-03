@@ -66,6 +66,14 @@ from tests.south_star1.qualification_plan import SLOW_COUPLED_CASE_NAMES
 from tests.south_star1.qualification_plan import (
     selected_slow_qualification_cases,
 )
+from tests.south_star1.qualification_support import accepted_case_result as _accepted_case_result
+from tests.south_star1.qualification_support import case_facts as _facts
+from tests.south_star1.qualification_support import prepare_default_case as _prepare_default
+from tests.south_star1.qualification_support import runtime_options_for_case as _case_runtime_options
+from tests.south_star1.qualification_support import support_image_for_case as _support_image
+from tests.south_star1.qualification_support import artifact_for_prepared as _artifact
+from tests.south_star1.qualification_support import _initial_snapshot
+from tests.south_star1.qualification_support import _writer_options
 
 ACCEPTED_CASES = ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES
 BLOCKED_CASES = BLOCKED_DEFAULT_WRITER_CAPABILITY_CASES
@@ -76,50 +84,17 @@ _REMOTE_COUPLED_A = SLOW_COUPLED_CASE_NAMES[2:3]
 _REMOTE_COUPLED_B = SLOW_COUPLED_CASE_NAMES[3:]
 
 
-def _accepted_case_shards() -> dict[str, tuple[str, ...]]:
-    accepted = tuple(case.name for case in ACCEPTED_CASES)
-    return {
-        "legacy/default cases": tuple(
-            name for name in accepted if name not in _SPECIAL_CASES
-        ),
-        "zero-H and adjacent tetra": _ZERO_H_AND_ADJACENT,
-        "remote coupled A": _REMOTE_COUPLED_A,
-        "remote coupled B": _REMOTE_COUPLED_B,
-    }
-
-
 class WriterDefaultParityCorpusTest(unittest.TestCase):
     def test_accepted_default_shards_are_complete_and_deterministic(self) -> None:
-        shards = _accepted_case_shards()
-        self.assertEqual(
-            tuple(shards),
-            (
-                "legacy/default cases",
-                "zero-H and adjacent tetra",
-                "remote coupled A",
-                "remote coupled B",
-            ),
-        )
-
-        shard_names = tuple(
-            case_name
-            for names in shards.values()
-            for case_name in names
-        )
         accepted_names = tuple(case.name for case in ACCEPTED_CASES)
-        accepted_positions = {name: i for i, name in enumerate(accepted_names)}
-        self.assertEqual(len(shard_names), len(set(shard_names)))
-        self.assertEqual(set(shard_names), set(accepted_names))
         self.assertEqual(
-            tuple(name for name in accepted_names if name in _SPECIAL_CASES),
-            _SPECIAL_CASES,
+            tuple(case.name for case in FAST_ACCEPTED_CASES),
+            tuple(name for name in accepted_names if name not in SLOW_COUPLED_CASE_NAMES),
         )
-
-        for names in shards.values():
-            for name in names:
-                self.assertIn(name, accepted_names)
-            positions = [accepted_positions[name] for name in names]
-            self.assertEqual(positions, sorted(positions))
+        self.assertEqual(
+            tuple(case.name for case in SLOW_COUPLED_CASES),
+            tuple(name for name in accepted_names if name in SLOW_COUPLED_CASE_NAMES),
+        )
 
     def _run_cases(self):
         yield from FAST_ACCEPTED_CASES
@@ -319,211 +294,13 @@ class WriterDefaultParityCorpusTest(unittest.TestCase):
             artifact=artifact,
         )
 
+
         self.assertTrue(default_verification.accepted, default_verification.reason)
         with self.assertRaisesRegex(SouthStarError, "non-single ring closures"):
             ordinary_policy_for_facts(
                 facts,
                 OrdinaryPolicyOptions(non_single_ring_closures="unsupported"),
             )
-
-
-def _facts(case: DefaultWriterCapabilityCase):
-    return ordinary_molecule_facts_from_smiles(
-        case.smiles,
-        case.extraction_options,
-    )
-
-
-def _prepare_default(facts):
-    return prepare_south_star_mol_from_facts(
-        facts,
-        writer_surface=SouthStarWriterSurface(),
-    )
-
-
-def _writer_options(rooted_at_atom: int = 0) -> SouthStarRuntimeOptions:
-    return SouthStarRuntimeOptions(
-        rooted_at_atom=rooted_at_atom,
-        serialization_language=SerializationLanguageMode.WRITER_SHAPED,
-    )
-
-
-def _initial_snapshot(prepared, rooted_at_atom: int = 0):
-    options = _writer_options(rooted_at_atom)
-    return capture_writer_frontier_snapshot(
-        prepared=prepared,
-        runtime_options=options,
-        cursor=initial_writer_frontier_cursor(prepared, options),
-    )
-
-
-def _support_image(case: DefaultWriterCapabilityCase):
-    return enumerate_prepared_writer_shaped_support(
-        prepared=_prepare_default(_facts(case)),
-        runtime_options=_writer_options(case.rooted_at_atom),
-    )
-
-
-def _artifact(prepared, rooted_at_atom: int = 0):
-    return writer_support_artifact_envelope_for_snapshot(
-        prepared=prepared,
-        snapshot=_initial_snapshot(prepared, rooted_at_atom),
-    )
-
-
-def _accepted_case_result(case: DefaultWriterCapabilityCase) -> dict[str, object]:
-    facts = _facts(case)
-    prepared = _prepare_default(facts)
-    options = _writer_options(case.rooted_at_atom)
-    state = initial_writer_runtime_state(
-        prepared=prepared,
-        runtime_options=options,
-    )
-    image = enumerate_prepared_writer_shaped_support(
-        prepared=prepared,
-        runtime_options=options,
-    )
-    snapshot = _initial_snapshot(prepared, case.rooted_at_atom)
-    count_envelope = writer_frontier_count_envelope_for_snapshot(
-        prepared=prepared,
-        snapshot=snapshot,
-    )
-    count_verification = verify_writer_frontier_count_envelope(
-        prepared=prepared,
-        envelope=count_envelope,
-    )
-    artifact = writer_support_artifact_envelope_for_snapshot(
-        prepared=prepared,
-        snapshot=snapshot,
-    )
-    structural = verify_writer_support_artifact_consistency(artifact)
-    live = verify_writer_support_artifact_envelope(
-        prepared=prepared,
-        envelope=artifact,
-    )
-    fact_bound = verify_writer_support_artifact_for_facts(
-        facts=facts,
-        runtime_options=options,
-        artifact=artifact,
-    )
-
-    assert count_verification.accepted, count_verification.reason
-    assert structural.accepted, structural.reason
-    assert live.accepted, live.reason
-    assert fact_bound.accepted, fact_bound.reason
-
-    snapshot_resume = _snapshot_resume_agreement(prepared, snapshot)
-    live_count_agreement_complete = (
-        count_writer_runtime_support(
-            prepared=prepared,
-            state=state,
-        )
-        == image.distinct_count
-        == structural.support_count
-        == artifact["metrics"]["support_string_count"]
-        and count_writer_runtime_completions(
-            prepared=prepared,
-            state=state,
-        )
-        == image.witness_count
-        == structural.witness_count
-    )
-
-    return {
-        "support_count": count_writer_runtime_support(
-            prepared=prepared,
-            state=state,
-        ),
-        "completion_count": count_writer_runtime_completions(
-            prepared=prepared,
-            state=state,
-        ),
-        "materialized_support_count": image.distinct_count,
-        "materialized_witness_count": image.witness_count,
-        "artifact_support_count": structural.support_count,
-        "artifact_witness_count": structural.witness_count,
-        "artifact_metrics": artifact["metrics"],
-        "structural_accepted": structural.accepted,
-        "live_accepted": live.accepted,
-        "facts_bound_accepted": fact_bound.accepted,
-        "facts_bound_offline_complete": fact_bound.offline_replay_complete,
-        "live_frontier_agreement_complete": (
-            snapshot_resume["frontier_traversal_complete"]
-            and count_verification.accepted
-            and live.accepted
-        ),
-        "live_count_agreement_complete": live_count_agreement_complete,
-        "snapshot_resume_agreement_complete": (
-            snapshot_resume["frontier_traversal_complete"]
-            and snapshot_resume["strings"] == set(image.strings)
-        ),
-        "facts_bound_object_kinds": fact_bound.offline_checked_object_kinds,
-        "facts_bound_unchecked_object_kinds": (
-            fact_bound.offline_unchecked_object_kinds
-        ),
-        "facts_bound_unchecked_obligation_families": (
-            fact_bound.offline_unchecked_obligation_families
-        ),
-        "facts_bound_relation_families": fact_bound.offline_checked_relation_families,
-    }
-
-
-def _snapshot_resume_agreement(prepared, snapshot) -> dict[str, object]:
-    pending = [(snapshot, "")]
-    seen = set()
-    strings = set()
-    frontier_traversal_complete = True
-    while pending:
-        current, emitted = pending.pop(0)
-        # A shared cursor can still represent distinct emitted prefixes.
-        seen_key = (current.cursor, emitted)
-        if seen_key in seen:
-            continue
-        seen.add(seen_key)
-        resumed_state = writer_runtime_state_from_snapshot(
-            current,
-            prepared=prepared,
-        )
-        resumed_choices = resume_writer_frontier_choices_from_snapshot(
-            current,
-            prepared=prepared,
-        )
-        runtime_choices = writer_runtime_choices(
-            prepared=prepared,
-            state=resumed_state,
-        )
-        if resumed_choices != runtime_choices:
-            frontier_traversal_complete = False
-            continue
-        product = _snapshot_advance_writer_frontier_product(
-            prepared,
-            current.cursor,
-        )
-        if product.blocked:
-            frontier_traversal_complete = False
-            continue
-        projection = product.projection_certificate
-        if projection.terminal_projection_certificate is not None:
-            strings.add(emitted)
-            continue
-        for choice in resumed_choices.choices:
-            advanced = advance_writer_frontier_snapshot(
-                current,
-                prepared=prepared,
-                emitted_text=choice.emitted_text,
-            )
-            pending.append(
-                (
-                    advanced,
-                    emitted + choice.emitted_text,
-                )
-            )
-    return {
-        "frontier_traversal_complete": frontier_traversal_complete,
-        "strings": strings,
-    }
-
-
 def _blocked_case_result(case: DefaultWriterCapabilityCase) -> dict[str, object]:
     try:
         facts = _facts(case)
@@ -586,3 +363,4 @@ def _reachable_stereo_policy_blockers(prepared):
 
 if __name__ == "__main__":
     unittest.main()
+

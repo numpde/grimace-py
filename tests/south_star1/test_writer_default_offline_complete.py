@@ -22,10 +22,10 @@ from tests.south_star1.qualification_plan import SLOW_COUPLED_CASES
 from tests.south_star1.qualification_plan import (
     selected_slow_qualification_cases,
 )
-from tests.south_star1.test_writer_default_parity_corpus import _accepted_case_result
-from tests.south_star1.test_writer_default_parity_corpus import _artifact
-from tests.south_star1.test_writer_default_parity_corpus import _facts
-from tests.south_star1.test_writer_default_parity_corpus import _prepare_default
+from tests.south_star1.qualification_support import _accepted_case_result
+from tests.south_star1.qualification_support import _artifact
+from tests.south_star1.qualification_support import case_facts as _facts
+from tests.south_star1.qualification_support import _prepare_default
 
 
 class WriterDefaultOfflineCompleteTest(unittest.TestCase):

@@ -49,14 +49,10 @@ from grimace._south_star1.writer_support_image_envelope import (
 )
 from tests.south_star1.helpers import cco_facts
 from tests.south_star1.helpers import cyclopropane_facts
-from tests.south_star1.test_writer_frontier_count_envelope import (
-    _initial_snapshot,
-)
-from tests.south_star1.test_writer_frontier_count_envelope import _legal_prefix
-from tests.south_star1.test_writer_frontier_count_envelope import _prepare
-from tests.south_star1.test_writer_frontier_count_envelope import (
-    _terminal_prefix_read_envelope,
-)
+from tests.south_star1.qualification_support import count_initial_snapshot as _initial_snapshot
+from tests.south_star1.qualification_support import legal_count_prefix as _legal_prefix
+from tests.south_star1.qualification_support import count_prepare as _prepare
+from tests.south_star1.qualification_support import terminal_count_prefix_read_envelope as _terminal_prefix_read_envelope
 from tests.south_star1.qualification_plan import (
     selected_slow_qualification_cases,
 )
@@ -64,9 +60,9 @@ from tests.south_star1.slow_qualification_assets import (
     build_slow_count_envelope,
     require_slow_count_envelope,
 )
-from tests.south_star1.test_writer_default_parity_corpus import _facts
-from tests.south_star1.test_writer_default_parity_corpus import _initial_snapshot as _default_initial_snapshot
-from tests.south_star1.test_writer_default_parity_corpus import _prepare_default
+from tests.south_star1.qualification_support import case_facts as _facts
+from tests.south_star1.qualification_support import _initial_snapshot as _default_initial_snapshot
+from tests.south_star1.qualification_support import _prepare_default
 from grimace._south_star1.writer_snapshot_prefix_envelope import (
     writer_snapshot_prefix_read_envelope_for_emitted_texts,
 )

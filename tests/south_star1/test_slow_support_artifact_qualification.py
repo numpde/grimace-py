@@ -33,11 +33,9 @@ from tests.south_star1.slow_qualification_assets import (
     require_slow_support_artifact,
     _prepared_and_snapshot,
 )
-from tests.south_star1.test_writer_default_parity_corpus import (
-    _facts,
-    _prepare_default,
-    _writer_options,
-)
+from tests.south_star1.qualification_support import case_facts as _facts
+from tests.south_star1.qualification_support import _prepare_default
+from tests.south_star1.qualification_support import _writer_options
 
 
 class SlowSupportArtifactQualificationTest(unittest.TestCase):

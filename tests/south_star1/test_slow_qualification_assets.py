@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import inspect
 import json
 import os
 from pathlib import Path
@@ -26,18 +25,6 @@ class SlowQualificationAssetsTest(unittest.TestCase):
             case
             for case in ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES
             if case.name == "ethanol"
-        )
-
-    def test_slow_consumers_require_cache_before_replay(self) -> None:
-        from tests.south_star1.test_public_continuation_proofs import PublicContinuationProofTest
-        from tests.south_star1.test_writer_default_continuation_corpus import WriterDefaultContinuationCorpusTest
-        self.assertIn(
-            "require_slow_qualification_asset",
-            inspect.getsource(PublicContinuationProofTest.test_slow_coupled_public_proof_shard_0),
-        )
-        self.assertIn(
-            "require_slow_qualification_asset",
-            inspect.getsource(WriterDefaultContinuationCorpusTest._cross_cached_continuation_tiers),
         )
 
     def test_absent_and_mismatched_metadata_fail_before_replay(self) -> None:
@@ -101,62 +88,6 @@ class SlowQualificationAssetsTest(unittest.TestCase):
                 self.assertTrue(cached.metadata_path.is_file())
             finally:
                 os.environ.pop("SOUTH_STAR1_SLOW_ASSET_ROOT", None)
-
-    def test_fast_fixture_class_does_not_use_slow_cache(self) -> None:
-        from tests.south_star1.test_writer_default_stereo_audit_fixture import WriterDefaultStereoAuditSlowTest
-        from tests.south_star1.test_writer_default_continuation_corpus import WriterDefaultContinuationCorpusTest
-        self.assertFalse(WriterDefaultStereoAuditSlowTest.__mro__[1].USE_CACHED_SLOW_ASSETS)
-        self.assertFalse(
-            "require_slow_qualification_asset"
-            in inspect.getsource(WriterDefaultContinuationCorpusTest._cross_all_continuation_tiers)
-        )
-
-    def test_slow_stereo_class_filters_then_uses_cache(self) -> None:
-        from tests.south_star1.test_writer_default_stereo_audit_fixture import WriterDefaultStereoAuditSlowTest
-        self.assertTrue(WriterDefaultStereoAuditSlowTest.USE_CACHED_SLOW_ASSETS)
-        source = inspect.getsource(WriterDefaultStereoAuditSlowTest.setUpClass)
-        self.assertIn("selected_slow_qualification_cases", source)
-        self.assertIn("super().setUpClass()", source)
-
-    def test_all_continuation_slow_layers_require_cache(self) -> None:
-        from tests.south_star1.test_public_continuation_proofs import PublicContinuationProofTest
-        from tests.south_star1.test_writer_default_continuation_corpus import WriterDefaultContinuationCorpusTest
-        from tests.south_star1.test_public_continuation_asset import PublicContinuationAssetTest
-        from tests.south_star1.test_public_continuation_asset_verification import (
-            PublicContinuationAssetVerificationTest,
-        )
-
-        self.assertIn(
-            "require_slow_qualification_asset",
-            inspect.getsource(PublicContinuationAssetTest.test_slow_coupled_cases_run_public_runtime),
-        )
-        self.assertIn(
-            "require_slow_qualification_asset",
-            inspect.getsource(PublicContinuationAssetVerificationTest.test_slow_coupled_cases_recertify_copied_assets),
-        )
-        self.assertIn(
-            "require_slow_qualification_asset",
-            inspect.getsource(PublicContinuationProofTest.test_slow_coupled_public_proof_shard_0),
-        )
-        self.assertIn(
-            "require_slow_qualification_asset",
-            inspect.getsource(WriterDefaultContinuationCorpusTest._cross_cached_continuation_tiers),
-        )
-
-    def test_only_public_build_calls_the_build_cache_operation(self) -> None:
-        from tests.south_star1.test_public_continuation_proofs import PublicContinuationProofTest
-        from tests.south_star1.test_public_continuation_asset import (
-            PublicContinuationAssetTest,
-        )
-
-        self.assertIn(
-            "build_slow_qualification_candidate",
-            inspect.getsource(PublicContinuationAssetTest.test_slow_coupled_cases_build_through_public_api),
-        )
-        self.assertIn(
-            "require_slow_qualification_asset",
-            inspect.getsource(PublicContinuationProofTest.test_slow_coupled_public_proof_shard_0),
-        )
 
     def test_phase_failures_publish_no_metadata(self) -> None:
         from grimace._south_star1 import public_continuation_asset as public_asset

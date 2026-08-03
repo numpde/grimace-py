@@ -2,47 +2,21 @@
 
 from __future__ import annotations
 
-import unittest
 from types import SimpleNamespace
+import unittest
 
 from tests.south_star1.qualification_plan import (
     CONTINUATION_PROOF_QUALIFIED_CASES,
     MATERIALIZED_ARTIFACT_QUALIFIED_CASES,
 )
-from tests.run_south_star1_slow import (
+from tests.south_star1.qualification_plan import (
     CONTINUATION_AUTHORITY_DIAGNOSTIC_LAYERS,
     CONTINUATION_AUTHORITY_PRODUCT_LAYERS,
 )
-from tests.south_star1.test_public_continuation_proofs import (
+from tests.south_star1.qualification_support import (
     PublicProofCursorTargets,
     partition_public_proof_targets,
 )
-
-
-def assert_continuation_recertification_matches_case(
-    test: unittest.TestCase,
-    *,
-    case,
-    report,
-) -> None:
-    test.assertTrue(report.accepted)
-    test.assertTrue(report.live_replay_complete)
-    test.assertEqual(report.branch_locator_count, report.branch_proof_count)
-    test.assertEqual(report.terminal_locator_count, report.terminal_proof_count)
-    test.assertEqual(report.unchecked_obligation_families, ())
-    if case.qualification_authority != "continuation_proof_complete":
-        return
-    test.assertEqual(report.raw_cursor_count, case.expected_continuation_raw_cursor_count)
-    test.assertEqual(report.edge_locator_count, case.expected_continuation_edge_locator_count)
-    test.assertEqual(report.branch_locator_count, case.expected_continuation_branch_locator_count)
-    test.assertEqual(report.branch_proof_count, case.expected_continuation_branch_locator_count)
-    test.assertEqual(report.terminal_record_count, case.expected_continuation_terminal_record_count)
-    test.assertEqual(report.terminal_locator_count, case.expected_continuation_terminal_locator_count)
-    test.assertEqual(report.terminal_proof_count, case.expected_continuation_terminal_locator_count)
-    test.assertEqual(report.semantically_replayed_operations, case.expected_continuation_replayed_operations)
-    test.assertEqual(report.checked_relation_families, case.expected_continuation_checked_relation_families)
-    test.assertEqual(report.checked_obligation_families, case.expected_continuation_checked_obligation_families)
-    test.assertEqual(report.unchecked_obligation_families, case.expected_continuation_unchecked_obligation_families)
 
 
 class ContinuationQualificationContractTest(unittest.TestCase):

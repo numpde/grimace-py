@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
@@ -49,120 +48,9 @@ from tests.south_star1.qualification_plan import (
 from tests.south_star1.slow_qualification_assets import (
     require_slow_qualification_asset,
 )
-
-
-PUBLIC_PROOF_SHARD_COUNT = 4
-
-
-@dataclass(frozen=True, slots=True)
-class PublicProofCursorTargets:
-    source_raw_cursor_digest: str
-    state: grimace.MolToSmilesContinuationDecoder
-    branch_locators: tuple[grimace.MolToSmilesBranchProofLocator, ...]
-    terminal_locators: tuple[grimace.MolToSmilesTerminalProofLocator, ...]
-
-
-def _branch_locator_key(locator):
-    return (
-        locator.source_raw_cursor_digest,
-        locator.emitted_text,
-        locator.branch_certificate_digest,
-    )
-
-
-def _terminal_locator_key(locator):
-    return (
-        locator.source_raw_cursor_digest,
-        locator.terminal_support_identity_digest,
-    )
-
-
-def public_proof_cursor_targets(decoder, *, asset=None):
-    pending = [decoder]
-    visited_states = set()
-    groups = []
-    seen_branches = set()
-    seen_terminals = set()
-    while pending:
-        state = pending.pop()
-        if state.cache_key() in visited_states:
-            continue
-        visited_states.add(state.cache_key())
-        branches = tuple(state.branch_proof_locators)
-        terminals = tuple(state.terminal_proof_locators)
-        locators = (*branches, *terminals)
-        if locators:
-            source_digests = {
-                locator.source_raw_cursor_digest for locator in locators
-            }
-            if len(source_digests) != 1:
-                raise AssertionError("proof locators split source cursor")
-            source = next(iter(source_digests))
-            if any(_branch_locator_key(item) in seen_branches for item in branches):
-                raise AssertionError("duplicate public branch locator")
-            if any(_terminal_locator_key(item) in seen_terminals for item in terminals):
-                raise AssertionError("duplicate public terminal locator")
-            seen_branches.update(_branch_locator_key(item) for item in branches)
-            seen_terminals.update(_terminal_locator_key(item) for item in terminals)
-            if any(group.source_raw_cursor_digest == source for group in groups):
-                raise AssertionError("duplicate public source cursor group")
-            groups.append(
-                PublicProofCursorTargets(
-                    source_raw_cursor_digest=source,
-                    state=state,
-                    branch_locators=tuple(sorted(branches, key=_branch_locator_key)),
-                    terminal_locators=tuple(sorted(terminals, key=_terminal_locator_key)),
-                )
-            )
-        pending.extend(choice.next_state for choice in state.next_choices)
-
-    if asset is not None:
-        asset_branches = {
-            (edge.source_raw_cursor_digest, edge.emitted_text, digest)
-            for edge in asset.records("edge_records")
-            for digest in edge.branch_certificate_digests
-        }
-        asset_terminals = {
-            (record.source_raw_cursor_digest, digest)
-            for record in asset.records("terminal_records")
-            for digest in record.terminal_support_identity_digests
-        }
-        if seen_branches != asset_branches:
-            raise AssertionError("public branch inventory mismatch")
-        if seen_terminals != asset_terminals:
-            raise AssertionError("public terminal inventory mismatch")
-    return tuple(sorted(groups, key=lambda item: item.source_raw_cursor_digest))
-
-
-def partition_public_proof_targets(
-    groups, *, shard_count=PUBLIC_PROOF_SHARD_COUNT
-):
-    if shard_count != PUBLIC_PROOF_SHARD_COUNT:
-        raise ValueError("South Star public proof qualification requires four shards")
-    if any(
-        len({_branch_locator_key(item) for item in group.branch_locators})
-        != len(group.branch_locators)
-        or len({_terminal_locator_key(item) for item in group.terminal_locators})
-        != len(group.terminal_locators)
-        for group in groups
-    ):
-        raise AssertionError("duplicate locator in source cursor group")
-    shards = [[] for _ in range(shard_count)]
-    weights = [0] * shard_count
-    for group in sorted(
-        groups,
-        key=lambda item: (
-            -(len(item.branch_locators) + len(item.terminal_locators)),
-            item.source_raw_cursor_digest,
-        ),
-    ):
-        index = min(range(shard_count), key=lambda item: (weights[item], item))
-        shards[index].append(group)
-        weights[index] += len(group.branch_locators) + len(group.terminal_locators)
-    return tuple(
-        tuple(sorted(shard, key=lambda item: item.source_raw_cursor_digest))
-        for shard in shards
-    )
+from tests.south_star1.qualification_support import PublicProofCursorTargets
+from tests.south_star1.qualification_support import partition_public_proof_targets
+from tests.south_star1.qualification_support import public_proof_cursor_targets
 
 
 class PublicContinuationProofTest(unittest.TestCase):

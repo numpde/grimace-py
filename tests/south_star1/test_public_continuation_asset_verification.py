@@ -30,7 +30,8 @@ from tests.south_star1.qualification_plan import (
 from tests.south_star1.slow_qualification_assets import (
     require_slow_qualification_asset,
 )
-from tests.south_star1.test_continuation_qualification_contract import (
+from tests.south_star1.qualification_support import bundle_bytes as _bundle_bytes
+from tests.south_star1.qualification_assertions import (
     assert_continuation_recertification_matches_case,
 )
 import time
@@ -314,14 +315,6 @@ class PublicContinuationAssetVerificationTest(unittest.TestCase):
                         mol, path, expected_manifest_digest=digest
                     )
             self.assertTrue(path.exists())
-
-
-def _bundle_bytes(path: Path) -> tuple[tuple[str, bytes], ...]:
-    return tuple(
-        (str(item.relative_to(path)), item.read_bytes())
-        for item in sorted(path.rglob("*"))
-        if item.is_file()
-    )
 
 
 if __name__ == "__main__":

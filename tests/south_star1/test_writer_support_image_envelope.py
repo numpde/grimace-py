@@ -34,7 +34,7 @@ from grimace._south_star1.writer_support_image_envelope import (
 )
 from tests.south_star1.helpers import cyclopropane_facts
 from tests.south_star1.helpers import tetrahedral_facts
-from tests.south_star1.test_writer_snapshot import two_atom_facts
+from tests.south_star1.helpers import two_atom_facts
 
 
 _PREPARED_CACHE = None

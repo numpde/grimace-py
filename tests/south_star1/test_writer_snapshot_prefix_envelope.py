@@ -572,7 +572,7 @@ def _legal_prefix(prepared, snapshot, *, length: int) -> tuple[str, ...]:
 
 
 def _terminal_readable_envelope():
-    from tests.south_star1.test_writer_snapshot import two_atom_facts
+    from tests.south_star1.helpers import two_atom_facts
 
     prepared = _prepare(two_atom_facts())
     snapshot = _initial_snapshot(prepared)

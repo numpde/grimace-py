@@ -39,6 +39,7 @@ from tests.south_star1.qualification_plan import (
     selected_slow_qualification_cases,
 )
 from tests.south_star1.slow_qualification_assets import require_slow_qualification_asset
+from tests.south_star1.qualification_support import decoder_support_strings
 
 
 class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
@@ -160,7 +161,7 @@ class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
                 decoder = MolToSmilesContinuationDecoder.from_asset(asset.path)
                 self.assertEqual(decoder.support_count, item.support_count)
                 self.assertEqual(decoder.completion_count, item.completion_count)
-                self.assertEqual(_decoder_support(decoder), item.expected_support)
+                self.assertEqual(decoder_support_strings(decoder), item.expected_support)
                 self.assertEqual(
                     sum(value.numerator for value in decoder.exact_probabilities()),
                     decoder.completion_count,
@@ -370,17 +371,6 @@ class WriterDefaultStereoAuditSlowTest(WriterDefaultStereoAuditFixtureTest):
             ),
         ):
             super().setUpClass()
-
-
-def _decoder_support(decoder) -> tuple[str, ...]:
-    pending = [decoder]
-    support = []
-    while pending:
-        state = pending.pop()
-        if state.is_terminal:
-            support.append(state.prefix)
-        pending.extend(choice.next_state for choice in state.next_choices)
-    return tuple(sorted(support))
 
 
 def _support_for_replaced_directional_site(facts, site, options) -> set[str]:

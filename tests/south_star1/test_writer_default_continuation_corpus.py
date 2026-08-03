@@ -33,11 +33,11 @@ from tests.south_star1.qualification_plan import (
 )
 from tests.south_star1.qualification_plan import SLOW_COUPLED_CASE_NAMES
 from tests.south_star1.slow_qualification_assets import require_slow_qualification_asset
-from tests.south_star1.qualification_support import case_facts as _facts
-from tests.south_star1.qualification_support import decoder_support_strings as _decoder_support
-from tests.south_star1.qualification_support import support_image_for_case as _support_image
-from tests.south_star1.qualification_support import support_strings_digest as _support_digest
-from tests.south_star1.qualification_support import _writer_options
+from tests.south_star1.qualification_support import facts_for_case
+from tests.south_star1.qualification_support import decoder_support_strings
+from tests.south_star1.qualification_support import support_image_for_case
+from tests.south_star1.qualification_support import support_strings_digest
+from tests.south_star1.qualification_support import runtime_options_for_root
 
 
 class WriterDefaultContinuationCorpusTest(unittest.TestCase):
@@ -52,9 +52,9 @@ class WriterDefaultContinuationCorpusTest(unittest.TestCase):
     def _cross_all_continuation_tiers(self, cases) -> None:
         for case in cases:
             with self.subTest(case=case.name), TemporaryDirectory() as directory:
-                options = _writer_options(case.rooted_at_atom)
-                facts = _facts(case)
-                prepared = prepare_south_star_mol_from_facts(
+                options = runtime_options_for_root(case.rooted_at_atom)
+                facts = facts_for_case(case)
+                prepared = prepare_south_star_mol_fromfacts_for_case(
                     facts,
                     writer_surface=SouthStarWriterSurface(),
                 )
@@ -98,15 +98,15 @@ class WriterDefaultContinuationCorpusTest(unittest.TestCase):
                 self.assertEqual(live.unchecked_obligation_families, ())
 
                 if case.name in {"remote_coupled_tetrahedral_a", "remote_coupled_tetrahedral_b"}:
-                    self.assertEqual(live.raw_cursor_count, 3075)
-                    self.assertEqual(live.edge_locator_count, 3074)
-                    self.assertEqual(live.branch_locator_count, 3848)
-                    self.assertEqual(live.terminal_locator_count, 216)
-                    self.assertEqual(live.terminal_record_count, 216)
+                    self.assertEqual(live.raw_cursor_count, case.expected_continuation_raw_cursor_count)
+                    self.assertEqual(live.edge_locator_count, case.expected_continuation_edge_locator_count)
+                    self.assertEqual(live.branch_locator_count, case.expected_continuation_branch_locator_count)
+                    self.assertEqual(live.terminal_locator_count, case.expected_continuation_terminal_locator_count)
+                    self.assertEqual(live.terminal_record_count, case.expected_continuation_terminal_record_count)
 
                 decoder = MolToSmilesContinuationDecoder.from_asset(path)
-                support = _decoder_support(decoder)
-                expected = tuple(sorted(_support_image(case).strings))
+                support = decoder_support_strings(decoder)
+                expected = tuple(sorted(support_image_for_case(case).strings))
                 self.assertEqual(support, expected)
                 self.assertEqual(decoder.support_count, case.expected_support_count)
                 self.assertEqual(decoder.completion_count, case.expected_completion_count)
@@ -115,7 +115,7 @@ class WriterDefaultContinuationCorpusTest(unittest.TestCase):
                     decoder.completion_count,
                 )
                 if case.expected_support_digest is not None:
-                    self.assertEqual(_support_digest(support), case.expected_support_digest)
+                    self.assertEqual(support_strings_digest(support), case.expected_support_digest)
                 advanced = decoder.next_choices[0].next_state
                 resumed = MolToSmilesContinuationDecoder.from_snapshot(
                     path,
@@ -147,9 +147,9 @@ class WriterDefaultContinuationCorpusTest(unittest.TestCase):
                 cached = require_slow_qualification_asset(case)
                 cache_validation_seconds = time.monotonic() - cache_started
                 prepared_started = time.monotonic()
-                options = _writer_options(case.rooted_at_atom)
-                facts = _facts(case)
-                prepared = prepare_south_star_mol_from_facts(
+                options = runtime_options_for_root(case.rooted_at_atom)
+                facts = facts_for_case(case)
+                prepared = prepare_south_star_mol_fromfacts_for_case(
                     facts,
                     writer_surface=SouthStarWriterSurface(),
                 )
@@ -175,11 +175,11 @@ class WriterDefaultContinuationCorpusTest(unittest.TestCase):
                 self.assertEqual(live.terminal_locator_count, live.terminal_proof_count)
                 self.assertEqual(live.unchecked_obligation_families, ())
                 if case.name in {"remote_coupled_tetrahedral_a", "remote_coupled_tetrahedral_b"}:
-                    self.assertEqual(live.raw_cursor_count, 3075)
-                    self.assertEqual(live.edge_locator_count, 3074)
-                    self.assertEqual(live.branch_locator_count, 3848)
-                    self.assertEqual(live.terminal_locator_count, 216)
-                    self.assertEqual(live.terminal_record_count, 216)
+                    self.assertEqual(live.raw_cursor_count, case.expected_continuation_raw_cursor_count)
+                    self.assertEqual(live.edge_locator_count, case.expected_continuation_edge_locator_count)
+                    self.assertEqual(live.branch_locator_count, case.expected_continuation_branch_locator_count)
+                    self.assertEqual(live.terminal_locator_count, case.expected_continuation_terminal_locator_count)
+                    self.assertEqual(live.terminal_record_count, case.expected_continuation_terminal_record_count)
 
                 rust_started = time.monotonic()
                 with patch(
@@ -193,8 +193,8 @@ class WriterDefaultContinuationCorpusTest(unittest.TestCase):
                         cached.asset_path,
                         expected_manifest_digest=cached.manifest_digest,
                     )
-                    support = _decoder_support(decoder)
-                    expected = tuple(sorted(_support_image(case).strings))
+                    support = decoder_support_strings(decoder)
+                    expected = tuple(sorted(support_image_for_case(case).strings))
                     self.assertEqual(support, expected)
                     self.assertEqual(decoder.support_count, case.expected_support_count)
                     self.assertEqual(decoder.completion_count, case.expected_completion_count)
@@ -203,7 +203,7 @@ class WriterDefaultContinuationCorpusTest(unittest.TestCase):
                         decoder.completion_count,
                     )
                     if case.expected_support_digest is not None:
-                        self.assertEqual(_support_digest(support), case.expected_support_digest)
+                        self.assertEqual(support_strings_digest(support), case.expected_support_digest)
                     advanced = decoder.next_choices[0].next_state
                     resumed = MolToSmilesContinuationDecoder.from_snapshot(
                         cached.asset_path,
@@ -274,8 +274,8 @@ class WriterDefaultContinuationCorpusTest(unittest.TestCase):
 
 
 def _certified_rdkit_support(*, facts, root: int, path: Path):
-    options = _writer_options(root)
-    prepared = prepare_south_star_mol_from_facts(
+    options = runtime_options_for_root(root)
+    prepared = prepare_south_star_mol_fromfacts_for_case(
         facts,
         writer_surface=SouthStarWriterSurface(),
     )
@@ -299,7 +299,7 @@ def _certified_rdkit_support(*, facts, root: int, path: Path):
         raise AssertionError((structural.reason, live.reason))
     decoder = MolToSmilesContinuationDecoder.from_asset(path)
     return (
-        _decoder_support(decoder),
+        decoder_support_strings(decoder),
         decoder.support_count,
         decoder.completion_count,
     )

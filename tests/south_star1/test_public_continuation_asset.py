@@ -45,9 +45,9 @@ from tests.south_star1.slow_qualification_assets import (
     require_slow_qualification_candidate,
     require_slow_qualification_asset,
 )
-from tests.south_star1.qualification_support import bundle_bytes as _bundle_bytes
-from tests.south_star1.qualification_support import decoder_support_strings as _decoder_support
-from tests.south_star1.qualification_support import support_strings_digest as _support_digest
+from tests.south_star1.qualification_support import bundle_bytes
+from tests.south_star1.qualification_support import decoder_support_strings
+from tests.south_star1.qualification_support import support_strings_digest
 
 
 class PublicContinuationAssetTest(unittest.TestCase):
@@ -64,13 +64,13 @@ class PublicContinuationAssetTest(unittest.TestCase):
                     path,
                     expected_manifest_digest=digest,
                 )
-                support = _decoder_support(decoder)
+                support = decoder_support_strings(decoder)
                 self.assertEqual(decoder.support_count, case.expected_support_count)
                 self.assertEqual(
                     decoder.completion_count,
                     case.expected_completion_count,
                 )
-                self.assertEqual(_support_digest(support), case.expected_support_digest)
+                self.assertEqual(support_strings_digest(support), case.expected_support_digest)
                 successor = decoder.next_choices[0].next_state
                 resumed = grimace.MolToSmilesContinuationDecoder.from_snapshot(
                     path,
@@ -164,10 +164,10 @@ class PublicContinuationAssetTest(unittest.TestCase):
                         cached.asset_path,
                         expected_manifest_digest=cached.manifest_digest,
                     )
-                    support = _decoder_support(decoder)
+                    support = decoder_support_strings(decoder)
                     self.assertEqual(decoder.support_count, case.expected_support_count)
                     self.assertEqual(decoder.completion_count, case.expected_completion_count)
-                    self.assertEqual(_support_digest(support), case.expected_support_digest)
+                    self.assertEqual(support_strings_digest(support), case.expected_support_digest)
                     self.assertEqual(
                         sum(item.numerator for item in decoder.exact_probabilities()),
                         decoder.completion_count,
@@ -212,7 +212,7 @@ class PublicContinuationAssetTest(unittest.TestCase):
             first_digest = grimace.BuildMolToSmilesContinuationAsset(mol, first)
             second_digest = grimace.BuildMolToSmilesContinuationAsset(mol, second)
             self.assertEqual(second_digest, first_digest)
-            self.assertEqual(_bundle_bytes(second), _bundle_bytes(first))
+            self.assertEqual(bundle_bytes(second), bundle_bytes(first))
 
     def test_blocked_default_molecules_keep_typed_dispositions(self) -> None:
         cases = tuple(
@@ -395,7 +395,7 @@ def _build_support(mol, *, root: int, path: Path):
         path,
         expected_manifest_digest=digest,
     )
-    return _decoder_support(decoder), decoder.support_count, decoder.completion_count
+    return decoder_support_strings(decoder), decoder.support_count, decoder.completion_count
 
 
 if __name__ == "__main__":

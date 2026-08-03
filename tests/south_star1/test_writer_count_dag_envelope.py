@@ -49,10 +49,10 @@ from grimace._south_star1.writer_support_image_envelope import (
 )
 from tests.south_star1.helpers import cco_facts
 from tests.south_star1.helpers import cyclopropane_facts
-from tests.south_star1.qualification_support import count_initial_snapshot as _initial_snapshot
-from tests.south_star1.qualification_support import legal_count_prefix as _legal_prefix
-from tests.south_star1.qualification_support import count_prepare as _prepare
-from tests.south_star1.qualification_support import terminal_count_prefix_read_envelope as _terminal_prefix_read_envelope
+from tests.south_star1.qualification_support import count_initial_snapshot
+from tests.south_star1.qualification_support import legal_count_prefix
+from tests.south_star1.qualification_support import count_prepare
+from tests.south_star1.qualification_support import terminal_count_prefix_read_envelope
 from tests.south_star1.qualification_plan import (
     selected_slow_qualification_cases,
 )
@@ -60,9 +60,9 @@ from tests.south_star1.slow_qualification_assets import (
     build_slow_count_envelope,
     require_slow_count_envelope,
 )
-from tests.south_star1.qualification_support import case_facts as _facts
-from tests.south_star1.qualification_support import _initial_snapshot as _default_initial_snapshot
-from tests.south_star1.qualification_support import _prepare_default
+from tests.south_star1.qualification_support import facts_for_case
+from tests.south_star1.qualification_support import initial_snapshot_for_prepared
+from tests.south_star1.qualification_support import prepare_default_case
 from grimace._south_star1.writer_snapshot_prefix_envelope import (
     writer_snapshot_prefix_read_envelope_for_emitted_texts,
 )
@@ -91,8 +91,8 @@ class WriterCountDagEnvelopeTest(unittest.TestCase):
                 cached = require_slow_count_envelope(case)
                 print(f"cache_read_seconds={time.monotonic() - cache_started:.3f}", flush=True)
                 envelope = json.loads(cached.envelope_path.read_text())
-                prepared = _prepare_default(_facts(case))
-                snapshot = _default_initial_snapshot(prepared, case.rooted_at_atom)
+                prepared = prepare_default_case(facts_for_case(case))
+                snapshot = initial_snapshot_for_prepared(prepared, case.rooted_at_atom)
                 with (
                     patch("grimace._south_star1.writer_frontier_count_envelope.writer_frontier_count_envelope_for_snapshot", side_effect=AssertionError("count envelope built")),
                     patch("grimace._south_star1.writer_frontier_count_envelope.writer_count_certificate_dag_envelope_for_product", side_effect=AssertionError("count DAG built")),
@@ -128,10 +128,10 @@ class WriterCountDagEnvelopeTest(unittest.TestCase):
         self.assertEqual(raised.exception.violation.limit, 20_000)
 
     def test_count_dag_envelope_validates_for_initial_snapshot(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = count_prepare(ccofacts_for_case())
         envelope = writer_frontier_count_envelope_for_snapshot(
             prepared=prepared,
-            snapshot=_initial_snapshot(prepared),
+            snapshot=count_initial_snapshot(prepared),
         )
         dag = envelope["count_dag"]
 
@@ -158,12 +158,12 @@ class WriterCountDagEnvelopeTest(unittest.TestCase):
         )
 
     def test_count_dag_envelope_validates_for_prefix_read_source(self) -> None:
-        prepared = _prepare(cco_facts())
-        snapshot = _initial_snapshot(prepared)
+        prepared = count_prepare(ccofacts_for_case())
+        snapshot = count_initial_snapshot(prepared)
         prefix = writer_snapshot_prefix_read_envelope_for_emitted_texts(
             prepared=prepared,
             snapshot=snapshot,
-            emitted_texts=_legal_prefix(prepared, snapshot, length=1),
+            emitted_texts=legal_count_prefix(prepared, snapshot, length=1),
         )
         envelope = writer_frontier_count_envelope_for_prefix_read(
             prepared=prepared,
@@ -179,7 +179,7 @@ class WriterCountDagEnvelopeTest(unittest.TestCase):
         )
 
     def test_terminal_frontier_has_terminal_choice_count_node(self) -> None:
-        prepared, prefix = _terminal_prefix_read_envelope()
+        prepared, prefix = terminal_count_prefix_read_envelope()
         envelope = writer_frontier_count_envelope_for_prefix_read(
             prepared=prepared,
             prefix_read_envelope=prefix,
@@ -200,10 +200,10 @@ class WriterCountDagEnvelopeTest(unittest.TestCase):
         )
 
     def test_branching_frontier_has_branch_completion_nodes(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
+        prepared = count_prepare(cyclopropanefacts_for_case())
         envelope = writer_frontier_count_envelope_for_snapshot(
             prepared=prepared,
-            snapshot=_initial_snapshot(prepared),
+            snapshot=count_initial_snapshot(prepared),
         )
         branch_nodes = [
             node
@@ -218,11 +218,11 @@ class WriterCountDagEnvelopeTest(unittest.TestCase):
         )
 
     def test_count_dag_diagnostics_report_shared_subproof_hits(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
+        prepared = count_prepare(cyclopropanefacts_for_case())
         diagnostics = WriterCountDagBuildDiagnostics()
         envelope = writer_frontier_count_envelope_for_snapshot(
             prepared=prepared,
-            snapshot=_initial_snapshot(prepared),
+            snapshot=count_initial_snapshot(prepared),
             count_dag_diagnostics=diagnostics,
         )
 
@@ -235,10 +235,10 @@ class WriterCountDagEnvelopeTest(unittest.TestCase):
     def test_support_image_and_consistency_verifiers_accept_dag_count_envelope(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = count_prepare(ccofacts_for_case())
         image = writer_support_image_envelope_for_snapshot(
             prepared=prepared,
-            snapshot=_initial_snapshot(prepared),
+            snapshot=count_initial_snapshot(prepared),
         )
 
         self.assertTrue(
@@ -334,7 +334,7 @@ class WriterCountDagEnvelopeTest(unittest.TestCase):
         self.assertFalse(_verify(envelope).accepted)
 
     def test_terminal_coverage_missing_node_is_rejected(self) -> None:
-        prepared, prefix = _terminal_prefix_read_envelope()
+        prepared, prefix = terminal_count_prefix_read_envelope()
         envelope = writer_frontier_count_envelope_for_prefix_read(
             prepared=prepared,
             prefix_read_envelope=prefix,
@@ -403,25 +403,25 @@ class WriterCountDagEnvelopeTest(unittest.TestCase):
 
 
 def _count_envelope():
-    prepared = _prepare(cco_facts())
+    prepared = count_prepare(ccofacts_for_case())
     return deepcopy(
         writer_frontier_count_envelope_for_snapshot(
             prepared=prepared,
-            snapshot=_initial_snapshot(prepared),
+            snapshot=count_initial_snapshot(prepared),
         )
     )
 
 
 def _verify(envelope):
     return verify_writer_frontier_count_envelope(
-        prepared=_prepare(cco_facts()),
+        prepared=count_prepare(ccofacts_for_case()),
         envelope=envelope,
     )
 
 
 def _product():
-    prepared = _prepare(cco_facts())
-    snapshot = _initial_snapshot(prepared)
+    prepared = count_prepare(ccofacts_for_case())
+    snapshot = count_initial_snapshot(prepared)
     return _checked_writer_frontier_product(
         prepared,
         snapshot.cursor,

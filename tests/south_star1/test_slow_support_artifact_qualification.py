@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 from hashlib import sha256
+from tempfile import TemporaryDirectory
 import time
 import unittest
 from unittest.mock import patch
@@ -23,6 +24,7 @@ from grimace._south_star1.writer_support_artifact_fact_verifier import (
     verify_writer_support_artifact_for_facts,
 )
 from tests.south_star1.qualification_plan import (
+    case_by_name,
     selected_slow_qualification_cases,
 )
 from tests.south_star1.slow_qualification_assets import (
@@ -33,9 +35,9 @@ from tests.south_star1.slow_qualification_assets import (
     require_slow_support_artifact,
     _prepared_and_snapshot,
 )
-from tests.south_star1.qualification_support import case_facts as _facts
-from tests.south_star1.qualification_support import _prepare_default
-from tests.south_star1.qualification_support import _writer_options
+from tests.south_star1.qualification_support import facts_for_case
+from tests.south_star1.qualification_support import prepare_default_case
+from tests.south_star1.qualification_support import runtime_options_for_root
 
 
 class SlowSupportArtifactQualificationTest(unittest.TestCase):
@@ -103,11 +105,11 @@ class SlowSupportArtifactQualificationTest(unittest.TestCase):
             with self.subTest(case=case.name):
                 cached = require_slow_support_artifact(case)
                 artifact = json.loads(cached.artifact_path.read_text())
-                facts = _facts(case)
+                facts = facts_for_case(case)
                 started = time.monotonic()
                 result = verify_writer_support_artifact_for_facts(
                     facts=facts,
-                    runtime_options=_writer_options(case.rooted_at_atom),
+                    runtime_options=runtime_options_for_root(case.rooted_at_atom),
                     artifact=artifact,
                 )
                 print("artifact_cache_validation_seconds=0.000", flush=True)
@@ -120,15 +122,8 @@ class SlowSupportArtifactQualificationTest(unittest.TestCase):
                 self.assertLessEqual(set(case.expected_offline_relation_families), set(result.offline_checked_relation_families))
 
     def test_cached_count_composition_is_producer_free_for_small_case(self):
-        case = next(
-            item
-            for item in __import__(
-                "tests.south_star1.default_writer_capability_ledger",
-                fromlist=["ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES"],
-            ).ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES
-            if item.name == "ethanol"
-        )
-        with __import__("tempfile").TemporaryDirectory() as directory:
+        case = case_by_name("ethanol")
+        with TemporaryDirectory() as directory:
             previous = os.environ.get("SOUTH_STAR1_SLOW_ASSET_ROOT")
             os.environ["SOUTH_STAR1_SLOW_ASSET_ROOT"] = directory
             try:
@@ -152,10 +147,10 @@ class SlowSupportArtifactQualificationTest(unittest.TestCase):
                     live = verify_writer_support_artifact_envelope(
                         prepared=prepared, envelope=artifact
                     )
-                    facts = _facts(case)
+                    facts = facts_for_case(case)
                     offline = verify_writer_support_artifact_for_facts(
                         facts=facts,
-                        runtime_options=_writer_options(case.rooted_at_atom),
+                        runtime_options=runtime_options_for_root(case.rooted_at_atom),
                         artifact=artifact,
                     )
                 self.assertTrue(structural.accepted, structural.reason)
@@ -170,17 +165,10 @@ class SlowSupportArtifactQualificationTest(unittest.TestCase):
                     os.environ["SOUTH_STAR1_SLOW_ASSET_ROOT"] = previous
 
     def test_fresh_support_artifact_build_is_single_pass_for_small_case(self):
-        case = next(
-            item for item in __import__(
-                "tests.south_star1.default_writer_capability_ledger",
-                fromlist=["ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES"],
-            ).ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES
-            if item.name == "ethanol"
-        )
-        import tempfile
+        case = case_by_name("ethanol")
         import tests.south_star1.slow_qualification_assets as cache
 
-        with tempfile.TemporaryDirectory() as directory:
+        with TemporaryDirectory() as directory:
             previous = os.environ.get("SOUTH_STAR1_SLOW_ASSET_ROOT")
             os.environ["SOUTH_STAR1_SLOW_ASSET_ROOT"] = directory
             try:
@@ -210,16 +198,9 @@ class SlowSupportArtifactQualificationTest(unittest.TestCase):
                     os.environ["SOUTH_STAR1_SLOW_ASSET_ROOT"] = previous
 
     def test_single_pass_artifact_matches_public_builder_for_small_case(self):
-        case = next(
-            item for item in __import__(
-                "tests.south_star1.default_writer_capability_ledger",
-                fromlist=["ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES"],
-            ).ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES
-            if item.name == "ethanol"
-        )
-        import tempfile
+        case = case_by_name("ethanol")
 
-        with tempfile.TemporaryDirectory() as directory:
+        with TemporaryDirectory() as directory:
             previous = os.environ.get("SOUTH_STAR1_SLOW_ASSET_ROOT")
             os.environ["SOUTH_STAR1_SLOW_ASSET_ROOT"] = directory
             try:

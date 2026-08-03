@@ -14,6 +14,7 @@ from tests.south_star1.default_writer_capability_ledger import (
     ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES,
 )
 from tests.south_star1.qualification_plan import (
+    case_by_name,
     bind_slow_qualification_shard,
     reset_slow_qualification_shard,
 )
@@ -21,11 +22,7 @@ from tests.south_star1.qualification_plan import (
 
 class SlowQualificationAssetsTest(unittest.TestCase):
     def setUp(self) -> None:
-        self.case = next(
-            case
-            for case in ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES
-            if case.name == "ethanol"
-        )
+        self.case = case_by_name("ethanol")
 
     def test_absent_and_mismatched_metadata_fail_before_replay(self) -> None:
         with TemporaryDirectory() as directory:

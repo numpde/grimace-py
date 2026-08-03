@@ -76,6 +76,7 @@ from grimace._south_star1.writer_terminalization_artifact_fact_verifier import (
 )
 from tests.south_star1.helpers import cco_facts
 from tests.south_star1.helpers import directional_facts
+from tests.south_star1.qualification_support import bundle_bytes
 from tests.south_star1.test_writer_branch_transition_artifact import (
     _shared_ring_branch_sources,
 )
@@ -136,7 +137,7 @@ class WriterContinuationAssetTest(unittest.TestCase):
                 path=destination, prepared=prepared, snapshot=snapshot
             )
             self.assertEqual(manifest, public_manifest)
-            self.assertEqual(_bundle_bytes(candidate), _bundle_bytes(destination))
+            self.assertEqual(bundle_bytes(candidate), bundle_bytes(destination))
 
     def test_public_composition_orders_materialize_certify_publish_and_cleans_failures(self) -> None:
         prepared = _prepare(cco_facts())
@@ -200,7 +201,7 @@ class WriterContinuationAssetTest(unittest.TestCase):
                 snapshot=snapshot,
             )
             self.assertEqual(first_manifest, second_manifest)
-            self.assertEqual(_bundle_bytes(first), _bundle_bytes(second))
+            self.assertEqual(bundle_bytes(first), bundle_bytes(second))
             for descriptor_field in (
                 "raw_cursor_chunks",
                 "primitive_chunks",
@@ -885,14 +886,6 @@ def _core_strings(core):
         return result
 
     return visit(core.root.node_id)
-
-
-def _bundle_bytes(path):
-    return {
-        item.relative_to(path).as_posix(): item.read_bytes()
-        for item in sorted(path.rglob("*"))
-        if item.is_file()
-    }
 
 
 def _canonical(value):

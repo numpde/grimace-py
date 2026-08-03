@@ -36,21 +36,15 @@ from grimace._south_star1.writer_support_artifact_checker import verify_writer_s
 from grimace._south_star1.writer_support_artifact_envelope import verify_writer_support_artifact_envelope
 from grimace._south_star1.writer_support_artifact_fact_verifier import verify_writer_support_artifact_for_facts
 from tests.south_star1.default_writer_capability_ledger import DefaultWriterCapabilityCase
-
-
-def case_facts(case: DefaultWriterCapabilityCase):
-    return ordinary_molecule_facts_from_smiles(case.smiles, case.extraction_options)
+from tests.south_star1.helpers import two_atom_facts
 
 
 def facts_for_case(case: DefaultWriterCapabilityCase):
-    return case_facts(case)
+    return ordinary_molecule_facts_from_smiles(case.smiles, case.extraction_options)
 
 
 def prepare_default_case(facts):
     return prepare_south_star_mol_from_facts(facts, writer_surface=SouthStarWriterSurface())
-
-
-_prepare_default = prepare_default_case
 
 
 def runtime_options_for_case(case: DefaultWriterCapabilityCase) -> SouthStarRuntimeOptions:
@@ -60,7 +54,7 @@ def runtime_options_for_case(case: DefaultWriterCapabilityCase) -> SouthStarRunt
     )
 
 
-def _writer_options(rooted_at_atom: int = 0) -> SouthStarRuntimeOptions:
+def runtime_options_for_root(rooted_at_atom: int = 0) -> SouthStarRuntimeOptions:
     return SouthStarRuntimeOptions(
         rooted_at_atom=rooted_at_atom,
         serialization_language=SerializationLanguageMode.WRITER_SHAPED,
@@ -108,8 +102,6 @@ def legal_count_prefix(prepared, snapshot, *, length: int) -> tuple[str, ...]:
 
 
 def terminal_count_prefix_read_envelope():
-    from tests.south_star1.test_writer_snapshot import two_atom_facts
-
     prepared = count_prepare(two_atom_facts())
     snapshot = count_initial_snapshot(prepared)
     prefix = writer_snapshot_prefix_read_envelope_for_emitted_texts(
@@ -129,8 +121,8 @@ def initial_snapshot_for_case(prepared, case: DefaultWriterCapabilityCase):
     )
 
 
-def _initial_snapshot(prepared, rooted_at_atom: int = 0):
-    options = _writer_options(rooted_at_atom)
+def initial_snapshot_for_prepared(prepared, rooted_at_atom: int = 0):
+    options = runtime_options_for_root(rooted_at_atom)
     return capture_writer_frontier_snapshot(
         prepared=prepared,
         runtime_options=options,
@@ -140,31 +132,24 @@ def _initial_snapshot(prepared, rooted_at_atom: int = 0):
 
 def support_image_for_case(case: DefaultWriterCapabilityCase):
     return enumerate_prepared_writer_shaped_support(
-        prepared=prepare_default_case(case_facts(case)),
+        prepared=prepare_default_case(facts_for_case(case)),
         runtime_options=runtime_options_for_case(case),
     )
 
 
-def _support_image(case: DefaultWriterCapabilityCase):
-    return support_image_for_case(case)
-
-
 def support_artifact_for_case(case: DefaultWriterCapabilityCase):
-    prepared = prepare_default_case(case_facts(case))
+    prepared = prepare_default_case(facts_for_case(case))
     return writer_support_artifact_envelope_for_snapshot(
         prepared=prepared,
         snapshot=initial_snapshot_for_case(prepared, case),
     )
 
 
-def _artifact(prepared, rooted_at_atom: int = 0):
+def support_artifact_for_prepared(prepared, rooted_at_atom: int = 0):
     return writer_support_artifact_envelope_for_snapshot(
         prepared=prepared,
-        snapshot=_initial_snapshot(prepared, rooted_at_atom),
+        snapshot=initial_snapshot_for_prepared(prepared, rooted_at_atom),
     )
-
-
-artifact_for_prepared = _artifact
 
 
 def decoder_support_strings(decoder) -> tuple[str, ...]:
@@ -260,9 +245,13 @@ def public_proof_cursor_targets(decoder, *, asset=None):
     return tuple(sorted(groups, key=lambda item: item.source_raw_cursor_digest))
 
 
-def partition_public_proof_targets(groups, *, shard_count=4):
-    if shard_count != 4:
-        raise ValueError("South Star public proof qualification requires four shards")
+def partition_public_proof_targets(groups, *, shard_count=None):
+    from tests.south_star1.qualification_plan import PUBLIC_PROOF_SHARD_COUNT
+
+    if shard_count is None:
+        shard_count = PUBLIC_PROOF_SHARD_COUNT
+    if shard_count != PUBLIC_PROOF_SHARD_COUNT:
+        raise ValueError("South Star public proof qualification requires the declared shard count")
     if any(
         len({_branch_locator_key(item) for item in group.branch_locators}) != len(group.branch_locators)
         or len({_terminal_locator_key(item) for item in group.terminal_locators}) != len(group.terminal_locators)
@@ -299,12 +288,8 @@ class AcceptedCaseResult:
     facts_bound_unchecked_obligation_families: tuple[str, ...]
     facts_bound_relation_families: tuple[str, ...]
 
-    def __getitem__(self, key: str):
-        return getattr(self, key)
-
-
 def accepted_case_result(case: DefaultWriterCapabilityCase) -> AcceptedCaseResult:
-    facts = case_facts(case)
+    facts = facts_for_case(case)
     prepared = prepare_default_case(facts)
     options = runtime_options_for_case(case)
     state = initial_writer_runtime_state(prepared=prepared, runtime_options=options)
@@ -345,10 +330,6 @@ def accepted_case_result(case: DefaultWriterCapabilityCase) -> AcceptedCaseResul
         facts_bound_unchecked_obligation_families=fact_bound.offline_unchecked_obligation_families,
         facts_bound_relation_families=fact_bound.offline_checked_relation_families,
     )
-
-
-def _accepted_case_result(case: DefaultWriterCapabilityCase) -> AcceptedCaseResult:
-    return accepted_case_result(case)
 
 
 def _snapshot_resume_agreement(prepared, snapshot) -> dict[str, object]:

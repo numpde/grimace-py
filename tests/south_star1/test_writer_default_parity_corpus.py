@@ -66,14 +66,15 @@ from tests.south_star1.qualification_plan import SLOW_COUPLED_CASE_NAMES
 from tests.south_star1.qualification_plan import (
     selected_slow_qualification_cases,
 )
-from tests.south_star1.qualification_support import accepted_case_result as _accepted_case_result
-from tests.south_star1.qualification_support import case_facts as _facts
-from tests.south_star1.qualification_support import prepare_default_case as _prepare_default
-from tests.south_star1.qualification_support import runtime_options_for_case as _case_runtime_options
-from tests.south_star1.qualification_support import support_image_for_case as _support_image
-from tests.south_star1.qualification_support import artifact_for_prepared as _artifact
-from tests.south_star1.qualification_support import _initial_snapshot
-from tests.south_star1.qualification_support import _writer_options
+from tests.south_star1.qualification_support import accepted_case_result
+from tests.south_star1.qualification_support import facts_for_case
+from tests.south_star1.qualification_support import prepare_default_case
+from tests.south_star1.qualification_support import runtime_options_for_case
+from tests.south_star1.qualification_support import support_image_for_case
+from tests.south_star1.qualification_support import support_artifact_for_prepared
+from tests.south_star1.qualification_support import initial_snapshot_for_prepared
+from tests.south_star1.qualification_support import runtime_options_for_root
+from tests.south_star1.qualification_assertions import assert_materialized_case_matches_ledger
 
 ACCEPTED_CASES = ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES
 BLOCKED_CASES = BLOCKED_DEFAULT_WRITER_CAPABILITY_CASES
@@ -102,14 +103,14 @@ class WriterDefaultParityCorpusTest(unittest.TestCase):
     def test_accepted_default_corpus_verifies_support_artifacts(self) -> None:
         for case in self._run_cases():
             with self.subTest(case=case.name):
-                result = _accepted_case_result(case)
-                self._assert_accepted_case_result(case, result)
+                result = accepted_case_result(case)
+                assert_materialized_case_matches_ledger(self, case=case, result=result)
 
-    def test_accepted_default_corpus_reparses_to_isomorphic_facts(self) -> None:
+    def test_accepted_default_corpus_reparses_to_isomorphic_facts_for_case(self) -> None:
         for case in self._run_cases():
             with self.subTest(case=case.name):
-                facts = _facts(case)
-                image = _support_image(case)
+                facts = facts_for_case(case)
+                image = support_image_for_case(case)
                 for text in image.strings:
                     with self.subTest(case=case.name, text=text):
                         reparsed = ordinary_molecule_facts_from_smiles(
@@ -142,16 +143,16 @@ class WriterDefaultParityCorpusTest(unittest.TestCase):
 
     def _assert_slow_support_case(self, case) -> None:
         with self.subTest(case=case.name):
-            result = _accepted_case_result(case)
-            self._assert_accepted_case_result(case, result)
+            result = accepted_case_result(case)
+            assert_materialized_case_matches_ledger(self, case=case, result=result)
 
-    def test_slow_coupled_corpus_reparses_to_isomorphic_facts(self) -> None:
+    def test_slow_coupled_corpus_reparses_to_isomorphic_facts_for_case(self) -> None:
         if os.environ.get(RUN_SLOW_ENV) != "1":
             self.skipTest(f"set {RUN_SLOW_ENV}=1 to run coupled cases")
         for case in selected_slow_qualification_cases():
             with self.subTest(case=case.name):
-                facts = _facts(case)
-                for text in _support_image(case).strings:
+                facts = facts_for_case(case)
+                for text in support_image_for_case(case).strings:
                     with self.subTest(text=text):
                         reparsed = ordinary_molecule_facts_from_smiles(
                             text,
@@ -161,98 +162,6 @@ class WriterDefaultParityCorpusTest(unittest.TestCase):
                             facts_are_isomorphic(facts, reparsed).isomorphic,
                             text,
                         )
-
-    def _assert_accepted_case_result(
-        self,
-        case: DefaultWriterCapabilityCase,
-        result: dict[str, object],
-    ) -> None:
-        self.assertEqual(
-            result["support_count"],
-            result["artifact_support_count"],
-        )
-        self.assertEqual(
-            result["completion_count"],
-            result["artifact_witness_count"],
-        )
-        self.assertEqual(
-            result["support_count"],
-            case.expected_support_count,
-        )
-        self.assertEqual(
-            result["completion_count"],
-            case.expected_completion_count,
-        )
-        self.assertEqual(
-            result["support_count"],
-            result["materialized_support_count"],
-        )
-        self.assertEqual(
-            result["completion_count"],
-            result["materialized_witness_count"],
-        )
-        self.assertEqual(
-            result["support_count"],
-            result["artifact_metrics"]["support_string_count"],
-        )
-        self.assertGreater(result["artifact_metrics"]["object_count"], 0)
-        self.assertEqual(
-            result["artifact_metrics"]["reachable_object_count"],
-            result["artifact_metrics"]["object_count"],
-        )
-        self.assertEqual(
-            result["artifact_metrics"]["unreferenced_object_count"],
-            0,
-        )
-        self.assertIsNotNone(result["artifact_metrics"]["count_dag_node_count"])
-        self.assertLessEqual(
-            result["artifact_metrics"]["largest_object_digest_payload_bytes"],
-            default_writer_envelope_work_budget(None).max_digest_term_bytes,
-        )
-        self.assertEqual(
-            result["structural_accepted"],
-            case.expected_structural_artifact,
-        )
-        self.assertEqual(
-            result["live_accepted"],
-            case.expected_live_artifact_verifier,
-        )
-        self.assertEqual(
-            result["facts_bound_accepted"],
-            case.expected_facts_bound_verifier,
-        )
-        self.assertEqual(
-            result["facts_bound_offline_complete"],
-            case.expected_offline_replay_complete,
-        )
-        self.assertEqual(
-            result["live_frontier_agreement_complete"],
-            case.expected_live_frontier_agreement_complete,
-        )
-        self.assertEqual(
-            result["live_count_agreement_complete"],
-            case.expected_live_count_agreement_complete,
-        )
-        self.assertEqual(
-            result["snapshot_resume_agreement_complete"],
-            case.expected_snapshot_resume_agreement_complete,
-        )
-        self.assertEqual(
-            result["facts_bound_object_kinds"],
-            case.expected_offline_object_kinds,
-        )
-        self.assertEqual(
-            result["facts_bound_unchecked_object_kinds"],
-            case.expected_offline_unchecked_object_kinds,
-        )
-        self.assertEqual(
-            result["facts_bound_unchecked_obligation_families"],
-            case.expected_offline_unchecked_obligation_families,
-        )
-        self.assertLessEqual(
-            set(case.expected_offline_relation_families),
-            set(result["facts_bound_relation_families"]),
-        )
 
     def test_blocked_default_corpus_has_typed_blockers(self) -> None:
         for case in BLOCKED_CASES:
@@ -284,13 +193,13 @@ class WriterDefaultParityCorpusTest(unittest.TestCase):
         self,
     ) -> None:
         case = next(item for item in ACCEPTED_CASES if item.name == "cyclopropene_double_closure")
-        facts = _facts(case)
-        prepared = _prepare_default(facts)
-        artifact = _artifact(prepared)
+        facts = facts_for_case(case)
+        prepared = prepare_default_case(facts)
+        artifact = support_artifact_for_prepared(prepared)
 
         default_verification = verify_writer_support_artifact_for_facts(
             facts=facts,
-            runtime_options=_writer_options(),
+            runtime_options=runtime_options_for_root(),
             artifact=artifact,
         )
 
@@ -303,8 +212,8 @@ class WriterDefaultParityCorpusTest(unittest.TestCase):
             )
 def _blocked_case_result(case: DefaultWriterCapabilityCase) -> dict[str, object]:
     try:
-        facts = _facts(case)
-        prepared = _prepare_default(facts)
+        facts = facts_for_case(case)
+        prepared = prepare_default_case(facts)
     except SouthStarError as error:
         return {
             "stage": "prepare",
@@ -323,7 +232,7 @@ def _reachable_stereo_policy_blockers(prepared):
     pending = [
         initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=runtime_options_for_root(),
         ).snapshot
     ]
     seen = set()
@@ -363,4 +272,3 @@ def _reachable_stereo_policy_blockers(prepared):
 
 if __name__ == "__main__":
     unittest.main()
-

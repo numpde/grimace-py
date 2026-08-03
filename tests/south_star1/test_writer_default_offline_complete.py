@@ -22,48 +22,21 @@ from tests.south_star1.qualification_plan import SLOW_COUPLED_CASES
 from tests.south_star1.qualification_plan import (
     selected_slow_qualification_cases,
 )
-from tests.south_star1.qualification_support import _accepted_case_result
-from tests.south_star1.qualification_support import _artifact
-from tests.south_star1.qualification_support import case_facts as _facts
-from tests.south_star1.qualification_support import _prepare_default
+from tests.south_star1.qualification_support import accepted_case_result
+from tests.south_star1.qualification_support import support_artifact_for_prepared
+from tests.south_star1.qualification_support import facts_for_case
+from tests.south_star1.qualification_support import prepare_default_case
+from tests.south_star1.qualification_assertions import assert_materialized_case_matches_ledger
+from tests.south_star1.qualification_assertions import assert_offline_case_matches_ledger
+from tests.south_star1.qualification_plan import case_by_name
 
 
 class WriterDefaultOfflineCompleteTest(unittest.TestCase):
     def _assert_cases_are_offline_complete(self, cases) -> None:
         for case in cases:
             with self.subTest(case=case.name):
-                result = _accepted_case_result(case)
-
-                self.assertTrue(case.expected_structural_artifact)
-                self.assertTrue(case.expected_live_artifact_verifier)
-                self.assertTrue(case.expected_facts_bound_verifier)
-                self.assertTrue(case.expected_offline_replay_complete)
-                self.assertTrue(case.expected_live_frontier_agreement_complete)
-                self.assertTrue(case.expected_live_count_agreement_complete)
-                self.assertTrue(case.expected_snapshot_resume_agreement_complete)
-                self.assertTrue(result["structural_accepted"])
-                self.assertTrue(result["live_accepted"])
-                self.assertTrue(result["facts_bound_accepted"])
-                self.assertTrue(result["facts_bound_offline_complete"])
-                self.assertTrue(result["live_frontier_agreement_complete"])
-                self.assertTrue(result["live_count_agreement_complete"])
-                self.assertTrue(result["snapshot_resume_agreement_complete"])
-                self.assertEqual(
-                    result["facts_bound_object_kinds"],
-                    case.expected_offline_object_kinds,
-                )
-                self.assertEqual(
-                    result["facts_bound_unchecked_object_kinds"],
-                    case.expected_offline_unchecked_object_kinds,
-                )
-                self.assertEqual(
-                    result["facts_bound_unchecked_obligation_families"],
-                    case.expected_offline_unchecked_obligation_families,
-                )
-                self.assertLessEqual(
-                    set(case.expected_offline_relation_families),
-                    set(result["facts_bound_relation_families"]),
-                )
+                result = accepted_case_result(case)
+                assert_materialized_case_matches_ledger(self, case=case, result=result)
 
     def test_fast_cases_are_offline_complete(self) -> None:
         self._assert_cases_are_offline_complete(FAST_ACCEPTED_CASES)
@@ -121,12 +94,8 @@ class WriterDefaultOfflineCompleteTest(unittest.TestCase):
                 )
 
     def test_descriptive_lifecycle_flags_do_not_remove_replay_credit(self) -> None:
-        case = next(
-            item
-            for item in ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES
-            if item.name == "ethanol"
-        )
-        artifact = _artifact(_prepare_default(_facts(case)))
+        case = case_by_name("ethanol")
+        artifact = support_artifact_for_prepared(prepare_default_case(facts_for_case(case)))
         objects = {item["object_id"]: item for item in artifact["objects"]}
         branch = next(
             item for item in artifact["objects"] if item["kind"] == "branch_support"
@@ -138,7 +107,7 @@ class WriterDefaultOfflineCompleteTest(unittest.TestCase):
         manifest["terminal_clean"] = False
 
         classification = classify_residual_stereo_obligations_offline(
-            facts=_facts(case),
+            facts=facts_for_case(case),
             artifact=artifact,
             objects=objects,
         )
@@ -147,12 +116,13 @@ class WriterDefaultOfflineCompleteTest(unittest.TestCase):
         self.assertNotIn("stereo_lifecycle", classification.unchecked_families)
 
         replay = verify_writer_support_artifact_offline_replay(
-            facts=_facts(case),
+            facts=facts_for_case(case),
             artifact=artifact,
         )
 
         self.assertTrue(replay.accepted, replay.reason)
         self.assertTrue(replay.offline_replay_complete)
+        assert_offline_case_matches_ledger(self, case=case, verification=replay)
         self.assertNotIn(
             "stereo_lifecycle",
             replay.unchecked_obligation_families,

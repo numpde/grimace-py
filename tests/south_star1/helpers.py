@@ -48,6 +48,20 @@ def cco_facts() -> MoleculeFacts:
     )
 
 
+def two_atom_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=(atom(0, "C"), atom(1, "C")),
+        bonds=(single_bond(0, 0, 1),),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0), AtomId(1)),
+                bonds=(BondId(0),),
+            ),
+        ),
+    )
+
+
 def simple_monocycle_with_pendant_forest_facts(
     *,
     ring_size: int,

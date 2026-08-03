@@ -30,7 +30,7 @@ from tests.south_star1.qualification_plan import (
 from tests.south_star1.slow_qualification_assets import (
     require_slow_qualification_asset,
 )
-from tests.south_star1.qualification_support import bundle_bytes as _bundle_bytes
+from tests.south_star1.qualification_support import bundle_bytes
 from tests.south_star1.qualification_assertions import (
     assert_continuation_recertification_matches_case,
 )
@@ -84,7 +84,7 @@ class PublicContinuationAssetVerificationTest(unittest.TestCase):
                 copy_started = time.monotonic()
                 shutil.copytree(cached.asset_path, copied)
                 copy_seconds = time.monotonic() - copy_started
-                before = _bundle_bytes(copied)
+                before = bundle_bytes(copied)
                 recert_started = time.monotonic()
                 with (
                     patch.object(
@@ -137,7 +137,7 @@ class PublicContinuationAssetVerificationTest(unittest.TestCase):
                 assert_continuation_recertification_matches_case(
                     self, case=case, report=report
                 )
-                self.assertEqual(_bundle_bytes(copied), before)
+                self.assertEqual(bundle_bytes(copied), before)
                 print(f"cache_validation_seconds={cache_validation_seconds:.3f}", flush=True)
                 print(f"copy_seconds={copy_seconds:.3f}", flush=True)
                 print(
@@ -168,7 +168,7 @@ class PublicContinuationAssetVerificationTest(unittest.TestCase):
                 mol, source, rootedAtAtom=0
             )
             shutil.copytree(source, copied)
-            before = _bundle_bytes(copied)
+            before = bundle_bytes(copied)
             report = grimace.VerifyMolToSmilesContinuationAsset(
                 mol,
                 copied,
@@ -203,7 +203,7 @@ class PublicContinuationAssetVerificationTest(unittest.TestCase):
                 report.terminal_locator_count,
                 report.terminal_proof_count,
             )
-            self.assertEqual(_bundle_bytes(copied), before)
+            self.assertEqual(bundle_bytes(copied), before)
 
     def test_identity_and_manifest_mismatches_are_typed_before_replay(self) -> None:
         with TemporaryDirectory() as directory:

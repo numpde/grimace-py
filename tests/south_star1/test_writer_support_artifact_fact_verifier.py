@@ -108,7 +108,7 @@ from tests.south_star1.test_writer_stereo_residual import (
 from tests.south_star1.test_writer_stereo_residual import (
     _shared_directional_ring_carrier_facts,
 )
-from tests.south_star1.test_writer_snapshot import two_atom_facts
+from tests.south_star1.helpers import two_atom_facts
 
 RUN_SLOW_ENV = "SOUTH_STAR1_RUN_SLOW"
 

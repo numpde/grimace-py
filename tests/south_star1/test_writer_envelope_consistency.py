@@ -27,7 +27,7 @@ from grimace._south_star1.writer_support_image_envelope import (
     writer_support_image_envelope_for_snapshot,
 )
 from tests.south_star1.helpers import cyclopropane_facts
-from tests.south_star1.test_writer_snapshot import two_atom_facts
+from tests.south_star1.helpers import two_atom_facts
 
 
 _PREPARED_CACHE = None

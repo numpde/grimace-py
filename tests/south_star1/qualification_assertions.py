@@ -25,13 +25,40 @@ def assert_continuation_recertification_matches_case(test, *, case, report) -> N
 
 
 def assert_materialized_case_matches_ledger(test, *, case, result) -> None:
-    test.assertEqual(result["support_count"], case.expected_support_count)
-    test.assertEqual(result["completion_count"], case.expected_completion_count)
-    test.assertEqual(result["support_count"], result["artifact_support_count"])
-    test.assertEqual(result["completion_count"], result["artifact_witness_count"])
+    test.assertEqual(result.support_count, case.expected_support_count)
+    test.assertEqual(result.completion_count, case.expected_completion_count)
+    test.assertEqual(result.support_count, result.materialized_support_count)
+    test.assertEqual(result.completion_count, result.materialized_witness_count)
+    test.assertEqual(result.support_count, result.artifact_support_count)
+    test.assertEqual(result.completion_count, result.artifact_witness_count)
+    metrics = result.artifact_metrics
+    test.assertEqual(metrics["support_string_count"], result.support_count)
+    test.assertGreater(metrics["object_count"], 0)
+    test.assertEqual(metrics["reachable_object_count"], metrics["object_count"])
+    test.assertEqual(metrics["unreferenced_object_count"], 0)
+    test.assertIsNotNone(metrics["count_dag_node_count"])
+    test.assertEqual(result.structural_accepted, case.expected_structural_artifact)
+    test.assertEqual(result.live_accepted, case.expected_live_artifact_verifier)
+    test.assertEqual(result.facts_bound_accepted, case.expected_facts_bound_verifier)
+    test.assertEqual(result.facts_bound_offline_complete, case.expected_offline_replay_complete)
+    test.assertEqual(result.live_frontier_agreement_complete, case.expected_live_frontier_agreement_complete)
+    test.assertEqual(result.live_count_agreement_complete, case.expected_live_count_agreement_complete)
+    test.assertEqual(result.snapshot_resume_agreement_complete, case.expected_snapshot_resume_agreement_complete)
+    test.assertEqual(result.facts_bound_object_kinds, case.expected_offline_object_kinds)
+    test.assertEqual(result.facts_bound_unchecked_object_kinds, case.expected_offline_unchecked_object_kinds)
+    test.assertEqual(result.facts_bound_unchecked_obligation_families, case.expected_offline_unchecked_obligation_families)
+    test.assertLessEqual(set(case.expected_offline_relation_families), set(result.facts_bound_relation_families))
 
 
 def assert_offline_case_matches_ledger(test, *, case, verification) -> None:
     test.assertTrue(verification.accepted, verification.reason)
     test.assertTrue(verification.offline_replay_complete)
-    test.assertEqual(verification.offline_unchecked_obligation_families, ())
+    test.assertEqual(verification.checked_object_kinds, case.expected_offline_object_kinds)
+    test.assertEqual(verification.unchecked_object_kinds, case.expected_offline_unchecked_object_kinds)
+    test.assertEqual(verification.unchecked_obligation_families, case.expected_offline_unchecked_obligation_families)
+    test.assertTrue(
+        set(case.expected_offline_relation_families).issubset(
+            verification.checked_relation_families
+        )
+    )
+    test.assertEqual(verification.unchecked_obligation_families, ())

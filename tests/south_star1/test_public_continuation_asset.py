@@ -92,8 +92,8 @@ class PublicContinuationAssetTest(unittest.TestCase):
                 cached = build_slow_qualification_candidate(case)
                 required = require_slow_qualification_candidate(case)
                 self.assertEqual(required.manifest_digest, cached.manifest_digest)
-                self.assertTrue(cached.candidate_path.is_dir())
-                self.assertTrue(cached.metadata_path.is_file())
+                self.assertTrue(cached.entry.paths.payload_path.is_dir())
+                self.assertTrue(cached.entry.paths.metadata_path.is_file())
 
     @unittest.skipUnless(
         os.environ.get("SOUTH_STAR1_RUN_SLOW") == "1",
@@ -116,7 +116,7 @@ class PublicContinuationAssetTest(unittest.TestCase):
                 mol = Chem.MolFromSmiles(case.smiles)
                 with forbid_qualification_profile("public-runtime") as report:
                     decoder = grimace.MolToSmilesContinuationDecoder.from_asset(
-                        cached.asset_path,
+                        cached.entry.paths.payload_path,
                         expected_manifest_digest=cached.manifest_digest,
                     )
                     support = decoder_support_strings(decoder)
@@ -129,7 +129,7 @@ class PublicContinuationAssetTest(unittest.TestCase):
                     )
                     successor = decoder.next_choices[0].next_state
                     resumed = grimace.MolToSmilesContinuationDecoder.from_snapshot(
-                        cached.asset_path,
+                        cached.entry.paths.payload_path,
                         successor.snapshot(),
                     )
                     self.assertEqual(resumed.cache_key(), successor.cache_key())

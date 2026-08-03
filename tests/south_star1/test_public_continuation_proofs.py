@@ -105,13 +105,13 @@ class PublicContinuationProofTest(unittest.TestCase):
                 with forbid_qualification_profile("public-proofs") as guard_report:
                     decoder_started = time.monotonic()
                     decoder = grimace.MolToSmilesContinuationDecoder.from_asset(
-                        cached.asset_path,
+                        cached.entry.paths.payload_path,
                         expected_manifest_digest=cached.manifest_digest,
                         proof_capable=True,
                         mol=mol,
                     )
                     proof_decoder_open_seconds = time.monotonic() - decoder_started
-                    asset = open_writer_continuation_core(cached.asset_path)
+                    asset = open_writer_continuation_core(cached.entry.paths.payload_path)
                     print("proof_inventory_started", flush=True)
                     inventory_started = time.monotonic()
                     groups = public_proof_cursor_targets(decoder, asset=asset)

@@ -89,7 +89,7 @@ class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
                 if cls.USE_CACHED_SLOW_ASSETS:
                     cached = require_slow_qualification_asset(cls.ledger[item.name])
                     cls.assets[item.name] = open_writer_continuation_core(
-                        cached.asset_path
+                        cached.entry.paths.payload_path
                     )
                 else:
                     path = Path(cls.temporary.name) / item.name

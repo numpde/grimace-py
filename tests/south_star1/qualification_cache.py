@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+import hashlib
 import os
 from pathlib import Path
+import json
 import subprocess
+import uuid
 from typing import Mapping
 
 from tests.south_star1.default_writer_capability_ledger import DefaultWriterCapabilityCase
@@ -83,6 +86,21 @@ class QualificationCachePaths:
     definition: QualificationCacheEntryDefinition
     payload_path: Path
     metadata_path: Path
+
+
+class QualificationCacheState(Enum):
+    ABSENT = "absent"
+    PAYLOAD_ONLY = "payload_only"
+    METADATA_ONLY = "metadata_only"
+    COMPLETE = "complete"
+
+
+@dataclass(frozen=True, slots=True)
+class CachedQualificationEntry:
+    context: QualificationCacheContext
+    paths: QualificationCachePaths
+    metadata: Mapping[str, object]
+    cache_reused: bool
 
 
 def _git_head() -> str:
@@ -171,8 +189,203 @@ def validate_qualification_cache_registry() -> None:
         raise ValueError("duplicate qualification cache metadata names")
     if any(not item.schema_name for item in definitions):
         raise ValueError("empty qualification cache schema name")
-    if any(item.payload_kind not in QualificationCachePayloadKind for item in definitions):
+    if any(not isinstance(item.payload_kind, QualificationCachePayloadKind) for item in definitions):
         raise ValueError("unknown qualification cache payload kind")
     if set(payload_names) & set(metadata_names):
         raise ValueError("qualification cache payload and metadata names overlap")
 
+
+def inspect_qualification_cache(paths: QualificationCachePaths) -> QualificationCacheState:
+    payload_exists = paths.payload_path.exists()
+    metadata_exists = paths.metadata_path.is_file()
+    if payload_exists and metadata_exists:
+        return QualificationCacheState.COMPLETE
+    if payload_exists:
+        return QualificationCacheState.PAYLOAD_ONLY
+    if metadata_exists:
+        return QualificationCacheState.METADATA_ONLY
+    return QualificationCacheState.ABSENT
+
+
+def hidden_staging_path(paths: QualificationCachePaths, role: str) -> Path:
+    return paths.context.case_dir / (
+        f".{paths.definition.payload_name}.{role}.{uuid.uuid4().hex}"
+    )
+
+
+def cleanup_incomplete_qualification_cache(paths: QualificationCachePaths) -> None:
+    state = inspect_qualification_cache(paths)
+    if state is QualificationCacheState.COMPLETE or state is QualificationCacheState.ABSENT:
+        return
+    if paths.definition.payload_kind is QualificationCachePayloadKind.DIRECTORY:
+        stale = paths.payload_path
+        files = [item for item in stale.rglob("*") if item.is_file()] if stale.is_dir() else []
+        print(
+            f"stale_candidate_manifest_present={'true' if (stale / 'manifest.json').is_file() else 'false'}",
+            flush=True,
+        )
+        print(
+            f"stale_candidate_chunk_count={sum(item.parent.name == 'chunks' for item in files)}",
+            flush=True,
+        )
+        print(f"stale_candidate_total_bytes={sum(item.stat().st_size for item in files)}", flush=True)
+        if stale.is_dir():
+            import shutil
+
+            shutil.rmtree(stale)
+        else:
+            stale.unlink(missing_ok=True)
+    else:
+        paths.payload_path.unlink(missing_ok=True)
+    paths.metadata_path.unlink(missing_ok=True)
+
+
+def canonical_json_text(value: object) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+
+
+def canonical_json_sha256(value: object) -> str:
+    return hashlib.sha256(canonical_json_text(value).encode("utf-8")).hexdigest()
+
+
+def read_json_mapping(path: Path) -> dict[str, object]:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise ValueError(f"expected JSON mapping: {path}")
+    return value
+
+
+def _temporary_path(path: Path, role: str) -> Path:
+    return path.with_name(f".{path.name}.{role}.{uuid.uuid4().hex}.tmp")
+
+
+def atomic_write_text(path: Path, text: str) -> None:
+    temporary = _temporary_path(path, "write")
+    try:
+        temporary.write_text(text, encoding="utf-8")
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _remove_public_pair(paths: QualificationCachePaths) -> None:
+    if paths.definition.payload_kind is QualificationCachePayloadKind.DIRECTORY:
+        if paths.payload_path.is_dir():
+            import shutil
+
+            shutil.rmtree(paths.payload_path)
+        else:
+            paths.payload_path.unlink(missing_ok=True)
+    else:
+        paths.payload_path.unlink(missing_ok=True)
+    paths.metadata_path.unlink(missing_ok=True)
+
+
+def _metadata_text(context: QualificationCacheContext, kind: QualificationCacheKind, details: Mapping[str, object]) -> str:
+    return canonical_json_text(qualification_cache_metadata(context, kind, details=details)) + "\n"
+
+
+def publish_json_qualification_cache(
+    paths: QualificationCachePaths,
+    *,
+    payload: Mapping[str, object],
+    metadata_details: Mapping[str, object],
+) -> dict[str, object]:
+    if paths.definition.payload_kind is not QualificationCachePayloadKind.JSON:
+        raise ValueError("JSON publication requires a JSON cache entry")
+    payload_text = canonical_json_text(payload) + "\n"
+    metadata_text = _metadata_text(paths.context, paths.definition.kind, metadata_details)
+    payload_tmp = _temporary_path(paths.payload_path, "payload")
+    metadata_tmp = _temporary_path(paths.metadata_path, "metadata")
+    paths.context.case_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        payload_tmp.write_text(payload_text, encoding="utf-8")
+        metadata_tmp.write_text(metadata_text, encoding="utf-8")
+        os.replace(payload_tmp, paths.payload_path)
+        os.replace(metadata_tmp, paths.metadata_path)
+    except BaseException:
+        payload_tmp.unlink(missing_ok=True)
+        metadata_tmp.unlink(missing_ok=True)
+        _remove_public_pair(paths)
+        raise
+    return qualification_cache_metadata(
+        paths.context, paths.definition.kind, details=metadata_details
+    )
+
+
+def publish_directory_qualification_cache(
+    paths: QualificationCachePaths,
+    *,
+    staged_payload_path: Path,
+    metadata_details: Mapping[str, object],
+) -> dict[str, object]:
+    if paths.definition.payload_kind is not QualificationCachePayloadKind.DIRECTORY:
+        raise ValueError("directory publication requires a directory cache entry")
+    metadata_text = _metadata_text(paths.context, paths.definition.kind, metadata_details)
+    metadata_tmp = _temporary_path(paths.metadata_path, "metadata")
+    paths.context.case_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        os.replace(staged_payload_path, paths.payload_path)
+        metadata_tmp.write_text(metadata_text, encoding="utf-8")
+        os.replace(metadata_tmp, paths.metadata_path)
+    except BaseException:
+        metadata_tmp.unlink(missing_ok=True)
+        _remove_public_pair(paths)
+        staged_payload_path.unlink(missing_ok=True)
+        raise
+    return qualification_cache_metadata(
+        paths.context, paths.definition.kind, details=metadata_details
+    )
+
+
+def promote_directory_qualification_cache(
+    *,
+    source_paths: QualificationCachePaths,
+    destination_paths: QualificationCachePaths,
+    destination_metadata_details: Mapping[str, object],
+) -> dict[str, object]:
+    if source_paths.definition.payload_kind is not QualificationCachePayloadKind.DIRECTORY:
+        raise ValueError("promotion source must be a directory cache entry")
+    if destination_paths.definition.payload_kind is not QualificationCachePayloadKind.DIRECTORY:
+        raise ValueError("promotion destination must be a directory cache entry")
+    if inspect_qualification_cache(source_paths) is not QualificationCacheState.COMPLETE:
+        raise ValueError("promotion source is not complete")
+    if inspect_qualification_cache(destination_paths) is not QualificationCacheState.ABSENT:
+        raise ValueError("promotion destination is not absent")
+    hidden = destination_paths.context.case_dir / f".{destination_paths.definition.payload_name}.promotion.{uuid.uuid4().hex}"
+    metadata_tmp = _temporary_path(destination_paths.metadata_path, "metadata")
+    destination_paths.context.case_dir.mkdir(parents=True, exist_ok=True)
+    moved = False
+    try:
+        os.replace(source_paths.payload_path, hidden)
+        moved = True
+        metadata_tmp.write_text(
+            _metadata_text(
+                destination_paths.context,
+                destination_paths.definition.kind,
+                destination_metadata_details,
+            ),
+            encoding="utf-8",
+        )
+        os.replace(hidden, destination_paths.payload_path)
+        moved = False
+        os.replace(metadata_tmp, destination_paths.metadata_path)
+        source_paths.metadata_path.unlink()
+    except BaseException:
+        metadata_tmp.unlink(missing_ok=True)
+        if destination_paths.metadata_path.exists():
+            destination_paths.metadata_path.unlink(missing_ok=True)
+        if destination_paths.payload_path.exists():
+            import shutil
+
+            shutil.rmtree(destination_paths.payload_path)
+        if moved and hidden.exists():
+            os.replace(hidden, source_paths.payload_path)
+        elif not source_paths.payload_path.exists() and destination_paths.payload_path.exists():
+            os.replace(destination_paths.payload_path, source_paths.payload_path)
+        raise
+    return qualification_cache_metadata(
+        destination_paths.context,
+        destination_paths.definition.kind,
+        details=destination_metadata_details,
+    )

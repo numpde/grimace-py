@@ -143,7 +143,7 @@ class WriterDefaultContinuationCorpusTest(unittest.TestCase):
                     cursor=initial_writer_frontier_cursor(prepared, options),
                 )
                 prepared_reconstruction_seconds = time.monotonic() - prepared_started
-                asset = open_writer_continuation_core(cached.asset_path)
+                asset = open_writer_continuation_core(cached.entry.paths.payload_path)
                 live_started = time.monotonic()
                 structural = verify_writer_continuation_asset_consistency(asset.path)
                 live = verify_writer_continuation_asset_for_prepared(
@@ -168,7 +168,7 @@ class WriterDefaultContinuationCorpusTest(unittest.TestCase):
                 rust_started = time.monotonic()
                 with forbid_qualification_profile("cached-continuation-verification") as guard_report:
                     decoder = MolToSmilesContinuationDecoder.from_asset(
-                        cached.asset_path,
+                        cached.entry.paths.payload_path,
                         expected_manifest_digest=cached.manifest_digest,
                     )
                     support = decoder_support_strings(decoder)
@@ -182,12 +182,12 @@ class WriterDefaultContinuationCorpusTest(unittest.TestCase):
                         self.assertEqual(support_strings_digest(support), case.expected_support_digest)
                     advanced = decoder.next_choices[0].next_state
                     resumed = MolToSmilesContinuationDecoder.from_snapshot(
-                        cached.asset_path,
+                        cached.entry.paths.payload_path,
                         advanced.snapshot(),
                     )
                     self.assertEqual(resumed.cache_key(), advanced.cache_key())
                     proof_decoder = MolToSmilesContinuationDecoder.from_asset(
-                        cached.asset_path,
+                        cached.entry.paths.payload_path,
                         proof_capable=True,
                         prepared=prepared,
                     )

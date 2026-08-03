@@ -48,7 +48,7 @@ class SlowSupportArtifactQualificationTest(unittest.TestCase):
         for case in selected_slow_qualification_cases():
             with self.subTest(case=case.name):
                 cached = require_slow_count_envelope(case)
-                self.assertTrue(cached.envelope_path.is_file())
+                self.assertTrue(cached.entry.paths.payload_path.is_file())
 
     @unittest.skipUnless(os.environ.get("SOUTH_STAR1_RUN_SLOW") == "1", "slow lane")
     def test_slow_support_artifact_build(self):
@@ -59,15 +59,15 @@ class SlowSupportArtifactQualificationTest(unittest.TestCase):
                 guard_report.assert_unused(self)
                 self.assertEqual(cached.support_count, case.expected_support_count)
                 self.assertEqual(cached.completion_count, case.expected_completion_count)
-                self.assertTrue(cached.artifact_path.is_file())
-                self.assertTrue(cached.metadata_path.is_file())
+                self.assertTrue(cached.entry.paths.payload_path.is_file())
+                self.assertTrue(cached.entry.paths.metadata_path.is_file())
 
     @unittest.skipUnless(os.environ.get("SOUTH_STAR1_RUN_SLOW") == "1", "slow lane")
     def test_slow_support_artifact_live(self):
         for case in selected_slow_qualification_cases():
             with self.subTest(case=case.name):
                 cached = require_slow_support_artifact(case)
-                artifact = json.loads(cached.artifact_path.read_text())
+                artifact = cached.artifact
                 prepared, snapshot = _prepared_and_snapshot(case)
                 started = time.monotonic()
                 with forbid_qualification_profile("slow-rich-artifact-live") as guard_report:
@@ -86,7 +86,7 @@ class SlowSupportArtifactQualificationTest(unittest.TestCase):
         for case in selected_slow_qualification_cases():
             with self.subTest(case=case.name):
                 cached = require_slow_support_artifact(case)
-                artifact = json.loads(cached.artifact_path.read_text())
+                artifact = cached.artifact
                 facts = facts_for_case(case)
                 started = time.monotonic()
                 with forbid_qualification_profile("slow-rich-artifact-live") as guard_report:
@@ -110,7 +110,7 @@ class SlowSupportArtifactQualificationTest(unittest.TestCase):
                 build_slow_count_envelope(case)
                 with forbid_qualification_profile("slow-rich-artifact-build") as guard_report:
                     cached = build_slow_support_artifact(case)
-                    artifact = json.loads(cached.artifact_path.read_text())
+                    artifact = cached.artifact
                     structural = verify_writer_support_artifact_consistency(artifact)
                     prepared, _snapshot = _prepared_and_snapshot(case)
                     live = verify_writer_support_artifact_envelope(
@@ -155,7 +155,7 @@ class SlowSupportArtifactQualificationTest(unittest.TestCase):
                     ):
                         cached = cache.build_slow_support_artifact(case)
                 guard_report.assert_unused(self)
-                self.assertFalse(cached.cache_reused)
+                self.assertFalse(cached.entry.cache_reused)
                 self.assertEqual(prepared.call_count, 1)
                 self.assertEqual(product.call_count, 1)
                 self.assertEqual(binding.call_count, 1)
@@ -176,7 +176,7 @@ class SlowSupportArtifactQualificationTest(unittest.TestCase):
             try:
                 build_slow_count_envelope(case)
                 cached = build_slow_support_artifact(case)
-                artifact = json.loads(cached.artifact_path.read_text())
+                artifact = cached.artifact
                 prepared, snapshot = _prepared_and_snapshot(case)
                 expected = writer_support_artifact_envelope_for_snapshot(
                     prepared=prepared,

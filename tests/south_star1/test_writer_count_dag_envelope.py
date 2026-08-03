@@ -77,8 +77,8 @@ class WriterCountDagEnvelopeTest(unittest.TestCase):
         for case in selected_slow_qualification_cases():
             with self.subTest(case=case.name):
                 cached = build_slow_count_envelope(case)
-                self.assertTrue(cached.envelope_path.is_file())
-                self.assertTrue(cached.metadata_path.is_file())
+                self.assertTrue(cached.entry.paths.payload_path.is_file())
+                self.assertTrue(cached.entry.paths.metadata_path.is_file())
 
     @unittest.skipUnless(
         os.environ.get("SOUTH_STAR1_RUN_SLOW") == "1",
@@ -90,7 +90,7 @@ class WriterCountDagEnvelopeTest(unittest.TestCase):
                 cache_started = time.monotonic()
                 cached = require_slow_count_envelope(case)
                 print(f"cache_read_seconds={time.monotonic() - cache_started:.3f}", flush=True)
-                envelope = json.loads(cached.envelope_path.read_text())
+                envelope = cached.envelope
                 prepared = prepare_default_case(facts_for_case(case))
                 snapshot = initial_snapshot_for_prepared(prepared, case.rooted_at_atom)
                 with (
@@ -128,7 +128,7 @@ class WriterCountDagEnvelopeTest(unittest.TestCase):
         self.assertEqual(raised.exception.violation.limit, 20_000)
 
     def test_count_dag_envelope_validates_for_initial_snapshot(self) -> None:
-        prepared = count_prepare(ccofacts_for_case())
+        prepared = count_prepare(cco_facts())
         envelope = writer_frontier_count_envelope_for_snapshot(
             prepared=prepared,
             snapshot=count_initial_snapshot(prepared),

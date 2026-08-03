@@ -83,7 +83,7 @@ class PublicContinuationAssetVerificationTest(unittest.TestCase):
                 cache_validation_seconds = time.monotonic() - cache_started
                 copied = Path(directory) / "copied"
                 copy_started = time.monotonic()
-                shutil.copytree(cached.asset_path, copied)
+                shutil.copytree(cached.entry.paths.payload_path, copied)
                 copy_seconds = time.monotonic() - copy_started
                 before = bundle_bytes(copied)
                 recert_started = time.monotonic()

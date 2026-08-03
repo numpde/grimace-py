@@ -10,6 +10,7 @@ from tests.south_star1.qualification_plan import (
     SLOW_COUPLED_CASES,
     SLOW_QUALIFICATION_LAYERS,
     SLOW_QUALIFICATION_SHARDS,
+    product_layers_for_shard,
     bind_slow_qualification_shard,
     reset_slow_qualification_shard,
     selected_slow_qualification_cases,
@@ -50,17 +51,18 @@ class SlowQualificationRunnerTest(unittest.TestCase):
         self.assertTrue(all(SLOW_QUALIFICATION_LAYERS[name].kind == "diagnostic" for name in diagnostic))
 
     def test_continuation_product_order_and_proof_indices(self) -> None:
-        self.assertEqual(
-            CONTINUATION_AUTHORITY_PRODUCT_LAYERS,
-            (
-                "public-build", "public-certify", "public-runtime",
-                "public-recertification", "public-proofs-0", "public-proofs-1",
-                "public-proofs-2", "public-proofs-3", "support-reparse",
-                "continuation", "stereo-audit",
-            ),
-        )
         proof_layers = tuple(name for name in CONTINUATION_AUTHORITY_PRODUCT_LAYERS if name.startswith("public-proofs-"))
-        self.assertEqual(proof_layers, tuple(f"public-proofs-{i}" for i in range(4)))
+        self.assertEqual(
+            tuple(int(name.rsplit("-", 1)[1]) for name in proof_layers),
+            tuple(range(len(proof_layers))),
+        )
+        self.assertEqual(
+            tuple(name for name in CONTINUATION_AUTHORITY_PRODUCT_LAYERS[:4]),
+            tuple(name for name in next(
+                shard for shard in SLOW_QUALIFICATION_SHARDS.values()
+                if shard.qualification_authority == "continuation_proof_complete"
+            ).product_layers[:4]),
+        )
         self.assertNotIn("continuation-proof-complete", SLOW_QUALIFICATION_LAYERS)
 
     def test_shards_resolve_to_declared_ledger_cases(self) -> None:

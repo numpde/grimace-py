@@ -10,6 +10,7 @@ from tests.south_star1.default_writer_capability_ledger import (
     ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES,
     BLOCKED_DEFAULT_WRITER_CAPABILITY_CASES,
     DefaultWriterCapabilityCase,
+    QualificationAuthority,
 )
 
 PUBLIC_PROOF_SHARD_COUNT = 4
@@ -27,10 +28,14 @@ class SlowQualificationLayerDefinition:
 class SlowQualificationShardDefinition:
     name: str
     case_names: tuple[str, ...]
-    product_layers: tuple[str, ...]
+    qualification_authority: QualificationAuthority
+
+    @property
+    def product_layers(self) -> tuple[str, ...]:
+        return PRODUCT_LAYERS_BY_AUTHORITY[self.qualification_authority]
 
 
-_CONTINUATION_PRODUCT_LAYERS = (
+CONTINUATION_AUTHORITY_PRODUCT_LAYERS = (
     "public-build",
     "public-certify",
     "public-runtime",
@@ -40,7 +45,7 @@ _CONTINUATION_PRODUCT_LAYERS = (
     "continuation",
     "stereo-audit",
 )
-_ZERO_H_PRODUCT_LAYERS = (
+MATERIALIZED_AUTHORITY_PRODUCT_LAYERS = (
     "public-build",
     "public-certify",
     "public-runtime",
@@ -53,13 +58,10 @@ _ZERO_H_PRODUCT_LAYERS = (
     "continuation",
     "stereo-audit",
 )
-_DIAGNOSTIC_LAYERS = (
-    "count-dag-build",
-    "count-dag-validate",
-    "support-artifact-build",
-    "support-artifact-live",
-    "offline-complete",
-)
+PRODUCT_LAYERS_BY_AUTHORITY = {
+    "continuation_proof_complete": CONTINUATION_AUTHORITY_PRODUCT_LAYERS,
+    "materialized_support_artifact": MATERIALIZED_AUTHORITY_PRODUCT_LAYERS,
+}
 
 
 def _proof_layer(index: int) -> SlowQualificationLayerDefinition:
@@ -174,17 +176,33 @@ _LAYER_DEFINITIONS = (
     ),
 )
 
-QUALIFICATION_LAYERS = {definition.name: definition for definition in _LAYER_DEFINITIONS}
-SLOW_QUALIFICATION_LAYERS = QUALIFICATION_LAYERS
-CONTINUATION_AUTHORITY_PRODUCT_LAYERS = _CONTINUATION_PRODUCT_LAYERS
-CONTINUATION_AUTHORITY_DIAGNOSTIC_LAYERS = _DIAGNOSTIC_LAYERS
+SLOW_QUALIFICATION_LAYERS = {
+    definition.name: definition for definition in _LAYER_DEFINITIONS
+}
+CONTINUATION_AUTHORITY_DIAGNOSTIC_LAYERS = tuple(
+    definition.name
+    for definition in _LAYER_DEFINITIONS
+    if definition.kind == "diagnostic"
+)
 
 _SHARD_DEFINITIONS = (
-    SlowQualificationShardDefinition("zero-h-adjacent", ("zero_h_tetrahedral", "adjacent_specified_tetrahedral"), _ZERO_H_PRODUCT_LAYERS),
-    SlowQualificationShardDefinition("remote-a", ("remote_coupled_tetrahedral_a",), _CONTINUATION_PRODUCT_LAYERS),
-    SlowQualificationShardDefinition("remote-b", ("remote_coupled_tetrahedral_b",), _CONTINUATION_PRODUCT_LAYERS),
+    SlowQualificationShardDefinition(
+        "zero-h-adjacent",
+        ("zero_h_tetrahedral", "adjacent_specified_tetrahedral"),
+        "materialized_support_artifact",
+    ),
+    SlowQualificationShardDefinition(
+        "remote-a", ("remote_coupled_tetrahedral_a",), "continuation_proof_complete"
+    ),
+    SlowQualificationShardDefinition(
+        "remote-b", ("remote_coupled_tetrahedral_b",), "continuation_proof_complete"
+    ),
 )
 SLOW_QUALIFICATION_SHARDS = {shard.name: shard for shard in _SHARD_DEFINITIONS}
+
+
+def product_layers_for_shard(shard: SlowQualificationShardDefinition) -> tuple[str, ...]:
+    return PRODUCT_LAYERS_BY_AUTHORITY[shard.qualification_authority]
 SLOW_COUPLED_CASE_NAMES = tuple(name for shard in _SHARD_DEFINITIONS for name in shard.case_names)
 
 FAST_ACCEPTED_CASES = tuple(case for case in ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES if case.name not in SLOW_COUPLED_CASE_NAMES)
@@ -226,7 +244,7 @@ def selected_slow_qualification_cases() -> tuple[DefaultWriterCapabilityCase, ..
 
 
 def validate_qualification_plan() -> None:
-    if len(QUALIFICATION_LAYERS) != len(_LAYER_DEFINITIONS):
+    if len(SLOW_QUALIFICATION_LAYERS) != len(_LAYER_DEFINITIONS):
         raise ValueError("duplicate qualification layer name")
     if any(not definition.test_ids for definition in _LAYER_DEFINITIONS):
         raise ValueError("qualification layer has no test IDs")
@@ -241,24 +259,24 @@ def validate_qualification_plan() -> None:
         seen.update(shard.case_names)
         if not set(shard.case_names) <= accepted or set(shard.case_names) & blocked:
             raise ValueError(f"invalid case in shard {shard.name}")
-        if any(layer not in QUALIFICATION_LAYERS for layer in shard.product_layers):
+        if any(layer not in SLOW_QUALIFICATION_LAYERS for layer in shard.product_layers):
             raise ValueError(f"unknown product layer in shard {shard.name}")
-        if any(QUALIFICATION_LAYERS[layer].kind != "product" for layer in shard.product_layers):
+        if any(SLOW_QUALIFICATION_LAYERS[layer].kind != "product" for layer in shard.product_layers):
             raise ValueError(f"diagnostic layer in product plan {shard.name}")
-        expected = (
-            _CONTINUATION_PRODUCT_LAYERS
-            if shard.name.startswith("remote-")
-            else _ZERO_H_PRODUCT_LAYERS
-        )
-        if shard.product_layers != expected:
+        authorities = {
+            case_by_name(name).qualification_authority for name in shard.case_names
+        }
+        if authorities != {shard.qualification_authority}:
+            raise ValueError(f"wrong authority in shard {shard.name}")
+        if shard.product_layers != PRODUCT_LAYERS_BY_AUTHORITY[shard.qualification_authority]:
             raise ValueError(f"wrong product plan for shard {shard.name}")
-    if len(tuple(name for name in _CONTINUATION_PRODUCT_LAYERS if name.startswith("public-proofs-"))) != PUBLIC_PROOF_SHARD_COUNT:
+    if len(tuple(name for name in CONTINUATION_AUTHORITY_PRODUCT_LAYERS if name.startswith("public-proofs-"))) != PUBLIC_PROOF_SHARD_COUNT:
         raise ValueError("wrong public proof layer count")
     if set(CONTINUATION_AUTHORITY_PRODUCT_LAYERS) & set(CONTINUATION_AUTHORITY_DIAGNOSTIC_LAYERS):
         raise ValueError("product and diagnostic layers overlap")
-    if any(QUALIFICATION_LAYERS[name].kind != "diagnostic" for name in CONTINUATION_AUTHORITY_DIAGNOSTIC_LAYERS):
+    if any(SLOW_QUALIFICATION_LAYERS[name].kind != "diagnostic" for name in CONTINUATION_AUTHORITY_DIAGNOSTIC_LAYERS):
         raise ValueError("diagnostic registry contains product layer")
-    if any(QUALIFICATION_LAYERS[name].kind != "product" for name in CONTINUATION_AUTHORITY_PRODUCT_LAYERS):
+    if any(SLOW_QUALIFICATION_LAYERS[name].kind != "product" for name in CONTINUATION_AUTHORITY_PRODUCT_LAYERS):
         raise ValueError("product registry contains diagnostic layer")
     if set(seen) != set(SLOW_COUPLED_CASE_NAMES):
         raise ValueError("slow shard flattening mismatch")
@@ -268,8 +286,5 @@ def validate_qualification_plan() -> None:
         raise ValueError("fast and slow accepted cases are incomplete")
     for shard in _SHARD_DEFINITIONS:
         authorities = {case_by_name(name).qualification_authority for name in shard.case_names}
-        expected = {"continuation_proof_complete"} if shard.name.startswith("remote-") else {"materialized_support_artifact"}
-        if authorities != expected:
-            raise ValueError(f"wrong qualification authority in shard {shard.name}")
     if set(case.name for case in MATERIALIZED_ARTIFACT_QUALIFIED_CASES) & set(case.name for case in CONTINUATION_PROOF_QUALIFIED_CASES):
         raise ValueError("qualification authorities overlap")

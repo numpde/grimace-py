@@ -51,6 +51,7 @@ from tests.south_star1.slow_qualification_assets import (
 from tests.south_star1.qualification_support import PublicProofCursorTargets
 from tests.south_star1.qualification_support import partition_public_proof_targets
 from tests.south_star1.qualification_support import public_proof_cursor_targets
+from tests.south_star1.qualification_plan import PUBLIC_PROOF_SHARD_COUNT
 from tests.south_star1.qualification_guards import guard_profile
 from tests.south_star1.qualification_guards import forbid_qualification_paths
 
@@ -218,22 +219,6 @@ class PublicContinuationProofTest(unittest.TestCase):
                     print("forbidden_path_calls=0", flush=True)
                 print(f"cache_validation_seconds={cache_validation_seconds:.3f}", flush=True)
                 print(f"proof_decoder_open_seconds={proof_decoder_open_seconds:.3f}", flush=True)
-
-    @unittest.skipUnless(os.environ.get("SOUTH_STAR1_RUN_SLOW") == "1", "slow lane")
-    def test_slow_coupled_public_proof_shard_0(self):
-        self._assert_slow_public_proof_shard(0)
-
-    @unittest.skipUnless(os.environ.get("SOUTH_STAR1_RUN_SLOW") == "1", "slow lane")
-    def test_slow_coupled_public_proof_shard_1(self):
-        self._assert_slow_public_proof_shard(1)
-
-    @unittest.skipUnless(os.environ.get("SOUTH_STAR1_RUN_SLOW") == "1", "slow lane")
-    def test_slow_coupled_public_proof_shard_2(self):
-        self._assert_slow_public_proof_shard(2)
-
-    @unittest.skipUnless(os.environ.get("SOUTH_STAR1_RUN_SLOW") == "1", "slow lane")
-    def test_slow_coupled_public_proof_shard_3(self):
-        self._assert_slow_public_proof_shard(3)
 
     def test_copy_and_snapshot_resume_share_the_molecule_bound_session(self) -> None:
         with TemporaryDirectory() as directory:
@@ -725,6 +710,22 @@ def _first_terminal_state(decoder):
             return state
         pending.extend(choice.next_state for choice in state.next_choices)
     raise AssertionError("no terminal proof locator")
+
+def _make_public_proof_shard_test(index: int):
+    @unittest.skipUnless(os.environ.get("SOUTH_STAR1_RUN_SLOW") == "1", "slow lane")
+    def test(self):
+        self._assert_slow_public_proof_shard(index)
+
+    test.__name__ = f"test_slow_coupled_public_proof_shard_{index}"
+    return test
+
+
+for _proof_shard_index in range(PUBLIC_PROOF_SHARD_COUNT):
+    setattr(
+        PublicContinuationProofTest,
+        f"test_slow_coupled_public_proof_shard_{_proof_shard_index}",
+        _make_public_proof_shard_test(_proof_shard_index),
+    )
 
 
 def _terminal_identity_digest(artifact) -> dict[str, object]:

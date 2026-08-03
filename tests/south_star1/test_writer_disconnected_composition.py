@@ -54,13 +54,13 @@ from tests.helpers.rdkit_south_star_disconnected_audit import (
     load_pinned_south_star_disconnected_audit_cases,
 )
 from tests.south_star1.default_writer_capability_ledger import (
-    DEFAULT_WRITER_CAPABILITY_CASES,
+    default_writer_cases_for_rdkit_audit,
 )
 
 
 class WriterDisconnectedCompositionTest(unittest.TestCase):
     def test_fixed_order_support_is_the_exact_component_product(self) -> None:
-        ledger = {item.name: item for item in DEFAULT_WRITER_CAPABILITY_CASES}
+        ledger = {item.name: item for item in default_writer_cases_for_rdkit_audit("disconnected")}
         fixtures = load_pinned_south_star_disconnected_audit_cases(
             rdBase.rdkitVersion
         )
@@ -110,7 +110,7 @@ class WriterDisconnectedCompositionTest(unittest.TestCase):
                 self.assertEqual(completion_count, fixture.completion_count)
 
     def test_every_dot_branch_has_semantic_relation_credit(self) -> None:
-        ledger = {item.name: item for item in DEFAULT_WRITER_CAPABILITY_CASES}
+        ledger = {item.name: item for item in default_writer_cases_for_rdkit_audit("disconnected")}
         for fixture in load_pinned_south_star_disconnected_audit_cases(
             rdBase.rdkitVersion
         ):
@@ -158,7 +158,7 @@ class WriterDisconnectedCompositionTest(unittest.TestCase):
     def test_coherent_wrong_next_root_is_rejected_semantically(self) -> None:
         case = next(
             item
-            for item in DEFAULT_WRITER_CAPABILITY_CASES
+            for item in default_writer_cases_for_rdkit_audit("disconnected")
             if item.name == "disconnected_cc_oxygen"
         )
         facts = ordinary_molecule_facts_from_smiles(
@@ -207,7 +207,7 @@ class WriterDisconnectedCompositionTest(unittest.TestCase):
     def test_lifecycle_flags_do_not_control_component_boundary_credit(self) -> None:
         case = next(
             item
-            for item in DEFAULT_WRITER_CAPABILITY_CASES
+            for item in default_writer_cases_for_rdkit_audit("disconnected")
             if item.name == "disconnected_cc_oxygen"
         )
         facts = ordinary_molecule_facts_from_smiles(
@@ -251,7 +251,7 @@ class WriterDisconnectedCompositionTest(unittest.TestCase):
     def test_component_boundary_lifecycle_identity_is_replayed(self) -> None:
         case = next(
             item
-            for item in DEFAULT_WRITER_CAPABILITY_CASES
+            for item in default_writer_cases_for_rdkit_audit("disconnected")
             if item.name == "disconnected_cc_oxygen"
         )
         facts = ordinary_molecule_facts_from_smiles(
@@ -290,7 +290,7 @@ class WriterDisconnectedCompositionTest(unittest.TestCase):
     def test_component_boundary_event_order_is_closed_structurally(self) -> None:
         case = next(
             item
-            for item in DEFAULT_WRITER_CAPABILITY_CASES
+            for item in default_writer_cases_for_rdkit_audit("disconnected")
             if item.name == "disconnected_cc_oxygen"
         )
         facts = ordinary_molecule_facts_from_smiles(
@@ -347,7 +347,7 @@ class WriterDisconnectedCompositionTest(unittest.TestCase):
             )
 
     def test_rust_dot_choice_and_snapshot_resume_are_exact(self) -> None:
-        ledger = {item.name: item for item in DEFAULT_WRITER_CAPABILITY_CASES}
+        ledger = {item.name: item for item in default_writer_cases_for_rdkit_audit("disconnected")}
         for fixture in load_pinned_south_star_disconnected_audit_cases(
             rdBase.rdkitVersion
         ):

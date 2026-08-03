@@ -30,7 +30,9 @@ from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
 from grimace._south_star1.writer_snapshot import capture_writer_frontier_snapshot
 from grimace._south_star1.writer_support import enumerate_prepared_writer_shaped_support
 from tests.helpers.rdkit_south_star_stereo_audit import load_pinned_south_star_stereo_audit_cases
-from tests.south_star1.default_writer_capability_ledger import DEFAULT_WRITER_CAPABILITY_CASES
+from tests.south_star1.default_writer_capability_ledger import (
+    default_writer_cases_for_rdkit_audit,
+)
 from tests.south_star1.helpers import directional_facts
 from tests.south_star1.helpers import tetrahedral_facts
 from tests.south_star1.qualification_plan import FAST_ACCEPTED_CASES
@@ -60,7 +62,9 @@ class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
         all_fixture_cases = load_pinned_south_star_stereo_audit_cases(rdBase.rdkitVersion)
         allowed = {case.name for case in cls.QUALIFICATION_CASES}
         cls.fixture_cases = tuple(item for item in all_fixture_cases if item.name in allowed)
-        cls.ledger = {item.name: item for item in DEFAULT_WRITER_CAPABILITY_CASES}
+        cls.ledger = {
+            item.name: item for item in default_writer_cases_for_rdkit_audit("stereo")
+        }
         cls.assets = {}
         cls.facts = {}
         cls.prepared = {}
@@ -183,8 +187,7 @@ class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
             case.name
             for case in self.ledger.values()
             if case.name in {item.name for item in self.fixture_cases}
-            if case.extraction_profile == "specified_stereo_closure"
-            and case.expected_rdkit_audit_version_pinned
+            if case.expected_rdkit_audit_version_pinned
         }
         fixture_names = {item.name for item in self.fixture_cases}
 

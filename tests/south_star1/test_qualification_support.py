@@ -9,7 +9,10 @@ from unittest.mock import patch
 from rdkit import rdBase
 
 from tests.helpers.rdkit_south_star_stereo_audit import load_pinned_south_star_stereo_audit_cases
-from tests.south_star1.default_writer_capability_ledger import default_writer_capability_case
+from tests.south_star1.default_writer_capability_ledger import (
+    default_writer_capability_case,
+    default_writer_cases_for_rdkit_audit,
+)
 from tests.south_star1.qualification_plan import PUBLIC_PROOF_SHARD_COUNT
 from tests.south_star1.qualification_support import (
     PublicProofCursorTargets,
@@ -78,11 +81,12 @@ class QualificationSupportTest(unittest.TestCase):
             "tests.south_star1.qualification_support.support_image_for_case",
             side_effect=AssertionError("continuation fixture must not materialize support"),
         ):
-            for name in ("zero_h_tetrahedral", "remote_coupled_tetrahedral_a", "remote_coupled_tetrahedral_b"):
-                case = default_writer_capability_case(name)
-                with self.subTest(case=name):
+            for case in default_writer_cases_for_rdkit_audit("stereo"):
+                if case.name not in fixtures:
+                    continue
+                with self.subTest(case=case.name):
                     self.assertEqual(
-                        support_strings_digest(fixtures[name].expected_support),
+                        support_strings_digest(fixtures[case.name].expected_support),
                         case.expected_support_digest,
                     )
 

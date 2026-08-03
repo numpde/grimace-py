@@ -1,7 +1,9 @@
-"""Machine-checked contract for the default ordinary writer capability ledger."""
+"""Behavioral checks for the typed default writer capability ledger."""
 
 from __future__ import annotations
 
+import ast
+from pathlib import Path
 import unittest
 
 from grimace._south_star1.errors import SouthStarError
@@ -20,237 +22,104 @@ from grimace._south_star1.writer_support_artifact_envelope import (
 from grimace._south_star1.writer_support_artifact_fact_verifier import (
     verify_writer_support_artifact_for_facts,
 )
+from tests.south_star1.default_writer_capability_contracts import (
+    SUPPORT_SURFACE_DEFINITIONS,
+    validate_default_writer_capability_contracts,
+)
 from tests.south_star1.default_writer_capability_ledger import (
     ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES,
-)
-from tests.south_star1.default_writer_capability_ledger import (
     BLOCKED_DEFAULT_WRITER_CAPABILITY_CASES,
-)
-from tests.south_star1.default_writer_capability_ledger import (
-    DEFAULT_OFFLINE_OBJECT_KINDS,
-)
-from tests.south_star1.default_writer_capability_ledger import (
-    DEFAULT_OFFLINE_RELATION_FAMILIES,
-)
-from tests.south_star1.default_writer_capability_ledger import (
-    DEFAULT_OFFLINE_UNCHECKED_OBJECT_KINDS,
-)
-from tests.south_star1.default_writer_capability_ledger import (
-    DEFAULT_OFFLINE_UNCHECKED_OBLIGATION_FAMILIES,
-)
-from tests.south_star1.default_writer_capability_ledger import (
     DEFAULT_WRITER_CAPABILITY_CASES,
+    default_writer_cases_for_rdkit_audit,
+    validate_default_writer_capability_ledger,
 )
-
-DURABLE_BRACKET_SUPPORT_SURFACES = frozenset(
-    {
-        "simple_bracket_charge",
-        "simple_isotope_bracket_atom",
-        "unsupported_charged_isotope",
-        "unsupported_charged_oxygen_isotope",
-        "unsupported_negative_nitrogen_charge",
-        "unsupported_positive_oxygen_charge",
-    }
-)
-VERSION_PINNED_SUPPORT_SURFACES = DURABLE_BRACKET_SUPPORT_SURFACES | {
-    "disconnected_fixed_order",
-    "specified_tetrahedral",
-    "specified_tetrahedral_zero_h",
-    "specified_tetrahedral_adjacent",
-    "specified_tetrahedral_coupled",
-    "specified_directional_acyclic_implicit_h",
-    "aromatic_homocycle",
-    "aromatic_heterocycle",
-    "fused_aromatic",
-    "aromatic_substitution",
-    "aromatic_single_bridge",
-    "disconnected_aromatic",
-}
 
 
 class WriterDefaultCapabilityLedgerTest(unittest.TestCase):
-    def test_ledger_names_and_support_surfaces_are_unique(self) -> None:
-        names = [item.name for item in DEFAULT_WRITER_CAPABILITY_CASES]
-        surfaces = [item.support_surface for item in DEFAULT_WRITER_CAPABILITY_CASES]
-
-        self.assertEqual(len(names), len(set(names)))
+    def test_typed_registries_and_ledger_validate(self) -> None:
+        validate_default_writer_capability_contracts()
+        validate_default_writer_capability_ledger()
         self.assertEqual(
-            set(surfaces),
-            {
-                "acyclic_graph",
-                "branched_graph",
-                "single_ring_closure",
-                "non_single_ring_closure_double",
-                "non_single_ring_closure_triple",
-                "branched_ring",
-                "simple_bracket_charge",
-                "simple_isotope_bracket_atom",
-                "specified_tetrahedral",
-                "specified_tetrahedral_zero_h",
-                "specified_tetrahedral_adjacent",
-                "specified_tetrahedral_coupled",
-                "specified_directional_acyclic_implicit_h",
-                "disconnected_fixed_order",
-                "unsupported_charged_isotope",
-                "unsupported_charged_oxygen_isotope",
-                "unsupported_negative_nitrogen_charge",
-                "unsupported_positive_oxygen_charge",
-                "unsupported_potential_directional_non_neighbor",
-                "aromatic_homocycle",
-                "aromatic_heterocycle",
-                "fused_aromatic",
-                "aromatic_substitution",
-                "aromatic_single_bridge",
-                "disconnected_aromatic",
-                "unsupported_aromatic_bracketed_hydrogen",
-                "unsupported_aromatic_boron",
-                "unsupported_aromatic_phosphorus",
-                "unsupported_aromatic_atom_map",
-            },
+            {case.support_surface for case in DEFAULT_WRITER_CAPABILITY_CASES},
+            {surface.name for surface in SUPPORT_SURFACE_DEFINITIONS},
         )
 
-    def test_accepted_entries_declare_counts_and_graph_extraction(self) -> None:
+    def test_audit_selectors_are_deterministic_and_ledger_ordered(self) -> None:
+        for family in ("aromatic", "bracket", "disconnected", "stereo"):
+            selected = default_writer_cases_for_rdkit_audit(family)
+            self.assertEqual(
+                selected,
+                tuple(case for case in DEFAULT_WRITER_CAPABILITY_CASES if family in case.rdkit_audit_families),
+            )
+            self.assertEqual(selected, default_writer_cases_for_rdkit_audit(family))
+
+    def test_accepted_and_blocked_cases_expose_only_valid_contracts(self) -> None:
         self.assertTrue(ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES)
-        for case in ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES:
-            with self.subTest(case=case.name):
-                self.assertEqual(case.expected, "accepted")
-                self.assertIn(
-                    case.qualification_authority,
-                    {"materialized_support_artifact", "continuation_proof_complete"},
-                )
-                self.assertIn(
-                    case.extraction_profile,
-                    {"graph_no_potential_sites", "specified_stereo_closure"},
-                )
-                self.assertIsNotNone(case.expected_support_count)
-                self.assertIsNotNone(case.expected_completion_count)
-                self.assertIsNone(case.blocker_phase)
-                self.assertIsNone(case.blocker_kind)
-                self.assertTrue(case.expected_structural_artifact)
-                self.assertTrue(case.expected_live_artifact_verifier)
-                self.assertTrue(case.expected_facts_bound_verifier)
-                self.assertTrue(case.expected_offline_replay_complete)
-                self.assertTrue(case.expected_live_frontier_agreement_complete)
-                self.assertTrue(case.expected_live_count_agreement_complete)
-                self.assertTrue(case.expected_snapshot_resume_agreement_complete)
-                self.assertTrue(case.expected_continuation_asset_complete)
-                self.assertTrue(case.expected_rust_runtime_agreement_complete)
-                self.assertTrue(case.expected_continuation_snapshot_resume_complete)
-                self.assertTrue(case.expected_lazy_branch_proof_complete)
-                self.assertTrue(case.expected_lazy_terminal_proof_complete)
-                self.assertEqual(
-                    case.expected_rdkit_audit_version_pinned,
-                    case.support_surface in VERSION_PINNED_SUPPORT_SURFACES,
-                )
-                self.assertIsNotNone(case.expected_support_digest)
-                self.assertEqual(
-                    case.expected_offline_object_kinds,
-                    DEFAULT_OFFLINE_OBJECT_KINDS,
-                )
-                self.assertEqual(
-                    case.expected_offline_unchecked_object_kinds,
-                    DEFAULT_OFFLINE_UNCHECKED_OBJECT_KINDS,
-                )
-                self.assertLessEqual(
-                    set(DEFAULT_OFFLINE_RELATION_FAMILIES),
-                    set(case.expected_offline_relation_families),
-                )
-                self.assertEqual(
-                    "component_boundary_transition"
-                    in case.expected_offline_relation_families,
-                    case.support_surface
-                    in {"disconnected_fixed_order", "disconnected_aromatic"},
-                )
-                self.assertEqual(
-                    case.expected_offline_unchecked_obligation_families,
-                    DEFAULT_OFFLINE_UNCHECKED_OBLIGATION_FAMILIES,
-                )
-
-    def test_blocked_entries_declare_typed_blockers(self) -> None:
         self.assertTrue(BLOCKED_DEFAULT_WRITER_CAPABILITY_CASES)
+        for case in ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES:
+            self.assertEqual(case.expected, "accepted")
+            self.assertIsNotNone(case.expected_support_count)
+            self.assertIsNone(case.blocker_phase)
+            self.assertTrue(case.expected_structural_artifact)
         for case in BLOCKED_DEFAULT_WRITER_CAPABILITY_CASES:
-            with self.subTest(case=case.name):
-                self.assertEqual(case.expected, "blocked")
-                self.assertIsNone(case.qualification_authority)
-                self.assertIsNotNone(case.blocker_phase)
-                self.assertIsNotNone(case.blocker_kind)
-                self.assertFalse(case.expected_structural_artifact)
-                self.assertFalse(case.expected_live_artifact_verifier)
-                self.assertFalse(case.expected_facts_bound_verifier)
-                self.assertFalse(case.expected_offline_replay_complete)
-                self.assertFalse(case.expected_live_frontier_agreement_complete)
-                self.assertFalse(case.expected_live_count_agreement_complete)
-                self.assertFalse(case.expected_snapshot_resume_agreement_complete)
-                self.assertFalse(case.expected_continuation_asset_complete)
-                self.assertFalse(case.expected_rust_runtime_agreement_complete)
-                self.assertFalse(case.expected_continuation_snapshot_resume_complete)
-                self.assertFalse(case.expected_lazy_branch_proof_complete)
-                self.assertFalse(case.expected_lazy_terminal_proof_complete)
-                self.assertIsNone(case.expected_support_digest)
-                self.assertEqual(
-                    case.expected_rdkit_audit_version_pinned,
-                    case.support_surface in VERSION_PINNED_SUPPORT_SURFACES,
-                )
-                self.assertEqual(case.expected_offline_object_kinds, ())
-                self.assertEqual(case.expected_offline_unchecked_object_kinds, ())
-                self.assertEqual(case.expected_offline_relation_families, ())
-                self.assertEqual(
-                    case.expected_offline_unchecked_obligation_families,
-                    (),
-                )
-                if case.blocker_phase == "frontier":
-                    self.assertIsNotNone(case.blocker_operation)
-                    self.assertIsNone(case.blocker_message_contains)
-                if case.blocker_phase == "preparation":
-                    self.assertIsNotNone(case.blocker_error_kind)
-                    self.assertIsNotNone(case.blocker_message_contains)
+            self.assertEqual(case.expected, "blocked")
+            self.assertIsNone(case.qualification_authority)
+            self.assertIsNotNone(case.blocker_phase)
+            self.assertIsNone(case.expected_support_count)
+            self.assertFalse(case.expected_structural_artifact)
 
-    def test_cyclopropene_default_artifact_binds_default_joint_policy(
-        self,
-    ) -> None:
-        case = next(
-            item
-            for item in ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES
-            if item.name == "cyclopropene_double_closure"
+    def test_case_declarations_use_only_constrained_builders(self) -> None:
+        tree = ast.parse(
+            (Path(__file__).parent / "default_writer_capability_ledger.py").read_text()
         )
-        facts = ordinary_molecule_facts_from_smiles(
-            case.smiles,
-            case.extraction_options,
+        assignment = next(
+            node for node in tree.body
+            if isinstance(node, ast.Assign)
+            and any(isinstance(target, ast.Name) and target.id == "DEFAULT_WRITER_CAPABILITY_CASES" for target in node.targets)
         )
-        prepared = prepare_south_star_mol_from_facts(
-            facts,
-            writer_surface=SouthStarWriterSurface(),
+        self.assertIsInstance(assignment.value, ast.Tuple)
+        allowed = {
+            "accepted_writer_case",
+            "preparation_blocked_writer_case",
+            "frontier_blocked_writer_case",
+        }
+        for item in assignment.value.elts:
+            self.assertIsInstance(item, ast.Call)
+            self.assertIsInstance(item.func, ast.Name)
+            self.assertIn(item.func.id, allowed)
+            self.assertNotIn("extraction_options", {keyword.arg for keyword in item.keywords})
+
+    def test_audit_pinning_is_derived_from_audit_families(self) -> None:
+        for case in DEFAULT_WRITER_CAPABILITY_CASES:
+            self.assertEqual(case.expected_rdkit_audit_version_pinned, bool(case.rdkit_audit_families))
+
+        remote_a = next(case for case in DEFAULT_WRITER_CAPABILITY_CASES if case.name == "remote_coupled_tetrahedral_a")
+        remote_b = next(case for case in DEFAULT_WRITER_CAPABILITY_CASES if case.name == "remote_coupled_tetrahedral_b")
+        self.assertIs(remote_a.expectation.continuation, remote_b.expectation.continuation)
+
+    def test_cyclopropene_default_artifact_binds_default_joint_policy(self) -> None:
+        case = next(item for item in ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES if item.name == "cyclopropene_double_closure")
+        facts = ordinary_molecule_facts_from_smiles(case.smiles, case.extraction_options)
+        prepared = prepare_south_star_mol_from_facts(facts, writer_surface=SouthStarWriterSurface())
+        options = SouthStarRuntimeOptions(
+            rooted_at_atom=0,
+            serialization_language=SerializationLanguageMode.WRITER_SHAPED,
         )
-        options = _writer_options()
         snapshot = capture_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
             cursor=initial_writer_frontier_cursor(prepared, options),
         )
-        artifact = writer_support_artifact_envelope_for_snapshot(
-            prepared=prepared,
-            snapshot=snapshot,
-        )
-
+        artifact = writer_support_artifact_envelope_for_snapshot(prepared=prepared, snapshot=snapshot)
         verification = verify_writer_support_artifact_for_facts(
-            facts=facts,
-            runtime_options=options,
-            artifact=artifact,
+            facts=facts, runtime_options=options, artifact=artifact
         )
-
         self.assertTrue(verification.accepted, verification.reason)
         with self.assertRaisesRegex(SouthStarError, "non-single ring closures"):
             ordinary_policy_for_facts(
                 facts,
                 OrdinaryPolicyOptions(non_single_ring_closures="unsupported"),
             )
-
-
-def _writer_options() -> SouthStarRuntimeOptions:
-    return SouthStarRuntimeOptions(
-        rooted_at_atom=0,
-        serialization_language=SerializationLanguageMode.WRITER_SHAPED,
-    )
 
 
 if __name__ == "__main__":

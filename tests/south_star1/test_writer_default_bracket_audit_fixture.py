@@ -12,23 +12,11 @@ from tests.helpers.rdkit_south_star_bracket_audit import (
     load_pinned_south_star_bracket_audit_cases,
 )
 from tests.south_star1.default_writer_capability_ledger import (
-    DEFAULT_WRITER_CAPABILITY_CASES,
+    default_writer_cases_for_rdkit_audit,
 )
 from tests.south_star1.qualification_support import accepted_case_result
 from tests.south_star1.qualification_support import blocked_case_result
 from tests.south_star1.qualification_support import support_image_for_case
-
-
-DURABLE_BRACKET_SUPPORT_SURFACES = frozenset(
-    {
-        "simple_bracket_charge",
-        "simple_isotope_bracket_atom",
-        "unsupported_charged_isotope",
-        "unsupported_charged_oxygen_isotope",
-        "unsupported_negative_nitrogen_charge",
-        "unsupported_positive_oxygen_charge",
-    }
-)
 
 
 class WriterDefaultBracketAuditFixtureTest(unittest.TestCase):
@@ -39,8 +27,7 @@ class WriterDefaultBracketAuditFixtureTest(unittest.TestCase):
         )
         cls.ledger_by_name = {
             case.name: case
-            for case in DEFAULT_WRITER_CAPABILITY_CASES
-            if case.support_surface in DURABLE_BRACKET_SUPPORT_SURFACES
+            for case in default_writer_cases_for_rdkit_audit("bracket")
         }
 
     def test_fixture_entries_cover_durable_bracket_ledger_cases(self) -> None:

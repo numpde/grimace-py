@@ -33,13 +33,15 @@ from tests.helpers.rdkit_south_star_aromatic_audit import (
     load_pinned_south_star_aromatic_audit_cases,
 )
 from tests.south_star1.default_writer_capability_ledger import (
-    DEFAULT_WRITER_CAPABILITY_CASES,
+    default_writer_cases_for_rdkit_audit,
 )
 
 
 class WriterAromaticProductTest(unittest.TestCase):
     def test_pinned_corpus_has_exact_support_and_aromatic_roundtrip(self) -> None:
-        ledger = {item.name: item for item in DEFAULT_WRITER_CAPABILITY_CASES}
+        ledger = {
+            item.name: item for item in default_writer_cases_for_rdkit_audit("aromatic")
+        }
         for fixture in load_pinned_south_star_aromatic_audit_cases(
             rdBase.rdkitVersion
         ):

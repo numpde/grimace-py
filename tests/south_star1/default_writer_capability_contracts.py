@@ -217,83 +217,142 @@ class FrontierBlockerExpectation:
 CaseExpectation = AcceptedCaseExpectation | PreparationBlockerExpectation | FrontierBlockerExpectation
 
 
-# The public dataclass fields intentionally remain the historical projection.  The
-# constrained builders below are the only construction API; typed expectations and
-# registries supply their values and prevent mixed accepted/blocked states.
 @dataclass(frozen=True, slots=True)
 class DefaultWriterCapabilityCase:
     name: str
     smiles: str
-    extraction_profile: ExtractionProfile
-    extraction_options: RdkitOrdinaryExtractionOptions
-    expected: Literal["accepted", "blocked"]
+    extraction_contract_id: ExtractionContractId
     support_surface: str
-    qualification_authority: QualificationAuthority | None = "materialized_support_artifact"
+    expectation: CaseExpectation
     rooted_at_atom: int = 0
-    expected_support_count: int | None = None
-    expected_completion_count: int | None = None
-    blocker_phase: Literal["preparation", "frontier"] | None = None
-    blocker_kind: str | None = None
-    blocker_operation: str | None = None
-    blocker_error_kind: SouthStarErrorKind | None = None
-    blocker_message_contains: str | None = None
-    expected_structural_artifact: bool = False
-    expected_live_artifact_verifier: bool = False
-    expected_facts_bound_verifier: bool = False
-    expected_offline_replay_complete: bool = False
-    expected_live_frontier_agreement_complete: bool = False
-    expected_live_count_agreement_complete: bool = False
-    expected_snapshot_resume_agreement_complete: bool = False
-    expected_continuation_asset_complete: bool = False
-    expected_rust_runtime_agreement_complete: bool = False
-    expected_continuation_snapshot_resume_complete: bool = False
-    expected_lazy_branch_proof_complete: bool = False
-    expected_lazy_terminal_proof_complete: bool = False
-    expected_support_digest: str | None = None
-    expected_rdkit_audit_version_pinned: bool = False
-    expected_offline_object_kinds: tuple[str, ...] = ()
-    expected_offline_unchecked_object_kinds: tuple[str, ...] = ()
-    expected_offline_relation_families: tuple[str, ...] = ()
-    expected_offline_unchecked_obligation_families: tuple[str, ...] = ()
-    expected_continuation_raw_cursor_count: int | None = None
-    expected_continuation_edge_locator_count: int | None = None
-    expected_continuation_branch_locator_count: int | None = None
-    expected_continuation_terminal_record_count: int | None = None
-    expected_continuation_terminal_locator_count: int | None = None
-    expected_continuation_replayed_operations: tuple[str, ...] = ()
-    expected_continuation_checked_relation_families: tuple[str, ...] = ()
-    expected_continuation_checked_obligation_families: tuple[str, ...] = ()
-    expected_continuation_unchecked_obligation_families: tuple[str, ...] = ()
+
+    @property
+    def extraction_profile(self) -> ExtractionProfile:
+        return _EXTRACTION_BY_ID[self.extraction_contract_id].public_profile
+
+    @property
+    def extraction_options(self) -> RdkitOrdinaryExtractionOptions:
+        return _EXTRACTION_BY_ID[self.extraction_contract_id].options
+
+    @property
+    def expected(self) -> Literal["accepted", "blocked"]:
+        return "accepted" if isinstance(self.expectation, AcceptedCaseExpectation) else "blocked"
+
+    @property
+    def qualification_authority(self) -> QualificationAuthority | None:
+        return self.expectation.qualification_authority if isinstance(self.expectation, AcceptedCaseExpectation) else None
+
+    @property
+    def expected_support_count(self) -> int | None:
+        return self.expectation.support_count if isinstance(self.expectation, AcceptedCaseExpectation) else None
+
+    @property
+    def expected_completion_count(self) -> int | None:
+        return self.expectation.completion_count if isinstance(self.expectation, AcceptedCaseExpectation) else None
+
+    @property
+    def expected_support_digest(self) -> str | None:
+        return self.expectation.support_digest if isinstance(self.expectation, AcceptedCaseExpectation) else None
+
+    @property
+    def blocker_phase(self) -> Literal["preparation", "frontier"] | None:
+        if isinstance(self.expectation, PreparationBlockerExpectation): return "preparation"
+        if isinstance(self.expectation, FrontierBlockerExpectation): return "frontier"
+        return None
+
+    @property
+    def blocker_kind(self) -> str | None:
+        return self.expectation.kind if isinstance(self.expectation, (PreparationBlockerExpectation, FrontierBlockerExpectation)) else None
+
+    @property
+    def blocker_operation(self) -> str | None:
+        return self.expectation.operation if isinstance(self.expectation, FrontierBlockerExpectation) else None
+
+    @property
+    def blocker_error_kind(self) -> SouthStarErrorKind | None:
+        return self.expectation.error_kind if isinstance(self.expectation, PreparationBlockerExpectation) else None
+
+    @property
+    def blocker_message_contains(self) -> str | None:
+        return self.expectation.message_contains if isinstance(self.expectation, PreparationBlockerExpectation) else None
+
+    @property
+    def accepted_evidence(self) -> AcceptedEvidenceExpectation | None:
+        if not isinstance(self.expectation, AcceptedCaseExpectation): return None
+        return ACCEPTED_EVIDENCE_PROFILES[_SURFACES_BY_NAME[self.support_surface].accepted_evidence_profile or "default"]
+
+    def _evidence_value(self, name: str, default):
+        evidence = self.accepted_evidence
+        return getattr(evidence, name) if evidence is not None else default
+
+    @property
+    def expected_structural_artifact(self) -> bool: return self._evidence_value("structural_artifact", False)
+    @property
+    def expected_live_artifact_verifier(self) -> bool: return self._evidence_value("live_artifact_verifier", False)
+    @property
+    def expected_facts_bound_verifier(self) -> bool: return self._evidence_value("facts_bound_verifier", False)
+    @property
+    def expected_offline_replay_complete(self) -> bool: return self._evidence_value("offline_replay_complete", False)
+    @property
+    def expected_live_frontier_agreement_complete(self) -> bool: return self._evidence_value("live_frontier_agreement_complete", False)
+    @property
+    def expected_live_count_agreement_complete(self) -> bool: return self._evidence_value("live_count_agreement_complete", False)
+    @property
+    def expected_snapshot_resume_agreement_complete(self) -> bool: return self._evidence_value("snapshot_resume_agreement_complete", False)
+    @property
+    def expected_continuation_asset_complete(self) -> bool: return self._evidence_value("continuation_asset_complete", False)
+    @property
+    def expected_rust_runtime_agreement_complete(self) -> bool: return self._evidence_value("rust_runtime_agreement_complete", False)
+    @property
+    def expected_continuation_snapshot_resume_complete(self) -> bool: return self._evidence_value("continuation_snapshot_resume_complete", False)
+    @property
+    def expected_lazy_branch_proof_complete(self) -> bool: return self._evidence_value("lazy_branch_proof_complete", False)
+    @property
+    def expected_lazy_terminal_proof_complete(self) -> bool: return self._evidence_value("lazy_terminal_proof_complete", False)
+    @property
+    def expected_offline_object_kinds(self) -> tuple[str, ...]: return self._evidence_value("offline_object_kinds", ())
+    @property
+    def expected_offline_unchecked_object_kinds(self) -> tuple[str, ...]: return self._evidence_value("offline_unchecked_object_kinds", ())
+    @property
+    def expected_offline_relation_families(self) -> tuple[str, ...]: return self._evidence_value("offline_relation_families", ())
+    @property
+    def expected_offline_unchecked_obligation_families(self) -> tuple[str, ...]: return self._evidence_value("offline_unchecked_obligation_families", ())
+
+    @property
+    def expected_rdkit_audit_version_pinned(self) -> bool:
+        return bool(self.rdkit_audit_families)
 
     @property
     def rdkit_audit_families(self) -> tuple[RdkitAuditFamily, ...]:
-        contract = _EXTRACTION_BY_ID.get(_contract_id_for_options(self.extraction_options))
+        contract = _EXTRACTION_BY_ID.get(self.extraction_contract_id)
         families = list(contract.rdkit_audit_families if contract else ())
         for family in _SURFACES_BY_NAME[self.support_surface].rdkit_audit_families:
             if family not in families:
                 families.append(family)
         return tuple(families)
 
+    def _continuation_value(self, name: str, default=None):
+        continuation = self.expectation.continuation if isinstance(self.expectation, AcceptedCaseExpectation) else None
+        return getattr(continuation, name) if continuation is not None else default
+
     @property
-    def expectation(self) -> CaseExpectation:
-        if self.expected == "accepted":
-            continuation = None
-            if self.expected_continuation_raw_cursor_count is not None:
-                continuation = ContinuationProofExpectation(
-                    self.expected_continuation_raw_cursor_count,
-                    self.expected_continuation_edge_locator_count or 0,
-                    self.expected_continuation_branch_locator_count or 0,
-                    self.expected_continuation_terminal_record_count or 0,
-                    self.expected_continuation_terminal_locator_count or 0,
-                    self.expected_continuation_replayed_operations,
-                    self.expected_continuation_checked_relation_families,
-                    self.expected_continuation_checked_obligation_families,
-                    self.expected_continuation_unchecked_obligation_families,
-                )
-            return AcceptedCaseExpectation(self.expected_support_count or 0, self.expected_completion_count or 0, self.expected_support_digest or "", self.qualification_authority or "materialized_support_artifact", continuation)
-        if self.blocker_phase == "preparation":
-            return PreparationBlockerExpectation(self.blocker_kind or "", self.blocker_error_kind or SouthStarErrorKind.INTERNAL_INVARIANT, self.blocker_message_contains or "")
-        return FrontierBlockerExpectation(self.blocker_kind or "", self.blocker_operation or "")
+    def expected_continuation_raw_cursor_count(self): return self._continuation_value("raw_cursor_count")
+    @property
+    def expected_continuation_edge_locator_count(self): return self._continuation_value("edge_locator_count")
+    @property
+    def expected_continuation_branch_locator_count(self): return self._continuation_value("branch_locator_count")
+    @property
+    def expected_continuation_terminal_record_count(self): return self._continuation_value("terminal_record_count")
+    @property
+    def expected_continuation_terminal_locator_count(self): return self._continuation_value("terminal_locator_count")
+    @property
+    def expected_continuation_replayed_operations(self): return self._continuation_value("replayed_operations", ())
+    @property
+    def expected_continuation_checked_relation_families(self): return self._continuation_value("checked_relation_families", ())
+    @property
+    def expected_continuation_checked_obligation_families(self): return self._continuation_value("checked_obligation_families", ())
+    @property
+    def expected_continuation_unchecked_obligation_families(self): return self._continuation_value("unchecked_obligation_families", ())
 
 
 def _contract_id_for_options(options: RdkitOrdinaryExtractionOptions) -> ExtractionContractId:
@@ -322,24 +381,12 @@ def accepted_writer_case(*, name: str, smiles: str, extraction_contract_id: Extr
         raise ValueError("materialized cases cannot carry continuation expectations")
     evidence = ACCEPTED_EVIDENCE_PROFILES[_SURFACES_BY_NAME[support_surface].accepted_evidence_profile or "default"]
     contract = _EXTRACTION_BY_ID[extraction_contract_id]
-    continuation_values = continuation or ContinuationProofExpectation(0, 0, 0, 0, 0, (), (), (), ())
+    expectation = AcceptedCaseExpectation(
+        support_count, completion_count, support_digest,
+        qualification_authority, continuation,
+    )
     return DefaultWriterCapabilityCase(
-        name, smiles, contract.public_profile, contract.options, "accepted", support_surface,
-        qualification_authority, rooted_at_atom, support_count, completion_count, None, None,
-        None, None, None, evidence.structural_artifact, evidence.live_artifact_verifier,
-        evidence.facts_bound_verifier, evidence.offline_replay_complete, evidence.live_frontier_agreement_complete,
-        evidence.live_count_agreement_complete, evidence.snapshot_resume_agreement_complete,
-        evidence.continuation_asset_complete, evidence.rust_runtime_agreement_complete,
-        evidence.continuation_snapshot_resume_complete, evidence.lazy_branch_proof_complete,
-        evidence.lazy_terminal_proof_complete, support_digest,
-        bool(contract.rdkit_audit_families or _SURFACES_BY_NAME[support_surface].rdkit_audit_families),
-        evidence.offline_object_kinds, evidence.offline_unchecked_object_kinds, evidence.offline_relation_families,
-        evidence.offline_unchecked_obligation_families,
-        (continuation_values.raw_cursor_count or None), (continuation_values.edge_locator_count or None),
-        (continuation_values.branch_locator_count or None), (continuation_values.terminal_record_count or None),
-        (continuation_values.terminal_locator_count or None), continuation_values.replayed_operations,
-        continuation_values.checked_relation_families, continuation_values.checked_obligation_families,
-        continuation_values.unchecked_obligation_families,
+        name, smiles, extraction_contract_id, support_surface, expectation, rooted_at_atom
     )
 
 
@@ -349,13 +396,8 @@ def preparation_blocked_writer_case(*, name: str, smiles: str, extraction_contra
         raise ValueError("preparation blockers require blocked support surfaces")
     contract = _EXTRACTION_BY_ID[extraction_contract_id]
     return DefaultWriterCapabilityCase(
-        name, smiles, contract.public_profile, contract.options, "blocked", support_surface,
-        None, rooted_at_atom, None, None, "preparation", kind, None, error_kind,
-        message_contains,
-        expected_rdkit_audit_version_pinned=bool(
-            contract.rdkit_audit_families
-            or _SURFACES_BY_NAME[support_surface].rdkit_audit_families
-        ),
+        name, smiles, extraction_contract_id, support_surface,
+        PreparationBlockerExpectation(kind, error_kind, message_contains), rooted_at_atom,
     )
 
 
@@ -365,12 +407,8 @@ def frontier_blocked_writer_case(*, name: str, smiles: str, extraction_contract_
         raise ValueError("frontier blockers require blocked support surfaces")
     contract = _EXTRACTION_BY_ID[extraction_contract_id]
     return DefaultWriterCapabilityCase(
-        name, smiles, contract.public_profile, contract.options, "blocked", support_surface,
-        None, rooted_at_atom, None, None, "frontier", kind, operation,
-        expected_rdkit_audit_version_pinned=bool(
-            contract.rdkit_audit_families
-            or _SURFACES_BY_NAME[support_surface].rdkit_audit_families
-        ),
+        name, smiles, extraction_contract_id, support_surface,
+        FrontierBlockerExpectation(kind, operation), rooted_at_atom,
     )
 
 

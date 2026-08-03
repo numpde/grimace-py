@@ -19,9 +19,7 @@ from grimace._south_star1.facts import LigandOccurrence
 from grimace._south_star1.facts import MoleculeFacts
 from grimace._south_star1.policy import SerializationLanguageMode
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
-from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import enumerate_prepared_stereo_support
-from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
 from grimace._south_star1.policy import AnnotationMode
 from grimace._south_star1.policy import AtomTextChoice
 from grimace._south_star1.policy import AtomTextDomain
@@ -106,6 +104,13 @@ from tests.south_star1.helpers import cco_facts
 from tests.south_star1.helpers import directional_facts
 from tests.south_star1.helpers import single_bond
 from tests.south_star1.helpers import tetrahedral_facts
+from tests.south_star1.writer_test_context import prepare_writer_facts
+from tests.south_star1.writer_test_context import writer_runtime_options
+from tests.south_star1.writer_test_fixtures import directional_non_single_ring_carrier_facts
+from tests.south_star1.writer_test_fixtures import directional_ring_carrier_facts
+from tests.south_star1.writer_test_fixtures import shared_directional_ring_carrier_facts
+from tests.south_star1.writer_test_fixtures import terminal_tetra_center_facts
+from tests.south_star1.writer_test_fixtures import terminal_tetra_center_policy
 
 
 class WriterStereoResidualTest(unittest.TestCase):
@@ -2153,46 +2158,24 @@ class WriterStereoResidualTest(unittest.TestCase):
 
 
 def _prepare_directional_ring_carrier_facts():
-    facts = directional_ring_carrier_facts()
-    return prepare_south_star_mol_from_facts(
-        facts,
-        writer_surface=SouthStarWriterSurface(),
-        policy=ordinary_policy_for_facts(
-            facts,
-            OrdinaryPolicyOptions(non_single_ring_closures="joint"),
-        ),
-    )
+    return prepare_joint_ring_writer_facts(directional_ring_carrier_facts())
 
 
 def _prepare_directional_non_single_ring_carrier_facts():
-    facts = directional_non_single_ring_carrier_facts()
-    return prepare_south_star_mol_from_facts(
-        facts,
-        writer_surface=SouthStarWriterSurface(),
-        policy=ordinary_policy_for_facts(
-            facts,
-            OrdinaryPolicyOptions(non_single_ring_closures="joint"),
-        ),
-    )
+    return prepare_joint_ring_writer_facts(directional_non_single_ring_carrier_facts())
 
 
 def _prepare_shared_directional_ring_carrier_facts():
-    facts = shared_directional_ring_carrier_facts()
-    return prepare_south_star_mol_from_facts(
-        facts,
-        writer_surface=SouthStarWriterSurface(),
-        policy=ordinary_policy_for_facts(
-            facts,
-            OrdinaryPolicyOptions(non_single_ring_closures="joint"),
-        ),
-    )
+    return prepare_joint_ring_writer_facts(shared_directional_ring_carrier_facts())
 
 
 def _prepare_three_site_shared_directional_ring_carrier_facts():
-    facts = _three_site_shared_directional_ring_carrier_facts()
-    return prepare_south_star_mol_from_facts(
+    return prepare_joint_ring_writer_facts(_three_site_shared_directional_ring_carrier_facts())
+
+
+def prepare_joint_ring_writer_facts(facts):
+    return prepare_writer_facts(
         facts,
-        writer_surface=SouthStarWriterSurface(),
         policy=ordinary_policy_for_facts(
             facts,
             OrdinaryPolicyOptions(non_single_ring_closures="joint"),

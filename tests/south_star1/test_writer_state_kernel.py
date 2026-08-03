@@ -14979,9 +14979,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_writer_frontier_counts_duplicate_token_paths_to_same_state(self) -> None:
-        prepared = prepare_south_star_mol_from_facts(
+        prepared = prepare_writer_facts(
             chain_facts(("C",)),
-            writer_surface=SouthStarWriterSurface(),
             policy=duplicate_single_atom_policy(),
         )
         cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
@@ -29497,9 +29496,8 @@ def _prepare_shared_directional_ring_carrier_with_bond_text_choices(
         facts,
         options=OrdinaryPolicyOptions(non_single_ring_closures="joint"),
     )
-    return prepare_south_star_mol_from_facts(
+    return prepare_writer_facts(
         facts,
-        writer_surface=SouthStarWriterSurface(),
         policy=replace(
             policy,
             bond_text_domains=tuple(
@@ -29621,9 +29619,8 @@ def _prepare_directional_ring_carrier_with_bond_text_choices(
         facts,
         options=OrdinaryPolicyOptions(non_single_ring_closures="joint"),
     )
-    return prepare_south_star_mol_from_facts(
+    return prepare_writer_facts(
         facts,
-        writer_surface=SouthStarWriterSurface(),
         policy=replace(
             policy,
             bond_text_domains=tuple(
@@ -29662,9 +29659,8 @@ def _prepare_non_single_closure_triangle_with_ring_endpoint_choices(
         facts,
         options=OrdinaryPolicyOptions(non_single_ring_closures="joint"),
     )
-    return prepare_south_star_mol_from_facts(
+    return prepare_writer_facts(
         facts,
-        writer_surface=SouthStarWriterSurface(),
         policy=replace(
             policy,
             bond_text_domains=tuple(
@@ -29692,9 +29688,8 @@ def _prepare_single_closure_triangle_with_ring_endpoint_choices(
 ) -> SouthStarPreparedMol:
     facts = simple_monocycle_with_pendant_forest_facts(ring_size=3)
     policy = ordinary_policy_for_facts(facts)
-    return prepare_south_star_mol_from_facts(
+    return prepare_writer_facts(
         facts,
-        writer_surface=SouthStarWriterSurface(),
         policy=replace(
             policy,
             bond_text_domains=tuple(
@@ -29749,9 +29744,8 @@ def _prepare_aromatic_triangle_with_bond_text_choices(
         facts,
         options=OrdinaryPolicyOptions(aromatic_bond_mode="both"),
     )
-    return prepare_south_star_mol_from_facts(
+    return prepare_writer_facts(
         facts,
-        writer_surface=SouthStarWriterSurface(),
         policy=replace(
             policy,
             bond_text_domains=tuple(
@@ -30601,9 +30595,8 @@ def _prepare_bridge_separated_two_cycle_with_policy_slots(
             if choices is not None
         )
     )
-    return prepare_south_star_mol_from_facts(
+    return prepare_writer_facts(
         facts,
-        writer_surface=SouthStarWriterSurface(),
         policy=replace(policy, bond_text_domains=domains),
     )
 
@@ -30639,9 +30632,8 @@ def _prepare_with_ordinary_policy_options_and_slots(
             if choices is not None
         )
     )
-    return prepare_south_star_mol_from_facts(
+    return prepare_writer_facts(
         facts,
-        writer_surface=SouthStarWriterSurface(),
         policy=replace(policy, bond_text_domains=domains),
     )
 

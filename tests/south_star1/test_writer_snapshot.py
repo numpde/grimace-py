@@ -35,8 +35,6 @@ from grimace._south_star1.policy import TetraToken
 from grimace._south_star1.ordinary_policy import OrdinaryPolicyOptions
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
-from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
-from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
 from grimace._south_star1.residual_constraints import DirectionalCarrierResidual
 from grimace._south_star1.residual_constraints import DirectionalNormalizedSign
 from grimace._south_star1.residual_constraints import DirectionalResidualFactor
@@ -4417,9 +4415,8 @@ def _terminal_tetra_key():
     from tests.south_star1.test_writer_stereo_residual import terminal_tetra_center_facts
     from tests.south_star1.test_writer_stereo_residual import terminal_tetra_center_policy
 
-    prepared = prepare_south_star_mol_from_facts(
+    prepared = prepare_writer_facts(
         terminal_tetra_center_facts(),
-        writer_surface=SouthStarWriterSurface(),
         policy=terminal_tetra_center_policy(),
     )
     options = writer_runtime_options(rooted_at_atom=0)
@@ -4583,9 +4580,8 @@ def _prepare_aromatic_triangle(
     options: OrdinaryPolicyOptions,
 ):
     facts = aromatic_triangle_facts()
-    return prepare_south_star_mol_from_facts(
+    return prepare_writer_facts(
         facts,
-        writer_surface=SouthStarWriterSurface(),
         policy=ordinary_policy_for_facts(facts, options=options),
     )
 

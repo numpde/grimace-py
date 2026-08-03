@@ -130,7 +130,7 @@ def closed_term_digest(
     operation: str,
     budget: WriterEnvelopeWorkBudget | None = None,
 ) -> str:
-    return _identity_digest(term, budget=_budget(budget), operation=operation)
+    return _digest_terms_bounded(term, budget=_budget(budget), operation=operation)
 
 
 def refresh_closed_term_digest_field(

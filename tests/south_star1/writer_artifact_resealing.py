@@ -16,15 +16,13 @@ from grimace._south_star1.writer_support_artifact_checker import artifact_metric
 from grimace._south_star1.writer_support_artifact_checker import (
     support_artifact_object_identity_term,
 )
+from grimace._south_star1.writer_terminalization_artifact import (
+    terminalization_artifact_manifest,
+)
 
 
 def _budget(budget):
     return default_writer_envelope_work_budget(budget)
-from grimace._south_star1.writer_terminalization_artifact import (
-    terminalization_artifact_manifest,
-)
-from tests.south_star1.writer_artifact_test_support import closed_term_digest
-from tests.south_star1.writer_artifact_test_support import refresh_kind_manifest_digest
 from tests.south_star1.writer_artifact_test_support import (
     unique_artifact_object_by_kind,
 )
@@ -126,10 +124,10 @@ def reseal_terminalization_artifact(
     support_payload = support["payload"]
     if not isinstance(support_payload, MutableMapping):
         raise AssertionError("terminal support payload must be mutable")
-    support_payload["terminalization_term_digest"] = closed_term_digest(
+    support_payload["terminalization_term_digest"] = _identity_digest(
         support_payload["terminalization_term"],
-        operation="test.terminalization.term",
         budget=budget,
+        operation="test.terminalization.term",
     )
     _object_identity(source, operation="test.terminalization.source_object", budget=budget)
     _object_identity(support, operation="test.terminalization.support_object", budget=budget)

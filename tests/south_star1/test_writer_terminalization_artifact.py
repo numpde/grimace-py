@@ -27,30 +27,30 @@ from grimace._south_star1.writer_support_artifact_checker import artifact_metric
 from grimace._south_star1.writer_support_artifact_checker import support_artifact_object_identity_term
 from grimace._south_star1.writer_snapshot_closed_terms import writer_frontier_cursor_from_closed_terms
 from tests.south_star1.helpers import cco_facts
-from tests.south_star1.test_writer_stereo_residual import _directional_non_single_ring_carrier_facts
-from tests.south_star1.test_writer_stereo_residual import _directional_ring_carrier_facts
-from tests.south_star1.test_writer_stereo_residual import _shared_directional_ring_carrier_facts
-from tests.south_star1.test_writer_stereo_residual import terminal_tetra_center_facts
-from tests.south_star1.test_writer_stereo_residual import terminal_tetra_center_policy
-from tests.south_star1.test_writer_support_artifact_fact_verifier import _initial_snapshot
-from tests.south_star1.test_writer_support_artifact_fact_verifier import _writer_options
+from tests.south_star1.writer_test_fixtures import directional_non_single_ring_carrier_facts
+from tests.south_star1.writer_test_fixtures import directional_ring_carrier_facts
+from tests.south_star1.writer_test_fixtures import shared_directional_ring_carrier_facts
+from tests.south_star1.writer_test_fixtures import terminal_tetra_center_facts
+from tests.south_star1.writer_test_fixtures import terminal_tetra_center_policy
+from tests.south_star1.writer_test_context import initial_writer_snapshot
+from tests.south_star1.writer_test_context import writer_runtime_options
 
 
 class WriterTerminalizationArtifactTest(unittest.TestCase):
     def test_positive_terminalization_matrix(self) -> None:
         cases = (
-            ("ordinary", cco_facts(), _writer_options(), None, "noop", ()),
+            ("ordinary", cco_facts(), writer_runtime_options(), None, "noop", ()),
             (
                 "tetra",
                 terminal_tetra_center_facts(),
-                _writer_options(rooted_at_atom=0),
+                writer_runtime_options(rooted_at_atom=0),
                 terminal_tetra_center_policy(),
                 "tetra_local_order_factor_closure",
                 ("tetrahedral local-order factor closure",),
             ),
-            ("simple_ring", _directional_ring_carrier_facts(), _writer_options(rooted_at_atom=0), None, "noop", ()),
-            ("shared_ring", _shared_directional_ring_carrier_facts(), _writer_options(rooted_at_atom=1), None, "noop", ()),
-            ("non_single_ring", _directional_non_single_ring_carrier_facts(), _writer_options(rooted_at_atom=0), None, "noop", ()),
+            ("simple_ring", directional_ring_carrier_facts(), writer_runtime_options(rooted_at_atom=0), None, "noop", ()),
+            ("shared_ring", shared_directional_ring_carrier_facts(), writer_runtime_options(rooted_at_atom=1), None, "noop", ()),
+            ("non_single_ring", directional_non_single_ring_carrier_facts(), writer_runtime_options(rooted_at_atom=0), None, "noop", ()),
         )
         for name, facts, options, policy, mode, operations in cases:
             with self.subTest(name=name):
@@ -73,7 +73,7 @@ class WriterTerminalizationArtifactTest(unittest.TestCase):
 
     def test_build_and_live_check_do_not_materialize_counts_or_support(self) -> None:
         facts = cco_facts()
-        options = _writer_options()
+        options = writer_runtime_options()
         prepared, snapshot, support = _terminal_source(facts, options, None)
         patches = (
             patch("grimace._south_star1.writer_frontier_count_envelope.writer_frontier_count_envelope_for_snapshot", side_effect=AssertionError("count path")),
@@ -90,7 +90,7 @@ class WriterTerminalizationArtifactTest(unittest.TestCase):
         self.assertTrue(checked.accepted, checked.reason)
 
     def test_structural_object_and_schema_regressions(self) -> None:
-        _prepared, artifact = _terminal_artifact(cco_facts(), _writer_options(), None)
+        _prepared, artifact = _terminal_artifact(cco_facts(), writer_runtime_options(), None)
         old = deepcopy(artifact)
         old["schema_version"] = 0
         self.assertIn(
@@ -131,7 +131,7 @@ class WriterTerminalizationArtifactTest(unittest.TestCase):
 
     def test_coherent_terminal_semantic_forgery_matrix(self) -> None:
         facts = cco_facts()
-        options = _writer_options()
+        options = writer_runtime_options()
         cases = (
             ("active_atom", lambda support: _set_closed_field(support["terminalization_term"], "active_atom", 999), "terminalization_state_identity_mismatch"),
             ("graph_status", lambda support: _set_nested_closed_field(support["terminalization_term"], "graph_completion_status", "complete", False), "terminal_graph_completion_status_mismatch"),
@@ -169,7 +169,7 @@ class WriterTerminalizationArtifactTest(unittest.TestCase):
     def test_coherent_tetra_transition_forgery_matrix(self) -> None:
         facts = terminal_tetra_center_facts()
         policy = terminal_tetra_center_policy()
-        options = _writer_options(rooted_at_atom=0)
+        options = writer_runtime_options(rooted_at_atom=0)
         cases = (
             ("wrong_site", lambda term: _set_closed_field(term, "site", 999), "terminal_tetra"),
             ("wrong_atom", lambda term: _set_closed_field(term, "atom", 0), "terminal_transition_state_anchor_mismatch"),
@@ -214,7 +214,7 @@ class WriterTerminalizationArtifactTest(unittest.TestCase):
                 self.assertIn(reason, checked.reason)
 
     def test_terminalization_term_shape_regressions(self) -> None:
-        _prepared, original = _terminal_artifact(cco_facts(), _writer_options(), None)
+        _prepared, original = _terminal_artifact(cco_facts(), writer_runtime_options(), None)
         cases = (
             ("extra", lambda term: term["fields"].append(["extra", 1]), "terminalization_term_fields_mismatch"),
             ("missing", lambda term: term["fields"].pop(), "terminalization_term_fields_mismatch"),
@@ -235,7 +235,7 @@ class WriterTerminalizationArtifactTest(unittest.TestCase):
 
     def test_coherent_writer_state_forgery_matrix(self) -> None:
         facts = cco_facts()
-        options = _writer_options()
+        options = writer_runtime_options()
         cases = (
             ("component_index", _forge_component_index, "terminal_graph_completion_mismatch"),
             ("component_roots", _forge_component_roots, "terminal_component_roots_mismatch"),
@@ -263,8 +263,8 @@ class WriterTerminalizationArtifactTest(unittest.TestCase):
                 self.assertIn(reason, checked.reason)
 
     def test_coherent_closed_ring_partition_forgery_matrix(self) -> None:
-        facts = _directional_ring_carrier_facts()
-        options = _writer_options(rooted_at_atom=0)
+        facts = directional_ring_carrier_facts()
+        options = writer_runtime_options(rooted_at_atom=0)
         cases = (
             ("duplicate", _forge_duplicate_closure, "terminal_graph_completion_mismatch"),
             ("wrong_endpoint", _forge_closure_endpoint, "terminal_closed_closure_endpoint_mismatch"),
@@ -290,11 +290,11 @@ class WriterTerminalizationArtifactTest(unittest.TestCase):
 
     def test_coherent_false_noop_residual_forgeries(self) -> None:
         facts = cco_facts()
-        options = _writer_options()
+        options = writer_runtime_options()
         tetra_facts = terminal_tetra_center_facts()
         _prepared, tetra_artifact = _terminal_artifact(
             tetra_facts,
-            _writer_options(rooted_at_atom=0),
+            writer_runtime_options(rooted_at_atom=0),
             terminal_tetra_center_policy(),
         )
         tetra_support = _object_by_kind(tetra_artifact, "terminal_support")["payload"]
@@ -338,7 +338,7 @@ def _terminal_source(facts, options, policy):
     prepared = prepare_south_star_mol_from_facts(
         facts, writer_surface=SouthStarWriterSurface(), policy=policy
     )
-    snapshot = _initial_snapshot(prepared, options)
+    snapshot = initial_writer_snapshot(prepared, options)
     for depth in range(256):
         batch = _checked_writer_frontier_branch_supports(
             prepared,

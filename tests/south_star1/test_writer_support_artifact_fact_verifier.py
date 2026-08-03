@@ -99,14 +99,14 @@ from tests.south_star1.helpers import cco_facts
 from tests.south_star1.helpers import directional_facts
 from tests.south_star1.helpers import shared_acyclic_directional_facts
 from tests.south_star1.helpers import tetrahedral_facts
-from tests.south_star1.test_writer_stereo_residual import (
-    _directional_non_single_ring_carrier_facts,
+from tests.south_star1.writer_test_fixtures import (
+    directional_non_single_ring_carrier_facts,
 )
-from tests.south_star1.test_writer_stereo_residual import (
-    _directional_ring_carrier_facts,
+from tests.south_star1.writer_test_fixtures import (
+    directional_ring_carrier_facts,
 )
-from tests.south_star1.test_writer_stereo_residual import (
-    _shared_directional_ring_carrier_facts,
+from tests.south_star1.writer_test_fixtures import (
+    shared_directional_ring_carrier_facts,
 )
 from tests.south_star1.helpers import two_atom_facts
 
@@ -153,11 +153,11 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
     def test_snapshot_artifact_verifies_against_matching_facts(self) -> None:
         facts = cco_facts()
-        prepared = _prepare(facts)
-        options = _writer_options()
+        prepared = prepare_writer_facts(facts)
+        options = writer_runtime_options()
         artifact = writer_support_artifact_envelope_for_snapshot(
             prepared=prepared,
-            snapshot=_initial_snapshot(prepared, options),
+            snapshot=initial_writer_snapshot(prepared, options),
         )
 
         verification = verify_writer_support_artifact_for_facts(
@@ -215,11 +215,11 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
     def test_prefix_artifact_verifies_against_matching_facts(self) -> None:
         facts = two_atom_facts()
-        prepared = _prepare(facts)
-        options = _writer_options()
+        prepared = prepare_writer_facts(facts)
+        options = writer_runtime_options()
         prefix = writer_snapshot_prefix_read_envelope_for_emitted_texts(
             prepared=prepared,
-            snapshot=_initial_snapshot(prepared, options),
+            snapshot=initial_writer_snapshot(prepared, options),
             emitted_texts=("C", "C"),
         )
         artifact = writer_support_artifact_envelope_for_prefix_read(
@@ -448,12 +448,12 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
     def test_graph_ring_directional_carrier_text_is_replayed_by_direction_mark(
         self,
     ) -> None:
-        facts = _directional_non_single_ring_carrier_facts()
-        prepared = _prepare(facts)
-        options = _writer_options(rooted_at_atom=0)
+        facts = directional_non_single_ring_carrier_facts()
+        prepared = prepare_writer_facts(facts)
+        options = writer_runtime_options(rooted_at_atom=0)
         artifact = writer_support_artifact_envelope_for_snapshot(
             prepared=prepared,
-            snapshot=_initial_snapshot(prepared, options),
+            snapshot=initial_writer_snapshot(prepared, options),
         )
 
         accepted = _graph_ring_delta_verification(facts, artifact)
@@ -480,16 +480,16 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             self.skipTest(
                 f"set {RUN_SLOW_ENV}=1 to run the directional ring carrier artifact probe"
             )
-        facts = _directional_ring_carrier_facts()
-        options = _writer_options(rooted_at_atom=0)
-        prepared = _prepare(facts)
+        facts = directional_ring_carrier_facts()
+        options = writer_runtime_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(facts)
         budget = WriterEnvelopeWorkBudget()
 
         self.assertEqual(budget.max_digest_term_bytes, 25_000_000)
 
         artifact = writer_support_artifact_envelope_for_snapshot(
             prepared=prepared,
-            snapshot=_initial_snapshot(prepared, options),
+            snapshot=initial_writer_snapshot(prepared, options),
             budget=budget,
         )
         structural = verify_writer_support_artifact_consistency(
@@ -537,12 +537,12 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             self.skipTest(
                 f"set {RUN_SLOW_ENV}=1 to run the non-single directional ring artifact probe"
             )
-        facts = _directional_non_single_ring_carrier_facts()
-        options = _writer_options(rooted_at_atom=0)
-        prepared = _prepare(facts)
+        facts = directional_non_single_ring_carrier_facts()
+        options = writer_runtime_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(facts)
         artifact = writer_support_artifact_envelope_for_snapshot(
             prepared=prepared,
-            snapshot=_initial_snapshot(prepared, options),
+            snapshot=initial_writer_snapshot(prepared, options),
         )
         structural = verify_writer_support_artifact_consistency(artifact)
         live = verify_writer_support_artifact_envelope(
@@ -574,7 +574,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
         structural = verify_writer_support_artifact_consistency(artifact)
         live = verify_writer_support_artifact_envelope(
-            prepared=_prepare(facts),
+            prepared=prepare_writer_facts(facts),
             envelope=artifact,
         )
         verification = verify_writer_support_artifact_for_facts(
@@ -610,7 +610,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
                 facts, options, artifact = _directional_ring_pair_artifact(first_mark)
                 structural = verify_writer_support_artifact_consistency(artifact)
                 live = verify_writer_support_artifact_envelope(
-                    prepared=_prepare(facts),
+                    prepared=prepare_writer_facts(facts),
                     envelope=artifact,
                 )
                 verification = verify_writer_support_artifact_for_facts(
@@ -907,8 +907,8 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
                 self.assertIn(reason, verification.reason)
 
     def test_shared_ring_carrier_supports_ring_transition_terms(self) -> None:
-        facts = _shared_directional_ring_carrier_facts()
-        prepared = _prepare(facts)
+        facts = shared_directional_ring_carrier_facts()
+        prepared = prepare_writer_facts(facts)
 
         models = writer_stereo_module._directional_models_for_bond(
             prepared,
@@ -1033,7 +1033,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
                 classification = _obligation_classification(artifact, facts=facts)
                 verification = verify_writer_support_artifact_for_facts(
                     facts=facts,
-                    runtime_options=_writer_options(),
+                    runtime_options=writer_runtime_options(),
                     artifact=artifact,
                 )
 
@@ -1101,11 +1101,11 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         site = facts.stereo.tetrahedral[0]
         self.assertIs(site.status, SiteStatus.SPECIFIED)
         self.assertIs(site.target, TetraValue.PLUS)
-        prepared = _prepare(facts)
-        options = _writer_options()
+        prepared = prepare_writer_facts(facts)
+        options = writer_runtime_options()
         artifact = writer_support_artifact_envelope_for_snapshot(
             prepared=prepared,
-            snapshot=_initial_snapshot(prepared, options),
+            snapshot=initial_writer_snapshot(prepared, options),
         )
 
         structural = verify_writer_support_artifact_consistency(artifact)
@@ -1167,11 +1167,11 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         self,
     ) -> None:
         facts = tetrahedral_facts()
-        prepared = _prepare(facts)
-        options = _writer_options()
+        prepared = prepare_writer_facts(facts)
+        options = writer_runtime_options()
         artifact = writer_support_artifact_envelope_for_snapshot(
             prepared=prepared,
-            snapshot=_initial_snapshot(prepared, options),
+            snapshot=initial_writer_snapshot(prepared, options),
         )
         branch = _first_residual_work_branch(
             artifact,
@@ -1840,7 +1840,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         classification = _obligation_classification(artifact, facts=facts)
         verification = verify_writer_support_artifact_for_facts(
             facts=facts,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
             artifact=artifact,
         )
 
@@ -2195,7 +2195,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         classification = _obligation_classification(artifact, facts=facts)
         verification = verify_writer_support_artifact_for_facts(
             facts=facts,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
             artifact=artifact,
         )
 
@@ -2232,7 +2232,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         classification = _obligation_classification(artifact, facts=facts)
         verification = verify_writer_support_artifact_for_facts(
             facts=facts,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
             artifact=artifact,
         )
 
@@ -2389,7 +2389,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
                 structural = verify_writer_support_artifact_consistency(artifact)
                 checked = verify_writer_support_artifact_for_facts(
                     facts=facts,
-                    runtime_options=_writer_options(),
+                    runtime_options=writer_runtime_options(),
                     artifact=artifact,
                 )
                 self.assertTrue(structural.accepted, structural.reason)
@@ -2403,7 +2403,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
         verification = verify_writer_support_artifact_for_facts(
             facts=_rdkit_facts("CCO"),
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
             artifact=artifact,
         )
 
@@ -2417,7 +2417,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
         verification = verify_writer_support_artifact_for_facts(
             facts=_rdkit_facts("CCO"),
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
             artifact=artifact,
         )
 
@@ -2432,7 +2432,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
                 classification = _obligation_classification(artifact, facts=facts)
                 verification = verify_writer_support_artifact_for_facts(
                     facts=facts,
-                    runtime_options=_writer_options(),
+                    runtime_options=writer_runtime_options(),
                     artifact=artifact,
                 )
 
@@ -2529,7 +2529,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
         verification = verify_writer_support_artifact_for_facts(
             facts=_rdkit_facts("C1=CC1"),
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
             artifact=artifact,
         )
 
@@ -2566,7 +2566,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         structural = verify_writer_support_artifact_consistency(artifact)
         verification = verify_writer_support_artifact_for_facts(
             facts=facts,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
             artifact=artifact,
         )
 
@@ -2600,7 +2600,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         structural = verify_writer_support_artifact_consistency(artifact)
         verification = verify_writer_support_artifact_for_facts(
             facts=facts,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
             artifact=artifact,
         )
 
@@ -2629,7 +2629,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         structural = verify_writer_support_artifact_consistency(artifact)
         verification = verify_writer_support_artifact_for_facts(
             facts=facts,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
             artifact=artifact,
         )
 
@@ -2644,7 +2644,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
         verification = verify_writer_support_artifact_for_facts(
             facts=_rdkit_facts("CCO"),
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
             artifact=artifact,
         )
 
@@ -3541,7 +3541,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
         verification = verify_writer_support_artifact_for_facts(
             facts=two_atom_facts(),
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
             artifact=artifact,
         )
 
@@ -3551,7 +3551,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
     def test_wrong_runtime_options_are_rejected(self) -> None:
         facts = cco_facts()
         artifact = _snapshot_artifact(facts)
-        wrong_options = _writer_options(rooted_at_atom=0)
+        wrong_options = writer_runtime_options(rooted_at_atom=0)
 
         verification = verify_writer_support_artifact_for_facts(
             facts=facts,
@@ -3572,7 +3572,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
         verification = verify_writer_support_artifact_for_facts(
             facts=facts,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
             artifact=artifact,
             policy=wrong_policy,
         )
@@ -3588,7 +3588,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
         verification = verify_writer_support_artifact_for_facts(
             facts=cco_facts(),
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
             artifact=artifact,
         )
 
@@ -3602,7 +3602,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
         verification = verify_writer_support_artifact_for_facts(
             facts=cco_facts(),
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
             artifact=artifact,
         )
 
@@ -3614,7 +3614,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
         verification = verify_writer_support_artifact_for_facts(
             facts=cco_facts(),
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
             artifact=artifact,
         )
 
@@ -3628,7 +3628,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
         verification = verify_writer_support_artifact_for_facts(
             facts=cco_facts(),
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
             artifact=artifact,
         )
 
@@ -3662,12 +3662,12 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
 
 def _snapshot_artifact(facts):
-    options = _writer_options()
-    prepared = _prepare(facts)
+    options = writer_runtime_options()
+    prepared = prepare_writer_facts(facts)
     return deepcopy(
         writer_support_artifact_envelope_for_snapshot(
             prepared=prepared,
-            snapshot=_initial_snapshot(prepared, options),
+            snapshot=initial_writer_snapshot(prepared, options),
         )
     )
 
@@ -3687,18 +3687,18 @@ def _rdkit_artifact_verification(smiles: str):
     facts = _rdkit_facts(smiles)
     return verify_writer_support_artifact_for_facts(
         facts=facts,
-        runtime_options=_writer_options(),
+        runtime_options=writer_runtime_options(),
         artifact=_snapshot_artifact(facts),
     )
 
 
 def _two_atom_completed_prefix_artifact():
     facts = two_atom_facts()
-    prepared = _prepare(facts)
-    options = _writer_options()
+    prepared = prepare_writer_facts(facts)
+    options = writer_runtime_options()
     prefix = writer_snapshot_prefix_read_envelope_for_emitted_texts(
         prepared=prepared,
-        snapshot=_initial_snapshot(prepared, options),
+        snapshot=initial_writer_snapshot(prepared, options),
         emitted_texts=("C", "C"),
     )
     return deepcopy(
@@ -3768,50 +3768,50 @@ def _terminal_identity_verification(artifact):
 
 def _manual_tetra_artifact():
     facts = tetrahedral_facts()
-    prepared = _prepare(facts)
+    prepared = prepare_writer_facts(facts)
     return (
         facts,
         writer_support_artifact_envelope_for_snapshot(
             prepared=prepared,
-            snapshot=_initial_snapshot(prepared, _writer_options()),
+            snapshot=initial_writer_snapshot(prepared, writer_runtime_options()),
         ),
     )
 
 
 def _directional_rooted_artifact():
     facts = directional_facts()
-    options = _writer_options(rooted_at_atom=2)
-    prepared = _prepare(facts)
+    options = writer_runtime_options(rooted_at_atom=2)
+    prepared = prepare_writer_facts(facts)
     return (
         facts,
         options,
         writer_support_artifact_envelope_for_snapshot(
             prepared=prepared,
-            snapshot=_initial_snapshot(prepared, options),
+            snapshot=initial_writer_snapshot(prepared, options),
         ),
     )
 
 
 def _shared_acyclic_directional_artifact():
     facts = shared_acyclic_directional_facts()
-    options = _writer_options(rooted_at_atom=0)
-    prepared = _prepare(facts)
+    options = writer_runtime_options(rooted_at_atom=0)
+    prepared = prepare_writer_facts(facts)
     return (
         facts,
         options,
         writer_support_artifact_envelope_for_snapshot(
             prepared=prepared,
-            snapshot=_initial_snapshot(prepared, options),
+            snapshot=initial_writer_snapshot(prepared, options),
         ),
     )
 
 
 @lru_cache(maxsize=1)
 def _directional_ring_opening_artifact():
-    facts = _directional_ring_carrier_facts()
-    options = _writer_options(rooted_at_atom=0)
-    prepared = _prepare(facts)
-    initial = _initial_snapshot(prepared, options)
+    facts = directional_ring_carrier_facts()
+    options = writer_runtime_options(rooted_at_atom=0)
+    prepared = prepare_writer_facts(facts)
+    initial = initial_writer_snapshot(prepared, options)
     frontier = [(initial.cursor, 0)]
     seen = set()
     opening_sources = []
@@ -3854,10 +3854,10 @@ def _directional_ring_opening_artifact():
 
 @lru_cache(maxsize=2)
 def _directional_ring_pair_artifact(first_mark: DirectionMark):
-    facts = _directional_ring_carrier_facts()
-    options = _writer_options(rooted_at_atom=0)
-    prepared = _prepare(facts)
-    initial = _initial_snapshot(prepared, options)
+    facts = directional_ring_carrier_facts()
+    options = writer_runtime_options(rooted_at_atom=0)
+    prepared = prepare_writer_facts(facts)
+    initial = initial_writer_snapshot(prepared, options)
     frontier = [(initial.cursor, 0)]
     seen = set()
     source = None
@@ -4860,12 +4860,6 @@ def _refresh_local_order_event_identity_digest(event) -> None:
     event["local_order_identity_digest"] = _identity_digest(identity)
 
 
-def _initial_snapshot(prepared, options):
-    return capture_writer_frontier_snapshot(
-        prepared=prepared,
-        runtime_options=options,
-        cursor=initial_writer_frontier_cursor(prepared, options),
-    )
 
 
 def _tetra_facts_with_implicit_h_only_outside_specified_site(facts):
@@ -4893,20 +4887,8 @@ def _tetra_facts_with_implicit_h_only_outside_specified_site(facts):
     )
 
 
-def _writer_options(rooted_at_atom=-1):
-    return SouthStarRuntimeOptions(
-        rooted_at_atom=rooted_at_atom,
-        canonical=False,
-        do_random=True,
-        serialization_language=SerializationLanguageMode.WRITER_SHAPED,
-    )
 
 
-def _prepare(facts):
-    return prepare_south_star_mol_from_facts(
-        facts,
-        writer_surface=SouthStarWriterSurface(),
-    )
 
 
 def _object(artifact, object_id):

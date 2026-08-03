@@ -33,42 +33,42 @@ from tests.south_star1.helpers import cco_facts
 from tests.south_star1.helpers import directional_facts
 from tests.south_star1.helpers import shared_acyclic_directional_facts
 from tests.south_star1.helpers import tetrahedral_facts
-from tests.south_star1.test_writer_state_kernel import chain_facts
-from tests.south_star1.test_writer_state_kernel import duplicate_single_atom_policy
-from tests.south_star1.test_writer_stereo_residual import _directional_non_single_ring_carrier_facts
-from tests.south_star1.test_writer_stereo_residual import _directional_ring_carrier_facts
-from tests.south_star1.test_writer_stereo_residual import _shared_directional_ring_carrier_facts
-from tests.south_star1.test_writer_support_artifact_fact_verifier import _initial_snapshot
-from tests.south_star1.test_writer_support_artifact_fact_verifier import _prepare
-from tests.south_star1.test_writer_support_artifact_fact_verifier import _writer_options
+from tests.south_star1.writer_test_fixtures import chain_facts
+from tests.south_star1.writer_test_fixtures import duplicate_single_atom_policy
+from tests.south_star1.writer_test_fixtures import directional_non_single_ring_carrier_facts
+from tests.south_star1.writer_test_fixtures import directional_ring_carrier_facts
+from tests.south_star1.writer_test_fixtures import shared_directional_ring_carrier_facts
+from tests.south_star1.writer_test_context import initial_writer_snapshot
+from tests.south_star1.writer_test_context import prepare_writer_facts
+from tests.south_star1.writer_test_context import writer_runtime_options
 
 
 class WriterContinuationAutomatonTest(unittest.TestCase):
     def test_small_fixture_support_images_and_root_counts_agree(self) -> None:
         cases = (
-            ("default", cco_facts(), _writer_options()),
-            ("tetra", tetrahedral_facts(), _writer_options()),
-            ("directional", directional_facts(), _writer_options(rooted_at_atom=2)),
+            ("default", cco_facts(), writer_runtime_options()),
+            ("tetra", tetrahedral_facts(), writer_runtime_options()),
+            ("directional", directional_facts(), writer_runtime_options(rooted_at_atom=2)),
             (
                 "shared_acyclic",
                 shared_acyclic_directional_facts(),
-                _writer_options(rooted_at_atom=0),
+                writer_runtime_options(rooted_at_atom=0),
             ),
             (
                 "simple_ring",
-                _directional_ring_carrier_facts(),
-                _writer_options(rooted_at_atom=0),
+                directional_ring_carrier_facts(),
+                writer_runtime_options(rooted_at_atom=0),
             ),
             (
                 "non_single_ring",
-                _directional_non_single_ring_carrier_facts(),
-                _writer_options(rooted_at_atom=0),
+                directional_non_single_ring_carrier_facts(),
+                writer_runtime_options(rooted_at_atom=0),
             ),
         )
         for name, facts, options in cases:
             with self.subTest(name=name):
-                prepared = _prepare(facts)
-                snapshot = _initial_snapshot(prepared, options)
+                prepared = prepare_writer_facts(facts)
+                snapshot = initial_writer_snapshot(prepared, options)
                 automaton = compile_writer_continuation_automaton(
                     prepared=prepared,
                     snapshot=snapshot,
@@ -177,8 +177,8 @@ class WriterContinuationAutomatonTest(unittest.TestCase):
             writer_surface=SouthStarWriterSurface(),
             policy=duplicate_single_atom_policy(),
         )
-        options = _writer_options()
-        snapshot = _initial_snapshot(prepared, options)
+        options = writer_runtime_options()
+        snapshot = initial_writer_snapshot(prepared, options)
         automaton = compile_writer_continuation_automaton(
             prepared=prepared,
             snapshot=snapshot,
@@ -206,8 +206,8 @@ class WriterContinuationAutomatonTest(unittest.TestCase):
         )
 
     def test_signature_digest_collision_does_not_merge_semantic_classes(self) -> None:
-        prepared = _prepare(cco_facts())
-        snapshot = _initial_snapshot(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        snapshot = initial_writer_snapshot(prepared, writer_runtime_options())
         constant_digest = lambda _value: "0" * 64
         automaton = compile_writer_continuation_automaton(
             prepared=prepared,
@@ -236,8 +236,8 @@ class WriterContinuationAutomatonTest(unittest.TestCase):
         self.assertTrue(checked.accepted, checked.reason)
 
     def test_compile_does_not_invoke_legacy_count_or_support_paths(self) -> None:
-        prepared = _prepare(cco_facts())
-        snapshot = _initial_snapshot(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        snapshot = initial_writer_snapshot(prepared, writer_runtime_options())
         patches = (
             patch(
                 "grimace._south_star1.writer_frontier_count_envelope."
@@ -352,9 +352,9 @@ class WriterContinuationAutomatonTest(unittest.TestCase):
         "full shared-ring continuation integration is slow-gated",
     )
     def test_full_shared_ring_root_metrics_and_internal_consistency(self) -> None:
-        prepared = _prepare(_shared_directional_ring_carrier_facts())
-        snapshot = _initial_snapshot(
-            prepared, _writer_options(rooted_at_atom=1)
+        prepared = prepare_writer_facts(shared_directional_ring_carrier_facts())
+        snapshot = initial_writer_snapshot(
+            prepared, writer_runtime_options(rooted_at_atom=1)
         )
         automaton = compile_writer_continuation_automaton(
             prepared=prepared, snapshot=snapshot
@@ -386,8 +386,8 @@ class WriterContinuationAutomatonTest(unittest.TestCase):
 
 @lru_cache(maxsize=1)
 def _cco_automaton():
-    prepared = _prepare(cco_facts())
-    snapshot = _initial_snapshot(prepared, _writer_options())
+    prepared = prepare_writer_facts(cco_facts())
+    snapshot = initial_writer_snapshot(prepared, writer_runtime_options())
     return prepared, snapshot, compile_writer_continuation_automaton(
         prepared=prepared, snapshot=snapshot
     )

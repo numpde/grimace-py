@@ -110,10 +110,10 @@ from tests.south_star1.helpers import tetrahedral_facts
 
 class WriterStereoResidualTest(unittest.TestCase):
     def test_tetrahedral_stereo_prunes_invalid_atom_tokens(self) -> None:
-        prepared = _prepare(tetrahedral_facts())
+        prepared = prepare_writer_facts(tetrahedral_facts())
         support = enumerate_prepared_stereo_support(
             prepared=prepared,
-            runtime_options=_writer_options(rooted_at_atom=1),
+            runtime_options=writer_runtime_options(rooted_at_atom=1),
         )
 
         self.assertEqual(
@@ -124,7 +124,7 @@ class WriterStereoResidualTest(unittest.TestCase):
         self.assertEqual(support.witness_count, 2)
 
     def test_tetra_token_emission_reports_residual_capabilities(self) -> None:
-        prepared = _prepare(tetrahedral_facts())
+        prepared = prepare_writer_facts(tetrahedral_facts())
         state = initial_writer_stereo_state(prepared)
 
         outcome = advance_writer_stereo_state_with_evidence(
@@ -151,10 +151,10 @@ class WriterStereoResidualTest(unittest.TestCase):
         )
 
     def test_tetra_local_order_closure_reports_residual_capabilities(self) -> None:
-        prepared = _prepare(tetrahedral_facts())
+        prepared = prepare_writer_facts(tetrahedral_facts())
         cursor = _initial_writer_transition_frontier_cursor(
             prepared,
-            _writer_options(rooted_at_atom=1),
+            writer_runtime_options(rooted_at_atom=1),
         )
         for emitted_text in ("F", "[C@@H]", "(", "Br", ")"):
             choices = _writer_frontier_choice_snapshot(
@@ -190,7 +190,7 @@ class WriterStereoResidualTest(unittest.TestCase):
         )
 
     def test_ordinary_atom_emission_reports_no_residual_capabilities(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
 
         outcome = advance_writer_stereo_state_with_evidence(
             prepared,
@@ -209,10 +209,10 @@ class WriterStereoResidualTest(unittest.TestCase):
         self.assertFalse(outcome.execution_capabilities)
 
     def test_directional_carrier_emission_reports_residual_capabilities(self) -> None:
-        prepared = _prepare(directional_facts())
+        prepared = prepare_writer_facts(directional_facts())
         cursor = _initial_writer_transition_frontier_cursor(
             prepared,
-            _writer_options(rooted_at_atom=2),
+            writer_runtime_options(rooted_at_atom=2),
         )
         choices = _writer_frontier_choice_snapshot(
             prepared,
@@ -251,10 +251,10 @@ class WriterStereoResidualTest(unittest.TestCase):
         )
 
     def test_initial_writer_state_accepts_independent_tetra_sites(self) -> None:
-        prepared = _prepare(_two_independent_tetra_facts())
+        prepared = prepare_writer_facts(_two_independent_tetra_facts())
         cursor = initial_writer_frontier_cursor(
             prepared,
-            _writer_options(rooted_at_atom=0),
+            writer_runtime_options(rooted_at_atom=0),
         )
         key = cursor.weighted_states[0][0]
 
@@ -267,10 +267,10 @@ class WriterStereoResidualTest(unittest.TestCase):
         )
 
     def test_tetra_frontier_counts_are_pruned_per_token(self) -> None:
-        prepared = _prepare(tetrahedral_facts())
+        prepared = prepare_writer_facts(tetrahedral_facts())
         cursor = initial_writer_frontier_cursor(
             prepared,
-            _writer_options(rooted_at_atom=1),
+            writer_runtime_options(rooted_at_atom=1),
         )
         after_f = writer_frontier_choices(prepared, cursor).choices[0].successor
         choices = writer_frontier_choices(prepared, after_f)
@@ -289,10 +289,10 @@ class WriterStereoResidualTest(unittest.TestCase):
         )
 
     def test_directional_stereo_prunes_invalid_carrier_marks(self) -> None:
-        prepared = _prepare(directional_facts())
+        prepared = prepare_writer_facts(directional_facts())
         support = enumerate_prepared_stereo_support(
             prepared=prepared,
-            runtime_options=_writer_options(rooted_at_atom=2),
+            runtime_options=writer_runtime_options(rooted_at_atom=2),
         )
 
         self.assertEqual(support.strings, ("F/C=C/Cl", "F\\C=C\\Cl"))
@@ -300,10 +300,10 @@ class WriterStereoResidualTest(unittest.TestCase):
         self.assertEqual(support.witness_count, 2)
 
     def test_directional_frontier_drops_zero_completion_mark_choice(self) -> None:
-        prepared = _prepare(directional_facts())
+        prepared = prepare_writer_facts(directional_facts())
         cursor = initial_writer_frontier_cursor(
             prepared,
-            _writer_options(rooted_at_atom=2),
+            writer_runtime_options(rooted_at_atom=2),
         )
         after_f = writer_frontier_choices(prepared, cursor).choices[0].successor
         choices = writer_frontier_choices(prepared, after_f)
@@ -323,7 +323,7 @@ class WriterStereoResidualTest(unittest.TestCase):
         )
 
     def test_ring_endpoint_event_creates_pending_ring_pair_factor(self) -> None:
-        prepared = _prepare(triangle_no_stereo_facts())
+        prepared = prepare_writer_facts(triangle_no_stereo_facts())
         label = WriterClosureLabel(value=1, text="1")
 
         state = advance_writer_stereo_state(
@@ -346,7 +346,7 @@ class WriterStereoResidualTest(unittest.TestCase):
         self.assertEqual(state.residual_snapshot, empty_writer_stereo_state().residual_snapshot)
 
     def test_ring_endpoint_event_rejects_label_value_text_mismatch(self) -> None:
-        prepared = _prepare(triangle_no_stereo_facts())
+        prepared = prepare_writer_facts(triangle_no_stereo_facts())
         label = WriterClosureLabel(value=1, text="7")
 
         state = advance_writer_stereo_state(
@@ -367,7 +367,7 @@ class WriterStereoResidualTest(unittest.TestCase):
         self.assertIsNone(state)
 
     def test_ring_endpoint_event_rejects_label_outside_policy(self) -> None:
-        prepared = _prepare(triangle_no_stereo_facts())
+        prepared = prepare_writer_facts(triangle_no_stereo_facts())
         label = WriterClosureLabel(value=10, text="%10")
 
         state = advance_writer_stereo_state(
@@ -388,7 +388,7 @@ class WriterStereoResidualTest(unittest.TestCase):
         self.assertIsNone(state)
 
     def test_ring_endpoint_event_accepts_policy_domain_nonleast_label(self) -> None:
-        prepared = _prepare(triangle_no_stereo_facts())
+        prepared = prepare_writer_facts(triangle_no_stereo_facts())
         label = WriterClosureLabel(value=2, text="2")
 
         state = advance_writer_stereo_state(
@@ -409,7 +409,7 @@ class WriterStereoResidualTest(unittest.TestCase):
         self.assertIsNotNone(state)
 
     def test_ring_endpoint_event_rejects_endpoint_text_mismatch(self) -> None:
-        prepared = _prepare(triangle_no_stereo_facts())
+        prepared = prepare_writer_facts(triangle_no_stereo_facts())
         label = WriterClosureLabel(value=1, text="1")
 
         state = advance_writer_stereo_state(
@@ -430,7 +430,7 @@ class WriterStereoResidualTest(unittest.TestCase):
         self.assertIsNone(state)
 
     def test_ring_endpoint_event_rejects_directional_bond_text(self) -> None:
-        prepared = _prepare(triangle_no_stereo_facts())
+        prepared = prepare_writer_facts(triangle_no_stereo_facts())
         label = WriterClosureLabel(value=1, text="1")
 
         state = advance_writer_stereo_state(
@@ -451,7 +451,7 @@ class WriterStereoResidualTest(unittest.TestCase):
         self.assertIsNone(state)
 
     def test_ring_endpoint_pair_closes_ring_pair_factor(self) -> None:
-        prepared = _prepare(triangle_no_stereo_facts())
+        prepared = prepare_writer_facts(triangle_no_stereo_facts())
         label = WriterClosureLabel(value=1, text="1")
         pending = advance_writer_stereo_state(
             prepared,
@@ -489,7 +489,7 @@ class WriterStereoResidualTest(unittest.TestCase):
         self.assertEqual(closed.residual_snapshot, empty_writer_stereo_state().residual_snapshot)
 
     def test_ring_endpoint_pair_rejects_pending_evidence_with_wrong_side(self) -> None:
-        prepared = _prepare(triangle_no_stereo_facts())
+        prepared = prepare_writer_facts(triangle_no_stereo_facts())
         label = WriterClosureLabel(value=1, text="1")
 
         closed = advance_writer_stereo_state(
@@ -510,7 +510,7 @@ class WriterStereoResidualTest(unittest.TestCase):
         self.assertIsNotNone(closed)
 
     def test_ring_endpoint_pair_rejects_pending_evidence_with_wrong_partner(self) -> None:
-        prepared = _prepare(triangle_no_stereo_facts())
+        prepared = prepare_writer_facts(triangle_no_stereo_facts())
         label = WriterClosureLabel(value=1, text="1")
 
         closed = advance_writer_stereo_state(
@@ -531,7 +531,7 @@ class WriterStereoResidualTest(unittest.TestCase):
         self.assertIsNotNone(closed)
 
     def test_ring_endpoint_pair_rejects_endpoint_text_mismatch(self) -> None:
-        prepared = _prepare(triangle_no_stereo_facts())
+        prepared = prepare_writer_facts(triangle_no_stereo_facts())
         label = WriterClosureLabel(value=1, text="1")
         pending = advance_writer_stereo_state(
             prepared,
@@ -567,7 +567,7 @@ class WriterStereoResidualTest(unittest.TestCase):
         self.assertIsNone(closed)
 
     def test_ring_endpoint_pair_rejects_label_outside_policy(self) -> None:
-        prepared = _prepare(triangle_no_stereo_facts())
+        prepared = prepare_writer_facts(triangle_no_stereo_facts())
         label = WriterClosureLabel(value=1, text="1")
         pending = advance_writer_stereo_state(
             prepared,
@@ -604,7 +604,7 @@ class WriterStereoResidualTest(unittest.TestCase):
         self.assertIsNone(closed)
 
     def test_ring_endpoint_pair_accepts_policy_domain_nonleast_label(self) -> None:
-        prepared = _prepare(triangle_no_stereo_facts())
+        prepared = prepare_writer_facts(triangle_no_stereo_facts())
         label = WriterClosureLabel(value=2, text="2")
 
         closed = advance_writer_stereo_state(
@@ -625,7 +625,7 @@ class WriterStereoResidualTest(unittest.TestCase):
         self.assertIsNotNone(closed)
 
     def test_ring_endpoint_pair_rejects_directional_bond_text(self) -> None:
-        prepared = _prepare(triangle_no_stereo_facts())
+        prepared = prepare_writer_facts(triangle_no_stereo_facts())
         label = WriterClosureLabel(value=1, text="1")
         pending = advance_writer_stereo_state(
             prepared,
@@ -661,7 +661,7 @@ class WriterStereoResidualTest(unittest.TestCase):
         self.assertIsNone(closed)
 
     def test_tetra_ring_endpoint_open_records_local_order_occurrence(self) -> None:
-        prepared = _prepare(ring_core_tetra_facts())
+        prepared = prepare_writer_facts(ring_core_tetra_facts())
         label = WriterClosureLabel(value=1, text="1")
 
         outcome = advance_writer_stereo_state_with_evidence(
@@ -697,7 +697,7 @@ class WriterStereoResidualTest(unittest.TestCase):
         )
 
     def test_tetra_ring_endpoint_pair_records_local_order_occurrence(self) -> None:
-        prepared = _prepare(ring_core_tetra_facts())
+        prepared = prepare_writer_facts(ring_core_tetra_facts())
         label = WriterClosureLabel(value=1, text="1")
 
         outcome = advance_writer_stereo_state_with_evidence(
@@ -733,7 +733,7 @@ class WriterStereoResidualTest(unittest.TestCase):
         )
 
     def test_tetra_ring_endpoint_rejects_wrong_partner(self) -> None:
-        prepared = _prepare(ring_core_tetra_facts())
+        prepared = prepare_writer_facts(ring_core_tetra_facts())
         label = WriterClosureLabel(value=1, text="1")
 
         with self.assertRaises(SouthStarError) as caught:
@@ -755,7 +755,7 @@ class WriterStereoResidualTest(unittest.TestCase):
         self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_STEREO)
 
     def test_tetra_ring_endpoint_rejects_second_distinct_incidence(self) -> None:
-        prepared = _prepare(ring_core_tetra_facts())
+        prepared = prepare_writer_facts(ring_core_tetra_facts())
         label = WriterClosureLabel(value=1, text="1")
         pending = advance_writer_stereo_state(
             prepared,
@@ -792,7 +792,7 @@ class WriterStereoResidualTest(unittest.TestCase):
         self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_STEREO)
 
     def test_directional_ring_endpoint_open_projects_carrier_domain(self) -> None:
-        prepared = _prepare(directional_facts())
+        prepared = prepare_writer_facts(directional_facts())
         label = WriterClosureLabel(value=1, text="1")
 
         outcome = advance_writer_stereo_state_with_evidence(
@@ -834,7 +834,7 @@ class WriterStereoResidualTest(unittest.TestCase):
         self.assertEqual(outcome.state.residual_snapshot.assignments, ())
 
     def test_directional_ring_endpoint_pair_records_one_carrier_bond(self) -> None:
-        prepared = _prepare(directional_facts())
+        prepared = prepare_writer_facts(directional_facts())
         label = WriterClosureLabel(value=1, text="1")
         pending = advance_writer_stereo_state(
             prepared,
@@ -900,7 +900,7 @@ class WriterStereoResidualTest(unittest.TestCase):
         )
 
     def test_directional_open_ring_state_reconstructs_projected_residual(self) -> None:
-        prepared = _prepare(directional_facts())
+        prepared = prepare_writer_facts(directional_facts())
         label = WriterClosureLabel(value=1, text="1")
         outcome = advance_writer_stereo_state_with_evidence(
             prepared,
@@ -943,7 +943,7 @@ class WriterStereoResidualTest(unittest.TestCase):
         )
 
     def test_directional_closed_ring_state_requires_exact_bond_record(self) -> None:
-        prepared = _prepare(directional_facts())
+        prepared = prepare_writer_facts(directional_facts())
         label = WriterClosureLabel(value=1, text="1")
         opened = advance_writer_stereo_state(
             prepared,
@@ -1481,7 +1481,7 @@ class WriterStereoResidualTest(unittest.TestCase):
 
     def test_shared_directional_ring_carrier_closure_path_uses_live_frontier(self) -> None:
         prepared = _prepare_shared_directional_ring_carrier_facts()
-        options = _writer_options(rooted_at_atom=1)
+        options = writer_runtime_options(rooted_at_atom=1)
 
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         self.assertEqual(initial_writer_frontier_cursor(prepared, options), cursor)
@@ -1531,7 +1531,7 @@ class WriterStereoResidualTest(unittest.TestCase):
 
     def test_directional_ring_carrier_closure_path_uses_live_frontier(self) -> None:
         prepared = _prepare_directional_ring_carrier_facts()
-        options = _writer_options(rooted_at_atom=0)
+        options = writer_runtime_options(rooted_at_atom=0)
 
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         self.assertEqual(initial_writer_frontier_cursor(prepared, options), cursor)
@@ -1578,7 +1578,7 @@ class WriterStereoResidualTest(unittest.TestCase):
         prepared = _prepare_directional_ring_carrier_facts()
         cursor = _initial_writer_transition_frontier_cursor(
             prepared,
-            _writer_options(rooted_at_atom=0),
+            writer_runtime_options(rooted_at_atom=0),
         )
         support = _first_schedule_support_with_capability(
             prepared,
@@ -1618,7 +1618,7 @@ class WriterStereoResidualTest(unittest.TestCase):
         prepared = _prepare_directional_ring_carrier_facts()
         cursor = _initial_writer_transition_frontier_cursor(
             prepared,
-            _writer_options(rooted_at_atom=0),
+            writer_runtime_options(rooted_at_atom=0),
         )
         support = _first_schedule_support_with_capability(
             prepared,
@@ -1655,7 +1655,7 @@ class WriterStereoResidualTest(unittest.TestCase):
         prepared = _prepare_directional_ring_carrier_facts()
         cursor = _initial_writer_transition_frontier_cursor(
             prepared,
-            _writer_options(rooted_at_atom=0),
+            writer_runtime_options(rooted_at_atom=0),
         )
         support = _first_schedule_support_with_capability(
             prepared,
@@ -1728,7 +1728,7 @@ class WriterStereoResidualTest(unittest.TestCase):
     def test_default_policy_uses_joint_directional_non_single_ring_carrier(
         self,
     ) -> None:
-        facts = _directional_non_single_ring_carrier_facts()
+        facts = directional_non_single_ring_carrier_facts()
 
         policy = ordinary_policy_for_facts(facts)
 
@@ -1742,9 +1742,9 @@ class WriterStereoResidualTest(unittest.TestCase):
     def test_joint_directional_non_single_ring_carrier_support_is_certified(
         self,
     ) -> None:
-        facts = _directional_non_single_ring_carrier_facts()
+        facts = directional_non_single_ring_carrier_facts()
         prepared = _prepare_directional_non_single_ring_carrier_facts()
-        options = _writer_options(rooted_at_atom=0)
+        options = writer_runtime_options(rooted_at_atom=0)
         image = enumerate_prepared_writer_shaped_support(
             prepared=prepared,
             runtime_options=options,
@@ -1930,7 +1930,7 @@ class WriterStereoResidualTest(unittest.TestCase):
         )
         cursor = initial_writer_frontier_cursor(
             prepared,
-            _writer_options(rooted_at_atom=0),
+            writer_runtime_options(rooted_at_atom=0),
         )
         after_f = writer_frontier_choices(prepared, cursor).choices[0].successor
         center_choice = writer_frontier_choices(prepared, after_f).choices[0]
@@ -1964,10 +1964,10 @@ class WriterStereoResidualTest(unittest.TestCase):
         self.assertEqual(finalized_key.stereo_state.residual_snapshot.factors, ())
 
     def test_non_stereo_terminal_eos_reports_no_execution_capabilities(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         cursor = _initial_writer_transition_frontier_cursor(
             prepared,
-            _writer_options(rooted_at_atom=0),
+            writer_runtime_options(rooted_at_atom=0),
         )
         pending = (cursor,)
         seen = set()
@@ -2071,7 +2071,7 @@ class WriterStereoResidualTest(unittest.TestCase):
         self.assertEqual(store.value_snapshot(), before)
 
     def test_empty_event_batch_accepts_supported_residual_state(self) -> None:
-        prepared = _prepare(triangle_no_stereo_facts())
+        prepared = prepare_writer_facts(triangle_no_stereo_facts())
         state = empty_writer_stereo_state()
 
         self.assertEqual(
@@ -2108,7 +2108,7 @@ class WriterStereoResidualTest(unittest.TestCase):
         )
 
     def test_terminal_stereo_closure_accepts_supported_residual_state(self) -> None:
-        prepared = _prepare(triangle_no_stereo_facts())
+        prepared = prepare_writer_facts(triangle_no_stereo_facts())
 
         self.assertIsNotNone(
             terminal_writer_stereo_state(
@@ -2119,7 +2119,7 @@ class WriterStereoResidualTest(unittest.TestCase):
         )
 
     def test_empty_event_batch_is_identity_for_residual_snapshot(self) -> None:
-        prepared = _prepare(triangle_no_stereo_facts())
+        prepared = prepare_writer_facts(triangle_no_stereo_facts())
         left = direction_var(("left", 0))
         right = direction_var(("right", 0))
         store = ResidualStore()
@@ -2151,15 +2151,10 @@ class WriterStereoResidualTest(unittest.TestCase):
         )
 
 
-def _prepare(facts):
-    return prepare_south_star_mol_from_facts(
-        facts,
-        writer_surface=SouthStarWriterSurface(),
-    )
 
 
 def _prepare_directional_ring_carrier_facts():
-    facts = _directional_ring_carrier_facts()
+    facts = directional_ring_carrier_facts()
     return prepare_south_star_mol_from_facts(
         facts,
         writer_surface=SouthStarWriterSurface(),
@@ -2171,7 +2166,7 @@ def _prepare_directional_ring_carrier_facts():
 
 
 def _prepare_directional_non_single_ring_carrier_facts():
-    facts = _directional_non_single_ring_carrier_facts()
+    facts = directional_non_single_ring_carrier_facts()
     return prepare_south_star_mol_from_facts(
         facts,
         writer_surface=SouthStarWriterSurface(),
@@ -2183,7 +2178,7 @@ def _prepare_directional_non_single_ring_carrier_facts():
 
 
 def _prepare_shared_directional_ring_carrier_facts():
-    facts = _shared_directional_ring_carrier_facts()
+    facts = shared_directional_ring_carrier_facts()
     return prepare_south_star_mol_from_facts(
         facts,
         writer_surface=SouthStarWriterSurface(),
@@ -2243,7 +2238,7 @@ def _shared_directional_carrier_rows(state):
     )
 
 
-def _writer_options(*, rooted_at_atom: int = -1) -> SouthStarRuntimeOptions:
+def writer_runtime_options(*, rooted_at_atom: int = -1) -> SouthStarRuntimeOptions:
     return SouthStarRuntimeOptions(
         rooted_at_atom=rooted_at_atom,
         serialization_language=SerializationLanguageMode.WRITER_SHAPED,
@@ -2329,7 +2324,7 @@ def _first_checked_branch_support_with_coupled_lifecycle(
     pending = [
         initial_writer_frontier_cursor(
             prepared,
-            _writer_options(rooted_at_atom=0),
+            writer_runtime_options(rooted_at_atom=0),
         )
     ]
     seen = set()
@@ -2400,211 +2395,14 @@ def triangle_no_stereo_facts() -> MoleculeFacts:
     )
 
 
-def _directional_ring_carrier_facts() -> MoleculeFacts:
-    site_id = SiteId(0)
-    return MoleculeFacts(
-        atoms=(
-            atom(0, "C"),
-            atom(1, "C"),
-            atom(2, "F"),
-            atom(3, "Cl"),
-            atom(4, "Br"),
-            atom(5, "O"),
-        ),
-        bonds=(
-            bond(0, 0, 1, BondOrder.DOUBLE),
-            single_bond(1, 1, 4),
-            single_bond(2, 4, 2),
-            single_bond(3, 2, 0),
-            single_bond(4, 0, 3),
-            single_bond(5, 1, 5),
-        ),
-        components=(
-            ComponentFacts(
-                id=ComponentId(0),
-                atoms=tuple(AtomId(index) for index in range(6)),
-                bonds=tuple(BondId(index) for index in range(6)),
-            ),
-        ),
-        stereo=StereoFacts(
-            directional=(
-                DirectionalSiteFacts(
-                    id=site_id,
-                    center_bond=BondId(0),
-                    left_endpoint=AtomId(0),
-                    right_endpoint=AtomId(1),
-                    status=SiteStatus.SPECIFIED,
-                    target=DirectionalValue.OPPOSITE,
-                    left_ligands=(OccurrenceId(0), OccurrenceId(1)),
-                    right_ligands=(OccurrenceId(2), OccurrenceId(3)),
-                    reference_pair=(OccurrenceId(0), OccurrenceId(2)),
-                ),
-            ),
-        ),
-        ligand_occurrences=(
-            LigandOccurrence(
-                id=OccurrenceId(0),
-                site=site_id,
-                kind=LigandKind.NEIGHBOR_ATOM,
-                atom=AtomId(2),
-                bond=BondId(3),
-            ),
-            LigandOccurrence(
-                id=OccurrenceId(1),
-                site=site_id,
-                kind=LigandKind.NEIGHBOR_ATOM,
-                atom=AtomId(3),
-                bond=BondId(4),
-            ),
-            LigandOccurrence(
-                id=OccurrenceId(2),
-                site=site_id,
-                kind=LigandKind.NEIGHBOR_ATOM,
-                atom=AtomId(4),
-                bond=BondId(1),
-            ),
-            LigandOccurrence(
-                id=OccurrenceId(3),
-                site=site_id,
-                kind=LigandKind.NEIGHBOR_ATOM,
-                atom=AtomId(5),
-                bond=BondId(5),
-            ),
-        ),
-    )
 
 
-def _directional_non_single_ring_carrier_facts() -> MoleculeFacts:
-    facts = _directional_ring_carrier_facts()
-    bonds = list(facts.bonds)
-    bonds[3] = replace(bonds[3], order=BondOrder.DOUBLE)
-    return replace(facts, bonds=tuple(bonds))
 
 
-def _shared_directional_ring_carrier_facts() -> MoleculeFacts:
-    left_site = SiteId(0)
-    right_site = SiteId(1)
-    return MoleculeFacts(
-        atoms=tuple(atom(index, symbol) for index, symbol in (
-            (0, "C"),
-            (1, "C"),
-            (2, "C"),
-            (3, "C"),
-            (4, "F"),
-            (5, "Cl"),
-            (6, "Br"),
-            (7, "O"),
-            (8, "F"),
-            (9, "Cl"),
-        )),
-        bonds=(
-            bond(0, 0, 1, BondOrder.DOUBLE),
-            single_bond(1, 1, 2),
-            bond(2, 2, 3, BondOrder.DOUBLE),
-            single_bond(3, 3, 4),
-            single_bond(4, 4, 5),
-            single_bond(5, 5, 0),
-            single_bond(6, 0, 6),
-            single_bond(7, 1, 7),
-            single_bond(8, 2, 8),
-            single_bond(9, 3, 9),
-        ),
-        components=(
-            ComponentFacts(
-                id=ComponentId(0),
-                atoms=tuple(AtomId(index) for index in range(10)),
-                bonds=tuple(BondId(index) for index in range(10)),
-            ),
-        ),
-        stereo=StereoFacts(
-            directional=(
-                DirectionalSiteFacts(
-                    id=left_site,
-                    center_bond=BondId(0),
-                    left_endpoint=AtomId(0),
-                    right_endpoint=AtomId(1),
-                    status=SiteStatus.SPECIFIED,
-                    target=DirectionalValue.OPPOSITE,
-                    left_ligands=(OccurrenceId(0), OccurrenceId(1)),
-                    right_ligands=(OccurrenceId(2), OccurrenceId(3)),
-                    reference_pair=(OccurrenceId(0), OccurrenceId(2)),
-                ),
-                DirectionalSiteFacts(
-                    id=right_site,
-                    center_bond=BondId(2),
-                    left_endpoint=AtomId(2),
-                    right_endpoint=AtomId(3),
-                    status=SiteStatus.SPECIFIED,
-                    target=DirectionalValue.OPPOSITE,
-                    left_ligands=(OccurrenceId(4), OccurrenceId(5)),
-                    right_ligands=(OccurrenceId(6), OccurrenceId(7)),
-                    reference_pair=(OccurrenceId(4), OccurrenceId(6)),
-                ),
-            ),
-        ),
-        ligand_occurrences=(
-            LigandOccurrence(
-                id=OccurrenceId(0),
-                site=left_site,
-                kind=LigandKind.NEIGHBOR_ATOM,
-                atom=AtomId(5),
-                bond=BondId(5),
-            ),
-            LigandOccurrence(
-                id=OccurrenceId(1),
-                site=left_site,
-                kind=LigandKind.NEIGHBOR_ATOM,
-                atom=AtomId(6),
-                bond=BondId(6),
-            ),
-            LigandOccurrence(
-                id=OccurrenceId(2),
-                site=left_site,
-                kind=LigandKind.NEIGHBOR_ATOM,
-                atom=AtomId(2),
-                bond=BondId(1),
-            ),
-            LigandOccurrence(
-                id=OccurrenceId(3),
-                site=left_site,
-                kind=LigandKind.NEIGHBOR_ATOM,
-                atom=AtomId(7),
-                bond=BondId(7),
-            ),
-            LigandOccurrence(
-                id=OccurrenceId(4),
-                site=right_site,
-                kind=LigandKind.NEIGHBOR_ATOM,
-                atom=AtomId(1),
-                bond=BondId(1),
-            ),
-            LigandOccurrence(
-                id=OccurrenceId(5),
-                site=right_site,
-                kind=LigandKind.NEIGHBOR_ATOM,
-                atom=AtomId(8),
-                bond=BondId(8),
-            ),
-            LigandOccurrence(
-                id=OccurrenceId(6),
-                site=right_site,
-                kind=LigandKind.NEIGHBOR_ATOM,
-                atom=AtomId(4),
-                bond=BondId(3),
-            ),
-            LigandOccurrence(
-                id=OccurrenceId(7),
-                site=right_site,
-                kind=LigandKind.NEIGHBOR_ATOM,
-                atom=AtomId(9),
-                bond=BondId(9),
-            ),
-        ),
-    )
 
 
 def _three_site_shared_directional_ring_carrier_facts() -> MoleculeFacts:
-    facts = _shared_directional_ring_carrier_facts()
+    facts = shared_directional_ring_carrier_facts()
     site = SiteId(2)
     extra_occurrences = (
         LigandOccurrence(
@@ -2764,64 +2562,6 @@ def _two_independent_tetra_facts() -> MoleculeFacts:
     )
 
 
-def terminal_tetra_center_facts() -> MoleculeFacts:
-    site = SiteId(0)
-    return MoleculeFacts(
-        atoms=(
-            atom(0, "F"),
-            replace(atom(1, "C"), implicit_h_count=3),
-        ),
-        bonds=(single_bond(0, 0, 1),),
-        components=(
-            ComponentFacts(
-                id=ComponentId(0),
-                atoms=(AtomId(0), AtomId(1)),
-                bonds=(BondId(0),),
-            ),
-        ),
-        stereo=StereoFacts(
-            tetrahedral=(
-                TetrahedralSiteFacts(
-                    id=site,
-                    center=AtomId(1),
-                    status=SiteStatus.SPECIFIED,
-                    target=TetraValue.PLUS,
-                    ligand_occurrences=tuple(OccurrenceId(index) for index in range(4)),
-                    reference_order=tuple(OccurrenceId(index) for index in range(4)),
-                ),
-            ),
-        ),
-        ligand_occurrences=(
-            LigandOccurrence(
-                id=OccurrenceId(0),
-                site=site,
-                kind=LigandKind.NEIGHBOR_ATOM,
-                atom=AtomId(0),
-                bond=BondId(0),
-            ),
-            LigandOccurrence(
-                id=OccurrenceId(1),
-                site=site,
-                kind=LigandKind.IMPLICIT_H,
-                atom=AtomId(1),
-                bond=None,
-            ),
-            LigandOccurrence(
-                id=OccurrenceId(2),
-                site=site,
-                kind=LigandKind.IMPLICIT_H,
-                atom=AtomId(1),
-                bond=None,
-            ),
-            LigandOccurrence(
-                id=OccurrenceId(3),
-                site=site,
-                kind=LigandKind.IMPLICIT_H,
-                atom=AtomId(1),
-                bond=None,
-            ),
-        ),
-    )
 
 
 def ring_core_tetra_facts() -> MoleculeFacts:
@@ -2911,36 +2651,6 @@ def ring_core_tetra_with_remote_non_single_facts(
     )
 
 
-def terminal_tetra_center_policy() -> SmilesPolicy:
-    return SmilesPolicy(
-        ring_labels=(RingLabel(1),),
-        annotation_mode=AnnotationMode.HARD,
-        atom_text_domains=(
-            AtomTextDomain(
-                atom=AtomId(0),
-                choices=(AtomTextChoice("fluorine", ((TetraToken.NONE, "F"),)),),
-            ),
-            AtomTextDomain(
-                atom=AtomId(1),
-                choices=(
-                    AtomTextChoice(
-                        "terminal_tetra_carbon",
-                        (
-                            (TetraToken.AT, "[C@H3]"),
-                            (TetraToken.ATAT, "[C@@H3]"),
-                        ),
-                    ),
-                ),
-            ),
-        ),
-        bond_text_domains=(
-            BondTextDomain(
-                bond=BondId(0),
-                slot_kind="tree",
-                choices=(BondTextChoice("single_elided", "", False),),
-            ),
-        ),
-    )
 
 
 def _occurrences(*values: int) -> tuple[OccurrenceId, ...]:

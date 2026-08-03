@@ -80,28 +80,28 @@ from tests.south_star1.qualification_support import bundle_bytes
 from tests.south_star1.test_writer_branch_transition_artifact import (
     _shared_ring_branch_sources,
 )
-from tests.south_star1.test_writer_stereo_residual import (
-    _directional_non_single_ring_carrier_facts,
+from tests.south_star1.writer_test_fixtures import (
+    directional_non_single_ring_carrier_facts,
 )
-from tests.south_star1.test_writer_stereo_residual import (
-    _directional_ring_carrier_facts,
+from tests.south_star1.writer_test_fixtures import (
+    directional_ring_carrier_facts,
 )
-from tests.south_star1.test_writer_stereo_residual import (
-    _shared_directional_ring_carrier_facts,
+from tests.south_star1.writer_test_fixtures import (
+    shared_directional_ring_carrier_facts,
 )
-from tests.south_star1.test_writer_stereo_residual import (
+from tests.south_star1.writer_test_fixtures import (
     terminal_tetra_center_facts,
 )
-from tests.south_star1.test_writer_stereo_residual import (
+from tests.south_star1.writer_test_fixtures import (
     terminal_tetra_center_policy,
 )
 from tests.south_star1.test_writer_terminalization_artifact import _terminal_source
-from tests.south_star1.test_writer_support_artifact_fact_verifier import (
-    _initial_snapshot,
+from tests.south_star1.writer_test_context import (
+    initial_writer_snapshot,
 )
-from tests.south_star1.test_writer_support_artifact_fact_verifier import _prepare
-from tests.south_star1.test_writer_support_artifact_fact_verifier import (
-    _writer_options,
+from tests.south_star1.writer_test_context import prepare_writer_facts
+from tests.south_star1.writer_test_context import (
+    writer_runtime_options,
 )
 
 
@@ -117,8 +117,8 @@ class _CallCounter:
 
 class WriterContinuationAssetTest(unittest.TestCase):
     def test_staged_candidate_matches_public_composition_and_is_not_published(self) -> None:
-        prepared = _prepare(cco_facts())
-        snapshot = _initial_snapshot(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        snapshot = initial_writer_snapshot(prepared, writer_runtime_options())
         with TemporaryDirectory() as directory:
             candidate = Path(directory) / "candidate"
             destination = Path(directory) / "asset"
@@ -140,8 +140,8 @@ class WriterContinuationAssetTest(unittest.TestCase):
             self.assertEqual(bundle_bytes(candidate), bundle_bytes(destination))
 
     def test_public_composition_orders_materialize_certify_publish_and_cleans_failures(self) -> None:
-        prepared = _prepare(cco_facts())
-        snapshot = _initial_snapshot(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        snapshot = initial_writer_snapshot(prepared, writer_runtime_options())
         with TemporaryDirectory() as directory:
             destination = Path(directory) / "asset"
             events = []
@@ -185,8 +185,8 @@ class WriterContinuationAssetTest(unittest.TestCase):
                 self.assertFalse(failed.exists())
 
     def test_asset_is_deterministic_core_first_and_lazily_provable(self) -> None:
-        prepared = _prepare(cco_facts())
-        snapshot = _initial_snapshot(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        snapshot = initial_writer_snapshot(prepared, writer_runtime_options())
         with TemporaryDirectory() as directory:
             first = Path(directory) / "first"
             second = Path(directory) / "second"
@@ -270,7 +270,7 @@ class WriterContinuationAssetTest(unittest.TestCase):
                 ),
             )
             mismatched = verify_writer_continuation_asset_for_prepared(
-                prepared=_prepare(_directional_non_single_ring_carrier_facts()),
+                prepared=prepare_writer_facts(directional_non_single_ring_carrier_facts()),
                 asset=open_writer_continuation_core(first),
             )
             self.assertFalse(mismatched.accepted)
@@ -361,8 +361,8 @@ class WriterContinuationAssetTest(unittest.TestCase):
             )
 
     def test_structural_verifier_rejects_coherent_core_and_provenance_forgeries(self) -> None:
-        prepared = _prepare(cco_facts())
-        snapshot = _initial_snapshot(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        snapshot = initial_writer_snapshot(prepared, writer_runtime_options())
         cases = (
             ("core_count", _forge_core_count),
             ("predecessor", _forge_predecessor),
@@ -390,8 +390,8 @@ class WriterContinuationAssetTest(unittest.TestCase):
                         open_writer_continuation_core(path)
 
     def test_live_verifier_rejects_coherent_projection_substitution(self) -> None:
-        prepared = _prepare(cco_facts())
-        snapshot = _initial_snapshot(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        snapshot = initial_writer_snapshot(prepared, writer_runtime_options())
         with TemporaryDirectory() as directory:
             path = Path(directory) / "asset"
             write_writer_continuation_asset(
@@ -415,12 +415,12 @@ class WriterContinuationAssetTest(unittest.TestCase):
         cases = (
             (
                 cco_facts(),
-                _writer_options(),
+                writer_runtime_options(),
                 _forge_branch_digest_transplant,
             ),
             (
                 directional_facts(),
-                _writer_options(rooted_at_atom=2),
+                writer_runtime_options(rooted_at_atom=2),
                 _forge_terminal_identity_transplant,
             ),
         )
@@ -429,8 +429,8 @@ class WriterContinuationAssetTest(unittest.TestCase):
                 self.subTest(forge=forge.__name__),
                 TemporaryDirectory() as directory,
             ):
-                prepared = _prepare(facts)
-                snapshot = _initial_snapshot(prepared, options)
+                prepared = prepare_writer_facts(facts)
+                snapshot = initial_writer_snapshot(prepared, options)
                 path = Path(directory) / "asset"
                 write_writer_continuation_asset(
                     path=path,
@@ -449,8 +449,8 @@ class WriterContinuationAssetTest(unittest.TestCase):
                 self.assertIn("continuation_asset", semantic.reason)
 
     def test_publication_requires_branch_and_terminal_facts_proofs(self) -> None:
-        prepared = _prepare(cco_facts())
-        snapshot = _initial_snapshot(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        snapshot = initial_writer_snapshot(prepared, writer_runtime_options())
         cases = (
             (
                 "_verify_writer_branch_transition_artifact_for_facts_with_context",
@@ -492,8 +492,8 @@ class WriterContinuationAssetTest(unittest.TestCase):
                 )
 
     def test_certification_uses_no_rich_support_or_count_path(self) -> None:
-        prepared = _prepare(cco_facts())
-        snapshot = _initial_snapshot(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        snapshot = initial_writer_snapshot(prepared, writer_runtime_options())
         blocked = AssertionError("legacy materialization path invoked")
         with (
             TemporaryDirectory() as directory,
@@ -527,10 +527,10 @@ class WriterContinuationAssetTest(unittest.TestCase):
             self.assertTrue(path.is_dir())
 
     def test_non_single_certification_streams_each_locator_once(self) -> None:
-        prepared = _prepare(_directional_non_single_ring_carrier_facts())
-        snapshot = _initial_snapshot(
+        prepared = prepare_writer_facts(directional_non_single_ring_carrier_facts())
+        snapshot = initial_writer_snapshot(
             prepared,
-            _writer_options(rooted_at_atom=0),
+            writer_runtime_options(rooted_at_atom=0),
         )
         counted_names = (
             "_frontier_batch",
@@ -606,8 +606,8 @@ class WriterContinuationAssetTest(unittest.TestCase):
             self.assertEqual(counters[name].count, 72)
 
     def test_missing_and_extra_chunks_reject(self) -> None:
-        prepared = _prepare(cco_facts())
-        snapshot = _initial_snapshot(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        snapshot = initial_writer_snapshot(prepared, writer_runtime_options())
         with TemporaryDirectory() as directory:
             path = Path(directory) / "asset"
             manifest = write_writer_continuation_asset(
@@ -651,25 +651,25 @@ class WriterContinuationAssetTest(unittest.TestCase):
 
     def test_terminalization_matrix_reconstructs_lazily(self) -> None:
         cases = (
-            (cco_facts(), _writer_options(), None),
+            (cco_facts(), writer_runtime_options(), None),
             (
                 terminal_tetra_center_facts(),
-                _writer_options(rooted_at_atom=0),
+                writer_runtime_options(rooted_at_atom=0),
                 terminal_tetra_center_policy(),
             ),
             (
-                _directional_ring_carrier_facts(),
-                _writer_options(rooted_at_atom=0),
+                directional_ring_carrier_facts(),
+                writer_runtime_options(rooted_at_atom=0),
                 None,
             ),
             (
-                _shared_directional_ring_carrier_facts(),
-                _writer_options(rooted_at_atom=1),
+                shared_directional_ring_carrier_facts(),
+                writer_runtime_options(rooted_at_atom=1),
                 None,
             ),
             (
-                _directional_non_single_ring_carrier_facts(),
-                _writer_options(rooted_at_atom=0),
+                directional_non_single_ring_carrier_facts(),
+                writer_runtime_options(rooted_at_atom=0),
                 None,
             ),
         )
@@ -712,11 +712,11 @@ class WriterContinuationAssetTest(unittest.TestCase):
         "full shared-ring continuation asset is slow-gated",
     )
     def test_full_shared_root_metrics_and_six_lazy_branch_proofs(self) -> None:
-        facts = _shared_directional_ring_carrier_facts()
-        prepared = _prepare(facts)
-        snapshot = _initial_snapshot(
+        facts = shared_directional_ring_carrier_facts()
+        prepared = prepare_writer_facts(facts)
+        snapshot = initial_writer_snapshot(
             prepared,
-            _writer_options(rooted_at_atom=1),
+            writer_runtime_options(rooted_at_atom=1),
         )
         with TemporaryDirectory() as directory:
             path = Path(directory) / "asset"

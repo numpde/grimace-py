@@ -45,18 +45,18 @@ from tests.south_star1.helpers import cco_facts
 from tests.south_star1.helpers import directional_facts
 from tests.south_star1.helpers import shared_acyclic_directional_facts
 from tests.south_star1.helpers import tetrahedral_facts
-from tests.south_star1.test_writer_stereo_residual import (
-    _directional_non_single_ring_carrier_facts,
+from tests.south_star1.writer_test_fixtures import (
+    directional_non_single_ring_carrier_facts,
 )
-from tests.south_star1.test_writer_stereo_residual import (
-    _directional_ring_carrier_facts,
+from tests.south_star1.writer_test_fixtures import (
+    directional_ring_carrier_facts,
 )
-from tests.south_star1.test_writer_support_artifact_fact_verifier import (
-    _initial_snapshot,
+from tests.south_star1.writer_test_context import (
+    initial_writer_snapshot,
 )
-from tests.south_star1.test_writer_support_artifact_fact_verifier import _prepare
-from tests.south_star1.test_writer_support_artifact_fact_verifier import (
-    _writer_options,
+from tests.south_star1.writer_test_context import prepare_writer_facts
+from tests.south_star1.writer_test_context import (
+    writer_runtime_options,
 )
 
 
@@ -65,8 +65,8 @@ class WriterContinuationRustTest(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls._temporary = TemporaryDirectory()
         cls.path = Path(cls._temporary.name) / "asset"
-        cls.prepared = _prepare(cco_facts())
-        snapshot = _initial_snapshot(cls.prepared, _writer_options())
+        cls.prepared = prepare_writer_facts(cco_facts())
+        snapshot = initial_writer_snapshot(cls.prepared, writer_runtime_options())
         write_writer_continuation_asset(
             path=cls.path,
             prepared=cls.prepared,
@@ -205,21 +205,21 @@ class WriterContinuationRustTest(unittest.TestCase):
 
     def test_small_fixture_support_images_match(self) -> None:
         cases = (
-            (tetrahedral_facts(), _writer_options()),
-            (directional_facts(), _writer_options(rooted_at_atom=2)),
+            (tetrahedral_facts(), writer_runtime_options()),
+            (directional_facts(), writer_runtime_options(rooted_at_atom=2)),
             (
                 shared_acyclic_directional_facts(),
-                _writer_options(rooted_at_atom=0),
+                writer_runtime_options(rooted_at_atom=0),
             ),
             (
-                _directional_ring_carrier_facts(),
-                _writer_options(rooted_at_atom=0),
+                directional_ring_carrier_facts(),
+                writer_runtime_options(rooted_at_atom=0),
             ),
         )
         for facts, options in cases:
             with self.subTest(facts=facts), TemporaryDirectory() as directory:
-                prepared = _prepare(facts)
-                snapshot = _initial_snapshot(prepared, options)
+                prepared = prepare_writer_facts(facts)
+                snapshot = initial_writer_snapshot(prepared, options)
                 path = Path(directory) / "asset"
                 write_writer_continuation_asset(
                     path=path,
@@ -237,10 +237,10 @@ class WriterContinuationRustTest(unittest.TestCase):
                 )
 
     def test_non_single_ring_asset_publishes_after_complete_local_proof(self) -> None:
-        facts = _directional_non_single_ring_carrier_facts()
-        options = _writer_options(rooted_at_atom=0)
-        prepared = _prepare(facts)
-        snapshot = _initial_snapshot(prepared, options)
+        facts = directional_non_single_ring_carrier_facts()
+        options = writer_runtime_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(facts)
+        snapshot = initial_writer_snapshot(prepared, options)
         with TemporaryDirectory() as directory:
             path = Path(directory) / "asset"
             write_writer_continuation_asset(

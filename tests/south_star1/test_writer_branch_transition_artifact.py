@@ -27,21 +27,21 @@ from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_smil
 from grimace._south_star1.writer_frontier import _checked_writer_frontier_branch_supports
 from grimace._south_star1.writer_snapshot import WriterDecoderBoundary
 from grimace._south_star1.writer_snapshot import capture_writer_frontier_snapshot
-from tests.south_star1.test_writer_stereo_residual import _shared_directional_ring_carrier_facts
-from tests.south_star1.test_writer_stereo_residual import _directional_non_single_ring_carrier_facts
-from tests.south_star1.test_writer_stereo_residual import _directional_ring_carrier_facts
+from tests.south_star1.writer_test_fixtures import shared_directional_ring_carrier_facts
+from tests.south_star1.writer_test_fixtures import directional_non_single_ring_carrier_facts
+from tests.south_star1.writer_test_fixtures import directional_ring_carrier_facts
 from tests.south_star1.helpers import directional_facts
 from tests.south_star1.helpers import shared_acyclic_directional_facts
 from tests.south_star1.helpers import tetrahedral_facts
-from tests.south_star1.test_writer_support_artifact_fact_verifier import _initial_snapshot
-from tests.south_star1.test_writer_support_artifact_fact_verifier import _prepare
-from tests.south_star1.test_writer_support_artifact_fact_verifier import _writer_options
+from tests.south_star1.writer_test_context import initial_writer_snapshot
+from tests.south_star1.writer_test_context import prepare_writer_facts
+from tests.south_star1.writer_test_context import writer_runtime_options
 
 
 class WriterBranchTransitionArtifactTest(unittest.TestCase):
     def test_aromatic_plain_atom_evidence_forgeries_reject_facts_bound(self) -> None:
         facts = ordinary_molecule_facts_from_smiles("c1ccccc1")
-        options = _writer_options(rooted_at_atom=0)
+        options = writer_runtime_options(rooted_at_atom=0)
         _prepared, source = _branch_artifact_for_event_kind(
             facts, options, "atom_emitted"
         )
@@ -94,7 +94,7 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
         for smiles, event_kind, forged_text, reason in cases:
             with self.subTest(smiles=smiles, event=event_kind):
                 facts = ordinary_molecule_facts_from_smiles(smiles)
-                options = _writer_options(rooted_at_atom=0)
+                options = writer_runtime_options(rooted_at_atom=0)
                 prepared, artifact = _branch_artifact_for_event_kind(
                     facts,
                     options,
@@ -144,12 +144,12 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
 
     def test_supported_transition_matrix_replays_facts_bound(self) -> None:
         cases = (
-            (tetrahedral_facts(), _writer_options(), "tetrahedral atom-token restriction"),
-            (tetrahedral_facts(), _writer_options(), "tetrahedral local-order factor closure"),
-            (directional_facts(), _writer_options(rooted_at_atom=2), "directional carrier-mark restriction"),
-            (shared_acyclic_directional_facts(), _writer_options(rooted_at_atom=0), "directional carrier-mark restriction"),
-            (_directional_ring_carrier_facts(), _writer_options(rooted_at_atom=0), "directional ring endpoint projection"),
-            (_directional_ring_carrier_facts(), _writer_options(rooted_at_atom=0), "directional ring pair restriction"),
+            (tetrahedral_facts(), writer_runtime_options(), "tetrahedral atom-token restriction"),
+            (tetrahedral_facts(), writer_runtime_options(), "tetrahedral local-order factor closure"),
+            (directional_facts(), writer_runtime_options(rooted_at_atom=2), "directional carrier-mark restriction"),
+            (shared_acyclic_directional_facts(), writer_runtime_options(rooted_at_atom=0), "directional carrier-mark restriction"),
+            (directional_ring_carrier_facts(), writer_runtime_options(rooted_at_atom=0), "directional ring endpoint projection"),
+            (directional_ring_carrier_facts(), writer_runtime_options(rooted_at_atom=0), "directional ring pair restriction"),
         )
         for facts, options, operation in cases:
             with self.subTest(operation=operation, facts=type(facts).__name__):
@@ -170,8 +170,8 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
                 )
 
     def test_non_single_ring_opening_and_pair_replay_semantically(self) -> None:
-        facts = _directional_non_single_ring_carrier_facts()
-        options = _writer_options(rooted_at_atom=0)
+        facts = directional_non_single_ring_carrier_facts()
+        options = writer_runtime_options(rooted_at_atom=0)
         for operation in (
             "directional ring endpoint projection",
             "directional ring pair restriction",
@@ -229,8 +229,8 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
                     )
 
     def test_non_single_ring_pair_coupling_forgeries_reject_facts_bound(self) -> None:
-        facts = _directional_non_single_ring_carrier_facts()
-        options = _writer_options(rooted_at_atom=0)
+        facts = directional_non_single_ring_carrier_facts()
+        options = writer_runtime_options(rooted_at_atom=0)
         _prepared, source = _branch_artifact_for_operation(
             facts,
             options,
@@ -817,10 +817,10 @@ def _shared_ring_branch_artifact(phase: str, mark: DirectionMark):
 
 @lru_cache(maxsize=1)
 def _shared_ring_branch_sources():
-    facts = _shared_directional_ring_carrier_facts()
-    options = _writer_options(rooted_at_atom=1)
-    prepared = _prepare(facts)
-    initial = _initial_snapshot(prepared, options)
+    facts = shared_directional_ring_carrier_facts()
+    options = writer_runtime_options(rooted_at_atom=1)
+    prepared = prepare_writer_facts(facts)
+    initial = initial_writer_snapshot(prepared, options)
     pending = [(initial.cursor, 0)]
     seen = set()
     found = {}
@@ -856,8 +856,8 @@ def _shared_ring_branch_sources():
 
 
 def _branch_artifact_for_operation(facts, options, operation):
-    prepared = _prepare(facts)
-    initial = _initial_snapshot(prepared, options)
+    prepared = prepare_writer_facts(facts)
+    initial = initial_writer_snapshot(prepared, options)
     pending = [(initial.cursor, 0)]
     seen = set()
     while pending:
@@ -897,8 +897,8 @@ def _branch_artifact_for_event_kind(
     *,
     require_text: str | None = None,
 ):
-    prepared = _prepare(facts)
-    initial = _initial_snapshot(prepared, options)
+    prepared = prepare_writer_facts(facts)
+    initial = initial_writer_snapshot(prepared, options)
     pending = [(initial.cursor, 0)]
     seen = set()
     while pending:

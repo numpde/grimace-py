@@ -10,8 +10,6 @@ from unittest.mock import patch
 
 from grimace._south_star1.policy import DirectionMark
 from grimace._south_star1.ids import BondId
-from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
-from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.writer_continuation_automaton import advance_writer_continuation
 from grimace._south_star1.writer_continuation_automaton import compile_writer_continuation_automaton
 from grimace._south_star1.writer_continuation_automaton import verify_writer_continuation_automaton_consistency
@@ -172,9 +170,8 @@ class WriterContinuationAutomatonTest(unittest.TestCase):
                 pending.append((live_choice.successor, advanced))
 
     def test_weight_normalization_scales_completion_not_support(self) -> None:
-        prepared = prepare_south_star_mol_from_facts(
+        prepared = prepare_writer_facts(
             chain_facts(("C",)),
-            writer_surface=SouthStarWriterSurface(),
             policy=duplicate_single_atom_policy(),
         )
         options = writer_runtime_options()

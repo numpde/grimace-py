@@ -15,10 +15,6 @@ from grimace import MolToSmilesContinuationDecoder
 from grimace import SouthStarError
 from grimace._south_star1.fact_isomorphism import facts_are_isomorphic
 from grimace._south_star1.facts import DirectionalValue
-from grimace._south_star1.policy import SerializationLanguageMode
-from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
-from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
-from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
 from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_smiles
 from grimace._south_star1.writer_continuation_asset import open_writer_continuation_core
 from grimace._south_star1.writer_continuation_asset import verify_writer_continuation_asset_consistency
@@ -26,8 +22,6 @@ from grimace._south_star1.writer_continuation_asset import (
     verify_writer_continuation_asset_for_prepared,
 )
 from grimace._south_star1.writer_continuation_asset import write_writer_continuation_asset
-from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
-from grimace._south_star1.writer_snapshot import capture_writer_frontier_snapshot
 from grimace._south_star1.writer_support import enumerate_prepared_writer_shaped_support
 from tests.helpers.rdkit_south_star_stereo_audit import load_pinned_south_star_stereo_audit_cases
 from tests.south_star1.default_writer_capability_ledger import (
@@ -43,6 +37,9 @@ from tests.south_star1.qualification_plan import (
 from tests.south_star1.slow_qualification_assets import require_slow_qualification_asset
 from tests.south_star1.qualification_support import decoder_support_strings
 from tests.south_star1.qualification_guards import forbid_qualification_profile
+from tests.south_star1.writer_test_context import WriterTestContext
+from tests.south_star1.writer_test_context import prepare_writer_facts
+from tests.south_star1.writer_test_context import writer_test_context
 
 
 class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
@@ -66,29 +63,17 @@ class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
             item.name: item for item in default_writer_cases_for_rdkit_audit("stereo")
         }
         cls.assets = {}
-        cls.facts = {}
-        cls.prepared = {}
-        cls.snapshots = {}
-        cls.options = {}
+        cls.contexts: dict[str, WriterTestContext] = {}
         profile = "slow-stereo-audit" if cls.USE_CACHED_SLOW_ASSETS else "stereo-audit-fast"
         with forbid_qualification_profile(profile) as guard_report:
             for item in cls.fixture_cases:
-                options = SouthStarRuntimeOptions(
-                    rooted_at_atom=cls.ledger[item.name].rooted_at_atom,
-                    serialization_language=SerializationLanguageMode.WRITER_SHAPED,
-                )
                 facts = ordinary_molecule_facts_from_smiles(
                     item.source_smiles,
                     cls.ledger[item.name].extraction_options,
                 )
-                prepared = prepare_south_star_mol_from_facts(
+                context = writer_test_context(
                     facts,
-                    writer_surface=SouthStarWriterSurface(),
-                )
-                snapshot = capture_writer_frontier_snapshot(
-                    prepared=prepared,
-                    runtime_options=options,
-                    cursor=initial_writer_frontier_cursor(prepared, options),
+                    rooted_at_atom=cls.ledger[item.name].rooted_at_atom,
                 )
                 if cls.USE_CACHED_SLOW_ASSETS:
                     cached = require_slow_qualification_asset(cls.ledger[item.name])
@@ -99,14 +84,11 @@ class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
                     path = Path(cls.temporary.name) / item.name
                     write_writer_continuation_asset(
                         path=path,
-                        prepared=prepared,
-                        snapshot=snapshot,
+                        prepared=context.prepared,
+                        snapshot=context.initial_snapshot,
                     )
                     cls.assets[item.name] = open_writer_continuation_core(path)
-                cls.facts[item.name] = facts
-                cls.prepared[item.name] = prepared
-                cls.snapshots[item.name] = snapshot
-                cls.options[item.name] = options
+                cls.contexts[item.name] = context
         if any(guard_report.call_counts().values()):
             raise AssertionError(
                 f"forbidden stereo-audit path invoked: {guard_report.call_counts()}"
@@ -119,13 +101,13 @@ class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
 
     def test_fixture_ledger_and_full_runtime_agree(self) -> None:
         tetra_comparison = facts_are_isomorphic(
-            self.facts["tetra_plus"],
+            self.contexts["tetra_plus"].prepared.facts,
             tetrahedral_facts(),
         )
         self.assertTrue(tetra_comparison.isomorphic, tetra_comparison.reason)
         self.assertFalse(
             facts_are_isomorphic(
-                self.facts["directional_opposite"],
+                self.contexts["directional_opposite"].prepared.facts,
                 directional_facts(),
                 compare_stereo=False,
             ).isomorphic
@@ -143,7 +125,7 @@ class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
                     verify_writer_continuation_asset_consistency(asset.path).accepted
                 )
                 live = verify_writer_continuation_asset_for_prepared(
-                    prepared=self.prepared[item.name],
+                    prepared=self.contexts[item.name].prepared,
                     asset=asset,
                 )
                 self.assertTrue(live.accepted, live.reason)
@@ -170,7 +152,7 @@ class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
                 )
                 self.assertEqual(resumed.cache_key(), advanced.cache_key())
                 if item.target_class == "directional":
-                    residual = self.snapshots[item.name].cursor.weighted_states[0][0].stereo_state.residual_snapshot
+                    residual = self.contexts[item.name].initial_snapshot.cursor.weighted_states[0][0].stereo_state.residual_snapshot
                     variables = tuple(var for var, _domain in residual.domains)
                     self.assertEqual(len(variables), 2)
                     self.assertEqual(
@@ -206,7 +188,7 @@ class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
         for item in self.fixture_cases:
             with self.subTest(case=item.name):
                 verification = verify_writer_continuation_asset_for_prepared(
-                    prepared=self.prepared[item.name],
+                    prepared=self.contexts[item.name].prepared,
                     asset=self.assets[item.name],
                 )
                 self.assertTrue(verification.accepted, verification.unchecked_obligation_families)
@@ -261,11 +243,11 @@ class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
                         self.ledger[name].extraction_options,
                     )
                     self.assertTrue(
-                        facts_are_isomorphic(self.facts[name], reparsed).isomorphic,
+                        facts_are_isomorphic(self.contexts[name].prepared.facts, reparsed).isomorphic,
                         (name, text),
                     )
                     self.assertFalse(
-                        facts_are_isomorphic(self.facts[opposite], reparsed).isomorphic,
+                        facts_are_isomorphic(self.contexts[opposite].prepared.facts, reparsed).isomorphic,
                         (opposite, text),
                     )
         for left, right in remote_pairs:
@@ -280,7 +262,7 @@ class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
             self.assertEqual(fixture_by_name[right].completion_count, 216)
 
     def test_directional_reference_pair_and_target_transform_together(self) -> None:
-        facts = self.facts["directional_opposite"]
+        facts = self.contexts["directional_opposite"].prepared.facts
         site = facts.stereo.directional[0]
         transformed = replace(
             site,
@@ -295,19 +277,19 @@ class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
             _support_for_replaced_directional_site(
                 facts,
                 transformed,
-                self.options["directional_opposite"],
+                self.contexts["directional_opposite"].runtime_options,
             ),
             _support_for_replaced_directional_site(
                 facts,
                 site,
-                self.options["directional_opposite"],
+                self.contexts["directional_opposite"].runtime_options,
             ),
         )
         self.assertEqual(
             _support_for_replaced_directional_site(
                 facts,
                 detached,
-                self.options["directional_opposite"],
+                self.contexts["directional_opposite"].runtime_options,
             ),
             set(
                 next(
@@ -337,14 +319,14 @@ class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
             ("disconnected_directional_oxygen", "directional_opposite"),
         )
         for asset_name, prepared_name in all_bindings:
-            if asset_name not in self.assets or prepared_name not in self.prepared:
+            if asset_name not in self.assets or prepared_name not in self.contexts:
                 continue
             with self.subTest(asset=asset_name, prepared=prepared_name):
                 with self.assertRaisesRegex(Exception, "prepared_identity_mismatch"):
                     MolToSmilesContinuationDecoder.from_asset(
                         self.assets[asset_name].path,
                         proof_capable=True,
-                        prepared=self.prepared[prepared_name],
+                        prepared=self.contexts[prepared_name].prepared,
                     )
 
 class WriterDefaultStereoAuditSlowTest(WriterDefaultStereoAuditFixtureTest):
@@ -361,10 +343,7 @@ class WriterDefaultStereoAuditSlowTest(WriterDefaultStereoAuditFixtureTest):
 
 def _support_for_replaced_directional_site(facts, site, options) -> set[str]:
     changed = replace(facts, stereo=replace(facts.stereo, directional=(site,)))
-    prepared = prepare_south_star_mol_from_facts(
-        changed,
-        writer_surface=SouthStarWriterSurface(),
-    )
+    prepared = prepare_writer_facts(changed)
     return set(
         enumerate_prepared_writer_shaped_support(
             prepared=prepared,

@@ -17,14 +17,10 @@ from rdkit import Chem
 from grimace._south_star1.fact_isomorphism import facts_are_isomorphic
 from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_rdkit
 from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_smiles
-from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
-from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
 from grimace._south_star1.writer_continuation_asset import open_writer_continuation_core
 from grimace._south_star1.writer_continuation_asset import verify_writer_continuation_asset_consistency
 from grimace._south_star1.writer_continuation_asset import verify_writer_continuation_asset_for_prepared
 from grimace._south_star1.writer_continuation_asset import write_writer_continuation_asset
-from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
-from grimace._south_star1.writer_snapshot import capture_writer_frontier_snapshot
 from tests.south_star1.default_writer_capability_ledger import ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES
 from tests.south_star1.qualification_plan import FAST_ACCEPTED_CASES
 from tests.south_star1.qualification_plan import SLOW_COUPLED_CASES
@@ -37,7 +33,7 @@ from tests.south_star1.qualification_support import facts_for_case
 from tests.south_star1.qualification_support import decoder_support_strings
 from tests.south_star1.qualification_support import support_image_for_case
 from tests.south_star1.qualification_support import support_strings_digest
-from tests.south_star1.qualification_support import runtime_options_for_root
+from tests.south_star1.writer_test_context import writer_test_context
 from tests.south_star1.qualification_guards import forbid_qualification_profile
 
 
@@ -48,17 +44,14 @@ class WriterDefaultContinuationCorpusTest(unittest.TestCase):
     def _cross_all_continuation_tiers(self, cases) -> None:
         for case in cases:
             with self.subTest(case=case.name), TemporaryDirectory() as directory:
-                options = runtime_options_for_root(case.rooted_at_atom)
                 facts = facts_for_case(case)
-                prepared = prepare_south_star_mol_from_facts(
+                context = writer_test_context(
                     facts,
-                    writer_surface=SouthStarWriterSurface(),
+                    rooted_at_atom=case.rooted_at_atom,
                 )
-                snapshot = capture_writer_frontier_snapshot(
-                    prepared=prepared,
-                    runtime_options=options,
-                    cursor=initial_writer_frontier_cursor(prepared, options),
-                )
+                prepared = context.prepared
+                snapshot = context.initial_snapshot
+                options = context.runtime_options
                 path = Path(directory) / "asset"
                 with forbid_qualification_profile("continuation-asset-build-without-legacy-materialization") as guard_report:
                     write_writer_continuation_asset(
@@ -131,17 +124,14 @@ class WriterDefaultContinuationCorpusTest(unittest.TestCase):
                 cached = require_slow_qualification_asset(case)
                 cache_validation_seconds = time.monotonic() - cache_started
                 prepared_started = time.monotonic()
-                options = runtime_options_for_root(case.rooted_at_atom)
                 facts = facts_for_case(case)
-                prepared = prepare_south_star_mol_from_facts(
+                context = writer_test_context(
                     facts,
-                    writer_surface=SouthStarWriterSurface(),
+                    rooted_at_atom=case.rooted_at_atom,
                 )
-                capture_writer_frontier_snapshot(
-                    prepared=prepared,
-                    runtime_options=options,
-                    cursor=initial_writer_frontier_cursor(prepared, options),
-                )
+                prepared = context.prepared
+                snapshot = context.initial_snapshot
+                options = context.runtime_options
                 prepared_reconstruction_seconds = time.monotonic() - prepared_started
                 asset = open_writer_continuation_core(cached.entry.paths.payload_path)
                 live_started = time.monotonic()
@@ -251,16 +241,12 @@ class WriterDefaultContinuationCorpusTest(unittest.TestCase):
 
 
 def _certified_rdkit_support(*, facts, root: int, path: Path):
-    options = runtime_options_for_root(root)
-    prepared = prepare_south_star_mol_from_facts(
+    context = writer_test_context(
         facts,
-        writer_surface=SouthStarWriterSurface(),
+        rooted_at_atom=root,
     )
-    snapshot = capture_writer_frontier_snapshot(
-        prepared=prepared,
-        runtime_options=options,
-        cursor=initial_writer_frontier_cursor(prepared, options),
-    )
+    prepared = context.prepared
+    snapshot = context.initial_snapshot
     write_writer_continuation_asset(
         path=path,
         prepared=prepared,

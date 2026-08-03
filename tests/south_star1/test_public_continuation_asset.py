@@ -48,6 +48,7 @@ from tests.south_star1.slow_qualification_assets import (
 from tests.south_star1.qualification_support import bundle_bytes
 from tests.south_star1.qualification_support import decoder_support_strings
 from tests.south_star1.qualification_support import support_strings_digest
+from tests.south_star1.qualification_guards import forbid_qualification_profile
 
 
 class PublicContinuationAssetTest(unittest.TestCase):
@@ -113,53 +114,7 @@ class PublicContinuationAssetTest(unittest.TestCase):
             with self.subTest(case=case.name):
                 cached = require_slow_qualification_asset(case)
                 mol = Chem.MolFromSmiles(case.smiles)
-                with (
-                    patch.object(
-                        grimace,
-                        "BuildMolToSmilesContinuationAsset",
-                        side_effect=AssertionError("public asset build invoked"),
-                    ),
-                    patch.object(
-                        writer_continuation_asset,
-                        "write_writer_continuation_asset",
-                        side_effect=AssertionError("asset writer invoked"),
-                    ),
-                    patch.object(
-                        grimace,
-                        "VerifyMolToSmilesContinuationAsset",
-                        side_effect=AssertionError("whole-asset recertification invoked"),
-                    ),
-                    patch.object(
-                        writer_support_artifact_envelope,
-                        "writer_support_artifact_envelope_for_snapshot",
-                        side_effect=AssertionError("rich support artifact invoked"),
-                    ),
-                    patch.object(
-                        writer_support_artifact_envelope,
-                        "_writer_support_artifact_envelope_for_snapshot_with_count_envelope",
-                        side_effect=AssertionError("cached rich support artifact invoked"),
-                    ),
-                    patch.object(
-                        writer_frontier_count_envelope,
-                        "writer_frontier_count_envelope_for_snapshot",
-                        side_effect=AssertionError("count envelope invoked"),
-                    ),
-                    patch.object(
-                        writer_count_dag_envelope,
-                        "writer_count_certificate_dag_envelope_for_product",
-                        side_effect=AssertionError("count DAG invoked"),
-                    ),
-                    patch.object(
-                        writer_snapshot,
-                        "_iter_writer_snapshot_certified_support_strings",
-                        side_effect=AssertionError("support strings materialized"),
-                    ),
-                    patch.object(
-                        writer_support,
-                        "enumerate_prepared_writer_shaped_support",
-                        side_effect=AssertionError("legacy support enumeration invoked"),
-                    ),
-                ):
+                with forbid_qualification_profile("public-runtime") as report:
                     decoder = grimace.MolToSmilesContinuationDecoder.from_asset(
                         cached.asset_path,
                         expected_manifest_digest=cached.manifest_digest,
@@ -178,6 +133,7 @@ class PublicContinuationAssetTest(unittest.TestCase):
                         successor.snapshot(),
                     )
                     self.assertEqual(resumed.cache_key(), successor.cache_key())
+                report.assert_unused(self)
 
     def test_renumbered_stereo_builds_the_same_mapped_root_language(self) -> None:
         cases = (
@@ -335,34 +291,14 @@ class PublicContinuationAssetTest(unittest.TestCase):
 
     def test_public_builder_does_not_invoke_legacy_materialization(self) -> None:
         with TemporaryDirectory() as directory:
-            with (
-                patch(
-                    "grimace._runtime.mol_to_smiles_enum",
-                    side_effect=AssertionError("legacy decoder invoked"),
-                ),
-                patch(
-                    "grimace._south_star1.writer_support_artifact_envelope.writer_support_artifact_envelope_for_snapshot",
-                    side_effect=AssertionError("rich support invoked"),
-                ),
-                patch(
-                    "grimace._south_star1.writer_frontier_count_envelope.writer_frontier_count_envelope_for_snapshot",
-                    side_effect=AssertionError("count envelope invoked"),
-                ),
-                patch(
-                    "grimace._south_star1.writer_count_dag_envelope.writer_count_certificate_dag_envelope_for_product",
-                    side_effect=AssertionError("count DAG invoked"),
-                ),
-                patch(
-                    "grimace._south_star1.writer_snapshot._iter_writer_snapshot_certified_support_strings",
-                    side_effect=AssertionError("support materialization invoked"),
-                ),
-            ):
+            with forbid_qualification_profile("public-build-without-legacy-materialization") as report:
                 digest = grimace.BuildMolToSmilesContinuationAsset(
                     Chem.MolFromSmiles("F/C=C/Cl"),
                     Path(directory) / "asset",
                     rootedAtAtom=0,
                 )
             self.assertEqual(len(digest), 64)
+            report.assert_unused(self)
 
     def test_returned_digest_binds_decoder(self) -> None:
         with TemporaryDirectory() as directory:

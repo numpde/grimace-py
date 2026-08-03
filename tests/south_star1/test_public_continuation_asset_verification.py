@@ -34,6 +34,7 @@ from tests.south_star1.qualification_support import bundle_bytes
 from tests.south_star1.qualification_assertions import (
     assert_continuation_recertification_matches_case,
 )
+from tests.south_star1.qualification_guards import forbid_qualification_profile
 import time
 
 
@@ -86,48 +87,7 @@ class PublicContinuationAssetVerificationTest(unittest.TestCase):
                 copy_seconds = time.monotonic() - copy_started
                 before = bundle_bytes(copied)
                 recert_started = time.monotonic()
-                with (
-                    patch.object(
-                        grimace,
-                        "BuildMolToSmilesContinuationAsset",
-                        side_effect=AssertionError("public asset build invoked"),
-                    ),
-                    patch.object(
-                        writer_count_dag_envelope,
-                        "writer_count_certificate_dag_envelope_for_product",
-                        side_effect=AssertionError("count DAG invoked"),
-                    ),
-                    patch.object(
-                        writer_frontier_count_envelope,
-                        "writer_frontier_count_envelope_for_snapshot",
-                        side_effect=AssertionError("count envelope invoked"),
-                    ),
-                    patch.object(
-                        writer_support_artifact_envelope,
-                        "writer_support_artifact_envelope_for_snapshot",
-                        side_effect=AssertionError("rich support artifact invoked"),
-                    ),
-                    patch.object(
-                        writer_support_artifact_envelope,
-                        "_writer_support_artifact_envelope_for_snapshot_with_count_envelope",
-                        side_effect=AssertionError("cached rich support artifact invoked"),
-                    ),
-                    patch.object(
-                        writer_snapshot,
-                        "_iter_writer_snapshot_certified_support_strings",
-                        side_effect=AssertionError("support strings materialized"),
-                    ),
-                    patch.object(
-                        writer_support,
-                        "enumerate_prepared_writer_shaped_support",
-                        side_effect=AssertionError("legacy support enumeration invoked"),
-                    ),
-                    patch.object(
-                        writer_continuation_asset,
-                        "write_writer_continuation_asset",
-                        side_effect=AssertionError("asset writer invoked"),
-                    ),
-                ):
+                with forbid_qualification_profile("public-recertification") as guard_report:
                     report = grimace.VerifyMolToSmilesContinuationAsset(
                         Chem.MolFromSmiles(case.smiles),
                         copied,
@@ -138,6 +98,7 @@ class PublicContinuationAssetVerificationTest(unittest.TestCase):
                     self, case=case, report=report
                 )
                 self.assertEqual(bundle_bytes(copied), before)
+                guard_report.assert_unused(self)
                 print(f"cache_validation_seconds={cache_validation_seconds:.3f}", flush=True)
                 print(f"copy_seconds={copy_seconds:.3f}", flush=True)
                 print(
@@ -261,34 +222,16 @@ class PublicContinuationAssetVerificationTest(unittest.TestCase):
             mol = Chem.MolFromSmiles("CCO")
             digest = grimace.BuildMolToSmilesContinuationAsset(mol, path)
             with (
+                forbid_qualification_profile("public-recertification") as guard_report,
                 patch(
                     "grimace._south_star1.writer_continuation_rust.MolToSmilesContinuationDecoder",
                     side_effect=AssertionError("decoder invoked"),
-                ),
-                patch(
-                    "grimace._south_star1.writer_continuation_asset.write_writer_continuation_asset",
-                    side_effect=AssertionError("asset writer invoked"),
-                ),
-                patch(
-                    "grimace._south_star1.writer_support_artifact_envelope.writer_support_artifact_envelope_for_snapshot",
-                    side_effect=AssertionError("rich support invoked"),
-                ),
-                patch(
-                    "grimace._south_star1.writer_frontier_count_envelope.writer_frontier_count_envelope_for_snapshot",
-                    side_effect=AssertionError("count envelope invoked"),
-                ),
-                patch(
-                    "grimace._south_star1.writer_count_dag_envelope.writer_count_certificate_dag_envelope_for_product",
-                    side_effect=AssertionError("count DAG invoked"),
-                ),
-                patch(
-                    "grimace._south_star1.writer_snapshot._iter_writer_snapshot_certified_support_strings",
-                    side_effect=AssertionError("support materializer invoked"),
                 ),
             ):
                 report = grimace.VerifyMolToSmilesContinuationAsset(
                     mol, path, expected_manifest_digest=digest
                 )
+            guard_report.assert_unused(self)
             self.assertTrue(report.live_replay_complete)
 
     def test_facts_rejection_prevents_a_public_report(self) -> None:

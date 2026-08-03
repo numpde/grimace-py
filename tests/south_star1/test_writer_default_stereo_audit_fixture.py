@@ -40,6 +40,7 @@ from tests.south_star1.qualification_plan import (
 )
 from tests.south_star1.slow_qualification_assets import require_slow_qualification_asset
 from tests.south_star1.qualification_support import decoder_support_strings
+from tests.south_star1.qualification_guards import forbid_qualification_profile
 
 
 class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
@@ -65,20 +66,8 @@ class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
         cls.prepared = {}
         cls.snapshots = {}
         cls.options = {}
-        with (
-            patch(
-                "grimace._south_star1.writer_frontier_count_envelope.writer_frontier_count_envelope_for_snapshot",
-                side_effect=AssertionError("count envelope invoked"),
-            ),
-            patch(
-                "grimace._south_star1.writer_count_dag_envelope.writer_count_certificate_dag_envelope_for_product",
-                side_effect=AssertionError("count DAG invoked"),
-            ),
-            patch(
-                "grimace._south_star1.writer_snapshot._iter_writer_snapshot_certified_support_strings",
-                side_effect=AssertionError("support materialization invoked"),
-            ),
-        ):
+        profile = "slow-stereo-audit" if cls.USE_CACHED_SLOW_ASSETS else "stereo-audit-fast"
+        with forbid_qualification_profile(profile) as guard_report:
             for item in cls.fixture_cases:
                 options = SouthStarRuntimeOptions(
                     rooted_at_atom=cls.ledger[item.name].rooted_at_atom,
@@ -114,6 +103,10 @@ class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
                 cls.prepared[item.name] = prepared
                 cls.snapshots[item.name] = snapshot
                 cls.options[item.name] = options
+        if any(guard_report.call_counts().values()):
+            raise AssertionError(
+                f"forbidden stereo-audit path invoked: {guard_report.call_counts()}"
+            )
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -360,17 +353,7 @@ class WriterDefaultStereoAuditSlowTest(WriterDefaultStereoAuditFixtureTest):
         if os.environ.get("SOUTH_STAR1_RUN_SLOW") != "1":
             raise unittest.SkipTest("set SOUTH_STAR1_RUN_SLOW=1 to run coupled cases")
         cls.QUALIFICATION_CASES = selected_slow_qualification_cases()
-        with (
-            patch(
-                "grimace.BuildMolToSmilesContinuationAsset",
-                side_effect=AssertionError("public asset build invoked"),
-            ),
-            patch(
-                "grimace._south_star1.writer_continuation_asset.write_writer_continuation_asset",
-                side_effect=AssertionError("asset writer invoked"),
-            ),
-        ):
-            super().setUpClass()
+        super().setUpClass()
 
 
 def _support_for_replaced_directional_site(facts, site, options) -> set[str]:

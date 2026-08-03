@@ -52,8 +52,7 @@ from tests.south_star1.qualification_support import PublicProofCursorTargets
 from tests.south_star1.qualification_support import partition_public_proof_targets
 from tests.south_star1.qualification_support import public_proof_cursor_targets
 from tests.south_star1.qualification_plan import PUBLIC_PROOF_SHARD_COUNT
-from tests.south_star1.qualification_guards import guard_profile
-from tests.south_star1.qualification_guards import forbid_qualification_paths
+from tests.south_star1.qualification_guards import forbid_qualification_profile
 
 
 class PublicContinuationProofTest(unittest.TestCase):
@@ -103,57 +102,7 @@ class PublicContinuationProofTest(unittest.TestCase):
                 cached = require_slow_qualification_asset(case)
                 cache_validation_seconds = time.monotonic() - cache_started
                 mol = Chem.MolFromSmiles(case.smiles)
-                forbidden = []
-                with patch.object(
-                    grimace,
-                    "BuildMolToSmilesContinuationAsset",
-                    side_effect=AssertionError("public asset build invoked"),
-                ) as build_guard, patch.object(
-                    writer_continuation_asset,
-                    "write_writer_continuation_asset",
-                    side_effect=AssertionError("asset writer invoked"),
-                ) as write_guard, patch.object(
-                    grimace,
-                    "VerifyMolToSmilesContinuationAsset",
-                    side_effect=AssertionError("whole-asset recertification invoked"),
-                ) as verify_guard, patch.object(
-                    writer_support_artifact_envelope,
-                    "writer_support_artifact_envelope_for_snapshot",
-                    side_effect=AssertionError("rich support artifact invoked"),
-                ) as artifact_guard, patch.object(
-                    writer_support_artifact_envelope,
-                    "_writer_support_artifact_envelope_for_snapshot_with_count_envelope",
-                    side_effect=AssertionError("cached rich support artifact invoked"),
-                ) as cached_artifact_guard, patch.object(
-                    writer_frontier_count_envelope,
-                    "writer_frontier_count_envelope_for_snapshot",
-                    side_effect=AssertionError("count envelope invoked"),
-                ) as count_guard, patch.object(
-                    writer_count_dag_envelope,
-                    "writer_count_certificate_dag_envelope_for_product",
-                    side_effect=AssertionError("count DAG invoked"),
-                ) as dag_guard, patch.object(
-                    writer_snapshot,
-                    "_iter_writer_snapshot_certified_support_strings",
-                    side_effect=AssertionError("support strings materialized"),
-                ) as strings_guard, patch.object(
-                    writer_support,
-                    "enumerate_prepared_writer_shaped_support",
-                    side_effect=AssertionError("legacy support enumeration invoked"),
-                ) as enumerate_guard:
-                    forbidden.extend(
-                        (
-                            build_guard,
-                            write_guard,
-                            verify_guard,
-                            artifact_guard,
-                            cached_artifact_guard,
-                            count_guard,
-                            dag_guard,
-                            strings_guard,
-                            enumerate_guard,
-                        )
-                    )
+                with forbid_qualification_profile("public-proofs") as guard_report:
                     decoder_started = time.monotonic()
                     decoder = grimace.MolToSmilesContinuationDecoder.from_asset(
                         cached.asset_path,
@@ -215,7 +164,7 @@ class PublicContinuationProofTest(unittest.TestCase):
                     print(f"terminal_proof_seconds={terminal_seconds:.3f}", flush=True)
                     self.assertEqual(branches_verified, selected_branches)
                     self.assertEqual(terminals_verified, selected_terminals)
-                    self.assertEqual(sum(item.call_count for item in forbidden), 0)
+                    guard_report.assert_unused(self)
                     print("forbidden_path_calls=0", flush=True)
                 print(f"cache_validation_seconds={cache_validation_seconds:.3f}", flush=True)
                 print(f"proof_decoder_open_seconds={proof_decoder_open_seconds:.3f}", flush=True)
@@ -564,7 +513,7 @@ class PublicContinuationProofTest(unittest.TestCase):
             mol = Chem.MolFromSmiles("CCO")
             path = Path(directory) / "asset"
             grimace.BuildMolToSmilesContinuationAsset(mol, path, rootedAtAtom=0)
-            with forbid_qualification_paths(*guard_profile("public-proofs")) as report:
+            with forbid_qualification_profile("public-proofs") as report:
                 decoder = grimace.MolToSmilesContinuationDecoder.from_asset(
                     path,
                     proof_capable=True,

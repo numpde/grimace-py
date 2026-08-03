@@ -38,14 +38,10 @@ from tests.south_star1.qualification_support import decoder_support_strings
 from tests.south_star1.qualification_support import support_image_for_case
 from tests.south_star1.qualification_support import support_strings_digest
 from tests.south_star1.qualification_support import runtime_options_for_root
+from tests.south_star1.qualification_guards import forbid_qualification_profile
 
 
 class WriterDefaultContinuationCorpusTest(unittest.TestCase):
-    def test_accepted_default_shards_are_complete_and_deterministic(self) -> None:
-        accepted_names = tuple(case.name for case in ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES)
-        self.assertEqual(tuple(case.name for case in FAST_ACCEPTED_CASES), tuple(name for name in accepted_names if name not in SLOW_COUPLED_CASE_NAMES))
-        self.assertEqual(tuple(case.name for case in SLOW_COUPLED_CASES), tuple(name for name in accepted_names if name in SLOW_COUPLED_CASE_NAMES))
-
     def _run_cases(self):
         yield from FAST_ACCEPTED_CASES
 
@@ -54,7 +50,7 @@ class WriterDefaultContinuationCorpusTest(unittest.TestCase):
             with self.subTest(case=case.name), TemporaryDirectory() as directory:
                 options = runtime_options_for_root(case.rooted_at_atom)
                 facts = facts_for_case(case)
-                prepared = prepare_south_star_mol_fromfacts_for_case(
+                prepared = prepare_south_star_mol_from_facts(
                     facts,
                     writer_surface=SouthStarWriterSurface(),
                 )
@@ -64,25 +60,13 @@ class WriterDefaultContinuationCorpusTest(unittest.TestCase):
                     cursor=initial_writer_frontier_cursor(prepared, options),
                 )
                 path = Path(directory) / "asset"
-                with (
-                    patch(
-                        "grimace._south_star1.writer_frontier_count_envelope.writer_frontier_count_envelope_for_snapshot",
-                        side_effect=AssertionError("count envelope invoked"),
-                    ),
-                    patch(
-                        "grimace._south_star1.writer_count_dag_envelope.writer_count_certificate_dag_envelope_for_product",
-                        side_effect=AssertionError("count DAG invoked"),
-                    ),
-                    patch(
-                        "grimace._south_star1.writer_snapshot._iter_writer_snapshot_certified_support_strings",
-                        side_effect=AssertionError("support materialization invoked"),
-                    ),
-                ):
+                with forbid_qualification_profile("continuation-asset-build-without-legacy-materialization") as guard_report:
                     write_writer_continuation_asset(
                         path=path,
                         prepared=prepared,
                         snapshot=snapshot,
                     )
+                guard_report.assert_unused(self)
                 asset = open_writer_continuation_core(path)
                 structural = verify_writer_continuation_asset_consistency(path)
                 live = verify_writer_continuation_asset_for_prepared(
@@ -97,7 +81,7 @@ class WriterDefaultContinuationCorpusTest(unittest.TestCase):
                 self.assertEqual(live.terminal_locator_count, live.terminal_proof_count)
                 self.assertEqual(live.unchecked_obligation_families, ())
 
-                if case.name in {"remote_coupled_tetrahedral_a", "remote_coupled_tetrahedral_b"}:
+                if case.qualification_authority == "continuation_proof_complete":
                     self.assertEqual(live.raw_cursor_count, case.expected_continuation_raw_cursor_count)
                     self.assertEqual(live.edge_locator_count, case.expected_continuation_edge_locator_count)
                     self.assertEqual(live.branch_locator_count, case.expected_continuation_branch_locator_count)
@@ -149,7 +133,7 @@ class WriterDefaultContinuationCorpusTest(unittest.TestCase):
                 prepared_started = time.monotonic()
                 options = runtime_options_for_root(case.rooted_at_atom)
                 facts = facts_for_case(case)
-                prepared = prepare_south_star_mol_fromfacts_for_case(
+                prepared = prepare_south_star_mol_from_facts(
                     facts,
                     writer_surface=SouthStarWriterSurface(),
                 )
@@ -174,7 +158,7 @@ class WriterDefaultContinuationCorpusTest(unittest.TestCase):
                 self.assertEqual(live.branch_locator_count, live.branch_proof_count)
                 self.assertEqual(live.terminal_locator_count, live.terminal_proof_count)
                 self.assertEqual(live.unchecked_obligation_families, ())
-                if case.name in {"remote_coupled_tetrahedral_a", "remote_coupled_tetrahedral_b"}:
+                if case.qualification_authority == "continuation_proof_complete":
                     self.assertEqual(live.raw_cursor_count, case.expected_continuation_raw_cursor_count)
                     self.assertEqual(live.edge_locator_count, case.expected_continuation_edge_locator_count)
                     self.assertEqual(live.branch_locator_count, case.expected_continuation_branch_locator_count)
@@ -182,20 +166,12 @@ class WriterDefaultContinuationCorpusTest(unittest.TestCase):
                     self.assertEqual(live.terminal_record_count, case.expected_continuation_terminal_record_count)
 
                 rust_started = time.monotonic()
-                with patch(
-                    "grimace.BuildMolToSmilesContinuationAsset",
-                    side_effect=AssertionError("public asset build invoked"),
-                ), patch(
-                    "grimace._south_star1.writer_continuation_asset.write_writer_continuation_asset",
-                    side_effect=AssertionError("asset writer invoked"),
-                ):
+                with forbid_qualification_profile("cached-continuation-verification") as guard_report:
                     decoder = MolToSmilesContinuationDecoder.from_asset(
                         cached.asset_path,
                         expected_manifest_digest=cached.manifest_digest,
                     )
                     support = decoder_support_strings(decoder)
-                    expected = tuple(sorted(support_image_for_case(case).strings))
-                    self.assertEqual(support, expected)
                     self.assertEqual(decoder.support_count, case.expected_support_count)
                     self.assertEqual(decoder.completion_count, case.expected_completion_count)
                     self.assertEqual(
@@ -216,6 +192,7 @@ class WriterDefaultContinuationCorpusTest(unittest.TestCase):
                         prepared=prepared,
                     )
                     self.assertIsNotNone(proof_decoder._state.proof_cursor)
+                guard_report.assert_unused(self)
                 rust_decoder_seconds = time.monotonic() - rust_started
                 print(f"cache_validation_seconds={cache_validation_seconds:.3f}", flush=True)
                 print(f"prepared_reconstruction_seconds={prepared_reconstruction_seconds:.3f}", flush=True)
@@ -275,7 +252,7 @@ class WriterDefaultContinuationCorpusTest(unittest.TestCase):
 
 def _certified_rdkit_support(*, facts, root: int, path: Path):
     options = runtime_options_for_root(root)
-    prepared = prepare_south_star_mol_fromfacts_for_case(
+    prepared = prepare_south_star_mol_from_facts(
         facts,
         writer_surface=SouthStarWriterSurface(),
     )

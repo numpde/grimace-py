@@ -9,6 +9,7 @@ from pathlib import Path
 
 import grimace
 
+from grimace._south_star1.errors import SouthStarError
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
@@ -175,6 +176,46 @@ def bundle_bytes(path: Path) -> tuple[tuple[str, bytes], ...]:
         for item in sorted(path.rglob("*"))
         if item.is_file()
     )
+
+
+def blocked_case_result(case: DefaultWriterCapabilityCase) -> dict[str, object]:
+    try:
+        prepared = prepare_default_case(facts_for_case(case))
+    except SouthStarError as error:
+        return {"stage": "prepare", "error_kind": error.kind, "message": str(error)}
+
+    pending = [
+        initial_writer_runtime_state(
+            prepared=prepared,
+            runtime_options=runtime_options_for_root(),
+        ).snapshot
+    ]
+    seen = set()
+    blockers = []
+    while pending:
+        snapshot = pending.pop(0)
+        if snapshot.cursor in seen:
+            continue
+        seen.add(snapshot.cursor)
+        product = _snapshot_advance_writer_frontier_product(prepared, snapshot.cursor)
+        if product.blocked:
+            blockers.extend(
+                item.blocker
+                for item in product.blocked_frontier_certificate.stereo_policy_blocker_certificates
+            )
+            continue
+        projection = product.projection_certificate
+        if projection.terminal_projection_certificate is not None:
+            continue
+        for text_projection in projection.text_choice_projection_certificates:
+            outcome = _writer_snapshot_advance_outcome_by_emitted_text(
+                snapshot,
+                prepared=prepared,
+                emitted_text=text_projection.emitted_text,
+            )
+            if outcome.advanced_snapshot is not None:
+                pending.append(outcome.advanced_snapshot)
+    return {"stage": "frontier", "blockers": tuple(blockers)}
 
 
 @dataclass(frozen=True, slots=True)

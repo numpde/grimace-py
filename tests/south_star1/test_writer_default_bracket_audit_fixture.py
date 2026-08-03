@@ -14,11 +14,9 @@ from tests.helpers.rdkit_south_star_bracket_audit import (
 from tests.south_star1.default_writer_capability_ledger import (
     DEFAULT_WRITER_CAPABILITY_CASES,
 )
-from tests.south_star1.test_writer_default_parity_corpus import (
-    _accepted_case_result,
-    _blocked_case_result,
-    _support_image,
-)
+from tests.south_star1.qualification_support import accepted_case_result
+from tests.south_star1.qualification_support import blocked_case_result
+from tests.south_star1.qualification_support import support_image_for_case
 
 
 DURABLE_BRACKET_SUPPORT_SURFACES = frozenset(
@@ -110,8 +108,8 @@ class WriterDefaultBracketAuditFixtureTest(unittest.TestCase):
         for fixture_case in accepted_fixture_cases:
             with self.subTest(case=fixture_case.name):
                 ledger_case = self.ledger_by_name[fixture_case.name]
-                result = _accepted_case_result(ledger_case)
-                image = _support_image(ledger_case)
+                result = accepted_case_result(ledger_case)
+                image = support_image_for_case(ledger_case)
 
                 self.assertEqual(
                     tuple(sorted(image.strings)),
@@ -126,11 +124,11 @@ class WriterDefaultBracketAuditFixtureTest(unittest.TestCase):
                     ledger_case.expected_completion_count,
                 )
                 self.assertEqual(
-                    result["support_count"],
+                    result.support_count,
                     fixture_case.expected_support_count,
                 )
                 self.assertEqual(
-                    result["completion_count"],
+                    result.completion_count,
                     fixture_case.expected_completion_count,
                 )
 
@@ -172,7 +170,7 @@ class WriterDefaultBracketAuditFixtureTest(unittest.TestCase):
         for fixture_case in blocked_fixture_cases:
             with self.subTest(case=fixture_case.name):
                 ledger_case = self.ledger_by_name[fixture_case.name]
-                blocked = _blocked_case_result(ledger_case)
+                blocked = blocked_case_result(ledger_case)
 
                 self.assertEqual(fixture_case.blocker_phase, ledger_case.blocker_phase)
                 self.assertEqual(fixture_case.blocker_kind, ledger_case.blocker_kind)

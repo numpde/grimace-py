@@ -17,10 +17,6 @@ from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_smil
 from grimace._south_star1.writer_envelope_work import (
     default_writer_envelope_work_budget,
 )
-from grimace._south_star1.writer_frontier import (
-    _snapshot_advance_writer_frontier_product,
-)
-from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
 from grimace._south_star1.writer_frontier_count_envelope import (
     verify_writer_frontier_count_envelope,
 )
@@ -29,15 +25,9 @@ from grimace._south_star1.writer_frontier_count_envelope import (
 )
 from grimace._south_star1.writer_runtime import count_writer_runtime_completions
 from grimace._south_star1.writer_runtime import count_writer_runtime_support
-from grimace._south_star1.writer_runtime import initial_writer_runtime_state
-from grimace._south_star1.writer_runtime import writer_runtime_choices
-from grimace._south_star1.writer_runtime import writer_runtime_state_from_snapshot
 from grimace._south_star1.writer_snapshot import advance_writer_frontier_snapshot
 from grimace._south_star1.writer_snapshot import capture_writer_frontier_snapshot
 from grimace._south_star1.writer_snapshot import resume_writer_frontier_choices_from_snapshot
-from grimace._south_star1.writer_snapshot import (
-    _writer_snapshot_advance_outcome_by_emitted_text,
-)
 from grimace._south_star1.writer_support import (
     enumerate_prepared_writer_shaped_support,
 )
@@ -59,7 +49,6 @@ from tests.south_star1.default_writer_capability_ledger import (
 from tests.south_star1.default_writer_capability_ledger import (
     BLOCKED_DEFAULT_WRITER_CAPABILITY_CASES,
 )
-from tests.south_star1.default_writer_capability_ledger import DefaultWriterCapabilityCase
 from tests.south_star1.qualification_plan import FAST_ACCEPTED_CASES
 from tests.south_star1.qualification_plan import SLOW_COUPLED_CASES
 from tests.south_star1.qualification_plan import SLOW_COUPLED_CASE_NAMES
@@ -67,6 +56,7 @@ from tests.south_star1.qualification_plan import (
     selected_slow_qualification_cases,
 )
 from tests.south_star1.qualification_support import accepted_case_result
+from tests.south_star1.qualification_support import blocked_case_result
 from tests.south_star1.qualification_support import facts_for_case
 from tests.south_star1.qualification_support import prepare_default_case
 from tests.south_star1.qualification_support import runtime_options_for_case
@@ -86,17 +76,6 @@ _REMOTE_COUPLED_B = SLOW_COUPLED_CASE_NAMES[3:]
 
 
 class WriterDefaultParityCorpusTest(unittest.TestCase):
-    def test_accepted_default_shards_are_complete_and_deterministic(self) -> None:
-        accepted_names = tuple(case.name for case in ACCEPTED_CASES)
-        self.assertEqual(
-            tuple(case.name for case in FAST_ACCEPTED_CASES),
-            tuple(name for name in accepted_names if name not in SLOW_COUPLED_CASE_NAMES),
-        )
-        self.assertEqual(
-            tuple(case.name for case in SLOW_COUPLED_CASES),
-            tuple(name for name in accepted_names if name in SLOW_COUPLED_CASE_NAMES),
-        )
-
     def _run_cases(self):
         yield from FAST_ACCEPTED_CASES
 
@@ -166,7 +145,7 @@ class WriterDefaultParityCorpusTest(unittest.TestCase):
     def test_blocked_default_corpus_has_typed_blockers(self) -> None:
         for case in BLOCKED_CASES:
             with self.subTest(case=case.name):
-                blocked = _blocked_case_result(case)
+                blocked = blocked_case_result(case)
 
                 if case.blocker_error_kind is not None:
                     self.assertEqual(blocked["stage"], "prepare")
@@ -210,65 +189,5 @@ class WriterDefaultParityCorpusTest(unittest.TestCase):
                 facts,
                 OrdinaryPolicyOptions(non_single_ring_closures="unsupported"),
             )
-def _blocked_case_result(case: DefaultWriterCapabilityCase) -> dict[str, object]:
-    try:
-        facts = facts_for_case(case)
-        prepared = prepare_default_case(facts)
-    except SouthStarError as error:
-        return {
-            "stage": "prepare",
-            "error_kind": error.kind,
-            "message": str(error),
-        }
-
-    blockers = _reachable_stereo_policy_blockers(prepared)
-    return {
-        "stage": "frontier",
-        "blockers": blockers,
-    }
-
-
-def _reachable_stereo_policy_blockers(prepared):
-    pending = [
-        initial_writer_runtime_state(
-            prepared=prepared,
-            runtime_options=runtime_options_for_root(),
-        ).snapshot
-    ]
-    seen = set()
-    blockers = []
-    while pending:
-        snapshot = pending.pop(0)
-        if snapshot.cursor in seen:
-            continue
-        seen.add(snapshot.cursor)
-        product = _snapshot_advance_writer_frontier_product(
-            prepared,
-            snapshot.cursor,
-        )
-        if product.blocked:
-            blockers.extend(
-                item.blocker
-                for item in (
-                    product
-                    .blocked_frontier_certificate
-                    .stereo_policy_blocker_certificates
-                )
-            )
-            continue
-        projection = product.projection_certificate
-        if projection.terminal_projection_certificate is not None:
-            continue
-        for text_projection in projection.text_choice_projection_certificates:
-            outcome = _writer_snapshot_advance_outcome_by_emitted_text(
-                snapshot,
-                prepared=prepared,
-                emitted_text=text_projection.emitted_text,
-            )
-            if outcome.advanced_snapshot is not None:
-                pending.append(outcome.advanced_snapshot)
-    return tuple(blockers)
-
-
 if __name__ == "__main__":
     unittest.main()

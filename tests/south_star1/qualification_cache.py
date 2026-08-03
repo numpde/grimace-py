@@ -240,6 +240,15 @@ def cleanup_incomplete_qualification_cache(paths: QualificationCachePaths) -> No
     paths.metadata_path.unlink(missing_ok=True)
 
 
+def remove_staged_directory(path: Path) -> None:
+    if path.is_dir():
+        import shutil
+
+        shutil.rmtree(path)
+    else:
+        path.unlink(missing_ok=True)
+
+
 def canonical_json_text(value: object) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
 
@@ -356,6 +365,7 @@ def promote_directory_qualification_cache(
     metadata_tmp = _temporary_path(destination_paths.metadata_path, "metadata")
     destination_paths.context.case_dir.mkdir(parents=True, exist_ok=True)
     moved = False
+    destination_published = False
     try:
         os.replace(source_paths.payload_path, hidden)
         moved = True
@@ -369,20 +379,17 @@ def promote_directory_qualification_cache(
         )
         os.replace(hidden, destination_paths.payload_path)
         moved = False
+        destination_published = True
         os.replace(metadata_tmp, destination_paths.metadata_path)
         source_paths.metadata_path.unlink()
     except BaseException:
         metadata_tmp.unlink(missing_ok=True)
         if destination_paths.metadata_path.exists():
             destination_paths.metadata_path.unlink(missing_ok=True)
-        if destination_paths.payload_path.exists():
-            import shutil
-
-            shutil.rmtree(destination_paths.payload_path)
-        if moved and hidden.exists():
-            os.replace(hidden, source_paths.payload_path)
-        elif not source_paths.payload_path.exists() and destination_paths.payload_path.exists():
+        if destination_published and destination_paths.payload_path.exists():
             os.replace(destination_paths.payload_path, source_paths.payload_path)
+        elif moved and hidden.exists():
+            os.replace(hidden, source_paths.payload_path)
         raise
     return qualification_cache_metadata(
         destination_paths.context,

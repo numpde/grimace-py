@@ -84,6 +84,30 @@ class SlowQualificationAssetsTest(unittest.TestCase):
             self.assertFalse((case_dir / "candidate").exists())
             self.assertFalse((case_dir / "candidate-metadata.json").exists())
 
+    def test_complete_invalid_candidate_is_not_rebuilt(self) -> None:
+        with TemporaryDirectory() as directory, patch.dict(
+            os.environ, {"SOUTH_STAR1_SLOW_ASSET_ROOT": directory}
+        ), patch.object(
+            cache, "_prepared_and_snapshot", side_effect=AssertionError("producer called")
+        ):
+            case_dir = Path(directory) / self.case.name
+            (case_dir / "candidate").mkdir(parents=True)
+            (case_dir / "candidate-metadata.json").write_text("{}")
+            with self.assertRaisesRegex(AssertionError, "metadata mismatch"):
+                cache.build_slow_qualification_candidate(self.case)
+
+    def test_complete_invalid_asset_is_not_rebuilt(self) -> None:
+        with TemporaryDirectory() as directory, patch.dict(
+            os.environ, {"SOUTH_STAR1_SLOW_ASSET_ROOT": directory}
+        ), patch.object(
+            cache, "verify_writer_continuation_asset_consistency", side_effect=AssertionError("producer called")
+        ):
+            case_dir = Path(directory) / self.case.name
+            (case_dir / "asset").mkdir(parents=True)
+            (case_dir / "metadata.json").write_text("{}")
+            with self.assertRaisesRegex(AssertionError, "metadata mismatch"):
+                cache.require_slow_qualification_asset(self.case)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -48,6 +48,7 @@ from tests.south_star1.qualification_cache import (
     qualification_cache_metadata,
     qualification_cache_paths,
     read_json_mapping,
+    remove_staged_directory,
 )
 from tests.south_star1.qualification_support import support_strings_digest
 
@@ -364,7 +365,11 @@ def build_slow_qualification_candidate(case: DefaultWriterCapabilityCase) -> Cac
     context.case_dir.mkdir(parents=True, exist_ok=True)
     prepared, snapshot = _prepared_and_snapshot(case)
     staged = hidden_staging_path(paths, "stage")
-    manifest = _materialize_candidate_timed(staged, prepared, snapshot)
+    try:
+        manifest = _materialize_candidate_timed(staged, prepared, snapshot)
+    except BaseException:
+        remove_staged_directory(staged)
+        raise
     metadata = publish_directory_qualification_cache(
         paths,
         staged_payload_path=staged,

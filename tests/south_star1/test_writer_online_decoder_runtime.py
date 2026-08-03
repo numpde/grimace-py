@@ -22,9 +22,7 @@ from grimace._south_star1.online_decoder_api import make_branch_preserving_onlin
 from grimace._south_star1.online_decoder_api import make_determinized_online_decoder
 from grimace._south_star1.policy import SerializationLanguageMode
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
-from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import enumerate_prepared_writer_shaped_support
-from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
 from grimace._south_star1.writer_online_decoder import WriterRuntimeOnlineStats
 from grimace._south_star1.writer_online_decoder import WriterShapedOnlineDecoderState
 from grimace._south_star1.writer_online_decoder import make_writer_shaped_online_decoder
@@ -37,6 +35,8 @@ from grimace._south_star1.writer_runtime import writer_runtime_support_count_cer
 from grimace._south_star1.writer_runtime import writer_runtime_choice_transitions
 from tests.helpers.module_boundaries import scan_module_boundaries
 from tests.south_star1.helpers import cco_facts
+from tests.south_star1.writer_test_context import prepare_writer_facts
+from tests.south_star1.writer_test_context import writer_runtime_options
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -47,14 +47,14 @@ WRITER_ONLINE_DECODER_PATH = (
 
 class WriterOnlineDecoderRuntimeTest(unittest.TestCase):
     def test_named_writer_shaped_decoder_factory_uses_live_runtime(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         decoder = make_writer_shaped_online_decoder(
             prepared=prepared,
             include_eos=True,
         )
         support = enumerate_prepared_writer_shaped_support(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
 
         initial = decoder.initial_state()
@@ -64,8 +64,8 @@ class WriterOnlineDecoderRuntimeTest(unittest.TestCase):
         self.assertEqual(_reachable_eos_prefixes(initial), set(support.strings))
 
     def test_named_writer_shaped_decoder_preserves_runtime_options(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options(rooted_at_atom=1)
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options(rooted_at_atom=1)
         decoder = make_writer_shaped_online_decoder(
             prepared=prepared,
             runtime_options=options,
@@ -83,7 +83,7 @@ class WriterOnlineDecoderRuntimeTest(unittest.TestCase):
         )
 
     def test_generic_online_factories_reject_writer_shaped_runtime(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         for factory in (
             make_branch_preserving_online_decoder,
             make_determinized_online_decoder,
@@ -95,11 +95,11 @@ class WriterOnlineDecoderRuntimeTest(unittest.TestCase):
                 ):
                     factory(
                         prepared=prepared,
-                        runtime_options=_writer_options(),
+                        runtime_options=writer_runtime_options(),
                     )
 
     def test_writer_shaped_route_never_falls_through_to_legacy_raw_state(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         decoder = make_writer_shaped_online_decoder(prepared=prepared)
         invalid_state = WriterShapedOnlineDecoderState(
             prefix="",
@@ -136,7 +136,7 @@ class WriterOnlineDecoderRuntimeTest(unittest.TestCase):
         self.assertEqual(scan.violations, ())
 
     def test_writer_shaped_choices_carry_text_certificates(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         decoder = make_writer_shaped_online_decoder(
             prepared=prepared,
             include_eos=False,
@@ -162,7 +162,7 @@ class WriterOnlineDecoderRuntimeTest(unittest.TestCase):
             )
 
     def test_writer_shaped_eos_choice_carries_terminal_certificates(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         decoder = make_writer_shaped_online_decoder(
             prepared=prepared,
             include_eos=True,
@@ -180,7 +180,7 @@ class WriterOnlineDecoderRuntimeTest(unittest.TestCase):
         self.assertTrue(choice.choice_certificate.terminal_certificates)
 
     def test_writer_shaped_result_certificate_covers_choices(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         decoder = make_writer_shaped_online_decoder(
             prepared=prepared,
             include_eos=True,
@@ -204,7 +204,7 @@ class WriterOnlineDecoderRuntimeTest(unittest.TestCase):
     def test_writer_shaped_online_preserves_runtime_frontier_certificates(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         decoder = make_writer_shaped_online_decoder(
             prepared=prepared,
             include_eos=True,
@@ -229,7 +229,7 @@ class WriterOnlineDecoderRuntimeTest(unittest.TestCase):
         )
 
     def test_writer_shaped_online_stats_certificate(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         decoder = make_writer_shaped_online_decoder(
             prepared=prepared,
             include_eos=True,
@@ -283,7 +283,7 @@ class WriterOnlineDecoderRuntimeTest(unittest.TestCase):
     def test_writer_shaped_online_choice_certificate_rejects_mismatch(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         decoder = make_writer_shaped_online_decoder(prepared=prepared)
         state = decoder.initial_state()
         transitions = writer_runtime_choice_transitions(
@@ -426,7 +426,7 @@ class WriterOnlineDecoderRuntimeTest(unittest.TestCase):
     def test_online_text_choice_certificate_rejects_count_coverage_mismatch(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         decoder = make_writer_shaped_online_decoder(prepared=prepared)
         state = decoder.initial_state()
         result = state.choices_with_stats()
@@ -529,7 +529,7 @@ class WriterOnlineDecoderRuntimeTest(unittest.TestCase):
     def test_online_result_certificate_rejects_choice_scalar_mismatch(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         decoder = make_writer_shaped_online_decoder(prepared=prepared)
         state = decoder.initial_state()
         result = state.choices_with_stats()
@@ -558,7 +558,7 @@ class WriterOnlineDecoderRuntimeTest(unittest.TestCase):
     def test_online_eos_choice_certificate_rejects_count_coverage_mismatch(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         decoder = make_writer_shaped_online_decoder(
             prepared=prepared,
             include_eos=True,
@@ -646,7 +646,7 @@ class WriterOnlineDecoderRuntimeTest(unittest.TestCase):
     def test_online_stats_distinguishes_eos_available_from_eos_included(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         decoder = make_writer_shaped_online_decoder(
             prepared=prepared,
             include_eos=False,
@@ -669,7 +669,7 @@ class WriterOnlineDecoderRuntimeTest(unittest.TestCase):
     def test_writer_shaped_online_stats_certificate_rejects_mismatch(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         decoder = make_writer_shaped_online_decoder(prepared=prepared)
         state = decoder.initial_state()
         result = state.choices_with_stats()
@@ -780,20 +780,6 @@ def _reachable_eos_prefixes(state) -> set[str]:
                 raise AssertionError("non-EOS writer online choice lacks next_state")
             pending.append(choice.next_state)
     return out
-
-
-def _prepare(facts):
-    return prepare_south_star_mol_from_facts(
-        facts,
-        writer_surface=SouthStarWriterSurface(),
-    )
-
-
-def _writer_options(*, rooted_at_atom: int = -1) -> SouthStarRuntimeOptions:
-    return SouthStarRuntimeOptions(
-        rooted_at_atom=rooted_at_atom,
-        serialization_language=SerializationLanguageMode.WRITER_SHAPED,
-    )
 
 
 if __name__ == "__main__":

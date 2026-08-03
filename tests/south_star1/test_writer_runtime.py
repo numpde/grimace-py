@@ -12,9 +12,7 @@ from unittest.mock import patch
 from grimace._south_star1 import writer_frontier as writer_frontier_module
 from grimace._south_star1.policy import SerializationLanguageMode
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
-from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import enumerate_prepared_writer_shaped_support
-from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
 from grimace._south_star1.writer_branch_certificates import (
     writer_checked_terminal_support_certificate,
 )
@@ -106,6 +104,8 @@ from grimace._south_star1.writer_snapshot import resume_writer_frontier_choices_
 from grimace._south_star1.writer_snapshot_certificates import (
     writer_snapshot_step_certificate,
 )
+from tests.south_star1.writer_test_context import prepare_writer_facts
+from tests.south_star1.writer_test_context import writer_runtime_options
 from grimace._south_star1.writer_support_count_certificates import (
     WriterTextSupportCountCertificate,
 )
@@ -155,8 +155,8 @@ _EXPECTED_TETRA_RESIDUAL_OPERATIONS = frozenset(
 class WriterRuntimeFacadeTest(unittest.TestCase):
     def test_rooted_acyclic_directional_single_engine_support_agreement(self) -> None:
         facts = directional_facts()
-        prepared = _prepare(facts)
-        options = _writer_options(rooted_at_atom=2)
+        prepared = prepare_writer_facts(facts)
+        options = writer_runtime_options(rooted_at_atom=2)
         state = initial_writer_runtime_state(
             prepared=prepared,
             runtime_options=options,
@@ -239,8 +239,8 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
 
     def test_shared_acyclic_directional_single_engine_support_agreement(self) -> None:
         facts = shared_acyclic_directional_facts()
-        prepared = _prepare(facts)
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(facts)
+        options = writer_runtime_options(rooted_at_atom=0)
         state = initial_writer_runtime_state(
             prepared=prepared,
             runtime_options=options,
@@ -320,8 +320,8 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
 
     def test_manual_specified_tetra_single_engine_support_agreement(self) -> None:
         facts = tetrahedral_facts()
-        prepared = _prepare(facts)
-        options = _writer_options()
+        prepared = prepare_writer_facts(facts)
+        options = writer_runtime_options()
         state = initial_writer_runtime_state(
             prepared=prepared,
             runtime_options=options,
@@ -557,8 +557,8 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             )
 
     def test_initial_runtime_support_matches_existing_writer_support_image(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options()
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options()
 
         state = initial_writer_runtime_state(
             prepared=prepared,
@@ -662,10 +662,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
         )
 
     def test_count_writer_runtime_support_is_certificate_backed(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         count_certificate = writer_runtime_support_count_certificate(
             prepared=prepared,
@@ -684,8 +684,8 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
         )
 
     def test_writer_frontier_choices_are_product_backed(self) -> None:
-        prepared = _prepare(cco_facts())
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
 
         product = _checked_writer_frontier_product(prepared, cursor)
 
@@ -693,8 +693,8 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
         self.assertIsNotNone(product.checked_frontier_certificate)
 
     def test_raw_streaming_successors_follow_projection_certificates(self) -> None:
-        prepared = _prepare(cco_facts())
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
 
         product = _checked_writer_frontier_product(
             prepared,
@@ -711,8 +711,8 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
         )
 
     def test_count_writer_cursor_completions_is_certificate_backed(self) -> None:
-        prepared = _prepare(cco_facts())
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         certificate = _checked_writer_frontier_count_certificate(
             prepared=prepared,
             cursor=cursor,
@@ -724,10 +724,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
         )
 
     def test_support_string_certificate_carries_projection_chain(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
 
         certified = tuple(
@@ -754,8 +754,8 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
     def test_frontier_support_string_certificate_rejects_projection_source_mismatch(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         certified = tuple(
             _iter_checked_writer_frontier_certified_support_strings(
                 prepared,
@@ -793,8 +793,8 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
     def test_frontier_support_string_certificate_rejects_terminal_source_mismatch(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         certified = tuple(
             _iter_checked_writer_frontier_certified_support_strings(
                 prepared,
@@ -824,10 +824,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
     def test_snapshot_step_certificate_rejects_projection_source_mismatch(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         transition = writer_runtime_choice_transitions(
             prepared=prepared,
@@ -857,10 +857,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
     def test_snapshot_step_rejects_projection_not_in_frontier_projection(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         transition = writer_runtime_choice_transitions(
             prepared=prepared,
@@ -887,10 +887,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
     def test_support_string_certificate_rejects_projection_chain_mismatch(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         certificate = next(
             item.certificate
@@ -923,10 +923,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             )
 
     def test_support_string_rejects_detached_terminal_projection(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         certificate = next(
             iter_writer_runtime_certified_support(
@@ -958,10 +958,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
     def test_support_image_certificate_rejects_foreign_string_certificate(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         foreign = next(
             iter_writer_runtime_certified_support(
@@ -991,10 +991,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
     def test_support_image_coverage_rejects_missing_text_bucket_string(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         certificate = writer_runtime_support_image_certificate(
             prepared=prepared,
@@ -1029,10 +1029,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
     def test_support_image_coverage_rejects_stale_first_projection(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         certificate = writer_runtime_support_image_certificate(
             prepared=prepared,
@@ -1084,7 +1084,7 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
     def test_support_image_coverage_rejects_terminal_bucket_mismatch(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = _terminal_capable_runtime_state(prepared)
         certificate = writer_runtime_support_image_certificate(
             prepared=prepared,
@@ -1119,10 +1119,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
     def test_support_image_certificate_rejects_stale_coverage_total(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         certificate = writer_runtime_support_image_certificate(
             prepared=prepared,
@@ -1162,10 +1162,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             )
 
     def test_count_certificate_matches_counted_completions(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         count_certificate = writer_runtime_branch_completion_count_certificate(
             prepared=prepared,
@@ -1180,10 +1180,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
         )
 
     def test_count_certificate_state_term_invariants(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         count_certificate = writer_runtime_branch_completion_count_certificate(
             prepared=prepared,
@@ -1216,10 +1216,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             )
 
     def test_count_certificate_rejects_malformed_state_data(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         support_cert = writer_runtime_branch_completion_count_certificate(
             prepared=prepared,
@@ -1278,10 +1278,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             )
 
     def test_support_count_certificates_reject_malformed(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         support_count_certificate = writer_runtime_support_count_certificate(
             prepared=prepared,
@@ -1372,10 +1372,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             )
 
     def test_branch_certificate_term_matches_singleton_successor_cursor(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         support_batch = _checked_writer_frontier_branch_supports(
             prepared,
@@ -1417,10 +1417,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             )
 
     def test_diagnostics_certificate_blocks_blocked_state(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
 
         blocked_diagnostics = SimpleNamespace(
@@ -1460,10 +1460,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
         self.assertTrue(certificate.graph_policy_blocker_certificates)
 
     def test_branch_transition_batch_sits_below_text_projection(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
 
         branch_batch = writer_runtime_branch_transitions(
@@ -1517,10 +1517,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             )
 
     def test_branch_transitions_package_provenance_successors(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
 
         branch_transitions = writer_runtime_branch_transitions(
@@ -1547,10 +1547,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             )
 
     def test_diagnostics_observe_live_frontier_without_classifying_support(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
 
         diagnostics = writer_runtime_diagnostics(prepared=prepared, state=state)
@@ -1593,10 +1593,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
         )
 
     def test_blocked_frontier_certificate_binds_blocked_diagnostics(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         blocked_diagnostics = SimpleNamespace(
             blocked=True,
@@ -1645,10 +1645,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
     def test_diagnostics_returns_blocked_product_for_unsupported_capability(
         self,
     ) -> None:
-        prepared = _prepare(tetrahedral_facts())
+        prepared = prepare_writer_facts(tetrahedral_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         product = _checked_writer_frontier_product(
             prepared,
@@ -1703,10 +1703,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
     def test_runtime_choices_still_raise_for_unsupported_capability(
         self,
     ) -> None:
-        prepared = _prepare(tetrahedral_facts())
+        prepared = prepare_writer_facts(tetrahedral_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         product = _checked_writer_frontier_product(
             prepared,
@@ -1737,10 +1737,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
     def test_diagnostics_returns_blocked_product_for_work_envelope_violation(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
 
         def fake_violation(evidence):
@@ -1766,10 +1766,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
         )
 
     def test_diagnostics_certificate_rejects_malformed_inputs(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         branch_batch = _checked_writer_frontier_branch_supports(
             prepared,
@@ -1923,10 +1923,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             )
 
     def test_blocked_frontier_certificate_rejects_positive_payload(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         product = _checked_writer_frontier_product(
             prepared,
@@ -1963,10 +1963,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
     def test_blocked_frontier_certificate_rejects_missing_negative_evidence(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         diagnostic_certificate = WriterDiagnosticsCertificate(
             cursor=state.snapshot.cursor,
@@ -1995,10 +1995,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             )
 
     def test_diagnostics_certificate_counts_linked(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         branch_batch = _checked_writer_frontier_branch_supports(
             prepared,
@@ -2021,10 +2021,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
         )
 
     def test_choice_transitions_package_checked_successors(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
 
         transitions = writer_runtime_choice_transitions(
@@ -2087,10 +2087,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             )
 
     def test_choice_count_certificates_are_projection_backed(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         product = _checked_writer_frontier_product(
             prepared,
@@ -2143,10 +2143,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             )
 
     def test_frontier_completion_count_is_choice_aggregate(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         product = _checked_writer_frontier_product(
             prepared,
@@ -2172,10 +2172,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
         )
 
     def test_frontier_completion_count_carries_term_coverage(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         product = _checked_writer_frontier_product(
             prepared,
@@ -2196,10 +2196,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
         )
 
     def test_frontier_support_count_carries_term_coverage(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         product = _checked_writer_frontier_product(
             prepared,
@@ -2222,10 +2222,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
         )
 
     def test_frontier_choice_count_carries_coverage(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         product = _checked_writer_frontier_product(
             prepared,
@@ -2248,10 +2248,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
         )
 
     def test_runtime_choice_transitions_expose_choice_count_coverage(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         transitions = writer_runtime_choice_transitions(
             prepared=prepared,
@@ -2302,10 +2302,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
         )
 
     def test_choice_count_certificate_rejects_malformed(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         product = _checked_writer_frontier_product(
             prepared,
@@ -2634,10 +2634,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             )
 
     def test_choices_and_advance_delegate_to_checked_snapshot_path(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
 
         choices = writer_runtime_choices(prepared=prepared, state=state)
@@ -2662,10 +2662,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
         self.assertEqual(advanced.snapshot, expected_snapshot)
 
     def test_resume_runtime_state_from_snapshot_preserves_behavior(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
 
         resumed = writer_runtime_state_from_snapshot(
@@ -2693,10 +2693,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
         )
 
     def test_terminal_eos_after_complete_runtime_string(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         target = next(iter_writer_runtime_support(prepared=prepared, state=state))
 
@@ -2782,10 +2782,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
         )
 
     def test_initial_runtime_state_has_no_terminal_supports(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         branches = writer_runtime_branch_transitions(
             prepared=prepared,
@@ -2797,10 +2797,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
         self.assertEqual(branches.terminal_supports, ())
 
     def test_terminal_certificate_rejects_nonterminal_graph(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         source = state.snapshot.cursor.weighted_states[0][0]
 
@@ -2819,10 +2819,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             )
 
     def test_checked_terminal_certificate_rejects_zero_weight(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         state = advance_writer_runtime_state(
             prepared=prepared,
@@ -2870,10 +2870,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
     def test_terminal_projection_certificate_rejects_missing_support(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         state = advance_writer_runtime_state(
             prepared=prepared,
@@ -2909,10 +2909,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
     def test_terminal_projection_certificate_rejects_multiplicity_mismatch(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         state = advance_writer_runtime_state(
             prepared=prepared,
@@ -2954,10 +2954,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
     def test_checked_frontier_rejects_terminal_projection_source_mismatch(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         for emitted_text in ("C", "C", "O"):
             state = advance_writer_runtime_state(
@@ -3168,10 +3168,10 @@ class WriterRuntimeFacadeTest(unittest.TestCase):
             )
 
     def test_support_string_certificate_rejects_malformed_inputs(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         item = next(
             iter_writer_runtime_certified_support(
@@ -3278,7 +3278,7 @@ def _advance_runtime_along_string(prepared, state, text: str):
 def _terminal_capable_runtime_state(prepared):
     state = initial_writer_runtime_state(
         prepared=prepared,
-        runtime_options=_writer_options(),
+        runtime_options=writer_runtime_options(),
     )
     while not writer_runtime_has_eos(prepared=prepared, state=state):
         choice = writer_runtime_choices(prepared=prepared, state=state).choices[0]
@@ -3416,17 +3416,3 @@ def _longest_prefix_choice(prepared, state, remaining: str):
     if not matches:
         raise AssertionError(f"no writer runtime choice can consume {remaining!r}")
     return max(matches, key=lambda item: len(item.emitted_text))
-
-
-def _prepare(facts):
-    return prepare_south_star_mol_from_facts(
-        facts,
-        writer_surface=SouthStarWriterSurface(),
-    )
-
-
-def _writer_options(rooted_at_atom: int = -1) -> SouthStarRuntimeOptions:
-    return SouthStarRuntimeOptions(
-        rooted_at_atom=rooted_at_atom,
-        serialization_language=SerializationLanguageMode.WRITER_SHAPED,
-    )

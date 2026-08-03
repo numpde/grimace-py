@@ -21,11 +21,8 @@ from grimace._south_star1.facts import (
     StereoFacts,
 )
 from grimace._south_star1.ids import AtomId, BondId, ComponentId, OccurrenceId, SiteId
-from grimace._south_star1.policy import SerializationLanguageMode
 from grimace._south_star1.prepared_runtime import (
     SouthStarRuntimeOptions,
-    SouthStarWriterSurface,
-    prepare_south_star_mol_from_facts,
 )
 from grimace._south_star1.residual_constraints import ResidualPropagationKind
 from grimace._south_star1.writer_frontier import (
@@ -35,10 +32,8 @@ from grimace._south_star1.writer_frontier import (
     iter_writer_frontier_support,
 )
 from tests.south_star1.helpers import atom, bond, single_bond
-
-
-def _options() -> SouthStarRuntimeOptions:
-    return SouthStarRuntimeOptions(serialization_language=SerializationLanguageMode.WRITER_SHAPED)
+from tests.south_star1.writer_test_context import prepare_writer_facts
+from tests.south_star1.writer_test_context import writer_runtime_options
 
 
 def _facts():
@@ -104,13 +99,6 @@ def _facts():
     return facts
 
 
-def _prepared(facts=None):
-    return prepare_south_star_mol_from_facts(
-        _facts() if facts is None else facts,
-        writer_surface=SouthStarWriterSurface(),
-    )
-
-
 def _first_choice_with_residual_work_evidence(prepared, cursor):
     pending = [cursor]
     seen = set()
@@ -136,8 +124,8 @@ def _first_choice_with_residual_work_evidence(prepared, cursor):
 
 class BoundedDirectionalNonNeighborWriterTest(unittest.TestCase):
     def test_implicit_h_is_not_a_residual_carrier_variable(self) -> None:
-        prepared = _prepared()
-        cursor = initial_writer_frontier_cursor(prepared, _options())
+        prepared = prepare_writer_facts(_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         residual = cursor.weighted_states[0][0].stereo_state.residual_snapshot
 
         self.assertEqual(
@@ -205,7 +193,7 @@ class BoundedDirectionalNonNeighborWriterTest(unittest.TestCase):
             (carrierless_facts, BondId(2)),
         ):
             facts.validate()
-            prepared = _prepared(facts)
+            prepared = prepare_writer_facts(facts)
             blocker = writer_stereo._unsupported_directional_non_neighbor_ligand_blocker_for_bond(
                 prepared,
                 carrier_bond,
@@ -218,8 +206,8 @@ class BoundedDirectionalNonNeighborWriterTest(unittest.TestCase):
             )
 
     def test_bounded_non_neighbor_directional_site_has_writer_support(self) -> None:
-        prepared = _prepared()
-        cursor = initial_writer_frontier_cursor(prepared, _options())
+        prepared = prepare_writer_facts(_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         strings = tuple(iter_writer_frontier_support(prepared, cursor))
         self.assertTrue(strings)
         self.assertEqual(
@@ -231,8 +219,8 @@ class BoundedDirectionalNonNeighborWriterTest(unittest.TestCase):
     def test_bounded_non_neighbor_directional_site_records_live_work(
         self,
     ) -> None:
-        prepared = _prepared()
-        cursor = initial_writer_frontier_cursor(prepared, _options())
+        prepared = prepare_writer_facts(_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
 
         choice = _first_choice_with_residual_work_evidence(prepared, cursor)
 
@@ -272,8 +260,8 @@ class BoundedDirectionalNonNeighborWriterTest(unittest.TestCase):
     def test_bounded_non_neighbor_directional_site_snapshots_resume(
         self,
     ) -> None:
-        prepared = _prepared()
-        options = _options()
+        prepared = prepare_writer_facts(_facts())
+        options = writer_runtime_options()
         snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,

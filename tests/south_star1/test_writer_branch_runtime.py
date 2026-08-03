@@ -27,8 +27,6 @@ from grimace._south_star1.ordinary_policy import OrdinaryPolicyOptions
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.policy import SerializationLanguageMode
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
-from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
-from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
 from grimace._south_star1.writer_events import WriterRingEndpointEmitted
 from grimace._south_star1.writer_events import WriterRingEndpointPaired
 from grimace._south_star1.writer_events import WriterRingLabelAllocated
@@ -133,6 +131,9 @@ from grimace._south_star1.writer_runtime import (
 from grimace._south_star1.writer_snapshot import _writer_search_snapshot_after_checked_branch_support
 from grimace._south_star1.writer_snapshot import _writer_search_snapshot_after_checked_choice
 from grimace._south_star1.writer_snapshot import capture_writer_frontier_snapshot
+from tests.south_star1.writer_test_context import prepare_writer_facts
+from tests.south_star1.writer_test_context import writer_runtime_options
+from tests.south_star1.writer_test_context import initial_writer_snapshot
 from grimace._south_star1.writer_state import ComponentCursor
 from grimace._south_star1.writer_state import ObligationState
 from grimace._south_star1.writer_state import PendingWriterEntry
@@ -220,10 +221,10 @@ REMAINING_EVIDENCE_INCOMPLETE_DOMAINS = (
 
 class WriterBranchRuntimeTest(unittest.TestCase):
     def test_branch_surface_projects_to_current_text_choices(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
 
         branches = writer_runtime_branch_transitions(
@@ -263,10 +264,10 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_runtime_branch_transition_certificate_carries_support_identity(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
 
         transitions = writer_runtime_branch_transitions(
@@ -288,8 +289,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             )
 
     def test_checked_frontier_branch_supports_preserve_raw_supports(self) -> None:
-        prepared = _prepare(cco_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
 
         schedule = _checked_writer_frontier_schedule_outcome(prepared, initial)
         batch = _checked_writer_frontier_branch_supports(
@@ -365,8 +366,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             )
 
     def test_checked_frontier_batch_has_checked_frontier_certificate(self) -> None:
-        prepared = _prepare(cco_facts())
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         batch = _checked_writer_frontier_branch_supports(
             prepared,
             cursor,
@@ -409,8 +410,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_uncounted_product_has_projection_certificate_without_counts(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         product = _checked_writer_frontier_product(
             prepared,
             cursor,
@@ -430,8 +431,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_checked_frontier_batch_lacks_certificate_when_counts_disabled(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         batch = _checked_writer_frontier_branch_supports(
             prepared,
             cursor,
@@ -443,7 +444,7 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_checked_frontier_certificate_partitions_text_projection(
         self,
     ) -> None:
-        prepared = _prepare(_two_live_closure_candidate_facts())
+        prepared = prepare_writer_facts(_two_live_closure_candidate_facts())
         cursor = WriterFrontierCursor(
             weighted_states=(
                 (
@@ -491,10 +492,10 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_checked_frontier_certificate_count_certificate_matches_runtime_count(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         batch = _checked_writer_frontier_branch_supports(
             prepared,
@@ -515,8 +516,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_checked_frontier_product_equals_compatibility_batch(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         product = _checked_writer_frontier_product(
             prepared,
             cursor,
@@ -535,10 +536,10 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_runtime_choice_and_product_align(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         product = _checked_writer_frontier_product(
             prepared,
@@ -569,8 +570,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_checked_frontier_count_certificate_drives_count_function(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         product = _checked_writer_frontier_product(
             prepared,
             cursor,
@@ -586,10 +587,10 @@ class WriterBranchRuntimeTest(unittest.TestCase):
         )
 
     def test_runtime_branch_transitions_preserve_checked_frontier_certificate(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         runtime = writer_runtime_branch_transitions(
             prepared=prepared,
@@ -609,8 +610,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_checked_frontier_certificate_rejects_missing_branch_certificate(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         batch = _checked_writer_frontier_branch_supports(
             prepared,
             cursor,
@@ -640,8 +641,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_checked_frontier_certificate_rejects_terminal_choice_without_projection(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         batch = _checked_writer_frontier_branch_supports(
             prepared,
             cursor,
@@ -688,8 +689,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_checked_frontier_certificate_rejects_count_cursor_mismatch(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         batch = _checked_writer_frontier_branch_supports(
             prepared,
             cursor,
@@ -735,8 +736,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_checked_frontier_certificate_rejects_projection_partition_mismatch(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         batch = _checked_writer_frontier_branch_supports(prepared, cursor)
         if not batch.text_choice_projection_certificates:
             self.skipTest("no text choices available in this frontier")
@@ -779,8 +780,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_frontier_projection_rejects_branch_certificate_without_successor_proof(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         batch = _checked_writer_frontier_branch_supports(
             prepared,
             cursor,
@@ -829,10 +830,10 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             tetrahedral_facts(),
             directional_facts(),
         ):
-            prepared = _prepare(facts)
+            prepared = prepare_writer_facts(facts)
             initial = initial_writer_frontier_cursor(
                 prepared,
-                _writer_options(),
+                writer_runtime_options(),
             )
             batch = _checked_writer_frontier_branch_supports(
                 prepared,
@@ -882,8 +883,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_checked_branch_certificate_rejects_successor_state_mismatch(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _checked_writer_frontier_branch_supports(
             prepared,
             initial,
@@ -907,8 +908,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_checked_branch_certificate_rejects_nonpositive_parent_weight(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _checked_writer_frontier_branch_supports(
             prepared,
             initial,
@@ -929,8 +930,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_checked_branch_certificate_rejects_negative_branch_ordinal(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _checked_writer_frontier_branch_supports(
             prepared,
             initial,
@@ -951,8 +952,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_checked_branch_certificate_rejects_successor_graph_obligation_evidence_mismatch(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _checked_writer_frontier_branch_supports(
             prepared,
             initial,
@@ -976,8 +977,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_checked_branch_certificate_rejects_successor_residual_work_mismatch(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _checked_writer_frontier_branch_supports(
             prepared,
             initial,
@@ -1001,8 +1002,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_checked_branch_certificate_rejects_successor_finite_relation_evidence_mismatch(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _checked_writer_frontier_branch_supports(
             prepared,
             initial,
@@ -1026,8 +1027,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_checked_branch_certificate_rejects_successor_closure_lifecycle_mismatch(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _checked_writer_frontier_branch_supports(
             prepared,
             initial,
@@ -1051,8 +1052,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_checked_branch_certificate_rejects_successor_residual_attachment_lifecycle_mismatch(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _checked_writer_frontier_branch_supports(
             prepared,
             initial,
@@ -1079,8 +1080,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_checked_branch_certificate_rejects_successor_stereo_lifecycle_mismatch(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _checked_writer_frontier_branch_supports(
             prepared,
             initial,
@@ -1104,8 +1105,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_successor_state_certificate_evidence_matches_branch_support(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         batch = _checked_writer_frontier_branch_supports(
             prepared,
             initial,
@@ -1143,8 +1144,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_checked_branch_certificate_identity_matches_branch_support(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         batch = _checked_writer_frontier_branch_supports(
             prepared,
             initial,
@@ -1160,7 +1161,7 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_closure_candidate_lifecycle_replay_present_when_evidence_exists(
         self,
     ) -> None:
-        prepared = _prepare(cyclopropane_facts())
+        prepared = prepare_writer_facts(cyclopropane_facts())
         cursor = WriterFrontierCursor(
             weighted_states=(
                 (
@@ -1198,7 +1199,7 @@ class WriterBranchRuntimeTest(unittest.TestCase):
         )
 
     def test_closure_lifecycle_replay_rejects_stale_evidence(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
+        prepared = prepare_writer_facts(cyclopropane_facts())
         cursor = WriterFrontierCursor(
             weighted_states=(
                 (
@@ -1239,7 +1240,7 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             )
 
     def test_closure_lifecycle_replay_rejects_wrong_kind(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
+        prepared = prepare_writer_facts(cyclopropane_facts())
         cursor = WriterFrontierCursor(
             weighted_states=(
                 (
@@ -1288,8 +1289,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_residual_attachment_lifecycle_replay_present_when_evidence_exists(
         self,
     ) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _find_checked_branch_support(
             prepared,
             initial,
@@ -1317,8 +1318,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_residual_attachment_lifecycle_replay_rejects_stale_evidence(
         self,
     ) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _find_checked_branch_support(
             prepared,
             initial,
@@ -1352,8 +1353,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_residual_attachment_lifecycle_replay_rejects_wrong_kind(
         self,
     ) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _find_checked_branch_support(
             prepared,
             initial,
@@ -1393,8 +1394,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_residual_attachment_replay_rejects_successor_boundary_mismatch(
         self,
     ) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _find_checked_branch_support(
             prepared,
             initial,
@@ -1424,8 +1425,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             )
 
     def test_residual_attachment_replay_rejects_deficit_mismatch(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _find_checked_branch_support(
             prepared,
             initial,
@@ -1451,8 +1452,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             )
 
     def test_checked_branch_certificate_rejects_stale_field_delta(self) -> None:
-        prepared = _prepare(cco_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _find_checked_branch_support(
             prepared,
             initial,
@@ -1481,8 +1482,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             )
 
     def test_successor_state_certificate_constructor_calls_validator(self) -> None:
-        prepared = _prepare(cco_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _checked_writer_frontier_branch_supports(
             prepared,
             initial,
@@ -1505,8 +1506,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_checked_branch_certificate_rejects_stale_replay_certificate(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _find_checked_branch_support(
             prepared,
             initial,
@@ -1537,8 +1538,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_successor_state_certificate_rejects_stale_graph_replay_projection(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _find_checked_branch_support(
             prepared,
             initial,
@@ -1577,8 +1578,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_graph_replay_rejects_missing_atom_event_for_visited_delta(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _find_checked_branch_support(
             prepared,
             initial,
@@ -1604,8 +1605,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             )
 
     def test_graph_replay_rejects_active_frame_mismatch(self) -> None:
-        prepared = _prepare(cco_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _find_checked_branch_support(
             prepared,
             initial,
@@ -1630,8 +1631,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             )
 
     def test_graph_replay_rejects_branch_stack_mismatch(self) -> None:
-        prepared = _prepare(cco_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _find_checked_branch_support(
             prepared,
             initial,
@@ -1659,8 +1660,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_graph_replay_does_not_treat_bond_text_event_as_written_bond_authority(
         self,
     ) -> None:
-        prepared = _prepare(directional_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(directional_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _find_checked_branch_support(
             prepared,
             initial,
@@ -1694,8 +1695,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_obligation_replay_is_complete_for_pending_entry_creation(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _find_checked_branch_support(
             prepared,
             initial,
@@ -1728,8 +1729,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_obligation_replay_is_complete_for_pending_entry_discharge(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _find_checked_branch_support(
             prepared,
             initial,
@@ -1764,8 +1765,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
         )
 
     def test_obligation_replay_rejects_wrong_pending_child_event(self) -> None:
-        prepared = _prepare(cco_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _find_checked_branch_support(
             prepared,
             initial,
@@ -1845,12 +1846,12 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             tetrahedral_facts(),
         ):
             with self.subTest(facts=facts):
-                prepared = _prepare(facts)
+                prepared = prepare_writer_facts(facts)
                 seen: set[WriterFrontierCursor] = set()
                 pending = [
                     initial_writer_frontier_cursor(
                         prepared,
-                        _writer_options(),
+                        writer_runtime_options(),
                     )
                 ]
                 while pending and len(seen) < 1000:
@@ -1892,8 +1893,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_directional_graph_obligation_replay_has_no_incomplete_cases(
         self,
     ) -> None:
-        prepared = _prepare(directional_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(directional_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         seen: set[WriterFrontierCursor] = set()
         pending = [initial]
         while pending and len(seen) < 1000:
@@ -1940,10 +1941,10 @@ class WriterBranchRuntimeTest(unittest.TestCase):
         for order, expected_order, marker in rows:
             with self.subTest(order=order):
                 facts = _non_single_closure_triangle_facts(order)
-                prepared = _prepare_with_joint_non_single_ring_closures(facts)
+                prepared = prepare_joint_non_single_ring_facts(facts)
                 initial = initial_writer_frontier_cursor(
                     prepared,
-                    _writer_options(rooted_at_atom=0),
+                    writer_runtime_options(rooted_at_atom=0),
                 )
                 paired_evidence = _all_closure_bond_text_pair_evidence(
                     prepared,
@@ -1970,12 +1971,12 @@ class WriterBranchRuntimeTest(unittest.TestCase):
         self,
     ) -> None:
         facts = _non_single_closure_triangle_facts(BondOrder.DOUBLE)
-        prepared = _prepare_with_joint_non_single_ring_closures(facts)
+        prepared = prepare_joint_non_single_ring_facts(facts)
         support = _find_checked_branch_support(
             prepared,
             initial_writer_frontier_cursor(
                 prepared,
-                _writer_options(rooted_at_atom=0),
+                writer_runtime_options(rooted_at_atom=0),
             ),
             lambda support: (
                 support.successor_state_certificate.ring_replay_certificate
@@ -2020,17 +2021,13 @@ class WriterBranchRuntimeTest(unittest.TestCase):
         self,
     ) -> None:
         facts = _non_single_closure_triangle_facts(BondOrder.DOUBLE)
-        prepared = _prepare_with_joint_non_single_ring_closures(facts)
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_joint_non_single_ring_facts(facts)
+        options = writer_runtime_options(rooted_at_atom=0)
         image = enumerate_prepared_writer_shaped_support(
             prepared=prepared,
             runtime_options=options,
         )
-        snapshot = capture_writer_frontier_snapshot(
-            prepared=prepared,
-            runtime_options=options,
-            cursor=initial_writer_frontier_cursor(prepared, options),
-        )
+        snapshot = initial_writer_snapshot(prepared, options)
 
         self.assertEqual(
             image.distinct_count,
@@ -2042,13 +2039,9 @@ class WriterBranchRuntimeTest(unittest.TestCase):
 
     def test_joint_non_single_closure_support_artifact_verifies(self) -> None:
         facts = _non_single_closure_triangle_facts(BondOrder.DOUBLE)
-        prepared = _prepare_with_joint_non_single_ring_closures(facts)
-        options = _writer_options(rooted_at_atom=0)
-        snapshot = capture_writer_frontier_snapshot(
-            prepared=prepared,
-            runtime_options=options,
-            cursor=initial_writer_frontier_cursor(prepared, options),
-        )
+        prepared = prepare_joint_non_single_ring_facts(facts)
+        options = writer_runtime_options(rooted_at_atom=0)
+        snapshot = initial_writer_snapshot(prepared, options)
         artifact = writer_support_artifact_envelope_for_snapshot(
             prepared=prepared,
             snapshot=snapshot,
@@ -2073,8 +2066,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
         self.assertFalse(facts_bound.offline_replay_complete)
 
     def test_obligation_replay_rejects_stale_expected_successor(self) -> None:
-        prepared = _prepare(cco_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _find_checked_branch_support(
             prepared,
             initial,
@@ -2117,8 +2110,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             )
 
     def test_obligation_replay_rejects_false_completion_kind(self) -> None:
-        prepared = _prepare(cco_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _find_checked_branch_support(
             prepared,
             initial,
@@ -2164,8 +2157,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             )
 
     def test_obligation_replay_rejects_stale_event_view(self) -> None:
-        prepared = _prepare(cco_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _find_checked_branch_support(
             prepared,
             initial,
@@ -2232,8 +2225,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_successor_state_certificate_rejects_nonmonotone_visited_atoms(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _find_checked_branch_support(
             prepared,
             initial,
@@ -2256,8 +2249,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             )
 
     def test_policy_delta_rejects_missing_event_payload(self) -> None:
-        prepared = _prepare(cco_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _checked_writer_frontier_branch_supports(
             prepared,
             initial,
@@ -2287,8 +2280,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_successor_state_certificate_rejects_ring_delta_without_event(
         self,
     ) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _find_checked_branch_support(
             prepared,
             initial,
@@ -2332,8 +2325,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             )
 
     def test_ring_replay_rejects_wrong_endpoint_payload(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _find_checked_branch_support(
             prepared,
             initial,
@@ -2365,8 +2358,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             )
 
     def test_ring_pair_replay_requires_matching_open_endpoint(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _find_checked_branch_support(
             prepared,
             initial,
@@ -2401,8 +2394,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             )
 
     def test_ring_replay_rejects_wrong_removed_open_endpoint(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _find_checked_branch_support(
             prepared,
             initial,
@@ -2431,8 +2424,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             )
 
     def test_ring_replay_rejects_label_state_mismatch(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _find_checked_branch_support(
             prepared,
             initial,
@@ -2461,8 +2454,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             )
 
     def test_ring_replay_rejects_stale_auxiliary_label_state(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _find_checked_branch_support(
             prepared,
             initial,
@@ -2498,8 +2491,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_successor_state_certificate_rejects_stereo_delta_without_lifecycle(
         self,
     ) -> None:
-        prepared = _prepare(tetrahedral_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(tetrahedral_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _find_checked_branch_support(
             prepared,
             initial,
@@ -2541,8 +2534,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_stereo_replay_has_complete_lifecycle_chain_when_evidence_matches(
         self,
     ) -> None:
-        prepared = _prepare(tetrahedral_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(tetrahedral_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _find_checked_branch_support(
             prepared,
             initial,
@@ -2573,8 +2566,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
         )
 
     def test_stereo_replay_rejects_missing_residual_work_item(self) -> None:
-        prepared = _prepare(tetrahedral_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(tetrahedral_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _find_checked_branch_support(
             prepared,
             initial,
@@ -2605,8 +2598,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             )
 
     def test_stereo_replay_rejects_false_completion(self) -> None:
-        prepared = _prepare(tetrahedral_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(tetrahedral_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _find_checked_branch_support(
             prepared,
             initial,
@@ -2642,8 +2635,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_stereo_lifecycle_chain_rejects_successor_snapshot_mismatch(
         self,
     ) -> None:
-        prepared = _prepare(tetrahedral_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(tetrahedral_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _find_checked_branch_support(
             prepared,
             initial,
@@ -2687,10 +2680,10 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_runtime_branch_transitions_expose_successor_state_certificate(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
 
         transitions = writer_runtime_branch_transitions(
@@ -2724,8 +2717,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
                 self.assertIsNotNone(certificate.stereo_replay_certificate)
 
     def test_projection_certificate_exposes_branch_successor_proofs(self) -> None:
-        prepared = _prepare(cco_facts())
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         product = _checked_writer_frontier_product(
             prepared,
             cursor,
@@ -2753,8 +2746,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_text_projection_immediate_multiplicity_matches_branch_certificate_weights(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         product = _checked_writer_frontier_product(
             prepared,
             cursor,
@@ -2775,8 +2768,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_text_projection_successor_cursor_is_branch_certificate_derived(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         product = _checked_writer_frontier_product(
             prepared,
             cursor,
@@ -2799,8 +2792,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_text_projection_rejects_branch_certificate_parent_weight_mismatch(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         batch = _checked_writer_frontier_branch_supports(
             prepared,
             cursor,
@@ -2829,8 +2822,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_text_projection_rejects_branch_certificate_successor_mismatch(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         batch = _checked_writer_frontier_branch_supports(
             prepared,
             cursor,
@@ -2859,7 +2852,7 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_terminal_projection_multiplicity_matches_terminal_certificate_weights(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         product = _first_terminal_frontier_product(prepared)
         terminal_projection = product.terminal_projection_certificate
         self.assertIsNotNone(terminal_projection)
@@ -2875,7 +2868,7 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_terminal_projection_finalized_cursor_is_certificate_derived(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         product = _first_terminal_frontier_product(prepared)
         terminal_projection = product.terminal_projection_certificate
         self.assertIsNotNone(terminal_projection)
@@ -2897,7 +2890,7 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             tetrahedral_facts(),
             directional_facts(),
         ):
-            prepared = _prepare(facts)
+            prepared = prepare_writer_facts(facts)
             product = _first_terminal_frontier_product(prepared)
             identities = tuple(
                 (support.source_state, support.finalized_state)
@@ -2924,7 +2917,7 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_terminal_projection_rejects_certificate_parent_weight_mismatch(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         product = _first_terminal_frontier_product(prepared)
         support = product.terminal_supports[0]
         bad_certificate = replace(
@@ -2949,7 +2942,7 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_terminal_projection_rejects_certificate_finalized_mismatch(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         product = _first_terminal_frontier_product(prepared)
         support = product.terminal_supports[0]
         bad_certificate = replace(
@@ -2974,7 +2967,7 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_terminal_projection_rejects_certificate_ordinal_mismatch(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         product = _first_terminal_frontier_product(prepared)
         support = product.terminal_supports[0]
         bad_certificate = replace(
@@ -2999,7 +2992,7 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_terminal_projection_rejects_certificate_key_mismatch(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         product = _first_terminal_frontier_product(prepared)
         support = product.terminal_supports[0]
         bad_certificate = replace(
@@ -3027,7 +3020,7 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_frontier_projection_rejects_terminal_certificate_parent_weight_mismatch(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         product = _first_terminal_frontier_product(prepared)
         support = product.terminal_supports[0]
         bad_certificate = replace(
@@ -3059,7 +3052,7 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_frontier_projection_rejects_terminal_certificate_ordinal_mismatch(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         product = _first_terminal_frontier_product(prepared)
         support = product.terminal_supports[0]
         bad_certificate = replace(
@@ -3091,8 +3084,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_frontier_projection_rejects_branch_certificate_ordinal_mismatch(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         product = _checked_writer_frontier_product(
             prepared,
             cursor,
@@ -3128,10 +3121,10 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             )
 
     def test_checked_branch_supports_have_capability_coverage(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         initial = initial_writer_frontier_cursor(
             prepared,
-            _writer_options(),
+            writer_runtime_options(),
         )
         batch = _checked_writer_frontier_branch_supports(
             prepared,
@@ -3161,10 +3154,10 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_checked_branch_supporter_coverage_requires_matching_capability_certificates(
         self,
     ) -> None:
-        prepared = _prepare(directional_facts())
+        prepared = prepare_writer_facts(directional_facts())
         initial = initial_writer_frontier_cursor(
             prepared,
-            _writer_options(),
+            writer_runtime_options(),
         )
         support = _find_checked_branch_support(
             prepared,
@@ -3293,10 +3286,10 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             tetrahedral_facts(),
             directional_facts(),
         ):
-            prepared = _prepare(facts)
+            prepared = prepare_writer_facts(facts)
             initial = initial_writer_frontier_cursor(
                 prepared,
-                _writer_options(),
+                writer_runtime_options(),
             )
             batch = _checked_writer_frontier_branch_supports(
                 prepared,
@@ -3342,8 +3335,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_open_ring_endpoint_owned_residual_resolution_reaches_branch_support(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         source_key = initial.weighted_states[0][0]
         key = writer_transitions._WriterResidualAttachmentPolicyKey(
             active_atom=source_key.active.atom,
@@ -3469,7 +3462,7 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_graph_evidence_classifies_live_branch_return_closure_candidate(
         self,
     ) -> None:
-        prepared = _prepare(cyclopropane_facts())
+        prepared = prepare_writer_facts(cyclopropane_facts())
         key = writer_state_key(
             _branch_return_closure_candidate_state(live_partner=True)
         )
@@ -3501,7 +3494,7 @@ class WriterBranchRuntimeTest(unittest.TestCase):
         )
 
     def test_graph_evidence_classifies_frozen_closure_candidate(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
+        prepared = prepare_writer_facts(cyclopropane_facts())
         key = writer_state_key(
             _branch_return_closure_candidate_state(live_partner=False)
         )
@@ -3540,7 +3533,7 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_live_branch_return_closure_candidate_reaches_branch_support(
         self,
     ) -> None:
-        prepared = _prepare(cyclopropane_facts())
+        prepared = prepare_writer_facts(cyclopropane_facts())
         cursor = WriterFrontierCursor(
             weighted_states=(
                 (
@@ -3628,7 +3621,7 @@ class WriterBranchRuntimeTest(unittest.TestCase):
         )
 
     def test_live_candidate_lifecycle_opens_exact_bond(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
+        prepared = prepare_writer_facts(cyclopropane_facts())
         cursor = WriterFrontierCursor(
             weighted_states=(
                 (
@@ -3686,7 +3679,7 @@ class WriterBranchRuntimeTest(unittest.TestCase):
         self.assertIsInstance(support.events[1], WriterRingEndpointEmitted)
 
     def test_frozen_closure_candidate_still_blocks(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
+        prepared = prepare_writer_facts(cyclopropane_facts())
         cursor = WriterFrontierCursor(
             weighted_states=(
                 (
@@ -3713,7 +3706,7 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_deferred_branch_return_closure_candidate_allows_branch_close(
         self,
     ) -> None:
-        prepared = _prepare(cyclopropane_facts())
+        prepared = prepare_writer_facts(cyclopropane_facts())
         cursor = WriterFrontierCursor(
             weighted_states=(
                 (
@@ -3804,7 +3797,7 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_multi_live_closure_candidates_preserve_branch_identity(
         self,
     ) -> None:
-        prepared = _prepare(_two_live_closure_candidate_facts())
+        prepared = prepare_writer_facts(_two_live_closure_candidate_facts())
         cursor = WriterFrontierCursor(
             weighted_states=(
                 (
@@ -4003,7 +3996,7 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_mixed_live_and_unsupported_closure_candidates_still_blocks(
         self,
     ) -> None:
-        prepared = _prepare(_two_live_closure_candidate_facts())
+        prepared = prepare_writer_facts(_two_live_closure_candidate_facts())
         cursor = WriterFrontierCursor(
             weighted_states=(
                 (
@@ -4073,7 +4066,7 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_deferred_control_live_closure_candidate_allows_pending_step(
         self,
     ) -> None:
-        prepared = _prepare(_pending_control_live_closure_candidate_facts())
+        prepared = prepare_writer_facts(_pending_control_live_closure_candidate_facts())
         cursor = WriterFrontierCursor(
             weighted_states=(
                 (
@@ -4178,7 +4171,7 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_deferred_control_live_candidate_lifecycle_survives_pending_step(
         self,
     ) -> None:
-        prepared = _prepare(_pending_control_live_closure_candidate_facts())
+        prepared = prepare_writer_facts(_pending_control_live_closure_candidate_facts())
         cursor = WriterFrontierCursor(
             weighted_states=(
                 (
@@ -4246,7 +4239,7 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_deferred_branch_return_candidate_gets_retained_certificate(
         self,
     ) -> None:
-        prepared = _prepare(cyclopropane_facts())
+        prepared = prepare_writer_facts(cyclopropane_facts())
         cursor = WriterFrontierCursor(
             weighted_states=(
                 (
@@ -4289,7 +4282,7 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_deferred_candidate_lifecycle_rejects_unsupported_successor(
         self,
     ) -> None:
-        prepared = _prepare(_pending_control_live_closure_candidate_facts())
+        prepared = prepare_writer_facts(_pending_control_live_closure_candidate_facts())
         source = writer_state_key(
             _pending_parent_branch_return_closure_candidate_state(
                 frozen_endpoint=False,
@@ -4317,7 +4310,7 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_live_candidate_lifecycle_rejects_claimed_open_without_open_state(
         self,
     ) -> None:
-        prepared = _prepare(cyclopropane_facts())
+        prepared = prepare_writer_facts(cyclopropane_facts())
         state = writer_state_key(
             _branch_return_closure_candidate_state(live_partner=True)
         )
@@ -4342,7 +4335,7 @@ class WriterBranchRuntimeTest(unittest.TestCase):
         )
 
     def test_live_open_certificate_requires_opened_lifecycle(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
+        prepared = prepare_writer_facts(cyclopropane_facts())
         cursor = WriterFrontierCursor(
             weighted_states=(
                 (
@@ -4389,7 +4382,7 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             )
 
     def test_deferred_certificate_requires_retained_lifecycle(self) -> None:
-        prepared = _prepare(_pending_control_live_closure_candidate_facts())
+        prepared = prepare_writer_facts(_pending_control_live_closure_candidate_facts())
         cursor = WriterFrontierCursor(
             weighted_states=(
                 (
@@ -4438,7 +4431,7 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_control_live_candidate_with_frozen_endpoint_still_blocks(
         self,
     ) -> None:
-        prepared = _prepare(_pending_control_live_closure_candidate_facts())
+        prepared = prepare_writer_facts(_pending_control_live_closure_candidate_facts())
         cursor = WriterFrontierCursor(
             weighted_states=(
                 (
@@ -4483,7 +4476,7 @@ class WriterBranchRuntimeTest(unittest.TestCase):
         self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
 
     def test_deferred_candidate_with_frozen_endpoint_still_blocks(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
+        prepared = prepare_writer_facts(cyclopropane_facts())
         cursor = WriterFrontierCursor(
             weighted_states=(
                 (
@@ -4540,8 +4533,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_residual_attachment_closure_open_has_lifecycle_evidence(
         self,
     ) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _find_checked_branch_support(
             prepared,
             initial,
@@ -4579,7 +4572,7 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_closure_candidate_open_has_no_residual_attachment_lifecycle(
         self,
     ) -> None:
-        prepared = _prepare(cyclopropane_facts())
+        prepared = prepare_writer_facts(cyclopropane_facts())
         cursor = WriterFrontierCursor(
             weighted_states=(
                 (
@@ -4615,8 +4608,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             _WriterExecutionCapabilityKind
             .COUPLED_CYCLIC_ATTACHMENT_RESTRICTION
         )
-        prepared = _prepare(_fused_rank_two_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(_fused_rank_two_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _find_checked_branch_support(
             prepared,
             initial,
@@ -4647,8 +4640,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_residual_attachment_lifecycle_rejects_malformed_successor(
         self,
     ) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _find_checked_branch_support(
             prepared,
             initial,
@@ -4695,8 +4688,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
 
     def test_tetra_atom_token_capability_is_stereo_certified(self) -> None:
         capability = _WriterExecutionCapabilityKind.TETRA_TOKEN_RESTRICTION
-        prepared = _prepare(tetrahedral_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(tetrahedral_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _find_checked_branch_support(
             prepared,
             initial,
@@ -4720,8 +4713,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
         capability = (
             _WriterExecutionCapabilityKind.TETRA_LOCAL_ORDER_RESTRICTION
         )
-        prepared = _prepare(tetrahedral_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(tetrahedral_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _find_checked_branch_support(
             prepared,
             initial,
@@ -4743,8 +4736,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
         capability = (
             _WriterExecutionCapabilityKind.DIRECTIONAL_CARRIER_RESTRICTION
         )
-        prepared = _prepare(directional_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(directional_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _find_checked_branch_support(
             prepared,
             initial,
@@ -4766,8 +4759,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
         self,
     ) -> None:
         capability = _WriterExecutionCapabilityKind.RESIDUAL_FACTOR_DISCHARGE
-        prepared = _prepare(directional_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(directional_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _find_checked_branch_support(
             prepared,
             initial,
@@ -4803,8 +4796,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
         capability = (
             _WriterExecutionCapabilityKind.DIRECTIONAL_CARRIER_RESTRICTION
         )
-        prepared = _prepare(directional_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(directional_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _find_checked_branch_support(
             prepared,
             initial,
@@ -4871,8 +4864,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             )
 
     def test_checked_branch_certificate_rejects_policy_mismatch(self) -> None:
-        prepared = _prepare(cco_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         support = _checked_writer_frontier_branch_supports(
             prepared,
             initial,
@@ -4931,8 +4924,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             )
 
     def test_text_projection_certificate_rejects_missing_support(self) -> None:
-        prepared = _prepare(cco_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         batch = _checked_writer_frontier_branch_supports(
             prepared,
             initial,
@@ -4965,8 +4958,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_text_projection_certificate_rejects_successor_mismatch(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         batch = _checked_writer_frontier_branch_supports(
             prepared,
             initial,
@@ -5001,8 +4994,8 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_text_projection_certificate_rejects_multiplicity_mismatch(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         batch = _checked_writer_frontier_branch_supports(
             prepared,
             initial,
@@ -5045,10 +5038,10 @@ class WriterBranchRuntimeTest(unittest.TestCase):
         )
 
     def test_runtime_branch_completion_count_is_frontier_owned(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
 
         self.assertEqual(
@@ -5063,10 +5056,10 @@ class WriterBranchRuntimeTest(unittest.TestCase):
         )
 
     def test_runtime_branch_completion_count_certificate_is_frontier_owned(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
 
         facade = count_writer_runtime_branch_completions(
@@ -5120,10 +5113,10 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_state_count_certificate_rejects_branch_term_source_mismatch(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         certificate = writer_runtime_branch_completion_count_certificate(
             prepared=prepared,
@@ -5155,7 +5148,7 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_state_count_certificate_rejects_terminal_projection_source_mismatch(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         product = _first_terminal_frontier_product(prepared)
         terminal_projection = product.terminal_projection_certificate
         self.assertIsNotNone(terminal_projection)
@@ -5182,10 +5175,10 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             )
 
     def test_runtime_diagnostics_is_frontier_owned(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
 
         runtime = writer_runtime_diagnostics(
@@ -5260,10 +5253,10 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_branch_runtime_next_state_uses_snapshot_branch_packaging(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         batch = _checked_writer_frontier_branch_supports(
             prepared,
@@ -5341,10 +5334,10 @@ class WriterBranchRuntimeTest(unittest.TestCase):
     def test_choice_runtime_next_state_uses_snapshot_choice_packaging(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
         choices = writer_runtime_choice_transitions(
             prepared=prepared,
@@ -5360,23 +5353,14 @@ class WriterBranchRuntimeTest(unittest.TestCase):
             self.assertEqual(transition.next_state.snapshot, expected)
 
 
-def _prepare(facts):
-    return prepare_south_star_mol_from_facts(
+def prepare_joint_non_single_ring_facts(facts):
+    return prepare_writer_facts(
         facts,
-        writer_surface=SouthStarWriterSurface(),
-    )
-
-
-def _prepare_with_joint_non_single_ring_closures(facts):
-    return prepare_south_star_mol_from_facts(
-        facts,
-        writer_surface=SouthStarWriterSurface(),
         policy=ordinary_policy_for_facts(
             facts,
             OrdinaryPolicyOptions(non_single_ring_closures="joint"),
         ),
     )
-
 
 def _non_single_closure_triangle_facts(order: BondOrder) -> MoleculeFacts:
     return MoleculeFacts(
@@ -5496,7 +5480,7 @@ def _find_checked_branch_support(
 
 
 def _first_terminal_frontier_product(prepared):
-    pending = [initial_writer_frontier_cursor(prepared, _writer_options())]
+    pending = [initial_writer_frontier_cursor(prepared, writer_runtime_options())]
     seen: set[WriterFrontierCursor] = set()
     while pending and len(seen) < 1000:
         current = pending.pop(0)
@@ -5595,13 +5579,6 @@ def _replace_event_identity(events, old_event, new_event):
     return tuple(
         new_event if event is old_event else event
         for event in events
-    )
-
-
-def _writer_options(rooted_at_atom: int = -1) -> SouthStarRuntimeOptions:
-    return SouthStarRuntimeOptions(
-        rooted_at_atom=rooted_at_atom,
-        serialization_language=SerializationLanguageMode.WRITER_SHAPED,
     )
 
 

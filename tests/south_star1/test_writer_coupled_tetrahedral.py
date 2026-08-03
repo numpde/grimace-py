@@ -9,9 +9,6 @@ from rdkit import Chem
 
 from grimace._south_star1.ordinary_stereo_sites import OrdinaryStereoSiteOptions
 from grimace._south_star1.fact_isomorphism import facts_are_isomorphic
-from grimace._south_star1.policy import SerializationLanguageMode
-from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
-from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.rdkit_adapter import RdkitOrdinaryExtractionOptions
 from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_rdkit
 from grimace._south_star1.writer_branch_transition_artifact import (
@@ -26,7 +23,8 @@ from grimace._south_star1.writer_frontier import (
 )
 from grimace._south_star1.writer_snapshot import capture_writer_frontier_snapshot
 from grimace._south_star1.writer_envelope_terms import _identity_digest
-from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
+from tests.south_star1.writer_test_context import writer_runtime_options
+from tests.south_star1.writer_test_context import writer_test_context
 
 
 class CoupledTetrahedralWriterTest(unittest.TestCase):
@@ -65,19 +63,10 @@ class CoupledTetrahedralWriterTest(unittest.TestCase):
                 stereo_site_discovery_mode="specified_closure",
             ),
         )
-        prepared = prepare_south_star_mol_from_facts(
-            facts,
-            writer_surface=SouthStarWriterSurface(),
-        )
-        runtime_options = SouthStarRuntimeOptions(
-            rooted_at_atom=0,
-            serialization_language=SerializationLanguageMode.WRITER_SHAPED,
-        )
-        initial = capture_writer_frontier_snapshot(
-            prepared=prepared,
-            runtime_options=runtime_options,
-            cursor=initial_writer_frontier_cursor(prepared, runtime_options),
-        )
+        context = writer_test_context(facts, rooted_at_atom=0)
+        prepared = context.prepared
+        runtime_options = context.runtime_options
+        initial = context.initial_snapshot
         pending = deque([initial])
         seen: set[str] = set()
         checked = 0

@@ -676,7 +676,7 @@ class WriterContinuationAssetTest(unittest.TestCase):
                 terminal_source = first_terminal_proof_source(
                     facts, options, policy=policy
                 )
-                prepared, snapshot, support = terminal_source.prepared, terminal_source.snapshot, terminal_source.support
+                prepared, snapshot, support = terminal_source.context.prepared, terminal_source.snapshot, terminal_source.support
                 path = Path(directory) / "asset"
                 write_writer_continuation_asset(
                     path=path,

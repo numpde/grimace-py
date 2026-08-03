@@ -577,7 +577,9 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
 
     def test_build_and_live_verification_do_not_enter_count_or_support_paths(self) -> None:
         source = shared_ring_branch_source("opening", DirectionMark.FWD)
-        facts, options, prepared, snapshot, support = source.facts, source.runtime_options, source.prepared, source.snapshot, source.support
+        facts = source.context.prepared.facts
+        options = source.context.runtime_options
+        prepared, snapshot, support = source.context.prepared, source.snapshot, source.support
         del facts, options
         blockers = (
             patch(
@@ -770,7 +772,9 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
 
     def test_support_projection_default_and_explicit_all_branches_are_identical(self) -> None:
         source = shared_ring_branch_source("opening", DirectionMark.FWD)
-        facts, _options, prepared, snapshot, support = source.facts, source.runtime_options, source.prepared, source.snapshot, source.support
+        facts = source.context.prepared.facts
+        _options = source.context.runtime_options
+        prepared, snapshot, support = source.context.prepared, source.snapshot, source.support
         batch = _checked_writer_frontier_branch_supports(
             prepared,
             snapshot.cursor,
@@ -806,7 +810,9 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
 @lru_cache(maxsize=6)
 def _shared_ring_branch_artifact(phase: str, mark: DirectionMark):
     source = shared_ring_branch_source(phase, mark)
-    facts, options, prepared, snapshot, support = source.facts, source.runtime_options, source.prepared, source.snapshot, source.support
+    facts = source.context.prepared.facts
+    options = source.context.runtime_options
+    prepared, snapshot, support = source.context.prepared, source.snapshot, source.support
     artifact = writer_branch_transition_artifact_for_support(
         prepared=prepared,
         snapshot=snapshot,

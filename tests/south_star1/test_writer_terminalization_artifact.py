@@ -76,7 +76,7 @@ class WriterTerminalizationArtifactTest(unittest.TestCase):
         facts = cco_facts()
         options = writer_runtime_options()
         source = first_terminal_proof_source(facts, options)
-        prepared, snapshot, support = source.prepared, source.snapshot, source.support
+        prepared, snapshot, support = source.context.prepared, source.snapshot, source.support
         patches = (
             patch("grimace._south_star1.writer_frontier_count_envelope.writer_frontier_count_envelope_for_snapshot", side_effect=AssertionError("count path")),
             patch("grimace._south_star1.writer_count_dag_envelope.writer_count_certificate_dag_envelope_for_product", side_effect=AssertionError("dag path")),
@@ -331,7 +331,7 @@ class WriterTerminalizationArtifactTest(unittest.TestCase):
 @lru_cache(maxsize=None)
 def _terminal_artifact(facts, options, policy):
     source = first_terminal_proof_source(facts, options, policy=policy)
-    prepared, snapshot, support = source.prepared, source.snapshot, source.support
+    prepared, snapshot, support = source.context.prepared, source.snapshot, source.support
     return prepared, writer_terminalization_artifact_for_support(
         prepared=prepared, snapshot=snapshot, support=support
     )

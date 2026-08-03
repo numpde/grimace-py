@@ -10,7 +10,7 @@ from typing import Literal
 from grimace._south_star1.facts import MoleculeFacts
 from grimace._south_star1.ids import BondId
 from grimace._south_star1.policy import DirectionMark, SmilesPolicy
-from grimace._south_star1.prepared_runtime import SouthStarPreparedMol, SouthStarRuntimeOptions
+from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.writer_frontier import _checked_writer_frontier_branch_supports
 from grimace._south_star1.writer_branch_transition_artifact import (
     writer_branch_transition_artifact_for_support,
@@ -19,12 +19,13 @@ from grimace._south_star1.writer_envelope_terms import _identity_digest
 from grimace._south_star1.writer_events import WriterRingEndpointEmitted, WriterRingEndpointPaired
 from grimace._south_star1.writer_snapshot import (
     WriterDecoderBoundary,
+    WriterSearchSnapshot,
     capture_writer_frontier_snapshot,
 )
 from tests.south_star1.writer_test_context import (
-    initial_writer_snapshot,
-    prepare_writer_facts,
+    WriterTestContext,
     writer_runtime_options,
+    writer_test_context,
 )
 from tests.south_star1.writer_test_fixtures import shared_directional_ring_carrier_facts
 
@@ -231,30 +232,26 @@ def validate_shared_ring_branch_source_addresses(
 class WriterBranchProofSource:
     phase: SharedRingBranchPhase
     direction_mark: DirectionMark
-    facts: MoleculeFacts
-    runtime_options: SouthStarRuntimeOptions
-    prepared: SouthStarPreparedMol
-    snapshot: object
+    context: WriterTestContext
+    snapshot: WriterSearchSnapshot
     support: object
 
 
 @dataclass(frozen=True, slots=True)
 class WriterTerminalProofSource:
-    facts: MoleculeFacts
-    runtime_options: SouthStarRuntimeOptions
-    prepared: SouthStarPreparedMol
-    snapshot: object
+    context: WriterTestContext
+    snapshot: WriterSearchSnapshot
     support: object
-    policy: SmilesPolicy | None
 
 
 @lru_cache(maxsize=1)
 def shared_ring_branch_sources() -> tuple[WriterBranchProofSource, ...]:
     validate_shared_ring_branch_source_addresses()
     facts = shared_directional_ring_carrier_facts()
-    options = writer_runtime_options(rooted_at_atom=1)
-    prepared = prepare_writer_facts(facts)
-    initial = initial_writer_snapshot(prepared, options)
+    context = writer_test_context(facts, rooted_at_atom=1)
+    options = context.runtime_options
+    prepared = context.prepared
+    initial = context.initial_snapshot
     batch_by_cursor_digest = {}
     cursor_by_prefix = {(): initial.cursor}
 
@@ -351,9 +348,7 @@ def shared_ring_branch_sources() -> tuple[WriterBranchProofSource, ...]:
             WriterBranchProofSource(
                 address.phase,
                 address.direction_mark,
-                facts,
-                options,
-                prepared,
+                context,
                 snapshot,
                 support,
             )
@@ -377,8 +372,13 @@ def first_terminal_proof_source(
     *,
     policy: SmilesPolicy | None = None,
 ) -> WriterTerminalProofSource:
-    prepared = prepare_writer_facts(facts, policy=policy)
-    snapshot = initial_writer_snapshot(prepared, runtime_options)
+    context = writer_test_context(
+        facts,
+        runtime_options=runtime_options,
+        policy=policy,
+    )
+    prepared = context.prepared
+    snapshot = context.initial_snapshot
     for depth in range(256):
         batch = _checked_writer_frontier_branch_supports(
             prepared,
@@ -389,7 +389,7 @@ def first_terminal_proof_source(
         )
         if batch.terminal_supports:
             return WriterTerminalProofSource(
-                facts, runtime_options, prepared, snapshot, batch.terminal_supports[0], policy
+                context, snapshot, batch.terminal_supports[0]
             )
         if not batch.supports:
             raise AssertionError("frontier batch is neither terminal nor branch-advancing")

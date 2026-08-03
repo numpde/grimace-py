@@ -6,6 +6,7 @@ import unittest
 from unittest.mock import patch
 
 from tests.south_star1.helpers import cco_facts
+from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from tests.south_star1.writer_proof_sources import (
     SHARED_RING_BRANCH_SOURCE_ADDRESSES,
     SharedRingBranchSourceAddress,
@@ -75,7 +76,7 @@ class WriterProofSourcesTest(unittest.TestCase):
                 address.target_successor_cursor_digest,
             )
             artifact = writer_branch_transition_artifact_for_support(
-                prepared=source.prepared,
+                prepared=source.context.prepared,
                 snapshot=source.snapshot,
                 support=source.support,
             )
@@ -128,11 +129,11 @@ class WriterProofSourcesTest(unittest.TestCase):
     def test_terminal_selector_preserves_supplied_context(self) -> None:
         options = writer_runtime_options(rooted_at_atom=0)
         facts = cco_facts()
-        policy = None
+        policy = ordinary_policy_for_facts(facts)
         source = first_terminal_proof_source(facts, options, policy=policy)
-        self.assertEqual(source.facts, facts)
-        self.assertIs(source.runtime_options, options)
-        self.assertEqual(source.policy, policy)
+        self.assertEqual(source.context.prepared.facts, facts)
+        self.assertIs(source.context.runtime_options, options)
+        self.assertIs(source.context.prepared.policy, policy)
         self.assertEqual(source.snapshot.decoder_boundary.consumed_token_count, 3)
         self.assertIsNotNone(source.support)
 

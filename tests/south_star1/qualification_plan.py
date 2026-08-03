@@ -11,6 +11,7 @@ from tests.south_star1.default_writer_capability_ledger import (
     BLOCKED_DEFAULT_WRITER_CAPABILITY_CASES,
     DefaultWriterCapabilityCase,
     QualificationAuthority,
+    default_writer_capability_case,
 )
 
 PUBLIC_PROOF_SHARD_COUNT = 4
@@ -213,13 +214,6 @@ CONTINUATION_PROOF_QUALIFIED_CASES = tuple(case for case in ACCEPTED_DEFAULT_WRI
 _SELECTED_SLOW_CASES: ContextVar[tuple[DefaultWriterCapabilityCase, ...] | None] = ContextVar("south_star1_selected_slow_cases", default=None)
 
 
-def case_by_name(name: str) -> DefaultWriterCapabilityCase:
-    for case in ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES:
-        if case.name == name:
-            return case
-    raise ValueError(f"unknown accepted writer case: {name!r}")
-
-
 def slow_cases_for_shard(name: str) -> tuple[DefaultWriterCapabilityCase, ...]:
     try:
         names = SLOW_QUALIFICATION_SHARDS[name].case_names
@@ -264,7 +258,7 @@ def validate_qualification_plan() -> None:
         if any(SLOW_QUALIFICATION_LAYERS[layer].kind != "product" for layer in shard.product_layers):
             raise ValueError(f"diagnostic layer in product plan {shard.name}")
         authorities = {
-            case_by_name(name).qualification_authority for name in shard.case_names
+            default_writer_capability_case(name).qualification_authority for name in shard.case_names
         }
         if authorities != {shard.qualification_authority}:
             raise ValueError(f"wrong authority in shard {shard.name}")
@@ -285,6 +279,6 @@ def validate_qualification_plan() -> None:
     if set(case.name for case in FAST_ACCEPTED_CASES) | set(SLOW_COUPLED_CASE_NAMES) != accepted:
         raise ValueError("fast and slow accepted cases are incomplete")
     for shard in _SHARD_DEFINITIONS:
-        authorities = {case_by_name(name).qualification_authority for name in shard.case_names}
+        authorities = {default_writer_capability_case(name).qualification_authority for name in shard.case_names}
     if set(case.name for case in MATERIALIZED_ARTIFACT_QUALIFIED_CASES) & set(case.name for case in CONTINUATION_PROOF_QUALIFIED_CASES):
         raise ValueError("qualification authorities overlap")

@@ -24,9 +24,9 @@ from grimace._south_star1.writer_support_artifact_fact_verifier import (
     verify_writer_support_artifact_for_facts,
 )
 from tests.south_star1.qualification_plan import (
-    case_by_name,
     selected_slow_qualification_cases,
 )
+from tests.south_star1.default_writer_capability_ledger import default_writer_capability_case
 from tests.south_star1.slow_qualification_assets import (
     build_slow_count_envelope,
     build_slow_support_artifact,
@@ -102,7 +102,7 @@ class SlowSupportArtifactQualificationTest(unittest.TestCase):
                 assert_offline_case_matches_ledger(self, case=case, verification=result)
 
     def test_cached_count_composition_is_producer_free_for_small_case(self):
-        case = case_by_name("ethanol")
+        case = default_writer_capability_case("ethanol")
         with TemporaryDirectory() as directory:
             previous = os.environ.get("SOUTH_STAR1_SLOW_ASSET_ROOT")
             os.environ["SOUTH_STAR1_SLOW_ASSET_ROOT"] = directory
@@ -135,7 +135,7 @@ class SlowSupportArtifactQualificationTest(unittest.TestCase):
                     os.environ["SOUTH_STAR1_SLOW_ASSET_ROOT"] = previous
 
     def test_fresh_support_artifact_build_is_single_pass_for_small_case(self):
-        case = case_by_name("ethanol")
+        case = default_writer_capability_case("ethanol")
         import tests.south_star1.slow_qualification_assets as cache
 
         with TemporaryDirectory() as directory:
@@ -168,7 +168,7 @@ class SlowSupportArtifactQualificationTest(unittest.TestCase):
                     os.environ["SOUTH_STAR1_SLOW_ASSET_ROOT"] = previous
 
     def test_single_pass_artifact_matches_public_builder_for_small_case(self):
-        case = case_by_name("ethanol")
+        case = default_writer_capability_case("ethanol")
 
         with TemporaryDirectory() as directory:
             previous = os.environ.get("SOUTH_STAR1_SLOW_ASSET_ROOT")

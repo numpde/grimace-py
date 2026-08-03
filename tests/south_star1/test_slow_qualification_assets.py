@@ -15,12 +15,12 @@ from tests.south_star1.qualification_cache import (
     qualification_cache_context,
     qualification_cache_paths,
 )
-from tests.south_star1.qualification_plan import case_by_name
+from tests.south_star1.default_writer_capability_ledger import default_writer_capability_case
 
 
 class SlowQualificationAssetsTest(unittest.TestCase):
     def setUp(self) -> None:
-        self.case = case_by_name("ethanol")
+        self.case = default_writer_capability_case("ethanol")
 
     def test_absent_and_mismatched_metadata_fail_before_replay(self) -> None:
         with TemporaryDirectory() as directory, patch.dict(

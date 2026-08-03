@@ -9,7 +9,7 @@ from unittest.mock import patch
 from rdkit import rdBase
 
 from tests.helpers.rdkit_south_star_stereo_audit import load_pinned_south_star_stereo_audit_cases
-from tests.south_star1.qualification_plan import case_by_name
+from tests.south_star1.default_writer_capability_ledger import default_writer_capability_case
 from tests.south_star1.qualification_plan import PUBLIC_PROOF_SHARD_COUNT
 from tests.south_star1.qualification_support import (
     PublicProofCursorTargets,
@@ -65,7 +65,7 @@ class QualificationSupportTest(unittest.TestCase):
             partition_public_proof_targets((group,))
 
     def test_pinned_support_digests(self) -> None:
-        ethanol = case_by_name("ethanol")
+        ethanol = default_writer_capability_case("ethanol")
         self.assertEqual(
             support_strings_digest(tuple(sorted(support_image_for_case(ethanol).strings))),
             ethanol.expected_support_digest,
@@ -79,7 +79,7 @@ class QualificationSupportTest(unittest.TestCase):
             side_effect=AssertionError("continuation fixture must not materialize support"),
         ):
             for name in ("zero_h_tetrahedral", "remote_coupled_tetrahedral_a", "remote_coupled_tetrahedral_b"):
-                case = case_by_name(name)
+                case = default_writer_capability_case(name)
                 with self.subTest(case=name):
                     self.assertEqual(
                         support_strings_digest(fixtures[name].expected_support),

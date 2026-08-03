@@ -130,7 +130,7 @@ def closed_term_digest(
     operation: str,
     budget: WriterEnvelopeWorkBudget | None = None,
 ) -> str:
-    return _digest_terms_bounded(term, budget=_budget(budget), operation=operation)
+    return _identity_digest(term, budget=_budget(budget), operation=operation)
 
 
 def refresh_closed_term_digest_field(
@@ -152,13 +152,13 @@ def refresh_cursor_digest(
     operation: str,
     budget: WriterEnvelopeWorkBudget | None = None,
 ) -> str:
-    return refresh_closed_term_digest_field(
-        cursor,
-        term_field="terms",
-        digest_field="digest",
+    digest = _digest_terms_bounded(
+        cursor["terms"],
+        budget=_budget(budget),
         operation=operation,
-        budget=budget,
     )
+    cursor["digest"] = digest
+    return digest
 
 
 def refresh_kind_manifest_digest(

@@ -4,6 +4,7 @@ from copy import deepcopy
 import unittest
 
 from grimace._south_star1.writer_envelope_terms import _digest_terms_bounded
+from grimace._south_star1.writer_envelope_terms import _identity_digest
 from grimace._south_star1.writer_envelope_work import WriterEnvelopeWorkBudget
 from tests.south_star1.writer_artifact_test_support import artifact_object_by_id
 from tests.south_star1.writer_artifact_test_support import artifact_objects_by_kind
@@ -50,7 +51,7 @@ class WriterArtifactTestSupportTest(unittest.TestCase):
     def test_digest_refreshes_match_direct_terms_and_only_declared_fields(self):
         term = {"fields": [["a", 1]]}
         container = {"terms": deepcopy(term), "digest": "old", "other": "unchanged"}
-        expected = _digest_terms_bounded(term, budget=WriterEnvelopeWorkBudget(), operation="test.direct")
+        expected = _identity_digest(term, budget=WriterEnvelopeWorkBudget(), operation="test.direct")
         self.assertEqual(
             refresh_closed_term_digest_field(
                 container,
@@ -68,4 +69,4 @@ class WriterArtifactTestSupportTest(unittest.TestCase):
         digest = refresh_kind_manifest_digest(manifest, operation="test.manifest")
         self.assertEqual(manifest["digest"], digest)
         self.assertEqual(manifest["other"], 2)
-        self.assertEqual(closed_term_digest(term, operation="test.term"), _digest_terms_bounded(term, budget=WriterEnvelopeWorkBudget(), operation="test.term"))
+        self.assertEqual(closed_term_digest(term, operation="test.term"), _identity_digest(term, budget=WriterEnvelopeWorkBudget(), operation="test.term"))

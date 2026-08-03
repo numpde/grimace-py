@@ -15,6 +15,7 @@ from grimace._south_star1.writer_frontier import _checked_writer_frontier_branch
 from grimace._south_star1.writer_branch_transition_artifact import (
     writer_branch_transition_artifact_for_support,
 )
+from grimace._south_star1.writer_envelope_terms import _identity_digest
 from grimace._south_star1.writer_events import WriterRingEndpointEmitted, WriterRingEndpointPaired
 from grimace._south_star1.writer_snapshot import (
     WriterDecoderBoundary,
@@ -113,7 +114,7 @@ SHARED_RING_BRANCH_SOURCE_ADDRESSES = (
             "b6447a14910df9d2ac8b5b7da9ee218f2f01b67e88599531e1bce3bf9dd88042",
             "4b97d122eabc344eb657b28200e318bdb6d930f635ef6fbf3e49cfd838ab3e6f",
             "fb093ad1635529096aaf89c0ca99998cd70fe1f2067262797c6b48de06434cb7",
-            "f56e6ae3e2bfa4ed522b3bf45ef96242d0b6f739e5a1ef9275dfacec5b8373db",
+            "f56e6ae3e2bfa4ed522b3bf45ef96242b0d6f739e5a1ef9275dfacec5b8373db",
             "5c401fe9ae156023bc2acef36190b18161eac89f6fd158a7e0f3c5e0c63cf79e",
             "ae4ed72124a6f1c9c67a23f335e28455f864fb7558fbcd139c4796e36b61bfd5",
             "8da955ed77dcf26a4bdf1166d3aabd0316b6ec2ba92ccd5bf71ec238196c13f6",
@@ -213,8 +214,6 @@ def validate_shared_ring_branch_source_addresses(
     target_digests = set()
     for address in addresses:
         digests = address.predecessor_branch_certificate_digests
-        if not digests:
-            raise ValueError("shared-ring source address path cannot be empty")
         for digest in (*digests, address.source_cursor_digest,
                        address.target_branch_certificate_digest,
                        address.target_successor_cursor_digest,
@@ -251,50 +250,115 @@ class WriterTerminalProofSource:
 
 @lru_cache(maxsize=1)
 def shared_ring_branch_sources() -> tuple[WriterBranchProofSource, ...]:
+    validate_shared_ring_branch_source_addresses()
     facts = shared_directional_ring_carrier_facts()
     options = writer_runtime_options(rooted_at_atom=1)
     prepared = prepare_writer_facts(facts)
     initial = initial_writer_snapshot(prepared, options)
-    pending = [(initial.cursor, 0)]
-    seen = set()
-    found = {}
-    while pending and len(found) < 6:
-        cursor, depth = pending.pop()
-        key = repr(cursor)
-        if key in seen:
-            continue
-        seen.add(key)
-        batch = _checked_writer_frontier_branch_supports(
-            prepared,
-            cursor,
-            include_counts=False,
-            include_frontier_certificate=True,
-            include_count_certificate=False,
-        )
+    batch_by_cursor_digest = {}
+    cursor_by_prefix = {(): initial.cursor}
+
+    def checked_batch(cursor):
+        cursor_digest = _identity_digest(cursor)
+        if cursor_digest not in batch_by_cursor_digest:
+            batch_by_cursor_digest[cursor_digest] = _checked_writer_frontier_branch_supports(
+                prepared,
+                cursor,
+                include_counts=False,
+                include_frontier_certificate=True,
+                include_count_certificate=False,
+            )
+        return batch_by_cursor_digest[cursor_digest]
+
+    sources = []
+    for address in SHARED_RING_BRANCH_SOURCE_ADDRESSES:
+        prefix = ()
+        for certificate_digest in address.predecessor_branch_certificate_digests:
+            next_prefix = prefix + (certificate_digest,)
+            if next_prefix not in cursor_by_prefix:
+                cursor = cursor_by_prefix[prefix]
+                matches = [
+                    support
+                    for support in checked_batch(cursor).supports
+                    if support.checked_branch_certificate is not None
+                    and _identity_digest(support.checked_branch_certificate)
+                    == certificate_digest
+                ]
+                if len(matches) != 1:
+                    raise AssertionError(
+                        "shared-ring replay predecessor certificate is not unique: "
+                        f"{address.phase}/{address.direction_mark.name} "
+                        f"prefix={len(next_prefix)} matches={len(matches)} "
+                        f"digest={certificate_digest}"
+                    )
+                cursor_by_prefix[next_prefix] = matches[0].successor_cursor
+            prefix = next_prefix
+        source_cursor = cursor_by_prefix[prefix]
+        if _identity_digest(source_cursor) != address.source_cursor_digest:
+            raise AssertionError("shared-ring replay source cursor digest mismatch")
+        target_matches = [
+            support
+            for support in checked_batch(source_cursor).supports
+            if support.checked_branch_certificate is not None
+            and _identity_digest(support.checked_branch_certificate)
+            == address.target_branch_certificate_digest
+        ]
+        if len(target_matches) != 1:
+            raise AssertionError("shared-ring replay target certificate is not unique")
+        support = target_matches[0]
+        if support.emitted_text != address.target_emitted_text:
+            raise AssertionError("shared-ring replay emitted text mismatch")
+        if _identity_digest(support.successor_cursor) != address.target_successor_cursor_digest:
+            raise AssertionError("shared-ring replay successor cursor digest mismatch")
+        matching_events = [
+            event
+            for event in support.events
+            if (
+                address.phase == "opening"
+                and isinstance(event, WriterRingEndpointEmitted)
+                and event.bond == BondId(1)
+                and event.direction_mark is address.direction_mark
+            )
+            or (
+                address.phase == "pair"
+                and isinstance(event, WriterRingEndpointPaired)
+                and event.bond == BondId(1)
+                and event.first_endpoint_direction_mark is address.direction_mark
+            )
+        ]
+        if len(matching_events) != 1:
+            raise AssertionError("shared-ring replay target event is not unique")
         snapshot = (
-            initial_writer_snapshot(prepared, options)
-            if depth == 0
+            initial
+            if not address.predecessor_branch_certificate_digests
             else capture_writer_frontier_snapshot(
                 prepared=prepared,
                 runtime_options=options,
-                cursor=cursor,
-                decoder_boundary=WriterDecoderBoundary(consumed_token_count=depth),
+                cursor=source_cursor,
+                decoder_boundary=WriterDecoderBoundary(
+                    consumed_token_count=len(address.predecessor_branch_certificate_digests)
+                ),
             )
         )
-        for support in batch.supports:
-            for event in support.events:
-                if isinstance(event, WriterRingEndpointEmitted) and event.bond == BondId(1):
-                    found.setdefault(("opening", event.direction_mark), (facts, options, prepared, snapshot, support))
-                if isinstance(event, WriterRingEndpointPaired) and event.bond == BondId(1):
-                    found.setdefault(("pair", event.first_endpoint_direction_mark), (facts, options, prepared, snapshot, support))
-            pending.append((support.successor_cursor, depth + 1))
-    if len(found) != 6:
-        raise AssertionError(f"missing shared-ring branch sources: {sorted(found)}")
-    return tuple(
-        WriterBranchProofSource(phase, mark, *found[(phase, mark)])
-        for phase in ("opening", "pair")
-        for mark in sorted(DirectionMark, key=lambda item: item.value)
-    )
+        artifact = writer_branch_transition_artifact_for_support(
+            prepared=prepared,
+            snapshot=snapshot,
+            support=support,
+        )
+        if artifact["digest"] != address.expected_branch_artifact_digest:
+            raise AssertionError("shared-ring replay branch artifact digest mismatch")
+        sources.append(
+            WriterBranchProofSource(
+                address.phase,
+                address.direction_mark,
+                facts,
+                options,
+                prepared,
+                snapshot,
+                support,
+            )
+        )
+    return tuple(sources)
 
 
 def shared_ring_branch_source(
@@ -315,8 +379,6 @@ def first_terminal_proof_source(
 ) -> WriterTerminalProofSource:
     prepared = prepare_writer_facts(facts, policy=policy)
     snapshot = initial_writer_snapshot(prepared, runtime_options)
-    from grimace._south_star1.writer_snapshot import capture_writer_frontier_snapshot
-
     for depth in range(256):
         batch = _checked_writer_frontier_branch_supports(
             prepared,
@@ -329,6 +391,8 @@ def first_terminal_proof_source(
             return WriterTerminalProofSource(
                 facts, runtime_options, prepared, snapshot, batch.terminal_supports[0], policy
             )
+        if not batch.supports:
+            raise AssertionError("frontier batch is neither terminal nor branch-advancing")
         support = batch.supports[0]
         snapshot = capture_writer_frontier_snapshot(
             prepared=prepared,

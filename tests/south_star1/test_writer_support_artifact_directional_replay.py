@@ -11,14 +11,14 @@ def _selected(name: str) -> bool:
         "test_non_single_directional_ring_root_zero_artifact_replays_completely",
     }:
         return False
+    if name.endswith("coherent_forgeries_are_rejected") or name.endswith(
+        "coherent_forgeries_reject_semantically"
+    ):
+        return False
     return name.startswith((
         "test_reduced_directional_ring_",
         "test_directional_ring_pair_",
         "test_directional_ring_opening_",
-        "test_directional_rooted_",
-        "test_shared_acyclic_directional_",
-        "test_shared_ring_carrier_",
-        "test_directional_carrier_",
     ))
 
 

@@ -1,4 +1,4 @@
-.PHONY: rebuild-south-star1 test-south-star1-fast test-south-star1-slow-one test-south-star1-slow-shard test-south-star1-slow qualify-south-star1 slow-south-star1
+.PHONY: rebuild-south-star1 test-south-star1-fast test-south-star1-slow-one test-south-star1-slow-shard test-south-star1-slow test-south-star1-support-artifact-one test-south-star1-support-artifact qualify-south-star1 slow-south-star1
 
 PYTHON ?= python3
 MATURIN ?= $(dir $(PYTHON))maturin
@@ -21,6 +21,12 @@ test-south-star1-slow-shard:
 
 test-south-star1-slow:
 	SOUTH_STAR1_RUN_SLOW=1 SOUTH_STAR1_SLOW_ASSET_ROOT=$(SLOW_ASSET_ROOT) PYTHONPATH=python:. $(PYTHON) -m tests.run_south_star1_slow --run-all-product
+
+test-south-star1-support-artifact-one:
+	PYTHONPATH=python:. $(PYTHON) -m tests.run_writer_support_artifact_tests --domain $(SUPPORT_ARTIFACT_DOMAIN)
+
+test-south-star1-support-artifact:
+	PYTHONPATH=python:. $(PYTHON) -m tests.run_writer_support_artifact_tests --all
 
 qualify-south-star1:
 	$(MAKE) rebuild-south-star1 PYTHON="$(PYTHON)"

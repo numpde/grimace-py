@@ -5,6 +5,9 @@ import unittest
 from tests.south_star1.writer_support_artifact_domain_methods import WriterSupportArtifactDomainMethods
 
 
+SLOW_RUN_ENV = "SOUTH_STAR1_RUN_SLOW"
+
+
 class WriterSupportArtifactSlowTest(unittest.TestCase):
     test_directional_ring_carrier_root_zero_artifact_builds_with_default_budget = getattr(
         WriterSupportArtifactDomainMethods,

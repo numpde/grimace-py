@@ -5,6 +5,7 @@ from __future__ import annotations
 from tests.south_star1.writer_test_context import initial_writer_snapshot
 from tests.south_star1.writer_test_context import prepare_writer_facts
 from tests.south_star1.writer_test_context import writer_runtime_options
+from tests.south_star1.writer_test_context import allow_direct_writer_context_construction
 
 import ast
 import contextlib
@@ -29167,6 +29168,7 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertIs(caught.exception.kind, SouthStarErrorKind.INVALID_FACTS)
 
+    @allow_direct_writer_context_construction("prepare", reason="directly exercises invalid preparation rejection at the writer boundary")
     def test_missing_writer_bond_domain_fails_closed(self) -> None:
         facts = chain_facts(("C", "C"))
         prepared = prepare_south_star_mol_from_facts(

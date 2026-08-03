@@ -5,6 +5,7 @@ from __future__ import annotations
 from tests.south_star1.writer_test_context import initial_writer_snapshot
 from tests.south_star1.writer_test_context import prepare_writer_facts
 from tests.south_star1.writer_test_context import writer_runtime_options
+from tests.south_star1.writer_test_context import allow_direct_writer_context_construction
 
 from dataclasses import replace
 import inspect
@@ -140,6 +141,7 @@ class WriterSnapshotTest(unittest.TestCase):
             count_writer_cursor_completions(prepared, cursor),
         )
 
+    @allow_direct_writer_context_construction("snapshot", reason="directly exercises capture_writer_frontier_snapshot and its certificate boundary")
     def test_snapshot_advance_emits_step_certificate(self) -> None:
         prepared = prepare_writer_facts(cco_facts())
         options = writer_runtime_options()
@@ -177,6 +179,7 @@ class WriterSnapshotTest(unittest.TestCase):
         )
         self.assertTrue(certificate.branch_certificates)
 
+    @allow_direct_writer_context_construction("snapshot", reason="directly exercises capture_writer_frontier_snapshot and its certificate boundary")
     def test_snapshot_advance_outcome_carries_product_projection_identity(
         self,
     ) -> None:
@@ -211,6 +214,7 @@ class WriterSnapshotTest(unittest.TestCase):
             emitted_text,
         )
 
+    @allow_direct_writer_context_construction("snapshot", reason="directly exercises capture_writer_frontier_snapshot and its certificate boundary")
     def test_snapshot_advance_invalid_text_has_no_projection_match(self) -> None:
         prepared = prepare_writer_facts(cco_facts())
         options = writer_runtime_options()
@@ -239,6 +243,7 @@ class WriterSnapshotTest(unittest.TestCase):
         self.assertTrue(outcome.invalid_emitted_text)
         self.assertIsNotNone(outcome.invalid_text_certificate)
 
+    @allow_direct_writer_context_construction("snapshot", reason="directly exercises capture_writer_frontier_snapshot and its certificate boundary")
     def test_snapshot_replay_sequence_invalid_text_carries_certificate(
         self,
     ) -> None:
@@ -260,6 +265,7 @@ class WriterSnapshotTest(unittest.TestCase):
         self.assertIsNotNone(sequence.failed_outcome)
         self.assertIsNotNone(sequence.failed_outcome.invalid_text_certificate)
 
+    @allow_direct_writer_context_construction("snapshot", reason="directly exercises capture_writer_frontier_snapshot and its certificate boundary")
     def test_snapshot_advance_invalid_text_certificate_rejects_match(
         self,
     ) -> None:
@@ -291,6 +297,7 @@ class WriterSnapshotTest(unittest.TestCase):
                 ),
             )
 
+    @allow_direct_writer_context_construction("snapshot", reason="directly exercises capture_writer_frontier_snapshot and its certificate boundary")
     def test_snapshot_advance_returns_blocked_product_for_unsupported_capability(
         self,
     ) -> None:
@@ -337,6 +344,7 @@ class WriterSnapshotTest(unittest.TestCase):
         self.assertIsNotNone(outcome.blocked_frontier_certificate)
         self.assertIsNotNone(outcome.blocked_advance_certificate)
 
+    @allow_direct_writer_context_construction("snapshot", reason="directly exercises capture_writer_frontier_snapshot and its certificate boundary")
     def test_snapshot_advance_blocked_error_does_not_delegate_to_choice_snapshot_blockers(
         self,
     ) -> None:
@@ -388,6 +396,7 @@ class WriterSnapshotTest(unittest.TestCase):
             ):
                 _raise_for_writer_snapshot_advance_outcome_errors(outcome)
 
+    @allow_direct_writer_context_construction("snapshot", reason="directly exercises capture_writer_frontier_snapshot and its certificate boundary")
     def test_snapshot_blocked_advance_certificate_rejects_cursor_mismatch(
         self,
     ) -> None:
@@ -451,6 +460,7 @@ class WriterSnapshotTest(unittest.TestCase):
                 ),
             )
 
+    @allow_direct_writer_context_construction("snapshot", reason="directly exercises capture_writer_frontier_snapshot and its certificate boundary")
     def test_snapshot_advance_successor_cursor_comes_from_text_projection_certificate(
         self,
     ) -> None:
@@ -497,6 +507,7 @@ class WriterSnapshotTest(unittest.TestCase):
             source,
         )
 
+    @allow_direct_writer_context_construction("snapshot", reason="directly exercises capture_writer_frontier_snapshot and its certificate boundary")
     def test_snapshot_advance_outcome_rejects_stale_step_projection(
         self,
     ) -> None:
@@ -540,6 +551,7 @@ class WriterSnapshotTest(unittest.TestCase):
                 text_projection_certificate=outcome.text_projection_certificate,
             )
 
+    @allow_direct_writer_context_construction("snapshot", reason="directly exercises capture_writer_frontier_snapshot and its certificate boundary")
     def test_snapshot_replay_sequence_rejects_projection_chain_mismatch(
         self,
     ) -> None:
@@ -587,6 +599,7 @@ class WriterSnapshotTest(unittest.TestCase):
                 replay_certificate=sequence.replay_certificate,
             )
 
+    @allow_direct_writer_context_construction("snapshot", reason="directly exercises capture_writer_frontier_snapshot and its certificate boundary")
     def test_snapshot_replay_certificate_tracks_prefix_steps(self) -> None:
         prepared = prepare_writer_facts(cco_facts())
         options = writer_runtime_options()
@@ -642,6 +655,7 @@ class WriterSnapshotTest(unittest.TestCase):
                 )
             )
 
+    @allow_direct_writer_context_construction("snapshot", reason="directly exercises capture_writer_frontier_snapshot and its certificate boundary")
     def test_empty_snapshot_replay_has_empty_certificate(self) -> None:
         prepared = prepare_writer_facts(cco_facts())
         options = writer_runtime_options()
@@ -662,6 +676,7 @@ class WriterSnapshotTest(unittest.TestCase):
         self.assertEqual(certificate.step_certificates, ())
         self.assertEqual(certificate.final_snapshot, snapshot)
 
+    @allow_direct_writer_context_construction("snapshot", reason="directly exercises capture_writer_frontier_snapshot and its certificate boundary")
     def test_prefix_read_exposes_replay_certificate(self) -> None:
         prepared = prepare_writer_facts(cco_facts())
         options = writer_runtime_options()
@@ -692,6 +707,7 @@ class WriterSnapshotTest(unittest.TestCase):
             outcome.replay_certificate.step_certificates,
         )
 
+    @allow_direct_writer_context_construction("snapshot", reason="directly exercises capture_writer_frontier_snapshot and its certificate boundary")
     def test_prefix_read_certificate_binds_final_frontier_counts(self) -> None:
         prepared = prepare_writer_facts(cco_facts())
         options = writer_runtime_options()
@@ -730,6 +746,7 @@ class WriterSnapshotTest(unittest.TestCase):
             prefix.frontier_product.projection_certificate,
         )
 
+    @allow_direct_writer_context_construction("snapshot", reason="directly exercises capture_writer_frontier_snapshot and its certificate boundary")
     def test_prefix_read_certificate_binds_replay_final_snapshot(self) -> None:
         prepared = prepare_writer_facts(cco_facts())
         options = writer_runtime_options()
@@ -760,6 +777,7 @@ class WriterSnapshotTest(unittest.TestCase):
             prefix.final_snapshot.cursor,
         )
 
+    @allow_direct_writer_context_construction("snapshot", reason="directly exercises capture_writer_frontier_snapshot and its certificate boundary")
     def test_prefix_read_certificate_rejects_replay_final_snapshot_mismatch(
         self,
     ) -> None:
@@ -797,6 +815,7 @@ class WriterSnapshotTest(unittest.TestCase):
                 final_frontier_product=prefix.frontier_product,
             )
 
+    @allow_direct_writer_context_construction("snapshot", reason="directly exercises capture_writer_frontier_snapshot and its certificate boundary")
     def test_invalid_snapshot_advance_has_no_step_certificate(self) -> None:
         prepared = prepare_writer_facts(cco_facts())
         options = writer_runtime_options()
@@ -815,6 +834,7 @@ class WriterSnapshotTest(unittest.TestCase):
         self.assertTrue(outcome.invalid_emitted_text)
         self.assertIsNone(outcome.step_certificate)
 
+    @allow_direct_writer_context_construction("snapshot", reason="directly exercises capture_writer_frontier_snapshot and its certificate boundary")
     def test_snapshot_step_certificate_rejects_malformed_inputs(self) -> None:
         prepared = prepare_writer_facts(cco_facts())
         options = writer_runtime_options()
@@ -895,6 +915,7 @@ class WriterSnapshotTest(unittest.TestCase):
                 advanced_snapshot=outcome.advanced_snapshot,
             )
 
+    @allow_direct_writer_context_construction("snapshot", reason="directly exercises capture_writer_frontier_snapshot and its certificate boundary")
     def test_snapshot_replay_certificate_rejects_malformed_inputs(self) -> None:
         prepared = prepare_writer_facts(cco_facts())
         options = writer_runtime_options()

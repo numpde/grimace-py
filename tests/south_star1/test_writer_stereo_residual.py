@@ -106,6 +106,7 @@ from tests.south_star1.helpers import single_bond
 from tests.south_star1.helpers import tetrahedral_facts
 from tests.south_star1.writer_test_context import prepare_writer_facts
 from tests.south_star1.writer_test_context import writer_runtime_options
+from tests.south_star1.writer_test_context import allow_direct_writer_context_construction
 from tests.south_star1.writer_test_fixtures import directional_non_single_ring_carrier_facts
 from tests.south_star1.writer_test_fixtures import directional_ring_carrier_facts
 from tests.south_star1.writer_test_fixtures import shared_directional_ring_carrier_facts
@@ -1744,6 +1745,7 @@ class WriterStereoResidualTest(unittest.TestCase):
         )
         self.assertEqual({choice.base_text for choice in ring_choices}, {"", "="})
 
+    @allow_direct_writer_context_construction("snapshot", reason="directly exercises capture_writer_frontier_snapshot and its certificate boundary")
     def test_joint_directional_non_single_ring_carrier_support_is_certified(
         self,
     ) -> None:

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import wraps
+from typing import Literal
 
 from grimace._south_star1.facts import MoleculeFacts
 from grimace._south_star1.policy import SerializationLanguageMode, SmilesPolicy
@@ -17,6 +19,42 @@ from grimace._south_star1.writer_snapshot import (
     WriterSearchSnapshot,
     capture_writer_frontier_snapshot,
 )
+
+DirectWriterContextOperation = Literal["options", "prepare", "snapshot"]
+
+
+@dataclass(frozen=True, slots=True)
+class DirectWriterContextAllowance:
+    operations: tuple[DirectWriterContextOperation, ...]
+    reason: str
+
+
+_DIRECT_WRITER_CONTEXT_ALLOWANCE = "__direct_writer_context_allowance__"
+
+
+def allow_direct_writer_context_construction(
+    *operations: DirectWriterContextOperation,
+    reason: str,
+):
+    if not operations:
+        raise ValueError("at least one direct writer-context operation is required")
+    if len(set(operations)) != len(operations):
+        raise ValueError("direct writer-context operations must be unique")
+    if any(operation not in {"options", "prepare", "snapshot"} for operation in operations):
+        raise ValueError("unknown direct writer-context operation")
+    if not reason.strip():
+        raise ValueError("direct writer-context allowance requires a reason")
+    allowance = DirectWriterContextAllowance(tuple(operations), reason)
+
+    def decorate(function):
+        @wraps(function)
+        def wrapped(*args, **kwargs):
+            return function(*args, **kwargs)
+
+        setattr(wrapped, _DIRECT_WRITER_CONTEXT_ALLOWANCE, allowance)
+        return wrapped
+
+    return decorate
 
 
 def writer_runtime_options(*, rooted_at_atom: int = -1) -> SouthStarRuntimeOptions:
@@ -81,6 +119,8 @@ def writer_test_context(
 
 __all__ = (
     "WriterTestContext",
+    "DirectWriterContextAllowance",
+    "allow_direct_writer_context_construction",
     "initial_writer_snapshot",
     "prepare_writer_facts",
     "writer_runtime_options",

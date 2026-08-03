@@ -18,9 +18,6 @@ from grimace._south_star1.prepared_runtime import component_root_domains_for_pre
 from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_rdkit
 from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_smiles
 from grimace._south_star1.writer_branch_transition_artifact import (
-    branch_transition_artifact_manifest,
-)
-from grimace._south_star1.writer_branch_transition_artifact import (
     verify_writer_branch_transition_artifact_envelope,
 )
 from grimace._south_star1.writer_branch_transition_artifact import (
@@ -44,10 +41,6 @@ from grimace._south_star1.writer_envelope_terms import _identity_digest
 from grimace._south_star1.writer_envelope_work import WriterEnvelopeWorkBudget
 from grimace._south_star1.writer_snapshot import capture_writer_frontier_snapshot
 from grimace._south_star1.writer_support import enumerate_prepared_writer_shaped_support
-from grimace._south_star1.writer_support_artifact_checker import artifact_metrics
-from grimace._south_star1.writer_support_artifact_checker import (
-    support_artifact_object_identity_term,
-)
 from tests.helpers.rdkit_south_star_disconnected_audit import (
     load_pinned_south_star_disconnected_audit_cases,
 )
@@ -57,6 +50,7 @@ from tests.south_star1.writer_test_context import initial_writer_snapshot
 from tests.south_star1.default_writer_capability_ledger import (
     default_writer_cases_for_rdkit_audit,
 )
+from tests.south_star1.writer_artifact_resealing import reseal_branch_transition_artifact
 
 
 class WriterDisconnectedCompositionTest(unittest.TestCase):
@@ -193,7 +187,7 @@ class WriterDisconnectedCompositionTest(unittest.TestCase):
         delta["digest"] = _identity_digest(
             {"kind": delta["kind"], "manifest": delta["manifest"]}
         )
-        _redigest_branch_artifact(forged, branch)
+        reseal_branch_transition_artifact(forged)
 
         structural = verify_writer_branch_transition_artifact_consistency(forged)
         replay = verify_writer_branch_transition_artifact_for_facts(
@@ -233,7 +227,7 @@ class WriterDisconnectedCompositionTest(unittest.TestCase):
         ][0]
         for field in ("is_noop", "is_empty", "is_discharged", "terminal_clean"):
             lifecycle[field] = False
-        _redigest_branch_artifact(forged, branch)
+        reseal_branch_transition_artifact(forged)
 
         structural = verify_writer_branch_transition_artifact_consistency(forged)
         replay = verify_writer_branch_transition_artifact_for_facts(
@@ -276,7 +270,7 @@ class WriterDisconnectedCompositionTest(unittest.TestCase):
             "stereo_lifecycle"
         ][0]
         lifecycle["lifecycle_event_kind"] = "atom_emitted"
-        _redigest_branch_artifact(forged, branch)
+        reseal_branch_transition_artifact(forged)
 
         structural = verify_writer_branch_transition_artifact_consistency(forged)
         replay = verify_writer_branch_transition_artifact_for_facts(
@@ -316,7 +310,7 @@ class WriterDisconnectedCompositionTest(unittest.TestCase):
         delta["digest"] = _identity_digest(
             {"kind": delta["kind"], "manifest": delta["manifest"]}
         )
-        _redigest_branch_artifact(forged, branch)
+        reseal_branch_transition_artifact(forged)
 
         structural = verify_writer_branch_transition_artifact_consistency(forged)
         self.assertFalse(structural.accepted)
@@ -443,43 +437,6 @@ def _dot_supports(prepared, options):
             item.successor_cursor for item in batch.text_choice_projection_certificates
         )
     return tuple(found)
-
-
-def _redigest_branch_artifact(artifact, branch) -> None:
-    old_branch_ref = branch["object_id"]
-    branch_digest = _identity_digest(
-        support_artifact_object_identity_term(branch["kind"], branch["payload"])
-    )
-    branch["digest"] = branch_digest
-    branch["object_id"] = f"obj:{branch_digest}"
-    projection = next(
-        item for item in artifact["objects"] if item["kind"] == "text_projection"
-    )
-    projection["payload"]["branch_support_refs"] = [
-        branch["object_id"] if ref == old_branch_ref else ref
-        for ref in projection["payload"]["branch_support_refs"]
-    ]
-    old_projection_ref = projection["object_id"]
-    projection_digest = _identity_digest(
-        support_artifact_object_identity_term(
-            projection["kind"], projection["payload"]
-        )
-    )
-    projection["digest"] = projection_digest
-    projection["object_id"] = f"obj:{projection_digest}"
-    artifact["roots"]["branch_support_ref"] = branch["object_id"]
-    if artifact["roots"]["text_projection_ref"] == old_projection_ref:
-        artifact["roots"]["text_projection_ref"] = projection["object_id"]
-    artifact["metrics"] = {
-        **artifact_metrics(artifact["objects"]),
-        "reachable_object_count": 3,
-        "unreferenced_object_count": 0,
-    }
-    artifact["digest"] = _digest_terms_bounded(
-        branch_transition_artifact_manifest(artifact),
-        budget=WriterEnvelopeWorkBudget(),
-        operation="test.disconnected_branch_manifest.digest",
-    )
 
 
 if __name__ == "__main__":

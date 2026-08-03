@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import ast
 from copy import deepcopy
+from pathlib import Path
 import unittest
 from unittest.mock import patch
 
@@ -31,6 +33,37 @@ from tests.south_star1.writer_test_context import writer_runtime_options
 
 
 class WriterArtifactResealingTest(unittest.TestCase):
+    def test_migrated_modules_have_no_generic_resealing_helpers(self):
+        forbidden = {
+            "_object",
+            "_object_by_kind",
+            "_closed_field",
+            "_term_field",
+            "_set_closed_field",
+            "_set_term_field",
+            "_set_nested_closed_field",
+            "_redigest_branch_artifact",
+            "_redigest_terminal_artifact",
+            "_refresh_object_and_artifact_digest",
+            "_replace_artifact_ref",
+            "_refresh_artifact_digest",
+        }
+        root = Path(__file__).parent
+        modules = (
+            "test_writer_branch_transition_artifact.py",
+            "test_writer_terminalization_artifact.py",
+            "test_writer_support_artifact_fact_verifier.py",
+            "test_writer_disconnected_composition.py",
+        )
+        for name in modules:
+            tree = ast.parse((root / name).read_text(encoding="utf-8"))
+            definitions = {
+                node.name
+                for node in ast.walk(tree)
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            }
+            self.assertTrue(forbidden.isdisjoint(definitions), name)
+
     def _branch(self):
         source = shared_ring_branch_source("opening", DirectionMark.FWD)
         return deepcopy(

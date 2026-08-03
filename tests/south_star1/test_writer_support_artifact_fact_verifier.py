@@ -42,11 +42,6 @@ from grimace._south_star1.writer_snapshot_prefix_envelope import (
 )
 import grimace._south_star1.writer_stereo as writer_stereo_module
 import grimace._south_star1.writer_support_artifact_offline_verifier as offline_verifier_module
-from grimace._south_star1.writer_support_artifact_checker import artifact_manifest
-from grimace._south_star1.writer_support_artifact_checker import artifact_metrics
-from grimace._south_star1.writer_support_artifact_checker import (
-    support_artifact_object_identity_term,
-)
 from grimace._south_star1.writer_support_artifact_checker import (
     verify_writer_support_artifact_consistency,
 )
@@ -98,6 +93,17 @@ from grimace._south_star1.writer_support_artifact_envelope import (
 from tests.south_star1.helpers import cco_facts
 from tests.south_star1.helpers import directional_facts
 from tests.south_star1.helpers import shared_acyclic_directional_facts
+from tests.south_star1.writer_artifact_resealing import reseal_support_artifact
+from tests.south_star1.writer_artifact_test_support import artifact_object_by_id
+from tests.south_star1.writer_artifact_test_support import closed_term_digest
+from tests.south_star1.writer_artifact_test_support import closed_term_field
+from tests.south_star1.writer_artifact_test_support import set_closed_term_field
+from tests.south_star1.writer_artifact_test_support import refresh_cursor_digest
+from tests.south_star1.writer_artifact_test_support import refresh_closed_term_digest_field
+from tests.south_star1.writer_artifact_test_support import refresh_kind_manifest_digest
+from tests.south_star1.writer_test_context import initial_writer_snapshot
+from tests.south_star1.writer_test_context import prepare_writer_facts
+from tests.south_star1.writer_test_context import writer_runtime_options
 from tests.south_star1.helpers import tetrahedral_facts
 from tests.south_star1.writer_test_fixtures import (
     directional_non_single_ring_carrier_facts,
@@ -401,7 +407,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         branch = _first_graph_ring_delta_branch(artifact, "bond_advance")
         event = _first_graph_ring_delta_event(branch, "bond_emitted")
         event["bond"] = "missing"
-        _refresh_graph_ring_delta_digest(branch["payload"]["graph_ring_delta"])
+        refresh_kind_manifest_digest(branch["payload"]["graph_ring_delta"], operation="test.graph_ring_delta.digest")
 
         wrong_bond = _graph_ring_delta_verification(_rdkit_facts("CCO"), artifact)
 
@@ -412,7 +418,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         branch = _first_graph_ring_delta_branch(artifact, "atom_start")
         event = _first_graph_ring_delta_event(branch, "atom_emitted")
         event["atom"] = "missing"
-        _refresh_graph_ring_delta_digest(branch["payload"]["graph_ring_delta"])
+        refresh_kind_manifest_digest(branch["payload"]["graph_ring_delta"], operation="test.graph_ring_delta.digest")
 
         wrong_atom = _graph_ring_delta_verification(_rdkit_facts("CCO"), artifact)
 
@@ -426,7 +432,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         )
         event = _first_graph_ring_delta_event(branch, "ring_endpoint_paired")
         event["label"] = "wrong"
-        _refresh_graph_ring_delta_digest(branch["payload"]["graph_ring_delta"])
+        refresh_kind_manifest_digest(branch["payload"]["graph_ring_delta"], operation="test.graph_ring_delta.digest")
 
         wrong_label = _graph_ring_delta_verification(_rdkit_facts("C1=CC1"), artifact)
 
@@ -463,7 +469,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         branch = _first_directional_bond_delta_branch(artifact)
         event = _first_graph_ring_delta_event(branch, "bond_emitted")
         event["text"] = "="
-        _refresh_graph_ring_delta_digest(branch["payload"]["graph_ring_delta"])
+        refresh_kind_manifest_digest(branch["payload"]["graph_ring_delta"], operation="test.graph_ring_delta.digest")
 
         wrong_direction_text = _graph_ring_delta_verification(facts, artifact)
 
@@ -596,8 +602,8 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         self.assertTrue(manifests)
         snapshots = [
             (
-                _term_field(manifest["transition_term"], "source_snapshot"),
-                _term_field(manifest["transition_term"], "successor_snapshot"),
+                closed_term_field(manifest["transition_term"], "source_snapshot"),
+                closed_term_field(manifest["transition_term"], "successor_snapshot"),
             )
             for manifest in manifests
         ]
@@ -626,7 +632,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
                 self.assertEqual(verification.offline_unchecked_obligation_families, ())
                 branch, manifest = _ring_pair_branch_and_manifest(artifact)
                 self.assertEqual(
-                    _term_field(manifest["transition_term"], "first_endpoint_direction_mark")["value"],
+                    closed_term_field(manifest["transition_term"], "first_endpoint_direction_mark")["value"],
                     first_mark.value,
                 )
                 self.assertEqual(
@@ -711,11 +717,11 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         first = _directional_transition_manifest(artifact, bond=1)
         second = _directional_transition_manifest(artifact, bond=2)
         self.assertEqual(
-            [_term_field(key, "kind") for key in _term_field(first["transition_term"], "discharged_factor_keys")],
+            [closed_term_field(key, "kind") for key in closed_term_field(first["transition_term"], "discharged_factor_keys")],
             ["directional_bond_emission"],
         )
         self.assertEqual(
-            [_term_field(key, "kind") for key in _term_field(second["transition_term"], "discharged_factor_keys")],
+            [closed_term_field(key, "kind") for key in closed_term_field(second["transition_term"], "discharged_factor_keys")],
             ["directional_bond_emission", "directional_site"],
         )
 
@@ -746,12 +752,12 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         bond0 = _directional_transition_manifest(artifact, bond=0)
         bond2 = _directional_transition_manifest(artifact, bond=2)
         bond4 = _directional_transition_manifest(artifact, bond=4)
-        self.assertEqual(len(_term_field(bond0["transition_term"], "carrier_models")), 1)
-        self.assertEqual(len(_term_field(bond0["transition_term"], "restrictions")), 1)
-        self.assertEqual(len(_term_field(bond2["transition_term"], "carrier_models")), 2)
-        self.assertEqual(len(_term_field(bond2["transition_term"], "restrictions")), 2)
-        self.assertEqual(len(_term_field(bond4["transition_term"], "carrier_models")), 1)
-        self.assertEqual(len(_term_field(bond4["transition_term"], "restrictions")), 1)
+        self.assertEqual(len(closed_term_field(bond0["transition_term"], "carrier_models")), 1)
+        self.assertEqual(len(closed_term_field(bond0["transition_term"], "restrictions")), 1)
+        self.assertEqual(len(closed_term_field(bond2["transition_term"], "carrier_models")), 2)
+        self.assertEqual(len(closed_term_field(bond2["transition_term"], "restrictions")), 2)
+        self.assertEqual(len(closed_term_field(bond4["transition_term"], "carrier_models")), 1)
+        self.assertEqual(len(closed_term_field(bond4["transition_term"], "restrictions")), 1)
         self.assertEqual(
             _directional_discharge_key_pairs(bond0),
             (("directional_bond_emission", (0,)),),
@@ -1205,14 +1211,14 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             for item in branch["payload"]["obligation_manifests"]["residual_work"]
             if item["operation"] == "tetrahedral atom-token restriction"
         )
-        successor = _term_field(manifest["transition_term"], "successor_snapshot")
-        domains = _term_field(successor, "domains")
+        successor = closed_term_field(manifest["transition_term"], "successor_snapshot")
+        domains = closed_term_field(successor, "domains")
         token_domain = next(
             domain
             for var, domain in domains
-            if _term_field(var, "kind") == "tetra_token"
+            if closed_term_field(var, "kind") == "tetra_token"
         )
-        token = _term_field(manifest["transition_term"], "token")
+        token = closed_term_field(manifest["transition_term"], "token")
         wrong_value = "@" if token["value"] == "@@" else "@@"
         token_domain[:] = [
             {
@@ -1220,8 +1226,8 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
                 "value": wrong_value,
             }
         ]
-        successor_digest = _closed_term_digest(successor)
-        _set_term_field(
+        successor_digest = closed_term_digest(successor)
+        set_closed_term_field(
             manifest["transition_term"],
             "successor_snapshot_digest",
             successor_digest,
@@ -1232,8 +1238,8 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             field="successor_residual_snapshot_digest",
             digest=successor_digest,
         )
-        _refresh_transition_manifest_digest(manifest)
-        _refresh_object_and_artifact_digest(artifact, branch)
+        refresh_closed_term_digest_field(manifest, term_field="transition_term", digest_field="transition_digest", operation="test.transition.digest")
+        reseal_support_artifact(artifact)
         _assert_structural_checker_accepts(self, artifact)
 
         classification = _obligation_classification(artifact, facts=facts)
@@ -1257,12 +1263,12 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             for item in branch["payload"]["obligation_manifests"]["residual_work"]
             if item["operation"] == "tetrahedral local-order factor closure"
         )
-        target = _term_field(manifest["transition_term"], "target_parity")
+        target = closed_term_field(manifest["transition_term"], "target_parity")
         target["value"] = "odd" if target["value"] == "even" else "even"
-        constraint = _term_field(manifest["transition_term"], "constraint_value")
+        constraint = closed_term_field(manifest["transition_term"], "constraint_value")
         constraint["value"] = target["value"]
-        _refresh_transition_manifest_digest(manifest)
-        _refresh_object_and_artifact_digest(artifact, branch)
+        refresh_closed_term_digest_field(manifest, term_field="transition_term", digest_field="transition_digest", operation="test.transition.digest")
+        reseal_support_artifact(artifact)
         _assert_structural_checker_accepts(self, artifact)
 
         classification = _obligation_classification(artifact, facts=facts)
@@ -1286,10 +1292,10 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             for item in branch["payload"]["obligation_manifests"]["residual_work"]
             if item["operation"] == "tetrahedral local-order factor closure"
         )
-        reference_order = _term_field(manifest["transition_term"], "reference_order")
+        reference_order = closed_term_field(manifest["transition_term"], "reference_order")
         reference_order[:] = list(reversed(reference_order))
-        _refresh_transition_manifest_digest(manifest)
-        _refresh_object_and_artifact_digest(artifact, branch)
+        refresh_closed_term_digest_field(manifest, term_field="transition_term", digest_field="transition_digest", operation="test.transition.digest")
+        reseal_support_artifact(artifact)
         _assert_structural_checker_accepts(self, artifact)
 
         classification = _obligation_classification(artifact, facts=facts)
@@ -1313,10 +1319,10 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             for item in branch["payload"]["obligation_manifests"]["residual_work"]
             if item["operation"] == "tetrahedral local-order factor closure"
         )
-        local_order = _term_field(manifest["transition_term"], "local_order")
+        local_order = closed_term_field(manifest["transition_term"], "local_order")
         local_order[:] = list(reversed(local_order))
-        _refresh_transition_manifest_digest(manifest)
-        _refresh_object_and_artifact_digest(artifact, branch)
+        refresh_closed_term_digest_field(manifest, term_field="transition_term", digest_field="transition_digest", operation="test.transition.digest")
+        reseal_support_artifact(artifact)
         _assert_structural_checker_accepts(self, artifact)
 
         classification = _obligation_classification(artifact, facts=facts)
@@ -1343,8 +1349,8 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             atom=event["atom"],
         )
         _refresh_local_order_event_identity_digest(event)
-        _refresh_graph_ring_delta_digest(branch["payload"]["graph_ring_delta"])
-        _refresh_object_and_artifact_digest(artifact, branch)
+        refresh_kind_manifest_digest(branch["payload"]["graph_ring_delta"], operation="test.graph_ring_delta.digest")
+        reseal_support_artifact(artifact)
         _assert_structural_checker_accepts(self, artifact)
 
         classification = _obligation_classification(artifact, facts=facts)
@@ -1371,8 +1377,8 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             atom=event["atom"],
         )
         _refresh_local_order_event_identity_digest(event)
-        _refresh_graph_ring_delta_digest(branch["payload"]["graph_ring_delta"])
-        _refresh_object_and_artifact_digest(artifact, branch)
+        refresh_kind_manifest_digest(branch["payload"]["graph_ring_delta"], operation="test.graph_ring_delta.digest")
+        reseal_support_artifact(artifact)
         _assert_structural_checker_accepts(self, artifact)
 
         classification = _obligation_classification(artifact, facts=facts)
@@ -1396,9 +1402,9 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             for item in branch["payload"]["obligation_manifests"]["residual_work"]
             if item["operation"] == "tetrahedral local-order factor closure"
         )
-        _set_term_field(manifest["transition_term"], "discharged_factor_keys", [])
-        _refresh_transition_manifest_digest(manifest)
-        _refresh_object_and_artifact_digest(artifact, branch)
+        set_closed_term_field(manifest["transition_term"], "discharged_factor_keys", [])
+        refresh_closed_term_digest_field(manifest, term_field="transition_term", digest_field="transition_digest", operation="test.transition.digest")
+        reseal_support_artifact(artifact)
         _assert_structural_checker_accepts(self, artifact)
 
         classification = _obligation_classification(artifact, facts=facts)
@@ -1423,17 +1429,17 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             if item["operation"] == "tetrahedral local-order factor closure"
         )
         transition = manifest["transition_term"]
-        source = _term_field(transition, "source_snapshot")
-        successor = _term_field(transition, "successor_snapshot")
-        discharged = _term_field(transition, "discharged_factor_keys")
+        source = closed_term_field(transition, "source_snapshot")
+        successor = closed_term_field(transition, "successor_snapshot")
+        discharged = closed_term_field(transition, "discharged_factor_keys")
         source_factor = next(
             factor
-            for factor in _term_field(source, "factors")
-            if _term_field(factor, "key") == discharged[0]
+            for factor in closed_term_field(source, "factors")
+            if closed_term_field(factor, "key") == discharged[0]
         )
-        _term_field(successor, "factors").append(source_factor)
-        successor_digest = _closed_term_digest(successor)
-        _set_term_field(
+        closed_term_field(successor, "factors").append(source_factor)
+        successor_digest = closed_term_digest(successor)
+        set_closed_term_field(
             transition,
             "successor_snapshot_digest",
             successor_digest,
@@ -1444,8 +1450,8 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             field="successor_residual_snapshot_digest",
             digest=successor_digest,
         )
-        _refresh_transition_manifest_digest(manifest)
-        _refresh_object_and_artifact_digest(artifact, branch)
+        refresh_closed_term_digest_field(manifest, term_field="transition_term", digest_field="transition_digest", operation="test.transition.digest")
+        reseal_support_artifact(artifact)
         _assert_structural_checker_accepts(self, artifact)
 
         classification = _obligation_classification(artifact, facts=facts)
@@ -1469,16 +1475,16 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             for item in branch["payload"]["obligation_manifests"]["residual_work"]
             if item["operation"] == "tetrahedral local-order factor closure"
         )
-        source = _term_field(manifest["transition_term"], "source_snapshot")
-        constraint_var = _term_field(manifest["transition_term"], "constraint_var")
-        domains = _term_field(source, "domains")
+        source = closed_term_field(manifest["transition_term"], "source_snapshot")
+        constraint_var = closed_term_field(manifest["transition_term"], "constraint_var")
+        domains = closed_term_field(source, "domains")
         domains[:] = [
             item
             for item in domains
             if item[0] != constraint_var
         ]
-        source_digest = _closed_term_digest(source)
-        _set_term_field(
+        source_digest = closed_term_digest(source)
+        set_closed_term_field(
             manifest["transition_term"],
             "source_snapshot_digest",
             source_digest,
@@ -1489,8 +1495,8 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             field="source_residual_snapshot_digest",
             digest=source_digest,
         )
-        _refresh_transition_manifest_digest(manifest)
-        _refresh_object_and_artifact_digest(artifact, branch)
+        refresh_closed_term_digest_field(manifest, term_field="transition_term", digest_field="transition_digest", operation="test.transition.digest")
+        reseal_support_artifact(artifact)
         _assert_structural_checker_accepts(self, artifact)
 
         classification = _obligation_classification(artifact, facts=facts)
@@ -1514,8 +1520,8 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             for item in branch["payload"]["obligation_manifests"]["residual_work"]
             if item["operation"] == "tetrahedral atom-token restriction"
         )
-        successor = _term_field(manifest["transition_term"], "successor_snapshot")
-        domains = _term_field(successor, "domains")
+        successor = closed_term_field(manifest["transition_term"], "successor_snapshot")
+        domains = closed_term_field(successor, "domains")
         domains.append(
             [
                 {
@@ -1525,8 +1531,8 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
                 [False, True],
             ]
         )
-        successor_digest = _closed_term_digest(successor)
-        _set_term_field(
+        successor_digest = closed_term_digest(successor)
+        set_closed_term_field(
             manifest["transition_term"],
             "successor_snapshot_digest",
             successor_digest,
@@ -1537,8 +1543,8 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             field="successor_residual_snapshot_digest",
             digest=successor_digest,
         )
-        _refresh_transition_manifest_digest(manifest)
-        _refresh_object_and_artifact_digest(artifact, branch)
+        refresh_closed_term_digest_field(manifest, term_field="transition_term", digest_field="transition_digest", operation="test.transition.digest")
+        reseal_support_artifact(artifact)
         _assert_structural_checker_accepts(self, artifact)
 
         classification = _obligation_classification(artifact, facts=facts)
@@ -1562,11 +1568,11 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             for item in branch["payload"]["obligation_manifests"]["residual_work"]
             if item["operation"] == "tetrahedral atom-token restriction"
         )
-        successor = _term_field(manifest["transition_term"], "successor_snapshot")
-        assignments = _term_field(successor, "assignments")
+        successor = closed_term_field(manifest["transition_term"], "successor_snapshot")
+        assignments = closed_term_field(successor, "assignments")
         assignments[:] = []
-        successor_digest = _closed_term_digest(successor)
-        _set_term_field(
+        successor_digest = closed_term_digest(successor)
+        set_closed_term_field(
             manifest["transition_term"],
             "successor_snapshot_digest",
             successor_digest,
@@ -1577,8 +1583,8 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             field="successor_residual_snapshot_digest",
             digest=successor_digest,
         )
-        _refresh_transition_manifest_digest(manifest)
-        _refresh_object_and_artifact_digest(artifact, branch)
+        refresh_closed_term_digest_field(manifest, term_field="transition_term", digest_field="transition_digest", operation="test.transition.digest")
+        reseal_support_artifact(artifact)
         _assert_structural_checker_accepts(self, artifact)
 
         classification = _obligation_classification(artifact, facts=facts)
@@ -1602,15 +1608,15 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             for item in branch["payload"]["obligation_manifests"]["residual_work"]
             if item["operation"] == "tetrahedral atom-token restriction"
         )
-        successor = _term_field(manifest["transition_term"], "successor_snapshot")
-        _set_term_field(manifest["transition_term"], "source_snapshot", successor)
-        _set_term_field(
+        successor = closed_term_field(manifest["transition_term"], "successor_snapshot")
+        set_closed_term_field(manifest["transition_term"], "source_snapshot", successor)
+        set_closed_term_field(
             manifest["transition_term"],
             "source_snapshot_digest",
-            _closed_term_digest(successor),
+            closed_term_digest(successor),
         )
-        _refresh_transition_manifest_digest(manifest)
-        _refresh_object_and_artifact_digest(artifact, branch)
+        refresh_closed_term_digest_field(manifest, term_field="transition_term", digest_field="transition_digest", operation="test.transition.digest")
+        reseal_support_artifact(artifact)
         _assert_structural_checker_accepts(self, artifact)
 
         classification = _obligation_classification(artifact, facts=facts)
@@ -1635,8 +1641,8 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             if item["operation"] == "tetrahedral atom-token restriction"
         )
         for field in ("source_snapshot", "successor_snapshot"):
-            snapshot = _term_field(manifest["transition_term"], field)
-            _term_field(snapshot, "domains").append(
+            snapshot = closed_term_field(manifest["transition_term"], field)
+            closed_term_field(snapshot, "domains").append(
                 [
                     {
                         "__dataclass__": "grimace._south_star1.residual_constraints.VarId",
@@ -1645,8 +1651,8 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
                     [False, True],
                 ]
             )
-            digest = _closed_term_digest(snapshot)
-            _set_term_field(
+            digest = closed_term_digest(snapshot)
+            set_closed_term_field(
                 manifest["transition_term"],
                 f"{field}_digest",
                 digest,
@@ -1662,8 +1668,8 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
                 field=lifecycle_field,
                 digest=digest,
             )
-        _refresh_transition_manifest_digest(manifest)
-        _refresh_object_and_artifact_digest(artifact, branch)
+        refresh_closed_term_digest_field(manifest, term_field="transition_term", digest_field="transition_digest", operation="test.transition.digest")
+        reseal_support_artifact(artifact)
         _assert_structural_checker_accepts(self, artifact)
 
         classification = _obligation_classification(artifact, facts=facts)
@@ -2385,7 +2391,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
                             item["payload"]["terminal_support_identities"][index] = (
                                 deepcopy(identity)
                             )
-                _refresh_object_and_artifact_digest(artifact, terminal)
+                reseal_support_artifact(artifact)
                 structural = verify_writer_support_artifact_consistency(artifact)
                 checked = verify_writer_support_artifact_for_facts(
                     facts=facts,
@@ -2561,7 +2567,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         manifest["operation"] = "forged graph obligation context"
         for name in ("is_noop", "is_empty", "is_discharged", "terminal_clean"):
             manifest[name] = True
-        _refresh_object_and_artifact_digest(artifact, branch)
+        reseal_support_artifact(artifact)
 
         structural = verify_writer_support_artifact_consistency(artifact)
         verification = verify_writer_support_artifact_for_facts(
@@ -2595,7 +2601,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             source["payload"]["obligation_manifests"]["graph_obligation_work"][0][
                 name
             ] = True
-        _refresh_object_and_artifact_digest(artifact, source)
+        reseal_support_artifact(artifact)
 
         structural = verify_writer_support_artifact_consistency(artifact)
         verification = verify_writer_support_artifact_for_facts(
@@ -2624,7 +2630,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         for name in ("is_noop", "is_empty", "is_discharged", "terminal_clean"):
             manifest[name] = True
         manifest["ring_summary"] = deepcopy(manifest["ring_summary"])
-        _refresh_object_and_artifact_digest(artifact, branch)
+        reseal_support_artifact(artifact)
 
         structural = verify_writer_support_artifact_consistency(artifact)
         verification = verify_writer_support_artifact_for_facts(
@@ -2655,8 +2661,8 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         for smiles in ("CCO", "CC(C)O", "C1CC1", "C1=CC1", "[NH4+]", "[13CH4]"):
             with self.subTest(smiles=smiles):
                 artifact = _rdkit_artifact(smiles)
-                count = _object(artifact, artifact["roots"]["count_ref"])
-                count_dag = _object(artifact, count["payload"]["count_dag_ref"])
+                count = artifact_object_by_id(artifact, artifact["roots"]["count_ref"])
+                count_dag = artifact_object_by_id(artifact, count["payload"]["count_dag_ref"])
 
                 verification = verify_count_dag_arithmetic(
                     count_dag=count_dag["payload"],
@@ -2672,8 +2678,8 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
     def test_count_dag_arithmetic_rejects_changed_count_object_totals(self) -> None:
         artifact = _rdkit_artifact("CCO")
-        count = deepcopy(_object(artifact, artifact["roots"]["count_ref"]))
-        count_dag = _object(artifact, count["payload"]["count_dag_ref"])
+        count = deepcopy(artifact_object_by_id(artifact, artifact["roots"]["count_ref"]))
+        count_dag = artifact_object_by_id(artifact, count["payload"]["count_dag_ref"])
         count["payload"]["support_count"] += 1
 
         verification = verify_count_dag_arithmetic(
@@ -2686,8 +2692,8 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
     def test_count_dag_arithmetic_rejects_changed_root_node_count(self) -> None:
         artifact = _rdkit_artifact("CCO")
-        count = _object(artifact, artifact["roots"]["count_ref"])
-        count_dag = deepcopy(_object(artifact, count["payload"]["count_dag_ref"]))
+        count = artifact_object_by_id(artifact, artifact["roots"]["count_ref"])
+        count_dag = deepcopy(artifact_object_by_id(artifact, count["payload"]["count_dag_ref"]))
         root_id = count_dag["payload"]["roots"]["support_count_root"]
         root = next(
             node
@@ -2705,8 +2711,8 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
     def test_count_dag_arithmetic_rejects_missing_child_and_cycle(self) -> None:
         artifact = _rdkit_artifact("CCO")
-        count = _object(artifact, artifact["roots"]["count_ref"])
-        count_dag = deepcopy(_object(artifact, count["payload"]["count_dag_ref"]))
+        count = artifact_object_by_id(artifact, artifact["roots"]["count_ref"])
+        count_dag = deepcopy(artifact_object_by_id(artifact, count["payload"]["count_dag_ref"]))
         child_id = next(
             node["children"][0]
             for node in count_dag["payload"]["nodes"]
@@ -2723,7 +2729,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
         self.assertFalse(missing.accepted)
 
-        count_dag = deepcopy(_object(artifact, count["payload"]["count_dag_ref"]))
+        count_dag = deepcopy(artifact_object_by_id(artifact, count["payload"]["count_dag_ref"]))
         count_dag["payload"]["nodes"][0]["children"].append(
             count_dag["payload"]["nodes"][0]["node_id"]
         )
@@ -2742,7 +2748,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
                 verification = _coverage_verification(artifact)
 
                 self.assertTrue(verification.accepted, verification.reason)
-                root = _object(artifact, artifact["roots"]["support_image_root"])
+                root = artifact_object_by_id(artifact, artifact["roots"]["support_image_root"])
                 self.assertEqual(verification.support_count, root["payload"]["distinct_count"])
                 self.assertEqual(verification.witness_count, root["payload"]["witness_count"])
 
@@ -2801,7 +2807,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         self.assertIn("coverage_text_bucket_unknown_ref", wrong.reason)
 
         artifact = _rdkit_artifact("CC(C)O")
-        root = _object(artifact, artifact["roots"]["support_image_root"])
+        root = artifact_object_by_id(artifact, artifact["roots"]["support_image_root"])
         coverage = _coverage_object(artifact)
         first_ref = root["payload"]["support_string_refs"][0]
         coverage["payload"]["text_buckets"][0]["string_refs"] = [first_ref, first_ref]
@@ -2814,7 +2820,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
     def test_coverage_support_and_witness_totals_are_rejected(self) -> None:
         artifact = _rdkit_artifact("CCO")
-        root = _object(artifact, artifact["roots"]["support_image_root"])
+        root = artifact_object_by_id(artifact, artifact["roots"]["support_image_root"])
         root["payload"]["distinct_count"] += 1
 
         distinct = _coverage_verification(artifact)
@@ -2823,7 +2829,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         self.assertIn("support_image_distinct_count_mismatch", distinct.reason)
 
         artifact = _rdkit_artifact("CCO")
-        root = _object(artifact, artifact["roots"]["support_image_root"])
+        root = artifact_object_by_id(artifact, artifact["roots"]["support_image_root"])
         root["payload"]["witness_count"] += 1
 
         witness = _coverage_verification(artifact)
@@ -2832,7 +2838,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         self.assertIn("coverage_count_completion_total_mismatch", witness.reason)
 
         artifact = _rdkit_artifact("CCO")
-        count = _object(artifact, artifact["roots"]["count_ref"])
+        count = artifact_object_by_id(artifact, artifact["roots"]["count_ref"])
         count["payload"]["support_count"] += 1
 
         count_support = _coverage_verification(artifact)
@@ -2841,7 +2847,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         self.assertIn("coverage_count_support_total_mismatch", count_support.reason)
 
         artifact = _rdkit_artifact("CCO")
-        count = _object(artifact, artifact["roots"]["count_ref"])
+        count = artifact_object_by_id(artifact, artifact["roots"]["count_ref"])
         count["payload"]["completion_count"] += 1
 
         count_completion = _coverage_verification(artifact)
@@ -2869,7 +2875,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
                 "text_projection": {},
                 "support_count": 1,
                 "string_refs": [
-                    _object(
+                    artifact_object_by_id(
                         artifact,
                         artifact["roots"]["support_image_root"],
                     )["payload"]["support_string_refs"][0]
@@ -2920,7 +2926,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
     def test_replay_path_wrong_emitted_texts_and_join_are_rejected(self) -> None:
         artifact = _rdkit_artifact("CCO")
         support = _first_support_string_object(artifact)
-        replay = _object(artifact, support["payload"]["replay_path_ref"])
+        replay = artifact_object_by_id(artifact, support["payload"]["replay_path_ref"])
         replay["payload"]["emitted_texts"] = ["C"]
 
         wrong_replay = _replay_path_verification(artifact)
@@ -2987,7 +2993,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
         artifact = _rdkit_artifact("CCO")
         support = _first_support_string_object(artifact)
-        second = _object(artifact, support["payload"]["text_projection_refs"][1])
+        second = artifact_object_by_id(artifact, support["payload"]["text_projection_refs"][1])
         second["payload"]["source_cursor"] = second["payload"]["successor_cursor"]
 
         broken_chain = _replay_path_verification(artifact)
@@ -3001,7 +3007,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
     def test_replay_path_terminal_and_final_cursor_mutations_are_rejected(self) -> None:
         artifact = _rdkit_artifact("CCO")
         support = _first_support_string_object(artifact)
-        replay = _object(artifact, support["payload"]["replay_path_ref"])
+        replay = artifact_object_by_id(artifact, support["payload"]["replay_path_ref"])
         replay["payload"]["final_cursor_digest"] = "0" * 64
 
         final_cursor = _replay_path_verification(artifact)
@@ -3011,7 +3017,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
         artifact = _rdkit_artifact("CCO")
         support = _first_support_string_object(artifact)
-        terminal = _object(artifact, support["payload"]["terminal_projection_ref"])
+        terminal = artifact_object_by_id(artifact, support["payload"]["terminal_projection_ref"])
         terminal["payload"]["source_cursor"] = terminal["payload"]["finalized_cursor"]
 
         terminal_source = _replay_path_verification(artifact)
@@ -3062,7 +3068,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
         artifact = _rdkit_artifact("CCO")
         support = _first_support_string_object(artifact)
-        terminal_support = _object(artifact, support["payload"]["terminal_support_refs"][0])
+        terminal_support = artifact_object_by_id(artifact, support["payload"]["terminal_support_refs"][0])
         terminal_support["payload"]["digest"] = "0" * 64
 
         stale_support = _replay_path_verification(artifact)
@@ -3140,7 +3146,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         identities = terminal["payload"]["terminal_support_identities"]
         identities[1]["terminal_ordinal"] = identities[0]["terminal_ordinal"]
         support = _first_support_string_object(artifact)
-        second_support = _object(artifact, support["payload"]["terminal_support_refs"][1])
+        second_support = artifact_object_by_id(artifact, support["payload"]["terminal_support_refs"][1])
         second_support["payload"]["terminal_ordinal"] = identities[0]["terminal_ordinal"]
 
         duplicate_ordinal = _terminal_identity_verification(artifact)
@@ -3155,7 +3161,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
             "terminal_support_key_digest"
         ]
         support = _first_support_string_object(artifact)
-        second_support = _object(artifact, support["payload"]["terminal_support_refs"][1])
+        second_support = artifact_object_by_id(artifact, support["payload"]["terminal_support_refs"][1])
         second_support["payload"]["terminal_support_key_digest"] = identities[0][
             "terminal_support_key_digest"
         ]
@@ -3353,7 +3359,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         artifact = _rdkit_artifact("[NH4+]")
         evidence = _first_local_evidence(artifact, "bracket_atom_text")
         evidence["manifest"]["rendered_text"] = "[NH3+]"
-        _refresh_local_evidence_digest(evidence)
+        refresh_kind_manifest_digest(evidence, operation="test.local_evidence.digest")
 
         wrong_text = _local_branch_evidence_verification(_rdkit_facts("[NH4+]"), artifact)
 
@@ -3363,7 +3369,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         artifact = _rdkit_artifact("[NH4+]")
         evidence = _first_local_evidence(artifact, "bracket_atom_text")
         evidence["manifest"]["formal_charge"] = 0
-        _refresh_local_evidence_digest(evidence)
+        refresh_kind_manifest_digest(evidence, operation="test.local_evidence.digest")
 
         wrong_charge = _local_branch_evidence_verification(_rdkit_facts("[NH4+]"), artifact)
 
@@ -3373,7 +3379,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         artifact = _rdkit_artifact("[13CH4]")
         evidence = _first_local_evidence(artifact, "bracket_atom_text")
         evidence["manifest"]["isotope"] = 12
-        _refresh_local_evidence_digest(evidence)
+        refresh_kind_manifest_digest(evidence, operation="test.local_evidence.digest")
 
         wrong_isotope = _local_branch_evidence_verification(
             _rdkit_facts("[13CH4]"),
@@ -3386,7 +3392,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         artifact = _rdkit_artifact("[13CH4]")
         evidence = _first_local_evidence(artifact, "bracket_atom_text")
         evidence["manifest"]["hydrogen_count"] = 3
-        _refresh_local_evidence_digest(evidence)
+        refresh_kind_manifest_digest(evidence, operation="test.local_evidence.digest")
 
         wrong_h_count = _local_branch_evidence_verification(
             _rdkit_facts("[13CH4]"),
@@ -3399,7 +3405,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         artifact = _rdkit_artifact("CCO")
         evidence = _first_local_evidence(artifact, "plain_atom_text")
         evidence["manifest"]["element"] = "N"
-        _refresh_local_evidence_digest(evidence)
+        refresh_kind_manifest_digest(evidence, operation="test.local_evidence.digest")
 
         wrong_plain = _local_branch_evidence_verification(_rdkit_facts("CCO"), artifact)
 
@@ -3410,7 +3416,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         artifact = _rdkit_artifact("C1#CC1")
         item = _first_closure_evidence_item(artifact)
         item["bond_order"] = "double"
-        _refresh_local_evidence_digest(_first_local_evidence(artifact, "closure_bond_text"))
+        refresh_kind_manifest_digest(_first_local_evidence(artifact, "closure_bond_text"), operation="test.local_evidence.digest")
 
         wrong_order = _local_branch_evidence_verification(_rdkit_facts("C1#CC1"), artifact)
 
@@ -3421,7 +3427,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         item = _first_closure_evidence_item(artifact)
         item["opening_marker"] = ""
         item["closing_marker"] = ""
-        _refresh_local_evidence_digest(_first_local_evidence(artifact, "closure_bond_text"))
+        refresh_kind_manifest_digest(_first_local_evidence(artifact, "closure_bond_text"), operation="test.local_evidence.digest")
 
         missing_marker = _local_branch_evidence_verification(
             _rdkit_facts("C1#CC1"),
@@ -3435,7 +3441,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         item = _first_closure_evidence_item(artifact)
         item["opening_marker"] = "#"
         item["closing_marker"] = "#"
-        _refresh_local_evidence_digest(_first_local_evidence(artifact, "closure_bond_text"))
+        refresh_kind_manifest_digest(_first_local_evidence(artifact, "closure_bond_text"), operation="test.local_evidence.digest")
 
         duplicate_marker = _local_branch_evidence_verification(
             _rdkit_facts("C1#CC1"),
@@ -3449,7 +3455,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         item = _first_closure_evidence_item(artifact)
         item["opening_marker"] = "="
         item["closing_marker"] = "="
-        _refresh_local_evidence_digest(_first_local_evidence(artifact, "closure_bond_text"))
+        refresh_kind_manifest_digest(_first_local_evidence(artifact, "closure_bond_text"), operation="test.local_evidence.digest")
 
         wrong_marker = _local_branch_evidence_verification(
             _rdkit_facts("C1#CC1"),
@@ -3462,7 +3468,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         artifact = _rdkit_artifact("C1#CC1")
         item = _first_closure_evidence_item(artifact)
         item["bond"] = "missing"
-        _refresh_local_evidence_digest(_first_local_evidence(artifact, "closure_bond_text"))
+        refresh_kind_manifest_digest(_first_local_evidence(artifact, "closure_bond_text"), operation="test.local_evidence.digest")
 
         wrong_bond = _local_branch_evidence_verification(_rdkit_facts("C1#CC1"), artifact)
 
@@ -3495,7 +3501,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         artifact = _rdkit_artifact("[NH4+]")
         evidence = _first_local_evidence(artifact, "bracket_atom_text")
         evidence["kind"] = "unknown"
-        _refresh_local_evidence_digest(evidence)
+        refresh_kind_manifest_digest(evidence, operation="test.local_evidence.digest")
 
         verification = _local_branch_evidence_verification(
             _rdkit_facts("[NH4+]"),
@@ -3584,7 +3590,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         artifact = _snapshot_artifact(cco_facts())
         artifact["prepared_identity"] = deepcopy(artifact["prepared_identity"])
         artifact["prepared_identity"]["digest"] = "0" * 64
-        _refresh_artifact_digest(artifact)
+        reseal_support_artifact(artifact)
 
         verification = verify_writer_support_artifact_for_facts(
             facts=cco_facts(),
@@ -3597,7 +3603,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
     def test_mutated_source_prepared_identity_is_rejected(self) -> None:
         artifact = _snapshot_artifact(cco_facts())
-        source = _object(artifact, artifact["roots"]["source_ref"])
+        source = artifact_object_by_id(artifact, artifact["roots"]["source_ref"])
         source["payload"]["prepared_identity_digest"] = "0" * 64
 
         verification = verify_writer_support_artifact_for_facts(
@@ -3623,7 +3629,7 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
 
     def test_unknown_object_kind_is_rejected_by_structural_checker(self) -> None:
         artifact = _snapshot_artifact(cco_facts())
-        root = _object(artifact, artifact["roots"]["support_image_root"])
+        root = artifact_object_by_id(artifact, artifact["roots"]["support_image_root"])
         root["kind"] = "unknown"
 
         verification = verify_writer_support_artifact_for_facts(
@@ -3710,8 +3716,8 @@ def _two_atom_completed_prefix_artifact():
 
 
 def _coverage_object(artifact):
-    root = _object(artifact, artifact["roots"]["support_image_root"])
-    return _object(artifact, root["payload"]["coverage_ref"])
+    root = artifact_object_by_id(artifact, artifact["roots"]["support_image_root"])
+    return artifact_object_by_id(artifact, root["payload"]["coverage_ref"])
 
 
 def _coverage_verification(artifact):
@@ -3904,18 +3910,18 @@ def _directional_ring_pair_artifact(first_mark: DirectionMark):
 
 
 def _first_support_string_object(artifact):
-    root = _object(artifact, artifact["roots"]["support_image_root"])
-    return _object(artifact, root["payload"]["support_string_refs"][0])
+    root = artifact_object_by_id(artifact, artifact["roots"]["support_image_root"])
+    return artifact_object_by_id(artifact, root["payload"]["support_string_refs"][0])
 
 
 def _first_text_projection_object(artifact):
     support = _first_support_string_object(artifact)
-    return _object(artifact, support["payload"]["text_projection_refs"][0])
+    return artifact_object_by_id(artifact, support["payload"]["text_projection_refs"][0])
 
 
 def _first_branch_support_object(artifact):
     projection = _first_text_projection_object(artifact)
-    return _object(artifact, projection["payload"]["branch_support_refs"][0])
+    return artifact_object_by_id(artifact, projection["payload"]["branch_support_refs"][0])
 
 
 def _first_graph_ring_delta_branch(artifact, kind: str):
@@ -3944,7 +3950,7 @@ def _directional_transition_branch_and_manifest(artifact, *, bond: int):
         for manifest in branch["payload"]["obligation_manifests"]["residual_work"]:
             if manifest["operation"] != "directional carrier-mark restriction":
                 continue
-            if _term_field(manifest["transition_term"], "bond") == bond:
+            if closed_term_field(manifest["transition_term"], "bond") == bond:
                 return branch, manifest
     raise AssertionError(f"missing directional carrier transition for bond {bond}")
 
@@ -3961,7 +3967,7 @@ def _ring_projection_branch_and_manifest(artifact, *, changed: bool | None = Non
             if manifest["operation"] != "directional ring endpoint projection":
                 continue
             term = manifest["transition_term"]
-            is_changed = _term_field(term, "source_snapshot") != _term_field(
+            is_changed = closed_term_field(term, "source_snapshot") != closed_term_field(
                 term, "successor_snapshot"
             )
             if changed is None or changed == is_changed:
@@ -3980,33 +3986,33 @@ def _ring_pair_branch_and_manifest(artifact):
 
 
 def _refresh_ring_pair_term(artifact, branch, manifest) -> None:
-    _refresh_transition_manifest_digest(manifest)
-    _refresh_object_and_artifact_digest(artifact, branch)
+    refresh_closed_term_digest_field(manifest, term_field="transition_term", digest_field="transition_digest", operation="test.transition.digest")
+    reseal_support_artifact(artifact)
 
 
 def _forge_ring_pair_missing_term(artifact) -> None:
     branch, manifest = _ring_pair_branch_and_manifest(artifact)
     manifest["transition_term"] = None
     manifest["transition_digest"] = None
-    _refresh_object_and_artifact_digest(artifact, branch)
+    reseal_support_artifact(artifact)
 
 
 def _forge_ring_pair_compatible_choices(artifact) -> None:
     branch, manifest = _ring_pair_branch_and_manifest(artifact)
-    del _term_field(manifest["transition_term"], "compatible_second_endpoint_choices")[-1]
+    del closed_term_field(manifest["transition_term"], "compatible_second_endpoint_choices")[-1]
     _refresh_ring_pair_term(artifact, branch, manifest)
 
 
 def _forge_ring_pair_first_mark(artifact) -> None:
     branch, manifest = _ring_pair_branch_and_manifest(artifact)
-    mark = _term_field(manifest["transition_term"], "first_endpoint_direction_mark")
+    mark = closed_term_field(manifest["transition_term"], "first_endpoint_direction_mark")
     mark["value"] = 1 if mark["value"] != 1 else -1
     _refresh_ring_pair_term(artifact, branch, manifest)
 
 
 def _forge_ring_pair_second_mark(artifact) -> None:
     branch, manifest = _ring_pair_branch_and_manifest(artifact)
-    mark = _term_field(manifest["transition_term"], "second_endpoint_direction_mark")
+    mark = closed_term_field(manifest["transition_term"], "second_endpoint_direction_mark")
     mark["value"] = -1 if mark["value"] != -1 else 1
     _refresh_ring_pair_term(artifact, branch, manifest)
 
@@ -4014,22 +4020,22 @@ def _forge_ring_pair_second_mark(artifact) -> None:
 def _forge_ring_pair_orientation(artifact) -> None:
     branch, manifest = _ring_pair_branch_and_manifest(artifact)
     term = manifest["transition_term"]
-    value = _term_field(term, "second_canonical_orientation")
-    _set_term_field(term, "second_canonical_orientation", -value)
+    value = closed_term_field(term, "second_canonical_orientation")
+    set_closed_term_field(term, "second_canonical_orientation", -value)
     _refresh_ring_pair_term(artifact, branch, manifest)
 
 
 def _forge_ring_pair_carrier(artifact) -> None:
     branch, manifest = _ring_pair_branch_and_manifest(artifact)
-    model = _term_field(manifest["transition_term"], "carrier_models")[0]
-    value = _term_field(model, "ligand_factor")
-    _set_term_field(model, "ligand_factor", -value)
+    model = closed_term_field(manifest["transition_term"], "carrier_models")[0]
+    value = closed_term_field(model, "ligand_factor")
+    set_closed_term_field(model, "ligand_factor", -value)
     _refresh_ring_pair_term(artifact, branch, manifest)
 
 
 def _forge_ring_pair_restriction(artifact) -> None:
     branch, manifest = _ring_pair_branch_and_manifest(artifact)
-    sign = _term_field(manifest["transition_term"], "restrictions")[0][1]
+    sign = closed_term_field(manifest["transition_term"], "restrictions")[0][1]
     sign["value"] = "negative" if sign["value"] == "positive" else "positive"
     _refresh_ring_pair_term(artifact, branch, manifest)
 
@@ -4037,26 +4043,26 @@ def _forge_ring_pair_restriction(artifact) -> None:
 def _forge_ring_pair_occurrence(artifact) -> None:
     branch, manifest = _ring_pair_branch_and_manifest(artifact)
     term = manifest["transition_term"]
-    parent = _term_field(term, "bond_occurrence_parent")
-    child = _term_field(term, "bond_occurrence_child")
-    _set_term_field(term, "bond_occurrence_parent", child)
-    _set_term_field(term, "bond_occurrence_child", parent)
+    parent = closed_term_field(term, "bond_occurrence_parent")
+    child = closed_term_field(term, "bond_occurrence_child")
+    set_closed_term_field(term, "bond_occurrence_parent", child)
+    set_closed_term_field(term, "bond_occurrence_child", parent)
     _refresh_ring_pair_term(artifact, branch, manifest)
 
 
 def _forge_ring_pair_discharge(artifact) -> None:
     branch, manifest = _ring_pair_branch_and_manifest(artifact)
-    del _term_field(manifest["transition_term"], "discharged_factor_keys")[-1]
+    del closed_term_field(manifest["transition_term"], "discharged_factor_keys")[-1]
     _refresh_ring_pair_term(artifact, branch, manifest)
 
 
 def _forge_ring_pair_successor(artifact) -> None:
     branch, manifest = _ring_pair_branch_and_manifest(artifact)
     term = manifest["transition_term"]
-    successor = deepcopy(_term_field(term, "source_snapshot"))
-    digest = _closed_term_digest(successor)
-    _set_term_field(term, "successor_snapshot", successor)
-    _set_term_field(term, "successor_snapshot_digest", digest)
+    successor = deepcopy(closed_term_field(term, "source_snapshot"))
+    digest = closed_term_digest(successor)
+    set_closed_term_field(term, "successor_snapshot", successor)
+    set_closed_term_field(term, "successor_snapshot_digest", digest)
     _refresh_linked_raw_lifecycle_residual_digest(
         branch,
         manifest=manifest,
@@ -4067,35 +4073,35 @@ def _forge_ring_pair_successor(artifact) -> None:
 
 
 def _refresh_ring_projection_term(artifact, branch, manifest) -> None:
-    _refresh_transition_manifest_digest(manifest)
-    _refresh_object_and_artifact_digest(artifact, branch)
+    refresh_closed_term_digest_field(manifest, term_field="transition_term", digest_field="transition_digest", operation="test.transition.digest")
+    reseal_support_artifact(artifact)
 
 
 def _forge_ring_compatible_seconds(artifact) -> None:
     branch, manifest = _ring_projection_branch_and_manifest(artifact)
-    choices = _term_field(manifest["transition_term"], "compatible_second_endpoint_choices")
+    choices = closed_term_field(manifest["transition_term"], "compatible_second_endpoint_choices")
     del choices[-1]
     _refresh_ring_projection_term(artifact, branch, manifest)
 
 
 def _forge_ring_domain_intersection(artifact) -> None:
     branch, manifest = _ring_projection_branch_and_manifest(artifact, changed=True)
-    values = _term_field(manifest["transition_term"], "domain_intersections")[0][1]
+    values = closed_term_field(manifest["transition_term"], "domain_intersections")[0][1]
     values[0]["value"] = "negative" if values[0]["value"] == "positive" else "positive"
     _refresh_ring_projection_term(artifact, branch, manifest)
 
 
 def _forge_ring_carrier_orientation(artifact) -> None:
     branch, manifest = _ring_projection_branch_and_manifest(artifact)
-    model = _term_field(manifest["transition_term"], "carrier_model")
-    orientation = _term_field(model, "endpoint_orientation_factor")
-    _set_term_field(model, "endpoint_orientation_factor", -orientation)
+    model = closed_term_field(manifest["transition_term"], "carrier_model")
+    orientation = closed_term_field(model, "endpoint_orientation_factor")
+    set_closed_term_field(model, "endpoint_orientation_factor", -orientation)
     _refresh_ring_projection_term(artifact, branch, manifest)
 
 
 def _forge_ring_term_mark(artifact) -> None:
     branch, manifest = _ring_projection_branch_and_manifest(artifact)
-    mark = _term_field(manifest["transition_term"], "direction_mark")
+    mark = closed_term_field(manifest["transition_term"], "direction_mark")
     mark["value"] = -1 if mark["value"] != -1 else 1
     _refresh_ring_projection_term(artifact, branch, manifest)
 
@@ -4103,10 +4109,10 @@ def _forge_ring_term_mark(artifact) -> None:
 def _forge_ring_false_noop(artifact) -> None:
     branch, manifest = _ring_projection_branch_and_manifest(artifact, changed=True)
     term = manifest["transition_term"]
-    source = deepcopy(_term_field(term, "source_snapshot"))
-    _set_term_field(term, "successor_snapshot", source)
-    digest = _closed_term_digest(source)
-    _set_term_field(term, "successor_snapshot_digest", digest)
+    source = deepcopy(closed_term_field(term, "source_snapshot"))
+    set_closed_term_field(term, "successor_snapshot", source)
+    digest = closed_term_digest(source)
+    set_closed_term_field(term, "successor_snapshot_digest", digest)
     _refresh_linked_raw_lifecycle_residual_digest(
         branch,
         manifest=manifest,
@@ -4120,10 +4126,10 @@ def _forge_ring_false_change(artifact) -> None:
     branch, manifest = _ring_projection_branch_and_manifest(artifact, changed=False)
     _other_branch, other = _ring_projection_branch_and_manifest(artifact, changed=True)
     term = manifest["transition_term"]
-    successor = deepcopy(_term_field(other["transition_term"], "successor_snapshot"))
-    _set_term_field(term, "successor_snapshot", successor)
-    digest = _closed_term_digest(successor)
-    _set_term_field(term, "successor_snapshot_digest", digest)
+    successor = deepcopy(closed_term_field(other["transition_term"], "successor_snapshot"))
+    set_closed_term_field(term, "successor_snapshot", successor)
+    digest = closed_term_digest(successor)
+    set_closed_term_field(term, "successor_snapshot_digest", digest)
     _refresh_linked_raw_lifecycle_residual_digest(
         branch,
         manifest=manifest,
@@ -4136,20 +4142,20 @@ def _forge_ring_false_change(artifact) -> None:
 def _forge_ring_factor_discharge(artifact) -> None:
     branch, manifest = _ring_projection_branch_and_manifest(artifact)
     term = manifest["transition_term"]
-    source = _term_field(term, "source_snapshot")
-    factor = _term_field(_term_field(source, "factors")[0], "key")
-    _set_term_field(term, "discharged_factor_keys", [factor])
+    source = closed_term_field(term, "source_snapshot")
+    factor = closed_term_field(closed_term_field(source, "factors")[0], "key")
+    set_closed_term_field(term, "discharged_factor_keys", [factor])
     _refresh_ring_projection_term(artifact, branch, manifest)
 
 
 def _forge_ring_source_snapshot(artifact) -> None:
     branch, manifest = _ring_projection_branch_and_manifest(artifact)
     term = manifest["transition_term"]
-    source = _term_field(term, "source_snapshot")
-    domains = _term_field(source, "domains")
+    source = closed_term_field(term, "source_snapshot")
+    domains = closed_term_field(source, "domains")
     domains[:] = list(reversed(domains))
-    digest = _closed_term_digest(source)
-    _set_term_field(term, "source_snapshot_digest", digest)
+    digest = closed_term_digest(source)
+    set_closed_term_field(term, "source_snapshot_digest", digest)
     _refresh_linked_raw_lifecycle_residual_digest(
         branch,
         manifest=manifest,
@@ -4163,7 +4169,7 @@ def _forge_ring_missing_term(artifact) -> None:
     branch, manifest = _ring_projection_branch_and_manifest(artifact)
     manifest["transition_term"] = None
     manifest["transition_digest"] = None
-    _refresh_object_and_artifact_digest(artifact, branch)
+    reseal_support_artifact(artifact)
 
 
 def _forge_ring_lifecycle_operation(artifact) -> None:
@@ -4175,7 +4181,7 @@ def _forge_ring_lifecycle_operation(artifact) -> None:
         certificate_kind="",
     )
     lifecycle["residual_work_operations"] = ["wrong"]
-    _refresh_object_and_artifact_digest(artifact, branch)
+    reseal_support_artifact(artifact)
 
 
 def _forge_ring_successor_open_endpoint(artifact) -> None:
@@ -4186,13 +4192,13 @@ def _forge_ring_successor_open_endpoint(artifact) -> None:
         cursor,
         branch["payload"]["successor_state_digest"],
     )
-    ring_state = _term_field(state, "ring_state")
+    ring_state = closed_term_field(state, "ring_state")
     endpoint = next(
         endpoint
-        for endpoint in _term_field(ring_state, "open_endpoints")
-        if int(_term_field(endpoint, "bond")) == 3
+        for endpoint in closed_term_field(ring_state, "open_endpoints")
+        if int(closed_term_field(endpoint, "bond")) == 3
     )
-    _set_term_field(endpoint, "first_endpoint_text", "%01")
+    set_closed_term_field(endpoint, "first_endpoint_text", "%01")
     _refresh_ring_successor_cursor_change(
         artifact=artifact,
         branch=branch,
@@ -4211,8 +4217,8 @@ def _forge_ring_bond_occurrence_added(artifact) -> None:
         cursor,
         branch["payload"]["successor_state_digest"],
     )
-    stereo = _term_field(state, "stereo_state")
-    _term_field(stereo, "bond_occurrences").append(
+    stereo = closed_term_field(state, "stereo_state")
+    closed_term_field(stereo, "bond_occurrences").append(
         {
             "__dataclass__": "grimace._south_star1.writer_stereo.WriterBondOccurrenceRecord",
             "fields": [
@@ -4238,8 +4244,8 @@ def _refresh_ring_successor_cursor_change(
 ) -> None:
     old_cursor_digest = branch["payload"]["successor_cursor_digest"]
     old_state_digest = branch["payload"]["successor_state_digest"]
-    _refresh_cursor_digest(cursor)
-    successor_state_digest = _closed_term_digest(state)
+    refresh_cursor_digest(cursor, operation="test.cursor.digest")
+    successor_state_digest = closed_term_digest(state)
     _propagate_text_projection_cursor_change(
         artifact,
         old_cursor_digest=old_cursor_digest,
@@ -4259,20 +4265,20 @@ def _refresh_ring_successor_cursor_change(
     branch["payload"]["graph_ring_delta"]["manifest"]["successor_cursor_digest"] = (
         cursor["digest"]
     )
-    _refresh_graph_ring_delta_digest(branch["payload"]["graph_ring_delta"])
+    refresh_kind_manifest_digest(branch["payload"]["graph_ring_delta"], operation="test.graph_ring_delta.digest")
     projection["payload"]["digest"] = _text_projection_identity_digest(
         projection["payload"]
     )
-    _refresh_object_and_artifact_digest(artifact, branch)
+    reseal_support_artifact(artifact)
 
 
 def _directional_discharge_key_pairs(manifest):
     return tuple(
         (
-            _term_field(key, "kind"),
-            tuple(_term_field(key, "key")),
+            closed_term_field(key, "kind"),
+            tuple(closed_term_field(key, "key")),
         )
-        for key in _term_field(
+        for key in closed_term_field(
             manifest["transition_term"],
             "discharged_factor_keys",
         )
@@ -4288,28 +4294,28 @@ def _bond_occurrence_terms_for_branch(
 ):
     projection = _text_projection_for_branch(artifact, branch)
     state = _single_cursor_state(projection["payload"][cursor_name])
-    stereo = _term_field(state, "stereo_state")
+    stereo = closed_term_field(state, "stereo_state")
     return tuple(
         occurrence
-        for occurrence in _term_field(stereo, "bond_occurrences")
-        if int(_term_field(occurrence, "bond")) == bond
+        for occurrence in closed_term_field(stereo, "bond_occurrences")
+        if int(closed_term_field(occurrence, "bond")) == bond
     )
 
 
 def _mutate_directional_restriction_sign(artifact, *, bond: int) -> None:
     branch, manifest = _directional_transition_branch_and_manifest(artifact, bond=bond)
-    sign = _term_field(manifest["transition_term"], "restrictions")[0][1]
+    sign = closed_term_field(manifest["transition_term"], "restrictions")[0][1]
     sign["value"] = "negative" if sign["value"] == "positive" else "positive"
-    _refresh_transition_manifest_digest(manifest)
-    _refresh_object_and_artifact_digest(artifact, branch)
+    refresh_closed_term_digest_field(manifest, term_field="transition_term", digest_field="transition_digest", operation="test.transition.digest")
+    reseal_support_artifact(artifact)
 
 
 def _mutate_directional_canonical_orientation(artifact, *, bond: int) -> None:
     branch, manifest = _directional_transition_branch_and_manifest(artifact, bond=bond)
-    value = _term_field(manifest["transition_term"], "canonical_orientation")
-    _set_term_field(manifest["transition_term"], "canonical_orientation", -value)
-    _refresh_transition_manifest_digest(manifest)
-    _refresh_object_and_artifact_digest(artifact, branch)
+    value = closed_term_field(manifest["transition_term"], "canonical_orientation")
+    set_closed_term_field(manifest["transition_term"], "canonical_orientation", -value)
+    refresh_closed_term_digest_field(manifest, term_field="transition_term", digest_field="transition_digest", operation="test.transition.digest")
+    reseal_support_artifact(artifact)
 
 
 def _mutate_directional_model_field(
@@ -4321,52 +4327,52 @@ def _mutate_directional_model_field(
     model_index: int = 0,
 ) -> None:
     branch, manifest = _directional_transition_branch_and_manifest(artifact, bond=bond)
-    model = _term_field(manifest["transition_term"], "carrier_models")[model_index]
-    _set_term_field(model, field, value)
-    _refresh_transition_manifest_digest(manifest)
-    _refresh_object_and_artifact_digest(artifact, branch)
+    model = closed_term_field(manifest["transition_term"], "carrier_models")[model_index]
+    set_closed_term_field(model, field, value)
+    refresh_closed_term_digest_field(manifest, term_field="transition_term", digest_field="transition_digest", operation="test.transition.digest")
+    reseal_support_artifact(artifact)
 
 
 def _remove_directional_model(artifact, *, bond: int) -> None:
     branch, manifest = _directional_transition_branch_and_manifest(artifact, bond=bond)
-    models = _term_field(manifest["transition_term"], "carrier_models")
+    models = closed_term_field(manifest["transition_term"], "carrier_models")
     del models[-1]
-    _refresh_transition_manifest_digest(manifest)
-    _refresh_object_and_artifact_digest(artifact, branch)
+    refresh_closed_term_digest_field(manifest, term_field="transition_term", digest_field="transition_digest", operation="test.transition.digest")
+    reseal_support_artifact(artifact)
 
 
 def _remove_directional_restriction(artifact, *, bond: int) -> None:
     branch, manifest = _directional_transition_branch_and_manifest(artifact, bond=bond)
-    restrictions = _term_field(manifest["transition_term"], "restrictions")
+    restrictions = closed_term_field(manifest["transition_term"], "restrictions")
     del restrictions[-1]
-    _refresh_transition_manifest_digest(manifest)
-    _refresh_object_and_artifact_digest(artifact, branch)
+    refresh_closed_term_digest_field(manifest, term_field="transition_term", digest_field="transition_digest", operation="test.transition.digest")
+    reseal_support_artifact(artifact)
 
 
 def _duplicate_directional_model_site(artifact, *, bond: int) -> None:
     branch, manifest = _directional_transition_branch_and_manifest(artifact, bond=bond)
-    models = _term_field(manifest["transition_term"], "carrier_models")
-    duplicate_site = _term_field(models[0], "site")
-    _set_term_field(models[1], "site", duplicate_site)
-    _refresh_transition_manifest_digest(manifest)
-    _refresh_object_and_artifact_digest(artifact, branch)
+    models = closed_term_field(manifest["transition_term"], "carrier_models")
+    duplicate_site = closed_term_field(models[0], "site")
+    set_closed_term_field(models[1], "site", duplicate_site)
+    refresh_closed_term_digest_field(manifest, term_field="transition_term", digest_field="transition_digest", operation="test.transition.digest")
+    reseal_support_artifact(artifact)
 
 
 def _mutate_directional_successor_snapshot(artifact, *, bond: int) -> None:
     branch, manifest = _directional_transition_branch_and_manifest(artifact, bond=bond)
-    successor = _term_field(manifest["transition_term"], "successor_snapshot")
-    domains = _term_field(successor, "domains")
+    successor = closed_term_field(manifest["transition_term"], "successor_snapshot")
+    domains = closed_term_field(successor, "domains")
     domains[:] = list(reversed(domains))
-    digest = _closed_term_digest(successor)
-    _set_term_field(manifest["transition_term"], "successor_snapshot_digest", digest)
+    digest = closed_term_digest(successor)
+    set_closed_term_field(manifest["transition_term"], "successor_snapshot_digest", digest)
     _refresh_linked_raw_lifecycle_residual_digest(
         branch,
         manifest=manifest,
         field="successor_residual_snapshot_digest",
         digest=digest,
     )
-    _refresh_transition_manifest_digest(manifest)
-    _refresh_object_and_artifact_digest(artifact, branch)
+    refresh_closed_term_digest_field(manifest, term_field="transition_term", digest_field="transition_digest", operation="test.transition.digest")
+    reseal_support_artifact(artifact)
 
 
 def _set_directional_discharges(
@@ -4376,18 +4382,18 @@ def _set_directional_discharges(
     kinds: tuple[str, ...],
 ) -> None:
     branch, manifest = _directional_transition_branch_and_manifest(artifact, bond=bond)
-    source = _term_field(manifest["transition_term"], "source_snapshot")
+    source = closed_term_field(manifest["transition_term"], "source_snapshot")
     factor_by_kind = {
-        _term_field(_term_field(factor, "key"), "kind"): _term_field(factor, "key")
-        for factor in _term_field(source, "factors")
+        closed_term_field(closed_term_field(factor, "key"), "kind"): closed_term_field(factor, "key")
+        for factor in closed_term_field(source, "factors")
     }
-    _set_term_field(
+    set_closed_term_field(
         manifest["transition_term"],
         "discharged_factor_keys",
         [factor_by_kind[kind] for kind in kinds],
     )
-    _refresh_transition_manifest_digest(manifest)
-    _refresh_object_and_artifact_digest(artifact, branch)
+    refresh_closed_term_digest_field(manifest, term_field="transition_term", digest_field="transition_digest", operation="test.transition.digest")
+    reseal_support_artifact(artifact)
 
 
 def _set_directional_discharges_by_keys(
@@ -4397,21 +4403,21 @@ def _set_directional_discharges_by_keys(
     key_pairs: tuple[tuple[str, tuple[int, ...]], ...],
 ) -> None:
     branch, manifest = _directional_transition_branch_and_manifest(artifact, bond=bond)
-    source = _term_field(manifest["transition_term"], "source_snapshot")
+    source = closed_term_field(manifest["transition_term"], "source_snapshot")
     factor_by_pair = {
         (
-            _term_field(_term_field(factor, "key"), "kind"),
-            tuple(_term_field(_term_field(factor, "key"), "key")),
-        ): _term_field(factor, "key")
-        for factor in _term_field(source, "factors")
+            closed_term_field(closed_term_field(factor, "key"), "kind"),
+            tuple(closed_term_field(closed_term_field(factor, "key"), "key")),
+        ): closed_term_field(factor, "key")
+        for factor in closed_term_field(source, "factors")
     }
-    _set_term_field(
+    set_closed_term_field(
         manifest["transition_term"],
         "discharged_factor_keys",
         [factor_by_pair[key_pair] for key_pair in key_pairs],
     )
-    _refresh_transition_manifest_digest(manifest)
-    _refresh_object_and_artifact_digest(artifact, branch)
+    refresh_closed_term_digest_field(manifest, term_field="transition_term", digest_field="transition_digest", operation="test.transition.digest")
+    reseal_support_artifact(artifact)
 
 
 def _remove_raw_lifecycle_capability(
@@ -4429,22 +4435,22 @@ def _remove_raw_lifecycle_capability(
     )
     capabilities = lifecycle["lifecycle_capabilities"]
     capabilities.remove(capability)
-    _refresh_object_and_artifact_digest(artifact, branch)
+    reseal_support_artifact(artifact)
 
 
 def _mutate_directional_term_mark(artifact, *, bond: int, value: int) -> None:
     branch, manifest = _directional_transition_branch_and_manifest(artifact, bond=bond)
-    mark = _term_field(manifest["transition_term"], "direction_mark")
+    mark = closed_term_field(manifest["transition_term"], "direction_mark")
     mark["value"] = value if mark["value"] != value else -value
-    _refresh_transition_manifest_digest(manifest)
-    _refresh_object_and_artifact_digest(artifact, branch)
+    refresh_closed_term_digest_field(manifest, term_field="transition_term", digest_field="transition_digest", operation="test.transition.digest")
+    reseal_support_artifact(artifact)
 
 
 def _mutate_directional_term_bond(artifact, *, bond: int, value: int) -> None:
     branch, manifest = _directional_transition_branch_and_manifest(artifact, bond=bond)
-    _set_term_field(manifest["transition_term"], "bond", value)
-    _refresh_transition_manifest_digest(manifest)
-    _refresh_object_and_artifact_digest(artifact, branch)
+    set_closed_term_field(manifest["transition_term"], "bond", value)
+    refresh_closed_term_digest_field(manifest, term_field="transition_term", digest_field="transition_digest", operation="test.transition.digest")
+    reseal_support_artifact(artifact)
 
 
 def _remove_directional_successor_bond_occurrence(artifact, *, bond: int) -> None:
@@ -4452,19 +4458,19 @@ def _remove_directional_successor_bond_occurrence(artifact, *, bond: int) -> Non
     projection = _text_projection_for_branch(artifact, branch)
     cursor = projection["payload"]["successor_cursor"]
     state = _single_cursor_state(cursor)
-    stereo = _term_field(state, "stereo_state")
-    occurrences = _term_field(stereo, "bond_occurrences")
+    stereo = closed_term_field(state, "stereo_state")
+    occurrences = closed_term_field(stereo, "bond_occurrences")
     kept = [
         occurrence
         for occurrence in occurrences
-        if int(_term_field(occurrence, "bond")) != bond
+        if int(closed_term_field(occurrence, "bond")) != bond
     ]
     if len(kept) == len(occurrences):
         raise AssertionError(f"missing successor bond occurrence for bond {bond}")
     occurrences[:] = kept
     old_state_digest = branch["payload"]["successor_state_digest"]
-    _refresh_cursor_digest(cursor)
-    successor_state_digest = _closed_term_digest(state)
+    refresh_cursor_digest(cursor, operation="test.cursor.digest")
+    successor_state_digest = closed_term_digest(state)
     _propagate_text_projection_cursor_change(
         artifact,
         old_cursor_digest=branch["payload"]["successor_cursor_digest"],
@@ -4484,11 +4490,11 @@ def _remove_directional_successor_bond_occurrence(artifact, *, bond: int) -> Non
     branch["payload"]["graph_ring_delta"]["manifest"]["successor_cursor_digest"] = (
         cursor["digest"]
     )
-    _refresh_graph_ring_delta_digest(branch["payload"]["graph_ring_delta"])
+    refresh_kind_manifest_digest(branch["payload"]["graph_ring_delta"], operation="test.graph_ring_delta.digest")
     projection["payload"]["digest"] = _text_projection_identity_digest(
         projection["payload"]
     )
-    _refresh_object_and_artifact_digest(artifact, branch)
+    reseal_support_artifact(artifact)
 
 
 def _duplicate_directional_successor_bond_occurrence(artifact, *, bond: int) -> None:
@@ -4496,19 +4502,19 @@ def _duplicate_directional_successor_bond_occurrence(artifact, *, bond: int) -> 
     projection = _text_projection_for_branch(artifact, branch)
     cursor = projection["payload"]["successor_cursor"]
     state = _single_cursor_state(cursor)
-    stereo = _term_field(state, "stereo_state")
-    occurrences = _term_field(stereo, "bond_occurrences")
+    stereo = closed_term_field(state, "stereo_state")
+    occurrences = closed_term_field(stereo, "bond_occurrences")
     matches = [
         occurrence
         for occurrence in occurrences
-        if int(_term_field(occurrence, "bond")) == bond
+        if int(closed_term_field(occurrence, "bond")) == bond
     ]
     if len(matches) != 1:
         raise AssertionError(f"expected one successor bond occurrence for bond {bond}")
     occurrences.append(deepcopy(matches[0]))
     old_state_digest = branch["payload"]["successor_state_digest"]
-    _refresh_cursor_digest(cursor)
-    successor_state_digest = _closed_term_digest(state)
+    refresh_cursor_digest(cursor, operation="test.cursor.digest")
+    successor_state_digest = closed_term_digest(state)
     _propagate_text_projection_cursor_change(
         artifact,
         old_cursor_digest=branch["payload"]["successor_cursor_digest"],
@@ -4528,17 +4534,17 @@ def _duplicate_directional_successor_bond_occurrence(artifact, *, bond: int) -> 
     branch["payload"]["graph_ring_delta"]["manifest"]["successor_cursor_digest"] = (
         cursor["digest"]
     )
-    _refresh_graph_ring_delta_digest(branch["payload"]["graph_ring_delta"])
+    refresh_kind_manifest_digest(branch["payload"]["graph_ring_delta"], operation="test.graph_ring_delta.digest")
     projection["payload"]["digest"] = _text_projection_identity_digest(
         projection["payload"]
     )
-    _refresh_object_and_artifact_digest(artifact, branch)
+    reseal_support_artifact(artifact)
 
 
 def _mutate_directional_successor_snapshot_unrelated(artifact, *, bond: int) -> None:
     branch, manifest = _directional_transition_branch_and_manifest(artifact, bond=bond)
-    successor = _term_field(manifest["transition_term"], "successor_snapshot")
-    _term_field(successor, "domains").append(
+    successor = closed_term_field(manifest["transition_term"], "successor_snapshot")
+    closed_term_field(successor, "domains").append(
         [
             {
                 "__dataclass__": "grimace._south_star1.residual_constraints.VarId",
@@ -4547,16 +4553,16 @@ def _mutate_directional_successor_snapshot_unrelated(artifact, *, bond: int) -> 
             [False, True],
         ]
     )
-    digest = _closed_term_digest(successor)
-    _set_term_field(manifest["transition_term"], "successor_snapshot_digest", digest)
+    digest = closed_term_digest(successor)
+    set_closed_term_field(manifest["transition_term"], "successor_snapshot_digest", digest)
     _refresh_linked_raw_lifecycle_residual_digest(
         branch,
         manifest=manifest,
         field="successor_residual_snapshot_digest",
         digest=digest,
     )
-    _refresh_transition_manifest_digest(manifest)
-    _refresh_object_and_artifact_digest(artifact, branch)
+    refresh_closed_term_digest_field(manifest, term_field="transition_term", digest_field="transition_digest", operation="test.transition.digest")
+    reseal_support_artifact(artifact)
 
 
 def _linked_tetra_lifecycle_manifest(
@@ -4621,12 +4627,12 @@ def _first_directional_bond_delta_branch(artifact):
 
 def _first_terminal_projection_object(artifact):
     support = _first_support_string_object(artifact)
-    return _object(artifact, support["payload"]["terminal_projection_ref"])
+    return artifact_object_by_id(artifact, support["payload"]["terminal_projection_ref"])
 
 
 def _first_terminal_support_object(artifact):
     support = _first_support_string_object(artifact)
-    return _object(artifact, support["payload"]["terminal_support_refs"][0])
+    return artifact_object_by_id(artifact, support["payload"]["terminal_support_refs"][0])
 
 
 def _first_local_evidence(artifact, kind: str):
@@ -4639,51 +4645,10 @@ def _first_local_evidence(artifact, kind: str):
     raise AssertionError(f"missing local evidence kind: {kind}")
 
 
-def _refresh_local_evidence_digest(evidence) -> None:
-    evidence["digest"] = _identity_digest(
-        {"kind": evidence["kind"], "manifest": evidence["manifest"]},
-    )
-
-
-def _refresh_graph_ring_delta_digest(delta) -> None:
-    delta["digest"] = _identity_digest(
-        {"kind": delta["kind"], "manifest": delta["manifest"]},
-    )
-
-
-def _term_field(term, name: str):
-    for field_name, value in term["fields"]:
-        if field_name == name:
-            return value
-    raise AssertionError(f"missing term field: {name}")
-
-
-def _set_term_field(term, name: str, value) -> None:
-    for field in term["fields"]:
-        if field[0] == name:
-            field[1] = value
-            return
-    raise AssertionError(f"missing term field: {name}")
-
-
-def _closed_term_digest(term) -> str:
-    return _digest_terms_bounded(
-        term,
-        budget=WriterEnvelopeWorkBudget(),
-        operation="test.closed_term.digest",
-    )
-
-
-def _refresh_transition_manifest_digest(manifest) -> None:
-    manifest["transition_digest"] = _closed_term_digest(manifest["transition_term"])
-
-
-def _refresh_cursor_digest(cursor) -> None:
-    cursor["digest"] = _closed_term_digest(cursor["terms"])
-
-
 def _single_cursor_state(cursor):
-    weighted_states = _term_field(cursor["terms"], "weighted_states")
+
+
+    weighted_states = closed_term_field(cursor["terms"], "weighted_states")
     if len(weighted_states) != 1:
         raise AssertionError("expected single-state cursor")
     return weighted_states[0][0]
@@ -4692,8 +4657,8 @@ def _single_cursor_state(cursor):
 def _cursor_state_by_digest(cursor, digest: str):
     matches = [
         state
-        for state, _weight in _term_field(cursor["terms"], "weighted_states")
-        if _closed_term_digest(state) == digest
+        for state, _weight in closed_term_field(cursor["terms"], "weighted_states")
+        if closed_term_digest(state) == digest
     ]
     if len(matches) != 1:
         raise AssertionError(f"expected one cursor state for digest {digest}")
@@ -4730,7 +4695,7 @@ def _propagate_text_projection_cursor_change(
             payload["source_cursor"] = new_cursor
             payload["digest"] = _text_projection_identity_digest(payload)
             for branch_ref in payload["branch_support_refs"]:
-                branch = _object(artifact, branch_ref)
+                branch = artifact_object_by_id(artifact, branch_ref)
                 branch["payload"]["source_cursor_digest"] = new_cursor["digest"]
                 branch["payload"]["graph_ring_delta"]["manifest"][
                     "source_cursor_digest"
@@ -4744,7 +4709,7 @@ def _propagate_text_projection_cursor_change(
                     branch["payload"]["graph_ring_delta"]["manifest"][
                         "source_state_digest"
                     ] = new_state_digest
-                _refresh_graph_ring_delta_digest(branch["payload"]["graph_ring_delta"])
+                refresh_kind_manifest_digest(branch["payload"]["graph_ring_delta"], operation="test.graph_ring_delta.digest")
     for item in artifact["objects"]:
         if item["kind"] != "replay_path":
             continue
@@ -4756,46 +4721,6 @@ def _propagate_text_projection_cursor_change(
         payload = item["payload"]
         if payload["source_cursor"]["digest"] == old_cursor_digest:
             payload["source_cursor"] = new_cursor
-
-
-def _refresh_object_and_artifact_digest(artifact, obj) -> None:
-    del obj
-    changed = True
-    while changed:
-        changed = False
-        for item in artifact["objects"]:
-            digest = _identity_digest(
-                support_artifact_object_identity_term(item["kind"], item["payload"]),
-            )
-            object_id = f"obj:{digest}"
-            if item["digest"] == digest and item["object_id"] == object_id:
-                continue
-            old_id = item["object_id"]
-            item["digest"] = digest
-            item["object_id"] = object_id
-            _replace_artifact_ref(artifact, old_id=old_id, new_id=object_id)
-            changed = True
-    artifact["metrics"] = artifact_metrics(
-        artifact["objects"],
-        roots=artifact["roots"],
-    )
-    _refresh_artifact_digest(artifact)
-
-
-def _replace_artifact_ref(value, *, old_id: str, new_id: str) -> None:
-    if isinstance(value, dict):
-        for key, item in list(value.items()):
-            if item == old_id:
-                value[key] = new_id
-            else:
-                _replace_artifact_ref(item, old_id=old_id, new_id=new_id)
-        return
-    if isinstance(value, list):
-        for index, item in enumerate(value):
-            if item == old_id:
-                value[index] = new_id
-            else:
-                _replace_artifact_ref(item, old_id=old_id, new_id=new_id)
 
 
 def _assert_structural_checker_accepts(test_case, artifact) -> None:
@@ -4828,10 +4753,10 @@ def _different_local_order_digest(artifact, *, branch, cursor_name: str, atom: i
     projection = _text_projection_for_branch(artifact, branch)
     cursor = projection["payload"][cursor_name]
     state = cursor["terms"]["fields"][0][1][0][0]
-    stereo = _term_field(state, "stereo_state")
-    for record in _term_field(stereo, "local_orders"):
-        if _term_field(record, "atom") != atom:
-            return _closed_term_digest(record)
+    stereo = closed_term_field(state, "stereo_state")
+    for record in closed_term_field(stereo, "local_orders"):
+        if closed_term_field(record, "atom") != atom:
+            return closed_term_digest(record)
     raise AssertionError("missing alternate local-order record")
 
 
@@ -4891,21 +4816,9 @@ def _tetra_facts_with_implicit_h_only_outside_specified_site(facts):
 
 
 
-def _object(artifact, object_id):
-    return next(item for item in artifact["objects"] if item["object_id"] == object_id)
-
-
 def _support_strings(artifact):
-    root = _object(artifact, artifact["roots"]["support_image_root"])
+    root = artifact_object_by_id(artifact, artifact["roots"]["support_image_root"])
     return root["payload"]["support_strings"]
-
-
-def _refresh_artifact_digest(artifact):
-    artifact["digest"] = _digest_terms_bounded(
-        artifact_manifest(artifact),
-        budget=WriterEnvelopeWorkBudget(),
-        operation="test.artifact_manifest.digest",
-    )
 
 
 if __name__ == "__main__":

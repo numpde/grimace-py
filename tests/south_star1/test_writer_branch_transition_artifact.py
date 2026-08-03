@@ -10,15 +10,12 @@ from unittest.mock import patch
 from grimace._south_star1.ids import BondId
 from grimace._south_star1.policy import DirectionMark
 from grimace._south_star1.writer_branch_transition_artifact import verify_writer_branch_transition_artifact_envelope
-from grimace._south_star1.writer_branch_transition_artifact import branch_transition_artifact_manifest
 from grimace._south_star1.writer_branch_transition_artifact import writer_branch_transition_artifact_for_support
 from grimace._south_star1.writer_branch_transition_artifact_checker import verify_writer_branch_transition_artifact_consistency
 from grimace._south_star1.writer_branch_transition_artifact_fact_verifier import verify_writer_branch_transition_artifact_for_facts
 from grimace._south_star1.writer_envelope_terms import _digest_terms_bounded
 from grimace._south_star1.writer_envelope_terms import _identity_digest
 from grimace._south_star1.writer_envelope_work import WriterEnvelopeWorkBudget
-from grimace._south_star1.writer_support_artifact_checker import artifact_metrics
-from grimace._south_star1.writer_support_artifact_checker import support_artifact_object_identity_term
 from grimace._south_star1.writer_support_artifact_envelope import _ObjectTable
 from grimace._south_star1.writer_support_artifact_envelope import _add_text_projection
 from grimace._south_star1.writer_events import WriterRingEndpointEmitted
@@ -37,6 +34,12 @@ from tests.south_star1.writer_test_context import initial_writer_snapshot
 from tests.south_star1.writer_test_context import prepare_writer_facts
 from tests.south_star1.writer_test_context import writer_runtime_options
 from tests.south_star1.writer_proof_sources import shared_ring_branch_source
+from tests.south_star1.writer_artifact_resealing import reseal_branch_transition_artifact
+from tests.south_star1.writer_artifact_test_support import closed_term_field
+from tests.south_star1.writer_artifact_test_support import refresh_closed_term_digest_field
+from tests.south_star1.writer_artifact_test_support import refresh_kind_manifest_digest
+from tests.south_star1.writer_artifact_test_support import find_closed_term
+from tests.south_star1.writer_artifact_test_support import set_closed_term_field
 
 
 class WriterBranchTransitionArtifactTest(unittest.TestCase):
@@ -67,7 +70,7 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
                 delta["digest"] = _identity_digest(
                     {"kind": delta["kind"], "manifest": delta["manifest"]}
                 )
-                _redigest_branch_artifact(forged)
+                reseal_branch_transition_artifact(forged)
 
                 structural = verify_writer_branch_transition_artifact_consistency(forged)
                 replay = verify_writer_branch_transition_artifact_for_facts(
@@ -131,7 +134,7 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
                     }
                 )
                 by_kind["text_projection"]["payload"]["emitted_text"] = forged_text
-                _redigest_branch_artifact(forged)
+                reseal_branch_transition_artifact(forged)
 
                 structural = verify_writer_branch_transition_artifact_consistency(forged)
                 replay = verify_writer_branch_transition_artifact_for_facts(
@@ -217,11 +220,11 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
                     )
                     residual = branch["obligation_manifests"]["residual_work"][0]
                     self.assertEqual(
-                        _closed_field(coupling, "stereo_lifecycle_digest"),
+                        closed_term_field(coupling, "stereo_lifecycle_digest"),
                         raw_lifecycle["evidence_digest"],
                     )
                     self.assertEqual(
-                        _closed_field(coupling, "residual_work_digests"),
+                        closed_term_field(coupling, "residual_work_digests"),
                         [residual["evidence_digest"]],
                     )
                     self.assertIn(
@@ -259,8 +262,8 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
         def mutate_marker_side(branch, item, term):
             closure = branch["local_evidence"]["manifest"]["closure_bond_text"][0]
             closure["marker_side"] = "closing"
-            _set_closed_field(term, "marker_side", "closing")
-            _set_closed_field(term, "closure_manifest_digest", _identity_digest(closure))
+            set_closed_term_field(term, "marker_side", "closing")
+            set_closed_term_field(term, "closure_manifest_digest", _identity_digest(closure))
 
         def mutate_lifecycle(branch, _item, term):
             certificate = next(
@@ -268,29 +271,29 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
                 for manifest in branch["obligation_manifests"]["stereo_lifecycle"]
                 if manifest["operation"] == "WriterStereoBranchCertificate"
             )
-            _set_closed_field(term, "stereo_lifecycle_digest", certificate["evidence_digest"])
+            set_closed_term_field(term, "stereo_lifecycle_digest", certificate["evidence_digest"])
 
         def mutate_residual(_branch, _item, term):
-            _set_closed_field(term, "residual_work_digests", ["0" * 64])
+            set_closed_term_field(term, "residual_work_digests", ["0" * 64])
 
         def mutate_closed_record(_branch, _item, term):
-            _set_closed_field(term, "closed_closure_record_digest", "0" * 64)
+            set_closed_term_field(term, "closed_closure_record_digest", "0" * 64)
 
         def mutate_both_markers(branch, _item, term):
             closure = branch["local_evidence"]["manifest"]["closure_bond_text"][0]
             closure["opening_marker"] = "="
             closure["closing_marker"] = "="
-            _set_closed_field(term, "opening_marker", "=")
-            _set_closed_field(term, "closing_marker", "=")
-            _set_closed_field(term, "closure_manifest_digest", _identity_digest(closure))
+            set_closed_term_field(term, "opening_marker", "=")
+            set_closed_term_field(term, "closing_marker", "=")
+            set_closed_term_field(term, "closure_manifest_digest", _identity_digest(closure))
 
         def mutate_no_markers(branch, _item, term):
             closure = branch["local_evidence"]["manifest"]["closure_bond_text"][0]
             closure["opening_marker"] = ""
             closure["closing_marker"] = ""
-            _set_closed_field(term, "opening_marker", "")
-            _set_closed_field(term, "closing_marker", "")
-            _set_closed_field(term, "closure_manifest_digest", _identity_digest(closure))
+            set_closed_term_field(term, "opening_marker", "")
+            set_closed_term_field(term, "closing_marker", "")
+            set_closed_term_field(term, "closure_manifest_digest", _identity_digest(closure))
 
         def mutate_direction_mark(branch, _item, _term):
             event = next(
@@ -301,10 +304,10 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
             event["direction_mark"]["value"] = 1
 
         def mutate_cross_branch_lifecycle(_branch, _item, term):
-            _set_closed_field(term, "stereo_lifecycle_digest", opening_lifecycle_digest)
+            set_closed_term_field(term, "stereo_lifecycle_digest", opening_lifecycle_digest)
 
         def mutate_cross_branch_residual(_branch, _item, term):
-            _set_closed_field(term, "residual_work_digests", [opening_residual_digest])
+            set_closed_term_field(term, "residual_work_digests", [opening_residual_digest])
 
         cases = (
             ("marker_side", mutate_marker_side, "local_closure_marker_side_mismatch"),
@@ -331,7 +334,7 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
                 term = item["coupling_term"]
                 mutate(branch, item, term)
                 _refresh_directional_ring_coupling(branch, item)
-                _redigest_branch_artifact(forged)
+                reseal_branch_transition_artifact(forged)
 
                 structural = verify_writer_branch_transition_artifact_consistency(forged)
                 replay = verify_writer_branch_transition_artifact_for_facts(
@@ -422,7 +425,7 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
                         expected_capabilities,
                     )
                     term = manifest["transition_term"]
-                    models = _closed_field(term, "carrier_models")
+                    models = closed_term_field(term, "carrier_models")
                     self.assertEqual(len(models), 2)
                     if phase == "opening":
                         self.assertTrue(
@@ -431,17 +434,17 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
                             )
                         )
                         self.assertEqual(
-                            len(_closed_field(term, "domain_intersections")),
+                            len(closed_term_field(term, "domain_intersections")),
                             2,
                         )
-                        self.assertEqual(_closed_field(term, "projected_variables"), [])
+                        self.assertEqual(closed_term_field(term, "projected_variables"), [])
                         self.assertEqual(
-                            _closed_field(term, "discharged_factor_keys"),
+                            closed_term_field(term, "discharged_factor_keys"),
                             [],
                         )
                         values = tuple(
                             tuple(value["value"] for value in intersection[1])
-                            for intersection in _closed_field(
+                            for intersection in closed_term_field(
                                 term,
                                 "domain_intersections",
                             )
@@ -456,17 +459,17 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
                         }
                         self.assertEqual(values, expected_values[mark])
                     else:
-                        self.assertEqual(len(_closed_field(term, "restrictions")), 2)
+                        self.assertEqual(len(closed_term_field(term, "restrictions")), 2)
 
     def test_shared_ring_transition_term_forgeries_reject_semantically(self) -> None:
         opening_cases = (
             ("missing", _forge_transition_missing, "directional_ring_projection_transition_missing"),
             ("singular_term", _convert_shared_opening_to_singular, "shared_directional_ring_model_mismatch"),
-            ("remove_model", lambda term: _closed_field(term, "carrier_models").pop(), "shared_directional_ring_model_mismatch"),
+            ("remove_model", lambda term: closed_term_field(term, "carrier_models").pop(), "shared_directional_ring_model_mismatch"),
             ("duplicate_model", _duplicate_first_shared_model, "shared_directional_ring_model_mismatch"),
-            ("reverse_models", lambda term: _closed_field(term, "carrier_models").reverse(), "shared_directional_ring_model_mismatch"),
+            ("reverse_models", lambda term: closed_term_field(term, "carrier_models").reverse(), "shared_directional_ring_model_mismatch"),
             ("change_model_side", _change_first_model_side, "shared_directional_ring_model_mismatch"),
-            ("remove_choice", lambda term: _closed_field(term, "compatible_second_endpoint_choices").pop(), "shared_directional_ring_choice_relation_mismatch"),
+            ("remove_choice", lambda term: closed_term_field(term, "compatible_second_endpoint_choices").pop(), "shared_directional_ring_choice_relation_mismatch"),
             ("add_incompatible_choice", _add_incompatible_shared_choice, "shared_directional_ring_choice_relation_mismatch"),
             ("change_intersection", _remove_first_intersection_value, "shared_directional_ring_intersection_mismatch"),
             ("forged_correlation", _change_shared_factor_correlation, "shared_directional_ring_transition_successor_lifecycle_mismatch"),
@@ -474,13 +477,13 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
         )
         pair_cases = (
             ("missing", _forge_transition_missing, "directional_ring_pair_transition_missing"),
-            ("remove_model", lambda term: _closed_field(term, "carrier_models").pop(), "shared_directional_ring_model_mismatch"),
-            ("remove_restriction", lambda term: _closed_field(term, "restrictions").pop(), "shared_directional_ring_restriction_mismatch"),
-            ("swap_restrictions", lambda term: _closed_field(term, "restrictions").reverse(), "shared_directional_ring_restriction_mismatch"),
-            ("remove_choice", lambda term: _closed_field(term, "compatible_second_endpoint_choices").pop(), "shared_directional_ring_choice_relation_mismatch"),
+            ("remove_model", lambda term: closed_term_field(term, "carrier_models").pop(), "shared_directional_ring_model_mismatch"),
+            ("remove_restriction", lambda term: closed_term_field(term, "restrictions").pop(), "shared_directional_ring_restriction_mismatch"),
+            ("swap_restrictions", lambda term: closed_term_field(term, "restrictions").reverse(), "shared_directional_ring_restriction_mismatch"),
+            ("remove_choice", lambda term: closed_term_field(term, "compatible_second_endpoint_choices").pop(), "shared_directional_ring_choice_relation_mismatch"),
             ("wrong_orientation", _change_pair_orientation, "directional_ring_pair_canonical_orientation_mismatch"),
             ("wrong_occurrence_mark", _change_occurrence_mark, "directional_ring_pair_bond_occurrence_mismatch"),
-            ("missing_discharge", lambda term: _closed_field(term, "discharged_factor_keys").pop(0), "directional_ring_pair_discharge_factor_mismatch"),
+            ("missing_discharge", lambda term: closed_term_field(term, "discharged_factor_keys").pop(0), "directional_ring_pair_discharge_factor_mismatch"),
             ("forged_projection", _forge_projected_variable, "directional_ring_pair_projected_variables_mismatch"),
             ("detached_successor", _change_successor_snapshot, "shared_directional_ring_transition_successor_lifecycle_mismatch"),
         )
@@ -497,8 +500,8 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
                         mutate(manifest)
                     else:
                         mutate(manifest["transition_term"])
-                        _refresh_transition_digest(manifest)
-                    _redigest_branch_artifact(forged)
+                        refresh_closed_term_digest_field(manifest, term_field="transition_term", digest_field="transition_digest", operation="test.transition.digest")
+                    reseal_branch_transition_artifact(forged)
                     structural = verify_writer_branch_transition_artifact_consistency(
                         forged
                     )
@@ -531,7 +534,7 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
                 target_manifest["transition_digest"] = donor_manifest[
                     "transition_digest"
                 ]
-                _redigest_branch_artifact(forged)
+                reseal_branch_transition_artifact(forged)
                 structural = verify_writer_branch_transition_artifact_consistency(
                     forged
                 )
@@ -561,7 +564,7 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
         raw["lifecycle_capabilities"].remove(
             "shared_directional_carrier_restriction"
         )
-        _redigest_branch_artifact(forged)
+        reseal_branch_transition_artifact(forged)
         structural = verify_writer_branch_transition_artifact_consistency(forged)
         replay = verify_writer_branch_transition_artifact_for_facts(
             facts=facts,
@@ -620,7 +623,7 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
         objects = {item["kind"]: item for item in forged["objects"]}
         objects["branch_support"]["payload"]["emitted_text"] += "X"
         objects["text_projection"]["payload"]["emitted_text"] += "X"
-        _redigest_branch_artifact(forged)
+        reseal_branch_transition_artifact(forged)
 
         structural = verify_writer_branch_transition_artifact_consistency(forged)
         live = verify_writer_branch_transition_artifact_envelope(
@@ -648,7 +651,7 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
         delta["digest"] = _identity_digest(
             {"kind": delta["kind"], "manifest": delta["manifest"]}
         )
-        _redigest_branch_artifact(forged)
+        reseal_branch_transition_artifact(forged)
         self.assertTrue(
             verify_writer_branch_transition_artifact_consistency(forged).accepted
         )
@@ -672,7 +675,7 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
         branch["payload"]["obligation_summary"] = deepcopy(
             other_branch["payload"]["obligation_summary"]
         )
-        _redigest_branch_artifact(forged)
+        reseal_branch_transition_artifact(forged)
         self.assertTrue(
             verify_writer_branch_transition_artifact_consistency(forged).accepted
         )
@@ -690,7 +693,7 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
         forged = deepcopy(artifact)
         forged["prepared_identity"]["digest"] = "0" * 64
         forged["source_snapshot"]["prepared_identity_digest"] = "0" * 64
-        _redigest_branch_artifact(forged)
+        reseal_branch_transition_artifact(forged)
         structural = verify_writer_branch_transition_artifact_consistency(forged)
         rejected = verify_writer_branch_transition_artifact_for_facts(
             facts=facts,
@@ -747,15 +750,15 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
                 forged = deepcopy(artifact)
                 term = forged["source_snapshot"]["cursor"]["terms"]
                 mutate(term)
-                _redigest_branch_artifact(forged)
+                reseal_branch_transition_artifact(forged)
                 checked = verify_writer_branch_transition_artifact_consistency(forged)
                 self.assertFalse(checked.accepted)
                 self.assertIn("writer snapshot closed term violation", checked.reason)
 
         forged = deepcopy(artifact)
-        enum_term = _find_closed_term(forged["source_snapshot"]["cursor"]["terms"], "__enum__")
+        enum_term = find_closed_term(forged["source_snapshot"]["cursor"]["terms"], "__enum__")
         enum_term["__enum__"] = "grimace._south_star1.policy.TetraToken"
-        _redigest_branch_artifact(forged)
+        reseal_branch_transition_artifact(forged)
         checked = verify_writer_branch_transition_artifact_consistency(forged)
         self.assertFalse(checked.accepted)
         self.assertIn("enum_value_mismatch", checked.reason)
@@ -765,7 +768,7 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
         next(item for item in cursor_fields if item[0] == "weighted_states")[1] = {
             "not": "a closed collection"
         }
-        _redigest_branch_artifact(forged)
+        reseal_branch_transition_artifact(forged)
         checked = verify_writer_branch_transition_artifact_consistency(forged)
         self.assertFalse(checked.accepted)
         self.assertIn("dataclass_shape_mismatch", checked.reason)
@@ -909,57 +912,6 @@ def _branch_artifact_for_event_kind(
     raise AssertionError(f"missing branch event {event_kind!r}")
 
 
-def _redigest_branch_artifact(artifact) -> None:
-    budget = WriterEnvelopeWorkBudget()
-    by_kind = {item["kind"]: item for item in artifact["objects"]}
-    source = by_kind["source_snapshot"]
-    source_digest = _identity_digest(
-        support_artifact_object_identity_term(source["kind"], source["payload"]),
-        budget=budget,
-        operation="test.branch_transition.source_object",
-    )
-    source["digest"] = source_digest
-    source["object_id"] = f"obj:{source_digest}"
-    branch = by_kind["branch_support"]
-    branch_digest = _identity_digest(
-        support_artifact_object_identity_term(branch["kind"], branch["payload"]),
-        budget=budget,
-        operation="test.branch_transition.branch_object",
-    )
-    branch["digest"] = branch_digest
-    branch["object_id"] = f"obj:{branch_digest}"
-    projection = by_kind["text_projection"]
-    projection["payload"]["branch_support_refs"] = [branch["object_id"]]
-    identity = {
-        key: value
-        for key, value in projection["payload"].items()
-        if key not in ("digest", "branch_support_refs")
-    }
-    projection["payload"]["digest"] = _identity_digest(
-        identity,
-        budget=budget,
-        operation="test.branch_transition.projection_identity",
-    )
-    projection_digest = _identity_digest(
-        support_artifact_object_identity_term(projection["kind"], projection["payload"]),
-        budget=budget,
-        operation="test.branch_transition.projection_object",
-    )
-    projection["digest"] = projection_digest
-    projection["object_id"] = f"obj:{projection_digest}"
-    artifact["roots"]["branch_support_ref"] = branch["object_id"]
-    artifact["roots"]["text_projection_ref"] = projection["object_id"]
-    artifact["roots"]["source_ref"] = source["object_id"]
-    artifact["objects"] = sorted(artifact["objects"], key=lambda item: item["object_id"])
-    metrics = artifact_metrics(artifact["objects"])
-    artifact["metrics"] = {**metrics, "reachable_object_count": 3, "unreferenced_object_count": 0}
-    artifact["digest"] = _digest_terms_bounded(
-        branch_transition_artifact_manifest(artifact),
-        budget=budget,
-        operation="test.branch_transition.artifact",
-    )
-
-
 def _refresh_directional_ring_coupling(branch, item) -> None:
     budget = WriterEnvelopeWorkBudget()
     digest = _digest_terms_bounded(
@@ -970,45 +922,16 @@ def _refresh_directional_ring_coupling(branch, item) -> None:
     item["coupling_term_digest"] = digest
     local = branch["local_evidence"]
     local["manifest"]["directional_coupled_digests"] = [digest]
-    local["digest"] = _identity_digest(
-        {"kind": local["kind"], "manifest": local["manifest"]}
+    refresh_kind_manifest_digest(
+        local,
+        operation="test.local_evidence.digest",
     )
     delta = branch["graph_ring_delta"]
     delta["manifest"]["local_evidence_digest"] = local["digest"]
-    delta["digest"] = _identity_digest(
-        {"kind": delta["kind"], "manifest": delta["manifest"]}
+    refresh_kind_manifest_digest(
+        delta,
+        operation="test.graph_ring_delta.digest",
     )
-
-
-def _find_closed_term(value, marker: str):
-    if isinstance(value, dict):
-        if marker in value:
-            return value
-        for child in value.values():
-            found = _find_closed_term(child, marker)
-            if found is not None:
-                return found
-    elif isinstance(value, list):
-        for child in value:
-            found = _find_closed_term(child, marker)
-            if found is not None:
-                return found
-    return None
-
-
-def _closed_field(term, name: str):
-    for field_name, value in term["fields"]:
-        if field_name == name:
-            return value
-    raise AssertionError(f"missing closed field {name!r}")
-
-
-def _set_closed_field(term, name: str, value) -> None:
-    for field in term["fields"]:
-        if field[0] == name:
-            field[1] = value
-            return
-    raise AssertionError(f"missing closed field {name!r}")
 
 
 def _branch_residual_manifest(artifact):
@@ -1030,21 +953,13 @@ def _branch_residual_manifest(artifact):
     return matches[0]
 
 
-def _refresh_transition_digest(manifest) -> None:
-    manifest["transition_digest"] = _digest_terms_bounded(
-        manifest["transition_term"],
-        budget=WriterEnvelopeWorkBudget(),
-        operation="test.branch_transition.transition",
-    )
-
-
 def _forge_transition_missing(manifest) -> None:
     manifest["transition_term"] = None
     manifest["transition_digest"] = None
 
 
 def _duplicate_first_shared_model(term) -> None:
-    models = _closed_field(term, "carrier_models")
+    models = closed_term_field(term, "carrier_models")
     models[1] = deepcopy(models[0])
 
 
@@ -1062,18 +977,18 @@ def _convert_shared_opening_to_singular(term) -> None:
 
 
 def _change_first_model_side(term) -> None:
-    model = _closed_field(term, "carrier_models")[0]
-    side = _closed_field(model, "side")
-    _set_closed_field(model, "side", "right" if side == "left" else "left")
+    model = closed_term_field(term, "carrier_models")[0]
+    side = closed_term_field(model, "side")
+    set_closed_term_field(model, "side", "right" if side == "left" else "left")
 
 
 def _remove_first_intersection_value(term) -> None:
-    values = _closed_field(term, "domain_intersections")[0][1]
+    values = closed_term_field(term, "domain_intersections")[0][1]
     values.pop()
 
 
 def _add_incompatible_shared_choice(term) -> None:
-    choices = _closed_field(term, "compatible_second_endpoint_choices")
+    choices = closed_term_field(term, "compatible_second_endpoint_choices")
     choices.append([
         "",
         {
@@ -1084,30 +999,30 @@ def _add_incompatible_shared_choice(term) -> None:
 
 
 def _change_pair_orientation(term) -> None:
-    _set_closed_field(
+    set_closed_term_field(
         term,
         "second_canonical_orientation",
-        _closed_field(term, "first_canonical_orientation"),
+        closed_term_field(term, "first_canonical_orientation"),
     )
 
 
 def _change_occurrence_mark(term) -> None:
-    mark = _closed_field(term, "bond_occurrence_mark")
+    mark = closed_term_field(term, "bond_occurrence_mark")
     mark["value"] = -mark["value"] if mark["value"] else 1
 
 
 def _forge_projected_variable(term) -> None:
-    var = deepcopy(_closed_field(term, "restrictions")[0][0])
-    _closed_field(term, "projected_variables").append(var)
+    var = deepcopy(closed_term_field(term, "restrictions")[0][0])
+    closed_term_field(term, "projected_variables").append(var)
 
 
 def _change_successor_snapshot(term) -> None:
-    snapshot = _closed_field(term, "successor_snapshot")
-    domains = _closed_field(snapshot, "domains")
+    snapshot = closed_term_field(term, "successor_snapshot")
+    domains = closed_term_field(snapshot, "domains")
     domains.reverse()
     if len(domains) < 2:
         domains.append(deepcopy(domains[0]))
-    _set_closed_field(
+    set_closed_term_field(
         term,
         "successor_snapshot_digest",
         _digest_terms_bounded(
@@ -1119,17 +1034,17 @@ def _change_successor_snapshot(term) -> None:
 
 
 def _change_shared_factor_correlation(term) -> None:
-    snapshot = _closed_field(term, "successor_snapshot")
+    snapshot = closed_term_field(term, "successor_snapshot")
     shared_factor = next(
         factor
-        for factor in _closed_field(snapshot, "factors")
+        for factor in closed_term_field(snapshot, "factors")
         if factor["__dataclass__"].endswith(
             "DirectionalBondEmissionFactorValueSnapshot"
         )
-        and len(_closed_field(factor, "models")) == 2
+        and len(closed_term_field(factor, "models")) == 2
     )
-    _closed_field(shared_factor, "models").reverse()
-    _set_closed_field(
+    closed_term_field(shared_factor, "models").reverse()
+    set_closed_term_field(
         term,
         "successor_snapshot_digest",
         _digest_terms_bounded(

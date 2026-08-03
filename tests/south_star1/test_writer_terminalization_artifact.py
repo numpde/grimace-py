@@ -14,7 +14,6 @@ from grimace._south_star1.writer_frontier import _checked_writer_frontier_branch
 from grimace._south_star1.writer_snapshot import capture_writer_frontier_snapshot
 from grimace._south_star1.writer_snapshot import WriterDecoderBoundary
 from grimace._south_star1.writer_terminalization_artifact import verify_writer_terminalization_artifact_envelope
-from grimace._south_star1.writer_terminalization_artifact import terminalization_artifact_manifest
 from grimace._south_star1.writer_terminalization_artifact import writer_terminalization_artifact_for_support
 from grimace._south_star1.writer_terminalization_artifact import _source_snapshot_from_terminalization_artifact
 from grimace._south_star1.writer_terminalization_artifact_checker import verify_writer_terminalization_artifact_consistency
@@ -23,8 +22,6 @@ from grimace._south_star1.writer_envelope_terms import _identity_digest
 from grimace._south_star1.writer_envelope_terms import _digest_terms_bounded
 from grimace._south_star1.writer_envelope_terms import _snapshot_identity_envelope
 from grimace._south_star1.writer_envelope_work import WriterEnvelopeWorkBudget
-from grimace._south_star1.writer_support_artifact_checker import artifact_metrics
-from grimace._south_star1.writer_support_artifact_checker import support_artifact_object_identity_term
 from grimace._south_star1.writer_snapshot_closed_terms import writer_frontier_cursor_from_closed_terms
 from tests.south_star1.helpers import cco_facts
 from tests.south_star1.writer_test_fixtures import directional_non_single_ring_carrier_facts
@@ -35,6 +32,11 @@ from tests.south_star1.writer_test_fixtures import terminal_tetra_center_policy
 from tests.south_star1.writer_test_context import initial_writer_snapshot
 from tests.south_star1.writer_test_context import writer_runtime_options
 from tests.south_star1.writer_proof_sources import first_terminal_proof_source
+from tests.south_star1.writer_artifact_resealing import reseal_terminalization_artifact
+from tests.south_star1.writer_artifact_test_support import closed_term_field
+from tests.south_star1.writer_artifact_test_support import set_closed_term_field
+from tests.south_star1.writer_artifact_test_support import set_nested_closed_term_field
+from tests.south_star1.writer_artifact_test_support import unique_artifact_object_by_kind
 
 
 class WriterTerminalizationArtifactTest(unittest.TestCase):
@@ -135,9 +137,9 @@ class WriterTerminalizationArtifactTest(unittest.TestCase):
         facts = cco_facts()
         options = writer_runtime_options()
         cases = (
-            ("active_atom", lambda support: _set_closed_field(support["terminalization_term"], "active_atom", 999), "terminalization_state_identity_mismatch"),
-            ("graph_status", lambda support: _set_nested_closed_field(support["terminalization_term"], "graph_completion_status", "complete", False), "terminal_graph_completion_status_mismatch"),
-            ("graph_digest", lambda support: _set_closed_field(support["terminalization_term"], "graph_obligation_work_digests", ["0" * 64]), "terminal_graph_work_digest_mismatch"),
+            ("active_atom", lambda support: set_closed_term_field(support["terminalization_term"], "active_atom", 999), "terminalization_state_identity_mismatch"),
+            ("graph_status", lambda support: set_nested_closed_term_field(support["terminalization_term"], "graph_completion_status", "complete", value=False), "terminal_graph_completion_status_mismatch"),
+            ("graph_digest", lambda support: set_closed_term_field(support["terminalization_term"], "graph_obligation_work_digests", ["0" * 64]), "terminal_graph_work_digest_mismatch"),
             ("graph_operation", lambda support: support["obligation_manifests"]["terminal_graph_obligation_work"][0].__setitem__("operation", "forged graph work"), "terminal_graph_manifest_mismatch"),
             ("lifecycle_event", lambda support: support["obligation_manifests"]["terminal_stereo_lifecycle"][0].__setitem__("lifecycle_event_kind", "ring_endpoint_paired"), "terminal_lifecycle_provenance_mismatch"),
             ("lifecycle_outcome", lambda support: support["obligation_manifests"]["terminal_stereo_lifecycle"][0].__setitem__("lifecycle_outcome_kind", "residual_restricted"), "terminal_lifecycle_identity_mismatch"),
@@ -157,9 +159,9 @@ class WriterTerminalizationArtifactTest(unittest.TestCase):
             with self.subTest(name=name):
                 _prepared, original = _terminal_artifact(facts, options, None)
                 artifact = deepcopy(original)
-                support = _object_by_kind(artifact, "terminal_support")["payload"]
+                support = unique_artifact_object_by_kind(artifact, "terminal_support")["payload"]
                 mutate(support)
-                _redigest_terminal_artifact(artifact)
+                reseal_terminalization_artifact(artifact)
                 structural = verify_writer_terminalization_artifact_consistency(artifact)
                 checked = verify_writer_terminalization_artifact_for_facts(
                     facts=facts, runtime_options=options, artifact=artifact
@@ -173,13 +175,13 @@ class WriterTerminalizationArtifactTest(unittest.TestCase):
         policy = terminal_tetra_center_policy()
         options = writer_runtime_options(rooted_at_atom=0)
         cases = (
-            ("wrong_site", lambda term: _set_closed_field(term, "site", 999), "terminal_tetra"),
-            ("wrong_atom", lambda term: _set_closed_field(term, "atom", 0), "terminal_transition_state_anchor_mismatch"),
-            ("wrong_reference", lambda term: _closed_field(term, "reference_order").reverse(), "terminal_tetra_reference_order_mismatch"),
-            ("wrong_local_order", lambda term: _closed_field(term, "local_order").reverse(), "terminal_tetra_local_order_mismatch"),
-            ("wrong_constraint", lambda term: _set_closed_field(term, "constraint_value", {"__enum__": "grimace._south_star1.residual_constraints.TetraLocalParity", "value": "odd"}), "terminal_tetra_restriction_mismatch"),
-            ("wrong_discharge", lambda term: _closed_field(term, "discharged_factor_keys").clear(), "terminal_tetra_restriction_mismatch"),
-            ("wrong_projection", lambda term: _closed_field(term, "projected_variables").clear(), "terminal_tetra_restriction_mismatch"),
+            ("wrong_site", lambda term: set_closed_term_field(term, "site", 999), "terminal_tetra"),
+            ("wrong_atom", lambda term: set_closed_term_field(term, "atom", 0), "terminal_transition_state_anchor_mismatch"),
+            ("wrong_reference", lambda term: closed_term_field(term, "reference_order").reverse(), "terminal_tetra_reference_order_mismatch"),
+            ("wrong_local_order", lambda term: closed_term_field(term, "local_order").reverse(), "terminal_tetra_local_order_mismatch"),
+            ("wrong_constraint", lambda term: set_closed_term_field(term, "constraint_value", {"__enum__": "grimace._south_star1.residual_constraints.TetraLocalParity", "value": "odd"}), "terminal_tetra_restriction_mismatch"),
+            ("wrong_discharge", lambda term: closed_term_field(term, "discharged_factor_keys").clear(), "terminal_tetra_restriction_mismatch"),
+            ("wrong_projection", lambda term: closed_term_field(term, "projected_variables").clear(), "terminal_tetra_restriction_mismatch"),
             ("missing_link", lambda term: None, "terminal_tetra_residual_manifest_mismatch"),
             ("extra_capability", lambda term: None, "terminal_lifecycle_provenance_mismatch"),
         )
@@ -187,12 +189,12 @@ class WriterTerminalizationArtifactTest(unittest.TestCase):
             with self.subTest(name=name):
                 _prepared, original = _terminal_artifact(facts, options, policy)
                 artifact = deepcopy(original)
-                support = _object_by_kind(artifact, "terminal_support")["payload"]
+                support = unique_artifact_object_by_kind(artifact, "terminal_support")["payload"]
                 manifest = support["obligation_manifests"]["terminal_residual_work"][0]
                 if name == "missing_link":
                     manifest["linked_lifecycle_digests"].clear()
                 elif name == "extra_capability":
-                    _closed_field(
+                    closed_term_field(
                         support["terminalization_term"],
                         "terminal_execution_capabilities",
                     ).append("tree_child_entry")
@@ -203,7 +205,7 @@ class WriterTerminalizationArtifactTest(unittest.TestCase):
                     budget=WriterEnvelopeWorkBudget(),
                     operation="test.terminalization.transition",
                 )
-                _redigest_terminal_artifact(artifact)
+                reseal_terminalization_artifact(artifact)
                 structural = verify_writer_terminalization_artifact_consistency(artifact)
                 checked = verify_writer_terminalization_artifact_for_facts(
                     facts=facts,
@@ -220,17 +222,17 @@ class WriterTerminalizationArtifactTest(unittest.TestCase):
         cases = (
             ("extra", lambda term: term["fields"].append(["extra", 1]), "terminalization_term_fields_mismatch"),
             ("missing", lambda term: term["fields"].pop(), "terminalization_term_fields_mismatch"),
-            ("mode", lambda term: _set_closed_field(term, "stereo_mode", "invented"), "terminalization_term_stereo_mode_mismatch"),
+            ("mode", lambda term: set_closed_term_field(term, "stereo_mode", "invented"), "terminalization_term_stereo_mode_mismatch"),
         )
         for name, mutate, reason in cases:
             with self.subTest(name=name):
                 artifact = deepcopy(original)
-                support = _object_by_kind(artifact, "terminal_support")["payload"]
+                support = unique_artifact_object_by_kind(artifact, "terminal_support")["payload"]
                 mutate(support["terminalization_term"])
                 support["terminalization_term_digest"] = _identity_digest(
                     support["terminalization_term"]
                 )
-                _redigest_terminal_artifact(artifact)
+                reseal_terminalization_artifact(artifact)
                 checked = verify_writer_terminalization_artifact_consistency(artifact)
                 self.assertFalse(checked.accepted)
                 self.assertIn(reason, checked.reason)
@@ -299,9 +301,9 @@ class WriterTerminalizationArtifactTest(unittest.TestCase):
             writer_runtime_options(rooted_at_atom=0),
             terminal_tetra_center_policy(),
         )
-        tetra_support = _object_by_kind(tetra_artifact, "terminal_support")["payload"]
+        tetra_support = unique_artifact_object_by_kind(tetra_artifact, "terminal_support")["payload"]
         residual = deepcopy(
-            _closed_field(
+            closed_term_field(
                 tetra_support["obligation_manifests"]["terminal_residual_work"][0][
                     "transition_term"
                 ],
@@ -313,8 +315,8 @@ class WriterTerminalizationArtifactTest(unittest.TestCase):
                 prepared, original = _terminal_artifact(facts, options, None)
                 artifact = deepcopy(original)
                 state = _projection_state_term(artifact, role)
-                _set_nested_closed_field(
-                    state, "stereo_state", "residual_snapshot", deepcopy(residual)
+                set_nested_closed_term_field(
+                    state, "stereo_state", "residual_snapshot", value=deepcopy(residual)
                 )
                 _refresh_state_anchors(
                     artifact=artifact, prepared=prepared, options=options
@@ -339,100 +341,30 @@ def _terminal_artifact(facts, options, policy):
 
 
 
-def _object_by_kind(artifact, kind):
-    return next(item for item in artifact["objects"] if item["kind"] == kind)
-
-
-def _closed_field(term, name):
-    return next(value for field, value in term["fields"] if field == name)
-
-
-def _set_closed_field(term, name, value):
-    for field in term["fields"]:
-        if field[0] == name:
-            field[1] = value
-            return
-    raise AssertionError(f"missing closed field {name!r}")
-
-
-def _set_nested_closed_field(term, outer, inner, value):
-    _set_closed_field(_closed_field(term, outer), inner, value)
-
-
-def _redigest_terminal_artifact(artifact) -> None:
-    budget = WriterEnvelopeWorkBudget()
-    support = _object_by_kind(artifact, "terminal_support")
-    support["payload"]["terminalization_term_digest"] = _identity_digest(
-        support["payload"]["terminalization_term"]
-    )
-    source = _object_by_kind(artifact, "source_snapshot")
-    for item in (source, support):
-        digest = _identity_digest(
-            support_artifact_object_identity_term(item["kind"], item["payload"]),
-            budget=budget,
-            operation="test.terminalization.object",
-        )
-        item["digest"] = digest
-        item["object_id"] = f"obj:{digest}"
-    projection = _object_by_kind(artifact, "terminal_projection")
-    projection["payload"]["terminal_support_refs"] = [support["object_id"]]
-    projection_identity = {
-        key: value for key, value in projection["payload"].items() if key != "digest"
-    }
-    projection["payload"]["digest"] = _identity_digest(projection_identity)
-    projection_digest = _identity_digest(
-        support_artifact_object_identity_term(
-            projection["kind"], projection["payload"]
-        ),
-        budget=budget,
-        operation="test.terminalization.projection",
-    )
-    projection["digest"] = projection_digest
-    projection["object_id"] = f"obj:{projection_digest}"
-    artifact["roots"] = {
-        "source_ref": source["object_id"],
-        "terminal_projection_ref": projection["object_id"],
-        "terminal_support_ref": support["object_id"],
-    }
-    artifact["objects"] = sorted(
-        artifact["objects"], key=lambda item: item["object_id"]
-    )
-    artifact["metrics"] = {
-        **artifact_metrics(artifact["objects"]),
-        "reachable_object_count": 3,
-        "unreferenced_object_count": 0,
-    }
-    artifact["digest"] = _digest_terms_bounded(
-        terminalization_artifact_manifest(artifact),
-        budget=budget,
-        operation="test.terminalization.artifact",
-    )
-
-
 def _projection_state_term(artifact, role):
-    projection = _object_by_kind(artifact, "terminal_projection")["payload"]
+    projection = unique_artifact_object_by_kind(artifact, "terminal_projection")["payload"]
     cursor = projection[f"{role}_cursor"]["terms"]
-    return _closed_field(cursor, "weighted_states")[0][0]
+    return closed_term_field(cursor, "weighted_states")[0][0]
 
 
 def _forge_component_index(artifact):
     for role in ("source", "finalized"):
         state = _projection_state_term(artifact, role)
-        _set_nested_closed_field(state, "component_cursor", "component_index", -1)
+        set_nested_closed_term_field(state, "component_cursor", "component_index", value=-1)
 
 
 def _forge_component_roots(artifact):
     for role in ("source", "finalized"):
         state = _projection_state_term(artifact, role)
-        _set_nested_closed_field(state, "component_cursor", "component_roots", [])
+        set_nested_closed_term_field(state, "component_cursor", "component_roots", value=[])
 
 
 def _forge_active_atom(artifact):
     for role in ("source", "finalized"):
         state = _projection_state_term(artifact, role)
-        _set_nested_closed_field(state, "active", "atom", 999)
-    support = _object_by_kind(artifact, "terminal_support")["payload"]
-    _set_closed_field(support["terminalization_term"], "active_atom", 999)
+        set_nested_closed_term_field(state, "active", "atom", value=999)
+    support = unique_artifact_object_by_kind(artifact, "terminal_support")["payload"]
+    set_closed_term_field(support["terminalization_term"], "active_atom", 999)
 
 
 def _forge_pending_entry(artifact):
@@ -445,14 +377,14 @@ def _forge_pending_entry(artifact):
     }
     for role in ("source", "finalized"):
         state = _projection_state_term(artifact, role)
-        _set_nested_closed_field(state, "obligations", "pending_entry", deepcopy(entry))
+        set_nested_closed_term_field(state, "obligations", "pending_entry", value=deepcopy(entry))
 
 
 def _forge_branch_frame(artifact):
     for role in ("source", "finalized"):
         state = _projection_state_term(artifact, role)
-        active = deepcopy(_closed_field(state, "active"))
-        _set_closed_field(
+        active = deepcopy(closed_term_field(state, "active"))
+        set_closed_term_field(
             state,
             "branch_stack",
             [{"__dataclass__": "grimace._south_star1.writer_state.WriterBranchFrame", "fields": [["return_atom", active]]}],
@@ -461,13 +393,13 @@ def _forge_branch_frame(artifact):
 
 def _forge_final_policy(artifact):
     state = _projection_state_term(artifact, "finalized")
-    policy = _closed_field(state, "policy_state")
-    _set_closed_field(policy, "atom_text", [[999, "X"]])
+    policy = closed_term_field(state, "policy_state")
+    set_closed_term_field(policy, "atom_text", [[999, "X"]])
 
 
 def _closed_closures(artifact, role):
     state = _projection_state_term(artifact, role)
-    return _closed_field(_closed_field(state, "ring_state"), "closed_closures")
+    return closed_term_field(closed_term_field(state, "ring_state"), "closed_closures")
 
 
 def _forge_duplicate_closure(artifact):
@@ -478,26 +410,26 @@ def _forge_duplicate_closure(artifact):
 
 def _forge_closure_endpoint(artifact):
     for role in ("source", "finalized"):
-        _set_closed_field(_closed_closures(artifact, role)[0], "first_atom", 999)
+        set_closed_term_field(_closed_closures(artifact, role)[0], "first_atom", 999)
 
 
 def _forge_closure_bond(artifact):
     for role in ("source", "finalized"):
-        _set_closed_field(_closed_closures(artifact, role)[0], "bond", 999)
+        set_closed_term_field(_closed_closures(artifact, role)[0], "bond", 999)
 
 
 def _forge_written_closed_overlap(artifact):
     for role in ("source", "finalized"):
         state = _projection_state_term(artifact, role)
-        written = _closed_field(state, "written_bonds")
-        written.append(_closed_field(_closed_closures(artifact, role)[0], "bond"))
+        written = closed_term_field(state, "written_bonds")
+        written.append(closed_term_field(_closed_closures(artifact, role)[0], "bond"))
         written.sort()
 
 
 def _forge_closure_label(artifact):
     for role in ("source", "finalized"):
         closure = _closed_closures(artifact, role)[0]
-        _set_nested_closed_field(closure, "label", "text", "%1")
+        set_nested_closed_term_field(closure, "label", "text", value="%1")
 
 
 def _refresh_state_anchors(*, artifact, prepared, options) -> None:
@@ -507,14 +439,14 @@ def _refresh_state_anchors(*, artifact, prepared, options) -> None:
         artifact=artifact,
         budget=WriterEnvelopeWorkBudget(),
     )
-    projection = _object_by_kind(artifact, "terminal_projection")["payload"]
+    projection = unique_artifact_object_by_kind(artifact, "terminal_projection")["payload"]
     source_cursor = writer_frontier_cursor_from_closed_terms(
         projection["source_cursor"]["terms"]
     )
     snapshot = replace(original_snapshot, cursor=source_cursor)
     source_payload = _snapshot_identity_envelope(snapshot)
     artifact["source_snapshot"] = source_payload
-    _object_by_kind(artifact, "source_snapshot")["payload"] = deepcopy(source_payload)
+    unique_artifact_object_by_kind(artifact, "source_snapshot")["payload"] = deepcopy(source_payload)
     projection["source_cursor"] = deepcopy(source_payload["cursor"])
     finalized_cursor = projection["finalized_cursor"]
     finalized_cursor["digest"] = _digest_terms_bounded(
@@ -534,16 +466,16 @@ def _refresh_state_anchors(*, artifact, prepared, options) -> None:
         budget=WriterEnvelopeWorkBudget(),
         operation="test.terminalization.finalized_state",
     )
-    support = _object_by_kind(artifact, "terminal_support")["payload"]
+    support = unique_artifact_object_by_kind(artifact, "terminal_support")["payload"]
     support["source_state_digest"] = source_digest
     support["finalized_state_digest"] = finalized_digest
-    _set_closed_field(support["terminalization_term"], "source_state_digest", source_digest)
-    _set_closed_field(support["terminalization_term"], "finalized_state_digest", finalized_digest)
-    source_residual = _closed_field(
-        _closed_field(source_state, "stereo_state"), "residual_snapshot"
+    set_closed_term_field(support["terminalization_term"], "source_state_digest", source_digest)
+    set_closed_term_field(support["terminalization_term"], "finalized_state_digest", finalized_digest)
+    source_residual = closed_term_field(
+        closed_term_field(source_state, "stereo_state"), "residual_snapshot"
     )
-    finalized_residual = _closed_field(
-        _closed_field(finalized_state, "stereo_state"), "residual_snapshot"
+    finalized_residual = closed_term_field(
+        closed_term_field(finalized_state, "stereo_state"), "residual_snapshot"
     )
     source_residual_digest = _digest_terms_bounded(
         source_residual,
@@ -555,12 +487,12 @@ def _refresh_state_anchors(*, artifact, prepared, options) -> None:
         budget=WriterEnvelopeWorkBudget(),
         operation="test.terminalization.finalized_residual",
     )
-    _set_closed_field(
+    set_closed_term_field(
         support["terminalization_term"],
         "source_residual_snapshot_digest",
         source_residual_digest,
     )
-    _set_closed_field(
+    set_closed_term_field(
         support["terminalization_term"],
         "finalized_residual_snapshot_digest",
         finalized_residual_digest,
@@ -570,7 +502,7 @@ def _refresh_state_anchors(*, artifact, prepared, options) -> None:
             item["source_digest"] = source_digest
             item["successor_digest"] = finalized_digest
             item["is_noop"] = source_digest == finalized_digest
-    _redigest_terminal_artifact(artifact)
+    reseal_terminalization_artifact(artifact)
 
 
 if __name__ == "__main__":

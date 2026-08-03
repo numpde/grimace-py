@@ -6,14 +6,44 @@ import unittest
 
 from tests.south_star1.helpers import cco_facts
 from tests.south_star1.writer_proof_sources import (
+    SHARED_RING_BRANCH_SOURCE_ADDRESSES,
+    SharedRingBranchSourceAddress,
     first_terminal_proof_source,
     shared_ring_branch_source,
     shared_ring_branch_sources,
+    validate_shared_ring_branch_source_addresses,
 )
 from tests.south_star1.writer_test_context import writer_runtime_options
 
 
 class WriterProofSourcesTest(unittest.TestCase):
+    def test_shared_ring_address_registry_is_valid(self) -> None:
+        validate_shared_ring_branch_source_addresses()
+        self.assertEqual(len(SHARED_RING_BRANCH_SOURCE_ADDRESSES), 6)
+
+    def test_shared_ring_address_registry_rejects_malformed_values(self) -> None:
+        address = SHARED_RING_BRANCH_SOURCE_ADDRESSES[0]
+        with self.assertRaises(ValueError):
+            validate_shared_ring_branch_source_addresses(
+                (address, *SHARED_RING_BRANCH_SOURCE_ADDRESSES[2:])
+            )
+        with self.assertRaises(ValueError):
+            validate_shared_ring_branch_source_addresses(
+                (
+                    SharedRingBranchSourceAddress(
+                        address.phase,
+                        address.direction_mark,
+                        address.predecessor_branch_certificate_digests,
+                        "not-a-digest",
+                        address.target_branch_certificate_digest,
+                        address.target_emitted_text,
+                        address.target_successor_cursor_digest,
+                        address.expected_branch_artifact_digest,
+                    ),
+                    *SHARED_RING_BRANCH_SOURCE_ADDRESSES[1:],
+                )
+            )
+
     def test_shared_ring_sources_are_immutable_and_keyed(self) -> None:
         sources = shared_ring_branch_sources()
         self.assertEqual(len(sources), 6)

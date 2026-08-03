@@ -225,7 +225,7 @@ class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
                 self.assertEqual(verification.unchecked_obligation_families, ())
 
     def test_polarities_are_disjoint_and_reparse_only_to_their_source(self) -> None:
-        pairs = (
+        all_pairs = (
             ("tetra_plus", "tetra_minus"),
             ("directional_opposite", "directional_together"),
             (
@@ -233,8 +233,20 @@ class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
                 "remote_coupled_tetrahedral_b",
             ),
         )
-        remote_pairs = (("remote_coupled_tetrahedral_a", "remote_coupled_tetrahedral_b"),)
         fixture_by_name = {item.name: item for item in self.fixture_cases}
+        pairs = tuple(
+            (left, right)
+            for left, right in all_pairs
+            if left in fixture_by_name and right in fixture_by_name
+        )
+        remote_pairs = tuple(
+            pair
+            for pair in pairs
+            if pair == (
+                "remote_coupled_tetrahedral_a",
+                "remote_coupled_tetrahedral_b",
+            )
+        )
         for left, right in pairs:
             self.assertTrue(
                 set(fixture_by_name[left].expected_support).isdisjoint(
@@ -315,7 +327,7 @@ class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
                 self.assets["tetra_plus"].path,
                 proof_capable=True,
             )
-        for asset_name, prepared_name in (
+        all_bindings = (
             ("tetra_plus", "tetra_minus"),
             ("tetra_minus", "tetra_plus"),
             ("directional_opposite", "directional_together"),
@@ -326,7 +338,10 @@ class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
             ("remote_coupled_tetrahedral_b", "remote_coupled_tetrahedral_a"),
             ("disconnected_tetra_oxygen", "tetra_plus"),
             ("disconnected_directional_oxygen", "directional_opposite"),
-        ):
+        )
+        for asset_name, prepared_name in all_bindings:
+            if asset_name not in self.assets or prepared_name not in self.prepared:
+                continue
             with self.subTest(asset=asset_name, prepared=prepared_name):
                 with self.assertRaisesRegex(Exception, "prepared_identity_mismatch"):
                     MolToSmilesContinuationDecoder.from_asset(

@@ -258,7 +258,7 @@ class SouthStar1BoundaryTest(unittest.TestCase):
             self.assertNotIn(name, source)
 
     def test_writer_support_artifact_fact_verifier_boundary(self) -> None:
-        path = SOUTH_STAR1_ROOT / "writer_support_artifact_fact_verifier.py"
+        path = SOUTH_STAR1_ROOT / "writer_support_artifact_domain_methods.py"
         source = path.read_text(encoding="utf-8")
         tree = ast.parse(source)
 

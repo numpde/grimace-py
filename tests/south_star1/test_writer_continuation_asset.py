@@ -77,9 +77,7 @@ from grimace._south_star1.writer_terminalization_artifact_fact_verifier import (
 from tests.south_star1.helpers import cco_facts
 from tests.south_star1.helpers import directional_facts
 from tests.south_star1.qualification_support import bundle_bytes
-from tests.south_star1.test_writer_branch_transition_artifact import (
-    _shared_ring_branch_sources,
-)
+from tests.south_star1.writer_proof_sources import shared_ring_branch_sources
 from tests.south_star1.writer_test_fixtures import (
     directional_non_single_ring_carrier_facts,
 )
@@ -95,7 +93,7 @@ from tests.south_star1.writer_test_fixtures import (
 from tests.south_star1.writer_test_fixtures import (
     terminal_tetra_center_policy,
 )
-from tests.south_star1.test_writer_terminalization_artifact import _terminal_source
+from tests.south_star1.writer_proof_sources import first_terminal_proof_source
 from tests.south_star1.writer_test_context import (
     initial_writer_snapshot,
 )
@@ -675,9 +673,10 @@ class WriterContinuationAssetTest(unittest.TestCase):
         )
         for facts, options, policy in cases:
             with self.subTest(facts=facts), TemporaryDirectory() as directory:
-                prepared, snapshot, support = _terminal_source(
-                    facts, options, policy
+                terminal_source = first_terminal_proof_source(
+                    facts, options, policy=policy
                 )
+                prepared, snapshot, support = terminal_source.prepared, terminal_source.snapshot, terminal_source.support
                 path = Path(directory) / "asset"
                 write_writer_continuation_asset(
                     path=path,
@@ -810,9 +809,10 @@ class WriterContinuationAssetTest(unittest.TestCase):
                 _rust_decoder_strings(rust_decoder),
                 _core_strings(asset.core),
             )
-            sources = _shared_ring_branch_sources()
-            for phase, mark in sources:
-                _facts, _options, _prepared, source, support = sources[(phase, mark)]
+            sources = shared_ring_branch_sources()
+            for target in sources:
+                _facts, _options, _prepared = target.facts, target.runtime_options, target.prepared
+                source, support = target.snapshot, target.support
                 decoder = _rust_decoder_at_raw_cursor(
                     path=path,
                     asset=asset,
@@ -827,7 +827,7 @@ class WriterContinuationAssetTest(unittest.TestCase):
                     "writer_branch_transition_artifact",
                 )
                 checked = verify_writer_branch_transition_artifact_for_facts(
-                    facts=facts,
+                    facts=_facts,
                     runtime_options=_options,
                     artifact=artifact,
                 )

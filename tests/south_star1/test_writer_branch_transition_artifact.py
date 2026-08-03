@@ -36,6 +36,7 @@ from tests.south_star1.helpers import tetrahedral_facts
 from tests.south_star1.writer_test_context import initial_writer_snapshot
 from tests.south_star1.writer_test_context import prepare_writer_facts
 from tests.south_star1.writer_test_context import writer_runtime_options
+from tests.south_star1.writer_proof_sources import shared_ring_branch_source
 
 
 class WriterBranchTransitionArtifactTest(unittest.TestCase):
@@ -575,9 +576,8 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
         )
 
     def test_build_and_live_verification_do_not_enter_count_or_support_paths(self) -> None:
-        facts, options, prepared, snapshot, support = _shared_ring_branch_sources()[
-            ("opening", DirectionMark.FWD)
-        ]
+        source = shared_ring_branch_source("opening", DirectionMark.FWD)
+        facts, options, prepared, snapshot, support = source.facts, source.runtime_options, source.prepared, source.snapshot, source.support
         del facts, options
         blockers = (
             patch(
@@ -769,9 +769,8 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
         self.assertIn("dataclass_shape_mismatch", checked.reason)
 
     def test_support_projection_default_and_explicit_all_branches_are_identical(self) -> None:
-        facts, _options, prepared, snapshot, support = _shared_ring_branch_sources()[
-            ("opening", DirectionMark.FWD)
-        ]
+        source = shared_ring_branch_source("opening", DirectionMark.FWD)
+        facts, _options, prepared, snapshot, support = source.facts, source.runtime_options, source.prepared, source.snapshot, source.support
         batch = _checked_writer_frontier_branch_supports(
             prepared,
             snapshot.cursor,
@@ -806,7 +805,8 @@ class WriterBranchTransitionArtifactTest(unittest.TestCase):
 
 @lru_cache(maxsize=6)
 def _shared_ring_branch_artifact(phase: str, mark: DirectionMark):
-    facts, options, prepared, snapshot, support = _shared_ring_branch_sources()[(phase, mark)]
+    source = shared_ring_branch_source(phase, mark)
+    facts, options, prepared, snapshot, support = source.facts, source.runtime_options, source.prepared, source.snapshot, source.support
     artifact = writer_branch_transition_artifact_for_support(
         prepared=prepared,
         snapshot=snapshot,
@@ -816,43 +816,6 @@ def _shared_ring_branch_artifact(phase: str, mark: DirectionMark):
 
 
 @lru_cache(maxsize=1)
-def _shared_ring_branch_sources():
-    facts = shared_directional_ring_carrier_facts()
-    options = writer_runtime_options(rooted_at_atom=1)
-    prepared = prepare_writer_facts(facts)
-    initial = initial_writer_snapshot(prepared, options)
-    pending = [(initial.cursor, 0)]
-    seen = set()
-    found = {}
-    while pending and len(found) < 6:
-        cursor, depth = pending.pop()
-        key = repr(cursor)
-        if key in seen:
-            continue
-        seen.add(key)
-        batch = _checked_writer_frontier_branch_supports(
-            prepared,
-            cursor,
-            include_counts=False,
-            include_frontier_certificate=True,
-            include_count_certificate=False,
-        )
-        snapshot = capture_writer_frontier_snapshot(
-            prepared=prepared,
-            runtime_options=options,
-            cursor=cursor,
-            decoder_boundary=WriterDecoderBoundary(consumed_token_count=depth),
-        )
-        for support in batch.supports:
-            for event in support.events:
-                if isinstance(event, WriterRingEndpointEmitted) and event.bond == BondId(1):
-                    found.setdefault(("opening", event.direction_mark), (facts, options, prepared, snapshot, support))
-                if isinstance(event, WriterRingEndpointPaired) and event.bond == BondId(1):
-                    found.setdefault(("pair", event.first_endpoint_direction_mark), (facts, options, prepared, snapshot, support))
-            pending.append((support.successor_cursor, depth + 1))
-    if len(found) != 6:
-        raise AssertionError(f"missing shared-ring branch sources: {sorted(found)}")
-    return found
 
 
 def _branch_artifact_for_operation(facts, options, operation):

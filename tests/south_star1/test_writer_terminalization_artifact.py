@@ -34,6 +34,7 @@ from tests.south_star1.writer_test_fixtures import terminal_tetra_center_facts
 from tests.south_star1.writer_test_fixtures import terminal_tetra_center_policy
 from tests.south_star1.writer_test_context import initial_writer_snapshot
 from tests.south_star1.writer_test_context import writer_runtime_options
+from tests.south_star1.writer_proof_sources import first_terminal_proof_source
 
 
 class WriterTerminalizationArtifactTest(unittest.TestCase):
@@ -74,7 +75,8 @@ class WriterTerminalizationArtifactTest(unittest.TestCase):
     def test_build_and_live_check_do_not_materialize_counts_or_support(self) -> None:
         facts = cco_facts()
         options = writer_runtime_options()
-        prepared, snapshot, support = _terminal_source(facts, options, None)
+        source = first_terminal_proof_source(facts, options)
+        prepared, snapshot, support = source.prepared, source.snapshot, source.support
         patches = (
             patch("grimace._south_star1.writer_frontier_count_envelope.writer_frontier_count_envelope_for_snapshot", side_effect=AssertionError("count path")),
             patch("grimace._south_star1.writer_count_dag_envelope.writer_count_certificate_dag_envelope_for_product", side_effect=AssertionError("dag path")),
@@ -328,35 +330,13 @@ class WriterTerminalizationArtifactTest(unittest.TestCase):
 
 @lru_cache(maxsize=None)
 def _terminal_artifact(facts, options, policy):
-    prepared, snapshot, support = _terminal_source(facts, options, policy)
+    source = first_terminal_proof_source(facts, options, policy=policy)
+    prepared, snapshot, support = source.prepared, source.snapshot, source.support
     return prepared, writer_terminalization_artifact_for_support(
         prepared=prepared, snapshot=snapshot, support=support
     )
 
 
-def _terminal_source(facts, options, policy):
-    prepared = prepare_south_star_mol_from_facts(
-        facts, writer_surface=SouthStarWriterSurface(), policy=policy
-    )
-    snapshot = initial_writer_snapshot(prepared, options)
-    for depth in range(256):
-        batch = _checked_writer_frontier_branch_supports(
-            prepared,
-            snapshot.cursor,
-            include_counts=False,
-            include_frontier_certificate=True,
-            include_count_certificate=False,
-        )
-        if batch.terminal_supports:
-            return prepared, snapshot, batch.terminal_supports[0]
-        support = batch.supports[0]
-        snapshot = capture_writer_frontier_snapshot(
-            prepared=prepared,
-            runtime_options=options,
-            cursor=support.successor_cursor,
-            decoder_boundary=WriterDecoderBoundary(depth + 1),
-        )
-    raise AssertionError("terminal support not reached")
 
 
 def _object_by_kind(artifact, kind):

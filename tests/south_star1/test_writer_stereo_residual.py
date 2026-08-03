@@ -2238,11 +2238,6 @@ def _shared_directional_carrier_rows(state):
     )
 
 
-def writer_runtime_options(*, rooted_at_atom: int = -1) -> SouthStarRuntimeOptions:
-    return SouthStarRuntimeOptions(
-        rooted_at_atom=rooted_at_atom,
-        serialization_language=SerializationLanguageMode.WRITER_SHAPED,
-    )
 
 
 def _private_terminal_paths(prepared, cursor):

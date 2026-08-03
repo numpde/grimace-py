@@ -374,7 +374,7 @@ class WriterBracketAtomTextTest(unittest.TestCase):
                 evidence=replace(evidence, element="N"),
             )
 
-    def test_tampered_isotope_atom_event_text_is_rejected_by_successor_certificate(
+    def test_tampered_isotope_event_rejects_policy_certificate_binding(
         self,
     ) -> None:
         support = _first_branch_support("[13CH4]")
@@ -384,10 +384,10 @@ class WriterBracketAtomTextTest(unittest.TestCase):
             events=(bad_event,),
         )
 
-        with self.assertRaisesRegex(SouthStarError, "event_view_mismatch"):
+        with self.assertRaisesRegex(SouthStarError, "policy_certificate_events_mismatch"):
             validate_writer_branch_successor_state_certificate(bad_certificate)
 
-    def test_tampered_atom_event_text_is_rejected_by_successor_certificate(
+    def test_tampered_bracket_event_rejects_policy_certificate_binding(
         self,
     ) -> None:
         support = _first_branch_support("[NH4+]")
@@ -397,7 +397,7 @@ class WriterBracketAtomTextTest(unittest.TestCase):
             events=(bad_event,),
         )
 
-        with self.assertRaisesRegex(SouthStarError, "event_view_mismatch"):
+        with self.assertRaisesRegex(SouthStarError, "policy_certificate_events_mismatch"):
             validate_writer_branch_successor_state_certificate(bad_certificate)
 
     def test_charged_isotope_remains_out_of_scope(self) -> None:

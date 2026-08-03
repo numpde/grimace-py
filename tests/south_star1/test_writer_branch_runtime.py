@@ -2063,7 +2063,9 @@ class WriterBranchRuntimeTest(unittest.TestCase):
 
         self.assertTrue(live.accepted, live.reason)
         self.assertTrue(facts_bound.accepted, facts_bound.reason)
-        self.assertFalse(facts_bound.offline_replay_complete)
+        self.assertTrue(facts_bound.offline_replay_complete)
+        self.assertEqual(facts_bound.offline_unchecked_object_kinds, ())
+        self.assertEqual(facts_bound.offline_unchecked_obligation_families, ())
 
     def test_obligation_replay_rejects_stale_expected_successor(self) -> None:
         prepared = prepare_writer_facts(cco_facts())

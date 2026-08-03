@@ -49,6 +49,8 @@ from grimace._south_star1.errors import SouthStarError
 from tests.south_star1.writer_test_context import initial_writer_snapshot
 from tests.south_star1.writer_test_context import prepare_writer_facts
 from tests.south_star1.writer_test_context import writer_runtime_options
+from tests.south_star1.default_writer_capability_ledger import default_writer_capability_case
+from tests.south_star1.qualification_assertions import assert_offline_case_matches_ledger
 
 
 _DOUBLE_RING_CLOSURE_SMILES = "C1=CC1"
@@ -147,6 +149,7 @@ class WriterJointNonSingleRingClosureParityTest(unittest.TestCase):
         self.assertEqual(live.witness_count, 3)
 
     def test_default_policy_facts_bound_verifier_accepts(self) -> None:
+        case = default_writer_capability_case("cyclopropene_double_closure")
         facts = _rdkit_graph_facts(_DOUBLE_RING_CLOSURE_SMILES)
         prepared = prepare_writer_facts(facts)
         options = writer_runtime_options(rooted_at_atom=0)
@@ -161,7 +164,11 @@ class WriterJointNonSingleRingClosureParityTest(unittest.TestCase):
         self.assertTrue(verification.accepted, verification.reason)
         self.assertTrue(verification.structurally_checked)
         self.assertTrue(verification.facts_identity_checked)
-        self.assertFalse(verification.offline_replay_complete)
+        assert_offline_case_matches_ledger(
+            self,
+            case=case,
+            verification=verification,
+        )
 
     def test_explicit_unsupported_policy_fails_before_fact_verification(
         self,

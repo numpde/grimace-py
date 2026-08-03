@@ -53,12 +53,12 @@ def assert_materialized_case_matches_ledger(test, *, case, result) -> None:
 def assert_offline_case_matches_ledger(test, *, case, verification) -> None:
     test.assertTrue(verification.accepted, verification.reason)
     test.assertTrue(verification.offline_replay_complete)
-    test.assertEqual(verification.checked_object_kinds, case.expected_offline_object_kinds)
-    test.assertEqual(verification.unchecked_object_kinds, case.expected_offline_unchecked_object_kinds)
-    test.assertEqual(verification.unchecked_obligation_families, case.expected_offline_unchecked_obligation_families)
+    test.assertEqual(verification.offline_checked_object_kinds, case.expected_offline_object_kinds)
+    test.assertEqual(verification.offline_unchecked_object_kinds, case.expected_offline_unchecked_object_kinds)
+    test.assertEqual(verification.offline_unchecked_obligation_families, case.expected_offline_unchecked_obligation_families)
     test.assertTrue(
         set(case.expected_offline_relation_families).issubset(
-            verification.checked_relation_families
+            verification.offline_checked_relation_families
         )
     )
-    test.assertEqual(verification.unchecked_obligation_families, ())
+    test.assertEqual(verification.offline_unchecked_obligation_families, ())

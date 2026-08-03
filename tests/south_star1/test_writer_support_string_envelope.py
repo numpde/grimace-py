@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from tests.south_star1.writer_test_context import initial_writer_snapshot
+from tests.south_star1.writer_test_context import prepare_writer_facts
+from tests.south_star1.writer_test_context import writer_runtime_options
+
 from copy import deepcopy
 import inspect
 import json
@@ -43,10 +47,10 @@ from tests.south_star1.helpers import two_atom_facts
 
 class WriterSupportStringEnvelopeTest(unittest.TestCase):
     def test_one_token_support_string_json_round_trips(self) -> None:
-        prepared = _prepare(two_atom_facts())
+        prepared = prepare_writer_facts(two_atom_facts())
         source = _advanced_snapshot_after_prefix(
             prepared,
-            _initial_snapshot(prepared),
+            initial_writer_snapshot(prepared, writer_runtime_options()),
             ("C",),
         )
         envelope = _json_round_trip(
@@ -66,11 +70,11 @@ class WriterSupportStringEnvelopeTest(unittest.TestCase):
         self.assertEqual(verification.string, "C")
 
     def test_multi_token_support_string_json_round_trips(self) -> None:
-        prepared = _prepare(two_atom_facts())
+        prepared = prepare_writer_facts(two_atom_facts())
         envelope = _json_round_trip(
             writer_support_string_envelope_for_string(
                 prepared=prepared,
-                snapshot=_initial_snapshot(prepared),
+                snapshot=initial_writer_snapshot(prepared, writer_runtime_options()),
                 string="CC",
             )
         )
@@ -85,10 +89,10 @@ class WriterSupportStringEnvelopeTest(unittest.TestCase):
         self.assertEqual(len(envelope["text_projection_chain"]), 2)
 
     def test_empty_terminal_support_string_json_round_trips(self) -> None:
-        prepared = _prepare(two_atom_facts())
+        prepared = prepare_writer_facts(two_atom_facts())
         source = _advanced_snapshot_after_prefix(
             prepared,
-            _initial_snapshot(prepared),
+            initial_writer_snapshot(prepared, writer_runtime_options()),
             ("C", "C"),
         )
         envelope = _json_round_trip(
@@ -109,8 +113,8 @@ class WriterSupportStringEnvelopeTest(unittest.TestCase):
         self.assertEqual(envelope["text_projection_chain"], [])
 
     def test_prefix_read_source_support_string_json_round_trips(self) -> None:
-        prepared = _prepare(two_atom_facts())
-        snapshot = _initial_snapshot(prepared)
+        prepared = prepare_writer_facts(two_atom_facts())
+        snapshot = initial_writer_snapshot(prepared, writer_runtime_options())
         prefix = writer_snapshot_prefix_read_envelope_for_emitted_texts(
             prepared=prepared,
             snapshot=snapshot,
@@ -133,10 +137,10 @@ class WriterSupportStringEnvelopeTest(unittest.TestCase):
         self.assertEqual(verification.source_kind, "prefix_read")
 
     def test_branching_frontier_support_string_verifies(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
+        prepared = prepare_writer_facts(cyclopropane_facts())
         envelope = writer_support_string_envelope_for_string(
             prepared=prepared,
-            snapshot=_initial_snapshot(prepared),
+            snapshot=initial_writer_snapshot(prepared, writer_runtime_options()),
             string="C1CC1",
         )
 
@@ -186,7 +190,7 @@ class WriterSupportStringEnvelopeTest(unittest.TestCase):
 
         self.assertFalse(
             verify_writer_support_string_envelope(
-                prepared=_prepare(tetrahedral_facts()),
+                prepared=prepare_writer_facts(tetrahedral_facts()),
                 envelope=envelope,
             ).accepted
         )
@@ -204,7 +208,7 @@ class WriterSupportStringEnvelopeTest(unittest.TestCase):
         self.assertFalse(_verify(envelope).accepted)
 
     def test_wrong_prefix_read_envelope_is_rejected(self) -> None:
-        prepared = _prepare(two_atom_facts())
+        prepared = prepare_writer_facts(two_atom_facts())
         envelope = _prefix_envelope(prepared)
         envelope["prefix_read_envelope"]["schema_name"] = "bad"
 
@@ -336,18 +340,18 @@ class WriterSupportStringEnvelopeTest(unittest.TestCase):
 
 
 def _snapshot_envelope():
-    prepared = _prepare(two_atom_facts())
+    prepared = prepare_writer_facts(two_atom_facts())
     return deepcopy(
         writer_support_string_envelope_for_string(
             prepared=prepared,
-            snapshot=_initial_snapshot(prepared),
+            snapshot=initial_writer_snapshot(prepared, writer_runtime_options()),
             string="CC",
         )
     )
 
 
 def _prefix_envelope(prepared):
-    snapshot = _initial_snapshot(prepared)
+    snapshot = initial_writer_snapshot(prepared, writer_runtime_options())
     prefix = writer_snapshot_prefix_read_envelope_for_emitted_texts(
         prepared=prepared,
         snapshot=snapshot,
@@ -363,10 +367,10 @@ def _prefix_envelope(prepared):
 
 
 def _terminal_envelope():
-    prepared = _prepare(two_atom_facts())
+    prepared = prepare_writer_facts(two_atom_facts())
     source = _advanced_snapshot_after_prefix(
         prepared,
-        _initial_snapshot(prepared),
+        initial_writer_snapshot(prepared, writer_runtime_options()),
         ("C", "C"),
     )
     return deepcopy(
@@ -380,14 +384,14 @@ def _terminal_envelope():
 
 def _verify(envelope):
     return verify_writer_support_string_envelope(
-        prepared=_prepare(two_atom_facts()),
+        prepared=prepare_writer_facts(two_atom_facts()),
         envelope=envelope,
     )
 
 
 def _verify_terminal(envelope):
     return verify_writer_support_string_envelope(
-        prepared=_prepare(two_atom_facts()),
+        prepared=prepare_writer_facts(two_atom_facts()),
         envelope=envelope,
     )
 
@@ -413,30 +417,6 @@ def _advanced_snapshot_after_prefix(prepared, snapshot, emitted_texts):
 def _json_round_trip(envelope):
     return json.loads(json.dumps(envelope, sort_keys=True))
 
-
-def _initial_snapshot(prepared):
-    options = _writer_options()
-    return capture_writer_frontier_snapshot(
-        prepared=prepared,
-        runtime_options=options,
-        cursor=initial_writer_frontier_cursor(prepared, options),
-    )
-
-
-def _writer_options():
-    return SouthStarRuntimeOptions(
-        rooted_at_atom=-1,
-        canonical=False,
-        do_random=True,
-        serialization_language=SerializationLanguageMode.WRITER_SHAPED,
-    )
-
-
-def _prepare(facts):
-    return prepare_south_star_mol_from_facts(
-        facts,
-        writer_surface=SouthStarWriterSurface(),
-    )
 
 
 if __name__ == "__main__":

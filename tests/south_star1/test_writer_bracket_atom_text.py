@@ -12,8 +12,6 @@ from grimace._south_star1.ids import AtomId
 from grimace._south_star1.policy import SerializationLanguageMode
 from grimace._south_star1.policy import TetraToken
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
-from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
-from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
 from grimace._south_star1.rdkit_adapter import RdkitOrdinaryExtractionOptions
 from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_smiles
 from grimace._south_star1.writer_atom_text_lifecycle import (
@@ -42,6 +40,9 @@ from grimace._south_star1.writer_support_artifact_checker import (
 from grimace._south_star1.writer_support_artifact_envelope import (
     verify_writer_support_artifact_envelope,
 )
+from tests.south_star1.writer_test_context import initial_writer_snapshot
+from tests.south_star1.writer_test_context import prepare_writer_facts
+from tests.south_star1.writer_test_context import writer_runtime_options
 from grimace._south_star1.writer_support_artifact_envelope import (
     writer_support_artifact_envelope_for_snapshot,
 )
@@ -64,7 +65,7 @@ _SIMPLE_CHARGED_BRACKET_CASES = (
 
 class WriterBracketAtomTextTest(unittest.TestCase):
     def test_nh4_plus_prepares_under_default_policy(self) -> None:
-        prepared = _prepare(_facts("[NH4+]"))
+        prepared = prepare_writer_facts(_facts("[NH4+]"))
 
         self.assertEqual(
             prepared.policy.atom_text_domain_unchecked(AtomId(0))[0].render(
@@ -81,14 +82,14 @@ class WriterBracketAtomTextTest(unittest.TestCase):
 
     def test_nh4_plus_support_count_and_artifact_verifiers(self) -> None:
         facts = _facts("[NH4+]")
-        prepared = _prepare(facts)
+        prepared = prepare_writer_facts(facts)
         runtime_state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(rooted_at_atom=0),
         )
         image = enumerate_prepared_writer_shaped_support(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(rooted_at_atom=0),
         )
 
         self.assertEqual(image.strings, ("[NH4+]",))
@@ -114,7 +115,7 @@ class WriterBracketAtomTextTest(unittest.TestCase):
         )
         fact_bound = verify_writer_support_artifact_for_facts(
             facts=facts,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(rooted_at_atom=0),
             artifact=artifact,
         )
 
@@ -132,7 +133,7 @@ class WriterBracketAtomTextTest(unittest.TestCase):
         for smiles in _SIMPLE_CHARGED_BRACKET_CASES:
             with self.subTest(smiles=smiles):
                 facts = _facts(smiles)
-                prepared = _prepare(facts)
+                prepared = prepare_writer_facts(facts)
                 support = _first_branch_support(smiles)
 
                 self.assertEqual(
@@ -148,14 +149,14 @@ class WriterBracketAtomTextTest(unittest.TestCase):
         for smiles in _SIMPLE_CHARGED_BRACKET_CASES:
             with self.subTest(smiles=smiles):
                 facts = _facts(smiles)
-                prepared = _prepare(facts)
+                prepared = prepare_writer_facts(facts)
                 runtime_state = initial_writer_runtime_state(
                     prepared=prepared,
-                    runtime_options=_writer_options(),
+                    runtime_options=writer_runtime_options(rooted_at_atom=0),
                 )
                 image = enumerate_prepared_writer_shaped_support(
                     prepared=prepared,
-                    runtime_options=_writer_options(),
+                    runtime_options=writer_runtime_options(rooted_at_atom=0),
                 )
 
                 self.assertEqual(image.strings, (smiles,))
@@ -184,7 +185,7 @@ class WriterBracketAtomTextTest(unittest.TestCase):
                 )
                 fact_bound = verify_writer_support_artifact_for_facts(
                     facts=facts,
-                    runtime_options=_writer_options(),
+                    runtime_options=writer_runtime_options(rooted_at_atom=0),
                     artifact=artifact,
                 )
 
@@ -202,7 +203,7 @@ class WriterBracketAtomTextTest(unittest.TestCase):
                 self.assertTrue(facts_are_isomorphic(source, reparsed).isomorphic)
 
     def test_13ch4_prepares_under_default_policy(self) -> None:
-        prepared = _prepare(_facts("[13CH4]"))
+        prepared = prepare_writer_facts(_facts("[13CH4]"))
 
         self.assertEqual(
             prepared.policy.atom_text_domain_unchecked(AtomId(0))[0].render(
@@ -219,14 +220,14 @@ class WriterBracketAtomTextTest(unittest.TestCase):
 
     def test_13ch4_support_count_and_artifact_verifiers(self) -> None:
         facts = _facts("[13CH4]")
-        prepared = _prepare(facts)
+        prepared = prepare_writer_facts(facts)
         runtime_state = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(rooted_at_atom=0),
         )
         image = enumerate_prepared_writer_shaped_support(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(rooted_at_atom=0),
         )
 
         self.assertEqual(image.strings, ("[13CH4]",))
@@ -252,7 +253,7 @@ class WriterBracketAtomTextTest(unittest.TestCase):
         )
         fact_bound = verify_writer_support_artifact_for_facts(
             facts=facts,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(rooted_at_atom=0),
             artifact=artifact,
         )
 
@@ -431,7 +432,7 @@ class WriterBracketAtomTextTest(unittest.TestCase):
         facts = _facts(smiles)
 
         with self.assertRaises(SouthStarError) as caught:
-            _prepare(facts)
+            prepare_writer_facts(facts)
 
         self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_ATOM)
         self.assertIn(message_phrase, str(caught.exception))
@@ -441,25 +442,11 @@ def _facts(smiles: str):
     return ordinary_molecule_facts_from_smiles(smiles, _EXTRACTION)
 
 
-def _prepare(facts):
-    return prepare_south_star_mol_from_facts(
-        facts,
-        writer_surface=SouthStarWriterSurface(),
-    )
-
-
-def _writer_options() -> SouthStarRuntimeOptions:
-    return SouthStarRuntimeOptions(
-        rooted_at_atom=0,
-        serialization_language=SerializationLanguageMode.WRITER_SHAPED,
-    )
-
-
 def _first_branch_support(smiles: str):
-    prepared = _prepare(_facts(smiles))
+    prepared = prepare_writer_facts(_facts(smiles))
     batch = _checked_writer_frontier_branch_supports(
         prepared,
-        initial_writer_frontier_cursor(prepared, _writer_options()),
+        initial_writer_frontier_cursor(prepared, writer_runtime_options(rooted_at_atom=0)),
         include_counts=False,
     )
     self_support = batch.supports[0]
@@ -467,12 +454,8 @@ def _first_branch_support(smiles: str):
 
 
 def _artifact(prepared):
-    options = _writer_options()
-    snapshot = capture_writer_frontier_snapshot(
-        prepared=prepared,
-        runtime_options=options,
-        cursor=initial_writer_frontier_cursor(prepared, options),
-    )
+    options = writer_runtime_options(rooted_at_atom=0)
+    snapshot = initial_writer_snapshot(prepared, options)
     return writer_support_artifact_envelope_for_snapshot(
         prepared=prepared,
         snapshot=snapshot,

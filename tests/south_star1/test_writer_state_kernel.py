@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from tests.south_star1.writer_test_context import initial_writer_snapshot
+from tests.south_star1.writer_test_context import prepare_writer_facts
+from tests.south_star1.writer_test_context import writer_runtime_options
+
 import ast
 import contextlib
 import inspect
@@ -1174,8 +1178,8 @@ def _assert_private_monocycle_attachment_audit_outcome(
     facts: MoleculeFacts,
     max_prefixes: int,
 ) -> None:
-    prepared = _prepare(facts)
-    options = _writer_options(rooted_at_atom=0)
+    prepared = prepare_writer_facts(facts)
+    options = writer_runtime_options(rooted_at_atom=0)
     cursor = _initial_writer_transition_frontier_cursor(prepared, options)
 
     audit = writer_audit._audit_writer_frontier_reachability_from_cursor(
@@ -1229,8 +1233,8 @@ def _assert_private_monocycle_attachment_diagnostics_align(
     facts: MoleculeFacts,
     max_prefixes: int,
 ) -> None:
-    prepared = _prepare(facts)
-    options = _writer_options(rooted_at_atom=0)
+    prepared = prepare_writer_facts(facts)
+    options = writer_runtime_options(rooted_at_atom=0)
     cursor = _initial_writer_transition_frontier_cursor(prepared, options)
     snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
         prepared=prepared,
@@ -2711,7 +2715,7 @@ class WriterStateKernelTest(unittest.TestCase):
         writer_transitions._WriterClosureEndpointScheduleDecision,
         writer_transitions._WriterActiveChildScheduleSurface,
     ]:
-        prepared = _prepare(cyclopropane_facts())
+        prepared = prepare_writer_facts(cyclopropane_facts())
         root_state = writer_transitions.legal_writer_transitions(
             prepared,
             _raw_initial_state(AtomId(0)),
@@ -2933,7 +2937,7 @@ class WriterStateKernelTest(unittest.TestCase):
         )
         snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
             prepared=prepared,
-            runtime_options=_writer_options(rooted_at_atom=0),
+            runtime_options=writer_runtime_options(rooted_at_atom=0),
             cursor=cursor,
         )
 
@@ -3559,12 +3563,12 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_writer_shaped_acyclic_support_uses_writer_frontier(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
 
         with _forbidden_exhaustive_routes():
             support = enumerate_prepared_stereo_support(
                 prepared=prepared,
-                runtime_options=_writer_options(),
+                runtime_options=writer_runtime_options(),
             )
 
         self.assertEqual(
@@ -3575,8 +3579,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(support.witness_count, 4)
 
     def test_writer_frontier_groups_same_emitted_text(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
 
         choices = writer_frontier_choices(prepared, cursor)
 
@@ -3592,8 +3596,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_writer_frontier_choices_use_state_expansion_not_legal_next_token_helper(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
 
         with patch.object(
             writer_frontier_module,
@@ -3626,8 +3630,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertGreater(state_expansion.call_count, 0)
 
     def test_count_writer_cursor_completions_use_state_expansion_not_legal_next_token_helper(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
 
         with patch(
             "grimace._south_star1.writer_transitions._legal_writer_next_token_frontier",
@@ -4705,8 +4709,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertFalse(empty.has_unsupported_owner_scope_evidence)
 
     def test_writer_frontier_schedule_outcome_records_scheduled_state_outcomes(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
 
         outcome = writer_frontier_module._writer_frontier_schedule_outcome(
             prepared,
@@ -5838,8 +5842,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_writer_frontier_schedule_outcome_records_blocked_state_without_raising(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        base_cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        base_cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         cursor = WriterFrontierCursor(
             weighted_states=base_cursor.weighted_states[:1],
         )
@@ -5890,8 +5894,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(outcome.weighted_by_text, {})
 
     def test_writer_frontier_schedule_outcome_can_stop_after_first_blocked_state(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         self.assertGreater(len(cursor.weighted_states), 1)
         active_outcome = self._blocked_child_active_emitted_outcome(AtomId(0))
         blocked_top_level_outcome = (
@@ -5932,8 +5936,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertTrue(outcome.blocked)
 
     def test_group_writer_frontier_transitions_raises_from_blocked_frontier_schedule_outcome(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         active_outcome = self._blocked_child_active_emitted_outcome(AtomId(0))
         blocked_top_level_outcome = (
             writer_transitions._WriterTopLevelScheduleOutcome(
@@ -5967,8 +5971,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
 
     def test_group_writer_frontier_transitions_returns_grouped_transitions_from_frontier_outcome(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         terminal_by_key: Counter[WriterStateKey] = Counter()
         grouped_by_text = {"C": {cursor.weighted_states[0][0]}}
         weighted_by_text = {
@@ -5993,8 +5997,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(grouped, outcome.grouped_transitions)
 
     def test_group_writer_frontier_transitions_returns_checked_outcome_grouped_projection(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         grouped_by_text = {"C": {cursor.weighted_states[0][0]}}
         weighted_by_text = {
             "C": Counter({cursor.weighted_states[0][0]: 2}),
@@ -6176,8 +6180,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(grouped.weighted_by_text, outcome.weighted_by_text)
 
     def test_writer_frontier_schedule_outcome_records_next_token_support_provenance(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
 
         outcome = writer_frontier_module._writer_frontier_schedule_outcome(
             prepared,
@@ -6361,7 +6365,7 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(public.completion_count, entry.completion_count)
 
     def test_writer_frontier_choice_snapshot_builds_terminal_from_schedule_outcome(self) -> None:
-        prepared = _prepare(chain_facts(("C",)))
+        prepared = prepare_writer_facts(chain_facts(("C",)))
         final_key = writer_state_key(_raw_initial_state(AtomId(0)))
         outcome = writer_frontier_module._WriterFrontierScheduleOutcome(
             state_outcomes=(),
@@ -6389,7 +6393,7 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(snapshot.public_choices.terminal, snapshot.terminal)
 
     def test_writer_frontier_choice_snapshot_sorts_choices_by_emitted_text(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
         parent_key = writer_state_key(_raw_initial_state(AtomId(0)))
         c_successor = writer_state_key(_raw_initial_state(AtomId(1)))
         n_successor = writer_state_key(_raw_initial_state(AtomId(2)))
@@ -6462,7 +6466,7 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_writer_frontier_choice_snapshot_can_omit_counts(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
         parent_key = writer_state_key(_raw_initial_state(AtomId(0)))
         successor_key = writer_state_key(_raw_initial_state(AtomId(1)))
         support = writer_frontier_module._WriterFrontierNextTokenSupport(
@@ -6514,7 +6518,7 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_writer_frontier_choice_snapshot_records_blocked_outcome_without_counting(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
         active_outcome = self._blocked_child_active_emitted_outcome(AtomId(0))
         blocked_top_level_outcome = (
             writer_transitions._WriterTopLevelScheduleOutcome(
@@ -6556,8 +6560,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(snapshot.public_choices.choices, ())
 
     def test_writer_frontier_choice_snapshot_returns_scheduled_snapshot(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
 
         snapshot = writer_frontier_module._writer_frontier_choice_snapshot(
             prepared,
@@ -6574,8 +6578,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_writer_frontier_choice_snapshot_returns_blocked_snapshot_without_raising(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         active_outcome = self._blocked_child_active_emitted_outcome(AtomId(0))
         blocked_top_level_outcome = (
             writer_transitions._WriterTopLevelScheduleOutcome(
@@ -6616,8 +6620,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(snapshot.public_choices.choices, ())
 
     def test_writer_frontier_choice_snapshot_forwards_include_counts(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         outcome = writer_frontier_module._WriterFrontierScheduleOutcome(
             state_outcomes=(),
             terminal_by_key=Counter(),
@@ -6657,8 +6661,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_writer_frontier_choice_snapshot_forwards_stop_after_first_blocked(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         outcome = writer_frontier_module._WriterFrontierScheduleOutcome(
             state_outcomes=(),
             terminal_by_key=Counter(),
@@ -6683,8 +6687,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_checked_writer_frontier_choice_snapshot_raises_from_blocked_unchecked_snapshot(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         active_outcome = self._blocked_child_active_emitted_outcome(AtomId(0))
         blocked_top_level_outcome = (
             writer_transitions._WriterTopLevelScheduleOutcome(
@@ -6730,8 +6734,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_checked_writer_frontier_choice_snapshot_returns_unchecked_snapshot_without_counts(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         snapshot = writer_frontier_module._WriterFrontierChoiceSnapshot(
             schedule_outcome=writer_frontier_module._WriterFrontierScheduleOutcome(
                 state_outcomes=(),
@@ -6756,8 +6760,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIs(result, snapshot)
 
     def test_writer_choice_snapshot_from_snapshot_returns_unchecked_choice_snapshot(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -6784,8 +6788,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_writer_choice_snapshot_from_snapshot_returns_blocked_snapshot_without_raising(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -6837,8 +6841,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_checked_writer_choice_snapshot_from_snapshot_raises_from_blocked_snapshot(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -6868,8 +6872,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
 
     def test_writer_frontier_choices_after_emitted_texts_routes_through_checked_replayed_prefix_snapshot(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -6971,8 +6975,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_resume_writer_frontier_choices_from_snapshot_routes_through_empty_prefix_choices(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -7001,8 +7005,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_public_snapshot_capture_simple_monocycle_works_by_default(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         expected_snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
             prepared=prepared,
@@ -7018,8 +7022,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(snapshot, expected_snapshot)
 
     def test_public_snapshot_capture_cyclic_uses_current_frontier_check(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         expected = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
             prepared=prepared,
@@ -7043,8 +7047,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(snapshot, expected)
 
     def test_public_snapshot_capture_simple_monocycle_returns_transition_snapshot(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         expected_snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
             prepared=prepared,
@@ -7062,8 +7066,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_public_runtime_operations_do_not_run_recursive_cyclic_admission(
         self,
     ) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
 
         with patch(
             (
@@ -7091,8 +7095,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_public_initial_snapshot_acyclic_uses_transition_harness(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
 
         snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
             prepared=prepared,
@@ -7108,8 +7112,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(snapshot.cursor, expected_cursor)
 
     def test_public_initial_snapshot_simple_monocycle_defaults_publicly_succeeds(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
 
         snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
             prepared=prepared,
@@ -7123,8 +7127,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(snapshot.cursor, expected_cursor)
 
     def test_public_initial_snapshot_simple_monocycle_does_not_use_recursive_admission(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
 
         with patch(
             (
@@ -7143,8 +7147,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_public_initial_snapshot_simple_monocycle_returns_transition_cursor_snapshot(
         self,
     ) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         expected_cursor = _initial_writer_transition_frontier_cursor(
             prepared,
             options,
@@ -7160,8 +7164,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_public_initial_snapshot_simple_monocycle_resumes_to_private_choices(
         self,
     ) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
@@ -7183,8 +7187,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_public_snapshot_advance_acyclic_legal_choice_returns_successor_snapshot(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
 
         snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
             prepared=prepared,
@@ -7218,8 +7222,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_public_snapshot_advance_acyclic_rejects_non_frontier_token_as_invalid_facts(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
 
         snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
             prepared=prepared,
@@ -7255,8 +7259,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_public_snapshot_advance_simple_monocycle_returns_successor_snapshot(
         self,
     ) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
 
         snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
             prepared=prepared,
@@ -7290,8 +7294,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_public_snapshot_advance_simple_monocycle_rejects_non_frontier_token_as_invalid_facts(
         self,
     ) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
 
         snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
             prepared=prepared,
@@ -7327,8 +7331,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_public_snapshot_advance_simple_monocycle_with_attachment_rejects_non_frontier_token_as_invalid_facts(
         self,
     ) -> None:
-        prepared = _prepare(methylcyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(methylcyclopropane_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
 
         snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
             prepared=prepared,
@@ -7365,8 +7369,8 @@ class WriterStateKernelTest(unittest.TestCase):
 
         for name, facts in cases:
             with self.subTest(name=name):
-                prepared = _prepare(facts)
-                options = _writer_options(rooted_at_atom=0)
+                prepared = prepare_writer_facts(facts)
+                options = writer_runtime_options(rooted_at_atom=0)
                 snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
                     prepared=prepared,
                     runtime_options=options,
@@ -7395,8 +7399,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_public_snapshot_advance_simple_monocycle_close_token_reaches_terminal(
         self,
     ) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
 
         snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
             prepared=prepared,
@@ -7420,8 +7424,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_public_snapshot_support_acyclic_initial_matches_prepared_support(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
 
         snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
             prepared=prepared,
@@ -7443,8 +7447,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_public_snapshot_support_acyclic_after_advance_matches_cursor_support(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
 
         snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
             prepared=prepared,
@@ -7481,8 +7485,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_public_snapshot_count_and_stream_acyclic_match_support_image(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
 
         snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
             prepared=prepared,
@@ -7520,8 +7524,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_public_snapshot_count_and_stream_acyclic_after_advance_are_state_local(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
 
         snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
             prepared=prepared,
@@ -7571,8 +7575,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_public_snapshot_support_simple_monocycle_matches_snapshot_cursor_support(
         self,
     ) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
 
         snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
             prepared=prepared,
@@ -7600,8 +7604,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_public_snapshot_count_and_stream_simple_monocycle_match_support_image(
         self,
     ) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
 
         snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
             prepared=prepared,
@@ -7640,8 +7644,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_public_snapshot_support_simple_monocycle_terminal_is_empty_suffix(
         self,
     ) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
 
         snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
             prepared=prepared,
@@ -7672,8 +7676,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_public_snapshot_stream_simple_monocycle_terminal_is_empty_suffix(
         self,
     ) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
 
         snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
             prepared=prepared,
@@ -7721,8 +7725,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_public_online_loop_support_contract_closes_for_acyclic_state_space(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
 
         snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
             prepared=prepared,
@@ -7743,8 +7747,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_public_online_loop_support_contract_closes_for_simple_monocycle_state_space(
         self,
     ) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
 
         snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
             prepared=prepared,
@@ -7771,8 +7775,8 @@ class WriterStateKernelTest(unittest.TestCase):
 
         for name, facts in cases:
             with self.subTest(name=name):
-                prepared = _prepare(facts)
-                options = _writer_options(rooted_at_atom=0)
+                prepared = prepare_writer_facts(facts)
+                options = writer_runtime_options(rooted_at_atom=0)
 
                 snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
                     prepared=prepared,
@@ -7794,8 +7798,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_private_writer_contract_closes_for_monocycle_with_attachment(
         self,
     ) -> None:
-        prepared = _prepare(methylcyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(methylcyclopropane_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
             prepared=prepared,
@@ -7860,8 +7864,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_private_monocycle_with_attachment_support_is_finite_and_nonempty(
         self,
     ) -> None:
-        prepared = _prepare(methylcyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(methylcyclopropane_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
 
         support_count = count_writer_frontier_support(
@@ -7882,8 +7886,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_private_monocycle_with_attachment_has_no_unreachable_open_closure_partners(
         self,
     ) -> None:
-        prepared = _prepare(methylcyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(methylcyclopropane_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
             prepared=prepared,
@@ -7899,8 +7903,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_public_snapshot_resume_simple_monocycle_does_not_use_recursive_admission(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
             prepared=prepared,
@@ -7923,8 +7927,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(choices, writer_frontier_choices(prepared, cursor))
 
     def test_public_snapshot_resume_simple_monocycle_returns_private_choices(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
             prepared=prepared,
@@ -7942,8 +7946,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_public_snapshot_cursor_extraction_simple_monocycle_does_not_use_recursive_admission(
         self,
     ) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
             prepared=prepared,
@@ -7968,8 +7972,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_public_snapshot_cursor_extraction_simple_monocycle_returns_cursor(
         self,
     ) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
             prepared=prepared,
@@ -7985,8 +7989,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(resumed, cursor)
 
     def test_resume_writer_frontier_choices_from_snapshot_matches_writer_frontier_choices(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -8003,8 +8007,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_writer_frontier_choices_after_empty_emitted_texts_matches_snapshot_resume(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -8028,8 +8032,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(choices, writer_frontier_choices(prepared, cursor))
 
     def test_writer_frontier_choices_after_emitted_texts_matches_advanced_snapshot_choices(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -8060,8 +8064,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_writer_frontier_choices_after_emitted_texts_raises_for_invalid_replay_token(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -8079,8 +8083,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIs(raised.exception.kind, SouthStarErrorKind.INVALID_FACTS)
 
     def test_writer_frontier_choices_after_emitted_texts_raises_from_checked_replay_blockers(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -8135,8 +8139,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_count_writer_frontier_support_after_empty_emitted_texts_matches_snapshot_cursor(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -8154,8 +8158,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_count_writer_completions_after_empty_emitted_texts_matches_snapshot_cursor(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -8173,8 +8177,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_replayed_prefix_counts_match_advanced_snapshot_cursor(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -8210,8 +8214,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_iter_writer_frontier_support_suffixes_after_empty_emitted_texts_matches_cursor_stream(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -8232,8 +8236,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_iter_writer_frontier_support_suffixes_after_emitted_texts_matches_advanced_cursor_stream(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -8264,8 +8268,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_iter_writer_frontier_support_suffixes_after_emitted_texts_uses_uncounted_snapshot(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -8301,8 +8305,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_replayed_prefix_count_helpers_use_counted_snapshot(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -8340,8 +8344,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_replayed_prefix_support_helpers_raise_for_invalid_emitted_text(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -8381,8 +8385,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIs(stream_raised.exception.kind, SouthStarErrorKind.INVALID_FACTS)
 
     def test_writer_snapshot_prefix_read_outcome_validates_payload_shape(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -8560,8 +8564,8 @@ class WriterStateKernelTest(unittest.TestCase):
                 )
 
     def test_writer_snapshot_prefix_read_outcome_exposes_graph_policy_evidence(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -8725,8 +8729,8 @@ class WriterStateKernelTest(unittest.TestCase):
                 )
 
     def test_writer_snapshot_prefix_read_outcome_exposes_closure_endpoint_selection_evidence(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -8894,8 +8898,8 @@ class WriterStateKernelTest(unittest.TestCase):
                 )
 
     def test_writer_snapshot_prefix_read_outcome_exposes_active_child_selection_evidence(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -9040,8 +9044,8 @@ class WriterStateKernelTest(unittest.TestCase):
                 )
 
     def test_writer_snapshot_prefix_read_outcome_exposes_residual_attachment_support_groups(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -9190,8 +9194,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(invalid_outcome.residual_attachment_support_groups, ())
 
     def test_writer_snapshot_prefix_read_outcome_exposes_residual_attachment_evidence_groups(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -9340,8 +9344,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(invalid_outcome.residual_attachment_evidence_groups, ())
 
     def test_writer_snapshot_prefix_read_outcome_exposes_per_choice_residual_attachment_evidence(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -9502,8 +9506,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_writer_snapshot_prefix_read_outcome_exposes_owner_scope_evidence(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -9648,8 +9652,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_writer_snapshot_advance_outcome_exposes_choice_residual_attachment_evidence(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -9723,8 +9727,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIsNone(invalid.choice_residual_attachment_evidence)
 
     def test_writer_snapshot_advance_outcome_rejects_missing_choice_residual_evidence(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -9768,8 +9772,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_writer_snapshot_advance_sequence_outcome_exposes_replayed_choice_evidence(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -9891,8 +9895,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_writer_snapshot_advance_sequence_outcome_exposes_only_consumed_evidence_after_failure(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -9971,8 +9975,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_writer_snapshot_replay_choice_snapshot_outcome_exposes_replayed_token_evidence(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -10096,8 +10100,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_writer_snapshot_prefix_read_outcome_separates_replayed_and_final_choice_evidence(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -10220,8 +10224,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_writer_snapshot_empty_replay_has_no_replayed_token_evidence(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -10263,8 +10267,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(prefix_outcome.replayed_selected_policy_families, ())
 
     def test_writer_snapshot_prefix_read_outcome_exposes_dead_closure_resolved_cyclic_evidence(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -10464,8 +10468,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_writer_snapshot_failed_prefix_read_has_no_final_dead_closure_resolved_cyclic_evidence(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -10561,8 +10565,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_writer_snapshot_prefix_read_outcome_returns_counted_readable_prefix(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -10601,8 +10605,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_writer_snapshot_prefix_read_outcome_can_omit_counts(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -10642,8 +10646,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIsNotNone(outcome.public_choices)
 
     def test_writer_snapshot_prefix_read_outcome_preserves_failed_replay_outcomes(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -10747,8 +10751,8 @@ class WriterStateKernelTest(unittest.TestCase):
                 self.assertIsNone(outcome.completion_count)
 
     def test_writer_snapshot_prefix_read_outcome_preserves_final_blocked_frontier(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -10806,8 +10810,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_checked_writer_snapshot_prefix_read_outcome_returns_readable_outcome(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -10842,8 +10846,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIs(result, outcome)
 
     def test_checked_writer_snapshot_prefix_read_outcome_raises_for_failed_or_blocked_outcome(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -10980,8 +10984,8 @@ class WriterStateKernelTest(unittest.TestCase):
                 self.assertIs(raised.exception.kind, kind)
 
     def test_replayed_prefix_helpers_route_through_checked_prefix_read(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -11056,9 +11060,9 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_writer_choice_snapshot_from_snapshot_validates_before_frontier_snapshot(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        other_prepared = _prepare(cco_facts())
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        other_prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -11151,8 +11155,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_writer_snapshot_advance_outcome_validates_payload_shape(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         source_snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -11265,8 +11269,8 @@ class WriterStateKernelTest(unittest.TestCase):
                 )
 
     def test_writer_snapshot_advance_sequence_outcome_validates_advanced_payload(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         source_snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -11386,8 +11390,8 @@ class WriterStateKernelTest(unittest.TestCase):
                 )
 
     def test_writer_snapshot_advance_sequence_outcome_validates_failed_payloads(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         source_snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -11466,8 +11470,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIs(invalid_outcome.failed_outcome, invalid)
 
     def test_writer_snapshot_replay_choice_snapshot_outcome_validates_payload_shape(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         source_snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -11615,8 +11619,8 @@ class WriterStateKernelTest(unittest.TestCase):
                 )
 
     def test_writer_frontier_choice_snapshot_after_empty_emitted_texts_returns_current_frontier(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -11653,8 +11657,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_writer_frontier_choice_snapshot_after_emitted_texts_returns_final_prefix_frontier(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -11704,8 +11708,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_writer_frontier_choice_snapshot_after_emitted_texts_returns_invalid_text_outcome(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -11733,8 +11737,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertTrue(outcome.sequence_outcome.invalid_emitted_text)
 
     def test_writer_frontier_choice_snapshot_after_emitted_texts_returns_replay_blocked_outcome(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -11787,8 +11791,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_writer_frontier_choice_snapshot_after_emitted_texts_preserves_final_blocked_frontier(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -11843,8 +11847,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_checked_writer_frontier_choice_snapshot_after_emitted_texts_returns_snapshot(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -11895,8 +11899,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIs(result, choice_snapshot)
 
     def test_checked_writer_frontier_choice_snapshot_after_emitted_texts_raises_for_failed_or_blocked_outcome(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -12031,8 +12035,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIs(choice_snapshot, blocked_choice_snapshot)
 
     def test_writer_frontier_choice_snapshot_after_emitted_texts_forwards_include_counts_to_final_snapshot(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -12233,8 +12237,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIs(raised.exception.kind, SouthStarErrorKind.INTERNAL_INVARIANT)
 
     def test_writer_search_snapshot_after_checked_frontier_cursor_step_updates_cursor_and_boundary(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -12277,8 +12281,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_writer_snapshot_advance_outcome_returns_advanced_snapshot(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -12312,8 +12316,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_writer_snapshot_advance_outcome_returns_invalid_text_without_raising(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -12349,8 +12353,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIs(raised.exception.kind, SouthStarErrorKind.INVALID_FACTS)
 
     def test_writer_snapshot_advance_outcome_returns_blocked_without_raising(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -12400,8 +12404,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIsNone(outcome.choice)
 
     def test_writer_snapshot_advance_sequence_outcome_advances_multiple_tokens(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -12456,8 +12460,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(outcome.advanced_snapshot, repeated)
 
     def test_writer_snapshot_advance_sequence_outcome_stops_on_invalid_token(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -12505,8 +12509,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(outcome.current_snapshot, first_advanced)
 
     def test_writer_snapshot_advance_sequence_outcome_stops_on_blocked_outcome(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -12569,8 +12573,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_advance_writer_search_snapshot_by_emitted_text_uses_uncounted_choice_snapshot(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -12610,8 +12614,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(advanced.decoder_boundary.consumed_token_count, 1)
 
     def test_advance_writer_search_snapshot_by_emitted_text_rejects_illegal_text(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -12631,8 +12635,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(snapshot.decoder_boundary.consumed_token_count, 0)
 
     def test_advance_writer_search_snapshot_by_emitted_text_ignores_blocked_diagnostic_choice_snapshot(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -12657,8 +12661,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertNotEqual(advanced.cursor, snapshot.cursor)
 
     def test_advance_writer_search_snapshot_by_emitted_text_raises_from_blocked_advance_outcome(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -12690,8 +12694,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
 
     def test_advance_writer_search_snapshot_by_emitted_text_returns_advanced_outcome_snapshot(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -12736,8 +12740,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIs(result, advanced_snapshot)
 
     def test_advance_writer_search_snapshot_by_emitted_texts_returns_final_snapshot(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -12768,8 +12772,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIs(result, snapshot)
 
     def test_advance_writer_search_snapshot_by_emitted_texts_raises_from_failed_sequence_outcome(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -12855,8 +12859,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_resume_writer_frontier_choices_after_private_snapshot_advance_matches_choice_successor(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        options = _writer_options()
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = writer_snapshot.capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -12954,8 +12958,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_writer_frontier_raw_successors_for_streaming_uses_product_projections(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         product = writer_frontier_module._checked_writer_frontier_product(
             prepared,
             cursor,
@@ -12992,8 +12996,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_writer_frontier_choices_routes_through_checked_product(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
 
         with patch(
             "grimace._south_star1.writer_frontier._checked_writer_frontier_product",
@@ -13012,8 +13016,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertTrue(checked_product.call_args_list[0].kwargs["include_counts"])
 
     def test_writer_frontier_choices_use_next_token_entries_not_grouped_transitions(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
 
         with patch(
             "grimace._south_star1.writer_frontier._group_writer_frontier_transitions",
@@ -13030,8 +13034,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(tuple(choice.emitted_text for choice in choices.choices), ("C",))
 
     def test_count_writer_frontier_support_uses_support_count_certificate(self) -> None:
-        prepared = _prepare(cco_facts())
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
 
         support_count = count_writer_frontier_support(
             prepared,
@@ -13145,10 +13149,10 @@ class WriterStateKernelTest(unittest.TestCase):
 
         for name, facts, expected_support, expected_completions, expected_strings in cases:
             with self.subTest(name=name):
-                prepared = _prepare(facts)
+                prepared = prepare_writer_facts(facts)
                 cursor = initial_writer_frontier_cursor(
                     prepared,
-                    _writer_options(),
+                    writer_runtime_options(),
                 )
                 summary = writer_frontier_module._writer_frontier_summary(
                     prepared,
@@ -13172,8 +13176,8 @@ class WriterStateKernelTest(unittest.TestCase):
                 )
 
     def test_plain_graph_frontier_has_no_residual_work_evidence(self) -> None:
-        prepared = _prepare(cco_facts())
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
 
         snapshot = writer_frontier_module._writer_frontier_choice_snapshot(
             prepared,
@@ -13187,8 +13191,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_plain_graph_frontier_has_no_finite_relation_work_evidence(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
 
         snapshot = writer_frontier_module._writer_frontier_choice_snapshot(
             prepared,
@@ -13199,11 +13203,11 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(snapshot.finite_relation_work_evidence, ())
 
     def test_monocycle_records_closure_endpoint_relation_work(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
+        prepared = prepare_writer_facts(cyclopropane_facts())
 
         evidence = _first_choice_finite_relation_work_evidence(
             prepared,
-            initial_writer_frontier_cursor(prepared, _writer_options()),
+            initial_writer_frontier_cursor(prepared, writer_runtime_options()),
             relation_kind="closure_endpoint",
         )
 
@@ -13223,7 +13227,7 @@ class WriterStateKernelTest(unittest.TestCase):
 
         evidence = _first_choice_finite_relation_work_evidence(
             prepared,
-            initial_writer_frontier_cursor(prepared, _writer_options()),
+            initial_writer_frontier_cursor(prepared, writer_runtime_options()),
             relation_kind="closure_endpoint",
             require_direction_marks=True,
         )
@@ -13244,11 +13248,11 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_tetrahedral_atom_token_transition_records_residual_work(
         self,
     ) -> None:
-        prepared = _prepare(tetrahedral_facts())
+        prepared = prepare_writer_facts(tetrahedral_facts())
 
         evidence = _first_choice_residual_work_evidence(
             prepared,
-            initial_writer_frontier_cursor(prepared, _writer_options()),
+            initial_writer_frontier_cursor(prepared, writer_runtime_options()),
             operation="tetrahedral atom-token restriction",
         )
 
@@ -13267,11 +13271,11 @@ class WriterStateKernelTest(unittest.TestCase):
             self.assertGreaterEqual(item.largest_factor_scope, 1)
 
     def test_directional_carrier_transition_records_residual_work(self) -> None:
-        prepared = _prepare(directional_facts())
+        prepared = prepare_writer_facts(directional_facts())
 
         evidence = _first_choice_residual_work_evidence(
             prepared,
-            initial_writer_frontier_cursor(prepared, _writer_options()),
+            initial_writer_frontier_cursor(prepared, writer_runtime_options()),
             operation="directional carrier-mark restriction",
         )
 
@@ -13289,11 +13293,11 @@ class WriterStateKernelTest(unittest.TestCase):
             self.assertGreaterEqual(item.component_factor_count, 1)
 
     def test_local_order_closure_transition_records_residual_work(self) -> None:
-        prepared = _prepare(tetrahedral_facts())
+        prepared = prepare_writer_facts(tetrahedral_facts())
 
         evidence = _first_choice_residual_work_evidence(
             prepared,
-            initial_writer_frontier_cursor(prepared, _writer_options()),
+            initial_writer_frontier_cursor(prepared, writer_runtime_options()),
             operation="tetrahedral local-order factor closure",
         )
 
@@ -13311,12 +13315,12 @@ class WriterStateKernelTest(unittest.TestCase):
             self.assertGreaterEqual(item.component_factor_count, 1)
 
     def test_terminalization_forwards_residual_work_evidence(self) -> None:
-        prepared = _prepare(tetrahedral_facts())
+        prepared = prepare_writer_facts(tetrahedral_facts())
         terminal_key = _terminal_keys(
             prepared,
             initial_writer_frontier_cursor(
                 prepared,
-                _writer_options(rooted_at_atom=0),
+                writer_runtime_options(rooted_at_atom=0),
             ),
         )[0]
         local_orders = tuple(
@@ -13458,10 +13462,10 @@ class WriterStateKernelTest(unittest.TestCase):
 
     def test_observed_closure_relation_work_fits_default_envelope(self) -> None:
         cases = (
-            lambda: _prepare(cyclopropane_facts()),
-            lambda: _prepare(methylcyclopropane_facts()),
-            lambda: _prepare(fused_rank_two_facts()),
-            lambda: _prepare(cyclopropane_plus_singleton_facts()),
+            lambda: prepare_writer_facts(cyclopropane_facts()),
+            lambda: prepare_writer_facts(methylcyclopropane_facts()),
+            lambda: prepare_writer_facts(fused_rank_two_facts()),
+            lambda: prepare_writer_facts(cyclopropane_plus_singleton_facts()),
             _prepare_directional_ring_carrier_monocycle,
         )
         envelope = (
@@ -13477,7 +13481,7 @@ class WriterStateKernelTest(unittest.TestCase):
                     prepared,
                     initial_writer_frontier_cursor(
                         prepared,
-                        _writer_options(),
+                        writer_runtime_options(),
                     ),
                 )
             )
@@ -13509,8 +13513,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_tight_finite_relation_work_envelope_rejects_next_token_frontier(
         self,
     ) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
 
         with _patched_tight_finite_relation_work_envelope():
             with self.assertRaises(SouthStarError) as caught:
@@ -13525,8 +13529,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_tight_finite_relation_work_envelope_rejects_counts_and_stream(
         self,
     ) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
 
         operations = (
             lambda: count_writer_frontier_support(
@@ -13555,8 +13559,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_tight_finite_relation_work_envelope_rejects_snapshots(
         self,
     ) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        options = _writer_options()
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        options = writer_runtime_options()
         cursor = _first_cursor_with_finite_relation_work(
             prepared,
             initial_writer_frontier_cursor(prepared, options),
@@ -13710,12 +13714,12 @@ class WriterStateKernelTest(unittest.TestCase):
 
     def test_observed_residual_work_fits_default_envelope(self) -> None:
         cases = (
-            lambda: _prepare(tetrahedral_facts()),
-            lambda: _prepare(directional_facts()),
+            lambda: prepare_writer_facts(tetrahedral_facts()),
+            lambda: prepare_writer_facts(directional_facts()),
             _prepare_directional_ring_carrier_monocycle,
             _prepare_shared_directional_ring_carrier_monocycle,
-            lambda: _prepare(cyclopropane_facts()),
-            lambda: _prepare(fused_rank_two_facts()),
+            lambda: prepare_writer_facts(cyclopropane_facts()),
+            lambda: prepare_writer_facts(fused_rank_two_facts()),
         )
         envelope = (
             writer_execution_evidence
@@ -13730,7 +13734,7 @@ class WriterStateKernelTest(unittest.TestCase):
                     prepared,
                     initial_writer_frontier_cursor(
                         prepared,
-                        _writer_options(),
+                        writer_runtime_options(),
                     ),
                 )
             )
@@ -13773,12 +13777,12 @@ class WriterStateKernelTest(unittest.TestCase):
 
         for facts, operation in cases:
             with self.subTest(operation=operation):
-                prepared = _prepare(facts)
+                prepared = prepare_writer_facts(facts)
                 evidence = _first_choice_residual_work_evidence(
                     prepared,
                     initial_writer_frontier_cursor(
                         prepared,
-                        _writer_options(),
+                        writer_runtime_options(),
                     ),
                     operation=operation,
                 )
@@ -13794,8 +13798,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_tight_residual_work_envelope_rejects_next_token_frontier(
         self,
     ) -> None:
-        prepared = _prepare(tetrahedral_facts())
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(tetrahedral_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
 
         with _patched_tight_residual_work_envelope():
             with self.assertRaises(SouthStarError) as caught:
@@ -13810,8 +13814,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_tight_residual_work_envelope_rejects_counts_and_stream(
         self,
     ) -> None:
-        prepared = _prepare(tetrahedral_facts())
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(tetrahedral_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
 
         operations = (
             lambda: count_writer_frontier_support(
@@ -13837,8 +13841,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_tight_residual_work_envelope_rejects_snapshot_resume_and_advance(
         self,
     ) -> None:
-        prepared = _prepare(tetrahedral_facts())
-        options = _writer_options()
+        prepared = prepare_writer_facts(tetrahedral_facts())
+        options = writer_runtime_options()
         snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
@@ -13881,7 +13885,7 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_tight_residual_work_envelope_rejects_terminal_evidence(
         self,
     ) -> None:
-        prepared = _prepare(tetrahedral_facts())
+        prepared = prepare_writer_facts(tetrahedral_facts())
         terminal_cursor = _terminal_local_order_open_cursor(prepared)
 
         with _patched_tight_residual_work_envelope():
@@ -13943,7 +13947,7 @@ class WriterStateKernelTest(unittest.TestCase):
         self,
     ) -> None:
         prepared = _prepare_directional_non_neighbor_ligand_monocycle()
-        options = _writer_options()
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         blocked = _first_cursor_with_stereo_policy_blocker(prepared, cursor)
         raw = writer_frontier_module._writer_frontier_choice_snapshot(
@@ -13981,7 +13985,7 @@ class WriterStateKernelTest(unittest.TestCase):
         self,
     ) -> None:
         prepared = _prepare_directional_non_neighbor_ligand_monocycle()
-        options = _writer_options()
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
 
         audit = writer_audit._audit_writer_frontier_reachability_from_cursor(
@@ -14005,7 +14009,7 @@ class WriterStateKernelTest(unittest.TestCase):
         prepared = _prepare_directional_non_neighbor_ligand_monocycle()
         cursor = _first_cursor_with_stereo_policy_blocker(
             prepared,
-            initial_writer_frontier_cursor(prepared, _writer_options()),
+            initial_writer_frontier_cursor(prepared, writer_runtime_options()),
         )
 
         operations = (
@@ -14035,7 +14039,7 @@ class WriterStateKernelTest(unittest.TestCase):
         self,
     ) -> None:
         prepared = _prepare_directional_non_neighbor_ligand_monocycle()
-        options = _writer_options()
+        options = writer_runtime_options()
         cursor = _first_cursor_with_stereo_policy_blocker(
             prepared,
             initial_writer_frontier_cursor(prepared, options),
@@ -14104,10 +14108,10 @@ class WriterStateKernelTest(unittest.TestCase):
 
         for facts in cases:
             with self.subTest(atoms=len(facts.atoms), bonds=len(facts.bonds)):
-                prepared = _prepare(facts)
+                prepared = prepare_writer_facts(facts)
                 cursor = initial_writer_frontier_cursor(
                     prepared,
-                    _writer_options(),
+                    writer_runtime_options(),
                 )
                 snapshot = (
                     writer_frontier_module
@@ -14132,10 +14136,10 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_acyclic_graph_obligation_work_has_no_closure_candidates(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         evidence = _all_graph_obligation_work_evidence(
             prepared,
-            initial_writer_frontier_cursor(prepared, _writer_options()),
+            initial_writer_frontier_cursor(prepared, writer_runtime_options()),
         )
 
         self.assertTrue(evidence)
@@ -14144,10 +14148,10 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_cyclic_graph_obligation_work_records_closure_counts(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
+        prepared = prepare_writer_facts(cyclopropane_facts())
         evidence = _all_graph_obligation_work_evidence(
             prepared,
-            initial_writer_frontier_cursor(prepared, _writer_options()),
+            initial_writer_frontier_cursor(prepared, writer_runtime_options()),
         )
 
         self.assertTrue(evidence)
@@ -14270,16 +14274,16 @@ class WriterStateKernelTest(unittest.TestCase):
         self,
     ) -> None:
         cases = (
-            lambda: _prepare(cco_facts()),
-            lambda: _prepare(cyclopropane_facts()),
-            lambda: _prepare(methylcyclopropane_facts()),
-            lambda: _prepare(fused_rank_two_facts()),
-            lambda: _prepare(cyclopropane_plus_singleton_facts()),
-            lambda: _prepare(tetrahedral_facts()),
-            lambda: _prepare(directional_facts()),
+            lambda: prepare_writer_facts(cco_facts()),
+            lambda: prepare_writer_facts(cyclopropane_facts()),
+            lambda: prepare_writer_facts(methylcyclopropane_facts()),
+            lambda: prepare_writer_facts(fused_rank_two_facts()),
+            lambda: prepare_writer_facts(cyclopropane_plus_singleton_facts()),
+            lambda: prepare_writer_facts(tetrahedral_facts()),
+            lambda: prepare_writer_facts(directional_facts()),
             _prepare_directional_ring_carrier_monocycle,
             _prepare_shared_directional_ring_carrier_monocycle,
-            lambda: _prepare(bridge_path_with_connector_pendant_chain_facts()),
+            lambda: prepare_writer_facts(bridge_path_with_connector_pendant_chain_facts()),
         )
         envelope = (
             writer_execution_evidence
@@ -14294,7 +14298,7 @@ class WriterStateKernelTest(unittest.TestCase):
                     prepared,
                     initial_writer_frontier_cursor(
                         prepared,
-                        _writer_options(),
+                        writer_runtime_options(),
                     ),
                 )
             )
@@ -14389,8 +14393,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_tight_graph_obligation_work_envelope_rejects_current_frontier(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
 
         with _patched_tight_graph_obligation_work_envelope():
             with self.assertRaises(SouthStarError) as caught:
@@ -14405,8 +14409,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_tight_graph_obligation_work_envelope_rejects_counts_and_stream(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
 
         operations = (
             lambda: count_writer_frontier_support(
@@ -14435,8 +14439,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_tight_graph_obligation_work_envelope_rejects_snapshots(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options()
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options()
         snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
@@ -14585,8 +14589,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_completion_count_does_not_materialize_support_strings(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
 
         summary = writer_frontier_module._writer_frontier_summary(
             prepared,
@@ -14599,8 +14603,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(summary.require_completion_count(), 4)
 
     def test_count_writer_cursor_completions_uses_count_certificate(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         certificate = writer_frontier_module._checked_writer_frontier_count_certificate(
             prepared=prepared,
             cursor=cursor,
@@ -14611,8 +14615,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(count, certificate.completion_count)
 
     def test_completion_count_uses_count_certificates(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
 
         count = count_writer_cursor_completions(prepared, cursor)
         certificate = writer_frontier_module._checked_writer_frontier_count_certificate(
@@ -14624,8 +14628,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(count, certificate.completion_count)
 
     def test_count_writer_frontier_support_uses_next_token_entries_not_grouped_transitions(self) -> None:
-        prepared = _prepare(cco_facts())
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
 
         with patch(
             "grimace._south_star1.writer_frontier._group_writer_frontier_transitions",
@@ -14639,8 +14643,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(support_count, 4)
 
     def test_iter_writer_frontier_support_uses_certified_support_strings(self) -> None:
-        prepared = _prepare(cco_facts())
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
 
         certified = tuple(
             writer_frontier_module
@@ -14655,8 +14659,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(strings, tuple(item.string for item in certified))
 
     def test_iter_writer_frontier_support_uses_next_token_entries_not_grouped_transitions(self) -> None:
-        prepared = _prepare(cco_facts())
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
 
         with patch(
             "grimace._south_star1.writer_frontier._group_writer_frontier_transitions",
@@ -14667,8 +14671,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(strings, ("C(C)O", "C(O)C", "CCO", "OCC"))
 
     def test_checked_writer_frontier_schedule_outcome_raises_from_blocked_outcome(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         active_outcome = self._blocked_child_active_emitted_outcome(AtomId(0))
         blocked_top_level_outcome = (
             writer_transitions._WriterTopLevelScheduleOutcome(
@@ -14786,8 +14790,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_live_frontier_blocks_unsupported_tree_child_entry_capability(
         self,
     ) -> None:
-        prepared = _prepare(chain_facts(("C", "O")))
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(chain_facts(("C", "O")))
+        options = writer_runtime_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         initial = writer_snapshot.capture_initial_writer_frontier_snapshot(
             prepared=prepared,
@@ -14821,8 +14825,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_live_frontier_blocks_unsupported_concurrent_closure_capability(
         self,
     ) -> None:
-        prepared = _prepare(bridge_separated_triangles_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(bridge_separated_triangles_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         path = next(
             path
@@ -14922,7 +14926,7 @@ class WriterStateKernelTest(unittest.TestCase):
                 ),
             ),
         )
-        options = _writer_options(rooted_at_atom=0)
+        options = writer_runtime_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(
             prepared,
             options,
@@ -14980,7 +14984,7 @@ class WriterStateKernelTest(unittest.TestCase):
             writer_surface=SouthStarWriterSurface(),
             policy=duplicate_single_atom_policy(),
         )
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
 
         choices = writer_frontier_choices(prepared, cursor)
 
@@ -14993,8 +14997,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(choice.completion_count, 2)
 
     def test_writer_frontier_terminal_counts_weighted_cursor(self) -> None:
-        prepared = _prepare(chain_facts(("C",)))
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(chain_facts(("C",)))
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         after_atom = writer_frontier_choices(prepared, cursor).choices[0].successor
         terminal_key = after_atom.weighted_states[0][0]
         weighted_terminal = WriterFrontierCursor(
@@ -15015,11 +15019,11 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(choices.choices, ())
 
     def test_writer_support_image_keeps_witness_count_separate(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
 
         support = enumerate_prepared_stereo_support(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
 
         self.assertEqual(support.strings, ("CC",))
@@ -15027,15 +15031,15 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(support.witness_count, 2)
 
     def test_writer_witness_completions_can_exceed_support_count(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C", "C")))
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(chain_facts(("C", "C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
 
         self.assertEqual(count_writer_frontier_support(prepared, cursor.support_state), 2)
         self.assertEqual(count_writer_cursor_completions(prepared, cursor), 4)
 
     def test_writer_support_count_does_not_call_streaming_support(self) -> None:
-        prepared = _prepare(cco_facts())
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
 
         with patch(
             "grimace._south_star1.writer_frontier.iter_writer_frontier_support",
@@ -15044,8 +15048,8 @@ class WriterStateKernelTest(unittest.TestCase):
             self.assertEqual(count_writer_frontier_support(prepared, cursor.support_state), 4)
 
     def test_streaming_support_does_not_compute_counted_choices(self) -> None:
-        prepared = _prepare(cco_facts())
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
 
         with patch(
             "grimace._south_star1.writer_frontier.writer_frontier_choices",
@@ -15063,31 +15067,31 @@ class WriterStateKernelTest(unittest.TestCase):
             )
 
     def test_unique_child_is_inline_for_rooted_chain(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C", "C")))
+        prepared = prepare_writer_facts(chain_facts(("C", "C", "C")))
 
         support = enumerate_prepared_stereo_support(
             prepared=prepared,
-            runtime_options=_writer_options(rooted_at_atom=0),
+            runtime_options=writer_runtime_options(rooted_at_atom=0),
         )
 
         self.assertEqual(support.strings, ("CCC",))
         self.assertNotIn("(", support.strings[0])
 
     def test_true_side_branches_remain_expressible(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
 
         support = enumerate_prepared_stereo_support(
             prepared=prepared,
-            runtime_options=_writer_options(rooted_at_atom=1),
+            runtime_options=writer_runtime_options(rooted_at_atom=1),
         )
 
         self.assertEqual(support.strings, ("C(C)O", "C(O)C"))
 
     def test_double_bond_child_entry_is_token_granular(self) -> None:
-        prepared = _prepare(two_atom_facts("C", "O", BondOrder.DOUBLE))
+        prepared = prepare_writer_facts(two_atom_facts("C", "O", BondOrder.DOUBLE))
         cursor = initial_writer_frontier_cursor(
             prepared,
-            _writer_options(rooted_at_atom=0),
+            writer_runtime_options(rooted_at_atom=0),
         )
 
         first = writer_frontier_choices(prepared, cursor).choices[0]
@@ -15095,7 +15099,7 @@ class WriterStateKernelTest(unittest.TestCase):
         third = writer_frontier_choices(prepared, second.successor).choices[0]
         support = enumerate_prepared_stereo_support(
             prepared=prepared,
-            runtime_options=_writer_options(rooted_at_atom=0),
+            runtime_options=writer_runtime_options(rooted_at_atom=0),
         )
 
         self.assertEqual(first.emitted_text, "C")
@@ -15104,10 +15108,10 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(support.strings, ("C=O",))
 
     def test_triple_bond_child_entry_is_token_granular(self) -> None:
-        prepared = _prepare(two_atom_facts("C", "C", BondOrder.TRIPLE))
+        prepared = prepare_writer_facts(two_atom_facts("C", "C", BondOrder.TRIPLE))
         cursor = initial_writer_frontier_cursor(
             prepared,
-            _writer_options(rooted_at_atom=0),
+            writer_runtime_options(rooted_at_atom=0),
         )
 
         first = writer_frontier_choices(prepared, cursor).choices[0]
@@ -15119,11 +15123,11 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(third.emitted_text, "C")
 
     def test_writer_shaped_disconnected_components_emit_dot(self) -> None:
-        prepared = _prepare(disconnected_co_facts())
+        prepared = prepare_writer_facts(disconnected_co_facts())
 
         support = enumerate_prepared_stereo_support(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
 
         self.assertEqual(support.strings, ("C.O",))
@@ -15136,8 +15140,8 @@ class WriterStateKernelTest(unittest.TestCase):
 
         for name, facts in cases:
             with self.subTest(name=name):
-                prepared = _prepare(facts)
-                options = _writer_options(rooted_at_atom=-1)
+                prepared = prepare_writer_facts(facts)
+                options = writer_runtime_options(rooted_at_atom=-1)
                 snapshot = (
                     writer_snapshot
                     .capture_initial_writer_frontier_snapshot(
@@ -15229,7 +15233,7 @@ class WriterStateKernelTest(unittest.TestCase):
                         )
 
     def test_component_boundary_emits_for_graph_complete_component(self) -> None:
-        prepared = _prepare(cyclopropane_plus_singleton_facts())
+        prepared = prepare_writer_facts(cyclopropane_plus_singleton_facts())
         state = _with_next_component_root(_cyclopropane_terminal_closed_closure_state())
         context = writer_transitions.build_writer_transition_expansion_context(
             prepared,
@@ -15249,7 +15253,7 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(transitions[0].emitted_text, ".")
 
     def test_component_boundary_rejects_open_closure_endpoint(self) -> None:
-        prepared = _prepare(cyclopropane_plus_singleton_facts())
+        prepared = prepare_writer_facts(cyclopropane_plus_singleton_facts())
         state = _with_next_component_root(_cyclopropane_terminal_open_closure_state())
         context = writer_transitions.build_writer_transition_expansion_context(
             prepared,
@@ -15265,7 +15269,7 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(transitions, ())
 
     def test_component_boundary_rejects_closure_candidate(self) -> None:
-        prepared = _prepare(cyclopropane_plus_singleton_facts())
+        prepared = prepare_writer_facts(cyclopropane_plus_singleton_facts())
         state = _with_next_component_root(
             replace(
                 _cyclopropane_terminal_closed_closure_state(),
@@ -15286,8 +15290,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(transitions, ())
 
     def test_writer_cursor_after_cc_exposes_weighted_terminal(self) -> None:
-        prepared = _prepare(chain_facts(("C", "C")))
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         first = writer_frontier_choices(prepared, cursor).choices[0]
         second = writer_frontier_choices(prepared, first.successor).choices[0]
 
@@ -15305,19 +15309,19 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(choices.choices, ())
 
     def test_writer_root_restricts_initial_frontier_without_plan_route(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
 
         with _forbidden_exhaustive_routes():
             support = enumerate_prepared_stereo_support(
                 prepared=prepared,
-                runtime_options=_writer_options(rooted_at_atom=2),
+                runtime_options=writer_runtime_options(rooted_at_atom=2),
             )
 
         self.assertEqual(support.strings, ("OCC",))
 
     def test_public_writer_shaped_simple_monocycle_support_succeeds_by_default(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
 
         image = enumerate_prepared_stereo_support(
             prepared=prepared,
@@ -15343,8 +15347,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertGreater(image.distinct_count, 0)
 
     def test_public_writer_shaped_simple_monocycle_with_attachment_support_succeeds(self) -> None:
-        prepared = _prepare(methylcyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(methylcyclopropane_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
 
         image = enumerate_prepared_stereo_support(
             prepared=prepared,
@@ -15373,8 +15377,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self,
     ) -> None:
         facts = bridge_path_with_connector_pendant_chain_facts()
-        prepared = _prepare(facts)
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(facts)
+        options = writer_runtime_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         initial_snapshot = (
             writer_snapshot
@@ -15448,7 +15452,7 @@ class WriterStateKernelTest(unittest.TestCase):
 
 
     def test_two_non_single_block_bonds_branch_roles(self) -> None:
-        prepared = _prepare_with_ordinary_policy_options(
+        prepared = prepare_with_ordinary_policy_options(
             bridge_path_with_two_non_single_block_bonds_facts(
                 BondOrder.DOUBLE,
                 BondOrder.TRIPLE,
@@ -15457,7 +15461,7 @@ class WriterStateKernelTest(unittest.TestCase):
                 non_single_ring_closures="joint",
             ),
         )
-        options = _writer_options(rooted_at_atom=0)
+        options = writer_runtime_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         initial_snapshot = (
             writer_snapshot
@@ -15639,10 +15643,10 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_bridge_path_snapshot_resume_while_traversing_connector(
         self,
     ) -> None:
-        prepared = _prepare(
+        prepared = prepare_writer_facts(
             bridge_separated_triangles_facts(connector_length=3),
         )
-        options = _writer_options(rooted_at_atom=0)
+        options = writer_runtime_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         initial_snapshot = (
             writer_snapshot
@@ -15687,8 +15691,8 @@ class WriterStateKernelTest(unittest.TestCase):
 
     def test_bridge_path_terminal_closures_exclude_connector_bonds(self) -> None:
         facts = bridge_separated_triangles_facts(connector_length=3)
-        prepared = _prepare(facts)
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(facts)
+        options = writer_runtime_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         connector_bonds = frozenset((BondId(6), BondId(7), BondId(8)))
 
@@ -15700,8 +15704,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_bridge_separated_two_cycle_live_closure_lifecycle(
         self,
     ) -> None:
-        prepared = _prepare(bridge_separated_triangles_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(bridge_separated_triangles_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         paths = _branch_terminal_paths(prepared, cursor)
         concurrent = (
@@ -15787,8 +15791,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_bridge_separated_two_cycle_snapshot_resume_from_concurrent_states(
         self,
     ) -> None:
-        prepared = _prepare(bridge_separated_triangles_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(bridge_separated_triangles_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         initial_snapshot = (
             writer_snapshot
@@ -15855,8 +15859,8 @@ class WriterStateKernelTest(unittest.TestCase):
 
         for name, facts in cases:
             with self.subTest(name=name):
-                prepared = _prepare(facts)
-                options = _writer_options(rooted_at_atom=0)
+                prepared = prepare_writer_facts(facts)
+                options = writer_runtime_options(rooted_at_atom=0)
 
                 snapshot = writer_snapshot.capture_initial_writer_frontier_snapshot(
                     prepared=prepared,
@@ -15925,8 +15929,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_public_initial_frontier_cursor_uses_transition_harness_for_cyclic_input(
         self,
     ) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
 
         self.assertEqual(
             initial_writer_frontier_cursor(prepared, options),
@@ -15968,8 +15972,8 @@ class WriterStateKernelTest(unittest.TestCase):
 
         for name, facts, required_token in token_rows:
             with self.subTest(name=name, token=required_token):
-                prepared = _prepare(facts)
-                options = _writer_options(rooted_at_atom=0)
+                prepared = prepare_writer_facts(facts)
+                options = writer_runtime_options(rooted_at_atom=0)
 
                 image = enumerate_prepared_stereo_support(
                     prepared=prepared,
@@ -16077,7 +16081,7 @@ class WriterStateKernelTest(unittest.TestCase):
             ("=", ""),
         )
 
-        options = _writer_options(rooted_at_atom=0)
+        options = writer_runtime_options(rooted_at_atom=0)
         pending = (_initial_writer_transition_frontier_cursor(prepared, options),)
         seen: set[WriterFrontierCursor] = set()
         found = False
@@ -16165,12 +16169,12 @@ class WriterStateKernelTest(unittest.TestCase):
     ) -> None:
         from tests.south_star1.test_writer_stereo_residual import ring_core_tetra_facts
 
-        prepared = _prepare(ring_core_tetra_facts())
+        prepared = prepare_writer_facts(ring_core_tetra_facts())
         roles: set[str] = set()
         terminal_orders: list[tuple[OccurrenceId, ...]] = []
 
         for root_atom in (0, 1, 2):
-            options = _writer_options(rooted_at_atom=root_atom)
+            options = writer_runtime_options(rooted_at_atom=root_atom)
             root = _initial_writer_transition_frontier_cursor(prepared, options)
             pending = (root,)
             seen: set[WriterFrontierCursor] = set()
@@ -16245,7 +16249,7 @@ class WriterStateKernelTest(unittest.TestCase):
         for root in (1, 2):
             cursor = _initial_writer_transition_frontier_cursor(
                 prepared,
-                _writer_options(rooted_at_atom=root),
+                writer_runtime_options(rooted_at_atom=root),
             )
             rooted_paths.extend(_branch_terminal_paths(prepared, cursor))
 
@@ -16298,10 +16302,10 @@ class WriterStateKernelTest(unittest.TestCase):
 
     def test_two_cycle_ring_tetra_propagation_metrics_are_additive(self) -> None:
         def initial_residual_snapshot(facts: MoleculeFacts):
-            prepared = _prepare(facts)
+            prepared = prepare_writer_facts(facts)
             cursor = _initial_writer_transition_frontier_cursor(
                 prepared,
-                _writer_options(rooted_at_atom=0),
+                writer_runtime_options(rooted_at_atom=0),
             )
             state = writer_state_from_key(cursor.weighted_states[0][0])
             return state.stereo_state.residual_snapshot
@@ -16444,7 +16448,7 @@ class WriterStateKernelTest(unittest.TestCase):
             (BondOrder.TRIPLE, "#"),
         ):
             with self.subTest(order=order):
-                prepared = _prepare_with_ordinary_policy_options(
+                prepared = prepare_with_ordinary_policy_options(
                     ring_core_tetra_with_remote_non_single_facts(order),
                     options=OrdinaryPolicyOptions(
                         non_single_ring_closures="joint",
@@ -16453,7 +16457,7 @@ class WriterStateKernelTest(unittest.TestCase):
                 paths_by_role: dict[str, _BranchTerminalPath] = {}
 
                 for root_atom in (0, 1, 2):
-                    options = _writer_options(rooted_at_atom=root_atom)
+                    options = writer_runtime_options(rooted_at_atom=root_atom)
                     cursor = _initial_writer_transition_frontier_cursor(
                         prepared,
                         options,
@@ -16520,7 +16524,7 @@ class WriterStateKernelTest(unittest.TestCase):
                             if state.ring_state.open_endpoints
                         )
                         prefix = path.emissions[:open_index]
-                        options = _writer_options(
+                        options = writer_runtime_options(
                             rooted_at_atom=int(path.states[0].active.atom),
                         )
                         initial_snapshot = (
@@ -16567,7 +16571,7 @@ class WriterStateKernelTest(unittest.TestCase):
                 BondTextChoice("partnerless", "~", False),
             ),
         )
-        options = _writer_options(rooted_at_atom=0)
+        options = writer_runtime_options(rooted_at_atom=0)
         pending = ((
             (),
             _initial_writer_transition_frontier_cursor(prepared, options),
@@ -16721,13 +16725,13 @@ class WriterStateKernelTest(unittest.TestCase):
                         order,
                     ),
                 )
-                prepared = _prepare_with_ordinary_policy_options(
+                prepared = prepare_with_ordinary_policy_options(
                     facts,
                     options=OrdinaryPolicyOptions(
                         non_single_ring_closures="joint",
                     ),
                 )
-                options = _writer_options(rooted_at_atom=0)
+                options = writer_runtime_options(rooted_at_atom=0)
                 pending = (
                     _initial_writer_transition_frontier_cursor(
                         prepared,
@@ -16801,7 +16805,7 @@ class WriterStateKernelTest(unittest.TestCase):
 
         for name, policy_options, texts, pairs in rows:
             with self.subTest(name=name):
-                prepared = _prepare_with_ordinary_policy_options(
+                prepared = prepare_with_ordinary_policy_options(
                     simple_monocycle_with_pendant_forest_facts(ring_size=3),
                     options=policy_options,
                 )
@@ -16829,7 +16833,7 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(relation.texts, ("-", ""))
         self.assertEqual(relation.openable_first_texts, ("-", ""))
 
-        options = _writer_options(rooted_at_atom=0)
+        options = writer_runtime_options(rooted_at_atom=0)
         pending = (_initial_writer_transition_frontier_cursor(prepared, options),)
         seen: set[WriterFrontierCursor] = set()
         found_open = False
@@ -16964,7 +16968,7 @@ class WriterStateKernelTest(unittest.TestCase):
 
         for name, policy_options, texts, pairs in rows:
             with self.subTest(name=name):
-                prepared = _prepare_with_ordinary_policy_options(
+                prepared = prepare_with_ordinary_policy_options(
                     _aromatic_triangle_facts(),
                     options=policy_options,
                 )
@@ -17000,7 +17004,7 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(relation.texts, (":", ""))
         self.assertEqual(relation.openable_first_texts, (":", ""))
 
-        options = _writer_options(rooted_at_atom=0)
+        options = writer_runtime_options(rooted_at_atom=0)
         pending = (_initial_writer_transition_frontier_cursor(prepared, options),)
         seen: set[WriterFrontierCursor] = set()
         found_open = False
@@ -17123,43 +17127,43 @@ class WriterStateKernelTest(unittest.TestCase):
         cases = (
             (
                 "plain",
-                _prepare(cco_facts()),
-                _writer_options(rooted_at_atom=-1),
+                prepare_writer_facts(cco_facts()),
+                writer_runtime_options(rooted_at_atom=-1),
             ),
             (
                 "plain_rooted",
-                _prepare(cco_facts()),
-                _writer_options(rooted_at_atom=1),
+                prepare_writer_facts(cco_facts()),
+                writer_runtime_options(rooted_at_atom=1),
             ),
             (
                 "tetrahedral",
-                _prepare(tetrahedral_facts()),
-                _writer_options(rooted_at_atom=-1),
+                prepare_writer_facts(tetrahedral_facts()),
+                writer_runtime_options(rooted_at_atom=-1),
             ),
             (
                 "directional",
-                _prepare(directional_facts()),
-                _writer_options(rooted_at_atom=-1),
+                prepare_writer_facts(directional_facts()),
+                writer_runtime_options(rooted_at_atom=-1),
             ),
             (
                 "disconnected",
-                _prepare(disconnected_co_facts()),
-                _writer_options(rooted_at_atom=-1),
+                prepare_writer_facts(disconnected_co_facts()),
+                writer_runtime_options(rooted_at_atom=-1),
             ),
             (
                 "cyclic",
-                _prepare(cyclopropane_facts()),
-                _writer_options(rooted_at_atom=0),
+                prepare_writer_facts(cyclopropane_facts()),
+                writer_runtime_options(rooted_at_atom=0),
             ),
             (
                 "disconnected_cycle_atom",
-                _prepare(cyclopropane_plus_singleton_facts()),
-                _writer_options(rooted_at_atom=-1),
+                prepare_writer_facts(cyclopropane_plus_singleton_facts()),
+                writer_runtime_options(rooted_at_atom=-1),
             ),
             (
                 "disconnected_atom_cycle",
-                _prepare(singleton_plus_cyclopropane_facts()),
-                _writer_options(rooted_at_atom=-1),
+                prepare_writer_facts(singleton_plus_cyclopropane_facts()),
+                writer_runtime_options(rooted_at_atom=-1),
             ),
         )
 
@@ -17278,8 +17282,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_public_writer_support_uses_shared_initial_cursor_helper(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
 
         calls = []
         original = writer_support.initial_writer_runtime_state
@@ -17307,8 +17311,8 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_admitted_public_cyclic_support_would_use_transition_cursor_not_tree_cursor(
         self,
     ) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
 
         helper_calls = []
         original_helper = writer_support.initial_writer_runtime_state
@@ -17355,49 +17359,49 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertGreaterEqual(image.witness_count, image.distinct_count)
 
     def test_public_initial_frontier_accepts_cyclic_prepared(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
+        prepared = prepare_writer_facts(cyclopropane_facts())
 
         cursor = initial_writer_frontier_cursor(
             prepared,
-            _writer_options(rooted_at_atom=0),
+            writer_runtime_options(rooted_at_atom=0),
         )
 
         self.assertEqual(
             cursor,
             _initial_writer_transition_frontier_cursor(
                 prepared,
-                _writer_options(rooted_at_atom=0),
+                writer_runtime_options(rooted_at_atom=0),
             ),
         )
 
     def test_internal_transition_frontier_accepts_cyclic_prepared(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
+        prepared = prepare_writer_facts(cyclopropane_facts())
 
         cursor = _initial_writer_transition_frontier_cursor(
             prepared,
-            _writer_options(rooted_at_atom=0),
+            writer_runtime_options(rooted_at_atom=0),
         )
 
         self.assertEqual(len(cursor.weighted_states), 1)
 
     def test_internal_transition_frontier_rejects_malformed_components(self) -> None:
-        prepared = _prepare(cycle_plus_isolate_component_facts())
+        prepared = prepare_writer_facts(cycle_plus_isolate_component_facts())
 
         with self.assertRaises(SouthStarError) as caught:
             _initial_writer_transition_frontier_cursor(
                 prepared,
-                _writer_options(rooted_at_atom=0),
+                writer_runtime_options(rooted_at_atom=0),
             )
 
         self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
 
     def test_internal_transition_frontier_rejects_implicit_h_only_side(self) -> None:
-        prepared = _prepare(unsupported_directional_implicit_h_facts())
+        prepared = prepare_writer_facts(unsupported_directional_implicit_h_facts())
 
         with self.assertRaises(SouthStarError) as caught:
             _initial_writer_transition_frontier_cursor(
                 prepared,
-                _writer_options(rooted_at_atom=0),
+                writer_runtime_options(rooted_at_atom=0),
             )
 
         self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_STEREO)
@@ -17415,19 +17419,19 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertTrue(transitions)
 
     def test_writer_shaped_cycle_plus_isolate_component_fails_closed(self) -> None:
-        prepared = _prepare(cycle_plus_isolate_component_facts())
+        prepared = prepare_writer_facts(cycle_plus_isolate_component_facts())
 
         with _forbidden_exhaustive_routes():
             with self.assertRaises(SouthStarError) as caught:
                 enumerate_prepared_stereo_support(
                     prepared=prepared,
-                    runtime_options=_writer_options(),
+                    runtime_options=writer_runtime_options(),
                 )
 
         self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
 
     def test_raw_legal_transitions_allow_cyclic_root_emission(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
+        prepared = prepare_writer_facts(cyclopropane_facts())
 
         transitions = writer_transitions.legal_writer_transitions(
             prepared,
@@ -17441,7 +17445,7 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_raw_legal_transitions_reject_missing_active_frame(self) -> None:
-        prepared = _prepare(chain_facts(("C",)))
+        prepared = prepare_writer_facts(chain_facts(("C",)))
 
         with self.assertRaises(SouthStarError) as caught:
             writer_transitions.legal_writer_transitions(
@@ -17452,7 +17456,7 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIs(caught.exception.kind, SouthStarErrorKind.INTERNAL_INVARIANT)
 
     def test_raw_initial_state_still_emits_atom_transition(self) -> None:
-        prepared = _prepare(chain_facts(("C",)))
+        prepared = prepare_writer_facts(chain_facts(("C",)))
 
         transitions = writer_transitions.legal_writer_transitions(
             prepared,
@@ -17462,7 +17466,7 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(tuple(transition.emitted_text for transition in transitions), ("C",))
 
     def test_raw_closure_endpoint_transition_opens_ring_label(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
+        prepared = prepare_writer_facts(cyclopropane_facts())
         root = writer_transitions.legal_writer_transitions(
             prepared,
             _raw_initial_state(AtomId(0)),
@@ -17485,7 +17489,7 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(opened.stereo_state.residual_snapshot.factors, ())
 
     def test_raw_closure_endpoint_transition_pairs_ring_label(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
+        prepared = prepare_writer_facts(cyclopropane_facts())
         root = writer_transitions.legal_writer_transitions(
             prepared,
             _raw_initial_state(AtomId(0)),
@@ -17525,10 +17529,10 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(closed.stereo_state.residual_snapshot.factors, ())
 
     def test_internal_transition_frontier_steps_cyclic_closure_lifecycle(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
+        prepared = prepare_writer_facts(cyclopropane_facts())
         cursor = _initial_writer_transition_frontier_cursor(
             prepared,
-            _writer_options(rooted_at_atom=0),
+            writer_runtime_options(rooted_at_atom=0),
         )
 
         initial = writer_frontier_choices(prepared, cursor)
@@ -17562,10 +17566,10 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_internal_cyclic_frontier_counts_and_streams_finitely(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
+        prepared = prepare_writer_facts(cyclopropane_facts())
         cursor = _initial_writer_transition_frontier_cursor(
             prepared,
-            _writer_options(rooted_at_atom=0),
+            writer_runtime_options(rooted_at_atom=0),
         )
 
         support_count = count_writer_frontier_support(prepared, cursor.support_state)
@@ -17579,10 +17583,10 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertTrue(all("1" in string for string in strings))
 
     def test_internal_cyclic_frontier_terminal_paths_close_closures(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
+        prepared = prepare_writer_facts(cyclopropane_facts())
         cursor = _initial_writer_transition_frontier_cursor(
             prepared,
-            _writer_options(rooted_at_atom=0),
+            writer_runtime_options(rooted_at_atom=0),
         )
 
         terminal_keys = _terminal_keys(prepared, cursor)
@@ -17597,7 +17601,7 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_state_is_terminal_shape_rejects_open_ring_endpoints(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
+        prepared = prepare_writer_facts(cyclopropane_facts())
         open_state = _cyclopropane_terminal_open_closure_state()
         closed_state = _cyclopropane_terminal_closed_closure_state()
         open_context = writer_transitions.build_writer_transition_expansion_context(
@@ -17628,29 +17632,29 @@ class WriterStateKernelTest(unittest.TestCase):
         cases = (
             (
                 "acyclic initial root frontier",
-                _prepare(chain_facts(("C", "C"))),
-                _writer_options(rooted_at_atom=0),
+                prepare_writer_facts(chain_facts(("C", "C"))),
+                writer_runtime_options(rooted_at_atom=0),
                 (),
                 False,
             ),
             (
                 "acyclic after emitted atom",
-                _prepare(chain_facts(("C", "C"))),
-                _writer_options(rooted_at_atom=0),
+                prepare_writer_facts(chain_facts(("C", "C"))),
+                writer_runtime_options(rooted_at_atom=0),
                 ("C",),
                 False,
             ),
             (
                 "internal cyclic open ring endpoint",
-                _prepare(cyclopropane_facts()),
-                _writer_options(rooted_at_atom=0),
+                prepare_writer_facts(cyclopropane_facts()),
+                writer_runtime_options(rooted_at_atom=0),
                 ("C", "1", "C", "C"),
                 True,
             ),
             (
                 "internal cyclic closed terminal",
-                _prepare(cyclopropane_facts()),
-                _writer_options(rooted_at_atom=0),
+                prepare_writer_facts(cyclopropane_facts()),
+                writer_runtime_options(rooted_at_atom=0),
                 ("C", "1", "C", "C", "1"),
                 True,
             ),
@@ -17693,29 +17697,29 @@ class WriterStateKernelTest(unittest.TestCase):
         cases = (
             (
                 "acyclic initial root frontier",
-                _prepare(chain_facts(("C", "C"))),
-                _writer_options(rooted_at_atom=0),
+                prepare_writer_facts(chain_facts(("C", "C"))),
+                writer_runtime_options(rooted_at_atom=0),
                 (),
                 False,
             ),
             (
                 "acyclic after emitted atom",
-                _prepare(chain_facts(("C", "C"))),
-                _writer_options(rooted_at_atom=0),
+                prepare_writer_facts(chain_facts(("C", "C"))),
+                writer_runtime_options(rooted_at_atom=0),
                 ("C",),
                 False,
             ),
             (
                 "internal cyclic open ring endpoint",
-                _prepare(cyclopropane_facts()),
-                _writer_options(rooted_at_atom=0),
+                prepare_writer_facts(cyclopropane_facts()),
+                writer_runtime_options(rooted_at_atom=0),
                 ("C", "1", "C", "C"),
                 True,
             ),
             (
                 "internal cyclic closed terminal",
-                _prepare(cyclopropane_facts()),
-                _writer_options(rooted_at_atom=0),
+                prepare_writer_facts(cyclopropane_facts()),
+                writer_runtime_options(rooted_at_atom=0),
                 ("C", "1", "C", "C", "1"),
                 True,
             ),
@@ -17758,29 +17762,29 @@ class WriterStateKernelTest(unittest.TestCase):
         cases = (
             (
                 "acyclic initial root frontier",
-                _prepare(chain_facts(("C", "C"))),
-                _writer_options(rooted_at_atom=0),
+                prepare_writer_facts(chain_facts(("C", "C"))),
+                writer_runtime_options(rooted_at_atom=0),
                 (),
                 False,
             ),
             (
                 "acyclic after emitted atom",
-                _prepare(chain_facts(("C", "C"))),
-                _writer_options(rooted_at_atom=0),
+                prepare_writer_facts(chain_facts(("C", "C"))),
+                writer_runtime_options(rooted_at_atom=0),
                 ("C",),
                 False,
             ),
             (
                 "internal cyclic open ring endpoint",
-                _prepare(cyclopropane_facts()),
-                _writer_options(rooted_at_atom=0),
+                prepare_writer_facts(cyclopropane_facts()),
+                writer_runtime_options(rooted_at_atom=0),
                 ("C", "1", "C", "C"),
                 True,
             ),
             (
                 "internal cyclic closed terminal",
-                _prepare(cyclopropane_facts()),
-                _writer_options(rooted_at_atom=0),
+                prepare_writer_facts(cyclopropane_facts()),
+                writer_runtime_options(rooted_at_atom=0),
                 ("C", "1", "C", "C", "1"),
                 True,
             ),
@@ -17823,29 +17827,29 @@ class WriterStateKernelTest(unittest.TestCase):
         cases = (
             (
                 "acyclic initial root frontier",
-                _prepare(chain_facts(("C", "C"))),
-                _writer_options(rooted_at_atom=0),
+                prepare_writer_facts(chain_facts(("C", "C"))),
+                writer_runtime_options(rooted_at_atom=0),
                 (),
                 False,
             ),
             (
                 "acyclic after emitted atom",
-                _prepare(chain_facts(("C", "C"))),
-                _writer_options(rooted_at_atom=0),
+                prepare_writer_facts(chain_facts(("C", "C"))),
+                writer_runtime_options(rooted_at_atom=0),
                 ("C",),
                 False,
             ),
             (
                 "internal cyclic open ring endpoint",
-                _prepare(cyclopropane_facts()),
-                _writer_options(rooted_at_atom=0),
+                prepare_writer_facts(cyclopropane_facts()),
+                writer_runtime_options(rooted_at_atom=0),
                 ("C", "1", "C", "C"),
                 True,
             ),
             (
                 "internal cyclic closed terminal",
-                _prepare(cyclopropane_facts()),
-                _writer_options(rooted_at_atom=0),
+                prepare_writer_facts(cyclopropane_facts()),
+                writer_runtime_options(rooted_at_atom=0),
                 ("C", "1", "C", "C", "1"),
                 True,
             ),
@@ -17888,15 +17892,15 @@ class WriterStateKernelTest(unittest.TestCase):
         cases = (
             (
                 "acyclic branched writer state space",
-                _prepare(cco_facts()),
-                _writer_options(rooted_at_atom=1),
+                prepare_writer_facts(cco_facts()),
+                writer_runtime_options(rooted_at_atom=1),
                 False,
                 128,
             ),
             (
                 "internal cyclic ring-close state space",
-                _prepare(cyclopropane_facts()),
-                _writer_options(rooted_at_atom=0),
+                prepare_writer_facts(cyclopropane_facts()),
+                writer_runtime_options(rooted_at_atom=0),
                 True,
                 64,
             ),
@@ -17941,15 +17945,15 @@ class WriterStateKernelTest(unittest.TestCase):
         cases = (
             (
                 "acyclic branched writer state space",
-                _prepare(cco_facts()),
-                _writer_options(rooted_at_atom=1),
+                prepare_writer_facts(cco_facts()),
+                writer_runtime_options(rooted_at_atom=1),
                 False,
                 128,
             ),
             (
                 "internal cyclic ring-close state space",
-                _prepare(cyclopropane_facts()),
-                _writer_options(rooted_at_atom=0),
+                prepare_writer_facts(cyclopropane_facts()),
+                writer_runtime_options(rooted_at_atom=0),
                 True,
                 64,
             ),
@@ -18024,8 +18028,8 @@ class WriterStateKernelTest(unittest.TestCase):
                 self.assertGreater(terminal_count, 0)
 
     def test_cyclic_ring_lifecycle_obligation_signature_tracks_open_to_closed(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
             prepared=prepared,
@@ -18109,8 +18113,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_open_ring_endpoint_close_choice_successor_matches_obligation_delta(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
             prepared=prepared,
@@ -18180,13 +18184,13 @@ class WriterStateKernelTest(unittest.TestCase):
             writer_capabilities._WriterExecutionCapabilityKind
             .COUPLED_CYCLIC_ATTACHMENT_RESTRICTION
         )
-        prepared = _prepare(fused_rank_two_facts())
+        prepared = prepare_writer_facts(fused_rank_two_facts())
 
         for root in (-1, 0, 1, 2, 3):
             with self.subTest(root=root):
                 cursor = _initial_writer_transition_frontier_cursor(
                     prepared,
-                    _writer_options(rooted_at_atom=root),
+                    writer_runtime_options(rooted_at_atom=root),
                 )
                 paths = _branch_terminal_paths(prepared, cursor)
                 self.assertTrue(paths)
@@ -18355,8 +18359,8 @@ class WriterStateKernelTest(unittest.TestCase):
             writer_capabilities._WriterExecutionCapabilityKind
             .COUPLED_CYCLIC_ATTACHMENT_RESTRICTION
         )
-        prepared = _prepare(fused_rank_two_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(fused_rank_two_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(
             prepared,
             options,
@@ -18420,13 +18424,13 @@ class WriterStateKernelTest(unittest.TestCase):
         cases = (
             (
                 "simple_monocycle",
-                _prepare(cyclopropane_facts()),
-                _writer_options(rooted_at_atom=0),
+                prepare_writer_facts(cyclopropane_facts()),
+                writer_runtime_options(rooted_at_atom=0),
             ),
             (
                 "bridge_separated_two_cycle",
-                _prepare(bridge_separated_triangles_facts()),
-                _writer_options(rooted_at_atom=0),
+                prepare_writer_facts(bridge_separated_triangles_facts()),
+                writer_runtime_options(rooted_at_atom=0),
             ),
         )
 
@@ -18455,15 +18459,15 @@ class WriterStateKernelTest(unittest.TestCase):
         cases = (
             (
                 "acyclic branched writer state space",
-                _prepare(cco_facts()),
-                _writer_options(rooted_at_atom=1),
+                prepare_writer_facts(cco_facts()),
+                writer_runtime_options(rooted_at_atom=1),
                 False,
                 128,
             ),
             (
                 "internal cyclic ring-close state space",
-                _prepare(cyclopropane_facts()),
-                _writer_options(rooted_at_atom=0),
+                prepare_writer_facts(cyclopropane_facts()),
+                writer_runtime_options(rooted_at_atom=0),
                 True,
                 64,
             ),
@@ -18544,8 +18548,8 @@ class WriterStateKernelTest(unittest.TestCase):
                 self.assertGreater(terminal_count, 0)
 
     def test_open_ring_endpoint_close_choice_successor_matches_stereo_delta(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
             prepared=prepared,
@@ -18599,15 +18603,15 @@ class WriterStateKernelTest(unittest.TestCase):
         cases = (
             (
                 "acyclic branched writer state space",
-                _prepare(cco_facts()),
-                _writer_options(rooted_at_atom=1),
+                prepare_writer_facts(cco_facts()),
+                writer_runtime_options(rooted_at_atom=1),
                 False,
                 128,
             ),
             (
                 "internal cyclic ring-close state space",
-                _prepare(cyclopropane_facts()),
-                _writer_options(rooted_at_atom=0),
+                prepare_writer_facts(cyclopropane_facts()),
+                writer_runtime_options(rooted_at_atom=0),
                 True,
                 64,
             ),
@@ -18669,8 +18673,8 @@ class WriterStateKernelTest(unittest.TestCase):
                 self.assertGreater(len(seen), 1)
 
     def test_open_ring_endpoint_close_choice_has_closure_pair_diagnostics(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
             prepared=prepared,
@@ -18693,8 +18697,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertFalse(outcome.selected_closure_open_graph_action_surfaces)
 
     def test_open_ring_endpoint_snapshot_does_not_report_ready_terminal(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
             prepared=prepared,
@@ -18719,8 +18723,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(outcome.completion_count, 2)
 
     def test_open_ring_endpoint_prefix_replay_rejects_non_closing_tokens_as_invalid_facts(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
             prepared=prepared,
@@ -18744,8 +18748,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_open_ring_endpoint_prefix_replay_closing_token_reaches_terminal_eos(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
             prepared=prepared,
@@ -18767,8 +18771,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(outcome.completion_count, 2)
 
     def test_closed_cyclic_terminal_prefix_rejects_extra_tokens_as_invalid_facts(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(prepared, options)
         snapshot = writer_snapshot._capture_writer_frontier_snapshot_unchecked(
             prepared=prepared,
@@ -18788,7 +18792,7 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(tuple(outcome.public_choices.choices), ())
 
     def test_raw_closure_label_allocator_uses_least_free_not_reusable_first(self) -> None:
-        prepared = _prepare_with_policy(
+        prepared = prepare_with_policy(
             cyclopropane_facts(),
             least_free_ring_labels=True,
         )
@@ -18804,7 +18808,7 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(labels, (WriterClosureLabel(value=1, text="1"),))
 
     def test_raw_closure_label_allocator_uses_reusable_when_smaller_label_is_active(self) -> None:
-        prepared = _prepare_with_policy(
+        prepared = prepare_with_policy(
             cyclopropane_facts(),
             least_free_ring_labels=True,
         )
@@ -18821,7 +18825,7 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(labels, (WriterClosureLabel(value=2, text="2"),))
 
     def test_raw_closure_label_allocator_least_free_uses_label_value_not_policy_order(self) -> None:
-        prepared = _prepare_with_policy(
+        prepared = prepare_with_policy(
             cyclopropane_facts(),
             least_free_ring_labels=True,
             ring_labels=(RingLabel(2), RingLabel(1)),
@@ -18835,7 +18839,7 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(labels, (WriterClosureLabel(value=1, text="1"),))
 
     def test_raw_closure_label_allocator_enumerates_labels_without_least_free(self) -> None:
-        prepared = _prepare_with_policy(
+        prepared = prepare_with_policy(
             cyclopropane_facts(),
             least_free_ring_labels=False,
         )
@@ -18854,7 +18858,7 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_raw_closure_label_allocator_nonleast_free_preserves_policy_order(self) -> None:
-        prepared = _prepare_with_policy(
+        prepared = prepare_with_policy(
             cyclopropane_facts(),
             least_free_ring_labels=False,
             ring_labels=(RingLabel(2), RingLabel(1)),
@@ -18874,7 +18878,7 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_raw_closure_label_allocator_enumerates_all_free_labels_without_least_free(self) -> None:
-        prepared = _prepare_with_policy(
+        prepared = prepare_with_policy(
             cyclopropane_facts(),
             least_free_ring_labels=False,
         )
@@ -18897,7 +18901,7 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_raw_closure_label_allocator_excludes_active_labels_without_least_free(self) -> None:
-        prepared = _prepare_with_policy(
+        prepared = prepare_with_policy(
             cyclopropane_facts(),
             least_free_ring_labels=False,
         )
@@ -18915,7 +18919,7 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(labels, (WriterClosureLabel(value=2, text="2"),))
 
     def test_raw_closure_open_transitions_enumerate_labels_without_least_free(self) -> None:
-        prepared = _prepare_with_policy(
+        prepared = prepare_with_policy(
             cyclopropane_facts(),
             least_free_ring_labels=False,
         )
@@ -18939,7 +18943,7 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_raw_closure_label_allocator_returns_none_when_exhausted(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
+        prepared = prepare_writer_facts(cyclopropane_facts())
         labels = tuple(
             WriterClosureLabel(value=label.value, text=label.text())
             for label in prepared.policy.ring_labels
@@ -18955,7 +18959,7 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(labels, ())
 
     def test_raw_terminal_finalization_allows_cyclic_prepared_but_not_eos(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
+        prepared = prepare_writer_facts(cyclopropane_facts())
 
         terminal = writer_transitions.finalize_writer_terminal_state(
             prepared,
@@ -18965,7 +18969,7 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIsNone(terminal)
 
     def test_raw_terminal_finalization_rejects_missing_active_frame(self) -> None:
-        prepared = _prepare(chain_facts(("C",)))
+        prepared = prepare_writer_facts(chain_facts(("C",)))
 
         with self.assertRaises(SouthStarError) as caught:
             writer_transitions.finalize_writer_terminal_state(
@@ -18976,7 +18980,7 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIs(caught.exception.kind, SouthStarErrorKind.INTERNAL_INVARIANT)
 
     def test_terminal_finalization_retains_active_final_atom(self) -> None:
-        prepared = _prepare(chain_facts(("C",)))
+        prepared = prepare_writer_facts(chain_facts(("C",)))
 
         terminal = writer_transitions.finalize_writer_terminal_state(
             prepared,
@@ -18988,7 +18992,7 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(terminal.active.atom, AtomId(0))
 
     def test_terminal_finalization_rejects_open_closure_endpoint(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
+        prepared = prepare_writer_facts(cyclopropane_facts())
         state = _cyclopropane_terminal_open_closure_state()
 
         terminal = writer_transitions.finalize_writer_terminal_state(prepared, state)
@@ -19004,7 +19008,7 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIsNone(choices.terminal)
 
     def test_terminal_finalization_rejects_closure_candidate(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
+        prepared = prepare_writer_facts(cyclopropane_facts())
         state = replace(
             _cyclopropane_terminal_closed_closure_state(),
             ring_state=WriterRingState(),
@@ -19016,7 +19020,7 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertFalse(writer_transitions.writer_state_is_eos(prepared, state))
 
     def test_closed_closure_terminal_state_can_finalize(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
+        prepared = prepare_writer_facts(cyclopropane_facts())
         state = _cyclopropane_terminal_closed_closure_state()
 
         terminal = writer_transitions.finalize_writer_terminal_state(prepared, state)
@@ -19024,7 +19028,7 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIsNotNone(terminal)
 
     def test_raw_eos_query_allows_cyclic_prepared_but_remains_false(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
+        prepared = prepare_writer_facts(cyclopropane_facts())
 
         eos = writer_transitions.writer_state_is_eos(
             prepared,
@@ -19034,7 +19038,7 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertFalse(eos)
 
     def test_raw_eos_query_rejects_missing_active_frame(self) -> None:
-        prepared = _prepare(chain_facts(("C",)))
+        prepared = prepare_writer_facts(chain_facts(("C",)))
 
         with self.assertRaises(SouthStarError) as caught:
             writer_transitions.writer_state_is_eos(
@@ -19045,7 +19049,7 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIs(caught.exception.kind, SouthStarErrorKind.INTERNAL_INVARIANT)
 
     def test_legal_transition_expansion_builds_one_graph_context(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
 
         with patch(
             "grimace._south_star1.writer_transitions.build_writer_graph_obligation_context",
@@ -19060,8 +19064,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertTrue(transitions)
 
     def test_terminal_finalization_builds_one_graph_context(self) -> None:
-        prepared = _prepare(chain_facts(("C",)))
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(chain_facts(("C",)))
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         emitted = writer_frontier_choices(prepared, cursor).choices[0].successor
         state = writer_state_from_key(emitted.weighted_states[0][0])
 
@@ -19075,10 +19079,10 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIsNotNone(terminal)
 
     def test_child_obligations_from_context_does_not_build_graph_context(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         cursor = initial_writer_frontier_cursor(
             prepared,
-            _writer_options(rooted_at_atom=0),
+            writer_runtime_options(rooted_at_atom=0),
         )
         after_root = writer_frontier_choices(prepared, cursor).choices[0].successor
         state = writer_state_from_key(after_root.weighted_states[0][0])
@@ -26385,8 +26389,8 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertTrue(audit.ready)
 
     def test_writer_frontier_reachability_audit_from_cursor_matches_snapshot(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(
             prepared,
             options,
@@ -26418,8 +26422,8 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_writer_frontier_reachability_audit_ignores_public_capability_configuration(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         cursor = _initial_writer_transition_frontier_cursor(
             prepared,
             options,
@@ -26560,7 +26564,7 @@ class WriterStateKernelTest(unittest.TestCase):
         self,
     ) -> None:
         def observe(prepared: SouthStarPreparedMol) -> set[WriterBoundaryOwnerKind]:
-            cursors = [initial_writer_frontier_cursor(prepared, _writer_options())]
+            cursors = [initial_writer_frontier_cursor(prepared, writer_runtime_options())]
             seen = set()
             observed: set[WriterBoundaryOwnerKind] = set()
 
@@ -26600,11 +26604,11 @@ class WriterStateKernelTest(unittest.TestCase):
 
         observed_owner_kinds: set[WriterBoundaryOwnerKind] = set()
         prepared_cases = (
-            _prepare(cyclopropane_facts()),
-            _prepare(methylcyclopropane_facts()),
-            _prepare(bridge_separated_triangles_facts()),
-            _prepare(fused_rank_two_facts()),
-            _prepare(cyclopropane_plus_singleton_facts()),
+            prepare_writer_facts(cyclopropane_facts()),
+            prepare_writer_facts(methylcyclopropane_facts()),
+            prepare_writer_facts(bridge_separated_triangles_facts()),
+            prepare_writer_facts(fused_rank_two_facts()),
+            prepare_writer_facts(cyclopropane_plus_singleton_facts()),
             _prepare_directional_ring_carrier_monocycle(),
         )
 
@@ -29088,11 +29092,11 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_writer_shaped_acyclic_stereo_uses_writer_frontier(self) -> None:
         for facts in (tetrahedral_facts(), directional_facts()):
             with self.subTest(facts=facts):
-                prepared = _prepare(facts)
+                prepared = prepare_writer_facts(facts)
                 with _forbidden_exhaustive_routes():
                     support = enumerate_prepared_stereo_support(
                         prepared=prepared,
-                        runtime_options=_writer_options(),
+                        runtime_options=writer_runtime_options(),
                     )
 
                 self.assertGreater(support.distinct_count, 0)
@@ -29107,8 +29111,8 @@ class WriterStateKernelTest(unittest.TestCase):
         key = next(
             iter(
                 initial_writer_frontier_cursor(
-                    _prepare(cco_facts()),
-                    _writer_options(),
+                    prepare_writer_facts(cco_facts()),
+                    writer_runtime_options(),
                 ).support_state.states
             )
         )
@@ -29131,8 +29135,8 @@ class WriterStateKernelTest(unittest.TestCase):
 
     def test_writer_frontier_cursor_uses_structural_key_ordering(self) -> None:
         cursor = initial_writer_frontier_cursor(
-            _prepare(cco_facts()),
-            _writer_options(),
+            prepare_writer_facts(cco_facts()),
+            writer_runtime_options(),
         )
         keys = tuple(key for key, _ in reversed(cursor.weighted_states))
         reordered = WriterFrontierCursor(
@@ -29149,7 +29153,7 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
     def test_initial_writer_frontier_cursor_rejects_exhaustive_options(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
 
         with self.assertRaises(SouthStarError) as caught:
             initial_writer_frontier_cursor(prepared, SouthStarRuntimeOptions())
@@ -29157,10 +29161,10 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
 
     def test_initial_writer_frontier_cursor_invalid_root_raises_typed_error(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
 
         with self.assertRaises(SouthStarError) as caught:
-            initial_writer_frontier_cursor(prepared, _writer_options(rooted_at_atom=99))
+            initial_writer_frontier_cursor(prepared, writer_runtime_options(rooted_at_atom=99))
 
         self.assertIs(caught.exception.kind, SouthStarErrorKind.INVALID_FACTS)
 
@@ -29175,7 +29179,7 @@ class WriterStateKernelTest(unittest.TestCase):
         with self.assertRaises(SouthStarError) as caught:
             enumerate_prepared_stereo_support(
                 prepared=prepared,
-                runtime_options=_writer_options(),
+                runtime_options=writer_runtime_options(),
             )
 
         self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
@@ -29216,23 +29220,15 @@ class WriterStateKernelTest(unittest.TestCase):
                 self.assertEqual(imported, [])
 
 
-def _prepare(facts: MoleculeFacts):
-    return prepare_south_star_mol_from_facts(
-        facts,
-        writer_surface=SouthStarWriterSurface(),
-    )
-
-
-def _prepare_with_policy(
+def prepare_with_policy(
     facts: MoleculeFacts,
     *,
     least_free_ring_labels: bool,
     ring_labels: tuple[RingLabel, ...] = (RingLabel(1), RingLabel(2)),
 ):
-    prepared = _prepare(facts)
-    return prepare_south_star_mol_from_facts(
+    prepared = prepare_writer_facts(facts)
+    return prepare_writer_facts(
         facts,
-        writer_surface=SouthStarWriterSurface(),
         policy=replace(
             prepared.policy,
             ring_labels=ring_labels,
@@ -29241,14 +29237,13 @@ def _prepare_with_policy(
     )
 
 
-def _prepare_with_ordinary_policy_options(
+def prepare_with_ordinary_policy_options(
     facts: MoleculeFacts,
     *,
     options: OrdinaryPolicyOptions,
 ) -> SouthStarPreparedMol:
-    return prepare_south_star_mol_from_facts(
+    return prepare_writer_facts(
         facts,
-        writer_surface=SouthStarWriterSurface(),
         policy=ordinary_policy_for_facts(facts, options=options),
     )
 
@@ -29329,7 +29324,7 @@ def _directional_ring_carrier_monocycle_facts() -> MoleculeFacts:
 
 def _prepare_directional_ring_carrier_monocycle() -> SouthStarPreparedMol:
     facts = _directional_ring_carrier_monocycle_facts()
-    return _prepare_with_ordinary_policy_options(
+    return prepare_with_ordinary_policy_options(
         facts,
         options=OrdinaryPolicyOptions(non_single_ring_closures="joint"),
     )
@@ -29355,7 +29350,7 @@ def _directional_non_neighbor_ligand_monocycle_facts() -> MoleculeFacts:
 
 def _prepare_directional_non_neighbor_ligand_monocycle() -> SouthStarPreparedMol:
     facts = _directional_non_neighbor_ligand_monocycle_facts()
-    return _prepare_with_ordinary_policy_options(
+    return prepare_with_ordinary_policy_options(
         facts,
         options=OrdinaryPolicyOptions(non_single_ring_closures="joint"),
     )
@@ -29485,7 +29480,7 @@ def _shared_directional_ring_carrier_monocycle_facts() -> MoleculeFacts:
 
 def _prepare_shared_directional_ring_carrier_monocycle() -> SouthStarPreparedMol:
     facts = _shared_directional_ring_carrier_monocycle_facts()
-    return _prepare_with_ordinary_policy_options(
+    return prepare_with_ordinary_policy_options(
         facts,
         options=OrdinaryPolicyOptions(non_single_ring_closures="joint"),
     )
@@ -29775,13 +29770,6 @@ def _prepare_aromatic_triangle_with_bond_text_choices(
                 for domain in policy.bond_text_domains
             ),
         ),
-    )
-
-
-def _writer_options(*, rooted_at_atom: int = -1) -> SouthStarRuntimeOptions:
-    return SouthStarRuntimeOptions(
-        rooted_at_atom=rooted_at_atom,
-        serialization_language=SerializationLanguageMode.WRITER_SHAPED,
     )
 
 
@@ -30902,7 +30890,7 @@ def _terminal_local_order_open_cursor(
         prepared,
         initial_writer_frontier_cursor(
             prepared,
-            _writer_options(rooted_at_atom=0),
+            writer_runtime_options(rooted_at_atom=0),
         ),
     )[0]
     local_orders = tuple(

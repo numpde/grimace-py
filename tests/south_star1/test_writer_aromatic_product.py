@@ -15,10 +15,6 @@ from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.ordinary_semantics import OrdinarySmilesSemantics
 from grimace._south_star1.policy import BondTextChoice
 from grimace._south_star1.policy import DirectionMark
-from grimace._south_star1.policy import SerializationLanguageMode
-from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
-from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
-from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
 from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_smiles
 from grimace._south_star1.writer_support import enumerate_prepared_writer_shaped_support
 from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
@@ -35,6 +31,8 @@ from tests.helpers.rdkit_south_star_aromatic_audit import (
 from tests.south_star1.default_writer_capability_ledger import (
     default_writer_cases_for_rdkit_audit,
 )
+from tests.south_star1.writer_test_context import writer_runtime_options
+from tests.south_star1.writer_test_context import writer_test_context
 
 
 class WriterAromaticProductTest(unittest.TestCase):
@@ -48,15 +46,14 @@ class WriterAromaticProductTest(unittest.TestCase):
             with self.subTest(case=fixture.case_id):
                 case = ledger[fixture.case_id]
                 facts = ordinary_molecule_facts_from_smiles(case.smiles)
-                prepared = prepare_south_star_mol_from_facts(
-                    facts, writer_surface=SouthStarWriterSurface()
+                context = writer_test_context(
+                    facts,
+                    rooted_at_atom=fixture.rooted_at_atom,
                 )
+                prepared = context.prepared
                 image = enumerate_prepared_writer_shaped_support(
                     prepared=prepared,
-                    runtime_options=SouthStarRuntimeOptions(
-                        rooted_at_atom=fixture.rooted_at_atom,
-                        serialization_language=SerializationLanguageMode.WRITER_SHAPED,
-                    ),
+                    runtime_options=context.runtime_options,
                 )
                 self.assertEqual(tuple(sorted(image.strings)), fixture.expected_support)
                 self.assertEqual(image.distinct_count, fixture.support_count)
@@ -141,20 +138,14 @@ class WriterAromaticProductTest(unittest.TestCase):
                     ),
                     expected,
                 )
-                prepared = prepare_south_star_mol_from_facts(
+                context = writer_test_context(
                     facts,
-                    writer_surface=SouthStarWriterSurface(),
+                    rooted_at_atom=0,
                     policy=policy,
                 )
-                options = SouthStarRuntimeOptions(
-                    rooted_at_atom=0,
-                    serialization_language=SerializationLanguageMode.WRITER_SHAPED,
-                )
-                snapshot = capture_writer_frontier_snapshot(
-                    prepared=prepared,
-                    runtime_options=options,
-                    cursor=initial_writer_frontier_cursor(prepared, options),
-                )
+                prepared = context.prepared
+                options = context.runtime_options
+                snapshot = context.initial_snapshot
                 artifact = writer_support_artifact_envelope_for_snapshot(
                     prepared=prepared,
                     snapshot=snapshot,

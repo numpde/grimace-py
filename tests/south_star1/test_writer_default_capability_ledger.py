@@ -9,13 +9,7 @@ import unittest
 from grimace._south_star1.errors import SouthStarError
 from grimace._south_star1.ordinary_policy import OrdinaryPolicyOptions
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
-from grimace._south_star1.policy import SerializationLanguageMode
-from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
-from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
-from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
 from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_smiles
-from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
-from grimace._south_star1.writer_snapshot import capture_writer_frontier_snapshot
 from grimace._south_star1.writer_support_artifact_envelope import (
     writer_support_artifact_envelope_for_snapshot,
 )
@@ -33,6 +27,7 @@ from tests.south_star1.default_writer_capability_ledger import (
     default_writer_cases_for_rdkit_audit,
     validate_default_writer_capability_ledger,
 )
+from tests.south_star1.writer_test_context import writer_test_context
 
 
 class WriterDefaultCapabilityLedgerTest(unittest.TestCase):
@@ -100,16 +95,10 @@ class WriterDefaultCapabilityLedgerTest(unittest.TestCase):
     def test_cyclopropene_default_artifact_binds_default_joint_policy(self) -> None:
         case = next(item for item in ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES if item.name == "cyclopropene_double_closure")
         facts = ordinary_molecule_facts_from_smiles(case.smiles, case.extraction_options)
-        prepared = prepare_south_star_mol_from_facts(facts, writer_surface=SouthStarWriterSurface())
-        options = SouthStarRuntimeOptions(
-            rooted_at_atom=0,
-            serialization_language=SerializationLanguageMode.WRITER_SHAPED,
-        )
-        snapshot = capture_writer_frontier_snapshot(
-            prepared=prepared,
-            runtime_options=options,
-            cursor=initial_writer_frontier_cursor(prepared, options),
-        )
+        context = writer_test_context(facts, rooted_at_atom=0)
+        prepared = context.prepared
+        options = context.runtime_options
+        snapshot = context.initial_snapshot
         artifact = writer_support_artifact_envelope_for_snapshot(prepared=prepared, snapshot=snapshot)
         verification = verify_writer_support_artifact_for_facts(
             facts=facts, runtime_options=options, artifact=artifact

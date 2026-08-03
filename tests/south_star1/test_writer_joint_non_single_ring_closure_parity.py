@@ -9,8 +9,6 @@ from grimace._south_star1.ordinary_policy import OrdinaryPolicyOptions
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.policy import SerializationLanguageMode
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
-from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
-from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
 from grimace._south_star1.rdkit_adapter import RdkitOrdinaryExtractionOptions
 from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_smiles
 from grimace._south_star1.writer_closure_bond_text_lifecycle import (
@@ -48,6 +46,9 @@ from grimace._south_star1.writer_support_artifact_fact_verifier import (
     verify_writer_support_artifact_for_facts,
 )
 from grimace._south_star1.errors import SouthStarError
+from tests.south_star1.writer_test_context import initial_writer_snapshot
+from tests.south_star1.writer_test_context import prepare_writer_facts
+from tests.south_star1.writer_test_context import writer_runtime_options
 
 
 _DOUBLE_RING_CLOSURE_SMILES = "C1=CC1"
@@ -66,7 +67,7 @@ class WriterJointNonSingleRingClosureParityTest(unittest.TestCase):
     ) -> None:
         facts = _rdkit_graph_facts(_DOUBLE_RING_CLOSURE_SMILES)
 
-        prepared = _prepare_default(facts)
+        prepared = prepare_writer_facts(facts)
 
         ring_choices = prepared.policy.bond_text_domain(
             facts,
@@ -91,7 +92,7 @@ class WriterJointNonSingleRingClosureParityTest(unittest.TestCase):
     ) -> None:
         facts = _rdkit_graph_facts(_DOUBLE_RING_CLOSURE_SMILES)
 
-        prepared = _prepare_joint(facts)
+        prepared = prepare_joint_non_single_ring_facts(facts)
 
         ring_choices = prepared.policy.bond_text_domain(
             facts,
@@ -103,8 +104,8 @@ class WriterJointNonSingleRingClosureParityTest(unittest.TestCase):
     def test_joint_policy_support_count_matches_materialized_support(
         self,
     ) -> None:
-        prepared = _prepare_default(_rdkit_graph_facts(_DOUBLE_RING_CLOSURE_SMILES))
-        options = _writer_options()
+        prepared = prepare_writer_facts(_rdkit_graph_facts(_DOUBLE_RING_CLOSURE_SMILES))
+        options = writer_runtime_options(rooted_at_atom=0)
         image = enumerate_prepared_writer_shaped_support(
             prepared=prepared,
             runtime_options=options,
@@ -130,8 +131,8 @@ class WriterJointNonSingleRingClosureParityTest(unittest.TestCase):
         self,
     ) -> None:
         facts = _rdkit_graph_facts(_DOUBLE_RING_CLOSURE_SMILES)
-        prepared = _prepare_default(facts)
-        options = _writer_options()
+        prepared = prepare_writer_facts(facts)
+        options = writer_runtime_options(rooted_at_atom=0)
         artifact = _snapshot_artifact(prepared, options)
 
         structural = verify_writer_support_artifact_consistency(artifact)
@@ -147,11 +148,8 @@ class WriterJointNonSingleRingClosureParityTest(unittest.TestCase):
 
     def test_default_policy_facts_bound_verifier_accepts(self) -> None:
         facts = _rdkit_graph_facts(_DOUBLE_RING_CLOSURE_SMILES)
-        prepared = prepare_south_star_mol_from_facts(
-            facts,
-            writer_surface=SouthStarWriterSurface(),
-        )
-        options = _writer_options()
+        prepared = prepare_writer_facts(facts)
+        options = writer_runtime_options(rooted_at_atom=0)
         artifact = _snapshot_artifact(prepared, options)
 
         verification = verify_writer_support_artifact_for_facts(
@@ -181,8 +179,8 @@ class WriterJointNonSingleRingClosureParityTest(unittest.TestCase):
     ) -> None:
         facts = _rdkit_graph_facts(_DOUBLE_RING_CLOSURE_SMILES)
         image = enumerate_prepared_writer_shaped_support(
-            prepared=_prepare_default(facts),
-            runtime_options=_writer_options(),
+            prepared=prepare_writer_facts(facts),
+            runtime_options=writer_runtime_options(rooted_at_atom=0),
         )
 
         for text in image.strings:
@@ -196,7 +194,7 @@ class WriterJointNonSingleRingClosureParityTest(unittest.TestCase):
     def test_joint_policy_branch_evidence_contains_closure_bond_text_lifecycle(
         self,
     ) -> None:
-        prepared = _prepare_default(_rdkit_graph_facts(_DOUBLE_RING_CLOSURE_SMILES))
+        prepared = prepare_writer_facts(_rdkit_graph_facts(_DOUBLE_RING_CLOSURE_SMILES))
 
         evidence = _closure_bond_text_lifecycle_evidence(prepared)
 
@@ -223,8 +221,8 @@ class WriterJointNonSingleRingClosureParityTest(unittest.TestCase):
         self,
     ) -> None:
         artifact = _snapshot_artifact(
-            _prepare_default(_rdkit_graph_facts(_DOUBLE_RING_CLOSURE_SMILES)),
-            _writer_options(),
+            prepare_writer_facts(_rdkit_graph_facts(_DOUBLE_RING_CLOSURE_SMILES)),
+            writer_runtime_options(rooted_at_atom=0),
         )
         kind_counts = artifact["metrics"]["object_kind_counts"]
         root = _artifact_object(artifact, artifact["roots"]["support_image_root"])
@@ -240,10 +238,10 @@ class WriterJointNonSingleRingClosureParityTest(unittest.TestCase):
 
     def test_joint_policy_triple_rdkit_fixture_parity(self) -> None:
         facts = _rdkit_graph_facts(_TRIPLE_RING_CLOSURE_SMILES)
-        prepared = _prepare_default(facts)
+        prepared = prepare_writer_facts(facts)
         image = enumerate_prepared_writer_shaped_support(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(rooted_at_atom=0),
         )
 
         self.assertEqual(image.distinct_count, 3)
@@ -263,7 +261,7 @@ class WriterJointNonSingleRingClosureParityTest(unittest.TestCase):
             _DOUBLE_RING_CLOSURE_SMILES,
             _RDKit_WITH_POTENTIAL_STEREO_OPTIONS,
         )
-        prepared = _prepare_default(facts)
+        prepared = prepare_writer_facts(facts)
 
         blockers = _reachable_stereo_policy_blockers(prepared)
 
@@ -285,10 +283,9 @@ def _rdkit_graph_facts(smiles: str):
     )
 
 
-def _prepare_joint(facts):
-    return prepare_south_star_mol_from_facts(
+def prepare_joint_non_single_ring_facts(facts):
+    return prepare_writer_facts(
         facts,
-        writer_surface=SouthStarWriterSurface(),
         policy=ordinary_policy_for_facts(
             facts,
             OrdinaryPolicyOptions(non_single_ring_closures="joint"),
@@ -296,32 +293,10 @@ def _prepare_joint(facts):
     )
 
 
-def _prepare_default(facts):
-    return prepare_south_star_mol_from_facts(
-        facts,
-        writer_surface=SouthStarWriterSurface(),
-    )
-
-
-def _writer_options() -> SouthStarRuntimeOptions:
-    return SouthStarRuntimeOptions(
-        rooted_at_atom=0,
-        serialization_language=SerializationLanguageMode.WRITER_SHAPED,
-    )
-
-
-def _initial_snapshot(prepared, options):
-    return capture_writer_frontier_snapshot(
-        prepared=prepared,
-        runtime_options=options,
-        cursor=initial_writer_frontier_cursor(prepared, options),
-    )
-
-
 def _snapshot_artifact(prepared, options):
     return writer_support_artifact_envelope_for_snapshot(
         prepared=prepared,
-        snapshot=_initial_snapshot(prepared, options),
+        snapshot=initial_writer_snapshot(prepared, options),
     )
 
 
@@ -333,7 +308,7 @@ def _artifact_object(artifact, object_id):
 
 
 def _closure_bond_text_lifecycle_evidence(prepared):
-    pending = [initial_writer_frontier_cursor(prepared, _writer_options())]
+    pending = [initial_writer_frontier_cursor(prepared, writer_runtime_options(rooted_at_atom=0))]
     seen = set()
     evidence = []
     while pending:
@@ -357,7 +332,7 @@ def _closure_bond_text_lifecycle_evidence(prepared):
 def _reachable_stereo_policy_blockers(prepared):
     pending = [(initial_writer_runtime_state(
         prepared=prepared,
-        runtime_options=_writer_options(),
+        runtime_options=writer_runtime_options(rooted_at_atom=0),
     ).snapshot, ())]
     seen = set()
     blockers = []

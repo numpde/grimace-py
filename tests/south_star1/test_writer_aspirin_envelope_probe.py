@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from tests.south_star1.writer_test_context import initial_writer_snapshot
+from tests.south_star1.writer_test_context import prepare_writer_facts
+from tests.south_star1.writer_test_context import writer_runtime_options
+from tests.south_star1.writer_test_context import writer_test_context
+
 from contextlib import contextmanager
 from dataclasses import asdict
 from dataclasses import dataclass
@@ -157,13 +162,13 @@ class WriterAspirinEnvelopeProbeResult:
 
 class WriterAspirinEnvelopeProbeTest(unittest.TestCase):
     def test_support_image_probe_path_low_budget_fails_typed(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         budget = WriterEnvelopeWorkBudget(max_support_strings=0)
 
         with self.assertRaises(WriterEnvelopeWorkExceeded) as raised:
             writer_support_image_envelope_for_snapshot(
                 prepared=prepared,
-                snapshot=_initial_snapshot(prepared),
+                snapshot=initial_writer_snapshot(prepared, writer_runtime_options()),
                 budget=budget,
             )
 
@@ -199,7 +204,7 @@ def _run_aspirin_probe() -> WriterAspirinEnvelopeProbeResult:
             snapshot = _timed(
                 timings,
                 "initial_snapshot",
-                lambda: _initial_snapshot(prepared),
+                lambda: initial_writer_snapshot(prepared, writer_runtime_options()),
             )
             try:
                 _timed(
@@ -724,36 +729,10 @@ def _timed(timings: list[tuple[str, float]], label: str, fn):
 
 def _prepare_aspirin():
     facts = ordinary_molecule_facts_from_smiles(ASPIRIN_SMILES)
-    return prepare_south_star_mol_from_facts(
+    return writer_test_context(
         facts,
-        writer_surface=SouthStarWriterSurface(),
         policy=ordinary_policy_for_facts(facts),
-    )
-
-
-def _prepare(facts):
-    return prepare_south_star_mol_from_facts(
-        facts,
-        writer_surface=SouthStarWriterSurface(),
-    )
-
-
-def _initial_snapshot(prepared):
-    options = _writer_options()
-    return capture_writer_frontier_snapshot(
-        prepared=prepared,
-        runtime_options=options,
-        cursor=initial_writer_frontier_cursor(prepared, options),
-    )
-
-
-def _writer_options():
-    return SouthStarRuntimeOptions(
-        rooted_at_atom=-1,
-        canonical=False,
-        do_random=True,
-        serialization_language=SerializationLanguageMode.WRITER_SHAPED,
-    )
+    ).prepared
 
 
 if __name__ == "__main__":

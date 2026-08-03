@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from tests.south_star1.writer_test_context import initial_writer_snapshot
+from tests.south_star1.writer_test_context import prepare_writer_facts
+from tests.south_star1.writer_test_context import writer_runtime_options
+
 from copy import deepcopy
 import json
 import unittest
@@ -34,11 +38,11 @@ from tests.south_star1.helpers import tetrahedral_facts
 
 class WriterSnapshotReplayEnvelopeTest(unittest.TestCase):
     def test_empty_replay_envelope_json_round_trips(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         envelope = _json_round_trip(
             writer_snapshot_replay_envelope_for_emitted_texts(
                 prepared=prepared,
-                snapshot=_initial_snapshot(prepared),
+                snapshot=initial_writer_snapshot(prepared, writer_runtime_options()),
                 emitted_texts=(),
             )
         )
@@ -54,8 +58,8 @@ class WriterSnapshotReplayEnvelopeTest(unittest.TestCase):
         self.assertIsNotNone(envelope["replay_certificate"])
 
     def test_multi_step_replay_envelope_json_round_trips(self) -> None:
-        prepared = _prepare(cco_facts())
-        snapshot = _initial_snapshot(prepared)
+        prepared = prepare_writer_facts(cco_facts())
+        snapshot = initial_writer_snapshot(prepared, writer_runtime_options())
         emitted_texts = _legal_prefix(prepared, snapshot, length=2)
         envelope = _json_round_trip(
             writer_snapshot_replay_envelope_for_emitted_texts(
@@ -76,8 +80,8 @@ class WriterSnapshotReplayEnvelopeTest(unittest.TestCase):
         self.assertIsNotNone(verification.current_snapshot)
 
     def test_multi_step_replay_source_lookup_runs_once(self) -> None:
-        prepared = _prepare(cco_facts())
-        snapshot = _initial_snapshot(prepared)
+        prepared = prepare_writer_facts(cco_facts())
+        snapshot = initial_writer_snapshot(prepared, writer_runtime_options())
         emitted_texts = _legal_prefix(prepared, snapshot, length=2)
         envelope = writer_snapshot_replay_envelope_for_emitted_texts(
             prepared=prepared,
@@ -106,11 +110,11 @@ class WriterSnapshotReplayEnvelopeTest(unittest.TestCase):
         self.assertEqual(calls, 1)
 
     def test_invalid_text_at_first_step_verifies(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         envelope = _json_round_trip(
             writer_snapshot_replay_envelope_for_emitted_texts(
                 prepared=prepared,
-                snapshot=_initial_snapshot(prepared),
+                snapshot=initial_writer_snapshot(prepared, writer_runtime_options()),
                 emitted_texts=("not-a-choice",),
             )
         )
@@ -126,8 +130,8 @@ class WriterSnapshotReplayEnvelopeTest(unittest.TestCase):
         self.assertIsNotNone(envelope["failed_advance_envelope"])
 
     def test_invalid_text_after_advanced_step_verifies(self) -> None:
-        prepared = _prepare(cco_facts())
-        snapshot = _initial_snapshot(prepared)
+        prepared = prepare_writer_facts(cco_facts())
+        snapshot = initial_writer_snapshot(prepared, writer_runtime_options())
         first = _legal_prefix(prepared, snapshot, length=1)
         envelope = _json_round_trip(
             writer_snapshot_replay_envelope_for_emitted_texts(
@@ -147,8 +151,8 @@ class WriterSnapshotReplayEnvelopeTest(unittest.TestCase):
         self.assertEqual(verification.failed_step_index, 1)
 
     def test_blocked_replay_envelope_json_round_trips(self) -> None:
-        prepared = _prepare(tetrahedral_facts())
-        snapshot = _initial_snapshot(prepared)
+        prepared = prepare_writer_facts(tetrahedral_facts())
+        snapshot = initial_writer_snapshot(prepared, writer_runtime_options())
 
         with _blocked_capability_patch(prepared):
             envelope = _json_round_trip(
@@ -173,7 +177,7 @@ class WriterSnapshotReplayEnvelopeTest(unittest.TestCase):
 
         self.assertFalse(
             verify_writer_snapshot_replay_envelope(
-                prepared=_prepare(cco_facts()),
+                prepared=prepare_writer_facts(cco_facts()),
                 envelope=envelope,
             ).accepted
         )
@@ -184,13 +188,13 @@ class WriterSnapshotReplayEnvelopeTest(unittest.TestCase):
 
         self.assertFalse(
             verify_writer_snapshot_replay_envelope(
-                prepared=_prepare(cco_facts()),
+                prepared=prepare_writer_facts(cco_facts()),
                 envelope=envelope,
             ).accepted
         )
 
     def test_wrong_source_decoder_boundary_is_rejected(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         envelope = _advanced_envelope(prepared=prepared)
         envelope["source_snapshot"]["decoder_boundary"][
             "consumed_token_count"
@@ -204,7 +208,7 @@ class WriterSnapshotReplayEnvelopeTest(unittest.TestCase):
         )
 
     def test_wrong_emitted_texts_are_rejected(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         envelope = _advanced_envelope(prepared=prepared)
         envelope["emitted_texts"] = ["not-a-choice"]
 
@@ -216,8 +220,8 @@ class WriterSnapshotReplayEnvelopeTest(unittest.TestCase):
         )
 
     def test_step_envelope_order_swap_is_rejected(self) -> None:
-        prepared = _prepare(cco_facts())
-        snapshot = _initial_snapshot(prepared)
+        prepared = prepare_writer_facts(cco_facts())
+        snapshot = initial_writer_snapshot(prepared, writer_runtime_options())
         emitted_texts = _legal_prefix(prepared, snapshot, length=2)
         envelope = _advanced_envelope(
             prepared=prepared,
@@ -237,8 +241,8 @@ class WriterSnapshotReplayEnvelopeTest(unittest.TestCase):
         )
 
     def test_step_source_chain_mismatch_is_rejected(self) -> None:
-        prepared = _prepare(cco_facts())
-        snapshot = _initial_snapshot(prepared)
+        prepared = prepare_writer_facts(cco_facts())
+        snapshot = initial_writer_snapshot(prepared, writer_runtime_options())
         emitted_texts = _legal_prefix(prepared, snapshot, length=2)
         envelope = _advanced_envelope(
             prepared=prepared,
@@ -257,7 +261,7 @@ class WriterSnapshotReplayEnvelopeTest(unittest.TestCase):
         )
 
     def test_replay_certificate_step_count_mismatch_is_rejected(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         envelope = _advanced_envelope(prepared=prepared)
         envelope["replay_certificate"]["step_certificate_digests"] = []
 
@@ -269,8 +273,8 @@ class WriterSnapshotReplayEnvelopeTest(unittest.TestCase):
         )
 
     def test_advanced_replay_with_failed_step_is_rejected(self) -> None:
-        prepared = _prepare(cco_facts())
-        snapshot = _initial_snapshot(prepared)
+        prepared = prepare_writer_facts(cco_facts())
+        snapshot = initial_writer_snapshot(prepared, writer_runtime_options())
         envelope = _advanced_envelope(prepared=prepared, snapshot=snapshot)
         envelope["failed_advance_envelope"] = (
             writer_snapshot_advance_envelope_for_emitted_text(
@@ -290,8 +294,8 @@ class WriterSnapshotReplayEnvelopeTest(unittest.TestCase):
     def test_invalid_replay_with_additional_step_after_failure_is_rejected(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        snapshot = _initial_snapshot(prepared)
+        prepared = prepare_writer_facts(cco_facts())
+        snapshot = initial_writer_snapshot(prepared, writer_runtime_options())
         invalid = writer_snapshot_replay_envelope_for_emitted_texts(
             prepared=prepared,
             snapshot=snapshot,
@@ -313,15 +317,15 @@ class WriterSnapshotReplayEnvelopeTest(unittest.TestCase):
         )
 
     def test_blocked_replay_with_legal_failed_shape_is_rejected(self) -> None:
-        prepared = _prepare(tetrahedral_facts())
-        snapshot = _initial_snapshot(prepared)
+        prepared = prepare_writer_facts(tetrahedral_facts())
+        snapshot = initial_writer_snapshot(prepared, writer_runtime_options())
         with _blocked_capability_patch(prepared):
             blocked = writer_snapshot_replay_envelope_for_emitted_texts(
                 prepared=prepared,
                 snapshot=snapshot,
                 emitted_texts=("C",),
             )
-        legal_prepared = _prepare(cco_facts())
+        legal_prepared = prepare_writer_facts(cco_facts())
         legal_snapshot = _initial_snapshot(legal_prepared)
         blocked["failed_advance_envelope"] = (
             writer_snapshot_advance_envelope_for_emitted_text(
@@ -344,10 +348,10 @@ class WriterSnapshotReplayEnvelopeTest(unittest.TestCase):
             )
 
     def test_consumed_remaining_partition_mismatch_is_rejected(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         envelope = writer_snapshot_replay_envelope_for_emitted_texts(
             prepared=prepared,
-            snapshot=_initial_snapshot(prepared),
+            snapshot=initial_writer_snapshot(prepared, writer_runtime_options()),
             emitted_texts=("not-a-choice",),
         )
         envelope["consumed_emitted_texts"] = ["not-a-choice"]
@@ -362,8 +366,8 @@ class WriterSnapshotReplayEnvelopeTest(unittest.TestCase):
     def test_empty_replay_with_non_source_current_snapshot_is_rejected(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        snapshot = _initial_snapshot(prepared)
+        prepared = prepare_writer_facts(cco_facts())
+        snapshot = initial_writer_snapshot(prepared, writer_runtime_options())
         emitted_text = _legal_prefix(prepared, snapshot, length=1)[0]
         advanced = writer_snapshot_advance_envelope_for_emitted_text(
             prepared=prepared,
@@ -388,8 +392,8 @@ class WriterSnapshotReplayEnvelopeTest(unittest.TestCase):
 
 
 def _advanced_envelope(prepared=None, snapshot=None, emitted_texts=None):
-    prepared = _prepare(cco_facts()) if prepared is None else prepared
-    snapshot = _initial_snapshot(prepared) if snapshot is None else snapshot
+    prepared = prepare_writer_facts(cco_facts()) if prepared is None else prepared
+    snapshot = initial_writer_snapshot(prepared, writer_runtime_options()) if snapshot is None else snapshot
     emitted_texts = (
         _legal_prefix(prepared, snapshot, length=1)
         if emitted_texts is None
@@ -429,7 +433,7 @@ def _legal_prefix(prepared, snapshot, *, length: int) -> tuple[str, ...]:
 
 
 def _blocked_capability_patch(prepared):
-    snapshot = _initial_snapshot(prepared)
+    snapshot = initial_writer_snapshot(prepared, writer_runtime_options())
     product = writer_frontier_module._snapshot_advance_writer_frontier_product(
         prepared,
         snapshot.cursor,
@@ -453,27 +457,6 @@ def _blocked_capability_patch(prepared):
 def _json_round_trip(envelope):
     return json.loads(json.dumps(envelope, sort_keys=True))
 
-
-def _initial_snapshot(prepared):
-    options = _writer_options()
-    return capture_writer_frontier_snapshot(
-        prepared=prepared,
-        runtime_options=options,
-        cursor=initial_writer_frontier_cursor(prepared, options),
-    )
-
-
-def _prepare(facts):
-    return prepare_south_star_mol_from_facts(
-        facts,
-        writer_surface=SouthStarWriterSurface(),
-    )
-
-
-def _writer_options() -> SouthStarRuntimeOptions:
-    return SouthStarRuntimeOptions(
-        serialization_language=SerializationLanguageMode.WRITER_SHAPED,
-    )
 
 
 if __name__ == "__main__":

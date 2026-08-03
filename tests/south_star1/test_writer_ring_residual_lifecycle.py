@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from tests.south_star1.writer_test_context import initial_writer_snapshot
+from tests.south_star1.writer_test_context import prepare_writer_facts
+from tests.south_star1.writer_test_context import writer_runtime_options
+
 import unittest
 from collections import deque
 
@@ -29,10 +33,10 @@ from tests.south_star1.helpers import single_bond
 
 class WriterRingResidualLifecycleTest(unittest.TestCase):
     def test_ring_open_and_pair_are_branch_runtime_lifecycle_steps(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
+        prepared = prepare_writer_facts(cyclopropane_facts())
         initial = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
 
         opened = _find_branch_transition(
@@ -152,10 +156,10 @@ class WriterRingResidualLifecycleTest(unittest.TestCase):
         )
 
     def test_released_ring_label_is_reused_by_later_component_closure(self) -> None:
-        prepared = _prepare(_two_independent_cyclopropane_components_facts())
+        prepared = prepare_writer_facts(_two_independent_cyclopropane_components_facts())
         initial = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
 
         first_open = _find_branch_transition(
@@ -359,19 +363,6 @@ def _two_independent_cyclopropane_components_facts() -> MoleculeFacts:
                 bonds=(BondId(3), BondId(4), BondId(5)),
             ),
         ),
-    )
-
-
-def _prepare(facts):
-    return prepare_south_star_mol_from_facts(
-        facts,
-        writer_surface=SouthStarWriterSurface(),
-    )
-
-
-def _writer_options() -> SouthStarRuntimeOptions:
-    return SouthStarRuntimeOptions(
-        serialization_language=SerializationLanguageMode.WRITER_SHAPED,
     )
 
 

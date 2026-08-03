@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from tests.south_star1.writer_test_context import initial_writer_snapshot
+from tests.south_star1.writer_test_context import prepare_writer_facts
+from tests.south_star1.writer_test_context import writer_runtime_options
+
 from copy import deepcopy
 import json
 import unittest
@@ -31,8 +35,8 @@ from tests.south_star1.helpers import tetrahedral_facts
 
 class WriterSnapshotEnvelopeTest(unittest.TestCase):
     def test_legal_advance_envelope_json_round_trips(self) -> None:
-        prepared = _prepare(cco_facts())
-        snapshot = _initial_snapshot(prepared)
+        prepared = prepare_writer_facts(cco_facts())
+        snapshot = initial_writer_snapshot(prepared, writer_runtime_options())
         emitted_text = writer_frontier_choices(
             prepared,
             snapshot.cursor,
@@ -61,8 +65,8 @@ class WriterSnapshotEnvelopeTest(unittest.TestCase):
         )
 
     def test_invalid_text_envelope_json_round_trips(self) -> None:
-        prepared = _prepare(cco_facts())
-        snapshot = _initial_snapshot(prepared)
+        prepared = prepare_writer_facts(cco_facts())
+        snapshot = initial_writer_snapshot(prepared, writer_runtime_options())
 
         envelope = _json_round_trip(
             writer_snapshot_advance_envelope_for_emitted_text(
@@ -84,8 +88,8 @@ class WriterSnapshotEnvelopeTest(unittest.TestCase):
         )
 
     def test_blocked_envelope_json_round_trips(self) -> None:
-        prepared = _prepare(tetrahedral_facts())
-        snapshot = _initial_snapshot(prepared)
+        prepared = prepare_writer_facts(tetrahedral_facts())
+        snapshot = initial_writer_snapshot(prepared, writer_runtime_options())
         product = _checked_writer_snapshot_text_projection_lookup(
             snapshot,
             prepared=prepared,
@@ -137,7 +141,7 @@ class WriterSnapshotEnvelopeTest(unittest.TestCase):
 
         self.assertFalse(
             verify_writer_snapshot_advance_envelope(
-                prepared=_prepare(cco_facts()),
+                prepared=prepare_writer_facts(cco_facts()),
                 envelope=envelope,
             ).accepted
         )
@@ -148,7 +152,7 @@ class WriterSnapshotEnvelopeTest(unittest.TestCase):
 
         self.assertFalse(
             verify_writer_snapshot_advance_envelope(
-                prepared=_prepare(cco_facts()),
+                prepared=prepare_writer_facts(cco_facts()),
                 envelope=envelope,
             ).accepted
         )
@@ -159,7 +163,7 @@ class WriterSnapshotEnvelopeTest(unittest.TestCase):
 
         self.assertFalse(
             verify_writer_snapshot_advance_envelope(
-                prepared=_prepare(cco_facts()),
+                prepared=prepare_writer_facts(cco_facts()),
                 envelope=envelope,
             ).accepted
         )
@@ -170,7 +174,7 @@ class WriterSnapshotEnvelopeTest(unittest.TestCase):
 
         self.assertFalse(
             verify_writer_snapshot_advance_envelope(
-                prepared=_prepare(cco_facts()),
+                prepared=prepare_writer_facts(cco_facts()),
                 envelope=envelope,
             ).accepted
         )
@@ -180,13 +184,13 @@ class WriterSnapshotEnvelopeTest(unittest.TestCase):
 
         self.assertFalse(
             verify_writer_snapshot_advance_envelope(
-                prepared=_prepare(tetrahedral_facts()),
+                prepared=prepare_writer_facts(tetrahedral_facts()),
                 envelope=envelope,
             ).accepted
         )
 
     def test_wrong_source_cursor_is_rejected(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         envelope = _legal_envelope(prepared=prepared)
         envelope["source_snapshot"]["cursor"]["digest"] = "0" * 64
 
@@ -198,7 +202,7 @@ class WriterSnapshotEnvelopeTest(unittest.TestCase):
         )
 
     def test_wrong_decoder_boundary_is_rejected(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         envelope = _legal_envelope(prepared=prepared)
         envelope["source_snapshot"]["decoder_boundary"][
             "consumed_token_count"
@@ -212,7 +216,7 @@ class WriterSnapshotEnvelopeTest(unittest.TestCase):
         )
 
     def test_legal_source_lookup_uses_bounded_frontier_scan(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         envelope = _legal_envelope(prepared=prepared)
         calls = 0
         original = envelope_module._snapshot_advance_writer_frontier_product
@@ -238,7 +242,7 @@ class WriterSnapshotEnvelopeTest(unittest.TestCase):
     def test_blocked_source_lookup_does_not_walk_past_blocked_product(
         self,
     ) -> None:
-        prepared = _prepare(tetrahedral_facts())
+        prepared = prepare_writer_facts(tetrahedral_facts())
         envelope = _blocked_envelope(prepared)
         calls = 0
         original = envelope_module._snapshot_advance_writer_frontier_product
@@ -263,7 +267,7 @@ class WriterSnapshotEnvelopeTest(unittest.TestCase):
         self.assertLessEqual(calls, 2)
 
     def test_wrong_emitted_text_is_rejected(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         envelope = _legal_envelope(prepared=prepared)
         envelope["emitted_text"] = "not-a-choice"
 
@@ -275,7 +279,7 @@ class WriterSnapshotEnvelopeTest(unittest.TestCase):
         )
 
     def test_wrong_outcome_kind_is_rejected(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         envelope = _legal_envelope(prepared=prepared)
         envelope["outcome_kind"] = "blocked"
 
@@ -287,7 +291,7 @@ class WriterSnapshotEnvelopeTest(unittest.TestCase):
         )
 
     def test_advanced_changed_successor_cursor_is_rejected(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         envelope = _legal_envelope(prepared=prepared)
         step = envelope["advance_certificate"]["step_certificate"]
         step["successor_cursor"]["digest"] = "1" * 64
@@ -300,7 +304,7 @@ class WriterSnapshotEnvelopeTest(unittest.TestCase):
         )
 
     def test_advanced_stale_selected_projection_is_rejected(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         envelope = _legal_envelope(prepared=prepared)
         selected = envelope["advance_certificate"]["selected_text_projection"]
         selected["digest"] = "2" * 64
@@ -313,8 +317,8 @@ class WriterSnapshotEnvelopeTest(unittest.TestCase):
         )
 
     def test_invalid_text_changed_to_legal_projection_is_rejected(self) -> None:
-        prepared = _prepare(cco_facts())
-        snapshot = _initial_snapshot(prepared)
+        prepared = prepare_writer_facts(cco_facts())
+        snapshot = initial_writer_snapshot(prepared, writer_runtime_options())
         legal_text = writer_frontier_choices(
             prepared,
             snapshot.cursor,
@@ -334,7 +338,7 @@ class WriterSnapshotEnvelopeTest(unittest.TestCase):
         )
 
     def test_blocked_legal_product_shape_is_rejected(self) -> None:
-        prepared = _prepare(tetrahedral_facts())
+        prepared = prepare_writer_facts(tetrahedral_facts())
         envelope = _blocked_envelope(prepared)
         envelope["frontier_product_kind"] = "legal"
 
@@ -347,7 +351,7 @@ class WriterSnapshotEnvelopeTest(unittest.TestCase):
             )
 
     def test_blocked_changed_cursor_identity_is_rejected(self) -> None:
-        prepared = _prepare(tetrahedral_facts())
+        prepared = prepare_writer_facts(tetrahedral_facts())
         envelope = _blocked_envelope(prepared)
         blocked = envelope["advance_certificate"][
             "blocked_frontier_certificate"
@@ -368,8 +372,8 @@ class WriterSnapshotEnvelopeTest(unittest.TestCase):
 
 
 def _legal_envelope(prepared=None):
-    prepared = _prepare(cco_facts()) if prepared is None else prepared
-    snapshot = _initial_snapshot(prepared)
+    prepared = prepare_writer_facts(cco_facts()) if prepared is None else prepared
+    snapshot = initial_writer_snapshot(prepared, writer_runtime_options())
     emitted_text = writer_frontier_choices(
         prepared,
         snapshot.cursor,
@@ -384,7 +388,7 @@ def _legal_envelope(prepared=None):
 
 
 def _blocked_envelope(prepared):
-    snapshot = _initial_snapshot(prepared)
+    snapshot = initial_writer_snapshot(prepared, writer_runtime_options())
     with _blocked_capability_patch(prepared):
         return deepcopy(
             writer_snapshot_advance_envelope_for_emitted_text(
@@ -396,7 +400,7 @@ def _blocked_envelope(prepared):
 
 
 def _blocked_capability_patch(prepared):
-    snapshot = _initial_snapshot(prepared)
+    snapshot = initial_writer_snapshot(prepared, writer_runtime_options())
     product = _checked_writer_snapshot_text_projection_lookup(
         snapshot,
         prepared=prepared,
@@ -424,27 +428,6 @@ def _blocked_capability_patch(prepared):
 def _json_round_trip(envelope):
     return json.loads(json.dumps(envelope, sort_keys=True))
 
-
-def _initial_snapshot(prepared):
-    options = _writer_options()
-    return capture_writer_frontier_snapshot(
-        prepared=prepared,
-        runtime_options=options,
-        cursor=initial_writer_frontier_cursor(prepared, options),
-    )
-
-
-def _prepare(facts):
-    return prepare_south_star_mol_from_facts(
-        facts,
-        writer_surface=SouthStarWriterSurface(),
-    )
-
-
-def _writer_options() -> SouthStarRuntimeOptions:
-    return SouthStarRuntimeOptions(
-        serialization_language=SerializationLanguageMode.WRITER_SHAPED,
-    )
 
 
 if __name__ == "__main__":

@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from tests.south_star1.writer_test_context import initial_writer_snapshot
+from tests.south_star1.writer_test_context import prepare_writer_facts
+from tests.south_star1.writer_test_context import writer_runtime_options
+
 from copy import deepcopy
 import inspect
 import json
@@ -80,10 +84,10 @@ class WriterSupportImageEnvelopeTest(unittest.TestCase):
         )
 
     def test_branching_support_image_verifies(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
+        prepared = prepare_writer_facts(cyclopropane_facts())
         envelope = writer_support_image_envelope_for_snapshot(
             prepared=prepared,
-            snapshot=_initial_snapshot(prepared),
+            snapshot=initial_writer_snapshot(prepared, writer_runtime_options()),
         )
 
         self.assertTrue(
@@ -136,7 +140,7 @@ class WriterSupportImageEnvelopeTest(unittest.TestCase):
 
         self.assertFalse(
             verify_writer_support_image_envelope(
-                prepared=_prepare(tetrahedral_facts()),
+                prepared=prepare_writer_facts(tetrahedral_facts()),
                 envelope=envelope,
             ).accepted
         )
@@ -383,10 +387,10 @@ class WriterSupportImageEnvelopeTest(unittest.TestCase):
 def _snapshot_envelope():
     global _SNAPSHOT_ENVELOPE_CACHE
     if _SNAPSHOT_ENVELOPE_CACHE is None:
-        prepared = _prepared()
+        prepared = prepared_two_atom_facts()
         _SNAPSHOT_ENVELOPE_CACHE = writer_support_image_envelope_for_snapshot(
             prepared=prepared,
-            snapshot=_initial_snapshot(prepared),
+            snapshot=initial_writer_snapshot(prepared, writer_runtime_options()),
         )
     return deepcopy(_SNAPSHOT_ENVELOPE_CACHE)
 
@@ -394,8 +398,8 @@ def _snapshot_envelope():
 def _terminal_prefix_read_envelope():
     global _TERMINAL_PREFIX_CACHE
     if _TERMINAL_PREFIX_CACHE is None:
-        prepared = _prepared()
-        snapshot = _initial_snapshot(prepared)
+        prepared = prepared_two_atom_facts()
+        snapshot = initial_writer_snapshot(prepared, writer_runtime_options())
         _TERMINAL_PREFIX_CACHE = (
             prepared,
             writer_snapshot_prefix_read_envelope_for_emitted_texts(
@@ -421,7 +425,7 @@ def _terminal_image_envelope():
 
 def _verify(envelope):
     return verify_writer_support_image_envelope(
-        prepared=_prepared(),
+        prepared=prepared_two_atom_facts(),
         envelope=envelope,
     )
 
@@ -430,35 +434,11 @@ def _json_round_trip(envelope):
     return json.loads(json.dumps(envelope, sort_keys=True))
 
 
-def _initial_snapshot(prepared):
-    options = _writer_options()
-    return capture_writer_frontier_snapshot(
-        prepared=prepared,
-        runtime_options=options,
-        cursor=initial_writer_frontier_cursor(prepared, options),
-    )
 
-
-def _writer_options():
-    return SouthStarRuntimeOptions(
-        rooted_at_atom=-1,
-        canonical=False,
-        do_random=True,
-        serialization_language=SerializationLanguageMode.WRITER_SHAPED,
-    )
-
-
-def _prepare(facts):
-    return prepare_south_star_mol_from_facts(
-        facts,
-        writer_surface=SouthStarWriterSurface(),
-    )
-
-
-def _prepared():
+def prepared_two_atom_facts():
     global _PREPARED_CACHE
     if _PREPARED_CACHE is None:
-        _PREPARED_CACHE = _prepare(two_atom_facts())
+        _PREPARED_CACHE = prepare_writer_facts(two_atom_facts())
     return _PREPARED_CACHE
 
 

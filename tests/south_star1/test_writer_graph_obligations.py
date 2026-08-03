@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from tests.south_star1.writer_test_context import initial_writer_snapshot
+from tests.south_star1.writer_test_context import prepare_writer_facts
+from tests.south_star1.writer_test_context import writer_runtime_options
+
 from dataclasses import replace
 import inspect
 import unittest
@@ -83,7 +87,7 @@ def _synthetic_action_summary(
 
 class WriterGraphObligationsTest(unittest.TestCase):
     def test_prepared_metadata_caches_block_cut_and_component_connectivity(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
 
         self.assertEqual(
             prepared.writer_graph_metadata.block_cut,
@@ -98,15 +102,15 @@ class WriterGraphObligationsTest(unittest.TestCase):
 
     def test_cached_block_cut_matches_fresh_metadata_for_cyclic_shapes(self) -> None:
         for facts in (triangle_facts(), six_ring_facts()):
-            prepared = _prepare(facts)
+            prepared = prepare_writer_facts(facts)
             self.assertEqual(
                 prepared.writer_graph_metadata.block_cut,
                 build_writer_block_cut_metadata(prepared),
             )
 
     def test_component_metadata_records_connectivity_not_support(self) -> None:
-        triangle = _prepare(triangle_facts()).writer_graph_metadata.component_connectivity[0]
-        malformed = _prepare(
+        triangle = prepare_writer_facts(triangle_facts()).writer_graph_metadata.component_connectivity[0]
+        malformed = prepare_writer_facts(
             cycle_plus_isolate_component_facts()
         ).writer_graph_metadata.component_connectivity[0]
 
@@ -114,8 +118,8 @@ class WriterGraphObligationsTest(unittest.TestCase):
         self.assertFalse(malformed.connected)
 
     def test_context_builder_returns_partition_and_residual_summary(self) -> None:
-        prepared = _prepare(cco_facts())
-        key = _cco_after_second_atom_key(prepared, _writer_options(rooted_at_atom=0))
+        prepared = prepare_writer_facts(cco_facts())
+        key = _cco_after_second_atom_key(prepared, writer_runtime_options(rooted_at_atom=0))
 
         context = build_writer_graph_obligation_context(prepared, key)
 
@@ -135,7 +139,7 @@ class WriterGraphObligationsTest(unittest.TestCase):
         )
 
     def test_context_builder_exposes_cyclic_summary_without_closure_candidate(self) -> None:
-        prepared = _prepare(triangle_facts())
+        prepared = prepare_writer_facts(triangle_facts())
         key = _emitted_root_key(prepared, root=AtomId(0))
 
         context = build_writer_graph_obligation_context(prepared, key)
@@ -242,7 +246,7 @@ class WriterGraphObligationsTest(unittest.TestCase):
             writer_residual_attachment_action_incidences(summary)
 
     def test_context_builder_exposes_closure_candidate_partition(self) -> None:
-        prepared = _prepare(triangle_facts())
+        prepared = prepare_writer_facts(triangle_facts())
         key = _triangle_all_visited_two_written_key()
 
         context = build_writer_graph_obligation_context(prepared, key)
@@ -255,22 +259,22 @@ class WriterGraphObligationsTest(unittest.TestCase):
         self.assertEqual(context.residual_summary.attachment_actions, ())
 
     def test_live_initializer_accepts_connected_cyclic_component(self) -> None:
-        prepared = _prepare(triangle_facts())
+        prepared = prepare_writer_facts(triangle_facts())
 
         cursor = initial_writer_frontier_cursor(
             prepared,
-            _writer_options(rooted_at_atom=0),
+            writer_runtime_options(rooted_at_atom=0),
         )
 
         self.assertTrue(cursor.weighted_states)
 
     def test_live_initializer_rejects_disconnected_declared_component(self) -> None:
-        prepared = _prepare(cycle_plus_isolate_component_facts())
+        prepared = prepare_writer_facts(cycle_plus_isolate_component_facts())
 
         with self.assertRaises(SouthStarError) as caught:
             initial_writer_frontier_cursor(
                 prepared,
-                _writer_options(rooted_at_atom=0),
+                writer_runtime_options(rooted_at_atom=0),
             )
 
         self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
@@ -318,8 +322,8 @@ class WriterGraphObligationsTest(unittest.TestCase):
         self.assertNotIn("validate_writer_edge_obligation_partition", cursor_source)
 
     def test_cco_prefix_edge_partition_tracks_tree_and_boundary(self) -> None:
-        prepared = _prepare(cco_facts())
-        key = _cco_after_second_atom_key(prepared, _writer_options(rooted_at_atom=0))
+        prepared = prepare_writer_facts(cco_facts())
+        key = _cco_after_second_atom_key(prepared, writer_runtime_options(rooted_at_atom=0))
 
         partition = classify_writer_edge_obligations(prepared, key)
 
@@ -340,8 +344,8 @@ class WriterGraphObligationsTest(unittest.TestCase):
         )
 
     def test_cco_prefix_classifies_active_residual_attachment(self) -> None:
-        prepared = _prepare(cco_facts())
-        key = _cco_after_second_atom_key(prepared, _writer_options(rooted_at_atom=0))
+        prepared = prepare_writer_facts(cco_facts())
+        key = _cco_after_second_atom_key(prepared, writer_runtime_options(rooted_at_atom=0))
 
         summary = _summary(prepared, key)
 
@@ -362,8 +366,8 @@ class WriterGraphObligationsTest(unittest.TestCase):
         )
 
     def test_branch_prefix_classifies_sibling_attachment_as_branch_owned(self) -> None:
-        prepared = _prepare(cco_facts())
-        key = _cco_branch_child_key(prepared, _writer_options(rooted_at_atom=1))
+        prepared = prepare_writer_facts(cco_facts())
+        key = _cco_branch_child_key(prepared, writer_runtime_options(rooted_at_atom=1))
 
         summary = _summary(prepared, key)
 
@@ -379,10 +383,10 @@ class WriterGraphObligationsTest(unittest.TestCase):
         )
 
     def test_post_bond_pending_state_partitions_pending_entry(self) -> None:
-        prepared = _prepare(carbonyl_facts())
+        prepared = prepare_writer_facts(carbonyl_facts())
         cursor = initial_writer_frontier_cursor(
             prepared,
-            _writer_options(rooted_at_atom=0),
+            writer_runtime_options(rooted_at_atom=0),
         )
         after_c = writer_frontier_choices(prepared, cursor).choices[0].successor
         after_bond = writer_frontier_choices(prepared, after_c).choices[0].successor
@@ -397,7 +401,7 @@ class WriterGraphObligationsTest(unittest.TestCase):
         )
 
     def test_ring_entry_classifies_one_cyclic_attachment_not_two_children(self) -> None:
-        prepared = _prepare(six_ring_facts())
+        prepared = prepare_writer_facts(six_ring_facts())
         key = _emitted_root_key(prepared, root=AtomId(0))
 
         partition = classify_writer_edge_obligations(prepared, key)
@@ -435,7 +439,7 @@ class WriterGraphObligationsTest(unittest.TestCase):
         self.assertEqual({transition.emitted_text for transition in transitions}, {"1"})
 
     def test_single_boundary_cyclic_residual_is_cyclic_tree_entry(self) -> None:
-        prepared = _prepare(triangle_tail_facts())
+        prepared = prepare_writer_facts(triangle_tail_facts())
         key = _emitted_root_key(prepared, root=AtomId(0))
 
         summary = _summary(prepared, key)
@@ -461,7 +465,7 @@ class WriterGraphObligationsTest(unittest.TestCase):
         )
 
     def test_prepared_active_owned_cycle_exposes_closure_open_and_cyclic_tree_entry_obligations(self) -> None:
-        prepared = _prepare(triangle_facts())
+        prepared = prepare_writer_facts(triangle_facts())
         root_state = writer_state_from_key(
             _emitted_root_key(prepared, root=AtomId(0))
         )
@@ -550,7 +554,7 @@ class WriterGraphObligationsTest(unittest.TestCase):
         )
 
     def test_triangle_partial_state_with_mixed_boundary_ownership_is_blocked(self) -> None:
-        prepared = _prepare(triangle_facts())
+        prepared = prepare_writer_facts(triangle_facts())
         key = _triangle_two_visited_key()
 
         partition = classify_writer_edge_obligations(prepared, key)
@@ -597,7 +601,7 @@ class WriterGraphObligationsTest(unittest.TestCase):
         )
 
     def test_frozen_single_boundary_residual_is_blocked_unowned(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         key = _cco_frozen_single_boundary_key()
 
         summary = _summary(prepared, key)
@@ -633,7 +637,7 @@ class WriterGraphObligationsTest(unittest.TestCase):
         )
 
     def test_triangle_closure_candidate_is_explicit_and_fails_closed(self) -> None:
-        prepared = _prepare(triangle_facts())
+        prepared = prepare_writer_facts(triangle_facts())
         key = _triangle_all_visited_two_written_key()
 
         partition = classify_writer_edge_obligations(prepared, key)
@@ -653,7 +657,7 @@ class WriterGraphObligationsTest(unittest.TestCase):
             legal_writer_transitions(prepared, writer_state_from_key(key))
 
     def test_open_closure_endpoint_is_partitioned_and_cuts_residual_attachment(self) -> None:
-        prepared = _prepare(triangle_facts())
+        prepared = prepare_writer_facts(triangle_facts())
         key = _triangle_root_with_open_closure_key()
 
         partition = classify_writer_edge_obligations(prepared, key)
@@ -676,7 +680,7 @@ class WriterGraphObligationsTest(unittest.TestCase):
         )
 
     def test_closed_closure_endpoint_is_partitioned_and_excluded_from_residuals(self) -> None:
-        prepared = _prepare(triangle_facts())
+        prepared = prepare_writer_facts(triangle_facts())
         key = _triangle_closed_closure_key()
 
         partition = classify_writer_edge_obligations(prepared, key)
@@ -695,7 +699,7 @@ class WriterGraphObligationsTest(unittest.TestCase):
         self.assertEqual(summary.attachments.attachments, ())
 
     def test_graph_completion_accepts_acyclic_terminal_state(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         key = _cco_terminal_key()
         context = build_writer_graph_obligation_context(prepared, key)
 
@@ -706,8 +710,8 @@ class WriterGraphObligationsTest(unittest.TestCase):
         self.assertEqual(status.unresolved_bonds, ())
 
     def test_graph_completion_reports_boundary_prefix(self) -> None:
-        prepared = _prepare(cco_facts())
-        key = _cco_after_second_atom_key(prepared, _writer_options(rooted_at_atom=0))
+        prepared = prepare_writer_facts(cco_facts())
+        key = _cco_after_second_atom_key(prepared, writer_runtime_options(rooted_at_atom=0))
         context = build_writer_graph_obligation_context(prepared, key)
 
         status = writer_graph_completion_status(prepared, key, context)
@@ -720,7 +724,7 @@ class WriterGraphObligationsTest(unittest.TestCase):
         self.assertEqual(status.unresolved_bonds, (BondId(1),))
 
     def test_graph_completion_accepts_closed_closure_terminal(self) -> None:
-        prepared = _prepare(triangle_facts())
+        prepared = prepare_writer_facts(triangle_facts())
         key = _triangle_closed_closure_key()
         context = build_writer_graph_obligation_context(prepared, key)
 
@@ -729,7 +733,7 @@ class WriterGraphObligationsTest(unittest.TestCase):
         self.assertTrue(status.complete)
 
     def test_graph_completion_reports_open_closure_endpoint(self) -> None:
-        prepared = _prepare(triangle_facts())
+        prepared = prepare_writer_facts(triangle_facts())
         key = _triangle_root_with_open_closure_key()
         context = build_writer_graph_obligation_context(prepared, key)
 
@@ -742,7 +746,7 @@ class WriterGraphObligationsTest(unittest.TestCase):
         )
 
     def test_graph_completion_reports_closure_candidate(self) -> None:
-        prepared = _prepare(triangle_facts())
+        prepared = prepare_writer_facts(triangle_facts())
         key = _triangle_all_visited_two_written_key()
         context = build_writer_graph_obligation_context(prepared, key)
 
@@ -756,7 +760,7 @@ class WriterGraphObligationsTest(unittest.TestCase):
         self.assertEqual(status.unresolved_bonds, (BondId(2),))
 
     def test_open_closure_bond_cannot_also_be_tree_entry(self) -> None:
-        prepared = _prepare(triangle_facts())
+        prepared = prepare_writer_facts(triangle_facts())
         key = replace(
             _triangle_root_with_open_closure_key(),
             written_bonds=frozenset((BondId(2),)),
@@ -767,7 +771,7 @@ class WriterGraphObligationsTest(unittest.TestCase):
             validate_writer_edge_obligation_partition(prepared, key, partition)
 
     def test_duplicate_open_closure_bond_records_reject(self) -> None:
-        prepared = _prepare(triangle_facts())
+        prepared = prepare_writer_facts(triangle_facts())
         first = _closure_label()
         second = WriterClosureLabel(value=2, text="2")
         key = replace(
@@ -800,7 +804,7 @@ class WriterGraphObligationsTest(unittest.TestCase):
             validate_writer_edge_obligation_partition(prepared, key, partition)
 
     def test_duplicate_closed_closure_bond_records_reject(self) -> None:
-        prepared = _prepare(triangle_facts())
+        prepared = prepare_writer_facts(triangle_facts())
         first = _closure_label()
         second = WriterClosureLabel(value=2, text="2")
         key = replace(
@@ -837,7 +841,7 @@ class WriterGraphObligationsTest(unittest.TestCase):
             validate_writer_edge_obligation_partition(prepared, key, partition)
 
     def test_open_and_closed_closure_same_bond_rejects(self) -> None:
-        prepared = _prepare(triangle_facts())
+        prepared = prepare_writer_facts(triangle_facts())
         label = _closure_label()
         key = replace(
             _triangle_closed_closure_key(),
@@ -888,7 +892,7 @@ class WriterGraphObligationsTest(unittest.TestCase):
         )
 
     def test_cycle_plus_isolate_classifier_exposes_non_tree_shape(self) -> None:
-        prepared = _prepare(cycle_plus_isolate_component_facts())
+        prepared = prepare_writer_facts(cycle_plus_isolate_component_facts())
         key = _emitted_root_key(prepared, root=AtomId(0))
 
         summary = _summary(prepared, key)
@@ -916,7 +920,7 @@ class WriterGraphObligationsTest(unittest.TestCase):
         )
 
     def test_orphan_residual_bond_is_latent_with_empty_boundary_attachment(self) -> None:
-        prepared = _prepare(chain_plus_orphan_chain_same_component_facts())
+        prepared = prepare_writer_facts(chain_plus_orphan_chain_same_component_facts())
         key = _emitted_root_key(prepared, root=AtomId(0))
 
         partition = classify_writer_edge_obligations(prepared, key)
@@ -946,7 +950,7 @@ class WriterGraphObligationsTest(unittest.TestCase):
         )
 
     def test_multi_boundary_residual_without_open_owner_is_blocked_unowned(self) -> None:
-        prepared = _prepare(triangle_with_frozen_tail_facts())
+        prepared = prepare_writer_facts(triangle_with_frozen_tail_facts())
         key = _triangle_with_frozen_tail_key()
 
         summary = _summary(prepared, key)
@@ -958,7 +962,7 @@ class WriterGraphObligationsTest(unittest.TestCase):
         )
 
     def test_boundary_incidences_to_same_written_atom_remain_distinct(self) -> None:
-        prepared = _prepare(triangle_facts())
+        prepared = prepare_writer_facts(triangle_facts())
         key = _emitted_root_key(prepared, root=AtomId(0))
 
         summary = _summary(prepared, key)
@@ -975,7 +979,7 @@ class WriterGraphObligationsTest(unittest.TestCase):
         )
 
     def test_attachment_sort_tuple_is_canonical(self) -> None:
-        prepared = _prepare(six_ring_facts())
+        prepared = prepare_writer_facts(six_ring_facts())
         key = _emitted_root_key(prepared, root=AtomId(0))
         attachment = _summary(prepared, key).attachments.attachments[0]
 
@@ -998,19 +1002,6 @@ def _summary(prepared, key):
         prepared.writer_graph_metadata.block_cut,
     )
 
-
-def _prepare(facts: MoleculeFacts):
-    return prepare_south_star_mol_from_facts(
-        facts,
-        writer_surface=SouthStarWriterSurface(),
-    )
-
-
-def _writer_options(*, rooted_at_atom: int = -1) -> SouthStarRuntimeOptions:
-    return SouthStarRuntimeOptions(
-        rooted_at_atom=rooted_at_atom,
-        serialization_language=SerializationLanguageMode.WRITER_SHAPED,
-    )
 
 
 def _cco_after_second_atom_key(prepared, options):
@@ -1182,7 +1173,7 @@ def _closure_label() -> WriterClosureLabel:
 def _triangle_root_with_open_closure_key():
     label = _closure_label()
     return replace(
-        _emitted_root_key(_prepare(triangle_facts()), root=AtomId(0)),
+        _emitted_root_key(prepare_writer_facts(triangle_facts()), root=AtomId(0)),
         ring_state=WriterRingStateKey(
             open_endpoints=(
                 WriterOpenClosureEndpoint(

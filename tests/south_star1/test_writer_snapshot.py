@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from tests.south_star1.writer_test_context import initial_writer_snapshot
+from tests.south_star1.writer_test_context import prepare_writer_facts
+from tests.south_star1.writer_test_context import writer_runtime_options
+
 from dataclasses import replace
 import inspect
 from types import SimpleNamespace
@@ -111,8 +115,8 @@ from tests.south_star1.helpers import tetrahedral_facts
 
 class WriterSnapshotTest(unittest.TestCase):
     def test_weighted_cursor_snapshot_round_trips_choices_and_counts(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options()
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -139,8 +143,8 @@ class WriterSnapshotTest(unittest.TestCase):
         )
 
     def test_snapshot_advance_emits_step_certificate(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options()
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options()
         snapshot = capture_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
@@ -178,8 +182,8 @@ class WriterSnapshotTest(unittest.TestCase):
     def test_snapshot_advance_outcome_carries_product_projection_identity(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options()
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options()
         snapshot = capture_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
@@ -210,8 +214,8 @@ class WriterSnapshotTest(unittest.TestCase):
         )
 
     def test_snapshot_advance_invalid_text_has_no_projection_match(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options()
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options()
         snapshot = capture_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
@@ -240,8 +244,8 @@ class WriterSnapshotTest(unittest.TestCase):
     def test_snapshot_replay_sequence_invalid_text_carries_certificate(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options()
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options()
         snapshot = capture_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
@@ -261,8 +265,8 @@ class WriterSnapshotTest(unittest.TestCase):
     def test_snapshot_advance_invalid_text_certificate_rejects_match(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options()
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options()
         snapshot = capture_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
@@ -292,8 +296,8 @@ class WriterSnapshotTest(unittest.TestCase):
     def test_snapshot_advance_returns_blocked_product_for_unsupported_capability(
         self,
     ) -> None:
-        prepared = _prepare(tetrahedral_facts())
-        options = _writer_options()
+        prepared = prepare_writer_facts(tetrahedral_facts())
+        options = writer_runtime_options()
         snapshot = capture_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
@@ -338,8 +342,8 @@ class WriterSnapshotTest(unittest.TestCase):
     def test_snapshot_advance_blocked_error_does_not_delegate_to_choice_snapshot_blockers(
         self,
     ) -> None:
-        prepared = _prepare(tetrahedral_facts())
-        options = _writer_options()
+        prepared = prepare_writer_facts(tetrahedral_facts())
+        options = writer_runtime_options()
         snapshot = capture_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
@@ -389,8 +393,8 @@ class WriterSnapshotTest(unittest.TestCase):
     def test_snapshot_blocked_advance_certificate_rejects_cursor_mismatch(
         self,
     ) -> None:
-        prepared = _prepare(tetrahedral_facts())
-        options = _writer_options()
+        prepared = prepare_writer_facts(tetrahedral_facts())
+        options = writer_runtime_options()
         snapshot = capture_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
@@ -426,8 +430,8 @@ class WriterSnapshotTest(unittest.TestCase):
                 emitted_text="C",
             )
 
-        other_prepared = _prepare(cco_facts())
-        other_options = _writer_options()
+        other_prepared = prepare_writer_facts(cco_facts())
+        other_options = writer_runtime_options()
         other_snapshot = capture_writer_frontier_snapshot(
             prepared=other_prepared,
             runtime_options=other_options,
@@ -452,8 +456,8 @@ class WriterSnapshotTest(unittest.TestCase):
     def test_snapshot_advance_successor_cursor_comes_from_text_projection_certificate(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options()
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options()
         snapshot = capture_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
@@ -498,8 +502,8 @@ class WriterSnapshotTest(unittest.TestCase):
     def test_snapshot_advance_outcome_rejects_stale_step_projection(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options()
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options()
         snapshot = capture_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
@@ -541,8 +545,8 @@ class WriterSnapshotTest(unittest.TestCase):
     def test_snapshot_replay_sequence_rejects_projection_chain_mismatch(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options()
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options()
         snapshot = capture_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
@@ -586,8 +590,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_snapshot_replay_certificate_tracks_prefix_steps(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options()
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options()
         snapshot = capture_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
@@ -641,8 +645,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_empty_snapshot_replay_has_empty_certificate(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options()
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options()
         snapshot = capture_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
@@ -661,8 +665,8 @@ class WriterSnapshotTest(unittest.TestCase):
         self.assertEqual(certificate.final_snapshot, snapshot)
 
     def test_prefix_read_exposes_replay_certificate(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options()
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options()
         snapshot = capture_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
@@ -691,8 +695,8 @@ class WriterSnapshotTest(unittest.TestCase):
         )
 
     def test_prefix_read_certificate_binds_final_frontier_counts(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options()
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options()
         snapshot = capture_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
@@ -729,8 +733,8 @@ class WriterSnapshotTest(unittest.TestCase):
         )
 
     def test_prefix_read_certificate_binds_replay_final_snapshot(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options()
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options()
         snapshot = capture_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
@@ -761,8 +765,8 @@ class WriterSnapshotTest(unittest.TestCase):
     def test_prefix_read_certificate_rejects_replay_final_snapshot_mismatch(
         self,
     ) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options()
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options()
         snapshot = capture_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
@@ -796,8 +800,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_invalid_snapshot_advance_has_no_step_certificate(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options()
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options()
         snapshot = capture_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
@@ -814,8 +818,8 @@ class WriterSnapshotTest(unittest.TestCase):
         self.assertIsNone(outcome.step_certificate)
 
     def test_snapshot_step_certificate_rejects_malformed_inputs(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options()
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options()
         snapshot = capture_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
@@ -894,8 +898,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_snapshot_replay_certificate_rejects_malformed_inputs(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options()
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options()
         snapshot = capture_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
@@ -928,16 +932,16 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_internal_cyclic_root_snapshot_round_trips_choices_and_counts(self) -> None:
-        prepared = _prepare(triangle_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(triangle_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         cursor = initial_writer_transition_frontier_cursor(prepared, options)
         after_root = _only_choice(prepared, cursor, "C").successor
 
         _assert_snapshot_round_trips_cursor(self, prepared, options, after_root)
 
     def test_internal_cyclic_open_closure_snapshot_round_trips_choices_and_counts(self) -> None:
-        prepared = _prepare(triangle_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(triangle_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         cursor = initial_writer_transition_frontier_cursor(prepared, options)
         after_root = _only_choice(prepared, cursor, "C").successor
         opened = _only_choice(prepared, after_root, "1").successor
@@ -945,8 +949,8 @@ class WriterSnapshotTest(unittest.TestCase):
         _assert_snapshot_round_trips_cursor(self, prepared, options, opened)
 
     def test_internal_cyclic_closed_closure_snapshot_round_trips_choices_and_counts(self) -> None:
-        prepared = _prepare(triangle_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(triangle_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         cursor = initial_writer_transition_frontier_cursor(prepared, options)
         after_root = _only_choice(prepared, cursor, "C").successor
         opened = _only_choice(prepared, after_root, "1").successor
@@ -957,8 +961,8 @@ class WriterSnapshotTest(unittest.TestCase):
         _assert_snapshot_round_trips_cursor(self, prepared, options, closed)
 
     def test_stereo_residual_snapshot_round_trips(self) -> None:
-        prepared = _prepare(tetrahedral_facts())
-        options = _writer_options(rooted_at_atom=1)
+        prepared = prepare_writer_facts(tetrahedral_facts())
+        options = writer_runtime_options(rooted_at_atom=1)
         cursor = initial_writer_frontier_cursor(prepared, options)
         after_f = writer_frontier_choices(prepared, cursor).choices[0].successor
         after_center = writer_frontier_choices(prepared, after_f).choices[0].successor
@@ -977,8 +981,8 @@ class WriterSnapshotTest(unittest.TestCase):
         )
 
     def test_stereo_residual_reconstruction_matches_representative_states(self) -> None:
-        tetra_prepared = _prepare(tetrahedral_facts())
-        tetra_options = _writer_options(rooted_at_atom=1)
+        tetra_prepared = prepare_writer_facts(tetrahedral_facts())
+        tetra_options = writer_runtime_options(rooted_at_atom=1)
         tetra_cursor = initial_writer_frontier_cursor(tetra_prepared, tetra_options)
         tetra_initial = tetra_cursor.weighted_states[0][0]
         after_f = writer_frontier_choices(tetra_prepared, tetra_cursor).choices[0].successor
@@ -986,8 +990,8 @@ class WriterSnapshotTest(unittest.TestCase):
         tetra_partial = after_center.weighted_states[0][0]
         _terminal_prepared, _terminal_options, tetra_terminal = _terminal_tetra_key()
 
-        directional_prepared = _prepare(directional_facts())
-        directional_options = _writer_options(rooted_at_atom=2)
+        directional_prepared = prepare_writer_facts(directional_facts())
+        directional_options = writer_runtime_options(rooted_at_atom=2)
         directional_cursor = initial_writer_frontier_cursor(
             directional_prepared,
             directional_options,
@@ -1005,8 +1009,8 @@ class WriterSnapshotTest(unittest.TestCase):
 
         from tests.south_star1.test_writer_stereo_residual import _two_independent_tetra_facts
 
-        mixed_prepared = _prepare(_two_independent_tetra_facts())
-        mixed_options = _writer_options(rooted_at_atom=0)
+        mixed_prepared = prepare_writer_facts(_two_independent_tetra_facts())
+        mixed_options = writer_runtime_options(rooted_at_atom=0)
         mixed_initial = initial_writer_frontier_cursor(
             mixed_prepared,
             mixed_options,
@@ -1027,8 +1031,8 @@ class WriterSnapshotTest(unittest.TestCase):
                 _assert_residual_reconstructs(self, prepared, key)
 
     def test_tampered_mode_is_rejected(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options()
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -1044,8 +1048,8 @@ class WriterSnapshotTest(unittest.TestCase):
             validate_writer_search_snapshot(tampered, prepared=prepared)
 
     def test_structural_prepared_identity_mismatch_is_rejected(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options()
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -1056,14 +1060,14 @@ class WriterSnapshotTest(unittest.TestCase):
             cco_facts(),
             atoms=(atom(0, "C"), atom(1, "C"), atom(2, "C")),
         )
-        changed_prepared = _prepare(changed_facts)
+        changed_prepared = prepare_writer_facts(changed_facts)
 
         with self.assertRaises(SouthStarError):
             validate_writer_search_snapshot(snapshot, prepared=changed_prepared)
 
     def test_unknown_frame_payload_is_rejected(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options()
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         snapshot = capture_writer_frontier_snapshot(
             prepared=prepared,
@@ -1083,8 +1087,8 @@ class WriterSnapshotTest(unittest.TestCase):
         self.assertFalse(hasattr(writer_snapshot, "WriterDelayedFactorFrame"))
 
     def test_extra_context_frame_payload_is_rejected_until_stack_resume_exists(self) -> None:
-        prepared = _prepare(tetrahedral_facts())
-        options = _writer_options(rooted_at_atom=1)
+        prepared = prepare_writer_facts(tetrahedral_facts())
+        options = writer_runtime_options(rooted_at_atom=1)
         cursor = initial_writer_frontier_cursor(prepared, options)
         after_f = writer_frontier_choices(prepared, cursor).choices[0].successor
         after_center = writer_frontier_choices(prepared, after_f).choices[0].successor
@@ -1102,8 +1106,8 @@ class WriterSnapshotTest(unittest.TestCase):
             validate_writer_search_snapshot(tampered, prepared=prepared)
 
     def test_cursor_audit_rejects_unknown_active_atom(self) -> None:
-        prepared = _prepare(cco_facts())
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         key = cursor.weighted_states[0][0]
         tampered_key = replace(key, active=replace(key.active, atom=AtomId(99)))
 
@@ -1111,12 +1115,12 @@ class WriterSnapshotTest(unittest.TestCase):
             validate_writer_cursor_against_prepared(
                 prepared,
                 _cursor_with_key(tampered_key),
-                runtime_options=_writer_options(),
+                runtime_options=writer_runtime_options(),
             )
 
     def test_cursor_audit_rejects_missing_active_frame(self) -> None:
-        prepared = _prepare(cco_facts())
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         key = cursor.weighted_states[0][0]
         tampered_key = replace(key, active=None)
 
@@ -1124,12 +1128,12 @@ class WriterSnapshotTest(unittest.TestCase):
             validate_writer_cursor_against_prepared(
                 prepared,
                 _unchecked_cursor_with_key(tampered_key),
-                runtime_options=_writer_options(),
+                runtime_options=writer_runtime_options(),
             )
 
     def test_snapshot_rejects_missing_active_frame_before_resume(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options()
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         key = cursor.weighted_states[0][0]
         tampered_cursor = _unchecked_cursor_with_key(replace(key, active=None))
@@ -1148,8 +1152,8 @@ class WriterSnapshotTest(unittest.TestCase):
             validate_writer_search_snapshot(tampered_snapshot, prepared=prepared)
 
     def test_cursor_audit_rejects_root_frame_mismatch(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         cursor = initial_writer_frontier_cursor(prepared, options)
         key = cursor.weighted_states[0][0]
         tampered_key = replace(key, active=replace(key.active, atom=AtomId(1)))
@@ -1162,8 +1166,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_snapshot_rejects_negative_component_index_without_index_error(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options()
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         key = cursor.weighted_states[0][0]
         tampered_key = replace(
@@ -1186,8 +1190,8 @@ class WriterSnapshotTest(unittest.TestCase):
             validate_writer_search_snapshot(tampered_snapshot, prepared=prepared)
 
     def test_snapshot_rejects_out_of_range_component_index_without_index_error(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options()
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         key = cursor.weighted_states[0][0]
         tampered_key = replace(
@@ -1213,10 +1217,10 @@ class WriterSnapshotTest(unittest.TestCase):
             validate_writer_search_snapshot(tampered_snapshot, prepared=prepared)
 
     def test_cursor_audit_rejects_invalid_pending_graph_triple(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         cursor = initial_writer_frontier_cursor(
             prepared,
-            _writer_options(rooted_at_atom=1),
+            writer_runtime_options(rooted_at_atom=1),
         )
         after_root = writer_frontier_choices(prepared, cursor).choices[0].successor
         key = after_root.weighted_states[0][0]
@@ -1236,12 +1240,12 @@ class WriterSnapshotTest(unittest.TestCase):
             validate_writer_cursor_against_prepared(
                 prepared,
                 _cursor_with_key(tampered_key),
-                runtime_options=_writer_options(rooted_at_atom=1),
+                runtime_options=writer_runtime_options(rooted_at_atom=1),
             )
 
     def test_cursor_audit_rejects_post_bond_pending_without_bond_record(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options(rooted_at_atom=1)
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options(rooted_at_atom=1)
         cursor = initial_writer_frontier_cursor(prepared, options)
         after_root = writer_frontier_choices(prepared, cursor).choices[0].successor
         pending_cursor = writer_frontier_choices(prepared, after_root).choices[0].successor
@@ -1265,8 +1269,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_pre_bond_pending_with_bond_record(self) -> None:
-        prepared = _prepare(directional_facts())
-        options = _writer_options(rooted_at_atom=2)
+        prepared = prepare_writer_facts(directional_facts())
+        options = writer_runtime_options(rooted_at_atom=2)
         cursor = initial_writer_frontier_cursor(prepared, options)
         after_f = writer_frontier_choices(prepared, cursor).choices[0].successor
         post_bond = writer_frontier_choices(prepared, after_f).choices[0].successor
@@ -1290,8 +1294,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_accepts_post_bond_pending_with_matching_bond_record(self) -> None:
-        prepared = _prepare(directional_facts())
-        options = _writer_options(rooted_at_atom=2)
+        prepared = prepare_writer_facts(directional_facts())
+        options = writer_runtime_options(rooted_at_atom=2)
         cursor = initial_writer_frontier_cursor(prepared, options)
         after_f = writer_frontier_choices(prepared, cursor).choices[0].successor
         post_bond = writer_frontier_choices(prepared, after_f).choices[0].successor
@@ -1303,8 +1307,8 @@ class WriterSnapshotTest(unittest.TestCase):
         )
 
     def test_cursor_audit_rejects_branch_pending_for_unique_child(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         cursor = initial_writer_frontier_cursor(prepared, options)
         after_root = writer_frontier_choices(prepared, cursor).choices[0].successor
         key = after_root.weighted_states[0][0]
@@ -1328,8 +1332,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_inline_pending_with_unresolved_sibling(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options(rooted_at_atom=1)
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options(rooted_at_atom=1)
         cursor = initial_writer_frontier_cursor(prepared, options)
         after_root = writer_frontier_choices(prepared, cursor).choices[0].successor
         key = after_root.weighted_states[0][0]
@@ -1353,8 +1357,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_accepts_branch_post_bond_pending_with_sibling(self) -> None:
-        prepared = _prepare(directional_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(directional_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _directional_double_branch_post_bond_key(prepared, options)
 
         validate_writer_cursor_against_prepared(
@@ -1364,8 +1368,8 @@ class WriterSnapshotTest(unittest.TestCase):
         )
 
     def test_cursor_audit_rejects_incoherent_open_closure_state(self) -> None:
-        prepared = _prepare(cco_facts())
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         key = cursor.weighted_states[0][0]
         label = _closure_label()
         tampered_key = replace(
@@ -1389,12 +1393,12 @@ class WriterSnapshotTest(unittest.TestCase):
             validate_writer_cursor_against_prepared(
                 prepared,
                 _cursor_with_key(tampered_key),
-                runtime_options=_writer_options(),
+                runtime_options=writer_runtime_options(),
             )
 
     def test_cursor_audit_accepts_coherent_open_closure_state(self) -> None:
-        prepared = _prepare(triangle_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(triangle_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _triangle_root_with_open_closure_key()
 
         validate_writer_cursor_against_prepared(
@@ -1404,8 +1408,8 @@ class WriterSnapshotTest(unittest.TestCase):
         )
 
     def test_cursor_audit_rejects_open_closure_label_text_mismatch(self) -> None:
-        prepared = _prepare(triangle_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(triangle_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _triangle_root_with_open_closure_key()
         endpoint = replace(key.ring_state.open_endpoints[0], first_endpoint_text="9")
         tampered_key = replace(
@@ -1424,8 +1428,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_open_closure_label_value_text_mismatch(self) -> None:
-        prepared = _prepare(triangle_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(triangle_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _triangle_root_with_open_closure_key()
         label = WriterClosureLabel(value=1, text="7")
         endpoint = replace(
@@ -1449,8 +1453,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_open_closure_label_outside_policy(self) -> None:
-        prepared = _prepare(triangle_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(triangle_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _triangle_root_with_open_closure_key()
         label = WriterClosureLabel(value=10, text="%10")
         endpoint = replace(
@@ -1474,8 +1478,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_accepts_policy_domain_open_label_without_allocator_history(self) -> None:
-        prepared = _prepare(triangle_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(triangle_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _triangle_root_with_open_closure_key()
         label = WriterClosureLabel(value=2, text="2")
         endpoint = replace(
@@ -1498,8 +1502,8 @@ class WriterSnapshotTest(unittest.TestCase):
         )
 
     def test_cursor_audit_rejects_open_closure_bond_text_outside_policy(self) -> None:
-        prepared = _prepare(triangle_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(triangle_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _triangle_root_with_open_closure_key()
         endpoint = replace(key.ring_state.open_endpoints[0], first_endpoint_bond_text="~")
         tampered_key = replace(
@@ -1518,8 +1522,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_directional_open_closure_bond_text(self) -> None:
-        prepared = _prepare(triangle_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(triangle_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _triangle_root_with_open_closure_key()
         endpoint = replace(key.ring_state.open_endpoints[0], first_endpoint_bond_text="/")
         tampered_key = replace(
@@ -1538,11 +1542,11 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_accepts_explicit_single_open_closure_bond_text(self) -> None:
-        prepared = _prepare_with_single_bond_mode(
+        prepared = prepare_with_single_bond_mode(
             triangle_facts(),
             single_bond_mode="explicit",
         )
-        options = _writer_options(rooted_at_atom=0)
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _triangle_root_with_open_closure_key()
         endpoint = replace(
             key.ring_state.open_endpoints[0],
@@ -1565,11 +1569,11 @@ class WriterSnapshotTest(unittest.TestCase):
     def test_cursor_audit_rejects_explicit_single_open_closure_bond_text_under_elide_policy(
         self,
     ) -> None:
-        prepared = _prepare_with_single_bond_mode(
+        prepared = prepare_with_single_bond_mode(
             triangle_facts(),
             single_bond_mode="elide",
         )
-        options = _writer_options(rooted_at_atom=0)
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _triangle_root_with_open_closure_key()
         endpoint = replace(
             key.ring_state.open_endpoints[0],
@@ -1593,7 +1597,7 @@ class WriterSnapshotTest(unittest.TestCase):
     def test_cursor_audit_rejects_open_closure_bond_text_without_compatible_partner(
         self,
     ) -> None:
-        prepared = _prepare_with_non_single_closure_ring_endpoint_choices(
+        prepared = prepare_non_single_closure_ring_endpoint_choices(
             BondOrder.DOUBLE,
             (
                 BondTextChoice("absent", "", False),
@@ -1601,7 +1605,7 @@ class WriterSnapshotTest(unittest.TestCase):
                 BondTextChoice("partnerless", "~", False),
             ),
         )
-        options = _writer_options(rooted_at_atom=0)
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _triangle_root_with_open_closure_key()
         endpoint = replace(
             key.ring_state.open_endpoints[0],
@@ -1623,8 +1627,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_accepts_open_closure_partner_at_active_atom(self) -> None:
-        prepared = _prepare(triangle_tail_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(triangle_tail_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _triangle_tail_open_to_active_key()
 
         validate_writer_cursor_against_prepared(
@@ -1634,8 +1638,8 @@ class WriterSnapshotTest(unittest.TestCase):
         )
 
     def test_cursor_audit_rejects_open_closure_partner_at_frozen_atom(self) -> None:
-        prepared = _prepare(triangle_tail_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(triangle_tail_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _triangle_tail_open_to_active_key()
         endpoint = key.ring_state.open_endpoints[0]
         tampered_key = replace(
@@ -1660,8 +1664,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_open_closure_unreachable_unvisited_partner(self) -> None:
-        prepared = _prepare(two_atom_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(two_atom_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         label = _closure_label()
         endpoint = WriterOpenClosureEndpoint(
             bond=BondId(0),
@@ -1698,8 +1702,8 @@ class WriterSnapshotTest(unittest.TestCase):
         self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
 
     def test_cursor_audit_accepts_coherent_closed_closure_state(self) -> None:
-        prepared = _prepare(triangle_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(triangle_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _triangle_closed_closure_key()
 
         validate_writer_cursor_against_prepared(
@@ -1709,8 +1713,8 @@ class WriterSnapshotTest(unittest.TestCase):
         )
 
     def test_cursor_audit_rejects_closed_closure_label_text_mismatch(self) -> None:
-        prepared = _prepare(triangle_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(triangle_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _triangle_closed_closure_key()
         closure = replace(key.ring_state.closed_closures[0], second_endpoint_text="9")
         tampered_key = replace(
@@ -1729,8 +1733,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_closed_closure_label_value_text_mismatch(self) -> None:
-        prepared = _prepare(triangle_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(triangle_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _triangle_closed_closure_key()
         label = WriterClosureLabel(value=1, text="7")
         closure = replace(
@@ -1755,8 +1759,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_closed_closure_label_outside_policy(self) -> None:
-        prepared = _prepare(triangle_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(triangle_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _triangle_closed_closure_key()
         label = WriterClosureLabel(value=10, text="%10")
         closure = replace(
@@ -1781,8 +1785,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_closed_closure_bond_text_outside_policy(self) -> None:
-        prepared = _prepare(triangle_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(triangle_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _triangle_closed_closure_key()
         closure = replace(key.ring_state.closed_closures[0], second_endpoint_bond_text="~")
         tampered_key = replace(
@@ -1801,8 +1805,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_directional_closed_closure_bond_text(self) -> None:
-        prepared = _prepare(triangle_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(triangle_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _triangle_closed_closure_key()
         closure = replace(key.ring_state.closed_closures[0], first_endpoint_bond_text="\\")
         tampered_key = replace(
@@ -1835,7 +1839,7 @@ class WriterSnapshotTest(unittest.TestCase):
                 label_state=key.ring_state.label_state,
             ),
         )
-        options = _writer_options(rooted_at_atom=0)
+        options = writer_runtime_options(rooted_at_atom=0)
 
         for mode in ("explicit", "both"):
             with self.subTest(mode=mode):
@@ -1868,10 +1872,10 @@ class WriterSnapshotTest(unittest.TestCase):
 
         for order, first_text, second_text in rows:
             with self.subTest(order=order, first=first_text, second=second_text):
-                prepared = _prepare_with_joint_non_single_ring_closures(
+                prepared = prepare_joint_non_single_ring_facts(
                     non_single_closure_triangle_facts(order),
                 )
-                options = _writer_options(rooted_at_atom=0)
+                options = writer_runtime_options(rooted_at_atom=0)
                 key = _triangle_closed_closure_key()
                 closure = replace(
                     key.ring_state.closed_closures[0],
@@ -1894,8 +1898,8 @@ class WriterSnapshotTest(unittest.TestCase):
                     )
 
     def test_cursor_audit_rejects_orphan_allocated_ring_label(self) -> None:
-        prepared = _prepare(triangle_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(triangle_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         label = _closure_label()
         key = replace(
             _triangle_root_with_open_closure_key(),
@@ -1913,8 +1917,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_orphan_reusable_ring_label(self) -> None:
-        prepared = _prepare(triangle_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(triangle_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         label = _closure_label()
         key = replace(
             _triangle_root_with_open_closure_key(),
@@ -1932,8 +1936,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_duplicate_open_closure_labels(self) -> None:
-        prepared = _prepare(triangle_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(triangle_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         label = _closure_label()
         key = replace(
             _triangle_root_with_open_closure_key(),
@@ -1968,8 +1972,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_incomplete_completed_component(self) -> None:
-        prepared = _prepare(chain_plus_singleton_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(chain_plus_singleton_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         cursor = initial_writer_frontier_cursor(prepared, options)
         after_c = writer_frontier_choices(prepared, cursor).choices[0].successor
         after_second_c = writer_frontier_choices(prepared, after_c).choices[0].successor
@@ -1985,8 +1989,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_unreachable_current_component_atom(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options(rooted_at_atom=1)
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options(rooted_at_atom=1)
         cursor = initial_writer_frontier_cursor(prepared, options)
         after_root = writer_frontier_choices(prepared, cursor).choices[0].successor
         key = after_root.weighted_states[0][0]
@@ -2003,8 +2007,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_orphan_residual_attachment(self) -> None:
-        prepared = _prepare(chain_plus_isolate_same_component_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(chain_plus_isolate_same_component_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _manual_emitted_root_key(AtomId(0))
 
         cursor = _cursor_with_key(key)
@@ -2020,8 +2024,8 @@ class WriterSnapshotTest(unittest.TestCase):
         self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
 
     def test_cursor_audit_rejects_terminal_looking_latent_residual_bond(self) -> None:
-        prepared = _prepare(chain_plus_orphan_chain_same_component_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(chain_plus_orphan_chain_same_component_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _terminal_looking_orphan_chain_key()
 
         with self.assertRaises(SouthStarError):
@@ -2032,8 +2036,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_closure_candidate_edge_obligation(self) -> None:
-        prepared = _prepare(triangle_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(triangle_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _triangle_closure_candidate_key()
 
         with self.assertRaises(SouthStarError):
@@ -2044,8 +2048,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_accepts_closure_open_ready_cyclic_residual(self) -> None:
-        prepared = _prepare(triangle_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(triangle_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _manual_emitted_root_key(AtomId(0))
 
         validate_writer_cursor_against_prepared(
@@ -2055,8 +2059,8 @@ class WriterSnapshotTest(unittest.TestCase):
         )
 
     def test_cursor_audit_accepts_single_boundary_cyclic_tree_entry(self) -> None:
-        prepared = _prepare(triangle_tail_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(triangle_tail_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _manual_emitted_root_key(AtomId(0))
 
         validate_writer_cursor_against_prepared(
@@ -2066,8 +2070,8 @@ class WriterSnapshotTest(unittest.TestCase):
         )
 
     def test_cursor_audit_rejects_unowned_multi_boundary_residual_attachment(self) -> None:
-        prepared = _prepare(triangle_with_frozen_tail_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(triangle_with_frozen_tail_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _triangle_with_frozen_tail_key()
 
         with self.assertRaises(SouthStarError):
@@ -2078,8 +2082,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_mixed_owned_unowned_boundary_attachment(self) -> None:
-        prepared = _prepare(triangle_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(triangle_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _triangle_two_visited_key()
 
         with self.assertRaises(SouthStarError):
@@ -2090,8 +2094,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_frozen_single_boundary_attachment(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _cco_frozen_single_boundary_key()
 
         with self.assertRaises(SouthStarError):
@@ -2102,8 +2106,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_snapshot_rejects_completed_cyclic_component_outside_current_component(self) -> None:
-        prepared = _prepare(triangle_plus_singleton_facts())
-        options = _writer_options(rooted_at_atom=3)
+        prepared = prepare_writer_facts(triangle_plus_singleton_facts())
+        options = writer_runtime_options(rooted_at_atom=3)
         key = _manual_emitted_root_key(
             AtomId(3),
             component_index=1,
@@ -2118,8 +2122,8 @@ class WriterSnapshotTest(unittest.TestCase):
             validate_writer_search_snapshot(snapshot, prepared=prepared)
 
     def test_snapshot_rejects_open_closure_from_completed_component(self) -> None:
-        prepared = _prepare(triangle_plus_singleton_facts())
-        options = _writer_options(rooted_at_atom=3)
+        prepared = prepare_writer_facts(triangle_plus_singleton_facts())
+        options = writer_runtime_options(rooted_at_atom=3)
         key = replace(
             _triangle_root_with_open_closure_key(),
             component_cursor=ComponentCursor(
@@ -2144,8 +2148,8 @@ class WriterSnapshotTest(unittest.TestCase):
             validate_writer_search_snapshot(snapshot, prepared=prepared)
 
     def test_snapshot_rejects_closed_closure_from_future_component(self) -> None:
-        prepared = _prepare(singleton_plus_triangle_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(singleton_plus_triangle_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         label = _closure_label()
         closure = WriterClosedClosure(
             bond=BondId(2),
@@ -2177,8 +2181,8 @@ class WriterSnapshotTest(unittest.TestCase):
             validate_writer_search_snapshot(snapshot, prepared=prepared)
 
     def test_cursor_audit_accepts_future_cyclic_component_outside_current_component(self) -> None:
-        prepared = _prepare(singleton_plus_triangle_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(singleton_plus_triangle_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _manual_emitted_root_key(
             AtomId(0),
             component_roots=(AtomId(0), AtomId(1)),
@@ -2191,8 +2195,8 @@ class WriterSnapshotTest(unittest.TestCase):
         )
 
     def test_cursor_audit_accepts_all_acyclic_multi_component_surface(self) -> None:
-        prepared = _prepare(chain_plus_singleton_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(chain_plus_singleton_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         cursor = initial_writer_frontier_cursor(prepared, options)
         after_c = writer_frontier_choices(prepared, cursor).choices[0].successor
         after_second_c = writer_frontier_choices(prepared, after_c).choices[0].successor
@@ -2205,8 +2209,8 @@ class WriterSnapshotTest(unittest.TestCase):
         )
 
     def test_cursor_audit_accepts_acyclic_residual_attachment(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _cco_after_second_atom_key(prepared, options)
 
         validate_writer_cursor_against_prepared(
@@ -2216,8 +2220,8 @@ class WriterSnapshotTest(unittest.TestCase):
         )
 
     def test_cursor_audit_rejects_stranded_unvisited_child_obligation(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _cco_after_second_atom_key(prepared, options)
         tampered_key = replace(
             key,
@@ -2237,8 +2241,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_accepts_branch_stack_owned_sibling_obligation(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options(rooted_at_atom=1)
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options(rooted_at_atom=1)
         branch_key = _cco_branch_child_key(prepared, options)
 
         validate_writer_cursor_against_prepared(
@@ -2248,8 +2252,8 @@ class WriterSnapshotTest(unittest.TestCase):
         )
 
     def test_cursor_audit_rejects_branch_stack_without_sibling_obligation(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options(rooted_at_atom=1)
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options(rooted_at_atom=1)
         branch_key = _cco_branch_child_key(prepared, options)
         tampered_key = replace(
             branch_key,
@@ -2264,8 +2268,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_branch_state_missing_return_owner(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options(rooted_at_atom=1)
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options(rooted_at_atom=1)
         branch_key = _cco_branch_child_key(prepared, options)
         tampered_key = replace(branch_key, branch_stack=())
 
@@ -2277,8 +2281,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_terminal_state_with_stale_branch_stack(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _cco_after_third_atom_key(prepared, options)
         root_frame = replace(
             key.active,
@@ -2299,8 +2303,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_linear_prefix_with_stale_branch_stack(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _cco_after_second_atom_key(prepared, options)
         root_frame = replace(
             key.active,
@@ -2321,8 +2325,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_branch_return_not_active_ancestor(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _cco_after_third_atom_key(prepared, options)
         tampered_key = replace(
             key,
@@ -2337,8 +2341,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_active_frame_tree_orientation_mismatch(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _cco_after_third_atom_key(prepared, options)
         root_frame = replace(
             key.active,
@@ -2365,8 +2369,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_completed_component_with_nonterminal_active(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _cco_after_third_atom_key(prepared, options)
         tampered_key = replace(
             key,
@@ -2386,8 +2390,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_future_unemitted_bond_occurrence(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         cursor = initial_writer_frontier_cursor(prepared, options)
         after_root = writer_frontier_choices(prepared, cursor).choices[0].successor
         key = after_root.weighted_states[0][0]
@@ -2415,8 +2419,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_future_unvisited_atom_occurrence(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         cursor = initial_writer_frontier_cursor(prepared, options)
         after_root = writer_frontier_choices(prepared, cursor).choices[0].successor
         key = after_root.weighted_states[0][0]
@@ -2442,8 +2446,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_future_unvisited_local_order(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         cursor = initial_writer_frontier_cursor(prepared, options)
         after_root = writer_frontier_choices(prepared, cursor).choices[0].successor
         key = after_root.weighted_states[0][0]
@@ -2469,8 +2473,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_missing_visited_atom_occurrence(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _cco_after_second_atom_key(prepared, options)
         tampered_key = replace(
             key,
@@ -2488,8 +2492,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_missing_written_bond_occurrence(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _cco_after_second_atom_key(prepared, options)
         tampered_key = replace(
             key,
@@ -2504,8 +2508,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_reversed_written_bond_occurrence(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _cco_after_second_atom_key(prepared, options)
         record = key.stereo_state.bond_occurrences[0]
         tampered_key = replace(
@@ -2526,8 +2530,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_invalid_local_order_occurrence(self) -> None:
-        prepared = _prepare(tetrahedral_facts())
-        options = _writer_options(rooted_at_atom=1)
+        prepared = prepare_writer_facts(tetrahedral_facts())
+        options = writer_runtime_options(rooted_at_atom=1)
         cursor = initial_writer_frontier_cursor(prepared, options)
         after_f = writer_frontier_choices(prepared, cursor).choices[0].successor
         after_center = writer_frontier_choices(prepared, after_f).choices[0].successor
@@ -2553,8 +2557,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_wrong_site_local_order_occurrence(self) -> None:
-        prepared = _prepare(tetrahedral_facts())
-        options = _writer_options(rooted_at_atom=1)
+        prepared = prepare_writer_facts(tetrahedral_facts())
+        options = writer_runtime_options(rooted_at_atom=1)
         cursor = initial_writer_frontier_cursor(prepared, options)
         after_f = writer_frontier_choices(prepared, cursor).choices[0].successor
         after_center = writer_frontier_choices(prepared, after_f).choices[0].successor
@@ -2580,8 +2584,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_premature_tetra_local_order_closure(self) -> None:
-        prepared = _prepare(tetrahedral_facts())
-        options = _writer_options(rooted_at_atom=1)
+        prepared = prepare_writer_facts(tetrahedral_facts())
+        options = writer_runtime_options(rooted_at_atom=1)
         key = _tetra_center_key(prepared, options)
         record = _local_order_for_atom(key, AtomId(0))
         forged_order = record.order + (
@@ -2611,8 +2615,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_future_occurrence_in_open_local_order(self) -> None:
-        prepared = _prepare(tetrahedral_facts())
-        options = _writer_options(rooted_at_atom=1)
+        prepared = prepare_writer_facts(tetrahedral_facts())
+        options = writer_runtime_options(rooted_at_atom=1)
         key = _tetra_center_key(prepared, options)
         record = _local_order_for_atom(key, AtomId(0))
         tampered_key = replace(
@@ -2634,8 +2638,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_missing_written_local_order_occurrence(self) -> None:
-        prepared = _prepare(tetrahedral_facts())
-        options = _writer_options(rooted_at_atom=1)
+        prepared = prepare_writer_facts(tetrahedral_facts())
+        options = writer_runtime_options(rooted_at_atom=1)
         key = _tetra_center_key(prepared, options)
         record = _local_order_for_atom(key, AtomId(0))
         tampered_key = replace(
@@ -2657,8 +2661,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_implicit_h_before_local_order_closure(self) -> None:
-        prepared = _prepare(tetrahedral_facts())
-        options = _writer_options(rooted_at_atom=1)
+        prepared = prepare_writer_facts(tetrahedral_facts())
+        options = writer_runtime_options(rooted_at_atom=1)
         key = _tetra_center_key(prepared, options)
         record = _local_order_for_atom(key, AtomId(0))
         tampered_key = replace(
@@ -2680,8 +2684,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_closed_branch_return_local_order(self) -> None:
-        prepared = _prepare(tetrahedral_facts())
-        options = _writer_options(rooted_at_atom=1)
+        prepared = prepare_writer_facts(tetrahedral_facts())
+        options = writer_runtime_options(rooted_at_atom=1)
         key = _tetra_branch_child_key(prepared, options)
         record = _local_order_for_atom(key, AtomId(0))
         forged_order = record.order + (
@@ -2710,8 +2714,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_completed_branch_child_left_open(self) -> None:
-        prepared = _prepare(tetrahedral_facts())
-        options = _writer_options(rooted_at_atom=1)
+        prepared = prepare_writer_facts(tetrahedral_facts())
+        options = writer_runtime_options(rooted_at_atom=1)
         key = _tetra_after_branch_return_key(prepared, options)
         record = _local_order_for_atom(key, AtomId(3))
         tampered_key = replace(
@@ -2733,8 +2737,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_accepts_reachable_tetra_traversal_states(self) -> None:
-        prepared = _prepare(tetrahedral_facts())
-        options = _writer_options(rooted_at_atom=1)
+        prepared = prepare_writer_facts(tetrahedral_facts())
+        options = writer_runtime_options(rooted_at_atom=1)
         pending = [initial_writer_transition_frontier_cursor(prepared, options)]
         seen = set()
         visited = 0
@@ -2766,8 +2770,8 @@ class WriterSnapshotTest(unittest.TestCase):
     def test_cursor_audit_rejects_missing_tetra_ring_endpoint_occurrence(self) -> None:
         from tests.south_star1.test_writer_stereo_residual import ring_core_tetra_facts
 
-        prepared = _prepare(ring_core_tetra_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(ring_core_tetra_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _first_key_with_ring_core_tetra_open_endpoint(prepared, options)
         record = _local_order_for_atom(key, AtomId(0))
         tampered_key = replace(
@@ -2791,8 +2795,8 @@ class WriterSnapshotTest(unittest.TestCase):
     def test_cursor_audit_rejects_duplicated_tetra_ring_endpoint_occurrence(self) -> None:
         from tests.south_star1.test_writer_stereo_residual import ring_core_tetra_facts
 
-        prepared = _prepare(ring_core_tetra_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(ring_core_tetra_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _first_key_with_ring_core_tetra_open_endpoint(prepared, options)
         record = _local_order_for_atom(key, AtomId(0))
         tampered_key = replace(
@@ -2818,7 +2822,7 @@ class WriterSnapshotTest(unittest.TestCase):
     ) -> None:
         from tests.south_star1.test_writer_stereo_residual import ring_core_tetra_facts
 
-        prepared = _prepare(ring_core_tetra_facts())
+        prepared = prepare_writer_facts(ring_core_tetra_facts())
         rows = (
             ((BondId(2), AtomId(2)), (BondId(0), AtomId(1))),
             ((BondId(0), AtomId(1)), (BondId(2), AtomId(2))),
@@ -2848,8 +2852,8 @@ class WriterSnapshotTest(unittest.TestCase):
     def test_cursor_audit_accepts_reachable_ring_core_tetra_traversal_states(self) -> None:
         from tests.south_star1.test_writer_stereo_residual import ring_core_tetra_facts
 
-        prepared = _prepare(ring_core_tetra_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(ring_core_tetra_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         pending = [initial_writer_transition_frontier_cursor(prepared, options)]
         seen = set()
         visited = 0
@@ -2879,8 +2883,8 @@ class WriterSnapshotTest(unittest.TestCase):
         self.assertGreater(visited, 1)
 
     def test_cursor_audit_rejects_missing_non_stereo_history_mid_traversal(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options(rooted_at_atom=1)
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options(rooted_at_atom=1)
         key = _cco_after_branch_return_key(prepared, options)
         self.assertTrue(key.stereo_state.local_orders)
         self.assertTrue(
@@ -2902,8 +2906,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_missing_non_stereo_history_at_terminal(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options(rooted_at_atom=1)
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options(rooted_at_atom=1)
         key = _first_terminal_key(prepared, options)
         self.assertTrue(key.stereo_state.local_orders)
         self.assertTrue(
@@ -2925,8 +2929,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_accepts_legitimately_empty_non_stereo_history(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options(rooted_at_atom=1)
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options(rooted_at_atom=1)
         initial = initial_writer_frontier_cursor(prepared, options)
         root_emitted = writer_frontier_choices(
             prepared,
@@ -2944,8 +2948,8 @@ class WriterSnapshotTest(unittest.TestCase):
                 )
 
     def test_cursor_audit_accepts_reachable_non_stereo_traversal_states(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options(rooted_at_atom=1)
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options(rooted_at_atom=1)
         pending = [initial_writer_frontier_cursor(prepared, options)]
         seen = set()
         visited = 0
@@ -2975,8 +2979,8 @@ class WriterSnapshotTest(unittest.TestCase):
         self.assertGreaterEqual(visited, 5)
 
     def test_cursor_audit_rejects_child_atom_occurrence_before_tree_parent(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options(rooted_at_atom=1)
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options(rooted_at_atom=1)
         key = _first_terminal_key(prepared, options)
         tampered_key = _key_with_rebuilt_stereo_history(
             prepared,
@@ -2996,8 +3000,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_non_depth_first_subtree_interleaving(self) -> None:
-        prepared = _prepare(depth_first_interleaving_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(depth_first_interleaving_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _manual_depth_first_interleaving_key()
         tampered_key = _key_with_rebuilt_stereo_history(
             prepared,
@@ -3013,8 +3017,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_swapped_child_order_with_original_active_child(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options(rooted_at_atom=1)
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options(rooted_at_atom=1)
         key = _first_terminal_key(prepared, options)
         tampered_key = _key_with_rebuilt_stereo_history(
             prepared,
@@ -3034,8 +3038,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_reordered_disconnected_component_roots(self) -> None:
-        prepared = _prepare(two_singletons_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(two_singletons_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _manual_two_singletons_key()
         tampered_key = _key_with_rebuilt_stereo_history(
             prepared,
@@ -3054,8 +3058,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_tetra_sibling_swap_recomputed_from_forgery(self) -> None:
-        prepared = _prepare(tetrahedral_facts())
-        options = _writer_options(rooted_at_atom=1)
+        prepared = prepare_writer_facts(tetrahedral_facts())
+        options = writer_runtime_options(rooted_at_atom=1)
         key = _first_terminal_key(prepared, options)
         center = key.stereo_state.atom_occurrences[1]
         flipped_center = replace(
@@ -3085,8 +3089,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_duplicate_atom_occurrence(self) -> None:
-        prepared = _prepare(tetrahedral_facts())
-        options = _writer_options(rooted_at_atom=1)
+        prepared = prepare_writer_facts(tetrahedral_facts())
+        options = writer_runtime_options(rooted_at_atom=1)
         key = _tetra_center_key(prepared, options)
         tampered_key = replace(
             key,
@@ -3105,8 +3109,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_duplicate_bond_occurrence(self) -> None:
-        prepared = _prepare(directional_facts())
-        options = _writer_options(rooted_at_atom=2)
+        prepared = prepare_writer_facts(directional_facts())
+        options = writer_runtime_options(rooted_at_atom=2)
         cursor = initial_writer_frontier_cursor(prepared, options)
         after_f = writer_frontier_choices(prepared, cursor).choices[0].successor
         after_slash = writer_frontier_choices(prepared, after_f).choices[0].successor
@@ -3128,8 +3132,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_duplicate_local_order(self) -> None:
-        prepared = _prepare(tetrahedral_facts())
-        options = _writer_options(rooted_at_atom=1)
+        prepared = prepare_writer_facts(tetrahedral_facts())
+        options = writer_runtime_options(rooted_at_atom=1)
         key = _tetra_center_key(prepared, options)
         tampered_key = replace(
             key,
@@ -3193,8 +3197,8 @@ class WriterSnapshotTest(unittest.TestCase):
             assignments=((var, TetraToken.AT),),
             factors=(),
         )
-        prepared = _prepare(cco_facts())
-        options = _writer_options()
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         key = cursor.weighted_states[0][0]
         tampered_key = replace(
@@ -3213,8 +3217,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_missing_initial_tetra_factor(self) -> None:
-        prepared = _prepare(tetrahedral_facts())
-        options = _writer_options(rooted_at_atom=1)
+        prepared = prepare_writer_facts(tetrahedral_facts())
+        options = writer_runtime_options(rooted_at_atom=1)
         key = initial_writer_frontier_cursor(prepared, options).weighted_states[0][0]
         tampered_key = replace(
             key,
@@ -3232,8 +3236,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_missing_directional_site_factor(self) -> None:
-        prepared = _prepare(directional_facts())
-        options = _writer_options(rooted_at_atom=2)
+        prepared = prepare_writer_facts(directional_facts())
+        options = writer_runtime_options(rooted_at_atom=2)
         key = initial_writer_frontier_cursor(prepared, options).weighted_states[0][0]
         snapshot = key.stereo_state.residual_snapshot
         tampered_snapshot = replace(
@@ -3260,8 +3264,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_missing_directional_bond_factor(self) -> None:
-        prepared = _prepare(directional_facts())
-        options = _writer_options(rooted_at_atom=2)
+        prepared = prepare_writer_facts(directional_facts())
+        options = writer_runtime_options(rooted_at_atom=2)
         key = initial_writer_frontier_cursor(prepared, options).weighted_states[0][0]
         snapshot = key.stereo_state.residual_snapshot
         tampered_snapshot = replace(
@@ -3288,8 +3292,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_altered_live_factor_definition(self) -> None:
-        prepared = _prepare(directional_facts())
-        options = _writer_options(rooted_at_atom=2)
+        prepared = prepare_writer_facts(directional_facts())
+        options = writer_runtime_options(rooted_at_atom=2)
         key = initial_writer_frontier_cursor(prepared, options).weighted_states[0][0]
         snapshot = key.stereo_state.residual_snapshot
         tampered_factors = tuple(
@@ -3347,8 +3351,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_initial_tetra_domain_narrowed_without_atom_event(self) -> None:
-        prepared = _prepare(tetrahedral_facts())
-        options = _writer_options(rooted_at_atom=1)
+        prepared = prepare_writer_facts(tetrahedral_facts())
+        options = writer_runtime_options(rooted_at_atom=1)
         key = initial_writer_frontier_cursor(prepared, options).weighted_states[0][0]
         token_var = next(
             var
@@ -3380,8 +3384,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_missing_tetra_assignment_after_atom_event(self) -> None:
-        prepared = _prepare(tetrahedral_facts())
-        options = _writer_options(rooted_at_atom=1)
+        prepared = prepare_writer_facts(tetrahedral_facts())
+        options = writer_runtime_options(rooted_at_atom=1)
         key = _tetra_center_key(prepared, options)
         tampered_snapshot = replace(
             key.stereo_state.residual_snapshot,
@@ -3403,8 +3407,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_tetra_assignment_disagreeing_with_atom_event(self) -> None:
-        prepared = _prepare(tetrahedral_facts())
-        options = _writer_options(rooted_at_atom=1)
+        prepared = prepare_writer_facts(tetrahedral_facts())
+        options = writer_runtime_options(rooted_at_atom=1)
         key = _tetra_center_key(prepared, options)
         var, value = key.stereo_state.residual_snapshot.assignments[0]
         other = TetraToken.ATAT if value is TetraToken.AT else TetraToken.AT
@@ -3434,8 +3438,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_missing_directional_assignment_after_bond_event(self) -> None:
-        prepared = _prepare(directional_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(directional_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _directional_live_after_bond_key(prepared, options)
         tampered_snapshot = replace(
             key.stereo_state.residual_snapshot,
@@ -3457,8 +3461,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_directional_assignment_disagreeing_with_bond_event(self) -> None:
-        prepared = _prepare(directional_facts())
-        options = _writer_options(rooted_at_atom=0)
+        prepared = prepare_writer_facts(directional_facts())
+        options = writer_runtime_options(rooted_at_atom=0)
         key = _directional_live_after_bond_key(prepared, options)
         var, value = key.stereo_state.residual_snapshot.assignments[0]
         other = (
@@ -3541,8 +3545,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_tampered_directional_mark_after_factor_discharge(self) -> None:
-        prepared = _prepare(directional_facts())
-        options = _writer_options(rooted_at_atom=2)
+        prepared = prepare_writer_facts(directional_facts())
+        options = writer_runtime_options(rooted_at_atom=2)
         key = _first_terminal_key(prepared, options)
         record = key.stereo_state.bond_occurrences[-1]
         other = DirectionMark.REV if record.mark is DirectionMark.FWD else DirectionMark.FWD
@@ -3563,8 +3567,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_cursor_audit_rejects_residual_assignment_without_occurrence(self) -> None:
-        prepared = _prepare(tetrahedral_facts())
-        options = _writer_options(rooted_at_atom=1)
+        prepared = prepare_writer_facts(tetrahedral_facts())
+        options = writer_runtime_options(rooted_at_atom=1)
         key = _tetra_center_key(prepared, options)
         extra_var = tetra_var(("writer", 999))
         tampered_snapshot = replace(
@@ -3590,8 +3594,8 @@ class WriterSnapshotTest(unittest.TestCase):
             )
 
     def test_frontier_frame_cursor_must_match_snapshot_cursor(self) -> None:
-        prepared = _prepare(cco_facts())
-        options = _writer_options()
+        prepared = prepare_writer_facts(cco_facts())
+        options = writer_runtime_options()
         cursor = initial_writer_frontier_cursor(prepared, options)
         choices = writer_frontier_choices(prepared, cursor)
         snapshot = capture_writer_frontier_snapshot(
@@ -3608,17 +3612,9 @@ class WriterSnapshotTest(unittest.TestCase):
             validate_writer_search_snapshot(tampered, prepared=prepared)
 
 
-def _prepare(facts):
-    return prepare_south_star_mol_from_facts(
+def prepare_joint_non_single_ring_facts(facts):
+    return prepare_writer_facts(
         facts,
-        writer_surface=SouthStarWriterSurface(),
-    )
-
-
-def _prepare_with_joint_non_single_ring_closures(facts):
-    return prepare_south_star_mol_from_facts(
-        facts,
-        writer_surface=SouthStarWriterSurface(),
         policy=ordinary_policy_for_facts(
             facts,
             options=OrdinaryPolicyOptions(non_single_ring_closures="joint"),
@@ -3626,10 +3622,9 @@ def _prepare_with_joint_non_single_ring_closures(facts):
     )
 
 
-def _prepare_with_single_bond_mode(facts, *, single_bond_mode: str):
-    return prepare_south_star_mol_from_facts(
+def prepare_with_single_bond_mode(facts, *, single_bond_mode: str):
+    return prepare_writer_facts(
         facts,
-        writer_surface=SouthStarWriterSurface(),
         policy=ordinary_policy_for_facts(
             facts,
             options=OrdinaryPolicyOptions(single_bond_mode=single_bond_mode),
@@ -3637,7 +3632,7 @@ def _prepare_with_single_bond_mode(facts, *, single_bond_mode: str):
     )
 
 
-def _prepare_with_non_single_closure_ring_endpoint_choices(
+def prepare_non_single_closure_ring_endpoint_choices(
     order: BondOrder,
     choices: tuple[BondTextChoice, ...],
 ):
@@ -3646,9 +3641,8 @@ def _prepare_with_non_single_closure_ring_endpoint_choices(
         facts,
         options=OrdinaryPolicyOptions(non_single_ring_closures="joint"),
     )
-    return prepare_south_star_mol_from_facts(
+    return prepare_writer_facts(
         facts,
-        writer_surface=SouthStarWriterSurface(),
         policy=replace(
             policy,
             bond_text_domains=tuple(
@@ -3667,13 +3661,6 @@ def _prepare_with_non_single_closure_ring_endpoint_choices(
                 for domain in policy.bond_text_domains
             ),
         ),
-    )
-
-
-def _writer_options(*, rooted_at_atom: int = -1) -> SouthStarRuntimeOptions:
-    return SouthStarRuntimeOptions(
-        rooted_at_atom=rooted_at_atom,
-        serialization_language=SerializationLanguageMode.WRITER_SHAPED,
     )
 
 
@@ -3956,7 +3943,7 @@ def _triangle_root_with_open_closure_key():
 
 
 def _triangle_closed_closure_key():
-    prepared = _prepare(triangle_facts())
+    prepared = prepare_writer_facts(triangle_facts())
     label = _closure_label()
     closure = WriterClosedClosure(
         bond=BondId(2),
@@ -4020,7 +4007,7 @@ def _triangle_terminal_open_closure_key():
 
 
 def _triangle_tail_open_to_active_key():
-    prepared = _prepare(triangle_tail_facts())
+    prepared = prepare_writer_facts(triangle_tail_facts())
     label = _closure_label()
     endpoint = WriterOpenClosureEndpoint(
         bond=BondId(2),
@@ -4435,7 +4422,7 @@ def _terminal_tetra_key():
         writer_surface=SouthStarWriterSurface(),
         policy=terminal_tetra_center_policy(),
     )
-    options = _writer_options(rooted_at_atom=0)
+    options = writer_runtime_options(rooted_at_atom=0)
     cursor = initial_writer_frontier_cursor(prepared, options)
     after_f = writer_frontier_choices(prepared, cursor).choices[0].successor
     after_center = writer_frontier_choices(prepared, after_f).choices[0].successor

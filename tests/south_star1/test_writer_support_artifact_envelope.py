@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from tests.south_star1.writer_test_context import initial_writer_snapshot
+from tests.south_star1.writer_test_context import prepare_writer_facts
+from tests.south_star1.writer_test_context import writer_runtime_options
+
 from copy import deepcopy
 import json
 import unittest
@@ -108,10 +112,10 @@ class WriterSupportArtifactEnvelopeTest(unittest.TestCase):
         self.assertEqual(verification.reason, "sentinel_checker_rejection")
 
     def test_snapshot_source_artifact_live_verifier_accepts(self) -> None:
-        prepared = _prepare(two_atom_facts())
+        prepared = prepare_writer_facts(two_atom_facts())
         envelope = writer_support_artifact_envelope_for_snapshot(
             prepared=prepared,
-            snapshot=_initial_snapshot(prepared),
+            snapshot=initial_writer_snapshot(prepared, writer_runtime_options()),
         )
 
         verification = verify_writer_support_artifact_envelope(
@@ -124,10 +128,10 @@ class WriterSupportArtifactEnvelopeTest(unittest.TestCase):
         self.assertEqual(verification.witness_count, 2)
 
     def test_prefix_read_source_artifact_verifies(self) -> None:
-        prepared = _prepare(two_atom_facts())
+        prepared = prepare_writer_facts(two_atom_facts())
         prefix = writer_snapshot_prefix_read_envelope_for_emitted_texts(
             prepared=prepared,
-            snapshot=_initial_snapshot(prepared),
+            snapshot=initial_writer_snapshot(prepared, writer_runtime_options()),
             emitted_texts=("C", "C"),
         )
         envelope = writer_support_artifact_envelope_for_prefix_read(
@@ -141,10 +145,10 @@ class WriterSupportArtifactEnvelopeTest(unittest.TestCase):
         self.assertEqual(verification.source_kind, "prefix_read")
 
     def test_prefix_read_source_artifact_live_verifier_accepts(self) -> None:
-        prepared = _prepare(two_atom_facts())
+        prepared = prepare_writer_facts(two_atom_facts())
         prefix = writer_snapshot_prefix_read_envelope_for_emitted_texts(
             prepared=prepared,
-            snapshot=_initial_snapshot(prepared),
+            snapshot=initial_writer_snapshot(prepared, writer_runtime_options()),
             emitted_texts=("C", "C"),
         )
         envelope = writer_support_artifact_envelope_for_prefix_read(
@@ -161,10 +165,10 @@ class WriterSupportArtifactEnvelopeTest(unittest.TestCase):
         self.assertEqual(verification.source_kind, "prefix_read")
 
     def test_branching_artifact_verifies(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         envelope = writer_support_artifact_envelope_for_snapshot(
             prepared=prepared,
-            snapshot=_initial_snapshot(prepared),
+            snapshot=initial_writer_snapshot(prepared, writer_runtime_options()),
         )
 
         verification = verify_writer_support_artifact_consistency(envelope)
@@ -209,8 +213,8 @@ class WriterSupportArtifactEnvelopeTest(unittest.TestCase):
         self.assertGreater(metrics["total_object_identity_input_bytes"], 0)
 
     def test_artifact_and_legacy_nested_support_image_agree_on_core_fixture(self) -> None:
-        prepared = _prepare(cco_facts())
-        snapshot = _initial_snapshot(prepared)
+        prepared = prepare_writer_facts(cco_facts())
+        snapshot = initial_writer_snapshot(prepared, writer_runtime_options())
         artifact = writer_support_artifact_envelope_for_snapshot(
             prepared=prepared,
             snapshot=snapshot,
@@ -235,8 +239,8 @@ class WriterSupportArtifactEnvelopeTest(unittest.TestCase):
         )
 
     def test_table_artifact_is_smaller_than_nested_support_image(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
-        snapshot = _initial_snapshot(prepared)
+        prepared = prepare_writer_facts(cyclopropane_facts())
+        snapshot = initial_writer_snapshot(prepared, writer_runtime_options())
         artifact = writer_support_artifact_envelope_for_snapshot(
             prepared=prepared,
             snapshot=snapshot,
@@ -498,10 +502,10 @@ class WriterSupportArtifactEnvelopeTest(unittest.TestCase):
         self.assertFalse(verify_writer_support_artifact_consistency(envelope).accepted)
 
     def test_live_verifier_rejects_stale_structural_table(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         envelope = writer_support_artifact_envelope_for_snapshot(
             prepared=prepared,
-            snapshot=_initial_snapshot(prepared),
+            snapshot=initial_writer_snapshot(prepared, writer_runtime_options()),
         )
         root = _root_payload(envelope)
         root["support_strings"] = list(reversed(root["support_strings"]))
@@ -515,21 +519,21 @@ class WriterSupportArtifactEnvelopeTest(unittest.TestCase):
 
 
 def _snapshot_artifact():
-    prepared = _prepare(two_atom_facts())
+    prepared = prepare_writer_facts(two_atom_facts())
     return deepcopy(
         writer_support_artifact_envelope_for_snapshot(
             prepared=prepared,
-            snapshot=_initial_snapshot(prepared),
+            snapshot=initial_writer_snapshot(prepared, writer_runtime_options()),
         )
     )
 
 
 def _branching_artifact():
-    prepared = _prepare(cco_facts())
+    prepared = prepare_writer_facts(cco_facts())
     return deepcopy(
         writer_support_artifact_envelope_for_snapshot(
             prepared=prepared,
-            snapshot=_initial_snapshot(prepared),
+            snapshot=initial_writer_snapshot(prepared, writer_runtime_options()),
         )
     )
 
@@ -634,30 +638,6 @@ def _replace_ref(value, old_id, new_id):
 def _json_round_trip(envelope):
     return json.loads(json.dumps(envelope, sort_keys=True))
 
-
-def _initial_snapshot(prepared):
-    options = _writer_options()
-    return capture_writer_frontier_snapshot(
-        prepared=prepared,
-        runtime_options=options,
-        cursor=initial_writer_frontier_cursor(prepared, options),
-    )
-
-
-def _writer_options():
-    return SouthStarRuntimeOptions(
-        rooted_at_atom=-1,
-        canonical=False,
-        do_random=True,
-        serialization_language=SerializationLanguageMode.WRITER_SHAPED,
-    )
-
-
-def _prepare(facts):
-    return prepare_south_star_mol_from_facts(
-        facts,
-        writer_surface=SouthStarWriterSurface(),
-    )
 
 
 if __name__ == "__main__":

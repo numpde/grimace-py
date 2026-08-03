@@ -38,6 +38,7 @@ from grimace._south_star1.writer_envelope_consistency import (
     verify_writer_support_image_envelope_consistency,
 )
 from tests.south_star1.helpers import cco_facts
+from tests.south_star1.writer_test_context import writer_test_context
 from tests.south_star1.test_writer_frontier_count_envelope import (
     _first_choice_text,
 )
@@ -275,8 +276,8 @@ class WriterEnvelopeWorkBudgetTest(unittest.TestCase):
 
 
 def _prepared_snapshot():
-    prepared = _prepare(cco_facts())
-    return prepared, _initial_snapshot(prepared)
+    context = writer_test_context(cco_facts())
+    return context.prepared, context.initial_snapshot
 
 
 def _first_unique_string(strings):

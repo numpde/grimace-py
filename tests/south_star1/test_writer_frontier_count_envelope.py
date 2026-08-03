@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from tests.south_star1.writer_test_context import initial_writer_snapshot
+from tests.south_star1.writer_test_context import prepare_writer_facts
+from tests.south_star1.writer_test_context import writer_runtime_options
+
 from copy import deepcopy
 import json
 import unittest
@@ -39,8 +43,8 @@ from tests.south_star1.helpers import two_atom_facts
 
 class WriterFrontierCountEnvelopeTest(unittest.TestCase):
     def test_verification_does_not_rebuild_count_dag(self) -> None:
-        prepared = _prepare(cco_facts())
-        snapshot = _initial_snapshot(prepared)
+        prepared = prepare_writer_facts(cco_facts())
+        snapshot = initial_writer_snapshot(prepared, writer_runtime_options())
         envelope = writer_frontier_count_envelope_for_snapshot(
             prepared=prepared, snapshot=snapshot
         )
@@ -54,11 +58,11 @@ class WriterFrontierCountEnvelopeTest(unittest.TestCase):
         self.assertTrue(verification.accepted, verification.reason)
 
     def test_initial_snapshot_count_envelope_json_round_trips(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         envelope = _json_round_trip(
             writer_frontier_count_envelope_for_snapshot(
                 prepared=prepared,
-                snapshot=_initial_snapshot(prepared),
+                snapshot=initial_writer_snapshot(prepared, writer_runtime_options()),
             )
         )
 
@@ -76,8 +80,8 @@ class WriterFrontierCountEnvelopeTest(unittest.TestCase):
         )
 
     def test_prefix_read_count_envelope_json_round_trips(self) -> None:
-        prepared = _prepare(cco_facts())
-        snapshot = _initial_snapshot(prepared)
+        prepared = prepare_writer_facts(cco_facts())
+        snapshot = initial_writer_snapshot(prepared, writer_runtime_options())
         prefix = writer_snapshot_prefix_read_envelope_for_emitted_texts(
             prepared=prepared,
             snapshot=snapshot,
@@ -117,10 +121,10 @@ class WriterFrontierCountEnvelopeTest(unittest.TestCase):
         self.assertIsNotNone(envelope["coverage"]["terminal_choice_coverage"])
 
     def test_branching_frontier_count_envelope_verifies(self) -> None:
-        prepared = _prepare(cyclopropane_facts())
+        prepared = prepare_writer_facts(cyclopropane_facts())
         envelope = writer_frontier_count_envelope_for_snapshot(
             prepared=prepared,
-            snapshot=_initial_snapshot(prepared),
+            snapshot=initial_writer_snapshot(prepared, writer_runtime_options()),
         )
 
         self.assertTrue(
@@ -132,10 +136,10 @@ class WriterFrontierCountEnvelopeTest(unittest.TestCase):
         self.assertGreater(len(envelope["coverage"]["branch_terms_covered"]), 0)
 
     def test_no_terminal_frontier_count_envelope_verifies(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         envelope = writer_frontier_count_envelope_for_snapshot(
             prepared=prepared,
-            snapshot=_initial_snapshot(prepared),
+            snapshot=initial_writer_snapshot(prepared, writer_runtime_options()),
         )
 
         self.assertTrue(
@@ -176,7 +180,7 @@ class WriterFrontierCountEnvelopeTest(unittest.TestCase):
 
         self.assertFalse(
             verify_writer_frontier_count_envelope(
-                prepared=_prepare(tetrahedral_facts()),
+                prepared=prepare_writer_facts(tetrahedral_facts()),
                 envelope=envelope,
             ).accepted
         )
@@ -194,7 +198,7 @@ class WriterFrontierCountEnvelopeTest(unittest.TestCase):
         self.assertFalse(_verify(envelope).accepted)
 
     def test_wrong_prefix_read_envelope_is_rejected(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         envelope = _prefix_envelope(prepared=prepared)
         envelope["prefix_read_envelope"]["schema_name"] = "bad"
 
@@ -206,8 +210,8 @@ class WriterFrontierCountEnvelopeTest(unittest.TestCase):
         )
 
     def test_non_readable_prefix_read_source_is_rejected(self) -> None:
-        prepared = _prepare(cco_facts())
-        snapshot = _initial_snapshot(prepared)
+        prepared = prepare_writer_facts(cco_facts())
+        snapshot = initial_writer_snapshot(prepared, writer_runtime_options())
         prefix = writer_snapshot_prefix_read_envelope_for_emitted_texts(
             prepared=prepared,
             snapshot=snapshot,
@@ -331,17 +335,17 @@ class WriterFrontierCountEnvelopeTest(unittest.TestCase):
 
 
 def _snapshot_envelope():
-    prepared = _prepare(cco_facts())
+    prepared = prepare_writer_facts(cco_facts())
     return deepcopy(
         writer_frontier_count_envelope_for_snapshot(
             prepared=prepared,
-            snapshot=_initial_snapshot(prepared),
+            snapshot=initial_writer_snapshot(prepared, writer_runtime_options()),
         )
     )
 
 
 def _prefix_envelope(*, prepared):
-    snapshot = _initial_snapshot(prepared)
+    snapshot = initial_writer_snapshot(prepared, writer_runtime_options())
     prefix = writer_snapshot_prefix_read_envelope_for_emitted_texts(
         prepared=prepared,
         snapshot=snapshot,
@@ -356,8 +360,8 @@ def _prefix_envelope(*, prepared):
 
 
 def _terminal_prefix_read_envelope():
-    prepared = _prepare(two_atom_facts())
-    snapshot = _initial_snapshot(prepared)
+    prepared = prepare_writer_facts(two_atom_facts())
+    snapshot = initial_writer_snapshot(prepared, writer_runtime_options())
     prefix = writer_snapshot_prefix_read_envelope_for_emitted_texts(
         prepared=prepared,
         snapshot=snapshot,
@@ -368,7 +372,7 @@ def _terminal_prefix_read_envelope():
 
 def _verify(envelope):
     return verify_writer_frontier_count_envelope(
-        prepared=_prepare(cco_facts()),
+        prepared=prepare_writer_facts(cco_facts()),
         envelope=envelope,
     )
 
@@ -402,30 +406,6 @@ def _first_choice_text(prepared, snapshot) -> str:
 def _json_round_trip(envelope):
     return json.loads(json.dumps(envelope, sort_keys=True))
 
-
-def _initial_snapshot(prepared):
-    options = _writer_options()
-    return capture_writer_frontier_snapshot(
-        prepared=prepared,
-        runtime_options=options,
-        cursor=initial_writer_frontier_cursor(prepared, options),
-    )
-
-
-def _writer_options():
-    return SouthStarRuntimeOptions(
-        rooted_at_atom=-1,
-        canonical=False,
-        do_random=True,
-        serialization_language=SerializationLanguageMode.WRITER_SHAPED,
-    )
-
-
-def _prepare(facts):
-    return prepare_south_star_mol_from_facts(
-        facts,
-        writer_surface=SouthStarWriterSurface(),
-    )
 
 
 if __name__ == "__main__":

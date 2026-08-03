@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from tests.south_star1.writer_test_context import initial_writer_snapshot
+from tests.south_star1.writer_test_context import prepare_writer_facts
+from tests.south_star1.writer_test_context import writer_runtime_options
+
 import unittest
 
 from grimace._south_star1.policy import SerializationLanguageMode
@@ -28,10 +32,10 @@ from tests.south_star1.test_writer_state_kernel import disconnected_co_facts
 
 class WriterEventsTest(unittest.TestCase):
     def test_all_transition_kinds_emit_typed_events(self) -> None:
-        prepared = _prepare(cco_facts())
+        prepared = prepare_writer_facts(cco_facts())
         cursor = initial_writer_frontier_cursor(
             prepared,
-            _writer_options(rooted_at_atom=1),
+            writer_runtime_options(rooted_at_atom=1),
         )
         seen_types = set()
         stack = [key for key, _ in cursor.weighted_states]
@@ -56,8 +60,8 @@ class WriterEventsTest(unittest.TestCase):
         self.assertIn(WriterLocalOrderClosed, seen_types)
 
     def test_component_boundary_is_a_typed_event(self) -> None:
-        prepared = _prepare(disconnected_co_facts())
-        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        prepared = prepare_writer_facts(disconnected_co_facts())
+        cursor = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         seen_types = set()
         stack = [key for key, _ in cursor.weighted_states]
         visited = set()
@@ -108,19 +112,6 @@ class WriterEventsTest(unittest.TestCase):
             ("ring_pair", 2, 2, 0, 1, "1", "1", "", 0, "", 0, "close"),
         )
 
-
-def _prepare(facts):
-    return prepare_south_star_mol_from_facts(
-        facts,
-        writer_surface=SouthStarWriterSurface(),
-    )
-
-
-def _writer_options(*, rooted_at_atom: int = -1) -> SouthStarRuntimeOptions:
-    return SouthStarRuntimeOptions(
-        rooted_at_atom=rooted_at_atom,
-        serialization_language=SerializationLanguageMode.WRITER_SHAPED,
-    )
 
 
 if __name__ == "__main__":

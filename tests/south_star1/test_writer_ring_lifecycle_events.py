@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from tests.south_star1.writer_test_context import initial_writer_snapshot
+from tests.south_star1.writer_test_context import prepare_writer_facts
+from tests.south_star1.writer_test_context import writer_runtime_options
+
 import unittest
 from collections import deque
 from dataclasses import replace
@@ -53,7 +57,7 @@ class WriterRingLifecycleEventsTest(unittest.TestCase):
 
     def test_raw_frontier_support_transitions_carry_lifecycle_events(self) -> None:
         prepared = _prepared_cyclopropane()
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
 
         opened, opened_source, opened_successor = _find_raw_frontier_transition(
             prepared,
@@ -101,7 +105,7 @@ class WriterRingLifecycleEventsTest(unittest.TestCase):
         prepared = _prepared_cyclopropane()
         runtime_initial = initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=_writer_options(),
+            runtime_options=writer_runtime_options(),
         )
 
         raw_transition, raw_source, raw_successor = _find_raw_frontier_transition(
@@ -127,7 +131,7 @@ class WriterRingLifecycleEventsTest(unittest.TestCase):
         self,
     ) -> None:
         prepared = _prepared_cyclopropane()
-        initial = initial_writer_frontier_cursor(prepared, _writer_options())
+        initial = initial_writer_frontier_cursor(prepared, writer_runtime_options())
         original = (
             writer_transitions
             ._open_closure_endpoint_transition_from_obligation
@@ -221,10 +225,7 @@ def _state(
 
 
 def _prepared_cyclopropane():
-    return prepare_south_star_mol_from_facts(
-        cyclopropane_facts(),
-        writer_surface=SouthStarWriterSurface(),
-    )
+    return prepare_writer_facts(cyclopropane_facts())
 
 
 def _label(value: int) -> WriterClosureLabel:
@@ -339,12 +340,6 @@ def _find_runtime_branch_transition(
         pending.extend(branch.next_state for branch in branches.transitions)
 
     raise AssertionError(f"did not find writer branch transition kind {kind_value!r}")
-
-
-def _writer_options() -> SouthStarRuntimeOptions:
-    return SouthStarRuntimeOptions(
-        serialization_language=SerializationLanguageMode.WRITER_SHAPED,
-    )
 
 
 if __name__ == "__main__":

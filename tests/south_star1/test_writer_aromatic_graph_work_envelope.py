@@ -10,10 +10,8 @@ import unittest
 from unittest.mock import patch
 
 from grimace._south_star1.facts import BondOrder
-from grimace._south_star1.policy import SerializationLanguageMode
-from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
-from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
-from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
+from tests.south_star1.writer_test_context import writer_runtime_options
+from tests.south_star1.writer_test_context import writer_test_context
 from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_smiles
 from grimace._south_star1.writer_envelope_terms import _identity_digest
 from grimace._south_star1.writer_execution_evidence import (
@@ -261,7 +259,8 @@ class WriterAromaticGraphWorkEnvelopeTest(unittest.TestCase):
                 self.assertEqual(violation.limit, limit)
 
     def test_biphenyl_bridge_is_live_and_explicit(self) -> None:
-        facts, prepared = _prepare("c1ccccc1-c1ccccc1")
+        facts, context = prepare_aromatic_graph_case("c1ccccc1-c1ccccc1")
+        prepared = context.prepared
         bridge = next(
             bond
             for bond in facts.bonds
@@ -330,9 +329,12 @@ def _traverse_checked_frontiers(
     prepared=None,
 ) -> _TraversalResult:
     del name
+    runtime_options = writer_runtime_options(rooted_at_atom=0)
     if prepared is None:
-        _facts, prepared = _prepare(smiles)
-    pending = deque([(initial_writer_frontier_cursor(prepared, _options()), 0)])
+        _facts, context = prepare_aromatic_graph_case(smiles)
+        prepared = context.prepared
+        runtime_options = context.runtime_options
+    pending = deque([(initial_writer_frontier_cursor(prepared, runtime_options), 0)])
     seen = set()
     terminal_support_count = 0
     emitted_bonds = set()
@@ -380,19 +382,9 @@ def _traverse_checked_frontiers(
     )
 
 
-def _prepare(smiles: str):
+def prepare_aromatic_graph_case(smiles: str):
     facts = ordinary_molecule_facts_from_smiles(smiles)
-    return facts, prepare_south_star_mol_from_facts(
-        facts,
-        writer_surface=SouthStarWriterSurface(),
-    )
-
-
-def _options() -> SouthStarRuntimeOptions:
-    return SouthStarRuntimeOptions(
-        rooted_at_atom=0,
-        serialization_language=SerializationLanguageMode.WRITER_SHAPED,
-    )
+    return facts, writer_test_context(facts, rooted_at_atom=0)
 
 
 def _atom(facts, atom_id):

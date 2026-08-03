@@ -14,9 +14,7 @@ from rdkit import rdBase
 from grimace import MolToSmilesContinuationDecoder
 from grimace._south_star1.policy import SerializationLanguageMode
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
-from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import component_root_domains_for_prepared
-from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
 from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_rdkit
 from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_smiles
 from grimace._south_star1.writer_branch_transition_artifact import (
@@ -53,6 +51,9 @@ from grimace._south_star1.writer_support_artifact_checker import (
 from tests.helpers.rdkit_south_star_disconnected_audit import (
     load_pinned_south_star_disconnected_audit_cases,
 )
+from tests.south_star1.writer_test_context import prepare_writer_facts
+from tests.south_star1.writer_test_context import writer_runtime_options
+from tests.south_star1.writer_test_context import initial_writer_snapshot
 from tests.south_star1.default_writer_capability_ledger import (
     default_writer_cases_for_rdkit_audit,
 )
@@ -74,7 +75,7 @@ class WriterDisconnectedCompositionTest(unittest.TestCase):
                     tuple(tuple(map(int, component.atoms)) for component in facts.components),
                     fixture.component_order,
                 )
-                prepared = _prepare(facts)
+                prepared = prepare_writer_facts(facts)
                 self.assertEqual(
                     tuple(
                         tuple(map(int, domain))
@@ -87,7 +88,7 @@ class WriterDisconnectedCompositionTest(unittest.TestCase):
                 )
                 image = enumerate_prepared_writer_shaped_support(
                     prepared=prepared,
-                    runtime_options=_options(case.rooted_at_atom),
+                    runtime_options=writer_runtime_options(rooted_at_atom=case.rooted_at_atom),
                 )
                 component_supports, component_completions = _component_products(
                     case.smiles,
@@ -119,8 +120,8 @@ class WriterDisconnectedCompositionTest(unittest.TestCase):
                 facts = ordinary_molecule_facts_from_smiles(
                     case.smiles, case.extraction_options
                 )
-                prepared = _prepare(facts)
-                options = _options(case.rooted_at_atom)
+                prepared = prepare_writer_facts(facts)
+                options = writer_runtime_options(rooted_at_atom=case.rooted_at_atom)
                 dot_supports = _dot_supports(prepared, options)
                 self.assertTrue(dot_supports)
                 for cursor, support in dot_supports:
@@ -164,8 +165,8 @@ class WriterDisconnectedCompositionTest(unittest.TestCase):
         facts = ordinary_molecule_facts_from_smiles(
             case.smiles, case.extraction_options
         )
-        prepared = _prepare(facts)
-        options = _options(case.rooted_at_atom)
+        prepared = prepare_writer_facts(facts)
+        options = writer_runtime_options(rooted_at_atom=case.rooted_at_atom)
         cursor, support = _dot_supports(prepared, options)[0]
         artifact = writer_branch_transition_artifact_for_support(
             prepared=prepared,
@@ -213,8 +214,8 @@ class WriterDisconnectedCompositionTest(unittest.TestCase):
         facts = ordinary_molecule_facts_from_smiles(
             case.smiles, case.extraction_options
         )
-        prepared = _prepare(facts)
-        options = _options(case.rooted_at_atom)
+        prepared = prepare_writer_facts(facts)
+        options = writer_runtime_options(rooted_at_atom=case.rooted_at_atom)
         cursor, support = _dot_supports(prepared, options)[0]
         artifact = writer_branch_transition_artifact_for_support(
             prepared=prepared,
@@ -257,8 +258,8 @@ class WriterDisconnectedCompositionTest(unittest.TestCase):
         facts = ordinary_molecule_facts_from_smiles(
             case.smiles, case.extraction_options
         )
-        prepared = _prepare(facts)
-        options = _options(case.rooted_at_atom)
+        prepared = prepare_writer_facts(facts)
+        options = writer_runtime_options(rooted_at_atom=case.rooted_at_atom)
         cursor, support = _dot_supports(prepared, options)[0]
         artifact = writer_branch_transition_artifact_for_support(
             prepared=prepared,
@@ -296,8 +297,8 @@ class WriterDisconnectedCompositionTest(unittest.TestCase):
         facts = ordinary_molecule_facts_from_smiles(
             case.smiles, case.extraction_options
         )
-        prepared = _prepare(facts)
-        options = _options(case.rooted_at_atom)
+        prepared = prepare_writer_facts(facts)
+        options = writer_runtime_options(rooted_at_atom=case.rooted_at_atom)
         cursor, support = _dot_supports(prepared, options)[0]
         artifact = writer_branch_transition_artifact_for_support(
             prepared=prepared,
@@ -323,8 +324,8 @@ class WriterDisconnectedCompositionTest(unittest.TestCase):
 
     def test_three_components_replay_both_boundaries(self) -> None:
         facts = ordinary_molecule_facts_from_smiles("CC.O.N")
-        prepared = _prepare(facts)
-        options = _options(0)
+        prepared = prepare_writer_facts(facts)
+        options = writer_runtime_options(rooted_at_atom=0)
         dot_supports = _dot_supports(prepared, options)
         self.assertEqual(len(dot_supports), 2)
         for cursor, support in dot_supports:
@@ -356,13 +357,9 @@ class WriterDisconnectedCompositionTest(unittest.TestCase):
                 facts = ordinary_molecule_facts_from_smiles(
                     case.smiles, case.extraction_options
                 )
-                prepared = _prepare(facts)
-                options = _options(case.rooted_at_atom)
-                snapshot = capture_writer_frontier_snapshot(
-                    prepared=prepared,
-                    runtime_options=options,
-                    cursor=initial_writer_frontier_cursor(prepared, options),
-                )
+                prepared = prepare_writer_facts(facts)
+                options = writer_runtime_options(rooted_at_atom=case.rooted_at_atom)
+                snapshot = initial_writer_snapshot(prepared, options)
                 path = Path(directory) / "asset"
                 write_writer_continuation_asset(
                     path=path, prepared=prepared, snapshot=snapshot
@@ -400,19 +397,6 @@ class WriterDisconnectedCompositionTest(unittest.TestCase):
                     )
 
 
-def _prepare(facts):
-    return prepare_south_star_mol_from_facts(
-        facts, writer_surface=SouthStarWriterSurface()
-    )
-
-
-def _options(rooted_at_atom: int) -> SouthStarRuntimeOptions:
-    return SouthStarRuntimeOptions(
-        rooted_at_atom=rooted_at_atom,
-        serialization_language=SerializationLanguageMode.WRITER_SHAPED,
-    )
-
-
 def _component_products(source, *, rooted_at_atom, extraction_options):
     molecule = Chem.MolFromSmiles(source)
     mappings: list[tuple[int, ...]] = []
@@ -428,8 +412,8 @@ def _component_products(source, *, rooted_at_atom, extraction_options):
         facts = ordinary_molecule_facts_from_rdkit(fragment, extraction_options)
         local_root = mapping.index(rooted_at_atom) if rooted_at_atom in mapping else -1
         image = enumerate_prepared_writer_shaped_support(
-            prepared=_prepare(facts),
-            runtime_options=_options(local_root),
+            prepared=prepare_writer_facts(facts),
+            runtime_options=writer_runtime_options(rooted_at_atom=local_root),
         )
         supports.append(tuple(sorted(image.strings)))
         completions.append(image.witness_count)

@@ -1923,9 +1923,8 @@ class WriterStereoResidualTest(unittest.TestCase):
 
     def test_terminal_eos_persists_final_stereo_closure(self) -> None:
         facts = terminal_tetra_center_facts()
-        prepared = prepare_south_star_mol_from_facts(
+        prepared = prepare_writer_facts(
             facts,
-            writer_surface=SouthStarWriterSurface(),
             policy=terminal_tetra_center_policy(),
         )
         cursor = initial_writer_frontier_cursor(

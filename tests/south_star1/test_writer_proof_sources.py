@@ -17,6 +17,9 @@ from tests.south_star1.writer_proof_sources import (
 import tests.south_star1.writer_proof_sources as proof_sources
 from tests.south_star1.writer_test_context import writer_runtime_options
 from grimace._south_star1.writer_envelope_terms import _identity_digest
+from grimace._south_star1.writer_branch_transition_artifact import (
+    writer_branch_transition_artifact_for_support,
+)
 
 
 class WriterProofSourcesTest(unittest.TestCase):
@@ -71,6 +74,22 @@ class WriterProofSourcesTest(unittest.TestCase):
                 _identity_digest(source.support.successor_cursor),
                 address.target_successor_cursor_digest,
             )
+            artifact = writer_branch_transition_artifact_for_support(
+                prepared=source.prepared,
+                snapshot=source.snapshot,
+                support=source.support,
+            )
+            self.assertEqual(artifact["digest"], address.expected_branch_artifact_digest)
+
+    def test_replay_captures_one_snapshot_per_selected_source(self) -> None:
+        proof_sources.shared_ring_branch_sources.cache_clear()
+        with patch.object(
+            proof_sources,
+            "capture_writer_frontier_snapshot",
+            wraps=proof_sources.capture_writer_frontier_snapshot,
+        ) as capture:
+            proof_sources.shared_ring_branch_sources()
+        self.assertEqual(capture.call_count, len(SHARED_RING_BRANCH_SOURCE_ADDRESSES))
 
     def test_replay_uses_only_unique_prefix_and_source_batches(self) -> None:
         prefixes = {

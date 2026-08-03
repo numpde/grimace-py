@@ -58,12 +58,11 @@ from tests.south_star1.qualification_plan import (
 from tests.south_star1.qualification_support import accepted_case_result
 from tests.south_star1.qualification_support import blocked_case_result
 from tests.south_star1.qualification_support import facts_for_case
-from tests.south_star1.qualification_support import prepare_default_case
+from tests.south_star1.writer_test_context import prepare_writer_facts
 from tests.south_star1.qualification_support import runtime_options_for_case
 from tests.south_star1.qualification_support import support_image_for_case
 from tests.south_star1.qualification_support import support_artifact_for_prepared
-from tests.south_star1.qualification_support import initial_snapshot_for_prepared
-from tests.south_star1.qualification_support import runtime_options_for_root
+from tests.south_star1.writer_test_context import writer_runtime_options
 from tests.south_star1.qualification_assertions import assert_materialized_case_matches_ledger
 
 ACCEPTED_CASES = ACCEPTED_DEFAULT_WRITER_CAPABILITY_CASES
@@ -173,12 +172,12 @@ class WriterDefaultParityCorpusTest(unittest.TestCase):
     ) -> None:
         case = next(item for item in ACCEPTED_CASES if item.name == "cyclopropene_double_closure")
         facts = facts_for_case(case)
-        prepared = prepare_default_case(facts)
+        prepared = prepare_writer_facts(facts)
         artifact = support_artifact_for_prepared(prepared)
 
         default_verification = verify_writer_support_artifact_for_facts(
             facts=facts,
-            runtime_options=runtime_options_for_root(),
+            runtime_options=writer_runtime_options(),
             artifact=artifact,
         )
 

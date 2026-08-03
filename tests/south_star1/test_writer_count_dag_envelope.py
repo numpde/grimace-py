@@ -61,8 +61,9 @@ from tests.south_star1.slow_qualification_assets import (
     require_slow_count_envelope,
 )
 from tests.south_star1.qualification_support import facts_for_case
-from tests.south_star1.qualification_support import initial_snapshot_for_prepared
-from tests.south_star1.qualification_support import prepare_default_case
+from tests.south_star1.writer_test_context import initial_writer_snapshot
+from tests.south_star1.writer_test_context import prepare_writer_facts
+from tests.south_star1.writer_test_context import writer_runtime_options
 from grimace._south_star1.writer_snapshot_prefix_envelope import (
     writer_snapshot_prefix_read_envelope_for_emitted_texts,
 )
@@ -91,8 +92,8 @@ class WriterCountDagEnvelopeTest(unittest.TestCase):
                 cached = require_slow_count_envelope(case)
                 print(f"cache_read_seconds={time.monotonic() - cache_started:.3f}", flush=True)
                 envelope = cached.envelope
-                prepared = prepare_default_case(facts_for_case(case))
-                snapshot = initial_snapshot_for_prepared(prepared, case.rooted_at_atom)
+                prepared = prepare_writer_facts(facts_for_case(case))
+                snapshot = initial_writer_snapshot(prepared, writer_runtime_options(rooted_at_atom=case.rooted_at_atom))
                 with (
                     patch("grimace._south_star1.writer_frontier_count_envelope.writer_frontier_count_envelope_for_snapshot", side_effect=AssertionError("count envelope built")),
                     patch("grimace._south_star1.writer_frontier_count_envelope.writer_count_certificate_dag_envelope_for_product", side_effect=AssertionError("count DAG built")),

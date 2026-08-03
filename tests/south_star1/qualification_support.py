@@ -11,8 +11,11 @@ import grimace
 
 from grimace._south_star1.errors import SouthStarError
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
-from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
-from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
+from tests.south_star1.writer_test_context import (
+    initial_writer_snapshot,
+    prepare_writer_facts,
+    writer_runtime_options,
+)
 from grimace._south_star1.policy import SerializationLanguageMode
 from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_smiles
 from grimace._south_star1.writer_frontier import _snapshot_advance_writer_frontier_product
@@ -44,22 +47,8 @@ def facts_for_case(case: DefaultWriterCapabilityCase):
     return ordinary_molecule_facts_from_smiles(case.smiles, case.extraction_options)
 
 
-def prepare_default_case(facts):
-    return prepare_south_star_mol_from_facts(facts, writer_surface=SouthStarWriterSurface())
-
-
 def runtime_options_for_case(case: DefaultWriterCapabilityCase) -> SouthStarRuntimeOptions:
-    return SouthStarRuntimeOptions(
-        rooted_at_atom=case.rooted_at_atom,
-        serialization_language=SerializationLanguageMode.WRITER_SHAPED,
-    )
-
-
-def runtime_options_for_root(rooted_at_atom: int = 0) -> SouthStarRuntimeOptions:
-    return SouthStarRuntimeOptions(
-        rooted_at_atom=rooted_at_atom,
-        serialization_language=SerializationLanguageMode.WRITER_SHAPED,
-    )
+    return writer_runtime_options(rooted_at_atom=case.rooted_at_atom)
 
 
 def count_writer_options() -> SouthStarRuntimeOptions:
@@ -72,7 +61,7 @@ def count_writer_options() -> SouthStarRuntimeOptions:
 
 
 def count_prepare(facts):
-    return prepare_default_case(facts)
+    return prepare_writer_facts(facts)
 
 
 def count_initial_snapshot(prepared):
@@ -115,31 +104,18 @@ def terminal_count_prefix_read_envelope():
 
 def initial_snapshot_for_case(prepared, case: DefaultWriterCapabilityCase):
     options = runtime_options_for_case(case)
-    return capture_writer_frontier_snapshot(
-        prepared=prepared,
-        runtime_options=options,
-        cursor=initial_writer_frontier_cursor(prepared, options),
-    )
-
-
-def initial_snapshot_for_prepared(prepared, rooted_at_atom: int = 0):
-    options = runtime_options_for_root(rooted_at_atom)
-    return capture_writer_frontier_snapshot(
-        prepared=prepared,
-        runtime_options=options,
-        cursor=initial_writer_frontier_cursor(prepared, options),
-    )
+    return initial_writer_snapshot(prepared, options)
 
 
 def support_image_for_case(case: DefaultWriterCapabilityCase):
     return enumerate_prepared_writer_shaped_support(
-        prepared=prepare_default_case(facts_for_case(case)),
+        prepared=prepare_writer_facts(facts_for_case(case)),
         runtime_options=runtime_options_for_case(case),
     )
 
 
 def support_artifact_for_case(case: DefaultWriterCapabilityCase):
-    prepared = prepare_default_case(facts_for_case(case))
+    prepared = prepare_writer_facts(facts_for_case(case))
     return writer_support_artifact_envelope_for_snapshot(
         prepared=prepared,
         snapshot=initial_snapshot_for_case(prepared, case),
@@ -149,7 +125,7 @@ def support_artifact_for_case(case: DefaultWriterCapabilityCase):
 def support_artifact_for_prepared(prepared, rooted_at_atom: int = 0):
     return writer_support_artifact_envelope_for_snapshot(
         prepared=prepared,
-        snapshot=initial_snapshot_for_prepared(prepared, rooted_at_atom),
+        snapshot=initial_writer_snapshot(prepared, writer_runtime_options(rooted_at_atom=rooted_at_atom)),
     )
 
 
@@ -180,14 +156,14 @@ def bundle_bytes(path: Path) -> tuple[tuple[str, bytes], ...]:
 
 def blocked_case_result(case: DefaultWriterCapabilityCase) -> dict[str, object]:
     try:
-        prepared = prepare_default_case(facts_for_case(case))
+        prepared = prepare_writer_facts(facts_for_case(case))
     except SouthStarError as error:
         return {"stage": "prepare", "error_kind": error.kind, "message": str(error)}
 
     pending = [
         initial_writer_runtime_state(
             prepared=prepared,
-            runtime_options=runtime_options_for_root(),
+            runtime_options=writer_runtime_options(),
         ).snapshot
     ]
     seen = set()
@@ -331,7 +307,7 @@ class AcceptedCaseResult:
 
 def accepted_case_result(case: DefaultWriterCapabilityCase) -> AcceptedCaseResult:
     facts = facts_for_case(case)
-    prepared = prepare_default_case(facts)
+    prepared = prepare_writer_facts(facts)
     options = runtime_options_for_case(case)
     state = initial_writer_runtime_state(prepared=prepared, runtime_options=options)
     image = enumerate_prepared_writer_shaped_support(prepared=prepared, runtime_options=options)

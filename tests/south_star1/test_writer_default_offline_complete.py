@@ -25,7 +25,7 @@ from tests.south_star1.qualification_plan import (
 from tests.south_star1.qualification_support import accepted_case_result
 from tests.south_star1.qualification_support import support_artifact_for_prepared
 from tests.south_star1.qualification_support import facts_for_case
-from tests.south_star1.qualification_support import prepare_default_case
+from tests.south_star1.writer_test_context import prepare_writer_facts
 from tests.south_star1.qualification_assertions import assert_materialized_case_matches_ledger
 from tests.south_star1.qualification_assertions import assert_offline_case_matches_ledger
 from tests.south_star1.default_writer_capability_ledger import default_writer_capability_case
@@ -95,7 +95,7 @@ class WriterDefaultOfflineCompleteTest(unittest.TestCase):
 
     def test_descriptive_lifecycle_flags_do_not_remove_replay_credit(self) -> None:
         case = default_writer_capability_case("ethanol")
-        artifact = support_artifact_for_prepared(prepare_default_case(facts_for_case(case)))
+        artifact = support_artifact_for_prepared(prepare_writer_facts(facts_for_case(case)))
         objects = {item["object_id"]: item for item in artifact["objects"]}
         branch = next(
             item for item in artifact["objects"] if item["kind"] == "branch_support"

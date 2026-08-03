@@ -36,8 +36,8 @@ from tests.south_star1.slow_qualification_assets import (
     _prepared_and_snapshot,
 )
 from tests.south_star1.qualification_support import facts_for_case
-from tests.south_star1.qualification_support import prepare_default_case
-from tests.south_star1.qualification_support import runtime_options_for_root
+from tests.south_star1.writer_test_context import prepare_writer_facts
+from tests.south_star1.writer_test_context import writer_runtime_options
 from tests.south_star1.qualification_guards import forbid_qualification_profile
 from tests.south_star1.qualification_assertions import assert_offline_case_matches_ledger
 
@@ -92,7 +92,7 @@ class SlowSupportArtifactQualificationTest(unittest.TestCase):
                 with forbid_qualification_profile("slow-rich-artifact-live") as guard_report:
                     result = verify_writer_support_artifact_for_facts(
                         facts=facts,
-                        runtime_options=runtime_options_for_root(case.rooted_at_atom),
+                        runtime_options=writer_runtime_options(rooted_at_atom=case.rooted_at_atom),
                         artifact=artifact,
                     )
                 guard_report.assert_unused(self)
@@ -119,7 +119,7 @@ class SlowSupportArtifactQualificationTest(unittest.TestCase):
                     facts = facts_for_case(case)
                     offline = verify_writer_support_artifact_for_facts(
                         facts=facts,
-                        runtime_options=runtime_options_for_root(case.rooted_at_atom),
+                        runtime_options=writer_runtime_options(rooted_at_atom=case.rooted_at_atom),
                         artifact=artifact,
                     )
                 guard_report.assert_unused(self)

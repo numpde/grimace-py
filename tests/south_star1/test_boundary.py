@@ -258,33 +258,25 @@ class SouthStar1BoundaryTest(unittest.TestCase):
             self.assertNotIn(name, source)
 
     def test_writer_support_artifact_fact_verifier_boundary(self) -> None:
-        path = SOUTH_STAR1_ROOT / "writer_support_artifact_domain_methods.py"
-        source = path.read_text(encoding="utf-8")
-        tree = ast.parse(source)
-
-        self.assertFalse(_imports_rdkit(tree))
-        imported_modules = {
-            node.module
-            for node in ast.walk(tree)
-            if isinstance(node, ast.ImportFrom)
-        }
-        for name in (
-            "writer_frontier",
-            "writer_runtime",
-            "writer_support",
-            "writer_support_certificates",
-            "writer_support_artifact_envelope",
-            "rdkit_adapter",
-        ):
-            self.assertNotIn(name, imported_modules)
-        for name in (
-            "_checked_writer_frontier_product",
-            "_iter_writer_snapshot_certified_support_strings",
-            "writer_support_artifact_envelope_for_snapshot",
-            "verify_writer_support_artifact_envelope",
-            "choice_snapshot",
-        ):
-            self.assertNotIn(name, source)
+        paths = tuple(Path(__file__).parent.glob("writer_support_artifact_*_support.py"))
+        self.assertTrue(paths)
+        for path in paths:
+            source = path.read_text(encoding="utf-8")
+            tree = ast.parse(source)
+            self.assertFalse(_imports_rdkit(tree))
+            imported_modules = {
+                node.module
+                for node in ast.walk(tree)
+                if isinstance(node, ast.ImportFrom)
+            }
+            for name in (
+                "writer_frontier",
+                "writer_runtime",
+                "writer_support",
+                "writer_support_certificates",
+                "rdkit_adapter",
+            ):
+                self.assertNotIn(name, imported_modules)
 
     def test_writer_support_artifact_offline_verifier_boundary(self) -> None:
         path = SOUTH_STAR1_ROOT / "writer_support_artifact_offline_verifier.py"

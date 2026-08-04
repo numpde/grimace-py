@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import ast
 import importlib
 import inspect
 from pathlib import Path
@@ -22,6 +23,18 @@ class WriterSupportArtifactTestDomain:
 
 
 _PREFIX = "tests.south_star1."
+_EXPECTED_DOMAIN_TEST_COUNTS = {
+    "integration": 15,
+    "graph-relations": 15,
+    "count-coverage": 11,
+    "path-identities": 13,
+    "obligation-replay": 15,
+    "directional-acyclic": 3,
+    "directional-acyclic-forgeries": 2,
+    "tetra-transitions": 21,
+    "tetra-lifecycle": 15,
+    "slow": 6,
+}
 
 WRITER_SUPPORT_ARTIFACT_TEST_DOMAINS = (
     WriterSupportArtifactTestDomain(
@@ -142,16 +155,63 @@ def validate_writer_support_artifact_test_plan() -> None:
             importlib.import_module(module_name)
             path_text = getattr(importlib.import_module(module_name), "__file__", "")
             source = Path(path_text).read_text(encoding="utf-8")
-            if domain.kind == "bounded" and domain.name.startswith("directional-"):
-                for forbidden in ("WriterSupportArtifactDomainMethods", "setattr(", "_selected("):
-                    if forbidden in source:
-                        raise AssertionError(f"dynamic directional ownership: {module_name}")
+            tree = ast.parse(source)
+            if any(
+                isinstance(node, ast.ImportFrom)
+                and any(alias.name == "*" for alias in node.names)
+                for node in ast.walk(tree)
+            ):
+                raise AssertionError(f"wildcard import in domain module: {module_name}")
         domain_ids = test_ids_for_domain(domain)
         if not domain_ids:
             raise AssertionError(f"domain has no tests: {domain.name}")
+        if len(domain_ids) != _EXPECTED_DOMAIN_TEST_COUNTS[domain.name]:
+            raise AssertionError(f"unexpected test count: {domain.name}")
+        direct_methods = {
+            node.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ClassDef)
+            for node in node.body
+            if isinstance(node, ast.FunctionDef) and node.name.startswith("test_")
+        }
+        expected_methods = {test_id.rsplit(".", 1)[1] for test_id in domain_ids}
+        if direct_methods != expected_methods:
+            raise AssertionError(f"test method is not physically owned: {module_name}")
         all_ids.extend(domain_ids)
     if len(all_ids) != len(set(all_ids)):
         raise AssertionError("duplicate support-artifact test ID")
+    if len(all_ids) != 116:
+        raise AssertionError("expected 116 rich support-artifact test IDs")
+
+    support_root = Path(__file__).parent
+    for path in support_root.glob("writer_support_artifact_*.py"):
+        if path.name.startswith("test_"):
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        if any(
+            isinstance(node, ast.ImportFrom)
+            and node.module
+            and node.module.startswith("tests.south_star1.test_")
+            for node in ast.walk(tree)
+        ):
+            raise AssertionError(f"test-to-test import in support module: {path}")
+        if any(
+            isinstance(node, ast.ImportFrom)
+            and any(alias.name == "*" for alias in node.names)
+            for node in ast.walk(tree)
+        ):
+            raise AssertionError(f"wildcard import in support module: {path}")
+        if any(
+            isinstance(node, ast.ClassDef)
+            and any(
+                isinstance(base, ast.Attribute) and base.attr == "TestCase"
+                for base in node.bases
+            )
+            for node in tree.body
+        ):
+            raise AssertionError(f"TestCase in support module: {path}")
+        if len(path.read_text(encoding="utf-8").splitlines()) > 700:
+            raise AssertionError(f"support module exceeds 700 lines: {path}")
 
 
 def bounded_domains() -> tuple[WriterSupportArtifactTestDomain, ...]:

@@ -2,12 +2,37 @@ from __future__ import annotations
 
 import unittest
 
-from tests.south_star1.writer_support_artifact_directional_test_support import *
+from tests.south_star1.writer_support_artifact_directional_test_support import (
+    directional_discharge_key_pairs, directional_transition_manifest,
+    directional_transition_branch_and_manifest, bond_occurrence_terms_for_branch,
+    mutate_directional_restriction_sign, mutate_directional_canonical_orientation,
+    mutate_directional_model_field, remove_directional_model, remove_directional_restriction,
+    duplicate_directional_model_site, mutate_directional_successor_snapshot,
+    set_directional_discharges, set_directional_discharges_by_keys,
+    remove_raw_lifecycle_capability, mutate_directional_term_mark, mutate_directional_term_bond,
+    remove_directional_successor_bond_occurrence, duplicate_directional_successor_bond_occurrence,
+    mutate_directional_successor_snapshot_unrelated,
+)
+from tests.south_star1.writer_support_artifact_fixtures import (
+    directional_support_artifact_fixture, shared_acyclic_directional_support_artifact_fixture,
+)
+from tests.south_star1.writer_test_fixtures import shared_directional_ring_carrier_facts
+from tests.south_star1.writer_support_artifact_queries import support_strings
+from tests.south_star1.writer_artifact_test_support import closed_term_field
+from grimace._south_star1.ids import BondId
+from types import SimpleNamespace
+from tests.south_star1.writer_test_context import initial_writer_snapshot, prepare_writer_facts, writer_runtime_options
+from grimace._south_star1.writer_support_artifact_envelope import writer_support_artifact_envelope_for_snapshot
+import grimace._south_star1.writer_stereo as writer_stereo_module
+from grimace._south_star1.writer_support_artifact_checker import verify_writer_support_artifact_consistency
+from grimace._south_star1.writer_support_artifact_fact_verifier import verify_writer_support_artifact_for_facts
+
 
 class WriterSupportArtifactDirectionalAcyclicTest(unittest.TestCase):
 
     def test_directional_rooted_acyclic_artifact_replays_complete(self) -> None:
-                facts, options, artifact = _directional_rooted_artifact()
+                fixture = directional_support_artifact_fixture()
+                facts, options, artifact = fixture.facts, fixture.runtime_options, fixture.artifact
 
                 structural = verify_writer_support_artifact_consistency(artifact)
                 verification = verify_writer_support_artifact_for_facts(
@@ -20,13 +45,13 @@ class WriterSupportArtifactDirectionalAcyclicTest(unittest.TestCase):
                 self.assertEqual(structural.support_count, 2)
                 self.assertEqual(structural.witness_count, 2)
                 self.assertEqual(
-                    tuple(sorted(_support_strings(artifact))),
+                    tuple(sorted(support_strings(artifact))),
                     ("F/C=C/Cl", "F\\C=C\\Cl"),
                 )
                 self.assertTrue(verification.accepted, verification.reason)
                 self.assertTrue(verification.offline_replay_complete)
-                first = _directional_transition_manifest(artifact, bond=1)
-                second = _directional_transition_manifest(artifact, bond=2)
+                first = directional_transition_manifest(artifact, bond=1)
+                second = directional_transition_manifest(artifact, bond=2)
                 self.assertEqual(
                     [closed_term_field(key, "kind") for key in closed_term_field(first["transition_term"], "discharged_factor_keys")],
                     ["directional_bond_emission"],
@@ -37,7 +62,8 @@ class WriterSupportArtifactDirectionalAcyclicTest(unittest.TestCase):
                 )
 
     def test_shared_acyclic_directional_artifact_replays_complete(self) -> None:
-                facts, options, artifact = _shared_acyclic_directional_artifact()
+                fixture = shared_acyclic_directional_support_artifact_fixture()
+                facts, options, artifact = fixture.facts, fixture.runtime_options, fixture.artifact
 
                 structural = verify_writer_support_artifact_consistency(artifact)
                 verification = verify_writer_support_artifact_for_facts(
@@ -53,16 +79,16 @@ class WriterSupportArtifactDirectionalAcyclicTest(unittest.TestCase):
                 # carrier variables, leaving exactly the all-forward and all-reverse
                 # renderings. This is a normalized-sign fact, not an RDKit expectation.
                 self.assertEqual(
-                    tuple(sorted(_support_strings(artifact))),
+                    tuple(sorted(support_strings(artifact))),
                     ("F/C=C/C=C/Cl", "F\\C=C\\C=C\\Cl"),
                 )
                 self.assertTrue(verification.accepted, verification.reason)
                 self.assertTrue(verification.offline_replay_complete)
                 self.assertEqual(verification.offline_unchecked_obligation_families, ())
 
-                bond0 = _directional_transition_manifest(artifact, bond=0)
-                bond2 = _directional_transition_manifest(artifact, bond=2)
-                bond4 = _directional_transition_manifest(artifact, bond=4)
+                bond0 = directional_transition_manifest(artifact, bond=0)
+                bond2 = directional_transition_manifest(artifact, bond=2)
+                bond4 = directional_transition_manifest(artifact, bond=4)
                 self.assertEqual(len(closed_term_field(bond0["transition_term"], "carrier_models")), 1)
                 self.assertEqual(len(closed_term_field(bond0["transition_term"], "restrictions")), 1)
                 self.assertEqual(len(closed_term_field(bond2["transition_term"], "carrier_models")), 2)
@@ -70,34 +96,34 @@ class WriterSupportArtifactDirectionalAcyclicTest(unittest.TestCase):
                 self.assertEqual(len(closed_term_field(bond4["transition_term"], "carrier_models")), 1)
                 self.assertEqual(len(closed_term_field(bond4["transition_term"], "restrictions")), 1)
                 self.assertEqual(
-                    _directional_discharge_key_pairs(bond0),
+                    directional_discharge_key_pairs(bond0),
                     (("directional_bond_emission", (0,)),),
                 )
                 self.assertEqual(
-                    _directional_discharge_key_pairs(bond2),
+                    directional_discharge_key_pairs(bond2),
                     (
                         ("directional_bond_emission", (2,)),
                         ("directional_site", (0,)),
                     ),
                 )
                 self.assertEqual(
-                    _directional_discharge_key_pairs(bond4),
+                    directional_discharge_key_pairs(bond4),
                     (
                         ("directional_bond_emission", (4,)),
                         ("directional_site", (1,)),
                     ),
                 )
-                branch, _manifest = _directional_transition_branch_and_manifest(
+                branch, _manifest = directional_transition_branch_and_manifest(
                     artifact,
                     bond=2,
                 )
-                source_records = _bond_occurrence_terms_for_branch(
+                source_records = bond_occurrence_terms_for_branch(
                     artifact,
                     branch,
                     cursor_name="source_cursor",
                     bond=2,
                 )
-                successor_records = _bond_occurrence_terms_for_branch(
+                successor_records = bond_occurrence_terms_for_branch(
                     artifact,
                     branch,
                     cursor_name="successor_cursor",

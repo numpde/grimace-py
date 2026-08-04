@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Mapping, MutableMapping
 
+from tests.south_star1.writer_artifact_test_support import closed_term_digest
+
 from grimace._south_star1.writer_support_artifact_checker import (
     verify_writer_support_artifact_consistency,
 )
@@ -113,11 +115,54 @@ def first_terminal_support_object(artifact):
     ]
 
 
-def first_graph_ring_delta_branch(artifact, *, kind: str):
+def first_graph_ring_delta_branch(artifact, kind: str):
     for item in artifact["objects"]:
         if item["kind"] == "branch_support" and item["payload"]["graph_ring_delta"]["kind"] == kind:
             return item
     raise AssertionError(f"missing graph/ring delta kind: {kind}")
+
+
+def first_graph_ring_delta_event(branch, kind: str):
+    events = branch["payload"]["graph_ring_delta"]["manifest"]["event_manifests"]
+    matches = [event for event in events if event["kind"] == kind]
+    if len(matches) != 1:
+        raise AssertionError(
+            f"expected one graph/ring event of kind {kind}, found {len(matches)}"
+        )
+    return matches[0]
+
+
+def text_projection_for_branch(artifact, branch):
+    matches = [
+        item
+        for item in artifact["objects"]
+        if item["kind"] == "text_projection"
+        and branch["object_id"] in item["payload"]["branch_support_refs"]
+    ]
+    if len(matches) != 1:
+        raise AssertionError(
+            f"expected one text projection for branch, found {len(matches)}"
+        )
+    return matches[0]
+
+
+def single_cursor_state(cursor):
+    states = cursor["terms"]["fields"][0][1]
+    if len(states) != 1:
+        raise AssertionError("expected single-state cursor")
+    return states[0][0]
+
+
+def cursor_state_by_digest(cursor, *, digest: str):
+    states = cursor["terms"]["fields"][0][1]
+    matches = [
+        state
+        for state, _weight in states
+        if closed_term_digest(state, operation="test.cursor.state_lookup") == digest
+    ]
+    if len(matches) != 1:
+        raise AssertionError(f"expected one cursor state for digest {digest}")
+    return matches[0]
 
 
 def first_residual_work_branch(artifact, *, operation: str):
@@ -132,7 +177,7 @@ def first_residual_work_branch(artifact, *, operation: str):
     raise AssertionError(f"missing residual work operation: {operation}")
 
 
-def first_local_evidence(artifact, *, kind: str):
+def first_local_evidence(artifact, kind: str):
     for item in artifact["objects"]:
         if item["kind"] == "branch_support" and item["payload"]["local_evidence"]["kind"] == kind:
             return item["payload"]["local_evidence"]
@@ -164,7 +209,7 @@ def verify_branch_projection_relation(artifact):
     )
 
 
-def verify_graph_ring_delta_relation(*, facts, artifact):
+def verify_graph_ring_delta_relation(facts, artifact):
     return verify_graph_ring_branch_deltas_offline(
         facts=facts,
         artifact=artifact,
@@ -180,7 +225,7 @@ def classify_obligation_replay(*, facts, artifact):
     )
 
 
-def verify_local_branch_evidence_relation(*, facts, artifact):
+def verify_local_branch_evidence_relation(facts, artifact):
     return verify_local_branch_successor_evidence_offline(
         facts=facts,
         artifact=artifact,

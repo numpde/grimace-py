@@ -2,7 +2,28 @@ from __future__ import annotations
 
 import unittest
 
-from tests.south_star1.writer_support_artifact_directional_test_support import *
+from tests.south_star1.writer_support_artifact_directional_test_support import (
+    directional_discharge_key_pairs, directional_transition_manifest,
+    directional_transition_branch_and_manifest, bond_occurrence_terms_for_branch,
+    mutate_directional_restriction_sign, mutate_directional_canonical_orientation,
+    mutate_directional_model_field, remove_directional_model, remove_directional_restriction,
+    duplicate_directional_model_site, mutate_directional_successor_snapshot,
+    set_directional_discharges, set_directional_discharges_by_keys,
+    remove_raw_lifecycle_capability, mutate_directional_term_mark, mutate_directional_term_bond,
+    remove_directional_successor_bond_occurrence, duplicate_directional_successor_bond_occurrence,
+    mutate_directional_successor_snapshot_unrelated,
+)
+from tests.south_star1.writer_support_artifact_fixtures import (
+    directional_support_artifact_fixture, shared_acyclic_directional_support_artifact_fixture,
+)
+from tests.south_star1.writer_support_artifact_queries import (
+    require_structurally_valid_support_artifact,
+    support_strings,
+)
+from tests.south_star1.writer_artifact_test_support import closed_term_field
+from grimace._south_star1.writer_support_artifact_checker import verify_writer_support_artifact_consistency
+from grimace._south_star1.writer_support_artifact_fact_verifier import verify_writer_support_artifact_for_facts
+
 
 class WriterSupportArtifactDirectionalForgeryTest(unittest.TestCase):
 
@@ -12,17 +33,17 @@ class WriterSupportArtifactDirectionalForgeryTest(unittest.TestCase):
                 cases = (
                     (
                         "remove_model",
-                        lambda artifact: _remove_directional_model(artifact, bond=2),
+                        lambda artifact: remove_directional_model(artifact, bond=2),
                         "directional_carrier_model_mismatch",
                     ),
                     (
                         "remove_restriction",
-                        lambda artifact: _remove_directional_restriction(artifact, bond=2),
+                        lambda artifact: remove_directional_restriction(artifact, bond=2),
                         "directional_carrier_restriction_mismatch",
                     ),
                     (
                         "wrong_site",
-                        lambda artifact: _mutate_directional_model_field(
+                        lambda artifact: mutate_directional_model_field(
                             artifact,
                             bond=2,
                             field="site",
@@ -32,7 +53,7 @@ class WriterSupportArtifactDirectionalForgeryTest(unittest.TestCase):
                     ),
                     (
                         "wrong_side",
-                        lambda artifact: _mutate_directional_model_field(
+                        lambda artifact: mutate_directional_model_field(
                             artifact,
                             bond=2,
                             field="side",
@@ -43,7 +64,7 @@ class WriterSupportArtifactDirectionalForgeryTest(unittest.TestCase):
                     ),
                     (
                         "wrong_ligand_factor",
-                        lambda artifact: _mutate_directional_model_field(
+                        lambda artifact: mutate_directional_model_field(
                             artifact,
                             bond=2,
                             field="ligand_factor",
@@ -54,7 +75,7 @@ class WriterSupportArtifactDirectionalForgeryTest(unittest.TestCase):
                     ),
                     (
                         "wrong_normalized_sign",
-                        lambda artifact: _mutate_directional_restriction_sign(
+                        lambda artifact: mutate_directional_restriction_sign(
                             artifact,
                             bond=2,
                         ),
@@ -62,7 +83,7 @@ class WriterSupportArtifactDirectionalForgeryTest(unittest.TestCase):
                     ),
                     (
                         "duplicate_site_model",
-                        lambda artifact: _duplicate_directional_model_site(
+                        lambda artifact: duplicate_directional_model_site(
                             artifact,
                             bond=2,
                         ),
@@ -70,7 +91,7 @@ class WriterSupportArtifactDirectionalForgeryTest(unittest.TestCase):
                     ),
                     (
                         "omit_shared_capability",
-                        lambda artifact: _remove_raw_lifecycle_capability(
+                        lambda artifact: remove_raw_lifecycle_capability(
                             artifact,
                             bond=2,
                             capability="shared_directional_carrier_restriction",
@@ -79,7 +100,7 @@ class WriterSupportArtifactDirectionalForgeryTest(unittest.TestCase):
                     ),
                     (
                         "omit_site0_discharge",
-                        lambda artifact: _set_directional_discharges_by_keys(
+                        lambda artifact: set_directional_discharges_by_keys(
                             artifact,
                             bond=2,
                             key_pairs=(("directional_bond_emission", (2,)),),
@@ -88,7 +109,7 @@ class WriterSupportArtifactDirectionalForgeryTest(unittest.TestCase):
                     ),
                     (
                         "premature_site1_discharge",
-                        lambda artifact: _set_directional_discharges_by_keys(
+                        lambda artifact: set_directional_discharges_by_keys(
                             artifact,
                             bond=2,
                             key_pairs=(
@@ -101,7 +122,7 @@ class WriterSupportArtifactDirectionalForgeryTest(unittest.TestCase):
                     ),
                     (
                         "duplicate_bond_occurrence",
-                        lambda artifact: _duplicate_directional_successor_bond_occurrence(
+                        lambda artifact: duplicate_directional_successor_bond_occurrence(
                             artifact,
                             bond=2,
                         ),
@@ -110,9 +131,10 @@ class WriterSupportArtifactDirectionalForgeryTest(unittest.TestCase):
                 )
                 for name, mutate, reason in cases:
                     with self.subTest(name=name):
-                        facts, options, artifact = _shared_acyclic_directional_artifact()
+                        fixture = shared_acyclic_directional_support_artifact_fixture()
+                        facts, options, artifact = fixture.facts, fixture.runtime_options, fixture.artifact
                         mutate(artifact)
-                        _assert_structural_checker_accepts(self, artifact)
+                        require_structurally_valid_support_artifact(artifact)
 
                         verification = verify_writer_support_artifact_for_facts(
                             facts=facts,
@@ -127,37 +149,37 @@ class WriterSupportArtifactDirectionalForgeryTest(unittest.TestCase):
                 cases = (
                     (
                         "wrong_normalized_sign",
-                        lambda artifact: _mutate_directional_restriction_sign(artifact, bond=1),
+                        lambda artifact: mutate_directional_restriction_sign(artifact, bond=1),
                         "directional_carrier_restriction_mismatch",
                     ),
                     (
                         "wrong_canonical_orientation",
-                        lambda artifact: _mutate_directional_canonical_orientation(artifact, bond=1),
+                        lambda artifact: mutate_directional_canonical_orientation(artifact, bond=1),
                         "directional_carrier_canonical_orientation_mismatch",
                     ),
                     (
                         "carrier_model_wrong_side",
-                        lambda artifact: _mutate_directional_model_field(artifact, bond=1, field="side", value="right"),
+                        lambda artifact: mutate_directional_model_field(artifact, bond=1, field="side", value="right"),
                         "directional_carrier_model_mismatch",
                     ),
                     (
                         "carrier_model_wrong_ligand_factor",
-                        lambda artifact: _mutate_directional_model_field(artifact, bond=1, field="ligand_factor", value=-1),
+                        lambda artifact: mutate_directional_model_field(artifact, bond=1, field="ligand_factor", value=-1),
                         "directional_carrier_model_mismatch",
                     ),
                     (
                         "false_successor_snapshot",
-                        lambda artifact: _mutate_directional_successor_snapshot(artifact, bond=1),
+                        lambda artifact: mutate_directional_successor_snapshot(artifact, bond=1),
                         "directional_carrier_successor_state_anchor_mismatch",
                     ),
                     (
                         "missing_bond_emission_discharge",
-                        lambda artifact: _set_directional_discharges(artifact, bond=1, kinds=()),
+                        lambda artifact: set_directional_discharges(artifact, bond=1, kinds=()),
                         "directional_carrier_discharge_factor_mismatch",
                     ),
                     (
                         "premature_site_discharge",
-                        lambda artifact: _set_directional_discharges(
+                        lambda artifact: set_directional_discharges(
                             artifact,
                             bond=1,
                             kinds=("directional_bond_emission", "directional_site"),
@@ -166,7 +188,7 @@ class WriterSupportArtifactDirectionalForgeryTest(unittest.TestCase):
                     ),
                     (
                         "missing_site_discharge",
-                        lambda artifact: _set_directional_discharges(
+                        lambda artifact: set_directional_discharges(
                             artifact,
                             bond=2,
                             kinds=("directional_bond_emission",),
@@ -175,25 +197,26 @@ class WriterSupportArtifactDirectionalForgeryTest(unittest.TestCase):
                     ),
                     (
                         "successor_bond_occurrence_wrong_mark",
-                        lambda artifact: _mutate_directional_term_mark(artifact, bond=1, value=-1),
+                        lambda artifact: mutate_directional_term_mark(artifact, bond=1, value=-1),
                         "directional_carrier_residual_mark_mismatch",
                     ),
                     (
                         "successor_bond_occurrence_absent",
-                        lambda artifact: _remove_directional_successor_bond_occurrence(artifact, bond=1),
+                        lambda artifact: remove_directional_successor_bond_occurrence(artifact, bond=1),
                         "directional_carrier_successor_bond_occurrence_mismatch",
                     ),
                     (
                         "unrelated_residual_component_changed",
-                        lambda artifact: _mutate_directional_successor_snapshot_unrelated(artifact, bond=1),
+                        lambda artifact: mutate_directional_successor_snapshot_unrelated(artifact, bond=1),
                         "directional_carrier_successor_state_anchor_mismatch",
                     ),
                 )
                 for name, mutate, reason in cases:
                     with self.subTest(name=name):
-                        facts, options, artifact = _directional_rooted_artifact()
+                        fixture = directional_support_artifact_fixture()
+                        facts, options, artifact = fixture.facts, fixture.runtime_options, fixture.artifact
                         mutate(artifact)
-                        _assert_structural_checker_accepts(self, artifact)
+                        require_structurally_valid_support_artifact(artifact)
 
                         verification = verify_writer_support_artifact_for_facts(
                             facts=facts,

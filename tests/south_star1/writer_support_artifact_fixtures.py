@@ -156,3 +156,9 @@ def terminal_tetra_support_artifact_fixture():
         rooted_at_atom=0,
         policy=terminal_tetra_center_policy(),
     )
+
+
+def rdkit_support_artifact_verification(smiles: str):
+    fixture = rdkit_support_artifact_fixture(smiles)
+    from grimace._south_star1.writer_support_artifact_fact_verifier import verify_writer_support_artifact_for_facts
+    return verify_writer_support_artifact_for_facts(facts=fixture.facts, runtime_options=fixture.runtime_options, artifact=fixture.artifact)

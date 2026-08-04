@@ -1,29 +1,10 @@
-from __future__ import annotations
+
 
 import unittest
-
-from tests.south_star1.writer_support_artifact_directional_test_support import (
-    directional_discharge_key_pairs, directional_transition_manifest,
-    directional_transition_branch_and_manifest, bond_occurrence_terms_for_branch,
-    mutate_directional_restriction_sign, mutate_directional_canonical_orientation,
-    mutate_directional_model_field, remove_directional_model, remove_directional_restriction,
-    duplicate_directional_model_site, mutate_directional_successor_snapshot,
-    set_directional_discharges, set_directional_discharges_by_keys,
-    remove_raw_lifecycle_capability, mutate_directional_term_mark, mutate_directional_term_bond,
-    remove_directional_successor_bond_occurrence, duplicate_directional_successor_bond_occurrence,
-    mutate_directional_successor_snapshot_unrelated,
-)
-from tests.south_star1.writer_support_artifact_fixtures import (
-    directional_support_artifact_fixture, shared_acyclic_directional_support_artifact_fixture,
-)
-from tests.south_star1.writer_support_artifact_queries import (
-    require_structurally_valid_support_artifact,
-    support_strings,
-)
-from tests.south_star1.writer_artifact_test_support import closed_term_field
-from grimace._south_star1.writer_support_artifact_checker import verify_writer_support_artifact_consistency
+from tests.south_star1.writer_support_artifact_directional_test_support import mutate_directional_restriction_sign, mutate_directional_canonical_orientation, mutate_directional_model_field, remove_directional_model, remove_directional_restriction, duplicate_directional_model_site, mutate_directional_successor_snapshot, set_directional_discharges, set_directional_discharges_by_keys, remove_raw_lifecycle_capability, mutate_directional_term_mark, remove_directional_successor_bond_occurrence, duplicate_directional_successor_bond_occurrence, mutate_directional_successor_snapshot_unrelated
+from tests.south_star1.writer_support_artifact_fixtures import directional_support_artifact_fixture, shared_acyclic_directional_support_artifact_fixture
+from tests.south_star1.writer_support_artifact_queries import require_structurally_valid_support_artifact
 from grimace._south_star1.writer_support_artifact_fact_verifier import verify_writer_support_artifact_for_facts
-
 
 class WriterSupportArtifactDirectionalForgeryTest(unittest.TestCase):
 

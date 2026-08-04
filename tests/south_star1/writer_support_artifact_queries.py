@@ -1,36 +1,15 @@
 """Shared navigation and verifier adapters for rich support artifacts."""
 
-from __future__ import annotations
-
 from typing import Mapping, MutableMapping
-
 from tests.south_star1.writer_artifact_test_support import closed_term_digest
-
-from grimace._south_star1.writer_support_artifact_checker import (
-    verify_writer_support_artifact_consistency,
-)
-from grimace._south_star1.writer_support_artifact_offline_verifier import (
-    classify_residual_stereo_obligations_offline,
-)
-from grimace._south_star1.writer_support_artifact_offline_verifier import (
-    verify_branch_projection_identities_offline,
-)
-from grimace._south_star1.writer_support_artifact_offline_verifier import (
-    verify_graph_ring_branch_deltas_offline,
-)
-from grimace._south_star1.writer_support_artifact_offline_verifier import (
-    verify_local_branch_successor_evidence_offline,
-)
-from grimace._south_star1.writer_support_artifact_offline_verifier import (
-    verify_support_image_coverage_offline,
-)
-from grimace._south_star1.writer_support_artifact_offline_verifier import (
-    verify_support_string_replay_paths_offline,
-)
-from grimace._south_star1.writer_support_artifact_offline_verifier import (
-    verify_terminal_support_identities_offline,
-)
-
+from grimace._south_star1.writer_support_artifact_checker import verify_writer_support_artifact_consistency
+from grimace._south_star1.writer_support_artifact_offline_verifier import classify_residual_stereo_obligations_offline
+from grimace._south_star1.writer_support_artifact_offline_verifier import verify_branch_projection_identities_offline
+from grimace._south_star1.writer_support_artifact_offline_verifier import verify_graph_ring_branch_deltas_offline
+from grimace._south_star1.writer_support_artifact_offline_verifier import verify_local_branch_successor_evidence_offline
+from grimace._south_star1.writer_support_artifact_offline_verifier import verify_support_image_coverage_offline
+from grimace._south_star1.writer_support_artifact_offline_verifier import verify_support_string_replay_paths_offline
+from grimace._south_star1.writer_support_artifact_offline_verifier import verify_terminal_support_identities_offline
 
 def support_artifact_object_index(
     artifact: Mapping[str, object],

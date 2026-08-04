@@ -1,25 +1,16 @@
 """Copy-on-read fixtures for rich support-artifact contract tests."""
 
-from __future__ import annotations
-
 from copy import deepcopy
 from dataclasses import dataclass
 from functools import lru_cache
-
 from grimace._south_star1.facts import MoleculeFacts
 from grimace._south_star1.policy import SmilesPolicy
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.rdkit_adapter import RdkitOrdinaryExtractionOptions
 from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_smiles
-from grimace._south_star1.writer_support_artifact_envelope import (
-    writer_support_artifact_envelope_for_prefix_read,
-)
-from grimace._south_star1.writer_support_artifact_envelope import (
-    writer_support_artifact_envelope_for_snapshot,
-)
-from grimace._south_star1.writer_snapshot_prefix_envelope import (
-    writer_snapshot_prefix_read_envelope_for_emitted_texts,
-)
+from grimace._south_star1.writer_support_artifact_envelope import writer_support_artifact_envelope_for_prefix_read
+from grimace._south_star1.writer_support_artifact_envelope import writer_support_artifact_envelope_for_snapshot
+from grimace._south_star1.writer_snapshot_prefix_envelope import writer_snapshot_prefix_read_envelope_for_emitted_texts
 from tests.south_star1.helpers import directional_facts
 from tests.south_star1.helpers import shared_acyclic_directional_facts
 from tests.south_star1.helpers import tetrahedral_facts
@@ -27,11 +18,8 @@ from tests.south_star1.helpers import two_atom_facts
 from tests.south_star1.writer_test_context import initial_writer_snapshot
 from tests.south_star1.writer_test_context import prepare_writer_facts
 from tests.south_star1.writer_test_context import writer_runtime_options
-from tests.south_star1.writer_test_fixtures import (
-    terminal_tetra_center_facts,
-)
+from tests.south_star1.writer_test_fixtures import terminal_tetra_center_facts
 from tests.south_star1.writer_test_fixtures import terminal_tetra_center_policy
-
 
 @dataclass(frozen=True, slots=True)
 class WriterSupportArtifactFixture:

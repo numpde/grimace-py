@@ -5,12 +5,9 @@ branch-transition artifact tests. This module exercises the stronger,
 exhaustive rich support-artifact representation and is intentionally diagnostic.
 """
 
-from __future__ import annotations
-
 import unittest
 import os
 from copy import deepcopy
-
 from grimace._south_star1.policy import DirectionMark
 from grimace._south_star1.writer_envelope_work import WriterEnvelopeWorkBudget
 from grimace._south_star1.writer_support_artifact_checker import verify_writer_support_artifact_consistency
@@ -22,31 +19,7 @@ from tests.south_star1.writer_test_fixtures import directional_ring_carrier_fact
 from tests.south_star1.writer_artifact_test_support import closed_term_field
 from tests.south_star1.writer_support_artifact_directional_slow_fixtures import directional_ring_opening_slow_fixture
 from tests.south_star1.writer_support_artifact_directional_slow_fixtures import directional_ring_pair_slow_fixture
-from tests.south_star1.writer_support_artifact_directional_slow_test_support import (
-    forge_ring_bond_occurrence_added,
-    forge_ring_carrier_orientation,
-    forge_ring_compatible_seconds,
-    forge_ring_domain_intersection,
-    forge_ring_factor_discharge,
-    forge_ring_false_change,
-    forge_ring_false_noop,
-    forge_ring_lifecycle_operation,
-    forge_ring_missing_term,
-    forge_ring_pair_carrier,
-    forge_ring_pair_compatible_choices,
-    forge_ring_pair_discharge,
-    forge_ring_pair_first_mark,
-    forge_ring_pair_missing_term,
-    forge_ring_pair_occurrence,
-    forge_ring_pair_orientation,
-    forge_ring_pair_restriction,
-    forge_ring_pair_second_mark,
-    forge_ring_pair_successor,
-    forge_ring_source_snapshot,
-    forge_ring_successor_open_endpoint,
-    forge_ring_term_mark,
-    ring_pair_branch_and_manifest,
-)
+from tests.south_star1.writer_support_artifact_directional_slow_test_support import forge_ring_bond_occurrence_added, forge_ring_carrier_orientation, forge_ring_compatible_seconds, forge_ring_domain_intersection, forge_ring_factor_discharge, forge_ring_false_change, forge_ring_false_noop, forge_ring_lifecycle_operation, forge_ring_missing_term, forge_ring_pair_carrier, forge_ring_pair_compatible_choices, forge_ring_pair_discharge, forge_ring_pair_first_mark, forge_ring_pair_missing_term, forge_ring_pair_occurrence, forge_ring_pair_orientation, forge_ring_pair_restriction, forge_ring_pair_second_mark, forge_ring_pair_successor, forge_ring_source_snapshot, forge_ring_successor_open_endpoint, forge_ring_term_mark, ring_pair_branch_and_manifest
 from tests.south_star1.writer_support_artifact_queries import classify_obligation_replay
 from tests.south_star1.writer_support_artifact_queries import first_graph_ring_delta_branch
 from tests.south_star1.writer_support_artifact_queries import first_graph_ring_delta_event
@@ -54,7 +27,6 @@ from tests.south_star1.writer_support_artifact_queries import require_structural
 from tests.south_star1.writer_test_context import initial_writer_snapshot
 from tests.south_star1.writer_test_context import prepare_writer_facts
 from tests.south_star1.writer_test_context import writer_runtime_options
-
 
 class WriterSupportArtifactSlowTest(unittest.TestCase):
     @classmethod

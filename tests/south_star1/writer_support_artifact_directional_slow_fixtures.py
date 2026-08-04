@@ -1,11 +1,8 @@
 """Exhaustive directional-ring rich-artifact diagnostic fixtures."""
 
-from __future__ import annotations
-
 from collections import deque
 from copy import deepcopy
 from functools import lru_cache
-
 from grimace._south_star1.ids import BondId
 from grimace._south_star1.policy import DirectionMark
 from grimace._south_star1.writer_events import WriterRingEndpointEmitted
@@ -18,7 +15,6 @@ from tests.south_star1.writer_test_context import initial_writer_snapshot
 from tests.south_star1.writer_test_context import prepare_writer_facts
 from tests.south_star1.writer_test_context import writer_runtime_options
 from tests.south_star1.writer_test_fixtures import directional_ring_carrier_facts
-
 
 @lru_cache(maxsize=1)
 def _cached_directional_ring_opening_slow_fixture():

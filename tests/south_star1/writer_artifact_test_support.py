@@ -1,14 +1,10 @@
 """Shared navigation and digest primitives for writer artifact tests."""
 
-from __future__ import annotations
-
 from collections.abc import Mapping, MutableMapping
-
 from grimace._south_star1.writer_envelope_terms import _digest_terms_bounded
 from grimace._south_star1.writer_envelope_terms import _identity_digest
 from grimace._south_star1.writer_envelope_work import WriterEnvelopeWorkBudget
 from grimace._south_star1.writer_envelope_work import default_writer_envelope_work_budget
-
 
 def _budget(budget: WriterEnvelopeWorkBudget | None) -> WriterEnvelopeWorkBudget:
     return default_writer_envelope_work_budget(budget)

@@ -1,31 +1,19 @@
 """Coherent test-only resealing for writer artifact forgeries."""
 
-from __future__ import annotations
-
 from collections.abc import MutableMapping
-
-from grimace._south_star1.writer_branch_transition_artifact import (
-    branch_transition_artifact_manifest,
-)
+from grimace._south_star1.writer_branch_transition_artifact import branch_transition_artifact_manifest
 from grimace._south_star1.writer_envelope_terms import _digest_terms_bounded
 from grimace._south_star1.writer_envelope_terms import _identity_digest
 from grimace._south_star1.writer_envelope_work import WriterEnvelopeWorkBudget
 from grimace._south_star1.writer_envelope_work import default_writer_envelope_work_budget
 from grimace._south_star1.writer_support_artifact_checker import artifact_manifest
 from grimace._south_star1.writer_support_artifact_checker import artifact_metrics
-from grimace._south_star1.writer_support_artifact_checker import (
-    support_artifact_object_identity_term,
-)
-from grimace._south_star1.writer_terminalization_artifact import (
-    terminalization_artifact_manifest,
-)
-
+from grimace._south_star1.writer_support_artifact_checker import support_artifact_object_identity_term
+from grimace._south_star1.writer_terminalization_artifact import terminalization_artifact_manifest
+from tests.south_star1.writer_artifact_test_support import unique_artifact_object_by_kind
 
 def _budget(budget):
     return default_writer_envelope_work_budget(budget)
-from tests.south_star1.writer_artifact_test_support import (
-    unique_artifact_object_by_kind,
-)
 
 
 def refresh_text_projection_payload_digest(

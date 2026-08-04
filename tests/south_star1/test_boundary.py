@@ -233,21 +233,19 @@ class SouthStar1BoundaryTest(unittest.TestCase):
         tree = ast.parse(source)
 
         self.assertFalse(_imports_rdkit(tree))
-        imported_modules = {
-            node.module
-            for node in ast.walk(tree)
-            if isinstance(node, ast.ImportFrom)
-        }
-        for name in (
-            "writer_frontier",
-            "writer_runtime",
-            "writer_snapshot",
-            "writer_support",
-            "writer_support_certificates",
-            "writer_support_artifact_envelope",
-            "rdkit_adapter",
-        ):
-            self.assertNotIn(name, imported_modules)
+        scan = scan_module_boundaries(
+            path,
+            banned_modules={
+                "writer_frontier",
+                "writer_runtime",
+                "writer_snapshot",
+                "writer_support",
+                "writer_support_certificates",
+                "writer_support_artifact_envelope",
+                "rdkit_adapter",
+            },
+        )
+        self.assertTrue(scan.clean, scan.violations)
         for name in (
             "_checked_writer_frontier_product",
             "_snapshot_advance_writer_frontier_product",
@@ -264,19 +262,17 @@ class SouthStar1BoundaryTest(unittest.TestCase):
             source = path.read_text(encoding="utf-8")
             tree = ast.parse(source)
             self.assertFalse(_imports_rdkit(tree))
-            imported_modules = {
-                node.module
-                for node in ast.walk(tree)
-                if isinstance(node, ast.ImportFrom)
-            }
-            for name in (
-                "writer_frontier",
-                "writer_runtime",
-                "writer_support",
-                "writer_support_certificates",
-                "rdkit_adapter",
-            ):
-                self.assertNotIn(name, imported_modules)
+            scan = scan_module_boundaries(
+                path,
+                banned_modules={
+                    "writer_frontier",
+                    "writer_runtime",
+                    "writer_support",
+                    "writer_support_certificates",
+                    "rdkit_adapter",
+                },
+            )
+            self.assertTrue(scan.clean, scan.violations)
 
     def test_writer_support_artifact_offline_verifier_boundary(self) -> None:
         path = SOUTH_STAR1_ROOT / "writer_support_artifact_offline_verifier.py"
@@ -284,21 +280,19 @@ class SouthStar1BoundaryTest(unittest.TestCase):
         tree = ast.parse(source)
 
         self.assertFalse(_imports_rdkit(tree))
-        imported_modules = {
-            node.module
-            for node in ast.walk(tree)
-            if isinstance(node, ast.ImportFrom)
-        }
-        for name in (
-            "writer_frontier",
-            "writer_runtime",
-            "writer_snapshot",
-            "writer_support",
-            "writer_support_certificates",
-            "writer_support_artifact_envelope",
-            "rdkit_adapter",
-        ):
-            self.assertNotIn(name, imported_modules)
+        scan = scan_module_boundaries(
+            path,
+            banned_modules={
+                "writer_frontier",
+                "writer_runtime",
+                "writer_snapshot",
+                "writer_support",
+                "writer_support_certificates",
+                "writer_support_artifact_envelope",
+                "rdkit_adapter",
+            },
+        )
+        self.assertTrue(scan.clean, scan.violations)
         for name in (
             "_checked_writer_frontier_product",
             "_iter_writer_snapshot_certified_support_strings",
@@ -314,26 +308,17 @@ class SouthStar1BoundaryTest(unittest.TestCase):
         tree = ast.parse(source)
 
         self.assertFalse(_imports_rdkit(tree))
-        imported_modules = {
-            node.module
-            for node in ast.walk(tree)
-            if isinstance(node, ast.ImportFrom)
-        }
-        imported_names = {
-            alias.name
-            for node in ast.walk(tree)
-            if isinstance(node, (ast.Import, ast.ImportFrom))
-            for alias in node.names
-        }
-        for name in (
-            "writer_frontier",
-            "writer_runtime",
-            "writer_snapshot",
-            "writer_support",
-            "writer_support_certificates",
-        ):
-            self.assertNotIn(name, imported_modules)
-            self.assertNotIn(name, imported_names)
+        scan = scan_module_boundaries(
+            path,
+            banned_modules={
+                "writer_frontier",
+                "writer_runtime",
+                "writer_snapshot",
+                "writer_support",
+                "writer_support_certificates",
+            },
+        )
+        self.assertTrue(scan.clean, scan.violations)
         for name in (
             "_checked_writer_frontier_product",
             "_snapshot_advance_writer_frontier_product",
@@ -401,6 +386,43 @@ class SouthStar1BoundaryTest(unittest.TestCase):
         )
         self.assertEqual(len(observations), 1)
         self.assertTrue(observations[0].inside_type_checking)
+
+    def test_module_boundary_helper_normalizes_all_import_forms(self) -> None:
+        source = "\n".join(
+            (
+                "import grimace._south_star1.writer_frontier as frontier",
+                "from grimace._south_star1 import writer_runtime as runtime",
+                "from grimace._south_star1.writer_snapshot import helper",
+                "from . import writer_support",
+                "from .writer_support_certificates import helper as certificate",
+                "",
+            )
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "sample.py"
+            path.write_text(source, encoding="utf-8")
+            scan = scan_module_boundaries(
+                path,
+                banned_modules={
+                    "writer_frontier",
+                    "writer_runtime",
+                    "writer_snapshot",
+                    "writer_support",
+                    "writer_support_certificates",
+                },
+            )
+
+        self.assertFalse(scan.clean)
+        self.assertEqual(
+            scan.banned_imports,
+            (
+                "grimace._south_star1.writer_frontier",
+                "grimace._south_star1.writer_runtime",
+                "grimace._south_star1.writer_snapshot",
+                "writer_support",
+                "writer_support_certificates",
+            ),
+        )
 
     def test_deleted_south_star_prototype_stays_deleted(self) -> None:
         with self.assertRaises(ModuleNotFoundError):
@@ -515,19 +537,8 @@ class SouthStar1BoundaryTest(unittest.TestCase):
             "enumerate_stereo_support",
             "enumerate_traversal_skeletons",
         }
-        banned_imports: list[str] = []
         calls: list[str] = []
         for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                banned_imports.extend(
-                    alias.name
-                    for alias in node.names
-                    if alias.name.split(".", 1)[0] in banned_modules
-                )
-            if isinstance(node, ast.ImportFrom):
-                module = node.module or ""
-                if module.split(".", 1)[0] in banned_modules:
-                    banned_imports.append(module)
             if isinstance(node, ast.Call):
                 if isinstance(node.func, ast.Name):
                     calls.append(node.func.id)
@@ -535,8 +546,8 @@ class SouthStar1BoundaryTest(unittest.TestCase):
                     calls.append(node.func.attr)
 
         self.assertFalse(_imports_rdkit(tree))
-        self.assertEqual(banned_imports, [])
-        self.assertEqual(sorted(set(calls) & banned_calls), [])
+        scan = scan_module_boundaries(path, banned_modules=banned_modules)
+        self.assertTrue(scan.clean, scan.violations)
         self.assertEqual(sorted(set(calls) & banned_calls), [])
 
     def test_online_residual_kernel_boundary_is_rdkit_and_artifact_free(self) -> None:
@@ -555,21 +566,9 @@ class SouthStar1BoundaryTest(unittest.TestCase):
                     "support_artifact_schema",
                     "support_enumeration",
                 }
-                banned_imports: list[str] = []
-                for node in ast.walk(tree):
-                    if isinstance(node, ast.Import):
-                        banned_imports.extend(
-                            alias.name
-                            for alias in node.names
-                            if alias.name.split(".", 1)[0] in banned_modules
-                        )
-                    if isinstance(node, ast.ImportFrom):
-                        module = node.module or ""
-                        if module.split(".", 1)[0] in banned_modules:
-                            banned_imports.append(module)
-
                 self.assertFalse(_imports_rdkit(tree))
-                self.assertEqual(banned_imports, [])
+                scan = scan_module_boundaries(path, banned_modules=banned_modules)
+                self.assertTrue(scan.clean, scan.violations)
 
 
 def _imports_rdkit(tree: ast.AST) -> bool:

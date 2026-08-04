@@ -1,7 +1,10 @@
 """Non-test support for rich support-artifact relationships."""
 
 from copy import deepcopy
-from tests.south_star1.writer_artifact_resealing import reseal_support_artifact
+from tests.south_star1.writer_artifact_resealing import (
+    refresh_text_projection_payload_digest,
+    reseal_support_artifact,
+)
 from tests.south_star1.writer_artifact_test_support import closed_term_digest
 from tests.south_star1.writer_artifact_test_support import closed_term_field
 from tests.south_star1.writer_artifact_test_support import set_closed_term_field
@@ -323,9 +326,9 @@ def refresh_ring_successor_cursor_change(
         cursor["digest"]
     )
     refresh_kind_manifest_digest(branch["payload"]["graph_ring_delta"], operation="test.graph_ring_delta.digest")
-    projection["payload"]["digest"] = text_projection_identity_digest(
-        projection["payload"]
+    refresh_text_projection_payload_digest(
+        projection["payload"],
+        operation="test.text_projection.cursor_change",
     )
     reseal_support_artifact(artifact)
-
 

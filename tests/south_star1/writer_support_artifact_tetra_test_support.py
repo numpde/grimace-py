@@ -4,6 +4,7 @@ from copy import deepcopy
 from grimace._south_star1.writer_envelope_terms import _identity_digest
 from tests.south_star1.writer_artifact_test_support import closed_term_digest
 from tests.south_star1.writer_artifact_test_support import closed_term_field
+from tests.south_star1.writer_support_artifact_queries import single_cursor_state
 from tests.south_star1.writer_support_artifact_queries import text_projection_for_branch
 from tests.south_star1.writer_support_artifact_transition_test_support import linked_tetra_lifecycle_manifest
 
@@ -30,7 +31,7 @@ def append_unrelated_raw_lifecycle(branch, *, manifest):
 def different_local_order_digest(artifact, *, branch, cursor_name: str, atom: int) -> str:
     projection = text_projection_for_branch(artifact, branch)
     cursor = projection["payload"][cursor_name]
-    state = cursor["terms"]["fields"][0][1][0][0]
+    state = single_cursor_state(cursor)
     stereo = closed_term_field(state, "stereo_state")
     for record in closed_term_field(stereo, "local_orders"):
         if closed_term_field(record, "atom") != atom:
@@ -52,4 +53,3 @@ def refresh_local_order_event_identity_digest(event) -> None:
         ],
     }
     event["local_order_identity_digest"] = _identity_digest(identity)
-

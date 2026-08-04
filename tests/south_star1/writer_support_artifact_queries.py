@@ -2,6 +2,7 @@
 
 from typing import Mapping, MutableMapping
 from tests.south_star1.writer_artifact_test_support import closed_term_digest
+from tests.south_star1.writer_artifact_test_support import closed_term_field
 from grimace._south_star1.writer_support_artifact_checker import verify_writer_support_artifact_consistency
 from grimace._south_star1.writer_support_artifact_offline_verifier import classify_residual_stereo_obligations_offline
 from grimace._south_star1.writer_support_artifact_offline_verifier import verify_branch_projection_identities_offline
@@ -126,14 +127,14 @@ def text_projection_for_branch(artifact, branch):
 
 
 def single_cursor_state(cursor):
-    states = cursor["terms"]["fields"][0][1]
+    states = closed_term_field(cursor["terms"], "weighted_states")
     if len(states) != 1:
         raise AssertionError("expected single-state cursor")
     return states[0][0]
 
 
 def cursor_state_by_digest(cursor, *, digest: str):
-    states = cursor["terms"]["fields"][0][1]
+    states = closed_term_field(cursor["terms"], "weighted_states")
     matches = [
         state
         for state, _weight in states

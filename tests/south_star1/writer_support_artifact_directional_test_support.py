@@ -1,7 +1,10 @@
 """Non-test support for rich support-artifact relationships."""
 
 from copy import deepcopy
-from tests.south_star1.writer_artifact_resealing import reseal_support_artifact
+from tests.south_star1.writer_artifact_resealing import (
+    refresh_text_projection_payload_digest,
+    reseal_support_artifact,
+)
 from tests.south_star1.writer_artifact_test_support import closed_term_digest
 from tests.south_star1.writer_artifact_test_support import closed_term_field
 from tests.south_star1.writer_artifact_test_support import set_closed_term_field
@@ -13,7 +16,6 @@ from tests.south_star1.writer_support_artifact_queries import single_cursor_stat
 from tests.south_star1.writer_support_artifact_transition_test_support import linked_tetra_lifecycle_manifest
 from tests.south_star1.writer_support_artifact_transition_test_support import refresh_linked_raw_lifecycle_residual_digest
 from tests.south_star1.writer_support_artifact_transition_test_support import propagate_text_projection_cursor_change
-from tests.south_star1.writer_support_artifact_transition_test_support import text_projection_identity_digest
 
 
 
@@ -255,8 +257,9 @@ def remove_directional_successor_bond_occurrence(artifact, *, bond: int) -> None
         cursor["digest"]
     )
     refresh_kind_manifest_digest(branch["payload"]["graph_ring_delta"], operation="test.graph_ring_delta.digest")
-    projection["payload"]["digest"] = text_projection_identity_digest(
-        projection["payload"]
+    refresh_text_projection_payload_digest(
+        projection["payload"],
+        operation="test.text_projection.cursor_change",
     )
     reseal_support_artifact(artifact)
 
@@ -299,8 +302,9 @@ def duplicate_directional_successor_bond_occurrence(artifact, *, bond: int) -> N
         cursor["digest"]
     )
     refresh_kind_manifest_digest(branch["payload"]["graph_ring_delta"], operation="test.graph_ring_delta.digest")
-    projection["payload"]["digest"] = text_projection_identity_digest(
-        projection["payload"]
+    refresh_text_projection_payload_digest(
+        projection["payload"],
+        operation="test.text_projection.cursor_change",
     )
     reseal_support_artifact(artifact)
 

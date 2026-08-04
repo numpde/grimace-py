@@ -15,9 +15,7 @@ from tests.south_star1.helpers import directional_facts
 from tests.south_star1.helpers import shared_acyclic_directional_facts
 from tests.south_star1.helpers import tetrahedral_facts
 from tests.south_star1.helpers import two_atom_facts
-from tests.south_star1.writer_test_context import initial_writer_snapshot
-from tests.south_star1.writer_test_context import prepare_writer_facts
-from tests.south_star1.writer_test_context import writer_runtime_options
+from tests.south_star1.writer_test_context import writer_test_context
 from tests.south_star1.writer_test_fixtures import terminal_tetra_center_facts
 from tests.south_star1.writer_test_fixtures import terminal_tetra_center_policy
 
@@ -34,13 +32,20 @@ def _build_snapshot_artifact(
     rooted_at_atom: int = -1,
     policy: SmilesPolicy | None = None,
 ) -> WriterSupportArtifactFixture:
-    options = writer_runtime_options(rooted_at_atom=rooted_at_atom)
-    prepared = prepare_writer_facts(facts, policy=policy)
-    artifact = writer_support_artifact_envelope_for_snapshot(
-        prepared=prepared,
-        snapshot=initial_writer_snapshot(prepared, options),
+    context = writer_test_context(
+        facts,
+        rooted_at_atom=rooted_at_atom,
+        policy=policy,
     )
-    return WriterSupportArtifactFixture(facts, options, deepcopy(artifact))
+    artifact = writer_support_artifact_envelope_for_snapshot(
+        prepared=context.prepared,
+        snapshot=context.initial_snapshot,
+    )
+    return WriterSupportArtifactFixture(
+        facts,
+        context.runtime_options,
+        deepcopy(artifact),
+    )
 
 
 def support_artifact_fixture(
@@ -88,18 +93,21 @@ def rdkit_support_artifact_fixture(smiles: str) -> WriterSupportArtifactFixture:
 @lru_cache(maxsize=1)
 def _cached_completed_prefix_support_artifact_fixture():
     facts = two_atom_facts()
-    options = writer_runtime_options()
-    prepared = prepare_writer_facts(facts)
+    context = writer_test_context(facts)
     prefix = writer_snapshot_prefix_read_envelope_for_emitted_texts(
-        prepared=prepared,
-        snapshot=initial_writer_snapshot(prepared, options),
+        prepared=context.prepared,
+        snapshot=context.initial_snapshot,
         emitted_texts=("C", "C"),
     )
     artifact = writer_support_artifact_envelope_for_prefix_read(
-        prepared=prepared,
+        prepared=context.prepared,
         prefix_read_envelope=prefix,
     )
-    return WriterSupportArtifactFixture(facts, options, deepcopy(artifact))
+    return WriterSupportArtifactFixture(
+        facts,
+        context.runtime_options,
+        deepcopy(artifact),
+    )
 
 
 def completed_prefix_support_artifact_fixture():
@@ -144,9 +152,3 @@ def terminal_tetra_support_artifact_fixture():
         rooted_at_atom=0,
         policy=terminal_tetra_center_policy(),
     )
-
-
-def rdkit_support_artifact_verification(smiles: str):
-    fixture = rdkit_support_artifact_fixture(smiles)
-    from grimace._south_star1.writer_support_artifact_fact_verifier import verify_writer_support_artifact_for_facts
-    return verify_writer_support_artifact_for_facts(facts=fixture.facts, runtime_options=fixture.runtime_options, artifact=fixture.artifact)

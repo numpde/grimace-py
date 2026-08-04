@@ -1,8 +1,10 @@
 """Non-test support for rich support-artifact relationships."""
 
-from grimace._south_star1.writer_envelope_terms import _identity_digest
 from tests.south_star1.writer_artifact_test_support import artifact_object_by_id
 from tests.south_star1.writer_artifact_test_support import refresh_kind_manifest_digest
+from tests.south_star1.writer_artifact_resealing import (
+    refresh_text_projection_payload_digest,
+)
 
 
 
@@ -47,20 +49,6 @@ def refresh_linked_raw_lifecycle_residual_digest(
     lifecycle[field] = digest
 
 
-def text_projection_identity_digest(payload) -> str:
-    return _identity_digest(
-        {
-            "source_cursor_digest": payload["source_cursor"]["digest"],
-            "emitted_text": payload["emitted_text"],
-            "successor_cursor_digest": payload["successor_cursor"]["digest"],
-            "immediate_multiplicity": payload["immediate_multiplicity"],
-            "support_count": payload["support_count"],
-            "completion_count": payload["completion_count"],
-            "branch_certificate_digests": payload["branch_certificate_digests"],
-        },
-    )
-
-
 def propagate_text_projection_cursor_change(
     artifact,
     *,
@@ -75,7 +63,10 @@ def propagate_text_projection_cursor_change(
         payload = item["payload"]
         if payload["source_cursor"]["digest"] == old_cursor_digest:
             payload["source_cursor"] = new_cursor
-            payload["digest"] = text_projection_identity_digest(payload)
+            refresh_text_projection_payload_digest(
+                payload,
+                operation="test.text_projection.cursor_change",
+            )
             for branch_ref in payload["branch_support_refs"]:
                 branch = artifact_object_by_id(artifact, branch_ref)
                 branch["payload"]["source_cursor_digest"] = new_cursor["digest"]
@@ -103,5 +94,3 @@ def propagate_text_projection_cursor_change(
         payload = item["payload"]
         if payload["source_cursor"]["digest"] == old_cursor_digest:
             payload["source_cursor"] = new_cursor
-
-

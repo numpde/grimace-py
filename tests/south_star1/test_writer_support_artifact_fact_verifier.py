@@ -16,7 +16,10 @@ from tests.south_star1.writer_test_context import initial_writer_snapshot
 from tests.south_star1.writer_test_context import prepare_writer_facts
 from tests.south_star1.writer_test_context import writer_runtime_options
 from tests.south_star1.helpers import two_atom_facts
-from tests.south_star1.writer_support_artifact_fixtures import rdkit_support_artifact_fixture, rdkit_support_artifact_verification, support_artifact_fixture
+from tests.south_star1.writer_support_artifact_fixtures import (
+    rdkit_support_artifact_fixture,
+    support_artifact_fixture,
+)
 
 
 
@@ -26,7 +29,12 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
     def test_facts_bound_verifier_reports_bracket_atom_offline_check(self) -> None:
         for smiles in ("[N+]", "[NH+]", "[NH2+]", "[NH3+]", "[NH4+]", "[O-]", "[OH-]"):
             with self.subTest(smiles=smiles):
-                verification = rdkit_support_artifact_verification(smiles)
+                fixture = rdkit_support_artifact_fixture(smiles)
+                verification = verify_writer_support_artifact_for_facts(
+                    facts=fixture.facts,
+                    runtime_options=fixture.runtime_options,
+                    artifact=fixture.artifact,
+                )
 
                 self.assertTrue(verification.accepted, verification.reason)
                 self.assertIn(
@@ -37,7 +45,12 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
                 self.assertTrue(verification.offline_replay_complete)
 
     def test_facts_bound_verifier_reports_isotope_atom_offline_check(self) -> None:
-        verification = rdkit_support_artifact_verification("[13CH4]")
+        fixture = rdkit_support_artifact_fixture("[13CH4]")
+        verification = verify_writer_support_artifact_for_facts(
+            facts=fixture.facts,
+            runtime_options=fixture.runtime_options,
+            artifact=fixture.artifact,
+        )
 
         self.assertTrue(verification.accepted, verification.reason)
         self.assertIn(
@@ -50,7 +63,12 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
     def test_facts_bound_verifier_reports_joint_double_closure_offline_check(
         self,
     ) -> None:
-        verification = rdkit_support_artifact_verification("C1=CC1")
+        fixture = rdkit_support_artifact_fixture("C1=CC1")
+        verification = verify_writer_support_artifact_for_facts(
+            facts=fixture.facts,
+            runtime_options=fixture.runtime_options,
+            artifact=fixture.artifact,
+        )
 
         self.assertTrue(verification.accepted, verification.reason)
         self.assertIn(
@@ -62,7 +80,12 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
     def test_facts_bound_verifier_reports_joint_triple_closure_offline_check(
         self,
     ) -> None:
-        verification = rdkit_support_artifact_verification("C1#CC1")
+        fixture = rdkit_support_artifact_fixture("C1#CC1")
+        verification = verify_writer_support_artifact_for_facts(
+            facts=fixture.facts,
+            runtime_options=fixture.runtime_options,
+            artifact=fixture.artifact,
+        )
 
         self.assertTrue(verification.accepted, verification.reason)
         self.assertIn(

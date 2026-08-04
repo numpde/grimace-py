@@ -1,4 +1,6 @@
+"""Bounded directional rich support-artifact replay contracts."""
 
+from __future__ import annotations
 
 import unittest
 from tests.south_star1.writer_support_artifact_directional_test_support import directional_discharge_key_pairs, directional_transition_manifest, directional_transition_branch_and_manifest, bond_occurrence_terms_for_branch

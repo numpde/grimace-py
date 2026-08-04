@@ -6,14 +6,14 @@ from grimace._south_star1.errors import SouthStarError
 from grimace._south_star1.facts import StereoFacts
 from grimace._south_star1.writer_support_artifact_offline_verifier import validate_writer_bracket_atom_text_against_facts
 from grimace._south_star1.writer_support_artifact_offline_verifier import verify_writer_support_artifact_offline_replay
-from grimace._south_star1.writer_support_artifact_envelope import writer_support_artifact_envelope_for_snapshot
 from tests.south_star1.writer_artifact_test_support import refresh_kind_manifest_digest
-from tests.south_star1.writer_test_context import initial_writer_snapshot
-from tests.south_star1.writer_test_context import prepare_writer_facts
-from tests.south_star1.writer_test_context import writer_runtime_options
 from tests.south_star1.helpers import tetrahedral_facts
 from tests.south_star1.writer_test_fixtures import directional_non_single_ring_carrier_facts
-from tests.south_star1.writer_support_artifact_fixtures import rdkit_graph_facts, rdkit_support_artifact_fixture
+from tests.south_star1.writer_support_artifact_fixtures import (
+    rdkit_graph_facts,
+    rdkit_support_artifact_fixture,
+    support_artifact_fixture,
+)
 from tests.south_star1.writer_support_artifact_queries import first_branch_support_object, first_graph_ring_delta_branch, first_graph_ring_delta_event, first_local_evidence, first_text_projection_object, verify_branch_projection_relation, verify_graph_ring_delta_relation, verify_local_branch_evidence_relation
 from tests.south_star1.writer_support_artifact_graph_test_support import first_directional_bond_delta_branch, first_closure_evidence_item, tetra_facts_with_implicit_h_only_outside_specified_site
 
@@ -187,12 +187,8 @@ class WriterSupportArtifactGraphRelationTest(unittest.TestCase):
         self,
     ) -> None:
         facts = directional_non_single_ring_carrier_facts()
-        prepared = prepare_writer_facts(facts)
-        options = writer_runtime_options(rooted_at_atom=0)
-        artifact = writer_support_artifact_envelope_for_snapshot(
-            prepared=prepared,
-            snapshot=initial_writer_snapshot(prepared, options),
-        )
+        fixture = support_artifact_fixture(facts, rooted_at_atom=0)
+        artifact = fixture.artifact
 
         accepted = verify_graph_ring_delta_relation(facts, artifact)
 

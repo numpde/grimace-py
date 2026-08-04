@@ -10,16 +10,13 @@ from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_smil
 from grimace._south_star1.writer_support_artifact_checker import verify_writer_support_artifact_consistency
 from grimace._south_star1.writer_support_artifact_fact_verifier import verify_writer_support_artifact_for_facts
 from grimace._south_star1.writer_support_artifact_envelope import verify_writer_support_artifact_envelope
-from grimace._south_star1.writer_support_artifact_envelope import writer_support_artifact_envelope_for_snapshot
 from tests.south_star1.writer_artifact_resealing import reseal_support_artifact
 from tests.south_star1.writer_artifact_test_support import closed_term_digest
 from tests.south_star1.writer_artifact_test_support import closed_term_field
 from tests.south_star1.writer_artifact_test_support import set_closed_term_field
 from tests.south_star1.writer_artifact_test_support import refresh_closed_term_digest_field
 from tests.south_star1.writer_artifact_test_support import refresh_kind_manifest_digest
-from tests.south_star1.writer_test_context import initial_writer_snapshot
-from tests.south_star1.writer_test_context import prepare_writer_facts
-from tests.south_star1.writer_test_context import writer_runtime_options
+from tests.south_star1.writer_test_context import writer_test_context
 from tests.south_star1.helpers import tetrahedral_facts
 from tests.south_star1.writer_support_artifact_fixtures import tetra_support_artifact_fixture
 from tests.south_star1.writer_support_artifact_queries import classify_obligation_replay, first_graph_ring_delta_event, first_residual_work_branch, require_structurally_valid_support_artifact, support_strings
@@ -264,13 +261,10 @@ class WriterSupportArtifactTetraTransitionTest(unittest.TestCase):
     def test_specified_tetra_residual_manifest_digest_mismatch_is_rejected(
         self,
     ) -> None:
-        facts = tetrahedral_facts()
-        prepared = prepare_writer_facts(facts)
-        options = writer_runtime_options()
-        artifact = writer_support_artifact_envelope_for_snapshot(
-            prepared=prepared,
-            snapshot=initial_writer_snapshot(prepared, options),
-        )
+        fixture = tetra_support_artifact_fixture()
+        facts = fixture.facts
+        options = fixture.runtime_options
+        artifact = fixture.artifact
         branch = first_residual_work_branch(
             artifact,
             operation="tetrahedral atom-token restriction",
@@ -698,12 +692,10 @@ class WriterSupportArtifactTetraTransitionTest(unittest.TestCase):
         site = facts.stereo.tetrahedral[0]
         self.assertIs(site.status, SiteStatus.SPECIFIED)
         self.assertIs(site.target, TetraValue.PLUS)
-        prepared = prepare_writer_facts(facts)
-        options = writer_runtime_options()
-        artifact = writer_support_artifact_envelope_for_snapshot(
-            prepared=prepared,
-            snapshot=initial_writer_snapshot(prepared, options),
-        )
+        context = writer_test_context(facts)
+        prepared = context.prepared
+        options = context.runtime_options
+        artifact = tetra_support_artifact_fixture().artifact
 
         structural = verify_writer_support_artifact_consistency(artifact)
         live = verify_writer_support_artifact_envelope(

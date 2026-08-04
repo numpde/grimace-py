@@ -4,20 +4,16 @@ from copy import deepcopy
 import unittest
 from grimace._south_star1.ordinary_policy import OrdinaryPolicyOptions
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
-from grimace._south_star1.writer_snapshot_prefix_envelope import writer_snapshot_prefix_read_envelope_for_emitted_texts
 from grimace._south_star1.writer_support_artifact_fact_verifier import OBJECT_KIND_OFFLINE_COVERAGE
 from grimace._south_star1.writer_support_artifact_fact_verifier import verify_writer_support_artifact_for_facts
-from grimace._south_star1.writer_support_artifact_envelope import writer_support_artifact_envelope_for_prefix_read
-from grimace._south_star1.writer_support_artifact_envelope import writer_support_artifact_envelope_for_snapshot
 from tests.south_star1.helpers import cco_facts
 from tests.south_star1.writer_artifact_resealing import reseal_support_artifact
 from tests.south_star1.writer_artifact_test_support import artifact_object_by_id
-from tests.south_star1.writer_test_context import initial_writer_snapshot
-from tests.south_star1.writer_test_context import prepare_writer_facts
 from tests.south_star1.writer_test_context import writer_runtime_options
 from tests.south_star1.helpers import two_atom_facts
 from tests.south_star1.writer_support_artifact_fixtures import (
     rdkit_support_artifact_fixture,
+    completed_prefix_support_artifact_fixture,
     support_artifact_fixture,
 )
 
@@ -148,18 +144,10 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         self.assertLessEqual(kinds, set(OBJECT_KIND_OFFLINE_COVERAGE))
 
     def test_prefix_artifact_verifies_against_matching_facts(self) -> None:
-        facts = two_atom_facts()
-        prepared = prepare_writer_facts(facts)
-        options = writer_runtime_options()
-        prefix = writer_snapshot_prefix_read_envelope_for_emitted_texts(
-            prepared=prepared,
-            snapshot=initial_writer_snapshot(prepared, options),
-            emitted_texts=("C", "C"),
-        )
-        artifact = writer_support_artifact_envelope_for_prefix_read(
-            prepared=prepared,
-            prefix_read_envelope=prefix,
-        )
+        fixture = completed_prefix_support_artifact_fixture()
+        facts = fixture.facts
+        options = fixture.runtime_options
+        artifact = fixture.artifact
 
         verification = verify_writer_support_artifact_for_facts(
             facts=facts,
@@ -173,13 +161,10 @@ class WriterSupportArtifactFactVerifierTest(unittest.TestCase):
         self.assertTrue(verification.offline_replay_complete)
 
     def test_snapshot_artifact_verifies_against_matching_facts(self) -> None:
-        facts = cco_facts()
-        prepared = prepare_writer_facts(facts)
-        options = writer_runtime_options()
-        artifact = writer_support_artifact_envelope_for_snapshot(
-            prepared=prepared,
-            snapshot=initial_writer_snapshot(prepared, options),
-        )
+        fixture = support_artifact_fixture(cco_facts())
+        facts = fixture.facts
+        options = fixture.runtime_options
+        artifact = fixture.artifact
 
         verification = verify_writer_support_artifact_for_facts(
             facts=facts,

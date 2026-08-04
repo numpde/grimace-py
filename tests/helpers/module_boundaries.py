@@ -39,6 +39,115 @@ class ModuleImportObservation:
     inside_type_checking: bool
 
 
+@dataclass(frozen=True, slots=True)
+class ModuleImportHygieneScan:
+    duplicate_bindings: tuple[str, ...]
+    unused_bindings: tuple[str, ...]
+    late_import_lines: tuple[int, ...]
+    nested_import_lines: tuple[int, ...]
+    star_import_lines: tuple[int, ...]
+    extra_string_expression_lines: tuple[int, ...]
+
+    @property
+    def clean(self) -> bool:
+        return not any(
+            (
+                self.duplicate_bindings,
+                self.unused_bindings,
+                self.late_import_lines,
+                self.nested_import_lines,
+                self.star_import_lines,
+                self.extra_string_expression_lines,
+            )
+        )
+
+
+def scan_module_import_hygiene(path: Path) -> ModuleImportHygieneScan:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    parent_by_child = _parent_map(tree)
+    bindings: list[str] = []
+    binding_nodes: list[tuple[str, ast.AST]] = []
+    late_import_lines: list[int] = []
+    nested_import_lines: list[int] = []
+    star_import_lines: list[int] = []
+
+    docstring = (
+        tree.body[0]
+        if tree.body
+        and isinstance(tree.body[0], ast.Expr)
+        and isinstance(tree.body[0].value, ast.Constant)
+        and isinstance(tree.body[0].value.value, str)
+        else None
+    )
+    executable_seen = False
+    for node in tree.body:
+        if node is docstring:
+            continue
+        if isinstance(node, ast.ImportFrom) and node.module == "__future__":
+            continue
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            if any(isinstance(parent_by_child.get(node), ast.AST) for _ in (0,)):
+                nested_import_lines.append(node.lineno)
+            if executable_seen:
+                late_import_lines.append(node.lineno)
+            for alias in node.names:
+                if alias.name == "*":
+                    star_import_lines.append(node.lineno)
+                    continue
+                binding = (
+                    alias.asname
+                    or alias.name.split(".", 1)[0]
+                    if isinstance(node, ast.Import)
+                    else alias.asname or alias.name
+                )
+                bindings.append(binding)
+                binding_nodes.append((binding, node))
+            continue
+        executable_seen = True
+
+    # Top-level imports have no parent in the map; imports in any enclosing
+    # function, class, conditional, or try block are nested imports.
+    nested_import_lines = [
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.Import, ast.ImportFrom))
+        and node not in tree.body
+    ]
+
+    counts: dict[str, int] = {}
+    for binding in bindings:
+        counts[binding] = counts.get(binding, 0) + 1
+    duplicate_bindings = sorted(
+        binding for binding, count in counts.items() if count > 1
+    )
+    imported_nodes = {id(node) for _, node in binding_nodes}
+    used = {
+        node.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Name)
+        and isinstance(node.ctx, ast.Load)
+        and id(node) not in imported_nodes
+    }
+    unused_bindings = sorted(
+        binding for binding in counts if binding not in used
+    )
+    extra_string_expression_lines = [
+        node.lineno
+        for node in tree.body[1:]
+        if isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Constant)
+        and isinstance(node.value.value, str)
+    ]
+    return ModuleImportHygieneScan(
+        duplicate_bindings=tuple(duplicate_bindings),
+        unused_bindings=tuple(unused_bindings),
+        late_import_lines=tuple(sorted(late_import_lines)),
+        nested_import_lines=tuple(sorted(nested_import_lines)),
+        star_import_lines=tuple(sorted(star_import_lines)),
+        extra_string_expression_lines=tuple(extra_string_expression_lines),
+    )
+
+
 def scan_module_boundaries(
     path: Path,
     *,

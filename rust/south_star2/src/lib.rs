@@ -469,6 +469,21 @@ mod tests {
     }
 
     #[test]
+    fn invalid_variable_is_rejected_without_consuming_an_id() {
+        let mut builder = ConstraintModelBuilder::new();
+
+        assert_eq!(
+            builder.add_variable(Domain::empty()),
+            Err(ConstraintModelError::EmptyInitialDomain)
+        );
+
+        let variable = builder
+            .add_variable(Domain::singleton(0).unwrap())
+            .unwrap();
+        assert_eq!(variable, VariableId::new(0));
+    }
+
+    #[test]
     fn constraint_model_assigns_stable_variable_and_factor_ids() {
         let mut builder = ConstraintModelBuilder::new();
         let left_domain = two_value_domain();
@@ -534,6 +549,10 @@ mod tests {
                 variable: right,
                 value_index: 2,
             })
+        );
+        assert_eq!(
+            builder.add_binary_relation(left, VariableId::new(99), [(0, 0)]),
+            Err(ConstraintModelError::UnknownVariable(VariableId::new(99)))
         );
         assert_eq!(
             builder.add_binary_relation(left, left, [(0, 0)]),

@@ -3,7 +3,7 @@
 //! All prepared factors are active in this initial slice. Factor lifecycle is
 //! added only when the walker has an event that genuinely needs it.
 
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fmt;
 use std::sync::Arc;
 
@@ -83,12 +83,13 @@ impl std::error::Error for NativeSolverError {}
 impl NativeSolverState {
     pub fn initial(model: Arc<ConstraintModel>) -> Result<Self, NativeSolverError> {
         let domains = model.initial_domains().collect::<Vec<_>>().into_boxed_slice();
-        let factor_ids = (0..model.factor_count())
-            .map(factor_id_from_index)
-            .collect::<Vec<_>>();
+        let factor_count = model.factor_count();
+        let variable_count = model.variable_count();
         let mut state = Self { model, domains };
-        state.propagate(factor_ids)?;
-        state.require_supported_components()?;
+        state.propagate((0..factor_count).map(factor_id_from_index))?;
+        state.require_supported_components(
+            (0..variable_count).map(variable_id_from_index),
+        )?;
         Ok(state)
     }
 
@@ -102,34 +103,56 @@ impl NativeSolverState {
         }
     }
 
-    /// Return a propagated successor without mutating the source state.
-    pub fn restricted(
+    /// Return one atomically restricted and propagated successor.
+    ///
+    /// Repeated restrictions for the same variable are intersected before any
+    /// candidate state is created. The source state is never mutated.
+    pub fn with_restrictions(
         &self,
-        variable: VariableId,
-        allowed: Domain,
+        restrictions: impl IntoIterator<Item = (VariableId, Domain)>,
     ) -> Result<(Self, PropagationSummary), NativeSolverError> {
-        let current = self
-            .domain(variable)
-            .ok_or(NativeSolverError::UnknownVariable(variable))?;
-        let restricted = current.intersect(allowed);
-        if restricted.is_empty() {
+        let mut domains_by_variable = BTreeMap::new();
+        let mut contradictory = false;
+        for (variable, allowed) in restrictions {
+            let current = self
+                .domain(variable)
+                .ok_or(NativeSolverError::UnknownVariable(variable))?;
+            let entry = domains_by_variable.entry(variable).or_insert(current);
+            *entry = (*entry).intersect(allowed);
+            contradictory |= entry.is_empty();
+        }
+        if contradictory {
             return Err(NativeSolverError::Contradiction);
         }
 
         let mut successor = self.clone();
-        if restricted == current {
+        let mut changed_variables = Vec::new();
+        let mut seed_factors = BTreeSet::new();
+
+        for (variable, restricted) in domains_by_variable {
+            let current = successor.domains[variable.index()];
+            if restricted == current {
+                continue;
+            }
+            successor.domains[variable.index()] = restricted;
+            changed_variables.push(variable);
+            seed_factors.extend(
+                successor
+                    .model
+                    .factors_for_variable(variable)
+                    .expect("known variable must have an adjacency row")
+                    .iter()
+                    .copied(),
+            );
+        }
+
+        if changed_variables.is_empty() {
             return Ok((successor, PropagationSummary::default()));
         }
 
-        successor.domains[variable.index()] = restricted;
-        let seeds = successor
-            .model
-            .factors_for_variable(variable)
-            .expect("known variable must have an adjacency row")
-            .to_vec();
-        let mut summary = successor.propagate(seeds)?;
-        successor.require_supported_component(variable)?;
-        summary.domain_reductions += 1;
+        let mut summary = successor.propagate(seed_factors)?;
+        successor.require_supported_components(changed_variables.iter().copied())?;
+        summary.domain_reductions += changed_variables.len();
         Ok((successor, summary))
     }
 
@@ -138,8 +161,8 @@ impl NativeSolverState {
         seeds: impl IntoIterator<Item = FactorId>,
     ) -> Result<PropagationSummary, NativeSolverError> {
         let mut queue = VecDeque::new();
-        let mut queued = vec![false; self.model.factor_count()];
-        let mut visited = vec![false; self.model.factor_count()];
+        let mut queued = BTreeSet::new();
+        let mut visited = BTreeSet::new();
         let mut summary = PropagationSummary::default();
 
         for factor in seeds {
@@ -147,10 +170,9 @@ impl NativeSolverState {
         }
 
         while let Some(factor_id) = queue.pop_front() {
-            queued[factor_id.index()] = false;
+            queued.remove(&factor_id);
             summary.factor_revisions += 1;
-            if !visited[factor_id.index()] {
-                visited[factor_id.index()] = true;
+            if visited.insert(factor_id) {
                 summary.distinct_factors_visited += 1;
             }
 
@@ -164,7 +186,7 @@ impl NativeSolverState {
                 }
             };
 
-            for variable in reductions {
+            for variable in reductions.into_iter().flatten() {
                 summary.domain_reductions += 1;
                 for &neighbour in self
                     .model
@@ -179,39 +201,43 @@ impl NativeSolverState {
         Ok(summary)
     }
 
-    fn require_supported_components(&self) -> Result<(), NativeSolverError> {
-        let mut covered = vec![false; self.model.variable_count()];
-        for index in 0..self.model.variable_count() {
-            if covered[index] {
+    fn require_supported_components(
+        &self,
+        seeds: impl IntoIterator<Item = VariableId>,
+    ) -> Result<(), NativeSolverError> {
+        let mut covered = BTreeSet::new();
+        for seed in seeds {
+            if covered.contains(&seed) {
                 continue;
             }
-            let seed = variable_id_from_index(index);
             let (variables, factors) = self.constraint_component(seed);
-            for variable in &variables {
-                covered[variable.index()] = true;
-            }
+            covered.extend(variables.iter().copied());
             self.require_supported_component_shape(&variables, &factors)?;
         }
         Ok(())
     }
 
-    fn require_supported_component(
-        &self,
-        seed: VariableId,
-    ) -> Result<(), NativeSolverError> {
-        let (variables, factors) = self.constraint_component(seed);
-        self.require_supported_component_shape(&variables, &factors)
-    }
-
     fn require_supported_component_shape(
         &self,
-        variables: &[VariableId],
-        factors: &[FactorId],
+        variables: &BTreeSet<VariableId>,
+        factors: &BTreeSet<FactorId>,
     ) -> Result<(), NativeSolverError> {
         let unresolved = variables
             .iter()
             .any(|variable| self.domains[variable.index()].len() > 1);
-        if unresolved && factors.len() >= variables.len() {
+        let incidence_count = factors
+            .iter()
+            .map(|factor| {
+                self.model
+                    .factor(*factor)
+                    .expect("component factor must exist")
+                    .variables()
+                    .len()
+            })
+            .sum::<usize>();
+        let node_count = variables.len() + factors.len();
+
+        if unresolved && incidence_count >= node_count {
             return Err(NativeSolverError::UnsupportedCyclicComponent {
                 variable_count: variables.len(),
                 factor_count: factors.len(),
@@ -223,30 +249,24 @@ impl NativeSolverState {
     fn constraint_component(
         &self,
         seed: VariableId,
-    ) -> (Vec<VariableId>, Vec<FactorId>) {
-        let mut variables = Vec::new();
-        let mut factors = Vec::new();
-        let mut seen_variables = vec![false; self.model.variable_count()];
-        let mut seen_factors = vec![false; self.model.factor_count()];
+    ) -> (BTreeSet<VariableId>, BTreeSet<FactorId>) {
+        let mut variables = BTreeSet::new();
+        let mut factors = BTreeSet::new();
         let mut pending = VecDeque::from([seed]);
 
         while let Some(variable) = pending.pop_front() {
-            if seen_variables[variable.index()] {
+            if !variables.insert(variable) {
                 continue;
             }
-            seen_variables[variable.index()] = true;
-            variables.push(variable);
 
             for &factor_id in self
                 .model
                 .factors_for_variable(variable)
                 .expect("known variable must have an adjacency row")
             {
-                if seen_factors[factor_id.index()] {
+                if !factors.insert(factor_id) {
                     continue;
                 }
-                seen_factors[factor_id.index()] = true;
-                factors.push(factor_id);
                 let factor = self
                     .model
                     .factor(factor_id)
@@ -262,7 +282,7 @@ impl NativeSolverState {
 fn revise_binary_relation(
     factor: &BinaryRelationFactor,
     domains: &mut [Domain],
-) -> Result<Vec<VariableId>, NativeSolverError> {
+) -> Result<[Option<VariableId>; 2], NativeSolverError> {
     let left = factor.left();
     let right = factor.right();
     let old_left = domains[left.index()];
@@ -282,16 +302,15 @@ fn revise_binary_relation(
         return Err(NativeSolverError::Contradiction);
     }
 
-    let mut reductions = Vec::with_capacity(2);
-    if new_left != old_left {
+    let left_reduced = (new_left != old_left).then_some(left);
+    let right_reduced = (new_right != old_right).then_some(right);
+    if left_reduced.is_some() {
         domains[left.index()] = new_left;
-        reductions.push(left);
     }
-    if new_right != old_right {
+    if right_reduced.is_some() {
         domains[right.index()] = new_right;
-        reductions.push(right);
     }
-    Ok(reductions)
+    Ok([left_reduced, right_reduced])
 }
 
 fn values_with_support(
@@ -311,10 +330,9 @@ fn values_with_support(
 fn enqueue_factor(
     factor: FactorId,
     queue: &mut VecDeque<FactorId>,
-    queued: &mut [bool],
+    queued: &mut BTreeSet<FactorId>,
 ) {
-    if !queued[factor.index()] {
-        queued[factor.index()] = true;
+    if queued.insert(factor) {
         queue.push_back(factor);
     }
 }
@@ -390,7 +408,7 @@ mod tests {
         let source = NativeSolverState::initial(model).unwrap();
 
         let (successor, summary) = source
-            .restricted(variables[0], Domain::singleton(0).unwrap())
+            .with_restrictions([(variables[0], Domain::singleton(0).unwrap())])
             .unwrap();
 
         for variable in &variables[..3] {
@@ -407,13 +425,97 @@ mod tests {
     }
 
     #[test]
+    fn restriction_batch_updates_independent_components_once() {
+        let (model, variables) = equality_chain();
+        let source = NativeSolverState::initial(model).unwrap();
+
+        let (successor, summary) = source
+            .with_restrictions([
+                (variables[0], Domain::singleton(0).unwrap()),
+                (variables[3], Domain::singleton(1).unwrap()),
+            ])
+            .unwrap();
+
+        for variable in &variables[..3] {
+            assert_eq!(
+                successor.domain(*variable),
+                Some(Domain::singleton(0).unwrap())
+            );
+        }
+        for variable in &variables[3..] {
+            assert_eq!(
+                successor.domain(*variable),
+                Some(Domain::singleton(1).unwrap())
+            );
+        }
+        assert_eq!(summary.distinct_factors_visited(), 3);
+        assert_eq!(summary.domain_reductions(), 5);
+    }
+
+    #[test]
+    fn repeated_restrictions_are_intersected_before_propagation() {
+        let mut builder = ConstraintModelBuilder::new();
+        let variable = builder
+            .add_variable(Domain::from_indices([0, 1, 2]).unwrap())
+            .unwrap();
+        let source = NativeSolverState::initial(Arc::new(builder.build())).unwrap();
+
+        let (successor, summary) = source
+            .with_restrictions([
+                (variable, Domain::from_indices([0, 1]).unwrap()),
+                (variable, Domain::from_indices([1, 2]).unwrap()),
+            ])
+            .unwrap();
+
+        assert_eq!(successor.domain(variable), Some(Domain::singleton(1).unwrap()));
+        assert_eq!(summary.factor_revisions(), 0);
+        assert_eq!(summary.domain_reductions(), 1);
+    }
+
+    #[test]
+    fn conflicting_restrictions_leave_the_source_unchanged() {
+        let mut builder = ConstraintModelBuilder::new();
+        let variable = builder.add_variable(two_values()).unwrap();
+        let source = NativeSolverState::initial(Arc::new(builder.build())).unwrap();
+        let before = source.semantic_snapshot();
+
+        assert!(matches!(
+            source.with_restrictions([
+                (variable, Domain::singleton(0).unwrap()),
+                (variable, Domain::singleton(1).unwrap()),
+            ]),
+            Err(NativeSolverError::Contradiction)
+        ));
+        assert_eq!(source.semantic_snapshot(), before);
+    }
+
+    #[test]
+    fn empty_and_noop_restrictions_do_not_propagate() {
+        let mut builder = ConstraintModelBuilder::new();
+        let variable = builder.add_variable(two_values()).unwrap();
+        let source = NativeSolverState::initial(Arc::new(builder.build())).unwrap();
+
+        let (empty_successor, empty_summary) = source
+            .with_restrictions(std::iter::empty::<(VariableId, Domain)>())
+            .unwrap();
+        let (noop_successor, noop_summary) = source
+            .with_restrictions([(variable, two_values())])
+            .unwrap();
+
+        assert_eq!(empty_successor.semantic_snapshot(), source.semantic_snapshot());
+        assert_eq!(noop_successor.semantic_snapshot(), source.semantic_snapshot());
+        assert_eq!(empty_summary, PropagationSummary::default());
+        assert_eq!(noop_summary, PropagationSummary::default());
+    }
+
+    #[test]
     fn successor_shares_the_model_but_not_mutable_domains() {
         let (model, variables) = equality_chain();
         let source = NativeSolverState::initial(model).unwrap();
         let source_snapshot = source.semantic_snapshot();
 
         let (successor, _) = source
-            .restricted(variables[0], Domain::singleton(0).unwrap())
+            .with_restrictions([(variables[0], Domain::singleton(0).unwrap())])
             .unwrap();
 
         assert!(Arc::ptr_eq(&source.model, &successor.model));
@@ -426,12 +528,12 @@ mod tests {
         let (model, variables) = equality_chain();
         let source = NativeSolverState::initial(model).unwrap();
         let (fixed, _) = source
-            .restricted(variables[0], Domain::singleton(0).unwrap())
+            .with_restrictions([(variables[0], Domain::singleton(0).unwrap())])
             .unwrap();
         let before = fixed.semantic_snapshot();
 
         assert!(matches!(
-            fixed.restricted(variables[1], Domain::singleton(1).unwrap()),
+            fixed.with_restrictions([(variables[1], Domain::singleton(1).unwrap())]),
             Err(NativeSolverError::Contradiction)
         ));
         assert_eq!(fixed.semantic_snapshot(), before);
@@ -443,16 +545,16 @@ mod tests {
         let source = NativeSolverState::initial(model).unwrap();
 
         let (left_first, _) = source
-            .restricted(variables[0], Domain::singleton(0).unwrap())
+            .with_restrictions([(variables[0], Domain::singleton(0).unwrap())])
             .unwrap();
         let (left_then_right, _) = left_first
-            .restricted(variables[2], Domain::singleton(0).unwrap())
+            .with_restrictions([(variables[2], Domain::singleton(0).unwrap())])
             .unwrap();
         let (right_first, _) = source
-            .restricted(variables[2], Domain::singleton(0).unwrap())
+            .with_restrictions([(variables[2], Domain::singleton(0).unwrap())])
             .unwrap();
         let (right_then_left, _) = right_first
-            .restricted(variables[0], Domain::singleton(0).unwrap())
+            .with_restrictions([(variables[0], Domain::singleton(0).unwrap())])
             .unwrap();
 
         assert_eq!(
@@ -503,13 +605,18 @@ mod tests {
     }
 
     #[test]
-    fn unknown_variable_is_rejected() {
-        let state = NativeSolverState::initial(Arc::new(ConstraintModel::empty())).unwrap();
-        let variable = VariableId::new(7);
+    fn unknown_variable_is_rejected_before_semantic_contradictions() {
+        let mut builder = ConstraintModelBuilder::new();
+        let known = builder.add_variable(two_values()).unwrap();
+        let state = NativeSolverState::initial(Arc::new(builder.build())).unwrap();
+        let unknown = VariableId::new(7);
 
         assert!(matches!(
-            state.restricted(variable, Domain::singleton(0).unwrap()),
-            Err(NativeSolverError::UnknownVariable(found)) if found == variable
+            state.with_restrictions([
+                (known, Domain::empty()),
+                (unknown, Domain::singleton(0).unwrap()),
+            ]),
+            Err(NativeSolverError::UnknownVariable(found)) if found == unknown
         ));
     }
 }

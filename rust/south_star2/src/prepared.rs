@@ -65,7 +65,7 @@ impl AdjacentBond {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct PreparedGraph {
     tokens: Box<[Box<str>]>,
     atoms: Box<[PreparedAtom]>,
@@ -112,7 +112,7 @@ impl PreparedGraph {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct PreparedMolecule {
     graph: Arc<PreparedGraph>,
     constraints: Arc<ConstraintModel>,
@@ -135,7 +135,7 @@ impl PreparedMolecule {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Debug, Default)]
 pub struct PreparedGraphBuilder {
     tokens: Vec<Box<str>>,
     atoms: Vec<PreparedAtom>,
@@ -148,10 +148,7 @@ impl PreparedGraphBuilder {
         Self::default()
     }
 
-    pub fn intern_token(
-        &mut self,
-        text: impl AsRef<str>,
-    ) -> Result<TokenId, PreparedGraphError> {
+    pub fn intern_token(&mut self, text: impl AsRef<str>) -> Result<TokenId, PreparedGraphError> {
         let text = text.as_ref();
         if text.is_empty() {
             return Err(PreparedGraphError::EmptyToken);
@@ -172,10 +169,7 @@ impl PreparedGraphBuilder {
         Ok(token)
     }
 
-    pub fn add_atom(
-        &mut self,
-        token: TokenId,
-    ) -> Result<AtomId, PreparedGraphError> {
+    pub fn add_atom(&mut self, token: TokenId) -> Result<AtomId, PreparedGraphError> {
         self.require_token(token)?;
         let atom = AtomId::new(
             u32::try_from(self.atoms.len())
@@ -387,7 +381,7 @@ mod tests {
         assert!(graph.is_acyclic());
         assert_eq!(graph.token_text(carbon), Some("C"));
         assert_eq!(graph.atom(atom).copied().unwrap().token(), carbon);
-        assert_eq!(graph.neighbors(atom), Some(&[][..]));
+        assert!(graph.neighbors(atom).unwrap().is_empty());
     }
 
     #[test]
@@ -395,8 +389,7 @@ mod tests {
         let mut builder = PreparedGraphBuilder::new();
         let carbon = builder.intern_token("C").unwrap();
         let double = builder.intern_token("=").unwrap();
-        let atoms: [AtomId; 3] =
-            std::array::from_fn(|_| builder.add_atom(carbon).unwrap());
+        let atoms: [AtomId; 3] = std::array::from_fn(|_| builder.add_atom(carbon).unwrap());
         let right = builder
             .add_bond(atoms[0], atoms[2], Some(double))
             .unwrap();
@@ -435,8 +428,7 @@ mod tests {
             builder.add_atom(TokenId::new(99)),
             Err(PreparedGraphError::UnknownToken(TokenId::new(99)))
         );
-        let atoms: [AtomId; 2] =
-            std::array::from_fn(|_| builder.add_atom(carbon).unwrap());
+        let atoms: [AtomId; 2] = std::array::from_fn(|_| builder.add_atom(carbon).unwrap());
         assert_eq!(atoms, [AtomId::new(0), AtomId::new(1)]);
 
         assert_eq!(
@@ -480,8 +472,7 @@ mod tests {
     fn cycles_are_recorded_but_not_rejected() {
         let mut builder = PreparedGraphBuilder::new();
         let carbon = builder.intern_token("C").unwrap();
-        let atoms: [AtomId; 3] =
-            std::array::from_fn(|_| builder.add_atom(carbon).unwrap());
+        let atoms: [AtomId; 3] = std::array::from_fn(|_| builder.add_atom(carbon).unwrap());
         builder.add_bond(atoms[0], atoms[1], None).unwrap();
         builder.add_bond(atoms[1], atoms[2], None).unwrap();
         builder.add_bond(atoms[2], atoms[0], None).unwrap();

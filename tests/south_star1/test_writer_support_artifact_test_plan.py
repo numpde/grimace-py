@@ -48,7 +48,14 @@ class WriterSupportArtifactTestPlanTest(unittest.TestCase):
         for domain in WRITER_SUPPORT_ARTIFACT_TEST_DOMAINS:
             for module_name in domain.modules:
                 path = root / (module_name.rsplit(".", 1)[1] + ".py")
-                has_gate = "SOUTH_STAR1_RUN_SLOW" in path.read_text(encoding="utf-8")
+                tree = ast.parse(path.read_text(encoding="utf-8"))
+                has_gate = any(
+                    isinstance(node, ast.Attribute)
+                    and node.attr == "environ"
+                    and isinstance(node.value, ast.Name)
+                    and node.value.id == "os"
+                    for node in ast.walk(tree)
+                )
                 self.assertEqual(has_gate, domain.kind == "slow-diagnostic", str(path))
 
     def test_domain_and_fixture_line_bounds(self):

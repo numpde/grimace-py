@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import importlib
 import inspect
+from pathlib import Path
 from typing import Literal
 import unittest
 
@@ -60,7 +61,7 @@ WRITER_SUPPORT_ARTIFACT_TEST_DOMAINS = (
         "bounded directional replay",
     ),
     WriterSupportArtifactTestDomain(
-        "directional-forgeries",
+        "directional-acyclic-forgeries",
         ("tests.south_star1.test_writer_support_artifact_directional_forgeries",),
         "bounded",
         "bounded directional forgery replay",
@@ -115,6 +116,15 @@ def validate_writer_support_artifact_test_plan() -> None:
         raise AssertionError("slow support-artifact domain must be last")
     if sum(domain.kind == "slow-diagnostic" for domain in domains) != 1:
         raise AssertionError("expected exactly one slow support-artifact domain")
+    slow_domain = domains[-1]
+    if len(slow_domain.modules) != 1:
+        raise AssertionError("slow diagnostic must own one module")
+    directional_domains = [domain for domain in domains if domain.name.startswith("directional-")]
+    if [domain.name for domain in directional_domains] != [
+        "directional-acyclic",
+        "directional-acyclic-forgeries",
+    ]:
+        raise AssertionError("directional domains must be consecutive before tetrahedral domains")
 
     module_owners: dict[str, str] = {}
     all_ids: list[str] = []
@@ -130,6 +140,12 @@ def validate_writer_support_artifact_test_plan() -> None:
                 raise AssertionError(f"module has two owners: {module_name}")
             module_owners[module_name] = domain.name
             importlib.import_module(module_name)
+            path_text = getattr(importlib.import_module(module_name), "__file__", "")
+            source = Path(path_text).read_text(encoding="utf-8")
+            if domain.kind == "bounded" and domain.name.startswith("directional-"):
+                for forbidden in ("WriterSupportArtifactDomainMethods", "setattr(", "_selected("):
+                    if forbidden in source:
+                        raise AssertionError(f"dynamic directional ownership: {module_name}")
         domain_ids = test_ids_for_domain(domain)
         if not domain_ids:
             raise AssertionError(f"domain has no tests: {domain.name}")

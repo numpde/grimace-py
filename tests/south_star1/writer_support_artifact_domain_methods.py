@@ -696,7 +696,10 @@ class WriterSupportArtifactDomainMethods:
                 "value": wrong_value,
             }
         ]
-        successor_digest = closed_term_digest(successor)
+        successor_digest = closed_term_digest(
+            successor,
+            operation="test.tetra.successor_token_domain",
+        )
         set_closed_term_field(
             manifest["transition_term"],
             "successor_snapshot_digest",
@@ -908,7 +911,10 @@ class WriterSupportArtifactDomainMethods:
             if closed_term_field(factor, "key") == discharged[0]
         )
         closed_term_field(successor, "factors").append(source_factor)
-        successor_digest = closed_term_digest(successor)
+        successor_digest = closed_term_digest(
+            successor,
+            operation="test.tetra.successor_discharge",
+        )
         set_closed_term_field(
             transition,
             "successor_snapshot_digest",
@@ -953,7 +959,10 @@ class WriterSupportArtifactDomainMethods:
             for item in domains
             if item[0] != constraint_var
         ]
-        source_digest = closed_term_digest(source)
+        source_digest = closed_term_digest(
+            source,
+            operation="test.tetra.source_projection",
+        )
         set_closed_term_field(
             manifest["transition_term"],
             "source_snapshot_digest",
@@ -1001,7 +1010,10 @@ class WriterSupportArtifactDomainMethods:
                 [False, True],
             ]
         )
-        successor_digest = closed_term_digest(successor)
+        successor_digest = closed_term_digest(
+            successor,
+            operation="test.tetra.successor_component",
+        )
         set_closed_term_field(
             manifest["transition_term"],
             "successor_snapshot_digest",
@@ -1041,7 +1053,10 @@ class WriterSupportArtifactDomainMethods:
         successor = closed_term_field(manifest["transition_term"], "successor_snapshot")
         assignments = closed_term_field(successor, "assignments")
         assignments[:] = []
-        successor_digest = closed_term_digest(successor)
+        successor_digest = closed_term_digest(
+            successor,
+            operation="test.tetra.successor_wrong_successor",
+        )
         set_closed_term_field(
             manifest["transition_term"],
             "successor_snapshot_digest",
@@ -1083,7 +1098,10 @@ class WriterSupportArtifactDomainMethods:
         set_closed_term_field(
             manifest["transition_term"],
             "source_snapshot_digest",
-            closed_term_digest(successor),
+            closed_term_digest(
+                successor,
+                operation="test.tetra.detached_snapshot",
+            ),
         )
         refresh_closed_term_digest_field(manifest, term_field="transition_term", digest_field="transition_digest", operation="test.transition.digest")
         reseal_support_artifact(artifact)
@@ -1121,7 +1139,10 @@ class WriterSupportArtifactDomainMethods:
                     [False, True],
                 ]
             )
-            digest = closed_term_digest(snapshot)
+            digest = closed_term_digest(
+                snapshot,
+                operation="test.tetra.detached_snapshot_record",
+            )
             set_closed_term_field(
                 manifest["transition_term"],
                 f"{field}_digest",
@@ -3260,12 +3281,6 @@ def _manual_tetra_artifact():
     )
 
 
-@lru_cache(maxsize=1)
-
-
-@lru_cache(maxsize=2)
-
-
 def _first_support_string_object(artifact):
     root = artifact_object_by_id(artifact, artifact["roots"]["support_image_root"])
     return artifact_object_by_id(artifact, root["payload"]["support_string_refs"][0])
@@ -3417,7 +3432,7 @@ def _forge_ring_pair_successor(artifact) -> None:
     branch, manifest = _ring_pair_branch_and_manifest(artifact)
     term = manifest["transition_term"]
     successor = deepcopy(closed_term_field(term, "source_snapshot"))
-    digest = closed_term_digest(successor)
+    digest = closed_term_digest(successor, operation="test.transition.successor")
     set_closed_term_field(term, "successor_snapshot", successor)
     set_closed_term_field(term, "successor_snapshot_digest", digest)
     _refresh_linked_raw_lifecycle_residual_digest(
@@ -3468,7 +3483,7 @@ def _forge_ring_false_noop(artifact) -> None:
     term = manifest["transition_term"]
     source = deepcopy(closed_term_field(term, "source_snapshot"))
     set_closed_term_field(term, "successor_snapshot", source)
-    digest = closed_term_digest(source)
+    digest = closed_term_digest(source, operation="test.transition.source")
     set_closed_term_field(term, "successor_snapshot_digest", digest)
     _refresh_linked_raw_lifecycle_residual_digest(
         branch,
@@ -3485,7 +3500,7 @@ def _forge_ring_false_change(artifact) -> None:
     term = manifest["transition_term"]
     successor = deepcopy(closed_term_field(other["transition_term"], "successor_snapshot"))
     set_closed_term_field(term, "successor_snapshot", successor)
-    digest = closed_term_digest(successor)
+    digest = closed_term_digest(successor, operation="test.transition.successor")
     set_closed_term_field(term, "successor_snapshot_digest", digest)
     _refresh_linked_raw_lifecycle_residual_digest(
         branch,
@@ -3511,7 +3526,7 @@ def _forge_ring_source_snapshot(artifact) -> None:
     source = closed_term_field(term, "source_snapshot")
     domains = closed_term_field(source, "domains")
     domains[:] = list(reversed(domains))
-    digest = closed_term_digest(source)
+    digest = closed_term_digest(source, operation="test.transition.source")
     set_closed_term_field(term, "source_snapshot_digest", digest)
     _refresh_linked_raw_lifecycle_residual_digest(
         branch,
@@ -4015,7 +4030,7 @@ def _cursor_state_by_digest(cursor, digest: str):
     matches = [
         state
         for state, _weight in closed_term_field(cursor["terms"], "weighted_states")
-        if closed_term_digest(state) == digest
+        if closed_term_digest(state, operation="test.cursor.state_lookup") == digest
     ]
     if len(matches) != 1:
         raise AssertionError(f"expected one cursor state for digest {digest}")
@@ -4113,7 +4128,7 @@ def _different_local_order_digest(artifact, *, branch, cursor_name: str, atom: i
     stereo = closed_term_field(state, "stereo_state")
     for record in closed_term_field(stereo, "local_orders"):
         if closed_term_field(record, "atom") != atom:
-            return closed_term_digest(record)
+            return closed_term_digest(record, operation="test.tetra.local_order_alternate")
     raise AssertionError("missing alternate local-order record")
 
 

@@ -10,6 +10,7 @@ import time
 from tests.south_star1.writer_support_artifact_test_plan import domain_by_name
 from tests.south_star1.writer_support_artifact_test_plan import bounded_domains
 from tests.south_star1.writer_support_artifact_test_plan import WRITER_SUPPORT_ARTIFACT_TEST_DOMAINS
+from tests.south_star1.writer_support_artifact_test_plan import test_ids_for_domain
 from tests.south_star1.writer_support_artifact_test_plan import (
     validate_writer_support_artifact_test_plan,
 )
@@ -18,12 +19,18 @@ from tests.south_star1.writer_support_artifact_test_plan import (
 def _run_domain(domain_name: str) -> int:
     domain = domain_by_name(domain_name)
     started = time.monotonic()
+    test_count = len(test_ids_for_domain(domain))
     print(f"domain_started={domain.name}", flush=True)
+    print(f"domain_module_count={len(domain.modules)}", flush=True)
+    print(f"domain_test_count={test_count}", flush=True)
     command = [sys.executable, "-m", "unittest", *domain.modules, "-q"]
     result = subprocess.run(command, check=False)
     elapsed = time.monotonic() - started
     if result.returncode == 0:
         print(f"domain_passed={domain.name}", flush=True)
+    else:
+        print(f"domain_failed={domain.name}", flush=True)
+        print(f"domain_return_code={result.returncode}", flush=True)
     print(f"domain_elapsed_seconds={elapsed:.6f}", flush=True)
     return result.returncode
 

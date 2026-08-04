@@ -8,6 +8,7 @@ mod domain;
 mod ids;
 mod model;
 mod native;
+mod prepared;
 
 pub use domain::{Domain, DomainError, DOMAIN_VALUE_CAPACITY};
 pub use ids::{AtomId, BondId, FactorId, TokenId, VariableId};
@@ -17,4 +18,8 @@ pub use model::{
 };
 pub use native::{
     ConstraintStateSnapshot, NativeSolverError, NativeSolverState, PropagationSummary,
+};
+pub use prepared::{
+    AdjacentBond, PreparedAtom, PreparedBond, PreparedGraph, PreparedGraphBuilder,
+    PreparedGraphError, PreparedMolecule,
 };

@@ -7,8 +7,6 @@ from tests.south_star1.writer_support_artifact_domain_methods import WriterSuppo
 
 def _selected(name: str) -> bool:
     return name.startswith((
-        "test_directional_ring_pair_coherent_forgeries_",
-        "test_directional_ring_opening_coherent_forgeries_",
         "test_shared_acyclic_directional_coherent_forgeries_",
         "test_directional_carrier_coherent_forgeries_",
     ))

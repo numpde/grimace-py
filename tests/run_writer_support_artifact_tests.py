@@ -8,7 +8,8 @@ import sys
 import time
 
 from tests.south_star1.writer_support_artifact_test_plan import domain_by_name
-from tests.south_star1.writer_support_artifact_test_plan import non_slow_domains
+from tests.south_star1.writer_support_artifact_test_plan import bounded_domains
+from tests.south_star1.writer_support_artifact_test_plan import WRITER_SUPPORT_ARTIFACT_TEST_DOMAINS
 from tests.south_star1.writer_support_artifact_test_plan import (
     validate_writer_support_artifact_test_plan,
 )
@@ -35,13 +36,13 @@ def main() -> int:
     args = parser.parse_args()
     validate_writer_support_artifact_test_plan()
     if args.describe_plan:
-        for domain in non_slow_domains() + (domain_by_name("slow"),):
-            print(f"{domain.name}: {', '.join(domain.modules)}")
+        for domain in WRITER_SUPPORT_ARTIFACT_TEST_DOMAINS:
+            print(f"{domain.name}: {', '.join(domain.modules)} [{domain.kind}] {domain.role}")
         return 0
     if bool(args.domain) == args.all:
         parser.error("choose exactly one of --domain or --all")
     if args.all:
-        for domain in non_slow_domains():
+        for domain in bounded_domains():
             result = _run_domain(domain.name)
             if result:
                 return result

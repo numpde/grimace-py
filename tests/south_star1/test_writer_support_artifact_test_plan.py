@@ -9,6 +9,7 @@ import unittest
 from tests.south_star1.writer_support_artifact_test_plan import (
     WRITER_SUPPORT_ARTIFACT_TEST_DOMAINS,
 )
+from tests.south_star1.writer_support_artifact_test_plan import bounded_domains
 from tests.south_star1.writer_support_artifact_test_plan import (
     validate_writer_support_artifact_test_plan,
 )
@@ -48,7 +49,7 @@ class WriterSupportArtifactTestPlanTest(unittest.TestCase):
             for module_name in domain.modules:
                 path = root / (module_name.rsplit(".", 1)[1] + ".py")
                 has_gate = "SOUTH_STAR1_RUN_SLOW" in path.read_text(encoding="utf-8")
-                self.assertEqual(has_gate, domain.slow, str(path))
+                self.assertEqual(has_gate, domain.kind == "slow-diagnostic", str(path))
 
     def test_domain_and_fixture_line_bounds(self):
         root = Path(__file__).parent

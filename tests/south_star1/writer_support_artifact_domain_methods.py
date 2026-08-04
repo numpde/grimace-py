@@ -479,546 +479,16 @@ class WriterSupportArtifactDomainMethods:
         self.assertIn("direction_mark", wrong_direction_text.reason)
         self.assertIn("successor_certificate", wrong_direction_text.reason)
 
-    def test_directional_ring_carrier_root_zero_artifact_builds_with_default_budget(
-        self,
-    ) -> None:
-        if os.environ.get(RUN_SLOW_ENV) != "1":
-            self.skipTest(
-                f"set {RUN_SLOW_ENV}=1 to run the directional ring carrier artifact probe"
-            )
-        facts = directional_ring_carrier_facts()
-        options = writer_runtime_options(rooted_at_atom=0)
-        prepared = prepare_writer_facts(facts)
-        budget = WriterEnvelopeWorkBudget()
 
-        self.assertEqual(budget.max_digest_term_bytes, 25_000_000)
 
-        artifact = writer_support_artifact_envelope_for_snapshot(
-            prepared=prepared,
-            snapshot=initial_writer_snapshot(prepared, options),
-            budget=budget,
-        )
-        structural = verify_writer_support_artifact_consistency(
-            artifact,
-            budget=budget,
-        )
-        live = verify_writer_support_artifact_envelope(
-            prepared=prepared,
-            envelope=artifact,
-            budget=budget,
-        )
-        verification = verify_writer_support_artifact_for_facts(
-            facts=facts,
-            runtime_options=options,
-            artifact=artifact,
-            budget=budget,
-        )
-        classification = _obligation_classification(artifact, facts=facts)
 
-        self.assertTrue(structural.accepted, structural.reason)
-        self.assertTrue(live.accepted, live.reason)
-        self.assertTrue(verification.accepted, verification.reason)
-        self.assertTrue(
-            verification.offline_replay_complete,
-            verification.offline_unchecked_obligation_families,
-        )
-        self.assertEqual(verification.offline_unchecked_obligation_families, ())
-        self.assertIn(
-            "stereo_lifecycle",
-            verification.offline_checked_obligation_families,
-        )
-        self.assertTrue(classification.accepted, classification.reason)
-        branch = _first_graph_ring_delta_branch(artifact, "ring_endpoint_open")
-        event = _first_graph_ring_delta_event(branch, "ring_endpoint_emitted")
-        self.assertEqual(event["bond"], 3)
-        self.assertLessEqual(
-            artifact["metrics"]["largest_object_identity_input_bytes"],
-            budget.max_digest_term_bytes,
-        )
 
-    def test_non_single_directional_ring_root_zero_artifact_replays_completely(
-        self,
-    ) -> None:
-        if os.environ.get(RUN_SLOW_ENV) != "1":
-            self.skipTest(
-                f"set {RUN_SLOW_ENV}=1 to run the non-single directional ring artifact probe"
-            )
-        facts = directional_non_single_ring_carrier_facts()
-        options = writer_runtime_options(rooted_at_atom=0)
-        prepared = prepare_writer_facts(facts)
-        artifact = writer_support_artifact_envelope_for_snapshot(
-            prepared=prepared,
-            snapshot=initial_writer_snapshot(prepared, options),
-        )
-        structural = verify_writer_support_artifact_consistency(artifact)
-        live = verify_writer_support_artifact_envelope(
-            prepared=prepared,
-            envelope=artifact,
-        )
-        verification = verify_writer_support_artifact_for_facts(
-            facts=facts,
-            runtime_options=options,
-            artifact=artifact,
-        )
 
-        self.assertTrue(structural.accepted, structural.reason)
-        self.assertTrue(live.accepted, live.reason)
-        self.assertTrue(verification.accepted, verification.reason)
-        self.assertEqual(
-            (verification.support_count, verification.witness_count),
-            (72, 72),
-        )
-        self.assertTrue(verification.offline_replay_complete)
-        self.assertEqual(verification.offline_unchecked_obligation_families, ())
-        self.assertIn(
-            "directional_ring_closure_lifecycle",
-            verification.offline_checked_obligation_families,
-        )
 
-    def test_reduced_directional_ring_opening_artifact_replays_semantically(self) -> None:
-        facts, options, artifact = _directional_ring_opening_artifact()
 
-        structural = verify_writer_support_artifact_consistency(artifact)
-        live = verify_writer_support_artifact_envelope(
-            prepared=prepare_writer_facts(facts),
-            envelope=artifact,
-        )
-        verification = verify_writer_support_artifact_for_facts(
-            facts=facts,
-            runtime_options=options,
-            artifact=artifact,
-        )
 
-        self.assertTrue(structural.accepted, structural.reason)
-        self.assertTrue(live.accepted, live.reason)
-        self.assertTrue(verification.accepted, verification.reason)
-        manifests = [
-            manifest
-            for obj in artifact["objects"]
-            if obj["kind"] == "branch_support"
-            for manifest in obj["payload"]["obligation_manifests"]["residual_work"]
-            if manifest["operation"] == "directional ring endpoint projection"
-        ]
-        self.assertTrue(manifests)
-        snapshots = [
-            (
-                closed_term_field(manifest["transition_term"], "source_snapshot"),
-                closed_term_field(manifest["transition_term"], "successor_snapshot"),
-            )
-            for manifest in manifests
-        ]
-        self.assertTrue(any(source == successor for source, successor in snapshots))
-        self.assertTrue(any(source != successor for source, successor in snapshots))
 
-    def test_reduced_directional_ring_pair_artifacts_replay_semantically(self) -> None:
-        for first_mark in (DirectionMark.ABSENT, DirectionMark.FWD):
-            with self.subTest(first_mark=first_mark):
-                facts, options, artifact = _directional_ring_pair_artifact(first_mark)
-                structural = verify_writer_support_artifact_consistency(artifact)
-                live = verify_writer_support_artifact_envelope(
-                    prepared=prepare_writer_facts(facts),
-                    envelope=artifact,
-                )
-                verification = verify_writer_support_artifact_for_facts(
-                    facts=facts,
-                    runtime_options=options,
-                    artifact=artifact,
-                )
 
-                self.assertTrue(structural.accepted, structural.reason)
-                self.assertTrue(live.accepted, live.reason)
-                self.assertTrue(verification.accepted, verification.reason)
-                self.assertTrue(verification.offline_replay_complete)
-                self.assertEqual(verification.offline_unchecked_obligation_families, ())
-                branch, manifest = _ring_pair_branch_and_manifest(artifact)
-                self.assertEqual(
-                    closed_term_field(manifest["transition_term"], "first_endpoint_direction_mark")["value"],
-                    first_mark.value,
-                )
-                self.assertEqual(
-                    branch["payload"]["graph_ring_delta"]["kind"],
-                    "ring_endpoint_pair",
-                )
-
-    def test_directional_ring_pair_coherent_term_forgeries_are_rejected(self) -> None:
-        cases = (
-            ("missing_term", _forge_ring_pair_missing_term, "directional_ring_pair_transition_missing"),
-            ("compatible_choices", _forge_ring_pair_compatible_choices, "directional_ring_pair_compatible_choices_mismatch"),
-            ("first_mark", _forge_ring_pair_first_mark, "directional_ring_pair_event_first_endpoint_direction_mark_mismatch"),
-            ("second_mark", _forge_ring_pair_second_mark, "directional_ring_pair_event_direction_mark_mismatch"),
-            ("orientation", _forge_ring_pair_orientation, "directional_ring_pair_canonical_orientation_mismatch"),
-            ("carrier", _forge_ring_pair_carrier, "directional_ring_pair_carrier_model_mismatch"),
-            ("restriction", _forge_ring_pair_restriction, "directional_ring_pair_restriction_mismatch"),
-            ("occurrence", _forge_ring_pair_occurrence, "directional_ring_pair_bond_occurrence_mismatch"),
-            ("discharge", _forge_ring_pair_discharge, "directional_ring_pair_discharge_factor_mismatch"),
-            ("successor", _forge_ring_pair_successor, "directional_ring_pair_successor_state_anchor_mismatch"),
-        )
-        facts, options, original = _directional_ring_pair_artifact(DirectionMark.ABSENT)
-        for name, mutate, reason in cases:
-            with self.subTest(name=name):
-                artifact = deepcopy(original)
-                mutate(artifact)
-                _assert_structural_checker_accepts(self, artifact)
-                verification = verify_writer_support_artifact_for_facts(
-                    facts=facts,
-                    runtime_options=options,
-                    artifact=artifact,
-                )
-                self.assertFalse(verification.accepted)
-                self.assertIn(reason, verification.reason)
-
-    def test_directional_ring_opening_coherent_term_forgeries_are_rejected(self) -> None:
-        facts, options, original = _directional_ring_opening_artifact()
-        cases = (
-            ("compatible_seconds", _forge_ring_compatible_seconds),
-            ("domain_intersection", _forge_ring_domain_intersection),
-            ("carrier_orientation", _forge_ring_carrier_orientation),
-            ("event_mark_detached", _forge_ring_term_mark),
-            ("false_noop", _forge_ring_false_noop),
-            ("false_change", _forge_ring_false_change),
-            ("factor_discharge", _forge_ring_factor_discharge),
-            ("snapshot_detached", _forge_ring_source_snapshot),
-            ("successor_open_endpoint", _forge_ring_successor_open_endpoint),
-            ("bond_occurrence_added", _forge_ring_bond_occurrence_added),
-            ("missing_term", _forge_ring_missing_term),
-            ("lifecycle_operation", _forge_ring_lifecycle_operation),
-        )
-        for name, mutate in cases:
-            with self.subTest(name=name):
-                artifact = deepcopy(original)
-                mutate(artifact)
-                _assert_structural_checker_accepts(self, artifact)
-                verification = verify_writer_support_artifact_for_facts(
-                    facts=facts,
-                    runtime_options=options,
-                    artifact=artifact,
-                )
-                self.assertFalse(verification.accepted)
-
-    def test_directional_rooted_acyclic_artifact_replays_complete(self) -> None:
-        facts, options, artifact = _directional_rooted_artifact()
-
-        structural = verify_writer_support_artifact_consistency(artifact)
-        verification = verify_writer_support_artifact_for_facts(
-            facts=facts,
-            runtime_options=options,
-            artifact=artifact,
-        )
-
-        self.assertTrue(structural.accepted, structural.reason)
-        self.assertEqual(structural.support_count, 2)
-        self.assertEqual(structural.witness_count, 2)
-        self.assertEqual(
-            tuple(sorted(_support_strings(artifact))),
-            ("F/C=C/Cl", "F\\C=C\\Cl"),
-        )
-        self.assertTrue(verification.accepted, verification.reason)
-        self.assertTrue(verification.offline_replay_complete)
-        first = _directional_transition_manifest(artifact, bond=1)
-        second = _directional_transition_manifest(artifact, bond=2)
-        self.assertEqual(
-            [closed_term_field(key, "kind") for key in closed_term_field(first["transition_term"], "discharged_factor_keys")],
-            ["directional_bond_emission"],
-        )
-        self.assertEqual(
-            [closed_term_field(key, "kind") for key in closed_term_field(second["transition_term"], "discharged_factor_keys")],
-            ["directional_bond_emission", "directional_site"],
-        )
-
-    def test_shared_acyclic_directional_artifact_replays_complete(self) -> None:
-        facts, options, artifact = _shared_acyclic_directional_artifact()
-
-        structural = verify_writer_support_artifact_consistency(artifact)
-        verification = verify_writer_support_artifact_for_facts(
-            facts=facts,
-            runtime_options=options,
-            artifact=artifact,
-        )
-
-        self.assertTrue(structural.accepted, structural.reason)
-        self.assertEqual(structural.support_count, 2)
-        self.assertEqual(structural.witness_count, 2)
-        # The shared bridge relation forces equal normalized signs for the two
-        # carrier variables, leaving exactly the all-forward and all-reverse
-        # renderings. This is a normalized-sign fact, not an RDKit expectation.
-        self.assertEqual(
-            tuple(sorted(_support_strings(artifact))),
-            ("F/C=C/C=C/Cl", "F\\C=C\\C=C\\Cl"),
-        )
-        self.assertTrue(verification.accepted, verification.reason)
-        self.assertTrue(verification.offline_replay_complete)
-        self.assertEqual(verification.offline_unchecked_obligation_families, ())
-
-        bond0 = _directional_transition_manifest(artifact, bond=0)
-        bond2 = _directional_transition_manifest(artifact, bond=2)
-        bond4 = _directional_transition_manifest(artifact, bond=4)
-        self.assertEqual(len(closed_term_field(bond0["transition_term"], "carrier_models")), 1)
-        self.assertEqual(len(closed_term_field(bond0["transition_term"], "restrictions")), 1)
-        self.assertEqual(len(closed_term_field(bond2["transition_term"], "carrier_models")), 2)
-        self.assertEqual(len(closed_term_field(bond2["transition_term"], "restrictions")), 2)
-        self.assertEqual(len(closed_term_field(bond4["transition_term"], "carrier_models")), 1)
-        self.assertEqual(len(closed_term_field(bond4["transition_term"], "restrictions")), 1)
-        self.assertEqual(
-            _directional_discharge_key_pairs(bond0),
-            (("directional_bond_emission", (0,)),),
-        )
-        self.assertEqual(
-            _directional_discharge_key_pairs(bond2),
-            (
-                ("directional_bond_emission", (2,)),
-                ("directional_site", (0,)),
-            ),
-        )
-        self.assertEqual(
-            _directional_discharge_key_pairs(bond4),
-            (
-                ("directional_bond_emission", (4,)),
-                ("directional_site", (1,)),
-            ),
-        )
-        branch, _manifest = _directional_transition_branch_and_manifest(
-            artifact,
-            bond=2,
-        )
-        source_records = _bond_occurrence_terms_for_branch(
-            artifact,
-            branch,
-            cursor_name="source_cursor",
-            bond=2,
-        )
-        successor_records = _bond_occurrence_terms_for_branch(
-            artifact,
-            branch,
-            cursor_name="successor_cursor",
-            bond=2,
-        )
-        self.assertEqual(source_records, ())
-        self.assertEqual(len(successor_records), 1)
-
-    def test_shared_acyclic_directional_coherent_forgeries_reject_semantically(
-        self,
-    ) -> None:
-        cases = (
-            (
-                "remove_model",
-                lambda artifact: _remove_directional_model(artifact, bond=2),
-                "directional_carrier_model_mismatch",
-            ),
-            (
-                "remove_restriction",
-                lambda artifact: _remove_directional_restriction(artifact, bond=2),
-                "directional_carrier_restriction_mismatch",
-            ),
-            (
-                "wrong_site",
-                lambda artifact: _mutate_directional_model_field(
-                    artifact,
-                    bond=2,
-                    field="site",
-                    value=99,
-                ),
-                "directional_carrier_model_mismatch",
-            ),
-            (
-                "wrong_side",
-                lambda artifact: _mutate_directional_model_field(
-                    artifact,
-                    bond=2,
-                    field="side",
-                    value="right",
-                    model_index=1,
-                ),
-                "directional_carrier_model_mismatch",
-            ),
-            (
-                "wrong_ligand_factor",
-                lambda artifact: _mutate_directional_model_field(
-                    artifact,
-                    bond=2,
-                    field="ligand_factor",
-                    value=-1,
-                    model_index=1,
-                ),
-                "directional_carrier_model_mismatch",
-            ),
-            (
-                "wrong_normalized_sign",
-                lambda artifact: _mutate_directional_restriction_sign(
-                    artifact,
-                    bond=2,
-                ),
-                "directional_carrier_restriction_mismatch",
-            ),
-            (
-                "duplicate_site_model",
-                lambda artifact: _duplicate_directional_model_site(
-                    artifact,
-                    bond=2,
-                ),
-                "directional_carrier_model_mismatch",
-            ),
-            (
-                "omit_shared_capability",
-                lambda artifact: _remove_raw_lifecycle_capability(
-                    artifact,
-                    bond=2,
-                    capability="shared_directional_carrier_restriction",
-                ),
-                "tetra_residual_lifecycle_capabilities_mismatch",
-            ),
-            (
-                "omit_site0_discharge",
-                lambda artifact: _set_directional_discharges_by_keys(
-                    artifact,
-                    bond=2,
-                    key_pairs=(("directional_bond_emission", (2,)),),
-                ),
-                "directional_carrier_discharge_factor_mismatch",
-            ),
-            (
-                "premature_site1_discharge",
-                lambda artifact: _set_directional_discharges_by_keys(
-                    artifact,
-                    bond=2,
-                    key_pairs=(
-                        ("directional_bond_emission", (2,)),
-                        ("directional_site", (0,)),
-                        ("directional_site", (1,)),
-                    ),
-                ),
-                "directional_carrier_discharge_factor_mismatch",
-            ),
-            (
-                "duplicate_bond_occurrence",
-                lambda artifact: _duplicate_directional_successor_bond_occurrence(
-                    artifact,
-                    bond=2,
-                ),
-                "directional_carrier_successor_bond_occurrence_mismatch",
-            ),
-        )
-        for name, mutate, reason in cases:
-            with self.subTest(name=name):
-                facts, options, artifact = _shared_acyclic_directional_artifact()
-                mutate(artifact)
-                _assert_structural_checker_accepts(self, artifact)
-
-                verification = verify_writer_support_artifact_for_facts(
-                    facts=facts,
-                    runtime_options=options,
-                    artifact=artifact,
-                )
-
-                self.assertFalse(verification.accepted)
-                self.assertIn(reason, verification.reason)
-
-    def test_shared_ring_carrier_supports_ring_transition_terms(self) -> None:
-        facts = shared_directional_ring_carrier_facts()
-        prepared = prepare_writer_facts(facts)
-
-        models = writer_stereo_module._directional_models_for_bond(
-            prepared,
-            BondId(1),
-        )
-
-        self.assertEqual(len(models), 2)
-        self.assertTrue(
-            writer_stereo_module
-            ._supports_directional_bond_emission_transition_term(
-                prepared,
-                BondId(1),
-                models,
-            )
-        )
-        self.assertTrue(
-            writer_stereo_module
-            ._supports_directional_ring_endpoint_projection_transition_term(
-                prepared,
-                SimpleNamespace(bond=BondId(1), bond_text=""),
-                models,
-            )
-        )
-
-    def test_directional_carrier_coherent_forgeries_reject_semantically(self) -> None:
-        cases = (
-            (
-                "wrong_normalized_sign",
-                lambda artifact: _mutate_directional_restriction_sign(artifact, bond=1),
-                "directional_carrier_restriction_mismatch",
-            ),
-            (
-                "wrong_canonical_orientation",
-                lambda artifact: _mutate_directional_canonical_orientation(artifact, bond=1),
-                "directional_carrier_canonical_orientation_mismatch",
-            ),
-            (
-                "carrier_model_wrong_side",
-                lambda artifact: _mutate_directional_model_field(artifact, bond=1, field="side", value="right"),
-                "directional_carrier_model_mismatch",
-            ),
-            (
-                "carrier_model_wrong_ligand_factor",
-                lambda artifact: _mutate_directional_model_field(artifact, bond=1, field="ligand_factor", value=-1),
-                "directional_carrier_model_mismatch",
-            ),
-            (
-                "false_successor_snapshot",
-                lambda artifact: _mutate_directional_successor_snapshot(artifact, bond=1),
-                "directional_carrier_successor_state_anchor_mismatch",
-            ),
-            (
-                "missing_bond_emission_discharge",
-                lambda artifact: _set_directional_discharges(artifact, bond=1, kinds=()),
-                "directional_carrier_discharge_factor_mismatch",
-            ),
-            (
-                "premature_site_discharge",
-                lambda artifact: _set_directional_discharges(
-                    artifact,
-                    bond=1,
-                    kinds=("directional_bond_emission", "directional_site"),
-                ),
-                "directional_carrier_discharge_factor_mismatch",
-            ),
-            (
-                "missing_site_discharge",
-                lambda artifact: _set_directional_discharges(
-                    artifact,
-                    bond=2,
-                    kinds=("directional_bond_emission",),
-                ),
-                "directional_carrier_discharge_factor_mismatch",
-            ),
-            (
-                "successor_bond_occurrence_wrong_mark",
-                lambda artifact: _mutate_directional_term_mark(artifact, bond=1, value=-1),
-                "directional_carrier_residual_mark_mismatch",
-            ),
-            (
-                "successor_bond_occurrence_absent",
-                lambda artifact: _remove_directional_successor_bond_occurrence(artifact, bond=1),
-                "directional_carrier_successor_bond_occurrence_mismatch",
-            ),
-            (
-                "unrelated_residual_component_changed",
-                lambda artifact: _mutate_directional_successor_snapshot_unrelated(artifact, bond=1),
-                "directional_carrier_successor_state_anchor_mismatch",
-            ),
-        )
-        for name, mutate, reason in cases:
-            with self.subTest(name=name):
-                facts, options, artifact = _directional_rooted_artifact()
-                mutate(artifact)
-                _assert_structural_checker_accepts(self, artifact)
-
-                verification = verify_writer_support_artifact_for_facts(
-                    facts=facts,
-                    runtime_options=options,
-                    artifact=artifact,
-                )
-
-                self.assertFalse(verification.accepted)
-                self.assertIn(reason, verification.reason)
 
     def test_default_corpus_obligations_are_classified(self) -> None:
         cases = {
@@ -3667,6 +3137,332 @@ class WriterSupportArtifactDomainMethods:
         self.assertLessEqual(kinds, set(OBJECT_KIND_OFFLINE_COVERAGE))
 
 
+
+    def test_directional_rooted_acyclic_artifact_replays_complete(self) -> None:
+            facts, options, artifact = _directional_rooted_artifact()
+
+            structural = verify_writer_support_artifact_consistency(artifact)
+            verification = verify_writer_support_artifact_for_facts(
+                facts=facts,
+                runtime_options=options,
+                artifact=artifact,
+            )
+
+            self.assertTrue(structural.accepted, structural.reason)
+            self.assertEqual(structural.support_count, 2)
+            self.assertEqual(structural.witness_count, 2)
+            self.assertEqual(
+                tuple(sorted(_support_strings(artifact))),
+                ("F/C=C/Cl", "F\\C=C\\Cl"),
+            )
+            self.assertTrue(verification.accepted, verification.reason)
+            self.assertTrue(verification.offline_replay_complete)
+            first = _directional_transition_manifest(artifact, bond=1)
+            second = _directional_transition_manifest(artifact, bond=2)
+            self.assertEqual(
+                [closed_term_field(key, "kind") for key in closed_term_field(first["transition_term"], "discharged_factor_keys")],
+                ["directional_bond_emission"],
+            )
+            self.assertEqual(
+                [closed_term_field(key, "kind") for key in closed_term_field(second["transition_term"], "discharged_factor_keys")],
+                ["directional_bond_emission", "directional_site"],
+            )
+
+    def test_shared_acyclic_directional_artifact_replays_complete(self) -> None:
+            facts, options, artifact = _shared_acyclic_directional_artifact()
+
+            structural = verify_writer_support_artifact_consistency(artifact)
+            verification = verify_writer_support_artifact_for_facts(
+                facts=facts,
+                runtime_options=options,
+                artifact=artifact,
+            )
+
+            self.assertTrue(structural.accepted, structural.reason)
+            self.assertEqual(structural.support_count, 2)
+            self.assertEqual(structural.witness_count, 2)
+            # The shared bridge relation forces equal normalized signs for the two
+            # carrier variables, leaving exactly the all-forward and all-reverse
+            # renderings. This is a normalized-sign fact, not an RDKit expectation.
+            self.assertEqual(
+                tuple(sorted(_support_strings(artifact))),
+                ("F/C=C/C=C/Cl", "F\\C=C\\C=C\\Cl"),
+            )
+            self.assertTrue(verification.accepted, verification.reason)
+            self.assertTrue(verification.offline_replay_complete)
+            self.assertEqual(verification.offline_unchecked_obligation_families, ())
+
+            bond0 = _directional_transition_manifest(artifact, bond=0)
+            bond2 = _directional_transition_manifest(artifact, bond=2)
+            bond4 = _directional_transition_manifest(artifact, bond=4)
+            self.assertEqual(len(closed_term_field(bond0["transition_term"], "carrier_models")), 1)
+            self.assertEqual(len(closed_term_field(bond0["transition_term"], "restrictions")), 1)
+            self.assertEqual(len(closed_term_field(bond2["transition_term"], "carrier_models")), 2)
+            self.assertEqual(len(closed_term_field(bond2["transition_term"], "restrictions")), 2)
+            self.assertEqual(len(closed_term_field(bond4["transition_term"], "carrier_models")), 1)
+            self.assertEqual(len(closed_term_field(bond4["transition_term"], "restrictions")), 1)
+            self.assertEqual(
+                _directional_discharge_key_pairs(bond0),
+                (("directional_bond_emission", (0,)),),
+            )
+            self.assertEqual(
+                _directional_discharge_key_pairs(bond2),
+                (
+                    ("directional_bond_emission", (2,)),
+                    ("directional_site", (0,)),
+                ),
+            )
+            self.assertEqual(
+                _directional_discharge_key_pairs(bond4),
+                (
+                    ("directional_bond_emission", (4,)),
+                    ("directional_site", (1,)),
+                ),
+            )
+            branch, _manifest = _directional_transition_branch_and_manifest(
+                artifact,
+                bond=2,
+            )
+            source_records = _bond_occurrence_terms_for_branch(
+                artifact,
+                branch,
+                cursor_name="source_cursor",
+                bond=2,
+            )
+            successor_records = _bond_occurrence_terms_for_branch(
+                artifact,
+                branch,
+                cursor_name="successor_cursor",
+                bond=2,
+            )
+            self.assertEqual(source_records, ())
+            self.assertEqual(len(successor_records), 1)
+
+    def test_shared_ring_carrier_supports_ring_transition_terms(self) -> None:
+            facts = shared_directional_ring_carrier_facts()
+            prepared = prepare_writer_facts(facts)
+
+            models = writer_stereo_module._directional_models_for_bond(
+                prepared,
+                BondId(1),
+            )
+
+            self.assertEqual(len(models), 2)
+            self.assertTrue(
+                writer_stereo_module
+                ._supports_directional_bond_emission_transition_term(
+                    prepared,
+                    BondId(1),
+                    models,
+                )
+            )
+            self.assertTrue(
+                writer_stereo_module
+                ._supports_directional_ring_endpoint_projection_transition_term(
+                    prepared,
+                    SimpleNamespace(bond=BondId(1), bond_text=""),
+                    models,
+                )
+            )
+
+    def test_shared_acyclic_directional_coherent_forgeries_reject_semantically(
+            self,
+        ) -> None:
+            cases = (
+                (
+                    "remove_model",
+                    lambda artifact: _remove_directional_model(artifact, bond=2),
+                    "directional_carrier_model_mismatch",
+                ),
+                (
+                    "remove_restriction",
+                    lambda artifact: _remove_directional_restriction(artifact, bond=2),
+                    "directional_carrier_restriction_mismatch",
+                ),
+                (
+                    "wrong_site",
+                    lambda artifact: _mutate_directional_model_field(
+                        artifact,
+                        bond=2,
+                        field="site",
+                        value=99,
+                    ),
+                    "directional_carrier_model_mismatch",
+                ),
+                (
+                    "wrong_side",
+                    lambda artifact: _mutate_directional_model_field(
+                        artifact,
+                        bond=2,
+                        field="side",
+                        value="right",
+                        model_index=1,
+                    ),
+                    "directional_carrier_model_mismatch",
+                ),
+                (
+                    "wrong_ligand_factor",
+                    lambda artifact: _mutate_directional_model_field(
+                        artifact,
+                        bond=2,
+                        field="ligand_factor",
+                        value=-1,
+                        model_index=1,
+                    ),
+                    "directional_carrier_model_mismatch",
+                ),
+                (
+                    "wrong_normalized_sign",
+                    lambda artifact: _mutate_directional_restriction_sign(
+                        artifact,
+                        bond=2,
+                    ),
+                    "directional_carrier_restriction_mismatch",
+                ),
+                (
+                    "duplicate_site_model",
+                    lambda artifact: _duplicate_directional_model_site(
+                        artifact,
+                        bond=2,
+                    ),
+                    "directional_carrier_model_mismatch",
+                ),
+                (
+                    "omit_shared_capability",
+                    lambda artifact: _remove_raw_lifecycle_capability(
+                        artifact,
+                        bond=2,
+                        capability="shared_directional_carrier_restriction",
+                    ),
+                    "tetra_residual_lifecycle_capabilities_mismatch",
+                ),
+                (
+                    "omit_site0_discharge",
+                    lambda artifact: _set_directional_discharges_by_keys(
+                        artifact,
+                        bond=2,
+                        key_pairs=(("directional_bond_emission", (2,)),),
+                    ),
+                    "directional_carrier_discharge_factor_mismatch",
+                ),
+                (
+                    "premature_site1_discharge",
+                    lambda artifact: _set_directional_discharges_by_keys(
+                        artifact,
+                        bond=2,
+                        key_pairs=(
+                            ("directional_bond_emission", (2,)),
+                            ("directional_site", (0,)),
+                            ("directional_site", (1,)),
+                        ),
+                    ),
+                    "directional_carrier_discharge_factor_mismatch",
+                ),
+                (
+                    "duplicate_bond_occurrence",
+                    lambda artifact: _duplicate_directional_successor_bond_occurrence(
+                        artifact,
+                        bond=2,
+                    ),
+                    "directional_carrier_successor_bond_occurrence_mismatch",
+                ),
+            )
+            for name, mutate, reason in cases:
+                with self.subTest(name=name):
+                    facts, options, artifact = _shared_acyclic_directional_artifact()
+                    mutate(artifact)
+                    _assert_structural_checker_accepts(self, artifact)
+
+                    verification = verify_writer_support_artifact_for_facts(
+                        facts=facts,
+                        runtime_options=options,
+                        artifact=artifact,
+                    )
+
+                    self.assertFalse(verification.accepted)
+                    self.assertIn(reason, verification.reason)
+
+    def test_directional_carrier_coherent_forgeries_reject_semantically(self) -> None:
+            cases = (
+                (
+                    "wrong_normalized_sign",
+                    lambda artifact: _mutate_directional_restriction_sign(artifact, bond=1),
+                    "directional_carrier_restriction_mismatch",
+                ),
+                (
+                    "wrong_canonical_orientation",
+                    lambda artifact: _mutate_directional_canonical_orientation(artifact, bond=1),
+                    "directional_carrier_canonical_orientation_mismatch",
+                ),
+                (
+                    "carrier_model_wrong_side",
+                    lambda artifact: _mutate_directional_model_field(artifact, bond=1, field="side", value="right"),
+                    "directional_carrier_model_mismatch",
+                ),
+                (
+                    "carrier_model_wrong_ligand_factor",
+                    lambda artifact: _mutate_directional_model_field(artifact, bond=1, field="ligand_factor", value=-1),
+                    "directional_carrier_model_mismatch",
+                ),
+                (
+                    "false_successor_snapshot",
+                    lambda artifact: _mutate_directional_successor_snapshot(artifact, bond=1),
+                    "directional_carrier_successor_state_anchor_mismatch",
+                ),
+                (
+                    "missing_bond_emission_discharge",
+                    lambda artifact: _set_directional_discharges(artifact, bond=1, kinds=()),
+                    "directional_carrier_discharge_factor_mismatch",
+                ),
+                (
+                    "premature_site_discharge",
+                    lambda artifact: _set_directional_discharges(
+                        artifact,
+                        bond=1,
+                        kinds=("directional_bond_emission", "directional_site"),
+                    ),
+                    "directional_carrier_discharge_factor_mismatch",
+                ),
+                (
+                    "missing_site_discharge",
+                    lambda artifact: _set_directional_discharges(
+                        artifact,
+                        bond=2,
+                        kinds=("directional_bond_emission",),
+                    ),
+                    "directional_carrier_discharge_factor_mismatch",
+                ),
+                (
+                    "successor_bond_occurrence_wrong_mark",
+                    lambda artifact: _mutate_directional_term_mark(artifact, bond=1, value=-1),
+                    "directional_carrier_residual_mark_mismatch",
+                ),
+                (
+                    "successor_bond_occurrence_absent",
+                    lambda artifact: _remove_directional_successor_bond_occurrence(artifact, bond=1),
+                    "directional_carrier_successor_bond_occurrence_mismatch",
+                ),
+                (
+                    "unrelated_residual_component_changed",
+                    lambda artifact: _mutate_directional_successor_snapshot_unrelated(artifact, bond=1),
+                    "directional_carrier_successor_state_anchor_mismatch",
+                ),
+            )
+            for name, mutate, reason in cases:
+                with self.subTest(name=name):
+                    facts, options, artifact = _directional_rooted_artifact()
+                    mutate(artifact)
+                    _assert_structural_checker_accepts(self, artifact)
+
+                    verification = verify_writer_support_artifact_for_facts(
+                        facts=facts,
+                        runtime_options=options,
+                        artifact=artifact,
+                    )
+
+                    self.assertFalse(verification.accepted)
+                    self.assertIn(reason, verification.reason)
+
 def _snapshot_artifact(facts):
     options = writer_runtime_options()
     prepared = prepare_writer_facts(facts)
@@ -3813,100 +3609,9 @@ def _shared_acyclic_directional_artifact():
 
 
 @lru_cache(maxsize=1)
-def _directional_ring_opening_artifact():
-    facts = directional_ring_carrier_facts()
-    options = writer_runtime_options(rooted_at_atom=0)
-    prepared = prepare_writer_facts(facts)
-    initial = initial_writer_snapshot(prepared, options)
-    frontier = [(initial.cursor, 0)]
-    seen = set()
-    opening_sources = []
-    while frontier:
-        cursor, depth = frontier.pop(0)
-        cursor_key = repr(cursor)
-        if cursor_key in seen:
-            continue
-        seen.add(cursor_key)
-        batch = _checked_writer_frontier_branch_supports(
-            prepared,
-            cursor,
-            include_counts=False,
-            include_frontier_certificate=False,
-            include_count_certificate=False,
-        )
-        for support in batch.supports:
-            if any(
-                isinstance(event, WriterRingEndpointEmitted)
-                and event.bond == BondId(3)
-                for event in support.events
-            ):
-                opening_sources.append((cursor, depth))
-            frontier.append((support.successor_cursor, depth + 1))
-    if not opening_sources:
-        raise AssertionError("missing cursor before BondId(3) ring opening")
-    source, source_depth = max(opening_sources, key=lambda item: item[1])
-    snapshot = capture_writer_frontier_snapshot(
-        prepared=prepared,
-        runtime_options=options,
-        cursor=source,
-        decoder_boundary=WriterDecoderBoundary(consumed_token_count=source_depth),
-    )
-    artifact = writer_support_artifact_envelope_for_snapshot(
-        prepared=prepared,
-        snapshot=snapshot,
-    )
-    return facts, options, artifact
 
 
 @lru_cache(maxsize=2)
-def _directional_ring_pair_artifact(first_mark: DirectionMark):
-    facts = directional_ring_carrier_facts()
-    options = writer_runtime_options(rooted_at_atom=0)
-    prepared = prepare_writer_facts(facts)
-    initial = initial_writer_snapshot(prepared, options)
-    frontier = [(initial.cursor, 0)]
-    seen = set()
-    source = None
-    source_depth = None
-    while frontier and source is None:
-        cursor, depth = frontier.pop(0)
-        cursor_key = repr(cursor)
-        if cursor_key in seen:
-            continue
-        seen.add(cursor_key)
-        batch = _checked_writer_frontier_branch_supports(
-            prepared,
-            cursor,
-            include_counts=False,
-            include_frontier_certificate=False,
-            include_count_certificate=False,
-        )
-        for support in batch.supports:
-            if any(
-                isinstance(event, WriterRingEndpointPaired)
-                and event.bond == BondId(3)
-                and event.first_endpoint_direction_mark is first_mark
-                for event in support.events
-            ):
-                source = cursor
-                source_depth = depth
-                break
-            frontier.append((support.successor_cursor, depth + 1))
-    if source is None or source_depth is None:
-        raise AssertionError(
-            f"missing cursor before BondId(3) pair with first mark {first_mark}"
-        )
-    snapshot = capture_writer_frontier_snapshot(
-        prepared=prepared,
-        runtime_options=options,
-        cursor=source,
-        decoder_boundary=WriterDecoderBoundary(consumed_token_count=source_depth),
-    )
-    artifact = writer_support_artifact_envelope_for_snapshot(
-        prepared=prepared,
-        snapshot=snapshot,
-    )
-    return facts, options, artifact
 
 
 def _first_support_string_object(artifact):
@@ -4819,3 +4524,5 @@ def _tetra_facts_with_implicit_h_only_outside_specified_site(facts):
 def _support_strings(artifact):
     root = artifact_object_by_id(artifact, artifact["roots"]["support_image_root"])
     return root["payload"]["support_strings"]
+
+__all__ = [name for name in globals() if not name.startswith("__")]

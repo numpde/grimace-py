@@ -53,6 +53,10 @@ impl PropagationSummary {
 pub enum NativeSolverError {
     UnknownVariable(VariableId),
     Contradiction,
+    UnsupportedCyclicComponent {
+        variable_count: usize,
+        factor_count: usize,
+    },
 }
 
 impl fmt::Display for NativeSolverError {
@@ -62,6 +66,14 @@ impl fmt::Display for NativeSolverError {
                 write!(formatter, "unknown constraint variable {variable:?}")
             }
             Self::Contradiction => formatter.write_str("constraint state is contradictory"),
+            Self::UnsupportedCyclicComponent {
+                variable_count,
+                factor_count,
+            } => write!(
+                formatter,
+                "unresolved cyclic constraint component is not yet supported: \
+                 variables={variable_count}, factors={factor_count}"
+            ),
         }
     }
 }
@@ -76,6 +88,7 @@ impl NativeSolverState {
             .collect::<Vec<_>>();
         let mut state = Self { model, domains };
         state.propagate(factor_ids)?;
+        state.require_supported_components()?;
         Ok(state)
     }
 
@@ -115,6 +128,7 @@ impl NativeSolverState {
             .expect("known variable must have an adjacency row")
             .to_vec();
         let mut summary = successor.propagate(seeds)?;
+        successor.require_supported_component(variable)?;
         summary.domain_reductions += 1;
         Ok((successor, summary))
     }
@@ -163,6 +177,85 @@ impl NativeSolverState {
         }
 
         Ok(summary)
+    }
+
+    fn require_supported_components(&self) -> Result<(), NativeSolverError> {
+        let mut covered = vec![false; self.model.variable_count()];
+        for index in 0..self.model.variable_count() {
+            if covered[index] {
+                continue;
+            }
+            let seed = variable_id_from_index(index);
+            let (variables, factors) = self.constraint_component(seed);
+            for variable in &variables {
+                covered[variable.index()] = true;
+            }
+            self.require_supported_component_shape(&variables, &factors)?;
+        }
+        Ok(())
+    }
+
+    fn require_supported_component(
+        &self,
+        seed: VariableId,
+    ) -> Result<(), NativeSolverError> {
+        let (variables, factors) = self.constraint_component(seed);
+        self.require_supported_component_shape(&variables, &factors)
+    }
+
+    fn require_supported_component_shape(
+        &self,
+        variables: &[VariableId],
+        factors: &[FactorId],
+    ) -> Result<(), NativeSolverError> {
+        let unresolved = variables
+            .iter()
+            .any(|variable| self.domains[variable.index()].len() > 1);
+        if unresolved && factors.len() >= variables.len() {
+            return Err(NativeSolverError::UnsupportedCyclicComponent {
+                variable_count: variables.len(),
+                factor_count: factors.len(),
+            });
+        }
+        Ok(())
+    }
+
+    fn constraint_component(
+        &self,
+        seed: VariableId,
+    ) -> (Vec<VariableId>, Vec<FactorId>) {
+        let mut variables = Vec::new();
+        let mut factors = Vec::new();
+        let mut seen_variables = vec![false; self.model.variable_count()];
+        let mut seen_factors = vec![false; self.model.factor_count()];
+        let mut pending = VecDeque::from([seed]);
+
+        while let Some(variable) = pending.pop_front() {
+            if seen_variables[variable.index()] {
+                continue;
+            }
+            seen_variables[variable.index()] = true;
+            variables.push(variable);
+
+            for &factor_id in self
+                .model
+                .factors_for_variable(variable)
+                .expect("known variable must have an adjacency row")
+            {
+                if seen_factors[factor_id.index()] {
+                    continue;
+                }
+                seen_factors[factor_id.index()] = true;
+                factors.push(factor_id);
+                let factor = self
+                    .model
+                    .factor(factor_id)
+                    .expect("factor adjacency must reference a prepared factor");
+                pending.extend(factor.variables());
+            }
+        }
+
+        (variables, factors)
     }
 }
 
@@ -232,6 +325,12 @@ fn factor_id_from_index(index: usize) -> FactorId {
     )
 }
 
+fn variable_id_from_index(index: usize) -> VariableId {
+    VariableId::new(
+        u32::try_from(index).expect("constraint model validated the variable identifier capacity"),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -243,7 +342,8 @@ mod tests {
 
     fn equality_chain() -> (Arc<ConstraintModel>, [VariableId; 5]) {
         let mut builder = ConstraintModelBuilder::new();
-        let variables = std::array::from_fn(|_| builder.add_variable(two_values()).unwrap());
+        let variables: [VariableId; 5] =
+            std::array::from_fn(|_| builder.add_variable(two_values()).unwrap());
         builder
             .add_binary_relation(variables[0], variables[1], [(0, 0), (1, 1)])
             .unwrap();
@@ -359,6 +459,47 @@ mod tests {
             left_then_right.semantic_snapshot(),
             right_then_left.semantic_snapshot()
         );
+    }
+
+    #[test]
+    fn unresolved_cyclic_component_fails_closed() {
+        let mut builder = ConstraintModelBuilder::new();
+        let variables: [VariableId; 3] =
+            std::array::from_fn(|_| builder.add_variable(two_values()).unwrap());
+        for (left, right) in [(0, 1), (1, 2), (2, 0)] {
+            builder
+                .add_binary_relation(
+                    variables[left],
+                    variables[right],
+                    [(0, 0), (1, 1)],
+                )
+                .unwrap();
+        }
+
+        assert!(matches!(
+            NativeSolverState::initial(Arc::new(builder.build())),
+            Err(NativeSolverError::UnsupportedCyclicComponent {
+                variable_count: 3,
+                factor_count: 3,
+            })
+        ));
+    }
+
+    #[test]
+    fn fully_resolved_cyclic_component_is_accepted() {
+        let mut builder = ConstraintModelBuilder::new();
+        let variables: [VariableId; 3] = std::array::from_fn(|_| {
+            builder
+                .add_variable(Domain::singleton(0).unwrap())
+                .unwrap()
+        });
+        for (left, right) in [(0, 1), (1, 2), (2, 0)] {
+            builder
+                .add_binary_relation(variables[left], variables[right], [(0, 0)])
+                .unwrap();
+        }
+
+        assert!(NativeSolverState::initial(Arc::new(builder.build())).is_ok());
     }
 
     #[test]

@@ -37,7 +37,6 @@ impl std::error::Error for ExhaustiveSolverError {}
 
 impl ConstraintSolver for ExhaustiveSolverState {
     type Error = ExhaustiveSolverError;
-    type Snapshot = Box<[Domain]>;
 
     fn initial(model: Arc<ConstraintModel>) -> Result<Self, Self::Error> {
         let initial = model.initial_domains().collect::<Vec<_>>();
@@ -81,10 +80,6 @@ impl ConstraintSolver for ExhaustiveSolverState {
 
     fn domain(&self, variable: VariableId) -> Option<Domain> {
         self.domains.get(variable.index()).copied()
-    }
-
-    fn semantic_snapshot(&self) -> Self::Snapshot {
-        self.domains.clone()
     }
 }
 

@@ -13,6 +13,7 @@ mod native;
 #[cfg(test)]
 mod native_oracle;
 mod prepared;
+mod solver;
 
 pub use domain::{Domain, DomainError, DOMAIN_VALUE_CAPACITY};
 pub use ids::{AtomId, BondId, FactorId, TokenId, VariableId};

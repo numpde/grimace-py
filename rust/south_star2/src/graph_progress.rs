@@ -22,22 +22,12 @@ impl DenseSet {
     }
 
     fn contains(&self, index: usize) -> bool {
-        if index >= self.universe_len {
-            return false;
-        }
-        let word = index / u64::BITS as usize;
-        let bit = index % u64::BITS as usize;
-        self.words[word] & (1_u64 << bit) != 0
+        let (word, mask) = self.location(index);
+        self.words[word] & mask != 0
     }
 
     fn insert(&mut self, index: usize) -> bool {
-        assert!(
-            index < self.universe_len,
-            "prepared identifier must fit the graph progress universe"
-        );
-        let word = index / u64::BITS as usize;
-        let bit = index % u64::BITS as usize;
-        let mask = 1_u64 << bit;
+        let (word, mask) = self.location(index);
         if self.words[word] & mask != 0 {
             return false;
         }
@@ -52,6 +42,16 @@ impl DenseSet {
 
     const fn is_complete(&self) -> bool {
         self.marked_count == self.universe_len
+    }
+
+    fn location(&self, index: usize) -> (usize, u64) {
+        assert!(
+            index < self.universe_len,
+            "prepared identifier must fit the graph progress universe"
+        );
+        let word = index / u64::BITS as usize;
+        let bit = index % u64::BITS as usize;
+        (word, 1_u64 << bit)
     }
 }
 
@@ -226,5 +226,14 @@ mod tests {
         assert_eq!(successor.visited_atom_count(), 1);
         assert!(!source.atom_is_visited(first));
         assert!(successor.atom_is_visited(first));
+    }
+
+    #[test]
+    #[should_panic(expected = "prepared identifier must fit")]
+    fn stale_prepared_ids_fail_fast() {
+        let graph = PreparedGraphBuilder::new().build();
+        let progress = GraphProgress::new(&graph);
+
+        let _ = progress.atom_is_visited(AtomId::new(0));
     }
 }

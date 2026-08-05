@@ -10,6 +10,8 @@ mod domain;
 mod ids;
 mod model;
 mod native;
+#[cfg(test)]
+mod native_oracle;
 mod prepared;
 
 pub use domain::{Domain, DomainError, DOMAIN_VALUE_CAPACITY};

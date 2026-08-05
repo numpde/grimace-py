@@ -12,6 +12,7 @@ mod model;
 mod native;
 #[cfg(test)]
 mod native_oracle;
+mod native_solver;
 mod prepared;
 mod solver;
 

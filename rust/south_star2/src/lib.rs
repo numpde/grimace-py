@@ -7,6 +7,7 @@
 //! capability labels in the semantic API.
 
 mod domain;
+mod graph_progress;
 mod ids;
 mod model;
 mod native;

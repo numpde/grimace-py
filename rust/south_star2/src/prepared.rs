@@ -38,7 +38,7 @@ impl PreparedBond {
         self.token
     }
 
-    pub const fn other(self, atom: AtomId) -> Option<AtomId> {
+    pub fn other(self, atom: AtomId) -> Option<AtomId> {
         if atom == self.a {
             Some(self.b)
         } else if atom == self.b {
@@ -316,7 +316,7 @@ fn reachable_atom_count(adjacency: &[Vec<AdjacentBond>]) -> usize {
     count
 }
 
-const fn ordered_pair(a: AtomId, b: AtomId) -> (AtomId, AtomId) {
+fn ordered_pair(a: AtomId, b: AtomId) -> (AtomId, AtomId) {
     if a < b {
         (a, b)
     } else {

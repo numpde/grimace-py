@@ -1,6 +1,6 @@
-//! Validated Rust-owned molecule input for the South Star 2 walker.
+//! Rust-owned molecular graph input for the South Star 2 walker.
 
-use std::collections::{BTreeSet, VecDeque};
+use std::collections::BTreeSet;
 use std::fmt;
 use std::sync::Arc;
 
@@ -65,7 +65,7 @@ impl AdjacentBond {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub struct PreparedGraph {
     tokens: Box<[Box<str>]>,
     atoms: Box<[PreparedAtom]>,
@@ -121,8 +121,8 @@ impl PreparedMolecule {
         self.graph.as_ref()
     }
 
-    pub fn constraint_model(&self) -> Arc<ConstraintModel> {
-        Arc::clone(&self.constraints)
+    pub fn constraint_model(&self) -> &ConstraintModel {
+        self.constraints.as_ref()
     }
 }
 
@@ -202,11 +202,7 @@ impl PreparedGraphBuilder {
         Ok(bond)
     }
 
-    pub fn build(self) -> Result<PreparedGraph, PreparedGraphError> {
-        if self.atoms.is_empty() {
-            return Err(PreparedGraphError::EmptyGraph);
-        }
-
+    pub fn build(self) -> PreparedGraph {
         let mut adjacency = vec![Vec::new(); self.atoms.len()];
         for (index, bond) in self.bonds.iter().copied().enumerate() {
             let bond_id = bond_id_from_index(index);
@@ -223,15 +219,7 @@ impl PreparedGraphBuilder {
             row.sort_unstable();
         }
 
-        let reachable = reachable_atom_count(&adjacency);
-        if reachable != self.atoms.len() {
-            return Err(PreparedGraphError::DisconnectedGraph {
-                reachable,
-                total: self.atoms.len(),
-            });
-        }
-
-        Ok(PreparedGraph {
+        PreparedGraph {
             tokens: self.tokens.into_boxed_slice(),
             atoms: self.atoms.into_boxed_slice(),
             bonds: self.bonds.into_boxed_slice(),
@@ -240,7 +228,7 @@ impl PreparedGraphBuilder {
                 .map(Vec::into_boxed_slice)
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
-        })
+        }
     }
 
     fn require_token(&self, token: TokenId) -> Result<(), PreparedGraphError> {
@@ -268,8 +256,6 @@ pub enum PreparedGraphError {
     UnknownAtom(AtomId),
     SelfBond(AtomId),
     DuplicateBond { a: AtomId, b: AtomId },
-    EmptyGraph,
-    DisconnectedGraph { reachable: usize, total: usize },
 }
 
 impl fmt::Display for PreparedGraphError {
@@ -289,32 +275,11 @@ impl fmt::Display for PreparedGraphError {
             Self::UnknownAtom(atom) => write!(formatter, "unknown prepared atom {atom:?}"),
             Self::SelfBond(atom) => write!(formatter, "self-bond at {atom:?}"),
             Self::DuplicateBond { a, b } => write!(formatter, "duplicate bond {a:?}-{b:?}"),
-            Self::EmptyGraph => formatter.write_str("prepared graph requires an atom"),
-            Self::DisconnectedGraph { reachable, total } => write!(
-                formatter,
-                "prepared graph must be connected: reachable={reachable}, total={total}"
-            ),
         }
     }
 }
 
 impl std::error::Error for PreparedGraphError {}
-
-fn reachable_atom_count(adjacency: &[Vec<AdjacentBond>]) -> usize {
-    let mut seen = vec![false; adjacency.len()];
-    let mut pending = VecDeque::from([AtomId::new(0)]);
-    let mut count = 0;
-
-    while let Some(atom) = pending.pop_front() {
-        if seen[atom.index()] {
-            continue;
-        }
-        seen[atom.index()] = true;
-        count += 1;
-        pending.extend(adjacency[atom.index()].iter().map(|entry| entry.atom));
-    }
-    count
-}
 
 fn ordered_pair(a: AtomId, b: AtomId) -> (AtomId, AtomId) {
     if a < b {
@@ -351,10 +316,16 @@ mod tests {
         assert_eq!(builder.intern_token("C").unwrap(), carbon);
         assert_eq!(builder.intern_token("N").unwrap(), TokenId::new(1));
         assert_eq!(builder.intern_token(""), Err(PreparedGraphError::EmptyToken));
-        assert_eq!(
-            PreparedGraphBuilder::new().build(),
-            Err(PreparedGraphError::EmptyGraph)
-        );
+    }
+
+    #[test]
+    fn empty_graph_is_valid_prepared_input() {
+        let graph = PreparedGraphBuilder::new().build();
+
+        assert_eq!(graph.token_count(), 0);
+        assert_eq!(graph.atom_count(), 0);
+        assert_eq!(graph.bond_count(), 0);
+        assert_eq!(graph.atom(AtomId::new(0)), None);
     }
 
     #[test]
@@ -362,7 +333,7 @@ mod tests {
         let mut builder = PreparedGraphBuilder::new();
         let carbon = builder.intern_token("C").unwrap();
         let atom = builder.add_atom(carbon).unwrap();
-        let graph = builder.build().unwrap();
+        let graph = builder.build();
 
         assert_eq!(graph.atom_count(), 1);
         assert_eq!(graph.bond_count(), 0);
@@ -381,7 +352,7 @@ mod tests {
             .add_bond(atoms[0], atoms[2], Some(double))
             .unwrap();
         let left = builder.add_bond(atoms[0], atoms[1], None).unwrap();
-        let graph = builder.build().unwrap();
+        let graph = builder.build();
 
         assert_eq!(
             graph.neighbors(atoms[0]).unwrap(),
@@ -408,7 +379,7 @@ mod tests {
     }
 
     #[test]
-    fn invalid_bonds_do_not_consume_an_identifier() {
+    fn invalid_additions_do_not_consume_identifiers() {
         let mut builder = PreparedGraphBuilder::new();
         let carbon = builder.intern_token("C").unwrap();
         assert_eq!(
@@ -440,19 +411,17 @@ mod tests {
     }
 
     #[test]
-    fn disconnected_graph_is_rejected() {
+    fn disconnected_graph_is_valid_prepared_input() {
         let mut builder = PreparedGraphBuilder::new();
         let carbon = builder.intern_token("C").unwrap();
-        builder.add_atom(carbon).unwrap();
-        builder.add_atom(carbon).unwrap();
+        let first = builder.add_atom(carbon).unwrap();
+        let second = builder.add_atom(carbon).unwrap();
+        let graph = builder.build();
 
-        assert_eq!(
-            builder.build(),
-            Err(PreparedGraphError::DisconnectedGraph {
-                reachable: 1,
-                total: 2,
-            })
-        );
+        assert_eq!(graph.atom_count(), 2);
+        assert_eq!(graph.bond_count(), 0);
+        assert!(graph.neighbors(first).unwrap().is_empty());
+        assert!(graph.neighbors(second).unwrap().is_empty());
     }
 
     #[test]
@@ -463,8 +432,7 @@ mod tests {
         builder.add_bond(atoms[0], atoms[1], None).unwrap();
         builder.add_bond(atoms[1], atoms[2], None).unwrap();
         builder.add_bond(atoms[2], atoms[0], None).unwrap();
-
-        let graph = builder.build().unwrap();
+        let graph = builder.build();
 
         assert_eq!(graph.atom_count(), 3);
         assert_eq!(graph.bond_count(), 3);
@@ -474,7 +442,7 @@ mod tests {
     }
 
     #[test]
-    fn large_connected_graph_preserves_all_atoms_and_bonds() {
+    fn large_graph_preserves_all_atoms_and_bonds() {
         let mut builder = PreparedGraphBuilder::new();
         let carbon = builder.intern_token("C").unwrap();
         let atoms = (0..100)
@@ -483,8 +451,7 @@ mod tests {
         for pair in atoms.windows(2) {
             builder.add_bond(pair[0], pair[1], None).unwrap();
         }
-
-        let graph = builder.build().unwrap();
+        let graph = builder.build();
 
         assert_eq!(graph.atom_count(), 100);
         assert_eq!(graph.bond_count(), 99);
@@ -493,7 +460,7 @@ mod tests {
     }
 
     #[test]
-    fn prepared_molecule_shares_its_constraint_model() {
+    fn prepared_molecule_clone_shares_immutable_data() {
         let mut graph = PreparedGraphBuilder::new();
         let carbon = graph.intern_token("C").unwrap();
         graph.add_atom(carbon).unwrap();
@@ -502,14 +469,21 @@ mod tests {
         let variable = constraints
             .add_variable(Domain::from_indices([0, 1]).unwrap())
             .unwrap();
-        let prepared = PreparedMolecule::new(graph.build().unwrap(), constraints.build());
-        let model = prepared.constraint_model();
-        let second_handle = prepared.constraint_model();
+        let prepared = PreparedMolecule::new(graph.build(), constraints.build());
+        let cloned = prepared.clone();
 
         assert_eq!(
-            model.variable(variable).unwrap().initial_domain(),
+            prepared
+                .constraint_model()
+                .variable(variable)
+                .unwrap()
+                .initial_domain(),
             Domain::from_indices([0, 1]).unwrap()
         );
-        assert!(Arc::ptr_eq(&model, &second_handle));
+        assert!(std::ptr::eq(prepared.graph(), cloned.graph()));
+        assert!(std::ptr::eq(
+            prepared.constraint_model(),
+            cloned.constraint_model()
+        ));
     }
 }

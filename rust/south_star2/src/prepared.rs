@@ -39,9 +39,9 @@ impl PreparedBond {
     }
 
     pub const fn other(self, atom: AtomId) -> Option<AtomId> {
-        if atom.get() == self.a.get() {
+        if atom == self.a {
             Some(self.b)
-        } else if atom.get() == self.b.get() {
+        } else if atom == self.b {
             Some(self.a)
         } else {
             None
@@ -71,7 +71,6 @@ pub struct PreparedGraph {
     atoms: Box<[PreparedAtom]>,
     bonds: Box<[PreparedBond]>,
     adjacency: Box<[Box<[AdjacentBond]>]>,
-    cycle_rank: usize,
 }
 
 impl PreparedGraph {
@@ -85,14 +84,6 @@ impl PreparedGraph {
 
     pub fn bond_count(&self) -> usize {
         self.bonds.len()
-    }
-
-    pub const fn cycle_rank(&self) -> usize {
-        self.cycle_rank
-    }
-
-    pub const fn is_acyclic(&self) -> bool {
-        self.cycle_rank == 0
     }
 
     pub fn token_text(&self, token: TokenId) -> Option<&str> {
@@ -240,7 +231,6 @@ impl PreparedGraphBuilder {
             });
         }
 
-        let cycle_rank = self.bonds.len() - (self.atoms.len() - 1);
         Ok(PreparedGraph {
             tokens: self.tokens.into_boxed_slice(),
             atoms: self.atoms.into_boxed_slice(),
@@ -250,7 +240,6 @@ impl PreparedGraphBuilder {
                 .map(Vec::into_boxed_slice)
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
-            cycle_rank,
         })
     }
 
@@ -328,7 +317,7 @@ fn reachable_atom_count(adjacency: &[Vec<AdjacentBond>]) -> usize {
 }
 
 const fn ordered_pair(a: AtomId, b: AtomId) -> (AtomId, AtomId) {
-    if a.get() < b.get() {
+    if a < b {
         (a, b)
     } else {
         (b, a)
@@ -352,7 +341,7 @@ fn bond_id_from_index(index: usize) -> BondId {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ConstraintModelBuilder, Domain, NativeSolverState};
+    use crate::{ConstraintModelBuilder, Domain};
 
     #[test]
     fn token_interning_is_stable_and_nonempty() {
@@ -369,7 +358,7 @@ mod tests {
     }
 
     #[test]
-    fn single_atom_graph_is_connected_and_acyclic() {
+    fn single_atom_graph_has_expected_tokens_and_adjacency() {
         let mut builder = PreparedGraphBuilder::new();
         let carbon = builder.intern_token("C").unwrap();
         let atom = builder.add_atom(carbon).unwrap();
@@ -377,15 +366,13 @@ mod tests {
 
         assert_eq!(graph.atom_count(), 1);
         assert_eq!(graph.bond_count(), 0);
-        assert_eq!(graph.cycle_rank(), 0);
-        assert!(graph.is_acyclic());
         assert_eq!(graph.token_text(carbon), Some("C"));
         assert_eq!(graph.atom(atom).copied().unwrap().token(), carbon);
         assert!(graph.neighbors(atom).unwrap().is_empty());
     }
 
     #[test]
-    fn connected_tree_has_symmetric_sorted_adjacency() {
+    fn adjacency_is_symmetric_and_sorted() {
         let mut builder = PreparedGraphBuilder::new();
         let carbon = builder.intern_token("C").unwrap();
         let double = builder.intern_token("=").unwrap();
@@ -469,7 +456,7 @@ mod tests {
     }
 
     #[test]
-    fn cycles_are_recorded_but_not_rejected() {
+    fn cyclic_graph_is_valid_prepared_input() {
         let mut builder = PreparedGraphBuilder::new();
         let carbon = builder.intern_token("C").unwrap();
         let atoms: [AtomId; 3] = std::array::from_fn(|_| builder.add_atom(carbon).unwrap());
@@ -479,12 +466,15 @@ mod tests {
 
         let graph = builder.build().unwrap();
 
-        assert_eq!(graph.cycle_rank(), 1);
-        assert!(!graph.is_acyclic());
+        assert_eq!(graph.atom_count(), 3);
+        assert_eq!(graph.bond_count(), 3);
+        for atom in atoms {
+            assert_eq!(graph.neighbors(atom).unwrap().len(), 2);
+        }
     }
 
     #[test]
-    fn preparation_has_no_small_molecule_envelope() {
+    fn large_connected_graph_preserves_all_atoms_and_bonds() {
         let mut builder = PreparedGraphBuilder::new();
         let carbon = builder.intern_token("C").unwrap();
         let atoms = (0..100)
@@ -498,7 +488,8 @@ mod tests {
 
         assert_eq!(graph.atom_count(), 100);
         assert_eq!(graph.bond_count(), 99);
-        assert!(graph.is_acyclic());
+        assert_eq!(graph.neighbors(atoms[0]).unwrap().len(), 1);
+        assert_eq!(graph.neighbors(atoms[50]).unwrap().len(), 2);
     }
 
     #[test]
@@ -513,10 +504,12 @@ mod tests {
             .unwrap();
         let prepared = PreparedMolecule::new(graph.build().unwrap(), constraints.build());
         let model = prepared.constraint_model();
-        let state = NativeSolverState::initial(Arc::clone(&model)).unwrap();
-
-        assert_eq!(state.domain(variable), Some(Domain::from_indices([0, 1]).unwrap()));
         let second_handle = prepared.constraint_model();
+
+        assert_eq!(
+            model.variable(variable).unwrap().initial_domain(),
+            Domain::from_indices([0, 1]).unwrap()
+        );
         assert!(Arc::ptr_eq(&model, &second_handle));
     }
 }

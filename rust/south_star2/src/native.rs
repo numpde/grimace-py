@@ -1,7 +1,8 @@
-//! First native finite-domain backend for South Star 2.
+//! Native finite-domain propagation for South Star 2.
 //!
-//! All prepared factors are active in this initial slice. Factor lifecycle is
-//! added only when the walker has an event that genuinely needs it.
+//! This module is crate-private while complete satisfiability search is still
+//! being integrated. It maintains branch-local domains and arc consistency;
+//! temporary implementation stages are not represented as capability errors.
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fmt;
@@ -12,51 +13,41 @@ use crate::ids::{FactorId, VariableId};
 use crate::model::{BinaryRelationFactor, ConstraintModel, FactorDefinition};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ConstraintStateSnapshot {
+pub(crate) struct ConstraintStateSnapshot {
     domains: Box<[Domain]>,
 }
 
-impl ConstraintStateSnapshot {
-    pub fn domains(&self) -> &[Domain] {
-        &self.domains
-    }
-}
-
 #[derive(Clone, Debug)]
-pub struct NativeSolverState {
+pub(crate) struct NativeSolverState {
     model: Arc<ConstraintModel>,
     domains: Box<[Domain]>,
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
-pub struct PropagationSummary {
+pub(crate) struct PropagationSummary {
     factor_revisions: usize,
     distinct_factors_visited: usize,
     domain_reductions: usize,
 }
 
 impl PropagationSummary {
-    pub const fn factor_revisions(self) -> usize {
+    pub(crate) const fn factor_revisions(self) -> usize {
         self.factor_revisions
     }
 
-    pub const fn distinct_factors_visited(self) -> usize {
+    pub(crate) const fn distinct_factors_visited(self) -> usize {
         self.distinct_factors_visited
     }
 
-    pub const fn domain_reductions(self) -> usize {
+    pub(crate) const fn domain_reductions(self) -> usize {
         self.domain_reductions
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum NativeSolverError {
+pub(crate) enum NativeSolverError {
     UnknownVariable(VariableId),
     Contradiction,
-    UnsupportedCyclicComponent {
-        variable_count: usize,
-        factor_count: usize,
-    },
 }
 
 impl fmt::Display for NativeSolverError {
@@ -66,14 +57,6 @@ impl fmt::Display for NativeSolverError {
                 write!(formatter, "unknown constraint variable {variable:?}")
             }
             Self::Contradiction => formatter.write_str("constraint state is contradictory"),
-            Self::UnsupportedCyclicComponent {
-                variable_count,
-                factor_count,
-            } => write!(
-                formatter,
-                "unresolved cyclic constraint component is not yet supported: \
-                 variables={variable_count}, factors={factor_count}"
-            ),
         }
     }
 }
@@ -81,23 +64,19 @@ impl fmt::Display for NativeSolverError {
 impl std::error::Error for NativeSolverError {}
 
 impl NativeSolverState {
-    pub fn initial(model: Arc<ConstraintModel>) -> Result<Self, NativeSolverError> {
+    pub(crate) fn initial(model: Arc<ConstraintModel>) -> Result<Self, NativeSolverError> {
         let domains = model.initial_domains().collect::<Vec<_>>().into_boxed_slice();
         let factor_count = model.factor_count();
-        let variable_count = model.variable_count();
         let mut state = Self { model, domains };
         state.propagate((0..factor_count).map(factor_id_from_index))?;
-        state.require_supported_components(
-            (0..variable_count).map(variable_id_from_index),
-        )?;
         Ok(state)
     }
 
-    pub fn domain(&self, variable: VariableId) -> Option<Domain> {
+    pub(crate) fn domain(&self, variable: VariableId) -> Option<Domain> {
         self.domains.get(variable.index()).copied()
     }
 
-    pub fn semantic_snapshot(&self) -> ConstraintStateSnapshot {
+    pub(crate) fn semantic_snapshot(&self) -> ConstraintStateSnapshot {
         ConstraintStateSnapshot {
             domains: self.domains.clone(),
         }
@@ -107,7 +86,7 @@ impl NativeSolverState {
     ///
     /// Repeated restrictions for the same variable are intersected before any
     /// candidate state is created. The source state is never mutated.
-    pub fn with_restrictions(
+    pub(crate) fn with_restrictions(
         &self,
         restrictions: impl IntoIterator<Item = (VariableId, Domain)>,
     ) -> Result<(Self, PropagationSummary), NativeSolverError> {
@@ -126,7 +105,7 @@ impl NativeSolverState {
         }
 
         let mut successor = self.clone();
-        let mut changed_variables = Vec::new();
+        let mut explicit_reductions = 0;
         let mut seed_factors = BTreeSet::new();
 
         for (variable, restricted) in domains_by_variable {
@@ -135,7 +114,7 @@ impl NativeSolverState {
                 continue;
             }
             successor.domains[variable.index()] = restricted;
-            changed_variables.push(variable);
+            explicit_reductions += 1;
             seed_factors.extend(
                 successor
                     .model
@@ -146,13 +125,12 @@ impl NativeSolverState {
             );
         }
 
-        if changed_variables.is_empty() {
+        if explicit_reductions == 0 {
             return Ok((successor, PropagationSummary::default()));
         }
 
         let mut summary = successor.propagate(seed_factors)?;
-        successor.require_supported_components(changed_variables.iter().copied())?;
-        summary.domain_reductions += changed_variables.len();
+        summary.domain_reductions += explicit_reductions;
         Ok((successor, summary))
     }
 
@@ -199,83 +177,6 @@ impl NativeSolverState {
         }
 
         Ok(summary)
-    }
-
-    fn require_supported_components(
-        &self,
-        seeds: impl IntoIterator<Item = VariableId>,
-    ) -> Result<(), NativeSolverError> {
-        let mut covered = BTreeSet::new();
-        for seed in seeds {
-            if covered.contains(&seed) {
-                continue;
-            }
-            let (variables, factors) = self.constraint_component(seed);
-            covered.extend(variables.iter().copied());
-            self.require_supported_component_shape(&variables, &factors)?;
-        }
-        Ok(())
-    }
-
-    fn require_supported_component_shape(
-        &self,
-        variables: &BTreeSet<VariableId>,
-        factors: &BTreeSet<FactorId>,
-    ) -> Result<(), NativeSolverError> {
-        let unresolved = variables
-            .iter()
-            .any(|variable| self.domains[variable.index()].len() > 1);
-        let incidence_count = factors
-            .iter()
-            .map(|factor| {
-                self.model
-                    .factor(*factor)
-                    .expect("component factor must exist")
-                    .variables()
-                    .len()
-            })
-            .sum::<usize>();
-        let node_count = variables.len() + factors.len();
-
-        if unresolved && incidence_count >= node_count {
-            return Err(NativeSolverError::UnsupportedCyclicComponent {
-                variable_count: variables.len(),
-                factor_count: factors.len(),
-            });
-        }
-        Ok(())
-    }
-
-    fn constraint_component(
-        &self,
-        seed: VariableId,
-    ) -> (BTreeSet<VariableId>, BTreeSet<FactorId>) {
-        let mut variables = BTreeSet::new();
-        let mut factors = BTreeSet::new();
-        let mut pending = VecDeque::from([seed]);
-
-        while let Some(variable) = pending.pop_front() {
-            if !variables.insert(variable) {
-                continue;
-            }
-
-            for &factor_id in self
-                .model
-                .factors_for_variable(variable)
-                .expect("known variable must have an adjacency row")
-            {
-                if !factors.insert(factor_id) {
-                    continue;
-                }
-                let factor = self
-                    .model
-                    .factor(factor_id)
-                    .expect("factor adjacency must reference a prepared factor");
-                pending.extend(factor.variables());
-            }
-        }
-
-        (variables, factors)
     }
 }
 
@@ -340,12 +241,6 @@ fn enqueue_factor(
 fn factor_id_from_index(index: usize) -> FactorId {
     FactorId::new(
         u32::try_from(index).expect("constraint model validated the factor identifier capacity"),
-    )
-}
-
-fn variable_id_from_index(index: usize) -> VariableId {
-    VariableId::new(
-        u32::try_from(index).expect("constraint model validated the variable identifier capacity"),
     )
 }
 
@@ -564,56 +459,26 @@ mod tests {
     }
 
     #[test]
-    fn unresolved_cyclic_component_fails_closed() {
-        let mut builder = ConstraintModelBuilder::new();
-        let variables: [VariableId; 3] =
-            std::array::from_fn(|_| builder.add_variable(two_values()).unwrap());
-        for (left, right) in [(0, 1), (1, 2), (2, 0)] {
-            builder
-                .add_binary_relation(
-                    variables[left],
-                    variables[right],
-                    [(0, 0), (1, 1)],
-                )
-                .unwrap();
-        }
+    fn unknown_variable_is_rejected() {
+        let state = NativeSolverState::initial(Arc::new(ConstraintModel::empty())).unwrap();
+        let variable = VariableId::new(7);
 
         assert!(matches!(
-            NativeSolverState::initial(Arc::new(builder.build())),
-            Err(NativeSolverError::UnsupportedCyclicComponent {
-                variable_count: 3,
-                factor_count: 3,
-            })
+            state.with_restrictions([(variable, Domain::singleton(0).unwrap())]),
+            Err(NativeSolverError::UnknownVariable(found)) if found == variable
         ));
     }
 
     #[test]
-    fn fully_resolved_cyclic_component_is_accepted() {
+    fn unknown_variable_precedes_batch_contradiction() {
         let mut builder = ConstraintModelBuilder::new();
-        let variables: [VariableId; 3] = std::array::from_fn(|_| {
-            builder
-                .add_variable(Domain::singleton(0).unwrap())
-                .unwrap()
-        });
-        for (left, right) in [(0, 1), (1, 2), (2, 0)] {
-            builder
-                .add_binary_relation(variables[left], variables[right], [(0, 0)])
-                .unwrap();
-        }
-
-        assert!(NativeSolverState::initial(Arc::new(builder.build())).is_ok());
-    }
-
-    #[test]
-    fn unknown_variable_is_rejected_before_semantic_contradictions() {
-        let mut builder = ConstraintModelBuilder::new();
-        let known = builder.add_variable(two_values()).unwrap();
+        let variable = builder.add_variable(two_values()).unwrap();
         let state = NativeSolverState::initial(Arc::new(builder.build())).unwrap();
-        let unknown = VariableId::new(7);
+        let unknown = VariableId::new(99);
 
         assert!(matches!(
             state.with_restrictions([
-                (known, Domain::empty()),
+                (variable, Domain::empty()),
                 (unknown, Domain::singleton(0).unwrap()),
             ]),
             Err(NativeSolverError::UnknownVariable(found)) if found == unknown

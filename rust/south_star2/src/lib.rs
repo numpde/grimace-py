@@ -7,7 +7,6 @@
 //! capability labels in the semantic API.
 
 mod domain;
-mod graph_progress;
 mod ids;
 mod model;
 mod native;
@@ -16,6 +15,7 @@ mod native_oracle;
 mod native_solver;
 mod prepared;
 mod solver;
+mod traversal;
 
 pub use domain::{Domain, DomainError, DOMAIN_VALUE_CAPACITY};
 pub use ids::{AtomId, BondId, FactorId, VariableId};

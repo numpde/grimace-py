@@ -1,4 +1,4 @@
-//! Compact graph-writing progress shared by future traversal states.
+//! Evolving graph facts for the South Star 2 writer.
 
 use crate::ids::{AtomId, BondId};
 use crate::prepared::{AdjacentBond, PreparedGraph};
@@ -26,18 +26,14 @@ impl DenseSet {
         self.words[word] & mask != 0
     }
 
-    fn insert(&mut self, index: usize) -> bool {
+    fn insert_new(&mut self, index: usize) {
         let (word, mask) = self.location(index);
-        if self.words[word] & mask != 0 {
-            return false;
-        }
+        assert!(
+            self.words[word] & mask == 0,
+            "graph progress fact must be recorded exactly once"
+        );
         self.words[word] |= mask;
         self.marked_count += 1;
-        true
-    }
-
-    const fn marked_count(&self) -> usize {
-        self.marked_count
     }
 
     const fn is_complete(&self) -> bool {
@@ -55,11 +51,10 @@ impl DenseSet {
     }
 }
 
-/// Graph facts that change as a SMILES walk represents atoms and bonds.
+/// Atoms and bonds already represented by the current writer history.
 ///
-/// This deliberately excludes the active atom, branch stack, ring labels, and
-/// pending emissions. Those belong to the traversal state that will compose
-/// this progress record; they are not guessed here.
+/// Active position, branch returns, ring endpoints, and pending emissions are
+/// separate traversal facts. This record contains no serialization policy.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct GraphProgress {
     visited_atoms: DenseSet,
@@ -82,20 +77,12 @@ impl GraphProgress {
         self.written_bonds.contains(bond.index())
     }
 
-    pub(crate) fn mark_atom_visited(&mut self, atom: AtomId) -> bool {
-        self.visited_atoms.insert(atom.index())
+    pub(crate) fn visit_atom(&mut self, atom: AtomId) {
+        self.visited_atoms.insert_new(atom.index());
     }
 
-    pub(crate) fn mark_bond_written(&mut self, bond: BondId) -> bool {
-        self.written_bonds.insert(bond.index())
-    }
-
-    pub(crate) const fn visited_atom_count(&self) -> usize {
-        self.visited_atoms.marked_count()
-    }
-
-    pub(crate) const fn written_bond_count(&self) -> usize {
-        self.written_bonds.marked_count()
+    pub(crate) fn write_bond(&mut self, bond: BondId) {
+        self.written_bonds.insert_new(bond.index());
     }
 
     pub(crate) const fn all_atoms_visited(&self) -> bool {
@@ -144,34 +131,30 @@ mod tests {
         let graph = PreparedGraphBuilder::new().build();
         let progress = GraphProgress::new(&graph);
 
-        assert_eq!(progress.visited_atom_count(), 0);
-        assert_eq!(progress.written_bond_count(), 0);
         assert!(progress.all_atoms_visited());
         assert!(progress.all_bonds_written());
     }
 
     #[test]
-    fn progress_classifies_tree_and_closure_incidents() {
+    fn progress_classifies_unwritten_and_written_incidents() {
         let mut builder = PreparedGraphBuilder::new();
-        let carbon = builder.intern_token("C").unwrap();
-        let atoms: [AtomId; 3] =
-            std::array::from_fn(|_| builder.add_atom(carbon).unwrap());
+        let atoms: [AtomId; 3] = std::array::from_fn(|_| builder.add_atom().unwrap());
         let bonds = [
-            builder.add_bond(atoms[0], atoms[1], None).unwrap(),
-            builder.add_bond(atoms[1], atoms[2], None).unwrap(),
-            builder.add_bond(atoms[2], atoms[0], None).unwrap(),
+            builder.add_bond(atoms[0], atoms[1]).unwrap(),
+            builder.add_bond(atoms[1], atoms[2]).unwrap(),
+            builder.add_bond(atoms[2], atoms[0]).unwrap(),
         ];
         let graph = builder.build();
         let mut progress = GraphProgress::new(&graph);
 
-        assert!(progress.mark_atom_visited(atoms[0]));
+        progress.visit_atom(atoms[0]);
         assert_eq!(
             progress.classify_incident(incident(&graph, atoms[0], bonds[0])),
             IncidentBondState::UnwrittenToUnvisitedAtom
         );
 
-        assert!(progress.mark_bond_written(bonds[0]));
-        assert!(progress.mark_atom_visited(atoms[1]));
+        progress.write_bond(bonds[0]);
+        progress.visit_atom(atoms[1]);
         assert_eq!(
             progress.classify_incident(incident(&graph, atoms[0], bonds[0])),
             IncidentBondState::Written
@@ -181,51 +164,42 @@ mod tests {
             IncidentBondState::UnwrittenToUnvisitedAtom
         );
 
-        assert!(progress.mark_bond_written(bonds[1]));
-        assert!(progress.mark_atom_visited(atoms[2]));
+        progress.write_bond(bonds[1]);
+        progress.visit_atom(atoms[2]);
         assert_eq!(
             progress.classify_incident(incident(&graph, atoms[0], bonds[2])),
             IncidentBondState::UnwrittenToVisitedAtom
         );
 
-        assert!(progress.mark_bond_written(bonds[2]));
+        progress.write_bond(bonds[2]);
         assert!(progress.all_atoms_visited());
         assert!(progress.all_bonds_written());
     }
 
     #[test]
-    fn repeated_marks_are_idempotent() {
-        let mut builder = PreparedGraphBuilder::new();
-        let carbon = builder.intern_token("C").unwrap();
-        let atoms: [AtomId; 2] =
-            std::array::from_fn(|_| builder.add_atom(carbon).unwrap());
-        let bond = builder.add_bond(atoms[0], atoms[1], None).unwrap();
-        let graph = builder.build();
-        let mut progress = GraphProgress::new(&graph);
-
-        assert!(progress.mark_atom_visited(atoms[0]));
-        assert!(!progress.mark_atom_visited(atoms[0]));
-        assert!(progress.mark_bond_written(bond));
-        assert!(!progress.mark_bond_written(bond));
-        assert_eq!(progress.visited_atom_count(), 1);
-        assert_eq!(progress.written_bond_count(), 1);
-    }
-
-    #[test]
     fn cloned_progress_has_independent_live_bits() {
         let mut builder = PreparedGraphBuilder::new();
-        let carbon = builder.intern_token("C").unwrap();
-        let first = builder.add_atom(carbon).unwrap();
-        builder.add_atom(carbon).unwrap();
+        let first = builder.add_atom().unwrap();
+        builder.add_atom().unwrap();
         let graph = builder.build();
         let source = GraphProgress::new(&graph);
         let mut successor = source.clone();
 
-        assert!(successor.mark_atom_visited(first));
-        assert_eq!(source.visited_atom_count(), 0);
-        assert_eq!(successor.visited_atom_count(), 1);
+        successor.visit_atom(first);
         assert!(!source.atom_is_visited(first));
         assert!(successor.atom_is_visited(first));
+    }
+
+    #[test]
+    #[should_panic(expected = "recorded exactly once")]
+    fn repeated_graph_facts_fail_fast() {
+        let mut builder = PreparedGraphBuilder::new();
+        let atom = builder.add_atom().unwrap();
+        let graph = builder.build();
+        let mut progress = GraphProgress::new(&graph);
+
+        progress.visit_atom(atom);
+        progress.visit_atom(atom);
     }
 
     #[test]

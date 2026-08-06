@@ -18,12 +18,12 @@ mod prepared;
 mod solver;
 
 pub use domain::{Domain, DomainError, DOMAIN_VALUE_CAPACITY};
-pub use ids::{AtomId, BondId, FactorId, TokenId, VariableId};
+pub use ids::{AtomId, BondId, FactorId, VariableId};
 pub use model::{
     BinaryRelationFactor, ConstraintModel, ConstraintModelBuilder, ConstraintModelError,
     FactorDefinition, VariableDefinition,
 };
 pub use prepared::{
-    AdjacentBond, PreparedAtom, PreparedBond, PreparedGraph, PreparedGraphBuilder,
-    PreparedGraphError, PreparedMolecule,
+    AdjacentBond, PreparedBond, PreparedGraph, PreparedGraphBuilder, PreparedGraphError,
+    PreparedMolecule,
 };

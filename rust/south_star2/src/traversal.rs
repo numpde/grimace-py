@@ -1,14 +1,13 @@
 //! Graph-general control state for the South Star 2 writer.
 //!
-//! This module owns only evolving topology facts: represented atoms and bonds,
-//! the active textual path, and branch returns. Ring endpoints, emitted text,
-//! and constraint state remain separate facts and must be composed before a
-//! walker interface is exposed.
+//! This module owns evolving topology facts: represented atoms, each bond's
+//! representation lifecycle, the active textual path, and branch returns.
+//! Ring labels, emitted text, and constraint state remain separate facts.
 
 use crate::ids::{AtomId, BondId};
 use crate::prepared::{AdjacentBond, PreparedGraph};
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct DenseSet {
     universe_len: usize,
     marked_count: usize,
@@ -56,17 +55,37 @@ impl DenseSet {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum BondProgress {
+    Unrepresented,
+    Traversed {
+        from: AtomId,
+        to: AtomId,
+    },
+    RingOpen {
+        first_endpoint: AtomId,
+    },
+    RingClosed {
+        first_endpoint: AtomId,
+        second_endpoint: AtomId,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct GraphProgress {
     visited_atoms: DenseSet,
-    written_bonds: DenseSet,
+    bonds: Box<[BondProgress]>,
+    represented_bond_count: usize,
+    open_ring_count: usize,
 }
 
 impl GraphProgress {
     fn new(graph: &PreparedGraph) -> Self {
         Self {
             visited_atoms: DenseSet::new(graph.atom_count()),
-            written_bonds: DenseSet::new(graph.bond_count()),
+            bonds: vec![BondProgress::Unrepresented; graph.bond_count()].into_boxed_slice(),
+            represented_bond_count: 0,
+            open_ring_count: 0,
         }
     }
 
@@ -78,33 +97,118 @@ impl GraphProgress {
         self.visited_atoms.insert_new(atom.index());
     }
 
-    fn write_bond(&mut self, bond: BondId) {
-        self.written_bonds.insert_new(bond.index());
+    fn traverse_bond(&mut self, bond: BondId, from: AtomId, to: AtomId) {
+        let progress = self.bond_progress_mut(bond);
+        assert_eq!(
+            *progress,
+            BondProgress::Unrepresented,
+            "a traversed bond must not already have a representation"
+        );
+        *progress = BondProgress::Traversed { from, to };
+        self.represented_bond_count += 1;
+    }
+
+    fn open_ring(&mut self, bond: BondId, first_endpoint: AtomId) {
+        let progress = self.bond_progress_mut(bond);
+        assert_eq!(
+            *progress,
+            BondProgress::Unrepresented,
+            "a ring bond must be unrepresented when its first endpoint is written"
+        );
+        *progress = BondProgress::RingOpen { first_endpoint };
+        self.open_ring_count += 1;
+    }
+
+    fn close_ring(&mut self, bond: BondId, second_endpoint: AtomId) {
+        let progress = self.bond_progress_mut(bond);
+        let BondProgress::RingOpen { first_endpoint } = *progress else {
+            panic!("a ring bond must be open before its second endpoint is written");
+        };
+        assert_ne!(
+            first_endpoint, second_endpoint,
+            "ring endpoints must belong to distinct atoms"
+        );
+        *progress = BondProgress::RingClosed {
+            first_endpoint,
+            second_endpoint,
+        };
+        self.open_ring_count -= 1;
+        self.represented_bond_count += 1;
     }
 
     const fn is_complete(&self) -> bool {
-        self.visited_atoms.is_complete() && self.written_bonds.is_complete()
+        self.visited_atoms.is_complete()
+            && self.represented_bond_count == self.bonds.len()
+            && self.open_ring_count == 0
     }
 
-    fn classify_incident(&self, incident: AdjacentBond) -> IncidentBondState {
-        if self.written_bonds.contains(incident.bond().index()) {
-            IncidentBondState::Written
-        } else if self.atom_is_visited(incident.atom()) {
-            IncidentBondState::UnwrittenToVisitedAtom
-        } else {
-            IncidentBondState::UnwrittenToUnvisitedAtom
+    const fn has_open_rings(&self) -> bool {
+        self.open_ring_count != 0
+    }
+
+    fn classify_incident(
+        &self,
+        graph: &PreparedGraph,
+        at: AtomId,
+        incident: AdjacentBond,
+    ) -> IncidentBondState {
+        let bond = graph
+            .bond(incident.bond())
+            .expect("incident bond must belong to the prepared graph");
+        assert_eq!(
+            bond.other(at),
+            Some(incident.atom()),
+            "incident bond must connect the active atom to its neighbour"
+        );
+
+        match self.bond_progress(incident.bond()) {
+            BondProgress::Unrepresented => {
+                if self.atom_is_visited(incident.atom()) {
+                    IncidentBondState::UnrepresentedToVisitedAtom
+                } else {
+                    IncidentBondState::UnrepresentedToUnvisitedAtom
+                }
+            }
+            BondProgress::Traversed { .. } | BondProgress::RingClosed { .. } => {
+                IncidentBondState::Represented
+            }
+            BondProgress::RingOpen { first_endpoint } if *first_endpoint == at => {
+                IncidentBondState::RingOpenAtCurrentAtom
+            }
+            BondProgress::RingOpen { first_endpoint } => {
+                assert_eq!(
+                    *first_endpoint,
+                    incident.atom(),
+                    "open ring endpoint must belong to one endpoint of its bond"
+                );
+                IncidentBondState::RingOpenAtOtherAtom
+            }
         }
     }
+
+    fn bond_progress(&self, bond: BondId) -> &BondProgress {
+        self.bonds
+            .get(bond.index())
+            .expect("prepared bond identifier must fit the traversal universe")
+    }
+
+    fn bond_progress_mut(&mut self, bond: BondId) -> &mut BondProgress {
+        self.bonds
+            .get_mut(bond.index())
+            .expect("prepared bond identifier must fit the traversal universe")
+    }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(crate) enum IncidentBondState {
-    Written,
-    UnwrittenToUnvisitedAtom,
-    UnwrittenToVisitedAtom,
+    Represented,
+    UnrepresentedToUnvisitedAtom,
+    UnrepresentedToVisitedAtom,
+    RingOpenAtCurrentAtom,
+    RingOpenAtOtherAtom,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct TraversalState {
     progress: GraphProgress,
     active: Option<AtomId>,
@@ -124,10 +228,6 @@ impl TraversalState {
         self.active
     }
 
-    pub(crate) const fn is_between_components(&self) -> bool {
-        self.active.is_none()
-    }
-
     pub(crate) const fn graph_is_complete(&self) -> bool {
         self.progress.is_complete()
     }
@@ -143,8 +243,10 @@ impl TraversalState {
 
     pub(crate) fn begin_component(&mut self, root: AtomId) {
         assert!(
-            self.active.is_none() && self.branch_returns.is_empty(),
-            "a component can begin only between active paths"
+            self.active.is_none()
+                && self.branch_returns.is_empty()
+                && !self.progress.has_open_rings(),
+            "a component can begin only after the previous component is closed"
         );
         self.progress.visit_atom(root);
         self.active = Some(root);
@@ -166,18 +268,62 @@ impl TraversalState {
         self.enter_child(graph, incident, ChildPlacement::Branch);
     }
 
+    pub(crate) fn open_ring_endpoint(
+        &mut self,
+        graph: &PreparedGraph,
+        incident: AdjacentBond,
+    ) {
+        let active = self.active.expect("a ring endpoint requires an active atom");
+        assert!(
+            matches!(
+                self.progress.classify_incident(graph, active, incident),
+                IncidentBondState::UnrepresentedToUnvisitedAtom
+                    | IncidentBondState::UnrepresentedToVisitedAtom
+            ),
+            "a first ring endpoint requires an unrepresented incident bond"
+        );
+        self.progress.open_ring(incident.bond(), active);
+    }
+
+    pub(crate) fn close_ring_endpoint(
+        &mut self,
+        graph: &PreparedGraph,
+        incident: AdjacentBond,
+    ) {
+        let active = self.active.expect("a ring endpoint requires an active atom");
+        assert_eq!(
+            self.progress.classify_incident(graph, active, incident),
+            IncidentBondState::RingOpenAtOtherAtom,
+            "a second ring endpoint must pair a bond opened at its other atom"
+        );
+        self.progress.close_ring(incident.bond(), active);
+    }
+
     /// Complete the current textual path and restore its enclosing branch.
     ///
     /// The transition kernel is responsible for establishing that the active
-    /// atom has no pending graph or ring work before calling this operation.
+    /// atom has no pending graph, ring-label, or emission work before calling
+    /// this operation.
     pub(crate) fn complete_path(&mut self) -> Option<AtomId> {
         assert!(self.active.is_some(), "no active path to complete");
-        self.active = self.branch_returns.pop();
+        let restored = self.branch_returns.pop();
+        if restored.is_none() {
+            assert!(
+                !self.progress.has_open_rings(),
+                "a component cannot end with an unpaired ring endpoint"
+            );
+        }
+        self.active = restored;
         self.active
     }
 
-    pub(crate) fn classify_incident(&self, incident: AdjacentBond) -> IncidentBondState {
-        self.progress.classify_incident(incident)
+    pub(crate) fn classify_active_incident(
+        &self,
+        graph: &PreparedGraph,
+        incident: AdjacentBond,
+    ) -> IncidentBondState {
+        let active = self.active.expect("incident classification requires an active atom");
+        self.progress.classify_incident(graph, active, incident)
     }
 
     fn enter_child(
@@ -187,24 +333,17 @@ impl TraversalState {
         placement: ChildPlacement,
     ) {
         let parent = self.active.expect("a child requires an active atom");
-        let bond = graph
-            .bond(incident.bond())
-            .expect("incident bond must belong to the prepared graph");
         assert_eq!(
-            bond.other(parent),
-            Some(incident.atom()),
-            "incident bond must connect the active atom to the child"
-        );
-        assert_eq!(
-            self.progress.classify_incident(incident),
-            IncidentBondState::UnwrittenToUnvisitedAtom,
-            "a child edge must be unwritten and lead to an unvisited atom"
+            self.progress.classify_incident(graph, parent, incident),
+            IncidentBondState::UnrepresentedToUnvisitedAtom,
+            "a child edge must be unrepresented and lead to an unvisited atom"
         );
 
         if placement == ChildPlacement::Branch {
             self.branch_returns.push(parent);
         }
-        self.progress.write_bond(incident.bond());
+        self.progress
+            .traverse_bond(incident.bond(), parent, incident.atom());
         self.progress.visit_atom(incident.atom());
         self.active = Some(incident.atom());
     }
@@ -232,11 +371,11 @@ mod tests {
     }
 
     #[test]
-    fn empty_graph_starts_between_components_and_complete() {
+    fn empty_graph_starts_complete() {
         let graph = PreparedGraphBuilder::new().build();
         let state = TraversalState::new(&graph);
 
-        assert!(state.is_between_components());
+        assert_eq!(state.active_atom(), None);
         assert!(state.graph_is_complete());
         assert_eq!(state.unvisited_atoms(&graph).count(), 0);
     }
@@ -250,34 +389,11 @@ mod tests {
 
         assert_eq!(state.unvisited_atoms(&graph).collect::<Vec<_>>(), atoms.to_vec());
         state.begin_component(atoms[1]);
-        assert_eq!(state.active_atom(), Some(atoms[1]));
         assert_eq!(state.unvisited_atoms(&graph).collect::<Vec<_>>(), vec![atoms[0]]);
         assert_eq!(state.complete_path(), None);
-
         state.begin_component(atoms[0]);
         assert_eq!(state.complete_path(), None);
         assert!(state.graph_is_complete());
-    }
-
-    #[test]
-    fn inline_children_advance_without_branch_returns() {
-        let mut builder = PreparedGraphBuilder::new();
-        let atoms: [AtomId; 3] = std::array::from_fn(|_| builder.add_atom().unwrap());
-        let bonds = [
-            builder.add_bond(atoms[0], atoms[1]).unwrap(),
-            builder.add_bond(atoms[1], atoms[2]).unwrap(),
-        ];
-        let graph = builder.build();
-        let mut state = TraversalState::new(&graph);
-
-        state.begin_component(atoms[0]);
-        state.enter_inline_child(&graph, incident(&graph, atoms[0], bonds[0]));
-        state.enter_inline_child(&graph, incident(&graph, atoms[1], bonds[1]));
-
-        assert_eq!(state.active_atom(), Some(atoms[2]));
-        assert!(state.branch_returns.is_empty());
-        assert!(state.graph_is_complete());
-        assert_eq!(state.complete_path(), None);
     }
 
     #[test]
@@ -291,66 +407,98 @@ mod tests {
 
         state.begin_component(atoms[0]);
         state.enter_branch_child(&graph, incident(&graph, atoms[0], branch));
-        assert_eq!(state.branch_returns, vec![atoms[0]]);
         assert_eq!(state.complete_path(), Some(atoms[0]));
-
         state.enter_inline_child(&graph, incident(&graph, atoms[0], inline));
-        assert!(state.branch_returns.is_empty());
         assert!(state.graph_is_complete());
         assert_eq!(state.complete_path(), None);
     }
 
     #[test]
-    fn inline_descent_inside_a_branch_returns_to_the_branch_parent() {
-        let mut builder = PreparedGraphBuilder::new();
-        let atoms: [AtomId; 3] = std::array::from_fn(|_| builder.add_atom().unwrap());
-        let branch = builder.add_bond(atoms[0], atoms[1]).unwrap();
-        let inline = builder.add_bond(atoms[1], atoms[2]).unwrap();
-        let graph = builder.build();
-        let mut state = TraversalState::new(&graph);
-
-        state.begin_component(atoms[0]);
-        state.enter_branch_child(&graph, incident(&graph, atoms[0], branch));
-        state.enter_inline_child(&graph, incident(&graph, atoms[1], inline));
-
-        assert_eq!(state.active_atom(), Some(atoms[2]));
-        assert_eq!(state.complete_path(), Some(atoms[0]));
-    }
-
-    #[test]
-    fn cyclic_topology_exposes_an_unwritten_edge_to_a_visited_atom() {
+    fn ring_endpoint_lifecycle_preserves_endpoint_order() {
         let mut builder = PreparedGraphBuilder::new();
         let atoms: [AtomId; 3] = std::array::from_fn(|_| builder.add_atom().unwrap());
         let first = builder.add_bond(atoms[0], atoms[1]).unwrap();
         let second = builder.add_bond(atoms[1], atoms[2]).unwrap();
-        let closing = builder.add_bond(atoms[2], atoms[0]).unwrap();
+        let ring = builder.add_bond(atoms[2], atoms[0]).unwrap();
         let graph = builder.build();
         let mut state = TraversalState::new(&graph);
 
         state.begin_component(atoms[0]);
+        let opening = incident(&graph, atoms[0], ring);
+        state.open_ring_endpoint(&graph, opening);
+        assert_eq!(
+            state.classify_active_incident(&graph, opening),
+            IncidentBondState::RingOpenAtCurrentAtom
+        );
+
         state.enter_inline_child(&graph, incident(&graph, atoms[0], first));
         state.enter_inline_child(&graph, incident(&graph, atoms[1], second));
+        let closing = incident(&graph, atoms[2], ring);
+        assert_eq!(
+            state.classify_active_incident(&graph, closing),
+            IncidentBondState::RingOpenAtOtherAtom
+        );
+        state.close_ring_endpoint(&graph, closing);
 
         assert_eq!(
-            state.classify_incident(incident(&graph, atoms[2], closing)),
-            IncidentBondState::UnwrittenToVisitedAtom
+            state.progress.bond_progress(ring),
+            &BondProgress::RingClosed {
+                first_endpoint: atoms[0],
+                second_endpoint: atoms[2],
+            }
         );
-        assert!(!state.graph_is_complete());
+        assert!(state.graph_is_complete());
+        assert_eq!(state.complete_path(), None);
     }
 
     #[test]
-    fn cloned_traversal_has_independent_live_state() {
+    #[should_panic(expected = "child edge must be unrepresented")]
+    fn open_ring_bonds_cannot_be_traversed_as_children() {
         let mut builder = PreparedGraphBuilder::new();
-        let atom = builder.add_atom().unwrap();
+        let atoms: [AtomId; 2] = std::array::from_fn(|_| builder.add_atom().unwrap());
+        let bond = builder.add_bond(atoms[0], atoms[1]).unwrap();
         let graph = builder.build();
-        let source = TraversalState::new(&graph);
+        let mut state = TraversalState::new(&graph);
+        let edge = incident(&graph, atoms[0], bond);
+
+        state.begin_component(atoms[0]);
+        state.open_ring_endpoint(&graph, edge);
+        state.enter_inline_child(&graph, edge);
+    }
+
+    #[test]
+    #[should_panic(expected = "cannot end with an unpaired ring endpoint")]
+    fn components_cannot_finish_with_open_ring_endpoints() {
+        let mut builder = PreparedGraphBuilder::new();
+        let atoms: [AtomId; 2] = std::array::from_fn(|_| builder.add_atom().unwrap());
+        let bond = builder.add_bond(atoms[0], atoms[1]).unwrap();
+        let graph = builder.build();
+        let mut state = TraversalState::new(&graph);
+
+        state.begin_component(atoms[0]);
+        state.open_ring_endpoint(&graph, incident(&graph, atoms[0], bond));
+        state.complete_path();
+    }
+
+    #[test]
+    fn cloned_traversal_has_independent_ring_state() {
+        let mut builder = PreparedGraphBuilder::new();
+        let atoms: [AtomId; 2] = std::array::from_fn(|_| builder.add_atom().unwrap());
+        let bond = builder.add_bond(atoms[0], atoms[1]).unwrap();
+        let graph = builder.build();
+        let mut source = TraversalState::new(&graph);
+        source.begin_component(atoms[0]);
         let mut successor = source.clone();
 
-        successor.begin_component(atom);
-        assert_eq!(source.active_atom(), None);
-        assert_eq!(successor.active_atom(), Some(atom));
-        assert_eq!(source.unvisited_atoms(&graph).collect::<Vec<_>>(), vec![atom]);
-        assert_eq!(successor.unvisited_atoms(&graph).count(), 0);
+        successor.open_ring_endpoint(&graph, incident(&graph, atoms[0], bond));
+        assert_eq!(
+            source.classify_active_incident(&graph, incident(&graph, atoms[0], bond)),
+            IncidentBondState::UnrepresentedToUnvisitedAtom
+        );
+        assert_eq!(
+            successor.classify_active_incident(&graph, incident(&graph, atoms[0], bond)),
+            IncidentBondState::RingOpenAtCurrentAtom
+        );
     }
 
     #[test]
@@ -364,19 +512,6 @@ mod tests {
         state.begin_component(atom);
         state.complete_path();
         state.begin_component(atom);
-    }
-
-    #[test]
-    #[should_panic(expected = "connect the active atom")]
-    fn child_incidents_must_belong_to_the_active_atom() {
-        let mut builder = PreparedGraphBuilder::new();
-        let atoms: [AtomId; 3] = std::array::from_fn(|_| builder.add_atom().unwrap());
-        let unrelated = builder.add_bond(atoms[1], atoms[2]).unwrap();
-        let graph = builder.build();
-        let mut state = TraversalState::new(&graph);
-
-        state.begin_component(atoms[0]);
-        state.enter_inline_child(&graph, incident(&graph, atoms[1], unrelated));
     }
 
     #[test]

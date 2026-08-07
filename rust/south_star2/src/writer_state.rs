@@ -36,9 +36,11 @@ impl<S: ConstraintSolver> WriterState<S> {
         self.traversal.graph_is_complete()
     }
 
-    pub(crate) fn bond_role_domain(&self, bond: BondId) -> Option<Domain> {
-        let variable = self.prepared.bond_role_variable(bond)?;
-        self.constraints.domain(variable)
+    pub(crate) fn bond_role_domain(&self, bond: BondId) -> Domain {
+        let variable = role_variable(&self.prepared, bond);
+        self.constraints
+            .domain(variable)
+            .expect("prepared bond role must belong to the writer constraint model")
     }
 
     pub(crate) fn begin_component(&self, root: AtomId) -> Self {
@@ -190,23 +192,23 @@ mod tests {
             .unwrap()
             .begin_component(atoms[0]);
 
-        assert_eq!(rooted.bond_role_domain(ring), Some(BondRole::role_domain()));
+        assert_eq!(rooted.bond_role_domain(ring), BondRole::role_domain());
         let (opened, label_slot) = rooted
             .open_ring_endpoint(incident(&prepared, atoms[0], ring))
             .unwrap();
 
-        assert_eq!(rooted.bond_role_domain(ring), Some(BondRole::role_domain()));
+        assert_eq!(rooted.bond_role_domain(ring), BondRole::role_domain());
         assert_eq!(
             opened.bond_role_domain(ring),
-            Some(BondRole::Ring.singleton_domain())
+            BondRole::Ring.singleton_domain()
         );
         assert_eq!(
             opened.bond_role_domain(first),
-            Some(BondRole::Traversal.singleton_domain())
+            BondRole::Traversal.singleton_domain()
         );
         assert_eq!(
             opened.bond_role_domain(second),
-            Some(BondRole::Traversal.singleton_domain())
+            BondRole::Traversal.singleton_domain()
         );
 
         let walked = opened
@@ -238,7 +240,7 @@ mod tests {
 
         assert_eq!(
             rooted.bond_role_domain(bridge),
-            Some(BondRole::Traversal.singleton_domain())
+            BondRole::Traversal.singleton_domain()
         );
         assert!(matches!(
             rooted.open_ring_endpoint(incident(&prepared, atoms[0], bridge)),

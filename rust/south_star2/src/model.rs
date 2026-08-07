@@ -1,9 +1,33 @@
 //! Solver-neutral constraint definitions prepared once per molecule.
 
+use std::collections::BTreeSet;
 use std::fmt;
 
 use crate::domain::Domain;
-use crate::ids::{FactorId, VariableId};
+use crate::ids::{AtomId, FactorId, VariableId};
+
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum BondRole {
+    Traversal = 0,
+    Ring = 1,
+}
+
+impl BondRole {
+    pub const fn value_index(self) -> u8 {
+        self as u8
+    }
+
+    pub const fn singleton_domain(self) -> Domain {
+        Domain::from_bits(1_u64 << self.value_index())
+    }
+
+    pub const fn role_domain() -> Domain {
+        Domain::from_bits(
+            (1_u64 << Self::Traversal.value_index()) | (1_u64 << Self::Ring.value_index()),
+        )
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VariableDefinition {
@@ -22,23 +46,22 @@ impl VariableDefinition {
 /// domain without enumerating the relation's Cartesian product.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BinaryRelationFactor {
-    left: VariableId,
-    right: VariableId,
+    variables: [VariableId; 2],
     allowed_right_by_left: Box<[Domain]>,
     allowed_left_by_right: Box<[Domain]>,
 }
 
 impl BinaryRelationFactor {
     pub const fn left(&self) -> VariableId {
-        self.left
+        self.variables[0]
     }
 
     pub const fn right(&self) -> VariableId {
-        self.right
+        self.variables[1]
     }
 
-    pub const fn variables(&self) -> [VariableId; 2] {
-        [self.left, self.right]
+    pub const fn variables(&self) -> &[VariableId; 2] {
+        &self.variables
     }
 
     pub fn allowed_right(&self, left_value: u8) -> Domain {
@@ -56,15 +79,67 @@ impl BinaryRelationFactor {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct SpanningTreeEdge {
+    role_variable: VariableId,
+    a: AtomId,
+    b: AtomId,
+}
+
+impl SpanningTreeEdge {
+    pub const fn new(role_variable: VariableId, a: AtomId, b: AtomId) -> Self {
+        Self {
+            role_variable,
+            a,
+            b,
+        }
+    }
+
+    pub const fn role_variable(self) -> VariableId {
+        self.role_variable
+    }
+
+    pub const fn a(self) -> AtomId {
+        self.a
+    }
+
+    pub const fn b(self) -> AtomId {
+        self.b
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SpanningTreeFactor {
+    atoms: Box<[AtomId]>,
+    edges: Box<[SpanningTreeEdge]>,
+    variables: Box<[VariableId]>,
+}
+
+impl SpanningTreeFactor {
+    pub fn atoms(&self) -> &[AtomId] {
+        &self.atoms
+    }
+
+    pub fn edges(&self) -> &[SpanningTreeEdge] {
+        &self.edges
+    }
+
+    pub fn variables(&self) -> &[VariableId] {
+        &self.variables
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FactorDefinition {
     BinaryRelation(BinaryRelationFactor),
+    SpanningTree(SpanningTreeFactor),
 }
 
 impl FactorDefinition {
-    pub const fn variables(&self) -> [VariableId; 2] {
+    pub fn variables(&self) -> &[VariableId] {
         match self {
             Self::BinaryRelation(factor) => factor.variables(),
+            Self::SpanningTree(factor) => factor.variables(),
         }
     }
 }
@@ -195,19 +270,62 @@ impl ConstraintModelBuilder {
                     .union(Domain::from_bits(1_u64 << left_value));
         }
 
-        let value = u32::try_from(self.factors.len())
-            .map_err(|_| ConstraintModelError::FactorCapacityExceeded)?;
-        let factor = FactorId::new(value);
-        self.factors
-            .push(FactorDefinition::BinaryRelation(BinaryRelationFactor {
-                left,
-                right,
-                allowed_right_by_left: allowed_right_by_left.into_boxed_slice(),
-                allowed_left_by_right: allowed_left_by_right.into_boxed_slice(),
-            }));
-        self.factors_by_variable[left.index()].push(factor);
-        self.factors_by_variable[right.index()].push(factor);
-        Ok(factor)
+        self.push_factor(FactorDefinition::BinaryRelation(BinaryRelationFactor {
+            variables: [left, right],
+            allowed_right_by_left: allowed_right_by_left.into_boxed_slice(),
+            allowed_left_by_right: allowed_left_by_right.into_boxed_slice(),
+        }))
+    }
+
+    pub fn add_spanning_tree(
+        &mut self,
+        atoms: impl IntoIterator<Item = AtomId>,
+        edges: impl IntoIterator<Item = SpanningTreeEdge>,
+    ) -> Result<FactorId, ConstraintModelError> {
+        let mut atoms = atoms.into_iter().collect::<Vec<_>>();
+        if atoms.is_empty() {
+            return Err(ConstraintModelError::EmptySpanningTreeAtomSet);
+        }
+        atoms.sort_unstable();
+        if atoms.windows(2).any(|pair| pair[0] == pair[1]) {
+            return Err(ConstraintModelError::RepeatedAtomInSpanningTree);
+        }
+
+        let atom_set = atoms.iter().copied().collect::<BTreeSet<_>>();
+        let edges = edges.into_iter().collect::<Vec<_>>();
+        let mut variables = Vec::with_capacity(edges.len());
+        let mut seen_variables = BTreeSet::new();
+
+        for edge in &edges {
+            if edge.a == edge.b {
+                return Err(ConstraintModelError::SpanningTreeSelfEdge(edge.a));
+            }
+            for atom in [edge.a, edge.b] {
+                if !atom_set.contains(&atom) {
+                    return Err(ConstraintModelError::SpanningTreeEdgeOutsideAtomSet(atom));
+                }
+            }
+
+            let variable = edge.role_variable;
+            let initial_domain = self
+                .variables
+                .get(variable.index())
+                .ok_or(ConstraintModelError::UnknownVariable(variable))?
+                .initial_domain;
+            if !initial_domain.is_subset_of(BondRole::role_domain()) {
+                return Err(ConstraintModelError::InvalidBondRoleDomain(variable));
+            }
+            if !seen_variables.insert(variable) {
+                return Err(ConstraintModelError::RepeatedVariableInFactor(variable));
+            }
+            variables.push(variable);
+        }
+
+        self.push_factor(FactorDefinition::SpanningTree(SpanningTreeFactor {
+            atoms: atoms.into_boxed_slice(),
+            edges: edges.into_boxed_slice(),
+            variables: variables.into_boxed_slice(),
+        }))
     }
 
     pub fn build(self) -> ConstraintModel {
@@ -222,6 +340,20 @@ impl ConstraintModelBuilder {
                 .into_boxed_slice(),
         }
     }
+
+    fn push_factor(
+        &mut self,
+        definition: FactorDefinition,
+    ) -> Result<FactorId, ConstraintModelError> {
+        let value = u32::try_from(self.factors.len())
+            .map_err(|_| ConstraintModelError::FactorCapacityExceeded)?;
+        let factor = FactorId::new(value);
+        for variable in definition.variables().iter().copied() {
+            self.factors_by_variable[variable.index()].push(factor);
+        }
+        self.factors.push(definition);
+        Ok(factor)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -235,6 +367,11 @@ pub enum ConstraintModelError {
         variable: VariableId,
         value_index: u8,
     },
+    EmptySpanningTreeAtomSet,
+    RepeatedAtomInSpanningTree,
+    SpanningTreeSelfEdge(AtomId),
+    SpanningTreeEdgeOutsideAtomSet(AtomId),
+    InvalidBondRoleDomain(VariableId),
 }
 
 impl fmt::Display for ConstraintModelError {
@@ -253,10 +390,7 @@ impl fmt::Display for ConstraintModelError {
                 write!(formatter, "constraint factor references unknown variable {variable:?}")
             }
             Self::RepeatedVariableInFactor(variable) => {
-                write!(
-                    formatter,
-                    "binary relation repeats variable {variable:?} in its scope"
-                )
+                write!(formatter, "constraint factor repeats variable {variable:?} in its scope")
             }
             Self::RelationValueOutsideInitialDomain {
                 variable,
@@ -265,6 +399,27 @@ impl fmt::Display for ConstraintModelError {
                 write!(
                     formatter,
                     "relation value {value_index} is outside the initial domain of {variable:?}"
+                )
+            }
+            Self::EmptySpanningTreeAtomSet => {
+                formatter.write_str("a spanning-tree factor requires at least one atom")
+            }
+            Self::RepeatedAtomInSpanningTree => {
+                formatter.write_str("a spanning-tree factor cannot repeat an atom")
+            }
+            Self::SpanningTreeSelfEdge(atom) => {
+                write!(formatter, "a spanning-tree factor cannot contain a self-edge at {atom:?}")
+            }
+            Self::SpanningTreeEdgeOutsideAtomSet(atom) => {
+                write!(
+                    formatter,
+                    "spanning-tree edge endpoint {atom:?} is outside the factor atom set"
+                )
+            }
+            Self::InvalidBondRoleDomain(variable) => {
+                write!(
+                    formatter,
+                    "spanning-tree variable {variable:?} contains a value outside the bond-role domain"
                 )
             }
         }
@@ -279,6 +434,21 @@ mod tests {
 
     fn two_value_domain() -> Domain {
         Domain::from_indices([0, 1]).unwrap()
+    }
+
+    #[test]
+    fn bond_role_domains_have_stable_values() {
+        assert_eq!(BondRole::Traversal.value_index(), 0);
+        assert_eq!(BondRole::Ring.value_index(), 1);
+        assert_eq!(BondRole::role_domain(), two_value_domain());
+        assert_eq!(
+            BondRole::Traversal.singleton_domain(),
+            Domain::singleton(0).unwrap()
+        );
+        assert_eq!(
+            BondRole::Ring.singleton_domain(),
+            Domain::singleton(1).unwrap()
+        );
     }
 
     #[test]
@@ -336,9 +506,11 @@ mod tests {
             .add_binary_relation(left, right, [(0, 1), (1, 0), (1, 0)])
             .unwrap();
         let model = builder.build();
-        let FactorDefinition::BinaryRelation(factor) = model.factor(factor_id).unwrap();
+        let FactorDefinition::BinaryRelation(factor) = model.factor(factor_id).unwrap() else {
+            panic!("expected binary relation factor");
+        };
 
-        assert_eq!(factor.variables(), [left, right]);
+        assert_eq!(factor.variables(), &[left, right]);
         assert_eq!(factor.allowed_right(0), Domain::singleton(1).unwrap());
         assert_eq!(factor.allowed_right(1), Domain::singleton(0).unwrap());
         assert_eq!(factor.allowed_left(0), Domain::singleton(1).unwrap());
@@ -358,7 +530,9 @@ mod tests {
             .add_binary_relation(left, right, [(0, 1), (2, 7)])
             .unwrap();
         let model = builder.build();
-        let FactorDefinition::BinaryRelation(factor) = model.factor(factor_id).unwrap();
+        let FactorDefinition::BinaryRelation(factor) = model.factor(factor_id).unwrap() else {
+            panic!("expected binary relation factor");
+        };
 
         assert_eq!(factor.allowed_right_by_left.len(), 3);
         assert_eq!(factor.allowed_left_by_right.len(), 8);
@@ -366,7 +540,7 @@ mod tests {
     }
 
     #[test]
-    fn invalid_factor_is_rejected_without_consuming_an_id() {
+    fn invalid_binary_factor_is_rejected_without_consuming_an_id() {
         let mut builder = ConstraintModelBuilder::new();
         let left = builder.add_variable(two_value_domain()).unwrap();
         let right = builder.add_variable(two_value_domain()).unwrap();
@@ -403,9 +577,128 @@ mod tests {
             .add_binary_relation(left, right, std::iter::empty())
             .unwrap();
         let model = builder.build();
-        let FactorDefinition::BinaryRelation(factor) = model.factor(factor_id).unwrap();
+        let FactorDefinition::BinaryRelation(factor) = model.factor(factor_id).unwrap() else {
+            panic!("expected binary relation factor");
+        };
 
         assert!(factor.allowed_right(0).is_empty());
         assert!(factor.allowed_left(0).is_empty());
+    }
+
+    #[test]
+    fn spanning_tree_factor_preserves_sorted_atoms_edges_and_adjacency() {
+        let mut builder = ConstraintModelBuilder::new();
+        let first = builder.add_variable(BondRole::role_domain()).unwrap();
+        let second = builder.add_variable(BondRole::role_domain()).unwrap();
+        let atoms = [AtomId::new(2), AtomId::new(0), AtomId::new(1)];
+        let factor_id = builder
+            .add_spanning_tree(
+                atoms,
+                [
+                    SpanningTreeEdge::new(first, AtomId::new(0), AtomId::new(1)),
+                    SpanningTreeEdge::new(second, AtomId::new(1), AtomId::new(2)),
+                ],
+            )
+            .unwrap();
+        let model = builder.build();
+        let FactorDefinition::SpanningTree(factor) = model.factor(factor_id).unwrap() else {
+            panic!("expected spanning-tree factor");
+        };
+
+        assert_eq!(
+            factor.atoms(),
+            &[AtomId::new(0), AtomId::new(1), AtomId::new(2)]
+        );
+        assert_eq!(factor.variables(), &[first, second]);
+        assert_eq!(model.factors_for_variable(first), Some(&[factor_id][..]));
+        assert_eq!(model.factors_for_variable(second), Some(&[factor_id][..]));
+    }
+
+    #[test]
+    fn isolated_atom_spanning_tree_has_empty_scope() {
+        let mut builder = ConstraintModelBuilder::new();
+        let factor_id = builder
+            .add_spanning_tree([AtomId::new(7)], std::iter::empty())
+            .unwrap();
+        let model = builder.build();
+        let FactorDefinition::SpanningTree(factor) = model.factor(factor_id).unwrap() else {
+            panic!("expected spanning-tree factor");
+        };
+
+        assert_eq!(factor.atoms(), &[AtomId::new(7)]);
+        assert!(factor.edges().is_empty());
+        assert!(factor.variables().is_empty());
+    }
+
+    #[test]
+    fn invalid_spanning_tree_definition_is_rejected_without_consuming_an_id() {
+        let mut builder = ConstraintModelBuilder::new();
+        let role = builder.add_variable(BondRole::role_domain()).unwrap();
+        let invalid_role = builder
+            .add_variable(Domain::from_indices([0, 2]).unwrap())
+            .unwrap();
+
+        assert_eq!(
+            builder.add_spanning_tree([], std::iter::empty()),
+            Err(ConstraintModelError::EmptySpanningTreeAtomSet)
+        );
+        assert_eq!(
+            builder.add_spanning_tree(
+                [AtomId::new(0), AtomId::new(0)],
+                std::iter::empty()
+            ),
+            Err(ConstraintModelError::RepeatedAtomInSpanningTree)
+        );
+        assert_eq!(
+            builder.add_spanning_tree(
+                [AtomId::new(0)],
+                [SpanningTreeEdge::new(
+                    role,
+                    AtomId::new(0),
+                    AtomId::new(0),
+                )],
+            ),
+            Err(ConstraintModelError::SpanningTreeSelfEdge(AtomId::new(0)))
+        );
+        assert_eq!(
+            builder.add_spanning_tree(
+                [AtomId::new(0), AtomId::new(1)],
+                [SpanningTreeEdge::new(
+                    role,
+                    AtomId::new(0),
+                    AtomId::new(2),
+                )],
+            ),
+            Err(ConstraintModelError::SpanningTreeEdgeOutsideAtomSet(
+                AtomId::new(2)
+            ))
+        );
+        assert_eq!(
+            builder.add_spanning_tree(
+                [AtomId::new(0), AtomId::new(1)],
+                [SpanningTreeEdge::new(
+                    invalid_role,
+                    AtomId::new(0),
+                    AtomId::new(1),
+                )],
+            ),
+            Err(ConstraintModelError::InvalidBondRoleDomain(invalid_role))
+        );
+        assert_eq!(
+            builder.add_spanning_tree(
+                [AtomId::new(0), AtomId::new(1), AtomId::new(2)],
+                [
+                    SpanningTreeEdge::new(role, AtomId::new(0), AtomId::new(1)),
+                    SpanningTreeEdge::new(role, AtomId::new(1), AtomId::new(2)),
+                ],
+            ),
+            Err(ConstraintModelError::RepeatedVariableInFactor(role))
+        );
+        assert_eq!(
+            builder
+                .add_spanning_tree([AtomId::new(0)], std::iter::empty())
+                .unwrap(),
+            FactorId::new(0)
+        );
     }
 }

@@ -1,12 +1,15 @@
 //! Exhaustive tiny-CSP backend and differential checks for the solver contract.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fmt;
 use std::sync::Arc;
 
 use crate::domain::Domain;
-use crate::ids::{FactorId, VariableId};
-use crate::model::{ConstraintModel, ConstraintModelBuilder, FactorDefinition};
+use crate::ids::{AtomId, FactorId, VariableId};
+use crate::model::{
+    BondRole, ConstraintModel, ConstraintModelBuilder, FactorDefinition, SpanningTreeEdge,
+    SpanningTreeFactor,
+};
 use crate::native::NativeSolverState;
 use crate::solver::ConstraintSolver;
 
@@ -144,8 +147,60 @@ fn assignment_satisfies(model: &ConstraintModel, assignment: &[u8]) -> bool {
             FactorDefinition::BinaryRelation(relation) => relation
                 .allowed_right(assignment[relation.left().index()])
                 .contains(assignment[relation.right().index()]),
+            FactorDefinition::SpanningTree(spanning_tree) => {
+                assignment_satisfies_spanning_tree(spanning_tree, assignment)
+            }
         }
     })
+}
+
+fn assignment_satisfies_spanning_tree(
+    factor: &SpanningTreeFactor,
+    assignment: &[u8],
+) -> bool {
+    let traversal_value = BondRole::Traversal.value_index();
+    let ring_value = BondRole::Ring.value_index();
+    let mut traversal_edge_count = 0;
+
+    for edge in factor.edges() {
+        match assignment[edge.role_variable().index()] {
+            value if value == traversal_value => traversal_edge_count += 1,
+            value if value == ring_value => {}
+            _ => return false,
+        }
+    }
+
+    if traversal_edge_count != factor.atoms().len().saturating_sub(1) {
+        return false;
+    }
+
+    let Some(&root) = factor.atoms().first() else {
+        return false;
+    };
+    let mut visited = BTreeSet::from([root]);
+    let mut pending = VecDeque::from([root]);
+
+    while let Some(atom) = pending.pop_front() {
+        for edge in factor.edges() {
+            if assignment[edge.role_variable().index()] != traversal_value {
+                continue;
+            }
+            let other = if edge.a() == atom {
+                Some(edge.b())
+            } else if edge.b() == atom {
+                Some(edge.a())
+            } else {
+                None
+            };
+            if let Some(other) = other {
+                if visited.insert(other) {
+                    pending.push_back(other);
+                }
+            }
+        }
+    }
+
+    visited.len() == factor.atoms().len()
 }
 
 fn relation_rows(mask: u16) -> Vec<(u8, u8)> {
@@ -222,6 +277,102 @@ fn solve_triangle<S: ConstraintSolver>(
             .domain(variables[index])
             .expect("triangle variable must exist")
     }))
+}
+
+#[derive(Copy, Clone)]
+struct SpanningFixture<'a> {
+    atoms: &'a [u32],
+    edges: &'a [(u32, u32)],
+}
+
+fn spanning_model(
+    components: &[SpanningFixture<'_>],
+) -> (Arc<ConstraintModel>, Vec<VariableId>) {
+    let mut builder = ConstraintModelBuilder::new();
+    let mut variables = Vec::new();
+
+    for component in components {
+        let atoms = component
+            .atoms
+            .iter()
+            .copied()
+            .map(AtomId::new)
+            .collect::<Vec<_>>();
+        let mut edges = Vec::with_capacity(component.edges.len());
+        for &(a, b) in component.edges {
+            let variable = builder.add_variable(BondRole::role_domain()).unwrap();
+            variables.push(variable);
+            edges.push(SpanningTreeEdge::new(
+                variable,
+                AtomId::new(a),
+                AtomId::new(b),
+            ));
+        }
+        builder.add_spanning_tree(atoms, edges).unwrap();
+    }
+
+    (Arc::new(builder.build()), variables)
+}
+
+fn solve_role_domains<S: ConstraintSolver>(
+    model: Arc<ConstraintModel>,
+    variables: &[VariableId],
+    restrictions: &[(VariableId, Domain)],
+) -> Option<Vec<Domain>> {
+    let state = S::initial(model).ok()?;
+    let state = state.restricted(restrictions).ok()?;
+    Some(
+        variables
+            .iter()
+            .map(|variable| {
+                state
+                    .domain(*variable)
+                    .expect("spanning-tree variable must exist")
+            })
+            .collect(),
+    )
+}
+
+fn partial_role_restrictions(variables: &[VariableId]) -> Vec<Vec<(VariableId, Domain)>> {
+    let case_count = 3_usize.pow(u32::try_from(variables.len()).unwrap());
+    let mut cases = Vec::with_capacity(case_count);
+
+    for mut code in 0..case_count {
+        let mut restrictions = Vec::new();
+        for &variable in variables {
+            match code % 3 {
+                0 => {}
+                1 => restrictions.push((variable, BondRole::Traversal.singleton_domain())),
+                2 => restrictions.push((variable, BondRole::Ring.singleton_domain())),
+                _ => unreachable!(),
+            }
+            code /= 3;
+        }
+        cases.push(restrictions);
+    }
+
+    cases
+}
+
+fn assert_spanning_fixture(name: &str, components: &[SpanningFixture<'_>]) {
+    let (model, variables) = spanning_model(components);
+
+    for restrictions in partial_role_restrictions(&variables) {
+        let expected = solve_role_domains::<ExhaustiveSolverState>(
+            Arc::clone(&model),
+            &variables,
+            &restrictions,
+        );
+        let actual = solve_role_domains::<NativeSolverState>(
+            Arc::clone(&model),
+            &variables,
+            &restrictions,
+        );
+        assert_eq!(
+            actual, expected,
+            "{name} with role restrictions {restrictions:?}"
+        );
+    }
 }
 
 #[test]
@@ -306,4 +457,158 @@ fn native_and_exhaustive_backends_share_restriction_semantics() {
             "exhaustive restrictions {restrictions:?}"
         );
     }
+}
+
+#[test]
+fn spanning_tree_factor_matches_independent_exhaustive_projection() {
+    let fixtures: [(&str, Vec<SpanningFixture<'_>>); 7] = [
+        (
+            "single atom",
+            vec![SpanningFixture {
+                atoms: &[0],
+                edges: &[],
+            }],
+        ),
+        (
+            "single bridge",
+            vec![SpanningFixture {
+                atoms: &[0, 1],
+                edges: &[(0, 1)],
+            }],
+        ),
+        (
+            "triangle",
+            vec![SpanningFixture {
+                atoms: &[0, 1, 2],
+                edges: &[(0, 1), (1, 2), (2, 0)],
+            }],
+        ),
+        (
+            "square",
+            vec![SpanningFixture {
+                atoms: &[0, 1, 2, 3],
+                edges: &[(0, 1), (1, 2), (2, 3), (3, 0)],
+            }],
+        ),
+        (
+            "square with diagonal",
+            vec![SpanningFixture {
+                atoms: &[0, 1, 2, 3],
+                edges: &[(0, 1), (1, 2), (2, 3), (3, 0), (0, 2)],
+            }],
+        ),
+        (
+            "two cycles sharing a vertex",
+            vec![SpanningFixture {
+                atoms: &[0, 1, 2, 3, 4],
+                edges: &[(0, 1), (1, 2), (2, 0), (0, 3), (3, 4), (4, 0)],
+            }],
+        ),
+        (
+            "two disconnected components",
+            vec![
+                SpanningFixture {
+                    atoms: &[0, 1, 2],
+                    edges: &[(0, 1), (1, 2), (2, 0)],
+                },
+                SpanningFixture {
+                    atoms: &[3, 4, 5],
+                    edges: &[(3, 4), (4, 5), (5, 3)],
+                },
+            ],
+        ),
+    ];
+
+    for (name, components) in fixtures {
+        assert_spanning_fixture(name, &components);
+    }
+}
+
+#[test]
+fn contraction_preserves_parallel_quotient_edges() {
+    let (model, variables) = spanning_model(&[SpanningFixture {
+        atoms: &[0, 1, 2],
+        edges: &[(0, 1), (1, 2), (2, 0)],
+    }]);
+    let state = NativeSolverState::initial(Arc::clone(&model)).unwrap();
+    let successor = state
+        .restricted(&[(
+            variables[0],
+            BondRole::Traversal.singleton_domain(),
+        )])
+        .unwrap();
+
+    assert_eq!(
+        successor.domain(variables[0]),
+        Some(BondRole::Traversal.singleton_domain())
+    );
+    assert_eq!(
+        successor.domain(variables[1]),
+        Some(BondRole::role_domain())
+    );
+    assert_eq!(
+        successor.domain(variables[2]),
+        Some(BondRole::role_domain())
+    );
+}
+
+#[test]
+fn contracted_internal_edge_is_forced_to_ring() {
+    let (model, variables) = spanning_model(&[SpanningFixture {
+        atoms: &[0, 1, 2],
+        edges: &[(0, 1), (1, 2), (2, 0)],
+    }]);
+    let state = NativeSolverState::initial(model).unwrap();
+    let successor = state
+        .restricted(&[
+            (
+                variables[0],
+                BondRole::Traversal.singleton_domain(),
+            ),
+            (
+                variables[1],
+                BondRole::Traversal.singleton_domain(),
+            ),
+        ])
+        .unwrap();
+
+    assert_eq!(
+        successor.domain(variables[2]),
+        Some(BondRole::Ring.singleton_domain())
+    );
+}
+
+#[test]
+fn forced_traversal_cycle_is_a_contradiction() {
+    let (model, variables) = spanning_model(&[SpanningFixture {
+        atoms: &[0, 1, 2],
+        edges: &[(0, 1), (1, 2), (2, 0)],
+    }]);
+    let state = NativeSolverState::initial(model).unwrap();
+
+    assert!(state
+        .restricted(
+            &variables
+                .iter()
+                .copied()
+                .map(|variable| (variable, BondRole::Traversal.singleton_domain()))
+                .collect::<Vec<_>>()
+        )
+        .is_err());
+}
+
+#[test]
+fn removing_all_edges_at_one_vertex_is_a_contradiction() {
+    let (model, variables) = spanning_model(&[SpanningFixture {
+        atoms: &[0, 1, 2, 3],
+        edges: &[(0, 1), (1, 2), (2, 3), (3, 0)],
+    }]);
+    let state = NativeSolverState::initial(model).unwrap();
+
+    assert!(state
+        .restricted(&[
+            (variables[0], BondRole::Ring.singleton_domain()),
+            (variables[3], BondRole::Ring.singleton_domain()),
+        ])
+        .is_err());
 }

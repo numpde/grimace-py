@@ -41,9 +41,7 @@ impl Domain {
         Ok(Self(1_u64 << value_index))
     }
 
-    pub fn from_indices(
-        values: impl IntoIterator<Item = u8>,
-    ) -> Result<Self, DomainError> {
+    pub fn from_indices(values: impl IntoIterator<Item = u8>) -> Result<Self, DomainError> {
         let mut bits = 0_u64;
         for value_index in values {
             Self::validate_value_index(value_index)?;

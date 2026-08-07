@@ -179,7 +179,9 @@ impl ConstraintModel {
     }
 
     pub(crate) fn initial_domains(&self) -> impl Iterator<Item = Domain> + '_ {
-        self.variables.iter().map(VariableDefinition::initial_domain)
+        self.variables
+            .iter()
+            .map(VariableDefinition::initial_domain)
     }
 }
 
@@ -246,28 +248,23 @@ impl ConstraintModelBuilder {
 
         for (left_value, right_value) in allowed_pairs {
             if !left_domain.contains(left_value) {
-                return Err(
-                    ConstraintModelError::RelationValueOutsideInitialDomain {
-                        variable: left,
-                        value_index: left_value,
-                    },
-                );
+                return Err(ConstraintModelError::RelationValueOutsideInitialDomain {
+                    variable: left,
+                    value_index: left_value,
+                });
             }
             if !right_domain.contains(right_value) {
-                return Err(
-                    ConstraintModelError::RelationValueOutsideInitialDomain {
-                        variable: right,
-                        value_index: right_value,
-                    },
-                );
+                return Err(ConstraintModelError::RelationValueOutsideInitialDomain {
+                    variable: right,
+                    value_index: right_value,
+                });
             }
 
-            allowed_right_by_left[left_value as usize] =
-                allowed_right_by_left[left_value as usize]
-                    .union(Domain::from_bits(1_u64 << right_value));
-            allowed_left_by_right[right_value as usize] =
-                allowed_left_by_right[right_value as usize]
-                    .union(Domain::from_bits(1_u64 << left_value));
+            allowed_right_by_left[left_value as usize] = allowed_right_by_left[left_value as usize]
+                .union(Domain::from_bits(1_u64 << right_value));
+            allowed_left_by_right[right_value as usize] = allowed_left_by_right
+                [right_value as usize]
+                .union(Domain::from_bits(1_u64 << left_value));
         }
 
         self.push_factor(FactorDefinition::BinaryRelation(BinaryRelationFactor {
@@ -387,10 +384,16 @@ impl fmt::Display for ConstraintModelError {
                 formatter.write_str("too many factors for the South Star 2 identifier space")
             }
             Self::UnknownVariable(variable) => {
-                write!(formatter, "constraint factor references unknown variable {variable:?}")
+                write!(
+                    formatter,
+                    "constraint factor references unknown variable {variable:?}"
+                )
             }
             Self::RepeatedVariableInFactor(variable) => {
-                write!(formatter, "constraint factor repeats variable {variable:?} in its scope")
+                write!(
+                    formatter,
+                    "constraint factor repeats variable {variable:?} in its scope"
+                )
             }
             Self::RelationValueOutsideInitialDomain {
                 variable,
@@ -408,7 +411,10 @@ impl fmt::Display for ConstraintModelError {
                 formatter.write_str("a spanning-tree factor cannot repeat an atom")
             }
             Self::SpanningTreeSelfEdge(atom) => {
-                write!(formatter, "a spanning-tree factor cannot contain a self-edge at {atom:?}")
+                write!(
+                    formatter,
+                    "a spanning-tree factor cannot contain a self-edge at {atom:?}"
+                )
             }
             Self::SpanningTreeEdgeOutsideAtomSet(atom) => {
                 write!(
@@ -469,9 +475,7 @@ mod tests {
             Err(ConstraintModelError::EmptyInitialDomain)
         );
         assert_eq!(
-            builder
-                .add_variable(Domain::singleton(0).unwrap())
-                .unwrap(),
+            builder.add_variable(Domain::singleton(0).unwrap()).unwrap(),
             VariableId::new(0)
         );
     }
@@ -492,7 +496,10 @@ mod tests {
         assert_eq!(right, VariableId::new(1));
         assert_eq!(factor, FactorId::new(0));
         assert_eq!(model.variable(left).unwrap().initial_domain(), left_domain);
-        assert_eq!(model.variable(right).unwrap().initial_domain(), right_domain);
+        assert_eq!(
+            model.variable(right).unwrap().initial_domain(),
+            right_domain
+        );
         assert_eq!(model.factors_for_variable(left), Some(&[factor][..]));
         assert_eq!(model.factors_for_variable(right), Some(&[factor][..]));
     }
@@ -643,31 +650,20 @@ mod tests {
             Err(ConstraintModelError::EmptySpanningTreeAtomSet)
         );
         assert_eq!(
-            builder.add_spanning_tree(
-                [AtomId::new(0), AtomId::new(0)],
-                std::iter::empty()
-            ),
+            builder.add_spanning_tree([AtomId::new(0), AtomId::new(0)], std::iter::empty()),
             Err(ConstraintModelError::RepeatedAtomInSpanningTree)
         );
         assert_eq!(
             builder.add_spanning_tree(
                 [AtomId::new(0)],
-                [SpanningTreeEdge::new(
-                    role,
-                    AtomId::new(0),
-                    AtomId::new(0),
-                )],
+                [SpanningTreeEdge::new(role, AtomId::new(0), AtomId::new(0),)],
             ),
             Err(ConstraintModelError::SpanningTreeSelfEdge(AtomId::new(0)))
         );
         assert_eq!(
             builder.add_spanning_tree(
                 [AtomId::new(0), AtomId::new(1)],
-                [SpanningTreeEdge::new(
-                    role,
-                    AtomId::new(0),
-                    AtomId::new(2),
-                )],
+                [SpanningTreeEdge::new(role, AtomId::new(0), AtomId::new(2),)],
             ),
             Err(ConstraintModelError::SpanningTreeEdgeOutsideAtomSet(
                 AtomId::new(2)

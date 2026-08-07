@@ -41,7 +41,10 @@ impl std::error::Error for NativeSolverError {}
 
 impl NativeSolverState {
     pub(crate) fn initial(model: Arc<ConstraintModel>) -> Result<Self, NativeSolverError> {
-        let domains = model.initial_domains().collect::<Vec<_>>().into_boxed_slice();
+        let domains = model
+            .initial_domains()
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
         let factor_count = model.factor_count();
         let variable_count = model.variable_count();
         let mut state = Self { model, domains };
@@ -228,12 +231,7 @@ impl NativeSolverState {
             .ok_or(NativeSolverError::Contradiction)?;
 
         let mut reductions = Vec::new();
-        for (variable, supported_domain) in component
-            .variables
-            .iter()
-            .copied()
-            .zip(supported)
-        {
+        for (variable, supported_domain) in component.variables.iter().copied().zip(supported) {
             let current = self.domains[variable.index()];
             debug_assert!(supported_domain.is_subset_of(current));
             if supported_domain != current {
@@ -468,16 +466,12 @@ fn revised_binary_domains(
     old_left: Domain,
     old_right: Domain,
 ) -> Result<(Domain, Domain), NativeSolverError> {
-    let new_left = values_with_support(old_left, old_right, |value| {
-        factor.allowed_right(value)
-    });
+    let new_left = values_with_support(old_left, old_right, |value| factor.allowed_right(value));
     if new_left.is_empty() {
         return Err(NativeSolverError::Contradiction);
     }
 
-    let new_right = values_with_support(old_right, new_left, |value| {
-        factor.allowed_left(value)
-    });
+    let new_right = values_with_support(old_right, new_left, |value| factor.allowed_left(value));
     if new_right.is_empty() {
         return Err(NativeSolverError::Contradiction);
     }
@@ -1007,19 +1001,14 @@ mod tests {
         builder
             .add_binary_relation(x, y, [(0, 0), (1, 1), (2, 0)])
             .unwrap();
-        builder
-            .add_binary_relation(y, z, [(0, 0), (1, 1)])
-            .unwrap();
+        builder.add_binary_relation(y, z, [(0, 0), (1, 1)]).unwrap();
         builder
             .add_binary_relation(z, x, [(0, 0), (1, 1), (1, 2)])
             .unwrap();
 
         let state = NativeSolverState::initial(Arc::new(builder.build())).unwrap();
 
-        assert_eq!(
-            state.domain(x),
-            Some(Domain::from_indices([0, 1]).unwrap())
-        );
+        assert_eq!(state.domain(x), Some(Domain::from_indices([0, 1]).unwrap()));
         assert_eq!(state.domain(y), Some(two_values()));
         assert_eq!(state.domain(z), Some(two_values()));
     }
@@ -1035,9 +1024,7 @@ mod tests {
         builder
             .add_binary_relation(x, y, [(0, 0), (1, 1), (2, 0)])
             .unwrap();
-        builder
-            .add_binary_relation(y, z, [(0, 0), (1, 1)])
-            .unwrap();
+        builder.add_binary_relation(y, z, [(0, 0), (1, 1)]).unwrap();
         builder
             .add_binary_relation(z, x, [(0, 0), (1, 1), (1, 2)])
             .unwrap();

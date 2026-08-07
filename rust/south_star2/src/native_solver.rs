@@ -15,10 +15,7 @@ impl ConstraintSolver for NativeSolverState {
         NativeSolverState::initial(model)
     }
 
-    fn restricted(
-        &self,
-        restrictions: &[(VariableId, Domain)],
-    ) -> Result<Self, Self::Error> {
+    fn restricted(&self, restrictions: &[(VariableId, Domain)]) -> Result<Self, Self::Error> {
         NativeSolverState::with_restrictions(self, restrictions.iter().copied())
     }
 

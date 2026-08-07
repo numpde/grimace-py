@@ -48,10 +48,7 @@ impl ConstraintSolver for ExhaustiveSolverState {
         Ok(Self { model, domains })
     }
 
-    fn restricted(
-        &self,
-        restrictions: &[(VariableId, Domain)],
-    ) -> Result<Self, Self::Error> {
+    fn restricted(&self, restrictions: &[(VariableId, Domain)]) -> Result<Self, Self::Error> {
         let mut requested = BTreeMap::new();
         let mut contradictory = false;
 
@@ -127,14 +124,7 @@ fn enumerate_assignments(
 
     for value in domains[variable].iter() {
         assignment[variable] = value;
-        enumerate_assignments(
-            model,
-            domains,
-            variable + 1,
-            assignment,
-            supported,
-            found,
-        );
+        enumerate_assignments(model, domains, variable + 1, assignment, supported, found);
     }
 }
 
@@ -154,10 +144,7 @@ fn assignment_satisfies(model: &ConstraintModel, assignment: &[u8]) -> bool {
     })
 }
 
-fn assignment_satisfies_spanning_tree(
-    factor: &SpanningTreeFactor,
-    assignment: &[u8],
-) -> bool {
+fn assignment_satisfies_spanning_tree(factor: &SpanningTreeFactor, assignment: &[u8]) -> bool {
     let traversal_value = BondRole::Traversal.value_index();
     let ring_value = BondRole::Ring.value_index();
     let mut traversal_edge_count = 0;
@@ -221,10 +208,7 @@ fn relation_accepts(mask: u16, left: u8, right: u8) -> bool {
     mask & (1_u16 << bit) != 0
 }
 
-fn exhaustive_triangle_supports(
-    masks: [u16; 3],
-    domains: [Domain; 3],
-) -> Option<[Domain; 3]> {
+fn exhaustive_triangle_supports(masks: [u16; 3], domains: [Domain; 3]) -> Option<[Domain; 3]> {
     let mut supported = [Domain::empty(); 3];
     let mut found = false;
 
@@ -251,8 +235,7 @@ fn exhaustive_triangle_supports(
 fn triangle_model(masks: [u16; 3]) -> (Arc<ConstraintModel>, [VariableId; 3]) {
     let binary = Domain::from_indices([0, 1]).unwrap();
     let mut builder = ConstraintModelBuilder::new();
-    let variables: [VariableId; 3] =
-        std::array::from_fn(|_| builder.add_variable(binary).unwrap());
+    let variables: [VariableId; 3] = std::array::from_fn(|_| builder.add_variable(binary).unwrap());
     builder
         .add_binary_relation(variables[0], variables[1], relation_rows(masks[0]))
         .unwrap();
@@ -285,9 +268,7 @@ struct SpanningFixture<'a> {
     edges: &'a [(u32, u32)],
 }
 
-fn spanning_model(
-    components: &[SpanningFixture<'_>],
-) -> (Arc<ConstraintModel>, Vec<VariableId>) {
+fn spanning_model(components: &[SpanningFixture<'_>]) -> (Arc<ConstraintModel>, Vec<VariableId>) {
     let mut builder = ConstraintModelBuilder::new();
     let mut variables = Vec::new();
 
@@ -363,11 +344,8 @@ fn assert_spanning_fixture(name: &str, components: &[SpanningFixture<'_>]) {
             &variables,
             &restrictions,
         );
-        let actual = solve_role_domains::<NativeSolverState>(
-            Arc::clone(&model),
-            &variables,
-            &restrictions,
-        );
+        let actual =
+            solve_role_domains::<NativeSolverState>(Arc::clone(&model), &variables, &restrictions);
         assert_eq!(
             actual, expected,
             "{name} with role restrictions {restrictions:?}"
@@ -439,20 +417,12 @@ fn native_and_exhaustive_backends_share_restriction_semantics() {
         };
 
         assert_eq!(
-            solve_triangle::<NativeSolverState>(
-                Arc::clone(&model),
-                variables,
-                &restrictions,
-            ),
+            solve_triangle::<NativeSolverState>(Arc::clone(&model), variables, &restrictions,),
             expected,
             "native restrictions {restrictions:?}"
         );
         assert_eq!(
-            solve_triangle::<ExhaustiveSolverState>(
-                Arc::clone(&model),
-                variables,
-                &restrictions,
-            ),
+            solve_triangle::<ExhaustiveSolverState>(Arc::clone(&model), variables, &restrictions,),
             expected,
             "exhaustive restrictions {restrictions:?}"
         );
@@ -532,10 +502,7 @@ fn contraction_preserves_parallel_quotient_edges() {
     }]);
     let state = NativeSolverState::initial(Arc::clone(&model)).unwrap();
     let successor = state
-        .restricted(&[(
-            variables[0],
-            BondRole::Traversal.singleton_domain(),
-        )])
+        .restricted(&[(variables[0], BondRole::Traversal.singleton_domain())])
         .unwrap();
 
     assert_eq!(
@@ -561,14 +528,8 @@ fn contracted_internal_edge_is_forced_to_ring() {
     let state = NativeSolverState::initial(model).unwrap();
     let successor = state
         .restricted(&[
-            (
-                variables[0],
-                BondRole::Traversal.singleton_domain(),
-            ),
-            (
-                variables[1],
-                BondRole::Traversal.singleton_domain(),
-            ),
+            (variables[0], BondRole::Traversal.singleton_domain()),
+            (variables[1], BondRole::Traversal.singleton_domain()),
         ])
         .unwrap();
 

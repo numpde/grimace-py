@@ -16,10 +16,7 @@ pub(crate) trait ConstraintSolver: Clone + Sized {
 
     fn initial(model: Arc<ConstraintModel>) -> Result<Self, Self::Error>;
 
-    fn restricted(
-        &self,
-        restrictions: &[(VariableId, Domain)],
-    ) -> Result<Self, Self::Error>;
+    fn restricted(&self, restrictions: &[(VariableId, Domain)]) -> Result<Self, Self::Error>;
 
     fn domain(&self, variable: VariableId) -> Option<Domain>;
 }

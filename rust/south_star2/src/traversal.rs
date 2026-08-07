@@ -18,8 +18,8 @@ struct DenseSet {
 
 impl DenseSet {
     fn new(universe_len: usize) -> Self {
-        let word_count = universe_len / u64::BITS as usize
-            + usize::from(universe_len % u64::BITS as usize != 0);
+        let word_count =
+            universe_len / u64::BITS as usize + usize::from(universe_len % u64::BITS as usize != 0);
         Self {
             universe_len,
             marked_count: 0,
@@ -167,12 +167,7 @@ impl GraphProgress {
         self.represented_bond_count += 1;
     }
 
-    fn open_ring(
-        &mut self,
-        bond: BondId,
-        first_endpoint: AtomId,
-        label_slot: RingLabelSlot,
-    ) {
+    fn open_ring(&mut self, bond: BondId, first_endpoint: AtomId, label_slot: RingLabelSlot) {
         let progress = self.bond_progress_mut(bond);
         assert_eq!(
             *progress,
@@ -185,11 +180,7 @@ impl GraphProgress {
         };
     }
 
-    fn close_ring(
-        &mut self,
-        bond: BondId,
-        second_endpoint: AtomId,
-    ) -> RingLabelSlot {
+    fn close_ring(&mut self, bond: BondId, second_endpoint: AtomId) -> RingLabelSlot {
         let progress = self.bond_progress_mut(bond);
         let BondProgress::RingOpen {
             first_endpoint,
@@ -326,28 +317,18 @@ impl TraversalState {
 
     pub(crate) fn begin_component(&mut self, root: AtomId) {
         assert!(
-            self.active.is_none()
-                && self.branch_returns.is_empty()
-                && self.ring_labels.is_empty(),
+            self.active.is_none() && self.branch_returns.is_empty() && self.ring_labels.is_empty(),
             "a component can begin only after the previous component is closed"
         );
         self.progress.visit_atom(root);
         self.active = Some(root);
     }
 
-    pub(crate) fn enter_inline_child(
-        &mut self,
-        graph: &PreparedGraph,
-        incident: AdjacentBond,
-    ) {
+    pub(crate) fn enter_inline_child(&mut self, graph: &PreparedGraph, incident: AdjacentBond) {
         self.enter_child(graph, incident, ChildPlacement::Inline);
     }
 
-    pub(crate) fn enter_branch_child(
-        &mut self,
-        graph: &PreparedGraph,
-        incident: AdjacentBond,
-    ) {
+    pub(crate) fn enter_branch_child(&mut self, graph: &PreparedGraph, incident: AdjacentBond) {
         self.enter_child(graph, incident, ChildPlacement::Branch);
     }
 
@@ -356,7 +337,9 @@ impl TraversalState {
         graph: &PreparedGraph,
         incident: AdjacentBond,
     ) -> RingLabelSlot {
-        let active = self.active.expect("a ring endpoint requires an active atom");
+        let active = self
+            .active
+            .expect("a ring endpoint requires an active atom");
         assert!(
             matches!(
                 self.progress.classify_incident(graph, active, incident),
@@ -367,8 +350,7 @@ impl TraversalState {
         );
 
         let label_slot = self.ring_labels.allocate(incident.bond());
-        self.progress
-            .open_ring(incident.bond(), active, label_slot);
+        self.progress.open_ring(incident.bond(), active, label_slot);
         label_slot
     }
 
@@ -377,7 +359,9 @@ impl TraversalState {
         graph: &PreparedGraph,
         incident: AdjacentBond,
     ) -> RingLabelSlot {
-        let active = self.active.expect("a ring endpoint requires an active atom");
+        let active = self
+            .active
+            .expect("a ring endpoint requires an active atom");
         assert_eq!(
             self.progress.classify_incident(graph, active, incident),
             IncidentBondState::RingOpenAtOtherAtom,
@@ -388,8 +372,7 @@ impl TraversalState {
             .progress
             .ring_label_slot(incident.bond())
             .expect("an open ring bond must own a label slot");
-        self.ring_labels
-            .require_owner(label_slot, incident.bond());
+        self.ring_labels.require_owner(label_slot, incident.bond());
         let closed_slot = self.progress.close_ring(incident.bond(), active);
         assert_eq!(closed_slot, label_slot);
         self.ring_labels.release(label_slot, incident.bond());
@@ -401,7 +384,9 @@ impl TraversalState {
         graph: &PreparedGraph,
         incident: AdjacentBond,
     ) -> Option<RingLabelSlot> {
-        let active = self.active.expect("ring-label lookup requires an active atom");
+        let active = self
+            .active
+            .expect("ring-label lookup requires an active atom");
         self.progress.classify_incident(graph, active, incident);
         self.progress.ring_label_slot(incident.bond())
     }
@@ -429,7 +414,9 @@ impl TraversalState {
         graph: &PreparedGraph,
         incident: AdjacentBond,
     ) -> IncidentBondState {
-        let active = self.active.expect("incident classification requires an active atom");
+        let active = self
+            .active
+            .expect("incident classification requires an active atom");
         self.progress.classify_incident(graph, active, incident)
     }
 
@@ -495,9 +482,15 @@ mod tests {
         let graph = builder.build();
         let mut state = TraversalState::new(&graph);
 
-        assert_eq!(state.unvisited_atoms(&graph).collect::<Vec<_>>(), atoms.to_vec());
+        assert_eq!(
+            state.unvisited_atoms(&graph).collect::<Vec<_>>(),
+            atoms.to_vec()
+        );
         state.begin_component(atoms[1]);
-        assert_eq!(state.unvisited_atoms(&graph).collect::<Vec<_>>(), vec![atoms[0]]);
+        assert_eq!(
+            state.unvisited_atoms(&graph).collect::<Vec<_>>(),
+            vec![atoms[0]]
+        );
         assert_eq!(state.complete_path(), None);
         state.begin_component(atoms[0]);
         assert_eq!(state.complete_path(), None);
@@ -669,10 +662,7 @@ mod tests {
         assert_eq!(source.next_ring_label_slot().index(), 0);
         assert_eq!(successor.next_ring_label_slot().index(), 1);
         assert_eq!(
-            successor.ring_label_slot_for_active_incident(
-                &graph,
-                incident(&graph, atoms[0], bond)
-            ),
+            successor.ring_label_slot_for_active_incident(&graph, incident(&graph, atoms[0], bond)),
             Some(slot)
         );
     }

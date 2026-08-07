@@ -9,9 +9,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::ids::{AtomId, BondId, VariableId};
-use crate::model::{
-    BondRole, ConstraintModel, ConstraintModelBuilder, ConstraintModelError, SpanningTreeEdge,
-};
+use crate::model::{BondRole, ConstraintModel, ConstraintModelBuilder, SpanningTreeEdge};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct PreparedBond {
@@ -96,13 +94,13 @@ pub struct PreparedMolecule {
 }
 
 impl PreparedMolecule {
-    pub fn new(graph: PreparedGraph) -> Result<Self, ConstraintModelError> {
-        let (constraints, bond_role_variables) = compile_graph_constraints(&graph)?;
-        Ok(Self {
+    pub fn new(graph: PreparedGraph) -> Self {
+        let (constraints, bond_role_variables) = compile_graph_constraints(&graph);
+        Self {
             graph: Arc::new(graph),
             constraints: Arc::new(constraints),
             bond_role_variables: Arc::from(bond_role_variables),
-        })
+        }
     }
 
     pub fn graph(&self) -> &PreparedGraph {
@@ -122,14 +120,16 @@ impl PreparedMolecule {
     }
 }
 
-fn compile_graph_constraints(
-    graph: &PreparedGraph,
-) -> Result<(ConstraintModel, Box<[VariableId]>), ConstraintModelError> {
+fn compile_graph_constraints(graph: &PreparedGraph) -> (ConstraintModel, Box<[VariableId]>) {
     let mut builder = ConstraintModelBuilder::new();
     let mut bond_role_variables = Vec::with_capacity(graph.bond_count());
 
     for _bond in graph.bond_ids() {
-        bond_role_variables.push(builder.add_variable(BondRole::role_domain())?);
+        bond_role_variables.push(
+            builder
+                .add_variable(BondRole::role_domain())
+                .expect("prepared bond roles must fit the constraint identifier space"),
+        );
     }
 
     for component in graph_components(graph) {
@@ -139,10 +139,12 @@ fn compile_graph_constraints(
                 .expect("component bond must belong to the prepared graph");
             SpanningTreeEdge::new(bond_role_variables[bond_id.index()], bond.a(), bond.b())
         });
-        builder.add_spanning_tree(component.atoms, edges)?;
+        builder
+            .add_spanning_tree(component.atoms, edges)
+            .expect("prepared components must define valid spanning-tree factors");
     }
 
-    Ok((builder.build(), bond_role_variables.into_boxed_slice()))
+    (builder.build(), bond_role_variables.into_boxed_slice())
 }
 
 #[derive(Debug)]
@@ -446,7 +448,7 @@ mod tests {
 
     #[test]
     fn empty_prepared_molecule_has_no_graph_constraints() {
-        let prepared = PreparedMolecule::new(PreparedGraphBuilder::new().build()).unwrap();
+        let prepared = PreparedMolecule::new(PreparedGraphBuilder::new().build());
 
         assert_eq!(prepared.constraint_model().variable_count(), 0);
         assert_eq!(prepared.constraint_model().factor_count(), 0);
@@ -463,7 +465,7 @@ mod tests {
             graph.add_bond(atoms[2], atoms[0]).unwrap(),
         ];
         let bridge = graph.add_bond(atoms[3], atoms[4]).unwrap();
-        let prepared = PreparedMolecule::new(graph.build()).unwrap();
+        let prepared = PreparedMolecule::new(graph.build());
         let model = prepared.constraint_model();
 
         assert_eq!(model.variable_count(), 4);
@@ -507,7 +509,7 @@ mod tests {
         let mut graph = PreparedGraphBuilder::new();
         let atoms: [AtomId; 2] = std::array::from_fn(|_| graph.add_atom().unwrap());
         let bond = graph.add_bond(atoms[0], atoms[1]).unwrap();
-        let prepared = PreparedMolecule::new(graph.build()).unwrap();
+        let prepared = PreparedMolecule::new(graph.build());
         let cloned = prepared.clone();
 
         assert_eq!(

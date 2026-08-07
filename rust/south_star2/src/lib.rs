@@ -8,7 +8,6 @@
 
 mod domain;
 mod ids;
-mod kernel_state;
 mod model;
 mod native;
 #[cfg(test)]

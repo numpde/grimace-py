@@ -4,12 +4,14 @@
 //! text, including context-dependent alternatives, belongs to a writer model
 //! rather than the molecular graph.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, VecDeque};
 use std::fmt;
 use std::sync::Arc;
 
-use crate::ids::{AtomId, BondId};
-use crate::model::ConstraintModel;
+use crate::ids::{AtomId, BondId, VariableId};
+use crate::model::{
+    BondRole, ConstraintModel, ConstraintModelBuilder, ConstraintModelError, SpanningTreeEdge,
+};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct PreparedBond {
@@ -90,14 +92,17 @@ impl PreparedGraph {
 pub struct PreparedMolecule {
     graph: Arc<PreparedGraph>,
     constraints: Arc<ConstraintModel>,
+    bond_role_variables: Arc<[VariableId]>,
 }
 
 impl PreparedMolecule {
-    pub fn new(graph: PreparedGraph, constraints: ConstraintModel) -> Self {
-        Self {
+    pub fn new(graph: PreparedGraph) -> Result<Self, ConstraintModelError> {
+        let (constraints, bond_role_variables) = compile_graph_constraints(&graph)?;
+        Ok(Self {
             graph: Arc::new(graph),
             constraints: Arc::new(constraints),
-        }
+            bond_role_variables: Arc::from(bond_role_variables),
+        })
     }
 
     pub fn graph(&self) -> &PreparedGraph {
@@ -107,6 +112,81 @@ impl PreparedMolecule {
     pub fn constraint_model(&self) -> &ConstraintModel {
         self.constraints.as_ref()
     }
+
+    pub fn bond_role_variable(&self, bond: BondId) -> Option<VariableId> {
+        self.bond_role_variables.get(bond.index()).copied()
+    }
+}
+
+fn compile_graph_constraints(
+    graph: &PreparedGraph,
+) -> Result<(ConstraintModel, Box<[VariableId]>), ConstraintModelError> {
+    let mut builder = ConstraintModelBuilder::new();
+    let mut bond_role_variables = Vec::with_capacity(graph.bond_count());
+
+    for _bond in graph.bond_ids() {
+        bond_role_variables.push(builder.add_variable(BondRole::role_domain())?);
+    }
+
+    for component in graph_components(graph) {
+        let edges = component.bonds.iter().map(|bond_id| {
+            let bond = graph
+                .bond(*bond_id)
+                .expect("component bond must belong to the prepared graph");
+            SpanningTreeEdge::new(
+                bond_role_variables[bond_id.index()],
+                bond.a(),
+                bond.b(),
+            )
+        });
+        builder.add_spanning_tree(component.atoms, edges)?;
+    }
+
+    Ok((
+        builder.build(),
+        bond_role_variables.into_boxed_slice(),
+    ))
+}
+
+#[derive(Debug)]
+struct GraphComponent {
+    atoms: Vec<AtomId>,
+    bonds: BTreeSet<BondId>,
+}
+
+fn graph_components(graph: &PreparedGraph) -> Vec<GraphComponent> {
+    let mut visited = vec![false; graph.atom_count()];
+    let mut components = Vec::new();
+
+    for root in graph.atom_ids() {
+        if visited[root.index()] {
+            continue;
+        }
+        visited[root.index()] = true;
+        let mut pending = VecDeque::from([root]);
+        let mut atoms = Vec::new();
+        let mut bonds = BTreeSet::new();
+
+        while let Some(atom) = pending.pop_front() {
+            atoms.push(atom);
+            for incident in graph
+                .neighbors(atom)
+                .expect("prepared atom must have an adjacency row")
+            {
+                bonds.insert(incident.bond());
+                let neighbour = incident.atom();
+                if !visited[neighbour.index()] {
+                    visited[neighbour.index()] = true;
+                    pending.push_back(neighbour);
+                }
+            }
+        }
+
+        atoms.sort_unstable();
+        components.push(GraphComponent { atoms, bonds });
+    }
+
+    components
 }
 
 #[derive(Debug, Default)]
@@ -247,7 +327,8 @@ fn bond_id_from_index(index: usize) -> BondId {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ConstraintModelBuilder, Domain};
+    use crate::ids::FactorId;
+    use crate::model::FactorDefinition;
 
     #[test]
     fn empty_graph_is_valid_topology() {
@@ -366,29 +447,86 @@ mod tests {
     }
 
     #[test]
-    fn prepared_molecule_clone_shares_immutable_data() {
-        let mut graph = PreparedGraphBuilder::new();
-        graph.add_atom().unwrap();
+    fn empty_prepared_molecule_has_no_graph_constraints() {
+        let prepared = PreparedMolecule::new(PreparedGraphBuilder::new().build()).unwrap();
 
-        let mut constraints = ConstraintModelBuilder::new();
-        let variable = constraints
-            .add_variable(Domain::from_indices([0, 1]).unwrap())
-            .unwrap();
-        let prepared = PreparedMolecule::new(graph.build(), constraints.build());
+        assert_eq!(prepared.constraint_model().variable_count(), 0);
+        assert_eq!(prepared.constraint_model().factor_count(), 0);
+        assert_eq!(prepared.bond_role_variable(BondId::new(0)), None);
+    }
+
+    #[test]
+    fn prepared_molecule_compiles_one_spanning_tree_factor_per_component() {
+        let mut graph = PreparedGraphBuilder::new();
+        let atoms: [AtomId; 6] = std::array::from_fn(|_| graph.add_atom().unwrap());
+        let triangle = [
+            graph.add_bond(atoms[0], atoms[1]).unwrap(),
+            graph.add_bond(atoms[1], atoms[2]).unwrap(),
+            graph.add_bond(atoms[2], atoms[0]).unwrap(),
+        ];
+        let bridge = graph.add_bond(atoms[3], atoms[4]).unwrap();
+        let prepared = PreparedMolecule::new(graph.build()).unwrap();
+        let model = prepared.constraint_model();
+
+        assert_eq!(model.variable_count(), 4);
+        assert_eq!(model.factor_count(), 3);
+
+        let role_variables = triangle
+            .iter()
+            .copied()
+            .chain(std::iter::once(bridge))
+            .map(|bond| prepared.bond_role_variable(bond).unwrap())
+            .collect::<Vec<_>>();
+        for variable in &role_variables {
+            assert_eq!(
+                model.variable(*variable).unwrap().initial_domain(),
+                BondRole::role_domain()
+            );
+        }
+
+        let FactorDefinition::SpanningTree(first) =
+            model.factor(FactorId::new(0)).unwrap()
+        else {
+            panic!("expected first component spanning-tree factor");
+        };
+        assert_eq!(first.atoms(), &atoms[..3]);
+        assert_eq!(first.variables(), &role_variables[..3]);
+
+        let FactorDefinition::SpanningTree(second) =
+            model.factor(FactorId::new(1)).unwrap()
+        else {
+            panic!("expected second component spanning-tree factor");
+        };
+        assert_eq!(second.atoms(), &atoms[3..5]);
+        assert_eq!(second.variables(), &role_variables[3..4]);
+
+        let FactorDefinition::SpanningTree(third) =
+            model.factor(FactorId::new(2)).unwrap()
+        else {
+            panic!("expected isolated-atom spanning-tree factor");
+        };
+        assert_eq!(third.atoms(), &atoms[5..6]);
+        assert!(third.edges().is_empty());
+        assert!(third.variables().is_empty());
+    }
+
+    #[test]
+    fn prepared_molecule_clone_shares_all_immutable_data() {
+        let mut graph = PreparedGraphBuilder::new();
+        let atoms: [AtomId; 2] = std::array::from_fn(|_| graph.add_atom().unwrap());
+        let bond = graph.add_bond(atoms[0], atoms[1]).unwrap();
+        let prepared = PreparedMolecule::new(graph.build()).unwrap();
         let cloned = prepared.clone();
 
         assert_eq!(
-            prepared
-                .constraint_model()
-                .variable(variable)
-                .unwrap()
-                .initial_domain(),
-            Domain::from_indices([0, 1]).unwrap()
+            prepared.bond_role_variable(bond),
+            cloned.bond_role_variable(bond)
         );
-        assert!(std::ptr::eq(prepared.graph(), cloned.graph()));
-        assert!(std::ptr::eq(
-            prepared.constraint_model(),
-            cloned.constraint_model()
+        assert!(Arc::ptr_eq(&prepared.graph, &cloned.graph));
+        assert!(Arc::ptr_eq(&prepared.constraints, &cloned.constraints));
+        assert!(Arc::ptr_eq(
+            &prepared.bond_role_variables,
+            &cloned.bond_role_variables
         ));
     }
 }

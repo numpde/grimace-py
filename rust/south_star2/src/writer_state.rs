@@ -8,10 +8,10 @@ use std::sync::Arc;
 
 use crate::domain::Domain;
 use crate::ids::{AtomId, BondId, VariableId};
-use crate::model::{BondRole, ConstraintModel};
+use crate::model::BondRole;
 use crate::prepared::{AdjacentBond, PreparedMolecule};
 use crate::solver::ConstraintSolver;
-use crate::traversal::{RingLabelSlot, TraversalState};
+use crate::traversal::{IncidentBondState, RingLabelSlot, TraversalState};
 
 #[derive(Clone, Debug)]
 pub(crate) struct WriterState<S> {
@@ -46,9 +46,12 @@ impl<S: ConstraintSolver> WriterState<S> {
     }
 
     pub(crate) fn begin_component(&self, prepared: &PreparedMolecule, root: AtomId) -> Self {
+        assert!(
+            prepared.graph().neighbors(root).is_some(),
+            "component root must belong to the prepared graph"
+        );
         let mut successor = self.clone();
         successor.traversal.begin_component(root);
-        debug_assert!(prepared.graph().neighbors(root).is_some());
         successor
     }
 
@@ -57,13 +60,14 @@ impl<S: ConstraintSolver> WriterState<S> {
         prepared: &PreparedMolecule,
         incident: AdjacentBond,
     ) -> Result<Self, S::Error> {
-        let mut traversal = self.traversal.clone();
-        traversal.enter_inline_child(prepared.graph(), incident);
+        require_child_candidate(&self.traversal, prepared, incident);
         let constraints = self.constraints.restricted(&[role_restriction(
             prepared,
             incident.bond(),
             BondRole::Traversal,
         )])?;
+        let mut traversal = self.traversal.clone();
+        traversal.enter_inline_child(prepared.graph(), incident);
         Ok(Self {
             traversal,
             constraints,
@@ -75,13 +79,14 @@ impl<S: ConstraintSolver> WriterState<S> {
         prepared: &PreparedMolecule,
         incident: AdjacentBond,
     ) -> Result<Self, S::Error> {
-        let mut traversal = self.traversal.clone();
-        traversal.enter_branch_child(prepared.graph(), incident);
+        require_child_candidate(&self.traversal, prepared, incident);
         let constraints = self.constraints.restricted(&[role_restriction(
             prepared,
             incident.bond(),
             BondRole::Traversal,
         )])?;
+        let mut traversal = self.traversal.clone();
+        traversal.enter_branch_child(prepared.graph(), incident);
         Ok(Self {
             traversal,
             constraints,
@@ -93,13 +98,14 @@ impl<S: ConstraintSolver> WriterState<S> {
         prepared: &PreparedMolecule,
         incident: AdjacentBond,
     ) -> Result<(Self, RingLabelSlot), S::Error> {
-        let mut traversal = self.traversal.clone();
-        let label_slot = traversal.open_ring_endpoint(prepared.graph(), incident);
+        require_ring_open_candidate(&self.traversal, prepared, incident);
         let constraints = self.constraints.restricted(&[role_restriction(
             prepared,
             incident.bond(),
             BondRole::Ring,
         )])?;
+        let mut traversal = self.traversal.clone();
+        let label_slot = traversal.open_ring_endpoint(prepared.graph(), incident);
         Ok((
             Self {
                 traversal,
@@ -133,6 +139,33 @@ impl<S: ConstraintSolver> WriterState<S> {
         let restored = successor.traversal.complete_path();
         (successor, restored)
     }
+}
+
+fn require_child_candidate(
+    traversal: &TraversalState,
+    prepared: &PreparedMolecule,
+    incident: AdjacentBond,
+) {
+    assert_eq!(
+        traversal.classify_active_incident(prepared.graph(), incident),
+        IncidentBondState::UnrepresentedToUnvisitedAtom,
+        "a child edge must be unrepresented and lead to an unvisited atom"
+    );
+}
+
+fn require_ring_open_candidate(
+    traversal: &TraversalState,
+    prepared: &PreparedMolecule,
+    incident: AdjacentBond,
+) {
+    assert!(
+        matches!(
+            traversal.classify_active_incident(prepared.graph(), incident),
+            IncidentBondState::UnrepresentedToUnvisitedAtom
+                | IncidentBondState::UnrepresentedToVisitedAtom
+        ),
+        "a first ring endpoint requires an unrepresented incident bond"
+    );
 }
 
 fn role_variable(prepared: &PreparedMolecule, bond: BondId) -> VariableId {

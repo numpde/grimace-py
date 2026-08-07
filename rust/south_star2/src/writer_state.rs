@@ -185,7 +185,7 @@ mod tests {
         let first = graph.add_bond(atoms[0], atoms[1]).unwrap();
         let second = graph.add_bond(atoms[1], atoms[2]).unwrap();
         let ring = graph.add_bond(atoms[2], atoms[0]).unwrap();
-        let prepared = PreparedMolecule::new(graph.build()).unwrap();
+        let prepared = PreparedMolecule::new(graph.build());
         let rooted = WriterState::<NativeSolverState>::initial(&prepared)
             .unwrap()
             .begin_component(atoms[0]);
@@ -231,7 +231,7 @@ mod tests {
         let mut graph = PreparedGraphBuilder::new();
         let atoms: [AtomId; 2] = std::array::from_fn(|_| graph.add_atom().unwrap());
         let bridge = graph.add_bond(atoms[0], atoms[1]).unwrap();
-        let prepared = PreparedMolecule::new(graph.build()).unwrap();
+        let prepared = PreparedMolecule::new(graph.build());
         let rooted = WriterState::<NativeSolverState>::initial(&prepared)
             .unwrap()
             .begin_component(atoms[0]);
@@ -259,7 +259,7 @@ mod tests {
         let atoms: [AtomId; 3] = std::array::from_fn(|_| graph.add_atom().unwrap());
         let branch = graph.add_bond(atoms[0], atoms[1]).unwrap();
         let inline = graph.add_bond(atoms[0], atoms[2]).unwrap();
-        let prepared = PreparedMolecule::new(graph.build()).unwrap();
+        let prepared = PreparedMolecule::new(graph.build());
         let rooted = WriterState::<NativeSolverState>::initial(&prepared)
             .unwrap()
             .begin_component(atoms[0]);
@@ -285,7 +285,7 @@ mod tests {
         let atoms: [AtomId; 3] = std::array::from_fn(|_| graph.add_atom().unwrap());
         let first = graph.add_bond(atoms[0], atoms[1]).unwrap();
         graph.add_bond(atoms[0], atoms[2]).unwrap();
-        let prepared = PreparedMolecule::new(graph.build()).unwrap();
+        let prepared = PreparedMolecule::new(graph.build());
         let rooted = WriterState::<NativeSolverState>::initial(&prepared)
             .unwrap()
             .begin_component(atoms[0]);
@@ -301,7 +301,7 @@ mod tests {
         let first = graph.add_bond(atoms[0], atoms[1]).unwrap();
         let second = graph.add_bond(atoms[1], atoms[2]).unwrap();
         let ring = graph.add_bond(atoms[2], atoms[0]).unwrap();
-        let prepared = PreparedMolecule::new(graph.build()).unwrap();
+        let prepared = PreparedMolecule::new(graph.build());
         let rooted = WriterState::<NativeSolverState>::initial(&prepared)
             .unwrap()
             .begin_component(atoms[0]);

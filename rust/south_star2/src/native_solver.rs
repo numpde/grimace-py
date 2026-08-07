@@ -20,7 +20,6 @@ impl ConstraintSolver for NativeSolverState {
         restrictions: &[(VariableId, Domain)],
     ) -> Result<Self, Self::Error> {
         NativeSolverState::with_restrictions(self, restrictions.iter().copied())
-            .map(|(state, _summary)| state)
     }
 
     fn domain(&self, variable: VariableId) -> Option<Domain> {

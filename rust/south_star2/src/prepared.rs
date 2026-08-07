@@ -113,7 +113,11 @@ impl PreparedMolecule {
         self.constraints.as_ref()
     }
 
-    pub fn bond_role_variable(&self, bond: BondId) -> Option<VariableId> {
+    pub(crate) fn constraint_model_arc(&self) -> Arc<ConstraintModel> {
+        Arc::clone(&self.constraints)
+    }
+
+    pub(crate) fn bond_role_variable(&self, bond: BondId) -> Option<VariableId> {
         self.bond_role_variables.get(bond.index()).copied()
     }
 }

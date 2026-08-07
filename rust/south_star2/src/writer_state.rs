@@ -61,6 +61,7 @@ impl<S: ConstraintSolver> WriterState<S> {
         incident: AdjacentBond,
     ) -> Result<Self, S::Error> {
         require_child_candidate(&self.traversal, prepared, incident);
+        require_departure_ready(&self.traversal, prepared, Some(incident.bond()));
         let constraints = self.constraints.restricted(&[role_restriction(
             prepared,
             incident.bond(),
@@ -134,7 +135,8 @@ impl<S: ConstraintSolver> WriterState<S> {
         (successor, label_slot)
     }
 
-    pub(crate) fn complete_path(&self) -> (Self, Option<AtomId>) {
+    pub(crate) fn complete_path(&self, prepared: &PreparedMolecule) -> (Self, Option<AtomId>) {
+        require_departure_ready(&self.traversal, prepared, None);
         let mut successor = self.clone();
         let restored = successor.traversal.complete_path();
         (successor, restored)
@@ -166,6 +168,38 @@ fn require_ring_open_candidate(
         ),
         "a first ring endpoint requires an unrepresented incident bond"
     );
+}
+
+/// Require that leaving the active atom cannot strand graph representation work.
+///
+/// A branch child is exempt because the active atom is restored afterwards.
+/// Inline traversal permanently leaves the parent, so every other incident bond
+/// must already be represented or have its first ring endpoint written here.
+fn require_departure_ready(
+    traversal: &TraversalState,
+    prepared: &PreparedMolecule,
+    departing_via: Option<BondId>,
+) {
+    let active = traversal
+        .active_atom()
+        .expect("departure requires an active atom");
+    let neighbours = prepared
+        .graph()
+        .neighbors(active)
+        .expect("active atom must belong to the prepared graph");
+
+    for incident in neighbours {
+        if departing_via == Some(incident.bond()) {
+            continue;
+        }
+        assert!(
+            matches!(
+                traversal.classify_active_incident(prepared.graph(), *incident),
+                IncidentBondState::Represented | IncidentBondState::RingOpenAtCurrentAtom
+            ),
+            "leaving an atom must not strand unresolved incident graph work"
+        );
+    }
 }
 
 fn role_variable(prepared: &PreparedMolecule, bond: BondId) -> VariableId {
@@ -248,7 +282,7 @@ mod tests {
         assert_eq!(closed_slot, label_slot);
         assert!(closed.graph_is_complete());
 
-        let (finished, restored) = closed.complete_path();
+        let (finished, restored) = closed.complete_path(&prepared);
         assert_eq!(restored, None);
         assert_eq!(finished.active_atom(), None);
         assert!(finished.graph_is_complete());
@@ -302,12 +336,51 @@ mod tests {
             Some(BondRole::Traversal.singleton_domain())
         );
 
-        let (restored, parent) = branched.complete_path();
+        let (restored, parent) = branched.complete_path(&prepared);
         assert_eq!(parent, Some(atoms[0]));
         let finished = restored
             .enter_inline_child(&prepared, incident(&prepared, atoms[0], inline))
             .unwrap();
         assert_eq!(finished.active_atom(), Some(atoms[2]));
         assert!(finished.graph_is_complete());
+    }
+
+    #[test]
+    #[should_panic(expected = "must not strand unresolved incident graph work")]
+    fn inline_child_cannot_abandon_another_unrepresented_bond() {
+        let mut graph = PreparedGraphBuilder::new();
+        let atoms: [AtomId; 3] = std::array::from_fn(|_| graph.add_atom().unwrap());
+        let first = graph.add_bond(atoms[0], atoms[1]).unwrap();
+        graph.add_bond(atoms[0], atoms[2]).unwrap();
+        let prepared = PreparedMolecule::new(graph.build()).unwrap();
+        let rooted = WriterState::<NativeSolverState>::initial(&prepared)
+            .unwrap()
+            .begin_component(&prepared, atoms[0]);
+
+        let _ = rooted.enter_inline_child(&prepared, incident(&prepared, atoms[0], first));
+    }
+
+    #[test]
+    #[should_panic(expected = "must not strand unresolved incident graph work")]
+    fn path_cannot_finish_before_a_remote_ring_endpoint_is_closed() {
+        let mut graph = PreparedGraphBuilder::new();
+        let atoms: [AtomId; 3] = std::array::from_fn(|_| graph.add_atom().unwrap());
+        let first = graph.add_bond(atoms[0], atoms[1]).unwrap();
+        let second = graph.add_bond(atoms[1], atoms[2]).unwrap();
+        let ring = graph.add_bond(atoms[2], atoms[0]).unwrap();
+        let prepared = PreparedMolecule::new(graph.build()).unwrap();
+        let rooted = WriterState::<NativeSolverState>::initial(&prepared)
+            .unwrap()
+            .begin_component(&prepared, atoms[0]);
+        let (opened, _) = rooted
+            .open_ring_endpoint(&prepared, incident(&prepared, atoms[0], ring))
+            .unwrap();
+        let walked = opened
+            .enter_inline_child(&prepared, incident(&prepared, atoms[0], first))
+            .unwrap()
+            .enter_inline_child(&prepared, incident(&prepared, atoms[1], second))
+            .unwrap();
+
+        let _ = walked.complete_path(&prepared);
     }
 }

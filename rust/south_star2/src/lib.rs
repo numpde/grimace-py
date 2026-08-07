@@ -16,6 +16,7 @@ mod native_solver;
 mod prepared;
 mod solver;
 mod traversal;
+mod writer_state;
 
 pub use domain::{Domain, DomainError, DOMAIN_VALUE_CAPACITY};
 pub use ids::{AtomId, BondId, FactorId, VariableId};

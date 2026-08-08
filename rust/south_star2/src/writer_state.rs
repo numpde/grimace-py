@@ -218,8 +218,7 @@ mod tests {
             .unwrap();
         assert_eq!(walked.active_atom(), Some(atoms[2]));
 
-        let (closed, closed_slot) =
-            walked.close_ring_endpoint(incident(&prepared, atoms[2], ring));
+        let (closed, closed_slot) = walked.close_ring_endpoint(incident(&prepared, atoms[2], ring));
         assert_eq!(closed_slot, label_slot);
         assert!(closed.graph_is_complete());
 

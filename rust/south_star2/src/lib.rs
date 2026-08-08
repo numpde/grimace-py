@@ -15,6 +15,8 @@ mod native_oracle;
 mod native_solver;
 mod prepared;
 mod solver;
+#[cfg(test)]
+mod structural_oracle;
 mod traversal;
 mod writer_state;
 

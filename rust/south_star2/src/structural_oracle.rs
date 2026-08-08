@@ -7,7 +7,7 @@
 
 use std::collections::BTreeSet;
 
-use crate::ids::{AtomId, BondId};
+use crate::ids::BondId;
 use crate::native::NativeSolverState;
 use crate::prepared::{PreparedGraph, PreparedGraphBuilder, PreparedMolecule};
 use crate::writer_state::WriterState;

@@ -302,6 +302,12 @@ impl TraversalState {
         self.progress.is_complete()
     }
 
+    /// Whether the path/label stack permits the active textual path to end.
+    /// Incident graph work is a separate writer-level condition.
+    pub(crate) fn can_complete_path(&self) -> bool {
+        self.active.is_some() && (!self.branch_returns.is_empty() || self.ring_labels.is_empty())
+    }
+
     pub(crate) fn unvisited_atoms<'a>(
         &'a self,
         graph: &'a PreparedGraph,

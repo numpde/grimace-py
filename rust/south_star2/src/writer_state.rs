@@ -133,8 +133,7 @@ impl<S: ConstraintSolver> WriterState<S> {
             }
         }
 
-        frontier.can_complete_path =
-            departure_blockers == 0 && self.traversal.can_complete_path();
+        frontier.can_complete_path = departure_blockers == 0 && self.traversal.can_complete_path();
         frontier
     }
 

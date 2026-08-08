@@ -11,7 +11,7 @@ use crate::prepared::{AdjacentBond, PreparedMolecule};
 use crate::solver::ConstraintSolver;
 use crate::traversal::{IncidentBondState, RingLabelSlot, TraversalState};
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Default)]
 pub(crate) struct StructuralFrontier {
     component_roots: Vec<AtomId>,
     branch_children: Vec<AdjacentBond>,
@@ -72,7 +72,7 @@ impl<S: ConstraintSolver> WriterState<S> {
         self.traversal.graph_is_complete()
     }
 
-    pub(crate) fn bond_role_domain(&self, bond: BondId) -> Domain {
+    fn bond_role_domain(&self, bond: BondId) -> Domain {
         let variable = role_variable(&self.prepared, bond);
         self.constraints
             .domain(variable)

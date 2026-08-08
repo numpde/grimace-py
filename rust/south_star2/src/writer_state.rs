@@ -307,13 +307,13 @@ mod tests {
 
         let frontier = state.structural_frontier();
 
-        assert_eq!(frontier.component_roots(), atoms);
+        assert_eq!(frontier.component_roots(), &atoms);
         assert_no_active_incident_choices(&frontier);
         assert!(!frontier.can_complete_path());
     }
 
     #[test]
-    fn triangle_frontier_tracks_role_propagation_and_ring_lifecycle() {
+    fn triangle_frontier_and_transitions_follow_role_propagation() {
         let mut graph = PreparedGraphBuilder::new();
         let atoms: [AtomId; 3] = std::array::from_fn(|_| graph.add_atom().unwrap());
         let first = graph.add_bond(atoms[0], atoms[1]).unwrap();
@@ -339,8 +339,21 @@ mod tests {
         );
         assert!(rooted_frontier.ring_closures().is_empty());
         assert!(!rooted_frontier.can_complete_path());
+        assert_eq!(rooted.bond_role_domain(ring), BondRole::role_domain());
 
-        let (opened, _) = rooted.open_ring_endpoint(ring_opening).unwrap();
+        let (opened, label_slot) = rooted.open_ring_endpoint(ring_opening).unwrap();
+        assert_eq!(
+            opened.bond_role_domain(ring),
+            BondRole::Ring.singleton_domain()
+        );
+        assert_eq!(
+            opened.bond_role_domain(first),
+            BondRole::Traversal.singleton_domain()
+        );
+        assert_eq!(
+            opened.bond_role_domain(second),
+            BondRole::Traversal.singleton_domain()
+        );
         let opened_frontier = opened.structural_frontier();
         assert_eq!(opened_frontier.branch_children(), &[first_incident]);
         assert_eq!(opened_frontier.inline_children(), &[first_incident]);
@@ -353,29 +366,29 @@ mod tests {
             .unwrap()
             .enter_inline_child(incident(&prepared, atoms[1], second))
             .unwrap();
+        assert_eq!(walked.active_atom(), Some(atoms[2]));
         let closing = incident(&prepared, atoms[2], ring);
         let walked_frontier = walked.structural_frontier();
-        assert_no_active_incident_choices_except_closures(&walked_frontier, &[closing]);
+        assert!(walked_frontier.branch_children().is_empty());
+        assert!(walked_frontier.inline_children().is_empty());
+        assert!(walked_frontier.ring_openings().is_empty());
+        assert_eq!(walked_frontier.ring_closures(), &[closing]);
         assert!(!walked_frontier.can_complete_path());
 
-        let (closed, _) = walked.close_ring_endpoint(closing);
+        let (closed, closed_slot) = walked.close_ring_endpoint(closing);
+        assert_eq!(closed_slot, label_slot);
+        assert!(closed.graph_is_complete());
         let closed_frontier = closed.structural_frontier();
         assert_no_active_incident_choices(&closed_frontier);
         assert!(closed_frontier.can_complete_path());
-    }
 
-    fn assert_no_active_incident_choices_except_closures(
-        frontier: &StructuralFrontier,
-        closures: &[AdjacentBond],
-    ) {
-        assert!(frontier.branch_children().is_empty());
-        assert!(frontier.inline_children().is_empty());
-        assert!(frontier.ring_openings().is_empty());
-        assert_eq!(frontier.ring_closures(), closures);
+        let finished = closed.complete_path();
+        assert_eq!(finished.active_atom(), None);
+        assert!(finished.graph_is_complete());
     }
 
     #[test]
-    fn bridge_frontier_filters_ring_choice_without_trial_successors() {
+    fn bridge_frontier_filters_ring_choice_and_direct_attempt_contradicts() {
         let mut graph = PreparedGraphBuilder::new();
         let atoms: [AtomId; 2] = std::array::from_fn(|_| graph.add_atom().unwrap());
         let bridge = graph.add_bond(atoms[0], atoms[1]).unwrap();
@@ -386,7 +399,6 @@ mod tests {
         let edge = incident(&prepared, atoms[0], bridge);
 
         let frontier = rooted.structural_frontier();
-
         assert_eq!(frontier.branch_children(), &[edge]);
         assert_eq!(frontier.inline_children(), &[edge]);
         assert!(frontier.ring_openings().is_empty());
@@ -396,6 +408,16 @@ mod tests {
             rooted.bond_role_domain(bridge),
             BondRole::Traversal.singleton_domain()
         );
+
+        assert!(matches!(
+            rooted.open_ring_endpoint(edge),
+            Err(NativeSolverError::Contradiction)
+        ));
+        assert_eq!(rooted.active_atom(), Some(atoms[0]));
+
+        let traversed = rooted.enter_inline_child(edge).unwrap();
+        assert_eq!(traversed.active_atom(), Some(atoms[1]));
+        assert!(traversed.graph_is_complete());
     }
 
     #[test]
@@ -419,80 +441,6 @@ mod tests {
     }
 
     #[test]
-    fn ring_choice_propagates_and_completes_a_triangle_walk() {
-        let mut graph = PreparedGraphBuilder::new();
-        let atoms: [AtomId; 3] = std::array::from_fn(|_| graph.add_atom().unwrap());
-        let first = graph.add_bond(atoms[0], atoms[1]).unwrap();
-        let second = graph.add_bond(atoms[1], atoms[2]).unwrap();
-        let ring = graph.add_bond(atoms[2], atoms[0]).unwrap();
-        let prepared = PreparedMolecule::new(graph.build());
-        let rooted = WriterState::<NativeSolverState>::initial(&prepared)
-            .unwrap()
-            .begin_component(atoms[0]);
-
-        assert_eq!(rooted.bond_role_domain(ring), BondRole::role_domain());
-        let (opened, label_slot) = rooted
-            .open_ring_endpoint(incident(&prepared, atoms[0], ring))
-            .unwrap();
-
-        assert_eq!(rooted.bond_role_domain(ring), BondRole::role_domain());
-        assert_eq!(
-            opened.bond_role_domain(ring),
-            BondRole::Ring.singleton_domain()
-        );
-        assert_eq!(
-            opened.bond_role_domain(first),
-            BondRole::Traversal.singleton_domain()
-        );
-        assert_eq!(
-            opened.bond_role_domain(second),
-            BondRole::Traversal.singleton_domain()
-        );
-
-        let walked = opened
-            .enter_inline_child(incident(&prepared, atoms[0], first))
-            .unwrap()
-            .enter_inline_child(incident(&prepared, atoms[1], second))
-            .unwrap();
-        assert_eq!(walked.active_atom(), Some(atoms[2]));
-
-        let (closed, closed_slot) = walked.close_ring_endpoint(incident(&prepared, atoms[2], ring));
-        assert_eq!(closed_slot, label_slot);
-        assert!(closed.graph_is_complete());
-
-        let finished = closed.complete_path();
-        assert_eq!(finished.active_atom(), None);
-        assert!(finished.graph_is_complete());
-    }
-
-    #[test]
-    fn ring_choice_on_a_bridge_is_a_contradiction_without_changing_the_source() {
-        let mut graph = PreparedGraphBuilder::new();
-        let atoms: [AtomId; 2] = std::array::from_fn(|_| graph.add_atom().unwrap());
-        let bridge = graph.add_bond(atoms[0], atoms[1]).unwrap();
-        let prepared = PreparedMolecule::new(graph.build());
-        let rooted = WriterState::<NativeSolverState>::initial(&prepared)
-            .unwrap()
-            .begin_component(atoms[0]);
-
-        assert_eq!(
-            rooted.bond_role_domain(bridge),
-            BondRole::Traversal.singleton_domain()
-        );
-        assert!(matches!(
-            rooted.open_ring_endpoint(incident(&prepared, atoms[0], bridge)),
-            Err(NativeSolverError::Contradiction)
-        ));
-        assert_eq!(rooted.active_atom(), Some(atoms[0]));
-
-        let traversed = rooted
-            .enter_inline_child(incident(&prepared, atoms[0], bridge))
-            .unwrap();
-        assert_eq!(traversed.active_atom(), Some(atoms[1]));
-        assert!(traversed.graph_is_complete());
-    }
-
-    #[test]
     fn branch_child_restores_parent_before_inline_departure() {
         let mut graph = PreparedGraphBuilder::new();
         let atoms: [AtomId; 3] = std::array::from_fn(|_| graph.add_atom().unwrap());
@@ -507,6 +455,7 @@ mod tests {
             .enter_branch_child(incident(&prepared, atoms[0], branch))
             .unwrap();
         assert_eq!(branched.active_atom(), Some(atoms[1]));
+        assert!(branched.structural_frontier().can_complete_path());
 
         let restored = branched.complete_path();
         assert_eq!(restored.active_atom(), Some(atoms[0]));

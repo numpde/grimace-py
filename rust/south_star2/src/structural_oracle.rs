@@ -8,7 +8,7 @@
 use std::collections::BTreeSet;
 
 use crate::ids::BondId;
-use crate::native::NativeSolverState;
+use crate::native::{NativeSolverError, NativeSolverState};
 use crate::prepared::{PreparedGraph, PreparedGraphBuilder, PreparedMolecule};
 use crate::writer_state::WriterState;
 
@@ -51,28 +51,6 @@ fn frontier_reachable_traversal_masks(prepared: &PreparedMolecule) -> BTreeSet<u
             });
         }
 
-        for &incident in frontier.branch_children() {
-            successor_count += 1;
-            pending.push(PendingWalk {
-                state: current
-                    .state
-                    .enter_branch_child(incident)
-                    .expect("an advertised branch child must have a valid successor"),
-                traversal_mask: current.traversal_mask | bond_bit(incident.bond()),
-            });
-        }
-
-        for &incident in frontier.inline_children() {
-            successor_count += 1;
-            pending.push(PendingWalk {
-                state: current
-                    .state
-                    .enter_inline_child(incident)
-                    .expect("an advertised inline child must have a valid successor"),
-                traversal_mask: current.traversal_mask | bond_bit(incident.bond()),
-            });
-        }
-
         for &incident in frontier.ring_openings() {
             successor_count += 1;
             let (state, _label_slot) = current
@@ -91,6 +69,38 @@ fn frontier_reachable_traversal_masks(prepared: &PreparedMolecule) -> BTreeSet<u
             pending.push(PendingWalk {
                 state,
                 traversal_mask: current.traversal_mask,
+            });
+        }
+
+        if frontier.may_finish_ring_choices() {
+            match current.state.finish_ring_choices() {
+                Ok(state) => {
+                    successor_count += 1;
+                    pending.push(PendingWalk {
+                        state,
+                        traversal_mask: current.traversal_mask,
+                    });
+                }
+                Err(NativeSolverError::Contradiction) => {}
+                Err(NativeSolverError::UnknownVariable(variable)) => {
+                    panic!("ring-choice commitment referenced unknown variable {variable:?}")
+                }
+            }
+        }
+
+        for &incident in frontier.branch_children() {
+            successor_count += 1;
+            pending.push(PendingWalk {
+                state: current.state.enter_branch_child(incident),
+                traversal_mask: current.traversal_mask | bond_bit(incident.bond()),
+            });
+        }
+
+        for &incident in frontier.inline_children() {
+            successor_count += 1;
+            pending.push(PendingWalk {
+                state: current.state.enter_inline_child(incident),
+                traversal_mask: current.traversal_mask | bond_bit(incident.bond()),
             });
         }
 

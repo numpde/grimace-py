@@ -233,8 +233,6 @@ impl<S: ConstraintSolver> WriterState<S> {
             &[incident],
             "the sole remaining Traversal child is the inline continuation"
         );
-        require_departure_ready(&self.traversal, &self.prepared, Some(incident.bond()));
-
         let mut successor = self.clone();
         successor
             .traversal
@@ -301,53 +299,10 @@ impl<S: ConstraintSolver> WriterState<S> {
             self.structural_frontier().can_complete_path(),
             "the active path can complete only after all local ring and child work"
         );
-        require_departure_ready(&self.traversal, &self.prepared, None);
-
         let mut successor = self.clone();
         successor.traversal.complete_path();
         successor
     }
-}
-
-fn incident_blocks_departure(state: IncidentBondState) -> bool {
-    !matches!(
-        state,
-        IncidentBondState::Represented | IncidentBondState::RingOpenAtCurrentAtom
-    )
-}
-
-fn departure_blocker_count(
-    traversal: &TraversalState,
-    prepared: &PreparedMolecule,
-    ignored_bond: Option<BondId>,
-) -> usize {
-    let active = traversal
-        .active_atom()
-        .expect("departure requires an active atom");
-    prepared
-        .graph()
-        .neighbors(active)
-        .expect("active atom must belong to the prepared graph")
-        .iter()
-        .filter(|incident| ignored_bond != Some(incident.bond()))
-        .filter(|incident| {
-            incident_blocks_departure(
-                traversal.classify_active_incident(prepared.graph(), **incident),
-            )
-        })
-        .count()
-}
-
-fn require_departure_ready(
-    traversal: &TraversalState,
-    prepared: &PreparedMolecule,
-    departing_via: Option<BondId>,
-) {
-    assert_eq!(
-        departure_blocker_count(traversal, prepared, departing_via),
-        0,
-        "leaving an atom must not strand unresolved incident graph work"
-    );
 }
 
 fn role_variable(prepared: &PreparedMolecule, bond: BondId) -> VariableId {

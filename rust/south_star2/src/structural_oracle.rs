@@ -255,10 +255,7 @@ fn frontier_driven_walks_realize_exactly_the_spanning_forests() {
         ("single atom", fixture(1, &[])),
         ("single bridge", fixture(2, &[(0, 1)])),
         ("triangle", fixture(3, &[(0, 1), (1, 2), (2, 0)])),
-        (
-            "square",
-            fixture(4, &[(0, 1), (1, 2), (2, 3), (3, 0)]),
-        ),
+        ("square", fixture(4, &[(0, 1), (1, 2), (2, 3), (3, 0)])),
         (
             "square with diagonal",
             fixture(4, &[(0, 1), (1, 2), (2, 3), (3, 0), (0, 2)]),

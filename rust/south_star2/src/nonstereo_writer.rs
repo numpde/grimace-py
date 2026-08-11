@@ -1,4 +1,4 @@
-//! First complete visible-token slice for one connected non-stereo writer surface.
+//! Complete visible-token emission for connected acyclic non-stereo surfaces.
 //!
 //! The runtime emits roots, inline children, and branch syntax. A committed
 //! explicit bond leaves traversal at the parent until the child atom token is
@@ -9,21 +9,41 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::ids::{AtomId, BondId};
-use crate::prepared::{AdjacentBond, PreparedGraph, PreparedMolecule};
+use crate::prepared::{AdjacentBond, PreparedBond, PreparedGraph, PreparedMolecule};
 use crate::solver::ConstraintSolver;
 use crate::writer_state::WriterState;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct DirectedBondText {
-    a_to_b: Box<str>,
-    b_to_a: Box<str>,
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub(crate) enum NonStereoBondToken {
+    Elided,
+    Aromatic,
+    Single,
+    Double,
+    Triple,
+    DativeAToB,
+    DativeBToA,
 }
 
-impl DirectedBondText {
-    pub(crate) fn new(a_to_b: impl Into<String>, b_to_a: impl Into<String>) -> Self {
-        Self {
-            a_to_b: a_to_b.into().into_boxed_str(),
-            b_to_a: b_to_a.into().into_boxed_str(),
+impl NonStereoBondToken {
+    fn text_from(self, bond: PreparedBond, from: AtomId) -> &'static str {
+        let from_a = if bond.a() == from {
+            true
+        } else if bond.b() == from {
+            false
+        } else {
+            panic!("bond text requires one endpoint of the prepared bond");
+        };
+
+        match self {
+            Self::Elided => "",
+            Self::Aromatic => ":",
+            Self::Single => "-",
+            Self::Double => "=",
+            Self::Triple => "#",
+            Self::DativeAToB if from_a => "->",
+            Self::DativeAToB => "<-",
+            Self::DativeBToA if from_a => "<-",
+            Self::DativeBToA => "->",
         }
     }
 }
@@ -32,14 +52,14 @@ impl DirectedBondText {
 pub(crate) struct PreparedConnectedNonStereo {
     molecule: PreparedMolecule,
     atom_text: Arc<[Box<str>]>,
-    directed_bond_text: Arc<[DirectedBondText]>,
+    bond_tokens: Arc<[NonStereoBondToken]>,
 }
 
 impl PreparedConnectedNonStereo {
     pub(crate) fn new(
         molecule: PreparedMolecule,
         atom_text: Vec<String>,
-        directed_bond_text: Vec<DirectedBondText>,
+        bond_tokens: Vec<NonStereoBondToken>,
     ) -> Result<Self, PreparedConnectedNonStereoError> {
         let graph = molecule.graph();
         if graph.atom_count() == 0 {
@@ -48,16 +68,19 @@ impl PreparedConnectedNonStereo {
         if !graph_is_connected(graph) {
             return Err(PreparedConnectedNonStereoError::DisconnectedMolecule);
         }
+        if graph.bond_count() != graph.atom_count() - 1 {
+            return Err(PreparedConnectedNonStereoError::CyclicMolecule);
+        }
         if atom_text.len() != graph.atom_count() {
             return Err(PreparedConnectedNonStereoError::AtomTextCountMismatch {
                 expected: graph.atom_count(),
                 actual: atom_text.len(),
             });
         }
-        if directed_bond_text.len() != graph.bond_count() {
-            return Err(PreparedConnectedNonStereoError::BondTextCountMismatch {
+        if bond_tokens.len() != graph.bond_count() {
+            return Err(PreparedConnectedNonStereoError::BondTokenCountMismatch {
                 expected: graph.bond_count(),
-                actual: directed_bond_text.len(),
+                actual: bond_tokens.len(),
             });
         }
         for (atom, text) in graph.atom_ids().zip(&atom_text) {
@@ -75,7 +98,7 @@ impl PreparedConnectedNonStereo {
                     .collect::<Vec<_>>()
                     .into_boxed_slice(),
             ),
-            directed_bond_text: Arc::from(directed_bond_text.into_boxed_slice()),
+            bond_tokens: Arc::from(bond_tokens.into_boxed_slice()),
         })
     }
 
@@ -90,23 +113,25 @@ impl PreparedConnectedNonStereo {
             .expect("prepared atom text must match the bound molecule")
     }
 
-    fn directed_bond_text(&self, bond: BondId, from: AtomId) -> &str {
-        let topology = self
+    fn bond_text(&self, bond: BondId, from: AtomId) -> &'static str {
+        let topology = *self
             .molecule
             .graph()
             .bond(bond)
-            .expect("prepared bond text must match the bound molecule");
-        let text = self
-            .directed_bond_text
+            .expect("prepared bond token must match the bound molecule");
+        self.bond_tokens
             .get(bond.index())
-            .expect("prepared bond text must match the bound molecule");
+            .copied()
+            .expect("prepared bond token must match the bound molecule")
+            .text_from(topology, from)
+    }
 
-        if topology.a() == from {
-            &text.a_to_b
-        } else if topology.b() == from {
-            &text.b_to_a
+    fn child_prefix(&self, parent: AtomId, incident: AdjacentBond) -> &str {
+        let bond_text = self.bond_text(incident.bond(), parent);
+        if bond_text.is_empty() {
+            self.atom_text(incident.atom())
         } else {
-            panic!("directed bond text requires one endpoint of the prepared bond");
+            bond_text
         }
     }
 }
@@ -115,27 +140,29 @@ impl PreparedConnectedNonStereo {
 pub(crate) enum PreparedConnectedNonStereoError {
     EmptyMolecule,
     DisconnectedMolecule,
+    CyclicMolecule,
     AtomTextCountMismatch { expected: usize, actual: usize },
-    BondTextCountMismatch { expected: usize, actual: usize },
+    BondTokenCountMismatch { expected: usize, actual: usize },
     EmptyAtomText(AtomId),
 }
 
 impl fmt::Display for PreparedConnectedNonStereoError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::EmptyMolecule => {
-                formatter.write_str("a connected non-stereo surface requires at least one atom")
-            }
+            Self::EmptyMolecule => formatter
+                .write_str("a connected non-stereo surface requires at least one atom"),
             Self::DisconnectedMolecule => {
                 formatter.write_str("a connected non-stereo surface requires one graph component")
             }
+            Self::CyclicMolecule => formatter
+                .write_str("ring emission is required before cyclic non-stereo surfaces are admitted"),
             Self::AtomTextCountMismatch { expected, actual } => write!(
                 formatter,
                 "expected {expected} prepared atom texts, received {actual}"
             ),
-            Self::BondTextCountMismatch { expected, actual } => write!(
+            Self::BondTokenCountMismatch { expected, actual } => write!(
                 formatter,
-                "expected {expected} prepared directed bond texts, received {actual}"
+                "expected {expected} prepared bond tokens, received {actual}"
             ),
             Self::EmptyAtomText(atom) => {
                 write!(formatter, "prepared atom text for {atom:?} must not be empty")
@@ -236,17 +263,7 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
             .inline_children()
             .iter()
             .copied()
-            .map(|incident| {
-                let bond_text = self
-                    .surface
-                    .directed_bond_text(incident.bond(), active);
-                let text = if bond_text.is_empty() {
-                    self.surface.atom_text(incident.atom())
-                } else {
-                    bond_text
-                };
-                (incident, text)
-            })
+            .map(|incident| (incident, self.surface.child_prefix(active, incident)))
             .collect()
     }
 
@@ -258,35 +275,22 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
                 self.surface.atom_text(incident.atom())
             }
             PendingChild::BranchBondOrAtom(_) => {
-                let active = self
+                let parent = self
                     .structural
                     .active_atom()
                     .expect("a committed branch child requires its active parent");
-                let bond_text = self
-                    .surface
-                    .directed_bond_text(incident.bond(), active);
-                if bond_text.is_empty() {
-                    self.surface.atom_text(incident.atom())
-                } else {
-                    bond_text
-                }
+                self.surface.child_prefix(parent, incident)
             }
         };
         Some((incident, text))
     }
 
     pub(crate) fn branch_close_choice(&self) -> Option<&'static str> {
-        if self.pending_child.is_some()
-            || !self
-                .structural
-                .structural_frontier()
-                .can_complete_path()
-        {
+        if self.pending_child.is_some() {
             return None;
         }
-
-        let completed = self.structural.complete_path();
-        completed.active_atom().is_some().then_some(")")
+        let frontier = self.structural.structural_frontier();
+        (frontier.can_complete_path() && !self.structural.graph_is_complete()).then_some(")")
     }
 
     pub(crate) fn emit_root(&self, root: AtomId) -> (String, Self) {
@@ -346,13 +350,11 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
             "inline emission requires the sole advertised inline child"
         );
 
-        let active = self
+        let parent = self
             .structural
             .active_atom()
             .expect("inline emission requires an active atom");
-        let bond_text = self
-            .surface
-            .directed_bond_text(incident.bond(), active);
+        let bond_text = self.surface.bond_text(incident.bond(), parent);
 
         if bond_text.is_empty() {
             let token = self.surface.atom_text(incident.atom()).to_owned();
@@ -391,13 +393,11 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
                 (token, successor)
             }
             PendingChild::BranchBondOrAtom(_) => {
-                let active = self
+                let parent = self
                     .structural
                     .active_atom()
                     .expect("a committed branch child requires its active parent");
-                let bond_text = self
-                    .surface
-                    .directed_bond_text(incident.bond(), active);
+                let bond_text = self.surface.bond_text(incident.bond(), parent);
                 if bond_text.is_empty() {
                     let token = self.surface.atom_text(incident.atom()).to_owned();
                     let successor = Self {
@@ -437,10 +437,15 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
             Some(")"),
             "branch close requires a completed branch path"
         );
+
         let structural = self.structural.complete_path();
         assert!(
             structural.active_atom().is_some(),
             "a branch close must restore its parent"
+        );
+        assert!(
+            !structural.graph_is_complete(),
+            "closing a branch must leave its main continuation unfinished"
         );
 
         (
@@ -454,23 +459,23 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
     }
 
     fn normalize_component_completion(mut self) -> Self {
-        if self.pending_child.is_some()
-            || !self
-                .structural
-                .structural_frontier()
-                .can_complete_path()
-        {
+        if self.pending_child.is_some() || !self.structural.graph_is_complete() {
             return self;
         }
+        assert!(
+            self.structural
+                .structural_frontier()
+                .can_complete_path(),
+            "a complete connected graph must have a completable top-level path"
+        );
 
         let completed = self.structural.complete_path();
-        if completed.active_atom().is_none() {
-            assert!(
-                completed.graph_is_complete(),
-                "a connected top-level path can end only after graph completion"
-            );
-            self.structural = completed;
-        }
+        assert_eq!(
+            completed.active_atom(),
+            None,
+            "connected graph completion must not restore a branch parent"
+        );
+        self.structural = completed;
         self
     }
 }
@@ -515,7 +520,7 @@ mod tests {
 
     fn fixture(
         atom_text: &[&str],
-        edges: &[(usize, usize, &str, &str)],
+        edges: &[(usize, usize, NonStereoBondToken)],
     ) -> (PreparedConnectedNonStereo, Vec<AtomId>, Vec<BondId>) {
         let mut graph = PreparedGraphBuilder::new();
         let atoms = atom_text
@@ -523,17 +528,17 @@ mod tests {
             .map(|_| graph.add_atom().unwrap())
             .collect::<Vec<_>>();
         let mut bonds = Vec::with_capacity(edges.len());
-        let mut bond_text = Vec::with_capacity(edges.len());
+        let mut bond_tokens = Vec::with_capacity(edges.len());
 
-        for &(a, b, a_to_b, b_to_a) in edges {
+        for &(a, b, token) in edges {
             bonds.push(graph.add_bond(atoms[a], atoms[b]).unwrap());
-            bond_text.push(DirectedBondText::new(a_to_b, b_to_a));
+            bond_tokens.push(token);
         }
 
         let surface = PreparedConnectedNonStereo::new(
             PreparedMolecule::new(graph.build()),
             atom_text.iter().map(|text| (*text).to_owned()).collect(),
-            bond_text,
+            bond_tokens,
         )
         .unwrap();
         (surface, atoms, bonds)
@@ -556,7 +561,7 @@ mod tests {
     }
 
     #[test]
-    fn surface_rejects_missing_or_disconnected_text_bindings() {
+    fn surface_rejects_unsupported_graphs_and_missing_text() {
         let empty = PreparedMolecule::new(PreparedGraphBuilder::new().build());
         assert!(matches!(
             PreparedConnectedNonStereo::new(empty, Vec::new(), Vec::new()),
@@ -574,6 +579,21 @@ mod tests {
                 Vec::new(),
             ),
             Err(PreparedConnectedNonStereoError::DisconnectedMolecule)
+        ));
+
+        let mut graph = PreparedGraphBuilder::new();
+        let atoms: [AtomId; 3] = std::array::from_fn(|_| graph.add_atom().unwrap());
+        graph.add_bond(atoms[0], atoms[1]).unwrap();
+        graph.add_bond(atoms[1], atoms[2]).unwrap();
+        graph.add_bond(atoms[2], atoms[0]).unwrap();
+        let cyclic = PreparedMolecule::new(graph.build());
+        assert!(matches!(
+            PreparedConnectedNonStereo::new(
+                cyclic,
+                vec!["C".to_owned(), "C".to_owned(), "C".to_owned()],
+                vec![NonStereoBondToken::Elided; 3],
+            ),
+            Err(PreparedConnectedNonStereoError::CyclicMolecule)
         ));
 
         let mut graph = PreparedGraphBuilder::new();
@@ -605,7 +625,10 @@ mod tests {
 
     #[test]
     fn elided_inline_bond_emits_and_enters_the_child_atom_together() {
-        let (surface, atoms, bonds) = fixture(&["C", "O"], &[(0, 1, "", "")]);
+        let (surface, atoms, bonds) = fixture(
+            &["C", "O"],
+            &[(0, 1, NonStereoBondToken::Elided)],
+        );
         let initial = State::initial(&surface).unwrap();
         let (_, rooted) = initial.emit_root(atoms[0]);
         let edge = incident(&surface, atoms[0], bonds[0]);
@@ -623,7 +646,10 @@ mod tests {
 
     #[test]
     fn explicit_inline_bond_leaves_the_parent_active_until_atom_emission() {
-        let (surface, atoms, bonds) = fixture(&["C", "O"], &[(0, 1, "=", "=")]);
+        let (surface, atoms, bonds) = fixture(
+            &["C", "O"],
+            &[(0, 1, NonStereoBondToken::Double)],
+        );
         let initial = State::initial(&surface).unwrap();
         let (_, rooted) = initial.emit_root(atoms[0]);
         let edge = incident(&surface, atoms[0], bonds[0]);
@@ -651,8 +677,11 @@ mod tests {
     }
 
     #[test]
-    fn directed_bond_text_depends_on_the_traversal_endpoint() {
-        let (surface, atoms, bonds) = fixture(&["N", "B"], &[(0, 1, "->", "<-")]);
+    fn dative_bond_text_depends_on_topology_and_traversal_direction() {
+        let (surface, atoms, bonds) = fixture(
+            &["N", "B"],
+            &[(0, 1, NonStereoBondToken::DativeAToB)],
+        );
         let edge_from_n = incident(&surface, atoms[0], bonds[0]);
         let edge_from_b = incident(&surface, atoms[1], bonds[0]);
         let initial = State::initial(&surface).unwrap();
@@ -670,7 +699,10 @@ mod tests {
     fn explicit_branch_commits_child_until_atom_then_emits_close() {
         let (surface, atoms, bonds) = fixture(
             &["C", "O", "N"],
-            &[(0, 1, "=", "="), (0, 2, "", "")],
+            &[
+                (0, 1, NonStereoBondToken::Double),
+                (0, 2, NonStereoBondToken::Elided),
+            ],
         );
         let initial = State::initial(&surface).unwrap();
         let oxygen = incident(&surface, atoms[0], bonds[0]);
@@ -700,6 +732,7 @@ mod tests {
         tokens.push(token);
         assert_eq!(branch_atom.active_atom(), Some(atoms[1]));
         assert_eq!(branch_atom.branch_close_choice(), Some(")"));
+        assert_eq!(branch_atom.active_atom(), Some(atoms[1]));
 
         let (token, restored) = branch_atom.emit_branch_close();
         tokens.push(token);
@@ -830,7 +863,7 @@ mod tests {
             for (index, incident) in order.iter().copied().enumerate() {
                 let child_support =
                     reference_subtree_strings(surface, incident.atom(), Some(atom));
-                let bond = surface.directed_bond_text(incident.bond(), atom);
+                let bond = surface.bond_text(incident.bond(), atom);
                 let inline = index + 1 == order.len();
                 let mut next = Vec::new();
 
@@ -852,14 +885,9 @@ mod tests {
     }
 
     fn reference_tree_strings(surface: &PreparedConnectedNonStereo) -> BTreeSet<String> {
-        let graph = surface.molecule().graph();
-        assert_eq!(
-            graph.bond_count() + 1,
-            graph.atom_count(),
-            "reference support requires a connected tree"
-        );
-
-        graph
+        surface
+            .molecule()
+            .graph()
             .atom_ids()
             .flat_map(|root| reference_subtree_strings(surface, root, None))
             .collect()
@@ -869,25 +897,39 @@ mod tests {
     fn complete_connected_tree_support_matches_an_independent_reference() {
         let fixtures = [
             fixture(&["C"], &[]).0,
-            fixture(&["C", "N", "O"], &[(0, 1, "", ""), (1, 2, "", "")]).0,
+            fixture(
+                &["C", "N", "O"],
+                &[
+                    (0, 1, NonStereoBondToken::Elided),
+                    (1, 2, NonStereoBondToken::Elided),
+                ],
+            )
+            .0,
             fixture(
                 &["C", "N", "O", "F"],
-                &[(0, 1, "", ""), (0, 2, "", ""), (0, 3, "", "")],
+                &[
+                    (0, 1, NonStereoBondToken::Elided),
+                    (0, 2, NonStereoBondToken::Elided),
+                    (0, 3, NonStereoBondToken::Elided),
+                ],
             )
             .0,
             fixture(
                 &["C", "N", "O", "F", "S"],
                 &[
-                    (0, 1, "", ""),
-                    (0, 2, "", ""),
-                    (1, 3, "", ""),
-                    (1, 4, "=", "="),
+                    (0, 1, NonStereoBondToken::Elided),
+                    (0, 2, NonStereoBondToken::Elided),
+                    (1, 3, NonStereoBondToken::Elided),
+                    (1, 4, NonStereoBondToken::Double),
                 ],
             )
             .0,
             fixture(
                 &["C", "O", "N"],
-                &[(0, 1, "=", "="), (0, 2, "", "")],
+                &[
+                    (0, 1, NonStereoBondToken::Double),
+                    (0, 2, NonStereoBondToken::Elided),
+                ],
             )
             .0,
         ];

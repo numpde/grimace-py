@@ -1,9 +1,8 @@
-//! Complete visible-token emission for connected acyclic non-stereo surfaces.
+//! Connected non-stereo visible-token state.
 //!
-//! The runtime emits roots, inline children, and branch syntax. A committed
-//! explicit bond leaves traversal at the parent until the child atom token is
-//! emitted. Ring endpoints and disconnected-component separators remain outside
-//! this slice.
+//! The implemented transitions currently cover roots, inline children, and
+//! branch syntax. Ring endpoint emission and disconnected-component separators
+//! are unfinished syntax in the same writer, not separate preparation modes.
 
 use std::fmt;
 use std::sync::Arc;
@@ -67,9 +66,6 @@ impl PreparedConnectedNonStereo {
         }
         if !graph_is_connected(graph) {
             return Err(PreparedConnectedNonStereoError::DisconnectedMolecule);
-        }
-        if graph.bond_count() != graph.atom_count() - 1 {
-            return Err(PreparedConnectedNonStereoError::CyclicMolecule);
         }
         if atom_text.len() != graph.atom_count() {
             return Err(PreparedConnectedNonStereoError::AtomTextCountMismatch {
@@ -140,7 +136,6 @@ impl PreparedConnectedNonStereo {
 pub(crate) enum PreparedConnectedNonStereoError {
     EmptyMolecule,
     DisconnectedMolecule,
-    CyclicMolecule,
     AtomTextCountMismatch { expected: usize, actual: usize },
     BondTokenCountMismatch { expected: usize, actual: usize },
     EmptyAtomText(AtomId),
@@ -154,8 +149,6 @@ impl fmt::Display for PreparedConnectedNonStereoError {
             Self::DisconnectedMolecule => {
                 formatter.write_str("a connected non-stereo surface requires one graph component")
             }
-            Self::CyclicMolecule => formatter
-                .write_str("ring emission is required before cyclic non-stereo surfaces are admitted"),
             Self::AtomTextCountMismatch { expected, actual } => write!(
                 formatter,
                 "expected {expected} prepared atom texts, received {actual}"
@@ -561,7 +554,7 @@ mod tests {
     }
 
     #[test]
-    fn surface_rejects_unsupported_graphs_and_missing_text() {
+    fn surface_rejects_invalid_bindings() {
         let empty = PreparedMolecule::new(PreparedGraphBuilder::new().build());
         assert!(matches!(
             PreparedConnectedNonStereo::new(empty, Vec::new(), Vec::new()),
@@ -582,27 +575,31 @@ mod tests {
         ));
 
         let mut graph = PreparedGraphBuilder::new();
-        let atoms: [AtomId; 3] = std::array::from_fn(|_| graph.add_atom().unwrap());
-        graph.add_bond(atoms[0], atoms[1]).unwrap();
-        graph.add_bond(atoms[1], atoms[2]).unwrap();
-        graph.add_bond(atoms[2], atoms[0]).unwrap();
-        let cyclic = PreparedMolecule::new(graph.build());
-        assert!(matches!(
-            PreparedConnectedNonStereo::new(
-                cyclic,
-                vec!["C".to_owned(), "C".to_owned(), "C".to_owned()],
-                vec![NonStereoBondToken::Elided; 3],
-            ),
-            Err(PreparedConnectedNonStereoError::CyclicMolecule)
-        ));
-
-        let mut graph = PreparedGraphBuilder::new();
         graph.add_atom().unwrap();
         let single = PreparedMolecule::new(graph.build());
         assert!(matches!(
             PreparedConnectedNonStereo::new(single, vec![String::new()], Vec::new()),
             Err(PreparedConnectedNonStereoError::EmptyAtomText(AtomId::new(0)))
         ));
+    }
+
+    #[test]
+    fn surface_does_not_case_split_cyclic_topology() {
+        let mut graph = PreparedGraphBuilder::new();
+        let atoms: [AtomId; 3] = std::array::from_fn(|_| graph.add_atom().unwrap());
+        graph.add_bond(atoms[0], atoms[1]).unwrap();
+        graph.add_bond(atoms[1], atoms[2]).unwrap();
+        graph.add_bond(atoms[2], atoms[0]).unwrap();
+
+        let surface = PreparedConnectedNonStereo::new(
+            PreparedMolecule::new(graph.build()),
+            vec!["C".to_owned(), "C".to_owned(), "C".to_owned()],
+            vec![NonStereoBondToken::Elided; 3],
+        )
+        .unwrap();
+        let initial = State::initial(&surface).unwrap();
+
+        assert_eq!(initial.root_choices().len(), 3);
     }
 
     #[test]

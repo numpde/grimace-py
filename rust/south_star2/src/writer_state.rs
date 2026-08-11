@@ -109,8 +109,7 @@ impl<S: ConstraintSolver> WriterState<S> {
             match state {
                 IncidentBondState::UnrepresentedToUnvisitedAtom => {
                     let role_domain = self.bond_role_domain(incident.bond());
-                    let can_traverse =
-                        role_domain.contains(BondRole::Traversal.value_index());
+                    let can_traverse = role_domain.contains(BondRole::Traversal.value_index());
                     let can_ring = role_domain.contains(BondRole::Ring.value_index());
                     assert!(
                         can_traverse || can_ring,
@@ -209,13 +208,7 @@ impl<S: ConstraintSolver> WriterState<S> {
                 self.traversal.classify_active_incident(graph, *incident)
                     == IncidentBondState::UnrepresentedToUnvisitedAtom
             })
-            .map(|incident| {
-                role_restriction(
-                    &self.prepared,
-                    incident.bond(),
-                    BondRole::Traversal,
-                )
-            })
+            .map(|incident| role_restriction(&self.prepared, incident.bond(), BondRole::Traversal))
             .collect::<Vec<_>>();
         debug_assert!(!restrictions.is_empty());
 
@@ -260,7 +253,9 @@ impl<S: ConstraintSolver> WriterState<S> {
         incident: AdjacentBond,
     ) -> Result<(Self, RingLabelSlot), S::Error> {
         assert!(
-            self.structural_frontier().ring_openings().contains(&incident),
+            self.structural_frontier()
+                .ring_openings()
+                .contains(&incident),
             "a ring opening must be advertised by the structural frontier"
         );
 
@@ -283,7 +278,9 @@ impl<S: ConstraintSolver> WriterState<S> {
 
     pub(crate) fn close_ring_endpoint(&self, incident: AdjacentBond) -> (Self, RingLabelSlot) {
         assert!(
-            self.structural_frontier().ring_closures().contains(&incident),
+            self.structural_frontier()
+                .ring_closures()
+                .contains(&incident),
             "a ring closure must be advertised by the structural frontier"
         );
 
@@ -527,11 +524,7 @@ mod tests {
             .begin_component(atoms[0]);
         let constraints = rooted
             .constraints
-            .restricted(&[role_restriction(
-                &prepared,
-                between,
-                BondRole::Traversal,
-            )])
+            .restricted(&[role_restriction(&prepared, between, BondRole::Traversal)])
             .unwrap();
         let constrained = WriterState {
             prepared: rooted.prepared.clone(),
@@ -554,10 +547,7 @@ mod tests {
         ));
         assert_eq!(constrained.active_atom(), Some(atoms[0]));
         assert_eq!(constrained.bond_role_domain(left), BondRole::role_domain());
-        assert_eq!(
-            constrained.bond_role_domain(right),
-            BondRole::role_domain()
-        );
+        assert_eq!(constrained.bond_role_domain(right), BondRole::role_domain());
 
         let (opened, _) = constrained
             .open_ring_endpoint(incident(&prepared, atoms[0], left))

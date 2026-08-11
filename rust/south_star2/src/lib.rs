@@ -13,6 +13,7 @@ mod native;
 #[cfg(test)]
 mod native_oracle;
 mod native_solver;
+mod nonstereo_writer;
 mod prepared;
 mod solver;
 #[cfg(test)]

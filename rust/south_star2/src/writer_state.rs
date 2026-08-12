@@ -109,7 +109,9 @@ impl<S: ConstraintSolver> WriterState<S> {
                     frontier.ring_closures.push(incident);
                 }
                 IncidentBondState::UnrepresentedToVisitedAtom => {
-                    frontier.contradiction = true;
+                    panic!(
+                        "a visited endpoint must already be represented or own an open ring endpoint"
+                    );
                 }
                 IncidentBondState::Represented
                 | IncidentBondState::RingOpenAtCurrentAtom
@@ -121,38 +123,39 @@ impl<S: ConstraintSolver> WriterState<S> {
             let incidences = attachment.incidences();
             assert!(!incidences.is_empty(), "residual attachments must not be empty");
 
+            let role_domains = incidences
+                .iter()
+                .copied()
+                .map(|incident| (incident, self.bond_role_domain(incident.bond())))
+                .collect::<Vec<_>>();
+            let traversal_capable_count = role_domains
+                .iter()
+                .filter(|(_, domain)| domain.contains(BondRole::Traversal.value_index()))
+                .count();
+
+            if traversal_capable_count == 0 {
+                frontier.contradiction = true;
+                continue;
+            }
+
             if incidences.len() == 1 {
-                let incident = incidences[0];
-                if self
-                    .bond_role_domain(incident.bond())
-                    .contains(BondRole::Traversal.value_index())
-                {
-                    children.push(incident);
-                } else {
-                    frontier.contradiction = true;
-                }
+                children.push(incidences[0]);
                 continue;
             }
 
             ring_phase = true;
-            let mut attachment_has_ring_choice = false;
-            for &candidate in incidences {
-                let candidate_domain = self.bond_role_domain(candidate.bond());
-                if !candidate_domain.contains(BondRole::Ring.value_index()) {
+            let ring_opening_count = frontier.ring_openings.len();
+            for (candidate, domain) in role_domains {
+                if !domain.contains(BondRole::Ring.value_index()) {
                     continue;
                 }
-                let entry_remains = incidences.iter().any(|other| {
-                    *other != candidate
-                        && self
-                            .bond_role_domain(other.bond())
-                            .contains(BondRole::Traversal.value_index())
-                });
-                if entry_remains {
-                    attachment_has_ring_choice = true;
+                let candidate_can_traverse =
+                    domain.contains(BondRole::Traversal.value_index());
+                if traversal_capable_count > usize::from(candidate_can_traverse) {
                     frontier.ring_openings.push(candidate);
                 }
             }
-            if !attachment_has_ring_choice {
+            if frontier.ring_openings.len() == ring_opening_count {
                 frontier.contradiction = true;
             }
         }
@@ -204,11 +207,7 @@ impl<S: ConstraintSolver> WriterState<S> {
             "a traversal commitment requires an advertised child"
         );
 
-        let constraints = self.constraints.restricted(&[role_restriction(
-            &self.prepared,
-            incident.bond(),
-            BondRole::Traversal,
-        )])?;
+        let constraints = self.restricted_role(incident.bond(), BondRole::Traversal)?;
         Ok(Self {
             prepared: self.prepared.clone(),
             traversal: self.traversal.clone(),
@@ -264,11 +263,7 @@ impl<S: ConstraintSolver> WriterState<S> {
             "a ring opening must be advertised by the residual-attachment frontier"
         );
 
-        let constraints = self.constraints.restricted(&[role_restriction(
-            &self.prepared,
-            incident.bond(),
-            BondRole::Ring,
-        )])?;
+        let constraints = self.restricted_role(incident.bond(), BondRole::Ring)?;
         let mut traversal = self.traversal.clone();
         let label_slot = traversal.open_ring_endpoint(self.prepared.graph(), incident);
         Ok((
@@ -305,6 +300,15 @@ impl<S: ConstraintSolver> WriterState<S> {
         let mut successor = self.clone();
         successor.traversal.complete_path();
         successor
+    }
+
+    fn restricted_role(&self, bond: BondId, role: BondRole) -> Result<S, S::Error> {
+        let domain = role.singleton_domain();
+        if self.bond_role_domain(bond) == domain {
+            return Ok(self.constraints.clone());
+        }
+        self.constraints
+            .restricted(&[(role_variable(&self.prepared, bond), domain)])
     }
 }
 
@@ -358,7 +362,12 @@ mod tests {
         assert!(frontier.branch_children().is_empty());
         assert!(frontier.inline_children().is_empty());
 
-        let (opened, _) = rooted.open_ring_endpoint(left_incident).unwrap();
+        let (opened, label_slot) = rooted.open_ring_endpoint(left_incident).unwrap();
+        assert_eq!(
+            rooted.bond_role_domain(left),
+            BondRole::role_domain(),
+            "the source state must remain unchanged"
+        );
         let opened_frontier = opened.structural_frontier();
         assert!(opened_frontier.ring_openings().is_empty());
         assert!(opened_frontier.branch_children().is_empty());
@@ -375,6 +384,52 @@ mod tests {
             opened.bond_role_domain(between),
             BondRole::Traversal.singleton_domain()
         );
+
+        let committed = opened.commit_traversal_edge(right_incident).unwrap();
+        let walked = committed.enter_inline_child(right_incident);
+        let between_incident = incident(&prepared, atoms[2], between);
+        let committed = walked.commit_traversal_edge(between_incident).unwrap();
+        let walked = committed.enter_inline_child(between_incident);
+        let closing = incident(&prepared, atoms[1], left);
+        assert_eq!(walked.structural_frontier().ring_closures(), &[closing]);
+
+        let (closed, closed_slot) = walked.close_ring_endpoint(closing);
+        assert_eq!(closed_slot, label_slot);
+        assert!(closed.graph_is_complete());
+        let finished = closed.complete_path();
+        assert_eq!(finished.active_atom(), None);
+    }
+
+    #[test]
+    fn a_matroid_basis_can_still_contradict_writer_policy() {
+        let mut graph = PreparedGraphBuilder::new();
+        let atoms: [AtomId; 3] = std::array::from_fn(|_| graph.add_atom().unwrap());
+        let left = graph.add_bond(atoms[0], atoms[1]).unwrap();
+        let right = graph.add_bond(atoms[0], atoms[2]).unwrap();
+        let between = graph.add_bond(atoms[1], atoms[2]).unwrap();
+        let prepared = PreparedMolecule::new(graph.build());
+        let rooted = WriterState::<NativeSolverState>::initial(&prepared)
+            .unwrap()
+            .begin_component(atoms[0]);
+        let constraints = rooted
+            .constraints
+            .restricted(&[
+                role_restriction(&prepared, left, BondRole::Traversal),
+                role_restriction(&prepared, right, BondRole::Traversal),
+                role_restriction(&prepared, between, BondRole::Ring),
+            ])
+            .unwrap();
+        let basis = WriterState {
+            prepared: rooted.prepared.clone(),
+            traversal: rooted.traversal.clone(),
+            constraints,
+        };
+
+        let frontier = basis.structural_frontier();
+        assert!(frontier.is_contradiction());
+        assert!(frontier.ring_openings().is_empty());
+        assert!(frontier.branch_children().is_empty());
+        assert!(frontier.inline_children().is_empty());
     }
 
     #[test]

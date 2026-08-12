@@ -707,4 +707,98 @@ mod tests {
             &[incident(&graph, atoms[0], right)]
         );
     }
+
+    #[test]
+    fn ring_endpoint_lifecycle_preserves_its_label_slot() {
+        let mut builder = PreparedGraphBuilder::new();
+        let atoms: [AtomId; 3] = std::array::from_fn(|_| builder.add_atom().unwrap());
+        let first = builder.add_bond(atoms[0], atoms[1]).unwrap();
+        let second = builder.add_bond(atoms[1], atoms[2]).unwrap();
+        let ring = builder.add_bond(atoms[2], atoms[0]).unwrap();
+        let graph = builder.build();
+        let mut state = TraversalState::new(&graph);
+
+        state.begin_component(&graph, atoms[0]);
+        let opening = incident(&graph, atoms[0], ring);
+        let label_slot = state.open_ring_endpoint(&graph, opening);
+        assert_eq!(label_slot.index(), 0);
+        assert_eq!(
+            state.ring_label_slot_for_active_incident(&graph, opening),
+            Some(label_slot)
+        );
+
+        state.enter_inline_child(&graph, incident(&graph, atoms[0], first));
+        state.enter_inline_child(&graph, incident(&graph, atoms[1], second));
+        let closing = incident(&graph, atoms[2], ring);
+        assert_eq!(
+            state.ring_label_slot_for_active_incident(&graph, closing),
+            Some(label_slot)
+        );
+        assert_eq!(state.close_ring_endpoint(&graph, closing), label_slot);
+        assert!(state.graph_is_complete());
+        assert_eq!(state.complete_path(), None);
+    }
+
+    #[test]
+    fn ring_label_slots_reuse_the_least_free_resource() {
+        let mut builder = PreparedGraphBuilder::new();
+        let atoms: [AtomId; 5] = std::array::from_fn(|_| builder.add_atom().unwrap());
+        let path = [
+            builder.add_bond(atoms[0], atoms[1]).unwrap(),
+            builder.add_bond(atoms[1], atoms[2]).unwrap(),
+            builder.add_bond(atoms[2], atoms[3]).unwrap(),
+            builder.add_bond(atoms[3], atoms[4]).unwrap(),
+        ];
+        let first_ring = builder.add_bond(atoms[0], atoms[2]).unwrap();
+        let long_ring = builder.add_bond(atoms[0], atoms[4]).unwrap();
+        let reused_ring = builder.add_bond(atoms[2], atoms[4]).unwrap();
+        let graph = builder.build();
+        let mut state = TraversalState::new(&graph);
+
+        state.begin_component(&graph, atoms[0]);
+        assert_eq!(
+            state
+                .open_ring_endpoint(&graph, incident(&graph, atoms[0], first_ring))
+                .index(),
+            0
+        );
+        assert_eq!(
+            state
+                .open_ring_endpoint(&graph, incident(&graph, atoms[0], long_ring))
+                .index(),
+            1
+        );
+        state.enter_inline_child(&graph, incident(&graph, atoms[0], path[0]));
+        state.enter_inline_child(&graph, incident(&graph, atoms[1], path[1]));
+
+        assert_eq!(
+            state
+                .close_ring_endpoint(&graph, incident(&graph, atoms[2], first_ring))
+                .index(),
+            0
+        );
+        assert_eq!(
+            state
+                .open_ring_endpoint(&graph, incident(&graph, atoms[2], reused_ring))
+                .index(),
+            0
+        );
+        state.enter_inline_child(&graph, incident(&graph, atoms[2], path[2]));
+        state.enter_inline_child(&graph, incident(&graph, atoms[3], path[3]));
+
+        assert_eq!(
+            state
+                .close_ring_endpoint(&graph, incident(&graph, atoms[4], long_ring))
+                .index(),
+            1
+        );
+        assert_eq!(
+            state
+                .close_ring_endpoint(&graph, incident(&graph, atoms[4], reused_ring))
+                .index(),
+            0
+        );
+        assert!(state.graph_is_complete());
+        assert_eq!(state.next_ring_label_slot().index(), 0);
+    }
 }

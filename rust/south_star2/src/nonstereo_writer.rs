@@ -10,7 +10,7 @@ use std::sync::Arc;
 use crate::ids::{AtomId, BondId};
 use crate::prepared::{AdjacentBond, PreparedBond, PreparedGraph, PreparedMolecule};
 use crate::solver::ConstraintSolver;
-use crate::writer_state::WriterState;
+use crate::writer_state::{StructuralFrontier, WriterState};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(crate) enum NonStereoBondToken {
@@ -219,8 +219,7 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
         if self.pending_child.is_some() || self.is_accepted() {
             return Vec::new();
         }
-        self.structural
-            .structural_frontier()
+        self.visible_frontier()
             .component_roots()
             .iter()
             .copied()
@@ -232,8 +231,7 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
         if self.pending_child.is_some() {
             return Vec::new();
         }
-        self.structural
-            .structural_frontier()
+        self.visible_frontier()
             .branch_children()
             .iter()
             .copied()
@@ -248,8 +246,7 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
         let Some(parent) = self.structural.active_atom() else {
             return Vec::new();
         };
-        self.structural
-            .structural_frontier()
+        self.visible_frontier()
             .inline_children()
             .iter()
             .copied()
@@ -279,7 +276,7 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
         if self.pending_child.is_some() {
             return None;
         }
-        let frontier = self.structural.structural_frontier();
+        let frontier = self.visible_frontier();
         (frontier.can_complete_path() && !self.structural.graph_is_complete()).then_some(")")
     }
 
@@ -289,10 +286,7 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
             "pending text must be emitted before a root"
         );
         assert!(
-            self.structural
-                .structural_frontier()
-                .component_roots()
-                .contains(&root),
+            self.visible_frontier().component_roots().contains(&root),
             "root emission requires an advertised component root"
         );
         let token = self.surface.atom_text(root).to_owned();
@@ -314,10 +308,7 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
             "pending text must be emitted before a branch"
         );
         assert!(
-            self.structural
-                .structural_frontier()
-                .branch_children()
-                .contains(&incident),
+            self.visible_frontier().branch_children().contains(&incident),
             "branch emission requires an advertised branch child"
         );
         let structural = self.structural.commit_traversal_edge(incident)?;
@@ -340,7 +331,7 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
             "pending text must be emitted before a child"
         );
         assert_eq!(
-            self.structural.structural_frontier().inline_children(),
+            self.visible_frontier().inline_children(),
             &[incident],
             "inline emission requires the sole advertised inline child"
         );
@@ -446,6 +437,19 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
         )
     }
 
+    fn visible_frontier(&self) -> StructuralFrontier {
+        let frontier = self.structural.structural_frontier();
+        assert!(
+            !frontier.is_contradiction(),
+            "connected non-stereo writer reached a structural contradiction"
+        );
+        assert!(
+            frontier.ring_openings().is_empty() && frontier.ring_closures().is_empty(),
+            "ring endpoint emission is not implemented"
+        );
+        frontier
+    }
+
     fn normalize_component_completion(mut self) -> Self {
         if self.pending_child.is_some() || !self.structural.graph_is_complete() {
             return self;
@@ -544,7 +548,55 @@ mod tests {
     }
 
     #[test]
-    fn surface_does_not_case_split_cyclic_topology() {
+    fn surface_rejects_invalid_bindings() {
+        let empty = PreparedMolecule::new(PreparedGraphBuilder::new().build());
+        assert!(matches!(
+            PreparedConnectedNonStereo::new(empty, Vec::new(), Vec::new()),
+            Err(PreparedConnectedNonStereoError::EmptyMolecule)
+        ));
+
+        let mut graph = PreparedGraphBuilder::new();
+        graph.add_atom().unwrap();
+        graph.add_atom().unwrap();
+        let disconnected = PreparedMolecule::new(graph.build());
+        assert!(matches!(
+            PreparedConnectedNonStereo::new(
+                disconnected,
+                vec!["C".to_owned(), "O".to_owned()],
+                Vec::new(),
+            ),
+            Err(PreparedConnectedNonStereoError::DisconnectedMolecule)
+        ));
+
+        let mut graph = PreparedGraphBuilder::new();
+        graph.add_atom().unwrap();
+        let single = PreparedMolecule::new(graph.build());
+        assert!(matches!(
+            PreparedConnectedNonStereo::new(single.clone(), Vec::new(), Vec::new()),
+            Err(PreparedConnectedNonStereoError::AtomTextCountMismatch { .. })
+        ));
+        assert!(matches!(
+            PreparedConnectedNonStereo::new(single, vec![String::new()], Vec::new()),
+            Err(PreparedConnectedNonStereoError::EmptyAtomText(AtomId::new(0)))
+        ));
+
+        let mut graph = PreparedGraphBuilder::new();
+        let atoms: [AtomId; 2] = std::array::from_fn(|_| graph.add_atom().unwrap());
+        graph.add_bond(atoms[0], atoms[1]).unwrap();
+        let bonded = PreparedMolecule::new(graph.build());
+        assert!(matches!(
+            PreparedConnectedNonStereo::new(
+                bonded,
+                vec!["C".to_owned(), "O".to_owned()],
+                Vec::new(),
+            ),
+            Err(PreparedConnectedNonStereoError::BondTokenCountMismatch { .. })
+        ));
+    }
+
+    #[test]
+    #[should_panic(expected = "ring endpoint emission is not implemented")]
+    fn cyclic_surface_fails_at_the_unfinished_ring_boundary() {
         let mut graph = PreparedGraphBuilder::new();
         let atoms: [AtomId; 3] = std::array::from_fn(|_| graph.add_atom().unwrap());
         graph.add_bond(atoms[0], atoms[1]).unwrap();
@@ -556,8 +608,10 @@ mod tests {
             vec![NonStereoBondToken::Elided; 3],
         )
         .unwrap();
+        let initial = State::initial(&surface).unwrap();
+        let (_, rooted) = initial.emit_root(atoms[0]);
 
-        assert_eq!(State::initial(&surface).unwrap().root_choices().len(), 3);
+        let _ = rooted.branch_choices();
     }
 
     #[test]
@@ -572,11 +626,29 @@ mod tests {
         let (bond, pending) = rooted.emit_inline_child(edge).unwrap();
 
         assert_eq!(bond, "=");
+        assert_eq!(rooted.active_atom(), Some(atoms[0]));
         assert_eq!(pending.active_atom(), Some(atoms[0]));
         assert_eq!(pending.pending_choice(), Some((edge, "O")));
         let (atom, accepted) = pending.emit_pending();
         assert_eq!(atom, "O");
         assert!(accepted.is_accepted());
+    }
+
+    #[test]
+    fn dative_bond_text_follows_prepared_orientation() {
+        let (surface, atoms, bonds) = fixture(
+            &["N", "B"],
+            &[(0, 1, NonStereoBondToken::DativeAToB)],
+        );
+        let initial = State::initial(&surface).unwrap();
+        let edge_from_n = incident(&surface, atoms[0], bonds[0]);
+        let edge_from_b = incident(&surface, atoms[1], bonds[0]);
+
+        let (_, rooted_at_n) = initial.emit_root(atoms[0]);
+        assert_eq!(rooted_at_n.inline_choices(), vec![(edge_from_n, "->")]);
+
+        let (_, rooted_at_b) = initial.emit_root(atoms[1]);
+        assert_eq!(rooted_at_b.inline_choices(), vec![(edge_from_b, "<-")]);
     }
 
     #[test]
@@ -746,6 +818,16 @@ mod tests {
                     (0, 1, NonStereoBondToken::Elided),
                     (0, 2, NonStereoBondToken::Elided),
                     (0, 3, NonStereoBondToken::Elided),
+                ],
+            )
+            .0,
+            fixture(
+                &["C", "N", "O", "F", "S"],
+                &[
+                    (0, 1, NonStereoBondToken::Elided),
+                    (0, 2, NonStereoBondToken::Elided),
+                    (1, 3, NonStereoBondToken::Elided),
+                    (1, 4, NonStereoBondToken::Double),
                 ],
             )
             .0,

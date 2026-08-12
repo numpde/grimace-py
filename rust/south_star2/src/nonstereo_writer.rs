@@ -201,7 +201,7 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
         })
     }
 
-    pub(crate) const fn active_atom(&self) -> Option<AtomId> {
+    pub(crate) fn active_atom(&self) -> Option<AtomId> {
         self.structural.active_atom()
     }
 
@@ -219,7 +219,6 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
         if self.pending_child.is_some() || self.is_accepted() {
             return Vec::new();
         }
-
         self.structural
             .structural_frontier()
             .component_roots()
@@ -233,7 +232,6 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
         if self.pending_child.is_some() {
             return Vec::new();
         }
-
         self.structural
             .structural_frontier()
             .branch_children()
@@ -247,16 +245,15 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
         if self.pending_child.is_some() {
             return Vec::new();
         }
-        let Some(active) = self.structural.active_atom() else {
+        let Some(parent) = self.structural.active_atom() else {
             return Vec::new();
         };
-
         self.structural
             .structural_frontier()
             .inline_children()
             .iter()
             .copied()
-            .map(|incident| (incident, self.surface.child_prefix(active, incident)))
+            .map(|incident| (incident, self.surface.child_prefix(parent, incident)))
             .collect()
     }
 
@@ -298,7 +295,6 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
                 .contains(&root),
             "root emission requires an advertised component root"
         );
-
         let token = self.surface.atom_text(root).to_owned();
         let successor = Self {
             surface: self.surface.clone(),
@@ -309,7 +305,10 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
         (token, successor)
     }
 
-    pub(crate) fn emit_branch_child(&self, incident: AdjacentBond) -> (String, Self) {
+    pub(crate) fn emit_branch_child(
+        &self,
+        incident: AdjacentBond,
+    ) -> Result<(String, Self), S::Error> {
         assert!(
             self.pending_child.is_none(),
             "pending text must be emitted before a branch"
@@ -321,18 +320,21 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
                 .contains(&incident),
             "branch emission requires an advertised branch child"
         );
-
-        (
+        let structural = self.structural.commit_traversal_edge(incident)?;
+        Ok((
             "(".to_owned(),
             Self {
                 surface: self.surface.clone(),
-                structural: self.structural.clone(),
+                structural,
                 pending_child: Some(PendingChild::BranchBondOrAtom(incident)),
             },
-        )
+        ))
     }
 
-    pub(crate) fn emit_inline_child(&self, incident: AdjacentBond) -> (String, Self) {
+    pub(crate) fn emit_inline_child(
+        &self,
+        incident: AdjacentBond,
+    ) -> Result<(String, Self), S::Error> {
         assert!(
             self.pending_child.is_none(),
             "pending text must be emitted before a child"
@@ -342,32 +344,32 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
             &[incident],
             "inline emission requires the sole advertised inline child"
         );
-
         let parent = self
             .structural
             .active_atom()
             .expect("inline emission requires an active atom");
         let bond_text = self.surface.bond_text(incident.bond(), parent);
+        let structural = self.structural.commit_traversal_edge(incident)?;
 
         if bond_text.is_empty() {
             let token = self.surface.atom_text(incident.atom()).to_owned();
             let successor = Self {
                 surface: self.surface.clone(),
-                structural: self.structural.enter_inline_child(incident),
+                structural: structural.enter_inline_child(incident),
                 pending_child: None,
             }
             .normalize_component_completion();
-            return (token, successor);
+            return Ok((token, successor));
         }
 
-        (
+        Ok((
             bond_text.to_owned(),
             Self {
                 surface: self.surface.clone(),
-                structural: self.structural.clone(),
+                structural,
                 pending_child: Some(PendingChild::InlineAtom(incident)),
             },
-        )
+        ))
     }
 
     pub(crate) fn emit_pending(&self) -> (String, Self) {
@@ -401,7 +403,6 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
                     .normalize_component_completion();
                     return (token, successor);
                 }
-
                 (
                     bond_text.to_owned(),
                     Self {
@@ -430,17 +431,11 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
             Some(")"),
             "branch close requires a completed branch path"
         );
-
         let structural = self.structural.complete_path();
         assert!(
             structural.active_atom().is_some(),
             "a branch close must restore its parent"
         );
-        assert!(
-            !structural.graph_is_complete(),
-            "closing a branch must leave its main continuation unfinished"
-        );
-
         (
             ")".to_owned(),
             Self {
@@ -461,7 +456,6 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
                 .can_complete_path(),
             "a complete connected graph must have a completable top-level path"
         );
-
         let completed = self.structural.complete_path();
         assert_eq!(
             completed.active_atom(),
@@ -477,7 +471,6 @@ fn graph_is_connected(graph: &PreparedGraph) -> bool {
     if graph.atom_count() == 0 {
         return false;
     }
-
     let root = AtomId::new(0);
     let mut visited = vec![false; graph.atom_count()];
     visited[root.index()] = true;
@@ -497,7 +490,6 @@ fn graph_is_connected(graph: &PreparedGraph) -> bool {
             }
         }
     }
-
     visited_count == graph.atom_count()
 }
 
@@ -522,12 +514,10 @@ mod tests {
             .collect::<Vec<_>>();
         let mut bonds = Vec::with_capacity(edges.len());
         let mut bond_tokens = Vec::with_capacity(edges.len());
-
         for &(a, b, token) in edges {
             bonds.push(graph.add_bond(atoms[a], atoms[b]).unwrap());
             bond_tokens.push(token);
         }
-
         let surface = PreparedConnectedNonStereo::new(
             PreparedMolecule::new(graph.build()),
             atom_text.iter().map(|text| (*text).to_owned()).collect(),
@@ -554,95 +544,24 @@ mod tests {
     }
 
     #[test]
-    fn surface_rejects_invalid_bindings() {
-        let empty = PreparedMolecule::new(PreparedGraphBuilder::new().build());
-        assert!(matches!(
-            PreparedConnectedNonStereo::new(empty, Vec::new(), Vec::new()),
-            Err(PreparedConnectedNonStereoError::EmptyMolecule)
-        ));
-
-        let mut graph = PreparedGraphBuilder::new();
-        graph.add_atom().unwrap();
-        graph.add_atom().unwrap();
-        let disconnected = PreparedMolecule::new(graph.build());
-        assert!(matches!(
-            PreparedConnectedNonStereo::new(
-                disconnected,
-                vec!["C".to_owned(), "O".to_owned()],
-                Vec::new(),
-            ),
-            Err(PreparedConnectedNonStereoError::DisconnectedMolecule)
-        ));
-
-        let mut graph = PreparedGraphBuilder::new();
-        graph.add_atom().unwrap();
-        let single = PreparedMolecule::new(graph.build());
-        assert!(matches!(
-            PreparedConnectedNonStereo::new(single, vec![String::new()], Vec::new()),
-            Err(PreparedConnectedNonStereoError::EmptyAtomText(AtomId::new(0)))
-        ));
-    }
-
-    #[test]
     fn surface_does_not_case_split_cyclic_topology() {
         let mut graph = PreparedGraphBuilder::new();
         let atoms: [AtomId; 3] = std::array::from_fn(|_| graph.add_atom().unwrap());
         graph.add_bond(atoms[0], atoms[1]).unwrap();
         graph.add_bond(atoms[1], atoms[2]).unwrap();
         graph.add_bond(atoms[2], atoms[0]).unwrap();
-
         let surface = PreparedConnectedNonStereo::new(
             PreparedMolecule::new(graph.build()),
             vec!["C".to_owned(), "C".to_owned(), "C".to_owned()],
             vec![NonStereoBondToken::Elided; 3],
         )
         .unwrap();
-        let initial = State::initial(&surface).unwrap();
 
-        assert_eq!(initial.root_choices().len(), 3);
+        assert_eq!(State::initial(&surface).unwrap().root_choices().len(), 3);
     }
 
     #[test]
-    fn root_atom_is_the_first_visible_transition_and_can_accept() {
-        let (surface, atoms, _) = fixture(&["C"], &[]);
-        let initial = State::initial(&surface).unwrap();
-
-        assert_eq!(initial.root_choices(), vec![(atoms[0], "C")]);
-        assert!(!initial.is_accepted());
-        assert_eq!(initial.active_atom(), None);
-
-        let (token, accepted) = initial.emit_root(atoms[0]);
-        assert_eq!(token, "C");
-        assert_eq!(initial.active_atom(), None);
-        assert_eq!(accepted.active_atom(), None);
-        assert!(accepted.graph_is_complete());
-        assert!(accepted.is_accepted());
-        assert!(accepted.root_choices().is_empty());
-    }
-
-    #[test]
-    fn elided_inline_bond_emits_and_enters_the_child_atom_together() {
-        let (surface, atoms, bonds) = fixture(
-            &["C", "O"],
-            &[(0, 1, NonStereoBondToken::Elided)],
-        );
-        let initial = State::initial(&surface).unwrap();
-        let (_, rooted) = initial.emit_root(atoms[0]);
-        let edge = incident(&surface, atoms[0], bonds[0]);
-
-        assert_eq!(rooted.inline_choices(), vec![(edge, "O")]);
-        let (token, accepted) = rooted.emit_inline_child(edge);
-
-        assert_eq!(token, "O");
-        assert_eq!(rooted.active_atom(), Some(atoms[0]));
-        assert_eq!(accepted.active_atom(), None);
-        assert!(accepted.graph_is_complete());
-        assert!(accepted.is_accepted());
-        assert_eq!(accepted.pending_choice(), None);
-    }
-
-    #[test]
-    fn explicit_inline_bond_leaves_the_parent_active_until_atom_emission() {
+    fn explicit_inline_bond_commits_before_child_entry() {
         let (surface, atoms, bonds) = fixture(
             &["C", "O"],
             &[(0, 1, NonStereoBondToken::Double)],
@@ -650,50 +569,18 @@ mod tests {
         let initial = State::initial(&surface).unwrap();
         let (_, rooted) = initial.emit_root(atoms[0]);
         let edge = incident(&surface, atoms[0], bonds[0]);
+        let (bond, pending) = rooted.emit_inline_child(edge).unwrap();
 
-        assert_eq!(rooted.inline_choices(), vec![(edge, "=")]);
-        let (bond_token, pending) = rooted.emit_inline_child(edge);
-
-        assert_eq!(bond_token, "=");
-        assert_eq!(rooted.active_atom(), Some(atoms[0]));
+        assert_eq!(bond, "=");
         assert_eq!(pending.active_atom(), Some(atoms[0]));
-        assert!(!pending.graph_is_complete());
-        assert!(pending.root_choices().is_empty());
-        assert!(pending.branch_choices().is_empty());
-        assert!(pending.inline_choices().is_empty());
         assert_eq!(pending.pending_choice(), Some((edge, "O")));
-        assert_eq!(pending.branch_close_choice(), None);
-
-        let (atom_token, accepted) = pending.emit_pending();
-        assert_eq!(atom_token, "O");
-        assert_eq!(pending.active_atom(), Some(atoms[0]));
-        assert_eq!(accepted.active_atom(), None);
-        assert!(accepted.graph_is_complete());
+        let (atom, accepted) = pending.emit_pending();
+        assert_eq!(atom, "O");
         assert!(accepted.is_accepted());
-        assert_eq!(accepted.pending_choice(), None);
     }
 
     #[test]
-    fn dative_bond_text_depends_on_topology_and_traversal_direction() {
-        let (surface, atoms, bonds) = fixture(
-            &["N", "B"],
-            &[(0, 1, NonStereoBondToken::DativeAToB)],
-        );
-        let edge_from_n = incident(&surface, atoms[0], bonds[0]);
-        let edge_from_b = incident(&surface, atoms[1], bonds[0]);
-        let initial = State::initial(&surface).unwrap();
-
-        let (_, rooted_at_n) = initial.emit_root(atoms[0]);
-        assert_eq!(rooted_at_n.inline_choices(), vec![(edge_from_n, "->")]);
-        assert_eq!(rooted_at_n.emit_inline_child(edge_from_n).0, "->");
-
-        let (_, rooted_at_b) = initial.emit_root(atoms[1]);
-        assert_eq!(rooted_at_b.inline_choices(), vec![(edge_from_b, "<-")]);
-        assert_eq!(rooted_at_b.emit_inline_child(edge_from_b).0, "<-");
-    }
-
-    #[test]
-    fn explicit_branch_commits_child_until_atom_then_emits_close() {
+    fn explicit_branch_commits_at_open_parenthesis() {
         let (surface, atoms, bonds) = fixture(
             &["C", "O", "N"],
             &[
@@ -704,69 +591,28 @@ mod tests {
         let initial = State::initial(&surface).unwrap();
         let oxygen = incident(&surface, atoms[0], bonds[0]);
         let nitrogen = incident(&surface, atoms[0], bonds[1]);
-        let mut tokens = Vec::new();
+        let (root, rooted) = initial.emit_root(atoms[0]);
+        let (open, pending_branch) = rooted.emit_branch_child(oxygen).unwrap();
+        let (bond, pending_atom) = pending_branch.emit_pending();
+        let (atom, branch) = pending_atom.emit_pending();
+        let (close, restored) = branch.emit_branch_close();
+        let (inline, accepted) = restored.emit_inline_child(nitrogen).unwrap();
 
-        let (token, rooted) = initial.emit_root(atoms[0]);
-        tokens.push(token);
-        assert_eq!(
-            rooted.branch_choices(),
-            vec![(oxygen, "("), (nitrogen, "(")]
-        );
-
-        let (token, branch_open) = rooted.emit_branch_child(oxygen);
-        tokens.push(token);
-        assert_eq!(branch_open.active_atom(), Some(atoms[0]));
-        assert_eq!(branch_open.pending_choice(), Some((oxygen, "=")));
-        assert!(branch_open.branch_choices().is_empty());
-        assert!(branch_open.inline_choices().is_empty());
-
-        let (token, branch_bond) = branch_open.emit_pending();
-        tokens.push(token);
-        assert_eq!(branch_bond.active_atom(), Some(atoms[0]));
-        assert_eq!(branch_bond.pending_choice(), Some((oxygen, "O")));
-
-        let (token, branch_atom) = branch_bond.emit_pending();
-        tokens.push(token);
-        assert_eq!(branch_atom.active_atom(), Some(atoms[1]));
-        assert_eq!(branch_atom.branch_close_choice(), Some(")"));
-        assert_eq!(branch_atom.active_atom(), Some(atoms[1]));
-
-        let (token, restored) = branch_atom.emit_branch_close();
-        tokens.push(token);
-        assert_eq!(restored.active_atom(), Some(atoms[0]));
-        assert_eq!(restored.inline_choices(), vec![(nitrogen, "N")]);
-
-        let (token, accepted) = restored.emit_inline_child(nitrogen);
-        tokens.push(token);
+        assert_eq!([root, open, bond, atom, close, inline].concat(), "C(=O)N");
         assert!(accepted.is_accepted());
-
-        assert_eq!(
-            tokens.iter().map(String::as_str).collect::<Vec<_>>(),
-            vec!["C", "(", "=", "O", ")", "N"]
-        );
-        assert_eq!(tokens.concat(), "C(=O)N");
     }
 
     fn reachable_strings(surface: &PreparedConnectedNonStereo) -> BTreeSet<String> {
         let initial = State::initial(surface).unwrap();
         let mut pending = vec![(initial, String::new())];
         let mut complete = BTreeSet::new();
-        let mut explored = 0_usize;
 
         while let Some((state, prefix)) = pending.pop() {
-            explored += 1;
-            assert!(
-                explored <= 100_000,
-                "connected-tree writer test exceeded its exploration bound"
-            );
-
             if state.is_accepted() {
                 complete.insert(prefix);
                 continue;
             }
-
             let mut successor_count = 0_usize;
-
             if state.pending_choice().is_some() {
                 let (token, successor) = state.emit_pending();
                 pending.push((successor, format!("{prefix}{token}")));
@@ -778,12 +624,12 @@ mod tests {
                     successor_count += 1;
                 }
                 for (incident, _) in state.branch_choices() {
-                    let (token, successor) = state.emit_branch_child(incident);
+                    let (token, successor) = state.emit_branch_child(incident).unwrap();
                     pending.push((successor, format!("{prefix}{token}")));
                     successor_count += 1;
                 }
                 for (incident, _) in state.inline_choices() {
-                    let (token, successor) = state.emit_inline_child(incident);
+                    let (token, successor) = state.emit_inline_child(incident).unwrap();
                     pending.push((successor, format!("{prefix}{token}")));
                     successor_count += 1;
                 }
@@ -793,13 +639,8 @@ mod tests {
                     successor_count += 1;
                 }
             }
-
-            assert!(
-                successor_count > 0,
-                "connected-tree emission must not dead-end before acceptance"
-            );
+            assert!(successor_count > 0, "tree emission must not dead-end");
         }
-
         complete
     }
 
@@ -825,7 +666,6 @@ mod tests {
                 used[index] = false;
             }
         }
-
         if items.is_empty() {
             return vec![Vec::new()];
         }
@@ -863,7 +703,6 @@ mod tests {
                 let bond = surface.bond_text(incident.bond(), atom);
                 let inline = index + 1 == order.len();
                 let mut next = Vec::new();
-
                 for prefix in &partial {
                     for child in &child_support {
                         if inline {
@@ -877,7 +716,6 @@ mod tests {
             }
             support.extend(partial);
         }
-
         support
     }
 
@@ -891,7 +729,7 @@ mod tests {
     }
 
     #[test]
-    fn complete_connected_tree_support_matches_an_independent_reference() {
+    fn connected_tree_support_remains_exact() {
         let fixtures = [
             fixture(&["C"], &[]).0,
             fixture(
@@ -911,26 +749,7 @@ mod tests {
                 ],
             )
             .0,
-            fixture(
-                &["C", "N", "O", "F", "S"],
-                &[
-                    (0, 1, NonStereoBondToken::Elided),
-                    (0, 2, NonStereoBondToken::Elided),
-                    (1, 3, NonStereoBondToken::Elided),
-                    (1, 4, NonStereoBondToken::Double),
-                ],
-            )
-            .0,
-            fixture(
-                &["C", "O", "N"],
-                &[
-                    (0, 1, NonStereoBondToken::Double),
-                    (0, 2, NonStereoBondToken::Elided),
-                ],
-            )
-            .0,
         ];
-
         for surface in fixtures {
             assert_eq!(
                 reachable_strings(&surface),

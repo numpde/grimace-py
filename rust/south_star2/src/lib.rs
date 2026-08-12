@@ -16,8 +16,6 @@ mod native_solver;
 mod nonstereo_writer;
 mod prepared;
 mod solver;
-#[cfg(test)]
-mod structural_oracle;
 mod traversal;
 mod writer_state;
 

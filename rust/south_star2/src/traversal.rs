@@ -401,7 +401,9 @@ impl TraversalState {
         graph: &PreparedGraph,
         incident: AdjacentBond,
     ) -> RingLabelSlot {
-        let active_atom = self.active_atom().expect("a ring endpoint requires an active atom");
+        let active_atom = self
+            .active_atom()
+            .expect("a ring endpoint requires an active atom");
         let incident_state = self
             .progress
             .classify_incident(graph, active_atom, incident);
@@ -426,7 +428,9 @@ impl TraversalState {
         graph: &PreparedGraph,
         incident: AdjacentBond,
     ) -> RingLabelSlot {
-        let active_atom = self.active_atom().expect("a ring endpoint requires an active atom");
+        let active_atom = self
+            .active_atom()
+            .expect("a ring endpoint requires an active atom");
         assert_eq!(
             self.progress
                 .classify_incident(graph, active_atom, incident),
@@ -493,7 +497,10 @@ impl TraversalState {
         incident: AdjacentBond,
         placement: ChildPlacement,
     ) {
-        let mut parent = self.active.take().expect("a child requires an active frame");
+        let mut parent = self
+            .active
+            .take()
+            .expect("a child requires an active frame");
         assert_eq!(
             self.progress
                 .classify_incident(graph, parent.atom, incident),
@@ -590,10 +597,7 @@ fn residual_attachments(
         .enumerate()
         .filter(|(_, incidences)| !incidences.is_empty())
         .map(|(component, incidences)| {
-            (
-                component_mins[component],
-                ResidualAttachment { incidences },
-            )
+            (component_mins[component], ResidualAttachment { incidences })
         })
         .collect::<Vec<_>>();
     attachments.sort_by_key(|(minimum, _)| *minimum);
@@ -662,10 +666,7 @@ mod tests {
 
         assert_eq!(state.active_attachments().len(), 3);
         for (attachment, bond) in state.active_attachments().iter().zip(bonds) {
-            assert_eq!(
-                attachment.incidences(),
-                &[incident(&graph, atoms[0], bond)]
-            );
+            assert_eq!(attachment.incidences(), &[incident(&graph, atoms[0], bond)]);
         }
     }
 

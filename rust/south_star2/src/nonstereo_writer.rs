@@ -144,8 +144,9 @@ pub(crate) enum PreparedConnectedNonStereoError {
 impl fmt::Display for PreparedConnectedNonStereoError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::EmptyMolecule => formatter
-                .write_str("a connected non-stereo surface requires at least one atom"),
+            Self::EmptyMolecule => {
+                formatter.write_str("a connected non-stereo surface requires at least one atom")
+            }
             Self::DisconnectedMolecule => {
                 formatter.write_str("a connected non-stereo surface requires one graph component")
             }
@@ -158,7 +159,10 @@ impl fmt::Display for PreparedConnectedNonStereoError {
                 "expected {expected} prepared bond tokens, received {actual}"
             ),
             Self::EmptyAtomText(atom) => {
-                write!(formatter, "prepared atom text for {atom:?} must not be empty")
+                write!(
+                    formatter,
+                    "prepared atom text for {atom:?} must not be empty"
+                )
             }
         }
     }
@@ -191,9 +195,7 @@ pub(crate) struct ConnectedNonStereoWriterState<S> {
 }
 
 impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
-    pub(crate) fn initial(
-        surface: &PreparedConnectedNonStereo,
-    ) -> Result<Self, S::Error> {
+    pub(crate) fn initial(surface: &PreparedConnectedNonStereo) -> Result<Self, S::Error> {
         Ok(Self {
             surface: surface.clone(),
             structural: WriterState::initial(surface.molecule())?,
@@ -308,7 +310,9 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
             "pending text must be emitted before a branch"
         );
         assert!(
-            self.visible_frontier().branch_children().contains(&incident),
+            self.visible_frontier()
+                .branch_children()
+                .contains(&incident),
             "branch emission requires an advertised branch child"
         );
         let structural = self.structural.commit_traversal_edge(incident)?;
@@ -455,9 +459,7 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
             return self;
         }
         assert!(
-            self.structural
-                .structural_frontier()
-                .can_complete_path(),
+            self.structural.structural_frontier().can_complete_path(),
             "a complete connected graph must have a completable top-level path"
         );
         let completed = self.structural.complete_path();
@@ -531,11 +533,7 @@ mod tests {
         (surface, atoms, bonds)
     }
 
-    fn incident(
-        surface: &PreparedConnectedNonStereo,
-        atom: AtomId,
-        bond: BondId,
-    ) -> AdjacentBond {
+    fn incident(surface: &PreparedConnectedNonStereo, atom: AtomId, bond: BondId) -> AdjacentBond {
         surface
             .molecule()
             .graph()
@@ -577,7 +575,8 @@ mod tests {
         ));
         assert!(matches!(
             PreparedConnectedNonStereo::new(single, vec![String::new()], Vec::new()),
-            Err(PreparedConnectedNonStereoError::EmptyAtomText(AtomId::new(0)))
+            Err(PreparedConnectedNonStereoError::EmptyAtomText(atom))
+                if atom == AtomId::new(0)
         ));
 
         let mut graph = PreparedGraphBuilder::new();
@@ -616,10 +615,7 @@ mod tests {
 
     #[test]
     fn explicit_inline_bond_commits_before_child_entry() {
-        let (surface, atoms, bonds) = fixture(
-            &["C", "O"],
-            &[(0, 1, NonStereoBondToken::Double)],
-        );
+        let (surface, atoms, bonds) = fixture(&["C", "O"], &[(0, 1, NonStereoBondToken::Double)]);
         let initial = State::initial(&surface).unwrap();
         let (_, rooted) = initial.emit_root(atoms[0]);
         let edge = incident(&surface, atoms[0], bonds[0]);
@@ -636,10 +632,8 @@ mod tests {
 
     #[test]
     fn dative_bond_text_follows_prepared_orientation() {
-        let (surface, atoms, bonds) = fixture(
-            &["N", "B"],
-            &[(0, 1, NonStereoBondToken::DativeAToB)],
-        );
+        let (surface, atoms, bonds) =
+            fixture(&["N", "B"], &[(0, 1, NonStereoBondToken::DativeAToB)]);
         let initial = State::initial(&surface).unwrap();
         let edge_from_n = incident(&surface, atoms[0], bonds[0]);
         let edge_from_b = incident(&surface, atoms[1], bonds[0]);
@@ -770,8 +764,7 @@ mod tests {
         for order in permutations(&children) {
             let mut partial = vec![surface.atom_text(atom).to_owned()];
             for (index, incident) in order.iter().copied().enumerate() {
-                let child_support =
-                    reference_subtree_strings(surface, incident.atom(), Some(atom));
+                let child_support = reference_subtree_strings(surface, incident.atom(), Some(atom));
                 let bond = surface.bond_text(incident.bond(), atom);
                 let inline = index + 1 == order.len();
                 let mut next = Vec::new();

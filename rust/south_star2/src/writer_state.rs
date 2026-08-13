@@ -121,7 +121,10 @@ impl<S: ConstraintSolver> WriterState<S> {
 
         for attachment in self.traversal.active_attachments() {
             let incidences = attachment.incidences();
-            assert!(!incidences.is_empty(), "residual attachments must not be empty");
+            assert!(
+                !incidences.is_empty(),
+                "residual attachments must not be empty"
+            );
 
             let role_domains = incidences
                 .iter()
@@ -149,8 +152,7 @@ impl<S: ConstraintSolver> WriterState<S> {
                 if !domain.contains(BondRole::Ring.value_index()) {
                     continue;
                 }
-                let candidate_can_traverse =
-                    domain.contains(BondRole::Traversal.value_index());
+                let candidate_can_traverse = domain.contains(BondRole::Traversal.value_index());
                 if traversal_capable_count > usize::from(candidate_can_traverse) {
                     frontier.ring_openings.push(candidate);
                 }
@@ -195,10 +197,7 @@ impl<S: ConstraintSolver> WriterState<S> {
 
     /// Commit one advertised child incidence as the traversal entry of its
     /// residual attachment without entering the child atom yet.
-    pub(crate) fn commit_traversal_edge(
-        &self,
-        incident: AdjacentBond,
-    ) -> Result<Self, S::Error> {
+    pub(crate) fn commit_traversal_edge(&self, incident: AdjacentBond) -> Result<Self, S::Error> {
         let frontier = self.structural_frontier();
         assert!(!frontier.is_contradiction());
         assert!(

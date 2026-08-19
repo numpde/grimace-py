@@ -355,7 +355,7 @@ fn add_pending(
 fn allocate_label(free_labels: &mut Vec<usize>, next_label: &mut usize) -> usize {
     if free_labels.is_empty() {
         let label = *next_label;
-        *next_label = next_label
+        *next_label = (*next_label)
             .checked_add(1)
             .expect("reference label space must not overflow");
         label

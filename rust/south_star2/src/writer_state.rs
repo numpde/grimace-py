@@ -77,6 +77,25 @@ impl<S: ConstraintSolver> WriterState<S> {
         self.traversal.graph_is_complete()
     }
 
+    pub(crate) fn next_ring_label_slot(&self) -> RingLabelSlot {
+        self.traversal.next_ring_label_slot()
+    }
+
+    pub(crate) fn ring_closure_facts(
+        &self,
+        incident: AdjacentBond,
+    ) -> (AtomId, RingLabelSlot) {
+        assert_eq!(
+            self.traversal
+                .classify_active_incident(self.prepared.graph(), incident),
+            IncidentBondState::RingOpenAtOtherAtom,
+            "ring-closure facts require an endpoint opened at the other atom"
+        );
+        self.traversal
+            .ring_open_facts_for_active_incident(self.prepared.graph(), incident)
+            .expect("an advertised ring closure must retain its first endpoint and label slot")
+    }
+
     fn bond_role_domain(&self, bond: BondId) -> Domain {
         let variable = role_variable(&self.prepared, bond);
         self.constraints
@@ -360,6 +379,7 @@ mod tests {
         assert_eq!(frontier.ring_openings(), &[left_incident, right_incident]);
         assert!(frontier.branch_children().is_empty());
         assert!(frontier.inline_children().is_empty());
+        assert_eq!(rooted.next_ring_label_slot().index(), 0);
 
         let (opened, label_slot) = rooted.open_ring_endpoint(left_incident).unwrap();
         assert_eq!(
@@ -367,6 +387,7 @@ mod tests {
             BondRole::role_domain(),
             "the source state must remain unchanged"
         );
+        assert_eq!(opened.next_ring_label_slot().index(), 1);
         let opened_frontier = opened.structural_frontier();
         assert!(opened_frontier.ring_openings().is_empty());
         assert!(opened_frontier.branch_children().is_empty());
@@ -391,6 +412,7 @@ mod tests {
         let walked = committed.enter_inline_child(between_incident);
         let closing = incident(&prepared, atoms[1], left);
         assert_eq!(walked.structural_frontier().ring_closures(), &[closing]);
+        assert_eq!(walked.ring_closure_facts(closing), (atoms[0], label_slot));
 
         let (closed, closed_slot) = walked.close_ring_endpoint(closing);
         assert_eq!(closed_slot, label_slot);

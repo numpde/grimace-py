@@ -1,10 +1,10 @@
 //! Graph-general control state for the South Star 2 writer.
 //!
-//! This module owns evolving graph-representation facts, active and suspended
-//! writer frames, and live ring-label bindings. Each frame retains the residual
-//! attachment groups computed when its atom was entered.
+//! This module owns evolving graph-representation facts plus active and
+//! suspended writer frames. Concrete SMILES spelling, including ring-label
+//! assignment, remains outside structural traversal state.
 
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::VecDeque;
 
 use crate::ids::{AtomId, BondId};
 use crate::prepared::{AdjacentBond, PreparedGraph};
@@ -56,78 +56,6 @@ impl DenseSet {
     }
 }
 
-/// A zero-based live ring-label resource.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct RingLabelSlot(usize);
-
-impl RingLabelSlot {
-    pub(crate) const fn index(self) -> usize {
-        self.0
-    }
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-struct ActiveRingLabels {
-    bonds_by_slot: BTreeMap<RingLabelSlot, BondId>,
-    retired_at_current_atom: BTreeSet<RingLabelSlot>,
-}
-
-impl ActiveRingLabels {
-    fn next_available(&self) -> RingLabelSlot {
-        let mut candidate = RingLabelSlot(0);
-        while self.bonds_by_slot.contains_key(&candidate)
-            || self.retired_at_current_atom.contains(&candidate)
-        {
-            candidate = RingLabelSlot(
-                candidate
-                    .index()
-                    .checked_add(1)
-                    .expect("ring-label slot space must not overflow"),
-            );
-        }
-        candidate
-    }
-
-    fn allocate(&mut self, bond: BondId) -> RingLabelSlot {
-        let slot = self.next_available();
-        assert_eq!(
-            self.bonds_by_slot.insert(slot, bond),
-            None,
-            "a newly allocated ring-label slot must be free"
-        );
-        slot
-    }
-
-    fn require_owner(&self, slot: RingLabelSlot, bond: BondId) {
-        assert_eq!(
-            self.bonds_by_slot.get(&slot),
-            Some(&bond),
-            "an open ring label must belong to its bond"
-        );
-    }
-
-    fn retire_at_current_atom(&mut self, slot: RingLabelSlot, bond: BondId) {
-        self.require_owner(slot, bond);
-        assert_eq!(self.bonds_by_slot.remove(&slot), Some(bond));
-        assert!(
-            self.retired_at_current_atom.insert(slot),
-            "a ring-label slot may retire only once at one atom"
-        );
-    }
-
-    fn finish_current_atom(&mut self) {
-        self.retired_at_current_atom.clear();
-    }
-
-    fn is_empty(&self) -> bool {
-        self.bonds_by_slot.is_empty()
-    }
-
-    fn is_clean(&self) -> bool {
-        self.bonds_by_slot.is_empty() && self.retired_at_current_atom.is_empty()
-    }
-}
-
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum BondProgress {
     Unrepresented,
@@ -137,7 +65,6 @@ enum BondProgress {
     },
     RingOpen {
         first_endpoint: AtomId,
-        label_slot: RingLabelSlot,
     },
     RingClosed {
         first_endpoint: AtomId,
@@ -150,6 +77,7 @@ struct GraphProgress {
     visited_atoms: DenseSet,
     bonds: Box<[BondProgress]>,
     represented_bond_count: usize,
+    open_ring_count: usize,
 }
 
 impl GraphProgress {
@@ -158,6 +86,7 @@ impl GraphProgress {
             visited_atoms: DenseSet::new(graph.atom_count()),
             bonds: vec![BondProgress::Unrepresented; graph.bond_count()].into_boxed_slice(),
             represented_bond_count: 0,
+            open_ring_count: 0,
         }
     }
 
@@ -180,26 +109,20 @@ impl GraphProgress {
         self.represented_bond_count += 1;
     }
 
-    fn open_ring(&mut self, bond: BondId, first_endpoint: AtomId, label_slot: RingLabelSlot) {
+    fn open_ring(&mut self, bond: BondId, first_endpoint: AtomId) {
         let progress = self.bond_progress_mut(bond);
         assert_eq!(
             *progress,
             BondProgress::Unrepresented,
             "a ring bond must be unrepresented when its first endpoint is written"
         );
-        *progress = BondProgress::RingOpen {
-            first_endpoint,
-            label_slot,
-        };
+        *progress = BondProgress::RingOpen { first_endpoint };
+        self.open_ring_count += 1;
     }
 
-    fn close_ring(&mut self, bond: BondId, second_endpoint: AtomId) -> RingLabelSlot {
+    fn close_ring(&mut self, bond: BondId, second_endpoint: AtomId) {
         let progress = self.bond_progress_mut(bond);
-        let BondProgress::RingOpen {
-            first_endpoint,
-            label_slot,
-        } = *progress
-        else {
+        let BondProgress::RingOpen { first_endpoint } = *progress else {
             panic!("a ring bond must be open before its second endpoint is written");
         };
         assert_ne!(
@@ -210,12 +133,16 @@ impl GraphProgress {
             first_endpoint,
             second_endpoint,
         };
+        self.open_ring_count -= 1;
         self.represented_bond_count += 1;
-        label_slot
     }
 
     const fn is_complete(&self) -> bool {
         self.visited_atoms.is_complete() && self.represented_bond_count == self.bonds.len()
+    }
+
+    const fn has_open_rings(&self) -> bool {
+        self.open_ring_count != 0
     }
 
     fn classify_incident(
@@ -244,10 +171,10 @@ impl GraphProgress {
             BondProgress::Traversed { .. } | BondProgress::RingClosed { .. } => {
                 IncidentBondState::Represented
             }
-            BondProgress::RingOpen { first_endpoint, .. } if *first_endpoint == at => {
+            BondProgress::RingOpen { first_endpoint } if *first_endpoint == at => {
                 IncidentBondState::RingOpenAtCurrentAtom
             }
-            BondProgress::RingOpen { first_endpoint, .. } => {
+            BondProgress::RingOpen { first_endpoint } => {
                 assert_eq!(
                     *first_endpoint,
                     incident.atom(),
@@ -258,21 +185,13 @@ impl GraphProgress {
         }
     }
 
-    fn ring_open_facts(&self, bond: BondId) -> Option<(AtomId, RingLabelSlot)> {
+    fn ring_first_endpoint(&self, bond: BondId) -> Option<AtomId> {
         match self.bond_progress(bond) {
-            BondProgress::RingOpen {
-                first_endpoint,
-                label_slot,
-            } => Some((*first_endpoint, *label_slot)),
+            BondProgress::RingOpen { first_endpoint } => Some(*first_endpoint),
             BondProgress::Unrepresented
             | BondProgress::Traversed { .. }
             | BondProgress::RingClosed { .. } => None,
         }
-    }
-
-    fn ring_label_slot(&self, bond: BondId) -> Option<RingLabelSlot> {
-        self.ring_open_facts(bond)
-            .map(|(_first_endpoint, label_slot)| label_slot)
     }
 
     fn bond_progress(&self, bond: BondId) -> &BondProgress {
@@ -359,7 +278,6 @@ pub(crate) struct TraversalState {
     progress: GraphProgress,
     active: Option<WriterFrame>,
     branch_returns: Vec<WriterFrame>,
-    ring_labels: ActiveRingLabels,
 }
 
 impl TraversalState {
@@ -368,7 +286,6 @@ impl TraversalState {
             progress: GraphProgress::new(graph),
             active: None,
             branch_returns: Vec::new(),
-            ring_labels: ActiveRingLabels::default(),
         }
     }
 
@@ -381,7 +298,8 @@ impl TraversalState {
     }
 
     pub(crate) fn can_complete_path(&self) -> bool {
-        self.active.is_some() && (!self.branch_returns.is_empty() || self.ring_labels.is_empty())
+        self.active.is_some()
+            && (!self.branch_returns.is_empty() || !self.progress.has_open_rings())
     }
 
     pub(crate) fn active_attachments(&self) -> &[ResidualAttachment] {
@@ -400,15 +318,11 @@ impl TraversalState {
             .filter(|atom| !self.progress.atom_is_visited(*atom))
     }
 
-    pub(crate) fn next_ring_label_slot(&self) -> RingLabelSlot {
-        self.ring_labels.next_available()
-    }
-
     pub(crate) fn begin_component(&mut self, graph: &PreparedGraph, root: AtomId) {
         assert!(
             self.active.is_none()
                 && self.branch_returns.is_empty()
-                && self.ring_labels.is_clean(),
+                && !self.progress.has_open_rings(),
             "a component can begin only after the previous component is closed"
         );
         self.progress.visit_atom(root);
@@ -423,19 +337,13 @@ impl TraversalState {
         self.enter_child(graph, incident, ChildPlacement::Branch);
     }
 
-    pub(crate) fn open_ring_endpoint(
-        &mut self,
-        graph: &PreparedGraph,
-        incident: AdjacentBond,
-    ) -> RingLabelSlot {
+    pub(crate) fn open_ring_endpoint(&mut self, graph: &PreparedGraph, incident: AdjacentBond) {
         let active_atom = self
             .active_atom()
             .expect("a ring endpoint requires an active atom");
-        let incident_state = self
-            .progress
-            .classify_incident(graph, active_atom, incident);
         assert_eq!(
-            incident_state,
+            self.progress
+                .classify_incident(graph, active_atom, incident),
             IncidentBondState::UnrepresentedToUnvisitedAtom,
             "a first ring endpoint must be written before its other atom is visited"
         );
@@ -443,18 +351,10 @@ impl TraversalState {
             .as_mut()
             .expect("ring opening requires an active frame")
             .remove_ring_incidence(incident);
-
-        let label_slot = self.ring_labels.allocate(incident.bond());
-        self.progress
-            .open_ring(incident.bond(), active_atom, label_slot);
-        label_slot
+        self.progress.open_ring(incident.bond(), active_atom);
     }
 
-    pub(crate) fn close_ring_endpoint(
-        &mut self,
-        graph: &PreparedGraph,
-        incident: AdjacentBond,
-    ) -> RingLabelSlot {
+    pub(crate) fn close_ring_endpoint(&mut self, graph: &PreparedGraph, incident: AdjacentBond) {
         let active_atom = self
             .active_atom()
             .expect("a ring endpoint requires an active atom");
@@ -464,39 +364,20 @@ impl TraversalState {
             IncidentBondState::RingOpenAtOtherAtom,
             "a second ring endpoint must pair a bond opened at its other atom"
         );
-
-        let label_slot = self
-            .progress
-            .ring_label_slot(incident.bond())
-            .expect("an open ring bond must own a label slot");
-        self.ring_labels.require_owner(label_slot, incident.bond());
-        let closed_slot = self.progress.close_ring(incident.bond(), active_atom);
-        assert_eq!(closed_slot, label_slot);
-        self.ring_labels
-            .retire_at_current_atom(label_slot, incident.bond());
-        label_slot
+        self.progress.close_ring(incident.bond(), active_atom);
     }
 
-    pub(crate) fn ring_open_facts_for_active_incident(
+    pub(crate) fn ring_first_endpoint_for_active_incident(
         &self,
         graph: &PreparedGraph,
         incident: AdjacentBond,
-    ) -> Option<(AtomId, RingLabelSlot)> {
+    ) -> Option<AtomId> {
         let active_atom = self
             .active_atom()
-            .expect("ring lookup requires an active atom");
+            .expect("ring-endpoint lookup requires an active atom");
         self.progress
             .classify_incident(graph, active_atom, incident);
-        self.progress.ring_open_facts(incident.bond())
-    }
-
-    pub(crate) fn ring_label_slot_for_active_incident(
-        &self,
-        graph: &PreparedGraph,
-        incident: AdjacentBond,
-    ) -> Option<RingLabelSlot> {
-        self.ring_open_facts_for_active_incident(graph, incident)
-            .map(|(_first_endpoint, label_slot)| label_slot)
+        self.progress.ring_first_endpoint(incident.bond())
     }
 
     pub(crate) fn complete_path(&mut self) -> Option<AtomId> {
@@ -505,11 +386,10 @@ impl TraversalState {
             active.attachments.is_empty(),
             "a path cannot complete with unresolved residual attachments"
         );
-        self.ring_labels.finish_current_atom();
         let restored = self.branch_returns.pop();
         if restored.is_none() {
             assert!(
-                self.ring_labels.is_empty(),
+                !self.progress.has_open_rings(),
                 "a component cannot end with an unpaired ring endpoint"
             );
         }
@@ -554,6 +434,7 @@ impl TraversalState {
                     !parent.attachments.is_empty(),
                     "a branch requires another residual attachment for the main continuation"
                 );
+                self.branch_returns.push(parent);
             }
             ChildPlacement::Inline => {
                 assert!(
@@ -561,11 +442,6 @@ impl TraversalState {
                     "the inline child must consume the final residual attachment"
                 );
             }
-        }
-
-        self.ring_labels.finish_current_atom();
-        if placement == ChildPlacement::Branch {
-            self.branch_returns.push(parent);
         }
 
         let child = incident.atom();
@@ -752,7 +628,7 @@ mod tests {
     }
 
     #[test]
-    fn ring_endpoint_lifecycle_preserves_its_label_slot() {
+    fn ring_endpoint_lifecycle_retains_only_structural_facts() {
         let mut builder = PreparedGraphBuilder::new();
         let atoms: [AtomId; 3] = std::array::from_fn(|_| builder.add_atom().unwrap());
         let first = builder.add_bond(atoms[0], atoms[1]).unwrap();
@@ -763,88 +639,21 @@ mod tests {
 
         state.begin_component(&graph, atoms[0]);
         let opening = incident(&graph, atoms[0], ring);
-        let label_slot = state.open_ring_endpoint(&graph, opening);
-        assert_eq!(label_slot.index(), 0);
+        state.open_ring_endpoint(&graph, opening);
         assert_eq!(
-            state.ring_label_slot_for_active_incident(&graph, opening),
-            Some(label_slot)
+            state.ring_first_endpoint_for_active_incident(&graph, opening),
+            Some(atoms[0])
         );
 
         state.enter_inline_child(&graph, incident(&graph, atoms[0], first));
         state.enter_inline_child(&graph, incident(&graph, atoms[1], second));
         let closing = incident(&graph, atoms[2], ring);
         assert_eq!(
-            state.ring_label_slot_for_active_incident(&graph, closing),
-            Some(label_slot)
+            state.ring_first_endpoint_for_active_incident(&graph, closing),
+            Some(atoms[0])
         );
-        assert_eq!(state.close_ring_endpoint(&graph, closing), label_slot);
+        state.close_ring_endpoint(&graph, closing);
         assert!(state.graph_is_complete());
-        assert_eq!(state.complete_path(), None);
-    }
-
-    #[test]
-    fn ring_label_slots_do_not_reuse_until_the_atom_is_left() {
-        let mut builder = PreparedGraphBuilder::new();
-        let atoms: [AtomId; 5] = std::array::from_fn(|_| builder.add_atom().unwrap());
-        let path = [
-            builder.add_bond(atoms[0], atoms[1]).unwrap(),
-            builder.add_bond(atoms[1], atoms[2]).unwrap(),
-            builder.add_bond(atoms[2], atoms[3]).unwrap(),
-            builder.add_bond(atoms[3], atoms[4]).unwrap(),
-        ];
-        let first_ring = builder.add_bond(atoms[0], atoms[2]).unwrap();
-        let long_ring = builder.add_bond(atoms[0], atoms[4]).unwrap();
-        let later_ring = builder.add_bond(atoms[2], atoms[4]).unwrap();
-        let graph = builder.build();
-        let mut state = TraversalState::new(&graph);
-
-        state.begin_component(&graph, atoms[0]);
-        assert_eq!(
-            state
-                .open_ring_endpoint(&graph, incident(&graph, atoms[0], first_ring))
-                .index(),
-            0
-        );
-        assert_eq!(
-            state
-                .open_ring_endpoint(&graph, incident(&graph, atoms[0], long_ring))
-                .index(),
-            1
-        );
-        state.enter_inline_child(&graph, incident(&graph, atoms[0], path[0]));
-        state.enter_inline_child(&graph, incident(&graph, atoms[1], path[1]));
-
-        assert_eq!(
-            state
-                .close_ring_endpoint(&graph, incident(&graph, atoms[2], first_ring))
-                .index(),
-            0
-        );
-        assert_eq!(state.next_ring_label_slot().index(), 2);
-        assert_eq!(
-            state
-                .open_ring_endpoint(&graph, incident(&graph, atoms[2], later_ring))
-                .index(),
-            2
-        );
-        state.enter_inline_child(&graph, incident(&graph, atoms[2], path[2]));
-        assert_eq!(state.next_ring_label_slot().index(), 0);
-        state.enter_inline_child(&graph, incident(&graph, atoms[3], path[3]));
-
-        assert_eq!(
-            state
-                .close_ring_endpoint(&graph, incident(&graph, atoms[4], long_ring))
-                .index(),
-            1
-        );
-        assert_eq!(
-            state
-                .close_ring_endpoint(&graph, incident(&graph, atoms[4], later_ring))
-                .index(),
-            2
-        );
-        assert!(state.graph_is_complete());
-        assert_eq!(state.next_ring_label_slot().index(), 0);
         assert_eq!(state.complete_path(), None);
     }
 }

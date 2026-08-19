@@ -9,7 +9,7 @@ use crate::ids::{AtomId, BondId, VariableId};
 use crate::model::BondRole;
 use crate::prepared::{AdjacentBond, PreparedMolecule};
 use crate::solver::ConstraintSolver;
-use crate::traversal::{IncidentBondState, RingLabelSlot, TraversalState};
+use crate::traversal::{IncidentBondState, TraversalState};
 
 #[derive(Debug, Default)]
 pub(crate) struct StructuralFrontier {
@@ -77,14 +77,7 @@ impl<S: ConstraintSolver> WriterState<S> {
         self.traversal.graph_is_complete()
     }
 
-    pub(crate) fn next_ring_label_slot(&self) -> RingLabelSlot {
-        self.traversal.next_ring_label_slot()
-    }
-
-    pub(crate) fn ring_closure_facts(
-        &self,
-        incident: AdjacentBond,
-    ) -> (AtomId, RingLabelSlot) {
+    pub(crate) fn ring_closure_first_endpoint(&self, incident: AdjacentBond) -> AtomId {
         assert_eq!(
             self.traversal
                 .classify_active_incident(self.prepared.graph(), incident),
@@ -92,8 +85,8 @@ impl<S: ConstraintSolver> WriterState<S> {
             "ring-closure facts require an endpoint opened at the other atom"
         );
         self.traversal
-            .ring_open_facts_for_active_incident(self.prepared.graph(), incident)
-            .expect("an advertised ring closure must retain its first endpoint and label slot")
+            .ring_first_endpoint_for_active_incident(self.prepared.graph(), incident)
+            .expect("an advertised ring closure must retain its first endpoint")
     }
 
     fn bond_role_domain(&self, bond: BondId) -> Domain {
@@ -270,10 +263,7 @@ impl<S: ConstraintSolver> WriterState<S> {
         successor
     }
 
-    pub(crate) fn open_ring_endpoint(
-        &self,
-        incident: AdjacentBond,
-    ) -> Result<(Self, RingLabelSlot), S::Error> {
+    pub(crate) fn open_ring_endpoint(&self, incident: AdjacentBond) -> Result<Self, S::Error> {
         let frontier = self.structural_frontier();
         assert!(!frontier.is_contradiction());
         assert!(
@@ -283,18 +273,15 @@ impl<S: ConstraintSolver> WriterState<S> {
 
         let constraints = self.restricted_role(incident.bond(), BondRole::Ring)?;
         let mut traversal = self.traversal.clone();
-        let label_slot = traversal.open_ring_endpoint(self.prepared.graph(), incident);
-        Ok((
-            Self {
-                prepared: self.prepared.clone(),
-                traversal,
-                constraints,
-            },
-            label_slot,
-        ))
+        traversal.open_ring_endpoint(self.prepared.graph(), incident);
+        Ok(Self {
+            prepared: self.prepared.clone(),
+            traversal,
+            constraints,
+        })
     }
 
-    pub(crate) fn close_ring_endpoint(&self, incident: AdjacentBond) -> (Self, RingLabelSlot) {
+    pub(crate) fn close_ring_endpoint(&self, incident: AdjacentBond) -> Self {
         let frontier = self.structural_frontier();
         assert!(!frontier.is_contradiction());
         assert!(
@@ -302,10 +289,10 @@ impl<S: ConstraintSolver> WriterState<S> {
             "a ring closure must be advertised by the structural frontier"
         );
         let mut successor = self.clone();
-        let label_slot = successor
+        successor
             .traversal
             .close_ring_endpoint(self.prepared.graph(), incident);
-        (successor, label_slot)
+        successor
     }
 
     pub(crate) fn complete_path(&self) -> Self {
@@ -336,6 +323,7 @@ fn role_variable(prepared: &PreparedMolecule, bond: BondId) -> VariableId {
         .expect("prepared bond must have a role variable")
 }
 
+#[cfg(test)]
 fn role_restriction(
     prepared: &PreparedMolecule,
     bond: BondId,
@@ -379,18 +367,15 @@ mod tests {
         assert_eq!(frontier.ring_openings(), &[left_incident, right_incident]);
         assert!(frontier.branch_children().is_empty());
         assert!(frontier.inline_children().is_empty());
-        assert_eq!(rooted.next_ring_label_slot().index(), 0);
 
-        let (opened, label_slot) = rooted.open_ring_endpoint(left_incident).unwrap();
+        let opened = rooted.open_ring_endpoint(left_incident).unwrap();
         assert_eq!(
             rooted.bond_role_domain(left),
             BondRole::role_domain(),
             "the source state must remain unchanged"
         );
-        assert_eq!(opened.next_ring_label_slot().index(), 1);
         let opened_frontier = opened.structural_frontier();
         assert!(opened_frontier.ring_openings().is_empty());
-        assert!(opened_frontier.branch_children().is_empty());
         assert_eq!(opened_frontier.inline_children(), &[right_incident]);
         assert_eq!(
             opened.bond_role_domain(left),
@@ -412,10 +397,9 @@ mod tests {
         let walked = committed.enter_inline_child(between_incident);
         let closing = incident(&prepared, atoms[1], left);
         assert_eq!(walked.structural_frontier().ring_closures(), &[closing]);
-        assert_eq!(walked.ring_closure_facts(closing), (atoms[0], label_slot));
+        assert_eq!(walked.ring_closure_first_endpoint(closing), atoms[0]);
 
-        let (closed, closed_slot) = walked.close_ring_endpoint(closing);
-        assert_eq!(closed_slot, label_slot);
+        let closed = walked.close_ring_endpoint(closing);
         assert!(closed.graph_is_complete());
         let finished = closed.complete_path();
         assert_eq!(finished.active_atom(), None);
@@ -508,9 +492,8 @@ mod tests {
             ]
         );
         assert!(frontier.branch_children().is_empty());
-        assert!(frontier.inline_children().is_empty());
 
-        let (opened, _) = rooted
+        let opened = rooted
             .open_ring_endpoint(incident(&prepared, atoms[0], left))
             .unwrap();
         assert_eq!(

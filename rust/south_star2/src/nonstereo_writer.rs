@@ -1,8 +1,9 @@
 //! Connected non-stereo visible-token state.
 //!
-//! The implemented transitions currently cover roots, inline children, and
-//! branch syntax. Ring endpoint emission and disconnected-component separators
-//! are unfinished syntax in the same writer, not separate preparation modes.
+//! Roots, ring endpoints, inline children, and branch syntax advance through the
+//! same writer state. An explicit child bond leaves traversal at the parent until
+//! its atom is emitted. An explicit ring-closing bond likewise leaves the ring
+//! open until its label is emitted.
 
 use std::fmt;
 use std::sync::Arc;
@@ -10,6 +11,7 @@ use std::sync::Arc;
 use crate::ids::{AtomId, BondId};
 use crate::prepared::{AdjacentBond, PreparedBond, PreparedGraph, PreparedMolecule};
 use crate::solver::ConstraintSolver;
+use crate::traversal::RingLabelSlot;
 use crate::writer_state::{StructuralFrontier, WriterState};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -171,18 +173,23 @@ impl fmt::Display for PreparedConnectedNonStereoError {
 impl std::error::Error for PreparedConnectedNonStereoError {}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-enum PendingChild {
+enum PendingEmission {
     InlineAtom(AdjacentBond),
     BranchBondOrAtom(AdjacentBond),
     BranchAtom(AdjacentBond),
+    RingClosureLabel {
+        incident: AdjacentBond,
+        label_slot: RingLabelSlot,
+    },
 }
 
-impl PendingChild {
+impl PendingEmission {
     const fn incident(self) -> AdjacentBond {
         match self {
             Self::InlineAtom(incident)
             | Self::BranchBondOrAtom(incident)
-            | Self::BranchAtom(incident) => incident,
+            | Self::BranchAtom(incident)
+            | Self::RingClosureLabel { incident, .. } => incident,
         }
     }
 }
@@ -191,7 +198,7 @@ impl PendingChild {
 pub(crate) struct ConnectedNonStereoWriterState<S> {
     surface: PreparedConnectedNonStereo,
     structural: WriterState<S>,
-    pending_child: Option<PendingChild>,
+    pending: Option<PendingEmission>,
 }
 
 impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
@@ -199,7 +206,7 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
         Ok(Self {
             surface: surface.clone(),
             structural: WriterState::initial(surface.molecule())?,
-            pending_child: None,
+            pending: None,
         })
     }
 
@@ -212,16 +219,16 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
     }
 
     pub(crate) fn is_accepted(&self) -> bool {
-        self.pending_child.is_none()
+        self.pending.is_none()
             && self.structural.active_atom().is_none()
             && self.structural.graph_is_complete()
     }
 
     pub(crate) fn root_choices(&self) -> Vec<(AtomId, &str)> {
-        if self.pending_child.is_some() || self.is_accepted() {
+        if self.pending.is_some() || self.is_accepted() {
             return Vec::new();
         }
-        self.visible_frontier()
+        self.frontier()
             .component_roots()
             .iter()
             .copied()
@@ -229,11 +236,49 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
             .collect()
     }
 
-    pub(crate) fn branch_choices(&self) -> Vec<(AdjacentBond, &'static str)> {
-        if self.pending_child.is_some() {
+    pub(crate) fn ring_open_choices(&self) -> Vec<(AdjacentBond, String)> {
+        if self.pending.is_some() {
             return Vec::new();
         }
-        self.visible_frontier()
+        let frontier = self.frontier();
+        if frontier.ring_openings().is_empty() {
+            return Vec::new();
+        }
+        let label_text = ring_label_text(self.structural.next_ring_label_slot());
+        frontier
+            .ring_openings()
+            .iter()
+            .copied()
+            .map(|incident| (incident, label_text.clone()))
+            .collect()
+    }
+
+    pub(crate) fn ring_close_choices(&self) -> Vec<(AdjacentBond, String)> {
+        if self.pending.is_some() {
+            return Vec::new();
+        }
+        self.frontier()
+            .ring_closures()
+            .iter()
+            .copied()
+            .map(|incident| {
+                let (first_endpoint, label_slot) = self.structural.ring_closure_facts(incident);
+                let bond_text = self.surface.bond_text(incident.bond(), first_endpoint);
+                let token = if bond_text.is_empty() {
+                    ring_label_text(label_slot)
+                } else {
+                    bond_text.to_owned()
+                };
+                (incident, token)
+            })
+            .collect()
+    }
+
+    pub(crate) fn branch_choices(&self) -> Vec<(AdjacentBond, &'static str)> {
+        if self.pending.is_some() {
+            return Vec::new();
+        }
+        self.frontier()
             .branch_children()
             .iter()
             .copied()
@@ -242,13 +287,13 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
     }
 
     pub(crate) fn inline_choices(&self) -> Vec<(AdjacentBond, &str)> {
-        if self.pending_child.is_some() {
+        if self.pending.is_some() {
             return Vec::new();
         }
         let Some(parent) = self.structural.active_atom() else {
             return Vec::new();
         };
-        self.visible_frontier()
+        self.frontier()
             .inline_children()
             .iter()
             .copied()
@@ -256,49 +301,120 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
             .collect()
     }
 
-    pub(crate) fn pending_choice(&self) -> Option<(AdjacentBond, &str)> {
-        let pending = self.pending_child?;
+    pub(crate) fn pending_choice(&self) -> Option<(AdjacentBond, String)> {
+        let pending = self.pending?;
         let incident = pending.incident();
         let text = match pending {
-            PendingChild::InlineAtom(_) | PendingChild::BranchAtom(_) => {
-                self.surface.atom_text(incident.atom())
+            PendingEmission::InlineAtom(_) | PendingEmission::BranchAtom(_) => {
+                self.surface.atom_text(incident.atom()).to_owned()
             }
-            PendingChild::BranchBondOrAtom(_) => {
+            PendingEmission::BranchBondOrAtom(_) => {
                 let parent = self
                     .structural
                     .active_atom()
                     .expect("a committed branch child requires its active parent");
-                self.surface.child_prefix(parent, incident)
+                self.surface.child_prefix(parent, incident).to_owned()
+            }
+            PendingEmission::RingClosureLabel { label_slot, .. } => {
+                ring_label_text(label_slot)
             }
         };
         Some((incident, text))
     }
 
     pub(crate) fn branch_close_choice(&self) -> Option<&'static str> {
-        if self.pending_child.is_some() {
+        if self.pending.is_some() {
             return None;
         }
-        let frontier = self.visible_frontier();
+        let frontier = self.frontier();
         (frontier.can_complete_path() && !self.structural.graph_is_complete()).then_some(")")
     }
 
     pub(crate) fn emit_root(&self, root: AtomId) -> (String, Self) {
         assert!(
-            self.pending_child.is_none(),
+            self.pending.is_none(),
             "pending text must be emitted before a root"
         );
         assert!(
-            self.visible_frontier().component_roots().contains(&root),
+            self.frontier().component_roots().contains(&root),
             "root emission requires an advertised component root"
         );
         let token = self.surface.atom_text(root).to_owned();
         let successor = Self {
             surface: self.surface.clone(),
             structural: self.structural.begin_component(root),
-            pending_child: None,
+            pending: None,
         }
         .normalize_component_completion();
         (token, successor)
+    }
+
+    pub(crate) fn emit_ring_open(
+        &self,
+        incident: AdjacentBond,
+    ) -> Result<(String, Self), S::Error> {
+        assert!(
+            self.pending.is_none(),
+            "pending text must be emitted before a ring opening"
+        );
+        assert!(
+            self.frontier().ring_openings().contains(&incident),
+            "ring opening requires an advertised residual-attachment incidence"
+        );
+
+        let expected_slot = self.structural.next_ring_label_slot();
+        let token = ring_label_text(expected_slot);
+        let (structural, actual_slot) = self.structural.open_ring_endpoint(incident)?;
+        assert_eq!(
+            actual_slot, expected_slot,
+            "observed next ring label must match the allocated slot"
+        );
+        Ok((
+            token,
+            Self {
+                surface: self.surface.clone(),
+                structural,
+                pending: None,
+            },
+        ))
+    }
+
+    pub(crate) fn emit_ring_close(&self, incident: AdjacentBond) -> (String, Self) {
+        assert!(
+            self.pending.is_none(),
+            "pending text must be emitted before a ring closure"
+        );
+        assert!(
+            self.frontier().ring_closures().contains(&incident),
+            "ring closure requires an advertised open endpoint"
+        );
+
+        let (first_endpoint, label_slot) = self.structural.ring_closure_facts(incident);
+        let bond_text = self.surface.bond_text(incident.bond(), first_endpoint);
+        if bond_text.is_empty() {
+            let token = ring_label_text(label_slot);
+            let (structural, actual_slot) = self.structural.close_ring_endpoint(incident);
+            assert_eq!(actual_slot, label_slot);
+            let successor = Self {
+                surface: self.surface.clone(),
+                structural,
+                pending: None,
+            }
+            .normalize_component_completion();
+            return (token, successor);
+        }
+
+        (
+            bond_text.to_owned(),
+            Self {
+                surface: self.surface.clone(),
+                structural: self.structural.clone(),
+                pending: Some(PendingEmission::RingClosureLabel {
+                    incident,
+                    label_slot,
+                }),
+            },
+        )
     }
 
     pub(crate) fn emit_branch_child(
@@ -306,13 +422,11 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
         incident: AdjacentBond,
     ) -> Result<(String, Self), S::Error> {
         assert!(
-            self.pending_child.is_none(),
+            self.pending.is_none(),
             "pending text must be emitted before a branch"
         );
         assert!(
-            self.visible_frontier()
-                .branch_children()
-                .contains(&incident),
+            self.frontier().branch_children().contains(&incident),
             "branch emission requires an advertised branch child"
         );
         let structural = self.structural.commit_traversal_edge(incident)?;
@@ -321,7 +435,7 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
             Self {
                 surface: self.surface.clone(),
                 structural,
-                pending_child: Some(PendingChild::BranchBondOrAtom(incident)),
+                pending: Some(PendingEmission::BranchBondOrAtom(incident)),
             },
         ))
     }
@@ -331,11 +445,11 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
         incident: AdjacentBond,
     ) -> Result<(String, Self), S::Error> {
         assert!(
-            self.pending_child.is_none(),
+            self.pending.is_none(),
             "pending text must be emitted before a child"
         );
         assert_eq!(
-            self.visible_frontier().inline_children(),
+            self.frontier().inline_children(),
             &[incident],
             "inline emission requires the sole advertised inline child"
         );
@@ -351,7 +465,7 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
             let successor = Self {
                 surface: self.surface.clone(),
                 structural: structural.enter_inline_child(incident),
-                pending_child: None,
+                pending: None,
             }
             .normalize_component_completion();
             return Ok((token, successor));
@@ -362,27 +476,27 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
             Self {
                 surface: self.surface.clone(),
                 structural,
-                pending_child: Some(PendingChild::InlineAtom(incident)),
+                pending: Some(PendingEmission::InlineAtom(incident)),
             },
         ))
     }
 
     pub(crate) fn emit_pending(&self) -> (String, Self) {
-        let pending = self.pending_child.expect("no committed text is pending");
+        let pending = self.pending.expect("no committed text is pending");
         let incident = pending.incident();
 
         match pending {
-            PendingChild::InlineAtom(_) => {
+            PendingEmission::InlineAtom(_) => {
                 let token = self.surface.atom_text(incident.atom()).to_owned();
                 let successor = Self {
                     surface: self.surface.clone(),
                     structural: self.structural.enter_inline_child(incident),
-                    pending_child: None,
+                    pending: None,
                 }
                 .normalize_component_completion();
                 (token, successor)
             }
-            PendingChild::BranchBondOrAtom(_) => {
+            PendingEmission::BranchBondOrAtom(_) => {
                 let parent = self
                     .structural
                     .active_atom()
@@ -393,7 +507,7 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
                     let successor = Self {
                         surface: self.surface.clone(),
                         structural: self.structural.enter_branch_child(incident),
-                        pending_child: None,
+                        pending: None,
                     }
                     .normalize_component_completion();
                     return (token, successor);
@@ -403,16 +517,33 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
                     Self {
                         surface: self.surface.clone(),
                         structural: self.structural.clone(),
-                        pending_child: Some(PendingChild::BranchAtom(incident)),
+                        pending: Some(PendingEmission::BranchAtom(incident)),
                     },
                 )
             }
-            PendingChild::BranchAtom(_) => {
+            PendingEmission::BranchAtom(_) => {
                 let token = self.surface.atom_text(incident.atom()).to_owned();
                 let successor = Self {
                     surface: self.surface.clone(),
                     structural: self.structural.enter_branch_child(incident),
-                    pending_child: None,
+                    pending: None,
+                }
+                .normalize_component_completion();
+                (token, successor)
+            }
+            PendingEmission::RingClosureLabel { label_slot, .. } => {
+                assert_eq!(
+                    self.structural.ring_closure_facts(incident).1,
+                    label_slot,
+                    "a pending ring label must retain its open slot"
+                );
+                let token = ring_label_text(label_slot);
+                let (structural, actual_slot) = self.structural.close_ring_endpoint(incident);
+                assert_eq!(actual_slot, label_slot);
+                let successor = Self {
+                    surface: self.surface.clone(),
+                    structural,
+                    pending: None,
                 }
                 .normalize_component_completion();
                 (token, successor)
@@ -436,30 +567,26 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
             Self {
                 surface: self.surface.clone(),
                 structural,
-                pending_child: None,
+                pending: None,
             },
         )
     }
 
-    fn visible_frontier(&self) -> StructuralFrontier {
+    fn frontier(&self) -> StructuralFrontier {
         let frontier = self.structural.structural_frontier();
         assert!(
             !frontier.is_contradiction(),
             "connected non-stereo writer reached a structural contradiction"
         );
-        assert!(
-            frontier.ring_openings().is_empty() && frontier.ring_closures().is_empty(),
-            "ring endpoint emission is not implemented"
-        );
         frontier
     }
 
     fn normalize_component_completion(mut self) -> Self {
-        if self.pending_child.is_some() || !self.structural.graph_is_complete() {
+        if self.pending.is_some() || !self.structural.graph_is_complete() {
             return self;
         }
         assert!(
-            self.structural.structural_frontier().can_complete_path(),
+            self.frontier().can_complete_path(),
             "a complete connected graph must have a completable top-level path"
         );
         let completed = self.structural.complete_path();
@@ -470,6 +597,25 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
         );
         self.structural = completed;
         self
+    }
+}
+
+fn ring_label_text(label_slot: RingLabelSlot) -> String {
+    let label = label_slot
+        .index()
+        .checked_add(1)
+        .expect("visible ring-label number must not overflow");
+    ring_label_number_text(label)
+}
+
+fn ring_label_number_text(label: usize) -> String {
+    assert!(label > 0, "visible ring labels are one-based");
+    if label < 10 {
+        label.to_string()
+    } else if label < 100 {
+        format!("%{label}")
+    } else {
+        format!("%({label})")
     }
 }
 
@@ -594,23 +740,94 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "ring endpoint emission is not implemented")]
-    fn cyclic_surface_fails_at_the_unfinished_ring_boundary() {
-        let mut graph = PreparedGraphBuilder::new();
-        let atoms: [AtomId; 3] = std::array::from_fn(|_| graph.add_atom().unwrap());
-        graph.add_bond(atoms[0], atoms[1]).unwrap();
-        graph.add_bond(atoms[1], atoms[2]).unwrap();
-        graph.add_bond(atoms[2], atoms[0]).unwrap();
-        let surface = PreparedConnectedNonStereo::new(
-            PreparedMolecule::new(graph.build()),
-            vec!["C".to_owned(), "C".to_owned(), "C".to_owned()],
-            vec![NonStereoBondToken::Elided; 3],
-        )
-        .unwrap();
-        let initial = State::initial(&surface).unwrap();
-        let (_, rooted) = initial.emit_root(atoms[0]);
+    fn ring_label_spelling_matches_smiles_syntax() {
+        assert_eq!(ring_label_number_text(1), "1");
+        assert_eq!(ring_label_number_text(9), "9");
+        assert_eq!(ring_label_number_text(10), "%10");
+        assert_eq!(ring_label_number_text(99), "%99");
+        assert_eq!(ring_label_number_text(100), "%(100)");
+    }
 
-        let _ = rooted.branch_choices();
+    #[test]
+    fn elided_triangle_emits_a_complete_ring() {
+        let (surface, atoms, bonds) = fixture(
+            &["C", "C", "C"],
+            &[
+                (0, 1, NonStereoBondToken::Elided),
+                (0, 2, NonStereoBondToken::Elided),
+                (1, 2, NonStereoBondToken::Elided),
+            ],
+        );
+        let initial = State::initial(&surface).unwrap();
+        let left = incident(&surface, atoms[0], bonds[0]);
+        let right = incident(&surface, atoms[0], bonds[1]);
+        let between = incident(&surface, atoms[2], bonds[2]);
+        let closing = incident(&surface, atoms[1], bonds[0]);
+
+        let (root, rooted) = initial.emit_root(atoms[0]);
+        assert_eq!(
+            rooted.ring_open_choices(),
+            vec![(left, "1".to_owned()), (right, "1".to_owned())]
+        );
+        let (open, opened) = rooted.emit_ring_open(left).unwrap();
+        assert_eq!(rooted.active_atom(), Some(atoms[0]));
+        assert_eq!(opened.inline_choices(), vec![(right, "C")]);
+        let (first_child, walked) = opened.emit_inline_child(right).unwrap();
+        let (second_child, walked) = walked.emit_inline_child(between).unwrap();
+        assert_eq!(
+            walked.ring_close_choices(),
+            vec![(closing, "1".to_owned())]
+        );
+        let (close, accepted) = walked.emit_ring_close(closing);
+
+        assert_eq!([root, open, first_child, second_child, close].concat(), "C1CC1");
+        assert!(accepted.is_accepted());
+    }
+
+    #[test]
+    fn explicit_ring_bond_is_emitted_at_closure_before_its_label() {
+        let (surface, atoms, bonds) = fixture(
+            &["C", "C", "C"],
+            &[
+                (0, 1, NonStereoBondToken::Double),
+                (0, 2, NonStereoBondToken::Elided),
+                (1, 2, NonStereoBondToken::Elided),
+            ],
+        );
+        let initial = State::initial(&surface).unwrap();
+        let ring = incident(&surface, atoms[0], bonds[0]);
+        let entry = incident(&surface, atoms[0], bonds[1]);
+        let between = incident(&surface, atoms[2], bonds[2]);
+        let closing = incident(&surface, atoms[1], bonds[0]);
+
+        let (root, rooted) = initial.emit_root(atoms[0]);
+        let (open, opened) = rooted.emit_ring_open(ring).unwrap();
+        assert_eq!(open, "1");
+        let (first_child, walked) = opened.emit_inline_child(entry).unwrap();
+        let (second_child, walked) = walked.emit_inline_child(between).unwrap();
+        assert_eq!(
+            walked.ring_close_choices(),
+            vec![(closing, "=".to_owned())]
+        );
+
+        let (bond, pending_label) = walked.emit_ring_close(closing);
+        assert_eq!(bond, "=");
+        assert_eq!(pending_label.active_atom(), Some(atoms[1]));
+        assert!(!pending_label.graph_is_complete());
+        assert_eq!(
+            pending_label.pending_choice(),
+            Some((closing, "1".to_owned()))
+        );
+        assert!(pending_label.ring_open_choices().is_empty());
+        assert!(pending_label.ring_close_choices().is_empty());
+        assert!(pending_label.inline_choices().is_empty());
+
+        let (label, accepted) = pending_label.emit_pending();
+        assert_eq!(
+            [root, open, first_child, second_child, bond, label].concat(),
+            "C1CC=1"
+        );
+        assert!(accepted.is_accepted());
     }
 
     #[test]
@@ -624,7 +841,7 @@ mod tests {
         assert_eq!(bond, "=");
         assert_eq!(rooted.active_atom(), Some(atoms[0]));
         assert_eq!(pending.active_atom(), Some(atoms[0]));
-        assert_eq!(pending.pending_choice(), Some((edge, "O")));
+        assert_eq!(pending.pending_choice(), Some((edge, "O".to_owned())));
         let (atom, accepted) = pending.emit_pending();
         assert_eq!(atom, "O");
         assert!(accepted.is_accepted());
@@ -689,6 +906,16 @@ mod tests {
                     pending.push((successor, format!("{prefix}{token}")));
                     successor_count += 1;
                 }
+                for (incident, _) in state.ring_open_choices() {
+                    let (token, successor) = state.emit_ring_open(incident).unwrap();
+                    pending.push((successor, format!("{prefix}{token}")));
+                    successor_count += 1;
+                }
+                for (incident, _) in state.ring_close_choices() {
+                    let (token, successor) = state.emit_ring_close(incident);
+                    pending.push((successor, format!("{prefix}{token}")));
+                    successor_count += 1;
+                }
                 for (incident, _) in state.branch_choices() {
                     let (token, successor) = state.emit_branch_child(incident).unwrap();
                     pending.push((successor, format!("{prefix}{token}")));
@@ -705,7 +932,7 @@ mod tests {
                     successor_count += 1;
                 }
             }
-            assert!(successor_count > 0, "tree emission must not dead-end");
+            assert!(successor_count > 0, "connected emission must not dead-end");
         }
         complete
     }
@@ -831,5 +1058,23 @@ mod tests {
                 reference_tree_strings(&surface)
             );
         }
+    }
+
+    #[test]
+    fn simple_cycle_support_is_online_and_complete() {
+        let surface = fixture(
+            &["C", "C", "C"],
+            &[
+                (0, 1, NonStereoBondToken::Elided),
+                (0, 2, NonStereoBondToken::Elided),
+                (1, 2, NonStereoBondToken::Elided),
+            ],
+        )
+        .0;
+
+        assert_eq!(
+            reachable_strings(&surface),
+            BTreeSet::from(["C1CC1".to_owned()])
+        );
     }
 }

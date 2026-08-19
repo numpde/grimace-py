@@ -373,10 +373,7 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
         choices
     }
 
-    pub(crate) fn advance(
-        &self,
-        choice: NonStereoChoice,
-    ) -> Result<(String, Self), S::Error> {
+    pub(crate) fn advance(&self, choice: NonStereoChoice) -> Result<(String, Self), S::Error> {
         let visible = self
             .choices()
             .into_iter()
@@ -839,7 +836,10 @@ mod tests {
         only_choice(&walked, NonStereoChoice::RingClose(closing), "1");
         let (close, accepted) = advance(&walked, NonStereoChoice::RingClose(closing));
 
-        assert_eq!([root, open, first_child, second_child, close].concat(), "C1CC1");
+        assert_eq!(
+            [root, open, first_child, second_child, close].concat(),
+            "C1CC1"
+        );
         assert!(accepted.is_accepted());
     }
 
@@ -950,14 +950,20 @@ mod tests {
 
         while let Some((state, prefix)) = pending.pop() {
             explored += 1;
-            assert!(explored <= 100_000, "writer test exceeded its exploration bound");
+            assert!(
+                explored <= 100_000,
+                "writer test exceeded its exploration bound"
+            );
             if state.is_accepted() {
                 complete.insert(prefix, ());
                 continue;
             }
 
             let choices = state.choices();
-            assert!(!choices.is_empty(), "writer must not dead-end before acceptance");
+            assert!(
+                !choices.is_empty(),
+                "writer must not dead-end before acceptance"
+            );
             for visible in choices {
                 let (token, successor) = state.advance(visible.choice()).unwrap();
                 assert_eq!(token, visible.text());

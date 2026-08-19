@@ -1151,7 +1151,11 @@ mod tests {
 
         for (name, surface, expected_count) in fixtures {
             let expected = reference::support(&surface);
-            assert_eq!(expected.len(), expected_count, "reference fixture drift: {name}");
+            assert_eq!(
+                expected.len(),
+                expected_count,
+                "reference fixture drift: {name}"
+            );
             assert_eq!(
                 reachable_strings(&surface),
                 expected,

@@ -61,7 +61,10 @@ fn enumerate_from_atom(
     free_labels: Vec<usize>,
     next_label: usize,
 ) -> Vec<SearchResult> {
-    assert!(visited.insert(atom), "reference walk must enter each atom once");
+    assert!(
+        visited.insert(atom),
+        "reference walk must enter each atom once"
+    );
     let closures_here = pending.remove(&atom).unwrap_or_default();
     let groups = ordered_neighbor_groups(surface, atom, &visited);
     let mut results = Vec::new();
@@ -305,7 +308,12 @@ fn cartesian_choices(groups: &[Vec<AtomId>]) -> Vec<Vec<AtomId>> {
     }
 
     let mut output = Vec::new();
-    recurse(groups, 0, &mut Vec::with_capacity(groups.len()), &mut output);
+    recurse(
+        groups,
+        0,
+        &mut Vec::with_capacity(groups.len()),
+        &mut output,
+    );
     output
 }
 

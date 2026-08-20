@@ -23,6 +23,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
+      - name: Install pinned rustfmt
+        run: rustup component add rustfmt
       - name: Run South Star 2 qualification
         run: |
           cargo test -p grimace-south-star2

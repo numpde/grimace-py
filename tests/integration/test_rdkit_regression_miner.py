@@ -9,6 +9,9 @@ import sys
 import tempfile
 import unittest
 
+from tests.helpers.kernel import CORE_MODULE
+
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT_PATH = REPO_ROOT / "scripts" / "mine_rdkit_regressions.py"
 
@@ -27,6 +30,11 @@ MINER = _load_miner_module()
 
 
 class RdkitRegressionMinerTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        if CORE_MODULE is None:
+            raise unittest.SkipTest("private Rust extension is not installed")
+
     def test_support_comparison_classifies_clean_uncertain_and_mismatches(self) -> None:
         self.assertEqual(
             "clean",
@@ -122,21 +130,6 @@ class RdkitRegressionMinerTests(unittest.TestCase):
             text=True,
             check=False,
         )
-
-    def test_worker_payload_requires_one_json_object(self) -> None:
-        self.assertEqual(
-            {"status": "clean"},
-            MINER._worker_payload('{"status":"clean"}\n'),
-        )
-        for stdout, message in (
-            ("", "not valid JSON"),
-            ("not json", "not valid JSON"),
-            ("[]", "not a JSON object"),
-            ('"clean"', "not a JSON object"),
-        ):
-            with self.subTest(stdout=stdout):
-                with self.assertRaisesRegex(ValueError, message):
-                    MINER._worker_payload(stdout)
 
     def test_worker_sampled_mode_reports_clean_plateau_case(self) -> None:
         payload = self._run_worker(

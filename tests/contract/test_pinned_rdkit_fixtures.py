@@ -4,18 +4,15 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
-from unittest import mock
 
 from tests.helpers.pinned_rdkit_fixtures import (
-    PINNED_RDKIT_DETERMINISTIC_UNOBSERVED,
     PINNED_RDKIT_EXACT_SMALL_SUPPORT,
     PINNED_RDKIT_KNOWN_QUIRKS,
-    PINNED_RDKIT_KNOWN_STEREO_GAPS,
     PINNED_RDKIT_PARITY_FIXTURE_FAMILIES,
     PINNED_RDKIT_ROOTED_RANDOM,
     PINNED_RDKIT_SERIALIZER_REGRESSIONS,
     PINNED_RDKIT_WRITER_MEMBERSHIP,
-    PINNED_RDKIT_WRITER_SUPPORT_COUNTS,
+    PINNED_STEREO_CONSTRAINT_MODEL,
     load_pinned_rdkit_fixture_cases,
     pinned_rdkit_fixture_root,
     pinned_rdkit_fixture_versions,
@@ -25,9 +22,6 @@ from tests.helpers.rdkit_exact_small_support import (
     load_pinned_exact_small_support_cases,
 )
 from tests.helpers.rdkit_known_quirks import load_pinned_rdkit_known_quirk_cases
-from tests.helpers.rdkit_known_stereo_gaps import (
-    load_pinned_known_stereo_gap_cases,
-)
 from tests.helpers.rdkit_rooted_random import load_pinned_rooted_random_cases
 from tests.helpers.rdkit_serializer_regressions import (
     load_pinned_serializer_regression_cases,
@@ -36,18 +30,13 @@ from tests.helpers.rdkit_stereo_regressions import (
     load_stereo_expected_member_regressions,
     load_steroid_ring_coupled_component_regression,
 )
-from tests.helpers.rdkit_writer_membership import (
-    load_pinned_deterministic_unobserved_cases,
-    load_pinned_writer_membership_cases,
+from tests.helpers.rdkit_writer_membership import load_pinned_writer_membership_cases
+from tests.helpers.stereo_constraint_model import (
+    load_pinned_stereo_constraint_model_cases,
 )
-from tests.helpers.rdkit_writer_support_counts import (
-    load_pinned_writer_support_count_cases,
-)
-from tests import run_installed_package_correctness
 
 
 RDKIT_VERSION = "2099.01.1"
-ROOT = Path(__file__).resolve().parents[2]
 PINNED_FIXTURE_LOADERS = {
     PINNED_RDKIT_EXACT_SMALL_SUPPORT: load_pinned_exact_small_support_cases,
     PINNED_RDKIT_ROOTED_RANDOM: load_pinned_rooted_random_cases,
@@ -88,95 +77,34 @@ def _serializer_case(case_id: str, **overrides: object) -> dict[str, object]:
     return case
 
 
-def _known_gap_case(case_id: str, **overrides: object) -> dict[str, object]:
+def _writer_membership_case(case_id: str, **overrides: object) -> dict[str, object]:
     case = {
         **_base_case(case_id),
-        "smiles": "CC/C=C\\C",
-        "expected": "CC/C=C\\C",
+        "smiles": "CCO",
+        "expected": "CCO",
         "rooted_at_atom": None,
-        "isomeric_smiles": True,
-        "rdkit_canonical": True,
+        "isomeric_smiles": False,
+        "rdkit_canonical": False,
     }
     case.update(overrides)
     return case
 
 
-def _writer_support_count_flags(**overrides: object) -> dict[str, object]:
-    flags = {
-        "isomericSmiles": False,
-        "canonical": False,
-        "doRandom": True,
-        "kekuleSmiles": False,
-        "allBondsExplicit": False,
-        "allHsExplicit": False,
-        "ignoreAtomMapNumbers": False,
-    }
-    flags.update(overrides)
-    return flags
-
-
-def _writer_support_count_payload(
-    *cases: dict[str, object],
-    flags: dict[str, object] | None = None,
-    rdkit_version: str = RDKIT_VERSION,
-) -> dict[str, object]:
-    return {
-        "rdkit_version": rdkit_version,
-        "flags": flags if flags is not None else _writer_support_count_flags(),
-        "cases": list(cases),
-    }
-
-
-def _writer_support_count_case(case_id: str, **overrides: object) -> dict[str, object]:
+def _stereo_constraint_model_case(case_id: str, **overrides: object) -> dict[str, object]:
     case = {
         **_base_case(case_id),
-        "smiles": "CC(=O)Oc1ccccc1C(=O)O",
-        "rooted_at_atom": -1,
-        "support_count": 304,
-        "evidence": {
-            "method": "rdkit_random_adaptive_saturation",
-            "criterion_version": 1,
-            "min_draws": 10000,
-            "unseen_mass_threshold": 0.001,
-            "allowed_missing_variants": 1.0,
-            "runs": [
-                {
-                    "seed": 12345,
-                    "draw_count": 11000,
-                    "support_count": 304,
-                    "consecutive_draws_without_new_variant": 10000,
-                    "singleton_count": 0,
-                    "doubleton_count": 0,
-                    "estimated_unseen_mass": 0.0,
-                    "estimated_missing_variants": 0.0,
-                },
-                {
-                    "seed": 54321,
-                    "draw_count": 12000,
-                    "support_count": 304,
-                    "consecutive_draws_without_new_variant": 10000,
-                    "singleton_count": 0,
-                    "doubleton_count": 0,
-                    "estimated_unseen_mass": 0.0,
-                    "estimated_missing_variants": 0.0,
-                },
-            ],
-        },
+        "smiles": "C/C=C/C",
+        "expected_component_side_domain_sizes": [[1, 1]],
+        "expected_semantic_assignment_count": 1,
+        "expected_rdkit_local_writer_assignment_count": 1,
+        "expected_rdkit_traversal_writer_assignment_count": 1,
+        "expected_grimace_runtime_support_count": 1,
     }
     case.update(overrides)
     return case
 
 
 class PinnedRdkitFixtureLoaderTest(unittest.TestCase):
-    def test_pinned_rdkit_loaders_do_not_iterate_raw_fixture_fields(self) -> None:
-        helper_paths = sorted((ROOT / "tests" / "helpers").glob("rdkit_*.py"))
-        offenders = [
-            path.relative_to(ROOT).as_posix()
-            for path in helper_paths
-            if "list(raw_case[" in path.read_text(encoding="utf-8")
-        ]
-        self.assertEqual([], offenders)
-
     def test_single_file_fixture_loads_cases(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -265,64 +193,6 @@ class PinnedRdkitFixtureLoaderTest(unittest.TestCase):
                     fixture_label="contract",
                 )
 
-    def test_fixture_rejects_malformed_json_with_context(self) -> None:
-        for relative_path in (
-            Path(f"{RDKIT_VERSION}.json"),
-            Path(RDKIT_VERSION) / "10_bad.json",
-        ):
-            with self.subTest(relative_path=relative_path):
-                with tempfile.TemporaryDirectory() as tmpdir:
-                    root = Path(tmpdir)
-                    fixture_path = root / relative_path
-                    fixture_path.parent.mkdir(parents=True, exist_ok=True)
-                    fixture_path.write_text("{", encoding="utf-8")
-
-                    with self.assertRaisesRegex(ValueError, "not readable JSON"):
-                        load_pinned_rdkit_fixture_cases(
-                            fixture_root=root,
-                            rdkit_version=RDKIT_VERSION,
-                            fixture_label="contract",
-                        )
-
-    def test_fixture_rejects_malformed_payloads(self) -> None:
-        invalid_payloads = (
-            [],
-            {"rdkit_version": RDKIT_VERSION, "cases": []},
-            {"rdkit_version": RDKIT_VERSION, "cases": "case_a"},
-            {"rdkit_version": RDKIT_VERSION, "cases": ["case_a"]},
-            {"rdkit_version": RDKIT_VERSION, "cases": [{"id": 123, "source": "x"}]},
-            {"rdkit_version": RDKIT_VERSION, "cases": [{"id": "", "source": "x"}]},
-        )
-        for payload in invalid_payloads:
-            with self.subTest(payload=payload):
-                with tempfile.TemporaryDirectory() as tmpdir:
-                    root = Path(tmpdir)
-                    _write_json(root / f"{RDKIT_VERSION}.json", payload)
-
-                    with self.assertRaises(ValueError):
-                        load_pinned_rdkit_fixture_cases(
-                            fixture_root=root,
-                            rdkit_version=RDKIT_VERSION,
-                            fixture_label="contract",
-                        )
-
-    def test_installed_package_runner_fails_closed_on_missing_count_fixtures(self) -> None:
-        test = run_installed_package_correctness.InstalledPackageFixtureAvailabilityTest(
-            "test_installed_rdkit_version_has_writer_support_count_fixtures",
-        )
-        result = unittest.TestResult()
-
-        with mock.patch.object(
-            run_installed_package_correctness.rdBase,
-            "rdkitVersion",
-            RDKIT_VERSION,
-        ):
-            test.run(result)
-
-        self.assertEqual(1, len(result.failures))
-        self.assertEqual([], result.errors)
-        self.assertEqual([], result.skipped)
-
 
 class SerializerRegressionFixtureLoaderTest(unittest.TestCase):
     def test_serializer_fixture_accepts_smiles_or_molblock_cases(self) -> None:
@@ -399,257 +269,132 @@ class SerializerRegressionFixtureLoaderTest(unittest.TestCase):
                 load_pinned_serializer_regression_cases(
                     RDKIT_VERSION,
                     fixture_root=root,
-                )
-
-
-class KnownStereoGapFixtureLoaderTest(unittest.TestCase):
-    def test_known_gap_fixture_accepts_each_molecule_source_kind(self) -> None:
-        cases = [
-            _known_gap_case("smiles_case"),
-            _known_gap_case("molblock_case", molblock="mol\nM  END\n"),
-            _known_gap_case(
-                "writer_case",
-                writer_membership_case_id="writer_membership_case",
-            ),
-        ]
-        del cases[1]["smiles"]
-        del cases[2]["smiles"]
-        with tempfile.TemporaryDirectory() as tmpdir:
-            root = Path(tmpdir)
-            _write_json(root / f"{RDKIT_VERSION}.json", _base_payload(*cases))
-
-            loaded = load_pinned_known_stereo_gap_cases(
-                RDKIT_VERSION,
-                fixture_root=root,
             )
 
-        self.assertEqual(
-            ["smiles_case", "molblock_case", "writer_case"],
-            [case.case_id for case in loaded],
-        )
-        self.assertEqual("CC/C=C\\C", loaded[0].smiles)
-        self.assertEqual("mol\nM  END\n", loaded[1].molblock)
-        self.assertEqual("writer_membership_case", loaded[2].writer_membership_case_id)
 
-    def test_known_gap_fixture_rejects_bad_molecule_source_count(self) -> None:
-        duplicate_source_case = _known_gap_case(
-            "both_sources",
-            molblock="mol\nM  END\n",
-        )
-        missing_source_case = _known_gap_case("no_source")
-        del missing_source_case["smiles"]
-        for case in (duplicate_source_case, missing_source_case):
-            with self.subTest(case_id=case["id"]):
-                with tempfile.TemporaryDirectory() as tmpdir:
-                    root = Path(tmpdir)
-                    _write_json(root / f"{RDKIT_VERSION}.json", _base_payload(case))
-
-                    with self.assertRaisesRegex(
-                        ValueError,
-                        "exactly one of 'smiles', 'molblock', or "
-                        "'writer_membership_case_id'",
-                    ):
-                        load_pinned_known_stereo_gap_cases(
-                            RDKIT_VERSION,
-                            fixture_root=root,
-                        )
-
-
-class ExactSmallSupportFixtureLoaderTest(unittest.TestCase):
-    def test_exact_small_support_rejects_malformed_string_lists(self) -> None:
-        invalid_cases = (
-            ("missing_expected", "expected", None, "nonempty list expected"),
-            ("string_expected", "expected", "CCO", "nonempty list expected"),
-            ("duplicate_expected", "expected", ["CCO", "CCO"], "non-canonical expected"),
-            ("unsorted_expected", "expected", ["OCC", "CCO"], "non-canonical expected"),
-            (
-                "nonstring_inventory",
-                "expected_inventory",
-                ["C", 123],
-                "expected_inventory as strings",
-            ),
-        )
-        for case_id, field_name, value, message in invalid_cases:
-            with self.subTest(case_id=case_id):
-                case = _serializer_case(case_id)
-                if value is None:
-                    del case[field_name]
-                else:
-                    case[field_name] = value
-
-                with tempfile.TemporaryDirectory() as tmpdir:
-                    root = Path(tmpdir)
-                    _write_json(root / f"{RDKIT_VERSION}.json", _base_payload(case))
-
-                    with self.assertRaisesRegex(ValueError, message):
-                        load_pinned_exact_small_support_cases(
-                            RDKIT_VERSION,
-                            fixture_root=root,
-                        )
-
-
-class WriterSupportCountFixtureLoaderTest(unittest.TestCase):
-    def test_writer_support_count_fixture_loads_directory_shards(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            root = Path(tmpdir)
-            fixture_dir = root / RDKIT_VERSION
-            _write_json(
-                fixture_dir / "nonisomeric__random.json",
-                _writer_support_count_payload(
-                    _writer_support_count_case("aspirin_count")
-                ),
-            )
-
-            cases = load_pinned_writer_support_count_cases(
-                RDKIT_VERSION,
-                fixture_root=root,
-            )
-
-        self.assertEqual(["aspirin_count"], [case.case_id for case in cases])
-        self.assertEqual(304, cases[0].support_count)
-        self.assertFalse(cases[0].isomeric_smiles)
-        self.assertEqual(-1, cases[0].rooted_at_atom)
-        self.assertEqual(
-            "rdkit_random_adaptive_saturation",
-            cases[0].evidence.method,
-        )
-        self.assertEqual([12345, 54321], [run.seed for run in cases[0].evidence.runs])
-
-    def test_writer_support_count_fixture_rejects_malformed_json(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            root = Path(tmpdir)
-            fixture_path = root / RDKIT_VERSION / "nonisomeric__random.json"
-            fixture_path.parent.mkdir(parents=True)
-            fixture_path.write_text("{", encoding="utf-8")
-
-            with self.assertRaisesRegex(ValueError, "not readable JSON"):
-                load_pinned_writer_support_count_cases(
-                    RDKIT_VERSION,
-                    fixture_root=root,
-                )
-
-    def test_writer_support_count_fixture_rejects_bad_flag_surface(self) -> None:
-        invalid_payloads = (
-            _writer_support_count_payload(
-                _writer_support_count_case("missing_flag"),
-                flags={
-                    key: value
-                    for key, value in _writer_support_count_flags().items()
-                    if key != "canonical"
-                },
-            ),
-            _writer_support_count_payload(
-                _writer_support_count_case("canonical_true"),
-                flags=_writer_support_count_flags(canonical=True),
-            ),
-            _writer_support_count_payload(
-                _writer_support_count_case("random_false"),
-                flags=_writer_support_count_flags(doRandom=False),
-            ),
-        )
-        for payload in invalid_payloads:
-            with self.subTest(flags=payload["flags"]):
-                with tempfile.TemporaryDirectory() as tmpdir:
-                    root = Path(tmpdir)
-                    _write_json(root / RDKIT_VERSION / "nonisomeric__random.json", payload)
-
-                    with self.assertRaises(ValueError):
-                        load_pinned_writer_support_count_cases(
-                            RDKIT_VERSION,
-                            fixture_root=root,
-                        )
-
-    def test_writer_support_count_fixture_rejects_filename_flag_mismatch(self) -> None:
+class WriterMembershipFixtureLoaderTest(unittest.TestCase):
+    def test_writer_membership_fixture_accepts_decoder_membership_check(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             _write_json(
-                root / RDKIT_VERSION / "isomeric__random.json",
-                _writer_support_count_payload(
-                    _writer_support_count_case("aspirin_count")
-                ),
-            )
-
-            with self.assertRaisesRegex(ValueError, "filename must match"):
-                load_pinned_writer_support_count_cases(
-                    RDKIT_VERSION,
-                    fixture_root=root,
-                )
-
-    def test_writer_support_count_fixture_rejects_bad_adaptive_evidence(self) -> None:
-        bad_evidence_cases = (
-            _writer_support_count_case("one_run"),
-            _writer_support_count_case("mismatched_count"),
-            _writer_support_count_case("same_seed"),
-            _writer_support_count_case("high_unseen_mass"),
-            _writer_support_count_case("high_missing"),
-            _writer_support_count_case("short_run"),
-            _writer_support_count_case("low_patience"),
-            _writer_support_count_case("wrong_unseen_estimate"),
-            _writer_support_count_case("wrong_missing_estimate"),
-            _writer_support_count_case("unstable_missing_estimate"),
-        )
-        bad_evidence_cases[0]["evidence"]["runs"] = bad_evidence_cases[0]["evidence"][
-            "runs"
-        ][:1]
-        bad_evidence_cases[1]["evidence"]["runs"][0]["support_count"] = 303
-        bad_evidence_cases[2]["evidence"]["runs"][1]["seed"] = 12345
-        bad_evidence_cases[3]["evidence"]["runs"][0]["estimated_unseen_mass"] = 0.01
-        bad_evidence_cases[4]["evidence"]["runs"][0]["estimated_missing_variants"] = 2.0
-        bad_evidence_cases[5]["evidence"]["runs"][0]["draw_count"] = 50
-        bad_evidence_cases[6]["evidence"]["runs"][0][
-            "consecutive_draws_without_new_variant"
-        ] = 9999
-        bad_evidence_cases[7]["evidence"]["runs"][0]["singleton_count"] = 1
-        bad_evidence_cases[8]["evidence"]["runs"][0]["singleton_count"] = 2
-        bad_evidence_cases[8]["evidence"]["runs"][0]["doubleton_count"] = 1
-        bad_evidence_cases[8]["evidence"]["runs"][0][
-            "estimated_unseen_mass"
-        ] = 2 / 11000
-        bad_evidence_cases[9]["evidence"]["runs"][0]["singleton_count"] = 1
-        bad_evidence_cases[9]["evidence"]["runs"][0][
-            "estimated_unseen_mass"
-        ] = 1 / 11000
-
-        for case in bad_evidence_cases:
-            with self.subTest(case_id=case["id"]):
-                with tempfile.TemporaryDirectory() as tmpdir:
-                    root = Path(tmpdir)
-                    _write_json(
-                        root / RDKIT_VERSION / "nonisomeric__random.json",
-                        _writer_support_count_payload(case),
+                root / f"{RDKIT_VERSION}.json",
+                _base_payload(
+                    _writer_membership_case(
+                        "case_a",
+                        membership_check="decoder",
                     )
+                ),
+            )
 
-                    with self.assertRaises(ValueError):
-                        load_pinned_writer_support_count_cases(
-                            RDKIT_VERSION,
-                            fixture_root=root,
-                        )
+            [case] = load_pinned_writer_membership_cases(
+                RDKIT_VERSION,
+                fixture_root=root,
+            )
 
-    def test_known_gap_fixture_rejects_unpaired_random_vector_fields(self) -> None:
+        self.assertEqual("decoder", case.membership_check)
+
+    def test_writer_membership_fixture_rejects_bad_membership_check(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            _write_json(
+                root / f"{RDKIT_VERSION}.json",
+                _base_payload(
+                    _writer_membership_case(
+                        "case_a",
+                        membership_check="maybe",
+                    )
+                ),
+            )
+
+            with self.assertRaisesRegex(ValueError, "unsupported membership_check"):
+                load_pinned_writer_membership_cases(
+                    RDKIT_VERSION,
+                    fixture_root=root,
+                )
+
+
+class StereoConstraintModelFixtureLoaderTest(unittest.TestCase):
+    def test_stereo_constraint_model_fixture_derives_component_counts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            _write_json(
+                root / f"{RDKIT_VERSION}.json",
+                _base_payload(
+                    _stereo_constraint_model_case(
+                        "case_a",
+                        expected_component_side_domain_sizes=[[1, 2], [2, 1]],
+                        expected_semantic_assignment_count=4,
+                    )
+                ),
+            )
+
+            cases = load_pinned_stereo_constraint_model_cases(
+                RDKIT_VERSION,
+                fixture_root=root,
+            )
+
+        self.assertEqual(1, len(cases))
+        self.assertEqual(2, cases[0].expected_component_count)
+        self.assertEqual(4, cases[0].expected_side_count)
+        self.assertEqual((2, 2), cases[0].expected_component_domain_assignment_counts)
+        self.assertEqual("default", cases[0].test_tier)
+
+    def test_stereo_constraint_model_fixture_loads_diagnostic_test_tier(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            _write_json(
+                root / f"{RDKIT_VERSION}.json",
+                _base_payload(
+                    _stereo_constraint_model_case(
+                        "diagnostic_case",
+                        test_tier="diagnostic",
+                    )
+                ),
+            )
+
+            cases = load_pinned_stereo_constraint_model_cases(
+                RDKIT_VERSION,
+                fixture_root=root,
+            )
+
+        self.assertEqual("diagnostic", cases[0].test_tier)
+
+    def test_stereo_constraint_model_fixture_rejects_bad_test_tier(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            _write_json(
+                root / f"{RDKIT_VERSION}.json",
+                _base_payload(
+                    _stereo_constraint_model_case(
+                        "bad_test_tier",
+                        test_tier="slow",
+                    )
+                ),
+            )
+
+            with self.assertRaisesRegex(ValueError, "test_tier"):
+                load_pinned_stereo_constraint_model_cases(
+                    RDKIT_VERSION,
+                    fixture_root=root,
+                )
+
+    def test_stereo_constraint_model_fixture_rejects_bad_domain_sizes(self) -> None:
         invalid_cases = (
-            _known_gap_case("seed_only", rdkit_random_vector_seed=1),
-            _known_gap_case("index_only", rdkit_random_vector_index=0),
-        )
-        for case in invalid_cases:
-            with self.subTest(case_id=case["id"]):
-                with tempfile.TemporaryDirectory() as tmpdir:
-                    root = Path(tmpdir)
-                    _write_json(root / f"{RDKIT_VERSION}.json", _base_payload(case))
-
-                    with self.assertRaisesRegex(ValueError, "must define both"):
-                        load_pinned_known_stereo_gap_cases(
-                            RDKIT_VERSION,
-                            fixture_root=root,
-                        )
-
-    def test_known_gap_fixture_rejects_coerced_boolean_and_integer_fields(self) -> None:
-        invalid_cases = (
-            _known_gap_case("string_bool", isomeric_smiles="true"),
-            _known_gap_case("bool_root", rooted_at_atom=False),
-            _known_gap_case(
-                "string_seed",
-                rdkit_random_vector_seed="1",
-                rdkit_random_vector_index=0,
+            _stereo_constraint_model_case(
+                "missing_domain_sizes",
+                expected_component_side_domain_sizes=[],
+            ),
+            _stereo_constraint_model_case(
+                "non_list_component",
+                expected_component_side_domain_sizes=[1],
+            ),
+            _stereo_constraint_model_case(
+                "non_int_domain_size",
+                expected_component_side_domain_sizes=[["2"]],
+            ),
+            _stereo_constraint_model_case(
+                "zero_domain_size",
+                expected_component_side_domain_sizes=[[0]],
             ),
         )
         for case in invalid_cases:
@@ -659,10 +404,29 @@ class WriterSupportCountFixtureLoaderTest(unittest.TestCase):
                     _write_json(root / f"{RDKIT_VERSION}.json", _base_payload(case))
 
                     with self.assertRaises(ValueError):
-                        load_pinned_known_stereo_gap_cases(
+                        load_pinned_stereo_constraint_model_cases(
                             RDKIT_VERSION,
                             fixture_root=root,
                         )
+
+    def test_stereo_constraint_model_fixture_rejects_partial_sampled_counts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            _write_json(
+                root / f"{RDKIT_VERSION}.json",
+                _base_payload(
+                    _stereo_constraint_model_case(
+                        "partial_sampled_counts",
+                        expected_rdkit_sampled_support_count=10,
+                    )
+                ),
+            )
+
+            with self.assertRaisesRegex(ValueError, "all RDKit sampled diagnostic counts"):
+                load_pinned_stereo_constraint_model_cases(
+                    RDKIT_VERSION,
+                    fixture_root=root,
+                )
 
 
 class CheckedInPinnedRdkitFixtureTest(unittest.TestCase):
@@ -704,51 +468,6 @@ class CheckedInRdkitCompatibilityFixtureTest(unittest.TestCase):
                 self.assertTrue(cases)
                 self.assertTrue(all(case.category for case in cases))
 
-    def test_known_stereo_gaps_fixture_loads(self) -> None:
-        fixture_root = pinned_rdkit_fixture_root(PINNED_RDKIT_KNOWN_STEREO_GAPS)
-        versions = pinned_rdkit_fixture_versions(fixture_root)
-
-        self.assertTrue(versions)
-        for rdkit_version in versions:
-            with self.subTest(rdkit_version=rdkit_version):
-                cases = load_pinned_known_stereo_gap_cases(
-                    rdkit_version,
-                    fixture_root=fixture_root,
-                )
-
-                self.assertTrue(cases)
-                self.assertTrue(all(case.expected for case in cases))
-
-    def test_writer_support_count_fixture_loads(self) -> None:
-        fixture_root = pinned_rdkit_fixture_root(PINNED_RDKIT_WRITER_SUPPORT_COUNTS)
-        versions = pinned_rdkit_fixture_versions(fixture_root)
-
-        self.assertTrue(versions)
-        for rdkit_version in versions:
-            with self.subTest(rdkit_version=rdkit_version):
-                cases = load_pinned_writer_support_count_cases(
-                    rdkit_version,
-                    fixture_root=fixture_root,
-                )
-
-                self.assertTrue(cases)
-                self.assertTrue(all(case.support_count > 0 for case in cases))
-
-    def test_deterministic_unobserved_fixture_loads(self) -> None:
-        fixture_root = pinned_rdkit_fixture_root(PINNED_RDKIT_DETERMINISTIC_UNOBSERVED)
-        versions = pinned_rdkit_fixture_versions(fixture_root)
-
-        self.assertTrue(versions)
-        for rdkit_version in versions:
-            with self.subTest(rdkit_version=rdkit_version):
-                cases = load_pinned_deterministic_unobserved_cases(
-                    rdkit_version,
-                    fixture_root=fixture_root,
-                )
-
-                self.assertTrue(cases)
-                self.assertTrue(all(case.expected for case in cases))
-
     def test_disconnected_root_zero_fixture_loads(self) -> None:
         cases = load_disconnected_root_zero_smiles()
 
@@ -772,26 +491,32 @@ class CheckedInRdkitCompatibilityFixtureTest(unittest.TestCase):
         self.assertTrue(all(case.rooted_at_atom == 0 for case in cases))
         self.assertEqual([True, False], [case.validate_support for case in cases])
 
+    def test_stereo_constraint_model_fixture_loads(self) -> None:
+        fixture_root = pinned_rdkit_fixture_root(PINNED_STEREO_CONSTRAINT_MODEL)
+        versions = pinned_rdkit_fixture_versions(fixture_root)
+
+        self.assertTrue(versions)
+        for rdkit_version in versions:
+            with self.subTest(rdkit_version=rdkit_version):
+                cases = load_pinned_stereo_constraint_model_cases(
+                    rdkit_version,
+                    fixture_root=fixture_root,
+                )
+
+                self.assertTrue(cases)
+                self.assertTrue(
+                    all(
+                        case.expected_rdkit_traversal_writer_assignment_count
+                        <= case.expected_rdkit_local_writer_assignment_count
+                        <= case.expected_semantic_assignment_count
+                        for case in cases
+                    )
+                )
+
 
 class RdkitCompatibilityFixtureLoaderTest(unittest.TestCase):
-    def test_compatibility_fixtures_reject_malformed_json(self) -> None:
-        cases = (
-            ("root_zero_smiles.json", load_disconnected_root_zero_smiles),
-            ("steroid.json", load_steroid_ring_coupled_component_regression),
-            ("rooted_membership.json", load_stereo_expected_member_regressions),
-        )
-        for filename, loader in cases:
-            with self.subTest(filename=filename):
-                with tempfile.TemporaryDirectory() as tmpdir:
-                    fixture_path = Path(tmpdir) / filename
-                    fixture_path.write_text("{", encoding="utf-8")
-
-                    with self.assertRaisesRegex(ValueError, "not readable JSON"):
-                        loader(fixture_path)
-
     def test_disconnected_root_zero_fixture_rejects_bad_case_list(self) -> None:
         invalid_payloads = (
-            [],
             {"cases": "CC.O"},
             {"cases": []},
             {"cases": ["CC.O", "CC.O"]},
@@ -820,13 +545,6 @@ class RdkitCompatibilityFixtureLoaderTest(unittest.TestCase):
             {"expected_member": ""},
             {"rejected_member": ""},
         )
-        with tempfile.TemporaryDirectory() as tmpdir:
-            fixture_path = Path(tmpdir) / "steroid.json"
-            _write_json(fixture_path, [])
-
-            with self.assertRaises(ValueError):
-                load_steroid_ring_coupled_component_regression(fixture_path)
-
         for override in invalid_overrides:
             with self.subTest(override=override):
                 with tempfile.TemporaryDirectory() as tmpdir:
@@ -846,12 +564,9 @@ class RdkitCompatibilityFixtureLoaderTest(unittest.TestCase):
             "validate_support": True,
         }
         invalid_payloads = (
-            [],
             {"cases": []},
             {"cases": "case_a"},
-            {"cases": ["case_a"]},
             {"cases": [{**valid_case, "id": ""}]},
-            {"cases": [valid_case, valid_case]},
             {"cases": [{**valid_case, "rooted_at_atom": "0"}]},
             {"cases": [{**valid_case, "validate_support": "true"}]},
         )

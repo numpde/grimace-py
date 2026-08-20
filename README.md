@@ -1,113 +1,89 @@
-# grimace-py
+# South Star branch
 
-`grimace-py` is a Rust-first RDKit add-on for exact rooted SMILES support
-enumeration, online next-token decoding, seeded sampling, and reusable prepared
-molecules. It provides:
+South Star is a writer-state model for exact SMILES generation.
 
-- exact support enumeration for Grimace's supported writer language
-- exact token inventories implied by that support
-- legal next-token choices from a current SMILES prefix
-- seeded legal samples with per-step token choices
-- prepared molecule bytes for reuse without RDKit at read time
+The branch treats a writer as a live transition system rather than as a
+post-filter over completed strings. A retained state records the graph prefix,
+ring labels, open and closed closures, branch obligations, text choices, and
+stereo residual factors. A token is legal only when the transition that emits
+it produces a coherent successor.
 
-GRIMACE stands for "graph representation integrating multiple alternate
-chemical equivalents", motivated by research on NMR spectroscopy with
-language transformers ([link](https://numpde.github.io/shared/msc/)).
+The working goal is a single authority for writer behavior:
 
-The public import name is `grimace`. Install the PyPI distribution named
-`grimace-py`:
-
-```bash
-python -m pip install grimace-py
+```text
+prepared facts + policy + retained writer state
+    -> terminalization evidence
+    -> legal next-token transitions
+    -> graph-policy blockers
+    -> execution-capability evidence
 ```
 
+Connected declared components enter this live transition engine. Unsupported
+policy is reported at the exact frontier where the required operation or
+relation envelope is encountered. There is no topology-profile admission,
+tree-only initial classifier, or recursive reachable-set preflight on the
+runtime path.
+
+Snapshots are structural records. Validation checks that a cursor is coherent
+with the prepared facts and retained history; it does not independently decide
+writer support. Checked choices, advance, count, stream, and resume all enforce
+the same live blockers.
+
+The recursive reachability audit is diagnostic instrumentation only. It records
+reachable blockers and capability uses for review; it is not an admission
+layer.
+
+South Star remains work in progress. The branch is about making graph syntax,
+closure lifecycles, and stereo constraints share one inspectable state model,
+so future widening can be expressed as local relations instead of special-case
+enumeration.
+
+Build a certified continuation asset directly from an RDKit molecule, then
+open its Rust-backed decoder:
+
 ```python
-import grimace
-```
+from pathlib import Path
 
-Plain `pip install grimace` installs an unrelated older package.
-
-Repository: [github.com/numpde/grimace-py](https://github.com/numpde/grimace-py).
-
-`grimace-py` is distributed under `PolyForm-Noncommercial-1.0.0`. Commercial
-use is not permitted under the current license.
-
-## Quick example
-
-This example uses the currently supported runtime mode. See
-[Runtime](docs/runtime.md) for flags and roots, and
-[Limitations](docs/current-limitations.md) for runtime scope. See
-[Known gaps](docs/known-gaps.md) for pinned RDKit parity cases that are not yet
-in the passing corpus.
-
-```python
 from rdkit import Chem
+
 import grimace
 
-mol = Chem.MolFromSmiles("CC(=O)Oc1ccccc1C(=O)O")
-
-all_smiles = tuple(
-    grimace.MolToSmilesEnum(
-        mol,
-        rootedAtAtom=-1,
-        isomericSmiles=False,
-        canonical=False,
-        doRandom=True,
-    )
+asset_path = Path("molecule.continuation")
+digest = grimace.BuildMolToSmilesContinuationAsset(
+    Chem.MolFromSmiles("F/C=C/Cl"),
+    asset_path,
+    canonical=False,
+    doRandom=True,
 )
-
-assert len(all_smiles) == 304
+decoder = grimace.MolToSmilesContinuationDecoder.from_asset(
+    asset_path,
+    expected_manifest_digest=digest,
+)
 ```
 
-## What to use
+Bind the asset to the exact molecule when local transition proofs are needed:
 
-- Enumerate every supported string with `MolToSmilesEnum(...)`.
-- Step through legal next tokens with `MolToSmilesDecoder(...)` or
-  `MolToSmilesDeterminizedDecoder(...)`.
-- Draw one seeded legal string with per-step token choices using
-  `MolToSmilesSample(...)`.
-- Diagnose rejected candidates with `MolToSmilesDeviation(...)`.
-- Build dataset token coverage with `MolToSmilesTokenInventorySuperset(...)`.
-- Reuse prepared molecules with `PrepareMol(...)` and `PreparedMol`.
-
-## Documentation
-
-Please find the main documentation at
-[numpde.github.io/grimace-py](https://numpde.github.io/grimace-py/).
-
-## Install
-
-Package metadata declares Python `>=3.11` and `rdkit>=2026.3`. See
-[Runtime](docs/runtime.md) for the exercised wheel and source-distribution
-matrix.
-
-For a host source build, you need Rust `>=1.83` and `maturin`:
-
-```bash
-python -m venv .venv
-. .venv/bin/activate
-python -m pip install maturin
-maturin develop --release
+```python
+proof_decoder = grimace.MolToSmilesContinuationDecoder.from_asset(
+    asset_path,
+    expected_manifest_digest=digest,
+    proof_capable=True,
+    mol=Chem.MolFromSmiles("F/C=C/Cl"),
+)
+for locator in proof_decoder.branch_proof_locators:
+    branch_artifact = proof_decoder.branch_artifact(locator)
 ```
 
-## Development
+Use whole-asset recertification when an asset has been transported or copied:
 
-Routine local checks are Docker-backed:
-
-```bash
-make checks
-make ci
-make test-package
-make docs
-make docs-serve
+```python
+verification = grimace.VerifyMolToSmilesContinuationAsset(
+    Chem.MolFromSmiles("F/C=C/Cl"),
+    asset_path,
+    expected_manifest_digest=digest,
+)
 ```
 
-See [containerized development](docs/development/containerized.md) for the
-lane contract.
-
-## License
-
-`grimace-py` is source-available under
-[PolyForm Noncommercial 1.0.0](LICENSE). Third-party components remain under
-their own licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-Commercial use requires a separate commercial license from the author.
+`from_asset()` opens the structural/core asset, molecule-bound proof mode verifies
+local proofs on demand, and `VerifyMolToSmilesContinuationAsset()` completes the
+independent whole-asset recertification.

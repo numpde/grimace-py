@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
-from tests.helpers.fixture_paths import checked_in_fixture_path, read_fixture_json_object
+from tests.helpers.fixture_paths import checked_in_fixture_path
 
 
 _FIXTURE_PATH = checked_in_fixture_path(
@@ -14,8 +15,8 @@ _FIXTURE_PATH = checked_in_fixture_path(
 def load_disconnected_root_zero_smiles(
     fixture_path: Path = _FIXTURE_PATH,
 ) -> tuple[str, ...]:
-    data = read_fixture_json_object(fixture_path)
-    raw_cases = data.get("cases")
+    data = json.loads(fixture_path.read_text())
+    raw_cases = data["cases"]
     if not isinstance(raw_cases, list):
         raise ValueError(f"fixture {fixture_path} must define a cases list")
     if not raw_cases or not all(type(case) is str and case for case in raw_cases):

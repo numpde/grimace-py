@@ -1,0 +1,1638 @@
+Below is the revised write-up as a single LaTeX file, directly in chat. I kept the source-dependent claims tied to official documentation: RDKit’s stereo scope and APIs, the `FindPotentialStereo()` caveat, Daylight’s ring-closure lexical-order rule for chirality, and OpenSMILES ring/dot constraints. ([RDKit][1])
+
+```latex
+\documentclass[10pt,a4paper]{article}
+
+\usepackage[margin=30mm]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{enumitem}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage[pdftex,
+            pdftitle={A Python implementation model for exact finite enumeration of bounded stereochemical SMILES},
+            pdfauthor={},
+            colorlinks,
+            linkcolor=black,
+            urlcolor=black,
+            citecolor=black]{hyperref}
+
+\allowdisplaybreaks
+\emergencystretch=3em
+
+\lstdefinestyle{pythonstyle}{
+  language=Python,
+  basicstyle=\ttfamily\small,
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false,
+  breaklines=true,
+  frame=single,
+  framerule=0.2pt,
+  rulecolor=\color{black!25},
+  keywordstyle=\bfseries,
+  commentstyle=\itshape\color{black!55}
+}
+\lstset{style=pythonstyle}
+
+\newcommand{\calA}{\mathcal A}
+\newcommand{\calB}{\mathcal B}
+\newcommand{\calC}{\mathcal C}
+\newcommand{\calD}{\mathcal D}
+\newcommand{\calE}{\mathcal E}
+\newcommand{\calG}{\mathcal G}
+\newcommand{\calI}{\mathcal I}
+\newcommand{\calK}{\mathcal K}
+\newcommand{\calL}{\mathcal L}
+\newcommand{\calM}{\mathcal M}
+\newcommand{\calP}{\mathcal P}
+\newcommand{\calR}{\mathcal R}
+\newcommand{\calS}{\mathcal S}
+\newcommand{\calT}{\mathcal T}
+\newcommand{\calX}{\mathcal X}
+\newcommand{\Bool}{\{0,1\}}
+\newcommand{\None}{\bot}
+\newcommand{\dotcup}{\mathbin{\dot\cup}}
+\newcommand{\Sol}{\operatorname{Sol}}
+\newcommand{\render}{\operatorname{render}}
+\newcommand{\parse}{\operatorname{parse}}
+\newcommand{\im}{\operatorname{im}}
+\newcommand{\pos}{\operatorname{pos}}
+\newcommand{\Decode}{\mathsf{Decode}}
+\newcommand{\Tet}{\mathsf{Tet}}
+\newcommand{\Dir}{\mathsf{Dir}}
+\newcommand{\Pot}{\mathsf{Pot}}
+\newcommand{\Ann}{\mathsf{Ann}}
+\newcommand{\OK}{\mathsf{OK}}
+
+\newtheorem{lemma}{Lemma}[section]
+\newtheorem{proposition}[lemma]{Proposition}
+\newtheorem{theorem}[lemma]{Theorem}
+\newtheorem{corollary}[lemma]{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}[lemma]{Definition}
+\newtheorem{assumption}[lemma]{Assumption}
+\newtheorem{example}[lemma]{Example}
+\theoremstyle{remark}
+\newtheorem{remark}[lemma]{Remark}
+
+\title{A Python implementation model for exact finite enumeration of a bounded stereochemical SMILES sublanguage}
+\author{}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This note gives an implementation-oriented model for exact support enumeration
+of a bounded RDKit/OpenSMILES-like stereochemical SMILES sublanguage.  The
+central software boundary is that an RDKit \texttt{Mol} is an input and audit
+object only.  The source of truth for enumeration is an immutable finite object,
+\texttt{MoleculeFacts}, containing atom, bond, component, stereochemical, and
+ligand-occurrence facts.  Traversal skeletons, syntax slots, solver assignments,
+annotation policies, and rendering consume only \texttt{MoleculeFacts} together
+with explicit finite presentation and parser-semantics relations.  The result is
+not a wrapper around a SMILES writer.  It is a finite enumerator whose satisfying
+assignments render to exactly the declared support, up to the optional decision
+to deduplicate equal rendered strings.
+\end{abstract}
+
+\noindent\textit{Keywords}: SMILES, stereochemistry, RDKit, Python, exact
+enumeration, finite CSP, traversal grammar, tetrahedral chirality, directional
+bonds, ring closures.
+
+\section{Objective and invariant}
+\label{s:objective}
+
+The implementation should realize the finite map
+\[
+        (\calM,\calP,\calS)
+        \longmapsto
+        L(\calM,\calP,\calS)
+        =
+        \im\bigl(\render:\Sol C(\calM,\calP,\calS)\to \Sigma^*\bigr),
+\]
+where:
+\begin{itemize}[leftmargin=*]
+\item \(\calM\) is a finite molecular fact object;
+\item \(\calP\) is a finite presentation policy;
+\item \(\calS\) is a finite parser-semantics object for the chosen bounded
+      dialect;
+\item \(C(\calM,\calP,\calS)\) is the finite constraint object over traversal
+      skeletons and syntax-slot assignments.
+\end{itemize}
+
+The rendered support is a set of strings.  A canonical-witness constraint may be
+added for efficiency, but the mathematically clean support is the image of the
+rendering map, not the set of internal witnesses.
+
+The implementation should never ask RDKit whether a generated candidate is valid
+during enumeration.  Such calls are appropriate for regression tests and external
+audits, but not for accepting, rejecting, or repairing generated strings.
+Correctness is by construction:
+\begin{itemize}[leftmargin=*]
+\item grammar-valid syntax comes from the traversal skeleton and syntax-slot
+      domains;
+\item graph identity comes from edge coverage, atom coverage, and decode
+      constraints;
+\item stereochemistry comes from explicit finite tetrahedral and directional
+      relations;
+\item absence of accidental stereo comes from constraints at all potential
+      parser sites;
+\item presentation conventions, including annotation maximality and ring-label
+      normalization, are explicit policy predicates.
+\end{itemize}
+
+\section{The non-negotiable RDKit boundary}
+\label{s:boundary}
+
+The intended architecture is:
+\[
+\begin{array}{c}
+\texttt{rdkit.Chem.Mol} \\
+\downarrow\quad \text{one-way extraction} \\
+\texttt{MoleculeFacts} \\
+\downarrow\quad \text{skeletons, slots, constraints, rendering} \\
+\text{support strings}.
+\end{array}
+\]
+
+Only the adapter module may import RDKit.  The core package should be importable
+and testable without RDKit installed.
+
+\begin{lstlisting}
+# allowed
+from smiles_support.rdkit_adapter import molecule_facts_from_rdkit
+
+facts = molecule_facts_from_rdkit(mol, extraction_policy)
+texts = list(enumerate_support(facts, policy, semantics))
+
+# forbidden outside rdkit_adapter.py and audit tests
+from rdkit import Chem
+Chem.MolFromSmiles(candidate)
+Chem.MolToSmiles(mol)
+\end{lstlisting}
+
+The RDKit documentation describes support for tetrahedral atomic stereochemistry
+and cis/trans stereochemistry at double bonds, while non-tetrahedral
+stereochemistry remains outside the ordinary bounded subset considered here
+\cite{rdkit-book-stereo}.  RDKit APIs such as \texttt{Bond.GetStereo()},
+\texttt{Bond.GetStereoAtoms()}, and related atom/bond accessors are appropriate
+at the adapter boundary, not inside the enumerator \cite{rdkit-rdchem}.
+
+\section{Package topology}
+\label{s:topology}
+
+A practical package layout is:
+
+\begin{lstlisting}
+smiles_support/
+  ids.py              # typed integer identifiers
+  facts.py            # immutable MoleculeFacts; no RDKit
+  graph_index.py      # derived adjacency/index caches; no RDKit
+  policy.py           # finite presentation policy and text domains
+  semantics.py        # finite parser relations; no RDKit
+  skeleton.py         # traversal skeleton generation
+  slots.py            # syntax-slot allocation from facts + skeleton
+  constraints.py      # CSP predicates and small finite solvers
+  annotation.py       # maximal/canonical annotation selectors
+  ring_labels.py      # ring interval and label assignment constraints
+  render.py           # deterministic renderer
+  enumerate.py        # orchestration and deduplication
+  rdkit_adapter.py    # the only module importing rdkit
+  audit_rdkit.py      # optional external audit; not used by enumeration
+\end{lstlisting}
+
+The split among \texttt{facts.py}, \texttt{policy.py}, and
+\texttt{semantics.py} is substantive:
+\begin{itemize}[leftmargin=*]
+\item \texttt{MoleculeFacts} says what finite labeled molecule is being
+      enumerated.
+\item \texttt{SmilesPolicy} says which finite presentation choices are admitted.
+\item \texttt{ParserSemantics} says how the bounded dialect decodes those
+      choices.
+\end{itemize}
+Conflating these layers is the main path back to writer-specific procedural
+rules.
+
+\section{Core finite data model}
+\label{s:data-model}
+
+\subsection{Typed identifiers}
+
+Use typed integer identifiers.  They are stable, serializable, cheap, and make
+it harder to confuse atoms, bonds, stereo sites, occurrences, and syntax slots.
+
+\begin{lstlisting}
+# ids.py
+from typing import NewType
+
+AtomId = NewType("AtomId", int)
+BondId = NewType("BondId", int)
+ComponentId = NewType("ComponentId", int)
+SiteId = NewType("SiteId", int)
+OccurrenceId = NewType("OccurrenceId", int)
+
+AtomSlotId = NewType("AtomSlotId", int)
+BondSlotId = NewType("BondSlotId", int)
+CarrierSlotId = NewType("CarrierSlotId", int)
+RingEndpointId = NewType("RingEndpointId", int)
+EventPos = NewType("EventPos", int)
+\end{lstlisting}
+
+\subsection{Atom, bond, and component facts}
+
+The graph facts are a frozen snapshot of an already perceived molecule.  They
+are not instructions to re-perceive aromaticity, valence, hydrogens, or stereo.
+
+\begin{lstlisting}
+# facts.py
+from __future__ import annotations
+
+from dataclasses import dataclass
+from enum import Enum
+
+from .ids import AtomId, BondId, ComponentId, SiteId, OccurrenceId
+
+
+class BondOrder(Enum):
+    SINGLE = "single"
+    DOUBLE = "double"
+    TRIPLE = "triple"
+    AROMATIC = "aromatic"
+
+
+@dataclass(frozen=True, slots=True)
+class AtomFacts:
+    id: AtomId
+    atomic_num: int
+    symbol: str
+    isotope: int | None
+    formal_charge: int
+    is_aromatic: bool
+    explicit_h_count: int
+    implicit_h_count: int
+    no_implicit: bool
+
+
+@dataclass(frozen=True, slots=True)
+class BondFacts:
+    id: BondId
+    a: AtomId
+    b: AtomId
+    order: BondOrder
+    is_aromatic: bool
+    is_conjugated: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ComponentFacts:
+    id: ComponentId
+    atoms: tuple[AtomId, ...]
+    bonds: tuple[BondId, ...]
+\end{lstlisting}
+
+For the ordinary molecular graph considered here, assume at most one bond between
+a pair of atoms.  If a broader multigraph dialect is admitted, the graph index
+must store a multimap rather than a single \((a,b)\mapsto e\) lookup.
+
+\subsection{Ligand occurrences}
+
+A ligand occurrence is a semantic coordinate used by a stereo site.  It need not
+be a graph vertex.  Examples include neighboring graph atoms, explicit hydrogen
+atoms represented as graph vertices, implicit hydrogen occurrences, and any
+policy-admitted pseudo-neighbor.
+
+\begin{lstlisting}
+class LigandKind(Enum):
+    NEIGHBOR_ATOM = "neighbor_atom"
+    IMPLICIT_H = "implicit_h"
+    PSEUDO = "pseudo"
+
+
+@dataclass(frozen=True, slots=True)
+class LigandOccurrence:
+    id: OccurrenceId
+    site: SiteId
+    kind: LigandKind
+    atom: AtomId | None
+    bond: BondId | None
+    ordinal: int = 0
+\end{lstlisting}
+
+The occurrence object stores the finite ligand universe.  It does not store the
+emitted SMILES ligand order.  For a tetrahedral center, that order is induced by
+the traversal skeleton: root choice, parent edge, branch order, continuation
+choice, and ring endpoint placement can all change it.
+
+\subsection{Stereo facts}
+
+The stereo layer should include both specified sites and potential but
+unspecified sites.  Specified sites have a non-\texttt{NONE} target.  Potential
+unspecified sites have target \texttt{NONE}; these are the loci for
+no-accidental-stereo constraints.
+
+\begin{lstlisting}
+class SiteStatus(Enum):
+    SPECIFIED = "specified"
+    UNSPECIFIED = "unspecified"
+
+
+class TetraValue(Enum):
+    NONE = "none"
+    PLUS = "plus"
+    MINUS = "minus"
+
+
+class DirectionalValue(Enum):
+    NONE = "none"
+    TOGETHER = "together"
+    OPPOSITE = "opposite"
+
+
+@dataclass(frozen=True, slots=True)
+class TetrahedralSiteFacts:
+    id: SiteId
+    center: AtomId
+    status: SiteStatus
+    target: TetraValue
+    ligand_occurrences: tuple[OccurrenceId, ...]
+    reference_order: tuple[OccurrenceId, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class DirectionalSiteFacts:
+    id: SiteId
+    center_bond: BondId
+    left_endpoint: AtomId
+    right_endpoint: AtomId
+    status: SiteStatus
+    target: DirectionalValue
+    left_ligands: tuple[OccurrenceId, ...]
+    right_ligands: tuple[OccurrenceId, ...]
+    reference_pair: tuple[OccurrenceId, OccurrenceId] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class StereoFacts:
+    tetrahedral: tuple[TetrahedralSiteFacts, ...]
+    directional: tuple[DirectionalSiteFacts, ...]
+\end{lstlisting}
+
+The values \texttt{PLUS/MINUS} and \texttt{TOGETHER/OPPOSITE} are internal
+coordinates.  They are not CIP labels.  The adapter normalizes RDKit or input
+stereo into these coordinates using the stored reference order or reference
+pair.
+
+\subsection{Potential stereo sites}
+
+\begin{definition}[Potential stereo site]
+For a fixed fact object \(\calM\), policy \(\calP\), and parser semantics
+\(\calS\), a potential stereo site is a parser locus \(q\) for which there exists
+some legal traversal skeleton and syntax-slot assignment under \(\calP\) whose
+semantic relation in \(\calS\) can return a specified non-\texttt{NONE}
+stereochemical value at \(q\).  The set
+\[
+   \Pot(\calM,\calP,\calS)
+\]
+is therefore parser- and policy-defined.  Graph-theoretic recognition and RDKit
+functions may be used by the adapter to help construct it, but they do not define
+it.
+\end{definition}
+
+In code, it is acceptable to generate a conservative finite superset of potential
+sites, provided the semantic relation for impossible sites always returns
+\texttt{NONE}.  It is not acceptable to miss a parser-relevant potential site:
+then accidental stereo can enter without a constraint.  RDKit's
+\texttt{FindPotentialStereo()} is useful adapter input, but its documentation
+describes it as somewhat experimental and warns that the API and results may
+change \cite{rdkit-findpotential}.  That makes it a source of candidate facts,
+not the mathematical definition.
+
+\subsection{The fact object}
+
+The final fact object should be immutable in meaning.  The snippets below use
+tuples; a production implementation may add cached indexes outside the object.
+
+\begin{lstlisting}
+@dataclass(frozen=True, slots=True)
+class MoleculeFacts:
+    atoms: tuple[AtomFacts, ...]
+    bonds: tuple[BondFacts, ...]
+    components: tuple[ComponentFacts, ...]
+    stereo: StereoFacts
+    ligand_occurrences: tuple[LigandOccurrence, ...]
+
+    def validate(self) -> None:
+        """Check id uniqueness, endpoint validity, component partition,
+        stereo occurrence validity, and reference-order consistency."""
+        ...
+\end{lstlisting}
+
+Avoid storing mutable dictionaries directly in frozen dataclasses unless they are
+explicitly wrapped or treated as internal caches.  Prefer sorted tuples in fact
+objects and derived maps in indexes.
+
+\begin{lstlisting}
+@dataclass(slots=True)
+class GraphIndex:
+    atom_by_id: dict[AtomId, AtomFacts]
+    bond_by_id: dict[BondId, BondFacts]
+    incident_bonds: dict[AtomId, tuple[BondId, ...]]
+    neighbors: dict[AtomId, tuple[AtomId, ...]]
+    bond_between: dict[tuple[AtomId, AtomId], BondId]
+\end{lstlisting}
+
+The index is derived data.  It should not perform chemistry perception.
+
+\section{Policy and finite syntax domains}
+\label{s:policy}
+
+The policy supplies finite presentation domains.  It must be explicit about what
+is excluded.  In particular, atom maps, CXSMILES fields, arbitrary numeric
+extensions, arbitrary whitespace, unbounded ring labels, and writer-specific
+canonicalization side effects should be absent or separately bounded.
+
+\begin{lstlisting}
+# policy.py
+from dataclasses import dataclass
+from enum import Enum
+from typing import Mapping
+
+from .ids import AtomId, BondId
+from .facts import MoleculeFacts
+
+
+class TetraToken(Enum):
+    NONE = ""
+    AT = "@"
+    ATAT = "@@"
+
+
+class DirectionMark(Enum):
+    ABSENT = 0
+    FWD = 1
+    REV = -1
+
+
+@dataclass(frozen=True, slots=True)
+class RingLabel:
+    value: int
+
+    def text(self) -> str:
+        if 1 <= self.value <= 9:
+            return str(self.value)
+        return f"%{self.value:02d}"
+
+
+@dataclass(frozen=True, slots=True)
+class AtomTextChoice:
+    name: str
+    # In production use an immutable tuple/map.
+    text_by_tetra: Mapping[TetraToken, str]
+
+    def permits(self, token: TetraToken) -> bool:
+        return token in self.text_by_tetra
+
+    def render(self, token: TetraToken) -> str:
+        return self.text_by_tetra[token]
+
+
+@dataclass(frozen=True, slots=True)
+class BondTextChoice:
+    name: str
+    base_text: str
+    permits_direction: bool
+
+
+class AnnotationMode(Enum):
+    HARD = "hard"
+    SUPPORT_MAXIMAL = "support_maximal"
+    CARDINALITY_MAXIMAL = "cardinality_maximal"
+    CANONICAL = "canonical"
+
+
+@dataclass(frozen=True, slots=True)
+class SmilesPolicy:
+    ring_labels: tuple[RingLabel, ...]
+    annotation_mode: AnnotationMode
+    deduplicate_rendered_strings: bool = True
+    least_free_ring_labels: bool = True
+
+    def atom_text_domain(
+        self,
+        facts: MoleculeFacts,
+        atom: AtomId,
+    ) -> tuple[AtomTextChoice, ...]:
+        ...
+
+    def bond_text_domain(
+        self,
+        facts: MoleculeFacts,
+        bond: BondId,
+        *,
+        slot_kind: str,
+    ) -> tuple[BondTextChoice, ...]:
+        ...
+\end{lstlisting}
+
+Omission of a directional marker should be represented as the first-class domain
+value \texttt{DirectionMark.ABSENT}.  It should not be represented by absence of
+a variable.  Treating absence as a value makes no-accidental-stereo and
+maximality predicates total finite relations.
+
+\begin{remark}[Contextual atom and bond decoding]
+For a bracketed atom spelling, decoding is often a unary relation between the
+text and \texttt{AtomFacts}.  For unbracketed atoms, elided bonds, aromatic
+spellings, and implicit hydrogen interpretations, decoding may depend on the
+incident bond-order context.  The clean implementation is therefore not always a
+unary atom table but a finite star relation
+\[
+   \Decode^{\mathrm{atom}}_v
+      \bigl(a_v,\tau_v,(b_s,\delta_s)_{s\in\partial v}\bigr).
+\]
+Likewise, a ring-closure edge may require a joint endpoint relation
+\[
+   \Decode^{\mathrm{ring}}_e
+      \bigl(b_{e,1},\delta_{e,1},b_{e,2},\delta_{e,2},\lambda_e\bigr),
+\]
+rather than two independent endpoint checks.  This remains finite.  It is better
+to model the relation explicitly than to rely on a parser to repair or reject
+candidate strings after generation.
+\end{remark}
+
+\section{Traversal skeletons}
+\label{s:skeletons}
+
+\subsection{Canonical skeleton object}
+
+The minimal clean traversal witness is a rooted spanning forest plus an ordered
+list of local post-atom events.  For each connected component, the policy chooses
+or enumerates a root.  Each non-root atom has one parent.  Tree edges are emitted
+as traversal bonds.  Non-tree edges are emitted as paired ring endpoints.  At
+each atom, local events are ordered; each child event is either a branch child or,
+if it is the final child event, a continuation child.
+
+\begin{lstlisting}
+# skeleton.py
+from dataclasses import dataclass
+from enum import Enum
+
+from .ids import AtomId, BondId
+
+
+class ChildRole(Enum):
+    BRANCH = "branch"
+    CONTINUATION = "continuation"
+
+
+@dataclass(frozen=True, slots=True)
+class ChildEvent:
+    bond: BondId
+    parent: AtomId
+    child: AtomId
+    role: ChildRole
+
+
+@dataclass(frozen=True, slots=True)
+class RingEndpointEvent:
+    bond: BondId
+    at: AtomId
+
+
+LocalEvent = ChildEvent | RingEndpointEvent
+
+
+@dataclass(frozen=True, slots=True)
+class TraversalSkeleton:
+    roots: tuple[AtomId, ...]
+    parent: dict[AtomId, AtomId | None]
+    tree_bonds: frozenset[BondId]
+    ring_bonds: frozenset[BondId]
+    events_at: dict[AtomId, tuple[LocalEvent, ...]]
+\end{lstlisting}
+
+This object is equivalent to an ordered DFS event tree with ring back-edges.  It
+is more useful than a raw character string because tetrahedral local order and
+directional carrier scopes can be computed before rendering.
+
+\subsection{Branch/continuation as linearization}
+
+Branch/continuation choice is part of the presentation skeleton.  It can be
+viewed either as a child-role variable or as a linearization constraint on DFS
+events:
+\[
+   \text{at most one child traversal is unparenthesized, and if present it is last.}
+\]
+The two views are equivalent.  In code, the child-role view is easier to render
+and debug.
+
+\subsection{Skeleton generation}
+
+The first implementation should use an explicit generator rather than a
+monolithic SAT encoding of traversal.  This is still an exact finite
+decomposition of the CSP; it is not a writer repair procedure.
+
+\begin{lstlisting}
+def enumerate_skeletons(
+    facts: MoleculeFacts,
+    index: GraphIndex,
+    policy: SmilesPolicy,
+) -> Iterator[TraversalSkeleton]:
+    for roots in enumerate_component_roots(facts, policy):
+        for tree_bonds in enumerate_spanning_forests(facts, index, roots):
+            parent = orient_forest(index, roots, tree_bonds)
+            ring_bonds = frozenset(b.id for b in facts.bonds) - frozenset(tree_bonds)
+
+            local_domains: list[tuple[AtomId, tuple[tuple[LocalEvent, ...], ...]]] = []
+
+            for atom in atom_ids(facts):
+                children = children_of(parent, atom, index)
+                ring_eps = tuple(
+                    RingEndpointEvent(bond=bid, at=atom)
+                    for bid in ring_bonds
+                    if is_incident(index, bid, atom)
+                )
+                local_domains.append(
+                    (atom, tuple(local_event_orders(children, ring_eps)))
+                )
+
+            for events_at in product_local_orders(local_domains):
+                yield TraversalSkeleton(
+                    roots=roots,
+                    parent=parent,
+                    tree_bonds=frozenset(tree_bonds),
+                    ring_bonds=ring_bonds,
+                    events_at=events_at,
+                )
+\end{lstlisting}
+
+For large graphs the generator will be enormous.  That is not an implementation
+bug: exact support enumeration is output-sensitive and generally exponential.
+The implementation should still prune early using fragment order, root policy,
+maximum simultaneously open ring labels, atom-text impossibility, and stereo
+infeasibility.
+
+\section{Syntax slots}
+\label{s:slots}
+
+A skeleton determines a finite set of syntax slots.  Assignments choose values
+for these slots.
+
+\begin{lstlisting}
+# slots.py
+from dataclasses import dataclass
+from enum import Enum
+
+from .ids import AtomId, BondId, SiteId, BondSlotId, CarrierSlotId, RingEndpointId
+
+
+class BondSlotKind(Enum):
+    TREE = "tree"
+    RING_ENDPOINT = "ring_endpoint"
+
+
+@dataclass(frozen=True, slots=True)
+class AtomSlot:
+    atom: AtomId
+
+
+@dataclass(frozen=True, slots=True)
+class BondSlot:
+    id: BondSlotId
+    bond: BondId
+    kind: BondSlotKind
+    written_from: AtomId
+    written_to: AtomId | None
+    ring_endpoint: RingEndpointId | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class CarrierSlot:
+    id: CarrierSlotId
+    bond_slot: BondSlotId
+    bond: BondId
+    written_from: AtomId
+    written_to: AtomId | None
+
+
+@dataclass(frozen=True, slots=True)
+class SlotBundle:
+    atom_slots: tuple[AtomSlot, ...]
+    bond_slots: tuple[BondSlot, ...]
+    carrier_slots: tuple[CarrierSlot, ...]
+    ring_endpoints: tuple[RingEndpointId, ...]
+    directional_scope: dict[SiteId, tuple[CarrierSlotId, ...]]
+\end{lstlisting}
+
+A directional carrier slot must remember the direction in which the bond text is
+written.  A slash/backslash character has no global geometric sign.  Its
+site-relative meaning depends on the written direction of the carrier and on the
+stereo site currently being interpreted.
+
+\section{Parser semantics as finite relations}
+\label{s:semantics}
+
+The semantics object is the implementation counterpart of the mathematical
+relations \(\Decode\), \(\Tet\), and \(\Dir\).  It should be pure and finite:
+for a fixed fact object, skeleton, slot bundle, and assignment, it returns a
+value from a finite set or an invalid marker.
+
+\begin{lstlisting}
+# semantics.py
+from typing import Mapping, Protocol
+
+from .ids import AtomId, BondId, SiteId, OccurrenceId, CarrierSlotId
+from .facts import MoleculeFacts
+from .policy import AtomTextChoice, BondTextChoice, TetraToken, DirectionMark
+from .skeleton import TraversalSkeleton
+from .slots import SlotBundle
+
+
+class Invalid:
+    pass
+
+
+INVALID = Invalid()
+
+
+class ParserSemantics(Protocol):
+    def atom_decode_ok(
+        self,
+        facts: MoleculeFacts,
+        atom: AtomId,
+        atom_text: AtomTextChoice,
+        tetra_token: TetraToken,
+        incident_bond_texts: tuple[BondTextChoice, ...],
+    ) -> bool:
+        ...
+
+    def bond_decode_ok(
+        self,
+        facts: MoleculeFacts,
+        bond: BondId,
+        bond_text: BondTextChoice,
+        direction_mark: DirectionMark,
+    ) -> bool:
+        ...
+
+    def ring_pair_decode_ok(
+        self,
+        facts: MoleculeFacts,
+        bond: BondId,
+        endpoint_1: BondTextChoice,
+        mark_1: DirectionMark,
+        endpoint_2: BondTextChoice,
+        mark_2: DirectionMark,
+    ) -> bool:
+        ...
+
+    def local_tetra_order(
+        self,
+        facts: MoleculeFacts,
+        skel: TraversalSkeleton,
+        slots: SlotBundle,
+        site: SiteId,
+    ) -> tuple[OccurrenceId, ...]:
+        ...
+
+    def tetra_value(
+        self,
+        facts: MoleculeFacts,
+        site: SiteId,
+        local_order: tuple[OccurrenceId, ...],
+        token: TetraToken,
+    ) -> TetraValue | Invalid:
+        ...
+
+    def directional_value(
+        self,
+        facts: MoleculeFacts,
+        skel: TraversalSkeleton,
+        slots: SlotBundle,
+        site: SiteId,
+        marks: Mapping[CarrierSlotId, DirectionMark],
+    ) -> DirectionalValue | Invalid:
+        ...
+\end{lstlisting}
+
+For ordinary alkene/imine/oxime-style directional stereo, a signed parity CSP is
+often the efficient implementation.  The exposed primitive should still be the
+finite relation \texttt{directional\_value}.  It can internally use parity
+tables, but it can also handle endpoint degeneracy, ring endpoint orientation,
+missing-carrier patterns, and contradictory marker patterns without changing the
+rest of the enumerator.
+
+\subsection{Tetrahedral constraint}
+
+For each tetrahedral site \(q\), the skeleton induces a local occurrence order
+\(L_q\).  The tetrahedral token at the center is constrained by
+\[
+   \Tet_q(L_q,\tau_q)=t_q,
+\]
+where \(t_q\) is \texttt{PLUS/MINUS} for specified sites and \texttt{NONE} for
+potential but unspecified sites.  The relation must include the dialect-specific
+rule for implicit hydrogen placement and for ring-closure occurrence ordering.
+Daylight's SMILES theory states that, for chirality, the order of a ring-closure
+bond is determined by the lexical position of the ring digit on the chiral atom,
+not by the later position of the other endpoint \cite{daylight-smiles}.
+
+\subsection{Directional constraint}
+
+For each directional site \(q\), compute its carrier scope
+\[
+   K_q\subseteq \texttt{CarrierSlotId}.
+\]
+The constraint is
+\[
+   \Dir_q\bigl((\delta_k)_{k\in K_q}\bigr)=d_q,
+\]
+where \(d_q\) is \texttt{TOGETHER/OPPOSITE} for specified sites and
+\texttt{NONE} for potential but unspecified sites.
+
+A single carrier slot may belong to more than one site scope.  Therefore
+no-accidental-stereo is represented by local finite relations placed in one
+global CSP, not by independently solving each site.
+
+\begin{lstlisting}
+def check_tetrahedral_constraints(
+    facts: MoleculeFacts,
+    skel: TraversalSkeleton,
+    slots: SlotBundle,
+    assignment: "FullAssignment",
+    semantics: ParserSemantics,
+) -> bool:
+    for site in facts.stereo.tetrahedral:
+        token = assignment.tetra_token.get(site.center, TetraToken.NONE)
+        order = semantics.local_tetra_order(facts, skel, slots, site.id)
+        value = semantics.tetra_value(facts, site.id, order, token)
+        if value is INVALID or value != site.target:
+            return False
+    return True
+
+
+def check_directional_constraints(
+    facts: MoleculeFacts,
+    skel: TraversalSkeleton,
+    slots: SlotBundle,
+    assignment: "FullAssignment",
+    semantics: ParserSemantics,
+) -> bool:
+    for site in facts.stereo.directional:
+        scope = slots.directional_scope[site.id]
+        marks = {
+            k: assignment.direction_mark.get(k, DirectionMark.ABSENT)
+            for k in scope
+        }
+        value = semantics.directional_value(
+            facts=facts,
+            skel=skel,
+            slots=slots,
+            site=site.id,
+            marks=marks,
+        )
+        if value is INVALID or value != site.target:
+            return False
+    return True
+\end{lstlisting}
+
+The same functions enforce preservation of specified stereo and absence of
+accidental stereo.  Only the stored target differs.
+
+\begin{remark}[Local relations versus global constraints]
+If the bounded parser semantics assigns each site value from a bounded local
+scope, then no-accidental-stereo is implemented by one finite relation per site,
+with shared variables creating a global CSP.  If a chosen parser semantics
+contains a genuinely global cleanup or conflict-resolution rule, that rule must
+be represented as a finite global relation or excluded from the semantics.  The
+important point is not locality at all costs; it is that every parser-relevant
+effect is represented before rendering rather than delegated to post-hoc
+validation.
+\end{remark}
+
+\section{Ring labels}
+\label{s:ring-labels}
+
+Each non-tree edge produces two ring endpoint events.  A ring-label assignment
+is a function from ring edges to a finite label set.  The basic correctness
+conditions are:
+\begin{enumerate}[leftmargin=*]
+\item each ring edge has exactly two endpoint events;
+\item both endpoints of the same ring edge use the same label;
+\item a label is not reused while it is live;
+\item endpoint bond text and directional markers jointly decode to the fixed
+      graph bond;
+\item optional policy constraints, such as least-currently-free label, are
+      applied as finite predicates;
+\item grammar-specific exclusions, such as forbidding a dot immediately before a
+      ring-closure digit, are encoded in the ring endpoint grammar rather than
+      checked after parsing.
+\end{enumerate}
+
+The interval condition for reusable labels is:
+\[
+  \lambda_e=\lambda_f,\quad \pos_1(e)<\pos_1(f)
+  \quad\Longrightarrow\quad
+  \pos_2(e)<\pos_1(f),
+\]
+where \(\pos_1(e)<\pos_2(e)\) are the two event positions of edge \(e\).  Give
+every endpoint event a strict total event position, not merely an atom position,
+so that multiple ring endpoints on the same atom are unambiguous.
+
+\begin{lstlisting}
+def legal_ring_labels(
+    skel: TraversalSkeleton,
+    policy: SmilesPolicy,
+) -> Iterator[dict[BondId, RingLabel]]:
+    intervals = compute_ring_intervals(skel)  # BondId -> (open_event_pos, close_event_pos)
+    ring_edges = tuple(sorted(skel.ring_bonds, key=lambda e: intervals[e][0]))
+    labels = policy.ring_labels
+    out: dict[BondId, RingLabel] = {}
+
+    def active_at(pos: EventPos) -> set[RingLabel]:
+        active: set[RingLabel] = set()
+        for e, lab in out.items():
+            lo, hi = intervals[e]
+            if lo < pos < hi:
+                active.add(lab)
+        return active
+
+    def rec(i: int) -> Iterator[dict[BondId, RingLabel]]:
+        if i == len(ring_edges):
+            yield dict(out)
+            return
+
+        e = ring_edges[i]
+        lo, _ = intervals[e]
+        candidates = tuple(lab for lab in labels if lab not in active_at(lo))
+
+        if policy.least_free_ring_labels:
+            if not candidates:
+                return
+            candidates = (min(candidates, key=lambda x: x.value),)
+
+        for lab in candidates:
+            out[e] = lab
+            yield from rec(i + 1)
+            del out[e]
+
+    yield from rec(0)
+\end{lstlisting}
+
+Interval non-overlap is necessary for reusable labels, but it is not the whole
+ring-closure model.  Pairing, endpoint identity, joint bond decode, event
+position, and grammar exclusions are also part of correctness.
+
+\section{Assignments}
+\label{s:assignments}
+
+Assignments should be explicit typed objects.  A satisfying assignment is a
+complete finite witness.  Rendering should only happen after all constraints and
+policy predicates have been applied.
+
+\begin{lstlisting}
+# constraints.py
+from dataclasses import dataclass
+
+from .ids import AtomId, BondId, BondSlotId, CarrierSlotId
+from .policy import AtomTextChoice, BondTextChoice, RingLabel, TetraToken, DirectionMark
+
+
+@dataclass(frozen=True, slots=True)
+class BaseAssignment:
+    atom_text: dict[AtomId, AtomTextChoice]
+    tetra_token: dict[AtomId, TetraToken]
+    bond_text: dict[BondSlotId, BondTextChoice]
+    ring_label: dict[BondId, RingLabel]
+
+
+@dataclass(frozen=True, slots=True)
+class FullAssignment:
+    atom_text: dict[AtomId, AtomTextChoice]
+    tetra_token: dict[AtomId, TetraToken]
+    bond_text: dict[BondSlotId, BondTextChoice]
+    ring_label: dict[BondId, RingLabel]
+    direction_mark: dict[CarrierSlotId, DirectionMark]
+
+    @classmethod
+    def from_base(
+        cls,
+        base: BaseAssignment,
+        direction_mark: dict[CarrierSlotId, DirectionMark],
+    ) -> "FullAssignment":
+        return cls(
+            atom_text=base.atom_text,
+            tetra_token=base.tetra_token,
+            bond_text=base.bond_text,
+            ring_label=base.ring_label,
+            direction_mark=direction_mark,
+        )
+\end{lstlisting}
+
+For efficiency, build assignments in stages.  Ring labels, atom text,
+non-directional bond text, and tetrahedral syntax can often be checked before
+enumerating slash/backslash markers.
+
+\section{Annotation policy}
+\label{s:annotation}
+
+An annotation policy is best implemented as a selector over assignments that
+already satisfy the semantic constraints.  It may be:
+\begin{itemize}[leftmargin=*]
+\item a hard predicate on complete assignments;
+\item an optimization or maximality layer;
+\item a canonicalization rule;
+\item a pre-solver restriction of allowed slots.
+\end{itemize}
+These are not equivalent in general.  A pre-solver generator is equivalent to a
+hard predicate only when it exactly characterizes the same complete-assignment
+set.  It is equivalent to maximality only under additional monotonicity
+assumptions that often fail for shared directional carriers.
+
+\begin{lstlisting}
+def marker_support(a: FullAssignment) -> frozenset[CarrierSlotId]:
+    return frozenset(
+        k for k, v in a.direction_mark.items()
+        if v != DirectionMark.ABSENT
+    )
+
+
+def select_by_annotation_policy(
+    assignments: list[FullAssignment],
+    policy: SmilesPolicy,
+) -> list[FullAssignment]:
+    if policy.annotation_mode is AnnotationMode.HARD:
+        return assignments
+
+    supports = [marker_support(a) for a in assignments]
+
+    if policy.annotation_mode is AnnotationMode.SUPPORT_MAXIMAL:
+        return [
+            a for a, s in zip(assignments, supports)
+            if not any(s < t for t in supports)
+        ]
+
+    if policy.annotation_mode is AnnotationMode.CARDINALITY_MAXIMAL:
+        if not assignments:
+            return []
+        m = max(len(s) for s in supports)
+        return [a for a, s in zip(assignments, supports) if len(s) == m]
+
+    if policy.annotation_mode is AnnotationMode.CANONICAL:
+        if not assignments:
+            return []
+        return [min(assignments, key=canonical_annotation_key)]
+
+    raise ValueError(policy.annotation_mode)
+\end{lstlisting}
+
+Support-wise maximality is the direct interpretation of:
+\[
+   \text{emit every eligible carrier marker that can participate in a surviving assignment}.
+\]
+It can yield multiple incomparable maximal supports.  Cardinality maximality
+removes some but not all multiplicity.  Canonical maximality gives one witness by
+adding a presentation convention.  The implementation should not hide this
+choice.
+
+For a pure SAT implementation, support maximality can be encoded by blocking all
+strictly larger feasible supports.  This is finite but can be exponentially large
+in the number of carrier slots.  An optimization or MaxSAT-style layer is the
+honest formulation.  A backtracking implementation can apply the same selector
+after enumerating feasible directional assignments for a fixed skeleton and base
+assignment.
+
+\section{Rendering}
+\label{s:rendering}
+
+The renderer is deterministic string concatenation.  It should not ask chemistry
+questions.  It consumes a skeleton, slots, and a satisfying assignment.
+
+\begin{lstlisting}
+# render.py
+def render(
+    facts: MoleculeFacts,
+    skel: TraversalSkeleton,
+    slots: SlotBundle,
+    a: FullAssignment,
+) -> str:
+    return ".".join(
+        render_atom_subtree(root, facts, skel, slots, a)
+        for root in skel.roots
+    )
+
+
+def render_atom_subtree(
+    atom: AtomId,
+    facts: MoleculeFacts,
+    skel: TraversalSkeleton,
+    slots: SlotBundle,
+    a: FullAssignment,
+) -> str:
+    out: list[str] = [
+        a.atom_text[atom].render(a.tetra_token.get(atom, TetraToken.NONE))
+    ]
+
+    for event in skel.events_at[atom]:
+        if isinstance(event, RingEndpointEvent):
+            bs = bond_slot_for_ring_endpoint(slots, event)
+            out.append(render_bond_slot(bs, a))
+            out.append(a.ring_label[event.bond].text())
+
+        elif isinstance(event, ChildEvent):
+            bs = bond_slot_for_tree_edge(slots, event.bond)
+            child_text = (
+                render_bond_slot(bs, a)
+                + render_atom_subtree(event.child, facts, skel, slots, a)
+            )
+            if event.role is ChildRole.BRANCH:
+                out.append("(" + child_text + ")")
+            else:
+                out.append(child_text)
+
+        else:
+            raise TypeError(event)
+
+    return "".join(out)
+\end{lstlisting}
+
+The slash/backslash character is rendered by a finite table from
+\texttt{DirectionMark} and slot orientation.  The same orientation convention
+must be used by \texttt{ParserSemantics.directional\_value}.  This shared
+convention should be tested directly with small hand-built examples.
+
+\section{Enumeration pipeline}
+\label{s:pipeline}
+
+The top-level enumerator is a sequence of finite generators and predicates.
+
+\begin{lstlisting}
+# enumerate.py
+def enumerate_support(
+    facts: MoleculeFacts,
+    policy: SmilesPolicy,
+    semantics: ParserSemantics,
+) -> Iterator[str]:
+    facts.validate()
+    index = build_graph_index(facts)
+    seen: set[str] = set()
+
+    for skel in enumerate_skeletons(facts, index, policy):
+        slots = allocate_slots(facts, index, skel, policy, semantics)
+
+        for base in enumerate_base_assignments(
+            facts, index, skel, slots, policy, semantics
+        ):
+            if not base_constraints_ok(
+                facts, index, skel, slots, base, policy, semantics
+            ):
+                continue
+
+            feasible: list[FullAssignment] = []
+
+            for full in enumerate_direction_assignments(
+                facts, skel, slots, base, policy, semantics
+            ):
+                if all_constraints_ok(
+                    facts, index, skel, slots, full, policy, semantics
+                ):
+                    feasible.append(full)
+
+            for full in select_by_annotation_policy(feasible, policy):
+                text = render(facts, skel, slots, full)
+
+                if policy.deduplicate_rendered_strings:
+                    if text in seen:
+                        continue
+                    seen.add(text)
+
+                yield text
+\end{lstlisting}
+
+The \texttt{seen} set implements the image-of-render definition.  It removes
+duplicate witnesses caused by automorphisms, symmetric roots, or distinct
+presentation witnesses that collapse to the same string.  It is not parse
+filtering.  If memory is a concern, replace it with a canonical-witness
+constraint, a streaming external sort, or a hash-backed database.
+
+\section{RDKit adapter}
+\label{s:adapter}
+
+The adapter snapshots RDKit facts into \texttt{MoleculeFacts}.  It should be
+small, isolated, and version-tested.  It may use RDKit's perception functions,
+but their results must be stored as explicit facts before enumeration starts.
+
+\begin{lstlisting}
+# rdkit_adapter.py
+from rdkit import Chem
+
+from .facts import MoleculeFacts
+
+
+def molecule_facts_from_rdkit(
+    mol: Chem.Mol,
+    extraction_policy: "ExtractionPolicy",
+) -> MoleculeFacts:
+    atoms = tuple(extract_atoms(mol))
+    bonds = tuple(extract_bonds(mol))
+    components = tuple(extract_components(mol, atoms, bonds))
+
+    stereo, occurrences = extract_stereo_and_occurrences(
+        mol=mol,
+        atoms=atoms,
+        bonds=bonds,
+        extraction_policy=extraction_policy,
+    )
+
+    facts = MoleculeFacts(
+        atoms=atoms,
+        bonds=bonds,
+        components=components,
+        stereo=stereo,
+        ligand_occurrences=occurrences,
+    )
+    facts.validate()
+    return facts
+\end{lstlisting}
+
+\subsection{Adapter responsibilities}
+
+The adapter has four responsibilities.
+
+\begin{enumerate}[leftmargin=*]
+\item Copy fixed atom and bond attributes: element, isotope, charge, aromaticity,
+      explicit and implicit hydrogens, bond order, and conjugation flags.
+\item Normalize specified tetrahedral and directional stereo into internal site
+      facts with explicit reference orders or reference pairs.
+\item Construct the parser/policy-relative potential-site universe.  RDKit may
+      propose candidates, but the adapter must reconcile those candidates with
+      the bounded dialect.
+\item Reject inputs outside the declared scope, such as enhanced stereo groups,
+      non-tetrahedral atom stereo, atropisomerism, unknown stereo modes not
+      represented by the model, or unsupported bond stereo classes.
+\end{enumerate}
+
+Do not store RDKit's chiral tag alone as a fact.  A chiral tag has meaning only
+relative to an ordering convention.  Store the normalized tetrahedral value plus
+the occurrence reference order that was used to compute it.
+
+\subsection{Audit use of RDKit}
+
+RDKit may be used after enumeration in tests:
+
+\begin{lstlisting}
+def audit_generated_strings_with_rdkit(
+    mol: Chem.Mol,
+    strings: Iterable[str],
+) -> None:
+    for smi in strings:
+        parsed = Chem.MolFromSmiles(smi)
+        assert parsed is not None
+        # Compare against independent invariants or a new adapter snapshot.
+        # Never call this from enumerate_support().
+\end{lstlisting}
+
+This audit is valuable for finding implementation mistakes, but it is not part
+of the support definition.
+
+\section{Solver architecture}
+\label{s:solver}
+
+The simplest correct implementation is a hybrid generator/CSP checker:
+\begin{enumerate}[leftmargin=*]
+\item enumerate traversal skeletons;
+\item allocate slots;
+\item enumerate ring labels and base text assignments with early decode checks;
+\item solve directional marker assignments for each base witness;
+\item apply the annotation policy;
+\item render and deduplicate strings.
+\end{enumerate}
+
+This should be the first implementation because it exposes every semantic layer
+and is easy to debug.  A later backend can compile parts to SAT or CP.  Good
+first SAT targets are ring labels, directional markers, and maximal annotation.
+The traversal skeleton is usually the least pleasant part to encode first,
+because spanning-tree, DFS-order, branch, and ring-endpoint variables create a
+large amount of symmetry.
+
+\begin{lstlisting}
+class DirectionSolver(Protocol):
+    def solve(
+        self,
+        facts: MoleculeFacts,
+        skel: TraversalSkeleton,
+        slots: SlotBundle,
+        base: BaseAssignment,
+        policy: SmilesPolicy,
+        semantics: ParserSemantics,
+    ) -> Iterator[FullAssignment]:
+        ...
+\end{lstlisting}
+
+The initial implementation can be recursive backtracking with pruning.  A later
+implementation can use a SAT solver and return the same \texttt{FullAssignment}
+objects.  Do not let solver-specific variable encodings leak into the domain
+model.
+
+\section{Alternative formal views}
+\label{s:formalism}
+
+The implementation model is naturally described as an attributed graph traversal
+grammar plus a finite-domain CSP.  Equivalent or related formal views are
+possible:
+\begin{itemize}[leftmargin=*]
+\item a regular tree grammar with finite attributes and side constraints;
+\item a constraint automaton over traversal events;
+\item an MSO-definable structure over a graph equipped with a traversal order;
+\item a finite graph-to-string transducer with regular constraints;
+\item a SAT/CP instance compiled from skeleton, slot, and policy variables.
+\end{itemize}
+
+These formalisms are useful for proofs or compilation.  For Python, the most
+maintainable representation is still typed domain objects plus finite relations.
+The critical point is that the entire bounded dialect is finite and explicit;
+the exact implementation need not be monolithic.
+
+\section{Correctness invariant}
+\label{s:correctness}
+
+\begin{theorem}[Implementation-level soundness]
+Assume the adapter has produced a valid \texttt{MoleculeFacts} object, the policy
+has finite domains, and the semantics object exactly represents the bounded
+parser relations.  If \texttt{enumerate\_support} yields a string \(w\), then
+\(w\) is in the declared finite SMILES sublanguage and parses, under the declared
+semantics, to a graph isomorphic to the input fact graph with the specified
+stereochemistry and with no additional potential-site stereo.
+\end{theorem}
+
+\begin{proof}
+The skeleton generator emits only legal atom, branch, continuation,
+disconnection, and ring-endpoint event structures.  The graph constraints ensure
+that every atom is emitted once and every graph bond is emitted either as one
+traversal bond or as one paired ring closure.  The decode constraints ensure
+that atom and bond spellings decode to the stored atom and bond facts.  The ring
+constraints ensure endpoint pairing, legal bounded label reuse, and joint
+ring-edge decode.  The tetrahedral and directional relations match specified-site
+targets and force \texttt{NONE} at potential unspecified sites.  The renderer
+only concatenates texts chosen by a satisfying assignment.  Therefore the
+rendered string has the stated parse-equivalence property.
+\end{proof}
+
+\begin{theorem}[Implementation-level completeness]
+Under the same assumptions, for every string \(w\in L(\calM,\calP,\calS)\) in
+the declared support, there is at least one satisfying assignment rendered by
+the implementation as \(w\), unless an optional canonical-witness rule was chosen
+that intentionally selects a representative subset of witnesses while preserving
+rendered support.
+\end{theorem}
+
+\begin{proof}
+Read the root choices, parent relation, branch/continuation choices, ring
+endpoint positions, ring labels, atom text choices, bond text choices,
+tetrahedral tokens, and directional marks directly from \(w\).  Because \(w\) is
+in the declared sublanguage and parses to the input fact graph under the declared
+semantics, these choices satisfy the corresponding finite constraints.  The
+renderer reconstructs \(w\) from those choices.  If only rendered strings are
+deduplicated, the string is still yielded once.  If a canonical-witness rule is
+used, completeness is with respect to the canonicalized witness set by design.
+\end{proof}
+
+The theorem does not require an explicit quotient by graph automorphisms.  The
+image-of-render formulation already quotients by equality of strings.  Graph
+automorphisms matter for performance and duplicate witnesses, not for semantic
+correctness.
+
+\begin{remark}[Parser determinism]
+The theorem assumes that the declared semantics assigns a well-defined finite
+semantic value, or an invalid value, to each relevant site under a complete slot
+assignment.  If the chosen parser semantics is nondeterministic, replace each
+site value by a finite set of possible values and state whether support requires
+all parses or at least one parse to match the fact graph.  The deterministic
+relation is the cleaner implementation target.
+\end{remark}
+
+\section{Complexity and output sensitivity}
+\label{s:complexity}
+
+There are three different enumeration sizes.
+
+\begin{center}
+\begin{tabular}{>{\raggedright\arraybackslash}p{0.25\linewidth}
+                >{\raggedright\arraybackslash}p{0.65\linewidth}}
+\toprule
+Quantity & Meaning \\
+\midrule
+satisfying assignments &
+all traversal, slot, and marker witnesses; may contain many duplicates by
+rendering \\
+canonical witnesses &
+one chosen witness per presentation equivalence class, if a canonical rule is
+imposed \\
+rendered support strings &
+the actual language support, \(\im(\render)\) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+State complexity claims relative to one of these quantities.  The honest default
+is output-sensitive enumeration of rendered support strings, with potentially
+exponential preprocessing and delay in the size of the graph.  If the API yields
+assignments instead of strings, say so.  If a canonical-witness constraint is
+active, state the canonicalization policy because it becomes part of the
+enumerated object.
+
+\section{Sources of infinity to exclude or bound}
+\label{s:infinity}
+
+For a fixed finite graph, support remains finite only if all presentation domains
+are finite.  Ring labels are the obvious source of infinity, but not the only
+one.  The policy should also bound or exclude:
+\begin{enumerate}[leftmargin=*]
+\item arbitrary ring-label extensions;
+\item arbitrary isotope, charge, hydrogen-count, or atom-map numeric spellings;
+\item CXSMILES or name fields after the core SMILES;
+\item redundant whitespace or comments, if the chosen parser accepts them;
+\item unbounded alternative aromatic/Kekule or valence-normalization spellings;
+\item wildcard, query, or SMARTS-like syntax if not part of the dialect.
+\end{enumerate}
+
+If any of these are admitted, their finite domains must be placed in the policy
+object and in the decode relations.
+
+\section{Known implementation pitfalls}
+\label{s:pitfalls}
+
+\begin{enumerate}[leftmargin=*]
+\item \textbf{Slash orientation.}  A slash/backslash token is not a global sign.
+      Its meaning depends on the written direction of the carrier slot and on
+      the site whose stereo is being interpreted.
+\item \textbf{Ring digits at tetrahedral centers.}  The ring digit's lexical
+      position contributes to the local ligand order at the chiral atom.
+\item \textbf{Implicit hydrogens.}  An implicit hydrogen used as a tetrahedral
+      ligand must be represented as an occurrence with a precise placement rule
+      in the semantics object.
+\item \textbf{Unspecified potential sites.}  Omitting these constraints allows
+      accidental stereo to be introduced by slash/backslash tokens used for
+      nearby sites.
+\item \textbf{RDKit cleanup.}  If RDKit sanitization or cleanup changes atom,
+      bond, hydrogen, aromatic, or stereo facts, that must happen before the
+      snapshot.  The core enumerator should not run cleanup.
+\item \textbf{Symmetry.}  Equal rendered strings may arise from different roots
+      or automorphic labeled witnesses.  Use image deduplication or a canonical
+      witness rule.
+\item \textbf{Contextual atom decoding.}  Nonbracketed atom text may not be a
+      unary atom relation.  Model the finite star relation rather than relying
+      on a post-hoc parser check.
+\item \textbf{Ring endpoint bond conflicts.}  If both endpoints of a ring
+      closure emit bond information, compatibility is a joint relation on the
+      pair of endpoint slots.
+\item \textbf{Policy leakage.}  A presentation convention, such as least-free
+      ring labels or canonical annotation, is still a constraint.  It should be
+      recorded as policy, not hidden in the renderer.
+\end{enumerate}
+
+\section{Testing plan}
+\label{s:testing}
+
+Testing should be layered.
+
+\subsection{Core import test}
+
+Assert that core modules do not import RDKit.
+
+\begin{lstlisting}
+def test_core_has_no_rdkit_imports() -> None:
+    for path in CORE_MODULE_PATHS:
+        tree = ast.parse(path.read_text())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    assert not alias.name.startswith("rdkit")
+            if isinstance(node, ast.ImportFrom):
+                assert not (node.module or "").startswith("rdkit")
+\end{lstlisting}
+
+\subsection{Fact validation tests}
+
+Hand-build tiny fact objects and test validation failures: duplicate atom ids,
+invalid bond endpoints, component partitions that omit atoms, stereo sites with
+missing occurrences, and reference orders of the wrong length.
+
+\subsection{Skeleton tests}
+
+Use non-stereo graphs where the expected skeleton count is small: one atom, a
+path of length two, a triangle, and two disconnected atoms.  Test that every
+skeleton covers all atoms and partitions edges into tree and ring edges.
+
+\subsection{Semantics tests}
+
+Test \texttt{local\_tetra\_order}, \texttt{tetra\_value}, and
+\texttt{directional\_value} on hand-built skeletons.  Include cases where a ring
+endpoint changes the local tetrahedral order and cases where reversing the
+written direction of a slash carrier changes its site-relative sign.
+
+\subsection{Policy tests}
+
+Test support-wise maximal, cardinality-maximal, and canonical annotation on small
+artificial carrier-scope examples.  These tests should not need chemistry.
+
+\subsection{RDKit audit tests}
+
+After the core tests, use RDKit as an external audit on a small corpus.  The
+audit should parse generated strings and compare a freshly extracted fact object
+or independent invariants.  It should never be called by
+\texttt{enumerate\_support}.
+
+\section{Minimal viable implementation sequence}
+\label{s:mvp}
+
+A realistic build sequence is:
+\begin{enumerate}[leftmargin=*]
+\item Implement \texttt{MoleculeFacts}, \texttt{GraphIndex}, validation, and
+      hand-built molecules.  Do not use RDKit yet.
+\item Implement non-stereo traversal skeletons and rendering for a restrictive
+      atom/bond text policy.
+\item Add bounded ring labels and interval-based label reuse.
+\item Add atom, bond, and ring-pair decode relations, still with a restrictive
+      policy.
+\item Add tetrahedral sites with explicit and implicit ligand occurrences.
+\item Add directional sites using the general finite relation interface.
+      Implement signed parity as a fast path only after relation tests pass.
+\item Add potential unspecified sites and no-accidental-stereo constraints.
+\item Add annotation policies and rendered-string deduplication.
+\item Add the RDKit adapter and audit tests.
+\item Only then add broader atom/bond spelling domains and optional SAT/CP
+      backends.
+\end{enumerate}
+
+This order prevents RDKit parser behavior from becoming a hidden dependency in
+the core design.
+
+\section{Weakest assumptions for no post-hoc parse filter}
+\label{s:weakest}
+
+No post-hoc parse filter is required under the following assumptions.
+\begin{enumerate}[leftmargin=*]
+\item The input is a fixed finite graph with fixed atom, bond, component, and
+      stereo facts.
+\item The presentation policy has finite syntax domains.
+\item The parser semantics for the bounded dialect is explicit as finite
+      relations over skeletons and syntax slots.
+\item The potential-site universe is complete for that semantics and policy.
+\item The renderer is a total function on satisfying assignments and emits only
+      grammar-valid syntax.
+\item Any parser behavior that would otherwise be procedural---aromaticity,
+      implicit hydrogens, valence defaults, stereo cleanup, ring-label reuse,
+      or slash/backslash interpretation---is either already fixed in the facts
+      or represented inside the finite relations.
+\end{enumerate}
+
+If one of these assumptions is dropped, the missing behavior has to reappear as a
+post-hoc validator, a writer-specific procedure, or an oracle.  Under these
+assumptions, those mechanisms are unnecessary.
+
+\begin{thebibliography}{9}
+
+\bibitem{rdkit-book-stereo}
+RDKit documentation, \emph{The RDKit Book}, section ``Stereochemistry''.
+The documentation describes the scope of RDKit stereochemistry support, including
+tetrahedral atomic stereochemistry and cis/trans stereochemistry at double
+bonds.
+\url{https://www.rdkit.org/docs/RDKit_Book.html}
+
+\bibitem{rdkit-rdchem}
+RDKit documentation, \emph{rdkit.Chem.rdchem module}.
+The API documents atom and bond methods, including bond stereochemistry accessors
+such as \texttt{Bond.GetStereo()} and \texttt{Bond.GetStereoAtoms()}.
+\url{https://www.rdkit.org/docs/source/rdkit.Chem.rdchem.html}
+
+\bibitem{rdkit-findpotential}
+RDKit documentation, \emph{rdkit.Chem.rdmolops module}.
+The documentation for \texttt{FindPotentialStereo()} says that it finds
+potential stereo elements and notes that the function is somewhat experimental
+and that the API and results may change.
+\url{https://www.rdkit.org/docs/source/rdkit.Chem.rdmolops.html}
+
+\bibitem{daylight-smiles}
+Daylight Chemical Information Systems, \emph{SMILES Theory Manual}.
+The stereochemistry section discusses local chiral ordering and notes that the
+order of a ring-closure bond for chirality is determined by the lexical position
+of the ring digit on the chiral atom.
+\url{https://www.daylight.com/dayhtml/doc/theory/theory.smiles.html}
+
+\bibitem{opensmiles}
+OpenSMILES specification, version 1.0, 15 May 2016.
+The specification defines the open SMILES grammar and includes ring-closure and
+dot-bond constraints relevant to bounded dialect design.
+\url{https://opensmiles.org/opensmiles.html}
+
+\end{thebibliography}
+
+\end{document}
+```
+
+[1]: https://www.rdkit.org/docs/RDKit_Book.html?utm_source=chatgpt.com "The RDKit Book — The RDKit 2026.03.2 documentation"
+

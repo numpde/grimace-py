@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from tests.helpers.pinned_rdkit_fixtures import (
-    PINNED_RDKIT_DETERMINISTIC_UNOBSERVED,
     PINNED_RDKIT_WRITER_MEMBERSHIP,
     load_pinned_rdkit_fixture_cases,
     optional_bool,
@@ -30,25 +29,22 @@ class PinnedWriterMembershipCase:
     all_bonds_explicit: bool = False
     all_hs_explicit: bool = False
     ignore_atom_map_numbers: bool = False
+    membership_check: str = "support"
 
 
 _FIXTURE_ROOT = pinned_rdkit_fixture_root(PINNED_RDKIT_WRITER_MEMBERSHIP)
-_DETERMINISTIC_UNOBSERVED_FIXTURE_ROOT = pinned_rdkit_fixture_root(
-    PINNED_RDKIT_DETERMINISTIC_UNOBSERVED
-)
 
 
-def _load_pinned_writer_output_cases(
+def load_pinned_writer_membership_cases(
     rdkit_version: str,
     *,
-    fixture_root: Path,
-    fixture_label: str,
+    fixture_root: Path = _FIXTURE_ROOT,
 ) -> tuple[PinnedWriterMembershipCase, ...]:
     cases = []
     for fixture_case in load_pinned_rdkit_fixture_cases(
         fixture_root=fixture_root,
         rdkit_version=rdkit_version,
-        fixture_label=fixture_label,
+        fixture_label="writer-membership",
     ):
         raw_case = fixture_case.raw
         smiles = optional_string(
@@ -126,31 +122,21 @@ def _load_pinned_writer_output_cases(
                     fixture_path=fixture_case.fixture_path,
                     case_id=fixture_case.case_id,
                 ),
+                membership_check=optional_string(
+                    raw_case,
+                    field_name="membership_check",
+                    fixture_path=fixture_case.fixture_path,
+                    case_id=fixture_case.case_id,
+                )
+                or "support",
             )
         )
 
+    for case in cases:
+        if case.membership_check not in {"support", "decoder"}:
+            raise ValueError(
+                f"writer-membership case {case.case_id!r} has unsupported "
+                f"membership_check {case.membership_check!r}"
+            )
+
     return tuple(cases)
-
-
-def load_pinned_writer_membership_cases(
-    rdkit_version: str,
-    *,
-    fixture_root: Path = _FIXTURE_ROOT,
-) -> tuple[PinnedWriterMembershipCase, ...]:
-    return _load_pinned_writer_output_cases(
-        rdkit_version,
-        fixture_root=fixture_root,
-        fixture_label="writer-membership",
-    )
-
-
-def load_pinned_deterministic_unobserved_cases(
-    rdkit_version: str,
-    *,
-    fixture_root: Path = _DETERMINISTIC_UNOBSERVED_FIXTURE_ROOT,
-) -> tuple[PinnedWriterMembershipCase, ...]:
-    return _load_pinned_writer_output_cases(
-        rdkit_version,
-        fixture_root=fixture_root,
-        fixture_label="deterministic-unobserved",
-    )

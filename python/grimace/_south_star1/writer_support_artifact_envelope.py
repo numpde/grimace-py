@@ -1,0 +1,1906 @@
+"""Table-backed durable artifacts for complete writer support images."""
+from __future__ import annotations
+
+from collections.abc import Mapping
+from dataclasses import dataclass
+
+from .errors import SouthStarError
+from .errors import SouthStarErrorKind
+from .ordinary_atom_text import ordinary_unbracketed_atom_text_for_facts
+from .prepared_runtime import SouthStarPreparedMol
+from .writer_envelope_terms import _digest_terms_bounded
+from .writer_envelope_terms import _identity_digest
+from .writer_envelope_terms import _identity_envelope
+from .writer_envelope_terms import _snapshot_identity_envelope
+from .writer_envelope_terms import _term
+from .writer_atom_text_lifecycle import bracket_atom_text
+from .writer_atom_text_lifecycle import is_supported_bracket_atom
+from .writer_support_artifact_checker import SCHEMA_NAME
+from .writer_support_artifact_checker import SCHEMA_VERSION
+from .writer_support_artifact_checker import artifact_manifest
+from .writer_support_artifact_checker import artifact_metrics
+from .writer_support_artifact_checker import support_artifact_object_identity_term
+from .writer_support_artifact_checker import verify_writer_support_artifact_consistency as _check_writer_support_artifact_consistency
+from .writer_envelope_work import WriterEnvelopeWorkBudget
+from .writer_envelope_work import WriterEnvelopeWorkExceeded
+from .writer_envelope_work import check_writer_envelope_work
+from .writer_envelope_work import default_writer_envelope_work_budget
+from .writer_envelope_work import writer_envelope_work_reason
+from .writer_frontier import _checked_writer_frontier_product
+from .writer_directional_ring_closure_lifecycle import DirectionalRingClosureCouplingTerm
+from .writer_frontier_count_envelope import writer_frontier_count_envelope_for_prefix_read
+from .writer_frontier_count_envelope import writer_frontier_count_envelope_for_snapshot
+from .writer_frontier_count_envelope import _envelope_from_product
+from .writer_frontier_count_envelope import _verify_writer_frontier_count_envelope_against_product
+from .writer_frontier_count_envelope import _counted_frontier_product
+from .writer_frontier_count_envelope import _coverage_envelope
+from .writer_count_dag_envelope import count_dag_node_by_id
+from .writer_snapshot_envelope import _source_snapshot_from_envelope
+from .writer_snapshot_prefix_envelope import _terminal_projection_certificate_identity_envelope
+from .writer_snapshot_prefix_envelope import _terminal_support_identity_envelope_from_certificate
+from .writer_snapshot_prefix_envelope import _branch_certificate_identity_envelope
+from .writer_snapshot_prefix_envelope import _text_projection_certificate_identity_envelope
+from .writer_snapshot_prefix_envelope import verify_writer_snapshot_prefix_read_envelope
+from .writer_support_image_envelope import _support_image_certificate_for_source
+from .writer_support_image_envelope import _text_projection_bucket_key
+from .writer_support_string_envelope import _support_string_replay_certificate_digest
+from .writer_terminalization_terms import WriterTerminalizationTerm
+
+@dataclass(frozen=True, slots=True)
+class WriterSupportArtifactEnvelopeVerification:
+    accepted: bool
+    source_kind: str
+    support_count: int | None = None
+    witness_count: int | None = None
+    reason: str | None = None
+
+
+def writer_support_artifact_envelope_for_snapshot(
+    *,
+    prepared: SouthStarPreparedMol,
+    snapshot,
+    budget: WriterEnvelopeWorkBudget | None = None,
+) -> dict[str, object]:
+    budget = default_writer_envelope_work_budget(budget)
+    product = _checked_product(prepared=prepared, snapshot=snapshot)
+    count_envelope = _envelope_from_product(
+        prepared=prepared, source_kind="snapshot", source_snapshot=snapshot,
+        prefix_read_envelope=None, frontier_snapshot=snapshot, product=product,
+        budget=budget,
+    )
+    return _writer_support_artifact_envelope_from_product_with_count_envelope(
+        prepared=prepared,
+        snapshot=snapshot,
+        count_envelope=count_envelope,
+        product=product,
+        budget=budget,
+    )
+
+def _writer_support_artifact_envelope_for_snapshot_with_count_envelope(*, prepared, snapshot, count_envelope, budget=None):
+    budget = default_writer_envelope_work_budget(budget)
+    product = _checked_product(prepared=prepared, snapshot=snapshot)
+    return _writer_support_artifact_envelope_from_product_with_count_envelope(
+        prepared=prepared, snapshot=snapshot, count_envelope=count_envelope,
+        product=product, budget=budget,
+    )
+
+def _writer_support_artifact_envelope_from_product_with_count_envelope(*, prepared, snapshot, count_envelope, product, budget):
+    _verify_writer_frontier_count_envelope_against_product(
+        prepared=prepared, frontier_snapshot=snapshot, product=product,
+        envelope=count_envelope, budget=budget,
+    )
+    image = _support_image_certificate_for_source(
+        prepared=prepared, snapshot=snapshot, product=product
+    )
+    return _artifact_from_image(
+        prepared=prepared, source_kind="snapshot", source_snapshot=snapshot,
+        prefix_read_envelope=None, count_envelope=count_envelope,
+        product=product, image=image, budget=budget,
+    )
+
+
+def writer_support_artifact_envelope_for_prefix_read(
+    *,
+    prepared: SouthStarPreparedMol,
+    prefix_read_envelope: Mapping[str, object],
+    budget: WriterEnvelopeWorkBudget | None = None,
+) -> dict[str, object]:
+    budget = default_writer_envelope_work_budget(budget)
+    prefix = verify_writer_snapshot_prefix_read_envelope(
+        prepared=prepared,
+        envelope=prefix_read_envelope,
+        budget=budget,
+    )
+    if not prefix.accepted:
+        _artifact_violation("prefix_read_envelope_rejected")
+    if prefix.read_kind != "readable" or prefix.final_snapshot is None:
+        _artifact_violation("prefix_read_envelope_not_readable")
+    product = _checked_product(prepared=prepared, snapshot=prefix.final_snapshot)
+    count_envelope = writer_frontier_count_envelope_for_prefix_read(
+        prepared=prepared,
+        prefix_read_envelope=prefix_read_envelope,
+        budget=budget,
+    )
+    image = _support_image_certificate_for_source(
+        prepared=prepared,
+        snapshot=prefix.final_snapshot,
+        product=product,
+    )
+    return _artifact_from_image(
+        prepared=prepared,
+        source_kind="prefix_read",
+        source_snapshot=prefix.final_snapshot,
+        prefix_read_envelope=prefix_read_envelope,
+        count_envelope=count_envelope,
+        product=product,
+        image=image,
+        budget=budget,
+    )
+
+
+def verify_writer_support_artifact_consistency(
+    envelope: object,
+    *,
+    budget: WriterEnvelopeWorkBudget | None = None,
+) -> WriterSupportArtifactEnvelopeVerification:
+    result = _check_writer_support_artifact_consistency(envelope, budget=budget)
+    return WriterSupportArtifactEnvelopeVerification(
+        accepted=result.accepted,
+        source_kind=(
+            str(envelope.get("source_kind", "unknown"))
+            if isinstance(envelope, Mapping)
+            else "unknown"
+        ),
+        support_count=result.support_count,
+        witness_count=result.witness_count,
+        reason=result.reason,
+    )
+
+
+def verify_writer_support_artifact_envelope(
+    *,
+    prepared: SouthStarPreparedMol,
+    envelope: object,
+    budget: WriterEnvelopeWorkBudget | None = None,
+) -> WriterSupportArtifactEnvelopeVerification:
+    try:
+        budget = default_writer_envelope_work_budget(budget)
+        structural = verify_writer_support_artifact_consistency(
+            envelope,
+            budget=budget,
+        )
+        if not structural.accepted:
+            return structural
+        assert isinstance(envelope, Mapping)
+        source_kind = str(envelope["source_kind"])
+        source_snapshot = _source_snapshot_for_artifact(
+            prepared=prepared,
+            envelope=envelope,
+            budget=budget,
+        )
+        product = _checked_product(prepared=prepared, snapshot=source_snapshot)
+        count_envelope = _count_envelope_from_artifact(
+            prepared=prepared, envelope=envelope, source_snapshot=source_snapshot,
+            product=product, budget=budget,
+        )
+        _verify_writer_frontier_count_envelope_against_product(
+            prepared=prepared, frontier_snapshot=source_snapshot, product=product,
+            envelope=count_envelope, budget=budget,
+        )
+        image = _support_image_certificate_for_source(
+            prepared=prepared, snapshot=source_snapshot, product=product
+        )
+        expected = _artifact_from_image(
+            prepared=prepared, source_kind=source_kind,
+            source_snapshot=source_snapshot,
+            prefix_read_envelope=envelope["prefix_read_envelope"],
+            count_envelope=count_envelope, product=product, image=image,
+            budget=budget,
+        )
+        if expected != envelope:
+            return WriterSupportArtifactEnvelopeVerification(
+                accepted=False,
+                source_kind=source_kind,
+                reason="artifact_terms_mismatch",
+            )
+        root = next(
+            (
+                item
+                for item in envelope["objects"]
+                if item["object_id"] == envelope["roots"]["support_image_root"]
+            ),
+            None,
+        )
+        if root is None:
+            _artifact_violation("support_image_root_missing")
+        return WriterSupportArtifactEnvelopeVerification(
+            accepted=True,
+            source_kind=source_kind,
+            support_count=int(root["payload"]["distinct_count"]),
+            witness_count=int(root["payload"]["witness_count"]),
+        )
+    except WriterEnvelopeWorkExceeded as exc:
+        return WriterSupportArtifactEnvelopeVerification(
+            accepted=False,
+            source_kind=(
+                envelope.get("source_kind", "unknown")
+                if isinstance(envelope, Mapping)
+                else "unknown"
+            ),
+            reason=writer_envelope_work_reason(exc),
+        )
+    except SouthStarError as exc:
+        return WriterSupportArtifactEnvelopeVerification(
+            accepted=False,
+            source_kind=(
+                envelope.get("source_kind", "unknown")
+                if isinstance(envelope, Mapping)
+                else "unknown"
+            ),
+            reason=exc.args[-1] if exc.args else "verification_error",
+        )
+    except (AssertionError, KeyError, TypeError, ValueError) as exc:
+        return WriterSupportArtifactEnvelopeVerification(
+            accepted=False,
+            source_kind=(
+                envelope.get("source_kind", "unknown")
+                if isinstance(envelope, Mapping)
+                else "unknown"
+            ),
+            reason=f"malformed_envelope:{type(exc).__name__}",
+        )
+
+
+def _artifact_from_image(
+    *,
+    prepared,
+    source_kind: str,
+    source_snapshot,
+    prefix_read_envelope,
+    count_envelope,
+    product,
+    image,
+    budget: WriterEnvelopeWorkBudget,
+) -> dict[str, object]:
+    del product
+    check_writer_envelope_work(
+        budget=budget,
+        operation="support_artifact_envelope",
+        metric="support_string_count",
+        actual=len(image.string_certificates),
+        limit=budget.max_support_strings,
+    )
+    check_writer_envelope_work(
+        budget=budget,
+        operation="support_artifact_envelope",
+        metric="total_emitted_text_bytes",
+        actual=sum(
+            len(text.encode("utf-8"))
+            for certificate in image.string_certificates
+            for text in certificate.emitted_texts
+        ),
+        limit=budget.max_total_emitted_text_bytes,
+    )
+    table = _ObjectTable(budget)
+    source_identity = _snapshot_identity_envelope(
+        source_snapshot,
+        budget=budget,
+        operation="support_artifact.source_snapshot.digest",
+    )
+    source_ref = table.add(
+        "source_snapshot",
+        source_identity,
+        operation="support_artifact.source_snapshot.object",
+    )
+    count_ref = table.add(
+        "count_envelope",
+        _count_payload(
+            count_envelope,
+            count_dag_ref=table.add(
+                "count_dag",
+                count_envelope["count_dag"],
+                operation="support_artifact.count_dag.object",
+            ),
+        ),
+        operation="support_artifact.count.object",
+    )
+    frontier_ref = table.add(
+        "frontier_product",
+        count_envelope["frontier_product"],
+        operation="support_artifact.frontier_product.object",
+    )
+    support_string_refs = []
+    for index, certificate in enumerate(image.string_certificates):
+        support_string_refs.append(
+            _add_support_string(
+                table,
+                index=index,
+                certificate=certificate,
+                source_ref=source_ref,
+                count_ref=count_ref,
+                facts=prepared.facts,
+                budget=budget,
+            )
+        )
+    coverage_ref = _add_coverage(
+        table,
+        coverage=image.enumeration_coverage_certificate,
+        support_string_refs=support_string_refs,
+        budget=budget,
+    )
+    support_image_ref = table.add(
+        "support_image",
+        {
+            "source_ref": source_ref,
+            "count_ref": count_ref,
+            "frontier_product_ref": frontier_ref,
+            "support_string_refs": support_string_refs,
+            "coverage_ref": coverage_ref,
+            "support_strings": [certificate.string for certificate in image.string_certificates],
+            "distinct_count": image.distinct_count,
+            "witness_count": image.witness_count,
+            "support_count_certificate_digest": count_envelope["support_count_certificate"]["digest"],
+            "witness_count_certificate_digest": count_envelope["completion_count_certificate"]["digest"],
+        },
+        operation="support_artifact.support_image.object",
+    )
+    objects = table.objects()
+    roots = {
+        "source_ref": source_ref,
+        "count_ref": count_ref,
+        "frontier_product_ref": frontier_ref,
+        "support_image_root": support_image_ref,
+    }
+    metrics = artifact_metrics(objects, roots=roots)
+    envelope = {
+        "schema_name": SCHEMA_NAME,
+        "schema_version": SCHEMA_VERSION,
+        "prepared_identity": _identity_envelope(
+            source_snapshot.prepared_identity,
+            budget=budget,
+            operation="support_artifact.prepared_identity.digest",
+        ),
+        "source_kind": source_kind,
+        "source_snapshot": source_identity if source_kind == "snapshot" else None,
+        "prefix_read_envelope": prefix_read_envelope,
+        "objects": objects,
+        "roots": roots,
+        "metrics": metrics,
+    }
+    envelope["digest"] = _digest_terms_bounded(
+        artifact_manifest(envelope),
+        budget=budget,
+        operation="support_artifact.manifest.digest",
+    )
+    checked = _check_writer_support_artifact_consistency(
+        envelope,
+        budget=budget,
+    )
+    if not checked.accepted:
+        _artifact_violation(checked.reason or "artifact_checker_rejected")
+    return envelope
+
+
+def _add_support_string(
+    table,
+    *,
+    index: int,
+    certificate,
+    source_ref: str,
+    count_ref: str,
+    facts,
+    budget: WriterEnvelopeWorkBudget,
+) -> str:
+    text_projection_refs = [
+        _add_text_projection(
+            table,
+            projection=projection,
+            facts=facts,
+            budget=budget,
+        )
+        for projection in certificate.text_projection_certificates
+    ]
+    terminal_projection = _terminal_projection_certificate_identity_envelope(
+        certificate.terminal_projection_certificate,
+        budget=budget,
+    )
+    replay_ref = table.add(
+        "replay_path",
+        {
+            "source_ref": source_ref,
+            "emitted_texts": list(certificate.emitted_texts),
+            "text_projection_refs": text_projection_refs,
+            "replay_certificate_digest": _support_string_replay_certificate_digest(
+                certificate.replay_certificate,
+                budget=budget,
+            ),
+            "final_cursor_digest": terminal_projection["source_cursor"]["digest"],
+            "final_snapshot_digest": _snapshot_identity_envelope(
+                certificate.final_snapshot,
+                budget=budget,
+                operation="support_artifact.replay.final_snapshot.digest",
+            )["digest"],
+        },
+        operation="support_artifact.replay_path.object",
+    )
+    terminal_projection_ref = table.add(
+        "terminal_projection",
+        terminal_projection,
+        operation="support_artifact.terminal_projection.object",
+    )
+    terminal_support_refs = [
+        _add_terminal_support(
+            table,
+            terminal=terminal,
+            budget=budget,
+        )
+        for terminal in certificate.terminal_projection_certificate.terminal_certificates
+    ]
+    return table.add(
+        "support_string",
+        {
+            "index": index,
+            "string": certificate.string,
+            "emitted_texts": list(certificate.emitted_texts),
+            "source_ref": source_ref,
+            "count_ref": count_ref,
+            "replay_path_ref": replay_ref,
+            "text_projection_refs": text_projection_refs,
+            "terminal_projection_ref": terminal_projection_ref,
+            "terminal_support_refs": terminal_support_refs,
+        },
+        operation="support_artifact.support_string.object",
+    )
+
+
+def _add_text_projection(
+    table,
+    *,
+    projection,
+    facts,
+    branch_identities: Mapping[int, Mapping[str, object]] | None = None,
+    budget: WriterEnvelopeWorkBudget,
+    branch_certificates=None,
+) -> str:
+    envelope = _text_projection_certificate_identity_envelope(
+        projection,
+        budget=budget,
+    )
+    selected_branches = (
+        projection.branch_certificates
+        if branch_certificates is None
+        else tuple(branch_certificates)
+    )
+    branch_support_refs = [
+        _add_branch_support(
+            table,
+            branch=branch,
+            branch_identity=(
+                None
+                if branch_identities is None
+                else branch_identities.get(id(branch))
+            ),
+            text_projection=envelope,
+            facts=facts,
+            budget=budget,
+        )
+        for branch in selected_branches
+    ]
+    return table.add(
+        "text_projection",
+        {
+            **envelope,
+            "branch_support_refs": branch_support_refs,
+        },
+        operation="support_artifact.text_projection.object",
+    )
+
+
+def _add_branch_support(
+    table,
+    *,
+    branch,
+    branch_identity: Mapping[str, object] | None = None,
+    text_projection: Mapping[str, object],
+    facts,
+    budget: WriterEnvelopeWorkBudget,
+) -> str:
+    envelope = (
+        branch_identity if branch_identity is not None else _branch_certificate_identity_envelope(branch, budget=budget)
+    )
+    local_evidence = _branch_local_evidence_envelope(
+        branch,
+        branch_identity=envelope,
+        facts=facts,
+        budget=budget,
+    )
+    graph_ring_delta = _branch_graph_ring_delta_envelope(
+        branch,
+        branch_identity=envelope,
+        text_projection=text_projection,
+        local_evidence=local_evidence,
+        facts=facts,
+        budget=budget,
+    )
+    return table.add(
+        "branch_support",
+        {
+            "emitted_text": envelope["emitted_text"],
+            "source_state_digest": envelope["source_state_digest"],
+            "successor_state_digest": envelope["successor_state_digest"],
+            "source_cursor_digest": text_projection["source_cursor"]["digest"],
+            "successor_cursor_digest": text_projection["successor_cursor"]["digest"],
+            "parent_weight": envelope["parent_weight"],
+            "branch_ordinal": envelope["branch_ordinal"],
+            "transition_kind": envelope["transition_kind"],
+            "graph_action_surface_digest": envelope["graph_action_surface_digest"],
+            "successor_state_certificate_digest": (
+                envelope["successor_state_certificate_digest"]
+            ),
+            "checked_branch_certificate_digest": envelope["digest"],
+            "local_evidence": local_evidence,
+            "graph_ring_delta": graph_ring_delta,
+            "obligation_summary": _branch_obligation_summary(branch),
+            "obligation_manifests": _branch_obligation_manifests(
+                branch,
+                branch_identity=envelope,
+                graph_ring_delta=graph_ring_delta,
+                budget=budget,
+            ),
+            "digest": envelope["digest"],
+        },
+        operation="support_artifact.branch_support.object",
+    )
+
+
+def _branch_local_evidence_envelope(
+    branch,
+    *,
+    branch_identity,
+    facts,
+    budget: WriterEnvelopeWorkBudget,
+) -> dict[str, object]:
+    successor = branch.successor_state_certificate
+    directional = tuple(
+        getattr(successor, "directional_ring_closure_bond_text_lifecycle_evidence", ())
+    )
+    ring_replay = getattr(successor, "ring_replay_certificate", None)
+    closure = (
+        ()
+        if ring_replay is None
+        else tuple(getattr(ring_replay, "closure_bond_text_lifecycle_evidence", ()))
+    )
+    if directional:
+        manifest = {
+            "closure_bond_text": [
+                _closure_bond_text_evidence_manifest(item, budget=budget)
+                for item in closure
+            ],
+            "directional_coupled_digests": [
+                _identity_digest(
+                    _directional_ring_coupling_term(
+                        item,
+                        source_state_digest=branch_identity["source_state_digest"],
+                        successor_state_digest=branch_identity["successor_state_digest"],
+                        budget=budget,
+                    ),
+                    budget=budget,
+                    operation="support_artifact.local_directional_evidence.digest",
+                )
+                for item in directional
+            ],
+            "directional_coupled_count": len(directional),
+        }
+        return _local_evidence("directional_ring_closure_bond_text", manifest, budget)
+    if closure:
+        manifest = {
+            "items": [
+                _closure_bond_text_evidence_manifest(item, budget=budget)
+                for item in closure
+            ],
+        }
+        return _local_evidence("closure_bond_text", manifest, budget)
+    atom_id = _branch_atom_text_atom_id(branch)
+    atom_by_id = {atom.id: atom for atom in facts.atoms}
+    atom = atom_by_id.get(atom_id)
+    if atom is not None and is_supported_bracket_atom(atom):
+        rendered = bracket_atom_text(atom)
+        if rendered == branch.emitted_text:
+            manifest = {
+                "atom_id": _term(atom.id),
+                "element": atom.symbol,
+                "isotope": atom.isotope,
+                "formal_charge": atom.formal_charge,
+                "hydrogen_count": atom.implicit_h_count,
+                "aromatic": atom.is_aromatic,
+                "rendered_text": rendered,
+                "bracket_required": True,
+            }
+            return _local_evidence("bracket_atom_text", manifest, budget)
+    if atom is not None:
+        rendered = _plain_atom_text(atom)
+        if rendered is not None and rendered == branch.emitted_text:
+            manifest = {
+                "atom_id": _term(atom.id),
+                "element": atom.symbol,
+                "aromatic": atom.is_aromatic,
+                "rendered_text": rendered,
+                "bracket_required": False,
+            }
+            return _local_evidence("plain_atom_text", manifest, budget)
+    return _local_evidence("other_structural", {}, budget)
+
+
+def _branch_obligation_summary(branch) -> dict[str, int]:
+    successor = branch.successor_state_certificate
+    return {
+        "residual_work_count": len(branch.residual_work_evidence),
+        "finite_relation_work_count": len(branch.finite_relation_work_evidence),
+        "graph_obligation_work_count": len(branch.graph_obligation_work_evidence),
+        "stereo_lifecycle_count": (
+            len(branch.stereo_lifecycle_evidence)
+            + len(branch.stereo_branch_certificates)
+        ),
+        "residual_attachment_lifecycle_count": (
+            len(branch.residual_attachment_lifecycle_evidence)
+            + len(branch.residual_attachment_branch_certificates)
+        ),
+        "closure_candidate_lifecycle_count": (
+            len(branch.closure_candidate_lifecycle_evidence)
+            + len(branch.closure_candidate_branch_certificates)
+        ),
+        "directional_ring_closure_lifecycle_count": len(
+            getattr(
+                successor,
+                "directional_ring_closure_bond_text_lifecycle_evidence",
+                (),
+            )
+        ),
+    }
+
+
+def _branch_obligation_manifests(
+    branch,
+    *,
+    branch_identity: Mapping[str, object],
+    graph_ring_delta: Mapping[str, object],
+    budget: WriterEnvelopeWorkBudget,
+) -> dict[str, list[dict[str, object]]]:
+    successor = branch.successor_state_certificate
+    graph_replay = getattr(successor, "graph_replay_certificate", None)
+    stereo_replay = getattr(successor, "stereo_replay_certificate", None)
+    residual_attachment_replay = getattr(
+        successor,
+        "residual_attachment_lifecycle_replay_certificate",
+        None,
+    )
+    closure_candidate_replay = getattr(
+        successor,
+        "closure_candidate_lifecycle_replay_certificate",
+        None,
+    )
+    finite_ring_summary = _ring_obligation_summary(
+        graph_ring_delta=graph_ring_delta,
+        family="finite_relation_work",
+    )
+    graph_ring_summary = _ring_obligation_summary(
+        graph_ring_delta=graph_ring_delta,
+        family="graph_obligation_work",
+    )
+    stereo_lifecycle_records = (
+        *branch.stereo_lifecycle_evidence,
+        *branch.stereo_branch_certificates,
+    )
+    residual_lifecycle_links = _residual_lifecycle_digest_links(
+        lifecycle_records=stereo_lifecycle_records,
+        budget=budget,
+    )
+    return {
+        "residual_work": _obligation_family_manifests(
+            family="residual_work",
+            records=branch.residual_work_evidence,
+            source_digest=branch_identity["source_state_digest"],
+            successor_digest=branch_identity["successor_state_digest"],
+            replay_complete=False,
+            linked_lifecycle_digests=residual_lifecycle_links,
+            budget=budget,
+        ),
+        "finite_relation_work": _obligation_family_manifests(
+            family="finite_relation_work",
+            records=branch.finite_relation_work_evidence,
+            source_digest=branch_identity["source_state_digest"],
+            successor_digest=branch_identity["successor_state_digest"],
+            replay_complete=(
+                _replay_complete(residual_attachment_replay)
+                or _replay_complete(closure_candidate_replay)
+            ),
+            ring_summary=finite_ring_summary,
+            budget=budget,
+        ),
+        "graph_obligation_work": _obligation_family_manifests(
+            family="graph_obligation_work",
+            records=branch.graph_obligation_work_evidence,
+            source_digest=branch_identity["source_state_digest"],
+            successor_digest=branch_identity["successor_state_digest"],
+            replay_complete=_replay_complete(graph_replay),
+            ring_summary=graph_ring_summary,
+            budget=budget,
+        ),
+        "stereo_lifecycle": _obligation_family_manifests(
+            family="stereo_lifecycle",
+            records=stereo_lifecycle_records,
+            source_digest=branch_identity["source_state_digest"],
+            successor_digest=branch_identity["successor_state_digest"],
+            replay_complete=_replay_complete(stereo_replay),
+            linked_residual_work_digests=_lifecycle_residual_digest_links(
+                lifecycle_records=stereo_lifecycle_records,
+                budget=budget,
+            ),
+            budget=budget,
+        ),
+        "residual_attachment_lifecycle": _obligation_family_manifests(
+            family="residual_attachment_lifecycle",
+            records=(
+                *branch.residual_attachment_lifecycle_evidence,
+                *branch.residual_attachment_branch_certificates,
+            ),
+            source_digest=branch_identity["source_state_digest"],
+            successor_digest=branch_identity["successor_state_digest"],
+            replay_complete=_replay_complete(residual_attachment_replay),
+            budget=budget,
+        ),
+        "closure_candidate_lifecycle": _obligation_family_manifests(
+            family="closure_candidate_lifecycle",
+            records=(
+                *branch.closure_candidate_lifecycle_evidence,
+                *branch.closure_candidate_branch_certificates,
+            ),
+            source_digest=branch_identity["source_state_digest"],
+            successor_digest=branch_identity["successor_state_digest"],
+            replay_complete=_replay_complete(closure_candidate_replay),
+            budget=budget,
+        ),
+        "directional_ring_closure_lifecycle": _obligation_family_manifests(
+            family="directional_ring_closure_lifecycle",
+            records=getattr(
+                successor,
+                "directional_ring_closure_bond_text_lifecycle_evidence",
+                (),
+            ),
+            source_digest=branch_identity["source_state_digest"],
+            successor_digest=branch_identity["successor_state_digest"],
+            replay_complete=False,
+            budget=budget,
+        ),
+    }
+
+
+def _terminal_obligation_summary(terminal) -> dict[str, int]:
+    return {
+        "terminal_residual_work_count": len(terminal.terminal_residual_work_evidence),
+        "terminal_stereo_lifecycle_count": len(
+            terminal.terminal_stereo_lifecycle_evidence
+        ),
+        "graph_obligation_work_count": len(terminal.graph_obligation_work_evidence),
+    }
+
+
+def _add_terminal_support(
+    table,
+    *,
+    terminal,
+    budget: WriterEnvelopeWorkBudget,
+) -> str:
+    return table.add(
+        "terminal_support",
+        _terminal_support_payload(terminal, budget=budget),
+        operation="support_artifact.terminal_support.object",
+    )
+
+
+def _terminal_support_payload(
+    terminal,
+    *,
+    budget: WriterEnvelopeWorkBudget,
+) -> dict[str, object]:
+    identity = _terminal_support_identity_envelope_from_certificate(
+        terminal,
+        budget=budget,
+    )
+    term = _writer_terminalization_term(
+        terminal,
+        identity=identity,
+        budget=budget,
+    )
+    return {
+        **identity,
+        "terminalization_term": _term(term),
+        "terminalization_term_digest": _identity_digest(
+            _term(term),
+            budget=budget,
+            operation="support_artifact.terminalization_term.digest",
+        ),
+        "obligation_summary": _terminal_obligation_summary(terminal),
+        "obligation_manifests": _terminal_obligation_manifests(
+            terminal,
+            budget=budget,
+        ),
+    }
+
+
+def _writer_terminalization_term(
+    terminal,
+    *,
+    identity: Mapping[str, object],
+    budget: WriterEnvelopeWorkBudget,
+) -> WriterTerminalizationTerm:
+    graph_certificates = tuple(
+        certificate
+        for certificate in terminal.terminal_certificates
+        if certificate.graph_completion_status is not None
+    )
+    if len(graph_certificates) != 1:
+        _artifact_violation("terminal_graph_completion_certificate_mismatch")
+    residual_work = terminal.terminal_residual_work_evidence
+    if not residual_work:
+        stereo_mode = "noop"
+    elif (
+        len(residual_work) == 1
+        and residual_work[0].operation
+        == "tetrahedral local-order factor closure"
+    ):
+        stereo_mode = "tetra_local_order_factor_closure"
+    else:
+        _artifact_violation("terminal_stereo_mode_unsupported")
+    return WriterTerminalizationTerm(
+        source_state_digest=identity["source_state_digest"],
+        finalized_state_digest=identity["finalized_state_digest"],
+        active_atom=terminal.source_state.active.atom,
+        graph_completion_status=graph_certificates[0].graph_completion_status,
+        graph_obligation_work_digests=tuple(
+            _identity_digest(
+                evidence,
+                budget=budget,
+                operation="support_artifact.terminal_graph_work.digest",
+            )
+            for evidence in terminal.graph_obligation_work_evidence
+        ),
+        stereo_mode=stereo_mode,
+        source_residual_snapshot_digest=_identity_digest(
+            terminal.source_state.stereo_state.residual_snapshot,
+            budget=budget,
+            operation="support_artifact.terminal_source_residual.digest",
+        ),
+        finalized_residual_snapshot_digest=_identity_digest(
+            terminal.finalized_state.stereo_state.residual_snapshot,
+            budget=budget,
+            operation="support_artifact.terminal_finalized_residual.digest",
+        ),
+        terminal_residual_work_digests=tuple(
+            _identity_digest(
+                evidence,
+                budget=budget,
+                operation="support_artifact.terminal_residual_work.digest",
+            )
+            for evidence in residual_work
+        ),
+        terminal_stereo_lifecycle_digests=tuple(
+            _identity_digest(
+                evidence,
+                budget=budget,
+                operation="support_artifact.terminal_stereo_lifecycle.digest",
+            )
+            for evidence in terminal.terminal_stereo_lifecycle_evidence
+        ),
+        terminal_execution_capabilities=tuple(sorted(
+            _compact_value(capability)
+            for capability in terminal.terminal_execution_capabilities
+        )),
+    )
+
+
+def _terminal_obligation_manifests(
+    terminal,
+    *,
+    budget: WriterEnvelopeWorkBudget,
+) -> dict[str, list[dict[str, object]]]:
+    source_digest = _identity_digest(
+        terminal.source_state,
+        budget=budget,
+        operation="support_artifact.terminal_obligation.source.digest",
+    )
+    finalized_digest = _identity_digest(
+        terminal.finalized_state,
+        budget=budget,
+        operation="support_artifact.terminal_obligation.finalized.digest",
+    )
+    terminal_noop = terminal.source_state == terminal.finalized_state
+    terminal_graph_clean = _terminal_graph_clean(terminal)
+    terminal_stereo_clean = _terminal_stereo_clean(terminal)
+    residual_lifecycle_links = _residual_lifecycle_digest_links(
+        lifecycle_records=terminal.terminal_stereo_lifecycle_evidence,
+        budget=budget,
+    )
+    lifecycle_residual_links = _lifecycle_residual_digest_links(
+        lifecycle_records=terminal.terminal_stereo_lifecycle_evidence,
+        budget=budget,
+    )
+    return {
+        "terminal_residual_work": _obligation_family_manifests(
+            family="terminal_residual_work",
+            records=terminal.terminal_residual_work_evidence,
+            source_digest=source_digest,
+            successor_digest=finalized_digest,
+            replay_complete=False,
+            linked_lifecycle_digests=residual_lifecycle_links,
+            budget=budget,
+        ),
+        "terminal_stereo_lifecycle": _obligation_family_manifests(
+            family="terminal_stereo_lifecycle",
+            records=terminal.terminal_stereo_lifecycle_evidence,
+            source_digest=source_digest,
+            successor_digest=finalized_digest,
+            replay_complete=terminal_noop,
+            terminal_clean=terminal_stereo_clean,
+            linked_residual_work_digests=lifecycle_residual_links,
+            budget=budget,
+        ),
+        "terminal_graph_obligation_work": _obligation_family_manifests(
+            family="terminal_graph_obligation_work",
+            records=terminal.graph_obligation_work_evidence,
+            source_digest=source_digest,
+            successor_digest=finalized_digest,
+            replay_complete=terminal_noop,
+            terminal_clean=terminal_graph_clean,
+            budget=budget,
+        ),
+    }
+
+
+def _obligation_family_manifests(
+    *,
+    family: str,
+    records: tuple[object, ...],
+    source_digest: str,
+    successor_digest: str,
+    replay_complete: bool,
+    budget: WriterEnvelopeWorkBudget,
+    terminal_clean: bool = False,
+    ring_summary: Mapping[str, object] | None = None,
+    linked_lifecycle_digests: Mapping[str, list[str]] | None = None,
+    linked_residual_work_digests: Mapping[str, list[str]] | None = None,
+) -> list[dict[str, object]]:
+    return [
+        {
+            "family": family,
+            "operation": getattr(record, "operation", record.__class__.__name__),
+            "source_digest": source_digest,
+            "successor_digest": successor_digest,
+            "is_noop": source_digest == successor_digest,
+            "is_empty": False,
+            "is_discharged": bool(replay_complete),
+            "terminal_clean": bool(terminal_clean),
+            "ring_summary": None if ring_summary is None else dict(ring_summary),
+            "evidence_digest": _identity_digest(
+                record,
+                budget=budget,
+                operation=f"support_artifact.obligation.{family}.evidence.digest",
+            ),
+            "transition_term": (
+                None
+                if getattr(record, "transition_term", None) is None
+                else _term(record.transition_term)
+            ),
+            "transition_digest": (
+                None
+                if getattr(record, "transition_term", None) is None
+                else _identity_digest(
+                    record.transition_term,
+                    budget=budget,
+                    operation=(
+                        f"support_artifact.obligation.{family}."
+                        "transition.digest"
+                    ),
+                )
+            ),
+            "coupling_term": (
+                None
+                if family != "directional_ring_closure_lifecycle"
+                else _term(_directional_ring_coupling_term(
+                    record,
+                    source_state_digest=source_digest,
+                    successor_state_digest=successor_digest,
+                    budget=budget,
+                ))
+            ),
+            "coupling_term_digest": (
+                None
+                if family != "directional_ring_closure_lifecycle"
+                else _identity_digest(
+                    _directional_ring_coupling_term(
+                        record,
+                        source_state_digest=source_digest,
+                        successor_state_digest=successor_digest,
+                        budget=budget,
+                    ),
+                    budget=budget,
+                    operation="support_artifact.directional_ring_coupling.digest",
+                )
+            ),
+            "linked_lifecycle_digests": (
+                []
+                if linked_lifecycle_digests is None
+                else linked_lifecycle_digests.get(
+                    _identity_digest(
+                        record,
+                        budget=budget,
+                        operation=(
+                            f"support_artifact.obligation.{family}."
+                            "link.evidence.digest"
+                        ),
+                    ),
+                    [],
+                )
+            ),
+            "linked_residual_work_digests": (
+                []
+                if linked_residual_work_digests is None
+                else linked_residual_work_digests.get(
+                    _identity_digest(
+                        record,
+                        budget=budget,
+                        operation=(
+                            f"support_artifact.obligation.{family}."
+                            "reverse_link.evidence.digest"
+                        ),
+                    ),
+                    [],
+                )
+            ),
+            **_lifecycle_provenance_manifest(
+                record=record,
+                family=family,
+                budget=budget,
+            ),
+        }
+        for record in records
+    ]
+
+
+def _directional_ring_coupling_term(record, *, source_state_digest, successor_state_digest, budget):
+    closure = record.closure_bond_text_lifecycle
+    stereo = record.directional_stereo_lifecycle
+    event = record.event
+    closure_manifest = _closure_bond_text_evidence_manifest(closure, budget=budget)
+    return DirectionalRingClosureCouplingTerm(
+        event_kind=_writer_event_kind(event, budget=budget),
+        bond=closure.bond,
+        bond_order=closure.bond_order,
+        label_value=closure.label.value,
+        label_text=closure.label.text,
+        opening_atom=closure.opening_atom,
+        closing_atom=closure.closing_atom,
+        opening_marker=closure.opening_marker,
+        closing_marker=closure.closing_marker,
+        marker_side=closure.marker_side,
+        source_state_digest=source_state_digest,
+        successor_state_digest=successor_state_digest,
+        source_ring_state_digest=_identity_digest(
+            record.source_ring_state,
+            budget=budget,
+            operation="support_artifact.ring_coupling.source_ring_state",
+        ),
+        successor_ring_state_digest=_identity_digest(
+            record.successor_ring_state,
+            budget=budget,
+            operation="support_artifact.ring_coupling.successor_ring_state",
+        ),
+        source_residual_snapshot_digest=_identity_digest(
+            record.source_stereo_residual_snapshot,
+            budget=budget,
+            operation="support_artifact.ring_coupling.source_residual",
+        ),
+        successor_residual_snapshot_digest=_identity_digest(
+            record.successor_stereo_residual_snapshot,
+            budget=budget,
+            operation="support_artifact.ring_coupling.successor_residual",
+        ),
+        closure_manifest_digest=_identity_digest(
+            closure_manifest,
+            budget=budget,
+            operation="support_artifact.ring_coupling.closure_manifest",
+        ),
+        stereo_lifecycle_digest=_identity_digest(
+            stereo,
+            budget=budget,
+            operation="support_artifact.ring_coupling.stereo_lifecycle",
+        ),
+        residual_work_digests=tuple(
+            _identity_digest(
+                item,
+                budget=budget,
+                operation="support_artifact.ring_coupling.residual_work",
+            )
+            for item in stereo.residual_work_evidence
+        ),
+        closed_closure_record_digest=(
+            None
+            if record.closed_closure_record is None
+            else _identity_digest(
+                record.closed_closure_record,
+                budget=budget,
+                operation="support_artifact.ring_coupling.closed_record",
+            )
+        ),
+    )
+
+
+def _lifecycle_provenance_manifest(
+    *,
+    record: object,
+    family: str,
+    budget: WriterEnvelopeWorkBudget,
+) -> dict[str, object]:
+    empty = {
+        "lifecycle_event_kind": None,
+        "lifecycle_capabilities": [],
+        "lifecycle_outcome_kind": None,
+        "residual_snapshot_changed": False,
+        "source_residual_snapshot_digest": None,
+        "successor_residual_snapshot_digest": None,
+        "local_orders_changed": False,
+        "residual_work_digests": [],
+        "residual_work_operations": [],
+        "certificate_kind": None,
+        "certificate_capability": None,
+        "certificate_lifecycle_digest": None,
+    }
+    if family not in ("stereo_lifecycle", "terminal_stereo_lifecycle"):
+        return empty
+    lifecycle = getattr(record, "lifecycle_evidence", record)
+    residuals = tuple(getattr(record, "residual_work_evidence", ()))
+    empty.update(
+        {
+            "lifecycle_event_kind": _writer_event_kind(
+                getattr(lifecycle, "event"),
+                budget=budget,
+            ),
+            "lifecycle_capabilities": sorted(
+                _compact_value(capability)
+                for capability in getattr(lifecycle, "capabilities")
+            ),
+            "lifecycle_outcome_kind": _compact_value(
+                getattr(lifecycle, "outcome_kind")
+            ),
+            "residual_snapshot_changed": (
+                getattr(lifecycle, "source_residual_snapshot")
+                != getattr(lifecycle, "successor_residual_snapshot")
+            ),
+            "source_residual_snapshot_digest": _identity_digest(
+                getattr(lifecycle, "source_residual_snapshot"),
+                budget=budget,
+                operation=(
+                    "support_artifact.obligation.lifecycle."
+                    "source_residual_snapshot.digest"
+                ),
+            ),
+            "successor_residual_snapshot_digest": _identity_digest(
+                getattr(lifecycle, "successor_residual_snapshot"),
+                budget=budget,
+                operation=(
+                    "support_artifact.obligation.lifecycle."
+                    "successor_residual_snapshot.digest"
+                ),
+            ),
+            "local_orders_changed": (
+                getattr(lifecycle, "source_local_orders")
+                != getattr(lifecycle, "successor_local_orders")
+            ),
+            "residual_work_digests": [
+                _identity_digest(
+                    residual,
+                    budget=budget,
+                    operation=(
+                        "support_artifact.obligation.lifecycle."
+                        "provenance.residual.digest"
+                    ),
+                )
+                for residual in residuals
+            ],
+            "residual_work_operations": [
+                getattr(residual, "operation", residual.__class__.__name__)
+                for residual in residuals
+            ],
+        }
+    )
+    if hasattr(record, "kind") and hasattr(record, "lifecycle_evidence"):
+        empty["lifecycle_capabilities"] = [_compact_value(record.capability)]
+        empty["certificate_kind"] = _compact_value(record.kind)
+        empty["certificate_capability"] = _compact_value(record.capability)
+        empty["certificate_lifecycle_digest"] = _identity_digest(
+            record.lifecycle_evidence,
+            budget=budget,
+            operation=(
+                "support_artifact.obligation.lifecycle."
+                "provenance.certificate_lifecycle.digest"
+            ),
+        )
+    return empty
+
+
+def _compact_value(value: object) -> str:
+    raw = getattr(value, "value", value)
+    if not isinstance(raw, str):
+        _artifact_violation("lifecycle_provenance_value_not_string")
+    return raw
+
+
+def _writer_event_kind(
+    event: object,
+    *,
+    budget: WriterEnvelopeWorkBudget,
+) -> str:
+    manifest = _writer_event_manifest(event, budget=budget)
+    return str(manifest["kind"])
+
+
+def _residual_lifecycle_digest_links(
+    *,
+    lifecycle_records: tuple[object, ...],
+    budget: WriterEnvelopeWorkBudget,
+) -> dict[str, list[str]]:
+    links: dict[str, list[str]] = {}
+    for lifecycle in lifecycle_records:
+        lifecycle_digest = _identity_digest(
+            lifecycle,
+            budget=budget,
+            operation="support_artifact.obligation.lifecycle.link.digest",
+        )
+        for residual in getattr(lifecycle, "residual_work_evidence", ()):
+            residual_digest = _identity_digest(
+                residual,
+                budget=budget,
+                operation="support_artifact.obligation.residual.link.digest",
+            )
+            links.setdefault(residual_digest, [])
+            if lifecycle_digest not in links[residual_digest]:
+                links[residual_digest].append(lifecycle_digest)
+    return links
+
+
+def _lifecycle_residual_digest_links(
+    *,
+    lifecycle_records: tuple[object, ...],
+    budget: WriterEnvelopeWorkBudget,
+) -> dict[str, list[str]]:
+    links: dict[str, list[str]] = {}
+    for lifecycle in lifecycle_records:
+        lifecycle_digest = _identity_digest(
+            lifecycle,
+            budget=budget,
+            operation="support_artifact.obligation.lifecycle.reverse_link.digest",
+        )
+        residual_digests = []
+        for residual in getattr(lifecycle, "residual_work_evidence", ()):
+            residual_digest = _identity_digest(
+                residual,
+                budget=budget,
+                operation=(
+                    "support_artifact.obligation.residual.reverse_link.digest"
+                ),
+            )
+            if residual_digest not in residual_digests:
+                residual_digests.append(residual_digest)
+        links[lifecycle_digest] = residual_digests
+    return links
+
+
+def _ring_obligation_summary(
+    *,
+    graph_ring_delta: Mapping[str, object],
+    family: str,
+) -> dict[str, object] | None:
+    kind = graph_ring_delta["kind"]
+    if kind not in (
+        "ring_endpoint_open",
+        "ring_endpoint_pair",
+        "ring_endpoint_pair_non_single",
+    ):
+        return None
+    events = graph_ring_delta["manifest"]["event_manifests"]
+    event_kind = (
+        "ring_endpoint_emitted"
+        if kind == "ring_endpoint_open"
+        else "ring_endpoint_paired"
+    )
+    ring_event = next(event for event in events if event["kind"] == event_kind)
+    closing = kind in ("ring_endpoint_pair", "ring_endpoint_pair_non_single")
+    label_released = any(event["kind"] == "ring_label_released" for event in events)
+    marker = ring_event["bond_text"]
+    marker_count = int(bool(ring_event["bond_text"]))
+    if closing:
+        marker = marker or ring_event["first_endpoint_bond_text"]
+        marker_count += int(bool(ring_event["first_endpoint_bond_text"]))
+    operation = (
+        "closure endpoint open relation"
+        if family == "finite_relation_work" and not closing
+        else "closure endpoint pair relation"
+        if family == "finite_relation_work"
+        else "writer graph obligation context"
+    )
+    return {
+        "relation_kind": kind,
+        "operation": operation,
+        "bond": ring_event["bond"],
+        "endpoint_atom": ring_event["endpoint_atom"],
+        "partner_atom": ring_event["partner_atom"],
+        "ring_label": ring_event["label"],
+        "side": ring_event["side"],
+        "marker": marker,
+        "marker_count": marker_count,
+        "pending_before_count": 1 if closing else 0,
+        "pending_after_count": 0 if closing else 1,
+        "closed_before_count": 0,
+        "closed_after_count": 1 if closing else 0,
+        "is_exact": True,
+        "is_exhausted": True,
+        "is_complete": True,
+        "is_discharged": bool(not closing or label_released),
+    }
+
+
+def _terminal_graph_clean(terminal) -> bool:
+    for certificate in terminal.terminal_certificates:
+        if getattr(getattr(certificate, "kind", None), "value", None) != "graph_complete":
+            continue
+        status = getattr(certificate, "graph_completion_status", None)
+        if status is None:
+            continue
+        if (
+            getattr(status, "complete", False)
+            and not tuple(getattr(status, "unresolved_kinds", ()))
+            and not tuple(getattr(status, "unresolved_bonds", ()))
+        ):
+            return True
+    return False
+
+
+def _terminal_stereo_clean(terminal) -> bool:
+    for certificate in terminal.terminal_certificates:
+        if (
+            getattr(getattr(certificate, "kind", None), "value", None)
+            == "stereo_terminalized"
+        ):
+            return True
+    return False
+
+
+def _replay_complete(certificate) -> bool:
+    if certificate is None:
+        return False
+    if getattr(certificate, "replay_complete", False):
+        return True
+    nested = getattr(certificate, "obligation_replay_certificate", None)
+    return bool(nested is not None and getattr(nested, "replay_complete", False))
+
+
+def _plain_atom_text(atom) -> str | None:
+    return ordinary_unbracketed_atom_text_for_facts(atom)
+
+
+def _branch_atom_text_atom_id(branch) -> object | None:
+    atom_id = getattr(branch.transition_evidence, "atom", None)
+    if atom_id is not None:
+        return atom_id
+    for event in branch.events:
+        if hasattr(event, "atom") and hasattr(event, "text"):
+            return event.atom
+    source_atoms = dict(branch.source_state.policy_state.atom_text)
+    successor_atoms = dict(branch.successor_state.policy_state.atom_text)
+    added = [
+        atom
+        for atom, text in successor_atoms.items()
+        if source_atoms.get(atom) != text and text == branch.emitted_text
+    ]
+    if len(added) == 1:
+        return added[0]
+    return None
+
+
+def _local_evidence(
+    kind: str,
+    manifest: Mapping[str, object],
+    budget: WriterEnvelopeWorkBudget,
+) -> dict[str, object]:
+    envelope = {
+        "kind": kind,
+        "manifest": dict(manifest),
+    }
+    envelope["digest"] = _identity_digest(
+        envelope,
+        budget=budget,
+        operation=f"support_artifact.local_evidence.{kind}.digest",
+    )
+    return envelope
+
+
+def _branch_graph_ring_delta_envelope(
+    branch,
+    *,
+    branch_identity: Mapping[str, object],
+    text_projection: Mapping[str, object],
+    local_evidence: Mapping[str, object],
+    facts,
+    budget: WriterEnvelopeWorkBudget,
+) -> dict[str, object]:
+    event_manifests = [
+        _writer_event_manifest(event, branch=branch, facts=facts, budget=budget)
+        for event in branch.events
+    ]
+    kind = _graph_ring_delta_kind(
+        transition_kind=branch.transition_kind.value,
+        event_manifests=event_manifests,
+        local_evidence=local_evidence,
+    )
+    manifest = {
+        "source_state_digest": branch_identity["source_state_digest"],
+        "successor_state_digest": branch_identity["successor_state_digest"],
+        "source_cursor_digest": text_projection["source_cursor"]["digest"],
+        "successor_cursor_digest": text_projection["successor_cursor"]["digest"],
+        "transition_kind": branch_identity["transition_kind"],
+        "emitted_text": branch_identity["emitted_text"],
+        "graph_action_surface_digest": branch_identity["graph_action_surface_digest"],
+        "successor_state_certificate_digest": (
+            branch_identity["successor_state_certificate_digest"]
+        ),
+        "checked_branch_certificate_digest": branch_identity["digest"],
+        "local_evidence_digest": local_evidence["digest"],
+        "event_manifests": event_manifests,
+    }
+    envelope = {
+        "kind": kind,
+        "manifest": manifest,
+    }
+    envelope["digest"] = _identity_digest(
+        envelope,
+        budget=budget,
+        operation=f"support_artifact.graph_ring_delta.{kind}.digest",
+    )
+    return envelope
+
+
+def _graph_ring_delta_kind(
+    *,
+    transition_kind: str,
+    event_manifests: list[dict[str, object]],
+    local_evidence: Mapping[str, object],
+) -> str:
+    event_kinds = {str(event["kind"]) for event in event_manifests}
+    if "ring_endpoint_paired" in event_kinds:
+        if local_evidence["kind"] in (
+            "closure_bond_text",
+            "directional_ring_closure_bond_text",
+        ):
+            return "ring_endpoint_pair_non_single"
+        return "ring_endpoint_pair"
+    if "ring_endpoint_emitted" in event_kinds:
+        return "ring_endpoint_open"
+    if "branch_opened" in event_kinds:
+        return "branch_open"
+    if "branch_closed" in event_kinds:
+        return "branch_return"
+    if "component_boundary_emitted" in event_kinds:
+        return "component_boundary"
+    if "bond_emitted" in event_kinds:
+        return "bond_advance"
+    if "atom_emitted" in event_kinds:
+        if transition_kind == "atom":
+            return "atom_start"
+        return "atom_advance"
+    return "other_structural"
+
+
+def _writer_event_manifest(
+    event,
+    *,
+    budget: WriterEnvelopeWorkBudget,
+    branch=None,
+    facts=None,
+) -> dict[str, object]:
+    if event.__class__.__name__ == "WriterAtomEmitted":
+        return {
+            "kind": "atom_emitted",
+            "atom": _term(event.atom),
+            "text": event.text,
+            "tetra_token": _term(event.tetra_token),
+            "parent": _term(event.parent),
+            "incoming_bond": _term(event.incoming_bond),
+        }
+    if event.__class__.__name__ == "WriterBondEmitted":
+        return {
+            "kind": "bond_emitted",
+            "bond": _term(event.bond),
+            "parent": _term(event.parent),
+            "child": _term(event.child),
+            "text": event.text,
+            "direction_mark": _term(event.direction_mark),
+        }
+    if event.__class__.__name__ == "WriterBranchOpened":
+        return {
+            "kind": "branch_opened",
+            "parent": _term(event.parent),
+            "child": _term(event.child),
+            "bond": _term(event.bond),
+        }
+    if event.__class__.__name__ == "WriterBranchClosed":
+        return {
+            "kind": "branch_closed",
+            "atom": _term(event.atom),
+        }
+    if event.__class__.__name__ == "WriterComponentBoundaryEmitted":
+        return {
+            "kind": "component_boundary_emitted",
+            "next_root": _term(event.next_root),
+        }
+    if event.__class__.__name__ == "WriterLocalOrderClosed":
+        manifest = {
+            "kind": "local_order_closed",
+            "atom": _term(event.atom),
+        }
+        if branch is None or facts is None:
+            return manifest
+        return {
+            **manifest,
+            **_local_order_closed_identity_manifest(
+                branch=branch,
+                facts=facts,
+                event=event,
+                budget=budget,
+            ),
+        }
+    if event.__class__.__name__ == "WriterRingLabelAllocated":
+        return {
+            "kind": "ring_label_allocated",
+            "label": _term(event.label),
+            "source": event.source,
+        }
+    if event.__class__.__name__ == "WriterRingLabelReleased":
+        return {
+            "kind": "ring_label_released",
+            "label": _term(event.label),
+            "destination": event.destination,
+        }
+    if event.__class__.__name__ == "WriterRingEndpointEmitted":
+        return {
+            "kind": "ring_endpoint_emitted",
+            "bond": _term(event.bond),
+            "endpoint_atom": _term(event.endpoint_atom),
+            "partner_atom": _term(event.partner_atom),
+            "label": _term(event.label),
+            "endpoint_text": event.endpoint_text,
+            "bond_text": event.bond_text,
+            "direction_mark": _term(event.direction_mark),
+            "side": event.side,
+        }
+    if event.__class__.__name__ == "WriterRingEndpointPaired":
+        return {
+            "kind": "ring_endpoint_paired",
+            "bond": _term(event.bond),
+            "endpoint_atom": _term(event.endpoint_atom),
+            "partner_atom": _term(event.partner_atom),
+            "label": _term(event.label),
+            "endpoint_text": event.endpoint_text,
+            "bond_text": event.bond_text,
+            "direction_mark": _term(event.direction_mark),
+            "first_endpoint_bond_text": event.first_endpoint_bond_text,
+            "first_endpoint_direction_mark": _term(event.first_endpoint_direction_mark),
+            "side": event.side,
+        }
+    return {
+        "kind": "unknown",
+        "class_name": event.__class__.__name__,
+        "digest": _identity_digest(
+            event,
+            budget=budget,
+            operation="support_artifact.unknown_event.digest",
+        ),
+    }
+
+
+def _local_order_closed_identity_manifest(
+    *,
+    branch,
+    facts,
+    event,
+    budget: WriterEnvelopeWorkBudget,
+) -> dict[str, object]:
+    site = _specified_tetra_site_for_atom(facts=facts, atom=getattr(event, "atom"))
+    if site is None:
+        return {}
+    source_record = _local_order_record_for_atom(
+        getattr(branch.source_state.stereo_state, "local_orders"),
+        getattr(event, "atom"),
+    )
+    successor_record = _local_order_record_for_atom(
+        getattr(branch.successor_state.stereo_state, "local_orders"),
+        getattr(event, "atom"),
+    )
+    if successor_record is None:
+        raise ValueError("local-order closed event has no successor record")
+    identity = {
+        "site": _term(site.id),
+        "atom": _term(event.atom),
+        "local_order": _term(getattr(successor_record, "order")),
+        "reference_order": _term(site.reference_order),
+        "source_local_order_record_digest": (
+            None
+            if source_record is None
+            else _identity_digest(
+                source_record,
+                budget=budget,
+                operation=(
+                    "support_artifact.graph_ring_delta.local_order."
+                    "source_record.digest"
+                ),
+            )
+        ),
+        "successor_local_order_record_digest": _identity_digest(
+            successor_record,
+            budget=budget,
+            operation=(
+                "support_artifact.graph_ring_delta.local_order."
+                "successor_record.digest"
+            ),
+        ),
+    }
+    identity["local_order_identity_digest"] = _identity_digest(
+        identity,
+        budget=budget,
+        operation="support_artifact.graph_ring_delta.local_order.identity.digest",
+    )
+    return identity
+
+
+def _raw_lifecycle_for_event(*, branch, event):
+    matches = [
+        lifecycle
+        for lifecycle in getattr(branch, "stereo_lifecycle_evidence", ())
+        if getattr(lifecycle, "event") is event
+    ]
+    if len(matches) != 1:
+        raise ValueError("local-order event lifecycle identity mismatch")
+    return matches[0]
+
+
+def _local_order_record_for_atom(records, atom):
+    matches = [
+        record
+        for record in records
+        if getattr(record, "atom") == atom
+    ]
+    if len(matches) > 1:
+        raise ValueError("duplicate local-order record for atom")
+    return None if not matches else matches[0]
+
+
+def _specified_tetra_site_for_atom(*, facts, atom):
+    matches = [
+        site
+        for site in facts.stereo.tetrahedral
+        if site.center == atom and _compact_value(site.status) == "specified"
+    ]
+    if not matches:
+        return None
+    if len(matches) != 1:
+        raise ValueError("local-order closed event tetra site mismatch")
+    return matches[0]
+
+
+def _closure_bond_text_evidence_manifest(evidence, *, budget) -> dict[str, object]:
+    return {
+        "bond": _term(evidence.bond),
+        "bond_order": evidence.bond_order,
+        "label": _term(evidence.label),
+        "opening_atom": _term(evidence.opening_atom),
+        "closing_atom": _term(evidence.closing_atom),
+        "opening_marker": evidence.opening_marker,
+        "closing_marker": evidence.closing_marker,
+        "marker_side": evidence.marker_side,
+        "event_kind": evidence.event_kind,
+        "closed_closure_record_digest": (
+            None
+            if evidence.closed_closure_record is None
+            else _identity_digest(
+                evidence.closed_closure_record,
+                budget=budget,
+                operation="support_artifact.closed_closure_record.digest",
+            )
+        ),
+    }
+
+
+def _add_coverage(
+    table,
+    *,
+    coverage,
+    support_string_refs: list[str],
+    budget: WriterEnvelopeWorkBudget,
+) -> str:
+    text_buckets = []
+    for bucket in coverage.text_buckets:
+        indices = [
+            coverage.string_certificates.index(certificate)
+            for certificate in bucket.string_certificates
+        ]
+        text_buckets.append(
+            {
+                "text_projection": _text_projection_certificate_identity_envelope(
+                    bucket.support_count_term.text_projection_certificate,
+                    budget=budget,
+                ),
+                "support_count": bucket.support_count,
+                "string_refs": [support_string_refs[index] for index in indices],
+            }
+        )
+    terminal = coverage.terminal_bucket
+    terminal_bucket = None
+    if terminal is not None:
+        terminal_bucket = {
+            "terminal_projection": None
+            if terminal.terminal_support_term is None
+            else _terminal_projection_certificate_identity_envelope(
+                terminal.terminal_support_term.terminal_projection_certificate,
+                budget=budget,
+            ),
+            "support_count": terminal.support_count,
+            "string_ref": None
+            if terminal.string_certificate is None
+            else support_string_refs[
+                coverage.string_certificates.index(terminal.string_certificate)
+            ],
+        }
+    return table.add(
+        "support_image_coverage",
+        {
+            "text_buckets": text_buckets,
+            "terminal_bucket": terminal_bucket,
+            "distinct_count": coverage.distinct_count,
+            "support_count": coverage.support_count,
+        },
+        operation="support_artifact.coverage.object",
+    )
+
+
+def _count_payload(
+    count_envelope: Mapping[str, object],
+    *,
+    count_dag_ref: str,
+) -> dict[str, object]:
+    dag_metrics = count_envelope["count_dag"]["metrics"]
+    return {
+        "schema_name": count_envelope["schema_name"],
+        "schema_version": count_envelope["schema_version"],
+        "source_kind": count_envelope["source_kind"],
+        "count_dag_ref": count_dag_ref,
+        "frontier_snapshot_digest": count_envelope["frontier_snapshot"]["digest"],
+        "frontier_product_digest": count_envelope["frontier_product"]["digest"],
+        "count_dag_digest": count_envelope["count_dag"]["digest"],
+        "support_count": count_envelope["support_count"],
+        "completion_count": count_envelope["completion_count"],
+        "support_count_certificate_digest": count_envelope["support_count_certificate"]["digest"],
+        "completion_count_certificate_digest": count_envelope["completion_count_certificate"]["digest"],
+        "count_dag_node_count": dag_metrics["node_count"],
+        "count_dag_edge_count": dag_metrics["edge_count"],
+    }
+
+
+class _ObjectTable:
+    def __init__(self, budget: WriterEnvelopeWorkBudget):
+        self._budget = budget
+        self._objects_by_id: dict[str, dict[str, object]] = {}
+
+    def add(self, kind: str, payload, *, operation: str) -> str:
+        digest = _identity_digest(
+            support_artifact_object_identity_term(kind, payload),
+            budget=self._budget,
+            operation=operation,
+        )
+        object_id = f"obj:{digest}"
+        if object_id not in self._objects_by_id:
+            self._objects_by_id[object_id] = {
+                "object_id": object_id,
+                "kind": kind,
+                "payload": payload,
+                "digest": digest,
+            }
+        return object_id
+
+    def objects(self) -> list[dict[str, object]]:
+        return sorted(self._objects_by_id.values(), key=lambda item: item["object_id"])
+
+
+def _source_snapshot_for_artifact(*, prepared, envelope, budget):
+    if envelope["source_kind"] == "snapshot":
+        return _source_snapshot_from_envelope(
+            prepared=prepared,
+            envelope=envelope,
+            budget=budget,
+        )
+    prefix = verify_writer_snapshot_prefix_read_envelope(
+        prepared=prepared,
+        envelope=envelope["prefix_read_envelope"],
+        budget=budget,
+    )
+    if not prefix.accepted:
+        _artifact_violation("prefix_read_envelope_rejected")
+    if prefix.read_kind != "readable":
+        _artifact_violation("prefix_read_envelope_not_readable")
+    if prefix.final_snapshot is None:
+        _artifact_violation("prefix_read_envelope_lacks_final_snapshot")
+    return prefix.final_snapshot
+
+def _count_envelope_from_artifact(*, prepared, envelope, source_snapshot, product, budget):
+    objects = {item["object_id"]: item for item in envelope["objects"]}
+    count_object = objects[envelope["roots"]["count_ref"]]
+    if count_object["kind"] != "count_envelope":
+        _artifact_violation("count_ref_kind_mismatch")
+    payload = count_object["payload"]
+    dag_object = objects[payload["count_dag_ref"]]
+    if dag_object["kind"] != "count_dag":
+        _artifact_violation("count_dag_ref_kind_mismatch")
+    dag = dag_object["payload"]
+    nodes = count_dag_node_by_id(dag)
+    snapshot_identity = _snapshot_identity_envelope(
+        source_snapshot, budget=budget, operation="support_artifact.count.source_snapshot"
+    )
+    if payload["frontier_snapshot_digest"] != snapshot_identity["digest"]:
+        _artifact_violation("count_frontier_snapshot_mismatch")
+    frontier_object = objects[envelope["roots"]["frontier_product_ref"]]
+    if frontier_object["kind"] != "frontier_product":
+        _artifact_violation("frontier_product_ref_kind_mismatch")
+    return {
+        "schema_name": payload["schema_name"],
+        "schema_version": payload["schema_version"],
+        "prepared_identity": envelope["prepared_identity"],
+        "source_kind": payload["source_kind"],
+        "source_snapshot": snapshot_identity if payload["source_kind"] == "snapshot" else None,
+        "prefix_read_envelope": envelope["prefix_read_envelope"],
+        "frontier_snapshot": snapshot_identity,
+        "frontier_product": frontier_object["payload"],
+        "support_count": payload["support_count"],
+        "completion_count": payload["completion_count"],
+        "count_dag": dag,
+        "support_count_certificate": nodes[dag["roots"]["support_count_root"]],
+        "completion_count_certificate": nodes[dag["roots"]["completion_count_root"]],
+        "choice_count_certificates": [nodes[node_id] for node_id in dag["roots"]["choice_count_roots"]],
+        "terminal_choice_count_certificate": None if dag["roots"]["terminal_choice_count_root"] is None else nodes[dag["roots"]["terminal_choice_count_root"]],
+        "coverage": _coverage_envelope(product, count_dag=dag, budget=budget),
+    }
+
+
+def _checked_product(*, prepared, snapshot):
+    return _checked_writer_frontier_product(
+        prepared,
+        snapshot.cursor,
+        include_counts=True,
+        include_frontier_certificate=True,
+        include_count_certificate=True,
+    )
+
+
+def _artifact_violation(kind: str) -> None:
+    raise SouthStarError(
+        SouthStarErrorKind.INTERNAL_INVARIANT,
+        f"writer support artifact envelope violation: {kind}",
+    )
+
+
+__all__ = (
+    "SCHEMA_NAME",
+    "SCHEMA_VERSION",
+    "WriterSupportArtifactEnvelopeVerification",
+    "verify_writer_support_artifact_consistency",
+    "verify_writer_support_artifact_envelope",
+    "writer_support_artifact_envelope_for_prefix_read",
+    "writer_support_artifact_envelope_for_snapshot",
+)

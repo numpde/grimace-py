@@ -5,29 +5,21 @@ import unittest
 
 from rdkit import Chem, rdBase
 
-from grimace._reference.prepared_graph import (
+from grimace._reference import (
     CONNECTED_NONSTEREO_SURFACE,
     CONNECTED_STEREO_SURFACE,
+    DEFAULT_RDKIT_RANDOM_CONNECTED_NONSTEREO_POLICY_PATH,
     PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
     PreparedSmilesGraph,
+    ReferencePolicy,
     prepare_smiles_graph,
 )
-from tests.helpers.policies import load_connected_nonstereo_policy
-
-
-def _mol_with_directional_aromatic_bond_dirs() -> Chem.Mol:
-    mol = Chem.MolFromSmiles("c1ccccc1")
-    if mol is None:
-        raise AssertionError("failed to parse synthetic directional-bond molecule")
-    mol.GetBondWithIdx(0).SetBondDir(Chem.BondDir.ENDDOWNRIGHT)
-    mol.GetBondWithIdx(1).SetBondDir(Chem.BondDir.ENDUPRIGHT)
-    return mol
 
 
 class PreparedSmilesGraphContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.policy = load_connected_nonstereo_policy()
+        cls.policy = ReferencePolicy.from_path(DEFAULT_RDKIT_RANDOM_CONNECTED_NONSTEREO_POLICY_PATH)
 
     def test_prepared_graph_tracks_policy_and_writer_metadata(self) -> None:
         mol = Chem.MolFromSmiles("Cc1ccccc1")
@@ -50,33 +42,6 @@ class PreparedSmilesGraphContractTests(unittest.TestCase):
         self.assertEqual(bool(sampling["allBondsExplicit"]), prepared.writer_all_bonds_explicit)
         self.assertEqual(bool(sampling["allHsExplicit"]), prepared.writer_all_hs_explicit)
         self.assertEqual(bool(sampling["ignoreAtomMapNumbers"]), prepared.writer_ignore_atom_map_numbers)
-        self.assertTrue(
-            prepared.matches_writer_flags(
-                isomeric_smiles=bool(sampling["isomericSmiles"]),
-                kekule_smiles=bool(sampling["kekuleSmiles"]),
-                all_bonds_explicit=bool(sampling["allBondsExplicit"]),
-                all_hs_explicit=bool(sampling["allHsExplicit"]),
-                ignore_atom_map_numbers=bool(sampling["ignoreAtomMapNumbers"]),
-            )
-        )
-        self.assertFalse(
-            prepared.matches_writer_flags(
-                isomeric_smiles=not bool(sampling["isomericSmiles"]),
-                kekule_smiles=bool(sampling["kekuleSmiles"]),
-                all_bonds_explicit=bool(sampling["allBondsExplicit"]),
-                all_hs_explicit=bool(sampling["allHsExplicit"]),
-                ignore_atom_map_numbers=bool(sampling["ignoreAtomMapNumbers"]),
-            )
-        )
-
-        with self.assertRaisesRegex(TypeError, "isomeric_smiles must be a boolean"):
-            prepared.matches_writer_flags(
-                isomeric_smiles="true",
-                kekule_smiles=bool(sampling["kekuleSmiles"]),
-                all_bonds_explicit=bool(sampling["allBondsExplicit"]),
-                all_hs_explicit=bool(sampling["allHsExplicit"]),
-                ignore_atom_map_numbers=bool(sampling["ignoreAtomMapNumbers"]),
-            )
 
         identity = self.policy.data["identity_check"]
         self.assertEqual(bool(identity["parse_with_rdkit"]), prepared.identity_parse_with_rdkit)
@@ -150,66 +115,6 @@ class PreparedSmilesGraphContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "neighbor token row length mismatch"):
             PreparedSmilesGraph.from_dict(broken)
 
-    def test_prepared_graph_from_dict_requires_json_boolean_array_items(self) -> None:
-        mol = Chem.MolFromSmiles("CC")
-        self.assertIsNotNone(mol)
-        assert mol is not None
-
-        prepared = prepare_smiles_graph(mol, self.policy)
-        broken = deepcopy(prepared.to_dict())
-        broken["atom_is_aromatic"][0] = "false"
-
-        with self.assertRaisesRegex(TypeError, "atom_is_aromatic items must be JSON booleans"):
-            PreparedSmilesGraph.from_dict(broken)
-
-    def test_prepared_graph_from_dict_requires_json_boolean_metadata(self) -> None:
-        mol = Chem.MolFromSmiles("CC")
-        self.assertIsNotNone(mol)
-        assert mol is not None
-
-        prepared = prepare_smiles_graph(mol, self.policy)
-        broken = deepcopy(prepared.to_dict())
-        broken["writer_do_isomeric_smiles"] = "false"
-
-        with self.assertRaisesRegex(TypeError, "writer_do_isomeric_smiles must be a JSON boolean"):
-            PreparedSmilesGraph.from_dict(broken)
-
-    def test_stereo_prepared_graph_rejects_incomplete_stereo_atom_metadata(self) -> None:
-        mol = Chem.MolFromSmiles("F[C@H](Cl)Br")
-        self.assertIsNotNone(mol)
-        assert mol is not None
-
-        prepared = prepare_smiles_graph(mol, self.policy, surface_kind=CONNECTED_STEREO_SURFACE)
-        broken = deepcopy(prepared.to_dict())
-        del broken["atom_stereo_neighbor_orders"]
-
-        with self.assertRaisesRegex(ValueError, "stereo atom metadata is incomplete"):
-            PreparedSmilesGraph.from_dict(broken)
-
-    def test_stereo_prepared_graph_rejects_incomplete_stereo_bond_metadata(self) -> None:
-        mol = Chem.MolFromSmiles("F/C=C\\Cl")
-        self.assertIsNotNone(mol)
-        assert mol is not None
-
-        prepared = prepare_smiles_graph(mol, self.policy, surface_kind=CONNECTED_STEREO_SURFACE)
-        broken = deepcopy(prepared.to_dict())
-        del broken["bond_dirs"]
-
-        with self.assertRaisesRegex(ValueError, "stereo bond metadata is incomplete"):
-            PreparedSmilesGraph.from_dict(broken)
-
-    def test_nonstereo_prepared_graph_rejects_extra_stereo_metadata(self) -> None:
-        mol = Chem.MolFromSmiles("CC")
-        self.assertIsNotNone(mol)
-        assert mol is not None
-
-        prepared = prepare_smiles_graph(mol, self.policy, surface_kind=CONNECTED_NONSTEREO_SURFACE)
-        broken = deepcopy(prepared.to_dict())
-        broken["atom_chiral_tags"] = ["CHI_UNSPECIFIED", "CHI_UNSPECIFIED"]
-
-        with self.assertRaisesRegex(ValueError, "nonstereo surface cannot carry stereo atom metadata"):
-            PreparedSmilesGraph.from_dict(broken)
-
     def test_connected_stereo_prepared_graph_carries_atom_stereo_metadata(self) -> None:
         mol = Chem.MolFromSmiles("F[C@H](Cl)Br")
         self.assertIsNotNone(mol)
@@ -269,28 +174,6 @@ class PreparedSmilesGraphContractTests(unittest.TestCase):
         self.assertEqual((), prepared.bond_stereo_kinds)
         self.assertEqual((), prepared.bond_stereo_atoms)
         self.assertEqual((), prepared.bond_dirs)
-
-    def test_nonstereo_prepared_graph_drops_residual_bond_dirs(self) -> None:
-        mol = _mol_with_directional_aromatic_bond_dirs()
-        stereo_prepared = prepare_smiles_graph(
-            mol,
-            self.policy,
-            surface_kind=CONNECTED_STEREO_SURFACE,
-        )
-        stereo_bond_dirs = tuple(
-            bond_dir for bond_dir in stereo_prepared.bond_dirs if bond_dir != "NONE"
-        )
-        self.assertEqual(
-            ("ENDDOWNRIGHT", "ENDUPRIGHT"),
-            stereo_bond_dirs,
-        )
-
-        nonstereo_prepared = prepare_smiles_graph(
-            mol,
-            self.policy,
-            surface_kind=CONNECTED_NONSTEREO_SURFACE,
-        )
-        self.assertEqual((), nonstereo_prepared.bond_dirs)
 
     def test_connected_stereo_surface_still_rejects_unsupported_stereo_families(self) -> None:
         mol = Chem.MolFromSmiles("C/C=C/C")

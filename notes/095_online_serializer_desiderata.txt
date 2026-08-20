@@ -1,0 +1,140 @@
+# Fully Online Stereo SMILES Enumeration from Facts
+
+## Purpose
+
+The target is an online stereo-aware SMILES enumerator that starts from immutable molecule facts and exposes exact support strings, legal next tokens, and counts without first enumerating full traversal or serialization plans.
+
+A completed string may have a retrospective derivation, but the online algorithm should not preselect a full traversal, branch, ring, and stereo presentation plan before it can emit tokens.
+
+## Core Principle
+
+The enumerator should be a prepared, facts-driven writer-state machine with residual molecule-wide stereo constraints.
+
+It should maintain live state over:
+
+- molecule facts;
+- writer policy;
+- current output prefix;
+- visited and unwritten graph obligations;
+- branch obligations;
+- ring and ring-closure obligations;
+- residual stereo variables and constraints;
+- canonical continuation identity for merging and counting.
+
+## Desiderata
+
+### 1. Define the writer language first
+
+The algorithm must enumerate the intended writer support, not a broad proof/debug grammar. Branch placement, ring traversal, ring labels, rooting, atom/bond presentation, and stereo annotation must be explicit writer-policy choices.
+
+### 2. Avoid pre-enumerated spanning trees in writer-shaped mode
+
+For `WRITER_SHAPED` mode, do not enumerate all spanning trees of cyclic components. Instead, maintain online ring-spine and ring-closure state. Arbitrary spanning-tree enumeration can remain in an `EXHAUSTIVE` proof/debug mode, but it should not define writer-shaped support.
+
+### 3. Treat branches as live obligations
+
+Do not pre-label an entire traversal skeleton with `BRANCH` and `CONTINUATION` roles. At each state, decide locally which obligations are true side branches, which neighbor is the inline continuation, and which ring endpoints must be written. A unique or main continuation child should not be emitted as a parenthesized branch.
+
+### 4. Model rings as writer state
+
+Ring handling should be online state, not an arbitrary tree cut. The state should know the ring system or simple cycle context, entry atom, chosen ring-spine direction where applicable, pending closure endpoint, ring label allocation, visited ring atoms, and exocyclic substituent obligations. Same-ring spine children should not become side branches in writer-shaped mode.
+
+### 5. Build stereo CSP incrementally
+
+Stereo constraints are molecule-wide, but their syntax occurrences arise during writing. The residual CSP should activate variables and factors as atom, bond, and ring endpoint occurrences are emitted.
+
+Examples:
+
+- emitting a tetrahedral atom occurrence may activate a tetra token variable;
+- emitting a directional bond occurrence may activate a slash/backslash carrier variable;
+- emitting a ring endpoint may create a delayed ring-pair factor;
+- completing the matching endpoint closes that factor;
+- directional-site factors become checkable once their relevant carriers are known.
+
+The CSP should be residual, reversible, and checkpointable.
+
+### 6. Support delayed factors
+
+Some constraints cannot be fully scoped when the first related token is emitted. The residual store should support promises or delayed factors for tetra local order, directional sites, ring-pair decode, and no-accidental-stereo constraints. These should become ordinary residual factors once their variables are known.
+
+### 7. Expose exact next-token frontiers
+
+From any reachable prefix state, the algorithm must answer:
+
+- legal next token texts;
+- EOS availability;
+- per-token completion counts;
+- successor states;
+- enough residual evidence to resume without root replay.
+
+This should not require enumerating the full support unless the prefix state genuinely forces it.
+
+### 8. Merge canonical residual states
+
+Equivalent continuation states should merge. State identity should include semantic continuation data, not irrelevant derivation history. At minimum it should account for remaining graph obligations, ring state, residual stereo store, writer-policy state, component/root state, and output-relevant decoder state.
+
+Keep these counts separate:
+
+- `support_count`: distinct final rendered strings;
+- `completion_count`: number of completing witnesses proving a choice;
+- `multiplicity`: number of merged residual states or paths.
+
+### 9. Count without materializing strings
+
+The algorithm should support exact counting without storing all emitted strings. Ideally, counts should be computed by memoized dynamic programming over canonical residual states:
+
+```text
+count(state) = sum count(successor_state)
+```
+
+This requires exact state identity and careful separation of support-string determinization from witness multiplicity.
+
+### 10. Be output-sensitive
+
+For writer-shaped mode, work should scale with the intended writer language, not with a larger proof grammar. Avoid work from arbitrary spanning trees, degenerate branch placements, remote ring cuts, and semantically redundant slash/backslash placements outside the writer policy.
+
+### 11. Keep offline certificates as audit, not the production route
+
+A completed online path may yield a certificate explaining the emitted string, writer decisions, ring decisions, and satisfied stereo constraints. But that certificate should be retrospective. The production online algorithm should not depend on a precomputed full serialization plan.
+
+### 12. Separate modes clearly
+
+Use explicit modes:
+
+- `EXHAUSTIVE`: broad proof/debug grammar;
+- `WRITER_SHAPED`: intended efficient serializer language;
+- `RDKit_PARITY`: possible future empirical/public writer model.
+
+Do not confuse proof completeness with writer-shaped support.
+
+## Correct Mental Model
+
+Avoid this architecture:
+
+```text
+facts
+→ enumerate traversal plans
+→ enumerate prefix plans
+→ solve CSP
+→ render strings
+```
+
+Prefer this architecture:
+
+```text
+facts
+→ prepared writer/stereo/ring state
+→ online transition system
+→ residual CSP maintained during transitions
+→ exact next-token frontier
+→ stream/count support strings
+```
+
+A final string still has a derivation. The difference is that the derivation is discovered incrementally rather than pre-enumerated as a full plan.
+
+## Practical Summary
+
+The ideal online stereo SMILES enumerator is a prepared, facts-driven, writer-policy transition system with residual molecule-wide stereo constraints, canonical state merging, exact next-token frontiers, and countable support semantics.
+
+It should not optimize enumeration of spanning trees. In writer-shaped mode, it should avoid creating that search space in the first place.
+

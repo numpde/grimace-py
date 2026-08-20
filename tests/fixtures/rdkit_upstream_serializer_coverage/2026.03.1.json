@@ -1163,7 +1163,7 @@
         "MolToSmiles"
       ],
       "name": "smilesBondOutputOrder",
-      "notes": "Aggregate test validates RDKit private _smilesAtomOutputOrder/_smilesBondOutputOrder properties after MolToSmiles. Grimace does not expose RDKit private output-order properties.",
+      "notes": "Aggregate test validates RDKit private _smilesAtomOutputOrder/_smilesBondOutputOrder properties after MolToSmiles.",
       "parent": null,
       "snippet_sha256": "83e5e8f1022ac1c39bece22100a1d400fad8936b8403041a1392e8643480e873",
       "start_line": 1323,
@@ -3832,7 +3832,7 @@
         "MolToSmiles"
       ],
       "name": "test11MolOps",
-      "notes": "MolToSmiles result is unused; the test exercises sanitization and ring-finding wrapper behavior outside Grimace's writer surface.",
+      "notes": "MolToSmiles result is unused; the test exercises sanitization and ring-finding wrapper behavior.",
       "parent": "TestCase",
       "snippet_sha256": "85d18bf72ee27bd90f3cac6618eab6e9bf4b0ebb3daa692edce98a7f2584a484",
       "start_line": 352,
@@ -4063,7 +4063,7 @@
             "manual_bond_stereo_atoms_passing_surface_02"
           ],
           "fixture": "tests/fixtures/rdkit_writer_membership/2026.03.1/60_manual_stereo_writer.json",
-          "note": "Partial coverage: two unique generated canonical surfaces are in Grimace support; two other unique canonical surfaces remain outside support."
+          "note": "Passing writer-membership fixtures pin two generated canonical surfaces already in the main parity corpus."
         },
         {
           "cases": [
@@ -4071,7 +4071,7 @@
             "manual_bond_stereo_atoms_missing_surface_02"
           ],
           "fixture": "tests/fixtures/rdkit_known_stereo_gaps/2026.03.1.json",
-          "note": "Known-gap fixture pins the two missing deterministic RDKit surfaces as executable red parity tests."
+          "note": "Known stereo-gap fixture retains the two newly supported deterministic RDKit surfaces as support-present family guards."
         }
       ],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testbondsetstereoatoms",
@@ -4081,11 +4081,11 @@
         "MolToSmiles"
       ],
       "name": "testBondSetStereoAtoms",
-      "notes": "Manually sets double-bond stereo atoms/states and checks isomeric MolToSmiles surfaces. Passing writer-membership fixtures pin the two unique generated canonical surfaces currently in Grimace support; known-gap fixtures pin two other unique canonical surfaces, CC\\C=C/C(/C=C/CC)=C(/CC)CO and CC\\C=C/C(/C=C/CC)=C(\\CC)CO, that remain outside current Grimace support.",
+      "notes": "Manually sets double-bond stereo atoms/states and checks isomeric MolToSmiles surfaces. Passing writer-membership fixtures pin two generated canonical surfaces in the main parity corpus; known-gap fixtures retain two additional deterministic RDKit surfaces, CC\\C=C/C(/C=C/CC)=C(/CC)CO and CC\\C=C/C(/C=C/CC)=C(\\CC)CO, as support-present family guards.",
       "parent": "TestCase",
       "snippet_sha256": "e8abacf16faa586e13dccd9ec28667f6ba779bebba086e88780ca8070c492ef2",
       "start_line": 1983,
-      "status": "known-gap",
+      "status": "covered",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
@@ -4242,7 +4242,7 @@
         "MolToSmiles"
       ],
       "name": "test59Issue3007178",
-      "notes": "Uses MolToSmiles to check atom/bond owning-molecule lifetime behavior, not a Grimace writer-output contract.",
+      "notes": "Uses MolToSmiles to check atom/bond owning-molecule lifetime behavior.",
       "parent": "TestCase",
       "snippet_sha256": "0d703d9b8bd9c7d0205d98628f6de3ed6e9d412afcc6dee9d0552398c791d256",
       "start_line": 2792,
@@ -4496,7 +4496,7 @@
         "MolToSmiles"
       ],
       "name": "testGetSDText",
-      "notes": "Uses MolToSmiles to compare SDWriter/SDMolSupplier round-trips and properties, outside Grimace's writer surface.",
+      "notes": "Uses MolToSmiles to compare SDWriter/SDMolSupplier round-trips and properties.",
       "parent": "TestCase",
       "snippet_sha256": "f469945528d3e43f654d534d1fa90a00fa57c7f0c7341c6d4e1e074ebd9b73cb",
       "start_line": 4735,
@@ -4654,7 +4654,7 @@
         "MolToSmiles"
       ],
       "name": "testSVGParsing",
-      "notes": "Uses MolToSmiles to validate RDKit SVG metadata parsing behavior, outside Grimace's writer surface.",
+      "notes": "Uses MolToSmiles to validate RDKit SVG metadata parsing behavior.",
       "parent": "TestCase",
       "snippet_sha256": "19cfa782312352475beac429fdef6a1f0fe998dc67b0d2e7bd31bfde40b7190a",
       "start_line": 5327,
@@ -4942,7 +4942,7 @@
         "MolToSmiles"
       ],
       "name": "testValidationMol",
-      "notes": "Checks molfile parser stereo validation and legacy stereo perception using external RDKit test data, outside Grimace's writer surface.",
+      "notes": "Checks molfile parser stereo validation and legacy stereo perception using external RDKit test data.",
       "parent": "TestCase",
       "snippet_sha256": "cddb55cc98f407745bf0f8cde2bd31d033882dfb4c1fab2dc961614f64428b7c",
       "start_line": 7574,
@@ -4960,7 +4960,7 @@
         "MolToSmiles"
       ],
       "name": "testValidationMrv",
-      "notes": "Checks MRV parser stereo validation using external RDKit test data, outside Grimace's writer surface.",
+      "notes": "Checks MRV parser stereo validation using external RDKit test data.",
       "parent": "TestCase",
       "snippet_sha256": "eb01bdf4058b674649bc86f25676857931c1cf08a07bc2c289c14d0e0e9772ec",
       "start_line": 7639,

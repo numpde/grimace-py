@@ -1,0 +1,33 @@
+{
+  "policy_name": "rdkit_random_v1",
+  "policy_kind": "rdkit_random",
+  "branch_family": "general",
+  "rdkit_version": "2025.09.6",
+  "input_source": {
+    "kind": "default_fixture",
+    "path": "tests/fixtures/top_100000_CIDs.tsv.gz"
+  },
+  "sampling": {
+    "seed": 0,
+    "draw_budget": 500,
+    "isomericSmiles": true,
+    "kekuleSmiles": false,
+    "rootedAtAtom": -1,
+    "canonical": false,
+    "allBondsExplicit": false,
+    "allHsExplicit": false,
+    "doRandom": true,
+    "ignoreAtomMapNumbers": false
+  },
+  "identity_check": {
+    "parse_with_rdkit": true,
+    "canonical": true,
+    "isomericSmiles": true,
+    "kekuleSmiles": false,
+    "rootedAtAtom": -1,
+    "allBondsExplicit": false,
+    "allHsExplicit": false,
+    "doRandom": false,
+    "ignoreAtomMapNumbers": false
+  }
+}

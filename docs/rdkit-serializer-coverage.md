@@ -1,161 +1,101 @@
----
-title: RDKit serializer coverage
----
+# RDKit Serializer Coverage
 
-This page explains which RDKit SMILES-writer tests Grimace has reviewed and how
-each relevant RDKit behavior is covered in Grimace's checked-in fixtures.
-Here, "RDKit source tree" means RDKit's own tests and source blocks, not tests
-invented inside Grimace.
+This project keeps a version-pinned ledger of upstream RDKit serializer tests
+that were reviewed for relevance to Grimace's current public surface.
 
-This page is the traceability view for RDKit source-tree cases. Grimace also
-has independent fixtures from local probes, dataset-derived cases, and
-random-writer observations; all fixture families and source classes are
-summarized in [Testing fixtures](testing-fixtures.html).
-
-Use it to answer two questions:
-
-- Did we inspect the RDKit source-tree serializer case?
-- Which Grimace fixture proves the matching behavior, or records the known gap?
-
-The ledger is the traceability map. The tests enforce the claims by loading the
-linked fixtures.
-
-For a reader-facing explanation of the current failing parity cases, see
-[Known gaps](known-gaps.html).
-
-Ledger:
+The ledger lives at:
 
 - `tests/fixtures/rdkit_upstream_serializer_coverage/2026.03.1.json`
 
-Audited RDKit source snapshot:
+The local RDKit source files audited by that ledger live at:
 
 - `tests/fixtures/rdkit_upstream_serializer_sources/2026.03.1/`
 
-## Current coverage
+The ledger is keyed to RDKit `2026.03.1`.  Its claims should not be read as
+evidence for a different RDKit serializer version unless a new versioned ledger
+is generated and reviewed.
 
-Snapshot for RDKit `2026.03.1`, generated from:
+## Current Status
 
-```bash
-python scripts/report_rdkit_serializer_coverage.py
-```
+Current reviewed counts:
 
-| Status | Entries | Meaning |
-|---|---:|---|
-| `covered` | 54 | Relevant RDKit source-tree claim has executable Grimace evidence. |
-| `known-gap` | 6 | Relevant RDKit source-tree claim has executable failing diagnostics. |
-| `out-of-scope` | 209 | Reviewed RDKit source block does not map to the current Grimace public surface. |
-| `needs-fixture` | 0 | No unfinished relevant entries are left without fixture mapping. |
-| `unreviewed` | 0 | No regenerated entries are waiting for triage. |
+- `54 covered`
+- `6 known-gap`
+- `209 out-of-scope`
+- `0 needs-fixture`
+- `0 unreviewed`
 
-Covered entries currently link to 76 Grimace fixture references.
+The contract test
+`tests.contract.test_rdkit_upstream_serializer_coverage` enforces the ledger
+schema, checks source snippet hashes and line spans, validates fixture links,
+and now fails if any entry remains `unreviewed` or `needs-fixture`.
 
-By RDKit source file:
+## Status Meanings
 
-| RDKit source file | Entries |
-|---|---:|
-| `Code/GraphMol/SmilesParse/catch_tests.cpp` | 151 |
-| `Code/GraphMol/Wrap/rough_test.py` | 68 |
-| `Code/GraphMol/SmilesParse/cxsmiles_test.cpp` | 31 |
-| `Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java` | 19 |
+`covered` means the upstream serializer claim has corresponding Grimace
+correctness evidence.  That evidence may be exact support equality, token
+inventory equality, deterministic RDKit writer output membership, or a bounded
+decoder-path membership check when full support materialization is too large.
+The concrete claim is stated in the entry's `notes` and `grimace_links`.
 
-By parser kind:
+`known-gap` means the upstream serializer claim is relevant and has executable
+pinned fixture coverage, but at least one parity assertion intentionally fails
+against the current implementation.  These are not ignored observations.  They
+are red tests for work that remains, primarily coupled directional double-bond
+and ring-closure stereo parity.
 
-| Kind | Entries |
-|---|---:|
-| `cpp_section` | 120 |
-| `python_test` | 68 |
-| `cpp_test_case` | 62 |
-| `java_test` | 19 |
-
-Most matched serializer terms:
-
-| Term | Entries |
-|---|---:|
-| `MolToSmiles` | 130 |
-| `CXSmiles` | 128 |
-| `MolToCXSmiles` | 111 |
-| `SmilesWriteParams` | 69 |
-| `rootedAtAtom` | 12 |
-| `allBondsExplicit` | 11 |
-| `isomericSmiles` | 10 |
-| `allHsExplicit` | 7 |
-| `doRandom` | 6 |
-| `kekuleSmiles` | 6 |
-| `MolToRandomSmilesVect` | 5 |
-| `ignoreAtomMapNumbers` | 4 |
-
-For fixture-family and provenance counts, see
-[Testing fixtures](testing-fixtures.html).
-
-## How to read an entry
-
-Each ledger entry has three parts:
-
-1. Parser-owned fields: RDKit file, line range, language, kind, matched
-   serializer terms, and snippet hash.
-2. Reviewed fields: status, claim label, notes, and `grimace_links`.
-3. Linked fixtures: concrete fixture files and case IDs that enforce covered
-   or known-gap claims.
-
-Use `grimace_links` for executable evidence. Avoid prose-only coverage claims
-when a claim can be represented by a fixture case.
-
-## Status meanings
-
-`covered` means a relevant RDKit serializer claim has corresponding Grimace
-evidence: exact support equality, token-inventory equality, deterministic
-writer-output membership, or bounded decoder-path membership when full support
-materialization is too large.
-
-`known-gap` means the RDKit claim is relevant and has executable pinned
-fixture coverage, but at least one parity assertion intentionally fails against
-the current implementation. The current case groups are explained in
-[Known gaps](known-gaps.html).
-
-`out-of-scope` means the RDKit test does not map to Grimace's current public
-surface. Common examples are CXSMILES extension serialization, wrapper API
+`out-of-scope` means the upstream test does not map to the current Grimace
+surface.  Common examples are CXSMILES extension serialization, wrapper API
 smoke tests, canonical-ranking behavior outside the supported
 `canonical=False, doRandom=True` regime, and internal RDKit helper APIs that
 Grimace does not expose.
 
-`needs-fixture` and `unreviewed` are unfinished triage states. The checked-in
-ledger should keep both at zero.
+`needs-fixture` is a temporary triage state only.  It means the entry is
+relevant but has not yet been mapped to a fixture or deliberately classified.
+The current ledger has no `needs-fixture` entries; adding one should be treated
+as unfinished work.
 
-## Known gaps
+`unreviewed` is also temporary.  It is used only when regenerated extractor
+output introduces a new upstream block whose reviewed fields have not been
+assigned yet.
 
-The six `known-gap` ledger entries are concentrated in RDKit's #4582 and
-manual bond-stereo regressions:
+## Known Gaps
+
+The current `known-gap` entries are concentrated in RDKit's #4582 and manual
+bond-stereo regressions.  They pin RDKit outputs that Grimace should eventually
+accept but currently does not:
 
 - GitHub #4582 bulk random double-bond/ring-closure outputs for CHEMBL409450.
 - GitHub #4582 continued / #3967 part 2 directional ring-closure output.
 - Manual multi-double-bond stereo outputs from `testBondSetStereoDifficultCase`.
 - Manual stereo-atom mutation outputs from `testBondSetStereoAtoms`.
 
-These point at RDKit-equivalent traversal-order state for coupled directional
-stereo tokens.
+These point at the same implementation family: RDKit-equivalent traversal-order
+state for coupled directional stereo tokens.
 
-The fixture-level case groups and diagnostic runner are described in
-[Known gaps](known-gaps.html).
+## Maintenance Workflow
 
-## Maintenance workflow
-
-When updating RDKit serializer coverage:
-
-1. Refresh or add the local RDKit source snapshot and manifest.
-2. Regenerate parser-owned coverage fields:
+When the local RDKit serializer source fixture changes, regenerate the parser
+owned fields:
 
 ```bash
 python scripts/extract_rdkit_serializer_cases.py --write
 ```
 
-3. Review every new `unreviewed` entry.
-4. Add or link executable fixtures for every in-scope claim.
-5. Run the reports and contract tests.
+Then review every new `unreviewed` entry and assign one of the stable statuses
+above.  Use fixture links rather than prose-only claims whenever the entry is
+in scope.
 
-Useful commands:
+To inspect the ledger:
 
 ```bash
 python scripts/report_rdkit_serializer_coverage.py
-python scripts/report_correctness_coverage.py
+```
+
+To fail explicitly on unfinished triage:
+
+```bash
 python scripts/report_rdkit_serializer_coverage.py --fail-untriaged
 ```
+
+The contract tests enforce the same policy during normal test runs.

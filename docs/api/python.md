@@ -1,155 +1,175 @@
----
-title: API
----
-
-## Contents
-
-- [Public surface](#public-surface)
-- [PrepareMol and PreparedMol](#preparemol-and-preparedmol)
-- [MolToSmilesEnum](#moltosmilesenum)
-- [Decoder model](#decoder-model)
-- [MolToSmilesDecoder](#moltosmilesdecoder)
-- [MolToSmilesDeterminizedDecoder](#moltosmilesdeterminizeddecoder)
-- [MolToSmilesChoice](#moltosmileschoice)
-- [MolToSmilesSample](#moltosmilessample)
-- [MolToSmilesDeviation](#moltosmilesdeviation)
-- [MolToSmilesTokenInventory](#moltosmilestokeninventory)
-- [MolToSmilesTokenInventorySuperset](#moltosmilestokeninventorysuperset)
+# Python API
 
 ## Public surface
 
-Import the package as `grimace` and use the names documented on this page.
-Underscore-prefixed modules are internal. The compiled extension
-`grimace._core` is required; there is no Python fallback runtime.
+The only supported public Python import name is `grimace`.
 
-For supported flag combinations and root semantics, start with
-[Runtime](../runtime.html). For terminology, see [Concepts](../concepts.html).
+The public runtime is intentionally narrow: exact support and decoding for
+RDKit's `canonical=False, doRandom=True` writer regime under the current
+stable writer convention.
 
-Examples below use:
+This is an RDKit writer-parity API, not a general "all semantically equivalent
+SMILES" API. A SMILES string can be valid and parse to the same molecule while
+still being outside RDKit's writer support. The project keeps those ideas
+separate; see [Correctness contracts](../correctness-contracts.md).
 
-```python
-from rdkit import Chem
-import grimace
+The public signatures keep RDKit-like defaults for surface compatibility, but
+those defaults are not currently supported. Pass `canonical=False` and
+`doRandom=True` explicitly.
 
-mol = Chem.MolFromSmiles("CCO")
-```
+Current top-level exports:
 
-## PrepareMol and PreparedMol
+- `MolToSmilesChoice`
+- `MolToSmilesDecoder`
+- `MolToSmilesDeterminizedDecoder`
+- `MolToSmilesEnum`
+- `MolToSmilesDeviation`
+- `MolToSmilesTokenInventory`
+- `MolToSmilesTokenInventorySuperset`
+- `SmilesDeviation`
 
-`PrepareMol(mol, *, isomericSmiles=True, kekuleSmiles=False, allBondsExplicit=False, allHsExplicit=False, ignoreAtomMapNumbers=False)`
+The compiled extension `grimace._core` is required. There is no
+public runtime fallback. Run the public API from the same Python environment
+where the extension was built or installed.
 
-`PreparedMol.to_bytes(*, compression=None, dictionary_level=3, level=3)`
+Environment requirements:
 
-`PreparedMol.from_bytes(data)`
+- package metadata declares Python `>=3.11`
+- `rdkit>=2026.3`
+- for source builds, a Rust toolchain with `rustc >= 1.83`
 
-Prepares an RDKit molecule once under a fixed writer surface and returns an
-opaque `PreparedMol`. See [Prepared molecules](../guides/prepared-mol.html) for
-the workflow.
+Install-path caveat:
 
-```python
-prepared = grimace.PrepareMol(mol, isomericSmiles=False)
-payload = prepared.to_bytes()
-restored = grimace.PreparedMol.from_bytes(payload)
-```
+- install the PyPI distribution named `grimace-py`
+- import the package as `grimace`
+- plain `pip install grimace` installs an unrelated older package, not this
+  project
+- release wheels, sdists, and local source builds remain supported install
+  paths
 
-`PreparedMol` is accepted anywhere the public runtime accepts a molecule.
+Current continuously exercised matrix:
 
-The writer-surface flags passed to `PrepareMol` are baked into the prepared
-object. Runtime calls with conflicting writer flags raise `ValueError`.
-`rootedAtAtom`, `canonical`, and `doRandom` remain runtime options.
+- Linux source-tree tests on CPython `3.12`
+- Linux wheel build and smoke tests on CPython `3.12` and `3.13`
+- source distribution build, metadata validation, and installed-artifact smoke
+  tests
 
-`PreparedMol.to_bytes()` returns a versioned binary payload owned by the Rust
-core. `PreparedMol.from_bytes(...)` accepts that payload and reconstructs an
-opaque object ready for the runtime. See [Limitations](../current-limitations.html)
-for the current payload size limit.
-
-`PreparedMol.to_bytes(compression="zstd")` writes a zstd frame using the
-default shipped dictionary and compression level. `PreparedMol.from_bytes(...)`
-detects compressed payloads from the zstd frame and selects the matching
-shipped dictionary from the frame dictionary ID. The default is
-`dictionary_level=3, level=3`.
+Other Python versions and non-Linux platforms are expected source-build paths,
+not part of the current release asset or CI matrix.
+Python `3.11` is in that source-build category today: declared, but not part of
+the current CI matrix.
 
 ## MolToSmilesEnum
 
 `MolToSmilesEnum(mol, *, isomericSmiles=True, kekuleSmiles=False, rootedAtAtom=-1, canonical=True, allBondsExplicit=False, allHsExplicit=False, doRandom=False, ignoreAtomMapNumbers=False)`
 
-This yields the complete exact support of Grimace's supported writer language as
-whole SMILES strings.
+This yields the complete exact support as whole SMILES strings.
 
 Although the signature mirrors RDKit defaults, the current runtime does not
-support those defaults. Use the supported options from [Runtime](../runtime.html).
+support those defaults. A naive `grimace.MolToSmilesEnum(mol)` call raises
+`NotImplementedError`; pass `canonical=False` and `doRandom=True` explicitly.
 
-When `rootedAtAtom` is negative, Grimace normalizes it to `-1` and returns the
-exact union across all valid roots for the requested writer flags. Use
-`rootedAtAtom=-1` for that all-roots mode. `rootedAtAtom=None` is not
-supported; omit the argument or use `-1` instead.
+When `rootedAtAtom < 0`, the result is the exact union across all valid roots
+for the requested writer flags. `rootedAtAtom=-1` is the preferred public
+spelling for that all-roots mode. `rootedAtAtom=None` is not supported; omit
+the argument or use `-1` instead.
 
 Set semantics are the contract here. `MolToSmilesEnum(...)` yields the exact
 support, but callers should not rely on the yielded iteration order as a
 stable public ordering guarantee.
 
 ```python
-outputs = sorted(
+outputs = list(
     grimace.MolToSmilesEnum(
         mol,
-        rootedAtAtom=-1,
-        isomericSmiles=False,
+        rootedAtAtom=0,
         canonical=False,
         doRandom=True,
     )
 )
-outputs  # ['C(C)O', 'C(O)C', 'CCO', 'OCC']
 ```
+
+The keyword names mirror RDKit `MolToSmiles`, but the current engine only
+implements rooted random support generation.
+
+The serialization target is the current stable RDKit writer convention,
+currently `RDKit 2026.03.1`. Older slash/backslash serialization conventions
+are out of scope. The dependency floor is `rdkit>=2026.3`, but exact output
+parity is only validated against that current stable writer convention; newer
+RDKit releases may still require fixture or expectation updates.
 
 This is the important semantic point:
 
 - in RDKit, `canonical=False, doRandom=True` returns one sampled SMILES string
-- here, `MolToSmilesEnum(...)` yields the full exact support of Grimace's supported
-  language for that writer mode
+- here, `MolToSmilesEnum(...)` yields the full exact support of that same writer mode
 
-## Decoder model
+Supported combination:
 
-The decoder APIs expose the same support language as stateful next-token
-choices.
+- omit `rootedAtAtom` or pass `rootedAtAtom=-1` for all-roots behavior
+- pass `rootedAtAtom >= 0` for one explicit root
+- other negative integer `rootedAtAtom` values are also accepted for RDKit
+  compatibility and behave like `-1`, but `-1` is the preferred public
+  spelling
+- `rootedAtAtom=None` is not supported
+- `canonical=False`
+- `doRandom=True`
 
-Both decoder classes expose:
+Supported writer flags:
 
-- `next_choices: tuple[MolToSmilesChoice, ...]`
-- `choices() -> tuple[MolToSmilesChoice, ...]`
-- `prefix: str`
-- `is_terminal: bool`
-- `copy()`
+- `isomericSmiles`
+- `kekuleSmiles`
+- `allBondsExplicit`
+- `allHsExplicit`
+- `ignoreAtomMapNumbers`
 
-`choices()` returns the same cached tuple as `next_choices`.
-`MolToSmilesChoice.next_state` is cached after first access.
-`is_terminal` is true when the current prefix is a complete supported SMILES
-for the molecule. In normal public decoder use, terminal states should have no
-next choices.
+Unsupported flag combinations fail fast with `NotImplementedError`. Other
+invalid public inputs can still raise more specific exceptions such as
+`IndexError` or `ValueError`. Molecules with multiple disconnected fragments
+are supported here, in
+`MolToSmilesDecoder(...)`, in `MolToSmilesDeterminizedDecoder(...)`, and in
+`MolToSmilesTokenInventory(...)`.
 
-Use `MolToSmilesDecoder(...)` when each branch-preserving writer choice matters.
-Use `MolToSmilesDeterminizedDecoder(...)` when you want at most one visible
-choice per token text. See [Concepts](../concepts.html) for the
-branch-preserving and determinized model.
+For disconnected molecules, a nonnegative `rootedAtAtom` does not reorder
+fragments. It selects the rooted fragment and the local root atom within that
+fixed fragment order, but non-rooted fragments can still vary internally.
 
 ## MolToSmilesDecoder
 
 `MolToSmilesDecoder(mol, *, isomericSmiles=True, kekuleSmiles=False, rootedAtAtom=-1, canonical=True, allBondsExplicit=False, allHsExplicit=False, doRandom=False, ignoreAtomMapNumbers=False)`
 
-This is the incremental next-token API for the same support language as
-`MolToSmilesEnum(...)`. It shows the legal next choices for the current emitted
-prefix, and each choice exposes the next decoder state.
+This is the incremental next-token API. It accepts the same flags and the same
+current limits as `MolToSmilesEnum(...)`.
+
+It exposes online next choices for the same rooted random writer mode. The
+decoder is online: it shows the legal next choices for the current emitted
+prefix, and each choice already carries the next decoder state.
 
 ```python
 decoder = grimace.MolToSmilesDecoder(
     mol,
-    rootedAtAtom=-1,
+    rootedAtAtom=0,
     isomericSmiles=False,
     canonical=False,
     doRandom=True,
 )
-[(choice.text, choice.branch_count) for choice in decoder.next_choices]
-# [('C', 1), ('C', 1), ('O', 1)]
+while decoder.prefix != "CC":
+    decoder = decoder.next_choices[0].next_state
+
+decoder.prefix       # 'CC'
+[choice.text for choice in decoder.next_choices]  # ['(', '(']
 ```
+
+Available interface:
+
+- `next_choices: tuple[MolToSmilesChoice, ...]`
+- `prefix: str`
+- `is_terminal: bool`
+- `copy() -> MolToSmilesDecoder`
+
+Each `MolToSmilesChoice` has:
+
+- `text: str`
+- `next_state`: the same decoder class as the parent choice came from
 
 Two different choices may therefore share the same `text` while leading to
 different successor states.
@@ -158,108 +178,100 @@ different successor states.
 
 `MolToSmilesDeterminizedDecoder(mol, *, isomericSmiles=True, kekuleSmiles=False, rootedAtAtom=-1, canonical=True, allBondsExplicit=False, allHsExplicit=False, doRandom=False, ignoreAtomMapNumbers=False)`
 
-This is the determinized alternative to `MolToSmilesDecoder(...)`. It returns at
-most one next choice per token text by merging same-text continuations into one
-successor state.
+This is the merged alternative to `MolToSmilesDecoder(...)`. It accepts the
+same flags and current limits, but it returns at most one next choice per token
+text by merging same-text continuations into one successor state.
 
 ```python
 decoder = grimace.MolToSmilesDeterminizedDecoder(
     mol,
-    rootedAtAtom=-1,
+    rootedAtAtom=9,
     isomericSmiles=False,
     canonical=False,
     doRandom=True,
 )
-[(choice.text, choice.branch_count) for choice in decoder.next_choices]
-# [('C', 2), ('O', 1)]
+decoder = decoder.next_choices[0].next_state  # 'c'
+decoder = decoder.next_choices[0].next_state  # 'c1'
+decoder = decoder.next_choices[0].next_state  # 'c1('
+
+[choice.text for choice in decoder.next_choices]  # ['C', 'c']
 ```
+
+Available interface:
+
+- `next_choices: tuple[MolToSmilesChoice, ...]`
+- `prefix: str`
+- `is_terminal: bool`
+- `copy() -> MolToSmilesDeterminizedDecoder`
 
 ## MolToSmilesChoice
 
 `MolToSmilesChoice` is the public helper object returned from
 `decoder.next_choices`.
 
-Choice attributes:
+Available interface:
 
 - `text: str`
-- `branch_count: int`
 - `next_state`: `MolToSmilesDecoder` or `MolToSmilesDeterminizedDecoder`,
   matching the parent decoder class
 
-`branch_count` is local to the current prefix. For `MolToSmilesDecoder`, it is
-`1`. For `MolToSmilesDeterminizedDecoder`, it is the number of
-branch-preserving choices hidden behind that exposed token. It is not final
-support size, probability mass, or RDKit random-writer frequency.
+## Decoder model
 
-## MolToSmilesSample
+`MolToSmilesDecoder(...)` exposes the same runtime as a stateful decoder:
 
-`MolToSmilesSample(mol, *, seed, decoder_view="determinized", sampling_mode="uniform_token", isomericSmiles=True, kekuleSmiles=False, rootedAtAtom=-1, canonical=True, allBondsExplicit=False, allHsExplicit=False, doRandom=False, ignoreAtomMapNumbers=False)`
+- `next_choices` returns the allowed next logical choices
+- `choice.text` is the emitted SMILES fragment for that choice
+- `choice.next_state` is the decoder state after taking that choice
+- `prefix` returns the current prefix
 
-This draws one complete Grimace-supported token path and records the visible
-token choices at each step. It is useful when you need a legal sampled SMILES
-string together with the next-token context seen along that path.
+The tokens are literal SMILES fragments, not token ids. A token may be one
+character or many characters, for example `"C"`, `"[C@H]"`, or `"%12"`.
 
-`seed` is required and must be an unsigned 64-bit integer. The seed is a
-Grimace sampler seed; it does not reproduce RDKit random-writer ordering.
-No uniformity over finished SMILES strings is implied.
+`prefix` is the literal concatenation of the tokens emitted so far on that
+decoder path.
 
-`decoder_view` selects which next-token view is exposed at each prefix.
-`sampling_mode` selects how the next step is chosen inside that view. The two
-options are validated together; accepted pairs are:
+Important semantic point:
 
-- `"determinized"` / `"uniform_token"`: sample uniformly from unique visible
-  next-token choices
-- `"determinized"` / `"branch_multiplicity"`: sample visible next-token choices
-  weighted by their hidden branch count
-- `"branch_preserving"` / `"branch_preserving"`: sample uniformly from
-  branch-preserving choices, then report the selected visible token bucket
+- the decoder is online
+- it reports the legal next choices for the current emitted prefix
+- choosing a choice advances it to the next decoder state
+- it does not precompute one fixed full output before you start stepping
 
-All modes return the same result shape.
+Terminology:
 
-The result is a `SmilesSample`:
+- branch-preserving means `next_choices` may contain duplicate `choice.text`
+  values when they represent different underlying branches
+- determinized frontier means same-text continuations would be merged into one
+  combined successor state for that token
 
-- `tokens: tuple[str, ...]`
-- `smiles: str`
-- `decoder_view: str`
-- `sampling_mode: str`
-- `steps: tuple[SmilesSampleStep, ...]`
+Public semantic choice:
 
-Each `SmilesSampleStep` has:
+- `MolToSmilesDecoder(...)` is branch-preserving
+- duplicate same-text choices are therefore meaningful and may appear in
+  `next_choices`
+- this preserves branch identity instead of hiding distinct continuations
+  behind one merged token choice
+- two decoder states may therefore share the same `prefix` while exposing
+  different `next_choices`
 
-- `choice_tokens: tuple[str, ...]`
-- `choice_branch_counts: tuple[int, ...]`
-- `selected_index: int`
-- `selected_token: str`
+- `MolToSmilesDeterminizedDecoder(...)` is determinized
+- same-text continuations are merged into one combined successor state
+- this gives at most one public choice per token text
+- the merged successor can still represent many underlying branches
 
-`choice_tokens` are unique visible token texts for the current prefix.
-`choice_branch_counts` are the branch-preserving choice counts behind those
-visible tokens. `selected_index` points into `choice_tokens`, and
-`selected_token == choice_tokens[selected_index]`.
+So:
 
-```python
-sample = grimace.MolToSmilesSample(
-    mol,
-    seed=17,
-    rootedAtAtom=-1,
-    isomericSmiles=False,
-    canonical=False,
-    doRandom=True,
-)
-
-sample.smiles  # 'OCC'
-sample.tokens  # ('O', 'C', 'C')
-sample.steps[0].choice_tokens  # ('C', 'O')
-sample.steps[0].choice_branch_counts  # (2, 1)
-sample.steps[0].selected_token  # 'O'
-```
+- `MolToSmilesEnum(...)` gives exact full support
+- `MolToSmilesDecoder(...)` lets you step through that support one token at a time
+- `MolToSmilesDeterminizedDecoder(...)` lets you step through the same support
+  with same-text branches merged
 
 ## MolToSmilesDeviation
 
 `MolToSmilesDeviation(mol, candidate, *, isomericSmiles=True, kekuleSmiles=False, rootedAtAtom=-1, canonical=True, allBondsExplicit=False, allHsExplicit=False, doRandom=False, ignoreAtomMapNumbers=False)`
 
 This diagnoses the first place where a candidate leaves the molecule's
-supported SMILES language under the requested public writer flags. See
-[Deviation diagnostics](../guides/deviation.html) for examples.
+supported SMILES language under the same public writer flags.
 
 It returns `None` when the candidate is accepted. Otherwise it returns a
 `SmilesDeviation` with:
@@ -277,41 +289,133 @@ It returns `None` when the candidate is accepted. Otherwise it returns a
 candidates are matched as text. Sequence candidates are atomic: each item must
 match one legal Grimace decoder token text.
 
-String input and external token sequence input have different boundary
-semantics. The guide shows both cases.
+```python
+from rdkit import Chem
+import grimace
+
+mol = Chem.MolFromSmiles("CCO")
+kwargs = dict(
+    rootedAtAtom=-1,
+    isomericSmiles=False,
+    canonical=False,
+    doRandom=True,
+)
+
+grimace.MolToSmilesDeviation(mol, "CCO", **kwargs)
+# None
+
+grimace.MolToSmilesDeviation(mol, "CCN", **kwargs)
+# SmilesDeviation(
+#     reason='unexpected_text',
+#     char_index=2,
+#     token_index=None,
+#     offset_in_token=None,
+#     accepted_text='CC',
+#     rejected_text='N',
+#     legal_next_tokens=('O',),
+# )
+```
+
+String input and external token sequence input intentionally have different
+boundary semantics:
+
+```python
+grimace.MolToSmilesDeviation(mol, "CCl", **kwargs)
+# accepted_text='CC', rejected_text='l', legal_next_tokens=('O',)
+
+grimace.MolToSmilesDeviation(mol, ("C", "Cl"), **kwargs)
+# accepted_text='C', rejected_text='Cl', legal_next_tokens=('(', 'C')
+```
 
 ## MolToSmilesTokenInventory
 
 `MolToSmilesTokenInventory(mol, *, isomericSmiles=True, kekuleSmiles=False, rootedAtAtom=-1, canonical=True, allBondsExplicit=False, allHsExplicit=False, doRandom=False, ignoreAtomMapNumbers=False)`
 
 This returns the exact sorted tuple of reachable decoder tokens for one
-molecule under the requested public writer flags.
+molecule under the same public writer flags.
 
-When `rootedAtAtom` is negative, it normalizes to `-1` and unions the exact
-reachable token inventories across all roots. When `rootedAtAtom >= 0`, it
-reports the inventory for that rooted public runtime. Omitting `rootedAtAtom`
-means the same thing as passing `-1`, and `-1` is the preferred public spelling
-for that all-roots mode. For disconnected molecules it includes the `"."`
-separator token when fragment transitions are reachable under the requested
-root mode. `rootedAtAtom=None` is not supported; omit the argument or use `-1`
-instead.
+When `rootedAtAtom < 0`, it unions the exact reachable token inventories
+across all roots. When `rootedAtAtom >= 0`, it reports the inventory for that
+rooted public runtime. Omitting `rootedAtAtom` means the same thing as passing
+`-1`, and `-1` is the preferred public spelling for that all-roots mode. For
+disconnected molecules it includes the `"."` separator token when fragment
+transitions are reachable under the requested root mode. `rootedAtAtom=None`
+is not supported; omit the argument or use `-1` instead.
 
-Use this when you need exact per-molecule coverage for Grimace decoder tokens.
+This is an exact runtime inventory, not a probabilistic distribution and not a
+general-purpose tokenizer vocabulary.
 
 ## MolToSmilesTokenInventorySuperset
 
 `MolToSmilesTokenInventorySuperset(mol, *, isomericSmiles=True, kekuleSmiles=False, rootedAtAtom=-1, canonical=True, allBondsExplicit=False, allHsExplicit=False, doRandom=False, ignoreAtomMapNumbers=False)`
 
-This returns a sorted conservative token inventory for one molecule under the
-requested public writer flags.
+This returns a sorted static conservative token inventory for one molecule
+under the same public writer flags. It uses prepared-graph atom, bond, stereo,
+branch, ring, and fragment metadata.
 
 The main use is fast vocabulary-building and coverage checks over molecular
-datasets. See [Token inventories](../guides/token-inventory.html).
+datasets:
 
-For the same molecule and flags, the exact inventory is contained in the
-superset inventory.
+```python
+vocab_tokens = set()
+for mol in mols:
+    vocab_tokens.update(
+        grimace.MolToSmilesTokenInventorySuperset(
+            mol,
+            rootedAtAtom=-1,
+            isomericSmiles=True,
+            canonical=False,
+            doRandom=True,
+        )
+    )
+```
 
-When `rootedAtAtom` is negative, it normalizes to `-1` and unions conservative
-token inventories across all roots.
-For disconnected molecules it includes the `"."` separator token. `PreparedMol`
-inputs are accepted when their writer flags match the requested public options.
+For the same molecule and flags:
+
+```python
+set(grimace.MolToSmilesTokenInventory(mol, **kwargs)) <= set(
+    grimace.MolToSmilesTokenInventorySuperset(mol, **kwargs)
+)
+```
+
+When `rootedAtAtom < 0`, it unions static token inventories across all roots.
+For disconnected molecules it includes the `"."` separator token. Prepared
+graph inputs are accepted when their writer flags match the requested public
+options.
+
+## Correctness
+
+Rust is the source of truth for runtime behavior.
+
+Python builds the RDKit bridge and exposes the public API, but runtime
+enumeration and next-token decoding are Rust-backed.
+
+The test suite is layered:
+
+1. Rust-native tests for core runtime behavior
+2. Python integration tests for the public API
+3. Python parity tests for cross-language regression checks
+4. RDKit-backed reference checks
+
+Correctness claims are also layered:
+
+- principled semantic correctness asks whether emitted SMILES are valid and
+  parse to the intended molecular graph and stereo assignment
+- RDKit writer parity asks whether emitted strings match RDKit's pinned writer
+  support for the supported regime
+
+The current public functions expose the RDKit writer-parity contract. Semantic
+equivalence checks are useful evidence, but they do not replace string equality
+for RDKit writer support or token-level decoder behavior.
+
+## Internal modules
+
+The package also contains internal support code:
+
+- `grimace._runtime`
+  Internal RDKit-to-core bridge helpers.
+- `grimace._reference`
+  Internal pure-Python oracle/reference implementation used by tests and
+  fixtures.
+
+These are not part of the supported public API.

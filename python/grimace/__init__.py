@@ -7,25 +7,88 @@ and `doRandom=True` explicitly.
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping, Sequence
+import importlib
+from collections.abc import Iterator, Sequence
+from pathlib import Path
+from typing import Any
 
-import grimace._deviation as _deviation
-import grimace._mol_to_smiles_options as _options
-import grimace._runtime as _runtime
-import grimace._sampling as _sampling
-from grimace._prepared_mol import PreparedMol, PrepareMol
+from ._south_star1.errors import SouthStarError
+from ._south_star1.errors import SouthStarErrorKind
 
-MolToSmilesChoice = _runtime.MolToSmilesChoice
-SmilesDeviation = _deviation.SmilesDeviation
-SmilesSample = _sampling.SmilesSample
-SmilesSampleStep = _sampling.SmilesSampleStep
+try:
+    _RUNTIME = importlib.import_module("grimace._runtime")
+except ImportError as exc:  # pragma: no cover - exercised only in broken installs
+    _RUNTIME = None
+    _CORE_IMPORT_ERROR = exc
+else:  # pragma: no cover - exercised in environments with the extension available
+    _CORE_IMPORT_ERROR = None
+    _DEVIATION = importlib.import_module("grimace._deviation")
+    _CONTINUATION_RUNTIME = importlib.import_module(
+        "grimace._south_star1.writer_continuation_rust"
+    )
 
 
-def _runtime_kwargs(option_values: Mapping[str, object]) -> dict[str, object]:
-    return _options.coerce_public_options(
-        _options.MOL_TO_SMILES_OPTIONS,
-        _options.public_option_values(_options.MOL_TO_SMILES_OPTIONS, option_values),
-        context="MolToSmiles",
+def _require_runtime() -> Any:
+    if _RUNTIME is None:
+        raise ImportError(
+            "grimace requires the compiled Rust extension "
+            "'grimace._core'. Build or install the package with the "
+            "extension enabled."
+        ) from _CORE_IMPORT_ERROR
+    return _RUNTIME
+
+
+def BuildMolToSmilesContinuationAsset(
+    mol: object,
+    path: str | Path,
+    *,
+    isomericSmiles: bool = True,
+    kekuleSmiles: bool = False,
+    rootedAtAtom: int = -1,
+    canonical: bool = False,
+    allBondsExplicit: bool = False,
+    allHsExplicit: bool = False,
+    doRandom: bool = True,
+    ignoreAtomMapNumbers: bool = False,
+) -> str:
+    """Build and atomically publish a certified continuation asset."""
+
+    _require_runtime()
+    from ._south_star1.public_continuation_asset import (
+        build_mol_to_smiles_continuation_asset,
+    )
+
+    return build_mol_to_smiles_continuation_asset(
+        mol,
+        path,
+        isomeric_smiles=isomericSmiles,
+        kekule_smiles=kekuleSmiles,
+        rooted_at_atom=rootedAtAtom,
+        canonical=canonical,
+        all_bonds_explicit=allBondsExplicit,
+        all_hs_explicit=allHsExplicit,
+        do_random=doRandom,
+        ignore_atom_map_numbers=ignoreAtomMapNumbers,
+    )
+
+
+def VerifyMolToSmilesContinuationAsset(
+    mol: object,
+    path: str | Path,
+    *,
+    expected_manifest_digest: str | None = None,
+) -> "MolToSmilesContinuationAssetVerification":
+    """Independently recertify one continuation asset against an RDKit molecule."""
+
+    _require_runtime()
+    from ._south_star1.public_continuation_asset import (
+        verify_mol_to_smiles_continuation_asset,
+    )
+
+    return verify_mol_to_smiles_continuation_asset(
+        mol,
+        path,
+        expected_manifest_digest=expected_manifest_digest,
     )
 
 
@@ -48,9 +111,17 @@ def MolToSmilesEnum(
     defaults are currently implemented.
     """
 
-    return _runtime.mol_to_smiles_enum(
+    runtime = _require_runtime()
+    return runtime.mol_to_smiles_enum(
         mol,
-        **_runtime_kwargs(locals()),
+        isomeric_smiles=isomericSmiles,
+        kekule_smiles=kekuleSmiles,
+        rooted_at_atom=rootedAtAtom,
+        canonical=canonical,
+        all_bonds_explicit=allBondsExplicit,
+        all_hs_explicit=allHsExplicit,
+        do_random=doRandom,
+        ignore_atom_map_numbers=ignoreAtomMapNumbers,
     )
 
 
@@ -73,9 +144,17 @@ def MolToSmilesTokenInventory(
     defaults are currently implemented.
     """
 
-    return _runtime.mol_to_smiles_token_inventory(
+    runtime = _require_runtime()
+    return runtime.mol_to_smiles_token_inventory(
         mol,
-        **_runtime_kwargs(locals()),
+        isomeric_smiles=isomericSmiles,
+        kekule_smiles=kekuleSmiles,
+        rooted_at_atom=rootedAtAtom,
+        canonical=canonical,
+        all_bonds_explicit=allBondsExplicit,
+        all_hs_explicit=allHsExplicit,
+        do_random=doRandom,
+        ignore_atom_map_numbers=ignoreAtomMapNumbers,
     )
 
 
@@ -98,9 +177,17 @@ def MolToSmilesTokenInventorySuperset(
     defaults are currently implemented.
     """
 
-    return _runtime.mol_to_smiles_token_inventory_superset(
+    runtime = _require_runtime()
+    return runtime.mol_to_smiles_token_inventory_superset(
         mol,
-        **_runtime_kwargs(locals()),
+        isomeric_smiles=isomericSmiles,
+        kekule_smiles=kekuleSmiles,
+        rooted_at_atom=rootedAtAtom,
+        canonical=canonical,
+        all_bonds_explicit=allBondsExplicit,
+        all_hs_explicit=allHsExplicit,
+        do_random=doRandom,
+        ignore_atom_map_numbers=ignoreAtomMapNumbers,
     )
 
 
@@ -123,94 +210,162 @@ def MolToSmilesDeviation(
     match one legal Grimace decoder token text.
     """
 
-    return _deviation.mol_to_smiles_deviation(
+    _require_runtime()
+    return _DEVIATION.mol_to_smiles_deviation(
         mol,
         candidate,
-        **_runtime_kwargs(locals()),
+        isomeric_smiles=isomericSmiles,
+        kekule_smiles=kekuleSmiles,
+        rooted_at_atom=rootedAtAtom,
+        canonical=canonical,
+        all_bonds_explicit=allBondsExplicit,
+        all_hs_explicit=allHsExplicit,
+        do_random=doRandom,
+        ignore_atom_map_numbers=ignoreAtomMapNumbers,
     )
 
 
-def MolToSmilesSample(
-    mol: object,
-    *,
-    seed: int,
-    decoder_view: str = "determinized",
-    sampling_mode: str = "uniform_token",
-    isomericSmiles: bool = True,
-    kekuleSmiles: bool = False,
-    rootedAtAtom: int = -1,
-    canonical: bool = True,
-    allBondsExplicit: bool = False,
-    allHsExplicit: bool = False,
-    doRandom: bool = False,
-    ignoreAtomMapNumbers: bool = False,
-) -> SmilesSample:
-    """Draw one supported SMILES path and retain per-step token choices."""
-
-    return _sampling.mol_to_smiles_sample(
-        mol,
-        seed=seed,
-        decoder_view=decoder_view,
-        sampling_mode=sampling_mode,
-        **_runtime_kwargs(locals()),
+if _RUNTIME is not None:
+    MolToSmilesChoice = _RUNTIME.MolToSmilesChoice
+    SmilesDeviation = _DEVIATION.SmilesDeviation
+    MolToSmilesContinuationDecoder = (
+        _CONTINUATION_RUNTIME.MolToSmilesContinuationDecoder
     )
+    MolToSmilesContinuationProbability = (
+        _CONTINUATION_RUNTIME.MolToSmilesContinuationProbability
+    )
+    from ._south_star1.public_continuation_asset import (
+        MolToSmilesContinuationAssetVerification,
+    )
+    MolToSmilesBranchProofLocator = (
+        _CONTINUATION_RUNTIME.MolToSmilesBranchProofLocator
+    )
+    MolToSmilesTerminalProofLocator = (
+        _CONTINUATION_RUNTIME.MolToSmilesTerminalProofLocator
+    )
+    MolToSmilesWeightedChoice = _CONTINUATION_RUNTIME.MolToSmilesWeightedChoice
+
+    class _PublicDecoderBase(_RUNTIME._PublicDecoderBase):
+        __slots__ = ()
+
+        def __init__(
+            self,
+            mol: object,
+            *,
+            isomericSmiles: bool = True,
+            kekuleSmiles: bool = False,
+            rootedAtAtom: int = -1,
+            canonical: bool = True,
+            allBondsExplicit: bool = False,
+            allHsExplicit: bool = False,
+            doRandom: bool = False,
+            ignoreAtomMapNumbers: bool = False,
+        ) -> None:
+            super().__init__(
+                mol,
+                isomeric_smiles=isomericSmiles,
+                kekule_smiles=kekuleSmiles,
+                rooted_at_atom=rootedAtAtom,
+                canonical=canonical,
+                all_bonds_explicit=allBondsExplicit,
+                all_hs_explicit=allHsExplicit,
+                do_random=doRandom,
+                ignore_atom_map_numbers=ignoreAtomMapNumbers,
+            )
+
+        @property
+        def _impl(self) -> "_PublicDecoderBase":
+            return self
 
 
-class _PublicDecoderBase(_runtime._PublicDecoderBase):
-    __slots__ = ()
+    class MolToSmilesDecoder(_RUNTIME.MolToSmilesDecoder, _PublicDecoderBase):
+        """Branch-preserving online decoder for the supported public runtime.
 
-    def __init__(
-        self,
-        mol: object,
-        *,
-        isomericSmiles: bool = True,
-        kekuleSmiles: bool = False,
-        rootedAtAtom: int = -1,
-        canonical: bool = True,
-        allBondsExplicit: bool = False,
-        allHsExplicit: bool = False,
-        doRandom: bool = False,
-        ignoreAtomMapNumbers: bool = False,
-    ) -> None:
-        super().__init__(
-            mol,
-            **_runtime_kwargs(locals()),
-        )
+        Pass `canonical=False` and `doRandom=True` explicitly.
+        """
+
+        __slots__ = ()
 
 
-class MolToSmilesDecoder(_runtime.MolToSmilesDecoder, _PublicDecoderBase):
-    """Branch-preserving online decoder for the supported public runtime.
+    class MolToSmilesDeterminizedDecoder(_RUNTIME.MolToSmilesDeterminizedDecoder, _PublicDecoderBase):
+        """Determinized online decoder for the supported public runtime.
 
-    Pass `canonical=False` and `doRandom=True` explicitly.
-    """
+        Pass `canonical=False` and `doRandom=True` explicitly.
+        """
 
-    __slots__ = ()
+        __slots__ = ()
+
+else:
+    class _ImportErrorRuntimeBase:
+        __slots__ = ()
+
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            _require_runtime()
 
 
-class MolToSmilesDeterminizedDecoder(
-    _runtime.MolToSmilesDeterminizedDecoder,
-    _PublicDecoderBase,
-):
-    """Determinized online decoder for the supported public runtime.
+    class MolToSmilesChoice:  # pragma: no cover - exercised only in broken installs
+        __slots__ = ()
 
-    Pass `canonical=False` and `doRandom=True` explicitly.
-    """
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            _require_runtime()
 
-    __slots__ = ()
+
+    class SmilesDeviation:  # pragma: no cover - exercised only in broken installs
+        __slots__ = ()
+
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            _require_runtime()
+
+
+    class MolToSmilesDecoder(_ImportErrorRuntimeBase):  # pragma: no cover - broken installs only
+        pass
+
+
+    class MolToSmilesDeterminizedDecoder(_ImportErrorRuntimeBase):  # pragma: no cover - broken installs only
+        pass
+
+
+    class MolToSmilesContinuationDecoder(_ImportErrorRuntimeBase):  # pragma: no cover - broken installs only
+        pass
+
+
+    class MolToSmilesContinuationProbability:  # pragma: no cover - broken installs only
+        __slots__ = ()
+
+
+    class MolToSmilesContinuationAssetVerification:  # pragma: no cover - broken installs only
+        __slots__ = ()
+
+
+    class MolToSmilesBranchProofLocator:  # pragma: no cover - broken installs only
+        __slots__ = ()
+
+
+    class MolToSmilesTerminalProofLocator:  # pragma: no cover - broken installs only
+        __slots__ = ()
+
+
+    class MolToSmilesWeightedChoice:  # pragma: no cover - broken installs only
+        __slots__ = ()
 
 
 __all__ = [
+    "BuildMolToSmilesContinuationAsset",
+    "MolToSmilesContinuationAssetVerification",
+    "MolToSmilesBranchProofLocator",
     "MolToSmilesChoice",
+    "MolToSmilesContinuationDecoder",
+    "MolToSmilesContinuationProbability",
     "MolToSmilesDecoder",
     "MolToSmilesDeterminizedDecoder",
     "MolToSmilesDeviation",
     "MolToSmilesEnum",
-    "MolToSmilesSample",
     "MolToSmilesTokenInventory",
     "MolToSmilesTokenInventorySuperset",
-    "PreparedMol",
-    "PrepareMol",
+    "MolToSmilesTerminalProofLocator",
+    "MolToSmilesWeightedChoice",
     "SmilesDeviation",
-    "SmilesSample",
-    "SmilesSampleStep",
+    "SouthStarError",
+    "SouthStarErrorKind",
+    "VerifyMolToSmilesContinuationAsset",
 ]

@@ -4,19 +4,20 @@ from dataclasses import dataclass
 import unittest
 from unittest.mock import patch
 
-import grimace._runtime as _runtime
-from grimace._reference.dataset import load_default_connected_nonstereo_molecule_cases
+from grimace import _runtime
+from grimace._reference import load_default_connected_nonstereo_molecule_cases
 from grimace._reference.prepared_graph import (
     CONNECTED_NONSTEREO_SURFACE,
     PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
     PreparedSmilesGraph,
 )
+from tests.helpers.kernel import CORE_MODULE
 from tests.helpers.mols import parse_smiles
 from tests.helpers.public_runtime import (
     exact_token_inventory_via_decoder,
     public_token_inventory,
     public_token_inventory_superset,
-    prepared_graph_input_variants,
+    prepared_input_variants,
     supported_public_kwargs,
 )
 
@@ -190,6 +191,11 @@ class TokenInventoryTests(unittest.TestCase):
         ),
     )
 
+    @classmethod
+    def setUpClass(cls) -> None:
+        if CORE_MODULE is None:
+            raise unittest.SkipTest("private Rust extension is not installed")
+
     def test_token_inventory_matches_exact_decoder_inventory(self) -> None:
         # Use one shared demanding molecule set for both branches. On the
         # nonstereo surface, Grimace should follow RDKit and drop stereo
@@ -335,7 +341,7 @@ class TokenInventoryTests(unittest.TestCase):
 
     def test_token_inventory_superset_rejects_prepared_writer_flag_mismatch(self) -> None:
         mol = parse_smiles("CC#N")
-        prepared = prepared_graph_input_variants(
+        prepared = prepared_input_variants(
             mol,
             **supported_public_kwargs(
                 rootedAtAtom=0,

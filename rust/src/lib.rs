@@ -1,8 +1,7 @@
 mod bond_stereo_constraints;
+mod continuation;
 mod frontier;
 mod prepared_graph;
-mod prepared_mol;
-mod rng;
 mod rooted_nonstereo;
 mod rooted_stereo;
 mod smiles_shared;
@@ -10,32 +9,64 @@ mod smiles_shared;
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
 
+use crate::continuation::{
+    PyWriterContinuationRustChoice, PyWriterContinuationRustCore, PyWriterContinuationRustCursor,
+    PyWriterContinuationRustProbability, _writer_continuation_rust_core_from_verified_terms,
+};
+
 use crate::prepared_graph::{
     mol_to_smiles_support, prepared_smiles_graph_schema_version, PyPreparedSmilesGraph,
 };
-use crate::prepared_mol::PyPreparedMol;
-use crate::rng::PySplitMix64Sampler;
 use crate::rooted_nonstereo::{
     PyRootedConnectedNonStereoDecoder, PyRootedConnectedNonStereoWalker,
     PyRootedConnectedNonStereoWalkerState,
 };
 use crate::rooted_stereo::{
-    PyRootedConnectedStereoDecoder, PyRootedConnectedStereoWalker,
-    PyRootedConnectedStereoWalkerState,
+    internal_stereo_constraint_model_summary, internal_stereo_constraint_output_facts,
+    internal_stereo_deferred_marker_basis_diagnostics,
+    internal_stereo_deferred_marker_obligation_witnesses,
+    internal_stereo_target_guided_marker_basis_diagnostics, PyRootedConnectedStereoDecoder,
+    PyRootedConnectedStereoWalker, PyRootedConnectedStereoWalkerState,
 };
 
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyPreparedSmilesGraph>()?;
-    m.add_class::<PyPreparedMol>()?;
-    m.add_class::<PySplitMix64Sampler>()?;
     m.add_class::<PyRootedConnectedNonStereoDecoder>()?;
     m.add_class::<PyRootedConnectedNonStereoWalker>()?;
     m.add_class::<PyRootedConnectedNonStereoWalkerState>()?;
     m.add_class::<PyRootedConnectedStereoDecoder>()?;
     m.add_class::<PyRootedConnectedStereoWalker>()?;
     m.add_class::<PyRootedConnectedStereoWalkerState>()?;
+    m.add_class::<PyWriterContinuationRustCore>()?;
+    m.add_class::<PyWriterContinuationRustCursor>()?;
+    m.add_class::<PyWriterContinuationRustChoice>()?;
+    m.add_class::<PyWriterContinuationRustProbability>()?;
+    m.add_function(wrap_pyfunction!(
+        _writer_continuation_rust_core_from_verified_terms,
+        m
+    )?)?;
     m.add_function(wrap_pyfunction!(prepared_smiles_graph_schema_version, m)?)?;
     m.add_function(wrap_pyfunction!(mol_to_smiles_support, m)?)?;
+    m.add_function(wrap_pyfunction!(
+        internal_stereo_constraint_model_summary,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(
+        internal_stereo_constraint_output_facts,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(
+        internal_stereo_deferred_marker_obligation_witnesses,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(
+        internal_stereo_deferred_marker_basis_diagnostics,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(
+        internal_stereo_target_guided_marker_basis_diagnostics,
+        m
+    )?)?;
     Ok(())
 }

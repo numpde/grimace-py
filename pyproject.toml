@@ -1,24 +1,22 @@
 [build-system]
-requires = ["maturin==1.13.1"]
+requires = ["maturin>=1.8,<2.0"]
 build-backend = "maturin"
 
 [project]
 name = "grimace-py"
-version = "0.1.18"
+version = "0.1.10"
 description = "Rust-first SMILES enumeration and next-token decoding with Python bindings."
 readme = "README.md"
 license = "PolyForm-Noncommercial-1.0.0"
 license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
 requires-python = ">=3.11"
-dependencies = ["rdkit>=2026.3", "zstandard>=0.25"]
+dependencies = ["rdkit>=2026.3"]
 keywords = ["smiles", "chemistry", "rdkit", "enumeration", "decoding"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
-    "Programming Language :: Python :: 3.14",
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
     "Operating System :: POSIX :: Linux",
@@ -34,18 +32,13 @@ Issues = "https://github.com/numpde/grimace-py/issues"
 python-source = "python"
 module-name = "grimace._core"
 features = ["python-extension"]
-locked = true
-exclude = [
-    { path = ".github/**", format = "sdist" },
-    { path = "notes/perf_reports/**", format = "sdist" },
-    { path = "tmp/**", format = "sdist" },
-]
 
 [dependency-groups]
-test = []
+test = [
+    "z3-solver==4.16.0.0",
+]
 dev = [
     "tree-sitter>=0.25",
     "tree-sitter-cpp>=0.23",
     "tree-sitter-java>=0.23",
-    "zstandard==0.25.0",
 ]

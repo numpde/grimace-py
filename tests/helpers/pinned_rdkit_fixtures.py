@@ -1,19 +1,22 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from pathlib import Path
 
-from tests.helpers.fixture_paths import checked_in_fixture_path, read_fixture_json_object
+from tests.helpers.fixture_paths import checked_in_fixture_path
 
 
 PINNED_RDKIT_EXACT_SMALL_SUPPORT = "rdkit_exact_small_support"
-PINNED_RDKIT_DETERMINISTIC_UNOBSERVED = "rdkit_deterministic_unobserved"
 PINNED_RDKIT_KNOWN_QUIRKS = "rdkit_known_quirks"
-PINNED_RDKIT_KNOWN_STEREO_GAPS = "rdkit_known_stereo_gaps"
 PINNED_RDKIT_ROOTED_RANDOM = "rdkit_rooted_random"
 PINNED_RDKIT_SERIALIZER_REGRESSIONS = "rdkit_serializer_regressions"
 PINNED_RDKIT_WRITER_MEMBERSHIP = "rdkit_writer_membership"
-PINNED_RDKIT_WRITER_SUPPORT_COUNTS = "rdkit_writer_support_counts"
+PINNED_SOUTH_STAR_BRACKET_AUDIT = "rdkit_south_star_bracket_audit"
+PINNED_SOUTH_STAR_STEREO_AUDIT = "rdkit_south_star_stereo_audit"
+PINNED_SOUTH_STAR_DISCONNECTED_AUDIT = "rdkit_south_star_disconnected_audit"
+PINNED_SOUTH_STAR_AROMATIC_AUDIT = "rdkit_south_star_aromatic_audit"
+PINNED_STEREO_CONSTRAINT_MODEL = "stereo_constraint_model"
 PINNED_RDKIT_PARITY_TARGETS: tuple[tuple[str, str], ...] = (
     (
         PINNED_RDKIT_EXACT_SMALL_SUPPORT,
@@ -31,6 +34,18 @@ PINNED_RDKIT_PARITY_TARGETS: tuple[tuple[str, str], ...] = (
     (
         PINNED_RDKIT_WRITER_MEMBERSHIP,
         "tests.rdkit_serialization.test_writer_membership",
+    ),
+    (
+        PINNED_SOUTH_STAR_STEREO_AUDIT,
+        "tests.south_star1.test_writer_default_stereo_audit_fixture",
+    ),
+    (
+        PINNED_SOUTH_STAR_DISCONNECTED_AUDIT,
+        "tests.south_star1.test_writer_disconnected_composition",
+    ),
+    (
+        PINNED_SOUTH_STAR_AROMATIC_AUDIT,
+        "tests.south_star1.test_writer_aromatic_product",
     ),
 )
 PINNED_RDKIT_PARITY_FIXTURE_FAMILIES = tuple(
@@ -65,17 +80,6 @@ def has_pinned_rdkit_fixture(fixture_root: Path, rdkit_version: str) -> bool:
     fixture_dir = fixture_root / rdkit_version
     return fixture_path.is_file() or (
         fixture_dir.is_dir() and any(fixture_dir.glob("*.json"))
-    )
-
-
-def missing_pinned_rdkit_fixture_roots(
-    fixture_roots: tuple[Path, ...],
-    rdkit_version: str,
-) -> tuple[Path, ...]:
-    return tuple(
-        fixture_root
-        for fixture_root in fixture_roots
-        if not has_pinned_rdkit_fixture(fixture_root, rdkit_version)
     )
 
 
@@ -128,35 +132,6 @@ def required_string_tuple(
     return tuple(values)
 
 
-def required_string_list(
-    raw_case: dict[str, object],
-    *,
-    field_name: str,
-    fixture_path: Path,
-    case_id: str,
-    sorted_unique: bool = False,
-) -> tuple[str, ...]:
-    raw_value = raw_case.get(field_name)
-    if not isinstance(raw_value, list) or not raw_value:
-        raise ValueError(
-            f"fixture {fixture_path} case {case_id!r} must define nonempty "
-            f"list {field_name}; got {raw_value!r}"
-        )
-    if sorted_unique:
-        return normalized_unique_sorted_strings(
-            raw_value,
-            field_name=field_name,
-            fixture_path=fixture_path,
-            case_id=case_id,
-        )
-    return required_string_tuple(
-        raw_value,
-        field_name=field_name,
-        fixture_path=fixture_path,
-        case_id=case_id,
-    )
-
-
 def optional_positive_int(
     raw_case: dict[str, object],
     *,
@@ -170,6 +145,24 @@ def optional_positive_int(
     if type(raw_value) is not int or raw_value <= 0:
         raise ValueError(
             f"fixture {fixture_path} case {case_id!r} must define positive "
+            f"integer {field_name}; got {raw_value!r}"
+        )
+    return raw_value
+
+
+def optional_nonnegative_int(
+    raw_case: dict[str, object],
+    *,
+    field_name: str,
+    fixture_path: Path,
+    case_id: str,
+) -> int | None:
+    raw_value = raw_case.get(field_name)
+    if raw_value is None:
+        return None
+    if type(raw_value) is not int or raw_value < 0:
+        raise ValueError(
+            f"fixture {fixture_path} case {case_id!r} must define nonnegative "
             f"integer {field_name}; got {raw_value!r}"
         )
     return raw_value
@@ -189,6 +182,42 @@ def required_int(
             f"{field_name}; got {raw_value!r}"
         )
     return raw_value
+
+
+def required_positive_int(
+    raw_case: dict[str, object],
+    *,
+    field_name: str,
+    fixture_path: Path,
+    case_id: str,
+) -> int:
+    value = required_int(
+        raw_case,
+        field_name=field_name,
+        fixture_path=fixture_path,
+        case_id=case_id,
+    )
+    if value <= 0:
+        raise ValueError(
+            f"fixture {fixture_path} case {case_id!r} must define positive "
+            f"integer {field_name}; got {value!r}"
+        )
+    return value
+
+
+def required_int_tuple(
+    values: list[object],
+    *,
+    field_name: str,
+    fixture_path: Path,
+    case_id: str,
+) -> tuple[int, ...]:
+    if not values or not all(type(value) is int for value in values):
+        raise ValueError(
+            f"fixture {fixture_path} case {case_id!r} must define nonempty "
+            f"{field_name} as integers; got {values!r}"
+        )
+    return tuple(values)
 
 
 def optional_int(
@@ -285,10 +314,10 @@ def load_pinned_rdkit_fixture_cases(
     fixture_path = fixture_root / f"{rdkit_version}.json"
     fixture_dir = fixture_root / rdkit_version
     if fixture_path.is_file():
-        payloads = ((fixture_path, read_fixture_json_object(fixture_path)),)
+        payloads = ((fixture_path, json.loads(fixture_path.read_text())),)
     elif fixture_dir.is_dir():
         payloads = tuple(
-            (path, read_fixture_json_object(path))
+            (path, json.loads(path.read_text()))
             for path in sorted(fixture_dir.glob("*.json"))
         )
         if not payloads:
@@ -310,22 +339,12 @@ def load_pinned_rdkit_fixture_cases(
                 f"rdkit_version={data.get('rdkit_version')!r}, "
                 f"expected {rdkit_version!r}"
             )
-        raw_cases = data.get("cases")
-        if not isinstance(raw_cases, list) or not raw_cases:
-            raise ValueError(
-                f"fixture {current_fixture_path} must define nonempty cases list"
-            )
-        for raw_case in raw_cases:
-            if not isinstance(raw_case, dict):
+        for raw_case in data["cases"]:
+            case_id = str(raw_case["id"])
+            if not case_id:
                 raise ValueError(
-                    f"fixture {current_fixture_path} contains a non-object case"
+                    f"fixture {current_fixture_path} contains an empty case id"
                 )
-            raw_case_id = raw_case.get("id")
-            if type(raw_case_id) is not str or not raw_case_id:
-                raise ValueError(
-                    f"fixture {current_fixture_path} contains an invalid case id"
-                )
-            case_id = raw_case_id
             if case_id in seen_ids:
                 raise ValueError(
                     f"fixture {current_fixture_path} duplicates case id {case_id!r} "

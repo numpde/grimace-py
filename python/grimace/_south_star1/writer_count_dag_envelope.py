@@ -1,0 +1,342 @@
+"""Bounded DAG envelopes for recursive writer count certificates."""
+from __future__ import annotations
+from dataclasses import dataclass
+from dataclasses import field
+from .writer_envelope_terms import _canonical_json
+from .writer_envelope_terms import _cursor_envelope
+from .writer_envelope_terms import _digest
+from .writer_envelope_terms import _identity_digest
+from .writer_envelope_terms import _digest_bounded
+from .writer_envelope_terms import _snapshot_identity_envelope
+from .writer_envelope_terms import _term
+from .writer_envelope_work import WriterEnvelopeWorkBudget
+from .writer_envelope_work import WriterEnvelopeWorkExceeded
+from .writer_envelope_work import WriterEnvelopeWorkViolation
+from .writer_envelope_work import check_writer_envelope_work
+from .writer_snapshot_prefix_envelope import _branch_certificate_identity_envelope
+from .writer_snapshot_prefix_envelope import _terminal_projection_certificate_identity_envelope
+from .writer_snapshot_prefix_envelope import _text_projection_certificate_identity_envelope
+SCHEMA_NAME = 'writer_count_certificate_dag'
+SCHEMA_VERSION = 1
+
+@dataclass(slots=True)
+class WriterCountDagBuildDiagnostics:
+    attempted_node_emissions_by_kind: dict[str, int] = field(default_factory=dict)
+    dedup_hits_by_kind: dict[str, int] = field(default_factory=dict)
+    pre_digest_roots: dict[str, object] | None = None
+    pre_digest_metrics: dict[str, int] | None = None
+    pre_digest_nodes: tuple[dict[str, object], ...] = ()
+    pre_digest_depths: dict[str, int] = field(default_factory=dict)
+
+    def record_attempt(self, kind: str) -> None:
+        self.attempted_node_emissions_by_kind[kind] = (
+            self.attempted_node_emissions_by_kind.get(kind, 0) + 1
+        )
+
+    def record_hit(self, kind: str) -> None:
+        self.dedup_hits_by_kind[kind] = self.dedup_hits_by_kind.get(kind, 0) + 1
+
+    def record_pre_digest(
+        self,
+        *,
+        roots: dict[str, object],
+        metrics: dict[str, int],
+        nodes: dict[str, dict[str, object]],
+        depths: dict[str, int],
+    ) -> None:
+        self.pre_digest_roots = roots
+        self.pre_digest_metrics = metrics
+        self.pre_digest_nodes = tuple(nodes[node_id] for node_id in sorted(nodes))
+        self.pre_digest_depths = dict(depths)
+
+    @property
+    def attempted_node_emissions(self) -> int:
+        return sum(self.attempted_node_emissions_by_kind.values())
+
+    @property
+    def dedup_hits(self) -> int:
+        return sum(self.dedup_hits_by_kind.values())
+
+class _CountDagBuilder:
+
+    def __init__(self, *, budget: WriterEnvelopeWorkBudget, diagnostics: WriterCountDagBuildDiagnostics | None=None):
+        self._budget = budget
+        self._diagnostics = diagnostics
+        self._nodes: dict[str, dict[str, object]] = {}
+        self._depths: dict[str, int] = {}
+        self._edge_count = 0
+
+    def build(self, product) -> dict[str, object]:
+        roots = {'support_count_root': self.support_count(product.support_count_certificate), 'completion_count_root': self.cursor_completion_count(product.count_certificate), 'choice_count_roots': [self.text_choice_count(certificate) for certificate in product.text_choice_count_certificates], 'terminal_choice_count_root': self.terminal_choice_count(product.terminal_choice_count_certificate)}
+        envelope = {'schema_name': SCHEMA_NAME, 'schema_version': SCHEMA_VERSION, 'roots': roots, 'nodes': [self._nodes[node_id] for node_id in sorted(self._nodes)]}
+        metrics = _count_dag_metrics(
+            envelope,
+            node_count=len(self._nodes),
+            edge_count=self._edge_count,
+            max_depth=max(self._depths.values(), default=0),
+        )
+        self._check('count_node_count', metrics['node_count'], self._budget.max_count_nodes)
+        self._check('count_edge_count', metrics['edge_count'], self._budget.max_count_edges)
+        self._check('count_depth', metrics['max_depth'], self._budget.max_count_depth)
+        envelope['metrics'] = metrics
+        if self._diagnostics is not None:
+            self._diagnostics.record_pre_digest(
+                roots=roots,
+                metrics=metrics,
+                nodes=self._nodes,
+                depths=self._depths,
+            )
+        envelope['digest'] = self._digest(_term(count_dag_manifest(envelope)), 'count_dag_envelope')
+        return envelope
+
+    def support_count(self, certificate) -> str | None:
+        if certificate is None:
+            return None
+        child = self.state_support_count(certificate.state_support_count_certificate)
+        return self._node('writer_text_support_count', {'source_snapshot': _snapshot_or_cursor_envelope(certificate.source_snapshot, budget=self._budget), 'cursor': _cursor_envelope(certificate.cursor, budget=self._budget, operation='envelope.identity'), 'state_support_count_node_id': child, 'support_count': certificate.support_count}, [child])
+
+    def state_support_count(self, certificate) -> str | None:
+        if certificate is None:
+            return None
+        choice_terms = [self.text_choice_support_count_term(term) for term in certificate.choice_terms]
+        return self._node('writer_text_state_support_count', {'cursor': _cursor_envelope(certificate.cursor, budget=self._budget, operation='envelope.identity'), 'terminal_projection': _terminal_projection_certificate_identity_envelope(certificate.terminal_projection_certificate, budget=self._budget), 'terminal_count': certificate.terminal_count, 'choice_term_node_ids': choice_terms, 'support_count': certificate.support_count}, choice_terms)
+
+    def text_choice_support_count_term(self, certificate) -> str:
+        child = self.state_support_count(certificate.successor_support_count_certificate)
+        return self._node('writer_text_choice_support_count_term', {'text_projection': _text_projection_certificate_identity_envelope(certificate.text_projection_certificate, budget=self._budget), 'successor_support_count_node_id': child, 'support_count': certificate.support_count}, [child])
+
+    def cursor_completion_count(self, certificate) -> str | None:
+        if certificate is None:
+            return None
+        entries = []
+        children = []
+        for state_key, weight, state_certificate in certificate.state_count_certificates:
+            child = self.state_completion_count(state_certificate)
+            children.append(child)
+            entries.append({'state_key_digest': _identity_digest(state_key, budget=self._budget, operation='envelope.identity'), 'cursor_weight': weight, 'state_count_node_id': child})
+        return self._node('writer_cursor_completion_count', {'cursor': _cursor_envelope(certificate.cursor, budget=self._budget, operation='envelope.identity'), 'state_count_entries': entries, 'completion_count': certificate.completion_count}, children)
+
+    def state_completion_count(self, certificate) -> str | None:
+        if certificate is None:
+            return None
+        branch_terms = [self.branch_completion_term(term) for term in certificate.branch_terms]
+        return self._node('writer_state_completion_count', {'state_key_digest': _identity_digest(certificate.state_key, budget=self._budget, operation='envelope.identity'), 'terminal_projection': _terminal_projection_certificate_identity_envelope(certificate.terminal_projection_certificate, budget=self._budget), 'terminal_count': certificate.terminal_count, 'branch_term_node_ids': branch_terms, 'completion_count': certificate.completion_count}, branch_terms)
+
+    def branch_completion_term(self, certificate) -> str:
+        child = self.cursor_completion_count(certificate.successor_count_certificate)
+        return self._node('writer_branch_completion_term', {'branch_certificate': _branch_certificate_identity_envelope(certificate.branch_certificate, budget=self._budget), 'successor_count_node_id': child, 'successor_count': certificate.successor_count}, [child])
+
+    def text_choice_count(self, certificate) -> str:
+        support_child = self.state_support_count(certificate.support_count_certificate)
+        completion_child = self.cursor_completion_count(certificate.completion_count_certificate)
+        return self._node('writer_text_choice_count', {'text_projection': _text_projection_certificate_identity_envelope(certificate.text_projection_certificate, budget=self._budget), 'support_count_node_id': support_child, 'completion_count_node_id': completion_child, 'emitted_text': certificate.emitted_text, 'support_count': certificate.support_count, 'completion_count': certificate.completion_count}, [support_child, completion_child])
+
+    def terminal_choice_count(self, certificate) -> str | None:
+        if certificate is None:
+            return None
+        return self._node('writer_terminal_choice_count', {'terminal_projection': _terminal_projection_certificate_identity_envelope(certificate.terminal_projection_certificate, budget=self._budget), 'support_count': certificate.support_count, 'completion_count': certificate.completion_count}, [])
+
+    def _node(self, kind: str, payload: dict[str, object], children: list[str | None]) -> str:
+        if self._diagnostics is not None:
+            self._diagnostics.record_attempt(kind)
+        child_ids = [child for child in children if child is not None]
+        term = {'kind': kind, 'payload': payload, 'children': child_ids}
+        digest = self._digest(term, 'count_dag_node')
+        node_id = f'count:{digest}'
+        if node_id in self._nodes:
+            if self._diagnostics is not None:
+                self._diagnostics.record_hit(kind)
+            return node_id
+        depth = 1 + max((self._depths[child] for child in child_ids), default=0)
+        self._check('count_depth', depth, self._budget.max_count_depth)
+        node = {'node_id': node_id, 'kind': kind, **payload, 'children': child_ids, 'digest': digest, 'digest_input_bytes': len(_term_jsonish(term))}
+        self._nodes[node_id] = node
+        self._depths[node_id] = depth
+        self._edge_count += len(child_ids)
+        self._check('count_node_count', len(self._nodes), self._budget.max_count_nodes)
+        self._check('count_edge_count', self._edge_count, self._budget.max_count_edges)
+        return node_id
+
+    def _check(self, metric: str, actual: int, limit: int) -> None:
+        check_writer_envelope_work(budget=self._budget, operation='count_dag_envelope', metric=metric, actual=actual, limit=limit)
+
+    def _digest(self, term, operation: str) -> str:
+        try:
+            return _digest_bounded(term, budget=self._budget, operation=operation)
+        except ValueError as exc:
+            message = str(exc)
+            metric = 'digest_term_bytes'
+            actual = 0
+            limit = self._budget.max_digest_term_bytes
+            for item in message.split(';'):
+                item = item.strip()
+                if item.startswith('metric='):
+                    metric = item.split('=', 1)[1].strip("'")
+                elif item.startswith('actual='):
+                    actual = int(item.split('=', 1)[1])
+                elif item.startswith('limit='):
+                    limit = int(item.split('=', 1)[1])
+            raise WriterEnvelopeWorkExceeded(WriterEnvelopeWorkViolation(operation=operation, metric=metric, actual=actual, limit=limit)) from exc
+
+def writer_count_certificate_dag_envelope_for_product(product, *, budget: WriterEnvelopeWorkBudget | None=None, diagnostics: WriterCountDagBuildDiagnostics | None=None) -> dict[str, object]:
+    return _CountDagBuilder(budget=budget or WriterEnvelopeWorkBudget(), diagnostics=diagnostics).build(product)
+
+def count_dag_node_by_id(dag: dict[str, object]) -> dict[str, dict[str, object]]:
+    return {node['node_id']: node for node in dag['nodes']}
+
+def count_dag_manifest(dag) -> dict[str, object]:
+    return {'schema_name': dag['schema_name'], 'schema_version': dag['schema_version'], 'roots': dag['roots'], 'metrics': dag['metrics'], 'nodes': [{'node_id': node['node_id'], 'kind': node['kind'], 'digest': node['digest'], 'children': node['children']} for node in dag['nodes']]}
+
+def validate_writer_count_certificate_dag_envelope(dag: object, *, budget: WriterEnvelopeWorkBudget | None=None) -> None:
+    if not isinstance(dag, dict):
+        _dag_violation('count_dag_not_mapping')
+    if frozenset(dag) != frozenset(('schema_name', 'schema_version', 'roots', 'nodes', 'metrics', 'digest')):
+        _dag_violation('count_dag_fields_mismatch')
+    if dag['schema_name'] != SCHEMA_NAME:
+        _dag_violation('unknown_count_dag_schema')
+    if dag['schema_version'] != SCHEMA_VERSION:
+        _dag_violation('unknown_count_dag_version')
+    roots = dag['roots']
+    if not isinstance(roots, dict):
+        _dag_violation('count_dag_roots_not_mapping')
+    if frozenset(roots) != frozenset(('support_count_root', 'completion_count_root', 'choice_count_roots', 'terminal_choice_count_root')):
+        _dag_violation('count_dag_roots_fields_mismatch')
+    nodes = dag['nodes']
+    if not isinstance(nodes, list):
+        _dag_violation('count_dag_nodes_not_list')
+    node_by_id: dict[str, dict[str, object]] = {}
+    for node in nodes:
+        if not isinstance(node, dict):
+            _dag_violation('count_dag_node_not_mapping')
+        node_id = node.get('node_id')
+        if not isinstance(node_id, str):
+            _dag_violation('count_dag_node_id_missing')
+        if node_id in node_by_id:
+            _dag_violation('duplicate_count_dag_node_id')
+        node_by_id[node_id] = node
+        _validate_node_digest(node, budget=budget)
+    root_ids = [roots['support_count_root'], roots['completion_count_root'], roots['terminal_choice_count_root'], *roots['choice_count_roots']]
+    for root_id in root_ids:
+        if root_id is not None and root_id not in node_by_id:
+            _dag_violation('missing_count_dag_root_node')
+    edge_count = 0
+    depths: dict[str, int] = {}
+    visiting: set[str] = set()
+    for node_id in sorted(node_by_id):
+        edge_count += len(_children_for_node(node_by_id[node_id]))
+        _depth(node_id, node_by_id, visiting, depths)
+    metrics = dag['metrics']
+    if not isinstance(metrics, dict):
+        _dag_violation('count_dag_metrics_not_mapping')
+    actual_metrics = _count_dag_metrics(
+        dag,
+        node_count=len(node_by_id),
+        edge_count=edge_count,
+        max_depth=max(depths.values(), default=0),
+    )
+    if metrics != actual_metrics:
+        _dag_violation('count_dag_metrics_mismatch')
+    manifest = count_dag_manifest(dag)
+    digest_term = _term(manifest)
+    digest = _digest_bounded(digest_term, budget=budget, operation='count_dag_validate.digest') if budget is not None else _digest(digest_term)
+    if dag['digest'] != digest:
+        _dag_violation('count_dag_digest_mismatch')
+    _check_budget(actual_metrics, budget or WriterEnvelopeWorkBudget())
+
+def _snapshot_or_cursor_envelope(value, *, budget):
+    if hasattr(value, 'decoder_boundary'):
+        return _snapshot_identity_envelope(value, budget=budget, operation='envelope.identity')
+    if hasattr(value, 'weighted_states'):
+        return _cursor_envelope(value, budget=budget, operation='envelope.identity')
+    terms = _term(value)
+    return {'digest': _digest(terms), 'terms': terms}
+
+def _term_jsonish(term) -> bytes:
+    return _canonical_json(_term(term)).encode('utf-8')
+
+def _count_dag_metrics(
+    dag,
+    *,
+    node_count: int,
+    edge_count: int,
+    max_depth: int,
+) -> dict[str, int]:
+    nodes = dag['nodes']
+    original_metrics = dag.get('metrics')
+    full_node_digest_input_bytes = sum((int(node['digest_input_bytes']) for node in nodes))
+    largest_node_digest_input_bytes = max((int(node['digest_input_bytes']) for node in nodes), default=0)
+    manifest_digest_input_bytes = 0
+    metrics = {
+        'node_count': node_count,
+        'edge_count': edge_count,
+        'max_depth': max_depth,
+        'digest_input_bytes': manifest_digest_input_bytes,
+        'full_node_digest_input_bytes': full_node_digest_input_bytes,
+        'manifest_digest_input_bytes': manifest_digest_input_bytes,
+        'largest_node_digest_input_bytes': largest_node_digest_input_bytes,
+    }
+    try:
+        for _ in range(4):
+            dag['metrics'] = metrics
+            next_size = len(_term_jsonish(count_dag_manifest(dag)))
+            if next_size == manifest_digest_input_bytes:
+                return metrics
+            manifest_digest_input_bytes = next_size
+            metrics = {
+                **metrics,
+                'digest_input_bytes': manifest_digest_input_bytes,
+                'manifest_digest_input_bytes': manifest_digest_input_bytes,
+            }
+        return metrics
+    finally:
+        if original_metrics is None:
+            dag.pop('metrics', None)
+        else:
+            dag['metrics'] = original_metrics
+
+def _validate_node_digest(node: dict[str, object], *, budget: WriterEnvelopeWorkBudget | None=None) -> None:
+    required = frozenset(('node_id', 'kind', 'children', 'digest', 'digest_input_bytes'))
+    if not required.issubset(node):
+        _dag_violation('count_dag_node_fields_missing')
+    children = _children_for_node(node)
+    payload = {key: value for key, value in node.items() if key not in required}
+    term = {'kind': node['kind'], 'payload': payload, 'children': children}
+    digest = _digest_bounded(term, budget=budget, operation='count_dag_validate.node_digest') if budget is not None else _digest(term)
+    if node['digest'] != digest:
+        _dag_violation('count_dag_node_digest_mismatch')
+    if node['node_id'] != f'count:{digest}':
+        _dag_violation('count_dag_node_id_digest_mismatch')
+    if node['digest_input_bytes'] != len(_term_jsonish(term)):
+        _dag_violation('count_dag_node_digest_size_mismatch')
+
+def _children_for_node(node: dict[str, object]) -> list[str]:
+    children = node.get('children')
+    if not isinstance(children, list):
+        _dag_violation('count_dag_node_children_not_list')
+    if not all((isinstance(child, str) for child in children)):
+        _dag_violation('count_dag_node_child_not_string')
+    return list(children)
+
+def _depth(node_id: str, node_by_id: dict[str, dict[str, object]], visiting: set[str], depths: dict[str, int]) -> int:
+    if node_id in depths:
+        return depths[node_id]
+    if node_id in visiting:
+        _dag_violation('count_dag_cycle')
+    if node_id not in node_by_id:
+        _dag_violation('missing_count_dag_child_node')
+    visiting.add(node_id)
+    children = _children_for_node(node_by_id[node_id])
+    depth = 1 + max((_depth(child, node_by_id, visiting, depths) for child in children), default=0)
+    visiting.remove(node_id)
+    depths[node_id] = depth
+    return depth
+
+def _check_budget(metrics: dict[str, int], budget: WriterEnvelopeWorkBudget) -> None:
+    checks = (('count_node_count', metrics['node_count'], budget.max_count_nodes), ('count_edge_count', metrics['edge_count'], budget.max_count_edges), ('count_depth', metrics['max_depth'], budget.max_count_depth), ('digest_term_bytes', metrics['manifest_digest_input_bytes'], budget.max_digest_term_bytes))
+    for metric, actual, limit in checks:
+        if actual > limit:
+            check_writer_envelope_work(budget=budget, operation='count_dag_envelope', metric=metric, actual=actual, limit=limit)
+
+def _dag_violation(kind: str) -> None:
+    raise ValueError(f'writer count DAG envelope violation: {kind}')
+__all__ = ('SCHEMA_NAME', 'SCHEMA_VERSION', 'WriterCountDagBuildDiagnostics', 'WriterEnvelopeWorkBudget', 'WriterEnvelopeWorkExceeded', 'WriterEnvelopeWorkViolation', 'count_dag_manifest', 'count_dag_node_by_id', 'validate_writer_count_certificate_dag_envelope', 'writer_count_certificate_dag_envelope_for_product')

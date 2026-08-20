@@ -1,18 +1,6 @@
 Random subset enumeration
 =========================
 
-Status
-------
-
-Superseded for the public one-walk API by
-`notes/027_public_sampling_api_plan.md` and
-`notes/025_determinized_random_walk.md`.
-
-This note remains useful only as design context for future APIs that return
-many samples or attempt uniform sampling over finished SMILES strings. In
-particular, the `limit` and `maxAttempts` sketches below are not part of
-`MolToSmilesSample(...)`.
-
 Context
 -------
 
@@ -80,16 +68,16 @@ Recommended API split
 
 Do not overload `MolToSmilesEnum(...)` with vague random behavior.
 
-Add separate APIs whose names and arguments expose their semantics. The
-one-walk API has since shipped as `MolToSmilesSample(...)`; any future
-multi-sample or finished-string-uniform API should remain distinct from it.
+Add a separate API whose name and arguments expose the semantics, for example:
 
 - `MolToSmilesSample(...)`
-  - returns one sampled writer trajectory
+  - returns sampled writer trajectories
   - biased unless otherwise stated
-  - requires an explicit `seed`
+  - requires `limit`
+  - supports `seed`
+  - supports `max_attempts`
 
-- possible future count-weighted support sampler
+- later: `MolToSmilesUniformSample(...)`
   - count-weighted support sampling
   - requires subtree counts
   - can document whether sampling is with or without replacement

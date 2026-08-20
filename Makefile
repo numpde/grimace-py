@@ -1,166 +1,36 @@
-SHELL := bash
-.SHELLFLAGS := -eu -o pipefail -c
-.DEFAULT_GOAL := help
+.PHONY: rebuild-south-star1 test-south-star1-fast test-south-star1-slow-one test-south-star1-slow-shard test-south-star1-slow test-south-star1-support-artifact-one test-south-star1-support-artifact qualify-south-star1 slow-south-star1
 
-COMPOSE_DIR ?= compose
-DOCKER_COMPOSE ?= docker compose
-override ACTUAL_UID := $(shell id -u)
-override ACTUAL_GID := $(shell id -g)
-override LOCAL_UID := $(ACTUAL_UID)
-override LOCAL_GID := $(ACTUAL_GID)
-override REPO_ROOT := $(shell pwd -P)
-override TIMINGS_ENUM_ARTIFACT_FILES := docs/timings-enum.tsv docs/timings-enum.md notes/004_perf_history.jsonl
-override TIMINGS_ENUM_ARTIFACT_DIRS := docs/timings-enum-plots
-override TIMINGS_ENUM_ARTIFACTS := $(TIMINGS_ENUM_ARTIFACT_FILES) $(TIMINGS_ENUM_ARTIFACT_DIRS)
-override DOCS_SOURCE_DIR := docs
-override DOCS_OUTPUT_DIR := build/docs-site
-override PREPARED_MOL_ZSTD_PACKAGE_DATA_DIR := python/grimace/data/prepared_mol_zstd
-TIMINGS_PREPARED_MOL_ZSTD_OUTPUT ?= docs/timings-prepared-mol-zstd.tsv
-override TIMINGS_PREPARED_MOL_ZSTD_ARTIFACT_FILES := $(TIMINGS_PREPARED_MOL_ZSTD_OUTPUT)
-override TIMINGS_PREPARED_MOL_ZSTD_ARTIFACT_DIRS := docs/timings-prepared-mol-zstd-plots
-override TIMINGS_PREPARED_MOL_ZSTD_ARTIFACTS := $(TIMINGS_PREPARED_MOL_ZSTD_ARTIFACT_FILES) $(TIMINGS_PREPARED_MOL_ZSTD_ARTIFACT_DIRS)
-override TIMING_METADATA_IGNORE_ARGS := --ignore docs/timings-enum.tsv --ignore docs/timings-enum.md --ignore notes/004_perf_history.jsonl --ignore docs/timings-enum-plots --ignore 'docs/timings-prepared-mol-zstd*.tsv' --ignore docs/timings-prepared-mol-zstd.md --ignore docs/timings-prepared-mol-zstd-plots
-DOCS_PORT ?= 8000
-PREPARED_MOL_ZSTD_CREATED_DATE ?=
-PREPARED_MOL_ZSTD_REPLACE_ARTIFACT ?=
-PREPARED_MOL_ZSTD_TRAINING_LEVEL ?=
-TIMINGS_PREPARED_MOL_ZSTD_DICTIONARY_ARTIFACT ?=
+PYTHON ?= python3
+MATURIN ?= $(dir $(PYTHON))maturin
+SLOW_ASSET_ROOT := .south-star1-qualification/$(shell git rev-parse HEAD)
 
-NON_ROOT_GUARD := if [[ ! "$(ACTUAL_UID)" =~ ^[1-9][0-9]*$$ || ! "$(ACTUAL_GID)" =~ ^[1-9][0-9]*$$ ]]; then printf '%s\n' 'Refusing to run Docker lanes as root. Run make as a non-root user with positive numeric UID and GID.' >&2; exit 2; fi
-DOCS_PORT_GUARD := if [[ ! "$${DOCS_PORT}" =~ ^[1-9][0-9]{0,4}$$ || "$${DOCS_PORT}" -gt 65535 ]]; then printf '%s\n' 'Refusing to run docs lane with DOCS_PORT outside 1..65535.' >&2; exit 2; fi
-TIMINGS_ENUM_ARTIFACTS_GUARD := repo_root="$(REPO_ROOT)"; for path in $(TIMINGS_ENUM_ARTIFACT_FILES); do resolved="$$(realpath -e -- "$$path" 2>/dev/null || true)"; expected="$$repo_root/$$path"; if [[ ! -f "$$path" || "$$resolved" != "$$expected" ]]; then printf 'Refusing to bind enum timing artifact %s because it is missing, a symlink, or outside the repository.\n' "$$path" >&2; exit 2; fi; done; for path in $(TIMINGS_ENUM_ARTIFACT_DIRS); do resolved="$$(realpath -e -- "$$path" 2>/dev/null || true)"; expected="$$repo_root/$$path"; if [[ ! -d "$$path" || "$$resolved" != "$$expected" ]]; then printf 'Refusing to bind enum timing artifact directory %s because it is missing, a symlink, or outside the repository.\n' "$$path" >&2; exit 2; fi; done
-TIMINGS_PREPARED_MOL_ZSTD_ARTIFACTS_GUARD := repo_root="$(REPO_ROOT)"; for path in $(TIMINGS_PREPARED_MOL_ZSTD_ARTIFACT_FILES); do resolved="$$(realpath -e -- "$$path" 2>/dev/null || true)"; expected="$$repo_root/$$path"; if [[ ! -f "$$path" || "$$resolved" != "$$expected" ]]; then printf 'Refusing to bind PreparedMol zstd timing artifact %s because it is missing, a symlink, or outside the repository.\n' "$$path" >&2; exit 2; fi; done; for path in $(TIMINGS_PREPARED_MOL_ZSTD_ARTIFACT_DIRS); do resolved="$$(realpath -e -- "$$path" 2>/dev/null || true)"; expected="$$repo_root/$$path"; if [[ ! -d "$$path" || "$$resolved" != "$$expected" ]]; then printf 'Refusing to bind PreparedMol zstd timing artifact directory %s because it is missing, a symlink, or outside the repository.\n' "$$path" >&2; exit 2; fi; done
-DOCS_ARTIFACTS_GUARD := repo_root="$(REPO_ROOT)"; for path in $(DOCS_SOURCE_DIR) $(DOCS_OUTPUT_DIR); do resolved="$$(realpath -e -- "$$path" 2>/dev/null || true)"; expected="$$repo_root/$$path"; if [[ ! -d "$$path" || "$$resolved" != "$$expected" ]]; then printf 'Refusing to bind docs path %s because it is missing, a symlink, or outside the repository.\n' "$$path" >&2; exit 2; fi; done
-TIMING_GIT_METADATA_ENV := eval "$$(python scripts/timing_git_metadata.py $(TIMING_METADATA_IGNORE_ARGS))"
-COMPOSE_ENV := LOCAL_UID=$(LOCAL_UID) LOCAL_GID=$(LOCAL_GID)
+rebuild-south-star1:
+	$(MATURIN) develop --release --skip-install
 
-define compose_run
-@$(NON_ROOT_GUARD); \
-$(COMPOSE_ENV) $(DOCKER_COMPOSE) -f $(COMPOSE_DIR)/$(1) run --build --rm $(2)
-endef
+test-south-star1-fast:
+	PYTHONPATH=python:. $(PYTHON) -m unittest tests.run_south_star_semantics -q
 
-.PHONY: help checks rust test contract parity exact-public-invariants test-package timings-enum prepared-mol-zstd-dictionary timings-prepared-mol-zstd docs docs-serve clean-host-artifacts ci
+test-south-star1-slow-one:
+	@test -n "$(SLOW_SHARD)" || (echo "SLOW_SHARD is required" >&2; exit 2)
+	@test -n "$(SLOW_LAYER)" || (echo "SLOW_LAYER is required" >&2; exit 2)
+	SOUTH_STAR1_RUN_SLOW=1 SOUTH_STAR1_SLOW_SHARD=$(SLOW_SHARD) SOUTH_STAR1_SLOW_LAYER=$(SLOW_LAYER) SOUTH_STAR1_SLOW_ASSET_ROOT=$(SLOW_ASSET_ROOT) PYTHONPATH=python:. $(PYTHON) -m tests.run_south_star1_slow
 
-docs docs-serve: export DOCS_PORT := $(value DOCS_PORT)
-prepared-mol-zstd-dictionary: export PREPARED_MOL_ZSTD_CREATED_DATE := $(value PREPARED_MOL_ZSTD_CREATED_DATE)
-prepared-mol-zstd-dictionary: export PREPARED_MOL_ZSTD_REPLACE_ARTIFACT := $(value PREPARED_MOL_ZSTD_REPLACE_ARTIFACT)
-prepared-mol-zstd-dictionary: export PREPARED_MOL_ZSTD_TRAINING_LEVEL := $(value PREPARED_MOL_ZSTD_TRAINING_LEVEL)
-timings-prepared-mol-zstd: export TIMINGS_PREPARED_MOL_ZSTD_OUTPUT := $(value TIMINGS_PREPARED_MOL_ZSTD_OUTPUT)
-timings-prepared-mol-zstd: export TIMINGS_PREPARED_MOL_ZSTD_DICTIONARY_ARTIFACT := $(value TIMINGS_PREPARED_MOL_ZSTD_DICTIONARY_ARTIFACT)
+test-south-star1-slow-shard:
+	@test -n "$(SLOW_SHARD)" || (echo "SLOW_SHARD is required" >&2; exit 2)
+	SOUTH_STAR1_RUN_SLOW=1 SOUTH_STAR1_SLOW_SHARD=$(SLOW_SHARD) SOUTH_STAR1_SLOW_ASSET_ROOT=$(SLOW_ASSET_ROOT) PYTHONPATH=python:. $(PYTHON) -m tests.run_south_star1_slow --run-shard $(SLOW_SHARD)
 
-help:
-	@printf '%s\n' \
-	  'Supported lanes:' \
-	  '  make checks  Run offline repository/source checks' \
-	  '  make rust    Run Rust unit tests in the copied-context test image' \
-	  '  make test    Run installed-package correctness in the test image' \
-	  '  make contract  Run API/schema/docs contract tests in the test image' \
-	  '  make parity  Run pinned RDKit parity in the test image' \
-	  '  make exact-public-invariants  Run exact public invariant tests' \
-	  '  make test-package  Build and validate wheel/sdist artifacts in a container temp directory' \
-	  '  make timings-enum  Measure enum/support timing tradeoffs' \
-	  '  make prepared-mol-zstd-dictionary  Generate the PreparedMol zstd dictionary artifact' \
-	  '  make timings-prepared-mol-zstd  Measure PreparedMol zstd timing tradeoffs' \
-	  '  make docs     Build the documentation site under build/docs-site/' \
-	  '  make docs-serve  Serve the documentation site on DOCS_PORT' \
-	  '  make clean-host-artifacts  Remove ignored host build/cache artifacts' \
-	  '  make ci      Run checks, rust, test, contract, parity, and exact invariants' \
-	  '' \
-	  'Variables:' \
-	  '  DOCS_PORT=8000  Local docs URL and docs-serve host port; must be 1..65535' \
-	  '  Example: make docs-serve DOCS_PORT=8010' \
-	  '  PREPARED_MOL_ZSTD_CREATED_DATE=YYYYMMDD  Optional artifact date override' \
-	  '  PREPARED_MOL_ZSTD_REPLACE_ARTIFACT=YYYYMMDD_hash  Replace that exact computed artifact' \
-	  '  PREPARED_MOL_ZSTD_TRAINING_LEVEL=3  Required zstd dictionary training level, 1..22' \
-	  '  TIMINGS_PREPARED_MOL_ZSTD_DICTIONARY_ARTIFACT=YYYYMMDD_hash  Dictionary timing input' \
-	  '  TIMINGS_PREPARED_MOL_ZSTD_OUTPUT=docs/timings-prepared-mol-zstd.tsv  Dictionary timing TSV' \
-	  '' \
-	  'Docker-backed lanes refuse root execution and use strict Compose posture.'
+test-south-star1-slow:
+	SOUTH_STAR1_RUN_SLOW=1 SOUTH_STAR1_SLOW_ASSET_ROOT=$(SLOW_ASSET_ROOT) PYTHONPATH=python:. $(PYTHON) -m tests.run_south_star1_slow --run-all-product
 
-checks:
-	$(call compose_run,checks.yml,checks)
+test-south-star1-support-artifact-one:
+	PYTHONPATH=python:. $(PYTHON) -m tests.run_writer_support_artifact_tests --domain $(SUPPORT_ARTIFACT_DOMAIN)
 
-rust:
-	$(call compose_run,test.yml,rust)
+test-south-star1-support-artifact:
+	PYTHONPATH=python:. $(PYTHON) -m tests.run_writer_support_artifact_tests --all
 
-test:
-	$(call compose_run,test.yml,test)
+qualify-south-star1:
+	$(MAKE) rebuild-south-star1 PYTHON="$(PYTHON)"
+	$(MAKE) test-south-star1-fast PYTHON="$(PYTHON)"
+	$(MAKE) test-south-star1-slow PYTHON="$(PYTHON)"
 
-contract:
-	$(call compose_run,test.yml,contract)
-
-parity:
-	$(call compose_run,test.yml,parity)
-
-exact-public-invariants:
-	$(call compose_run,test.yml,exact-public-invariants)
-
-test-package:
-	$(call compose_run,test-package.yml,test-package)
-
-timings-enum:
-	@$(NON_ROOT_GUARD); \
-	$(TIMINGS_ENUM_ARTIFACTS_GUARD); \
-	$(TIMING_GIT_METADATA_ENV); \
-	$(COMPOSE_ENV) $(DOCKER_COMPOSE) -f $(COMPOSE_DIR)/timings-enum.yml run --build --rm timings-enum
-
-prepared-mol-zstd-dictionary:
-	@$(NON_ROOT_GUARD); \
-	output_dir="$(PREPARED_MOL_ZSTD_PACKAGE_DATA_DIR)"; \
-	if [[ -n "$${PREPARED_MOL_ZSTD_CREATED_DATE}" && ! "$${PREPARED_MOL_ZSTD_CREATED_DATE}" =~ ^[0-9]{8}$$ ]]; then \
-	  printf '%s\n' 'PREPARED_MOL_ZSTD_CREATED_DATE must be YYYYMMDD when set.' >&2; \
-	  exit 2; \
-	fi; \
-	if [[ -n "$${PREPARED_MOL_ZSTD_REPLACE_ARTIFACT}" && ! "$${PREPARED_MOL_ZSTD_REPLACE_ARTIFACT}" =~ ^[0-9]{8}_[0-9a-f]{8}$$ ]]; then \
-	  printf '%s\n' 'PREPARED_MOL_ZSTD_REPLACE_ARTIFACT must be YYYYMMDD_hash when set.' >&2; \
-	  exit 2; \
-	fi; \
-	if [[ ! "$${PREPARED_MOL_ZSTD_TRAINING_LEVEL}" =~ ^[1-9][0-9]*$$ || "$${PREPARED_MOL_ZSTD_TRAINING_LEVEL}" -gt 22 ]]; then \
-	  printf '%s\n' 'PREPARED_MOL_ZSTD_TRAINING_LEVEL must be in zstd range 1..22.' >&2; \
-	  exit 2; \
-	fi; \
-	mkdir -p -- "$$output_dir"; \
-	resolved="$$(realpath -e -- "$$output_dir")"; \
-	expected="$(REPO_ROOT)/$(PREPARED_MOL_ZSTD_PACKAGE_DATA_DIR)"; \
-	if [[ ! -d "$$resolved" || "$$resolved" != "$$expected" || -L "$$output_dir" || -L "$$resolved" ]]; then \
-	  printf '%s\n' 'Refusing to bind PreparedMol zstd package data directory because it is missing, a symlink, or outside the repository.' >&2; \
-	  exit 2; \
-	fi; \
-	PREPARED_MOL_ZSTD_CREATED_DATE="$${PREPARED_MOL_ZSTD_CREATED_DATE}" \
-	PREPARED_MOL_ZSTD_REPLACE_ARTIFACT="$${PREPARED_MOL_ZSTD_REPLACE_ARTIFACT}" \
-	PREPARED_MOL_ZSTD_TRAINING_LEVEL="$${PREPARED_MOL_ZSTD_TRAINING_LEVEL}" \
-	$(COMPOSE_ENV) $(DOCKER_COMPOSE) -f $(COMPOSE_DIR)/prepared-mol-zstd-dictionary.yml run --build --rm prepared-mol-zstd-dictionary
-
-timings-prepared-mol-zstd:
-	@$(NON_ROOT_GUARD); \
-	if [[ -n "$${TIMINGS_PREPARED_MOL_ZSTD_DICTIONARY_ARTIFACT}" && ! "$${TIMINGS_PREPARED_MOL_ZSTD_DICTIONARY_ARTIFACT}" =~ ^[0-9]{8}_[0-9a-f]{8}$$ ]]; then \
-	  printf '%s\n' 'TIMINGS_PREPARED_MOL_ZSTD_DICTIONARY_ARTIFACT must be YYYYMMDD_hash when set.' >&2; \
-	  exit 2; \
-	fi; \
-	$(TIMINGS_PREPARED_MOL_ZSTD_ARTIFACTS_GUARD); \
-	$(TIMING_GIT_METADATA_ENV); \
-	TIMINGS_PREPARED_MOL_ZSTD_OUTPUT="$${TIMINGS_PREPARED_MOL_ZSTD_OUTPUT}" \
-	TIMINGS_PREPARED_MOL_ZSTD_DICTIONARY_ARTIFACT="$${TIMINGS_PREPARED_MOL_ZSTD_DICTIONARY_ARTIFACT}" \
-	$(COMPOSE_ENV) $(DOCKER_COMPOSE) -f $(COMPOSE_DIR)/timings-prepared-mol-zstd.yml run --build --rm timings-prepared-mol-zstd
-
-docs:
-	@$(NON_ROOT_GUARD)
-	@$(DOCS_PORT_GUARD)
-	@mkdir -p $(DOCS_OUTPUT_DIR)
-	@$(DOCS_ARTIFACTS_GUARD); \
-	find $(DOCS_OUTPUT_DIR) -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +; \
-	$(COMPOSE_ENV) $(DOCKER_COMPOSE) -f $(COMPOSE_DIR)/docs.yml run --rm docs
-
-docs-serve: docs
-	@$(NON_ROOT_GUARD); \
-	$(DOCS_PORT_GUARD); \
-	$(DOCS_ARTIFACTS_GUARD); \
-	$(COMPOSE_ENV) $(DOCKER_COMPOSE) -f $(COMPOSE_DIR)/docs.yml run --rm --publish "127.0.0.1:$${DOCS_PORT}:8000" docs-serve
-
-clean-host-artifacts:
-	@find python rust tests scripts docs -type d \( -name __pycache__ -o -name .pytest_cache -o -name .ruff_cache -o -name .mypy_cache \) -prune -exec rm -rf -- {} +
-	@find python rust tests scripts docs -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete
-	@rm -f -- python/grimace/_core*.so python/grimace/_core*.dylib python/grimace/_core*.dll python/grimace/_core*.pyd
-	@rm -rf -- target
-
-ci: checks rust test contract parity exact-public-invariants
+slow-south-star1: test-south-star1-slow

@@ -3,12 +3,17 @@ from __future__ import annotations
 import random
 import unittest
 
-import grimace._core as _core
-from grimace._reference.prepared_graph import CONNECTED_STEREO_SURFACE, prepare_smiles_graph
-from grimace._reference.rooted.connected_stereo import (
+from grimace._reference import (
+    CONNECTED_STEREO_SURFACE,
     enumerate_rooted_connected_stereo_smiles_support,
+    prepare_smiles_graph,
 )
-from tests.helpers.cases import STEREO_WALKER_CURATED_CASES
+from tests.helpers.cases import (
+    STEREO_WALKER_CURATED_CASES,
+    load_connected_atom_stereo_cases,
+    load_connected_bond_stereo_cases,
+)
+from tests.helpers.kernel import CORE_MODULE
 from tests.helpers.mols import parse_smiles
 from tests.helpers.policies import load_connected_nonstereo_policy
 
@@ -16,6 +21,8 @@ from tests.helpers.policies import load_connected_nonstereo_policy
 class CoreRootedConnectedStereoWalkerTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
+        if CORE_MODULE is None:
+            raise unittest.SkipTest("private Rust extension is not installed")
         cls.policy = load_connected_nonstereo_policy()
 
     def test_core_stereo_walker_exact_support_matches_reference_on_curated_cases(self) -> None:
@@ -26,7 +33,7 @@ class CoreRootedConnectedStereoWalkerTests(unittest.TestCase):
                     self.policy,
                     surface_kind=CONNECTED_STEREO_SURFACE,
                 )
-                walker = _core.RootedConnectedStereoWalker(prepared, root_idx)
+                walker = CORE_MODULE.RootedConnectedStereoWalker(prepared, root_idx)
 
                 observed = set(walker.enumerate_support())
                 expected = enumerate_rooted_connected_stereo_smiles_support(prepared, root_idx)
@@ -50,7 +57,7 @@ class CoreRootedConnectedStereoWalkerTests(unittest.TestCase):
             for seed in range(3):
                 with self.subTest(smiles=smiles, root_idx=root_idx, seed=seed):
                     rng = random.Random(seed)
-                    walker = _core.RootedConnectedStereoWalker(prepared, root_idx)
+                    walker = CORE_MODULE.RootedConnectedStereoWalker(prepared, root_idx)
                     state = walker.initial_state()
                     chosen_tokens: list[str] = []
                     while not walker.is_terminal(state):
@@ -68,7 +75,7 @@ class CoreRootedConnectedStereoWalkerTests(unittest.TestCase):
             self.policy,
             surface_kind=CONNECTED_STEREO_SURFACE,
         )
-        walker = _core.RootedConnectedStereoWalker(prepared, 0)
+        walker = CORE_MODULE.RootedConnectedStereoWalker(prepared, 0)
         state = walker.initial_state()
 
         with self.assertRaisesRegex(KeyError, "choices"):

@@ -7,14 +7,11 @@ from grimace._reference.prepared_graph import (
     CONNECTED_STEREO_SURFACE,
     prepare_smiles_graph_from_mol_to_smiles_kwargs,
 )
-from grimace._reference.rooted.connected_nonstereo import (
+from grimace._reference.rooted_enumerator import (
     enumerate_rooted_connected_nonstereo_smiles_support,
-)
-from grimace._reference.rooted.connected_stereo import (
     enumerate_rooted_connected_stereo_smiles_support,
 )
-from grimace._runtime_graphs import runtime_surface_kind
-from grimace._runtime_inputs import MolToSmilesFlags
+from tests.helpers.kernel import CORE_MODULE
 from tests.helpers.mols import parse_smiles
 from tests.helpers.public_runtime import public_enum_support, supported_public_kwargs
 
@@ -94,11 +91,18 @@ class PublicRuntimeWriterFlagsTests(unittest.TestCase):
         ),
     )
 
+    @classmethod
+    def setUpClass(cls) -> None:
+        if CORE_MODULE is None:
+            raise unittest.SkipTest("private Rust extension is not installed")
+
     @staticmethod
     def _runtime_surface_kind(case: WriterFlagCase, mol):
-        return runtime_surface_kind(
+        from grimace import _runtime
+
+        return _runtime._runtime_surface_kind(
             mol,
-            flags=MolToSmilesFlags(
+            flags=_runtime.MolToSmilesFlags(
                 isomeric_smiles=case.isomeric_smiles,
                 kekule_smiles=case.kekule_smiles,
                 rooted_at_atom=case.rooted_at_atom,
@@ -113,7 +117,7 @@ class PublicRuntimeWriterFlagsTests(unittest.TestCase):
     def test_public_runtime_matches_internal_oracle_for_supported_writer_flags(self) -> None:
         for case in self.CASES:
             with self.subTest(case=case.name, smiles=case.smiles):
-                import grimace._runtime as _runtime
+                from grimace import _runtime
 
                 mol = parse_smiles(case.smiles)
                 surface_kind = self._runtime_surface_kind(case, mol)

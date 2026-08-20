@@ -1,15 +1,37 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Mapping
 
 from rdkit import Chem, rdBase
 
-from grimace._mol_to_smiles_options import (
-    MOL_TO_SMILES_OPTIONS,
-)
 from grimace._reference.policy import ReferencePolicy
-from grimace._reference.policy_sections import identity_section, sampling_section
+
+
+SAMPLING_KEYS = {
+    "seed",
+    "draw_budget",
+    "isomericSmiles",
+    "kekuleSmiles",
+    "rootedAtAtom",
+    "canonical",
+    "allBondsExplicit",
+    "allHsExplicit",
+    "doRandom",
+    "ignoreAtomMapNumbers",
+}
+
+IDENTITY_KEYS = {
+    "parse_with_rdkit",
+    "canonical",
+    "isomericSmiles",
+    "kekuleSmiles",
+    "rootedAtAtom",
+    "allBondsExplicit",
+    "allHsExplicit",
+    "doRandom",
+    "ignoreAtomMapNumbers",
+}
 
 
 @dataclass(frozen=True)
@@ -32,28 +54,49 @@ class RandomReferenceResult:
         return not self.validation_issues
 
 
+def _require_keys(section: Mapping[str, Any], expected: set[str], section_name: str) -> None:
+    actual = set(section)
+    if actual != expected:
+        missing = sorted(expected - actual)
+        extra = sorted(actual - expected)
+        raise ValueError(
+            f"{section_name} keys must match exactly; missing={missing}, extra={extra}"
+        )
+
+
 def _sampling_kwargs(policy: ReferencePolicy) -> tuple[int, int, int, dict[str, Any]]:
-    sampling = sampling_section(policy)
+    sampling = policy.data["sampling"]
+    if not isinstance(sampling, dict):
+        raise TypeError("sampling policy must be a JSON object")
+    _require_keys(sampling, SAMPLING_KEYS, "sampling")
     kwargs = {
-        spec.public_name: sampling[spec.public_name]
-        for spec in MOL_TO_SMILES_OPTIONS
-        if spec.public_name != "rootedAtAtom"
+        "isomericSmiles": sampling["isomericSmiles"],
+        "kekuleSmiles": sampling["kekuleSmiles"],
+        "canonical": sampling["canonical"],
+        "allBondsExplicit": sampling["allBondsExplicit"],
+        "allHsExplicit": sampling["allHsExplicit"],
+        "doRandom": sampling["doRandom"],
+        "ignoreAtomMapNumbers": sampling["ignoreAtomMapNumbers"],
     }
-    return (
-        int(sampling["seed"]),
-        int(sampling["draw_budget"]),
-        int(sampling["rootedAtAtom"]),
-        kwargs,
-    )
+    return int(sampling["seed"]), int(sampling["draw_budget"]), int(sampling["rootedAtAtom"]), kwargs
 
 
 def _identity_kwargs(policy: ReferencePolicy) -> dict[str, Any]:
-    identity = identity_section(policy)
+    identity = policy.data["identity_check"]
+    if not isinstance(identity, dict):
+        raise TypeError("identity_check policy must be a JSON object")
+    _require_keys(identity, IDENTITY_KEYS, "identity_check")
     if not identity["parse_with_rdkit"]:
         raise NotImplementedError("Only parse_with_rdkit=true is supported")
     return {
-        spec.public_name: identity[spec.public_name]
-        for spec in MOL_TO_SMILES_OPTIONS
+        "isomericSmiles": identity["isomericSmiles"],
+        "kekuleSmiles": identity["kekuleSmiles"],
+        "rootedAtAtom": identity["rootedAtAtom"],
+        "canonical": identity["canonical"],
+        "allBondsExplicit": identity["allBondsExplicit"],
+        "allHsExplicit": identity["allHsExplicit"],
+        "doRandom": identity["doRandom"],
+        "ignoreAtomMapNumbers": identity["ignoreAtomMapNumbers"],
     }
 
 

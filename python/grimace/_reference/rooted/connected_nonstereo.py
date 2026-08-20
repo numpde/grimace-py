@@ -13,6 +13,7 @@ from grimace._reference.prepared_graph import (
     CONNECTED_NONSTEREO_SURFACE,
     PreparedSmilesGraph,
     build_atom_tokens as _build_atom_tokens_from_mol,
+    check_supported_smiles_graph_surface,
     prepare_smiles_graph,
     ring_label_text,
 )
@@ -71,6 +72,10 @@ class RootedConnectedNonStereoWalkerState:
     @property
     def tokens(self) -> tuple[str, ...]:
         return tuple(self.prefix_tokens)
+
+
+def check_supported_surface(mol: Chem.Mol) -> None:
+    check_supported_smiles_graph_surface(mol, surface_kind=CONNECTED_NONSTEREO_SURFACE)
 
 
 def build_atom_tokens(
@@ -768,6 +773,11 @@ def _coerce_prepared_graph(
         if policy is not None:
             mol_or_prepared.validate_policy(policy)
         return mol_or_prepared
+    if hasattr(mol_or_prepared, "to_dict"):
+        prepared = PreparedSmilesGraph.from_dict(mol_or_prepared.to_dict())
+        if policy is not None:
+            prepared.validate_policy(policy)
+        return prepared
     if policy is None:
         raise TypeError("policy is required when preparing a graph from an RDKit molecule")
     return prepare_smiles_graph(

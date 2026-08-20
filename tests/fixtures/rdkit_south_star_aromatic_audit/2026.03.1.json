@@ -1,0 +1,69 @@
+{
+  "schema_name": "rdkit_south_star_aromatic_audit",
+  "schema_version": 1,
+  "rdkit_version": "2026.03.1",
+  "audit_command": "PYTHONPATH=python:. python3 -m unittest tests.south_star1.test_writer_aromatic_product -q",
+  "policy_modes": {"single_bond_mode": "elide", "aromatic_bond_mode": "elide"},
+  "cases": [
+    {
+      "id": "aromatic_benzene", "source_smiles": "c1ccccc1", "rooted_at_atom": 0,
+      "aromatic_atom_inventory": {"C": 6}, "aromatic_bond_count": 6,
+      "expected_support": ["c1ccccc1"], "witness_multiplicities": [["c1ccccc1", 2]], "support_count": 1, "completion_count": 2,
+      "sorted_support_sha256": "226af40c047f4e9f24f5c075b5cb84d44fbe96d5c0b60ae8d87552a477fd1990",
+      "notes": "Neutral unbracketed aromatic carbon with elided aromatic ring bonds."
+    },
+    {
+      "id": "aromatic_pyridine", "source_smiles": "n1ccccc1", "rooted_at_atom": 0,
+      "aromatic_atom_inventory": {"C": 5, "N": 1}, "aromatic_bond_count": 6,
+      "expected_support": ["n1ccccc1"], "witness_multiplicities": [["n1ccccc1", 2]], "support_count": 1, "completion_count": 2,
+      "sorted_support_sha256": "661ae93b36570c6b2ee32fd0221d74b9227731a0c0fdd9f2aa77ce5e3bf8a1a7",
+      "notes": "Neutral unbracketed pyridine nitrogen."
+    },
+    {
+      "id": "aromatic_furan", "source_smiles": "c1occc1", "rooted_at_atom": 0,
+      "aromatic_atom_inventory": {"C": 4, "O": 1}, "aromatic_bond_count": 5,
+      "expected_support": ["c1ccco1", "c1occc1"], "witness_multiplicities": [["c1ccco1", 1], ["c1occc1", 1]], "support_count": 2, "completion_count": 2,
+      "sorted_support_sha256": "804c1bbdde3d104e192df9c348cc9718cef782236a1e53b3152e299d2351d496",
+      "notes": "Both rooted traversal witnesses retain aromatic oxygen identity."
+    },
+    {
+      "id": "aromatic_thiophene", "source_smiles": "c1sccc1", "rooted_at_atom": 0,
+      "aromatic_atom_inventory": {"C": 4, "S": 1}, "aromatic_bond_count": 5,
+      "expected_support": ["c1cccs1", "c1sccc1"], "witness_multiplicities": [["c1cccs1", 1], ["c1sccc1", 1]], "support_count": 2, "completion_count": 2,
+      "sorted_support_sha256": "e1ed422e051f2cd58b0badd0271d63ea88a0069a7ad0ac7a3595e1d1f9590e2a",
+      "notes": "Both rooted traversal witnesses retain aromatic sulfur identity."
+    },
+    {
+      "id": "aromatic_naphthalene", "source_smiles": "c1ccc2ccccc2c1", "rooted_at_atom": 0,
+      "aromatic_atom_inventory": {"C": 10}, "aromatic_bond_count": 11,
+      "expected_support": ["c1cc2c(cc1)cccc2", "c1cc2c(cccc2)cc1", "c1cc2ccccc2cc1", "c1ccc2c(c1)cccc2", "c1ccc2c(cccc2)c1", "c1ccc2ccccc2c1"],
+      "witness_multiplicities": [["c1cc2c(cc1)cccc2", 1], ["c1cc2c(cccc2)cc1", 1], ["c1cc2ccccc2cc1", 1], ["c1ccc2c(c1)cccc2", 1], ["c1ccc2c(cccc2)c1", 1], ["c1ccc2ccccc2c1", 1]],
+      "support_count": 6, "completion_count": 6,
+      "sorted_support_sha256": "77bca9da5f7996678315e2cc687dc1286d2a31f8971f671eae36bb615932627c",
+      "notes": "Fused aromatic closures use the serialized elided endpoint relation."
+    },
+    {
+      "id": "aromatic_toluene", "source_smiles": "Cc1ccccc1", "rooted_at_atom": 0,
+      "aromatic_atom_inventory": {"C": 6}, "aromatic_bond_count": 6,
+      "expected_support": ["Cc1ccccc1"], "witness_multiplicities": [["Cc1ccccc1", 2]], "support_count": 1, "completion_count": 2,
+      "sorted_support_sha256": "f443887e18b3a8b7abd9d4361980c0765c68c34ef03017967153e02f5fbae315",
+      "notes": "The aliphatic-aromatic single bond remains legally elided."
+    },
+    {
+      "id": "aromatic_biphenyl", "source_smiles": "c1ccccc1-c1ccccc1", "rooted_at_atom": 0,
+      "aromatic_atom_inventory": {"C": 12}, "aromatic_bond_count": 12,
+      "expected_support": ["c1c(-c2ccccc2)cccc1", "c1c(cccc1)-c1ccccc1", "c1ccccc1-c1ccccc1"],
+      "witness_multiplicities": [["c1c(-c2ccccc2)cccc1", 2], ["c1c(cccc1)-c1ccccc1", 2], ["c1ccccc1-c1ccccc1", 2]],
+      "support_count": 3, "completion_count": 6,
+      "sorted_support_sha256": "5409e73cdaec32ad944918ee327c941ba33c227f37bceb10160327c3872e9396",
+      "notes": "The fact-level aromatic-aromatic single bridge is always explicit '-'."
+    },
+    {
+      "id": "aromatic_disconnected_benzene", "source_smiles": "c1ccccc1.O", "rooted_at_atom": 0,
+      "aromatic_atom_inventory": {"C": 6}, "aromatic_bond_count": 6,
+      "expected_support": ["c1ccccc1.O"], "witness_multiplicities": [["c1ccccc1.O", 2]], "support_count": 1, "completion_count": 2,
+      "sorted_support_sha256": "598ab02d6998a35fec5e8865881cb3d2756cacec891ef260a317f55e2d8c0e96",
+      "notes": "Fixed component order composes aromatic replay with the DOT relation."
+    }
+  ]
+}

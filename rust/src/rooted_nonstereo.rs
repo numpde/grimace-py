@@ -1,19 +1,15 @@
-use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-use pyo3::exceptions::{PyIndexError, PyValueError};
+use pyo3::exceptions::{PyIndexError, PyKeyError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyAny;
 use rustc_hash::FxHashSet;
 
 use crate::frontier::{
-    branch_choice_texts, decoder_choices_from_token_successors, dedup_frontier,
-    extend_decoder_choices_from_token_successors, frontier_prefix as shared_frontier_prefix,
-    group_decoder_choices, take_branch_choice_successors_or_err, take_first_successor_or_err,
-    take_only_successor_or_err, take_token_successors_or_err, take_token_support_successors_or_err,
-    token_support_from_choices, validate_frontier_prefix_homogeneous, DecoderChoice,
-    GroupedTransition,
+    choice_texts, extend_transitions, finalize_transitions,
+    frontier_prefix as shared_frontier_prefix, grouped_choice_texts, take_choice_or_err,
+    take_grouped_choices_or_err, DecoderChoice,
 };
 use crate::prepared_graph::PreparedSmilesGraphData;
 use crate::smiles_shared::{add_pending, ring_label_text, take_pending_for_atom};
@@ -65,69 +61,10 @@ enum Action {
     AfterAtom(AfterAtomAction),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-struct AtomBitSet {
-    atom_count: usize,
-    words: Vec<u64>,
-}
-
-impl AtomBitSet {
-    const WORD_BITS: usize = u64::BITS as usize;
-
-    fn new(atom_count: usize) -> Self {
-        Self {
-            atom_count,
-            words: vec![0; atom_count.div_ceil(Self::WORD_BITS)],
-        }
-    }
-
-    fn len(&self) -> usize {
-        self.atom_count
-    }
-
-    fn bit_mask(atom_idx: usize) -> u64 {
-        1_u64 << (Self::WORD_BITS - 1 - (atom_idx % Self::WORD_BITS))
-    }
-
-    fn contains(&self, atom_idx: usize) -> bool {
-        debug_assert!(atom_idx < self.atom_count);
-        let word_idx = atom_idx / Self::WORD_BITS;
-        (self.words[word_idx] & Self::bit_mask(atom_idx)) != 0
-    }
-
-    fn insert(&mut self, atom_idx: usize) {
-        debug_assert!(atom_idx < self.atom_count);
-        let word_idx = atom_idx / Self::WORD_BITS;
-        self.words[word_idx] |= Self::bit_mask(atom_idx);
-    }
-}
-
-impl Ord for AtomBitSet {
-    fn cmp(&self, other: &Self) -> Ordering {
-        if self.atom_count == other.atom_count {
-            return self.words.cmp(&other.words);
-        }
-        let common_atom_count = self.atom_count.min(other.atom_count);
-        for atom_idx in 0..common_atom_count {
-            match self.contains(atom_idx).cmp(&other.contains(atom_idx)) {
-                Ordering::Equal => {}
-                ordering => return ordering,
-            }
-        }
-        self.atom_count.cmp(&other.atom_count)
-    }
-}
-
-impl PartialOrd for AtomBitSet {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct RootedConnectedNonStereoWalkerStateData {
     prefix: String,
-    visited: AtomBitSet,
+    visited: Vec<bool>,
     visited_count: usize,
     pending: Vec<(usize, Vec<PendingRing>)>,
     free_labels: Vec<usize>,
@@ -250,13 +187,13 @@ fn validate_state_shape(
 fn ordered_neighbor_groups(
     graph: &PreparedSmilesGraphData,
     atom_idx: usize,
-    visited: &AtomBitSet,
+    visited: &[bool],
 ) -> Vec<Vec<usize>> {
     let mut seeds = graph
         .neighbors_of(atom_idx)
         .iter()
         .copied()
-        .filter(|&neighbor_idx| !visited.contains(neighbor_idx))
+        .filter(|&neighbor_idx| !visited[neighbor_idx])
         .collect::<Vec<_>>();
     if seeds.is_empty() {
         return Vec::new();
@@ -282,8 +219,7 @@ fn ordered_neighbor_groups(
                 component_min = current;
             }
             for &neighbor_idx in graph.neighbors_of(current) {
-                if neighbor_idx == atom_idx || visited.contains(neighbor_idx) || seen[neighbor_idx]
-                {
+                if neighbor_idx == atom_idx || visited[neighbor_idx] || seen[neighbor_idx] {
                     continue;
                 }
                 seen[neighbor_idx] = true;
@@ -464,7 +400,7 @@ fn initial_state_for_root(
     }
     RootedConnectedNonStereoWalkerStateData {
         prefix: String::new(),
-        visited: AtomBitSet::new(graph.atom_count()),
+        visited: vec![false; graph.atom_count()],
         visited_count: 0,
         pending: Vec::new(),
         free_labels: Vec::new(),
@@ -609,8 +545,8 @@ fn consume_enter_atom(
     state: &mut RootedConnectedNonStereoWalkerStateData,
     atom_idx: usize,
 ) {
-    debug_assert!(!state.visited.contains(atom_idx));
-    state.visited.insert(atom_idx);
+    debug_assert!(!state.visited[atom_idx]);
+    state.visited[atom_idx] = true;
     state.visited_count += 1;
     let closures_here = take_pending_for_atom(&mut state.pending, atom_idx);
     let neighbor_groups = ordered_neighbor_groups(graph, atom_idx, &state.visited);
@@ -1141,23 +1077,37 @@ fn advance_token_state(
     state: &RootedConnectedNonStereoWalkerStateData,
     chosen_token: &str,
 ) -> PyResult<RootedConnectedNonStereoWalkerStateData> {
-    let successors = successors_by_token(graph, state);
-    let candidates = take_token_successors_or_err(successors, chosen_token)?;
-    take_first_successor_or_err(candidates, "token advance")
+    let mut successors = successors_by_token(graph, state);
+    let candidates = successors.remove(chosen_token).ok_or_else(|| {
+        let available = successors.keys().cloned().collect::<Vec<_>>();
+        PyKeyError::new_err(format!(
+            "Token {chosen_token:?} is not available; choices={available:?}"
+        ))
+    })?;
+    take_first_successor_state(candidates, "token advance")
 }
 
 fn choices_for_state(
     graph: &PreparedSmilesGraphData,
     state: &RootedConnectedNonStereoWalkerStateData,
 ) -> Vec<DecoderChoice<RootedConnectedNonStereoWalkerStateData>> {
-    decoder_choices_from_token_successors(successors_by_token(graph, state))
+    let mut choices = Vec::new();
+    for (token, successors) in successors_by_token(graph, state) {
+        for successor in successors {
+            choices.push(DecoderChoice {
+                text: token.clone(),
+                next_frontier: vec![successor],
+            });
+        }
+    }
+    choices
 }
 
 fn next_choice_texts_for_state(
     graph: &PreparedSmilesGraphData,
     state: &RootedConnectedNonStereoWalkerStateData,
 ) -> Vec<String> {
-    branch_choice_texts(&choices_for_state(graph, state))
+    choice_texts(&choices_for_state(graph, state))
 }
 
 fn advance_choice_state(
@@ -1165,21 +1115,60 @@ fn advance_choice_state(
     state: &RootedConnectedNonStereoWalkerStateData,
     chosen_idx: usize,
 ) -> PyResult<RootedConnectedNonStereoWalkerStateData> {
-    let choices = choices_for_state(graph, state);
-    take_only_successor_or_err(
-        take_branch_choice_successors_or_err(choices, chosen_idx)?,
+    let mut choices = choices_for_state(graph, state);
+    take_only_successor_state(
+        take_choice_or_err(&mut choices, chosen_idx)?,
         "choice advance",
     )
+}
+
+fn take_only_successor_state(
+    mut successors: Vec<RootedConnectedNonStereoWalkerStateData>,
+    context: &str,
+) -> PyResult<RootedConnectedNonStereoWalkerStateData> {
+    if successors.len() != 1 {
+        return Err(PyValueError::new_err(format!(
+            "Expected exactly one successor state for {context}, got {}",
+            successors.len()
+        )));
+    }
+    match successors.pop() {
+        Some(successor) => Ok(successor),
+        None => Err(PyValueError::new_err(format!(
+            "Expected exactly one successor state for {context}, got 0"
+        ))),
+    }
+}
+
+fn take_first_successor_state(
+    mut successors: Vec<RootedConnectedNonStereoWalkerStateData>,
+    context: &str,
+) -> PyResult<RootedConnectedNonStereoWalkerStateData> {
+    match successors.drain(..).next() {
+        Some(successor) => Ok(successor),
+        None => Err(PyValueError::new_err(format!(
+            "Expected at least one successor state for {context}, got 0"
+        ))),
+    }
 }
 
 fn frontier_next_token_support(
     graph: &PreparedSmilesGraphData,
     frontier: &[RootedConnectedNonStereoWalkerStateData],
 ) -> Vec<String> {
-    frontier_grouped_transitions(graph, frontier)
-        .into_iter()
-        .map(|transition| transition.text)
-        .collect()
+    frontier_transitions(graph, frontier).into_keys().collect()
+}
+
+fn frontier_transitions(
+    graph: &PreparedSmilesGraphData,
+    frontier: &[RootedConnectedNonStereoWalkerStateData],
+) -> BTreeMap<String, Vec<RootedConnectedNonStereoWalkerStateData>> {
+    let mut transitions =
+        BTreeMap::<String, BTreeSet<RootedConnectedNonStereoWalkerStateData>>::new();
+    for state in frontier {
+        extend_transitions(&mut transitions, successors_by_token(graph, state));
+    }
+    finalize_transitions(transitions)
 }
 
 fn frontier_choices(
@@ -1188,31 +1177,20 @@ fn frontier_choices(
 ) -> Vec<DecoderChoice<RootedConnectedNonStereoWalkerStateData>> {
     let mut choices = Vec::new();
     for state in frontier {
-        extend_decoder_choices_from_token_successors(
-            &mut choices,
-            successors_by_token(graph, state),
-        );
+        for (token, successors) in successors_by_token(graph, state) {
+            for successor in successors {
+                choices.push(DecoderChoice {
+                    text: token.clone(),
+                    next_frontier: vec![successor],
+                });
+            }
+        }
     }
     choices
 }
 
-fn frontier_grouped_transitions(
-    graph: &PreparedSmilesGraphData,
-    frontier: &[RootedConnectedNonStereoWalkerStateData],
-) -> Vec<GroupedTransition<RootedConnectedNonStereoWalkerStateData>> {
-    group_decoder_choices(frontier_choices(graph, frontier), dedup_frontier)
-}
-
 fn frontier_prefix(frontier: &[RootedConnectedNonStereoWalkerStateData]) -> String {
     shared_frontier_prefix(frontier, |state| state.prefix.as_str())
-}
-
-fn validate_frontier_prefix(frontier: &[RootedConnectedNonStereoWalkerStateData]) -> PyResult<()> {
-    validate_frontier_prefix_homogeneous(
-        frontier,
-        |state| state.prefix.as_str(),
-        "non-stereo decoder",
-    )
 }
 
 fn exact_state_structural_cmp(
@@ -1249,21 +1227,6 @@ fn exact_state_same_structure(
         && left.action_stack == right.action_stack
 }
 
-fn dedup_exact_frontier(
-    mut states: Vec<RootedConnectedNonStereoWalkerStateData>,
-) -> Vec<RootedConnectedNonStereoWalkerStateData> {
-    debug_assert!(
-        states
-            .first()
-            .map(|first| states.iter().all(|state| state.prefix == first.prefix))
-            .unwrap_or(true),
-        "exact frontier token buckets must stay prefix-homogeneous"
-    );
-    states.sort_unstable_by(exact_state_structural_cmp);
-    states.dedup_by(|left, right| exact_state_same_structure(left, right));
-    states
-}
-
 fn frontier_is_terminal(
     graph: &PreparedSmilesGraphData,
     frontier: &[RootedConnectedNonStereoWalkerStateData],
@@ -1274,14 +1237,35 @@ fn frontier_is_terminal(
 fn exact_frontier_successors(
     graph: &PreparedSmilesGraphData,
     frontier: Vec<RootedConnectedNonStereoWalkerStateData>,
-) -> Vec<GroupedTransition<RootedConnectedNonStereoWalkerStateData>> {
-    let mut choices = Vec::new();
+) -> Vec<(String, Vec<RootedConnectedNonStereoWalkerStateData>)> {
+    let mut transitions = Vec::<(String, Vec<RootedConnectedNonStereoWalkerStateData>)>::new();
     for state in frontier {
         for_each_exact_successor_by_token_owned(graph, state, |token, successor| {
-            choices.push(DecoderChoice::single(token, successor));
+            if let Some((_, states)) = transitions
+                .iter_mut()
+                .find(|(existing_token, _)| *existing_token == token)
+            {
+                states.push(successor);
+            } else {
+                transitions.push((token, vec![successor]));
+            }
         });
     }
-    group_decoder_choices(choices, dedup_exact_frontier)
+    transitions
+        .into_iter()
+        .map(|(token, mut states)| {
+            debug_assert!(
+                states
+                    .first()
+                    .map(|first| states.iter().all(|state| state.prefix == first.prefix))
+                    .unwrap_or(true),
+                "exact frontier token buckets must stay prefix-homogeneous"
+            );
+            states.sort_unstable_by(exact_state_structural_cmp);
+            states.dedup_by(|left, right| exact_state_same_structure(left, right));
+            (token, states)
+        })
+        .collect()
 }
 
 fn enumerate_support_from_frontier(
@@ -1296,8 +1280,8 @@ fn enumerate_support_from_frontier(
         return;
     }
 
-    for transition in transitions {
-        enumerate_support_from_frontier(graph, transition.successors, out);
+    for (_token, next_frontier) in transitions {
+        enumerate_support_from_frontier(graph, next_frontier, out);
     }
 }
 
@@ -1471,70 +1455,80 @@ pub struct PyRootedConnectedNonStereoDecoder {
     cached_choices: Option<Vec<DecoderChoice<RootedConnectedNonStereoWalkerStateData>>>,
 }
 
-impl PyRootedConnectedNonStereoDecoder {
-    fn from_frontier(
-        graph: Arc<PreparedSmilesGraphData>,
-        frontier: Vec<RootedConnectedNonStereoWalkerStateData>,
-    ) -> PyResult<Self> {
-        validate_frontier_prefix(&frontier)?;
-        Ok(Self {
-            graph,
-            frontier,
-            cached_choices: None,
-        })
-    }
-
-    fn set_frontier(
-        &mut self,
-        frontier: Vec<RootedConnectedNonStereoWalkerStateData>,
-    ) -> PyResult<()> {
-        validate_frontier_prefix(&frontier)?;
-        self.frontier = frontier;
-        Ok(())
-    }
-
-    fn cached_frontier_choices(
-        &mut self,
-    ) -> &[DecoderChoice<RootedConnectedNonStereoWalkerStateData>] {
-        self.cached_choices
-            .get_or_insert_with(|| frontier_choices(self.graph.as_ref(), &self.frontier))
-            .as_slice()
-    }
-
-    fn take_frontier_choices(
-        &mut self,
-    ) -> Vec<DecoderChoice<RootedConnectedNonStereoWalkerStateData>> {
-        self.cached_choices
-            .take()
-            .unwrap_or_else(|| frontier_choices(self.graph.as_ref(), &self.frontier))
-    }
-}
-
 #[pymethods]
 impl PyRootedConnectedNonStereoDecoder {
     #[new]
     fn new(graph: &Bound<'_, PyAny>, root_idx: isize) -> PyResult<Self> {
         let graph = Arc::new(PreparedSmilesGraphData::from_any(graph)?);
-        let frontier = initial_frontier_for_root_spec(graph.as_ref(), root_idx)?;
-        Self::from_frontier(graph, frontier)
+        Ok(Self {
+            frontier: initial_frontier_for_root_spec(graph.as_ref(), root_idx)?,
+            graph,
+            cached_choices: None,
+        })
     }
 
     fn next_token_support(&mut self) -> Vec<String> {
-        token_support_from_choices(self.cached_frontier_choices())
+        grouped_choice_texts(
+            self.cached_choices
+                .get_or_insert_with(|| frontier_choices(self.graph.as_ref(), &self.frontier)),
+        )
     }
 
     fn advance_token(&mut self, chosen_token: &str) -> PyResult<()> {
-        let choices = self.take_frontier_choices();
-        self.set_frontier(take_token_support_successors_or_err(choices, chosen_token)?)
+        let choices = self
+            .cached_choices
+            .take()
+            .unwrap_or_else(|| frontier_choices(self.graph.as_ref(), &self.frontier));
+        self.frontier = take_grouped_choices_or_err(choices, chosen_token)?;
+        Ok(())
     }
 
     fn next_choice_texts(&mut self) -> Vec<String> {
-        branch_choice_texts(self.cached_frontier_choices())
+        choice_texts(
+            self.cached_choices
+                .get_or_insert_with(|| frontier_choices(self.graph.as_ref(), &self.frontier)),
+        )
     }
 
     fn advance_choice(&mut self, chosen_idx: usize) -> PyResult<()> {
-        let choices = self.take_frontier_choices();
-        self.set_frontier(take_branch_choice_successors_or_err(choices, chosen_idx)?)
+        let mut choices = self
+            .cached_choices
+            .take()
+            .unwrap_or_else(|| frontier_choices(self.graph.as_ref(), &self.frontier));
+        self.frontier = take_choice_or_err(&mut choices, chosen_idx)?;
+        Ok(())
+    }
+
+    fn choice_successors(&self) -> Vec<(String, Self)> {
+        frontier_choices(self.graph.as_ref(), &self.frontier)
+            .into_iter()
+            .map(|choice| {
+                (
+                    choice.text,
+                    Self {
+                        graph: self.graph.clone(),
+                        frontier: choice.next_frontier,
+                        cached_choices: None,
+                    },
+                )
+            })
+            .collect()
+    }
+
+    fn grouped_successors(&self) -> Vec<(String, Self)> {
+        frontier_transitions(self.graph.as_ref(), &self.frontier)
+            .into_iter()
+            .map(|(token, frontier)| {
+                (
+                    token,
+                    Self {
+                        graph: self.graph.clone(),
+                        frontier,
+                        cached_choices: None,
+                    },
+                )
+            })
+            .collect()
     }
 
     fn prefix(&self) -> String {
@@ -1569,16 +1563,14 @@ impl PyRootedConnectedNonStereoDecoder {
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
-    use std::sync::Arc;
 
     use pyo3::Python;
 
     use super::{
         advance_token_state, enumerate_rooted_connected_nonstereo_smiles_support,
-        enumerate_support_from_state, for_each_cartesian_choice, initial_frontier_for_root_spec,
-        initial_state_for_root, is_terminal_state, next_token_support_for_state,
-        permutations_py_order, permutations_py_order_copy, validate_root_idx, Action, AtomBitSet,
-        PyRootedConnectedNonStereoDecoder,
+        enumerate_support_from_state, for_each_cartesian_choice, initial_state_for_root,
+        is_terminal_state, next_token_support_for_state, permutations_py_order,
+        permutations_py_order_copy, validate_root_idx,
     };
     use crate::prepared_graph::{
         PreparedSmilesGraphData, CONNECTED_NONSTEREO_SURFACE, PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
@@ -1601,77 +1593,6 @@ mod tests {
             .expect("nonstereo enumeration should succeed")
             .into_iter()
             .collect()
-    }
-
-    #[test]
-    fn atom_bit_set_tracks_membership_without_cross_word_leakage() {
-        let mut visited = AtomBitSet::new(130);
-        assert_eq!(130, visited.len());
-        for atom_idx in [0, 1, 63, 64, 65, 129] {
-            assert!(!visited.contains(atom_idx));
-            visited.insert(atom_idx);
-            assert!(visited.contains(atom_idx));
-        }
-        assert!(!visited.contains(2));
-        assert!(!visited.contains(62));
-        assert!(!visited.contains(66));
-        assert!(!visited.contains(128));
-    }
-
-    #[test]
-    fn atom_bit_set_clone_is_independent_after_insert() {
-        let mut left = AtomBitSet::new(8);
-        left.insert(3);
-        let mut right = left.clone();
-        right.insert(4);
-
-        assert!(left.contains(3));
-        assert!(!left.contains(4));
-        assert!(right.contains(3));
-        assert!(right.contains(4));
-        assert_ne!(left, right);
-    }
-
-    #[test]
-    fn nonstereo_decoder_rejects_mixed_prefix_frontier() {
-        Python::initialize();
-
-        let graph = Arc::new(linear_ccc_graph());
-        let mut first = initial_state_for_root(graph.as_ref(), 0);
-        let second = initial_state_for_root(graph.as_ref(), 1);
-        first.prefix = "C".to_owned();
-
-        let err = match PyRootedConnectedNonStereoDecoder::from_frontier(graph, vec![first, second])
-        {
-            Ok(_) => panic!("mixed-prefix frontier should fail"),
-            Err(err) => err,
-        };
-
-        assert!(err.to_string().contains("non-stereo decoder frontiers"));
-    }
-
-    #[test]
-    fn atom_bit_set_order_matches_logical_bool_vector_order() {
-        fn with_visited(atom_count: usize, atom_idx: usize) -> AtomBitSet {
-            let mut visited = AtomBitSet::new(atom_count);
-            visited.insert(atom_idx);
-            visited
-        }
-
-        assert_eq!(
-            vec![true, false].cmp(&vec![false, true]),
-            with_visited(2, 0).cmp(&with_visited(2, 1))
-        );
-        assert_eq!(
-            {
-                let mut left = vec![false; 130];
-                left[63] = true;
-                let mut right = vec![false; 130];
-                right[64] = true;
-                left.cmp(&right)
-            },
-            with_visited(130, 63).cmp(&with_visited(130, 64))
-        );
     }
 
     fn collect_exact_frontier_stats(
@@ -1996,26 +1917,6 @@ mod tests {
         let graph = linear_ccc_graph();
         assert!(validate_root_idx(&graph, -1).is_err());
         assert!(validate_root_idx(&graph, 3).is_err());
-    }
-
-    #[test]
-    fn all_roots_initial_frontier_keeps_one_empty_state_per_atom() {
-        let graph = linear_ccc_graph();
-        let frontier =
-            initial_frontier_for_root_spec(&graph, -1).expect("all-roots frontier should build");
-
-        assert_eq!(graph.atom_count(), frontier.len());
-        for (root_idx, state) in frontier.iter().enumerate() {
-            assert_eq!(graph.atom_count(), state.visited.len());
-            assert_eq!(0, state.visited_count);
-            for atom_idx in 0..graph.atom_count() {
-                assert!(!state.visited.contains(atom_idx));
-            }
-            assert_eq!(
-                &[Action::EnterAtom(root_idx)],
-                state.action_stack.as_slice()
-            );
-        }
     }
 
     #[test]

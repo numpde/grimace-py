@@ -1,0 +1,356 @@
+"""Vertical product contract for RDKit-ingested specified stereo."""
+
+from __future__ import annotations
+
+from dataclasses import replace
+import os
+from pathlib import Path
+from tempfile import TemporaryDirectory
+import unittest
+from unittest.mock import patch
+
+from rdkit import rdBase
+
+from grimace import MolToSmilesContinuationDecoder
+from grimace import SouthStarError
+from grimace._south_star1.fact_isomorphism import facts_are_isomorphic
+from grimace._south_star1.facts import DirectionalValue
+from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_smiles
+from grimace._south_star1.writer_continuation_asset import open_writer_continuation_core
+from grimace._south_star1.writer_continuation_asset import verify_writer_continuation_asset_consistency
+from grimace._south_star1.writer_continuation_asset import (
+    verify_writer_continuation_asset_for_prepared,
+)
+from grimace._south_star1.writer_continuation_asset import write_writer_continuation_asset
+from grimace._south_star1.writer_support import enumerate_prepared_writer_shaped_support
+from tests.helpers.rdkit_south_star_stereo_audit import load_pinned_south_star_stereo_audit_cases
+from tests.south_star1.default_writer_capability_ledger import (
+    default_writer_cases_for_rdkit_audit,
+)
+from tests.south_star1.helpers import directional_facts
+from tests.south_star1.helpers import tetrahedral_facts
+from tests.south_star1.qualification_plan import FAST_ACCEPTED_CASES
+from tests.south_star1.qualification_plan import SLOW_COUPLED_CASES
+from tests.south_star1.qualification_plan import (
+    selected_slow_qualification_cases,
+)
+from tests.south_star1.slow_qualification_assets import require_slow_qualification_asset
+from tests.south_star1.qualification_support import decoder_support_strings
+from tests.south_star1.qualification_guards import forbid_qualification_profile
+from tests.south_star1.writer_test_context import WriterTestContext
+from tests.south_star1.writer_test_context import prepare_writer_facts
+from tests.south_star1.writer_test_context import writer_test_context
+
+
+class WriterDefaultStereoAuditFixtureTest(unittest.TestCase):
+    QUALIFICATION_CASES = FAST_ACCEPTED_CASES
+    USE_CACHED_SLOW_ASSETS = False
+
+    def setUp(self) -> None:
+        if self.QUALIFICATION_CASES is not FAST_ACCEPTED_CASES and self._testMethodName not in {
+            "test_ledger_stereo_pinning_has_fixture_coverage",
+            "test_every_local_stereo_case_passes_full_asset_semantic_replay",
+        }:
+            self.skipTest("case-specific stereo audit is outside the slow shard")
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.temporary = None if cls.USE_CACHED_SLOW_ASSETS else TemporaryDirectory()
+        all_fixture_cases = load_pinned_south_star_stereo_audit_cases(rdBase.rdkitVersion)
+        allowed = {case.name for case in cls.QUALIFICATION_CASES}
+        cls.fixture_cases = tuple(item for item in all_fixture_cases if item.name in allowed)
+        cls.ledger = {
+            item.name: item for item in default_writer_cases_for_rdkit_audit("stereo")
+        }
+        cls.assets = {}
+        cls.contexts: dict[str, WriterTestContext] = {}
+        profile = "slow-stereo-audit" if cls.USE_CACHED_SLOW_ASSETS else "stereo-audit-fast"
+        with forbid_qualification_profile(profile) as guard_report:
+            for item in cls.fixture_cases:
+                facts = ordinary_molecule_facts_from_smiles(
+                    item.source_smiles,
+                    cls.ledger[item.name].extraction_options,
+                )
+                context = writer_test_context(
+                    facts,
+                    rooted_at_atom=cls.ledger[item.name].rooted_at_atom,
+                )
+                if cls.USE_CACHED_SLOW_ASSETS:
+                    cached = require_slow_qualification_asset(cls.ledger[item.name])
+                    cls.assets[item.name] = open_writer_continuation_core(
+                        cached.entry.paths.payload_path
+                    )
+                else:
+                    path = Path(cls.temporary.name) / item.name
+                    write_writer_continuation_asset(
+                        path=path,
+                        prepared=context.prepared,
+                        snapshot=context.initial_snapshot,
+                    )
+                    cls.assets[item.name] = open_writer_continuation_core(path)
+                cls.contexts[item.name] = context
+        if any(guard_report.call_counts().values()):
+            raise AssertionError(
+                f"forbidden stereo-audit path invoked: {guard_report.call_counts()}"
+            )
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        if cls.temporary is not None:
+            cls.temporary.cleanup()
+
+    def test_fixture_ledger_and_full_runtime_agree(self) -> None:
+        tetra_comparison = facts_are_isomorphic(
+            self.contexts["tetra_plus"].prepared.facts,
+            tetrahedral_facts(),
+        )
+        self.assertTrue(tetra_comparison.isomorphic, tetra_comparison.reason)
+        self.assertFalse(
+            facts_are_isomorphic(
+                self.contexts["directional_opposite"].prepared.facts,
+                directional_facts(),
+                compare_stereo=False,
+            ).isomorphic
+        )
+        for item in self.fixture_cases:
+            with self.subTest(case=item.name):
+                ledger = self.ledger[item.name]
+                asset = self.assets[item.name]
+                self.assertEqual(item.source_smiles, ledger.smiles)
+                self.assertEqual(item.extraction_profile, ledger.extraction_profile)
+                self.assertEqual(item.support_count, ledger.expected_support_count)
+                self.assertEqual(item.completion_count, ledger.expected_completion_count)
+                self.assertEqual(item.sorted_support_sha256, ledger.expected_support_digest)
+                self.assertTrue(
+                    verify_writer_continuation_asset_consistency(asset.path).accepted
+                )
+                live = verify_writer_continuation_asset_for_prepared(
+                    prepared=self.contexts[item.name].prepared,
+                    asset=asset,
+                )
+                self.assertTrue(live.accepted, live.reason)
+                self.assertTrue(live.structurally_verified)
+                self.assertTrue(live.live_replay_complete)
+                self.assertEqual(live.branch_locator_count, live.branch_proof_count)
+                self.assertEqual(
+                    live.terminal_locator_count, live.terminal_proof_count
+                )
+                self.assertEqual(live.unchecked_obligation_families, ())
+
+                decoder = MolToSmilesContinuationDecoder.from_asset(asset.path)
+                self.assertEqual(decoder.support_count, item.support_count)
+                self.assertEqual(decoder.completion_count, item.completion_count)
+                self.assertEqual(decoder_support_strings(decoder), item.expected_support)
+                self.assertEqual(
+                    sum(value.numerator for value in decoder.exact_probabilities()),
+                    decoder.completion_count,
+                )
+                advanced = decoder.next_choices[0].next_state
+                resumed = MolToSmilesContinuationDecoder.from_snapshot(
+                    asset.path,
+                    advanced.snapshot(),
+                )
+                self.assertEqual(resumed.cache_key(), advanced.cache_key())
+                if item.target_class == "directional":
+                    residual = self.contexts[item.name].initial_snapshot.cursor.weighted_states[0][0].stereo_state.residual_snapshot
+                    variables = tuple(var for var, _domain in residual.domains)
+                    self.assertEqual(len(variables), 2)
+                    self.assertEqual(
+                        {var.kind for var in variables},
+                        {"directional_site_carrier"},
+                    )
+                    self.assertEqual(
+                        {factor.key.kind for factor in residual.factors},
+                        {"directional_site", "directional_bond_emission"},
+                    )
+
+    def test_ledger_stereo_pinning_has_fixture_coverage(self) -> None:
+        pinned_ledger = {
+            case.name
+            for case in self.ledger.values()
+            if case.name in {item.name for item in self.fixture_cases}
+            if case.expected_rdkit_audit_version_pinned
+        }
+        fixture_names = {item.name for item in self.fixture_cases}
+
+        self.assertEqual(pinned_ledger, fixture_names)
+
+        for item in self.fixture_cases:
+            with self.subTest(case=item.name):
+                ledger = self.ledger[item.name]
+                self.assertTrue(ledger.expected_rdkit_audit_version_pinned)
+                self.assertEqual(
+                    ledger.extraction_profile,
+                    "specified_stereo_closure",
+                )
+
+    def test_every_local_stereo_case_passes_full_asset_semantic_replay(self) -> None:
+        for item in self.fixture_cases:
+            with self.subTest(case=item.name):
+                verification = verify_writer_continuation_asset_for_prepared(
+                    prepared=self.contexts[item.name].prepared,
+                    asset=self.assets[item.name],
+                )
+                self.assertTrue(verification.accepted, verification.unchecked_obligation_families)
+                self.assertTrue(verification.live_replay_complete)
+                self.assertEqual(
+                    verification.branch_locator_count,
+                    verification.branch_proof_count,
+                )
+                self.assertEqual(
+                    verification.terminal_locator_count,
+                    verification.terminal_proof_count,
+                )
+                self.assertEqual(verification.unchecked_obligation_families, ())
+
+    def test_polarities_are_disjoint_and_reparse_only_to_their_source(self) -> None:
+        all_pairs = (
+            ("tetra_plus", "tetra_minus"),
+            ("directional_opposite", "directional_together"),
+            (
+                "remote_coupled_tetrahedral_a",
+                "remote_coupled_tetrahedral_b",
+            ),
+        )
+        fixture_by_name = {item.name: item for item in self.fixture_cases}
+        pairs = tuple(
+            (left, right)
+            for left, right in all_pairs
+            if left in fixture_by_name and right in fixture_by_name
+        )
+        remote_pairs = tuple(
+            pair
+            for pair in pairs
+            if pair == (
+                "remote_coupled_tetrahedral_a",
+                "remote_coupled_tetrahedral_b",
+            )
+        )
+        for left, right in pairs:
+            self.assertTrue(
+                set(fixture_by_name[left].expected_support).isdisjoint(
+                    fixture_by_name[right].expected_support
+                )
+            )
+            self.assertNotEqual(
+                fixture_by_name[left].sorted_support_sha256,
+                fixture_by_name[right].sorted_support_sha256,
+            )
+            for name, opposite in ((left, right), (right, left)):
+                for text in fixture_by_name[name].expected_support:
+                    reparsed = ordinary_molecule_facts_from_smiles(
+                        text,
+                        self.ledger[name].extraction_options,
+                    )
+                    self.assertTrue(
+                        facts_are_isomorphic(self.contexts[name].prepared.facts, reparsed).isomorphic,
+                        (name, text),
+                    )
+                    self.assertFalse(
+                        facts_are_isomorphic(self.contexts[opposite].prepared.facts, reparsed).isomorphic,
+                        (opposite, text),
+                    )
+        for left, right in remote_pairs:
+            self.assertTrue(
+                set(fixture_by_name[left].expected_support).isdisjoint(
+                    fixture_by_name[right].expected_support
+                )
+            )
+            self.assertEqual(fixture_by_name[left].support_count, 216)
+            self.assertEqual(fixture_by_name[left].completion_count, 216)
+            self.assertEqual(fixture_by_name[right].support_count, 216)
+            self.assertEqual(fixture_by_name[right].completion_count, 216)
+
+    def test_directional_reference_pair_and_target_transform_together(self) -> None:
+        facts = self.contexts["directional_opposite"].prepared.facts
+        site = facts.stereo.directional[0]
+        transformed = replace(
+            site,
+            target=DirectionalValue.TOGETHER,
+            reference_pair=(site.left_ligands[1], site.right_ligands[0]),
+        )
+        detached = replace(
+            transformed,
+            target=site.target,
+        )
+        self.assertEqual(
+            _support_for_replaced_directional_site(
+                facts,
+                transformed,
+                self.contexts["directional_opposite"].runtime_options,
+            ),
+            _support_for_replaced_directional_site(
+                facts,
+                site,
+                self.contexts["directional_opposite"].runtime_options,
+            ),
+        )
+        self.assertEqual(
+            _support_for_replaced_directional_site(
+                facts,
+                detached,
+                self.contexts["directional_opposite"].runtime_options,
+            ),
+            set(
+                next(
+                    item.expected_support
+                    for item in self.fixture_cases
+                    if item.name == "directional_together"
+                )
+            ),
+        )
+
+    def test_proof_decoder_binds_prepared_at_construction(self) -> None:
+        with self.assertRaisesRegex(SouthStarError, "proof_molecule_required"):
+            MolToSmilesContinuationDecoder.from_asset(
+                self.assets["tetra_plus"].path,
+                proof_capable=True,
+            )
+        all_bindings = (
+            ("tetra_plus", "tetra_minus"),
+            ("tetra_minus", "tetra_plus"),
+            ("directional_opposite", "directional_together"),
+            ("directional_together", "directional_opposite"),
+            ("zero_h_tetrahedral", "tetra_plus"),
+            ("adjacent_specified_tetrahedral", "tetra_plus"),
+            ("remote_coupled_tetrahedral_a", "remote_coupled_tetrahedral_b"),
+            ("remote_coupled_tetrahedral_b", "remote_coupled_tetrahedral_a"),
+            ("disconnected_tetra_oxygen", "tetra_plus"),
+            ("disconnected_directional_oxygen", "directional_opposite"),
+        )
+        for asset_name, prepared_name in all_bindings:
+            if asset_name not in self.assets or prepared_name not in self.contexts:
+                continue
+            with self.subTest(asset=asset_name, prepared=prepared_name):
+                with self.assertRaisesRegex(Exception, "prepared_identity_mismatch"):
+                    MolToSmilesContinuationDecoder.from_asset(
+                        self.assets[asset_name].path,
+                        proof_capable=True,
+                        prepared=self.contexts[prepared_name].prepared,
+                    )
+
+class WriterDefaultStereoAuditSlowTest(WriterDefaultStereoAuditFixtureTest):
+    QUALIFICATION_CASES = None
+    USE_CACHED_SLOW_ASSETS = True
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        if os.environ.get("SOUTH_STAR1_RUN_SLOW") != "1":
+            raise unittest.SkipTest("set SOUTH_STAR1_RUN_SLOW=1 to run coupled cases")
+        cls.QUALIFICATION_CASES = selected_slow_qualification_cases()
+        super().setUpClass()
+
+
+def _support_for_replaced_directional_site(facts, site, options) -> set[str]:
+    changed = replace(facts, stereo=replace(facts.stereo, directional=(site,)))
+    prepared = prepare_writer_facts(changed)
+    return set(
+        enumerate_prepared_writer_shaped_support(
+            prepared=prepared,
+            runtime_options=options,
+        ).strings
+    )
+
+
+if __name__ == "__main__":
+    unittest.main()

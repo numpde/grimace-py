@@ -8,7 +8,8 @@
       "expected": "O=C1Nc2cc(Br)ccc2/C1=C1/Nc2ccccc2/C1=N\\O",
       "rooted_at_atom": null,
       "isomeric_smiles": true,
-      "rdkit_canonical": true
+      "rdkit_canonical": true,
+      "membership_check": "decoder"
     },
     {
       "id": "molblock_github4582_small_ring_closure_canonical",

@@ -1,0 +1,60 @@
+name: Setup Python and Rust
+
+description: Shared CI setup for Python jobs that build the Rust extension.
+
+# This action has two modes on purpose:
+#
+# - packaging jobs only need the interpreter, pip cache, and Rust toolchain;
+# - source-tree jobs also need an isolated venv with the extension installed by
+#   `maturin develop`, but should keep their actual test command visible in the
+#   workflow.  The optional venv setup below centralizes that mechanical setup
+#   without hiding the semantic layer each job executes.
+inputs:
+  python-version:
+    description: Python version to install through actions/setup-python.
+    required: true
+  source-tree-test-env:
+    description: Create a venv, install test tools, install pinned RDKit, and install the source tree with maturin develop.
+    required: false
+    default: "false"
+  install-z3:
+    description: Install the pinned z3-solver test dependency into the source-tree test environment.
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v6
+      with:
+        python-version: ${{ inputs.python-version }}
+        cache: pip
+        cache-dependency-path: |
+          pyproject.toml
+          .github/workflows/ci.yml
+          .github/actions/setup-python-rust/action.yml
+    - uses: dtolnay/rust-toolchain@stable
+    - name: Create source-tree test environment
+      if: ${{ inputs.source-tree-test-env == 'true' }}
+      shell: bash
+      run: python -m venv .venv
+    - name: Install source-tree test tools
+      if: ${{ inputs.source-tree-test-env == 'true' }}
+      shell: bash
+      run: env -u CONDA_PREFIX .venv/bin/python -m pip install --upgrade pip maturin
+    - name: Install pinned RDKit fixture version
+      if: ${{ inputs.source-tree-test-env == 'true' }}
+      shell: bash
+      run: env -u CONDA_PREFIX .venv/bin/python -m pip install "rdkit==$RDKIT_FIXTURE_PIP_VERSION"
+    - name: Install pinned z3 test dependency
+      if: ${{ inputs.source-tree-test-env == 'true' && inputs.install-z3 == 'true' }}
+      shell: bash
+      run: env -u CONDA_PREFIX .venv/bin/python -m pip install "z3-solver==4.16.0.0"
+    - name: Install package into source-tree test environment
+      if: ${{ inputs.source-tree-test-env == 'true' }}
+      shell: bash
+      run: env -u CONDA_PREFIX .venv/bin/maturin develop --release
+    - name: Expose source-tree test Python
+      if: ${{ inputs.source-tree-test-env == 'true' }}
+      shell: bash
+      run: echo "GRIMACE_CI_PYTHON=.venv/bin/python" >> "$GITHUB_ENV"

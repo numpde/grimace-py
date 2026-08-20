@@ -14,74 +14,19 @@ bounded correctness checks; heavier profiling runs should be explicit.
 
 ## Performance Tooling
 
-- `timings_enum_measure.py`
-  - measures the public timing table and writes `docs/timings-enum.tsv` plus
-    `docs/timings-enum.md`
+- `tests/perf/test_readme_timings.py`
+  - measures the public timing table and writes `docs/timings.tsv` plus
+    `docs/timings.md`
 - `record_perf_hotspots.py`
   - records focused whole-process `perf` hotspots and appends them to
     `notes/004_perf_history.jsonl`
   - optionally saves the full report under `notes/perf_reports/`
 
-## Release Tooling
-
-- `validate_release_artifacts.py`
-  - validates release wheel and sdist filenames, archive member safety,
-    package metadata, PreparedMol zstd package data, and wheel/sdist
-    dictionary equivalence
-
-## RDKit Writer Support Count Tooling
-
-- `mine_rdkit_writer_support_count_candidates.py`
-  - scans the checked-in `top_100000` molecule fixture
-  - pre-screens candidates with Grimace exact support counts under one explicit
-    writer flag surface
-  - writes a ranked JSON report with generator-ready case input
-  - does not run RDKit random saturation and does not write pinned fixtures
-  - writes under `notes/support_count_mining/` by default; scratch paths require
-    `--allow-outside-repo`
-  - refuses to overwrite an existing output path unless `--force` is passed
-- `generate_rdkit_writer_support_counts.py`
-  - consumes selected candidate cases and runs RDKit random-writer adaptive
-    saturation
-  - writes review artifacts under `notes/support_count_mining/` or count-only
-    fixture shards under
-    `tests/fixtures/rdkit_writer_support_counts/<rdkit-version>/`; scratch
-    paths require `--allow-outside-repo`
-  - refuses to overwrite an existing output path unless `--force` is passed
-
-## PreparedMol Storage Tooling
-
-- `prepared_mol_zstd_dictionary_generate.py`
-  - generates the production `PreparedMol` zstd dictionary artifact from the
-    checked-in `top_100000` fixture
-  - writes a versioned artifact directory containing `default_v1.zstdict` and
-    `default_v1.json`
-  - validates the written manifest, dictionary ID, dictionary hash, and zstd
-    round trip before returning success
-  - replaces an existing artifact only when given its exact
-    `--replace-artifact YYYYMMDD_hash` directory name
-  - requires the pinned `zstandard` development dependency
-- `generate_prepared_mol_zstd_dictionary.py`
-  - compatibility source/sdist entry point for shipped manifests that record
-    the historical generator path; delegates to
-    `prepared_mol_zstd_dictionary_generate.py`
-- `timings_prepared_mol_zstd_measure.py`
-  - measures per-molecule `PreparedMol` compression and decompression with and
-    without a selected shipped dictionary
-  - uses a deterministic random sample from the checked-in `top_100000`
-    fixture and records the sample seed and sample hashes in the TSV
-  - writes the selected timing TSV, defaulting to
-    `docs/timings-prepared-mol-zstd.tsv`
-- `timings_prepared_mol_zstd_plot.py`
-  - renders compression-ratio tradeoff plots from
-    a PreparedMol zstd timing TSV
-  - writes `docs/timings-prepared-mol-zstd-plots/<dictionary-artifact>/`
-
 ## `mine_rdkit_regressions.py`
 
 Local dataset miner for RDKit-derived writer regressions.
 
-It scans the checked-in `top_100000` fixture and can either:
+It scans the bundled `top_100000` fixture and can either:
 
 - compare the deterministic RDKit writer output against Grimace support
 - sample RDKit random writer outputs until a simple plateau heuristic fires
@@ -197,7 +142,7 @@ The extractor uses:
 - `tree-sitter-java` for RDKit Java `test*` methods
 
 It owns generated fields such as upstream file, line range, parser kind,
-matched serializer terms, and snippet hash. Reviewed coverage fields such as
+matched serializer terms, and snippet hash.  Reviewed coverage fields such as
 `status`, `claim`, `grimace_links`, and `notes` are preserved when
 regenerating.
 
@@ -227,8 +172,6 @@ Show the first unreviewed entries:
 python scripts/report_rdkit_serializer_coverage.py --status unreviewed
 ```
 
-The `--status` value must be one of the reviewed serializer coverage statuses.
-
 Once triage is expected to be complete, make remaining `unreviewed` or
 `needs-fixture` entries fail explicitly:
 
@@ -240,20 +183,3 @@ Entries with `known-gap` status have a pinned fixture and an executable test, bu
 the current Grimace implementation intentionally fails that parity check.
 See `docs/rdkit-serializer-coverage.md` for the reviewed status policy and
 current counts.
-
-## `report_correctness_coverage.py`
-
-Summarizes pinned RDKit correctness evidence from fixture JSON and the RDKit
-serializer coverage ledger. It uses the pinned fixture constants/loaders and
-serializer coverage loader from the test helpers, and does not import RDKit or
-Grimace.
-
-```bash
-python scripts/report_correctness_coverage.py
-```
-
-For machine-readable output:
-
-```bash
-python scripts/report_correctness_coverage.py --format json
-```

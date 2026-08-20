@@ -1,0 +1,5653 @@
+"""Raw writer-shaped transitions for South Star 1."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from dataclasses import field
+from dataclasses import replace
+from enum import Enum
+from typing import TYPE_CHECKING
+
+from .errors import SouthStarError
+from .errors import SouthStarErrorKind
+from .ids import AtomId
+from .ids import BondId
+from .policy import DirectionMark
+from .writer_capabilities import _WriterExecutionCapabilityKind
+from .writer_execution_evidence import WriterFiniteRelationWorkEvidence
+from .writer_execution_evidence import WriterGraphObligationWorkEvidence
+from .writer_execution_evidence import WriterResidualPropagationWorkEvidence
+from .writer_execution_evidence import writer_closure_endpoint_relation_work_evidence
+from .writer_graph_obligations import WriterBoundaryOwnerKind
+from .writer_graph_obligations import WriterClosureEndpointChoice
+from .writer_graph_obligations import WriterClosureCandidateResolutionKind
+from .writer_graph_obligations import WriterEdgeObligationKind
+from .writer_graph_obligations import WriterGraphObligationContext
+from .writer_graph_obligations import WriterResidualAttachment
+from .writer_graph_obligations import WriterResidualAttachmentAction
+from .writer_graph_obligations import WriterResidualAttachmentActionKind
+from .writer_graph_obligations import build_writer_graph_obligation_context
+from .writer_graph_obligations import validate_writer_snapshot_graph_coherence
+from .writer_graph_obligations import validate_writer_transition_graph_surface
+from .writer_graph_obligations import (
+    writer_deferred_branch_return_closure_candidate_resolutions,
+)
+from .writer_graph_obligations import (
+    writer_deferred_control_live_closure_candidate_resolutions,
+)
+from .writer_graph_obligations import writer_closure_candidate_resolutions
+from .writer_graph_obligations import writer_graph_completion_status
+from .writer_graph_obligations import writer_graph_obligation_work_evidence
+from .writer_graph_obligations import (
+    writer_live_branch_return_closure_candidate_resolutions,
+)
+from .writer_graph_obligations import writer_closure_bond_text_relation
+from .writer_graph_obligations import writer_residual_attachment_action_is_blocked
+from .writer_graph_obligations import writer_residual_attachment_action_incidences_for_atom
+from .writer_graph_obligations import writer_residual_attachment_closure_deficit
+from .writer_state import ComponentCursor
+from .writer_state import ObligationState
+from .writer_state import PendingEntryPhase
+from .writer_state import PendingWriterEntry
+from .writer_state import WriterAtomFrame
+from .writer_state import WriterBranchFrame
+from .writer_state import WriterClosedClosure
+from .writer_state import WriterClosureLabel
+from .writer_state import WriterOpenClosureEndpoint
+from .writer_state import WriterPolicyState
+from .writer_state import WriterRingLabelState
+from .writer_state import WriterRingState
+from .writer_state import WriterState
+from .writer_state import WriterStateKey
+from .writer_state import writer_state_key
+from .writer_events import WriterAtomEmitted
+from .writer_events import WriterBondEmitted
+from .writer_events import WriterBranchClosed
+from .writer_events import WriterBranchOpened
+from .writer_events import WriterComponentBoundaryEmitted
+from .writer_events import WriterEvent
+from .writer_events import WriterLocalOrderClosed
+from .writer_events import WriterRingEndpointEmitted
+from .writer_events import WriterRingEndpointPaired
+from .writer_events import WriterRingLabelAllocated
+from .writer_events import WriterRingLabelReleased
+from .writer_ring_lifecycle import writer_ring_label_allocation_source
+from .writer_stereo import WriterAtomTextChoice
+from .writer_stereo import WriterBondTextChoice
+from .writer_stereo import WriterStereoPolicyBlocker
+from .writer_stereo import advance_writer_stereo_state_with_evidence
+from .writer_stereo import terminal_writer_stereo_state_with_evidence
+from .writer_stereo import validate_writer_stereo_supported_prepared
+from .writer_stereo import writer_atom_text_choices
+from .writer_stereo import writer_bond_text_choices
+from .writer_stereo import writer_closure_endpoint_relation
+
+if TYPE_CHECKING:
+    from .prepared_runtime import SouthStarPreparedMol
+
+
+class WriterTransitionKind(Enum):
+    ATOM = "atom"
+    ENTER_CHILD_BOND = "enter_child_bond"
+    ENTER_INLINE_CHILD = "enter_inline_child"
+    OPEN_BRANCH = "open_branch"
+    ENTER_BRANCH_CHILD = "enter_branch_child"
+    CLOSE_BRANCH = "close_branch"
+    DOT = "dot"
+    OPEN_CLOSURE_ENDPOINT = "open_closure_endpoint"
+    PAIR_CLOSURE_ENDPOINT = "pair_closure_endpoint"
+
+
+@dataclass(frozen=True, slots=True)
+class WriterTransitionEvidence:
+    atom: AtomId | None = None
+    bond: BondId | None = None
+    parent: AtomId | None = None
+    child: AtomId | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class WriterTransition:
+    emitted_text: str
+    successor: WriterState
+    kind: WriterTransitionKind
+    events: tuple[WriterEvent, ...]
+    evidence: WriterTransitionEvidence
+    semantic_execution_capabilities: frozenset[
+        _WriterExecutionCapabilityKind
+    ] = frozenset()
+    residual_work_evidence: tuple[
+        WriterResidualPropagationWorkEvidence,
+        ...
+    ] = ()
+    finite_relation_work_evidence: tuple[
+        WriterFiniteRelationWorkEvidence,
+        ...
+    ] = ()
+    stereo_lifecycle_evidence: tuple[object, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not self.emitted_text:
+            raise ValueError("writer transitions must emit nonempty text")
+        if not self.events:
+            raise ValueError("writer transitions must carry semantic events")
+
+
+class _WriterStereoPolicyBlockedTransition(Exception):
+    def __init__(
+        self,
+        blockers: tuple[WriterStereoPolicyBlocker, ...],
+    ) -> None:
+        super().__init__("writer stereo policy blocked transition")
+        self.blockers = blockers
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterTerminalizationOutcome:
+    state: WriterState | None
+    execution_capabilities: frozenset[
+        _WriterExecutionCapabilityKind
+    ] = frozenset()
+    residual_work_evidence: tuple[
+        WriterResidualPropagationWorkEvidence,
+        ...
+    ] = ()
+    stereo_lifecycle_evidence: tuple[object, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class WriterTransitionExpansionContext:
+    state_key: WriterStateKey
+    graph: WriterGraphObligationContext
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterStateExpansionOutcome:
+    context: WriterTransitionExpansionContext
+    terminal_outcome: _WriterTerminalizationOutcome
+    schedule_outcome: "_WriterTopLevelScheduleOutcome"
+    graph_obligation_work_evidence: tuple[
+        WriterGraphObligationWorkEvidence,
+        ...
+    ] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterChildObligation:
+    bond: BondId
+    child: AtomId
+    boundary_atom: AtomId | None = None
+    owner_kind: WriterBoundaryOwnerKind | None = None
+    attachment_id: int | None = None
+    attachment_action_kind: WriterResidualAttachmentActionKind | None = None
+    pending_entry: bool = False
+
+
+class _WriterChildObligationBlockerKind(Enum):
+    CLOSURE_CANDIDATE = "closure_candidate"
+    MULTI_INCIDENCE_RESIDUAL_ATTACHMENT = "multi_incidence_residual_attachment"
+
+
+class _WriterClosureOpenObligationSourceKind(Enum):
+    RESIDUAL_ATTACHMENT = "residual_attachment"
+    LIVE_BRANCH_RETURN_CLOSURE_CANDIDATE = (
+        "live_branch_return_closure_candidate"
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterChildObligationBlocker:
+    kind: _WriterChildObligationBlockerKind
+    bond: BondId | None = None
+    atom: AtomId | None = None
+    attachment_id: int | None = None
+    attachment_action_kind: WriterResidualAttachmentActionKind | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterClosureOpenObligation:
+    bond: BondId
+    first_atom: AtomId
+    second_atom: AtomId
+    attachment_id: int | None
+    attachment_action_kind: WriterResidualAttachmentActionKind | None
+    owner_kind: WriterBoundaryOwnerKind | None
+    source_attachment: WriterResidualAttachment | None = None
+    source_kind: _WriterClosureOpenObligationSourceKind = (
+        _WriterClosureOpenObligationSourceKind.RESIDUAL_ATTACHMENT
+    )
+
+    def __post_init__(self) -> None:
+        if (
+            self.source_kind
+            is _WriterClosureOpenObligationSourceKind.RESIDUAL_ATTACHMENT
+        ):
+            valid = (
+                self.attachment_id is not None
+                and self.attachment_action_kind is not None
+                and self.owner_kind is not None
+            )
+        elif (
+            self.source_kind
+            is (
+                _WriterClosureOpenObligationSourceKind
+                .LIVE_BRANCH_RETURN_CLOSURE_CANDIDATE
+            )
+        ):
+            valid = (
+                self.attachment_id is None
+                and self.attachment_action_kind is None
+                and self.owner_kind is None
+                and self.source_attachment is None
+            )
+        else:
+            valid = False
+
+        if not valid:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                f"invalid closure-open obligation source: {self.source_kind!r}",
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterClosurePairObligation:
+    endpoint: WriterOpenClosureEndpoint
+    closure: WriterClosedClosure
+    relation_evidence: tuple[
+        WriterFiniteRelationWorkEvidence,
+        ...
+    ] = ()
+
+
+class _WriterScheduledActionKind(Enum):
+    CONSUME_PENDING_ENTRY = "consume_pending_entry"
+    EMIT_ROOT_ATOM = "emit_root_atom"
+    FINISH_ACTIVE = "finish_active"
+    ENTER_INLINE_CHILD = "enter_inline_child"
+    OPEN_BRANCH = "open_branch"
+    OPEN_CLOSURE_ENDPOINT = "open_closure_endpoint"
+    PAIR_CLOSURE_ENDPOINT = "pair_closure_endpoint"
+
+
+class _WriterGraphPolicyActionFamily(Enum):
+    PENDING_ENTRY = "pending_entry"
+    ROOT_ATOM = "root_atom"
+    FINISH_ACTIVE = "finish_active"
+    TREE_ENTRY = "tree_entry"
+    ACYCLIC_TREE_ENTRY = "acyclic_tree_entry"
+    CYCLIC_TREE_ENTRY = "cyclic_tree_entry"
+    CLOSURE_OPEN = "closure_open"
+    CLOSURE_PAIR = "closure_pair"
+
+
+class _WriterClosureEndpointSelectionKind(Enum):
+    NONE = "none"
+    CLOSURE_PAIR = "closure_pair"
+    CLOSURE_OPEN = "closure_open"
+    PAIR_AND_OPEN = "pair_and_open"
+
+
+class _WriterActiveChildSelectionKind(Enum):
+    NONE = "none"
+    FINISH_ACTIVE = "finish_active"
+    TREE_ENTRY = "tree_entry"
+    ACYCLIC_TREE_ENTRY = "acyclic_tree_entry"
+    CYCLIC_TREE_ENTRY = "cyclic_tree_entry"
+    MIXED = "mixed"
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterResidualAttachmentPolicyKey:
+    active_atom: AtomId
+    attachment_id: int
+
+
+class _WriterResidualAttachmentOwnerScopeKind(Enum):
+    NONE = "none"
+    ACTIVE_ATOM = "active_atom"
+    BRANCH_RETURN = "branch_return"
+    PENDING_PARENT = "pending_parent"
+    OPEN_RING_ENDPOINT = "open_ring_endpoint"
+    UNOWNED = "unowned"
+    MISSING = "missing"
+    MIXED = "mixed"
+
+
+class _WriterActiveEmittedScheduleDecisionKind(Enum):
+    CLOSURE_ENDPOINT = "closure_endpoint"
+    ACTIVE_CHILD = "active_child"
+
+
+class _WriterActiveEmittedScheduleOutcomeKind(Enum):
+    SCHEDULED = "scheduled"
+    BLOCKED = "blocked"
+
+
+class _WriterActiveEmittedGraphPolicyDecisionKind(Enum):
+    CLOSURE_ENDPOINT = "closure_endpoint"
+    BLOCKED_CLOSURE_ENDPOINT_POLICY = "blocked_closure_endpoint_policy"
+    ACTIVE_CHILD = "active_child"
+    ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN = (
+        "active_child_after_dead_closure_open"
+    )
+    BLOCKED_CHILD = "blocked_child"
+    UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE = (
+        "unsupported_owner_scope_residual_attachment_choice"
+    )
+    UNRESOLVED_RESIDUAL_ATTACHMENT_CHOICE = (
+        "unresolved_residual_attachment_choice"
+    )
+    BLOCKED_RESIDUAL_ATTACHMENT_ACTION = (
+        "blocked_residual_attachment_action"
+    )
+
+
+class _WriterActiveEmittedGraphPolicyBlockerKind(Enum):
+    CHILD_OBLIGATION = "child_obligation"
+    EMPTY_CLOSURE_BOND_TEXT_RELATION = (
+        "empty_closure_bond_text_relation"
+    )
+    UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE = (
+        "unsupported_owner_scope_residual_attachment_choice"
+    )
+    MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE = (
+        "missing_closure_open_support_evidence"
+    )
+    BLOCKED_RESIDUAL_ATTACHMENT_ACTION = (
+        "blocked_residual_attachment_action"
+    )
+
+
+class _WriterTopLevelScheduleDecisionKind(Enum):
+    TOP_LEVEL_ACTIONS = "top_level_actions"
+    ACTIVE_EMITTED = "active_emitted"
+
+
+class _WriterTopLevelScheduleOutcomeKind(Enum):
+    SCHEDULED = "scheduled"
+    BLOCKED = "blocked"
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterScheduledAction:
+    kind: _WriterScheduledActionKind
+    parent: AtomId
+    pending_entry: PendingWriterEntry | None = None
+    child_obligation: _WriterChildObligation | None = None
+    closure_open_obligation: _WriterClosureOpenObligation | None = None
+    closure_open_label: WriterClosureLabel | None = None
+    closure_pair_obligation: _WriterClosurePairObligation | None = None
+
+    def __post_init__(self) -> None:
+        has_pending = self.pending_entry is not None
+        has_child = self.child_obligation is not None
+        has_open_obligation = self.closure_open_obligation is not None
+        has_open_label = self.closure_open_label is not None
+        has_pair = self.closure_pair_obligation is not None
+
+        if self.kind in (
+            _WriterScheduledActionKind.EMIT_ROOT_ATOM,
+            _WriterScheduledActionKind.FINISH_ACTIVE,
+        ):
+            valid = (
+                not has_pending
+                and not has_child
+                and not has_open_obligation
+                and not has_open_label
+                and not has_pair
+            )
+        elif self.kind in (
+            _WriterScheduledActionKind.ENTER_INLINE_CHILD,
+            _WriterScheduledActionKind.OPEN_BRANCH,
+        ):
+            valid = (
+                not has_pending
+                and has_child
+                and not has_open_obligation
+                and not has_open_label
+                and not has_pair
+            )
+        elif self.kind is _WriterScheduledActionKind.OPEN_CLOSURE_ENDPOINT:
+            valid = (
+                not has_pending
+                and not has_child
+                and has_open_obligation
+                and has_open_label
+                and not has_pair
+            )
+        elif self.kind is _WriterScheduledActionKind.PAIR_CLOSURE_ENDPOINT:
+            valid = (
+                not has_pending
+                and not has_child
+                and not has_open_obligation
+                and not has_open_label
+                and has_pair
+            )
+        elif self.kind is _WriterScheduledActionKind.CONSUME_PENDING_ENTRY:
+            valid = (
+                has_pending
+                and not has_child
+                and not has_open_obligation
+                and not has_open_label
+                and not has_pair
+            )
+        else:
+            valid = False
+
+        if not valid:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                f"invalid scheduled action payload: {self.kind!r}",
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterScheduledGraphActionSurface:
+    kind: _WriterScheduledActionKind
+    active_atom: AtomId
+    bond: BondId | None = None
+    partner_atom: AtomId | None = None
+    boundary_atom: AtomId | None = None
+    attachment_id: int | None = None
+    attachment_action_kind: WriterResidualAttachmentActionKind | None = None
+    owner_kind: WriterBoundaryOwnerKind | None = None
+    closure_label: WriterClosureLabel | None = None
+    closure_open_source_kind: _WriterClosureOpenObligationSourceKind | None = None
+    pending_entry: bool = False
+
+    @property
+    def policy_family(self) -> _WriterGraphPolicyActionFamily:
+        return _graph_policy_action_family_from_surface(self)
+
+    @property
+    def residual_attachment_policy_key(
+        self,
+    ) -> _WriterResidualAttachmentPolicyKey | None:
+        return _residual_attachment_policy_key_from_surface(self)
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterResidualAttachmentPolicyGroup:
+    key: _WriterResidualAttachmentPolicyKey
+    surfaces: tuple[_WriterScheduledGraphActionSurface, ...]
+
+    def surfaces_for_policy_family(
+        self,
+        family: _WriterGraphPolicyActionFamily,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            surface
+            for surface in self.surfaces
+            if surface.policy_family is family
+        )
+
+    def owner_kinds_for_policy_family(
+        self,
+        family: _WriterGraphPolicyActionFamily,
+    ) -> tuple[WriterBoundaryOwnerKind | None, ...]:
+        return tuple(
+            surface.owner_kind
+            for surface in self.surfaces_for_policy_family(family)
+        )
+
+    @property
+    def generic_tree_entry_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return self.surfaces_for_policy_family(
+            _WriterGraphPolicyActionFamily.TREE_ENTRY
+        )
+
+    @property
+    def acyclic_tree_entry_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return self.surfaces_for_policy_family(
+            _WriterGraphPolicyActionFamily.ACYCLIC_TREE_ENTRY
+        )
+
+    @property
+    def cyclic_tree_entry_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return self.surfaces_for_policy_family(
+            _WriterGraphPolicyActionFamily.CYCLIC_TREE_ENTRY
+        )
+
+    @property
+    def closure_open_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return self.surfaces_for_policy_family(
+            _WriterGraphPolicyActionFamily.CLOSURE_OPEN
+        )
+
+    @property
+    def closure_open_owner_kinds(
+        self,
+    ) -> tuple[WriterBoundaryOwnerKind | None, ...]:
+        return self.owner_kinds_for_policy_family(
+            _WriterGraphPolicyActionFamily.CLOSURE_OPEN
+        )
+
+    @property
+    def cyclic_tree_entry_owner_kinds(
+        self,
+    ) -> tuple[WriterBoundaryOwnerKind | None, ...]:
+        return self.owner_kinds_for_policy_family(
+            _WriterGraphPolicyActionFamily.CYCLIC_TREE_ENTRY
+        )
+
+    @property
+    def closure_open_vs_cyclic_tree_entry_owner_kinds(
+        self,
+    ) -> tuple[WriterBoundaryOwnerKind | None, ...]:
+        return (
+            *self.closure_open_owner_kinds,
+            *self.cyclic_tree_entry_owner_kinds,
+        )
+
+    @property
+    def tree_entry_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return (
+            *self.generic_tree_entry_surfaces,
+            *self.acyclic_tree_entry_surfaces,
+            *self.cyclic_tree_entry_surfaces,
+        )
+
+    @property
+    def has_closure_open_vs_cyclic_tree_entry_choice(self) -> bool:
+        return bool(
+            self.closure_open_surfaces
+            and self.cyclic_tree_entry_surfaces
+        )
+
+    @property
+    def closure_open_vs_cyclic_tree_entry_owner_scope_kind(
+        self,
+    ) -> _WriterResidualAttachmentOwnerScopeKind:
+        if not self.has_closure_open_vs_cyclic_tree_entry_choice:
+            return _WriterResidualAttachmentOwnerScopeKind.NONE
+
+        return _residual_attachment_owner_scope_kind_from_owner_kinds(
+            self.closure_open_vs_cyclic_tree_entry_owner_kinds
+        )
+
+    @property
+    def has_active_atom_owner_scope_closure_open_vs_cyclic_tree_entry_choice(
+        self,
+    ) -> bool:
+        return (
+            self.closure_open_vs_cyclic_tree_entry_owner_scope_kind
+            is _WriterResidualAttachmentOwnerScopeKind.ACTIVE_ATOM
+        )
+
+    @property
+    def has_branch_return_owner_scope_closure_open_vs_cyclic_tree_entry_choice(
+        self,
+    ) -> bool:
+        return (
+            self.closure_open_vs_cyclic_tree_entry_owner_scope_kind
+            is _WriterResidualAttachmentOwnerScopeKind.BRANCH_RETURN
+        )
+
+    @property
+    def has_pending_parent_owner_scope_closure_open_vs_cyclic_tree_entry_choice(
+        self,
+    ) -> bool:
+        return (
+            self.closure_open_vs_cyclic_tree_entry_owner_scope_kind
+            is _WriterResidualAttachmentOwnerScopeKind.PENDING_PARENT
+        )
+
+    @property
+    def has_open_ring_endpoint_owner_scope_closure_open_vs_cyclic_tree_entry_choice(
+        self,
+    ) -> bool:
+        return (
+            self.closure_open_vs_cyclic_tree_entry_owner_scope_kind
+            is _WriterResidualAttachmentOwnerScopeKind.OPEN_RING_ENDPOINT
+        )
+
+    @property
+    def has_unowned_owner_scope_closure_open_vs_cyclic_tree_entry_choice(
+        self,
+    ) -> bool:
+        return (
+            self.closure_open_vs_cyclic_tree_entry_owner_scope_kind
+            is _WriterResidualAttachmentOwnerScopeKind.UNOWNED
+        )
+
+    @property
+    def has_missing_owner_scope_closure_open_vs_cyclic_tree_entry_choice(
+        self,
+    ) -> bool:
+        return (
+            self.closure_open_vs_cyclic_tree_entry_owner_scope_kind
+            is _WriterResidualAttachmentOwnerScopeKind.MISSING
+        )
+
+    @property
+    def has_mixed_owner_scope_closure_open_vs_cyclic_tree_entry_choice(
+        self,
+    ) -> bool:
+        return (
+            self.closure_open_vs_cyclic_tree_entry_owner_scope_kind
+            is _WriterResidualAttachmentOwnerScopeKind.MIXED
+        )
+
+    @property
+    def has_active_atom_owned_closure_open_vs_cyclic_tree_entry_choice(
+        self,
+    ) -> bool:
+        return (
+            self.has_closure_open_vs_cyclic_tree_entry_choice
+            and (
+                self
+                .has_active_atom_owner_scope_closure_open_vs_cyclic_tree_entry_choice
+            )
+        )
+
+    @property
+    def has_unsupported_owner_scope_closure_open_vs_cyclic_tree_entry_choice(
+        self,
+    ) -> bool:
+        return (
+            self.has_closure_open_vs_cyclic_tree_entry_choice
+            and (
+                self.closure_open_vs_cyclic_tree_entry_owner_scope_kind
+                not in _SUPPORTED_DEAD_CLOSURE_OWNER_SCOPES
+            )
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterScheduledActionEmission:
+    action: _WriterScheduledAction
+    transitions: tuple[WriterTransition, ...]
+    stereo_policy_blockers: tuple[WriterStereoPolicyBlocker, ...] = ()
+
+    @property
+    def graph_action_surface(self) -> _WriterScheduledGraphActionSurface:
+        return _scheduled_graph_action_surface(self.action)
+
+    @property
+    def survived(self) -> bool:
+        return bool(self.transitions)
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterResidualAttachmentPolicyEmissionGroup:
+    key: _WriterResidualAttachmentPolicyKey
+    emissions: tuple[_WriterScheduledActionEmission, ...]
+
+    @property
+    def surfaces(self) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            emission.graph_action_surface
+            for emission in self.emissions
+        )
+
+    @property
+    def surviving_emissions(
+        self,
+    ) -> tuple[_WriterScheduledActionEmission, ...]:
+        return tuple(
+            emission
+            for emission in self.emissions
+            if emission.survived
+        )
+
+    @property
+    def surviving_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            emission.graph_action_surface
+            for emission in self.surviving_emissions
+        )
+
+    def emissions_for_policy_family(
+        self,
+        family: _WriterGraphPolicyActionFamily,
+    ) -> tuple[_WriterScheduledActionEmission, ...]:
+        return tuple(
+            emission
+            for emission in self.emissions
+            if emission.graph_action_surface.policy_family is family
+        )
+
+    def surviving_emissions_for_policy_family(
+        self,
+        family: _WriterGraphPolicyActionFamily,
+    ) -> tuple[_WriterScheduledActionEmission, ...]:
+        return tuple(
+            emission
+            for emission in self.surviving_emissions
+            if emission.graph_action_surface.policy_family is family
+        )
+
+    @property
+    def closure_open_emissions(
+        self,
+    ) -> tuple[_WriterScheduledActionEmission, ...]:
+        return self.emissions_for_policy_family(
+            _WriterGraphPolicyActionFamily.CLOSURE_OPEN
+        )
+
+    @property
+    def cyclic_tree_entry_emissions(
+        self,
+    ) -> tuple[_WriterScheduledActionEmission, ...]:
+        return self.emissions_for_policy_family(
+            _WriterGraphPolicyActionFamily.CYCLIC_TREE_ENTRY
+        )
+
+    @property
+    def surviving_closure_open_emissions(
+        self,
+    ) -> tuple[_WriterScheduledActionEmission, ...]:
+        return self.surviving_emissions_for_policy_family(
+            _WriterGraphPolicyActionFamily.CLOSURE_OPEN
+        )
+
+    @property
+    def surviving_cyclic_tree_entry_emissions(
+        self,
+    ) -> tuple[_WriterScheduledActionEmission, ...]:
+        return self.surviving_emissions_for_policy_family(
+            _WriterGraphPolicyActionFamily.CYCLIC_TREE_ENTRY
+        )
+
+    @property
+    def closure_open_was_considered(self) -> bool:
+        return bool(self.closure_open_emissions)
+
+    @property
+    def closure_open_support_survived(self) -> bool:
+        return bool(self.surviving_closure_open_emissions)
+
+    @property
+    def closure_open_support_dead(self) -> bool:
+        return (
+            self.closure_open_was_considered
+            and not self.closure_open_support_survived
+        )
+
+    @property
+    def has_closure_open_vs_cyclic_tree_entry_choice(self) -> bool:
+        return bool(
+            self.closure_open_emissions
+            and self.cyclic_tree_entry_emissions
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterNextTokenFrontierSupport:
+    emission: _WriterScheduledActionEmission
+    transition: WriterTransition
+
+    @property
+    def emitted_text(self) -> str:
+        return self.transition.emitted_text
+
+    @property
+    def graph_action_surface(self) -> _WriterScheduledGraphActionSurface:
+        return self.emission.graph_action_surface
+
+    @property
+    def policy_family(self) -> _WriterGraphPolicyActionFamily:
+        return self.graph_action_surface.policy_family
+
+    @property
+    def execution_capabilities(
+        self,
+    ) -> frozenset[_WriterExecutionCapabilityKind]:
+        capabilities: set[_WriterExecutionCapabilityKind] = set(
+            self.transition.semantic_execution_capabilities
+        )
+
+        if self.policy_family in (
+            _WriterGraphPolicyActionFamily.TREE_ENTRY,
+            _WriterGraphPolicyActionFamily.ACYCLIC_TREE_ENTRY,
+        ):
+            capabilities.add(
+                _WriterExecutionCapabilityKind.TREE_CHILD_ENTRY,
+            )
+        elif self.policy_family is _WriterGraphPolicyActionFamily.CYCLIC_TREE_ENTRY:
+            capabilities.add(
+                _WriterExecutionCapabilityKind.CYCLIC_TREE_ENTRY,
+            )
+        elif self.policy_family is _WriterGraphPolicyActionFamily.CLOSURE_OPEN:
+            capabilities.add(
+                _WriterExecutionCapabilityKind.CLOSURE_ENDPOINT_OPEN,
+            )
+            if (
+                self.graph_action_surface.closure_open_source_kind
+                is (
+                    _WriterClosureOpenObligationSourceKind
+                    .LIVE_BRANCH_RETURN_CLOSURE_CANDIDATE
+                )
+            ):
+                capabilities.add(
+                    (
+                        _WriterExecutionCapabilityKind
+                        .LIVE_BRANCH_RETURN_CLOSURE_CANDIDATE_OPEN
+                    )
+                )
+        elif self.policy_family is _WriterGraphPolicyActionFamily.CLOSURE_PAIR:
+            capabilities.add(
+                _WriterExecutionCapabilityKind.CLOSURE_ENDPOINT_PAIR,
+            )
+
+        for event in self.transition.events:
+            if isinstance(event, WriterBondEmitted):
+                capabilities.add(
+                    _WriterExecutionCapabilityKind.TREE_BOND_SLOT,
+                )
+                if event.text:
+                    capabilities.add(
+                        _WriterExecutionCapabilityKind
+                        .VISIBLE_TREE_BOND_TEXT,
+                    )
+            elif isinstance(event, WriterRingEndpointEmitted):
+                capabilities.add(
+                    _WriterExecutionCapabilityKind.CLOSURE_ENDPOINT_OPEN,
+                )
+                if len(self.transition.successor.ring_state.open_endpoints) > 1:
+                    capabilities.add(
+                        (
+                            _WriterExecutionCapabilityKind
+                            .CONCURRENT_CLOSURE_ENDPOINT_OPEN
+                        ),
+                    )
+                if event.bond_text:
+                    capabilities.add(
+                        _WriterExecutionCapabilityKind
+                        .VISIBLE_CLOSURE_BOND_TEXT,
+                    )
+            elif isinstance(event, WriterRingEndpointPaired):
+                capabilities.add(
+                    _WriterExecutionCapabilityKind.CLOSURE_ENDPOINT_PAIR,
+                )
+                if event.bond_text:
+                    capabilities.add(
+                        _WriterExecutionCapabilityKind
+                        .VISIBLE_CLOSURE_BOND_TEXT,
+                    )
+
+        return frozenset(capabilities)
+
+    @property
+    def residual_work_evidence(
+        self,
+    ) -> tuple[WriterResidualPropagationWorkEvidence, ...]:
+        return self.transition.residual_work_evidence
+
+    @property
+    def finite_relation_work_evidence(
+        self,
+    ) -> tuple[WriterFiniteRelationWorkEvidence, ...]:
+        return self.transition.finite_relation_work_evidence
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterNextTokenFrontierEntry:
+    emitted_text: str
+    supports: tuple[_WriterNextTokenFrontierSupport, ...]
+
+    @property
+    def transitions(self) -> tuple[WriterTransition, ...]:
+        return tuple(
+            support.transition
+            for support in self.supports
+        )
+
+    @property
+    def graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            support.graph_action_surface
+            for support in self.supports
+        )
+
+    @property
+    def policy_families(self) -> tuple[_WriterGraphPolicyActionFamily, ...]:
+        return tuple(
+            support.policy_family
+            for support in self.supports
+        )
+
+    @property
+    def execution_capabilities(
+        self,
+    ) -> frozenset[_WriterExecutionCapabilityKind]:
+        return frozenset(
+            capability
+            for support in self.supports
+            for capability in support.execution_capabilities
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterScheduledActionEmissionBatch:
+    actions: tuple[_WriterScheduledAction, ...]
+    emissions: tuple[_WriterScheduledActionEmission, ...]
+    surviving_emissions: tuple[_WriterScheduledActionEmission, ...]
+
+    @property
+    def graph_action_surfaces(self) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            emission.graph_action_surface
+            for emission in self.emissions
+        )
+
+    @property
+    def surviving_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            emission.graph_action_surface
+            for emission in self.surviving_emissions
+        )
+
+    @property
+    def surviving_transitions(self) -> tuple[WriterTransition, ...]:
+        return _transitions_from_scheduled_action_emissions(
+            self.surviving_emissions
+        )
+
+    @property
+    def surviving_next_token_frontier(
+        self,
+    ) -> tuple[_WriterNextTokenFrontierEntry, ...]:
+        return _next_token_frontier_from_scheduled_action_emissions(
+            self.surviving_emissions
+        )
+
+    @property
+    def residual_attachment_policy_emission_groups(
+        self,
+    ) -> tuple[_WriterResidualAttachmentPolicyEmissionGroup, ...]:
+        return (
+            _residual_attachment_policy_emission_groups_from_scheduled_action_emissions(
+                self.emissions
+            )
+        )
+
+    @property
+    def surviving_residual_attachment_policy_emission_groups(
+        self,
+    ) -> tuple[_WriterResidualAttachmentPolicyEmissionGroup, ...]:
+        return (
+            _residual_attachment_policy_emission_groups_from_scheduled_action_emissions(
+                self.surviving_emissions
+            )
+        )
+
+    @property
+    def stereo_policy_blockers(
+        self,
+    ) -> tuple[WriterStereoPolicyBlocker, ...]:
+        return tuple(
+            blocker
+            for emission in self.emissions
+            for blocker in emission.stereo_policy_blockers
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterActiveChildScheduleSurface:
+    active_atom: AtomId
+    blockers: tuple[_WriterChildObligationBlocker, ...]
+    child_obligations: tuple[_WriterChildObligation, ...]
+    scheduled_actions: tuple[_WriterScheduledAction, ...]
+
+    @property
+    def blocked(self) -> bool:
+        return bool(self.blockers)
+
+    @property
+    def graph_action_surfaces(self) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            _scheduled_graph_action_surface(action)
+            for action in self.scheduled_actions
+        )
+
+    @property
+    def considered_active_child_selection_kind(
+        self,
+    ) -> _WriterActiveChildSelectionKind:
+        return _active_child_selection_kind_from_graph_action_surfaces(
+            self.graph_action_surfaces
+        )
+
+    @property
+    def considered_finish_active_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            surface
+            for surface in self.graph_action_surfaces
+            if surface.policy_family is _WriterGraphPolicyActionFamily.FINISH_ACTIVE
+        )
+
+    @property
+    def considered_tree_entry_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            surface
+            for surface in self.graph_action_surfaces
+            if surface.policy_family
+            in (
+                _WriterGraphPolicyActionFamily.TREE_ENTRY,
+                _WriterGraphPolicyActionFamily.ACYCLIC_TREE_ENTRY,
+                _WriterGraphPolicyActionFamily.CYCLIC_TREE_ENTRY,
+            )
+        )
+
+    @property
+    def considered_cyclic_tree_entry_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            surface
+            for surface in self.graph_action_surfaces
+            if surface.policy_family is _WriterGraphPolicyActionFamily.CYCLIC_TREE_ENTRY
+        )
+
+    @property
+    def considered_cyclic_tree_entry_available(self) -> bool:
+        return bool(self.considered_cyclic_tree_entry_graph_action_surfaces)
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterClosureEndpointScheduleSurface:
+    active_atom: AtomId
+    pair_actions: tuple[_WriterScheduledAction, ...]
+    open_actions: tuple[_WriterScheduledAction, ...]
+
+    def __post_init__(self) -> None:
+        for action in self.pair_actions:
+            if (
+                action.kind
+                is not _WriterScheduledActionKind.PAIR_CLOSURE_ENDPOINT
+                or action.parent != self.active_atom
+            ):
+                raise SouthStarError(
+                    SouthStarErrorKind.INTERNAL_INVARIANT,
+                    "invalid closure-pair schedule surface action",
+                )
+
+        for action in self.open_actions:
+            if (
+                action.kind
+                is not _WriterScheduledActionKind.OPEN_CLOSURE_ENDPOINT
+                or action.parent != self.active_atom
+            ):
+                raise SouthStarError(
+                    SouthStarErrorKind.INTERNAL_INVARIANT,
+                    "invalid closure-open schedule surface action",
+                )
+
+    @property
+    def scheduled_actions(self) -> tuple[_WriterScheduledAction, ...]:
+        return (
+            *self.pair_actions,
+            *self.open_actions,
+        )
+
+    @property
+    def pair_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            _scheduled_graph_action_surface(action)
+            for action in self.pair_actions
+        )
+
+    @property
+    def open_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            _scheduled_graph_action_surface(action)
+            for action in self.open_actions
+        )
+
+    @property
+    def graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return (
+            *self.pair_graph_action_surfaces,
+            *self.open_graph_action_surfaces,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterClosureEndpointScheduleDecision:
+    pair_batch: _WriterScheduledActionEmissionBatch
+    open_batch: _WriterScheduledActionEmissionBatch
+    surviving_emissions: tuple[_WriterScheduledActionEmission, ...]
+    schedule_surface: _WriterClosureEndpointScheduleSurface | None = None
+    graph_policy_blockers: tuple[
+        _WriterActiveEmittedGraphPolicyBlocker,
+        ...
+    ] = ()
+
+    @property
+    def considered_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        if self.schedule_surface is not None:
+            return self.schedule_surface.graph_action_surfaces
+
+        return (
+            *self.pair_batch.graph_action_surfaces,
+            *self.open_batch.graph_action_surfaces,
+        )
+
+    @property
+    def selected_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return _closure_endpoint_combined_batch(
+            self,
+        ).surviving_graph_action_surfaces
+
+    @property
+    def considered_closure_pair_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            surface
+            for surface in self.considered_graph_action_surfaces
+            if surface.policy_family is _WriterGraphPolicyActionFamily.CLOSURE_PAIR
+        )
+
+    @property
+    def considered_closure_open_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            surface
+            for surface in self.considered_graph_action_surfaces
+            if surface.policy_family is _WriterGraphPolicyActionFamily.CLOSURE_OPEN
+        )
+
+    @property
+    def considered_closure_open_available(self) -> bool:
+        return bool(self.considered_closure_open_graph_action_surfaces)
+
+    @property
+    def considered_closure_endpoint_selection_kind(
+        self,
+    ) -> _WriterClosureEndpointSelectionKind:
+        return _closure_endpoint_selection_kind_from_graph_action_surfaces(
+            self.considered_graph_action_surfaces
+        )
+
+    @property
+    def selected_closure_pair_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            surface
+            for surface in self.selected_graph_action_surfaces
+            if surface.policy_family is _WriterGraphPolicyActionFamily.CLOSURE_PAIR
+        )
+
+    @property
+    def selected_closure_open_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            surface
+            for surface in self.selected_graph_action_surfaces
+            if surface.policy_family is _WriterGraphPolicyActionFamily.CLOSURE_OPEN
+        )
+
+    @property
+    def selected_closure_open_survived(self) -> bool:
+        return bool(self.selected_closure_open_graph_action_surfaces)
+
+    @property
+    def selected_closure_endpoint_selection_kind(
+        self,
+    ) -> _WriterClosureEndpointSelectionKind:
+        return _closure_endpoint_selection_kind_from_graph_action_surfaces(
+            self.selected_graph_action_surfaces
+        )
+
+    @property
+    def considered_closure_endpoint_available(self) -> bool:
+        return (
+            self.considered_closure_endpoint_selection_kind
+            is not _WriterClosureEndpointSelectionKind.NONE
+        )
+
+    @property
+    def selected_closure_endpoint_survived(self) -> bool:
+        return (
+            self.selected_closure_endpoint_selection_kind
+            is not _WriterClosureEndpointSelectionKind.NONE
+        )
+
+    @property
+    def considered_residual_attachment_policy_emission_groups(
+        self,
+    ) -> tuple[_WriterResidualAttachmentPolicyEmissionGroup, ...]:
+        return _closure_endpoint_combined_batch(
+            self,
+        ).residual_attachment_policy_emission_groups
+
+    @property
+    def selected_residual_attachment_policy_emission_groups(
+        self,
+    ) -> tuple[_WriterResidualAttachmentPolicyEmissionGroup, ...]:
+        return _closure_endpoint_combined_batch(
+            self,
+        ).surviving_residual_attachment_policy_emission_groups
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterActiveEmittedGraphPolicyBlocker:
+    kind: _WriterActiveEmittedGraphPolicyBlockerKind
+    bond: BondId | None = None
+    child_blocker: _WriterChildObligationBlocker | None = None
+    residual_group: _WriterResidualAttachmentPolicyGroup | None = None
+    residual_attachment_action: WriterResidualAttachmentAction | None = None
+
+    def __post_init__(self) -> None:
+        has_bond = self.bond is not None
+        has_child = self.child_blocker is not None
+        has_group = self.residual_group is not None
+        has_action = self.residual_attachment_action is not None
+
+        if (
+            self.kind
+            is _WriterActiveEmittedGraphPolicyBlockerKind.CHILD_OBLIGATION
+        ):
+            valid = has_child and not has_bond and not has_group and not has_action
+        elif (
+            self.kind
+            is (
+                _WriterActiveEmittedGraphPolicyBlockerKind
+                .EMPTY_CLOSURE_BOND_TEXT_RELATION
+            )
+        ):
+            valid = has_bond and not has_child and not has_group and not has_action
+        elif self.kind in (
+            (
+                _WriterActiveEmittedGraphPolicyBlockerKind
+                .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+            ),
+            (
+                _WriterActiveEmittedGraphPolicyBlockerKind
+                .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
+            ),
+        ):
+            valid = has_group and not has_bond and not has_child and not has_action
+        elif (
+            self.kind
+            is (
+                _WriterActiveEmittedGraphPolicyBlockerKind
+                .BLOCKED_RESIDUAL_ATTACHMENT_ACTION
+            )
+        ):
+            valid = (
+                has_action
+                and not has_bond
+                and not has_child
+                and not has_group
+                and writer_residual_attachment_action_is_blocked(
+                    self.residual_attachment_action
+                )
+            )
+        else:
+            valid = False
+
+        if not valid:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                f"invalid active-emitted graph policy blocker: {self.kind!r}",
+            )
+
+    @property
+    def residual_attachment_policy_key(
+        self,
+    ) -> _WriterResidualAttachmentPolicyKey | None:
+        if self.residual_group is None:
+            return None
+
+        return self.residual_group.key
+
+    @property
+    def residual_attachment_owner_scope_kind(
+        self,
+    ) -> _WriterResidualAttachmentOwnerScopeKind | None:
+        if self.residual_group is None:
+            return None
+
+        return (
+            self.residual_group
+            .closure_open_vs_cyclic_tree_entry_owner_scope_kind
+        )
+
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterActiveEmittedGraphPolicyDecision:
+    kind: _WriterActiveEmittedGraphPolicyDecisionKind
+    active_atom: AtomId
+    closure_endpoint_decision: _WriterClosureEndpointScheduleDecision
+    child_schedule_surface: _WriterActiveChildScheduleSurface | None = None
+    direct_graph_policy_blockers: tuple[
+        _WriterActiveEmittedGraphPolicyBlocker,
+        ...
+    ] = ()
+
+    def __post_init__(self) -> None:
+        closure_survived = (
+            self.closure_endpoint_decision.selected_closure_endpoint_survived
+        )
+        child_present = self.child_schedule_surface is not None
+
+        if (
+            self.kind
+            is _WriterActiveEmittedGraphPolicyDecisionKind.CLOSURE_ENDPOINT
+        ):
+            valid = closure_survived and not child_present
+        elif (
+            self.kind
+            is (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .BLOCKED_CLOSURE_ENDPOINT_POLICY
+            )
+        ):
+            valid = (
+                not child_present
+                and bool(self.closure_endpoint_decision.graph_policy_blockers)
+            )
+        elif (
+            self.kind
+            is _WriterActiveEmittedGraphPolicyDecisionKind.ACTIVE_CHILD
+        ):
+            valid = (
+                not closure_survived
+                and child_present
+                and not self.direct_graph_policy_blockers
+                and not self.child_schedule_surface.blocked
+                and not self.considered_closure_open_vs_cyclic_tree_entry_groups
+            )
+        elif (
+            self.kind
+            is (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+            )
+        ):
+            valid = (
+                not closure_survived
+                and child_present
+                and not self.direct_graph_policy_blockers
+                and not self.child_schedule_surface.blocked
+                and bool(
+                    self.support_dead_closure_open_vs_cyclic_tree_entry_groups
+                )
+                and not (
+                    self.unsupported_owner_scope_closure_open_vs_cyclic_tree_entry_groups
+                )
+                and not self.missing_closure_open_support_evidence_groups
+            )
+        elif (
+            self.kind
+            is _WriterActiveEmittedGraphPolicyDecisionKind.BLOCKED_CHILD
+        ):
+            valid = (
+                not closure_survived
+                and child_present
+                and not self.direct_graph_policy_blockers
+                and self.child_schedule_surface.blocked
+            )
+        elif (
+            self.kind
+            is (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+            )
+        ):
+            valid = (
+                not closure_survived
+                and child_present
+                and not self.direct_graph_policy_blockers
+                and not self.child_schedule_surface.blocked
+                and bool(
+                    self.unsupported_owner_scope_closure_open_vs_cyclic_tree_entry_groups
+                )
+            )
+        elif (
+            self.kind
+            is (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .UNRESOLVED_RESIDUAL_ATTACHMENT_CHOICE
+            )
+        ):
+            valid = (
+                not closure_survived
+                and child_present
+                and not self.direct_graph_policy_blockers
+                and not self.child_schedule_surface.blocked
+                and not (
+                    self.unsupported_owner_scope_closure_open_vs_cyclic_tree_entry_groups
+                )
+                and bool(self.missing_closure_open_support_evidence_groups)
+            )
+        elif (
+            self.kind
+            is (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .BLOCKED_RESIDUAL_ATTACHMENT_ACTION
+            )
+        ):
+            valid = (
+                not closure_survived
+                and not child_present
+                and bool(self.direct_graph_policy_blockers)
+                and all(
+                    blocker.kind
+                    is (
+                        _WriterActiveEmittedGraphPolicyBlockerKind
+                        .BLOCKED_RESIDUAL_ATTACHMENT_ACTION
+                    )
+                    for blocker in self.direct_graph_policy_blockers
+                )
+            )
+        else:
+            valid = False
+
+        if not valid:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                f"invalid active-emitted graph policy decision: {self.kind!r}",
+            )
+
+    @property
+    def blocked(self) -> bool:
+        return self.kind in (
+            (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .BLOCKED_CLOSURE_ENDPOINT_POLICY
+            ),
+            _WriterActiveEmittedGraphPolicyDecisionKind.BLOCKED_CHILD,
+            (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .UNRESOLVED_RESIDUAL_ATTACHMENT_CHOICE
+            ),
+            (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+            ),
+            (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .BLOCKED_RESIDUAL_ATTACHMENT_ACTION
+            ),
+        )
+
+    @property
+    def blockers(self) -> tuple[_WriterChildObligationBlocker, ...]:
+        if self.child_schedule_surface is None:
+            return ()
+
+        return self.child_schedule_surface.blockers
+
+    @property
+    def emits_child_actions(self) -> bool:
+        return self.kind in (
+            _WriterActiveEmittedGraphPolicyDecisionKind.ACTIVE_CHILD,
+            (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+            ),
+        )
+
+    @property
+    def child_scheduled_actions(self) -> tuple[_WriterScheduledAction, ...]:
+        if not self.emits_child_actions:
+            return ()
+
+        if self.child_schedule_surface is None:
+            return ()
+
+        return self.child_schedule_surface.scheduled_actions
+
+    @property
+    def closure_considered_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return self.closure_endpoint_decision.considered_graph_action_surfaces
+
+    @property
+    def considered_closure_endpoint_selection_kind(
+        self,
+    ) -> _WriterClosureEndpointSelectionKind:
+        return (
+            self.closure_endpoint_decision
+            .considered_closure_endpoint_selection_kind
+        )
+
+    @property
+    def closure_endpoint_selection_kind(
+        self,
+    ) -> _WriterClosureEndpointSelectionKind:
+        if (
+            self.kind
+            is _WriterActiveEmittedGraphPolicyDecisionKind.CLOSURE_ENDPOINT
+        ):
+            return (
+                self.closure_endpoint_decision
+                .selected_closure_endpoint_selection_kind
+            )
+
+        return _WriterClosureEndpointSelectionKind.NONE
+
+    @property
+    def selected_closure_open_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        if (
+            self.kind
+            is not _WriterActiveEmittedGraphPolicyDecisionKind.CLOSURE_ENDPOINT
+        ):
+            return ()
+
+        return (
+            self.closure_endpoint_decision
+            .selected_closure_open_graph_action_surfaces
+        )
+
+    @property
+    def selected_closure_pair_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        if (
+            self.kind
+            is not _WriterActiveEmittedGraphPolicyDecisionKind.CLOSURE_ENDPOINT
+        ):
+            return ()
+
+        return (
+            self.closure_endpoint_decision
+            .selected_closure_pair_graph_action_surfaces
+        )
+
+    @property
+    def considered_active_child_selection_kind(
+        self,
+    ) -> _WriterActiveChildSelectionKind:
+        if self.child_schedule_surface is None:
+            return _WriterActiveChildSelectionKind.NONE
+
+        return (
+            self.child_schedule_surface
+            .considered_active_child_selection_kind
+        )
+
+    @property
+    def considered_cyclic_tree_entry_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        if self.child_schedule_surface is None:
+            return ()
+
+        return (
+            self.child_schedule_surface
+            .considered_cyclic_tree_entry_graph_action_surfaces
+        )
+
+    @property
+    def considered_cyclic_tree_entry_available(self) -> bool:
+        return bool(self.considered_cyclic_tree_entry_graph_action_surfaces)
+
+    @property
+    def child_considered_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        if self.child_schedule_surface is None:
+            return ()
+
+        return self.child_schedule_surface.graph_action_surfaces
+
+    @property
+    def considered_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return (
+            *self.closure_considered_graph_action_surfaces,
+            *self.child_considered_graph_action_surfaces,
+        )
+
+    @property
+    def chosen_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        if (
+            self.kind
+            is _WriterActiveEmittedGraphPolicyDecisionKind.CLOSURE_ENDPOINT
+        ):
+            return self.closure_endpoint_decision.selected_graph_action_surfaces
+
+        if self.emits_child_actions:
+            return self.child_considered_graph_action_surfaces
+
+        return ()
+
+    @property
+    def graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return self.chosen_graph_action_surfaces
+
+    def considered_graph_action_surfaces_for_policy_family(
+        self,
+        family: _WriterGraphPolicyActionFamily,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            surface
+            for surface in self.considered_graph_action_surfaces
+            if surface.policy_family is family
+        )
+
+    def chosen_graph_action_surfaces_for_policy_family(
+        self,
+        family: _WriterGraphPolicyActionFamily,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            surface
+            for surface in self.chosen_graph_action_surfaces
+            if surface.policy_family is family
+        )
+
+    @property
+    def considered_residual_attachment_policy_groups(
+        self,
+    ) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+        return _residual_attachment_policy_groups_from_graph_action_surfaces(
+            self.considered_graph_action_surfaces
+        )
+
+    @property
+    def chosen_residual_attachment_policy_groups(
+        self,
+    ) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+        return _residual_attachment_policy_groups_from_graph_action_surfaces(
+            self.chosen_graph_action_surfaces
+        )
+
+    @property
+    def considered_closure_open_vs_cyclic_tree_entry_groups(
+        self,
+    ) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+        if self.child_schedule_surface is None:
+            return ()
+
+        return _closure_open_vs_cyclic_tree_entry_policy_groups(
+            self.closure_endpoint_decision,
+            self.child_schedule_surface,
+        )
+
+    @property
+    def unsupported_owner_scope_closure_open_vs_cyclic_tree_entry_groups(
+        self,
+    ) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+        return (
+            _unsupported_closure_open_vs_cyclic_tree_entry_owner_scope_groups(
+                self.considered_closure_open_vs_cyclic_tree_entry_groups
+            )
+        )
+
+    @property
+    def support_dead_closure_open_vs_cyclic_tree_entry_groups(
+        self,
+    ) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+        return _support_dead_closure_open_vs_cyclic_tree_entry_groups(
+            self.closure_endpoint_decision,
+            self.considered_closure_open_vs_cyclic_tree_entry_groups,
+        )
+
+    @property
+    def missing_closure_open_support_evidence_groups(
+        self,
+    ) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+        return _missing_closure_open_support_evidence_groups(
+            self.closure_endpoint_decision,
+            self.considered_closure_open_vs_cyclic_tree_entry_groups,
+        )
+
+    @property
+    def unresolved_closure_open_vs_cyclic_tree_entry_groups(
+        self,
+    ) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+        return self.missing_closure_open_support_evidence_groups
+
+    @property
+    def unresolved_residual_attachment_policy_groups(
+        self,
+    ) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+        if (
+            self.kind
+            is not (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .UNRESOLVED_RESIDUAL_ATTACHMENT_CHOICE
+            )
+        ):
+            return ()
+
+        return self.missing_closure_open_support_evidence_groups
+
+    @property
+    def unsupported_owner_scope_residual_attachment_policy_groups(
+        self,
+    ) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+        if (
+            self.kind
+            is not (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+            )
+        ):
+            return ()
+
+        return (
+            self.unsupported_owner_scope_closure_open_vs_cyclic_tree_entry_groups
+        )
+
+    @property
+    def unsupported_owner_scope_kinds(
+        self,
+    ) -> tuple[_WriterResidualAttachmentOwnerScopeKind, ...]:
+        return tuple(
+            (
+                group
+                .closure_open_vs_cyclic_tree_entry_owner_scope_kind
+            )
+            for group in (
+                self.unsupported_owner_scope_residual_attachment_policy_groups
+            )
+        )
+
+    @property
+    def residual_cyclic_blocker_groups(
+        self,
+    ) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+        if (
+            self.kind
+            is (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+            )
+        ):
+            return (
+                self
+                .unsupported_owner_scope_residual_attachment_policy_groups
+            )
+
+        if (
+            self.kind
+            is (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .UNRESOLVED_RESIDUAL_ATTACHMENT_CHOICE
+            )
+        ):
+            return self.unresolved_residual_attachment_policy_groups
+
+        return ()
+
+    @property
+    def residual_cyclic_blocker_kind(
+        self,
+    ) -> _WriterActiveEmittedGraphPolicyBlockerKind | None:
+        if (
+            self.kind
+            is (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+            )
+        ):
+            return (
+                _WriterActiveEmittedGraphPolicyBlockerKind
+                .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+            )
+
+        if (
+            self.kind
+            is (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .UNRESOLVED_RESIDUAL_ATTACHMENT_CHOICE
+            )
+        ):
+            return (
+                _WriterActiveEmittedGraphPolicyBlockerKind
+                .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
+            )
+
+        return None
+
+    @property
+    def graph_policy_blockers(
+        self,
+    ) -> tuple[_WriterActiveEmittedGraphPolicyBlocker, ...]:
+        if (
+            self.kind
+            is (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .BLOCKED_CLOSURE_ENDPOINT_POLICY
+            )
+        ):
+            return self.closure_endpoint_decision.graph_policy_blockers
+
+        if (
+            self.kind
+            is (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .BLOCKED_RESIDUAL_ATTACHMENT_ACTION
+            )
+        ):
+            return self.direct_graph_policy_blockers
+
+        if (
+            self.kind
+            is _WriterActiveEmittedGraphPolicyDecisionKind.BLOCKED_CHILD
+        ):
+            return tuple(
+                _WriterActiveEmittedGraphPolicyBlocker(
+                    kind=(
+                        _WriterActiveEmittedGraphPolicyBlockerKind
+                        .CHILD_OBLIGATION
+                    ),
+                    child_blocker=blocker,
+                )
+                for blocker in self.blockers
+            )
+
+        blocker_kind = self.residual_cyclic_blocker_kind
+        if blocker_kind is not None:
+            return tuple(
+                _WriterActiveEmittedGraphPolicyBlocker(
+                    kind=blocker_kind,
+                    residual_group=group,
+                )
+                for group in self.residual_cyclic_blocker_groups
+            )
+
+        return ()
+
+    @property
+    def graph_policy_blocked(self) -> bool:
+        return bool(self.graph_policy_blockers)
+
+    @property
+    def resolved_residual_attachment_policy_groups(
+        self,
+    ) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+        if (
+            self.kind
+            is not (
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+            )
+        ):
+            return ()
+
+        return self.support_dead_closure_open_vs_cyclic_tree_entry_groups
+
+
+def _closure_endpoint_combined_batch(
+    decision: _WriterClosureEndpointScheduleDecision,
+) -> _WriterScheduledActionEmissionBatch:
+    return _WriterScheduledActionEmissionBatch(
+        actions=(
+            *decision.pair_batch.actions,
+            *decision.open_batch.actions,
+        ),
+        emissions=(
+            *decision.pair_batch.emissions,
+            *decision.open_batch.emissions,
+        ),
+        surviving_emissions=decision.surviving_emissions,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterActiveEmittedScheduleDecision:
+    kind: _WriterActiveEmittedScheduleDecisionKind
+    closure_endpoint_decision: _WriterClosureEndpointScheduleDecision
+    closure_batch: _WriterScheduledActionEmissionBatch
+    selected_batch: _WriterScheduledActionEmissionBatch
+    child_batch: _WriterScheduledActionEmissionBatch | None = None
+    child_schedule_surface: _WriterActiveChildScheduleSurface | None = None
+    graph_policy_decision: _WriterActiveEmittedGraphPolicyDecision | None = field(
+        default=None,
+        compare=False,
+    )
+
+    def __post_init__(self) -> None:
+        expected_closure_batch = _closure_endpoint_combined_batch(
+            self.closure_endpoint_decision
+        )
+
+        if self.kind is _WriterActiveEmittedScheduleDecisionKind.CLOSURE_ENDPOINT:
+            valid = (
+                self.closure_batch == expected_closure_batch
+                and self.selected_batch is self.closure_batch
+                and self.child_batch is None
+                and self.child_schedule_surface is None
+            )
+        elif self.kind is _WriterActiveEmittedScheduleDecisionKind.ACTIVE_CHILD:
+            valid = (
+                self.closure_batch == expected_closure_batch
+                and self.child_batch is not None
+                and self.child_schedule_surface is not None
+                and not self.child_schedule_surface.blocked
+                and self.child_batch.actions
+                == self.child_schedule_surface.scheduled_actions
+                and self.selected_batch is self.child_batch
+            )
+        else:
+            valid = False
+
+        if not valid:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                f"invalid active-emitted schedule decision payload: {self.kind!r}",
+            )
+
+        policy = self.graph_policy_decision
+        if policy is not None:
+            if policy.closure_endpoint_decision is not self.closure_endpoint_decision:
+                valid = False
+            elif self.kind is _WriterActiveEmittedScheduleDecisionKind.CLOSURE_ENDPOINT:
+                valid = (
+                    policy.kind
+                    is _WriterActiveEmittedGraphPolicyDecisionKind.CLOSURE_ENDPOINT
+                    and policy.child_schedule_surface is None
+                )
+            elif self.kind is _WriterActiveEmittedScheduleDecisionKind.ACTIVE_CHILD:
+                valid = (
+                    policy.emits_child_actions
+                    and policy.child_schedule_surface is self.child_schedule_surface
+                )
+            else:
+                valid = False
+
+            if not valid:
+                raise SouthStarError(
+                    SouthStarErrorKind.INTERNAL_INVARIANT,
+                    (
+                        "invalid active-emitted schedule graph policy payload: "
+                        f"{policy.kind!r}"
+                    ),
+                )
+
+    @property
+    def considered_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        if self.graph_policy_decision is not None:
+            return self.graph_policy_decision.considered_graph_action_surfaces
+
+        if self.kind is _WriterActiveEmittedScheduleDecisionKind.CLOSURE_ENDPOINT:
+            return self.closure_endpoint_decision.considered_graph_action_surfaces
+
+        if self.child_schedule_surface is None:
+            return ()
+
+        return self.child_schedule_surface.graph_action_surfaces
+
+    @property
+    def policy_chosen_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        if self.graph_policy_decision is not None:
+            return self.graph_policy_decision.chosen_graph_action_surfaces
+
+        if self.kind is _WriterActiveEmittedScheduleDecisionKind.CLOSURE_ENDPOINT:
+            return self.closure_endpoint_decision.selected_graph_action_surfaces
+
+        if self.child_schedule_surface is None:
+            return ()
+
+        return self.child_schedule_surface.graph_action_surfaces
+
+    @property
+    def considered_active_child_selection_kind(
+        self,
+    ) -> _WriterActiveChildSelectionKind:
+        if self.graph_policy_decision is not None:
+            return (
+                self.graph_policy_decision
+                .considered_active_child_selection_kind
+            )
+
+        if self.child_schedule_surface is None:
+            return _WriterActiveChildSelectionKind.NONE
+
+        return (
+            self.child_schedule_surface
+            .considered_active_child_selection_kind
+        )
+
+    @property
+    def considered_cyclic_tree_entry_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        if self.graph_policy_decision is not None:
+            return (
+                self.graph_policy_decision
+                .considered_cyclic_tree_entry_graph_action_surfaces
+            )
+
+        if self.child_schedule_surface is None:
+            return ()
+
+        return (
+            self.child_schedule_surface
+            .considered_cyclic_tree_entry_graph_action_surfaces
+        )
+
+    @property
+    def selected_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return self.selected_batch.surviving_graph_action_surfaces
+
+    @property
+    def selected_active_child_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        if self.kind is not _WriterActiveEmittedScheduleDecisionKind.ACTIVE_CHILD:
+            return ()
+
+        return self.selected_graph_action_surfaces
+
+    @property
+    def selected_active_child_selection_kind(
+        self,
+    ) -> _WriterActiveChildSelectionKind:
+        return _active_child_selection_kind_from_graph_action_surfaces(
+            self.selected_active_child_graph_action_surfaces
+        )
+
+    @property
+    def selected_cyclic_tree_entry_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            surface
+            for surface in self.selected_active_child_graph_action_surfaces
+            if surface.policy_family is _WriterGraphPolicyActionFamily.CYCLIC_TREE_ENTRY
+        )
+
+    @property
+    def selected_transitions(self) -> tuple[WriterTransition, ...]:
+        return self.selected_batch.surviving_transitions
+
+    @property
+    def selected_next_token_frontier(
+        self,
+    ) -> tuple[_WriterNextTokenFrontierEntry, ...]:
+        return self.selected_batch.surviving_next_token_frontier
+
+    @property
+    def selected_residual_attachment_policy_emission_groups(
+        self,
+    ) -> tuple[_WriterResidualAttachmentPolicyEmissionGroup, ...]:
+        return self.selected_batch.surviving_residual_attachment_policy_emission_groups
+
+    def considered_graph_action_surfaces_for_policy_family(
+        self,
+        family: _WriterGraphPolicyActionFamily,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            surface
+            for surface in self.considered_graph_action_surfaces
+            if surface.policy_family is family
+        )
+
+    def policy_chosen_graph_action_surfaces_for_policy_family(
+        self,
+        family: _WriterGraphPolicyActionFamily,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            surface
+            for surface in self.policy_chosen_graph_action_surfaces
+            if surface.policy_family is family
+        )
+
+    def selected_graph_action_surfaces_for_policy_family(
+        self,
+        family: _WriterGraphPolicyActionFamily,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        return tuple(
+            surface
+            for surface in self.selected_graph_action_surfaces
+            if surface.policy_family is family
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterActiveEmittedScheduleOutcome:
+    kind: _WriterActiveEmittedScheduleOutcomeKind
+    graph_policy_decision: _WriterActiveEmittedGraphPolicyDecision
+    schedule_decision: _WriterActiveEmittedScheduleDecision | None = None
+
+    def __post_init__(self) -> None:
+        if self.kind is _WriterActiveEmittedScheduleOutcomeKind.SCHEDULED:
+            valid = (
+                self.schedule_decision is not None
+                and not self.graph_policy_decision.graph_policy_blocked
+                and (
+                    self.schedule_decision.graph_policy_decision
+                    is self.graph_policy_decision
+                )
+            )
+        elif self.kind is _WriterActiveEmittedScheduleOutcomeKind.BLOCKED:
+            valid = (
+                self.schedule_decision is None
+                and self.graph_policy_decision.graph_policy_blocked
+            )
+        else:
+            valid = False
+
+        if not valid:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                f"invalid active-emitted schedule outcome: {self.kind!r}",
+            )
+
+    @property
+    def graph_policy_blockers(
+        self,
+    ) -> tuple[_WriterActiveEmittedGraphPolicyBlocker, ...]:
+        return self.graph_policy_decision.graph_policy_blockers
+
+    @property
+    def selected_transitions(self) -> tuple[WriterTransition, ...]:
+        if self.schedule_decision is None:
+            return ()
+
+        return self.schedule_decision.selected_transitions
+
+    @property
+    def selected_next_token_frontier(
+        self,
+    ) -> tuple[_WriterNextTokenFrontierEntry, ...]:
+        if self.schedule_decision is None:
+            return ()
+
+        return self.schedule_decision.selected_next_token_frontier
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterTopLevelScheduleDecision:
+    kind: _WriterTopLevelScheduleDecisionKind
+    selected_batch: _WriterScheduledActionEmissionBatch
+    top_level_batch: _WriterScheduledActionEmissionBatch | None = None
+    active_emitted_decision: _WriterActiveEmittedScheduleDecision | None = None
+
+    def __post_init__(self) -> None:
+        if self.kind is _WriterTopLevelScheduleDecisionKind.TOP_LEVEL_ACTIONS:
+            valid = (
+                self.top_level_batch is not None
+                and self.selected_batch is self.top_level_batch
+                and self.active_emitted_decision is None
+            )
+        elif self.kind is _WriterTopLevelScheduleDecisionKind.ACTIVE_EMITTED:
+            valid = (
+                self.top_level_batch is None
+                and self.active_emitted_decision is not None
+                and self.selected_batch
+                is self.active_emitted_decision.selected_batch
+            )
+        else:
+            valid = False
+
+        if not valid:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                f"invalid top-level schedule decision payload: {self.kind!r}",
+            )
+
+    @property
+    def considered_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        if self.kind is _WriterTopLevelScheduleDecisionKind.TOP_LEVEL_ACTIONS:
+            if self.top_level_batch is None:
+                return ()
+
+            return self.top_level_batch.graph_action_surfaces
+
+        if self.active_emitted_decision is None:
+            return ()
+
+        return self.active_emitted_decision.considered_graph_action_surfaces
+
+    @property
+    def selected_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        if self.kind is _WriterTopLevelScheduleDecisionKind.ACTIVE_EMITTED:
+            if self.active_emitted_decision is None:
+                return ()
+
+            return self.active_emitted_decision.selected_graph_action_surfaces
+
+        return self.selected_batch.surviving_graph_action_surfaces
+
+    @property
+    def policy_chosen_graph_action_surfaces(
+        self,
+    ) -> tuple[_WriterScheduledGraphActionSurface, ...]:
+        if self.active_emitted_decision is None:
+            return self.selected_graph_action_surfaces
+
+        return self.active_emitted_decision.policy_chosen_graph_action_surfaces
+
+    @property
+    def selected_transitions(self) -> tuple[WriterTransition, ...]:
+        return self.selected_batch.surviving_transitions
+
+    @property
+    def selected_next_token_frontier(
+        self,
+    ) -> tuple[_WriterNextTokenFrontierEntry, ...]:
+        return self.selected_batch.surviving_next_token_frontier
+
+    @property
+    def active_emitted_graph_policy_decision(
+        self,
+    ) -> _WriterActiveEmittedGraphPolicyDecision | None:
+        if self.active_emitted_decision is None:
+            return None
+
+        return self.active_emitted_decision.graph_policy_decision
+
+    @property
+    def considered_active_child_selection_kind(
+        self,
+    ) -> _WriterActiveChildSelectionKind:
+        if self.active_emitted_decision is None:
+            return _WriterActiveChildSelectionKind.NONE
+
+        return (
+            self.active_emitted_decision
+            .considered_active_child_selection_kind
+        )
+
+    @property
+    def selected_active_child_selection_kind(
+        self,
+    ) -> _WriterActiveChildSelectionKind:
+        if self.active_emitted_decision is None:
+            return _WriterActiveChildSelectionKind.NONE
+
+        return (
+            self.active_emitted_decision
+            .selected_active_child_selection_kind
+        )
+
+    @property
+    def considered_cyclic_tree_entry_graph_action_surfaces(self):
+        if self.active_emitted_decision is None:
+            return ()
+
+        return (
+            self.active_emitted_decision
+            .considered_cyclic_tree_entry_graph_action_surfaces
+        )
+
+    @property
+    def selected_cyclic_tree_entry_graph_action_surfaces(self):
+        if self.active_emitted_decision is None:
+            return ()
+
+        return (
+            self.active_emitted_decision
+            .selected_cyclic_tree_entry_graph_action_surfaces
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterTopLevelScheduleOutcome:
+    kind: _WriterTopLevelScheduleOutcomeKind
+    schedule_decision: _WriterTopLevelScheduleDecision | None = None
+    active_emitted_outcome: _WriterActiveEmittedScheduleOutcome | None = None
+
+    def __post_init__(self) -> None:
+        if self.kind is _WriterTopLevelScheduleOutcomeKind.SCHEDULED:
+            if self.schedule_decision is None:
+                valid = False
+            elif (
+                self.schedule_decision.kind
+                is _WriterTopLevelScheduleDecisionKind.ACTIVE_EMITTED
+            ):
+                valid = (
+                    self.active_emitted_outcome is not None
+                    and self.active_emitted_outcome.kind
+                    is _WriterActiveEmittedScheduleOutcomeKind.SCHEDULED
+                    and (
+                        self.schedule_decision.active_emitted_decision
+                        is self.active_emitted_outcome.schedule_decision
+                    )
+                )
+            else:
+                valid = self.active_emitted_outcome is None
+        elif self.kind is _WriterTopLevelScheduleOutcomeKind.BLOCKED:
+            valid = (
+                self.schedule_decision is None
+                and self.active_emitted_outcome is not None
+                and self.active_emitted_outcome.kind
+                is _WriterActiveEmittedScheduleOutcomeKind.BLOCKED
+            )
+        else:
+            valid = False
+
+        if not valid:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                f"invalid top-level schedule outcome: {self.kind!r}",
+            )
+
+    @property
+    def graph_policy_decision(
+        self,
+    ) -> _WriterActiveEmittedGraphPolicyDecision | None:
+        if self.active_emitted_outcome is None:
+            return None
+
+        return self.active_emitted_outcome.graph_policy_decision
+
+    @property
+    def graph_policy_blockers(
+        self,
+    ) -> tuple[_WriterActiveEmittedGraphPolicyBlocker, ...]:
+        if self.active_emitted_outcome is None:
+            return ()
+
+        return self.active_emitted_outcome.graph_policy_blockers
+
+    @property
+    def stereo_policy_blockers(
+        self,
+    ) -> tuple[WriterStereoPolicyBlocker, ...]:
+        if self.schedule_decision is None:
+            return ()
+
+        return self.schedule_decision.selected_batch.stereo_policy_blockers
+
+    @property
+    def selected_transitions(self) -> tuple[WriterTransition, ...]:
+        if self.schedule_decision is None:
+            return ()
+
+        return self.schedule_decision.selected_transitions
+
+    @property
+    def selected_next_token_frontier(
+        self,
+    ) -> tuple[_WriterNextTokenFrontierEntry, ...]:
+        if self.schedule_decision is None:
+            return ()
+
+        return self.schedule_decision.selected_next_token_frontier
+
+    @property
+    def considered_active_child_selection_kind(
+        self,
+    ) -> _WriterActiveChildSelectionKind:
+        if self.schedule_decision is None:
+            return _WriterActiveChildSelectionKind.NONE
+
+        return self.schedule_decision.considered_active_child_selection_kind
+
+    @property
+    def selected_active_child_selection_kind(
+        self,
+    ) -> _WriterActiveChildSelectionKind:
+        if self.schedule_decision is None:
+            return _WriterActiveChildSelectionKind.NONE
+
+        return self.schedule_decision.selected_active_child_selection_kind
+
+    @property
+    def considered_cyclic_tree_entry_graph_action_surfaces(self):
+        if self.schedule_decision is None:
+            return ()
+
+        return (
+            self.schedule_decision
+            .considered_cyclic_tree_entry_graph_action_surfaces
+        )
+
+    @property
+    def selected_cyclic_tree_entry_graph_action_surfaces(self):
+        if self.schedule_decision is None:
+            return ()
+
+        return (
+            self.schedule_decision
+            .selected_cyclic_tree_entry_graph_action_surfaces
+        )
+
+
+def _active_emitted_closure_decision(
+    closure_endpoint_decision: _WriterClosureEndpointScheduleDecision,
+    graph_policy_decision: _WriterActiveEmittedGraphPolicyDecision | None = None,
+) -> _WriterActiveEmittedScheduleDecision:
+    closure_batch = _closure_endpoint_combined_batch(
+        closure_endpoint_decision
+    )
+
+    return _WriterActiveEmittedScheduleDecision(
+        kind=_WriterActiveEmittedScheduleDecisionKind.CLOSURE_ENDPOINT,
+        closure_endpoint_decision=closure_endpoint_decision,
+        closure_batch=closure_batch,
+        selected_batch=closure_batch,
+        graph_policy_decision=graph_policy_decision,
+    )
+
+
+def _active_emitted_child_decision(
+    closure_endpoint_decision: _WriterClosureEndpointScheduleDecision,
+    child_schedule_surface: _WriterActiveChildScheduleSurface,
+    child_batch: _WriterScheduledActionEmissionBatch,
+    graph_policy_decision: _WriterActiveEmittedGraphPolicyDecision | None = None,
+) -> _WriterActiveEmittedScheduleDecision:
+    closure_batch = _closure_endpoint_combined_batch(
+        closure_endpoint_decision
+    )
+
+    return _WriterActiveEmittedScheduleDecision(
+        kind=_WriterActiveEmittedScheduleDecisionKind.ACTIVE_CHILD,
+        closure_endpoint_decision=closure_endpoint_decision,
+        closure_batch=closure_batch,
+        child_batch=child_batch,
+        child_schedule_surface=child_schedule_surface,
+        selected_batch=child_batch,
+        graph_policy_decision=graph_policy_decision,
+    )
+
+
+def _top_level_actions_decision(
+    top_level_batch: _WriterScheduledActionEmissionBatch,
+) -> _WriterTopLevelScheduleDecision:
+    return _WriterTopLevelScheduleDecision(
+        kind=_WriterTopLevelScheduleDecisionKind.TOP_LEVEL_ACTIONS,
+        selected_batch=top_level_batch,
+        top_level_batch=top_level_batch,
+    )
+
+
+def _top_level_active_emitted_decision(
+    active_emitted_decision: _WriterActiveEmittedScheduleDecision,
+) -> _WriterTopLevelScheduleDecision:
+    return _WriterTopLevelScheduleDecision(
+        kind=_WriterTopLevelScheduleDecisionKind.ACTIVE_EMITTED,
+        selected_batch=active_emitted_decision.selected_batch,
+        active_emitted_decision=active_emitted_decision,
+    )
+
+
+def _consume_pending_entry_action(
+    pending_entry: PendingWriterEntry,
+) -> _WriterScheduledAction:
+    return _WriterScheduledAction(
+        kind=_WriterScheduledActionKind.CONSUME_PENDING_ENTRY,
+        parent=pending_entry.parent,
+        pending_entry=pending_entry,
+    )
+
+
+def _emit_root_atom_action(atom: AtomId) -> _WriterScheduledAction:
+    return _WriterScheduledAction(
+        kind=_WriterScheduledActionKind.EMIT_ROOT_ATOM,
+        parent=atom,
+    )
+
+
+def _finish_active_action(parent: AtomId) -> _WriterScheduledAction:
+    return _WriterScheduledAction(
+        kind=_WriterScheduledActionKind.FINISH_ACTIVE,
+        parent=parent,
+    )
+
+
+def _enter_inline_child_action(
+    parent: AtomId,
+    child_obligation: _WriterChildObligation,
+) -> _WriterScheduledAction:
+    return _WriterScheduledAction(
+        kind=_WriterScheduledActionKind.ENTER_INLINE_CHILD,
+        parent=parent,
+        child_obligation=child_obligation,
+    )
+
+
+def _open_branch_action(
+    parent: AtomId,
+    child_obligation: _WriterChildObligation,
+) -> _WriterScheduledAction:
+    return _WriterScheduledAction(
+        kind=_WriterScheduledActionKind.OPEN_BRANCH,
+        parent=parent,
+        child_obligation=child_obligation,
+    )
+
+
+def _open_closure_endpoint_action(
+    parent: AtomId,
+    closure_obligation: _WriterClosureOpenObligation,
+    label: WriterClosureLabel,
+) -> _WriterScheduledAction:
+    return _WriterScheduledAction(
+        kind=_WriterScheduledActionKind.OPEN_CLOSURE_ENDPOINT,
+        parent=parent,
+        closure_open_obligation=closure_obligation,
+        closure_open_label=label,
+    )
+
+
+def _pair_closure_endpoint_action(
+    parent: AtomId,
+    pair_obligation: _WriterClosurePairObligation,
+) -> _WriterScheduledAction:
+    return _WriterScheduledAction(
+        kind=_WriterScheduledActionKind.PAIR_CLOSURE_ENDPOINT,
+        parent=parent,
+        closure_pair_obligation=pair_obligation,
+    )
+
+
+def _scheduled_graph_action_surface(
+    action: _WriterScheduledAction,
+) -> _WriterScheduledGraphActionSurface:
+    if action.kind is _WriterScheduledActionKind.CONSUME_PENDING_ENTRY:
+        pending = action.pending_entry
+
+        if pending is None:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "pending-entry scheduled action has no pending entry",
+            )
+
+        return _WriterScheduledGraphActionSurface(
+            kind=action.kind,
+            active_atom=action.parent,
+            bond=pending.bond,
+            partner_atom=pending.child,
+            boundary_atom=pending.parent,
+            pending_entry=True,
+        )
+
+    if action.kind is _WriterScheduledActionKind.EMIT_ROOT_ATOM:
+        return _WriterScheduledGraphActionSurface(
+            kind=action.kind,
+            active_atom=action.parent,
+        )
+
+    if action.kind is _WriterScheduledActionKind.FINISH_ACTIVE:
+        return _WriterScheduledGraphActionSurface(
+            kind=action.kind,
+            active_atom=action.parent,
+        )
+
+    if action.kind in (
+        _WriterScheduledActionKind.ENTER_INLINE_CHILD,
+        _WriterScheduledActionKind.OPEN_BRANCH,
+    ):
+        child = action.child_obligation
+
+        if child is None:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "child scheduled action has no child obligation",
+            )
+
+        return _WriterScheduledGraphActionSurface(
+            kind=action.kind,
+            active_atom=action.parent,
+            bond=child.bond,
+            partner_atom=child.child,
+            boundary_atom=child.boundary_atom,
+            attachment_id=child.attachment_id,
+            attachment_action_kind=child.attachment_action_kind,
+            owner_kind=child.owner_kind,
+            pending_entry=child.pending_entry,
+        )
+
+    if action.kind is _WriterScheduledActionKind.OPEN_CLOSURE_ENDPOINT:
+        closure_open = action.closure_open_obligation
+
+        if closure_open is None:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "closure-open scheduled action has no open obligation",
+            )
+
+        label = action.closure_open_label
+
+        if label is None:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "closure-open scheduled action has no closure label",
+            )
+
+        return _WriterScheduledGraphActionSurface(
+            kind=action.kind,
+            active_atom=action.parent,
+            bond=closure_open.bond,
+            partner_atom=closure_open.second_atom,
+            boundary_atom=closure_open.first_atom,
+            attachment_id=closure_open.attachment_id,
+            attachment_action_kind=closure_open.attachment_action_kind,
+            owner_kind=closure_open.owner_kind,
+            closure_label=label,
+            closure_open_source_kind=closure_open.source_kind,
+        )
+
+    if action.kind is _WriterScheduledActionKind.PAIR_CLOSURE_ENDPOINT:
+        pair = action.closure_pair_obligation
+
+        if pair is None:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "closure-pair scheduled action has no pair obligation",
+            )
+
+        closure = pair.closure
+
+        return _WriterScheduledGraphActionSurface(
+            kind=action.kind,
+            active_atom=action.parent,
+            bond=closure.bond,
+            partner_atom=closure.first_atom,
+            boundary_atom=closure.second_atom,
+            closure_label=closure.label,
+        )
+
+    raise SouthStarError(
+        SouthStarErrorKind.INTERNAL_INVARIANT,
+        f"unsupported scheduled graph action surface: {action.kind!r}",
+    )
+
+
+def _graph_policy_action_family_from_surface(
+    surface: _WriterScheduledGraphActionSurface,
+) -> _WriterGraphPolicyActionFamily:
+    if surface.kind is _WriterScheduledActionKind.CONSUME_PENDING_ENTRY:
+        return _WriterGraphPolicyActionFamily.PENDING_ENTRY
+
+    if surface.kind is _WriterScheduledActionKind.EMIT_ROOT_ATOM:
+        return _WriterGraphPolicyActionFamily.ROOT_ATOM
+
+    if surface.kind is _WriterScheduledActionKind.FINISH_ACTIVE:
+        return _WriterGraphPolicyActionFamily.FINISH_ACTIVE
+
+    if surface.kind in (
+        _WriterScheduledActionKind.ENTER_INLINE_CHILD,
+        _WriterScheduledActionKind.OPEN_BRANCH,
+    ):
+        if (
+            surface.attachment_action_kind
+            is WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY
+        ):
+            return _WriterGraphPolicyActionFamily.ACYCLIC_TREE_ENTRY
+
+        if (
+            surface.attachment_action_kind
+            is WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY
+        ):
+            return _WriterGraphPolicyActionFamily.CYCLIC_TREE_ENTRY
+
+        return _WriterGraphPolicyActionFamily.TREE_ENTRY
+
+    if surface.kind is _WriterScheduledActionKind.OPEN_CLOSURE_ENDPOINT:
+        return _WriterGraphPolicyActionFamily.CLOSURE_OPEN
+
+    if surface.kind is _WriterScheduledActionKind.PAIR_CLOSURE_ENDPOINT:
+        return _WriterGraphPolicyActionFamily.CLOSURE_PAIR
+
+    raise SouthStarError(
+        SouthStarErrorKind.INTERNAL_INVARIANT,
+        f"unknown graph policy action surface kind: {surface.kind!r}",
+    )
+
+
+def _closure_endpoint_selection_kind_from_graph_action_surfaces(
+    surfaces: tuple[_WriterScheduledGraphActionSurface, ...],
+) -> _WriterClosureEndpointSelectionKind:
+    has_pair = any(
+        surface.policy_family is _WriterGraphPolicyActionFamily.CLOSURE_PAIR
+        for surface in surfaces
+    )
+    has_open = any(
+        surface.policy_family is _WriterGraphPolicyActionFamily.CLOSURE_OPEN
+        for surface in surfaces
+    )
+
+    if has_pair and has_open:
+        return _WriterClosureEndpointSelectionKind.PAIR_AND_OPEN
+
+    if has_pair:
+        return _WriterClosureEndpointSelectionKind.CLOSURE_PAIR
+
+    if has_open:
+        return _WriterClosureEndpointSelectionKind.CLOSURE_OPEN
+
+    return _WriterClosureEndpointSelectionKind.NONE
+
+
+_ACTIVE_CHILD_SELECTION_FAMILIES = frozenset(
+    {
+        _WriterGraphPolicyActionFamily.FINISH_ACTIVE,
+        _WriterGraphPolicyActionFamily.TREE_ENTRY,
+        _WriterGraphPolicyActionFamily.ACYCLIC_TREE_ENTRY,
+        _WriterGraphPolicyActionFamily.CYCLIC_TREE_ENTRY,
+    }
+)
+
+
+def _active_child_selection_kind_from_graph_action_surfaces(
+    surfaces: tuple[_WriterScheduledGraphActionSurface, ...],
+) -> _WriterActiveChildSelectionKind:
+    families = tuple(
+        surface.policy_family
+        for surface in surfaces
+        if surface.policy_family in _ACTIVE_CHILD_SELECTION_FAMILIES
+    )
+
+    distinct = frozenset(families)
+
+    if not distinct:
+        return _WriterActiveChildSelectionKind.NONE
+
+    if len(distinct) > 1:
+        return _WriterActiveChildSelectionKind.MIXED
+
+    family = next(iter(distinct))
+
+    if family is _WriterGraphPolicyActionFamily.FINISH_ACTIVE:
+        return _WriterActiveChildSelectionKind.FINISH_ACTIVE
+
+    if family is _WriterGraphPolicyActionFamily.TREE_ENTRY:
+        return _WriterActiveChildSelectionKind.TREE_ENTRY
+
+    if family is _WriterGraphPolicyActionFamily.ACYCLIC_TREE_ENTRY:
+        return _WriterActiveChildSelectionKind.ACYCLIC_TREE_ENTRY
+
+    if family is _WriterGraphPolicyActionFamily.CYCLIC_TREE_ENTRY:
+        return _WriterActiveChildSelectionKind.CYCLIC_TREE_ENTRY
+
+    raise SouthStarError(
+        SouthStarErrorKind.INTERNAL_INVARIANT,
+        f"unknown active-child graph policy family: {family!r}",
+    )
+
+
+_RESIDUAL_ATTACHMENT_POLICY_FAMILIES = frozenset(
+    {
+        _WriterGraphPolicyActionFamily.TREE_ENTRY,
+        _WriterGraphPolicyActionFamily.ACYCLIC_TREE_ENTRY,
+        _WriterGraphPolicyActionFamily.CYCLIC_TREE_ENTRY,
+        _WriterGraphPolicyActionFamily.CLOSURE_OPEN,
+    }
+)
+
+
+def _residual_attachment_policy_key_from_surface(
+    surface: _WriterScheduledGraphActionSurface,
+) -> _WriterResidualAttachmentPolicyKey | None:
+    if surface.attachment_id is None:
+        return None
+
+    if surface.policy_family not in _RESIDUAL_ATTACHMENT_POLICY_FAMILIES:
+        return None
+
+    return _WriterResidualAttachmentPolicyKey(
+        active_atom=surface.active_atom,
+        attachment_id=surface.attachment_id,
+    )
+
+
+def _residual_attachment_owner_scope_kind_from_owner_kinds(
+    owner_kinds: tuple[WriterBoundaryOwnerKind | None, ...],
+) -> _WriterResidualAttachmentOwnerScopeKind:
+    if not owner_kinds:
+        return _WriterResidualAttachmentOwnerScopeKind.NONE
+
+    distinct = frozenset(owner_kinds)
+
+    if len(distinct) > 1:
+        return _WriterResidualAttachmentOwnerScopeKind.MIXED
+
+    owner_kind = next(iter(distinct))
+
+    if owner_kind is None:
+        return _WriterResidualAttachmentOwnerScopeKind.MISSING
+
+    if owner_kind is WriterBoundaryOwnerKind.ACTIVE_ATOM:
+        return _WriterResidualAttachmentOwnerScopeKind.ACTIVE_ATOM
+
+    if owner_kind is WriterBoundaryOwnerKind.BRANCH_RETURN:
+        return _WriterResidualAttachmentOwnerScopeKind.BRANCH_RETURN
+
+    if owner_kind is WriterBoundaryOwnerKind.PENDING_PARENT:
+        return _WriterResidualAttachmentOwnerScopeKind.PENDING_PARENT
+
+    if owner_kind is WriterBoundaryOwnerKind.OPEN_RING_ENDPOINT:
+        return _WriterResidualAttachmentOwnerScopeKind.OPEN_RING_ENDPOINT
+
+    if owner_kind is WriterBoundaryOwnerKind.UNOWNED:
+        return _WriterResidualAttachmentOwnerScopeKind.UNOWNED
+
+    raise SouthStarError(
+        SouthStarErrorKind.INTERNAL_INVARIANT,
+        f"unknown residual attachment owner kind: {owner_kind!r}",
+    )
+
+
+def _residual_attachment_policy_groups_from_graph_action_surfaces(
+    surfaces: tuple[_WriterScheduledGraphActionSurface, ...],
+) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+    grouped: dict[
+        _WriterResidualAttachmentPolicyKey,
+        list[_WriterScheduledGraphActionSurface],
+    ] = {}
+    order: list[_WriterResidualAttachmentPolicyKey] = []
+
+    for surface in surfaces:
+        key = surface.residual_attachment_policy_key
+
+        if key is None:
+            continue
+
+        if key not in grouped:
+            grouped[key] = []
+            order.append(key)
+
+        grouped[key].append(surface)
+
+    return tuple(
+        _WriterResidualAttachmentPolicyGroup(
+            key=key,
+            surfaces=tuple(grouped[key]),
+        )
+        for key in order
+    )
+
+
+def _closure_open_vs_cyclic_tree_entry_policy_groups(
+    closure_endpoint_decision: _WriterClosureEndpointScheduleDecision,
+    child_schedule_surface: _WriterActiveChildScheduleSurface,
+) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+    if not closure_endpoint_decision.considered_closure_open_available:
+        return ()
+
+    if not child_schedule_surface.considered_cyclic_tree_entry_available:
+        return ()
+
+    surfaces = (
+        *closure_endpoint_decision.considered_closure_open_graph_action_surfaces,
+        *child_schedule_surface.considered_cyclic_tree_entry_graph_action_surfaces,
+    )
+
+    return tuple(
+        group
+        for group in (
+            _residual_attachment_policy_groups_from_graph_action_surfaces(
+                surfaces
+            )
+        )
+        if group.has_closure_open_vs_cyclic_tree_entry_choice
+    )
+
+
+_SUPPORTED_DEAD_CLOSURE_OWNER_SCOPES = frozenset({
+    _WriterResidualAttachmentOwnerScopeKind.ACTIVE_ATOM,
+    _WriterResidualAttachmentOwnerScopeKind.BRANCH_RETURN,
+    _WriterResidualAttachmentOwnerScopeKind.PENDING_PARENT,
+    _WriterResidualAttachmentOwnerScopeKind.OPEN_RING_ENDPOINT,
+})
+
+
+def _unsupported_closure_open_vs_cyclic_tree_entry_owner_scope_groups(
+    groups: tuple[_WriterResidualAttachmentPolicyGroup, ...],
+) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+    if not groups:
+        return ()
+
+    scope = _common_closure_open_vs_cyclic_tree_entry_owner_scope_kind(
+        groups,
+    )
+    if scope in _SUPPORTED_DEAD_CLOSURE_OWNER_SCOPES:
+        return ()
+
+    return groups
+
+
+def _active_child_graph_policy_kind(
+    closure_endpoint_decision: _WriterClosureEndpointScheduleDecision,
+    child_schedule_surface: _WriterActiveChildScheduleSurface,
+) -> _WriterActiveEmittedGraphPolicyDecisionKind:
+    groups = _closure_open_vs_cyclic_tree_entry_policy_groups(
+        closure_endpoint_decision,
+        child_schedule_surface,
+    )
+
+    if not groups:
+        return _WriterActiveEmittedGraphPolicyDecisionKind.ACTIVE_CHILD
+
+    if _unsupported_closure_open_vs_cyclic_tree_entry_owner_scope_groups(
+        groups
+    ):
+        return (
+            _WriterActiveEmittedGraphPolicyDecisionKind
+            .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+        )
+
+    if _missing_closure_open_support_evidence_groups(
+        closure_endpoint_decision,
+        groups,
+    ):
+        return (
+            _WriterActiveEmittedGraphPolicyDecisionKind
+            .UNRESOLVED_RESIDUAL_ATTACHMENT_CHOICE
+        )
+
+    if _support_dead_closure_open_vs_cyclic_tree_entry_groups(
+        closure_endpoint_decision,
+        groups,
+    ):
+        return (
+            _WriterActiveEmittedGraphPolicyDecisionKind
+            .ACTIVE_CHILD_AFTER_DEAD_CLOSURE_OPEN
+        )
+
+    raise SouthStarError(
+        SouthStarErrorKind.INTERNAL_INVARIANT,
+        "closure-open versus cyclic-tree choice did not classify",
+    )
+
+
+def _common_closure_open_vs_cyclic_tree_entry_owner_scope_kind(
+    groups: tuple[_WriterResidualAttachmentPolicyGroup, ...],
+) -> _WriterResidualAttachmentOwnerScopeKind:
+    if not groups:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "closure-open versus cyclic-tree groups are empty",
+        )
+
+    kinds = frozenset(
+        group.closure_open_vs_cyclic_tree_entry_owner_scope_kind
+        for group in groups
+    )
+    if len(kinds) == 1:
+        return next(iter(kinds))
+
+    return _WriterResidualAttachmentOwnerScopeKind.MIXED
+
+
+def _residual_attachment_policy_emission_groups_from_scheduled_action_emissions(
+    emissions: tuple[_WriterScheduledActionEmission, ...],
+) -> tuple[_WriterResidualAttachmentPolicyEmissionGroup, ...]:
+    grouped: dict[
+        _WriterResidualAttachmentPolicyKey,
+        list[_WriterScheduledActionEmission],
+    ] = {}
+    order: list[_WriterResidualAttachmentPolicyKey] = []
+
+    for emission in emissions:
+        key = emission.graph_action_surface.residual_attachment_policy_key
+
+        if key is None:
+            continue
+
+        if key not in grouped:
+            grouped[key] = []
+            order.append(key)
+
+        grouped[key].append(emission)
+
+    return tuple(
+        _WriterResidualAttachmentPolicyEmissionGroup(
+            key=key,
+            emissions=tuple(grouped[key]),
+        )
+        for key in order
+    )
+
+
+def _residual_attachment_policy_emission_group_for_key(
+    groups: tuple[_WriterResidualAttachmentPolicyEmissionGroup, ...],
+    key: _WriterResidualAttachmentPolicyKey,
+) -> _WriterResidualAttachmentPolicyEmissionGroup | None:
+    for group in groups:
+        if group.key == key:
+            return group
+
+    return None
+
+
+def _closure_open_support_dead_for_residual_attachment_policy_group(
+    closure_endpoint_decision: _WriterClosureEndpointScheduleDecision,
+    group: _WriterResidualAttachmentPolicyGroup,
+) -> bool:
+    if not (
+        group.has_active_atom_owned_closure_open_vs_cyclic_tree_entry_choice
+        or (
+            group
+            .has_branch_return_owner_scope_closure_open_vs_cyclic_tree_entry_choice
+        )
+        or (
+            group
+            .has_pending_parent_owner_scope_closure_open_vs_cyclic_tree_entry_choice
+        )
+        or (
+            group
+            .has_open_ring_endpoint_owner_scope_closure_open_vs_cyclic_tree_entry_choice
+        )
+    ):
+        return False
+
+    emission_group = _residual_attachment_policy_emission_group_for_key(
+        (
+            closure_endpoint_decision
+            .considered_residual_attachment_policy_emission_groups
+        ),
+        group.key,
+    )
+
+    if emission_group is None:
+        return False
+
+    return emission_group.closure_open_support_dead
+
+
+def _support_dead_closure_open_vs_cyclic_tree_entry_groups(
+    closure_endpoint_decision: _WriterClosureEndpointScheduleDecision,
+    groups: tuple[_WriterResidualAttachmentPolicyGroup, ...],
+) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+    return tuple(
+        group
+        for group in groups
+        if _closure_open_support_dead_for_residual_attachment_policy_group(
+            closure_endpoint_decision,
+            group,
+        )
+    )
+
+
+def _closure_open_support_evidence_missing_for_residual_attachment_policy_group(
+    closure_endpoint_decision: _WriterClosureEndpointScheduleDecision,
+    group: _WriterResidualAttachmentPolicyGroup,
+) -> bool:
+    if not (
+        group.has_active_atom_owned_closure_open_vs_cyclic_tree_entry_choice
+        or (
+            group
+            .has_branch_return_owner_scope_closure_open_vs_cyclic_tree_entry_choice
+        )
+        or (
+            group
+            .has_pending_parent_owner_scope_closure_open_vs_cyclic_tree_entry_choice
+        )
+        or (
+            group
+            .has_open_ring_endpoint_owner_scope_closure_open_vs_cyclic_tree_entry_choice
+        )
+    ):
+        return False
+
+    emission_group = _residual_attachment_policy_emission_group_for_key(
+        (
+            closure_endpoint_decision
+            .considered_residual_attachment_policy_emission_groups
+        ),
+        group.key,
+    )
+
+    if emission_group is None:
+        return True
+
+    return not emission_group.closure_open_was_considered
+
+
+def _missing_closure_open_support_evidence_groups(
+    closure_endpoint_decision: _WriterClosureEndpointScheduleDecision,
+    groups: tuple[_WriterResidualAttachmentPolicyGroup, ...],
+) -> tuple[_WriterResidualAttachmentPolicyGroup, ...]:
+    return tuple(
+        group
+        for group in groups
+        if _closure_open_support_evidence_missing_for_residual_attachment_policy_group(
+            closure_endpoint_decision,
+            group,
+        )
+    )
+
+
+def build_writer_transition_expansion_context(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+) -> WriterTransitionExpansionContext:
+    validate_writer_transition_prepared(prepared)
+    return _writer_transition_expansion_context_from_validated_prepared(
+        prepared,
+        state,
+    )
+
+
+def _writer_transition_expansion_context_from_validated_prepared(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+) -> WriterTransitionExpansionContext:
+    if state.active is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "writer state requires an active writer frame",
+        )
+    key = writer_state_key(state)
+    graph = build_writer_graph_obligation_context(prepared, key)
+    return WriterTransitionExpansionContext(state_key=key, graph=graph)
+
+
+def validate_writer_transition_prepared(prepared: SouthStarPreparedMol) -> None:
+    validate_writer_transition_graph_surface(prepared)
+    validate_writer_stereo_supported_prepared(prepared)
+
+
+def _open_branch_transition_from_child_obligation(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    parent: AtomId,
+    child_obligation: _WriterChildObligation,
+) -> WriterTransition | None:
+    return _transition(
+        prepared,
+        state,
+        emitted_text="(",
+        successor=replace(
+            state,
+            obligations=ObligationState(
+                pending_entry=PendingWriterEntry(
+                    parent=parent,
+                    child=child_obligation.child,
+                    bond=child_obligation.bond,
+                    branch=True,
+                )
+            ),
+        ),
+        kind=WriterTransitionKind.OPEN_BRANCH,
+        events=(
+            WriterBranchOpened(
+                parent=parent,
+                child=child_obligation.child,
+                bond=child_obligation.bond,
+            ),
+        ),
+        evidence=WriterTransitionEvidence(
+            bond=child_obligation.bond,
+            parent=parent,
+            child=child_obligation.child,
+        ),
+    )
+
+
+def _enter_inline_child_transitions_from_child_obligation(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    parent: AtomId,
+    child_obligation: _WriterChildObligation,
+    context: WriterTransitionExpansionContext,
+) -> tuple[WriterTransition, ...]:
+    return _enter_child_transitions(
+        prepared,
+        state,
+        PendingWriterEntry(
+            parent=parent,
+            child=child_obligation.child,
+            bond=child_obligation.bond,
+            branch=False,
+        ),
+        kind=WriterTransitionKind.ENTER_INLINE_CHILD,
+        context=context,
+    )
+
+
+def _active_child_scheduled_actions(
+    parent: AtomId,
+    children: tuple[_WriterChildObligation, ...],
+) -> tuple[_WriterScheduledAction, ...]:
+    if not children:
+        return (_finish_active_action(parent),)
+
+    if len(children) == 1:
+        return (_enter_inline_child_action(parent, children[0]),)
+
+    return tuple(
+        _open_branch_action(parent, child_obligation)
+        for child_obligation in children
+    )
+
+
+def _active_child_schedule_surface_from_context(
+    context: WriterTransitionExpansionContext,
+    state: WriterState,
+    active_atom: AtomId,
+) -> _WriterActiveChildScheduleSurface:
+    blockers = _child_obligation_blockers_for_atom(
+        context,
+        active_atom,
+    )
+
+    if blockers:
+        return _WriterActiveChildScheduleSurface(
+            active_atom=active_atom,
+            blockers=blockers,
+            child_obligations=(),
+            scheduled_actions=(),
+        )
+
+    child_obligations = _unblocked_child_obligations_from_context(
+        context,
+        state,
+        active_atom,
+    )
+
+    scheduled_actions = _active_child_scheduled_actions(
+        active_atom,
+        child_obligations,
+    )
+
+    return _WriterActiveChildScheduleSurface(
+        active_atom=active_atom,
+        blockers=(),
+        child_obligations=child_obligations,
+        scheduled_actions=scheduled_actions,
+    )
+
+
+def _active_child_scheduled_actions_from_context(
+    context: WriterTransitionExpansionContext,
+    state: WriterState,
+    active_atom: AtomId,
+) -> tuple[_WriterScheduledAction, ...]:
+    surface = _active_child_schedule_surface_from_context(
+        context,
+        state,
+        active_atom,
+    )
+
+    _raise_for_child_obligation_blockers(surface.blockers)
+
+    return surface.scheduled_actions
+
+
+def _active_child_transitions_from_scheduled_action(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+    action: _WriterScheduledAction,
+) -> tuple[WriterTransition, ...]:
+    if action.kind is _WriterScheduledActionKind.FINISH_ACTIVE:
+        return _finish_active_transitions(prepared, state, context)
+
+    child_obligation = action.child_obligation
+
+    if child_obligation is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "scheduled child action requires a child obligation",
+        )
+
+    if action.kind is _WriterScheduledActionKind.ENTER_INLINE_CHILD:
+        return _enter_inline_child_transitions_from_child_obligation(
+            prepared,
+            state,
+            action.parent,
+            child_obligation,
+            context,
+        )
+
+    if action.kind is _WriterScheduledActionKind.OPEN_BRANCH:
+        transition = _open_branch_transition_from_child_obligation(
+            prepared,
+            state,
+            action.parent,
+            child_obligation,
+        )
+
+        if transition is None:
+            return ()
+
+        return (transition,)
+
+    raise SouthStarError(
+        SouthStarErrorKind.INTERNAL_INVARIANT,
+        f"unsupported scheduled child action: {action.kind!r}",
+    )
+
+
+def _active_emitted_graph_policy_decision(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+    active_atom: AtomId,
+) -> _WriterActiveEmittedGraphPolicyDecision:
+    closure_decision = _closure_endpoint_schedule_decision(
+        prepared,
+        state,
+        context,
+    )
+
+    if closure_decision.graph_policy_blockers:
+        return _WriterActiveEmittedGraphPolicyDecision(
+            kind=(
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .BLOCKED_CLOSURE_ENDPOINT_POLICY
+            ),
+            active_atom=active_atom,
+            closure_endpoint_decision=closure_decision,
+        )
+
+    residual_action_blockers = (
+        _blocked_residual_attachment_action_graph_policy_blockers(context)
+    )
+    if residual_action_blockers:
+        return _WriterActiveEmittedGraphPolicyDecision(
+            kind=(
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .BLOCKED_RESIDUAL_ATTACHMENT_ACTION
+            ),
+            active_atom=active_atom,
+            closure_endpoint_decision=closure_decision,
+            direct_graph_policy_blockers=residual_action_blockers,
+        )
+
+    if closure_decision.selected_closure_endpoint_survived:
+        return _WriterActiveEmittedGraphPolicyDecision(
+            kind=(
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .CLOSURE_ENDPOINT
+            ),
+            active_atom=active_atom,
+            closure_endpoint_decision=closure_decision,
+        )
+
+    child_schedule_surface = _active_child_schedule_surface_from_context(
+        context,
+        state,
+        active_atom,
+    )
+
+    if child_schedule_surface.blocked:
+        return _WriterActiveEmittedGraphPolicyDecision(
+            kind=(
+                _WriterActiveEmittedGraphPolicyDecisionKind
+                .BLOCKED_CHILD
+            ),
+            active_atom=active_atom,
+            closure_endpoint_decision=closure_decision,
+            child_schedule_surface=child_schedule_surface,
+        )
+
+    return _WriterActiveEmittedGraphPolicyDecision(
+        kind=_active_child_graph_policy_kind(
+            closure_decision,
+            child_schedule_surface,
+        ),
+        active_atom=active_atom,
+        closure_endpoint_decision=closure_decision,
+        child_schedule_surface=child_schedule_surface,
+    )
+
+
+def _active_emitted_schedule_outcome(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+    active_atom: AtomId,
+) -> _WriterActiveEmittedScheduleOutcome:
+    policy_decision = _active_emitted_graph_policy_decision(
+        prepared,
+        state,
+        context,
+        active_atom,
+    )
+
+    if policy_decision.graph_policy_blocked:
+        return _WriterActiveEmittedScheduleOutcome(
+            kind=_WriterActiveEmittedScheduleOutcomeKind.BLOCKED,
+            graph_policy_decision=policy_decision,
+        )
+
+    if (
+        policy_decision.kind
+        is _WriterActiveEmittedGraphPolicyDecisionKind.CLOSURE_ENDPOINT
+    ):
+        schedule_decision = _active_emitted_closure_decision(
+            policy_decision.closure_endpoint_decision,
+            graph_policy_decision=policy_decision,
+        )
+
+        return _WriterActiveEmittedScheduleOutcome(
+            kind=_WriterActiveEmittedScheduleOutcomeKind.SCHEDULED,
+            graph_policy_decision=policy_decision,
+            schedule_decision=schedule_decision,
+        )
+
+    if not policy_decision.emits_child_actions:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            (
+                "active-emitted graph policy did not select an emittable "
+                f"child action: {policy_decision.kind!r}"
+            ),
+        )
+
+    child_schedule_surface = policy_decision.child_schedule_surface
+    if child_schedule_surface is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "active-child graph policy requires a child schedule surface",
+        )
+
+    child_batch = _scheduled_action_emission_batch(
+        prepared,
+        state,
+        context,
+        policy_decision.child_scheduled_actions,
+    )
+
+    schedule_decision = _active_emitted_child_decision(
+        closure_endpoint_decision=policy_decision.closure_endpoint_decision,
+        child_schedule_surface=child_schedule_surface,
+        child_batch=child_batch,
+        graph_policy_decision=policy_decision,
+    )
+
+    return _WriterActiveEmittedScheduleOutcome(
+        kind=_WriterActiveEmittedScheduleOutcomeKind.SCHEDULED,
+        graph_policy_decision=policy_decision,
+        schedule_decision=schedule_decision,
+    )
+
+
+def _active_emitted_schedule_decision(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+    active_atom: AtomId,
+) -> _WriterActiveEmittedScheduleDecision:
+    outcome = _active_emitted_schedule_outcome(
+        prepared,
+        state,
+        context,
+        active_atom,
+    )
+
+    if outcome.graph_policy_blockers:
+        _raise_for_active_emitted_graph_policy_blockers(
+            outcome.graph_policy_decision
+        )
+
+    if outcome.schedule_decision is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "active-emitted schedule outcome did not contain a schedule decision",
+        )
+
+    return outcome.schedule_decision
+
+
+def _active_emitted_transitions(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+    active_atom: AtomId,
+) -> tuple[WriterTransition, ...]:
+    decision = _active_emitted_schedule_decision(
+        prepared,
+        state,
+        context,
+        active_atom,
+    )
+
+    return decision.selected_transitions
+
+
+def _pending_entry_scheduled_actions(
+    state: WriterState,
+) -> tuple[_WriterScheduledAction, ...]:
+    pending = state.obligations.pending_entry
+
+    if pending is None:
+        return ()
+
+    return (_consume_pending_entry_action(pending),)
+
+
+def _root_atom_scheduled_actions(
+    state: WriterState,
+) -> tuple[_WriterScheduledAction, ...]:
+    active = state.active
+
+    if active.atom_emitted:
+        return ()
+
+    return (_emit_root_atom_action(active.atom),)
+
+
+def _top_level_scheduled_actions(
+    state: WriterState,
+) -> tuple[_WriterScheduledAction, ...]:
+    pending_actions = _pending_entry_scheduled_actions(state)
+
+    if pending_actions:
+        return pending_actions
+
+    return _root_atom_scheduled_actions(state)
+
+
+def _top_level_schedule_outcome(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+) -> _WriterTopLevelScheduleOutcome:
+    top_level_actions = _top_level_scheduled_actions(state)
+
+    if top_level_actions:
+        top_level_batch = _scheduled_action_emission_batch(
+            prepared,
+            state,
+            context,
+            top_level_actions,
+        )
+
+        return _WriterTopLevelScheduleOutcome(
+            kind=_WriterTopLevelScheduleOutcomeKind.SCHEDULED,
+            schedule_decision=_top_level_actions_decision(top_level_batch),
+        )
+
+    active = state.active
+
+    active_emitted_outcome = _active_emitted_schedule_outcome(
+        prepared,
+        state,
+        context,
+        active.atom,
+    )
+
+    if (
+        active_emitted_outcome.kind
+        is _WriterActiveEmittedScheduleOutcomeKind.BLOCKED
+    ):
+        return _WriterTopLevelScheduleOutcome(
+            kind=_WriterTopLevelScheduleOutcomeKind.BLOCKED,
+            active_emitted_outcome=active_emitted_outcome,
+        )
+
+    active_decision = active_emitted_outcome.schedule_decision
+    if active_decision is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "scheduled active-emitted outcome did not contain a schedule decision",
+        )
+
+    top_level_decision = _top_level_active_emitted_decision(
+        active_decision
+    )
+
+    return _WriterTopLevelScheduleOutcome(
+        kind=_WriterTopLevelScheduleOutcomeKind.SCHEDULED,
+        schedule_decision=top_level_decision,
+        active_emitted_outcome=active_emitted_outcome,
+    )
+
+
+def _top_level_schedule_decision(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+) -> _WriterTopLevelScheduleDecision:
+    outcome = _top_level_schedule_outcome(
+        prepared,
+        state,
+        context,
+    )
+
+    _raise_for_top_level_schedule_outcome_blockers(outcome)
+
+    if outcome.schedule_decision is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "top-level schedule outcome did not contain a schedule decision",
+        )
+
+    return outcome.schedule_decision
+
+
+def _raise_for_top_level_schedule_outcome_blockers(
+    outcome: _WriterTopLevelScheduleOutcome,
+) -> None:
+    if not outcome.graph_policy_blockers:
+        return
+
+    policy = outcome.graph_policy_decision
+    if policy is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "blocked top-level outcome did not contain graph policy",
+        )
+
+    _raise_for_active_emitted_graph_policy_blockers(policy)
+
+
+def _scheduled_writer_schedule_outcome(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+) -> _WriterTopLevelScheduleOutcome:
+    return _top_level_schedule_outcome(
+        prepared,
+        state,
+        context,
+    )
+
+
+def _scheduled_writer_transitions(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+) -> tuple[WriterTransition, ...]:
+    outcome = _scheduled_writer_schedule_outcome(
+        prepared,
+        state,
+        context,
+    )
+
+    _raise_for_top_level_schedule_outcome_blockers(outcome)
+
+    return outcome.selected_transitions
+
+
+def _scheduled_writer_next_token_frontier(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+) -> tuple[_WriterNextTokenFrontierEntry, ...]:
+    outcome = _scheduled_writer_schedule_outcome(
+        prepared,
+        state,
+        context,
+    )
+
+    _raise_for_top_level_schedule_outcome_blockers(outcome)
+
+    return outcome.selected_next_token_frontier
+
+
+def _legal_writer_schedule_outcome(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+) -> _WriterTopLevelScheduleOutcome:
+    context = build_writer_transition_expansion_context(prepared, state)
+
+    return _scheduled_writer_schedule_outcome(
+        prepared,
+        state,
+        context,
+    )
+
+
+def _legal_writer_next_token_frontier(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+) -> tuple[_WriterNextTokenFrontierEntry, ...]:
+    context = build_writer_transition_expansion_context(prepared, state)
+
+    return _scheduled_writer_next_token_frontier(
+        prepared,
+        state,
+        context,
+    )
+
+
+def legal_writer_transitions(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+) -> tuple[WriterTransition, ...]:
+    context = build_writer_transition_expansion_context(prepared, state)
+
+    return _scheduled_writer_transitions(
+        prepared,
+        state,
+        context,
+    )
+
+
+def _root_atom_transitions(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    active: WriterAtomFrame,
+) -> tuple[WriterTransition, ...]:
+    transitions = []
+    for choice in writer_atom_text_choices(prepared, active.atom):
+        transition = _transition(
+            prepared,
+            state,
+            emitted_text=choice.text,
+            successor=replace(
+                state,
+                active=replace(active, atom_emitted=True),
+                visited_atoms=frozenset((*state.visited_atoms, active.atom)),
+            ),
+            kind=WriterTransitionKind.ATOM,
+            events=(
+                WriterAtomEmitted(
+                    atom=active.atom,
+                    text=choice.text,
+                    tetra_token=choice.tetra_token,
+                ),
+            ),
+            evidence=WriterTransitionEvidence(atom=active.atom),
+        )
+        if transition is not None:
+            transitions.append(transition)
+    return tuple(transitions)
+
+
+def _root_atom_transitions_from_scheduled_action(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+    action: _WriterScheduledAction,
+) -> tuple[WriterTransition, ...]:
+    if action.kind is not _WriterScheduledActionKind.EMIT_ROOT_ATOM:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            f"unsupported root-atom scheduled action: {action.kind!r}",
+        )
+
+    if action.parent != state.active.atom:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "scheduled root-atom action does not match active atom",
+        )
+
+    return _root_atom_transitions(
+        prepared,
+        state,
+        state.active,
+    )
+
+
+def _pending_entry_transitions(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+) -> tuple[WriterTransition, ...]:
+    pending = state.obligations.pending_entry
+    if pending is None:
+        return ()
+    kind = (
+        WriterTransitionKind.ENTER_BRANCH_CHILD
+        if pending.branch
+        else WriterTransitionKind.ENTER_INLINE_CHILD
+    )
+    if pending.phase is PendingEntryPhase.NEEDS_ATOM_AFTER_BOND:
+        return _enter_child_atom_transitions(
+            prepared,
+            state,
+            pending,
+            kind=kind,
+            context=context,
+        )
+    return _enter_child_transitions(
+        prepared,
+        state,
+        pending,
+        kind=kind,
+        context=context,
+    )
+
+
+def _pending_entry_transitions_from_scheduled_action(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+    action: _WriterScheduledAction,
+) -> tuple[WriterTransition, ...]:
+    if action.kind is not _WriterScheduledActionKind.CONSUME_PENDING_ENTRY:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            f"unsupported pending-entry scheduled action: {action.kind!r}",
+        )
+
+    if action.pending_entry is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "scheduled pending-entry action requires a pending entry",
+        )
+
+    return _pending_entry_transitions(
+        prepared,
+        state,
+        context,
+    )
+
+
+def _enter_child_transitions(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    pending: PendingWriterEntry,
+    *,
+    kind: WriterTransitionKind,
+    context: WriterTransitionExpansionContext,
+) -> tuple[WriterTransition, ...]:
+    parent_frame = state.active
+    child_frame = WriterAtomFrame(
+        atom=pending.child,
+        parent=pending.parent,
+        incoming_bond=pending.bond,
+        atom_emitted=True,
+    )
+    branch_stack = state.branch_stack
+    if pending.branch:
+        branch_stack = (*branch_stack, WriterBranchFrame(return_atom=parent_frame))
+
+    transitions: list[WriterTransition] = []
+    for bond_choice in writer_bond_text_choices(prepared, pending.bond):
+        if bond_choice.text:
+            transition = _transition(
+                prepared,
+                state,
+                emitted_text=bond_choice.text,
+                successor=replace(
+                    state,
+                    obligations=ObligationState(
+                        pending_entry=replace(
+                            pending,
+                            phase=PendingEntryPhase.NEEDS_ATOM_AFTER_BOND,
+                        )
+                    ),
+                ),
+                kind=WriterTransitionKind.ENTER_CHILD_BOND,
+                events=(
+                    WriterBondEmitted(
+                        bond=pending.bond,
+                        parent=pending.parent,
+                        child=pending.child,
+                        text=bond_choice.text,
+                        direction_mark=bond_choice.direction_mark,
+                    ),
+                ),
+                evidence=WriterTransitionEvidence(
+                    bond=pending.bond,
+                    parent=pending.parent,
+                    child=pending.child,
+                ),
+            )
+            if transition is not None:
+                transitions.append(transition)
+            continue
+        for atom_choice in writer_atom_text_choices(prepared, pending.child):
+            transition = _enter_child_atom_transition(
+                prepared,
+                state,
+                pending,
+                atom_choice=atom_choice,
+                bond_choice=bond_choice,
+                child_frame=child_frame,
+                branch_stack=branch_stack,
+                kind=kind,
+                context=context,
+            )
+            if transition is not None:
+                transitions.append(transition)
+    return tuple(transitions)
+
+
+def _enter_child_atom_transitions(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    pending: PendingWriterEntry,
+    *,
+    kind: WriterTransitionKind,
+    context: WriterTransitionExpansionContext,
+) -> tuple[WriterTransition, ...]:
+    parent_frame = state.active
+    child_frame = WriterAtomFrame(
+        atom=pending.child,
+        parent=pending.parent,
+        incoming_bond=pending.bond,
+        atom_emitted=True,
+    )
+    branch_stack = state.branch_stack
+    if pending.branch:
+        branch_stack = (*branch_stack, WriterBranchFrame(return_atom=parent_frame))
+    transitions = []
+    for atom_choice in writer_atom_text_choices(prepared, pending.child):
+        transition = _enter_child_atom_transition(
+            prepared,
+            state,
+            pending,
+            atom_choice=atom_choice,
+            bond_choice=None,
+            child_frame=child_frame,
+            branch_stack=branch_stack,
+            kind=kind,
+            context=context,
+        )
+        if transition is not None:
+            transitions.append(transition)
+    return tuple(transitions)
+
+
+def _enter_child_atom_transition(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    pending: PendingWriterEntry,
+    *,
+    atom_choice: WriterAtomTextChoice,
+    bond_choice: WriterBondTextChoice | None,
+    child_frame: WriterAtomFrame,
+    branch_stack: tuple[WriterBranchFrame, ...],
+    kind: WriterTransitionKind,
+    context: WriterTransitionExpansionContext,
+) -> WriterTransition | None:
+    events: list[WriterEvent] = []
+    if bond_choice is not None:
+        events.append(
+            WriterBondEmitted(
+                bond=pending.bond,
+                parent=pending.parent,
+                child=pending.child,
+                text=bond_choice.text,
+                direction_mark=bond_choice.direction_mark,
+            )
+        )
+    events.append(
+        WriterAtomEmitted(
+            atom=pending.child,
+            text=atom_choice.text,
+            tetra_token=atom_choice.tetra_token,
+            parent=pending.parent,
+            incoming_bond=pending.bond,
+        )
+    )
+    if not pending.branch and _is_final_child_for_parent(context, state, pending):
+        events.append(WriterLocalOrderClosed(atom=pending.parent))
+    return _transition(
+        prepared,
+        state,
+        emitted_text=atom_choice.text,
+        successor=replace(
+            state,
+            active=child_frame,
+            branch_stack=branch_stack,
+            visited_atoms=frozenset((*state.visited_atoms, pending.child)),
+            written_bonds=frozenset((*state.written_bonds, pending.bond)),
+            obligations=ObligationState(),
+        ),
+        kind=kind,
+        events=tuple(events),
+        evidence=WriterTransitionEvidence(
+            atom=pending.child,
+            bond=pending.bond,
+            parent=pending.parent,
+            child=pending.child,
+        ),
+    )
+
+
+def _finish_active_transitions(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+) -> tuple[WriterTransition, ...]:
+    active_atom = state.active.atom
+    if state.branch_stack:
+        frame = state.branch_stack[-1]
+        transition = _transition(
+            prepared,
+            state,
+            emitted_text=")",
+            successor=replace(
+                state,
+                active=frame.return_atom,
+                branch_stack=state.branch_stack[:-1],
+            ),
+            kind=WriterTransitionKind.CLOSE_BRANCH,
+            events=(
+                WriterLocalOrderClosed(atom=active_atom),
+                WriterBranchClosed(atom=active_atom),
+            ),
+            evidence=WriterTransitionEvidence(atom=active_atom),
+        )
+        return (() if transition is None else (transition,))
+
+    next_component_index = state.component_cursor.component_index + 1
+    if next_component_index >= len(state.component_cursor.component_roots):
+        return ()
+    completion = writer_graph_completion_status(prepared, context.state_key, context.graph)
+    if not completion.complete:
+        return ()
+    root = state.component_cursor.component_roots[next_component_index]
+    transition = _transition(
+        prepared,
+        state,
+        emitted_text=".",
+        successor=replace(
+            state,
+            component_cursor=ComponentCursor(
+                component_index=next_component_index,
+                component_roots=state.component_cursor.component_roots,
+            ),
+            active=WriterAtomFrame(
+                atom=root,
+                parent=None,
+                incoming_bond=None,
+                atom_emitted=False,
+            ),
+        ),
+        kind=WriterTransitionKind.DOT,
+        events=(
+            WriterLocalOrderClosed(atom=active_atom),
+            WriterComponentBoundaryEmitted(next_root=root),
+        ),
+        evidence=WriterTransitionEvidence(atom=root),
+    )
+    return (() if transition is None else (transition,))
+
+
+def _closure_endpoint_scheduled_actions(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+) -> tuple[_WriterScheduledAction, ...]:
+    active_atom = state.active.atom
+    actions: list[_WriterScheduledAction] = []
+
+    actions.extend(
+        _closure_pair_scheduled_actions(
+            prepared,
+            state,
+            active_atom,
+        )
+    )
+
+    labels = _available_closure_labels_for_open(
+        prepared,
+        state.ring_state,
+    )
+
+    if labels:
+        actions.extend(
+            _closure_open_scheduled_actions(
+                context,
+                active_atom,
+                labels,
+            )
+        )
+
+    return tuple(actions)
+
+
+def _closure_endpoint_schedule_decision(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+) -> _WriterClosureEndpointScheduleDecision:
+    active_atom = state.active.atom
+
+    pair_actions = _closure_pair_scheduled_actions(
+        prepared,
+        state,
+        active_atom,
+    )
+    labels = _available_closure_labels_for_open(
+        prepared,
+        state.ring_state,
+    )
+
+    if labels:
+        open_actions = _closure_open_scheduled_actions(
+            context,
+            active_atom,
+            labels,
+        )
+    else:
+        open_actions = ()
+
+    schedule_surface = _WriterClosureEndpointScheduleSurface(
+        active_atom=active_atom,
+        pair_actions=pair_actions,
+        open_actions=open_actions,
+    )
+
+    pair_batch = _scheduled_action_emission_batch(
+        prepared,
+        state,
+        context,
+        schedule_surface.pair_actions,
+    )
+
+    open_batch = _scheduled_action_emission_batch(
+        prepared,
+        state,
+        context,
+        schedule_surface.open_actions,
+    )
+    graph_policy_blockers = (
+        _empty_closure_bond_text_relation_blockers(
+            prepared,
+            open_batch,
+        )
+    )
+
+    return _WriterClosureEndpointScheduleDecision(
+        pair_batch=pair_batch,
+        open_batch=open_batch,
+        surviving_emissions=(
+            *pair_batch.surviving_emissions,
+            *open_batch.surviving_emissions,
+        ),
+        schedule_surface=schedule_surface,
+        graph_policy_blockers=graph_policy_blockers,
+    )
+
+
+def _closure_endpoint_transitions_from_scheduled_action(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+    action: _WriterScheduledAction,
+) -> tuple[WriterTransition, ...]:
+    if action.kind is _WriterScheduledActionKind.PAIR_CLOSURE_ENDPOINT:
+        return _closure_pair_transitions_from_scheduled_action(
+            prepared,
+            state,
+            context,
+            action,
+        )
+
+    if action.kind is _WriterScheduledActionKind.OPEN_CLOSURE_ENDPOINT:
+        return _closure_open_transitions_from_scheduled_action(
+            prepared,
+            state,
+            context,
+            action,
+        )
+
+    raise SouthStarError(
+        SouthStarErrorKind.INTERNAL_INVARIANT,
+        f"unsupported closure-endpoint scheduled action: {action.kind!r}",
+    )
+
+
+def _transitions_from_scheduled_action(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+    action: _WriterScheduledAction,
+) -> tuple[WriterTransition, ...]:
+    if action.kind is _WriterScheduledActionKind.CONSUME_PENDING_ENTRY:
+        return _pending_entry_transitions_from_scheduled_action(
+            prepared,
+            state,
+            context,
+            action,
+        )
+
+    if action.kind is _WriterScheduledActionKind.EMIT_ROOT_ATOM:
+        return _root_atom_transitions_from_scheduled_action(
+            prepared,
+            state,
+            context,
+            action,
+        )
+
+    if action.kind in (
+        _WriterScheduledActionKind.FINISH_ACTIVE,
+        _WriterScheduledActionKind.ENTER_INLINE_CHILD,
+        _WriterScheduledActionKind.OPEN_BRANCH,
+    ):
+        return _active_child_transitions_from_scheduled_action(
+            prepared,
+            state,
+            context,
+            action,
+        )
+
+    if action.kind in (
+        _WriterScheduledActionKind.OPEN_CLOSURE_ENDPOINT,
+        _WriterScheduledActionKind.PAIR_CLOSURE_ENDPOINT,
+    ):
+        return _closure_endpoint_transitions_from_scheduled_action(
+            prepared,
+            state,
+            context,
+            action,
+        )
+
+    raise SouthStarError(
+        SouthStarErrorKind.INTERNAL_INVARIANT,
+        f"unsupported scheduled action: {action.kind!r}",
+    )
+
+
+def _scheduled_action_emissions(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+    actions: tuple[_WriterScheduledAction, ...],
+) -> tuple[_WriterScheduledActionEmission, ...]:
+    emissions: list[_WriterScheduledActionEmission] = []
+
+    for action in actions:
+        stereo_policy_blockers: tuple[WriterStereoPolicyBlocker, ...] = ()
+        try:
+            transitions = _transitions_from_scheduled_action(
+                prepared,
+                state,
+                context,
+                action,
+            )
+        except _WriterStereoPolicyBlockedTransition as exc:
+            transitions = ()
+            stereo_policy_blockers = exc.blockers
+        emissions.append(
+            _WriterScheduledActionEmission(
+                action=action,
+                transitions=transitions,
+                stereo_policy_blockers=stereo_policy_blockers,
+            )
+        )
+
+    return tuple(emissions)
+
+
+def _surviving_scheduled_action_emissions(
+    emissions: tuple[_WriterScheduledActionEmission, ...],
+) -> tuple[_WriterScheduledActionEmission, ...]:
+    return tuple(
+        emission
+        for emission in emissions
+        if emission.transitions
+    )
+
+
+def _scheduled_action_emission_batch(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+    actions: tuple[_WriterScheduledAction, ...],
+) -> _WriterScheduledActionEmissionBatch:
+    emissions = _scheduled_action_emissions(
+        prepared,
+        state,
+        context,
+        actions,
+    )
+
+    surviving_emissions = _surviving_scheduled_action_emissions(
+        emissions,
+    )
+
+    return _WriterScheduledActionEmissionBatch(
+        actions=actions,
+        emissions=emissions,
+        surviving_emissions=surviving_emissions,
+    )
+
+
+def _next_token_frontier_from_scheduled_action_emissions(
+    emissions: tuple[_WriterScheduledActionEmission, ...],
+) -> tuple[_WriterNextTokenFrontierEntry, ...]:
+    support_lists: dict[str, list[_WriterNextTokenFrontierSupport]] = {}
+
+    for emission in emissions:
+        for transition in emission.transitions:
+            support = _WriterNextTokenFrontierSupport(
+                emission=emission,
+                transition=transition,
+            )
+            support_lists.setdefault(
+                transition.emitted_text,
+                [],
+            ).append(support)
+
+    return tuple(
+        _WriterNextTokenFrontierEntry(
+            emitted_text=emitted_text,
+            supports=tuple(supports),
+        )
+        for emitted_text, supports in support_lists.items()
+    )
+
+
+def _transitions_from_scheduled_action_emissions(
+    emissions: tuple[_WriterScheduledActionEmission, ...],
+) -> tuple[WriterTransition, ...]:
+    transitions: list[WriterTransition] = []
+
+    for emission in emissions:
+        transitions.extend(emission.transitions)
+
+    return tuple(transitions)
+
+
+def _transitions_from_scheduled_actions(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+    actions: tuple[_WriterScheduledAction, ...],
+) -> tuple[WriterTransition, ...]:
+    return _transitions_from_scheduled_action_emissions(
+        _scheduled_action_emissions(
+            prepared,
+            state,
+            context,
+            actions,
+        )
+    )
+
+
+def _open_closure_endpoint_transition_from_obligation(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+    closure_obligation: _WriterClosureOpenObligation,
+    label: WriterClosureLabel,
+    first_endpoint_choice,
+    relation_evidence: WriterFiniteRelationWorkEvidence,
+) -> WriterTransition | None:
+    endpoint = WriterOpenClosureEndpoint(
+        bond=closure_obligation.bond,
+        first_atom=closure_obligation.first_atom,
+        second_atom=closure_obligation.second_atom,
+        label=label,
+        first_endpoint_text=label.text,
+        first_endpoint_bond_text=first_endpoint_choice.bond_text,
+        first_endpoint_direction_mark=first_endpoint_choice.direction_mark,
+    )
+
+    transition = _transition(
+        prepared,
+        state,
+        emitted_text=f"{first_endpoint_choice.rendered_text}{label.text}",
+        successor=replace(
+            state,
+            ring_state=_ring_state_after_open_endpoint(
+                state.ring_state,
+                endpoint,
+            ),
+        ),
+        kind=WriterTransitionKind.OPEN_CLOSURE_ENDPOINT,
+        events=(
+            WriterRingLabelAllocated(
+                label=endpoint.label,
+                source=writer_ring_label_allocation_source(
+                    source_state=state,
+                    label=endpoint.label,
+                ),
+            ),
+            WriterRingEndpointEmitted(
+                bond=endpoint.bond,
+                endpoint_atom=endpoint.first_atom,
+                partner_atom=endpoint.second_atom,
+                label=endpoint.label,
+                endpoint_text=endpoint.first_endpoint_text,
+                bond_text=endpoint.first_endpoint_bond_text,
+                direction_mark=endpoint.first_endpoint_direction_mark,
+            ),
+        ),
+        evidence=WriterTransitionEvidence(
+            bond=endpoint.bond,
+            parent=endpoint.first_atom,
+            child=endpoint.second_atom,
+        ),
+        finite_relation_work_evidence=(relation_evidence,),
+    )
+
+    if transition is None:
+        return None
+
+    successor_graph = _validated_closure_open_successor_graph(
+        prepared,
+        transition.successor,
+        endpoint,
+    )
+    if successor_graph is None:
+        return None
+
+    if not _closure_open_attachment_restriction_is_exact(
+        obligation=closure_obligation,
+        successor_graph=successor_graph,
+    ):
+        return None
+
+    capabilities = set(transition.semantic_execution_capabilities)
+    if _closure_open_emits_coupled_attachment_capability(
+        obligation=closure_obligation,
+        successor_graph=successor_graph,
+    ):
+        capabilities.add(
+            _WriterExecutionCapabilityKind
+            .COUPLED_CYCLIC_ATTACHMENT_RESTRICTION
+        )
+
+    return replace(
+        transition,
+        semantic_execution_capabilities=frozenset(capabilities),
+    )
+
+
+def _closure_open_transitions_from_scheduled_action(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+    action: _WriterScheduledAction,
+) -> tuple[WriterTransition, ...]:
+    if action.kind is not _WriterScheduledActionKind.OPEN_CLOSURE_ENDPOINT:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            f"unsupported closure-open scheduled action: {action.kind!r}",
+        )
+
+    closure_obligation = action.closure_open_obligation
+
+    if closure_obligation is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "scheduled closure-open action requires an open obligation",
+        )
+
+    label = action.closure_open_label
+
+    if label is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "scheduled closure-open action requires a closure label",
+        )
+
+    try:
+        relation = writer_closure_endpoint_relation(
+            prepared,
+            bond=closure_obligation.bond,
+            first_atom=closure_obligation.first_atom,
+            second_atom=closure_obligation.second_atom,
+        )
+    except (KeyError, SouthStarError):
+        return ()
+    relation_evidence = writer_closure_endpoint_relation_work_evidence(
+        operation="closure endpoint open relation",
+        bond=closure_obligation.bond,
+        relation=relation,
+        include_direction_marks=_closure_endpoint_relation_uses_direction_marks(
+            relation
+        ),
+    )
+    transitions = []
+    for first_endpoint_choice in relation.openable_first_choices:
+        transition = _open_closure_endpoint_transition_from_obligation(
+            prepared,
+            state,
+            context,
+            closure_obligation,
+            label,
+            first_endpoint_choice,
+            relation_evidence,
+        )
+        if transition is not None:
+            transitions.append(transition)
+
+    return tuple(transitions)
+
+
+def _closure_endpoint_relation_uses_direction_marks(relation) -> bool:
+    return any(
+        first.direction_mark is not DirectionMark.ABSENT
+        or any(
+            second.direction_mark is not DirectionMark.ABSENT
+            for second in seconds
+        )
+        for first, seconds in relation.rows
+    )
+
+
+def _empty_closure_bond_text_relation_blockers(
+    prepared: SouthStarPreparedMol,
+    open_batch: _WriterScheduledActionEmissionBatch,
+) -> tuple[_WriterActiveEmittedGraphPolicyBlocker, ...]:
+    if not hasattr(prepared, "policy"):
+        return ()
+
+    blockers: list[_WriterActiveEmittedGraphPolicyBlocker] = []
+    seen: set[BondId] = set()
+
+    for emission in open_batch.emissions:
+        action = emission.action
+        if action.kind is not _WriterScheduledActionKind.OPEN_CLOSURE_ENDPOINT:
+            continue
+
+        closure_obligation = action.closure_open_obligation
+        if closure_obligation is None:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "scheduled closure-open action requires an open obligation",
+            )
+
+        bond = closure_obligation.bond
+        if bond in seen:
+            continue
+
+        try:
+            relation = writer_closure_bond_text_relation(
+                prepared,
+                bond,
+            )
+        except (KeyError, SouthStarError):
+            relation = None
+        if relation is None:
+            seen.add(bond)
+            blockers.append(
+                _WriterActiveEmittedGraphPolicyBlocker(
+                    kind=(
+                        _WriterActiveEmittedGraphPolicyBlockerKind
+                        .EMPTY_CLOSURE_BOND_TEXT_RELATION
+                    ),
+                    bond=bond,
+                )
+            )
+            continue
+        if relation.openable_first_texts:
+            continue
+
+        seen.add(bond)
+        blockers.append(
+            _WriterActiveEmittedGraphPolicyBlocker(
+                kind=(
+                    _WriterActiveEmittedGraphPolicyBlockerKind
+                    .EMPTY_CLOSURE_BOND_TEXT_RELATION
+                ),
+                bond=bond,
+            )
+        )
+
+    return tuple(blockers)
+
+
+def _residual_attachment_closure_open_obligations_from_context(
+    context: WriterTransitionExpansionContext,
+    atom: AtomId,
+) -> tuple[_WriterClosureOpenObligation, ...]:
+    obligations: list[_WriterClosureOpenObligation] = []
+
+    for action_incidence in writer_residual_attachment_action_incidences_for_atom(
+        context.graph.residual_summary,
+        atom,
+    ):
+        action = action_incidence.action
+
+        if action.kind is not WriterResidualAttachmentActionKind.CLOSURE_OPEN_READY:
+            continue
+
+        incidence = action_incidence.incidence
+
+        obligations.append(
+            _WriterClosureOpenObligation(
+                bond=incidence.bond,
+                first_atom=atom,
+                second_atom=incidence.residual_atom,
+                attachment_id=action.attachment_id,
+                attachment_action_kind=action.kind,
+                owner_kind=incidence.owner_kind,
+                source_attachment=action_incidence.attachment,
+            )
+        )
+
+    return tuple(obligations)
+
+
+def _live_branch_return_closure_candidate_open_obligations_from_context(
+    context: WriterTransitionExpansionContext,
+    state: WriterState | WriterStateKey,
+    active_atom: AtomId,
+) -> tuple[_WriterClosureOpenObligation, ...]:
+    del active_atom
+
+    key = getattr(context, "state_key", None)
+    if key is None:
+        key = state if isinstance(state, WriterStateKey) else writer_state_key(state)
+
+    obligations: list[_WriterClosureOpenObligation] = []
+
+    for resolution in writer_live_branch_return_closure_candidate_resolutions(
+        key,
+        context.graph.edge_partition,
+    ):
+        if resolution.first_atom is None or resolution.second_atom is None:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "live closure-candidate resolution lacks endpoints",
+            )
+
+        obligations.append(
+            _WriterClosureOpenObligation(
+                bond=resolution.bond,
+                first_atom=resolution.first_atom,
+                second_atom=resolution.second_atom,
+                attachment_id=None,
+                attachment_action_kind=None,
+                owner_kind=None,
+                source_kind=(
+                    _WriterClosureOpenObligationSourceKind
+                    .LIVE_BRANCH_RETURN_CLOSURE_CANDIDATE
+                ),
+            )
+        )
+
+    return tuple(obligations)
+
+
+def _closure_open_obligations_from_context(
+    context: WriterTransitionExpansionContext,
+    state_or_atom,
+    atom: AtomId | None = None,
+) -> tuple[_WriterClosureOpenObligation, ...]:
+    if atom is None:
+        state = getattr(context, "state_key", None)
+        atom = state_or_atom
+    else:
+        state = state_or_atom
+
+    live_obligations = (
+        ()
+        if state is None
+        else _live_branch_return_closure_candidate_open_obligations_from_context(
+            context,
+            state,
+            atom,
+        )
+    )
+
+    return (
+        *_residual_attachment_closure_open_obligations_from_context(
+            context,
+            atom,
+        ),
+        *live_obligations,
+    )
+
+
+def _closure_open_scheduled_actions(
+    context: WriterTransitionExpansionContext,
+    state_or_active_atom,
+    active_atom_or_labels,
+    labels: tuple[WriterClosureLabel, ...] | None = None,
+) -> tuple[_WriterScheduledAction, ...]:
+    if labels is None:
+        state = getattr(context, "state_key", None)
+        active_atom = state_or_active_atom
+        labels = active_atom_or_labels
+    else:
+        state = state_or_active_atom
+        active_atom = active_atom_or_labels
+
+    actions: list[_WriterScheduledAction] = []
+
+    obligations = (
+        _closure_open_obligations_from_context(context, active_atom)
+        if state is None
+        else _closure_open_obligations_from_context(context, state, active_atom)
+    )
+
+    for closure_obligation in obligations:
+        for label in labels:
+            actions.append(
+                _open_closure_endpoint_action(
+                    active_atom,
+                    closure_obligation,
+                    label,
+                )
+            )
+
+    return tuple(actions)
+
+
+def _closure_pair_obligations_from_state(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    atom: AtomId,
+) -> tuple[_WriterClosurePairObligation, ...]:
+    obligations: list[_WriterClosurePairObligation] = []
+
+    for endpoint in state.ring_state.open_endpoints:
+        if endpoint.second_atom != atom:
+            continue
+
+        relation = writer_closure_endpoint_relation(
+            prepared,
+            bond=endpoint.bond,
+            first_atom=endpoint.first_atom,
+            second_atom=endpoint.second_atom,
+        )
+        relation_evidence = writer_closure_endpoint_relation_work_evidence(
+            operation="closure endpoint pair relation",
+            bond=endpoint.bond,
+            relation=relation,
+            include_direction_marks=(
+                _closure_endpoint_relation_uses_direction_marks(relation)
+            ),
+        )
+        first_choice = WriterClosureEndpointChoice(
+            endpoint.first_endpoint_bond_text,
+            endpoint.first_endpoint_direction_mark,
+        )
+        for second_endpoint_choice in relation.compatible_seconds(first_choice):
+            closure = WriterClosedClosure(
+                bond=endpoint.bond,
+                first_atom=endpoint.first_atom,
+                second_atom=endpoint.second_atom,
+                label=endpoint.label,
+                first_endpoint_text=endpoint.first_endpoint_text,
+                second_endpoint_text=endpoint.label.text,
+                first_endpoint_bond_text=endpoint.first_endpoint_bond_text,
+                second_endpoint_bond_text=second_endpoint_choice.bond_text,
+                first_endpoint_direction_mark=endpoint.first_endpoint_direction_mark,
+                second_endpoint_direction_mark=second_endpoint_choice.direction_mark,
+            )
+
+            obligations.append(
+                _WriterClosurePairObligation(
+                    endpoint=endpoint,
+                    closure=closure,
+                    relation_evidence=(relation_evidence,),
+                )
+            )
+
+    return tuple(obligations)
+
+
+def _closure_pair_scheduled_actions(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    active_atom: AtomId,
+) -> tuple[_WriterScheduledAction, ...]:
+    return tuple(
+        _pair_closure_endpoint_action(active_atom, pair_obligation)
+        for pair_obligation in _closure_pair_obligations_from_state(
+            prepared,
+            state,
+            active_atom,
+        )
+    )
+
+
+def _pair_closure_endpoint_transition_from_obligation(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+    pair_obligation: _WriterClosurePairObligation,
+) -> WriterTransition | None:
+    endpoint = pair_obligation.endpoint
+    closure = pair_obligation.closure
+
+    transition = _transition(
+        prepared,
+        state,
+        emitted_text=(
+            f"{_closure_endpoint_rendered_text(closure.second_endpoint_bond_text, closure.second_endpoint_direction_mark)}"
+            f"{endpoint.label.text}"
+        ),
+        successor=replace(
+            state,
+            ring_state=_ring_state_after_pair_endpoint(
+                state.ring_state,
+                endpoint,
+                closure,
+            ),
+        ),
+        kind=WriterTransitionKind.PAIR_CLOSURE_ENDPOINT,
+        events=(
+            WriterRingEndpointPaired(
+                bond=closure.bond,
+                endpoint_atom=closure.second_atom,
+                partner_atom=closure.first_atom,
+                label=closure.label,
+                endpoint_text=closure.second_endpoint_text,
+                bond_text=closure.second_endpoint_bond_text,
+                direction_mark=closure.second_endpoint_direction_mark,
+                first_endpoint_bond_text=closure.first_endpoint_bond_text,
+                first_endpoint_direction_mark=closure.first_endpoint_direction_mark,
+            ),
+            WriterRingLabelReleased(label=closure.label),
+        ),
+        evidence=WriterTransitionEvidence(
+            bond=closure.bond,
+            parent=closure.first_atom,
+            child=closure.second_atom,
+        ),
+        finite_relation_work_evidence=pair_obligation.relation_evidence,
+    )
+
+    if transition is None:
+        return None
+
+    if not _closure_pair_successor_is_supported(
+        prepared,
+        transition.successor,
+        closure,
+    ):
+        return None
+
+    return transition
+
+
+def _closure_pair_transitions_from_scheduled_action(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+    action: _WriterScheduledAction,
+) -> tuple[WriterTransition, ...]:
+    if action.kind is not _WriterScheduledActionKind.PAIR_CLOSURE_ENDPOINT:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            f"unsupported closure-pair scheduled action: {action.kind!r}",
+        )
+
+    pair_obligation = action.closure_pair_obligation
+
+    if pair_obligation is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "scheduled closure-pair action requires a pair obligation",
+        )
+
+    transition = _pair_closure_endpoint_transition_from_obligation(
+        prepared,
+        state,
+        context,
+        pair_obligation,
+    )
+
+    if transition is None:
+        return ()
+
+    return (transition,)
+
+
+def _available_closure_labels_for_open(
+    prepared: SouthStarPreparedMol,
+    ring_state: WriterRingState,
+) -> tuple[WriterClosureLabel, ...]:
+    allocated = set(ring_state.label_state.allocated)
+    available = []
+    for label in prepared.policy.ring_labels:
+        candidate = WriterClosureLabel(value=label.value, text=label.text())
+        if candidate not in allocated:
+            available.append(candidate)
+    if prepared.policy.least_free_ring_labels:
+        if not available:
+            return ()
+        return (min(available, key=lambda label: label.value),)
+    return tuple(available)
+
+
+def _ring_state_after_open_endpoint(
+    ring_state: WriterRingState,
+    endpoint: WriterOpenClosureEndpoint,
+) -> WriterRingState:
+    label = endpoint.label
+    return replace(
+        ring_state,
+        open_endpoints=_sorted_open_endpoints((*ring_state.open_endpoints, endpoint)),
+        label_state=WriterRingLabelState(
+            allocated=_sorted_closure_labels((*ring_state.label_state.allocated, label)),
+            reusable=_sorted_closure_labels(
+                item for item in ring_state.label_state.reusable if item != label
+            ),
+        ),
+    )
+
+
+def _ring_state_after_pair_endpoint(
+    ring_state: WriterRingState,
+    endpoint: WriterOpenClosureEndpoint,
+    closure: WriterClosedClosure,
+) -> WriterRingState:
+    label = endpoint.label
+    return replace(
+        ring_state,
+        open_endpoints=_sorted_open_endpoints(
+            item for item in ring_state.open_endpoints if item != endpoint
+        ),
+        closed_closures=_sorted_closed_closures((*ring_state.closed_closures, closure)),
+        label_state=WriterRingLabelState(
+            allocated=_sorted_closure_labels(
+                item for item in ring_state.label_state.allocated if item != label
+            ),
+            reusable=_sorted_closure_labels((*ring_state.label_state.reusable, label)),
+        ),
+    )
+
+
+def _closure_open_successor_is_supported(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    endpoint: WriterOpenClosureEndpoint,
+) -> bool:
+    return (
+        _validated_closure_open_successor_graph(
+            prepared,
+            state,
+            endpoint,
+        )
+        is not None
+    )
+
+
+def _validated_closure_open_successor_graph(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    endpoint: WriterOpenClosureEndpoint,
+) -> WriterGraphObligationContext | None:
+    try:
+        key = writer_state_key(state)
+        graph = build_writer_graph_obligation_context(prepared, key)
+        if _edge_kind(graph, endpoint.bond) is not WriterEdgeObligationKind.OPEN_CLOSURE_ENDPOINT:
+            return None
+        if _has_unsupported_closure_candidate(key, graph):
+            return None
+        if _has_blocked_attachment_action(graph):
+            return None
+        validate_writer_snapshot_graph_coherence(prepared, key, graph)
+        return graph
+    except SouthStarError:
+        return None
+
+
+def _closure_open_attachment_restriction_is_exact(
+    *,
+    obligation: _WriterClosureOpenObligation,
+    successor_graph: WriterGraphObligationContext,
+) -> bool:
+    source = obligation.source_attachment
+    if source is None:
+        return True
+
+    expected_boundary = tuple(
+        incidence
+        for incidence in source.boundary
+        if incidence.bond != obligation.bond
+    )
+    if len(expected_boundary) != len(source.boundary) - 1:
+        return False
+
+    candidates = tuple(
+        attachment
+        for attachment
+        in successor_graph.residual_summary.attachments.attachments
+        if (
+            attachment.atoms == source.atoms
+            and attachment.latent_bonds == source.latent_bonds
+            and attachment.cyclic_rank == source.cyclic_rank
+            and attachment.block_ids == source.block_ids
+        )
+    )
+    if len(candidates) != 1:
+        return False
+
+    successor = candidates[0]
+    return (
+        successor.boundary == expected_boundary
+        and writer_residual_attachment_closure_deficit(successor)
+        == writer_residual_attachment_closure_deficit(source) - 1
+    )
+
+
+def _closure_open_emits_coupled_attachment_capability(
+    *,
+    obligation: _WriterClosureOpenObligation,
+    successor_graph: WriterGraphObligationContext,
+) -> bool:
+    source = obligation.source_attachment
+    if source is None or len(source.block_ids) != 1:
+        return False
+
+    candidates = tuple(
+        attachment
+        for attachment
+        in successor_graph.residual_summary.attachments.attachments
+        if (
+            attachment.atoms == source.atoms
+            and attachment.latent_bonds == source.latent_bonds
+            and attachment.cyclic_rank == source.cyclic_rank
+            and attachment.block_ids == source.block_ids
+        )
+    )
+    if len(candidates) != 1:
+        return False
+
+    return (
+        writer_residual_attachment_closure_deficit(source) == 2
+        and writer_residual_attachment_closure_deficit(candidates[0]) == 1
+    )
+
+
+def _closure_pair_successor_is_supported(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    closure: WriterClosedClosure,
+) -> bool:
+    try:
+        key = writer_state_key(state)
+        graph = build_writer_graph_obligation_context(prepared, key)
+        if _edge_kind(graph, closure.bond) is not WriterEdgeObligationKind.CLOSED_CLOSURE:
+            return False
+        if any(endpoint.bond == closure.bond for endpoint in key.ring_state.open_endpoints):
+            return False
+        validate_writer_snapshot_graph_coherence(prepared, key, graph)
+    except SouthStarError:
+        return False
+    return True
+
+
+def _edge_kind(
+    graph: WriterGraphObligationContext,
+    bond: BondId,
+) -> WriterEdgeObligationKind | None:
+    for obligation in graph.edge_partition.obligations:
+        if obligation.bond == bond:
+            return obligation.kind
+    return None
+
+
+def _has_unsupported_closure_candidate(
+    key: WriterStateKey,
+    graph: WriterGraphObligationContext,
+) -> bool:
+    return any(
+        resolution.resolution_kind
+        not in (
+            WriterClosureCandidateResolutionKind.LIVE_BRANCH_RETURN,
+            WriterClosureCandidateResolutionKind.DEFERRED_BRANCH_RETURN,
+            WriterClosureCandidateResolutionKind.DEFERRED_CONTROL_LIVE,
+        )
+        for resolution in writer_closure_candidate_resolutions(
+            key,
+            graph.edge_partition,
+        )
+    )
+
+
+def _has_blocked_attachment_action(graph: WriterGraphObligationContext) -> bool:
+    return any(
+        writer_residual_attachment_action_is_blocked(action)
+        for action in graph.residual_summary.attachment_actions
+    )
+
+
+def _sorted_closure_labels(labels) -> tuple[WriterClosureLabel, ...]:
+    return tuple(sorted(labels, key=lambda item: (item.value, item.text)))
+
+
+def _sorted_open_endpoints(endpoints) -> tuple[WriterOpenClosureEndpoint, ...]:
+    return tuple(
+        sorted(
+            endpoints,
+            key=lambda item: (
+                int(item.bond),
+                int(item.first_atom),
+                int(item.second_atom),
+                item.label.value,
+                item.label.text,
+            ),
+        )
+    )
+
+
+def _sorted_closed_closures(closures) -> tuple[WriterClosedClosure, ...]:
+    return tuple(
+        sorted(
+            closures,
+            key=lambda item: (
+                int(item.bond),
+                int(item.first_atom),
+                int(item.second_atom),
+                item.label.value,
+                item.label.text,
+            ),
+        )
+    )
+
+
+def _closure_endpoint_rendered_text(
+    bond_text: str,
+    direction_mark,
+) -> str:
+    if direction_mark is DirectionMark.FWD:
+        return "/"
+    if direction_mark is DirectionMark.REV:
+        return "\\"
+    return bond_text
+
+
+def writer_state_is_eos(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+) -> bool:
+    return finalize_writer_terminal_state(prepared, state) is not None
+
+
+def finalize_writer_terminal_state(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+) -> WriterState | None:
+    return finalize_writer_terminal_state_with_evidence(
+        prepared,
+        state,
+    ).state
+
+
+def finalize_writer_terminal_state_with_evidence(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+) -> _WriterTerminalizationOutcome:
+    context = build_writer_transition_expansion_context(prepared, state)
+    return _finalize_writer_terminal_state_from_context(
+        prepared,
+        state,
+        context,
+    )
+
+
+def _finalize_writer_terminal_state_from_context(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+) -> _WriterTerminalizationOutcome:
+    if state.obligations.pending_entry is not None or state.branch_stack:
+        return _WriterTerminalizationOutcome(state=None)
+    if state.ring_state.open_endpoints:
+        return _WriterTerminalizationOutcome(state=None)
+    if not state.active.atom_emitted:
+        return _WriterTerminalizationOutcome(state=None)
+    completion = writer_graph_completion_status(prepared, context.state_key, context.graph)
+    if not completion.complete:
+        return _WriterTerminalizationOutcome(state=None)
+    if _child_obligations_from_context(context, state, state.active.atom):
+        return _WriterTerminalizationOutcome(state=None)
+    if state.component_cursor.component_index + 1 < len(
+        state.component_cursor.component_roots
+    ):
+        return _WriterTerminalizationOutcome(state=None)
+    stereo_outcome = terminal_writer_stereo_state_with_evidence(
+        prepared,
+        state.stereo_state,
+        state.active.atom,
+    )
+    if stereo_outcome.state is None:
+        return _WriterTerminalizationOutcome(state=None)
+    return _WriterTerminalizationOutcome(
+        state=replace(state, stereo_state=stereo_outcome.state),
+        execution_capabilities=stereo_outcome.execution_capabilities,
+        residual_work_evidence=stereo_outcome.residual_work_evidence,
+        stereo_lifecycle_evidence=stereo_outcome.stereo_lifecycle_evidence,
+    )
+
+
+def _writer_state_expansion_outcome_from_validated_prepared(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+) -> _WriterStateExpansionOutcome:
+    context = _writer_transition_expansion_context_from_validated_prepared(
+        prepared,
+        state,
+    )
+    graph_obligation_work = writer_graph_obligation_work_evidence(
+        operation="writer graph obligation context",
+        prepared=prepared,
+        key=context.state_key,
+        context=context.graph,
+    )
+    return _WriterStateExpansionOutcome(
+        context=context,
+        terminal_outcome=_finalize_writer_terminal_state_from_context(
+            prepared,
+            state,
+            context,
+        ),
+        schedule_outcome=_scheduled_writer_schedule_outcome(
+            prepared,
+            state,
+            context,
+        ),
+        graph_obligation_work_evidence=(graph_obligation_work,),
+    )
+
+
+def _transition(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    *,
+    emitted_text: str,
+    successor: WriterState,
+    kind: WriterTransitionKind,
+    events: tuple[WriterEvent, ...],
+    evidence: WriterTransitionEvidence,
+    finite_relation_work_evidence: tuple[
+        WriterFiniteRelationWorkEvidence,
+        ...
+    ] = (),
+) -> WriterTransition | None:
+    stereo_outcome = advance_writer_stereo_state_with_evidence(
+        prepared,
+        state.stereo_state,
+        events,
+    )
+    if stereo_outcome.state is None:
+        if stereo_outcome.stereo_policy_blockers:
+            raise _WriterStereoPolicyBlockedTransition(
+                stereo_outcome.stereo_policy_blockers
+            )
+        return None
+    successor = replace(
+        successor,
+        policy_state=_policy_state_after_events(state.policy_state, events),
+    )
+    return WriterTransition(
+        emitted_text=emitted_text,
+        successor=replace(successor, stereo_state=stereo_outcome.state),
+        kind=kind,
+        events=events,
+        evidence=evidence,
+        semantic_execution_capabilities=stereo_outcome.execution_capabilities,
+        residual_work_evidence=stereo_outcome.residual_work_evidence,
+        finite_relation_work_evidence=finite_relation_work_evidence,
+        stereo_lifecycle_evidence=(
+            stereo_outcome.stereo_lifecycle_evidence
+        ),
+    )
+
+
+def _policy_state_after_events(
+    source: WriterPolicyState,
+    events: tuple[WriterEvent, ...],
+) -> WriterPolicyState:
+    atom_text = dict(source.atom_text)
+    bond_text = dict(source.bond_text)
+    for event in events:
+        if isinstance(event, WriterAtomEmitted):
+            atom_text[event.atom] = event.text
+        elif isinstance(event, WriterBondEmitted):
+            bond_text[event.bond] = event.text
+        elif isinstance(event, (WriterRingEndpointEmitted, WriterRingEndpointPaired)):
+            bond_text[event.bond] = event.bond_text
+    return WriterPolicyState(
+        atom_text=tuple(sorted(atom_text.items(), key=lambda item: int(item[0]))),
+        bond_text=tuple(sorted(bond_text.items(), key=lambda item: int(item[0]))),
+    )
+
+
+def _child_obligation_blockers_from_context(
+    context: WriterTransitionExpansionContext,
+    state: WriterState | None = None,
+    active_atom: AtomId | None = None,
+) -> tuple[_WriterChildObligationBlocker, ...]:
+    del active_atom
+
+    blockers: list[_WriterChildObligationBlocker] = []
+    key = getattr(context, "state_key", None)
+    if key is None and state is not None:
+        key = writer_state_key(state)
+    live_or_deferred_candidate_bonds = (
+        frozenset()
+        if key is None
+        else frozenset(
+            resolution.bond
+            for resolution in (
+                *writer_live_branch_return_closure_candidate_resolutions(
+                    key,
+                    context.graph.edge_partition,
+                ),
+                *writer_deferred_branch_return_closure_candidate_resolutions(
+                    key,
+                    context.graph.edge_partition,
+                ),
+                *writer_deferred_control_live_closure_candidate_resolutions(
+                    key,
+                    context.graph.edge_partition,
+                ),
+            )
+        )
+    )
+
+    for obligation in context.graph.edge_partition.obligations:
+        if obligation.kind is WriterEdgeObligationKind.CLOSURE_CANDIDATE:
+            if obligation.bond in live_or_deferred_candidate_bonds:
+                continue
+
+            blockers.append(
+                _WriterChildObligationBlocker(
+                    kind=_WriterChildObligationBlockerKind.CLOSURE_CANDIDATE,
+                    bond=obligation.bond,
+                )
+            )
+
+    return tuple(blockers)
+
+
+def _blocked_residual_attachment_action_graph_policy_blockers(
+    context: WriterTransitionExpansionContext,
+) -> tuple[_WriterActiveEmittedGraphPolicyBlocker, ...]:
+    return tuple(
+        _WriterActiveEmittedGraphPolicyBlocker(
+            kind=(
+                _WriterActiveEmittedGraphPolicyBlockerKind
+                .BLOCKED_RESIDUAL_ATTACHMENT_ACTION
+            ),
+            residual_attachment_action=action,
+        )
+        for action in context.graph.residual_summary.attachment_actions
+        if writer_residual_attachment_action_is_blocked(action)
+    )
+
+
+def _child_obligation_blockers_for_atom(
+    context: WriterTransitionExpansionContext,
+    state_or_atom,
+    atom: AtomId | None = None,
+) -> tuple[_WriterChildObligationBlocker, ...]:
+    if atom is None:
+        state = getattr(context, "state_key", None)
+        atom = state_or_atom
+    else:
+        state = state_or_atom
+
+    blockers = list(
+        _child_obligation_blockers_from_context(
+            context,
+            state,
+            atom,
+        )
+    )
+
+    summary = context.graph.residual_summary
+    action_incidences_for_atom = writer_residual_attachment_action_incidences_for_atom(
+        summary,
+        atom,
+    )
+
+    for action in summary.attachment_actions:
+        if action.kind not in (
+            WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY,
+            WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY,
+        ):
+            continue
+
+        boundary = tuple(
+            action_incidence.incidence
+            for action_incidence in action_incidences_for_atom
+            if action_incidence.action is action
+        )
+
+        if len(boundary) > 1:
+            blockers.append(
+                _WriterChildObligationBlocker(
+                    kind=(
+                        _WriterChildObligationBlockerKind
+                        .MULTI_INCIDENCE_RESIDUAL_ATTACHMENT
+                    ),
+                    atom=atom,
+                    attachment_id=action.attachment_id,
+                    attachment_action_kind=action.kind,
+                )
+            )
+
+    return tuple(blockers)
+
+
+def _raise_for_child_obligation_blockers(
+    blockers: tuple[_WriterChildObligationBlocker, ...],
+) -> None:
+    if any(
+        blocker.kind is _WriterChildObligationBlockerKind.CLOSURE_CANDIDATE
+        for blocker in blockers
+    ):
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            "WRITER_SHAPED closure-candidate edge obligations are not supported yet",
+        )
+
+    if any(
+        blocker.kind
+        is _WriterChildObligationBlockerKind.MULTI_INCIDENCE_RESIDUAL_ATTACHMENT
+        for blocker in blockers
+    ):
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            "WRITER_SHAPED multi-incidence residual attachments are not supported yet",
+        )
+
+
+def _raise_for_active_emitted_graph_policy_blockers(
+    policy_decision: _WriterActiveEmittedGraphPolicyDecision,
+) -> None:
+    blockers = policy_decision.graph_policy_blockers
+
+    if not blockers:
+        return
+
+    first = blockers[0]
+
+    if (
+        first.kind
+        is _WriterActiveEmittedGraphPolicyBlockerKind.CHILD_OBLIGATION
+    ):
+        _raise_for_child_obligation_blockers(policy_decision.blockers)
+        return
+
+    keys = tuple(
+        blocker.residual_attachment_policy_key
+        for blocker in blockers
+        if blocker.residual_attachment_policy_key is not None
+    )
+
+    if (
+        first.kind
+        is (
+            _WriterActiveEmittedGraphPolicyBlockerKind
+            .UNSUPPORTED_OWNER_SCOPE_RESIDUAL_ATTACHMENT_CHOICE
+        )
+    ):
+        message = (
+            "unsupported active-emitted residual attachment owner scope: "
+            f"{keys!r}"
+        )
+    elif (
+        first.kind
+        is (
+            _WriterActiveEmittedGraphPolicyBlockerKind
+            .MISSING_CLOSURE_OPEN_SUPPORT_EVIDENCE
+        )
+    ):
+        message = (
+            "unsupported active-emitted residual attachment policy choice: "
+            f"{keys!r}"
+        )
+    elif (
+        first.kind
+        is (
+            _WriterActiveEmittedGraphPolicyBlockerKind
+            .EMPTY_CLOSURE_BOND_TEXT_RELATION
+        )
+    ):
+        message = (
+            "unsupported closure bond text relation for "
+            f"{first.bond!r}"
+        )
+    elif (
+        first.kind
+        is (
+            _WriterActiveEmittedGraphPolicyBlockerKind
+            .BLOCKED_RESIDUAL_ATTACHMENT_ACTION
+        )
+    ):
+        action = first.residual_attachment_action
+        if action is None:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "blocked residual attachment blocker lacks its action",
+            )
+        message = (
+            "unsupported residual attachment action: "
+            f"kind={action.kind.value}; "
+            f"attachment={action.attachment_id}; "
+            f"owners={tuple(int(atom) for atom in action.owner_atoms)!r}; "
+            f"boundary_bonds="
+            f"{tuple(int(bond) for bond in action.boundary_bonds)!r}"
+        )
+    else:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            f"unknown active-emitted graph policy blocker: {first.kind!r}",
+        )
+
+    raise SouthStarError(
+        SouthStarErrorKind.UNSUPPORTED_POLICY,
+        message,
+    )
+
+
+def _unblocked_child_obligations_from_context(
+    context: WriterTransitionExpansionContext,
+    state: WriterState,
+    atom: AtomId,
+) -> tuple[_WriterChildObligation, ...]:
+    summary = context.graph.residual_summary
+    action_incidences_for_atom = writer_residual_attachment_action_incidences_for_atom(
+        summary,
+        atom,
+    )
+
+    children: list[_WriterChildObligation] = []
+
+    for action in summary.attachment_actions:
+        if action.kind not in (
+            WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY,
+            WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY,
+        ):
+            continue
+
+        boundary = tuple(
+            action_incidence.incidence
+            for action_incidence in action_incidences_for_atom
+            if action_incidence.action is action
+        )
+
+        if not boundary:
+            continue
+
+        if len(boundary) != 1:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "unblocked child obligation builder received non-singleton boundary",
+            )
+
+        incidence = boundary[0]
+        children.append(
+            _WriterChildObligation(
+                bond=incidence.bond,
+                child=incidence.residual_atom,
+                boundary_atom=incidence.written_atom,
+                owner_kind=incidence.owner_kind,
+                attachment_id=action.attachment_id,
+                attachment_action_kind=action.kind,
+            )
+        )
+
+    pending = state.obligations.pending_entry
+
+    if pending is not None and pending.parent == atom:
+        children.append(
+            _WriterChildObligation(
+                bond=pending.bond,
+                child=pending.child,
+                boundary_atom=pending.parent,
+                pending_entry=True,
+            )
+        )
+
+    return tuple(
+        sorted(
+            children,
+            key=lambda item: (int(item.bond), int(atom), int(item.child)),
+        )
+    )
+
+
+def _child_obligations_from_context(
+    context: WriterTransitionExpansionContext,
+    state: WriterState,
+    atom: AtomId,
+) -> tuple[_WriterChildObligation, ...]:
+    _raise_for_child_obligation_blockers(
+        _child_obligation_blockers_for_atom(
+            context,
+            atom,
+        )
+    )
+
+    return _unblocked_child_obligations_from_context(
+        context,
+        state,
+        atom,
+    )
+
+
+def _is_final_child_for_parent(
+    context: WriterTransitionExpansionContext,
+    state: WriterState,
+    pending: PendingWriterEntry,
+) -> bool:
+    children = _child_obligations_from_context(context, state, pending.parent)
+    return (
+        len(children) == 1
+        and children[0].bond == pending.bond
+        and children[0].child == pending.child
+    )
+
+
+__all__ = (
+    "WriterTransition",
+    "WriterTransitionEvidence",
+    "WriterTransitionExpansionContext",
+    "WriterTransitionKind",
+    "build_writer_transition_expansion_context",
+    "finalize_writer_terminal_state",
+    "finalize_writer_terminal_state_with_evidence",
+    "legal_writer_transitions",
+    "validate_writer_transition_prepared",
+    "writer_state_is_eos",
+)

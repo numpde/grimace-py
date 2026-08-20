@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import ast
-from collections import Counter
 from dataclasses import dataclass
 import hashlib
 import json
@@ -12,8 +11,11 @@ import sys
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+sys.path.insert(0, str(REPO_ROOT))
+
+from tree_sitter import Language, Node, Parser
+import tree_sitter_cpp
+import tree_sitter_java
 
 from tests.helpers.rdkit_serializer_coverage import (
     DEFAULT_COVERAGE_REVIEW,
@@ -118,7 +120,7 @@ def _first_string_literal(source: bytes, node: Node) -> str | None:
             raw = _node_text(source, child)
             try:
                 return ast.literal_eval(raw)
-            except (SyntaxError, ValueError):
+            except Exception:
                 return raw.strip('"')
     return None
 
@@ -172,9 +174,6 @@ def _nearest_cpp_test_case(source: bytes, node: Node) -> str | None:
 
 
 def _extract_cpp(source_root: Path, rel_path: str) -> list[ExtractedBlock]:
-    from tree_sitter import Language, Parser
-    import tree_sitter_cpp
-
     source_path = source_root / "source" / rel_path
     source = source_path.read_bytes()
     parser = Parser(Language(tree_sitter_cpp.language()))
@@ -229,7 +228,7 @@ def _extract_cpp(source_root: Path, rel_path: str) -> list[ExtractedBlock]:
 
 def _extract_python(source_root: Path, rel_path: str) -> list[ExtractedBlock]:
     source_path = source_root / "source" / rel_path
-    text = source_path.read_text(encoding="utf-8")
+    text = source_path.read_text()
     tree = ast.parse(text)
     blocks = []
 
@@ -283,9 +282,6 @@ def _nearest_java_class(source: bytes, node: Node) -> str | None:
 
 
 def _extract_java(source_root: Path, rel_path: str) -> list[ExtractedBlock]:
-    from tree_sitter import Language, Parser
-    import tree_sitter_java
-
     source_path = source_root / "source" / rel_path
     source = source_path.read_bytes()
     parser = Parser(Language(tree_sitter_java.language()))
@@ -322,40 +318,11 @@ def _extract_java(source_root: Path, rel_path: str) -> list[ExtractedBlock]:
 
 
 def _load_source_manifest(source_root: Path) -> dict[str, Any]:
-    manifest = _load_json_object(source_root / "manifest.json", context="source manifest")
-    for field in ("rdkit_version", "source_commit"):
-        if not isinstance(manifest.get(field), str) or not manifest[field]:
-            raise ValueError(f"source manifest must define nonempty {field!r}")
-    _source_files_from_manifest(manifest)
-    return manifest
+    return json.loads((source_root / "manifest.json").read_text())
 
 
 def _source_files_from_manifest(source_manifest: dict[str, Any]) -> list[str]:
-    files = source_manifest.get("files")
-    if not isinstance(files, list) or not files:
-        raise ValueError("source manifest must define a nonempty files list")
-    source_files: list[str] = []
-    for file in files:
-        if not isinstance(file, dict):
-            raise ValueError("source manifest contains a non-object file entry")
-        rel_path = file.get("path")
-        if not isinstance(rel_path, str) or not rel_path:
-            raise ValueError("source manifest contains a file entry without path")
-        parts = rel_path.replace("\\", "/").split("/")
-        has_unsafe_part = any(part in {"", ".", ".."} for part in parts)
-        if rel_path.startswith(("/", "\\")) or ":" in rel_path or has_unsafe_part:
-            raise ValueError(f"source manifest contains unsafe file path: {rel_path!r}")
-        source_files.append(rel_path)
-    duplicates = sorted(
-        rel_path
-        for rel_path, count in Counter(source_files).items()
-        if count > 1
-    )
-    if duplicates:
-        raise ValueError(
-            f"source manifest contains duplicate file path: {duplicates[0]!r}"
-        )
-    return sorted(source_files)
+    return sorted(file["path"] for file in source_manifest["files"])
 
 
 def extract_blocks(
@@ -388,33 +355,11 @@ def extract_blocks(
 def _load_existing_reviews(output_path: Path) -> dict[str, dict[str, Any]]:
     if not output_path.exists():
         return {}
-    payload = _load_json_object(output_path, context="existing coverage")
-    entries = payload.get("entries")
-    if not isinstance(entries, list):
-        raise ValueError(f"{output_path} must define entries as a list")
+    payload = json.loads(output_path.read_text())
     reviews = {}
-    for entry in entries:
-        if not isinstance(entry, dict):
-            raise ValueError(f"{output_path} contains a non-object ledger entry")
-        entry_id = entry.get("id")
-        if not isinstance(entry_id, str) or not entry_id:
-            raise ValueError(f"{output_path} contains a ledger entry without id")
-        if entry_id in reviews:
-            raise ValueError(f"{output_path} contains duplicate ledger id: {entry_id!r}")
-        reviews[entry_id] = {
-            field: entry[field] for field in REVIEW_FIELDS if field in entry
-        }
+    for entry in payload.get("entries", []):
+        reviews[entry["id"]] = {field: entry[field] for field in REVIEW_FIELDS if field in entry}
     return reviews
-
-
-def _load_json_object(path: Path, *, context: str) -> dict[str, Any]:
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError(f"{context} is not readable JSON: {path}") from exc
-    if not isinstance(payload, dict):
-        raise ValueError(f"{context} must contain a JSON object: {path}")
-    return payload
 
 
 def build_manifest(source_root: Path, output_path: Path) -> dict[str, Any]:
@@ -471,14 +416,14 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.write:
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(generated, encoding="utf-8")
+        output_path.write_text(generated)
         print(f"wrote {output_path.relative_to(REPO_ROOT)} ({len(manifest['entries'])} entries)")
         return 0
 
     if not output_path.exists():
         print(f"missing {output_path.relative_to(REPO_ROOT)}; run with --write", file=sys.stderr)
         return 1
-    current = output_path.read_text(encoding="utf-8")
+    current = output_path.read_text()
     if current != generated:
         print(f"stale {output_path.relative_to(REPO_ROOT)}; rerun with --write", file=sys.stderr)
         return 1

@@ -1,0 +1,4264 @@
+"""Determinized frontier over writer-shaped transition states."""
+
+from __future__ import annotations
+
+from collections import Counter
+from collections.abc import Iterator
+from dataclasses import dataclass
+from enum import Enum
+from itertools import product
+from typing import TYPE_CHECKING
+from types import SimpleNamespace
+
+from .errors import SouthStarError
+from .errors import SouthStarErrorKind
+from .ids import AtomId
+from .writer_execution_evidence import WriterFiniteRelationWorkEvidence
+from .writer_execution_evidence import WriterFiniteRelationWorkEnvelopeViolation
+from .writer_execution_evidence import WriterGraphObligationWorkEvidence
+from .writer_execution_evidence import WriterGraphObligationWorkEnvelopeViolation
+from .writer_execution_evidence import WriterResidualPropagationWorkEvidence
+from .writer_execution_evidence import WriterResidualWorkEnvelopeViolation
+from .writer_execution_evidence import writer_finite_relation_work_envelope_violation
+from .writer_execution_evidence import writer_graph_obligation_work_envelope_violation
+from .writer_execution_evidence import writer_residual_work_envelope_violation
+from .writer_graph_obligations import WriterClosureCandidateResolutionKind
+from .writer_graph_obligations import build_writer_graph_obligation_context
+from .writer_graph_obligations import writer_closure_candidate_resolutions
+from .writer_projection_certificates import (
+    writer_terminal_projection_certificate,
+)
+from .writer_projection_certificates import (
+    writer_text_choice_projection_certificates,
+)
+from .writer_capabilities import _WriterExecutionCapabilityKind
+from .writer_capabilities import (
+    _unsupported_public_writer_execution_capabilities,
+)
+from .writer_branch_certificates import (
+    writer_checked_branch_support_certificate,
+)
+from .writer_branch_certificates import (
+    writer_checked_terminal_support_certificate,
+)
+from .writer_closure_candidate_branch_certificates import (
+    writer_closure_candidate_branch_certificates,
+)
+from .writer_closure_candidate_lifecycle import (
+    validate_writer_closure_candidate_lifecycle_transition,
+)
+from .writer_closure_candidate_lifecycle import (
+    writer_closure_candidate_lifecycle_evidence_for_transition,
+)
+from .writer_residual_attachment_branch_certificates import (
+    writer_residual_attachment_branch_certificates,
+)
+from .writer_residual_attachment_lifecycle import (
+    validate_writer_residual_attachment_lifecycle_transition,
+)
+from .writer_residual_attachment_lifecycle import (
+    writer_residual_attachment_lifecycle_evidence_for_transition,
+)
+from .writer_state import ComponentCursor
+from .writer_state import ObligationState
+from .writer_state import WriterAtomFrame
+from .writer_state import WriterPolicyState
+from .writer_state import WriterRingState
+from .writer_state import WriterState
+from .writer_state import WriterStateKey
+from .writer_state import writer_state_from_key
+from .writer_state import writer_state_key
+from .writer_state import writer_state_key_sort_tuple
+from .writer_ring_lifecycle import validate_writer_ring_lifecycle_transition
+from .writer_stereo import initial_writer_stereo_state
+from .writer_stereo import WriterStereoPolicyBlocker
+from .writer_stereo_branch_certificates import writer_stereo_branch_certificates
+from .writer_count_certificates import writer_branch_completion_term_certificate
+from .writer_count_certificates import writer_cursor_completion_count_certificate
+from .writer_count_certificates import writer_state_completion_count_certificate
+from .writer_support_count_certificates import (
+    WriterTextStateSupportCountCertificate,
+)
+from .writer_choice_count_certificates import (
+    writer_terminal_choice_count_certificate,
+)
+from .writer_choice_count_certificates import (
+    writer_text_choice_count_certificate,
+)
+from .writer_support_count_certificates import (
+    writer_text_choice_support_count_term_certificate,
+)
+from .writer_support_count_certificates import (
+    writer_text_state_support_count_certificate,
+)
+from .writer_support_count_certificates import writer_text_support_count_certificate
+from .writer_support_certificates import (
+    writer_frontier_support_string_certificate,
+)
+from .writer_blocked_frontier_certificates import (
+    writer_blocked_frontier_certificate,
+)
+from .writer_diagnostic_certificates import (
+    WriterUnsupportedCapabilitySourceEvidence,
+)
+from .writer_diagnostic_certificates import writer_diagnostics_certificate
+from .writer_capability_certificates import writer_capability_coverage_certificate
+from .writer_frontier_certificates import writer_checked_frontier_certificate
+from .writer_frontier_certificates import writer_frontier_projection_certificate
+from .writer_state_delta_certificates import (
+    writer_branch_successor_state_certificate,
+)
+from .writer_terminal_certificates import writer_terminal_certificates
+from .writer_transitions import _WriterActiveEmittedGraphPolicyBlocker
+from .writer_transitions import _WriterActiveEmittedGraphPolicyDecision
+from .writer_transitions import _WriterActiveChildSelectionKind
+from .writer_transitions import _WriterClosureEndpointSelectionKind
+from .writer_transitions import _WriterClosureOpenObligationSourceKind
+from .writer_transitions import _WriterGraphPolicyActionFamily
+from .writer_transitions import _WriterNextTokenFrontierSupport
+from .writer_transitions import _WriterResidualAttachmentOwnerScopeKind
+from .writer_transitions import _WriterResidualAttachmentPolicyGroup
+from .writer_transitions import _WriterResidualAttachmentPolicyKey
+from .writer_transitions import _WriterTopLevelScheduleOutcome
+from .writer_transitions import _raise_for_top_level_schedule_outcome_blockers
+from .writer_transitions import _writer_state_expansion_outcome_from_validated_prepared
+from .writer_transitions import validate_writer_transition_prepared
+
+if TYPE_CHECKING:
+    from .prepared_runtime import SouthStarPreparedMol
+    from .prepared_runtime import SouthStarRuntimeOptions
+
+
+@dataclass(frozen=True, slots=True)
+class WriterFrontierState:
+    states: frozenset[WriterStateKey]
+
+
+@dataclass(frozen=True, slots=True)
+class WriterFrontierCursor:
+    weighted_states: tuple[tuple[WriterStateKey, int], ...]
+
+    def __post_init__(self) -> None:
+        merged: Counter[WriterStateKey] = Counter()
+        for key, weight in self.weighted_states:
+            if weight < 0:
+                raise ValueError("writer frontier cursor weights must be nonnegative")
+            if weight:
+                merged[key] += weight
+        object.__setattr__(
+            self,
+            "weighted_states",
+            tuple(
+                sorted(
+                    merged.items(),
+                    key=lambda item: writer_state_key_sort_tuple(item[0]),
+                )
+            ),
+        )
+
+    @property
+    def support_state(self) -> WriterFrontierState:
+        return WriterFrontierState(
+            states=frozenset(key for key, _ in self.weighted_states)
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class WriterFrontierTerminal:
+    support_count: int
+    completion_count: int
+    multiplicity: int
+    finalized_cursor: WriterFrontierCursor
+
+
+@dataclass(frozen=True, slots=True)
+class WriterFrontierChoice:
+    emitted_text: str
+    successor: WriterFrontierCursor
+    immediate_multiplicity: int
+    support_count: int | None = None
+    completion_count: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class WriterFrontierChoices:
+    terminal: WriterFrontierTerminal | None
+    choices: tuple[WriterFrontierChoice, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterFrontierSummary:
+    support_count: int | None = None
+    completion_count: int | None = None
+    strings: tuple[str, ...] | None = None
+
+    def require_support_count(self) -> int:
+        if self.support_count is None:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "writer frontier summary did not compute support count",
+            )
+        return self.support_count
+
+    def require_completion_count(self) -> int:
+        if self.completion_count is None:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "writer frontier summary did not compute completion count",
+            )
+        return self.completion_count
+
+    def require_strings(self) -> tuple[str, ...]:
+        if self.strings is None:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "writer frontier summary did not compute support strings",
+            )
+        return self.strings
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterFrontierCertifiedSupportString:
+    string: str
+    certificate: object
+
+
+@dataclass(frozen=True, slots=True)
+class _GroupedWriterFrontierTransitions:
+    terminal_by_key: Counter[WriterStateKey]
+    grouped_by_text: dict[str, set[WriterStateKey]]
+    weighted_by_text: dict[str, Counter[WriterStateKey]]
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterFrontierStateScheduleOutcome:
+    state_key: WriterStateKey
+    parent_weight: int
+    finalized_state_key: WriterStateKey | None
+    schedule_outcome: _WriterTopLevelScheduleOutcome
+    terminal_execution_capabilities: frozenset[
+        _WriterExecutionCapabilityKind
+    ] = frozenset()
+    terminal_residual_work_evidence: tuple[
+        WriterResidualPropagationWorkEvidence,
+        ...
+    ] = ()
+    terminal_stereo_lifecycle_evidence: tuple[object, ...] = ()
+    graph_obligation_work_evidence: tuple[
+        WriterGraphObligationWorkEvidence,
+        ...
+    ] = ()
+
+    def __post_init__(self) -> None:
+        if (
+            self.finalized_state_key is None
+            and self.terminal_execution_capabilities
+        ):
+            raise ValueError(
+                "terminal execution capabilities require finalized state"
+            )
+        if (
+            self.finalized_state_key is None
+            and self.terminal_residual_work_evidence
+        ):
+            raise ValueError(
+                "terminal residual work evidence requires finalized state"
+            )
+        if (
+            self.finalized_state_key is None
+            and self.terminal_stereo_lifecycle_evidence
+        ):
+            raise ValueError(
+                "terminal stereo lifecycle evidence requires finalized state"
+            )
+
+    @property
+    def blocked(self) -> bool:
+        return bool(
+            self.schedule_outcome.graph_policy_blockers
+            or self.schedule_outcome.stereo_policy_blockers
+        )
+
+    @property
+    def graph_policy_blockers(
+        self,
+    ) -> tuple[_WriterActiveEmittedGraphPolicyBlocker, ...]:
+        return self.schedule_outcome.graph_policy_blockers
+
+    @property
+    def stereo_policy_blockers(
+        self,
+    ) -> tuple[WriterStereoPolicyBlocker, ...]:
+        return self.schedule_outcome.stereo_policy_blockers
+
+    @property
+    def graph_policy_decision(
+        self,
+    ) -> _WriterActiveEmittedGraphPolicyDecision | None:
+        return self.schedule_outcome.graph_policy_decision
+
+    @property
+    def considered_active_child_selection_kind(
+        self,
+    ) -> _WriterActiveChildSelectionKind:
+        return self.schedule_outcome.considered_active_child_selection_kind
+
+    @property
+    def selected_active_child_selection_kind(
+        self,
+    ) -> _WriterActiveChildSelectionKind:
+        return self.schedule_outcome.selected_active_child_selection_kind
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterFrontierNextTokenSupport:
+    state_key: WriterStateKey
+    parent_weight: int
+    schedule_support: _WriterNextTokenFrontierSupport
+    successor_key: WriterStateKey
+
+    @property
+    def emitted_text(self) -> str:
+        return self.schedule_support.emitted_text
+
+    @property
+    def graph_action_surface(self):
+        return self.schedule_support.graph_action_surface
+
+    @property
+    def policy_family(self):
+        return self.schedule_support.policy_family
+
+    @property
+    def execution_capabilities(
+        self,
+    ) -> frozenset[_WriterExecutionCapabilityKind]:
+        return self.schedule_support.execution_capabilities
+
+    @property
+    def residual_work_evidence(
+        self,
+    ) -> tuple[WriterResidualPropagationWorkEvidence, ...]:
+        return self.schedule_support.residual_work_evidence
+
+    @property
+    def finite_relation_work_evidence(
+        self,
+    ) -> tuple[WriterFiniteRelationWorkEvidence, ...]:
+        return self.schedule_support.finite_relation_work_evidence
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterFrontierBranchSupport:
+    emitted_text: str
+    source_state: WriterStateKey
+    successor_state: WriterStateKey
+    parent_weight: int
+    branch_ordinal: int
+    transition_kind: object
+    events: tuple[object, ...]
+    evidence: object
+    execution_capabilities: frozenset[object]
+    residual_work_evidence: tuple[object, ...]
+    finite_relation_work_evidence: tuple[object, ...]
+    graph_obligation_work_evidence: tuple[object, ...] = ()
+    graph_action_surface: object | None = None
+    policy_family: object | None = None
+    closure_candidate_resolution_evidence: tuple[object, ...] = ()
+    closure_candidate_lifecycle_evidence: tuple[object, ...] = ()
+    closure_candidate_branch_certificates: tuple[object, ...] = ()
+    residual_attachment_lifecycle_evidence: tuple[object, ...] = ()
+    residual_attachment_branch_certificates: tuple[object, ...] = ()
+    stereo_lifecycle_evidence: tuple[object, ...] = ()
+    stereo_branch_certificates: tuple[object, ...] = ()
+    residual_attachment_policy_evidence: tuple[
+        "_WriterFrontierResidualAttachmentEvidenceGroup",
+        ...,
+    ] = ()
+    checked_branch_certificate: object | None = None
+    capability_coverage_certificate: object | None = None
+    successor_state_certificate: object | None = None
+
+    @property
+    def successor_cursor(self) -> WriterFrontierCursor:
+        return WriterFrontierCursor(
+            weighted_states=((self.successor_state, 1),)
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterFrontierBranchSupportBatch:
+    choices: WriterFrontierChoices
+    supports: tuple[_WriterFrontierBranchSupport, ...]
+    terminal_supports: tuple["_WriterFrontierTerminalSupport", ...] = ()
+    text_choice_projection_certificates: tuple[object, ...] = ()
+    text_choice_count_certificates: tuple[object, ...] = ()
+    terminal_choice_count_certificate: object | None = None
+    support_count_certificate: object | None = None
+    projection_certificate: object | None = None
+    terminal_projection_certificate: object | None = None
+    count_certificate: object | None = None
+    checked_frontier_certificate: object | None = None
+
+
+class _WriterCheckedFrontierProductKind(Enum):
+    LEGAL = "legal"
+    BLOCKED = "blocked"
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterFrontierBlockerEvidence:
+    graph_policy_blockers: tuple[object, ...]
+    stereo_policy_blockers: tuple[object, ...]
+    unsupported_execution_capabilities: frozenset[object]
+    unsupported_terminal_execution_capabilities: frozenset[object]
+    residual_work_envelope_violations: tuple[object, ...]
+    terminal_residual_work_envelope_violations: tuple[object, ...]
+    finite_relation_work_envelope_violations: tuple[object, ...]
+    graph_obligation_work_envelope_violations: tuple[object, ...]
+    unsupported_capability_source_evidence: tuple[object, ...] = ()
+    unsupported_terminal_capability_source_evidence: tuple[object, ...] = ()
+
+    @property
+    def blocked(self) -> bool:
+        return bool(
+            self.graph_policy_blockers
+            or self.stereo_policy_blockers
+            or self.unsupported_execution_capabilities
+            or self.unsupported_terminal_execution_capabilities
+            or self.residual_work_envelope_violations
+            or self.terminal_residual_work_envelope_violations
+            or self.finite_relation_work_envelope_violations
+            or self.graph_obligation_work_envelope_violations
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterCheckedFrontierProduct:
+    kind: _WriterCheckedFrontierProductKind
+    cursor: WriterFrontierCursor
+    choices: WriterFrontierChoices
+    branch_supports: tuple[_WriterFrontierBranchSupport, ...]
+    terminal_supports: tuple["_WriterFrontierTerminalSupport", ...]
+    text_choice_projection_certificates: tuple[object, ...] = ()
+    text_choice_count_certificates: tuple[object, ...] = ()
+    terminal_choice_count_certificate: object | None = None
+    support_count_certificate: object | None = None
+    projection_certificate: object | None = None
+    terminal_projection_certificate: object | None = None
+    count_certificate: object | None = None
+    diagnostic_certificate: object | None = None
+    checked_frontier_certificate: object | None = None
+    blocked_frontier_certificate: object | None = None
+
+    @property
+    def blocked(self) -> bool:
+        return self.kind is _WriterCheckedFrontierProductKind.BLOCKED
+
+    @property
+    def legal(self) -> bool:
+        return self.kind is _WriterCheckedFrontierProductKind.LEGAL
+
+    @property
+    def branch_batch(self) -> _WriterFrontierBranchSupportBatch:
+        if self.blocked:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "blocked writer frontier product has no branch batch",
+            )
+        return _WriterFrontierBranchSupportBatch(
+            choices=self.choices,
+            supports=self.branch_supports,
+            terminal_supports=self.terminal_supports,
+            text_choice_projection_certificates=(
+                self.text_choice_projection_certificates
+            ),
+            terminal_projection_certificate=(
+                self.terminal_projection_certificate
+            ),
+            text_choice_count_certificates=(
+                self.text_choice_count_certificates
+            ),
+            terminal_choice_count_certificate=(
+                self.terminal_choice_count_certificate
+            ),
+            support_count_certificate=self.support_count_certificate,
+            projection_certificate=self.projection_certificate,
+            count_certificate=self.count_certificate,
+            checked_frontier_certificate=self.checked_frontier_certificate,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterFrontierTerminalSupport:
+    source_state: WriterStateKey
+    finalized_state: WriterStateKey
+    parent_weight: int
+    terminal_ordinal: int
+    terminal_support_key: tuple[object, ...]
+    terminal_execution_capabilities: frozenset[object]
+    terminal_residual_work_evidence: tuple[object, ...]
+    terminal_stereo_lifecycle_evidence: tuple[object, ...]
+    graph_obligation_work_evidence: tuple[object, ...]
+    terminal_certificates: tuple[object, ...]
+    checked_terminal_certificate: object | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterFrontierDiagnostics:
+    blocked: bool
+    graph_policy_blockers: tuple[object, ...]
+    stereo_policy_blockers: tuple[object, ...]
+    execution_capabilities: frozenset[object]
+    terminal_execution_capabilities: frozenset[object]
+    unsupported_execution_capabilities: frozenset[object]
+    unsupported_terminal_execution_capabilities: frozenset[object]
+    residual_work_evidence: tuple[object, ...]
+    terminal_residual_work_evidence: tuple[object, ...]
+    finite_relation_work_evidence: tuple[object, ...]
+    graph_obligation_work_evidence: tuple[object, ...]
+    residual_work_envelope_violations: tuple[object, ...]
+    terminal_residual_work_envelope_violations: tuple[object, ...]
+    finite_relation_work_envelope_violations: tuple[object, ...]
+    graph_obligation_work_envelope_violations: tuple[object, ...]
+    choice_texts: tuple[str, ...]
+    has_eos: bool
+    diagnostic_certificate: object | None = None
+    checked_frontier_certificate: object | None = None
+    blocked_frontier_certificate: object | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterFrontierResidualAttachmentSupportGroup:
+    key: _WriterResidualAttachmentPolicyKey
+    supports: tuple[_WriterFrontierNextTokenSupport, ...]
+
+    @property
+    def policy_families(
+        self,
+    ) -> tuple[_WriterGraphPolicyActionFamily, ...]:
+        return tuple(
+            support.policy_family
+            for support in self.supports
+        )
+
+    def supports_for_policy_family(
+        self,
+        family: _WriterGraphPolicyActionFamily,
+    ) -> tuple[_WriterFrontierNextTokenSupport, ...]:
+        return tuple(
+            support
+            for support in self.supports
+            if support.policy_family is family
+        )
+
+    @property
+    def closure_open_supports(
+        self,
+    ) -> tuple[_WriterFrontierNextTokenSupport, ...]:
+        return self.supports_for_policy_family(
+            _WriterGraphPolicyActionFamily.CLOSURE_OPEN
+        )
+
+    @property
+    def cyclic_tree_entry_supports(
+        self,
+    ) -> tuple[_WriterFrontierNextTokenSupport, ...]:
+        return self.supports_for_policy_family(
+            _WriterGraphPolicyActionFamily.CYCLIC_TREE_ENTRY
+        )
+
+    @property
+    def acyclic_tree_entry_supports(
+        self,
+    ) -> tuple[_WriterFrontierNextTokenSupport, ...]:
+        return self.supports_for_policy_family(
+            _WriterGraphPolicyActionFamily.ACYCLIC_TREE_ENTRY
+        )
+
+    @property
+    def tree_entry_supports(
+        self,
+    ) -> tuple[_WriterFrontierNextTokenSupport, ...]:
+        return (
+            *self.supports_for_policy_family(
+                _WriterGraphPolicyActionFamily.TREE_ENTRY
+            ),
+            *self.acyclic_tree_entry_supports,
+            *self.cyclic_tree_entry_supports,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterFrontierResidualAttachmentEvidenceGroup:
+    key: _WriterResidualAttachmentPolicyKey
+    resolved_policy_groups: tuple[
+        _WriterResidualAttachmentPolicyGroup,
+        ...,
+    ] = ()
+    support_dead_closure_open_vs_cyclic_tree_entry_policy_groups: tuple[
+        _WriterResidualAttachmentPolicyGroup,
+        ...,
+    ] = ()
+    unsupported_owner_scope_policy_groups: tuple[
+        _WriterResidualAttachmentPolicyGroup,
+        ...,
+    ] = ()
+    unresolved_policy_groups: tuple[
+        _WriterResidualAttachmentPolicyGroup,
+        ...,
+    ] = ()
+    selected_support_groups: tuple[
+        _WriterFrontierResidualAttachmentSupportGroup,
+        ...,
+    ] = ()
+
+    @property
+    def selected_supports(
+        self,
+    ) -> tuple[_WriterFrontierNextTokenSupport, ...]:
+        return tuple(
+            support
+            for group in self.selected_support_groups
+            for support in group.supports
+        )
+
+    @property
+    def selected_policy_families(
+        self,
+    ) -> tuple[_WriterGraphPolicyActionFamily, ...]:
+        return tuple(
+            support.policy_family
+            for support in self.selected_supports
+        )
+
+    def selected_supports_for_policy_family(
+        self,
+        family: _WriterGraphPolicyActionFamily,
+    ) -> tuple[_WriterFrontierNextTokenSupport, ...]:
+        return tuple(
+            support
+            for support in self.selected_supports
+            if support.policy_family is family
+        )
+
+    @property
+    def selected_closure_open_supports(
+        self,
+    ) -> tuple[_WriterFrontierNextTokenSupport, ...]:
+        return self.selected_supports_for_policy_family(
+            _WriterGraphPolicyActionFamily.CLOSURE_OPEN
+        )
+
+    @property
+    def selected_cyclic_tree_entry_supports(
+        self,
+    ) -> tuple[_WriterFrontierNextTokenSupport, ...]:
+        return self.selected_supports_for_policy_family(
+            _WriterGraphPolicyActionFamily.CYCLIC_TREE_ENTRY
+        )
+
+    @property
+    def selected_acyclic_tree_entry_supports(
+        self,
+    ) -> tuple[_WriterFrontierNextTokenSupport, ...]:
+        return self.selected_supports_for_policy_family(
+            _WriterGraphPolicyActionFamily.ACYCLIC_TREE_ENTRY
+        )
+
+    @property
+    def has_resolved_policy_evidence(self) -> bool:
+        return bool(self.resolved_policy_groups)
+
+    @property
+    def has_support_dead_closure_open_evidence(self) -> bool:
+        return bool(
+            self.support_dead_closure_open_vs_cyclic_tree_entry_policy_groups
+        )
+
+    @property
+    def has_unsupported_owner_scope_evidence(self) -> bool:
+        return bool(self.unsupported_owner_scope_policy_groups)
+
+    @property
+    def has_unresolved_policy_evidence(self) -> bool:
+        return bool(self.unresolved_policy_groups)
+
+    @property
+    def has_selected_support_evidence(self) -> bool:
+        return bool(self.selected_support_groups)
+
+    @property
+    def resolved_policy_owner_scope_kinds(
+        self,
+    ) -> tuple[_WriterResidualAttachmentOwnerScopeKind, ...]:
+        return _owner_scope_kinds_from_residual_policy_groups(
+            self.resolved_policy_groups
+        )
+
+    @property
+    def support_dead_closure_open_vs_cyclic_tree_entry_policy_owner_scope_kinds(
+        self,
+    ) -> tuple[_WriterResidualAttachmentOwnerScopeKind, ...]:
+        return _owner_scope_kinds_from_residual_policy_groups(
+            self.support_dead_closure_open_vs_cyclic_tree_entry_policy_groups
+        )
+
+    @property
+    def unsupported_owner_scope_kinds(
+        self,
+    ) -> tuple[_WriterResidualAttachmentOwnerScopeKind, ...]:
+        return _owner_scope_kinds_from_residual_policy_groups(
+            self.unsupported_owner_scope_policy_groups
+        )
+
+    @property
+    def unresolved_policy_owner_scope_kinds(
+        self,
+    ) -> tuple[_WriterResidualAttachmentOwnerScopeKind, ...]:
+        return _owner_scope_kinds_from_residual_policy_groups(
+            self.unresolved_policy_groups
+        )
+
+    @property
+    def policy_owner_scope_kinds(
+        self,
+    ) -> tuple[_WriterResidualAttachmentOwnerScopeKind, ...]:
+        return (
+            *self.resolved_policy_owner_scope_kinds,
+            *(
+                self
+                .support_dead_closure_open_vs_cyclic_tree_entry_policy_owner_scope_kinds
+            ),
+            *self.unsupported_owner_scope_kinds,
+            *self.unresolved_policy_owner_scope_kinds,
+        )
+
+    @property
+    def has_active_atom_owner_scope_evidence(self) -> bool:
+        return any(
+            scope is _WriterResidualAttachmentOwnerScopeKind.ACTIVE_ATOM
+            for scope in self.policy_owner_scope_kinds
+        )
+
+    @property
+    def has_branch_return_owner_scope_evidence(self) -> bool:
+        return any(
+            scope is _WriterResidualAttachmentOwnerScopeKind.BRANCH_RETURN
+            for scope in self.policy_owner_scope_kinds
+        )
+
+    @property
+    def has_pending_parent_owner_scope_evidence(self) -> bool:
+        return any(
+            scope is _WriterResidualAttachmentOwnerScopeKind.PENDING_PARENT
+            for scope in self.policy_owner_scope_kinds
+        )
+
+    @property
+    def has_open_ring_endpoint_owner_scope_evidence(self) -> bool:
+        return any(
+            scope is _WriterResidualAttachmentOwnerScopeKind.OPEN_RING_ENDPOINT
+            for scope in self.policy_owner_scope_kinds
+        )
+
+    @property
+    def has_unowned_owner_scope_evidence(self) -> bool:
+        return any(
+            scope is _WriterResidualAttachmentOwnerScopeKind.UNOWNED
+            for scope in self.policy_owner_scope_kinds
+        )
+
+    @property
+    def has_missing_owner_scope_evidence(self) -> bool:
+        return any(
+            scope is _WriterResidualAttachmentOwnerScopeKind.MISSING
+            for scope in self.policy_owner_scope_kinds
+        )
+
+    @property
+    def has_mixed_owner_scope_evidence(self) -> bool:
+        return any(
+            scope is _WriterResidualAttachmentOwnerScopeKind.MIXED
+            for scope in self.policy_owner_scope_kinds
+        )
+
+    @property
+    def has_selected_closure_open_supports(self) -> bool:
+        return bool(self.selected_closure_open_supports)
+
+    @property
+    def has_selected_cyclic_tree_entry_supports(self) -> bool:
+        return bool(self.selected_cyclic_tree_entry_supports)
+
+    @property
+    def has_selected_acyclic_tree_entry_supports(self) -> bool:
+        return bool(self.selected_acyclic_tree_entry_supports)
+
+    @property
+    def has_selected_tree_entry_supports(self) -> bool:
+        return bool(
+            self.selected_supports_for_policy_family(
+                _WriterGraphPolicyActionFamily.TREE_ENTRY
+            )
+            or self.selected_acyclic_tree_entry_supports
+            or self.selected_cyclic_tree_entry_supports
+        )
+
+    @property
+    def has_dead_closure_open_resolution_evidence(self) -> bool:
+        return (
+            self.has_resolved_policy_evidence
+            and self.has_support_dead_closure_open_evidence
+        )
+
+    @property
+    def has_dead_closure_open_resolved_cyclic_tree_entry_support(
+        self,
+    ) -> bool:
+        return (
+            self.has_dead_closure_open_resolution_evidence
+            and self.has_selected_cyclic_tree_entry_supports
+        )
+
+    @property
+    def has_missing_closure_open_support_evidence_blocker(self) -> bool:
+        return self.has_unresolved_policy_evidence
+
+    @property
+    def has_unsupported_owner_scope_blocker(self) -> bool:
+        return self.has_unsupported_owner_scope_evidence
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterFrontierChoiceResidualAttachmentEvidence:
+    choice: _WriterFrontierChoiceSnapshotEntry
+    residual_attachment_evidence_groups: tuple[
+        _WriterFrontierResidualAttachmentEvidenceGroup,
+        ...,
+    ]
+
+    @property
+    def emitted_text(self) -> str:
+        return self.choice.emitted_text
+
+    @property
+    def successor(self) -> WriterFrontierCursor:
+        return self.choice.successor
+
+    @property
+    def supports(
+        self,
+    ) -> tuple[_WriterFrontierNextTokenSupport, ...]:
+        return self.choice.supports
+
+    @property
+    def residual_attachment_policy_keys(
+        self,
+    ) -> tuple[_WriterResidualAttachmentPolicyKey, ...]:
+        return tuple(
+            group.key
+            for group in self.residual_attachment_evidence_groups
+        )
+
+    @property
+    def selected_supports(
+        self,
+    ) -> tuple[_WriterFrontierNextTokenSupport, ...]:
+        return tuple(
+            support
+            for group in self.residual_attachment_evidence_groups
+            for support in group.selected_supports
+        )
+
+    @property
+    def selected_policy_families(
+        self,
+    ) -> tuple[_WriterGraphPolicyActionFamily, ...]:
+        return tuple(
+            support.policy_family
+            for support in self.selected_supports
+        )
+
+    @property
+    def has_residual_attachment_evidence(self) -> bool:
+        return bool(self.residual_attachment_evidence_groups)
+
+    @property
+    def policy_owner_scope_kinds(
+        self,
+    ) -> tuple[_WriterResidualAttachmentOwnerScopeKind, ...]:
+        return tuple(
+            scope
+            for group in self.residual_attachment_evidence_groups
+            for scope in group.policy_owner_scope_kinds
+        )
+
+    @property
+    def unsupported_owner_scope_kinds(
+        self,
+    ) -> tuple[_WriterResidualAttachmentOwnerScopeKind, ...]:
+        return tuple(
+            scope
+            for group in self.residual_attachment_evidence_groups
+            for scope in group.unsupported_owner_scope_kinds
+        )
+
+    @property
+    def has_unsupported_owner_scope_evidence(self) -> bool:
+        return bool(self.unsupported_owner_scope_kinds)
+
+    @property
+    def has_retained_dead_closure_open_resolved_cyclic_tree_entry_support(
+        self,
+    ) -> bool:
+        return any(
+            group.has_dead_closure_open_resolved_cyclic_tree_entry_support
+            for group in self.residual_attachment_evidence_groups
+        )
+
+    @property
+    def has_retained_residual_cyclic_blocker_evidence(self) -> bool:
+        return any(
+            group.has_missing_closure_open_support_evidence_blocker
+            or group.has_unsupported_owner_scope_blocker
+            for group in self.residual_attachment_evidence_groups
+        )
+
+    @property
+    def dead_closure_open_resolved_cyclic_tree_entry_groups(
+        self,
+    ) -> tuple[_WriterFrontierResidualAttachmentEvidenceGroup, ...]:
+        return tuple(
+            group
+            for group in self.residual_attachment_evidence_groups
+            if (
+                group
+                .has_dead_closure_open_resolved_cyclic_tree_entry_support
+            )
+        )
+
+    @property
+    def has_dead_closure_open_resolved_cyclic_tree_entry_support(
+        self,
+    ) -> bool:
+        return bool(
+            self.dead_closure_open_resolved_cyclic_tree_entry_groups
+        )
+
+    @property
+    def public_choice(self) -> WriterFrontierChoice:
+        return self.choice.to_public_choice()
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterFrontierNextTokenEntry:
+    emitted_text: str
+    supports: tuple[_WriterFrontierNextTokenSupport, ...]
+
+    @property
+    def successor_keys(self) -> frozenset[WriterStateKey]:
+        return frozenset(
+            support.successor_key
+            for support in self.supports
+        )
+
+    @property
+    def weighted_successors(self) -> Counter[WriterStateKey]:
+        weighted: Counter[WriterStateKey] = Counter()
+
+        for support in self.supports:
+            weighted[support.successor_key] += support.parent_weight
+
+        return weighted
+
+    @property
+    def immediate_multiplicity(self) -> int:
+        return sum(self.weighted_successors.values())
+
+    @property
+    def policy_families(self):
+        return tuple(
+            support.policy_family
+            for support in self.supports
+        )
+
+    @property
+    def execution_capabilities(
+        self,
+    ) -> frozenset[_WriterExecutionCapabilityKind]:
+        return frozenset(
+            capability
+            for support in self.supports
+            for capability in support.execution_capabilities
+        )
+
+    @property
+    def residual_work_evidence(
+        self,
+    ) -> tuple[WriterResidualPropagationWorkEvidence, ...]:
+        return tuple(
+            evidence
+            for support in self.supports
+            for evidence in support.residual_work_evidence
+        )
+
+    @property
+    def finite_relation_work_evidence(
+        self,
+    ) -> tuple[WriterFiniteRelationWorkEvidence, ...]:
+        return tuple(
+            evidence
+            for support in self.supports
+            for evidence in support.finite_relation_work_evidence
+        )
+
+    @property
+    def residual_attachment_support_groups(
+        self,
+    ) -> tuple[_WriterFrontierResidualAttachmentSupportGroup, ...]:
+        return _writer_frontier_residual_attachment_support_groups_from_supports(
+            self.supports
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterFrontierChoiceSnapshotEntry:
+    next_token_entry: _WriterFrontierNextTokenEntry
+    successor: WriterFrontierCursor
+    support_count: int | None = None
+    completion_count: int | None = None
+
+    @property
+    def emitted_text(self) -> str:
+        return self.next_token_entry.emitted_text
+
+    @property
+    def immediate_multiplicity(self) -> int:
+        return self.next_token_entry.immediate_multiplicity
+
+    @property
+    def supports(self) -> tuple[_WriterFrontierNextTokenSupport, ...]:
+        return self.next_token_entry.supports
+
+    @property
+    def successor_keys(self) -> frozenset[WriterStateKey]:
+        return self.next_token_entry.successor_keys
+
+    @property
+    def weighted_successors(self) -> Counter[WriterStateKey]:
+        return self.next_token_entry.weighted_successors
+
+    @property
+    def policy_families(self):
+        return self.next_token_entry.policy_families
+
+    @property
+    def residual_attachment_support_groups(
+        self,
+    ) -> tuple[_WriterFrontierResidualAttachmentSupportGroup, ...]:
+        return self.next_token_entry.residual_attachment_support_groups
+
+    @property
+    def execution_capabilities(
+        self,
+    ) -> frozenset[_WriterExecutionCapabilityKind]:
+        capabilities: set[_WriterExecutionCapabilityKind] = set()
+        for support in self.supports:
+            capabilities.update(support.execution_capabilities)
+
+        return frozenset(capabilities)
+
+    @property
+    def residual_work_evidence(
+        self,
+    ) -> tuple[WriterResidualPropagationWorkEvidence, ...]:
+        return self.next_token_entry.residual_work_evidence
+
+    @property
+    def finite_relation_work_evidence(
+        self,
+    ) -> tuple[WriterFiniteRelationWorkEvidence, ...]:
+        return self.next_token_entry.finite_relation_work_evidence
+
+    def to_public_choice(self) -> WriterFrontierChoice:
+        return WriterFrontierChoice(
+            emitted_text=self.emitted_text,
+            successor=self.successor,
+            immediate_multiplicity=self.immediate_multiplicity,
+            support_count=self.support_count,
+            completion_count=self.completion_count,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterFrontierScheduleOutcome:
+    state_outcomes: tuple[_WriterFrontierStateScheduleOutcome, ...]
+    terminal_by_key: Counter[WriterStateKey]
+    grouped_by_text: dict[str, set[WriterStateKey]]
+    weighted_by_text: dict[str, Counter[WriterStateKey]]
+    next_token_frontier: tuple[_WriterFrontierNextTokenEntry, ...] = ()
+
+    @property
+    def blocked_state_outcomes(
+        self,
+    ) -> tuple[_WriterFrontierStateScheduleOutcome, ...]:
+        return tuple(
+            state_outcome
+            for state_outcome in self.state_outcomes
+            if state_outcome.blocked
+        )
+
+    @property
+    def graph_policy_blockers(
+        self,
+    ) -> tuple[_WriterActiveEmittedGraphPolicyBlocker, ...]:
+        return tuple(
+            blocker
+            for state_outcome in self.blocked_state_outcomes
+            for blocker in state_outcome.graph_policy_blockers
+        )
+
+    @property
+    def stereo_policy_blockers(
+        self,
+    ) -> tuple[WriterStereoPolicyBlocker, ...]:
+        return tuple(
+            blocker
+            for state_outcome in self.state_outcomes
+            for blocker in state_outcome.stereo_policy_blockers
+        )
+
+    @property
+    def blocked(self) -> bool:
+        return bool(
+            self.graph_policy_blockers
+            or self.stereo_policy_blockers
+        )
+
+    @property
+    def terminal_execution_capabilities(
+        self,
+    ) -> frozenset[_WriterExecutionCapabilityKind]:
+        return frozenset(
+            capability
+            for outcome in self.state_outcomes
+            if outcome.finalized_state_key is not None
+            for capability in outcome.terminal_execution_capabilities
+        )
+
+    @property
+    def terminal_residual_work_evidence(
+        self,
+    ) -> tuple[WriterResidualPropagationWorkEvidence, ...]:
+        return tuple(
+            evidence
+            for outcome in self.state_outcomes
+            if outcome.finalized_state_key is not None
+            for evidence in outcome.terminal_residual_work_evidence
+        )
+
+    @property
+    def execution_capabilities(
+        self,
+    ) -> frozenset[_WriterExecutionCapabilityKind]:
+        return frozenset(
+            capability
+            for entry in self.next_token_frontier
+            for capability in entry.execution_capabilities
+        )
+
+    @property
+    def residual_work_evidence(
+        self,
+    ) -> tuple[WriterResidualPropagationWorkEvidence, ...]:
+        return tuple(
+            evidence
+            for entry in self.next_token_frontier
+            for evidence in entry.residual_work_evidence
+        )
+
+    @property
+    def finite_relation_work_evidence(
+        self,
+    ) -> tuple[WriterFiniteRelationWorkEvidence, ...]:
+        return tuple(
+            evidence
+            for entry in self.next_token_frontier
+            for evidence in entry.finite_relation_work_evidence
+        )
+
+    @property
+    def graph_obligation_work_evidence(
+        self,
+    ) -> tuple[WriterGraphObligationWorkEvidence, ...]:
+        return tuple(
+            evidence
+            for outcome in self.state_outcomes
+            for evidence in outcome.graph_obligation_work_evidence
+        )
+
+    @property
+    def graph_policy_decisions(
+        self,
+    ) -> tuple[_WriterActiveEmittedGraphPolicyDecision, ...]:
+        return tuple(
+            state_outcome.graph_policy_decision
+            for state_outcome in self.state_outcomes
+            if state_outcome.graph_policy_decision is not None
+        )
+
+    @property
+    def considered_closure_endpoint_selection_kinds(
+        self,
+    ) -> tuple[_WriterClosureEndpointSelectionKind, ...]:
+        return tuple(
+            decision.considered_closure_endpoint_selection_kind
+            for decision in self.graph_policy_decisions
+        )
+
+    @property
+    def selected_closure_endpoint_selection_kinds(
+        self,
+    ) -> tuple[_WriterClosureEndpointSelectionKind, ...]:
+        return tuple(
+            decision.closure_endpoint_selection_kind
+            for decision in self.graph_policy_decisions
+            if (
+                decision.closure_endpoint_selection_kind
+                is not _WriterClosureEndpointSelectionKind.NONE
+            )
+        )
+
+    @property
+    def selected_closure_open_graph_action_surfaces(self):
+        return tuple(
+            surface
+            for decision in self.graph_policy_decisions
+            for surface in decision.selected_closure_open_graph_action_surfaces
+        )
+
+    @property
+    def selected_closure_pair_graph_action_surfaces(self):
+        return tuple(
+            surface
+            for decision in self.graph_policy_decisions
+            for surface in decision.selected_closure_pair_graph_action_surfaces
+        )
+
+    @property
+    def considered_active_child_selection_kinds(
+        self,
+    ) -> tuple[_WriterActiveChildSelectionKind, ...]:
+        return tuple(
+            state_outcome.considered_active_child_selection_kind
+            for state_outcome in self.state_outcomes
+            if (
+                state_outcome.considered_active_child_selection_kind
+                is not _WriterActiveChildSelectionKind.NONE
+            )
+        )
+
+    @property
+    def selected_active_child_selection_kinds(
+        self,
+    ) -> tuple[_WriterActiveChildSelectionKind, ...]:
+        return tuple(
+            state_outcome.selected_active_child_selection_kind
+            for state_outcome in self.state_outcomes
+            if (
+                state_outcome.selected_active_child_selection_kind
+                is not _WriterActiveChildSelectionKind.NONE
+            )
+        )
+
+    @property
+    def considered_cyclic_tree_entry_graph_action_surfaces(self):
+        return tuple(
+            surface
+            for state_outcome in self.state_outcomes
+            for surface in (
+                state_outcome
+                .schedule_outcome
+                .considered_cyclic_tree_entry_graph_action_surfaces
+            )
+        )
+
+    @property
+    def selected_cyclic_tree_entry_graph_action_surfaces(self):
+        return tuple(
+            surface
+            for state_outcome in self.state_outcomes
+            for surface in (
+                state_outcome
+                .schedule_outcome
+                .selected_cyclic_tree_entry_graph_action_surfaces
+            )
+        )
+
+    @property
+    def resolved_residual_attachment_policy_groups(self):
+        return tuple(
+            group
+            for decision in self.graph_policy_decisions
+            for group in decision.resolved_residual_attachment_policy_groups
+        )
+
+    @property
+    def support_dead_closure_open_vs_cyclic_tree_entry_groups(self):
+        return tuple(
+            group
+            for decision in self.graph_policy_decisions
+            for group in (
+                decision.support_dead_closure_open_vs_cyclic_tree_entry_groups
+            )
+        )
+
+    @property
+    def unsupported_owner_scope_residual_attachment_policy_groups(self):
+        return tuple(
+            group
+            for decision in self.graph_policy_decisions
+            for group in (
+                decision
+                .unsupported_owner_scope_residual_attachment_policy_groups
+            )
+        )
+
+    @property
+    def unresolved_residual_attachment_policy_groups(self):
+        return tuple(
+            group
+            for decision in self.graph_policy_decisions
+            for group in decision.unresolved_residual_attachment_policy_groups
+        )
+
+    @property
+    def grouped_transitions(self) -> _GroupedWriterFrontierTransitions:
+        if self.next_token_frontier:
+            grouped_by_text = self.grouped_by_text_from_next_token_frontier
+            weighted_by_text = self.weighted_by_text_from_next_token_frontier
+        else:
+            grouped_by_text = self.grouped_by_text
+            weighted_by_text = self.weighted_by_text
+
+        return _GroupedWriterFrontierTransitions(
+            terminal_by_key=self.terminal_by_key,
+            grouped_by_text=grouped_by_text,
+            weighted_by_text=weighted_by_text,
+        )
+
+    @property
+    def next_token_supports(
+        self,
+    ) -> tuple[_WriterFrontierNextTokenSupport, ...]:
+        return tuple(
+            support
+            for entry in self.next_token_frontier
+            for support in entry.supports
+        )
+
+    @property
+    def residual_attachment_support_groups(
+        self,
+    ) -> tuple[_WriterFrontierResidualAttachmentSupportGroup, ...]:
+        return _writer_frontier_residual_attachment_support_groups_from_supports(
+            self.next_token_supports
+        )
+
+    @property
+    def residual_attachment_evidence_groups(
+        self,
+    ) -> tuple[_WriterFrontierResidualAttachmentEvidenceGroup, ...]:
+        return _writer_frontier_residual_attachment_evidence_groups(
+            resolved_policy_groups=(
+                self.resolved_residual_attachment_policy_groups
+            ),
+            support_dead_closure_open_vs_cyclic_tree_entry_policy_groups=(
+                self.support_dead_closure_open_vs_cyclic_tree_entry_groups
+            ),
+            unsupported_owner_scope_policy_groups=(
+                self.unsupported_owner_scope_residual_attachment_policy_groups
+            ),
+            unresolved_policy_groups=(
+                self.unresolved_residual_attachment_policy_groups
+            ),
+            selected_support_groups=self.residual_attachment_support_groups,
+        )
+
+    @property
+    def grouped_by_text_from_next_token_frontier(
+        self,
+    ) -> dict[str, set[WriterStateKey]]:
+        return {
+            entry.emitted_text: set(entry.successor_keys)
+            for entry in self.next_token_frontier
+        }
+
+    @property
+    def weighted_by_text_from_next_token_frontier(
+        self,
+    ) -> dict[str, Counter[WriterStateKey]]:
+        return {
+            entry.emitted_text: entry.weighted_successors
+            for entry in self.next_token_frontier
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterFrontierChoiceSnapshot:
+    schedule_outcome: _WriterFrontierScheduleOutcome
+    terminal: WriterFrontierTerminal | None
+    choices: tuple[_WriterFrontierChoiceSnapshotEntry, ...]
+
+    @property
+    def blocked(self) -> bool:
+        return self.schedule_outcome.blocked
+
+    @property
+    def graph_policy_blockers(
+        self,
+    ) -> tuple[_WriterActiveEmittedGraphPolicyBlocker, ...]:
+        return self.schedule_outcome.graph_policy_blockers
+
+    @property
+    def stereo_policy_blockers(
+        self,
+    ) -> tuple[WriterStereoPolicyBlocker, ...]:
+        return self.schedule_outcome.stereo_policy_blockers
+
+    @property
+    def blocked_state_outcomes(
+        self,
+    ) -> tuple[_WriterFrontierStateScheduleOutcome, ...]:
+        return self.schedule_outcome.blocked_state_outcomes
+
+    @property
+    def graph_policy_decisions(
+        self,
+    ) -> tuple[_WriterActiveEmittedGraphPolicyDecision, ...]:
+        return self.schedule_outcome.graph_policy_decisions
+
+    @property
+    def execution_capabilities(
+        self,
+    ) -> frozenset[_WriterExecutionCapabilityKind]:
+        capabilities: set[_WriterExecutionCapabilityKind] = set()
+
+        for choice in self.choices:
+            capabilities.update(choice.execution_capabilities)
+
+        return frozenset(capabilities)
+
+    @property
+    def residual_work_evidence(
+        self,
+    ) -> tuple[WriterResidualPropagationWorkEvidence, ...]:
+        return tuple(
+            evidence
+            for choice in self.choices
+            for evidence in choice.residual_work_evidence
+        )
+
+    @property
+    def finite_relation_work_evidence(
+        self,
+    ) -> tuple[WriterFiniteRelationWorkEvidence, ...]:
+        return tuple(
+            evidence
+            for choice in self.choices
+            for evidence in choice.finite_relation_work_evidence
+        )
+
+    @property
+    def graph_obligation_work_evidence(
+        self,
+    ) -> tuple[WriterGraphObligationWorkEvidence, ...]:
+        return self.schedule_outcome.graph_obligation_work_evidence
+
+    @property
+    def terminal_execution_capabilities(
+        self,
+    ) -> frozenset[_WriterExecutionCapabilityKind]:
+        return self.schedule_outcome.terminal_execution_capabilities
+
+    @property
+    def terminal_residual_work_evidence(
+        self,
+    ) -> tuple[WriterResidualPropagationWorkEvidence, ...]:
+        return self.schedule_outcome.terminal_residual_work_evidence
+
+    @property
+    def considered_closure_endpoint_selection_kinds(
+        self,
+    ) -> tuple[_WriterClosureEndpointSelectionKind, ...]:
+        return (
+            self.schedule_outcome
+            .considered_closure_endpoint_selection_kinds
+        )
+
+    @property
+    def selected_closure_endpoint_selection_kinds(
+        self,
+    ) -> tuple[_WriterClosureEndpointSelectionKind, ...]:
+        return self.schedule_outcome.selected_closure_endpoint_selection_kinds
+
+    @property
+    def selected_closure_open_graph_action_surfaces(self):
+        return self.schedule_outcome.selected_closure_open_graph_action_surfaces
+
+    @property
+    def selected_closure_pair_graph_action_surfaces(self):
+        return self.schedule_outcome.selected_closure_pair_graph_action_surfaces
+
+    @property
+    def considered_active_child_selection_kinds(
+        self,
+    ) -> tuple[_WriterActiveChildSelectionKind, ...]:
+        return self.schedule_outcome.considered_active_child_selection_kinds
+
+    @property
+    def selected_active_child_selection_kinds(
+        self,
+    ) -> tuple[_WriterActiveChildSelectionKind, ...]:
+        return self.schedule_outcome.selected_active_child_selection_kinds
+
+    @property
+    def considered_cyclic_tree_entry_graph_action_surfaces(self):
+        return (
+            self.schedule_outcome
+            .considered_cyclic_tree_entry_graph_action_surfaces
+        )
+
+    @property
+    def selected_cyclic_tree_entry_graph_action_surfaces(self):
+        return (
+            self.schedule_outcome
+            .selected_cyclic_tree_entry_graph_action_surfaces
+        )
+
+    @property
+    def resolved_residual_attachment_policy_groups(self):
+        return self.schedule_outcome.resolved_residual_attachment_policy_groups
+
+    @property
+    def support_dead_closure_open_vs_cyclic_tree_entry_groups(self):
+        return (
+            self.schedule_outcome
+            .support_dead_closure_open_vs_cyclic_tree_entry_groups
+        )
+
+    @property
+    def unsupported_owner_scope_residual_attachment_policy_groups(self):
+        return (
+            self.schedule_outcome
+            .unsupported_owner_scope_residual_attachment_policy_groups
+        )
+
+    @property
+    def unresolved_residual_attachment_policy_groups(self):
+        return (
+            self.schedule_outcome
+            .unresolved_residual_attachment_policy_groups
+        )
+
+    @property
+    def residual_attachment_support_groups(
+        self,
+    ) -> tuple[_WriterFrontierResidualAttachmentSupportGroup, ...]:
+        return self.schedule_outcome.residual_attachment_support_groups
+
+    @property
+    def residual_attachment_evidence_groups(
+        self,
+    ) -> tuple[_WriterFrontierResidualAttachmentEvidenceGroup, ...]:
+        return self.schedule_outcome.residual_attachment_evidence_groups
+
+    @property
+    def choice_residual_attachment_evidence(
+        self,
+    ) -> tuple[_WriterFrontierChoiceResidualAttachmentEvidence, ...]:
+        return tuple(
+            _WriterFrontierChoiceResidualAttachmentEvidence(
+                choice=choice,
+                residual_attachment_evidence_groups=(
+                    _writer_frontier_choice_residual_attachment_evidence_groups(
+                        choice=choice,
+                        schedule_outcome=self.schedule_outcome,
+                    )
+                ),
+            )
+            for choice in self.choices
+        )
+
+    def choice_residual_attachment_evidence_for_emitted_text(
+        self,
+        emitted_text: str,
+    ) -> _WriterFrontierChoiceResidualAttachmentEvidence | None:
+        matches = tuple(
+            evidence
+            for evidence in self.choice_residual_attachment_evidence
+            if evidence.emitted_text == emitted_text
+        )
+
+        if len(matches) > 1:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                (
+                    "writer choice snapshot contains duplicate emitted-text "
+                    f"residual evidence entries: {emitted_text!r}"
+                ),
+            )
+
+        if not matches:
+            return None
+
+        return matches[0]
+
+    @property
+    def dead_closure_open_resolved_cyclic_tree_entry_choice_evidence(
+        self,
+    ) -> tuple[_WriterFrontierChoiceResidualAttachmentEvidence, ...]:
+        return tuple(
+            evidence
+            for evidence in self.choice_residual_attachment_evidence
+            if (
+                evidence
+                .has_dead_closure_open_resolved_cyclic_tree_entry_support
+            )
+        )
+
+    @property
+    def retained_dead_closure_open_resolved_cyclic_tree_entry_choice_evidence(
+        self,
+    ) -> tuple[_WriterFrontierChoiceResidualAttachmentEvidence, ...]:
+        return tuple(
+            evidence
+            for evidence in self.choice_residual_attachment_evidence
+            if (
+                evidence
+                .has_retained_dead_closure_open_resolved_cyclic_tree_entry_support
+            )
+        )
+
+    @property
+    def unsupported_owner_scope_choice_evidence(
+        self,
+    ) -> tuple[_WriterFrontierChoiceResidualAttachmentEvidence, ...]:
+        return tuple(
+            evidence
+            for evidence in self.choice_residual_attachment_evidence
+            if evidence.has_unsupported_owner_scope_evidence
+        )
+
+    @property
+    def unsupported_owner_scope_kinds(
+        self,
+    ) -> tuple[_WriterResidualAttachmentOwnerScopeKind, ...]:
+        return tuple(
+            scope
+            for evidence in self.choice_residual_attachment_evidence
+            for scope in evidence.unsupported_owner_scope_kinds
+        )
+
+    @property
+    def public_choices(self) -> WriterFrontierChoices:
+        return WriterFrontierChoices(
+            terminal=self.terminal,
+            choices=tuple(
+                choice.to_public_choice()
+                for choice in self.choices
+            ),
+        )
+
+
+def initial_writer_frontier_cursor(
+    prepared: SouthStarPreparedMol,
+    runtime_options: SouthStarRuntimeOptions,
+) -> WriterFrontierCursor:
+    return _initial_writer_transition_frontier_cursor(
+        prepared,
+        runtime_options,
+    )
+
+
+def _initial_writer_transition_frontier_cursor(
+    prepared: SouthStarPreparedMol,
+    runtime_options: SouthStarRuntimeOptions,
+) -> WriterFrontierCursor:
+    return _initial_writer_frontier_cursor(
+        prepared,
+        runtime_options,
+        validate_prepared=validate_writer_transition_prepared,
+    )
+
+
+def _initial_writer_frontier_cursor(
+    prepared: SouthStarPreparedMol,
+    runtime_options: SouthStarRuntimeOptions,
+    *,
+    validate_prepared,
+) -> WriterFrontierCursor:
+    from .prepared_runtime import require_writer_shaped_runtime_options
+    from .prepared_runtime import runtime_root_atom_for_prepared
+
+    require_writer_shaped_runtime_options(runtime_options)
+    runtime_root_atom_for_prepared(runtime_options, prepared=prepared)
+    validate_prepared(prepared)
+    root_domains = _root_domains_for_runtime(prepared, runtime_options)
+    initial_stereo = initial_writer_stereo_state(prepared)
+    weighted_states = []
+    for roots in product(*(atoms for _, atoms in root_domains)):
+        root_tuple = tuple(roots)
+        if not root_tuple:
+            continue
+        weighted_states.append(
+            (
+                writer_state_key(
+                    WriterState(
+                        component_cursor=ComponentCursor(
+                            component_index=0,
+                            component_roots=root_tuple,
+                        ),
+                        active=WriterAtomFrame(
+                            atom=root_tuple[0],
+                            parent=None,
+                            incoming_bond=None,
+                            atom_emitted=False,
+                        ),
+                        branch_stack=(),
+                        visited_atoms=frozenset(),
+                        written_bonds=frozenset(),
+                        obligations=ObligationState(),
+                        ring_state=WriterRingState(),
+                        stereo_state=initial_stereo,
+                        policy_state=WriterPolicyState(),
+                    )
+                ),
+                1,
+            )
+        )
+    return WriterFrontierCursor(weighted_states=tuple(weighted_states))
+
+
+def _cursor_from_support_state(frontier: WriterFrontierState) -> WriterFrontierCursor:
+    return WriterFrontierCursor(
+        weighted_states=tuple((key, 1) for key in frontier.states)
+    )
+
+
+def _writer_frontier_terminal_from_schedule_outcome(
+    outcome: _WriterFrontierScheduleOutcome,
+) -> WriterFrontierTerminal | None:
+    if not outcome.terminal_by_key:
+        return None
+
+    finalized_cursor = WriterFrontierCursor(
+        weighted_states=tuple(outcome.terminal_by_key.items())
+    )
+    terminal_weight = sum(outcome.terminal_by_key.values())
+
+    return WriterFrontierTerminal(
+        support_count=1,
+        completion_count=terminal_weight,
+        multiplicity=terminal_weight,
+        finalized_cursor=finalized_cursor,
+    )
+
+
+def _writer_frontier_choice_snapshot_from_schedule_outcome(
+    prepared: SouthStarPreparedMol,
+    outcome: _WriterFrontierScheduleOutcome,
+    *,
+    include_counts: bool = True,
+) -> _WriterFrontierChoiceSnapshot:
+    terminal = _writer_frontier_terminal_from_schedule_outcome(outcome)
+
+    if outcome.blocked:
+        return _WriterFrontierChoiceSnapshot(
+            schedule_outcome=outcome,
+            terminal=terminal,
+            choices=(),
+        )
+
+    summary_memo: dict[
+        tuple[WriterFrontierCursor, bool, bool, bool],
+        _WriterFrontierSummary,
+    ] = {}
+    choices: list[_WriterFrontierChoiceSnapshotEntry] = []
+
+    for entry in sorted(
+        outcome.next_token_frontier,
+        key=lambda entry: entry.emitted_text,
+    ):
+        successor = WriterFrontierCursor(
+            weighted_states=tuple(entry.weighted_successors.items())
+        )
+
+        support_count = None
+        completion_count = None
+
+        if include_counts:
+            summary = _writer_frontier_summary_from_cursor(
+                prepared,
+                successor,
+                include_support_count=True,
+                include_completion_count=True,
+                include_strings=False,
+                memo=summary_memo,
+            )
+            support_count = summary.require_support_count()
+            completion_count = summary.require_completion_count()
+
+            if support_count == 0 and completion_count == 0:
+                continue
+
+        choices.append(
+            _WriterFrontierChoiceSnapshotEntry(
+                next_token_entry=entry,
+                successor=successor,
+                support_count=support_count,
+                completion_count=completion_count,
+            )
+        )
+
+    return _WriterFrontierChoiceSnapshot(
+        schedule_outcome=outcome,
+        terminal=terminal,
+        choices=tuple(choices),
+    )
+
+
+def _writer_frontier_choice_snapshot(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+    *,
+    include_counts: bool = True,
+    stop_after_first_blocked: bool = False,
+) -> _WriterFrontierChoiceSnapshot:
+    outcome = _writer_frontier_schedule_outcome(
+        prepared,
+        cursor,
+        stop_after_first_blocked=stop_after_first_blocked,
+    )
+
+    return _writer_frontier_choice_snapshot_from_schedule_outcome(
+        prepared,
+        outcome,
+        include_counts=include_counts,
+    )
+
+
+def _checked_writer_frontier_choice_snapshot(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+    *,
+    include_counts: bool = True,
+) -> _WriterFrontierChoiceSnapshot:
+    snapshot = _writer_frontier_choice_snapshot(
+        prepared,
+        cursor,
+        include_counts=False,
+        stop_after_first_blocked=True,
+    )
+
+    _raise_for_writer_frontier_choice_snapshot_blockers(snapshot)
+
+    if not include_counts:
+        return snapshot
+
+    return _writer_frontier_choice_snapshot_from_schedule_outcome(
+        prepared,
+        snapshot.schedule_outcome,
+        include_counts=True,
+    )
+
+
+def writer_frontier_choices(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+) -> WriterFrontierChoices:
+    return _checked_writer_frontier_choices_from_product(
+        prepared,
+        cursor,
+    )
+
+
+def _checked_writer_frontier_choices_from_product(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+    *,
+    include_counts: bool = True,
+) -> WriterFrontierChoices:
+    return _checked_writer_frontier_product(
+        prepared,
+        cursor,
+        include_counts=include_counts,
+        include_frontier_certificate=True,
+        include_count_certificate=True,
+    ).choices
+
+
+def _writer_frontier_raw_successors_for_streaming(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+) -> tuple[tuple[str, WriterFrontierCursor], ...]:
+    product = _checked_writer_frontier_product(
+        prepared,
+        cursor,
+        include_counts=False,
+        include_frontier_certificate=False,
+        include_count_certificate=False,
+    )
+
+    return tuple(
+        (
+            certificate.emitted_text,
+            certificate.successor_cursor,
+        )
+        for certificate in product.text_choice_projection_certificates
+    )
+
+
+def _successors_from_grouped(
+    grouped: _GroupedWriterFrontierTransitions,
+) -> tuple[tuple[str, WriterFrontierCursor], ...]:
+    return tuple(
+        (
+            text,
+            WriterFrontierCursor(
+                weighted_states=tuple(grouped.weighted_by_text[text].items())
+            ),
+        )
+        for text in sorted(grouped.grouped_by_text)
+    )
+
+
+def _successors_from_next_token_frontier(
+    next_token_frontier: tuple[_WriterFrontierNextTokenEntry, ...],
+) -> tuple[tuple[str, WriterFrontierCursor], ...]:
+    return tuple(
+        (
+            entry.emitted_text,
+            WriterFrontierCursor(
+                weighted_states=tuple(entry.weighted_successors.items()),
+            ),
+        )
+        for entry in sorted(
+            next_token_frontier,
+            key=lambda entry: entry.emitted_text,
+        )
+    )
+
+
+def _successors_from_choice_snapshot(
+    snapshot: _WriterFrontierChoiceSnapshot,
+) -> tuple[tuple[str, WriterFrontierCursor], ...]:
+    return tuple(
+        (
+            choice.emitted_text,
+            choice.successor,
+        )
+        for choice in snapshot.choices
+    )
+
+
+def _writer_frontier_next_token_entries_from_supports(
+    supports: tuple[_WriterFrontierNextTokenSupport, ...],
+) -> tuple[_WriterFrontierNextTokenEntry, ...]:
+    grouped: dict[str, list[_WriterFrontierNextTokenSupport]] = {}
+    order: list[str] = []
+
+    for support in supports:
+        emitted_text = support.emitted_text
+
+        if emitted_text not in grouped:
+            grouped[emitted_text] = []
+            order.append(emitted_text)
+
+        grouped[emitted_text].append(support)
+
+    return tuple(
+        _WriterFrontierNextTokenEntry(
+            emitted_text=emitted_text,
+            supports=tuple(grouped[emitted_text]),
+        )
+        for emitted_text in order
+    )
+
+
+def _writer_frontier_residual_attachment_support_groups_from_supports(
+    supports: tuple[_WriterFrontierNextTokenSupport, ...],
+) -> tuple[_WriterFrontierResidualAttachmentSupportGroup, ...]:
+    grouped: dict[
+        _WriterResidualAttachmentPolicyKey,
+        list[_WriterFrontierNextTokenSupport],
+    ] = {}
+    order: list[_WriterResidualAttachmentPolicyKey] = []
+
+    for support in supports:
+        key = (
+            support
+            .graph_action_surface
+            .residual_attachment_policy_key
+        )
+
+        if key is None:
+            continue
+
+        if key not in grouped:
+            grouped[key] = []
+            order.append(key)
+
+        grouped[key].append(support)
+
+    return tuple(
+        _WriterFrontierResidualAttachmentSupportGroup(
+            key=key,
+            supports=tuple(grouped[key]),
+        )
+        for key in order
+    )
+
+
+def _owner_scope_kinds_from_residual_policy_groups(
+    groups: tuple[_WriterResidualAttachmentPolicyGroup, ...],
+) -> tuple[_WriterResidualAttachmentOwnerScopeKind, ...]:
+    return tuple(
+        group.closure_open_vs_cyclic_tree_entry_owner_scope_kind
+        for group in groups
+    )
+
+
+def _writer_frontier_residual_attachment_evidence_groups(
+    *,
+    resolved_policy_groups: tuple[
+        _WriterResidualAttachmentPolicyGroup,
+        ...,
+    ],
+    support_dead_closure_open_vs_cyclic_tree_entry_policy_groups: tuple[
+        _WriterResidualAttachmentPolicyGroup,
+        ...,
+    ],
+    unsupported_owner_scope_policy_groups: tuple[
+        _WriterResidualAttachmentPolicyGroup,
+        ...,
+    ],
+    unresolved_policy_groups: tuple[
+        _WriterResidualAttachmentPolicyGroup,
+        ...,
+    ],
+    selected_support_groups: tuple[
+        _WriterFrontierResidualAttachmentSupportGroup,
+        ...,
+    ],
+) -> tuple[_WriterFrontierResidualAttachmentEvidenceGroup, ...]:
+    order: list[_WriterResidualAttachmentPolicyKey] = []
+    keys: set[_WriterResidualAttachmentPolicyKey] = set()
+
+    def remember(key: _WriterResidualAttachmentPolicyKey) -> None:
+        if key in keys:
+            return
+
+        keys.add(key)
+        order.append(key)
+
+    for group in resolved_policy_groups:
+        remember(group.key)
+
+    for group in support_dead_closure_open_vs_cyclic_tree_entry_policy_groups:
+        remember(group.key)
+
+    for group in unsupported_owner_scope_policy_groups:
+        remember(group.key)
+
+    for group in unresolved_policy_groups:
+        remember(group.key)
+
+    for group in selected_support_groups:
+        remember(group.key)
+
+    return tuple(
+        _WriterFrontierResidualAttachmentEvidenceGroup(
+            key=key,
+            resolved_policy_groups=tuple(
+                group
+                for group in resolved_policy_groups
+                if group.key == key
+            ),
+            support_dead_closure_open_vs_cyclic_tree_entry_policy_groups=tuple(
+                group
+                for group in (
+                    support_dead_closure_open_vs_cyclic_tree_entry_policy_groups
+                )
+                if group.key == key
+            ),
+            unsupported_owner_scope_policy_groups=tuple(
+                group
+                for group in unsupported_owner_scope_policy_groups
+                if group.key == key
+            ),
+            unresolved_policy_groups=tuple(
+                group
+                for group in unresolved_policy_groups
+                if group.key == key
+            ),
+            selected_support_groups=tuple(
+                group
+                for group in selected_support_groups
+                if group.key == key
+            ),
+        )
+        for key in order
+    )
+
+
+def _writer_frontier_choice_residual_attachment_evidence_groups(
+    *,
+    choice: _WriterFrontierChoiceSnapshotEntry,
+    schedule_outcome: _WriterFrontierScheduleOutcome,
+) -> tuple[_WriterFrontierResidualAttachmentEvidenceGroup, ...]:
+    selected_support_groups = choice.residual_attachment_support_groups
+
+    return tuple(
+        _WriterFrontierResidualAttachmentEvidenceGroup(
+            key=support_group.key,
+            resolved_policy_groups=tuple(
+                group
+                for group in (
+                    schedule_outcome
+                    .resolved_residual_attachment_policy_groups
+                )
+                if group.key == support_group.key
+            ),
+            support_dead_closure_open_vs_cyclic_tree_entry_policy_groups=tuple(
+                group
+                for group in (
+                    schedule_outcome
+                    .support_dead_closure_open_vs_cyclic_tree_entry_groups
+                )
+                if group.key == support_group.key
+            ),
+            unsupported_owner_scope_policy_groups=tuple(
+                group
+                for group in (
+                    schedule_outcome
+                    .unsupported_owner_scope_residual_attachment_policy_groups
+                )
+                if group.key == support_group.key
+            ),
+            unresolved_policy_groups=tuple(
+                group
+                for group in (
+                    schedule_outcome
+                    .unresolved_residual_attachment_policy_groups
+                )
+                if group.key == support_group.key
+            ),
+            selected_support_groups=(support_group,),
+        )
+        for support_group in selected_support_groups
+    )
+
+
+def _validate_writer_frontier_schedule_outcome_grouping(
+    outcome: _WriterFrontierScheduleOutcome,
+) -> None:
+    if not outcome.next_token_frontier:
+        return
+
+    if (
+        outcome.grouped_by_text
+        != outcome.grouped_by_text_from_next_token_frontier
+    ):
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "frontier grouped_by_text does not match next-token supports",
+        )
+
+    if (
+        outcome.weighted_by_text
+        != outcome.weighted_by_text_from_next_token_frontier
+    ):
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "frontier weighted_by_text does not match next-token supports",
+        )
+
+
+def _validate_writer_frontier_schedule_outcome_lifecycle(
+    outcome: _WriterFrontierScheduleOutcome,
+) -> None:
+    for support in outcome.next_token_supports:
+        validate_writer_ring_lifecycle_transition(
+            source_state=support.state_key,
+            successor_state=support.successor_key,
+            events=support.schedule_support.transition.events,
+        )
+
+
+def _validate_writer_frontier_schedule_outcome_closure_candidates(
+    prepared: SouthStarPreparedMol,
+    outcome: _WriterFrontierScheduleOutcome,
+) -> None:
+    for support in outcome.next_token_supports:
+        validate_writer_closure_candidate_lifecycle_transition(
+            prepared=prepared,
+            source_state=support.state_key,
+            successor_state=support.successor_key,
+            transition_kind=support.schedule_support.transition.kind,
+            graph_action_surface=support.graph_action_surface,
+        )
+
+
+def _validate_writer_frontier_schedule_outcome_residual_attachments(
+    prepared: SouthStarPreparedMol,
+    outcome: _WriterFrontierScheduleOutcome,
+) -> None:
+    for support in outcome.next_token_supports:
+        validate_writer_residual_attachment_lifecycle_transition(
+            prepared=prepared,
+            source_state=support.state_key,
+            successor_state=support.successor_key,
+            graph_action_surface=support.graph_action_surface,
+        )
+
+
+def _validate_writer_frontier_schedule_outcome_terminal_supports(
+    prepared: SouthStarPreparedMol,
+    outcome: _WriterFrontierScheduleOutcome,
+) -> None:
+    _writer_frontier_terminal_supports_from_schedule_outcome(
+        prepared=prepared,
+        schedule_outcome=outcome,
+    )
+
+
+def _writer_frontier_schedule_outcome(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+    *,
+    stop_after_first_blocked: bool = False,
+) -> _WriterFrontierScheduleOutcome:
+    validate_writer_transition_prepared(prepared)
+    terminal_by_key: Counter[WriterStateKey] = Counter()
+    state_outcomes: list[_WriterFrontierStateScheduleOutcome] = []
+    frontier_supports: list[_WriterFrontierNextTokenSupport] = []
+
+    for key, parent_weight in cursor.weighted_states:
+        state = writer_state_from_key(key)
+        expansion = _writer_state_expansion_outcome_from_validated_prepared(
+            prepared,
+            state,
+        )
+        terminal_outcome = expansion.terminal_outcome
+        finalized = terminal_outcome.state
+        finalized_key = None
+
+        if finalized is not None:
+            finalized_key = writer_state_key(finalized)
+            terminal_by_key[finalized_key] += parent_weight
+
+        schedule_outcome = expansion.schedule_outcome
+
+        state_outcome = _WriterFrontierStateScheduleOutcome(
+            state_key=key,
+            parent_weight=parent_weight,
+            finalized_state_key=finalized_key,
+            terminal_execution_capabilities=(
+                terminal_outcome.execution_capabilities
+            ),
+            terminal_residual_work_evidence=(
+                terminal_outcome.residual_work_evidence
+            ),
+            terminal_stereo_lifecycle_evidence=(
+                terminal_outcome.stereo_lifecycle_evidence
+            ),
+            graph_obligation_work_evidence=(
+                expansion.graph_obligation_work_evidence
+            ),
+            schedule_outcome=schedule_outcome,
+        )
+        state_outcomes.append(state_outcome)
+
+        if state_outcome.blocked:
+            if stop_after_first_blocked:
+                break
+
+            continue
+
+        for entry in schedule_outcome.selected_next_token_frontier:
+            for support in entry.supports:
+                successor_key = writer_state_key(support.transition.successor)
+
+                frontier_supports.append(
+                    _WriterFrontierNextTokenSupport(
+                        state_key=key,
+                        parent_weight=parent_weight,
+                        schedule_support=support,
+                        successor_key=successor_key,
+                    )
+                )
+
+    next_token_frontier = _writer_frontier_next_token_entries_from_supports(
+        tuple(frontier_supports)
+    )
+    grouped = {
+        entry.emitted_text: set(entry.successor_keys)
+        for entry in next_token_frontier
+    }
+    weighted = {
+        entry.emitted_text: entry.weighted_successors
+        for entry in next_token_frontier
+    }
+
+    outcome = _WriterFrontierScheduleOutcome(
+        state_outcomes=tuple(state_outcomes),
+        terminal_by_key=terminal_by_key,
+        grouped_by_text=grouped,
+        weighted_by_text=weighted,
+        next_token_frontier=next_token_frontier,
+    )
+    _validate_writer_frontier_schedule_outcome_grouping(outcome)
+    _validate_writer_frontier_schedule_outcome_lifecycle(outcome)
+    _validate_writer_frontier_schedule_outcome_closure_candidates(
+        prepared,
+        outcome,
+    )
+    _validate_writer_frontier_schedule_outcome_residual_attachments(
+        prepared,
+        outcome,
+    )
+    _validate_writer_frontier_schedule_outcome_terminal_supports(
+        prepared,
+        outcome,
+    )
+
+    return outcome
+
+
+def _raise_for_writer_frontier_schedule_outcome_blockers(
+    outcome: _WriterFrontierScheduleOutcome,
+) -> None:
+    for state_outcome in outcome.blocked_state_outcomes:
+        _raise_for_top_level_schedule_outcome_blockers(
+            state_outcome.schedule_outcome
+        )
+
+
+def _raise_for_writer_frontier_stereo_policy_blockers(
+    outcome: _WriterFrontierScheduleOutcome,
+) -> None:
+    blockers = sorted(
+        outcome.stereo_policy_blockers,
+        key=lambda item: (
+            item.kind,
+            -1 if item.site is None else int(item.site),
+            item.operation,
+        ),
+    )
+    if not blockers:
+        return
+
+    first = blockers[0]
+    site = "none" if first.site is None else str(int(first.site))
+    raise SouthStarError(
+        SouthStarErrorKind.UNSUPPORTED_POLICY,
+        (
+            "WRITER_SHAPED unsupported stereo operation at current "
+            "frontier: "
+            f"kind={first.kind}; "
+            f"site={site}; "
+            f"operation={first.operation!r}"
+        ),
+    )
+
+
+def _raise_for_writer_frontier_execution_capability_blockers(
+    outcome: _WriterFrontierScheduleOutcome,
+) -> None:
+    terminal = _unsupported_public_writer_execution_capabilities(
+        outcome.terminal_execution_capabilities
+    )
+    if terminal:
+        kind = min(terminal, key=lambda item: item.value)
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            (
+                "WRITER_SHAPED requires an unsupported South Star "
+                f"execution capability: {kind.value}; at EOS"
+            ),
+        )
+
+    for entry in sorted(
+        outcome.next_token_frontier,
+        key=lambda item: item.emitted_text,
+    ):
+        unsupported = _unsupported_public_writer_execution_capabilities(
+            entry.execution_capabilities
+        )
+        if unsupported:
+            kind = min(unsupported, key=lambda item: item.value)
+            raise SouthStarError(
+                SouthStarErrorKind.UNSUPPORTED_POLICY,
+                (
+                    "WRITER_SHAPED requires an unsupported South Star "
+                    f"execution capability: {kind.value}; "
+                    f"next={entry.emitted_text!r}"
+                ),
+            )
+
+
+def _first_writer_residual_work_envelope_violation(
+    evidence: tuple[WriterResidualPropagationWorkEvidence, ...],
+) -> WriterResidualWorkEnvelopeViolation | None:
+    for item in evidence:
+        violation = writer_residual_work_envelope_violation(item)
+        if violation is not None:
+            return violation
+    return None
+
+
+def _raise_for_writer_residual_work_envelope_violation(
+    violation: WriterResidualWorkEnvelopeViolation,
+    *,
+    location: str,
+) -> None:
+    evidence = violation.evidence
+    raise SouthStarError(
+        SouthStarErrorKind.UNSUPPORTED_POLICY,
+        (
+            "WRITER_SHAPED residual work exceeds the supported "
+            "execution envelope: "
+            f"operation={evidence.operation!r}; "
+            f"metric={violation.metric}; "
+            f"actual={violation.actual}; "
+            f"limit={violation.limit}; "
+            f"{location}"
+        ),
+    )
+
+
+def _raise_for_writer_frontier_residual_work_envelope_blockers(
+    outcome: _WriterFrontierScheduleOutcome,
+) -> None:
+    terminal = _first_writer_residual_work_envelope_violation(
+        outcome.terminal_residual_work_evidence
+    )
+    if terminal is not None:
+        _raise_for_writer_residual_work_envelope_violation(
+            terminal,
+            location="at EOS",
+        )
+
+    for entry in sorted(
+        outcome.next_token_frontier,
+        key=lambda item: item.emitted_text,
+    ):
+        violation = _first_writer_residual_work_envelope_violation(
+            entry.residual_work_evidence
+        )
+        if violation is not None:
+            _raise_for_writer_residual_work_envelope_violation(
+                violation,
+                location=f"next={entry.emitted_text!r}",
+            )
+
+
+def _first_writer_finite_relation_work_envelope_violation(
+    evidence: tuple[WriterFiniteRelationWorkEvidence, ...],
+) -> WriterFiniteRelationWorkEnvelopeViolation | None:
+    for item in evidence:
+        violation = writer_finite_relation_work_envelope_violation(item)
+        if violation is not None:
+            return violation
+    return None
+
+
+def _raise_for_writer_finite_relation_work_envelope_violation(
+    violation: WriterFiniteRelationWorkEnvelopeViolation,
+    *,
+    location: str,
+) -> None:
+    evidence = violation.evidence
+    bond_text = (
+        "none" if evidence.bond is None else str(int(evidence.bond))
+    )
+    raise SouthStarError(
+        SouthStarErrorKind.UNSUPPORTED_POLICY,
+        (
+            "WRITER_SHAPED finite relation work exceeds the supported "
+            "execution envelope: "
+            f"operation={evidence.operation!r}; "
+            f"relation={evidence.relation_kind}; "
+            f"bond={bond_text}; "
+            f"metric={violation.metric}; "
+            f"actual={violation.actual}; "
+            f"limit={violation.limit}; "
+            f"{location}"
+        ),
+    )
+
+
+def _raise_for_writer_frontier_finite_relation_work_envelope_blockers(
+    outcome: _WriterFrontierScheduleOutcome,
+) -> None:
+    for entry in sorted(
+        outcome.next_token_frontier,
+        key=lambda item: item.emitted_text,
+    ):
+        violation = _first_writer_finite_relation_work_envelope_violation(
+            entry.finite_relation_work_evidence
+        )
+        if violation is not None:
+            _raise_for_writer_finite_relation_work_envelope_violation(
+                violation,
+                location=f"next={entry.emitted_text!r}",
+            )
+
+
+def _first_writer_graph_obligation_work_envelope_violation(
+    evidence: tuple[WriterGraphObligationWorkEvidence, ...],
+) -> WriterGraphObligationWorkEnvelopeViolation | None:
+    for item in evidence:
+        violation = writer_graph_obligation_work_envelope_violation(item)
+        if violation is not None:
+            return violation
+    return None
+
+
+def _raise_for_writer_graph_obligation_work_envelope_violation(
+    violation: WriterGraphObligationWorkEnvelopeViolation,
+    *,
+    location: str,
+) -> None:
+    evidence = violation.evidence
+    raise SouthStarError(
+        SouthStarErrorKind.UNSUPPORTED_POLICY,
+        (
+            "WRITER_SHAPED graph obligation work exceeds the supported "
+            "execution envelope: "
+            f"operation={evidence.operation!r}; "
+            f"component={evidence.component_index}; "
+            f"metric={violation.metric}; "
+            f"actual={violation.actual}; "
+            f"limit={violation.limit}; "
+            f"{location}"
+        ),
+    )
+
+
+def _raise_for_writer_frontier_graph_obligation_work_envelope_blockers(
+    outcome: _WriterFrontierScheduleOutcome,
+) -> None:
+    violation = _first_writer_graph_obligation_work_envelope_violation(
+        outcome.graph_obligation_work_evidence
+    )
+    if violation is not None:
+        _raise_for_writer_graph_obligation_work_envelope_violation(
+            violation,
+            location="current frontier",
+        )
+
+
+def _raise_for_writer_frontier_choice_snapshot_blockers(
+    snapshot: _WriterFrontierChoiceSnapshot,
+) -> None:
+    _raise_for_writer_frontier_schedule_outcome_blockers(
+        snapshot.schedule_outcome
+    )
+    _raise_for_writer_frontier_stereo_policy_blockers(
+        snapshot.schedule_outcome
+    )
+    _raise_for_writer_frontier_execution_capability_blockers(
+        snapshot.schedule_outcome
+    )
+    _raise_for_writer_frontier_residual_work_envelope_blockers(
+        snapshot.schedule_outcome
+    )
+    _raise_for_writer_frontier_finite_relation_work_envelope_blockers(
+        snapshot.schedule_outcome
+    )
+    _raise_for_writer_frontier_graph_obligation_work_envelope_blockers(
+        snapshot.schedule_outcome
+    )
+
+
+def _checked_writer_frontier_schedule_outcome(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+) -> _WriterFrontierScheduleOutcome:
+    outcome = _writer_frontier_schedule_outcome(
+        prepared,
+        cursor,
+        stop_after_first_blocked=True,
+    )
+
+    _raise_for_writer_frontier_schedule_outcome_blockers(outcome)
+    _raise_for_writer_frontier_stereo_policy_blockers(outcome)
+    _raise_for_writer_frontier_execution_capability_blockers(outcome)
+    _raise_for_writer_frontier_residual_work_envelope_blockers(outcome)
+    _raise_for_writer_frontier_finite_relation_work_envelope_blockers(
+        outcome
+    )
+    _raise_for_writer_frontier_graph_obligation_work_envelope_blockers(
+        outcome
+    )
+
+    return outcome
+
+
+def _writer_frontier_branch_support_from_next_token_support(
+    *,
+    prepared: SouthStarPreparedMol,
+    branch_ordinal: int,
+    support: _WriterFrontierNextTokenSupport,
+    schedule_outcome: _WriterFrontierScheduleOutcome,
+) -> _WriterFrontierBranchSupport:
+    transition = support.schedule_support.transition
+    policy_evidence = _residual_attachment_policy_evidence_for_branch_support(
+        schedule_outcome=schedule_outcome,
+        support=support,
+    )
+    graph_evidence = _graph_obligation_work_evidence_for_branch_support(
+        schedule_outcome=schedule_outcome,
+        support=support,
+    )
+    closure_candidate_evidence = (
+        _closure_candidate_resolution_evidence_for_branch_support(
+            prepared=prepared,
+            support=support,
+            graph_obligation_work_evidence=graph_evidence,
+        )
+    )
+    closure_candidate_lifecycle_evidence = (
+            writer_closure_candidate_lifecycle_evidence_for_transition(
+                prepared=prepared,
+                source_state=support.state_key,
+                successor_state=support.successor_key,
+                graph_action_surface=support.graph_action_surface,
+            )
+        )
+    residual_attachment_lifecycle_evidence = (
+        writer_residual_attachment_lifecycle_evidence_for_transition(
+            prepared=prepared,
+            source_state=support.state_key,
+            successor_state=support.successor_key,
+            graph_action_surface=support.graph_action_surface,
+        )
+    )
+    stereo_lifecycle_evidence = tuple(
+        getattr(transition, "stereo_lifecycle_evidence", ())
+    )
+    capabilities = set(support.execution_capabilities)
+    if _branch_support_has_open_ring_endpoint_residual_resolution(
+        support=support,
+        policy_evidence=policy_evidence,
+    ):
+        capabilities.add(
+            (
+                _WriterExecutionCapabilityKind
+                .OPEN_RING_ENDPOINT_RESIDUAL_ATTACHMENT_RESOLUTION
+            )
+        )
+    if any(
+        evidence.deferred_branch_return_closure_candidate_count
+        for evidence in graph_evidence
+    ):
+        capabilities.add(
+            (
+                _WriterExecutionCapabilityKind
+                .DEFERRED_BRANCH_RETURN_CLOSURE_CANDIDATE
+            )
+        )
+    if any(
+        evidence.deferred_control_live_closure_candidate_count
+        for evidence in graph_evidence
+    ):
+        capabilities.add(
+            (
+                _WriterExecutionCapabilityKind
+                .DEFERRED_CONTROL_LIVE_CLOSURE_CANDIDATE
+            )
+        )
+    execution_capabilities = frozenset(capabilities)
+    closure_candidate_branch_certificates = (
+        writer_closure_candidate_branch_certificates(
+            execution_capabilities=execution_capabilities,
+            transition_kind=transition.kind,
+            graph_action_surface=support.graph_action_surface,
+            graph_obligation_work_evidence=graph_evidence,
+            closure_candidate_resolution_evidence=closure_candidate_evidence,
+            closure_candidate_lifecycle_evidence=(
+                closure_candidate_lifecycle_evidence
+            ),
+            events=transition.events,
+        )
+    )
+    residual_attachment_branch_certificates = (
+        writer_residual_attachment_branch_certificates(
+            execution_capabilities=execution_capabilities,
+            graph_action_surface=support.graph_action_surface,
+            residual_attachment_lifecycle_evidence=(
+                residual_attachment_lifecycle_evidence
+            ),
+        )
+    )
+    stereo_branch_certificates = writer_stereo_branch_certificates(
+        execution_capabilities=execution_capabilities,
+        stereo_lifecycle_evidence=stereo_lifecycle_evidence,
+        events=transition.events,
+    )
+    residual_work_evidence = tuple(support.residual_work_evidence)
+    finite_relation_work_evidence = tuple(
+        support.finite_relation_work_evidence
+    )
+    capability_coverage_certificate = writer_capability_coverage_certificate(
+        execution_capabilities=execution_capabilities,
+        transition_kind=transition.kind,
+        graph_action_surface=support.graph_action_surface,
+        policy_family=support.policy_family,
+        events=transition.events,
+        transition_evidence=transition.evidence,
+        finite_relation_work_evidence=finite_relation_work_evidence,
+        residual_work_evidence=tuple(support.residual_work_evidence),
+        closure_candidate_branch_certificates=closure_candidate_branch_certificates,
+        residual_attachment_branch_certificates=residual_attachment_branch_certificates,
+        stereo_branch_certificates=stereo_branch_certificates,
+        residual_attachment_policy_evidence=policy_evidence,
+        successor_state=support.successor_key,
+    )
+    successor_state_certificate = writer_branch_successor_state_certificate(
+        source_state=support.state_key,
+        successor_state=support.successor_key,
+        emitted_text=support.emitted_text,
+        transition_kind=transition.kind,
+        graph_action_surface=support.graph_action_surface,
+        policy_family=support.policy_family,
+        events=transition.events,
+        transition_evidence=transition.evidence,
+        graph_obligation_work_evidence=graph_evidence,
+        residual_work_evidence=residual_work_evidence,
+        finite_relation_work_evidence=finite_relation_work_evidence,
+        closure_candidate_lifecycle_evidence=(
+            closure_candidate_lifecycle_evidence
+        ),
+        residual_attachment_lifecycle_evidence=(
+            residual_attachment_lifecycle_evidence
+        ),
+        stereo_lifecycle_evidence=stereo_lifecycle_evidence,
+    )
+    checked_branch_certificate = writer_checked_branch_support_certificate(
+        source_state=support.state_key,
+        successor_state=support.successor_key,
+        emitted_text=support.emitted_text,
+        parent_weight=support.parent_weight,
+        branch_ordinal=branch_ordinal,
+        transition_kind=transition.kind,
+        graph_action_surface=support.graph_action_surface,
+        policy_family=support.policy_family,
+        events=transition.events,
+        transition_evidence=transition.evidence,
+        execution_capabilities=execution_capabilities,
+        graph_obligation_work_evidence=graph_evidence,
+        residual_work_evidence=residual_work_evidence,
+        finite_relation_work_evidence=finite_relation_work_evidence,
+        closure_candidate_resolution_evidence=closure_candidate_evidence,
+        closure_candidate_lifecycle_evidence=(
+            closure_candidate_lifecycle_evidence
+        ),
+        closure_candidate_branch_certificates=(
+            closure_candidate_branch_certificates
+        ),
+        residual_attachment_lifecycle_evidence=(
+            residual_attachment_lifecycle_evidence
+        ),
+        residual_attachment_branch_certificates=(
+            residual_attachment_branch_certificates
+        ),
+        stereo_lifecycle_evidence=stereo_lifecycle_evidence,
+        stereo_branch_certificates=stereo_branch_certificates,
+        residual_attachment_policy_evidence=policy_evidence,
+        capability_coverage_certificate=capability_coverage_certificate,
+        successor_state_certificate=successor_state_certificate,
+    )
+
+    return _WriterFrontierBranchSupport(
+        emitted_text=support.emitted_text,
+        source_state=support.state_key,
+        successor_state=support.successor_key,
+        parent_weight=support.parent_weight,
+        branch_ordinal=branch_ordinal,
+        transition_kind=transition.kind,
+        events=transition.events,
+        evidence=transition.evidence,
+        execution_capabilities=execution_capabilities,
+        residual_work_evidence=residual_work_evidence,
+        finite_relation_work_evidence=finite_relation_work_evidence,
+        graph_obligation_work_evidence=graph_evidence,
+        graph_action_surface=support.graph_action_surface,
+        policy_family=support.policy_family,
+        closure_candidate_resolution_evidence=closure_candidate_evidence,
+        closure_candidate_lifecycle_evidence=(
+            closure_candidate_lifecycle_evidence
+        ),
+        closure_candidate_branch_certificates=(
+            closure_candidate_branch_certificates
+        ),
+        residual_attachment_lifecycle_evidence=(
+            residual_attachment_lifecycle_evidence
+        ),
+        residual_attachment_branch_certificates=(
+            residual_attachment_branch_certificates
+        ),
+        stereo_lifecycle_evidence=stereo_lifecycle_evidence,
+        stereo_branch_certificates=stereo_branch_certificates,
+        residual_attachment_policy_evidence=policy_evidence,
+        checked_branch_certificate=checked_branch_certificate,
+        capability_coverage_certificate=capability_coverage_certificate,
+        successor_state_certificate=successor_state_certificate,
+    )
+
+
+def _graph_obligation_work_evidence_for_branch_support(
+    *,
+    schedule_outcome: _WriterFrontierScheduleOutcome,
+    support: _WriterFrontierNextTokenSupport,
+) -> tuple[WriterGraphObligationWorkEvidence, ...]:
+    return tuple(
+        evidence
+        for state_outcome in getattr(schedule_outcome, "state_outcomes", ())
+        if state_outcome.state_key == support.state_key
+        for evidence in state_outcome.graph_obligation_work_evidence
+    )
+
+
+def _closure_candidate_resolution_evidence_for_branch_support(
+    *,
+    prepared: SouthStarPreparedMol,
+    support: _WriterFrontierNextTokenSupport,
+    graph_obligation_work_evidence: tuple[WriterGraphObligationWorkEvidence, ...],
+) -> tuple[object, ...]:
+    context = build_writer_graph_obligation_context(
+        prepared,
+        support.state_key,
+    )
+    resolutions = writer_closure_candidate_resolutions(
+        support.state_key,
+        context.edge_partition,
+    )
+    surface = support.graph_action_surface
+
+    if (
+        support.policy_family is _WriterGraphPolicyActionFamily.CLOSURE_OPEN
+        and surface.closure_open_source_kind
+        is (
+            _WriterClosureOpenObligationSourceKind
+            .LIVE_BRANCH_RETURN_CLOSURE_CANDIDATE
+        )
+    ):
+        matches = tuple(
+            resolution
+            for resolution in resolutions
+            if (
+                resolution.resolution_kind
+                is WriterClosureCandidateResolutionKind.LIVE_BRANCH_RETURN
+                and resolution.bond == surface.bond
+                and resolution.first_atom == surface.boundary_atom
+                and resolution.second_atom == surface.partner_atom
+            )
+        )
+        if len(matches) != 1:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                (
+                    "live closure-candidate branch support lacks exact "
+                    "graph resolution"
+                ),
+            )
+        return matches
+
+    if any(
+        (
+            evidence.deferred_branch_return_closure_candidate_count
+            or evidence.deferred_control_live_closure_candidate_count
+        )
+        for evidence in graph_obligation_work_evidence
+    ):
+        return tuple(
+            resolution
+            for resolution in resolutions
+            if (
+                resolution.resolution_kind
+                in (
+                    WriterClosureCandidateResolutionKind.DEFERRED_BRANCH_RETURN,
+                    WriterClosureCandidateResolutionKind.DEFERRED_CONTROL_LIVE,
+                )
+            )
+        )
+
+    return ()
+
+
+def _residual_attachment_policy_evidence_for_branch_support(
+    *,
+    schedule_outcome: _WriterFrontierScheduleOutcome,
+    support: _WriterFrontierNextTokenSupport,
+) -> tuple[_WriterFrontierResidualAttachmentEvidenceGroup, ...]:
+    key = support.graph_action_surface.residual_attachment_policy_key
+    if key is None:
+        return ()
+
+    return tuple(
+        group
+        for group in schedule_outcome.residual_attachment_evidence_groups
+        if group.key == key
+    )
+
+
+def _branch_support_has_open_ring_endpoint_residual_resolution(
+    *,
+    support: _WriterFrontierNextTokenSupport,
+    policy_evidence: tuple[_WriterFrontierResidualAttachmentEvidenceGroup, ...],
+) -> bool:
+    if support.policy_family is not _WriterGraphPolicyActionFamily.CYCLIC_TREE_ENTRY:
+        return False
+
+    return any(
+        (
+            group.has_dead_closure_open_resolved_cyclic_tree_entry_support
+            and group.has_open_ring_endpoint_owner_scope_evidence
+        )
+        for group in policy_evidence
+    )
+
+
+def _checked_writer_frontier_branch_supports(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+    *,
+    include_counts: bool = True,
+    include_frontier_certificate: bool = True,
+    include_count_certificate: bool = True,
+) -> _WriterFrontierBranchSupportBatch:
+    return _checked_writer_frontier_product(
+        prepared,
+        cursor,
+        include_counts=include_counts,
+        include_frontier_certificate=include_frontier_certificate,
+        include_count_certificate=include_count_certificate,
+    ).branch_batch
+
+
+def _checked_writer_frontier_product(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+    *,
+    include_counts: bool = True,
+    include_frontier_certificate: bool = True,
+    include_diagnostics: bool = False,
+    include_count_certificate: bool = True,
+) -> _WriterCheckedFrontierProduct:
+    schedule_outcome = _writer_frontier_schedule_outcome(
+        prepared,
+        cursor,
+        stop_after_first_blocked=True,
+    )
+    blocker_evidence = _writer_frontier_blocker_evidence_from_schedule_outcome(
+        schedule_outcome
+    )
+    if blocker_evidence.blocked:
+        _raise_for_writer_frontier_blocker_evidence(
+            blocker_evidence,
+            schedule_outcome,
+        )
+
+    return _legal_writer_frontier_product_from_schedule_outcome(
+        prepared=prepared,
+        cursor=cursor,
+        schedule_outcome=schedule_outcome,
+        blocker_evidence=blocker_evidence,
+        include_counts=include_counts,
+        include_frontier_certificate=include_frontier_certificate,
+        include_diagnostics=include_diagnostics,
+        include_count_certificate=include_count_certificate,
+    )
+
+
+def _snapshot_advance_writer_frontier_product(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+) -> _WriterCheckedFrontierProduct:
+    schedule_outcome = _writer_frontier_schedule_outcome(
+        prepared,
+        cursor,
+        stop_after_first_blocked=False,
+    )
+    blocker_evidence = _writer_frontier_blocker_evidence_from_schedule_outcome(
+        schedule_outcome
+    )
+    choice_snapshot = _writer_frontier_choice_snapshot_from_schedule_outcome(
+        prepared,
+        schedule_outcome,
+        include_counts=False,
+    )
+    if blocker_evidence.blocked:
+        return _blocked_writer_frontier_product_from_choice_snapshot(
+            cursor=cursor,
+            choice_snapshot=choice_snapshot,
+            blocker_evidence=blocker_evidence,
+        )
+
+    return _legal_writer_frontier_product_from_schedule_outcome(
+        prepared=prepared,
+        cursor=cursor,
+        schedule_outcome=schedule_outcome,
+        blocker_evidence=blocker_evidence,
+        include_counts=False,
+        include_frontier_certificate=False,
+        include_diagnostics=False,
+        include_count_certificate=False,
+    )
+
+
+def _legal_writer_frontier_product_from_schedule_outcome(
+    *,
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+    schedule_outcome: _WriterFrontierScheduleOutcome,
+    blocker_evidence: _WriterFrontierBlockerEvidence,
+    include_counts: bool,
+    include_frontier_certificate: bool,
+    include_diagnostics: bool,
+    include_count_certificate: bool,
+) -> _WriterCheckedFrontierProduct:
+    choice_snapshot = _writer_frontier_choice_snapshot_from_schedule_outcome(
+        prepared,
+        schedule_outcome,
+        include_counts=False,
+    )
+    public_choices = choice_snapshot.public_choices
+
+    branch_supports = tuple(
+        _writer_frontier_branch_support_from_next_token_support(
+            prepared=prepared,
+            branch_ordinal=branch_ordinal,
+            support=support,
+            schedule_outcome=schedule_outcome,
+        )
+        for branch_ordinal, support in enumerate(
+            schedule_outcome.next_token_supports
+        )
+    )
+    terminal_supports = _writer_frontier_terminal_supports_from_schedule_outcome(
+        prepared=prepared,
+        schedule_outcome=schedule_outcome,
+    )
+
+    completion_count_memo: dict[WriterFrontierCursor, object] = {}
+    support_count_state_memo: dict[
+        WriterFrontierCursor, WriterTextStateSupportCountCertificate
+    ] = {}
+
+    def _successor_completion_count_certificate(
+        successor_cursor: WriterFrontierCursor,
+    ) -> object:
+        if successor_cursor in completion_count_memo:
+            return completion_count_memo[successor_cursor]
+        value = _checked_writer_frontier_branch_completion_count_certificate(
+            prepared=prepared,
+            cursor=successor_cursor,
+            include_frontier_product=False,
+        )
+        completion_count_memo[successor_cursor] = value
+        return value
+
+    if include_counts:
+        uncounted_projections = writer_text_choice_projection_certificates(
+            source_cursor=cursor,
+            choices=public_choices,
+            branch_supports=branch_supports,
+        )
+        counted_choices: list[WriterFrontierChoice] = []
+        for projection in uncounted_projections:
+            successor_support_count_certificate = (
+                _checked_writer_frontier_text_support_count_state_certificate(
+                    prepared=prepared,
+                    cursor=projection.successor_cursor,
+                    memo=support_count_state_memo,
+                    active=frozenset(),
+                )
+            )
+            successor_completion_count_certificate = (
+                _successor_completion_count_certificate(
+                    projection.successor_cursor,
+                )
+            )
+            support_count = successor_support_count_certificate.support_count
+            completion_count = (
+                successor_completion_count_certificate.completion_count
+            )
+            if support_count == 0 and completion_count == 0:
+                continue
+            counted_choices.append(
+                WriterFrontierChoice(
+                    emitted_text=projection.emitted_text,
+                    successor=projection.successor_cursor,
+                    immediate_multiplicity=projection.immediate_multiplicity,
+                    support_count=support_count,
+                    completion_count=completion_count,
+                )
+            )
+        public_choices = WriterFrontierChoices(
+            terminal=public_choices.terminal,
+            choices=tuple(counted_choices),
+        )
+        public_choice_texts = frozenset(
+            choice.emitted_text for choice in public_choices.choices
+        )
+        branch_supports = tuple(
+            support
+            for support in branch_supports
+            if support.emitted_text in public_choice_texts
+        )
+
+    text_choice_projection_certificates = writer_text_choice_projection_certificates(
+        source_cursor=cursor,
+        choices=public_choices,
+        branch_supports=branch_supports,
+    )
+    terminal_projection_certificate = writer_terminal_projection_certificate(
+        source_cursor=cursor,
+        terminal=public_choices.terminal,
+        terminal_supports=terminal_supports,
+    )
+    projection_certificate = writer_frontier_projection_certificate(
+        cursor=cursor,
+        choices=public_choices,
+        branch_supports=branch_supports,
+        terminal_supports=terminal_supports,
+        text_choice_projection_certificates=(
+            text_choice_projection_certificates
+        ),
+        terminal_projection_certificate=terminal_projection_certificate,
+    )
+    completion_count_certificate: object | None = None
+    support_count_certificate: object | None = None
+    text_choice_count_certificates: tuple[object, ...] = ()
+    terminal_choice_count_certificate: object | None = None
+    if include_count_certificate and include_counts:
+        completion_count_certificate = _checked_writer_frontier_branch_completion_count_certificate(
+            prepared,
+            cursor,
+            include_frontier_product=False,
+        )
+        support_count_certificate = (
+            _checked_writer_frontier_text_support_count_certificate(
+                prepared=prepared,
+                cursor=cursor,
+                source_snapshot=cursor,
+            )
+        )
+
+        text_choice_count_certificates = tuple(
+            writer_text_choice_count_certificate(
+                text_projection_certificate=projection,
+                support_count_certificate=(
+                    _checked_writer_frontier_text_support_count_state_certificate(
+                        prepared=prepared,
+                        cursor=projection.successor_cursor,
+                        memo=support_count_state_memo,
+                        active=frozenset(),
+                    )
+                ),
+                completion_count_certificate=_successor_completion_count_certificate(
+                    projection.successor_cursor,
+                ),
+            )
+            for projection in text_choice_projection_certificates
+        )
+        terminal_choice_count_certificate = (
+            writer_terminal_choice_count_certificate(
+                terminal_projection_certificate=terminal_projection_certificate,
+            )
+        )
+
+    branch_batch = _WriterFrontierBranchSupportBatch(
+        choices=public_choices,
+        supports=branch_supports,
+        terminal_supports=terminal_supports,
+        text_choice_projection_certificates=text_choice_projection_certificates,
+        text_choice_count_certificates=text_choice_count_certificates,
+        terminal_choice_count_certificate=terminal_choice_count_certificate,
+        support_count_certificate=support_count_certificate,
+        projection_certificate=projection_certificate,
+        terminal_projection_certificate=terminal_projection_certificate,
+        count_certificate=completion_count_certificate,
+    )
+
+    diagnostic_certificate = None
+    if include_diagnostics:
+        diagnostic_certificate = writer_diagnostics_certificate(
+            cursor=cursor,
+            diagnostics=SimpleNamespace(
+                blocked=blocker_evidence.blocked,
+                graph_policy_blockers=(
+                    blocker_evidence.graph_policy_blockers
+                ),
+                stereo_policy_blockers=(
+                    blocker_evidence.stereo_policy_blockers
+                ),
+                execution_capabilities=choice_snapshot.execution_capabilities,
+                terminal_execution_capabilities=(
+                    choice_snapshot.terminal_execution_capabilities
+                ),
+                unsupported_execution_capabilities=(
+                    blocker_evidence.unsupported_execution_capabilities
+                ),
+                unsupported_terminal_execution_capabilities=(
+                    blocker_evidence
+                    .unsupported_terminal_execution_capabilities
+                ),
+                unsupported_capability_source_evidence=(
+                    blocker_evidence.unsupported_capability_source_evidence
+                ),
+                unsupported_terminal_capability_source_evidence=(
+                    blocker_evidence
+                    .unsupported_terminal_capability_source_evidence
+                ),
+                residual_work_evidence=choice_snapshot.residual_work_evidence,
+                terminal_residual_work_evidence=(
+                    choice_snapshot.terminal_residual_work_evidence
+                ),
+                finite_relation_work_evidence=(
+                    choice_snapshot.finite_relation_work_evidence
+                ),
+                graph_obligation_work_evidence=(
+                    choice_snapshot.graph_obligation_work_evidence
+                ),
+                residual_work_envelope_violations=(
+                    blocker_evidence.residual_work_envelope_violations
+                ),
+                terminal_residual_work_envelope_violations=(
+                    blocker_evidence
+                    .terminal_residual_work_envelope_violations
+                ),
+                finite_relation_work_envelope_violations=(
+                    blocker_evidence.finite_relation_work_envelope_violations
+                ),
+                graph_obligation_work_envelope_violations=(
+                    blocker_evidence
+                    .graph_obligation_work_envelope_violations
+                ),
+                choice_texts=tuple(
+                    choice.emitted_text for choice in choice_snapshot.choices
+                ),
+                has_eos=choice_snapshot.terminal is not None,
+            ),
+            branch_batch=branch_batch,
+            count_certificate=completion_count_certificate,
+        )
+    checked_frontier_certificate = None
+    if (
+        include_frontier_certificate
+        and include_counts
+        and not choice_snapshot.blocked
+    ):
+        checked_frontier_certificate = writer_checked_frontier_certificate(
+            projection_certificate=projection_certificate,
+            text_choice_count_certificates=text_choice_count_certificates,
+            terminal_choice_count_certificate=(
+                terminal_choice_count_certificate
+            ),
+            support_count_certificate=support_count_certificate,
+            terminal_projection_certificate=terminal_projection_certificate,
+            count_certificate=completion_count_certificate,
+            diagnostic_certificate=diagnostic_certificate,
+        )
+        branch_batch = _WriterFrontierBranchSupportBatch(
+            choices=public_choices,
+            supports=branch_supports,
+            terminal_supports=terminal_supports,
+            text_choice_projection_certificates=text_choice_projection_certificates,
+            text_choice_count_certificates=text_choice_count_certificates,
+            terminal_choice_count_certificate=terminal_choice_count_certificate,
+            support_count_certificate=support_count_certificate,
+            projection_certificate=projection_certificate,
+            terminal_projection_certificate=terminal_projection_certificate,
+            count_certificate=completion_count_certificate,
+            checked_frontier_certificate=checked_frontier_certificate,
+        )
+
+    return _WriterCheckedFrontierProduct(
+        kind=_WriterCheckedFrontierProductKind.LEGAL,
+        cursor=cursor,
+        choices=public_choices,
+        branch_supports=branch_supports,
+        terminal_supports=terminal_supports,
+        text_choice_projection_certificates=text_choice_projection_certificates,
+        text_choice_count_certificates=text_choice_count_certificates,
+        terminal_choice_count_certificate=terminal_choice_count_certificate,
+        support_count_certificate=support_count_certificate,
+        projection_certificate=projection_certificate,
+        terminal_projection_certificate=terminal_projection_certificate,
+        count_certificate=completion_count_certificate,
+        diagnostic_certificate=diagnostic_certificate,
+        checked_frontier_certificate=checked_frontier_certificate,
+    )
+
+
+def _writer_frontier_terminal_supports_from_schedule_outcome(
+    *,
+    prepared: SouthStarPreparedMol,
+    schedule_outcome: _WriterFrontierScheduleOutcome,
+) -> tuple[_WriterFrontierTerminalSupport, ...]:
+    supports: list[_WriterFrontierTerminalSupport] = []
+    for terminal_ordinal, outcome in enumerate(
+        item
+        for item in schedule_outcome.state_outcomes
+        if item.finalized_state_key is not None
+    ):
+        certificates = writer_terminal_certificates(
+            prepared=prepared,
+            source_state=outcome.state_key,
+            finalized_state=outcome.finalized_state_key,
+            graph_obligation_work_evidence=(
+                outcome.graph_obligation_work_evidence
+            ),
+            terminal_stereo_lifecycle_evidence=(
+                outcome.terminal_stereo_lifecycle_evidence
+            ),
+            terminal_execution_capabilities=(
+                outcome.terminal_execution_capabilities
+            ),
+            terminal_residual_work_evidence=(
+                outcome.terminal_residual_work_evidence
+            ),
+        )
+        checked_terminal_certificate = (
+            writer_checked_terminal_support_certificate(
+                source_state=outcome.state_key,
+                finalized_state=outcome.finalized_state_key,
+                parent_weight=outcome.parent_weight,
+                terminal_ordinal=terminal_ordinal,
+                terminal_execution_capabilities=(
+                    outcome.terminal_execution_capabilities
+                ),
+                terminal_residual_work_evidence=(
+                    outcome.terminal_residual_work_evidence
+                ),
+                terminal_stereo_lifecycle_evidence=(
+                    outcome.terminal_stereo_lifecycle_evidence
+                ),
+                graph_obligation_work_evidence=(
+                    outcome.graph_obligation_work_evidence
+                ),
+                terminal_certificates=certificates,
+            )
+        )
+        terminal_support_key = checked_terminal_certificate.terminal_support_key
+        supports.append(
+            _WriterFrontierTerminalSupport(
+                source_state=outcome.state_key,
+                finalized_state=outcome.finalized_state_key,
+                parent_weight=outcome.parent_weight,
+                terminal_ordinal=terminal_ordinal,
+                terminal_support_key=terminal_support_key,
+                terminal_execution_capabilities=(
+                    outcome.terminal_execution_capabilities
+                ),
+                terminal_residual_work_evidence=(
+                    outcome.terminal_residual_work_evidence
+                ),
+                terminal_stereo_lifecycle_evidence=(
+                    outcome.terminal_stereo_lifecycle_evidence
+                ),
+                graph_obligation_work_evidence=(
+                    outcome.graph_obligation_work_evidence
+                ),
+                terminal_certificates=certificates,
+                checked_terminal_certificate=checked_terminal_certificate,
+            )
+        )
+
+    return tuple(supports)
+
+
+def _count_checked_writer_frontier_branch_completions(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+) -> int:
+    return _checked_writer_frontier_count_certificate(
+        prepared=prepared,
+        cursor=cursor,
+    ).completion_count
+
+
+def _checked_writer_frontier_text_support_count_certificate(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+    source_snapshot: object,
+) -> object:
+    memo: dict[WriterFrontierCursor, WriterTextStateSupportCountCertificate] = {}
+    state_count_certificate = (
+        _checked_writer_frontier_text_support_count_state_certificate(
+            prepared=prepared,
+            cursor=cursor,
+            memo=memo,
+            active=frozenset(),
+        )
+    )
+    return writer_text_support_count_certificate(
+        source_snapshot=source_snapshot,
+        cursor=cursor,
+        state_support_count_certificate=state_count_certificate,
+    )
+
+
+def _checked_writer_frontier_text_support_count_state_certificate(
+    *,
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+    memo: dict[WriterFrontierCursor, WriterTextStateSupportCountCertificate],
+    active: frozenset[WriterFrontierCursor],
+):
+    if cursor in memo:
+        return memo[cursor]
+
+    if cursor in active:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "writer support-count encountered a recursive frontier cursor",
+        )
+
+    product = _checked_writer_frontier_product(
+        prepared,
+        cursor,
+        include_counts=False,
+        include_frontier_certificate=False,
+        include_count_certificate=False,
+        include_diagnostics=False,
+    )
+
+    next_active = active | frozenset((cursor,))
+    choice_terms = tuple(
+        writer_text_choice_support_count_term_certificate(
+            text_projection_certificate=projection,
+            successor_support_count_certificate=(
+                _checked_writer_frontier_text_support_count_state_certificate(
+                    prepared=prepared,
+                    cursor=projection.successor_cursor,
+                    memo=memo,
+                    active=next_active,
+                )
+            ),
+        )
+        for projection in product.text_choice_projection_certificates
+    )
+
+    terminal_projection_certificate = product.terminal_projection_certificate
+    terminal_count = (
+        0 if terminal_projection_certificate is None else 1
+    )
+
+    certificate = writer_text_state_support_count_certificate(
+        cursor=cursor,
+        terminal_projection_certificate=terminal_projection_certificate,
+        terminal_count=terminal_count,
+        choice_terms=choice_terms,
+    )
+    memo[cursor] = certificate
+    return certificate
+
+
+def _checked_writer_frontier_count_certificate(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+) -> object:
+    return _checked_writer_frontier_branch_completion_count_certificate(
+        prepared=prepared,
+        cursor=cursor,
+        include_frontier_product=False,
+    )
+
+
+def _checked_writer_frontier_branch_completion_count_certificate(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+    *,
+    include_frontier_product: bool = True,
+) -> object:
+    return _checked_writer_frontier_branch_completion_count_certificate_from_cursor(
+        prepared=prepared,
+        cursor=cursor,
+        memo={},
+        active=frozenset(),
+        include_frontier_product=include_frontier_product,
+    )
+
+
+def _checked_writer_frontier_branch_completion_count_certificate_from_cursor(
+    *,
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+    memo: dict[WriterStateKey, object],
+    active: frozenset[WriterStateKey],
+    include_frontier_product: bool = True,
+) -> object:
+    state_count_certificates = tuple(
+        (
+            state_key,
+            weight,
+            _checked_writer_frontier_branch_completion_count_certificate_for_state_key(
+                prepared=prepared,
+                state_key=state_key,
+                memo=memo,
+                active=active,
+                include_frontier_product=include_frontier_product,
+            ),
+        )
+        for state_key, weight in cursor.weighted_states
+    )
+    return writer_cursor_completion_count_certificate(
+        cursor=cursor,
+        state_count_certificates=state_count_certificates,
+    )
+
+
+def _checked_writer_frontier_branch_completion_count_certificate_for_state_key(
+    *,
+    prepared: SouthStarPreparedMol,
+    state_key: WriterStateKey,
+    memo: dict[WriterStateKey, object],
+    active: frozenset[WriterStateKey],
+    include_frontier_product: bool = True,
+):
+    if state_key in memo:
+        return memo[state_key]
+    if state_key in active:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "writer branch-completion count encountered a recursive state",
+        )
+
+    cursor = WriterFrontierCursor(weighted_states=((state_key, 1),))
+    batch = _checked_writer_frontier_branch_supports(
+        prepared,
+        cursor,
+        include_counts=False,
+        include_frontier_certificate=include_frontier_product,
+        include_count_certificate=False,
+    )
+    total = (
+        0
+        if batch.choices.terminal is None
+        else batch.choices.terminal.completion_count
+    )
+    next_active = active | frozenset((state_key,))
+
+    branch_terms = tuple(
+        writer_branch_completion_term_certificate(
+            branch_certificate=support.checked_branch_certificate,
+            successor_count_certificate=(
+                _checked_writer_frontier_branch_completion_count_certificate_from_cursor(
+                    prepared=prepared,
+                    cursor=support.successor_cursor,
+                    memo=memo,
+                    active=next_active,
+                    include_frontier_product=include_frontier_product,
+                )
+            ),
+        )
+        for support in batch.supports
+    )
+    certificate = writer_state_completion_count_certificate(
+        state_key=state_key,
+        terminal_projection_certificate=batch.terminal_projection_certificate,
+        terminal_count=total,
+        branch_terms=branch_terms,
+    )
+    memo[state_key] = certificate
+    return certificate
+
+
+def _writer_frontier_work_envelope_violations(
+    evidence: tuple[object, ...],
+    violation_check,
+) -> tuple[object, ...]:
+    return tuple(
+        violation
+        for item in evidence
+        if (violation := violation_check(item)) is not None
+    )
+
+
+def _writer_frontier_unsupported_capability_source_evidence(
+    *,
+    outcome: _WriterFrontierScheduleOutcome,
+    unsupported_execution_capabilities: frozenset[object],
+    unsupported_terminal_execution_capabilities: frozenset[object],
+) -> tuple[
+    tuple[object, ...],
+    tuple[object, ...],
+]:
+    execution_evidence: list[object] = []
+    for support in outcome.next_token_supports:
+        unsupported = (
+            support.execution_capabilities
+            & unsupported_execution_capabilities
+        )
+        for capability in unsupported:
+            transition = support.schedule_support.transition
+            execution_evidence.append(
+                WriterUnsupportedCapabilitySourceEvidence(
+                    capability=capability,
+                    source_kind="next_token_support",
+                    source_state=support.state_key,
+                    emitted_text=support.emitted_text,
+                    transition_kind=transition.kind,
+                    policy_family=support.policy_family,
+                    graph_action_surface=support.graph_action_surface,
+                    terminal=False,
+                    evidence=transition.evidence,
+                )
+            )
+
+    terminal_evidence: list[object] = []
+    for state_outcome in outcome.state_outcomes:
+        unsupported = (
+            state_outcome.terminal_execution_capabilities
+            & unsupported_terminal_execution_capabilities
+        )
+        for capability in unsupported:
+            terminal_evidence.append(
+                WriterUnsupportedCapabilitySourceEvidence(
+                    capability=capability,
+                    source_kind="terminal_support",
+                    source_state=state_outcome.state_key,
+                    terminal=True,
+                    evidence=state_outcome,
+                )
+            )
+
+    return tuple(execution_evidence), tuple(terminal_evidence)
+
+
+def _writer_frontier_blocker_evidence_from_schedule_outcome(
+    outcome: _WriterFrontierScheduleOutcome,
+) -> _WriterFrontierBlockerEvidence:
+    unsupported_execution_capabilities = (
+        _unsupported_public_writer_execution_capabilities(
+            outcome.execution_capabilities
+        )
+    )
+    unsupported_terminal_execution_capabilities = (
+        _unsupported_public_writer_execution_capabilities(
+            outcome.terminal_execution_capabilities
+        )
+    )
+    (
+        unsupported_source_evidence,
+        unsupported_terminal_source_evidence,
+    ) = _writer_frontier_unsupported_capability_source_evidence(
+        outcome=outcome,
+        unsupported_execution_capabilities=(
+            unsupported_execution_capabilities
+        ),
+        unsupported_terminal_execution_capabilities=(
+            unsupported_terminal_execution_capabilities
+        ),
+    )
+    return _WriterFrontierBlockerEvidence(
+        graph_policy_blockers=outcome.graph_policy_blockers,
+        stereo_policy_blockers=outcome.stereo_policy_blockers,
+        unsupported_execution_capabilities=(
+            unsupported_execution_capabilities
+        ),
+        unsupported_terminal_execution_capabilities=(
+            unsupported_terminal_execution_capabilities
+        ),
+        residual_work_envelope_violations=(
+            _writer_frontier_work_envelope_violations(
+                outcome.residual_work_evidence,
+                writer_residual_work_envelope_violation,
+            )
+        ),
+        terminal_residual_work_envelope_violations=(
+            _writer_frontier_work_envelope_violations(
+                outcome.terminal_residual_work_evidence,
+                writer_residual_work_envelope_violation,
+            )
+        ),
+        finite_relation_work_envelope_violations=(
+            _writer_frontier_work_envelope_violations(
+                outcome.finite_relation_work_evidence,
+                writer_finite_relation_work_envelope_violation,
+            )
+        ),
+        graph_obligation_work_envelope_violations=(
+            _writer_frontier_work_envelope_violations(
+                outcome.graph_obligation_work_evidence,
+                writer_graph_obligation_work_envelope_violation,
+            )
+        ),
+        unsupported_capability_source_evidence=(
+            unsupported_source_evidence
+        ),
+        unsupported_terminal_capability_source_evidence=(
+            unsupported_terminal_source_evidence
+        ),
+    )
+
+
+def _raise_for_writer_frontier_blocker_evidence(
+    blocker_evidence: _WriterFrontierBlockerEvidence,
+    outcome: _WriterFrontierScheduleOutcome,
+) -> None:
+    if blocker_evidence.graph_policy_blockers:
+        _raise_for_writer_frontier_schedule_outcome_blockers(outcome)
+    if blocker_evidence.stereo_policy_blockers:
+        _raise_for_writer_frontier_stereo_policy_blockers(outcome)
+    if (
+        blocker_evidence.unsupported_execution_capabilities
+        or blocker_evidence.unsupported_terminal_execution_capabilities
+    ):
+        _raise_for_writer_frontier_execution_capability_blockers(outcome)
+    if (
+        blocker_evidence.residual_work_envelope_violations
+        or blocker_evidence.terminal_residual_work_envelope_violations
+    ):
+        _raise_for_writer_frontier_residual_work_envelope_blockers(outcome)
+    if blocker_evidence.finite_relation_work_envelope_violations:
+        _raise_for_writer_frontier_finite_relation_work_envelope_blockers(
+            outcome
+        )
+    if blocker_evidence.graph_obligation_work_envelope_violations:
+        _raise_for_writer_frontier_graph_obligation_work_envelope_blockers(
+            outcome
+        )
+
+
+def _writer_frontier_diagnostics_dict_from_choice_snapshot(
+    choice_snapshot: _WriterFrontierChoiceSnapshot,
+    *,
+    blocker_evidence: _WriterFrontierBlockerEvidence,
+    choice_texts: tuple[str, ...] | None = None,
+    has_eos: bool | None = None,
+) -> dict[str, object]:
+    return dict(
+        blocked=blocker_evidence.blocked,
+        graph_policy_blockers=blocker_evidence.graph_policy_blockers,
+        stereo_policy_blockers=blocker_evidence.stereo_policy_blockers,
+        execution_capabilities=choice_snapshot.execution_capabilities,
+        terminal_execution_capabilities=(
+            choice_snapshot.terminal_execution_capabilities
+        ),
+        unsupported_execution_capabilities=(
+            blocker_evidence.unsupported_execution_capabilities
+        ),
+        unsupported_terminal_execution_capabilities=(
+            blocker_evidence.unsupported_terminal_execution_capabilities
+        ),
+        unsupported_capability_source_evidence=(
+            blocker_evidence.unsupported_capability_source_evidence
+        ),
+        unsupported_terminal_capability_source_evidence=(
+            blocker_evidence
+            .unsupported_terminal_capability_source_evidence
+        ),
+        residual_work_evidence=choice_snapshot.residual_work_evidence,
+        terminal_residual_work_evidence=(
+            choice_snapshot.terminal_residual_work_evidence
+        ),
+        finite_relation_work_evidence=(
+            choice_snapshot.finite_relation_work_evidence
+        ),
+        graph_obligation_work_evidence=(
+            choice_snapshot.graph_obligation_work_evidence
+        ),
+        residual_work_envelope_violations=(
+            blocker_evidence.residual_work_envelope_violations
+        ),
+        terminal_residual_work_envelope_violations=(
+            blocker_evidence.terminal_residual_work_envelope_violations
+        ),
+        finite_relation_work_envelope_violations=(
+            blocker_evidence.finite_relation_work_envelope_violations
+        ),
+        graph_obligation_work_envelope_violations=(
+            blocker_evidence.graph_obligation_work_envelope_violations
+        ),
+        choice_texts=(
+            choice_texts
+            if choice_texts is not None
+            else tuple(choice.emitted_text for choice in choice_snapshot.choices)
+        ),
+        has_eos=(
+            has_eos
+            if has_eos is not None
+            else choice_snapshot.terminal is not None
+        ),
+    )
+
+
+def _empty_blocked_writer_frontier_branch_batch() -> _WriterFrontierBranchSupportBatch:
+    return _WriterFrontierBranchSupportBatch(
+        choices=WriterFrontierChoices(terminal=None, choices=()),
+        supports=(),
+        terminal_supports=(),
+        text_choice_projection_certificates=(),
+        text_choice_count_certificates=(),
+        terminal_choice_count_certificate=None,
+        support_count_certificate=None,
+        terminal_projection_certificate=None,
+        count_certificate=None,
+        checked_frontier_certificate=None,
+    )
+
+
+def _blocked_writer_frontier_product_from_choice_snapshot(
+    *,
+    cursor: WriterFrontierCursor,
+    choice_snapshot: _WriterFrontierChoiceSnapshot,
+    blocker_evidence: _WriterFrontierBlockerEvidence,
+) -> _WriterCheckedFrontierProduct:
+    branch_batch = _empty_blocked_writer_frontier_branch_batch()
+    diagnostics_dict = _writer_frontier_diagnostics_dict_from_choice_snapshot(
+        choice_snapshot,
+        blocker_evidence=blocker_evidence,
+        choice_texts=(),
+        has_eos=False,
+    )
+    diagnostic_certificate = writer_diagnostics_certificate(
+        cursor=cursor,
+        diagnostics=SimpleNamespace(**diagnostics_dict),
+        branch_batch=branch_batch,
+        count_certificate=None,
+    )
+    blocked_frontier_certificate = writer_blocked_frontier_certificate(
+        cursor=cursor,
+        diagnostic_certificate=diagnostic_certificate,
+    )
+    return _WriterCheckedFrontierProduct(
+        kind=_WriterCheckedFrontierProductKind.BLOCKED,
+        cursor=cursor,
+        choices=branch_batch.choices,
+        branch_supports=(),
+        terminal_supports=(),
+        text_choice_projection_certificates=(),
+        text_choice_count_certificates=(),
+        terminal_choice_count_certificate=None,
+        support_count_certificate=None,
+        terminal_projection_certificate=None,
+        count_certificate=None,
+        diagnostic_certificate=diagnostic_certificate,
+        checked_frontier_certificate=None,
+        blocked_frontier_certificate=blocked_frontier_certificate,
+    )
+
+
+def _diagnostic_writer_frontier_product(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+) -> _WriterCheckedFrontierProduct:
+    schedule_outcome = _writer_frontier_schedule_outcome(
+        prepared,
+        cursor,
+        stop_after_first_blocked=False,
+    )
+    blocker_evidence = _writer_frontier_blocker_evidence_from_schedule_outcome(
+        schedule_outcome
+    )
+    choice_snapshot = _writer_frontier_choice_snapshot_from_schedule_outcome(
+        prepared,
+        schedule_outcome,
+        include_counts=False,
+    )
+    if blocker_evidence.blocked:
+        return _blocked_writer_frontier_product_from_choice_snapshot(
+            cursor=cursor,
+            choice_snapshot=choice_snapshot,
+            blocker_evidence=blocker_evidence,
+        )
+
+    product = _legal_writer_frontier_product_from_schedule_outcome(
+        prepared=prepared,
+        cursor=cursor,
+        schedule_outcome=schedule_outcome,
+        blocker_evidence=blocker_evidence,
+        include_counts=True,
+        include_frontier_certificate=False,
+        include_diagnostics=False,
+        include_count_certificate=True,
+    )
+    branch_batch = product.branch_batch
+    diagnostics_dict = _writer_frontier_diagnostics_dict_from_choice_snapshot(
+        choice_snapshot,
+        blocker_evidence=blocker_evidence,
+        choice_texts=tuple(
+            choice.emitted_text for choice in branch_batch.choices.choices
+        ),
+        has_eos=branch_batch.choices.terminal is not None,
+    )
+
+    diagnostic_certificate = writer_diagnostics_certificate(
+        cursor=cursor,
+        diagnostics=SimpleNamespace(**diagnostics_dict),
+        branch_batch=branch_batch,
+        count_certificate=product.count_certificate,
+    )
+    checked_frontier_certificate = writer_checked_frontier_certificate(
+        cursor=cursor,
+        choices=branch_batch.choices,
+        branch_supports=branch_batch.supports,
+        terminal_supports=branch_batch.terminal_supports,
+        text_choice_projection_certificates=(
+            branch_batch.text_choice_projection_certificates
+        ),
+        text_choice_count_certificates=(
+            branch_batch.text_choice_count_certificates
+        ),
+        terminal_choice_count_certificate=(
+            branch_batch.terminal_choice_count_certificate
+        ),
+        support_count_certificate=branch_batch.support_count_certificate,
+        terminal_projection_certificate=(
+            branch_batch.terminal_projection_certificate
+        ),
+        count_certificate=product.count_certificate,
+        diagnostic_certificate=diagnostic_certificate,
+    )
+
+    return _WriterCheckedFrontierProduct(
+        kind=_WriterCheckedFrontierProductKind.LEGAL,
+        cursor=product.cursor,
+        choices=product.choices,
+        branch_supports=product.branch_supports,
+        terminal_supports=product.terminal_supports,
+        text_choice_projection_certificates=(
+            product.text_choice_projection_certificates
+        ),
+        text_choice_count_certificates=product.text_choice_count_certificates,
+        terminal_choice_count_certificate=(
+            product.terminal_choice_count_certificate
+        ),
+        support_count_certificate=product.support_count_certificate,
+        terminal_projection_certificate=product.terminal_projection_certificate,
+        count_certificate=product.count_certificate,
+        diagnostic_certificate=diagnostic_certificate,
+        checked_frontier_certificate=checked_frontier_certificate,
+        blocked_frontier_certificate=None,
+    )
+
+
+def _writer_frontier_diagnostics(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+) -> _WriterFrontierDiagnostics:
+    product = _diagnostic_writer_frontier_product(prepared, cursor)
+    diagnostic_certificate = product.diagnostic_certificate
+    if diagnostic_certificate is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "diagnostic writer frontier product lacks diagnostic certificate",
+        )
+
+    choice_snapshot = _writer_frontier_choice_snapshot(
+        prepared,
+        cursor,
+        include_counts=False,
+        stop_after_first_blocked=False,
+    )
+    blocker_evidence = _writer_frontier_blocker_evidence_from_schedule_outcome(
+        choice_snapshot.schedule_outcome
+    )
+    diagnostics_dict = _writer_frontier_diagnostics_dict_from_choice_snapshot(
+        choice_snapshot,
+        blocker_evidence=blocker_evidence,
+        choice_texts=tuple(
+            certificate.emitted_text
+            for certificate in (
+                diagnostic_certificate.text_choice_projection_certificates
+            )
+        ),
+        has_eos=(
+            diagnostic_certificate.terminal_projection_certificate
+            is not None
+        ),
+    )
+    diagnostics_dict["diagnostic_certificate"] = diagnostic_certificate
+    diagnostics_dict["checked_frontier_certificate"] = (
+        product.checked_frontier_certificate
+    )
+    diagnostics_dict["blocked_frontier_certificate"] = (
+        product.blocked_frontier_certificate
+    )
+    diagnostics_dict.pop("unsupported_capability_source_evidence", None)
+    diagnostics_dict.pop(
+        "unsupported_terminal_capability_source_evidence",
+        None,
+    )
+    return _WriterFrontierDiagnostics(**diagnostics_dict)
+
+
+def _group_writer_frontier_transitions(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+) -> _GroupedWriterFrontierTransitions:
+    outcome = _checked_writer_frontier_schedule_outcome(
+        prepared,
+        cursor,
+    )
+
+    return outcome.grouped_transitions
+
+
+def count_writer_frontier_support(
+    prepared: SouthStarPreparedMol,
+    frontier: WriterFrontierState,
+) -> int:
+    cursor = _cursor_from_support_state(frontier)
+    return _checked_writer_frontier_text_support_count_certificate(
+        prepared=prepared,
+        cursor=cursor,
+        source_snapshot=cursor,
+    ).support_count
+
+
+def _writer_frontier_summary(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+    *,
+    include_support_count: bool = False,
+    include_completion_count: bool = False,
+    include_strings: bool = False,
+) -> _WriterFrontierSummary:
+    if include_strings:
+        include_support_count = True
+
+    return _writer_frontier_summary_from_cursor(
+        prepared,
+        cursor,
+        include_support_count=include_support_count,
+        include_completion_count=include_completion_count,
+        include_strings=include_strings,
+        memo={},
+    )
+
+
+def _writer_frontier_summary_from_cursor(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+    *,
+    include_support_count: bool,
+    include_completion_count: bool,
+    include_strings: bool,
+    memo: dict[
+        tuple[WriterFrontierCursor, bool, bool, bool],
+        _WriterFrontierSummary,
+    ],
+) -> _WriterFrontierSummary:
+    key = (
+        cursor,
+        include_support_count,
+        include_completion_count,
+        include_strings,
+    )
+    cached = memo.get(key)
+    if cached is not None:
+        return cached
+
+    snapshot = _checked_writer_frontier_choice_snapshot(
+        prepared,
+        cursor,
+        include_counts=False,
+    )
+    summary = _writer_frontier_summary_from_snapshot(
+        prepared,
+        snapshot,
+        include_support_count=include_support_count,
+        include_completion_count=include_completion_count,
+        include_strings=include_strings,
+        memo=memo,
+    )
+    memo[key] = summary
+    return summary
+
+
+def _writer_frontier_summary_from_snapshot(
+    prepared: SouthStarPreparedMol,
+    snapshot: _WriterFrontierChoiceSnapshot,
+    *,
+    include_support_count: bool,
+    include_completion_count: bool,
+    include_strings: bool,
+    memo: dict[
+        tuple[WriterFrontierCursor, bool, bool, bool],
+        _WriterFrontierSummary,
+    ],
+) -> _WriterFrontierSummary:
+    support_count = (
+        1 if snapshot.terminal is not None else 0
+    ) if include_support_count else None
+
+    completion_count = (
+        (
+            snapshot.terminal.completion_count
+            if snapshot.terminal is not None
+            else 0
+        )
+    ) if include_completion_count else None
+
+    strings: list[str] | None
+    if include_strings:
+        strings = [""] if snapshot.terminal is not None else []
+    else:
+        strings = None
+
+    for choice in snapshot.choices:
+        child = _writer_frontier_summary_from_cursor(
+            prepared,
+            choice.successor,
+            include_support_count=include_support_count,
+            include_completion_count=include_completion_count,
+            include_strings=include_strings,
+            memo=memo,
+        )
+
+        if include_support_count:
+            assert support_count is not None
+            support_count += child.require_support_count()
+
+        if include_completion_count:
+            assert completion_count is not None
+            completion_count += child.require_completion_count()
+
+        if include_strings:
+            assert strings is not None
+            strings.extend(
+                choice.emitted_text + suffix
+                for suffix in child.require_strings()
+            )
+
+    return _WriterFrontierSummary(
+        support_count=support_count,
+        completion_count=completion_count,
+        strings=None if strings is None else tuple(strings),
+    )
+
+
+def count_writer_cursor_completions(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+) -> int:
+    return _checked_writer_frontier_count_certificate(
+        prepared=prepared,
+        cursor=cursor,
+    ).completion_count
+
+
+def iter_writer_frontier_support(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+) -> Iterator[str]:
+    for item in _iter_checked_writer_frontier_certified_support_strings(
+        prepared,
+        cursor,
+        source_cursor=cursor,
+    ):
+        yield item.string
+
+
+def _iter_checked_writer_frontier_certified_support_strings(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+    *,
+    source_cursor: object | None = None,
+) -> Iterator[_WriterFrontierCertifiedSupportString]:
+    if source_cursor is None:
+        source_cursor = cursor
+
+    product = _checked_writer_frontier_product(
+        prepared,
+        cursor,
+        include_counts=False,
+        include_frontier_certificate=True,
+        include_count_certificate=False,
+    )
+
+    if product.choices.terminal is not None:
+        terminal_projection_certificate = product.terminal_projection_certificate
+        if terminal_projection_certificate is None:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "terminal support lacks terminal projection certificate",
+            )
+
+        yield _WriterFrontierCertifiedSupportString(
+            string="",
+            certificate=writer_frontier_support_string_certificate(
+                source_cursor=source_cursor,
+                string="",
+                emitted_texts=(),
+                text_projection_certificates=(),
+                terminal_projection_certificate=terminal_projection_certificate,
+            ),
+        )
+
+    for projection in product.text_choice_projection_certificates:
+        for suffix in _iter_checked_writer_frontier_certified_support_strings(
+            prepared,
+            projection.successor_cursor,
+            source_cursor=projection.successor_cursor,
+        ):
+            emitted_texts = (
+                projection.emitted_text,
+                *suffix.certificate.emitted_texts,
+            )
+            text_projection_certificates = (
+                projection,
+                *suffix.certificate.text_projection_certificates,
+            )
+            string = projection.emitted_text + suffix.string
+            yield _WriterFrontierCertifiedSupportString(
+                string=string,
+                certificate=writer_frontier_support_string_certificate(
+                    source_cursor=source_cursor,
+                    string=string,
+                    emitted_texts=emitted_texts,
+                    text_projection_certificates=text_projection_certificates,
+                    terminal_projection_certificate=(
+                        suffix.certificate.terminal_projection_certificate
+                    ),
+                ),
+            )
+
+
+def _root_domains_for_runtime(
+    prepared: SouthStarPreparedMol,
+    runtime_options: SouthStarRuntimeOptions,
+) -> tuple[tuple[object, tuple[AtomId, ...]], ...]:
+    if runtime_options.rooted_at_atom < 0:
+        return prepared.all_root_domains
+    atom = AtomId(runtime_options.rooted_at_atom)
+    try:
+        return prepared.component_root_domains_by_explicit_root[atom]
+    except KeyError as exc:
+        raise SouthStarError(
+            SouthStarErrorKind.INVALID_FACTS,
+            f"rooted_at_atom is not present in prepared molecule: {int(atom)}",
+        ) from exc
+
+
+__all__ = (
+    "WriterFrontierChoice",
+    "WriterFrontierChoices",
+    "WriterFrontierCursor",
+    "WriterFrontierState",
+    "WriterFrontierTerminal",
+    "count_writer_cursor_completions",
+    "count_writer_frontier_support",
+    "initial_writer_frontier_cursor",
+    "iter_writer_frontier_support",
+    "writer_frontier_choices",
+)

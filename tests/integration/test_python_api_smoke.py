@@ -1,78 +1,42 @@
 from __future__ import annotations
 
+import os
+from pathlib import Path
+import tempfile
 import unittest
 
 import grimace
-import grimace._deviation as _deviation
-import grimace._runtime as _runtime
-import grimace._sampling as _sampling
-from grimace._reference.prepared_graph import (
-    CONNECTED_NONSTEREO_SURFACE,
-    prepare_smiles_graph_from_mol_to_smiles_kwargs,
+from grimace._reference import (
+    DEFAULT_MOLECULE_SOURCE_PATH,
+    DEFAULT_RDKIT_RANDOM_CONNECTED_NONSTEREO_POLICY_PATH,
+    DEFAULT_RDKIT_RANDOM_POLICY_PATH,
+    ReferencePolicy,
+    build_core_exact_sets_artifact,
+    write_core_exact_sets_artifact,
 )
+from grimace._reference.prepared_graph import prepare_smiles_graph_from_mol_to_smiles_kwargs
 from tests.helpers.public_runtime import (
     assert_public_entrypoints_equivalent,
     assert_public_entrypoints_raise,
     supported_public_kwargs,
 )
+from tests.helpers.kernel import CORE_MODULE
 from tests.helpers.mols import parse_smiles
-
-
-EXPECTED_TOP_LEVEL_EXPORTS = (
-    "MolToSmilesChoice",
-    "MolToSmilesDecoder",
-    "MolToSmilesDeterminizedDecoder",
-    "MolToSmilesDeviation",
-    "MolToSmilesEnum",
-    "MolToSmilesSample",
-    "MolToSmilesTokenInventory",
-    "MolToSmilesTokenInventorySuperset",
-    "PreparedMol",
-    "PrepareMol",
-    "SmilesDeviation",
-    "SmilesSample",
-    "SmilesSampleStep",
-)
-ABSENT_TOP_LEVEL_NAMES = (
-    "MolToSmilesSupport",
-    "ReferencePolicy",
-    "MOL_TO_SMILES_OPTIONS",
-    "coerce_public_options",
-    "internal_option_values",
-    "public_option_values",
-    "PreparedSmilesGraph",
-    "RootedConnectedNonStereoDecoder",
-    "RootedConnectedNonStereoWalker",
-    "RootedConnectedNonStereoWalkerState",
-    "RootedConnectedStereoDecoder",
-    "RootedConnectedStereoWalker",
-    "RootedConnectedStereoWalkerState",
-    "_SplitMix64Sampler",
-    "enumerate_rooted_connected_nonstereo_smiles_support",
-    "enumerate_rooted_connected_stereo_smiles_support",
-    "mol_to_smiles_support",
-    "prepared_smiles_graph_schema_version",
-)
 
 
 class PythonApiSmokeTests(unittest.TestCase):
     def test_top_level_api_exposes_only_final_runtime_surface(self) -> None:
-        self.assertEqual(EXPECTED_TOP_LEVEL_EXPORTS, tuple(grimace.__all__))
-
-        for name in grimace.__all__:
-            with self.subTest(name=name):
-                self.assertTrue(callable(getattr(grimace, name)))
-
-        for name in ABSENT_TOP_LEVEL_NAMES:
-            with self.subTest(name=name):
-                self.assertFalse(hasattr(grimace, name))
-
-    def test_public_runtime_attributes_are_backed_at_import(self) -> None:
-        self.assertIs(grimace.MolToSmilesChoice, _runtime.MolToSmilesChoice)
-        self.assertIs(grimace.SmilesDeviation, _deviation.SmilesDeviation)
-        self.assertIs(grimace.SmilesSample, _sampling.SmilesSample)
-        self.assertIs(grimace.SmilesSampleStep, _sampling.SmilesSampleStep)
-
+        self.assertTrue(callable(grimace.MolToSmilesChoice))
+        self.assertTrue(callable(grimace.MolToSmilesDecoder))
+        self.assertTrue(callable(grimace.MolToSmilesDeterminizedDecoder))
+        self.assertTrue(callable(grimace.MolToSmilesDeviation))
+        self.assertTrue(callable(grimace.MolToSmilesEnum))
+        self.assertTrue(callable(grimace.MolToSmilesTokenInventory))
+        self.assertTrue(callable(grimace.MolToSmilesTokenInventorySuperset))
+        self.assertFalse(hasattr(grimace, "MolToSmilesSupport"))
+        self.assertFalse(hasattr(grimace, "ReferencePolicy"))
+        self.assertFalse(hasattr(grimace, "enumerate_rooted_connected_nonstereo_smiles_support"))
+        self.assertFalse(hasattr(grimace, "enumerate_rooted_connected_stereo_smiles_support"))
         decoder = grimace.MolToSmilesDecoder(
             parse_smiles("CCO"),
             rootedAtAtom=0,
@@ -87,24 +51,56 @@ class PythonApiSmokeTests(unittest.TestCase):
             canonical=False,
             doRandom=True,
         )
+        self.assertFalse(hasattr(decoder, "next_tokens"))
+        self.assertFalse(hasattr(decoder, "advance"))
+        self.assertIsInstance(determinized_decoder.next_choices[0].next_state, grimace.MolToSmilesDeterminizedDecoder)
+        if CORE_MODULE is None:
+            with self.assertRaises(ImportError):
+                tuple(
+                    grimace.MolToSmilesEnum(
+                        parse_smiles("CCO"),
+                        rootedAtAtom=0,
+                        isomericSmiles=False,
+                        canonical=False,
+                        doRandom=True,
+                    )
+                )
+            return
 
-        for public_decoder in (decoder, determinized_decoder):
-            with self.subTest(decoder_type=type(public_decoder).__name__):
-                self.assertFalse(hasattr(public_decoder, "next_tokens"))
-                self.assertFalse(hasattr(public_decoder, "advance"))
+        from grimace import _runtime
 
-        self.assertEqual("", decoder.prefix)
-        self.assertIsInstance(decoder.is_terminal, bool)
-        self.assertIsInstance(decoder.next_choices, tuple)
-        self.assertTrue(decoder.next_choices)
-        self.assertIsInstance(decoder.next_choices[0], grimace.MolToSmilesChoice)
-        self.assertIsInstance(
-            decoder.next_choices[0].next_state,
-            grimace.MolToSmilesDecoder,
+        self.assertEqual(
+            _runtime.enumerate_rooted_connected_nonstereo_smiles_support(
+                parse_smiles("CCO"),
+                0,
+            ),
+            set(
+                grimace.MolToSmilesEnum(
+                    parse_smiles("CCO"),
+                    rootedAtAtom=0,
+                    isomericSmiles=False,
+                    canonical=False,
+                    doRandom=True,
+                )
+            ),
         )
-        self.assertIsInstance(
-            determinized_decoder.next_choices[0].next_state,
-            grimace.MolToSmilesDeterminizedDecoder,
+        self.assertEqual(
+            set(
+                grimace.MolToSmilesEnum(
+                    parse_smiles("CCO"),
+                    rootedAtAtom=0,
+                    isomericSmiles=False,
+                    canonical=False,
+                    doRandom=True,
+                )
+            ),
+            _runtime.mol_to_smiles_support(
+                parse_smiles("CCO"),
+                rooted_at_atom=0,
+                isomeric_smiles=False,
+                canonical=False,
+                do_random=True,
+            ),
         )
 
     def test_public_api_rejects_unsupported_flag_combination(self) -> None:
@@ -121,20 +117,8 @@ class PythonApiSmokeTests(unittest.TestCase):
                     parse_smiles("CCO"),
                     rootedAtAtom=0,
                     canonical=False,
+                    )
                 )
-            )
-
-    def test_public_api_rejects_unsupported_input_type(self) -> None:
-        kwargs = supported_public_kwargs(rootedAtAtom=0, isomericSmiles=False)
-        assert_public_entrypoints_raise(
-            self,
-            object(),
-            kwargs=kwargs,
-            expected_exception=TypeError,
-            expected_regex="Unsupported molecule/prepared type",
-        )
-        with self.assertRaisesRegex(TypeError, "Unsupported molecule/prepared type"):
-            grimace.MolToSmilesDeviation(object(), "C", **kwargs)
 
     def test_public_api_treats_any_negative_root_like_rdkit_unrooted_mode(self) -> None:
         mol = parse_smiles("CCO")
@@ -182,7 +166,7 @@ class PythonApiSmokeTests(unittest.TestCase):
                     self,
                     mol,
                     kwargs=supported_public_kwargs(rootedAtAtom=rooted_at_atom),
-                    expected_exception=TypeError,
+                    expected_exception=NotImplementedError,
                     expected_regex=(
                         "rootedAtAtom to follow RDKit's Python binding and be an integer"
                     ),
@@ -194,7 +178,7 @@ class PythonApiSmokeTests(unittest.TestCase):
             self,
             mol,
             kwargs=supported_public_kwargs(rootedAtAtom=None),
-            expected_exception=TypeError,
+            expected_exception=NotImplementedError,
             expected_regex="rootedAtAtom to follow RDKit's Python binding and be an integer",
         )
 
@@ -295,15 +279,12 @@ class PythonApiSmokeTests(unittest.TestCase):
                 assert_public_entrypoints_raise(
                     self,
                     mol,
-                    kwargs=supported_public_kwargs(
-                        rootedAtAtom=0,
-                        **{flag_name: invalid_value},
-                    ),
-                    expected_exception=TypeError,
+                    kwargs=supported_public_kwargs(rootedAtAtom=0, **{flag_name: invalid_value}),
+                    expected_exception=NotImplementedError,
                     expected_regex=(
-                        f"{flag_name} to follow RDKit's Python binding "
-                        "and be a bool, int, or None"
+                        f"{flag_name} to follow RDKit's Python binding and be a bool, int, or None"
                     ),
+                    included_entrypoints=("enum",),
                 )
 
     def test_public_api_reports_out_of_range_root_consistently_for_connected_molecules(self) -> None:
@@ -324,27 +305,74 @@ class PythonApiSmokeTests(unittest.TestCase):
             kwargs=supported_public_kwargs(rootedAtAtom=99),
             expected_exception=IndexError,
             expected_regex="root_idx out of range",
-            included_entrypoints=(
-                "enum",
-                "decoder",
-                "inventory",
-                "inventory_superset",
-                "sample",
-            ),
+            included_entrypoints=("enum", "decoder", "inventory", "inventory_superset"),
         )
 
+    def test_reference_defaults_load_from_installed_package_layout(self) -> None:
+        self.assertTrue(DEFAULT_MOLECULE_SOURCE_PATH.is_file())
+        self.assertTrue(DEFAULT_RDKIT_RANDOM_POLICY_PATH.is_file())
+        self.assertTrue(DEFAULT_RDKIT_RANDOM_CONNECTED_NONSTEREO_POLICY_PATH.is_file())
+
+        policy = ReferencePolicy.from_path(DEFAULT_RDKIT_RANDOM_POLICY_PATH)
+        connected_nonstereo_policy = ReferencePolicy.from_path(
+            DEFAULT_RDKIT_RANDOM_CONNECTED_NONSTEREO_POLICY_PATH
+        )
+
+        self.assertEqual("rdkit_random_v1", policy.policy_name)
+        self.assertEqual("rdkit_random_connected_nonstereo_v1", connected_nonstereo_policy.policy_name)
+        artifact = build_core_exact_sets_artifact(policy, limit=1)
+        connected_nonstereo_artifact = build_core_exact_sets_artifact(
+            connected_nonstereo_policy,
+            limit=1,
+        )
+        self.assertEqual(1, artifact["case_count"])
+        self.assertEqual(1, connected_nonstereo_artifact["case_count"])
+        self.assertEqual(
+            "grimace/_reference/_data/reference/rdkit_random/branches/general/policies/rdkit_random_v1.json",
+            artifact["policy_path"],
+        )
+        self.assertEqual(
+            "grimace/_reference/_data/top_100000_CIDs.tsv.gz",
+            artifact["source_path"],
+        )
+        self.assertEqual(
+            "grimace/_reference/_data/top_100000_CIDs.tsv.gz",
+            artifact["input_source"]["path"],
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            previous_cwd = Path.cwd()
+            os.chdir(temp_dir)
+            try:
+                output_path = write_core_exact_sets_artifact(policy, limit=1)
+            finally:
+                os.chdir(previous_cwd)
+            self.assertEqual(
+                Path(temp_dir)
+                / "grimace_reference_artifacts"
+                / "rdkit_random"
+                / "branches"
+                / "general"
+                / "snapshots"
+                / policy.policy_name
+                / policy.digest()
+                / "core_exact_sets.json",
+                output_path,
+            )
+            self.assertTrue(output_path.is_file())
+
     def test_internal_runtime_bridge_accepts_reference_prepared_graph(self) -> None:
-        import grimace._runtime_graphs as _runtime_graphs
-        from grimace._runtime_inputs import MolToSmilesFlags
+        if CORE_MODULE is None:
+            raise unittest.SkipTest("private Rust extension is not installed")
+        from grimace import _runtime
 
         reference_prepared = prepare_smiles_graph_from_mol_to_smiles_kwargs(
             parse_smiles("CCO"),
-            surface_kind=CONNECTED_NONSTEREO_SURFACE,
+            surface_kind=_runtime.CONNECTED_NONSTEREO_SURFACE,
             isomeric_smiles=False,
         )
-        prepared = _runtime_graphs.prepare_smiles_graph(
+        prepared = _runtime.prepare_smiles_graph(
             reference_prepared,
-            flags=MolToSmilesFlags(
+            flags=_runtime.MolToSmilesFlags(
                 isomeric_smiles=False,
                 rooted_at_atom=0,
                 canonical=False,
@@ -355,6 +383,10 @@ class PythonApiSmokeTests(unittest.TestCase):
         self.assertEqual(reference_prepared.to_dict(), prepared.to_dict())
 
     def test_top_level_runtime_nonstereo_surface_smoke(self) -> None:
+        if CORE_MODULE is None:
+            raise unittest.SkipTest("private Rust extension is not installed")
+        from grimace import _runtime
+
         mol = parse_smiles("CCO")
         expected = _runtime.enumerate_rooted_connected_nonstereo_smiles_support(
             mol,
@@ -382,6 +414,10 @@ class PythonApiSmokeTests(unittest.TestCase):
         self.assertEqual(expected, support)
 
     def test_top_level_runtime_stereo_surface_smoke(self) -> None:
+        if CORE_MODULE is None:
+            raise unittest.SkipTest("private Rust extension is not installed")
+        from grimace import _runtime
+
         mol = parse_smiles("F/C=C\\Cl")
         expected = _runtime.enumerate_rooted_connected_stereo_smiles_support(
             mol,

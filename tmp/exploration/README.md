@@ -20,4 +20,19 @@ The most current scripts are:
   constraints with RDKit's local non-stereo-double cleanup behavior.
 - `028_investigate_rdkit_traversal_coupling.py`: inspects the reduced
   porphyrin 16-vs-12 discrepancy using RDKit output-order metadata.
-
+- `029_compare_token_flip_replacement_shapes.py`: compares adapter,
+  observation-fact, and expanded-row replacement shapes for the remaining
+  token-flip inference against current pinned diagnostics.
+- `030_mine_token_inference_branch_witnesses.py`: mines minimal completed-output
+  witnesses for each token-flip inference branch before branch replacement.
+- `031_inspect_shared_bridge_token_basis.py`: inspects the small manual
+  difficult diene witnesses where one physical bridge marker is read against
+  different endpoint-oriented token bases by adjacent stereo components.
+- `032_compare_shared_marker_alternatives.py`: compares immediate carrier
+  selection, immediate token-flip facts, and marker-obligation interpretations
+  for shared visible directional markers.
+- `033_classify_rdkit_marker_placement_samples.py`: samples RDKit outputs for
+  the manual difficult diene witnesses and classifies visible markers as
+  selected-carrier or complement-candidate placements.
+- `034_estimate_marker_row_expansion.py`: estimates assignment-row growth if
+  marker-placement choices become explicit row dimensions.

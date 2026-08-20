@@ -1,0 +1,15 @@
+[package]
+name = "grimace-south-star2"
+version = "0.1.0"
+description = "Incremental constraint-driven SMILES walker kernel."
+edition = "2021"
+rust-version = "1.83"
+license = "PolyForm-Noncommercial-1.0.0"
+repository = "https://github.com/numpde/grimace-py"
+publish = false
+
+[lib]
+name = "grimace_south_star2"
+path = "src/lib.rs"
+
+[dependencies]

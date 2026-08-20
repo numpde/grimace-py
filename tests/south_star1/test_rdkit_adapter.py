@@ -1,0 +1,868 @@
+"""Tests for the isolated South Star 1 RDKit ingestion boundary."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from itertools import permutations
+import unittest
+
+from rdkit import Chem
+from rdkit import rdBase
+
+from grimace._south_star1.errors import SouthStarError
+from grimace._south_star1.errors import SouthStarErrorKind
+from grimace._south_star1.facts import BondOrder
+from grimace._south_star1.facts import DirectionalValue
+from grimace._south_star1.facts import LigandKind
+from grimace._south_star1.facts import SiteStatus
+from grimace._south_star1.facts import TetraValue
+from grimace._south_star1.fact_isomorphism import facts_are_isomorphic
+from grimace._south_star1.graph_index import build_graph_index
+from grimace._south_star1.ids import AtomId
+from grimace._south_star1.ids import BondId
+from grimace._south_star1.ids import OccurrenceId
+from grimace._south_star1.ids import SiteId
+from grimace._south_star1.ordinary_semantics import OrdinarySmilesSemantics
+from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
+from grimace._south_star1.ordinary_stereo_sites import OrdinaryStereoSiteOptions
+from grimace._south_star1.policy import DirectionMark
+from grimace._south_star1.policy import TetraToken
+from grimace._south_star1.rdkit_adapter import RdkitOrdinaryExtractionOptions
+from grimace._south_star1.rdkit_adapter import molecule_facts_from_rdkit
+from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_rdkit
+from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_smiles
+from grimace._south_star1.render import render_stereo_traversal
+from grimace._south_star1.skeleton import enumerate_traversal_skeletons
+from grimace._south_star1.slots import allocate_traversal_slots
+from grimace._south_star1.stereo_csp import enumerate_stereo_assignments_for_prefix
+from grimace._south_star1.stereo_witness import enumerate_presentation_prefixes
+from grimace._south_star1.support_enumeration import enumerate_exhaustive_stereo_support
+from tests.helpers.rdkit_south_star_stereo_audit import (
+    load_pinned_south_star_stereo_audit_cases,
+)
+
+
+class RdkitAdapterTest(unittest.TestCase):
+    def test_zero_h_tetrahedral_source_parity_and_pinned_support_reparse(self) -> None:
+        fixture = next(
+            item
+            for item in load_pinned_south_star_stereo_audit_cases(rdBase.rdkitVersion)
+            if item.name == "zero_h_tetrahedral"
+        )
+        options = RdkitOrdinaryExtractionOptions(
+            include_potential_sites=True,
+            extract_specified_tetrahedral=True,
+            extract_specified_directional=True,
+            stereo_site_discovery_mode="specified_closure",
+            stereo_site_options=OrdinaryStereoSiteOptions(
+                ligand_equivalence="exact_stereochemical_graph_automorphism",
+            ),
+        )
+        source = ordinary_molecule_facts_from_smiles(fixture.source_smiles, options)
+        self.assertEqual(source.stereo.tetrahedral[0].target, TetraValue.PLUS)
+        self.assertEqual(fixture.sorted_support_sha256, "ba947a23b358660cbd77689f5f60be8f1cc4a069f0e543bccee8955f3b9fcacb")
+        for text in fixture.expected_support:
+            with self.subTest(text=text):
+                reparsed = ordinary_molecule_facts_from_smiles(text, options)
+                self.assertTrue(facts_are_isomorphic(source, reparsed).isomorphic)
+                from_rdkit = ordinary_molecule_facts_from_rdkit(
+                    Chem.MolFromSmiles(text), options
+                )
+                self.assertTrue(facts_are_isomorphic(reparsed, from_rdkit).isomorphic)
+
+    def test_zero_h_tetrahedral_opposite_is_not_stereo_isomorphic(self) -> None:
+        options = RdkitOrdinaryExtractionOptions()
+        source = ordinary_molecule_facts_from_smiles("C[C@](F)(Cl)Br", options)
+        opposite = ordinary_molecule_facts_from_smiles(
+            "[C@](Br)(C)(F)Cl", options
+        )
+        self.assertFalse(facts_are_isomorphic(source, opposite).isomorphic)
+
+    def test_zero_h_tetrahedral_nonzero_h_adapter_targets_remain_stable(self) -> None:
+        options = RdkitOrdinaryExtractionOptions()
+        root = ordinary_molecule_facts_from_smiles("[C@H](F)(Cl)Br", options)
+        non_root = ordinary_molecule_facts_from_smiles("C[C@H](F)Cl", options)
+        self.assertEqual(root.stereo.tetrahedral[0].target, TetraValue.PLUS)
+        self.assertEqual(non_root.stereo.tetrahedral[0].target, TetraValue.PLUS)
+
+    def test_snapshots_simple_nonstereo_molecule_facts(self) -> None:
+        mol = Chem.MolFromSmiles("CCO")
+
+        facts = molecule_facts_from_rdkit(mol)
+
+        self.assertEqual(tuple(atom.symbol for atom in facts.atoms), ("C", "C", "O"))
+        self.assertEqual(tuple(bond.order for bond in facts.bonds), (
+            BondOrder.SINGLE,
+            BondOrder.SINGLE,
+        ))
+        self.assertEqual(facts.components[0].atoms, (AtomId(0), AtomId(1), AtomId(2)))
+        self.assertEqual(facts.components[0].bonds, (BondId(0), BondId(1)))
+
+    def test_snapshots_disconnected_components_without_reordering_atoms(self) -> None:
+        mol = Chem.MolFromSmiles("CO.CC")
+
+        facts = molecule_facts_from_rdkit(mol)
+
+        self.assertEqual(
+            tuple(component.atoms for component in facts.components),
+            ((AtomId(0), AtomId(1)), (AtomId(2), AtomId(3))),
+        )
+
+    def test_rejects_rdkit_atom_stereo_until_stereo_adapter_is_explicit(self) -> None:
+        mol = Chem.MolFromSmiles("F[C@H](Cl)Br")
+
+        with self.assertRaisesRegex(SouthStarError, "atom stereo") as raised:
+            molecule_facts_from_rdkit(mol)
+        self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_STEREO)
+
+    def test_rejects_rdkit_bond_stereo_until_stereo_adapter_is_explicit(self) -> None:
+        mol = Chem.MolFromSmiles("F/C=C/Cl")
+
+        with self.assertRaisesRegex(SouthStarError, "bond stereo") as raised:
+            molecule_facts_from_rdkit(mol)
+        self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_STEREO)
+
+    def test_ordinary_adapter_normalizes_non_graph_hydrogens(self) -> None:
+        mol = Chem.MolFromSmiles("[C@H](F)(Cl)Br")
+
+        facts = ordinary_molecule_facts_from_rdkit(
+            mol,
+            RdkitOrdinaryExtractionOptions(
+                extract_specified_tetrahedral=False,
+                reject_unsupported_stereo=False,
+            ),
+        )
+
+        center = facts.atoms[0]
+        self.assertEqual(center.explicit_h_count, 0)
+        self.assertEqual(center.implicit_h_count, 1)
+        self.assertFalse(center.no_implicit)
+        self.assertEqual(len(facts.stereo.tetrahedral), 1)
+        occurrence_by_id = {
+            occurrence.id: occurrence
+            for occurrence in facts.ligand_occurrences
+        }
+        tetra = facts.stereo.tetrahedral[0]
+        self.assertEqual(
+            sum(
+                occurrence_by_id[occurrence_id].kind is LigandKind.IMPLICIT_H
+                for occurrence_id in tetra.ligand_occurrences
+            ),
+            1,
+        )
+        ordinary_policy_for_facts(facts)
+
+    def test_ordinary_adapter_promotes_rdkit_tetrahedral_stereo(self) -> None:
+        mol = Chem.MolFromSmiles("[C@H](F)(Cl)Br")
+
+        facts = ordinary_molecule_facts_from_rdkit(mol)
+
+        self.assertEqual(len(facts.stereo.tetrahedral), 1)
+        site = facts.stereo.tetrahedral[0]
+        self.assertEqual(site.status, SiteStatus.SPECIFIED)
+        self.assertEqual(site.target, TetraValue.PLUS)
+        self.assertEqual(set(site.reference_order), set(site.ligand_occurrences))
+        ordinary_policy_for_facts(facts)
+
+    def test_ordinary_adapter_preserves_public_tetra_viewpoint_option(self) -> None:
+        options = RdkitOrdinaryExtractionOptions()
+
+        self.assertEqual(options.tetra_viewpoint_mode, "smiles_parse_order")
+
+    def test_ordinary_adapter_rejects_unknown_tetra_viewpoint_mode(self) -> None:
+        mol = Chem.MolFromSmiles("[C@H](F)(Cl)Br")
+        options = RdkitOrdinaryExtractionOptions(tetra_viewpoint_mode="renumbered")
+
+        with self.assertRaisesRegex(SouthStarError, "tetra viewpoint mode") as raised:
+            ordinary_molecule_facts_from_rdkit(mol, options)
+        self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+
+    def test_ordinary_adapter_defaults_to_immediate_ligand_equivalence(self) -> None:
+        mol = Chem.MolFromSmiles("[C@H](F)(CBr)CCl")
+
+        with self.assertRaisesRegex(SouthStarError, "no ordinary potential site"):
+            ordinary_molecule_facts_from_rdkit(mol)
+
+        directional = Chem.MolFromSmiles("BrC/C(CCl)=C/F")
+        with self.assertRaisesRegex(SouthStarError, "no ordinary potential site"):
+            ordinary_molecule_facts_from_rdkit(directional)
+
+    def test_ordinary_adapter_accepts_explicit_exact_ligand_equivalence(self) -> None:
+        mol = Chem.MolFromSmiles("[C@H](F)(CBr)CCl")
+        options = RdkitOrdinaryExtractionOptions(
+            stereo_site_options=OrdinaryStereoSiteOptions(
+                ligand_equivalence="exact_graph_automorphism",
+            ),
+        )
+
+        facts = ordinary_molecule_facts_from_rdkit(mol, options)
+
+        self.assertEqual(len(facts.stereo.tetrahedral), 1)
+        self.assertEqual(facts.stereo.tetrahedral[0].status, SiteStatus.SPECIFIED)
+
+    def test_ordinary_adapter_exact_ligand_equivalence_rejects_deep_duplicate(
+        self,
+    ) -> None:
+        mol = Chem.MolFromSmiles("[C@H](F)(CCl)CCl")
+        options = RdkitOrdinaryExtractionOptions(
+            stereo_site_options=OrdinaryStereoSiteOptions(
+                ligand_equivalence="exact_graph_automorphism",
+            ),
+        )
+
+        facts = ordinary_molecule_facts_from_rdkit(mol, options)
+
+        self.assertEqual(facts.stereo.tetrahedral, ())
+
+    def test_ordinary_adapter_exact_ligand_equivalence_accepts_deep_directional(
+        self,
+    ) -> None:
+        mol = Chem.MolFromSmiles("BrC/C(CCl)=C/F")
+        options = RdkitOrdinaryExtractionOptions(
+            stereo_site_options=OrdinaryStereoSiteOptions(
+                ligand_equivalence="exact_graph_automorphism",
+            ),
+        )
+
+        facts = ordinary_molecule_facts_from_rdkit(mol, options)
+
+        self.assertEqual(len(facts.stereo.directional), 1)
+        self.assertEqual(facts.stereo.directional[0].status, SiteStatus.SPECIFIED)
+
+    def test_ordinary_adapter_one_pass_stereo_exact_cannot_use_remote_stereo(
+        self,
+    ) -> None:
+        mol = Chem.MolFromSmiles("[C@H](F)([C@](F)(Cl)Br)[C@@](F)(Cl)Br")
+        options = RdkitOrdinaryExtractionOptions(
+            stereo_site_options=OrdinaryStereoSiteOptions(
+                ligand_equivalence="exact_stereochemical_graph_automorphism",
+            ),
+        )
+
+        with self.assertRaisesRegex(SouthStarError, "no ordinary potential site"):
+            ordinary_molecule_facts_from_rdkit(mol, options)
+
+    def test_ordinary_adapter_two_pass_stereo_exact_uses_remote_stereo(
+        self,
+    ) -> None:
+        mol = Chem.MolFromSmiles("[C@H](F)([C@](F)(Cl)Br)[C@@](F)(Cl)Br")
+        options = RdkitOrdinaryExtractionOptions(
+            stereo_site_options=OrdinaryStereoSiteOptions(
+                ligand_equivalence="exact_stereochemical_graph_automorphism",
+            ),
+            stereo_site_discovery_passes=2,
+        )
+
+        facts = ordinary_molecule_facts_from_rdkit(mol, options)
+
+        self.assertEqual(
+            sorted(site.center for site in facts.stereo.tetrahedral),
+            [AtomId(0), AtomId(2), AtomId(6)],
+        )
+        self.assertTrue(
+            all(
+                site.status is SiteStatus.SPECIFIED
+                for site in facts.stereo.tetrahedral
+                if site.center in {AtomId(0), AtomId(2), AtomId(6)}
+            )
+        )
+
+    def test_ordinary_adapter_specified_closure_uses_remote_stereo(
+        self,
+    ) -> None:
+        mol = Chem.MolFromSmiles("[C@H](F)([C@](F)(Cl)Br)[C@@](F)(Cl)Br")
+        options = RdkitOrdinaryExtractionOptions(
+            stereo_site_options=OrdinaryStereoSiteOptions(
+                ligand_equivalence="exact_stereochemical_graph_automorphism",
+            ),
+            stereo_site_discovery_mode="specified_closure",
+        )
+
+        facts = ordinary_molecule_facts_from_rdkit(mol, options)
+
+        self.assertEqual(
+            sorted(site.center for site in facts.stereo.tetrahedral),
+            [AtomId(0), AtomId(2), AtomId(6)],
+        )
+        self.assertTrue(
+            all(site.status is SiteStatus.SPECIFIED for site in facts.stereo.tetrahedral)
+        )
+
+    def test_ordinary_adapter_rejects_two_pass_without_potential_sites(self) -> None:
+        mol = Chem.MolFromSmiles("[C@H](F)(Cl)Br")
+        options = RdkitOrdinaryExtractionOptions(
+            include_potential_sites=False,
+            stereo_site_discovery_passes=2,
+        )
+
+        with self.assertRaisesRegex(SouthStarError, "requires potential-site"):
+            ordinary_molecule_facts_from_rdkit(mol, options)
+
+    def test_ordinary_adapter_rejects_specified_closure_without_potential_sites(
+        self,
+    ) -> None:
+        mol = Chem.MolFromSmiles("[C@H](F)(Cl)Br")
+        options = RdkitOrdinaryExtractionOptions(
+            include_potential_sites=False,
+            stereo_site_discovery_mode="specified_closure",
+        )
+
+        with self.assertRaisesRegex(SouthStarError, "requires potential-site"):
+            ordinary_molecule_facts_from_rdkit(mol, options)
+
+    def test_ordinary_adapter_rejects_mixed_pass_count_and_named_mode(self) -> None:
+        mol = Chem.MolFromSmiles("[C@H](F)(Cl)Br")
+        options = RdkitOrdinaryExtractionOptions(
+            stereo_site_discovery_passes=2,
+            stereo_site_discovery_mode="specified_closure",
+        )
+
+        with self.assertRaisesRegex(SouthStarError, "compatibility option"):
+            ordinary_molecule_facts_from_rdkit(mol, options)
+
+    def test_ordinary_adapter_two_pass_preserves_v0_support(self) -> None:
+        cases = ("[C@H](F)(Cl)Br", "C(/F)=C(\\Cl)")
+
+        for text in cases:
+            with self.subTest(text=text):
+                one_pass = ordinary_molecule_facts_from_rdkit(
+                    Chem.MolFromSmiles(text)
+                )
+                two_pass = ordinary_molecule_facts_from_rdkit(
+                    Chem.MolFromSmiles(text),
+                    RdkitOrdinaryExtractionOptions(stereo_site_discovery_passes=2),
+                )
+
+                self.assertTrue(
+                    facts_are_isomorphic(one_pass, two_pass).isomorphic
+                )
+                one_support = enumerate_exhaustive_stereo_support(
+                    facts=one_pass,
+                    policy=ordinary_policy_for_facts(one_pass),
+                    semantics=OrdinarySmilesSemantics(),
+                )
+                two_support = enumerate_exhaustive_stereo_support(
+                    facts=two_pass,
+                    policy=ordinary_policy_for_facts(two_pass),
+                    semantics=OrdinarySmilesSemantics(),
+                )
+                self.assertEqual(set(one_support.strings), set(two_support.strings))
+
+    def test_ordinary_adapter_stereo_is_invariant_under_atom_renumbering(
+        self,
+    ) -> None:
+        exact_stereo = RdkitOrdinaryExtractionOptions(
+            stereo_site_options=OrdinaryStereoSiteOptions(
+                ligand_equivalence="exact_stereochemical_graph_automorphism",
+            ),
+            stereo_site_discovery_mode="specified_closure",
+        )
+        cases = (
+            ("[C@H](F)(Cl)Br", RdkitOrdinaryExtractionOptions(), True),
+            ("C[C@H](F)Cl", RdkitOrdinaryExtractionOptions(), True),
+            ("[C@H]1(F)CO1", RdkitOrdinaryExtractionOptions(), True),
+            ("[C@H](F)(Cl)[C@@H](Br)I", RdkitOrdinaryExtractionOptions(), False),
+            (
+                "[C@H](F)([C@](F)(Cl)Br)[C@@](F)(Cl)Br",
+                exact_stereo,
+                False,
+            ),
+            ("[C@H](F)(Cl)Br.O", RdkitOrdinaryExtractionOptions(), True),
+            ("F/C=C/Cl", RdkitOrdinaryExtractionOptions(), True),
+            ("F/C=C\\Cl", RdkitOrdinaryExtractionOptions(), True),
+            ("CCO", RdkitOrdinaryExtractionOptions(), True),
+        )
+
+        for text, options, exhaust in cases:
+            mol = Chem.MolFromSmiles(text)
+            expected = ordinary_molecule_facts_from_rdkit(mol, options)
+            source = ordinary_molecule_facts_from_smiles(text, options)
+            self.assertTrue(
+                facts_are_isomorphic(expected, source).isomorphic,
+                text,
+            )
+            atom_orders = (
+                tuple(permutations(range(mol.GetNumAtoms())))
+                if exhaust
+                else (
+                    tuple(reversed(range(mol.GetNumAtoms()))),
+                    tuple(range(1, mol.GetNumAtoms())) + (0,),
+                )
+            )
+            for order in atom_orders:
+                with self.subTest(text=text, order=order):
+                    renumbered = Chem.RenumberAtoms(mol, list(order))
+                    actual = ordinary_molecule_facts_from_rdkit(
+                        renumbered,
+                        options,
+                    )
+                    comparison = facts_are_isomorphic(expected, actual)
+                    self.assertTrue(comparison.isomorphic, comparison.reason)
+            chiral_atoms = tuple(
+                atom
+                for atom in mol.GetAtoms()
+                if atom.GetChiralTag() != Chem.ChiralType.CHI_UNSPECIFIED
+            )
+            if chiral_atoms and all(
+                not any(bond.IsInRing() for bond in atom.GetBonds())
+                for atom in chiral_atoms
+            ):
+                reordered_bonds = _reverse_bond_order_preserving_tetra(mol)
+                reordered_facts = ordinary_molecule_facts_from_rdkit(
+                    reordered_bonds,
+                    options,
+                )
+                comparison = facts_are_isomorphic(expected, reordered_facts)
+                self.assertTrue(comparison.isomorphic, comparison.reason)
+
+    def test_ordinary_adapter_rejects_ambiguous_tetra_predecessor_identity(
+        self,
+    ) -> None:
+        source = Chem.MolFromSmiles("[C@H](F)(Cl)Br")
+        editable = Chem.RWMol()
+        for atom in source.GetAtoms():
+            editable.AddAtom(Chem.Atom(atom))
+        for bond in source.GetBonds():
+            editable.AddBond(
+                bond.GetEndAtomIdx(),
+                bond.GetBeginAtomIdx(),
+                bond.GetBondType(),
+            )
+        ambiguous = editable.GetMol()
+        Chem.SanitizeMol(ambiguous)
+
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "predecessor identity is ambiguous",
+        ) as raised:
+            ordinary_molecule_facts_from_rdkit(ambiguous)
+        self.assertIs(
+            raised.exception.kind,
+            SouthStarErrorKind.UNSUPPORTED_STEREO,
+        )
+
+    def test_rdkit_tetra_adapter_tag_matches_semantics_for_root_and_nonroot(self) -> None:
+        semantics = OrdinarySmilesSemantics()
+        cases = {
+            "[C@H](F)(Cl)Br": TetraToken.AT,
+            "[C@@H](F)(Cl)Br": TetraToken.ATAT,
+            "F[C@H](Cl)Br": TetraToken.AT,
+            "F[C@@H](Cl)Br": TetraToken.ATAT,
+            "C[C@H](F)Cl": TetraToken.AT,
+            "C[C@@H](F)Cl": TetraToken.ATAT,
+        }
+
+        for text, token in cases.items():
+            with self.subTest(text=text):
+                facts = ordinary_molecule_facts_from_rdkit(Chem.MolFromSmiles(text))
+                site = _only_tetra_site(facts)
+
+                self.assertEqual(
+                    semantics.tetra_value(
+                        facts,
+                        site.id,
+                        site.reference_order,
+                        token,
+                    ),
+                    site.target,
+                )
+
+    def test_ordinary_adapter_distinguishes_tetrahedral_enantiomer_tags(self) -> None:
+        clockwise = ordinary_molecule_facts_from_rdkit(
+            Chem.MolFromSmiles("[C@H](F)(Cl)Br")
+        )
+        counterclockwise = ordinary_molecule_facts_from_rdkit(
+            Chem.MolFromSmiles("[C@@H](F)(Cl)Br")
+        )
+
+        self.assertEqual(
+            clockwise.stereo.tetrahedral[0].ligand_occurrences,
+            counterclockwise.stereo.tetrahedral[0].ligand_occurrences,
+        )
+        self.assertNotEqual(
+            clockwise.stereo.tetrahedral[0].target,
+            counterclockwise.stereo.tetrahedral[0].target,
+        )
+
+    def test_tetrahedral_all_root_support_roundtrips_to_isomorphic_facts(self) -> None:
+        facts = ordinary_molecule_facts_from_rdkit(
+            Chem.MolFromSmiles("[C@H](F)(Cl)Br")
+        )
+        policy = ordinary_policy_for_facts(facts)
+        image = enumerate_exhaustive_stereo_support(
+            facts=facts,
+            policy=policy,
+            semantics=OrdinarySmilesSemantics(),
+        )
+
+        self.assertGreater(image.distinct_count, 0)
+        for text in image.strings:
+            parsed = Chem.MolFromSmiles(text)
+            self.assertIsNotNone(parsed, text)
+            reparsed = ordinary_molecule_facts_from_rdkit(parsed)
+            compare = facts_are_isomorphic(facts, reparsed)
+            self.assertTrue(compare.isomorphic, (text, compare.reason))
+
+    def test_tetrahedral_witness_trace_matches_reparsed_rdkit_target(self) -> None:
+        facts = ordinary_molecule_facts_from_rdkit(
+            Chem.MolFromSmiles("[C@H](F)(Cl)Br")
+        )
+        traces = _tetra_round_trip_traces(facts)
+
+        self.assertTrue(traces)
+        for trace in traces:
+            with self.subTest(text=trace.text):
+                self.assertEqual(
+                    trace.expected_reparsed_target,
+                    trace.actual_reparsed_target,
+                    trace,
+                )
+
+    def test_ordinary_adapter_promotes_rdkit_directional_stereo(self) -> None:
+        facts = ordinary_molecule_facts_from_rdkit(Chem.MolFromSmiles("F/C=C/Cl"))
+
+        self.assertEqual(len(facts.stereo.directional), 1)
+        site = facts.stereo.directional[0]
+        self.assertEqual(site.status, SiteStatus.SPECIFIED)
+        self.assertEqual(site.target, DirectionalValue.OPPOSITE)
+        self.assertIsNotNone(site.reference_pair)
+        self.assertNotEqual(site.reference_pair[0], site.reference_pair[1])
+        ordinary_policy_for_facts(facts)
+
+    def test_ordinary_adapter_distinguishes_directional_e_z_tags(self) -> None:
+        opposite = ordinary_molecule_facts_from_rdkit(Chem.MolFromSmiles("F/C=C/Cl"))
+        together = ordinary_molecule_facts_from_rdkit(Chem.MolFromSmiles("F/C=C\\Cl"))
+
+        self.assertEqual(
+            opposite.stereo.directional[0].reference_pair,
+            together.stereo.directional[0].reference_pair,
+        )
+        self.assertEqual(
+            opposite.stereo.directional[0].target,
+            DirectionalValue.OPPOSITE,
+        )
+        self.assertEqual(
+            together.stereo.directional[0].target,
+            DirectionalValue.TOGETHER,
+        )
+
+    def test_rdkit_directional_adapter_contract_for_literal_slashes(self) -> None:
+        semantics = OrdinarySmilesSemantics()
+        cases = {
+            "C(/F)=C(\\Cl)": DirectionalValue.OPPOSITE,
+            "C(/F)=C(/Cl)": DirectionalValue.TOGETHER,
+            "F/C=C/Cl": DirectionalValue.OPPOSITE,
+            "F/C=C\\Cl": DirectionalValue.TOGETHER,
+        }
+
+        for text, expected in cases.items():
+            with self.subTest(text=text):
+                facts = ordinary_molecule_facts_from_rdkit(Chem.MolFromSmiles(text))
+                site = _only_directional_site(facts)
+
+                self.assertEqual(site.status, SiteStatus.SPECIFIED)
+                self.assertEqual(site.target, expected)
+                self.assertEqual(
+                    _bond_by_id(facts)[site.center_bond].order,
+                    BondOrder.DOUBLE,
+                )
+                self.assertIsNotNone(site.reference_pair)
+                left_reference, right_reference = site.reference_pair
+                self.assertIn(left_reference, site.left_ligands)
+                self.assertIn(right_reference, site.right_ligands)
+                self.assertEqual(
+                    _literal_directional_value(facts, Chem.MolFromSmiles(text), site),
+                    expected,
+                )
+
+                policy = ordinary_policy_for_facts(facts)
+                for skeleton in enumerate_traversal_skeletons(
+                    facts,
+                    build_graph_index(facts),
+                    policy,
+                ):
+                    slots = allocate_traversal_slots(facts, skeleton)
+                    carrier_by_id = {
+                        carrier.id: carrier
+                        for carrier in slots.carrier_slots
+                    }
+                    scoped = semantics.directional_scope(
+                        facts,
+                        skeleton,
+                        slots,
+                        site.id,
+                    )
+                    self.assertTrue(scoped)
+                    self.assertTrue(
+                        all(
+                            carrier_by_id[carrier].bond != site.center_bond
+                            for carrier in scoped
+                        )
+                    )
+
+    def test_ordinary_adapter_rejects_enhanced_stereo_groups(self) -> None:
+        mol = Chem.MolFromSmiles("F[C@H](Cl)Br |&1:1|")
+
+        with self.assertRaisesRegex(SouthStarError, "enhanced stereo") as raised:
+            ordinary_molecule_facts_from_rdkit(mol)
+        self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_STEREO)
+
+    def test_ordinary_adapter_rejects_non_tetrahedral_atom_stereo(self) -> None:
+        mol = Chem.MolFromSmiles("C(F)(Cl)(Br)I")
+        mol.GetAtomWithIdx(0).SetChiralTag(Chem.ChiralType.CHI_SQUAREPLANAR)
+
+        with self.assertRaisesRegex(SouthStarError, "unsupported RDKit atom") as raised:
+            ordinary_molecule_facts_from_rdkit(mol)
+        self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_STEREO)
+
+    def test_ordinary_adapter_rejects_unknown_bond_stereo(self) -> None:
+        mol = Chem.MolFromSmiles("F/C=C/Cl")
+        mol.GetBondWithIdx(1).SetStereo(Chem.BondStereo.STEREOANY)
+
+        with self.assertRaisesRegex(SouthStarError, "unsupported RDKit bond") as raised:
+            ordinary_molecule_facts_from_rdkit(mol)
+        self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_STEREO)
+
+    def test_ordinary_adapter_rejects_atropisomeric_bond_stereo(self) -> None:
+        mol = Chem.MolFromSmiles("F/C=C/Cl")
+        mol.GetBondWithIdx(1).SetStereo(Chem.BondStereo.STEREOATROPCW)
+
+        with self.assertRaisesRegex(SouthStarError, "unsupported RDKit bond") as raised:
+            ordinary_molecule_facts_from_rdkit(mol)
+        self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_STEREO)
+
+@dataclass(frozen=True, slots=True)
+class TetraRoundTripTrace:
+    text: str
+    original_center: AtomId
+    original_site: SiteId
+    rendered_token: TetraToken
+    rendered_local_order: tuple[OccurrenceId, ...]
+    original_reference_order: tuple[OccurrenceId, ...]
+    original_target: TetraValue
+    reparsed_reference_order: tuple[OccurrenceId, ...]
+    reparsed_target: TetraValue
+    mapped_rendered_order_in_reparsed_occurrences: tuple[OccurrenceId, ...]
+    expected_reparsed_target: TetraValue
+    actual_reparsed_target: TetraValue
+
+
+def _tetra_round_trip_traces(facts) -> tuple[TetraRoundTripTrace, ...]:
+    semantics = OrdinarySmilesSemantics()
+    policy = ordinary_policy_for_facts(facts)
+    site = _only_tetra_site(facts)
+    traces: list[TetraRoundTripTrace] = []
+
+    for skeleton in enumerate_traversal_skeletons(
+        facts,
+        build_graph_index(facts),
+        policy,
+    ):
+        slots = allocate_traversal_slots(facts, skeleton)
+        local_order = semantics.local_tetra_order(facts, skeleton, slots, site.id)
+        for prefix in enumerate_presentation_prefixes(
+            facts=facts,
+            slots=slots,
+            policy=policy,
+        ):
+            for assignment in enumerate_stereo_assignments_for_prefix(
+                facts=facts,
+                skeleton=skeleton,
+                slots=slots,
+                prefix=prefix,
+                policy=policy,
+                semantics=semantics,
+            ):
+                token = assignment.tetra_tokens[site.center]
+                if token is TetraToken.NONE:
+                    continue
+                text = render_stereo_traversal(
+                    facts=facts,
+                    skeleton=skeleton,
+                    slots=slots,
+                    assignment=assignment,
+                    policy=policy,
+                    semantics=semantics,
+                    validate=True,
+                )
+                reparsed = ordinary_molecule_facts_from_rdkit(Chem.MolFromSmiles(text))
+                reparsed_site = _only_tetra_site(reparsed)
+                mapped_order = _map_occurrences_by_signature(
+                    facts,
+                    reparsed,
+                    local_order,
+                )
+                expected = semantics.tetra_value(
+                    reparsed,
+                    reparsed_site.id,
+                    mapped_order,
+                    token,
+                )
+                traces.append(
+                    TetraRoundTripTrace(
+                        text=text,
+                        original_center=site.center,
+                        original_site=site.id,
+                        rendered_token=token,
+                        rendered_local_order=local_order,
+                        original_reference_order=site.reference_order,
+                        original_target=site.target,
+                        reparsed_reference_order=reparsed_site.reference_order,
+                        reparsed_target=reparsed_site.target,
+                        mapped_rendered_order_in_reparsed_occurrences=mapped_order,
+                        expected_reparsed_target=expected,
+                        actual_reparsed_target=reparsed_site.target,
+                    )
+                )
+
+    return tuple(traces)
+
+
+def _only_tetra_site(facts):
+    self_declared = facts.stereo.tetrahedral
+    if len(self_declared) != 1:
+        raise AssertionError(f"expected one tetra site, got {self_declared!r}")
+    return self_declared[0]
+
+
+def _only_directional_site(facts):
+    self_declared = facts.stereo.directional
+    if len(self_declared) != 1:
+        raise AssertionError(f"expected one directional site, got {self_declared!r}")
+    return self_declared[0]
+
+
+def _bond_by_id(facts):
+    return {bond.id: bond for bond in facts.bonds}
+
+
+def _literal_directional_value(facts, mol, site):
+    semantics = OrdinarySmilesSemantics()
+    policy = ordinary_policy_for_facts(facts)
+    marked_bonds = _literal_direction_marks_by_bond(mol)
+
+    for skeleton in enumerate_traversal_skeletons(
+        facts,
+        build_graph_index(facts),
+        policy,
+    ):
+        slots = allocate_traversal_slots(facts, skeleton)
+        carrier_by_bond = {
+            carrier.bond: carrier
+            for carrier in slots.carrier_slots
+        }
+        if not _carrier_orientations_match_rdkit(
+            mol,
+            carrier_by_bond,
+            marked_bonds,
+        ):
+            continue
+
+        marks = {
+            carrier.id: DirectionMark.ABSENT
+            for carrier in slots.carrier_slots
+        }
+        for bond, mark in marked_bonds.items():
+            marks[carrier_by_bond[bond].id] = mark
+
+        return semantics.directional_value(
+            facts,
+            skeleton,
+            slots,
+            site.id,
+            marks,
+        )
+
+    raise AssertionError("no skeleton matched RDKit literal bond orientations")
+
+
+def _literal_direction_marks_by_bond(mol) -> dict[BondId, DirectionMark]:
+    out: dict[BondId, DirectionMark] = {}
+    for bond in mol.GetBonds():
+        direction = bond.GetBondDir()
+        if direction == Chem.BondDir.ENDUPRIGHT:
+            out[BondId(bond.GetIdx())] = DirectionMark.FWD
+        elif direction == Chem.BondDir.ENDDOWNRIGHT:
+            out[BondId(bond.GetIdx())] = DirectionMark.REV
+    return out
+
+
+def _carrier_orientations_match_rdkit(mol, carrier_by_bond, marked_bonds) -> bool:
+    for bond_id in marked_bonds:
+        carrier = carrier_by_bond.get(bond_id)
+        if carrier is None:
+            return False
+        rdkit_bond = mol.GetBondWithIdx(int(bond_id))
+        if carrier.written_from != AtomId(rdkit_bond.GetBeginAtomIdx()):
+            return False
+        if carrier.written_to != AtomId(rdkit_bond.GetEndAtomIdx()):
+            return False
+    return True
+
+
+def _map_occurrences_by_signature(left, right, occurrence_order):
+    left_by_id = {occurrence.id: occurrence for occurrence in left.ligand_occurrences}
+    right_by_signature = {
+        _occurrence_signature(right, occurrence): occurrence.id
+        for occurrence in right.ligand_occurrences
+    }
+    return tuple(
+        right_by_signature[_occurrence_signature(left, left_by_id[occurrence_id])]
+        for occurrence_id in occurrence_order
+    )
+
+
+def _occurrence_signature(facts, occurrence):
+    atom_by_id = {atom.id: atom for atom in facts.atoms}
+    if occurrence.kind is LigandKind.IMPLICIT_H:
+        atom = atom_by_id[occurrence.atom]
+        return ("implicit_h", atom.atomic_num, atom.symbol)
+    if occurrence.atom is None:
+        raise AssertionError(f"neighbor occurrence lacks atom: {occurrence!r}")
+    if occurrence.kind is LigandKind.NEIGHBOR_ATOM:
+        atom = atom_by_id[occurrence.atom]
+        return (
+            "neighbor",
+            atom.atomic_num,
+            atom.symbol,
+            atom.isotope,
+            atom.formal_charge,
+            atom.is_aromatic,
+            atom.explicit_h_count,
+            atom.implicit_h_count,
+            atom.no_implicit,
+        )
+    raise AssertionError(f"unsupported occurrence kind: {occurrence.kind!r}")
+
+
+def _reverse_bond_order_preserving_tetra(mol):
+    source = Chem.Mol(mol)
+    Chem.AssignStereochemistry(source, cleanIt=True, force=True)
+    expected_cip = {
+        atom.GetIdx(): atom.GetProp("_CIPCode")
+        for atom in source.GetAtoms()
+        if atom.HasProp("_CIPCode")
+    }
+    editable = Chem.RWMol()
+    for atom in source.GetAtoms():
+        editable.AddAtom(Chem.Atom(atom))
+    for bond in reversed(tuple(source.GetBonds())):
+        editable.AddBond(
+            bond.GetBeginAtomIdx(),
+            bond.GetEndAtomIdx(),
+            bond.GetBondType(),
+        )
+    reordered = editable.GetMol()
+    Chem.SanitizeMol(reordered)
+    Chem.AssignStereochemistry(reordered, cleanIt=True, force=True)
+    for atom_idx, expected in expected_cip.items():
+        atom = reordered.GetAtomWithIdx(atom_idx)
+        actual = atom.GetProp("_CIPCode") if atom.HasProp("_CIPCode") else None
+        if actual != expected:
+            atom.InvertChirality()
+    Chem.AssignStereochemistry(reordered, cleanIt=True, force=True)
+    return reordered
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,0 +1,3543 @@
+"""Writer-shaped frontier snapshots."""
+
+from __future__ import annotations
+
+from collections.abc import Iterator
+from collections.abc import Mapping
+from dataclasses import dataclass
+from dataclasses import replace
+from enum import Enum
+
+from .errors import SouthStarError
+from .errors import SouthStarErrorKind
+from .facts import LigandKind
+from .facts import BondOrder
+from .facts import SiteStatus
+from .ids import AtomId
+from .ids import BondId
+from .ids import OccurrenceId
+from .ids import SiteId
+from .policy import SerializationLanguageMode
+from .policy import DirectionMark
+from .policy import TetraToken
+from .prepared_runtime import SouthStarPreparedMol
+from .prepared_runtime import SouthStarRuntimeOptions
+from .prepared_runtime import require_writer_shaped_runtime_options
+from .prepared_runtime import runtime_root_atom_for_prepared
+from .residual_constraints import ResidualStore
+from .residual_constraints import ResidualStoreValueSnapshot
+from .writer_prepared_identity import WriterPreparedIdentity
+from .writer_prepared_identity import writer_prepared_identity as _prepared_identity
+from .writer_graph_obligations import WriterBoundaryOwnerKind
+from .writer_graph_obligations import WriterEdgeObligationKind
+from .writer_graph_obligations import WriterGraphObligationContext
+from .writer_graph_obligations import WriterGraphObligationSummary
+from .writer_graph_obligations import WriterClosureEndpointChoice
+from .writer_graph_obligations import WriterClosureBondTextRelation
+from .writer_graph_obligations import WriterResidualAttachmentActionKind
+from .writer_graph_obligations import build_writer_graph_obligation_context
+from .writer_graph_obligations import validate_writer_snapshot_graph_coherence
+from .writer_graph_obligations import writer_graph_completion_status
+from .writer_frontier import WriterFrontierChoices
+from .writer_frontier import WriterFrontierCursor
+from .writer_frontier import _WriterFrontierChoiceResidualAttachmentEvidence
+from .writer_frontier import _WriterFrontierChoiceSnapshot
+from .writer_frontier import _WriterFrontierChoiceSnapshotEntry
+from .writer_frontier import _checked_writer_frontier_branch_supports
+from .writer_frontier import _checked_writer_frontier_choice_snapshot
+from .writer_frontier import _checked_writer_frontier_product
+from .writer_frontier import _initial_writer_transition_frontier_cursor
+from .writer_frontier import _snapshot_advance_writer_frontier_product
+from .writer_frontier import _writer_frontier_choice_snapshot
+from .writer_frontier import iter_writer_frontier_support
+from .writer_snapshot_certificates import writer_snapshot_blocked_advance_certificate
+from .writer_snapshot_certificates import writer_snapshot_invalid_text_certificate
+from .writer_snapshot_certificates import writer_snapshot_prefix_read_certificate
+from .writer_snapshot_certificates import writer_snapshot_replay_certificate
+from .writer_snapshot_certificates import writer_snapshot_step_certificate
+from .writer_stereo import reconstruct_writer_local_order_records
+from .writer_stereo import reconstruct_writer_stereo_residual_snapshot
+from .writer_stereo import writer_closure_endpoint_relation
+from .writer_state import ComponentCursor
+from .writer_state import ObligationStateKey
+from .writer_state import PendingEntryPhase
+from .writer_state import PendingWriterEntry
+from .writer_state import WriterAtomFrame
+from .writer_state import WriterBranchFrame
+from .writer_state import WriterRingStateKey
+from .writer_state import WriterStateKey
+from .writer_state import WriterStereoStateKey
+from .writer_support_certificates import writer_support_string_certificate
+
+
+
+
+@dataclass(frozen=True, slots=True)
+class WriterDecoderBoundary:
+    consumed_token_count: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class WriterFrontierFrame:
+    cursor: WriterFrontierCursor
+
+
+WriterSnapshotFrame = WriterFrontierFrame
+
+
+@dataclass(frozen=True, slots=True)
+class WriterSearchSnapshot:
+    serialization_language: SerializationLanguageMode
+    prepared_identity: WriterPreparedIdentity
+    runtime_options: SouthStarRuntimeOptions
+    cursor: WriterFrontierCursor
+    decoder_boundary: WriterDecoderBoundary
+    frame_stack: tuple[WriterSnapshotFrame, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterSnapshotCertifiedSupportString:
+    string: str
+    certificate: object
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterSnapshotCertifiedPrefixProduct:
+    source_snapshot: WriterSearchSnapshot
+    emitted_texts: tuple[str, ...]
+    final_snapshot: WriterSearchSnapshot
+    replay_certificate: object
+    frontier_product: object
+    prefix_read_certificate: object
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterSnapshotAdvanceProjectionLookup:
+    product: object
+    frontier_projection_certificate: object | None = None
+    text_projection_certificate: object | None = None
+
+    @property
+    def blocked(self) -> bool:
+        return bool(getattr(self.product, "blocked", False))
+
+    @property
+    def matched(self) -> bool:
+        return self.text_projection_certificate is not None
+
+
+def _capture_writer_frontier_snapshot_unchecked(
+    *,
+    prepared: SouthStarPreparedMol,
+    runtime_options: SouthStarRuntimeOptions,
+    cursor: WriterFrontierCursor,
+    decoder_boundary: WriterDecoderBoundary = WriterDecoderBoundary(),
+) -> WriterSearchSnapshot:
+    require_writer_shaped_runtime_options(runtime_options)
+    snapshot = WriterSearchSnapshot(
+        serialization_language=SerializationLanguageMode.WRITER_SHAPED,
+        prepared_identity=_prepared_identity(prepared, runtime_options),
+        runtime_options=runtime_options,
+        cursor=cursor,
+        decoder_boundary=decoder_boundary,
+        frame_stack=(WriterFrontierFrame(cursor),),
+    )
+    validate_writer_search_snapshot(snapshot, prepared=prepared)
+    return snapshot
+
+
+def capture_writer_frontier_snapshot(
+    *,
+    prepared: SouthStarPreparedMol,
+    runtime_options: SouthStarRuntimeOptions,
+    cursor: WriterFrontierCursor,
+    decoder_boundary: WriterDecoderBoundary = WriterDecoderBoundary(),
+) -> WriterSearchSnapshot:
+    snapshot = _capture_writer_frontier_snapshot_unchecked(
+        prepared=prepared,
+        runtime_options=runtime_options,
+        cursor=cursor,
+        decoder_boundary=decoder_boundary,
+    )
+    _checked_writer_frontier_cursor(
+        prepared=prepared,
+        cursor=snapshot.cursor,
+    )
+    return snapshot
+
+
+def _checked_writer_frontier_cursor(
+    *,
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+) -> WriterFrontierCursor:
+    _checked_writer_frontier_choice_snapshot(
+        prepared,
+        cursor,
+        include_counts=False,
+    )
+    return cursor
+
+
+def _initial_checked_writer_frontier_cursor(
+    *,
+    prepared: SouthStarPreparedMol,
+    runtime_options: SouthStarRuntimeOptions,
+) -> WriterFrontierCursor:
+    require_writer_shaped_runtime_options(runtime_options)
+    runtime_root_atom_for_prepared(runtime_options, prepared=prepared)
+
+    cursor = _initial_writer_transition_frontier_cursor(
+        prepared,
+        runtime_options,
+    )
+
+    return _checked_writer_frontier_cursor(
+        prepared=prepared,
+        cursor=cursor,
+    )
+
+
+def capture_initial_writer_frontier_snapshot(
+    *,
+    prepared: SouthStarPreparedMol,
+    runtime_options: SouthStarRuntimeOptions,
+    decoder_boundary: WriterDecoderBoundary = WriterDecoderBoundary(),
+) -> WriterSearchSnapshot:
+    require_writer_shaped_runtime_options(runtime_options)
+    runtime_root_atom_for_prepared(runtime_options, prepared=prepared)
+    cursor = _initial_writer_transition_frontier_cursor(
+        prepared,
+        runtime_options,
+    )
+    return capture_writer_frontier_snapshot(
+        prepared=prepared,
+        runtime_options=runtime_options,
+        cursor=cursor,
+        decoder_boundary=decoder_boundary,
+    )
+
+
+def writer_frontier_cursor_from_snapshot(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+) -> WriterFrontierCursor:
+    cursor = _validated_writer_frontier_cursor_from_snapshot(
+        snapshot,
+        prepared=prepared,
+    )
+    return _checked_writer_frontier_cursor(
+        prepared=prepared,
+        cursor=cursor,
+    )
+
+
+def _validated_writer_frontier_cursor_from_snapshot(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+) -> WriterFrontierCursor:
+    validate_writer_search_snapshot(snapshot, prepared=prepared)
+    return snapshot.cursor
+
+
+def _writer_frontier_choice_snapshot_from_snapshot(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    include_counts: bool = True,
+    stop_after_first_blocked: bool = False,
+) -> _WriterFrontierChoiceSnapshot:
+    cursor = _validated_writer_frontier_cursor_from_snapshot(
+        snapshot,
+        prepared=prepared,
+    )
+
+    return _writer_frontier_choice_snapshot(
+        prepared,
+        cursor,
+        include_counts=include_counts,
+        stop_after_first_blocked=stop_after_first_blocked,
+    )
+
+
+def _checked_writer_frontier_choice_snapshot_from_snapshot(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    include_counts: bool = True,
+) -> _WriterFrontierChoiceSnapshot:
+    cursor = _validated_writer_frontier_cursor_from_snapshot(
+        snapshot,
+        prepared=prepared,
+    )
+
+    return _checked_writer_frontier_choice_snapshot(
+        prepared,
+        cursor,
+        include_counts=include_counts,
+    )
+
+
+class _WriterSnapshotAdvanceOutcomeKind(Enum):
+    ADVANCED = "advanced"
+    BLOCKED = "blocked"
+    INVALID_EMITTED_TEXT = "invalid_emitted_text"
+
+
+class _WriterSnapshotAdvanceSequenceOutcomeKind(Enum):
+    ADVANCED = "advanced"
+    BLOCKED = "blocked"
+    INVALID_EMITTED_TEXT = "invalid_emitted_text"
+
+
+class _WriterSnapshotReplayChoiceSnapshotOutcomeKind(Enum):
+    CHOICE_SNAPSHOT = "choice_snapshot"
+    REPLAY_BLOCKED = "replay_blocked"
+    INVALID_EMITTED_TEXT = "invalid_emitted_text"
+
+
+class _WriterSnapshotPrefixReadOutcomeKind(Enum):
+    READABLE = "readable"
+    REPLAY_BLOCKED = "replay_blocked"
+    INVALID_EMITTED_TEXT = "invalid_emitted_text"
+    FINAL_FRONTIER_BLOCKED = "final_frontier_blocked"
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterSnapshotAdvanceOutcome:
+    kind: _WriterSnapshotAdvanceOutcomeKind
+    source_snapshot: WriterSearchSnapshot
+    emitted_text: str
+    choice_snapshot: _WriterFrontierChoiceSnapshot
+    choice: _WriterFrontierChoiceSnapshotEntry | None = None
+    advanced_snapshot: WriterSearchSnapshot | None = None
+    step_certificate: object | None = None
+    frontier_product: object | None = None
+    frontier_projection_certificate: object | None = None
+    text_projection_certificate: object | None = None
+    blocked_frontier_certificate: object | None = None
+    invalid_text_frontier_projection_certificate: object | None = None
+    blocked_advance_certificate: object | None = None
+    invalid_text_certificate: object | None = None
+
+    def __post_init__(self) -> None:
+        has_choice = self.choice is not None
+        has_advanced = self.advanced_snapshot is not None
+        has_certificate = self.step_certificate is not None
+        has_projection = self.text_projection_certificate is not None
+        has_frontier_projection = self.frontier_projection_certificate is not None
+        has_blocked_certificate = self.blocked_advance_certificate is not None
+        has_invalid_certificate = self.invalid_text_certificate is not None
+
+        if self.kind is _WriterSnapshotAdvanceOutcomeKind.ADVANCED:
+            valid = (
+                self.frontier_product is not None
+                and getattr(self.frontier_product, "legal", False)
+                and has_choice
+                and has_advanced
+                and self.choice.emitted_text == self.emitted_text
+                and has_certificate
+                and has_projection
+                and has_frontier_projection
+                and self.text_projection_certificate.emitted_text == (
+                    self.emitted_text
+                )
+                and self.step_certificate.text_projection_certificate is (
+                    self.text_projection_certificate
+                )
+                and self.step_certificate.frontier_projection_certificate is (
+                    self.frontier_projection_certificate
+                )
+                and self.blocked_frontier_certificate is None
+                and self.invalid_text_frontier_projection_certificate is None
+                and not has_blocked_certificate
+                and not has_invalid_certificate
+            )
+        elif self.kind is _WriterSnapshotAdvanceOutcomeKind.BLOCKED:
+            if self.frontier_product is None:
+                valid = (
+                    self.choice_snapshot.blocked
+                    and not has_choice
+                    and not has_advanced
+                    and not has_certificate
+                    and not has_projection
+                    and not has_frontier_projection
+                    and self.blocked_frontier_certificate is None
+                    and self.invalid_text_frontier_projection_certificate is None
+                    and not has_blocked_certificate
+                    and not has_invalid_certificate
+                )
+            else:
+                valid = (
+                    getattr(self.frontier_product, "blocked", False)
+                    and self.blocked_frontier_certificate is (
+                        self.frontier_product.blocked_frontier_certificate
+                    )
+                    and has_blocked_certificate
+                    and (
+                        self
+                        .blocked_advance_certificate
+                        .blocked_frontier_certificate
+                        is self.blocked_frontier_certificate
+                    )
+                    and not has_choice
+                    and not has_advanced
+                    and not has_certificate
+                    and not has_projection
+                    and not has_frontier_projection
+                    and self.invalid_text_frontier_projection_certificate is None
+                    and not has_invalid_certificate
+                )
+        elif self.kind is _WriterSnapshotAdvanceOutcomeKind.INVALID_EMITTED_TEXT:
+            projection_certificate = (
+                self.invalid_text_frontier_projection_certificate
+            )
+            if self.frontier_product is None:
+                valid = (
+                    not self.choice_snapshot.blocked
+                    and not has_choice
+                    and not has_advanced
+                    and not has_certificate
+                    and not has_projection
+                    and not has_frontier_projection
+                    and self.blocked_frontier_certificate is None
+                    and projection_certificate is None
+                    and not has_blocked_certificate
+                    and not has_invalid_certificate
+                )
+            else:
+                valid = (
+                    getattr(self.frontier_product, "legal", False)
+                    and projection_certificate is (
+                        self.frontier_product.projection_certificate
+                    )
+                    and projection_certificate is not None
+                    and not any(
+                        projection.emitted_text == self.emitted_text
+                        for projection in (
+                            projection_certificate
+                            .text_choice_projection_certificates
+                        )
+                    )
+                    and has_invalid_certificate
+                    and (
+                        self
+                        .invalid_text_certificate
+                        .frontier_projection_certificate
+                        is projection_certificate
+                    )
+                    and not has_choice
+                    and not has_advanced
+                    and not has_certificate
+                    and not has_projection
+                    and not has_frontier_projection
+                    and self.blocked_frontier_certificate is None
+                    and not has_blocked_certificate
+                )
+        else:
+            valid = False
+
+        if not valid:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                f"invalid writer snapshot advance outcome: {self.kind!r}",
+            )
+
+    @property
+    def blocked(self) -> bool:
+        return self.kind is _WriterSnapshotAdvanceOutcomeKind.BLOCKED
+
+    @property
+    def invalid_emitted_text(self) -> bool:
+        return (
+            self.kind
+            is _WriterSnapshotAdvanceOutcomeKind.INVALID_EMITTED_TEXT
+        )
+
+    @property
+    def graph_policy_blockers(self):
+        return self.choice_snapshot.graph_policy_blockers
+
+    @property
+    def choice_residual_attachment_evidence(
+        self,
+    ) -> _WriterFrontierChoiceResidualAttachmentEvidence | None:
+        if self.kind is not _WriterSnapshotAdvanceOutcomeKind.ADVANCED:
+            return None
+
+        if self.choice is None:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "advanced writer snapshot outcome did not contain a choice",
+            )
+
+        evidence = (
+            self.choice_snapshot
+            .choice_residual_attachment_evidence_for_emitted_text(
+                self.emitted_text
+            )
+        )
+
+        if evidence is None:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                (
+                    "advanced writer snapshot outcome did not contain "
+                    "residual evidence for emitted text: "
+                    f"{self.emitted_text!r}"
+                ),
+            )
+
+        return evidence
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterSnapshotAdvanceSequenceOutcome:
+    kind: _WriterSnapshotAdvanceSequenceOutcomeKind
+    source_snapshot: WriterSearchSnapshot
+    emitted_texts: tuple[str, ...]
+    step_outcomes: tuple[_WriterSnapshotAdvanceOutcome, ...]
+    current_snapshot: WriterSearchSnapshot
+    replay_certificate: object | None = None
+
+    def __post_init__(self) -> None:
+        if tuple(
+            step.emitted_text
+            for step in self.step_outcomes
+        ) != self.emitted_texts[: len(self.step_outcomes)]:
+            valid = False
+        else:
+            valid = self._payload_is_valid()
+
+        if not valid:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                (
+                    "invalid writer snapshot advance sequence outcome: "
+                    f"{self.kind!r}"
+                ),
+            )
+
+    def _payload_is_valid(self) -> bool:
+        current = self.source_snapshot
+
+        for index, step in enumerate(self.step_outcomes):
+            if step.source_snapshot != current:
+                return False
+
+            is_last = index == len(self.step_outcomes) - 1
+
+            if not is_last:
+                if (
+                    step.kind
+                    is not _WriterSnapshotAdvanceOutcomeKind.ADVANCED
+                    or step.advanced_snapshot is None
+                ):
+                    return False
+
+                current = step.advanced_snapshot
+
+        if self.kind is _WriterSnapshotAdvanceSequenceOutcomeKind.ADVANCED:
+            if len(self.step_outcomes) != len(self.emitted_texts):
+                return False
+            if (
+                self.replay_certificate is not None
+                and self.replay_certificate.final_snapshot != self.current_snapshot
+            ):
+                return False
+
+            for step in self.step_outcomes:
+                if (
+                    step.kind
+                    is not _WriterSnapshotAdvanceOutcomeKind.ADVANCED
+                    or step.advanced_snapshot is None
+                    or step.step_certificate is None
+                    or step.text_projection_certificate is not (
+                        step.step_certificate.text_projection_certificate
+                    )
+                    or step.frontier_projection_certificate is not (
+                        step.step_certificate.frontier_projection_certificate
+                    )
+                ):
+                    return False
+
+            expected = (
+                self.source_snapshot
+                if not self.step_outcomes
+                else self.step_outcomes[-1].advanced_snapshot
+            )
+
+            return self.current_snapshot == expected
+
+        if self.kind is _WriterSnapshotAdvanceSequenceOutcomeKind.BLOCKED:
+            failed = self.step_outcomes[-1] if self.step_outcomes else None
+            return (
+                bool(self.step_outcomes)
+                and failed.kind is _WriterSnapshotAdvanceOutcomeKind.BLOCKED
+                and (
+                    failed.frontier_product is None
+                    or failed.blocked_advance_certificate is not None
+                )
+                and self.current_snapshot == failed.source_snapshot
+                and self.replay_certificate is None
+            )
+
+        if (
+            self.kind
+            is _WriterSnapshotAdvanceSequenceOutcomeKind.INVALID_EMITTED_TEXT
+        ):
+            failed = self.step_outcomes[-1] if self.step_outcomes else None
+            return (
+                bool(self.step_outcomes)
+                and failed.kind
+                is _WriterSnapshotAdvanceOutcomeKind.INVALID_EMITTED_TEXT
+                and (
+                    failed.frontier_product is None
+                    or failed.invalid_text_certificate is not None
+                )
+                and self.current_snapshot == failed.source_snapshot
+                and self.replay_certificate is None
+            )
+
+        return False
+
+    @property
+    def advanced_snapshot(self) -> WriterSearchSnapshot | None:
+        if self.kind is _WriterSnapshotAdvanceSequenceOutcomeKind.ADVANCED:
+            return self.current_snapshot
+
+        return None
+
+    @property
+    def failed_outcome(self) -> _WriterSnapshotAdvanceOutcome | None:
+        if self.kind is _WriterSnapshotAdvanceSequenceOutcomeKind.ADVANCED:
+            return None
+
+        if not self.step_outcomes:
+            return None
+
+        return self.step_outcomes[-1]
+
+    @property
+    def consumed_emitted_texts(self) -> tuple[str, ...]:
+        if self.kind is _WriterSnapshotAdvanceSequenceOutcomeKind.ADVANCED:
+            return self.emitted_texts
+
+        return self.emitted_texts[: max(0, len(self.step_outcomes) - 1)]
+
+    @property
+    def remaining_emitted_texts(self) -> tuple[str, ...]:
+        return self.emitted_texts[len(self.consumed_emitted_texts) :]
+
+    @property
+    def blocked(self) -> bool:
+        return self.kind is _WriterSnapshotAdvanceSequenceOutcomeKind.BLOCKED
+
+    @property
+    def invalid_emitted_text(self) -> bool:
+        return (
+            self.kind
+            is _WriterSnapshotAdvanceSequenceOutcomeKind.INVALID_EMITTED_TEXT
+        )
+
+    @property
+    def graph_policy_blockers(self):
+        failed = self.failed_outcome
+
+        if failed is None:
+            return ()
+
+        return failed.graph_policy_blockers
+
+    @property
+    def advanced_step_outcomes(
+        self,
+    ) -> tuple[_WriterSnapshotAdvanceOutcome, ...]:
+        return tuple(
+            step
+            for step in self.step_outcomes
+            if step.kind is _WriterSnapshotAdvanceOutcomeKind.ADVANCED
+        )
+
+    @property
+    def step_certificates(self) -> tuple[object, ...]:
+        return tuple(
+            step.step_certificate
+            for step in self.advanced_step_outcomes
+            if step.step_certificate is not None
+        )
+
+    @property
+    def choice_residual_attachment_evidence(
+        self,
+    ) -> tuple[_WriterFrontierChoiceResidualAttachmentEvidence, ...]:
+        evidence: list[_WriterFrontierChoiceResidualAttachmentEvidence] = []
+
+        for step in self.advanced_step_outcomes:
+            step_evidence = step.choice_residual_attachment_evidence
+
+            if step_evidence is None:
+                raise SouthStarError(
+                    SouthStarErrorKind.INTERNAL_INVARIANT,
+                    "advanced replay step did not expose residual evidence",
+                )
+
+            evidence.append(step_evidence)
+
+        return tuple(evidence)
+
+    @property
+    def residual_attachment_evidence_groups(self):
+        return tuple(
+            group
+            for evidence in self.choice_residual_attachment_evidence
+            for group in evidence.residual_attachment_evidence_groups
+        )
+
+    @property
+    def selected_supports(self):
+        return tuple(
+            support
+            for evidence in self.choice_residual_attachment_evidence
+            for support in evidence.selected_supports
+        )
+
+    @property
+    def selected_policy_families(self):
+        return tuple(
+            family
+            for evidence in self.choice_residual_attachment_evidence
+            for family in evidence.selected_policy_families
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterSnapshotReplayChoiceSnapshotOutcome:
+    kind: _WriterSnapshotReplayChoiceSnapshotOutcomeKind
+    source_snapshot: WriterSearchSnapshot
+    emitted_texts: tuple[str, ...]
+    sequence_outcome: _WriterSnapshotAdvanceSequenceOutcome
+    choice_snapshot: _WriterFrontierChoiceSnapshot | None = None
+
+    def __post_init__(self) -> None:
+        common_valid = (
+            self.sequence_outcome.source_snapshot == self.source_snapshot
+            and self.sequence_outcome.emitted_texts == self.emitted_texts
+        )
+
+        if (
+            self.kind
+            is _WriterSnapshotReplayChoiceSnapshotOutcomeKind.CHOICE_SNAPSHOT
+        ):
+            valid = (
+                common_valid
+                and self.sequence_outcome.kind
+                is _WriterSnapshotAdvanceSequenceOutcomeKind.ADVANCED
+                and self.sequence_outcome.advanced_snapshot is not None
+                and self.choice_snapshot is not None
+            )
+        elif (
+            self.kind
+            is _WriterSnapshotReplayChoiceSnapshotOutcomeKind.REPLAY_BLOCKED
+        ):
+            valid = (
+                common_valid
+                and self.sequence_outcome.kind
+                is _WriterSnapshotAdvanceSequenceOutcomeKind.BLOCKED
+                and self.choice_snapshot is None
+            )
+        elif (
+            self.kind
+            is (
+                _WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                .INVALID_EMITTED_TEXT
+            )
+        ):
+            valid = (
+                common_valid
+                and self.sequence_outcome.kind
+                is (
+                    _WriterSnapshotAdvanceSequenceOutcomeKind
+                    .INVALID_EMITTED_TEXT
+                )
+                and self.choice_snapshot is None
+            )
+        else:
+            valid = False
+
+        if not valid:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                (
+                    "invalid writer snapshot replay choice snapshot outcome: "
+                    f"{self.kind!r}"
+                ),
+            )
+
+    @property
+    def replay_succeeded(self) -> bool:
+        return (
+            self.kind
+            is _WriterSnapshotReplayChoiceSnapshotOutcomeKind.CHOICE_SNAPSHOT
+        )
+
+    @property
+    def replay_failed(self) -> bool:
+        return not self.replay_succeeded
+
+    @property
+    def advanced_snapshot(self) -> WriterSearchSnapshot | None:
+        return self.sequence_outcome.advanced_snapshot
+
+    @property
+    def failed_outcome(self) -> _WriterSnapshotAdvanceOutcome | None:
+        return self.sequence_outcome.failed_outcome
+
+    @property
+    def consumed_emitted_texts(self) -> tuple[str, ...]:
+        return self.sequence_outcome.consumed_emitted_texts
+
+    @property
+    def remaining_emitted_texts(self) -> tuple[str, ...]:
+        return self.sequence_outcome.remaining_emitted_texts
+
+    @property
+    def blocked(self) -> bool:
+        if (
+            self.kind
+            is _WriterSnapshotReplayChoiceSnapshotOutcomeKind.REPLAY_BLOCKED
+        ):
+            return True
+
+        if self.choice_snapshot is None:
+            return False
+
+        return self.choice_snapshot.blocked
+
+    @property
+    def invalid_emitted_text(self) -> bool:
+        return (
+            self.kind
+            is (
+                _WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                .INVALID_EMITTED_TEXT
+            )
+        )
+
+    @property
+    def graph_policy_blockers(self):
+        if (
+            self.kind
+            is _WriterSnapshotReplayChoiceSnapshotOutcomeKind.REPLAY_BLOCKED
+        ):
+            return self.sequence_outcome.graph_policy_blockers
+
+        if self.choice_snapshot is None:
+            return ()
+
+        return self.choice_snapshot.graph_policy_blockers
+
+    @property
+    def replayed_choice_residual_attachment_evidence(
+        self,
+    ) -> tuple[_WriterFrontierChoiceResidualAttachmentEvidence, ...]:
+        return self.sequence_outcome.choice_residual_attachment_evidence
+
+    @property
+    def replayed_residual_attachment_evidence_groups(self):
+        return self.sequence_outcome.residual_attachment_evidence_groups
+
+    @property
+    def replayed_selected_supports(self):
+        return self.sequence_outcome.selected_supports
+
+    @property
+    def replayed_selected_policy_families(self):
+        return self.sequence_outcome.selected_policy_families
+
+    @property
+    def replay_certificate(self):
+        return self.sequence_outcome.replay_certificate
+
+    @property
+    def step_certificates(self) -> tuple[object, ...]:
+        return self.sequence_outcome.step_certificates
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterSnapshotPrefixReadOutcome:
+    kind: _WriterSnapshotPrefixReadOutcomeKind
+    replay_outcome: _WriterSnapshotReplayChoiceSnapshotOutcome
+    support_count: int | None = None
+    completion_count: int | None = None
+
+    def __post_init__(self) -> None:
+        choice_snapshot = self.replay_outcome.choice_snapshot
+
+        if self.kind is _WriterSnapshotPrefixReadOutcomeKind.READABLE:
+            valid = (
+                self.replay_outcome.kind
+                is _WriterSnapshotReplayChoiceSnapshotOutcomeKind.CHOICE_SNAPSHOT
+                and choice_snapshot is not None
+            )
+        elif self.kind is _WriterSnapshotPrefixReadOutcomeKind.REPLAY_BLOCKED:
+            valid = (
+                self.replay_outcome.kind
+                is _WriterSnapshotReplayChoiceSnapshotOutcomeKind.REPLAY_BLOCKED
+                and choice_snapshot is None
+                and self.support_count is None
+                and self.completion_count is None
+            )
+        elif self.kind is _WriterSnapshotPrefixReadOutcomeKind.INVALID_EMITTED_TEXT:
+            valid = (
+                self.replay_outcome.kind
+                is (
+                    _WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                    .INVALID_EMITTED_TEXT
+                )
+                and choice_snapshot is None
+                and self.support_count is None
+                and self.completion_count is None
+            )
+        elif self.kind is _WriterSnapshotPrefixReadOutcomeKind.FINAL_FRONTIER_BLOCKED:
+            valid = (
+                self.replay_outcome.kind
+                is _WriterSnapshotReplayChoiceSnapshotOutcomeKind.CHOICE_SNAPSHOT
+                and choice_snapshot is not None
+                and choice_snapshot.blocked
+                and self.support_count is None
+                and self.completion_count is None
+            )
+        else:
+            valid = False
+
+        if not valid:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                f"invalid writer snapshot prefix read outcome: {self.kind!r}",
+            )
+
+    @property
+    def source_snapshot(self) -> WriterSearchSnapshot:
+        return self.replay_outcome.source_snapshot
+
+    @property
+    def emitted_texts(self) -> tuple[str, ...]:
+        return self.replay_outcome.emitted_texts
+
+    @property
+    def replay_certificate(self):
+        return self.replay_outcome.replay_certificate
+
+    @property
+    def step_certificates(self) -> tuple[object, ...]:
+        return self.replay_outcome.step_certificates
+
+    @property
+    def choice_snapshot(self) -> _WriterFrontierChoiceSnapshot | None:
+        return self.replay_outcome.choice_snapshot
+
+    @property
+    def public_choices(self) -> WriterFrontierChoices | None:
+        if self.choice_snapshot is None:
+            return None
+
+        return self.choice_snapshot.public_choices
+
+    @property
+    def replay_succeeded(self) -> bool:
+        return self.replay_outcome.replay_succeeded
+
+    @property
+    def blocked(self) -> bool:
+        return self.kind in (
+            _WriterSnapshotPrefixReadOutcomeKind.REPLAY_BLOCKED,
+            _WriterSnapshotPrefixReadOutcomeKind.FINAL_FRONTIER_BLOCKED,
+        )
+
+    @property
+    def invalid_emitted_text(self) -> bool:
+        return self.kind is _WriterSnapshotPrefixReadOutcomeKind.INVALID_EMITTED_TEXT
+
+    @property
+    def graph_policy_blockers(self):
+        return self.replay_outcome.graph_policy_blockers
+
+    @property
+    def graph_policy_decisions(self):
+        if self.choice_snapshot is None:
+            return ()
+
+        return self.choice_snapshot.graph_policy_decisions
+
+    @property
+    def considered_closure_endpoint_selection_kinds(self):
+        if self.choice_snapshot is None:
+            return ()
+
+        return self.choice_snapshot.considered_closure_endpoint_selection_kinds
+
+    @property
+    def selected_closure_endpoint_selection_kinds(self):
+        if self.choice_snapshot is None:
+            return ()
+
+        return self.choice_snapshot.selected_closure_endpoint_selection_kinds
+
+    @property
+    def selected_closure_open_graph_action_surfaces(self):
+        if self.choice_snapshot is None:
+            return ()
+
+        return self.choice_snapshot.selected_closure_open_graph_action_surfaces
+
+    @property
+    def selected_closure_pair_graph_action_surfaces(self):
+        if self.choice_snapshot is None:
+            return ()
+
+        return self.choice_snapshot.selected_closure_pair_graph_action_surfaces
+
+    @property
+    def considered_active_child_selection_kinds(self):
+        if self.choice_snapshot is None:
+            return ()
+
+        return self.choice_snapshot.considered_active_child_selection_kinds
+
+    @property
+    def selected_active_child_selection_kinds(self):
+        if self.choice_snapshot is None:
+            return ()
+
+        return self.choice_snapshot.selected_active_child_selection_kinds
+
+    @property
+    def considered_cyclic_tree_entry_graph_action_surfaces(self):
+        if self.choice_snapshot is None:
+            return ()
+
+        return (
+            self.choice_snapshot
+            .considered_cyclic_tree_entry_graph_action_surfaces
+        )
+
+    @property
+    def selected_cyclic_tree_entry_graph_action_surfaces(self):
+        if self.choice_snapshot is None:
+            return ()
+
+        return (
+            self.choice_snapshot
+            .selected_cyclic_tree_entry_graph_action_surfaces
+        )
+
+    @property
+    def resolved_residual_attachment_policy_groups(self):
+        if self.choice_snapshot is None:
+            return ()
+
+        return self.choice_snapshot.resolved_residual_attachment_policy_groups
+
+    @property
+    def support_dead_closure_open_vs_cyclic_tree_entry_groups(self):
+        if self.choice_snapshot is None:
+            return ()
+
+        return (
+            self.choice_snapshot
+            .support_dead_closure_open_vs_cyclic_tree_entry_groups
+        )
+
+    @property
+    def unsupported_owner_scope_residual_attachment_policy_groups(self):
+        if self.choice_snapshot is None:
+            return ()
+
+        return (
+            self.choice_snapshot
+            .unsupported_owner_scope_residual_attachment_policy_groups
+        )
+
+    @property
+    def unresolved_residual_attachment_policy_groups(self):
+        if self.choice_snapshot is None:
+            return ()
+
+        return self.choice_snapshot.unresolved_residual_attachment_policy_groups
+
+    @property
+    def residual_attachment_support_groups(self):
+        if self.choice_snapshot is None:
+            return ()
+
+        return self.choice_snapshot.residual_attachment_support_groups
+
+    @property
+    def residual_attachment_evidence_groups(self):
+        if self.choice_snapshot is None:
+            return ()
+
+        return self.choice_snapshot.residual_attachment_evidence_groups
+
+    @property
+    def choice_residual_attachment_evidence(self):
+        if self.choice_snapshot is None:
+            return ()
+
+        return self.choice_snapshot.choice_residual_attachment_evidence
+
+    def choice_residual_attachment_evidence_for_emitted_text(
+        self,
+        emitted_text: str,
+    ):
+        if self.choice_snapshot is None:
+            return None
+
+        return (
+            self.choice_snapshot
+            .choice_residual_attachment_evidence_for_emitted_text(
+                emitted_text
+            )
+        )
+
+    @property
+    def replayed_choice_residual_attachment_evidence(self):
+        return self.replay_outcome.replayed_choice_residual_attachment_evidence
+
+    @property
+    def replayed_residual_attachment_evidence_groups(self):
+        return self.replay_outcome.replayed_residual_attachment_evidence_groups
+
+    @property
+    def replayed_selected_supports(self):
+        return self.replay_outcome.replayed_selected_supports
+
+    @property
+    def replayed_selected_policy_families(self):
+        return self.replay_outcome.replayed_selected_policy_families
+
+    @property
+    def final_choice_dead_closure_open_resolved_cyclic_tree_entry_evidence(
+        self,
+    ):
+        if self.choice_snapshot is None:
+            return ()
+
+        return (
+            self.choice_snapshot
+            .dead_closure_open_resolved_cyclic_tree_entry_choice_evidence
+        )
+
+    @property
+    def replayed_dead_closure_open_resolved_cyclic_tree_entry_evidence(
+        self,
+    ):
+        return tuple(
+            evidence
+            for evidence in self.replayed_choice_residual_attachment_evidence
+            if (
+                evidence
+                .has_dead_closure_open_resolved_cyclic_tree_entry_support
+            )
+        )
+
+    @property
+    def final_choice_unsupported_owner_scope_evidence(self):
+        if self.choice_snapshot is None:
+            return ()
+
+        return self.choice_snapshot.unsupported_owner_scope_choice_evidence
+
+    @property
+    def final_choice_unsupported_owner_scope_kinds(self):
+        if self.choice_snapshot is None:
+            return ()
+
+        return self.choice_snapshot.unsupported_owner_scope_kinds
+
+    @property
+    def blocker_owner_scope_kinds(self):
+        return tuple(
+            blocker.residual_attachment_owner_scope_kind
+            for blocker in self.graph_policy_blockers
+            if blocker.residual_attachment_owner_scope_kind is not None
+        )
+
+
+def _maybe_writer_frontier_choice_snapshot_entry_for_emitted_text(
+    choice_snapshot: _WriterFrontierChoiceSnapshot,
+    emitted_text: str,
+) -> _WriterFrontierChoiceSnapshotEntry | None:
+    matches = tuple(
+        choice
+        for choice in choice_snapshot.choices
+        if choice.emitted_text == emitted_text
+    )
+
+    if len(matches) > 1:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            (
+                "writer choice snapshot contains duplicate emitted-text "
+                f"entries: {emitted_text!r}"
+            ),
+        )
+
+    if not matches:
+        return None
+
+    return matches[0]
+
+
+def _writer_frontier_choice_snapshot_entry_for_emitted_text(
+    choice_snapshot: _WriterFrontierChoiceSnapshot,
+    emitted_text: str,
+) -> _WriterFrontierChoiceSnapshotEntry:
+    choice = _maybe_writer_frontier_choice_snapshot_entry_for_emitted_text(
+        choice_snapshot,
+        emitted_text,
+    )
+
+    if choice is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INVALID_FACTS,
+            (
+                "writer snapshot emitted text is not in the current "
+                f"frontier: {emitted_text!r}"
+            ),
+        )
+
+    return choice
+
+
+def _writer_search_snapshot_after_checked_frontier_cursor_step(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+) -> WriterSearchSnapshot:
+    next_boundary = WriterDecoderBoundary(
+        consumed_token_count=(
+            snapshot.decoder_boundary.consumed_token_count + 1
+        )
+    )
+
+    advanced = replace(
+        snapshot,
+        cursor=cursor,
+        decoder_boundary=next_boundary,
+        frame_stack=(WriterFrontierFrame(cursor),),
+    )
+
+    validate_writer_search_snapshot(
+        advanced,
+        prepared=prepared,
+    )
+
+    return advanced
+
+
+def _writer_search_snapshot_after_checked_choice(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    choice,
+) -> WriterSearchSnapshot:
+    return _writer_search_snapshot_after_checked_frontier_cursor_step(
+        snapshot,
+        prepared=prepared,
+        cursor=choice.successor,
+    )
+
+
+def _writer_search_snapshot_after_checked_branch_support(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    support,
+) -> WriterSearchSnapshot:
+    return _writer_search_snapshot_after_checked_frontier_cursor_step(
+        snapshot,
+        prepared=prepared,
+        cursor=support.successor_cursor,
+    )
+
+
+def _checked_text_projection_certificate_for_emitted_text(
+    *,
+    prepared: SouthStarPreparedMol,
+    snapshot: WriterSearchSnapshot,
+    emitted_text: str,
+):
+    lookup = _checked_writer_snapshot_text_projection_lookup(
+        snapshot,
+        prepared=prepared,
+        emitted_text=emitted_text,
+    )
+    if lookup.blocked or not lookup.matched:
+        raise SouthStarError(
+            SouthStarErrorKind.INVALID_FACTS,
+            (
+                "writer snapshot emitted text is not in the current "
+                f"frontier: {emitted_text!r}"
+            ),
+        )
+    return (
+        lookup.frontier_projection_certificate,
+        lookup.text_projection_certificate,
+    )
+
+
+def _checked_writer_snapshot_text_projection_lookup(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    emitted_text: str,
+) -> _WriterSnapshotAdvanceProjectionLookup:
+    product = _snapshot_advance_writer_frontier_product(
+        prepared,
+        snapshot.cursor,
+    )
+    if product.blocked:
+        return _WriterSnapshotAdvanceProjectionLookup(product=product)
+
+    projection_certificate = product.projection_certificate
+    if projection_certificate is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "legal snapshot advance product lacks projection certificate",
+        )
+    matches = tuple(
+        certificate
+        for certificate in (
+            projection_certificate.text_choice_projection_certificates
+        )
+        if certificate.emitted_text == emitted_text
+    )
+    if len(matches) > 1:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "snapshot advance observed duplicate text projection",
+        )
+    if not matches:
+        return _WriterSnapshotAdvanceProjectionLookup(
+            product=product,
+            frontier_projection_certificate=projection_certificate,
+        )
+    return _WriterSnapshotAdvanceProjectionLookup(
+        product=product,
+        frontier_projection_certificate=projection_certificate,
+        text_projection_certificate=matches[0],
+    )
+
+
+def _writer_search_snapshot_after_certified_emitted_text(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    emitted_text: str,
+):
+    (
+        frontier_projection_certificate,
+        projection_certificate,
+    ) = (
+        _checked_text_projection_certificate_for_emitted_text(
+            prepared=prepared,
+            snapshot=snapshot,
+            emitted_text=emitted_text,
+        )
+    )
+    advanced_snapshot = (
+        _writer_search_snapshot_after_checked_frontier_cursor_step(
+            snapshot,
+            prepared=prepared,
+            cursor=projection_certificate.successor_cursor,
+        )
+    )
+    certificate = writer_snapshot_step_certificate(
+        source_snapshot=snapshot,
+        emitted_text=emitted_text,
+        frontier_projection_certificate=frontier_projection_certificate,
+        text_projection_certificate=projection_certificate,
+        advanced_snapshot=advanced_snapshot,
+    )
+    return advanced_snapshot, certificate
+
+
+def _writer_search_snapshot_after_certified_text_projection(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    frontier_projection_certificate,
+    text_projection_certificate,
+):
+    advanced_snapshot = (
+        _writer_search_snapshot_after_checked_frontier_cursor_step(
+            snapshot,
+            prepared=prepared,
+            cursor=text_projection_certificate.successor_cursor,
+        )
+    )
+    certificate = writer_snapshot_step_certificate(
+        source_snapshot=snapshot,
+        emitted_text=text_projection_certificate.emitted_text,
+        frontier_projection_certificate=frontier_projection_certificate,
+        text_projection_certificate=text_projection_certificate,
+        advanced_snapshot=advanced_snapshot,
+    )
+    return advanced_snapshot, certificate
+
+
+def _writer_snapshot_advance_outcome_by_emitted_text(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    emitted_text: str,
+) -> _WriterSnapshotAdvanceOutcome:
+    lookup = _checked_writer_snapshot_text_projection_lookup(
+        snapshot,
+        prepared=prepared,
+        emitted_text=emitted_text,
+    )
+    choice_snapshot = _writer_frontier_choice_snapshot_from_snapshot(
+        snapshot,
+        prepared=prepared,
+        include_counts=False,
+        stop_after_first_blocked=True,
+    )
+
+    if lookup.blocked:
+        blocked_certificate = writer_snapshot_blocked_advance_certificate(
+            source_snapshot=snapshot,
+            emitted_text=emitted_text,
+            blocked_frontier_certificate=(
+                lookup.product.blocked_frontier_certificate
+            ),
+        )
+        return _WriterSnapshotAdvanceOutcome(
+            kind=_WriterSnapshotAdvanceOutcomeKind.BLOCKED,
+            source_snapshot=snapshot,
+            emitted_text=emitted_text,
+            choice_snapshot=choice_snapshot,
+            frontier_product=lookup.product,
+            blocked_frontier_certificate=(
+                lookup.product.blocked_frontier_certificate
+            ),
+            blocked_advance_certificate=blocked_certificate,
+        )
+
+    if not lookup.matched:
+        invalid_certificate = writer_snapshot_invalid_text_certificate(
+            source_snapshot=snapshot,
+            emitted_text=emitted_text,
+            frontier_projection_certificate=(
+                lookup.frontier_projection_certificate
+            ),
+        )
+        return _WriterSnapshotAdvanceOutcome(
+            kind=_WriterSnapshotAdvanceOutcomeKind.INVALID_EMITTED_TEXT,
+            source_snapshot=snapshot,
+            emitted_text=emitted_text,
+            choice_snapshot=choice_snapshot,
+            frontier_product=lookup.product,
+            invalid_text_frontier_projection_certificate=(
+                lookup.frontier_projection_certificate
+            ),
+            invalid_text_certificate=invalid_certificate,
+        )
+
+    advanced_snapshot, step_certificate = (
+        _writer_search_snapshot_after_certified_text_projection(
+            snapshot,
+            prepared=prepared,
+            frontier_projection_certificate=(
+                lookup.frontier_projection_certificate
+            ),
+            text_projection_certificate=lookup.text_projection_certificate,
+        )
+    )
+
+    return _WriterSnapshotAdvanceOutcome(
+        kind=_WriterSnapshotAdvanceOutcomeKind.ADVANCED,
+        source_snapshot=snapshot,
+        emitted_text=emitted_text,
+        choice_snapshot=choice_snapshot,
+        choice=lookup.text_projection_certificate.choice,
+        advanced_snapshot=advanced_snapshot,
+        step_certificate=step_certificate,
+        frontier_product=lookup.product,
+        frontier_projection_certificate=lookup.frontier_projection_certificate,
+        text_projection_certificate=lookup.text_projection_certificate,
+    )
+
+
+def _writer_snapshot_advance_sequence_outcome_by_emitted_texts(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    emitted_texts: tuple[str, ...],
+) -> _WriterSnapshotAdvanceSequenceOutcome:
+    current = snapshot
+    step_outcomes: list[_WriterSnapshotAdvanceOutcome] = []
+
+    for emitted_text in emitted_texts:
+        step = _writer_snapshot_advance_outcome_by_emitted_text(
+            current,
+            prepared=prepared,
+            emitted_text=emitted_text,
+        )
+        step_outcomes.append(step)
+
+        if step.kind is _WriterSnapshotAdvanceOutcomeKind.ADVANCED:
+            if step.advanced_snapshot is None:
+                raise SouthStarError(
+                    SouthStarErrorKind.INTERNAL_INVARIANT,
+                    "advanced writer snapshot step did not contain a snapshot",
+                )
+
+            current = step.advanced_snapshot
+            continue
+
+        if step.kind is _WriterSnapshotAdvanceOutcomeKind.BLOCKED:
+            return _WriterSnapshotAdvanceSequenceOutcome(
+                kind=_WriterSnapshotAdvanceSequenceOutcomeKind.BLOCKED,
+                source_snapshot=snapshot,
+                emitted_texts=emitted_texts,
+                step_outcomes=tuple(step_outcomes),
+                current_snapshot=current,
+            )
+
+        if step.kind is _WriterSnapshotAdvanceOutcomeKind.INVALID_EMITTED_TEXT:
+            return _WriterSnapshotAdvanceSequenceOutcome(
+                kind=(
+                    _WriterSnapshotAdvanceSequenceOutcomeKind
+                    .INVALID_EMITTED_TEXT
+                ),
+                source_snapshot=snapshot,
+                emitted_texts=emitted_texts,
+                step_outcomes=tuple(step_outcomes),
+                current_snapshot=current,
+            )
+
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            f"unknown writer snapshot advance step outcome: {step.kind!r}",
+        )
+
+    replay_certificate = writer_snapshot_replay_certificate(
+        source_snapshot=snapshot,
+        emitted_texts=emitted_texts,
+        step_certificates=tuple(
+            step.step_certificate
+            for step in step_outcomes
+            if step.step_certificate is not None
+        ),
+        final_snapshot=current,
+    )
+
+    return _WriterSnapshotAdvanceSequenceOutcome(
+        kind=_WriterSnapshotAdvanceSequenceOutcomeKind.ADVANCED,
+        source_snapshot=snapshot,
+        emitted_texts=emitted_texts,
+        step_outcomes=tuple(step_outcomes),
+        current_snapshot=current,
+        replay_certificate=replay_certificate,
+    )
+
+
+def _writer_frontier_choice_snapshot_after_emitted_texts(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    emitted_texts: tuple[str, ...],
+    include_counts: bool = True,
+    stop_after_first_blocked: bool = False,
+) -> _WriterSnapshotReplayChoiceSnapshotOutcome:
+    sequence_outcome = (
+        _writer_snapshot_advance_sequence_outcome_by_emitted_texts(
+            snapshot,
+            prepared=prepared,
+            emitted_texts=emitted_texts,
+        )
+    )
+
+    if (
+        sequence_outcome.kind
+        is _WriterSnapshotAdvanceSequenceOutcomeKind.BLOCKED
+    ):
+        return _WriterSnapshotReplayChoiceSnapshotOutcome(
+            kind=(
+                _WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                .REPLAY_BLOCKED
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=emitted_texts,
+            sequence_outcome=sequence_outcome,
+        )
+
+    if (
+        sequence_outcome.kind
+        is (
+            _WriterSnapshotAdvanceSequenceOutcomeKind
+            .INVALID_EMITTED_TEXT
+        )
+    ):
+        return _WriterSnapshotReplayChoiceSnapshotOutcome(
+            kind=(
+                _WriterSnapshotReplayChoiceSnapshotOutcomeKind
+                .INVALID_EMITTED_TEXT
+            ),
+            source_snapshot=snapshot,
+            emitted_texts=emitted_texts,
+            sequence_outcome=sequence_outcome,
+        )
+
+    advanced_snapshot = sequence_outcome.advanced_snapshot
+    if advanced_snapshot is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "advanced replay outcome did not contain a snapshot",
+        )
+
+    choice_snapshot = _writer_frontier_choice_snapshot_from_snapshot(
+        advanced_snapshot,
+        prepared=prepared,
+        include_counts=include_counts,
+        stop_after_first_blocked=stop_after_first_blocked,
+    )
+
+    return _WriterSnapshotReplayChoiceSnapshotOutcome(
+        kind=_WriterSnapshotReplayChoiceSnapshotOutcomeKind.CHOICE_SNAPSHOT,
+        source_snapshot=snapshot,
+        emitted_texts=emitted_texts,
+        sequence_outcome=sequence_outcome,
+        choice_snapshot=choice_snapshot,
+    )
+
+
+def _raise_for_writer_snapshot_advance_outcome_errors(
+    outcome: _WriterSnapshotAdvanceOutcome,
+) -> None:
+    if outcome.kind is _WriterSnapshotAdvanceOutcomeKind.BLOCKED:
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            _writer_snapshot_blocked_advance_message(outcome),
+        )
+        return
+
+    if (
+        outcome.kind
+        is _WriterSnapshotAdvanceOutcomeKind.INVALID_EMITTED_TEXT
+    ):
+        raise SouthStarError(
+            SouthStarErrorKind.INVALID_FACTS,
+            (
+                "writer snapshot emitted text is not in the current "
+                f"frontier: {outcome.emitted_text!r}"
+            ),
+        )
+
+
+def _writer_snapshot_blocked_advance_message(
+    outcome: _WriterSnapshotAdvanceOutcome,
+) -> str:
+    return _writer_snapshot_blocked_frontier_message(
+        outcome.blocked_frontier_certificate,
+        emitted_text=outcome.emitted_text,
+    )
+
+
+def _writer_snapshot_blocked_frontier_message(
+    blocked,
+    *,
+    emitted_text: str | None = None,
+) -> str:
+    if blocked is None:
+        return "writer snapshot advance frontier is blocked"
+
+    capability_names = tuple(
+        getattr(certificate.capability, "value", str(certificate.capability))
+        for certificate in (
+            *blocked.unsupported_execution_capability_certificates,
+            *blocked.unsupported_terminal_execution_capability_certificates,
+        )
+    )
+    if capability_names:
+        return (
+            "writer snapshot advance frontier is blocked by unsupported "
+            f"execution capabilities: {', '.join(capability_names)} "
+            f"next={emitted_text!r}"
+        )
+
+    if (
+        blocked.graph_policy_blocker_certificates
+        or blocked.stereo_policy_blocker_certificates
+    ):
+        return "writer snapshot advance current frontier is blocked"
+
+    work_violations = tuple(blocked.work_envelope_violation_certificates)
+    if work_violations:
+        first = work_violations[0]
+        violation = first.violation
+        actual = getattr(violation, "actual", None)
+        limit = getattr(violation, "limit", None)
+        metric = getattr(violation, "metric", None)
+        if first.category == "graph_obligation":
+            return (
+                "writer snapshot advance current frontier exceeds graph "
+                f"obligation work envelope: {metric} current={actual} "
+                f"limit={limit}"
+            )
+        return (
+            "writer snapshot advance frontier exceeds work envelope: "
+            f"{first.category} {metric} next={actual} limit={limit}"
+        )
+
+    return "writer snapshot advance frontier is blocked"
+
+
+def _raise_for_writer_snapshot_advance_sequence_outcome_errors(
+    outcome: _WriterSnapshotAdvanceSequenceOutcome,
+) -> None:
+    for step in outcome.step_outcomes:
+        _raise_for_writer_snapshot_advance_outcome_errors(step)
+
+    failed = outcome.failed_outcome
+
+    if failed is None:
+        return
+
+    _raise_for_writer_snapshot_advance_outcome_errors(failed)
+
+
+def _raise_for_writer_snapshot_replay_choice_snapshot_outcome_errors(
+    outcome: _WriterSnapshotReplayChoiceSnapshotOutcome,
+) -> None:
+    _raise_for_writer_snapshot_advance_sequence_outcome_errors(
+        outcome.sequence_outcome
+    )
+
+    if (
+        outcome.kind
+        is _WriterSnapshotReplayChoiceSnapshotOutcomeKind.REPLAY_BLOCKED
+    ):
+        return
+
+    if (
+        outcome.kind
+        is (
+            _WriterSnapshotReplayChoiceSnapshotOutcomeKind
+            .INVALID_EMITTED_TEXT
+        )
+    ):
+        return
+
+    if outcome.choice_snapshot is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "replay choice snapshot outcome did not contain a choice snapshot",
+        )
+
+
+def _advance_writer_search_snapshot_by_emitted_text(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    emitted_text: str,
+) -> WriterSearchSnapshot:
+    outcome = _writer_snapshot_advance_outcome_by_emitted_text(
+        snapshot,
+        prepared=prepared,
+        emitted_text=emitted_text,
+    )
+
+    _raise_for_writer_snapshot_advance_outcome_errors(outcome)
+
+    if outcome.advanced_snapshot is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "writer snapshot advance outcome did not contain a snapshot",
+        )
+
+    return outcome.advanced_snapshot
+
+
+def _advance_writer_search_snapshot_by_emitted_texts(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    emitted_texts: tuple[str, ...],
+) -> WriterSearchSnapshot:
+    outcome = _writer_snapshot_advance_sequence_outcome_by_emitted_texts(
+        snapshot,
+        prepared=prepared,
+        emitted_texts=emitted_texts,
+    )
+
+    _raise_for_writer_snapshot_advance_sequence_outcome_errors(outcome)
+
+    if outcome.advanced_snapshot is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "writer snapshot advance sequence outcome did not contain a snapshot",
+        )
+
+    return outcome.advanced_snapshot
+
+
+def _checked_writer_frontier_choice_snapshot_after_emitted_texts(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    emitted_texts: tuple[str, ...],
+    include_counts: bool = True,
+) -> _WriterFrontierChoiceSnapshot:
+    outcome = _writer_frontier_choice_snapshot_after_emitted_texts(
+        snapshot,
+        prepared=prepared,
+        emitted_texts=emitted_texts,
+        include_counts=include_counts,
+        stop_after_first_blocked=True,
+    )
+
+    _raise_for_writer_snapshot_replay_choice_snapshot_outcome_errors(
+        outcome
+    )
+
+    if outcome.choice_snapshot is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "checked replay did not contain a choice snapshot",
+        )
+
+    return outcome.choice_snapshot
+
+
+def _checked_writer_snapshot_prefix_product_after_emitted_texts(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    emitted_texts: tuple[str, ...],
+    include_counts: bool = True,
+) -> _WriterSnapshotCertifiedPrefixProduct:
+    sequence_outcome = (
+        _writer_snapshot_advance_sequence_outcome_by_emitted_texts(
+            snapshot,
+            prepared=prepared,
+            emitted_texts=emitted_texts,
+        )
+    )
+    _raise_for_writer_snapshot_advance_sequence_outcome_errors(
+        sequence_outcome
+    )
+
+    final_snapshot = sequence_outcome.advanced_snapshot
+    replay_certificate = sequence_outcome.replay_certificate
+    if final_snapshot is None or replay_certificate is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "checked prefix product lacks replay final snapshot",
+        )
+
+    product = _checked_writer_frontier_product(
+        prepared,
+        final_snapshot.cursor,
+        include_counts=include_counts,
+        include_frontier_certificate=include_counts,
+        include_count_certificate=include_counts,
+    )
+    if product.projection_certificate is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "checked prefix product lacks final projection certificate",
+        )
+    if product.checked_frontier_certificate is None and include_counts:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "checked prefix product lacks final checked frontier certificate",
+        )
+
+    prefix_certificate = writer_snapshot_prefix_read_certificate(
+        source_snapshot=snapshot,
+        emitted_texts=emitted_texts,
+        replay_certificate=replay_certificate,
+        final_snapshot=final_snapshot,
+        final_frontier_product=product,
+    )
+    return _WriterSnapshotCertifiedPrefixProduct(
+        source_snapshot=snapshot,
+        emitted_texts=emitted_texts,
+        final_snapshot=final_snapshot,
+        replay_certificate=replay_certificate,
+        frontier_product=product,
+        prefix_read_certificate=prefix_certificate,
+    )
+
+
+def _writer_frontier_choices_after_emitted_texts(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    emitted_texts: tuple[str, ...],
+) -> WriterFrontierChoices:
+    prefix = _checked_writer_snapshot_prefix_product_after_emitted_texts(
+        snapshot,
+        prepared=prepared,
+        emitted_texts=emitted_texts,
+        include_counts=True,
+    )
+    return prefix.frontier_product.choices
+
+
+def _count_writer_frontier_choice_snapshot_supports(
+    choice_snapshot: _WriterFrontierChoiceSnapshot,
+) -> int:
+    # Legacy diagnostic helper. Checked prefix-read surfaces use
+    # _checked_writer_snapshot_prefix_product_after_emitted_texts instead.
+    total = 0
+
+    if choice_snapshot.terminal is not None:
+        total += choice_snapshot.terminal.support_count
+
+    for choice in choice_snapshot.choices:
+        if choice.support_count is None:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "writer frontier choice snapshot is missing support counts",
+            )
+
+        total += choice.support_count
+
+    return total
+
+
+def _count_writer_frontier_choice_snapshot_completions(
+    choice_snapshot: _WriterFrontierChoiceSnapshot,
+) -> int:
+    # Legacy diagnostic helper. Checked prefix-read surfaces use
+    # _checked_writer_snapshot_prefix_product_after_emitted_texts instead.
+    total = 0
+
+    if choice_snapshot.terminal is not None:
+        total += choice_snapshot.terminal.completion_count
+
+    for choice in choice_snapshot.choices:
+        if choice.completion_count is None:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "writer frontier choice snapshot is missing completion counts",
+            )
+
+        total += choice.completion_count
+
+    return total
+
+
+def _iter_writer_frontier_support_suffixes_from_choice_snapshot(
+    prepared: SouthStarPreparedMol,
+    choice_snapshot: _WriterFrontierChoiceSnapshot,
+) -> Iterator[str]:
+    # Legacy diagnostic helper. Checked suffix reads use certified support
+    # strings from the replay final snapshot instead.
+    if choice_snapshot.terminal is not None:
+        yield ""
+
+    for choice in choice_snapshot.choices:
+        for suffix in iter_writer_frontier_support(
+            prepared,
+            choice.successor,
+        ):
+            yield choice.emitted_text + suffix
+
+
+def _writer_snapshot_prefix_read_outcome_after_emitted_texts(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    emitted_texts: tuple[str, ...],
+    include_counts: bool = True,
+    stop_after_first_blocked: bool = False,
+) -> _WriterSnapshotPrefixReadOutcome:
+    replay_outcome = _writer_frontier_choice_snapshot_after_emitted_texts(
+        snapshot,
+        prepared=prepared,
+        emitted_texts=emitted_texts,
+        include_counts=include_counts,
+        stop_after_first_blocked=stop_after_first_blocked,
+    )
+
+    if (
+        replay_outcome.kind
+        is _WriterSnapshotReplayChoiceSnapshotOutcomeKind.REPLAY_BLOCKED
+    ):
+        return _WriterSnapshotPrefixReadOutcome(
+            kind=_WriterSnapshotPrefixReadOutcomeKind.REPLAY_BLOCKED,
+            replay_outcome=replay_outcome,
+        )
+
+    if (
+        replay_outcome.kind
+        is (
+            _WriterSnapshotReplayChoiceSnapshotOutcomeKind
+            .INVALID_EMITTED_TEXT
+        )
+    ):
+        return _WriterSnapshotPrefixReadOutcome(
+            kind=_WriterSnapshotPrefixReadOutcomeKind.INVALID_EMITTED_TEXT,
+            replay_outcome=replay_outcome,
+        )
+
+    choice_snapshot = replay_outcome.choice_snapshot
+    if choice_snapshot is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "prefix read replay outcome did not contain a choice snapshot",
+        )
+
+    final_snapshot = replay_outcome.advanced_snapshot
+    if final_snapshot is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "prefix read replay outcome did not contain a final snapshot",
+        )
+    final_product = _snapshot_advance_writer_frontier_product(
+        prepared,
+        final_snapshot.cursor,
+    )
+
+    if final_product.blocked:
+        return _WriterSnapshotPrefixReadOutcome(
+            kind=_WriterSnapshotPrefixReadOutcomeKind.FINAL_FRONTIER_BLOCKED,
+            replay_outcome=replay_outcome,
+        )
+
+    support_count = None
+    completion_count = None
+
+    if include_counts:
+        prefix_product = (
+            _checked_writer_snapshot_prefix_product_after_emitted_texts(
+                snapshot,
+                prepared=prepared,
+                emitted_texts=emitted_texts,
+                include_counts=True,
+            )
+        )
+        support_count = prefix_product.prefix_read_certificate.support_count
+        completion_count = (
+            prefix_product.prefix_read_certificate.completion_count
+        )
+
+    return _WriterSnapshotPrefixReadOutcome(
+        kind=_WriterSnapshotPrefixReadOutcomeKind.READABLE,
+        replay_outcome=replay_outcome,
+        support_count=support_count,
+        completion_count=completion_count,
+    )
+
+
+def _checked_writer_snapshot_prefix_read_outcome_after_emitted_texts(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    emitted_texts: tuple[str, ...],
+    include_counts: bool = True,
+) -> _WriterSnapshotPrefixReadOutcome:
+    outcome = _writer_snapshot_prefix_read_outcome_after_emitted_texts(
+        snapshot,
+        prepared=prepared,
+        emitted_texts=emitted_texts,
+        include_counts=include_counts,
+        stop_after_first_blocked=True,
+    )
+
+    _raise_for_writer_snapshot_replay_choice_snapshot_outcome_errors(
+        outcome.replay_outcome
+    )
+
+    if outcome.kind is not _WriterSnapshotPrefixReadOutcomeKind.READABLE:
+        if (
+            outcome.kind
+            is _WriterSnapshotPrefixReadOutcomeKind.FINAL_FRONTIER_BLOCKED
+        ):
+            raise SouthStarError(
+                SouthStarErrorKind.UNSUPPORTED_POLICY,
+                "writer snapshot prefix read final current frontier is blocked",
+            )
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            (
+                "checked prefix read did not produce a readable outcome: "
+                f"{outcome.kind!r}"
+            ),
+        )
+
+    return outcome
+
+
+def _count_writer_frontier_support_after_emitted_texts(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    emitted_texts: tuple[str, ...],
+) -> int:
+    prefix = _checked_writer_snapshot_prefix_product_after_emitted_texts(
+        snapshot,
+        prepared=prepared,
+        emitted_texts=emitted_texts,
+        include_counts=True,
+    )
+    count = prefix.prefix_read_certificate.support_count
+
+    if count is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "checked prefix read did not contain a support count",
+        )
+
+    return count
+
+
+def _count_writer_completions_after_emitted_texts(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    emitted_texts: tuple[str, ...],
+) -> int:
+    prefix = _checked_writer_snapshot_prefix_product_after_emitted_texts(
+        snapshot,
+        prepared=prepared,
+        emitted_texts=emitted_texts,
+        include_counts=True,
+    )
+    count = prefix.prefix_read_certificate.completion_count
+
+    if count is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "checked prefix read did not contain a completion count",
+        )
+
+    return count
+
+
+def _iter_writer_frontier_support_suffixes_after_emitted_texts(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    emitted_texts: tuple[str, ...],
+) -> Iterator[str]:
+    prefix = _checked_writer_snapshot_prefix_product_after_emitted_texts(
+        snapshot,
+        prepared=prepared,
+        emitted_texts=emitted_texts,
+        include_counts=False,
+    )
+
+    for item in _iter_writer_snapshot_certified_support_strings(
+        prefix.final_snapshot,
+        prepared=prepared,
+    ):
+        yield item.string
+
+
+def _iter_writer_snapshot_certified_support_strings(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+) -> Iterator[_WriterSnapshotCertifiedSupportString]:
+    choice_snapshot = _writer_frontier_choice_snapshot_from_snapshot(
+        snapshot,
+        prepared=prepared,
+        include_counts=False,
+        stop_after_first_blocked=True,
+    )
+    product = _snapshot_advance_writer_frontier_product(
+        prepared,
+        snapshot.cursor,
+    )
+    if product.blocked:
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            _writer_snapshot_blocked_frontier_message(
+                product.blocked_frontier_certificate,
+            ),
+        )
+    if product.projection_certificate is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "legal frontier product lacks projection certificate",
+        )
+
+    if product.choices.terminal is not None:
+        terminal_certificate = product.terminal_projection_certificate
+        if terminal_certificate is None:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "terminal support lacks projection certificate",
+            )
+        replay_certificate = writer_snapshot_replay_certificate(
+            source_snapshot=snapshot,
+            emitted_texts=(),
+            step_certificates=(),
+            final_snapshot=snapshot,
+        )
+        yield _WriterSnapshotCertifiedSupportString(
+            string="",
+            certificate=writer_support_string_certificate(
+                source_snapshot=snapshot,
+                string="",
+                emitted_texts=(),
+                replay_certificate=replay_certificate,
+                terminal_frontier_projection_certificate=(
+                    product.projection_certificate
+                ),
+                terminal_projection_certificate=terminal_certificate,
+                text_projection_certificates=(),
+            ),
+        )
+
+    for choice in product.choices.choices:
+        advanced_snapshot, step_certificate = (
+            _writer_search_snapshot_after_certified_emitted_text(
+                snapshot,
+                prepared=prepared,
+                emitted_text=choice.emitted_text,
+            )
+        )
+        for suffix in _iter_writer_snapshot_certified_support_strings(
+            advanced_snapshot,
+            prepared=prepared,
+        ):
+            emitted_texts = (
+                step_certificate.emitted_text,
+                *suffix.certificate.emitted_texts,
+            )
+            text_projection_certificates = (
+                step_certificate.text_projection_certificate,
+                *suffix.certificate.text_projection_certificates,
+            )
+            replay_certificate = writer_snapshot_replay_certificate(
+                source_snapshot=snapshot,
+                emitted_texts=emitted_texts,
+                step_certificates=(
+                    step_certificate,
+                    *suffix.certificate.replay_certificate.step_certificates,
+                ),
+                final_snapshot=suffix.certificate.final_snapshot,
+            )
+            string = choice.emitted_text + suffix.string
+            yield _WriterSnapshotCertifiedSupportString(
+                string=string,
+                certificate=writer_support_string_certificate(
+                    source_snapshot=snapshot,
+                    string=string,
+                    emitted_texts=emitted_texts,
+                    replay_certificate=replay_certificate,
+                    terminal_frontier_projection_certificate=(
+                        suffix.certificate
+                        .terminal_frontier_projection_certificate
+                    ),
+                    terminal_projection_certificate=(
+                        suffix.certificate.terminal_projection_certificate
+                    ),
+                    text_projection_certificates=text_projection_certificates,
+                ),
+            )
+
+
+def resume_writer_frontier_choices_from_snapshot(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+) -> WriterFrontierChoices:
+    return _writer_frontier_choices_after_emitted_texts(
+        snapshot,
+        prepared=prepared,
+        emitted_texts=(),
+    )
+
+
+def advance_writer_frontier_snapshot(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+    emitted_text: str,
+) -> WriterSearchSnapshot:
+    return _advance_writer_search_snapshot_by_emitted_text(
+        snapshot,
+        prepared=prepared,
+        emitted_text=emitted_text,
+    )
+
+
+def validate_writer_search_snapshot(
+    snapshot: WriterSearchSnapshot,
+    *,
+    prepared: SouthStarPreparedMol,
+) -> None:
+    if snapshot.serialization_language is not SerializationLanguageMode.WRITER_SHAPED:
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            "writer snapshot requires serialization_language=WRITER_SHAPED",
+        )
+    require_writer_shaped_runtime_options(snapshot.runtime_options)
+    if snapshot.prepared_identity != _prepared_identity(
+        prepared,
+        snapshot.runtime_options,
+    ):
+        raise SouthStarError(
+            SouthStarErrorKind.INVALID_FACTS,
+            "writer snapshot prepared identity does not match prepared molecule",
+        )
+    _validate_cursor_active_frames(snapshot.cursor)
+    if snapshot.cursor != WriterFrontierCursor(snapshot.cursor.weighted_states):
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "writer snapshot cursor is not canonical",
+        )
+    _validate_frames(snapshot.frame_stack, snapshot.cursor)
+    stereo_residual_cache: dict[
+        tuple[WriterStereoStateKey, WriterRingStateKey],
+        ResidualStoreValueSnapshot,
+    ] = {}
+    validate_writer_cursor_against_prepared(
+        prepared,
+        snapshot.cursor,
+        runtime_options=snapshot.runtime_options,
+        stereo_residual_cache=stereo_residual_cache,
+    )
+
+
+def validate_writer_cursor_against_prepared(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+    *,
+    runtime_options: SouthStarRuntimeOptions | None = None,
+    stereo_residual_cache: dict[
+        tuple[WriterStereoStateKey, WriterRingStateKey],
+        ResidualStoreValueSnapshot,
+    ] | None = None,
+) -> None:
+    _validate_cursor_active_frames(cursor)
+    atom_ids = frozenset(prepared.atom_ids)
+    bond_ids = frozenset(bond.id for bond in prepared.facts.bonds)
+    allowed_roots = _allowed_component_roots(prepared, runtime_options)
+    atom_component = _atom_component_index(prepared)
+    bond_component = _bond_component_index(prepared)
+    for key, weight in cursor.weighted_states:
+        if weight <= 0:
+            _invalid_snapshot("writer cursor contains nonpositive weight")
+        _validate_component_cursor(key.component_cursor, allowed_roots)
+        context = build_writer_graph_obligation_context(prepared, key)
+        validate_writer_snapshot_graph_coherence(prepared, key, context)
+        _validate_atom_frame(key.active, atom_ids, bond_ids, prepared)
+        for frame in key.branch_stack:
+            _validate_branch_frame(frame, atom_ids, bond_ids, prepared)
+        _validate_known_atoms("visited_atoms", key.visited_atoms, atom_ids)
+        _validate_known_bonds("written_bonds", key.written_bonds, bond_ids)
+        _validate_active_coherence(key)
+        _validate_component_membership(prepared, key, atom_component, bond_component)
+        _validate_current_component_tree_fragment(prepared, key)
+        _validate_writer_frame_tree_path(prepared, key)
+        _validate_written_bond_coherence(prepared, key)
+        _validate_obligations(
+            key.obligations,
+            key,
+            atom_ids,
+            bond_ids,
+            prepared,
+            context,
+        )
+        _validate_live_frontier_structure(prepared, key, context)
+        _validate_stereo_occurrences_bound_to_graph_state(prepared, key, context)
+        _validate_policy_state(key, atom_ids, bond_ids)
+        _validate_stereo_state(
+            prepared,
+            key.stereo_state,
+            ring_state=key.ring_state,
+            stereo_residual_cache=stereo_residual_cache,
+        )
+
+
+def _validate_cursor_active_frames(cursor: WriterFrontierCursor) -> None:
+    for key, _ in cursor.weighted_states:
+        if key.active is None:
+            _invalid_snapshot("writer snapshot state missing active frame")
+
+
+def _validate_frames(
+    frame_stack: tuple[object, ...],
+    cursor: WriterFrontierCursor,
+) -> None:
+    if len(frame_stack) != 1:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "writer snapshot currently requires exactly one frontier frame",
+        )
+    frame = frame_stack[0]
+    if not isinstance(frame, WriterFrontierFrame):
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "writer snapshot top frame must be a frontier frame",
+        )
+    if frame.cursor != cursor:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "writer snapshot frontier frame cursor must match snapshot cursor",
+        )
+
+
+def _round_trip_residual_snapshot(snapshot: ResidualStoreValueSnapshot) -> None:
+    try:
+        round_tripped = ResidualStore.from_value_snapshot(snapshot).value_snapshot()
+    except ValueError as exc:
+        _invalid_snapshot(f"writer residual snapshot is invalid: {exc}")
+    if round_tripped != snapshot:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "writer residual snapshot does not round-trip",
+        )
+
+
+def _allowed_component_roots(
+    prepared: SouthStarPreparedMol,
+    runtime_options: SouthStarRuntimeOptions | None,
+) -> tuple[frozenset[AtomId], ...]:
+    if runtime_options is None or runtime_options.rooted_at_atom < 0:
+        domains = prepared.all_root_domains
+    else:
+        try:
+            domains = prepared.component_root_domains_by_explicit_root[
+                AtomId(runtime_options.rooted_at_atom)
+            ]
+        except KeyError as exc:
+            raise SouthStarError(
+                SouthStarErrorKind.INVALID_FACTS,
+                "writer snapshot runtime root is not in prepared molecule",
+            ) from exc
+    return tuple(frozenset(atoms) for _, atoms in domains)
+
+
+def _validate_component_cursor(
+    cursor: ComponentCursor,
+    allowed_roots: tuple[frozenset[AtomId], ...],
+) -> None:
+    if len(cursor.component_roots) != len(allowed_roots):
+        _invalid_snapshot("writer component root count does not match prepared domains")
+    if cursor.component_index < 0 or cursor.component_index >= len(cursor.component_roots):
+        _invalid_snapshot("writer component index is outside component roots")
+    for index, root in enumerate(cursor.component_roots):
+        if root not in allowed_roots[index]:
+            _invalid_snapshot("writer component root is outside runtime root domain")
+
+
+def _validate_atom_frame(
+    frame: WriterAtomFrame,
+    atom_ids: frozenset[AtomId],
+    bond_ids: frozenset[BondId],
+    prepared: SouthStarPreparedMol,
+) -> None:
+    if frame.atom not in atom_ids:
+        _invalid_snapshot("writer atom frame references unknown atom")
+    if frame.parent is None or frame.incoming_bond is None:
+        if frame.parent is not None or frame.incoming_bond is not None:
+            _invalid_snapshot("writer atom frame has partial incoming edge")
+        return
+    if frame.parent not in atom_ids or frame.incoming_bond not in bond_ids:
+        _invalid_snapshot("writer atom frame references unknown incoming edge")
+    _require_graph_bond(prepared, frame.parent, frame.atom, frame.incoming_bond)
+
+
+def _validate_branch_frame(
+    frame: WriterBranchFrame,
+    atom_ids: frozenset[AtomId],
+    bond_ids: frozenset[BondId],
+    prepared: SouthStarPreparedMol,
+) -> None:
+    _validate_atom_frame(frame.return_atom, atom_ids, bond_ids, prepared)
+    if not frame.return_atom.atom_emitted:
+        _invalid_snapshot("writer branch return frame must be emitted")
+
+
+def _validate_known_atoms(
+    label: str,
+    atoms: frozenset[AtomId],
+    atom_ids: frozenset[AtomId],
+) -> None:
+    if not atoms.issubset(atom_ids):
+        _invalid_snapshot(f"writer {label} references unknown atom")
+
+
+def _validate_known_bonds(
+    label: str,
+    bonds: frozenset[BondId],
+    bond_ids: frozenset[BondId],
+) -> None:
+    if not bonds.issubset(bond_ids):
+        _invalid_snapshot(f"writer {label} references unknown bond")
+
+
+def _validate_active_coherence(key: WriterStateKey) -> None:
+    active = key.active
+    if active.parent is None:
+        if active.atom != key.component_cursor.component_roots[
+            key.component_cursor.component_index
+        ]:
+            _invalid_snapshot("writer root active frame does not match component root")
+        if active.incoming_bond is not None:
+            _invalid_snapshot("writer root active frame has incoming bond")
+    elif active.incoming_bond is None:
+        _invalid_snapshot("writer non-root active frame lacks incoming bond")
+    if active.atom_emitted:
+        if active.atom not in key.visited_atoms:
+            _invalid_snapshot("writer emitted active atom is not visited")
+    elif active.atom in key.visited_atoms:
+        _invalid_snapshot("writer un-emitted active atom is already visited")
+    if active.parent is None:
+        if active.incoming_bond is not None:
+            _invalid_snapshot("writer root active frame has incoming bond")
+    elif active.parent not in key.visited_atoms:
+        _invalid_snapshot("writer active parent is not visited")
+    if active.incoming_bond is not None and active.atom_emitted:
+        if active.incoming_bond not in key.written_bonds:
+            _invalid_snapshot("writer emitted child lacks written incoming bond")
+    for frame in key.branch_stack:
+        if frame.return_atom.atom not in key.visited_atoms:
+            _invalid_snapshot("writer branch return atom is not visited")
+
+
+def _validate_component_membership(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+    atom_component: dict[AtomId, int],
+    bond_component: dict[BondId, int],
+) -> None:
+    current = key.component_cursor.component_index
+    allowed_components = set(range(current + 1))
+    closed_closure_bonds = frozenset(
+        closure.bond
+        for closure in key.ring_state.closed_closures
+    )
+    materialized_bonds = key.written_bonds | closed_closure_bonds
+    active = key.active
+    if key.written_bonds & closed_closure_bonds:
+        _invalid_snapshot(
+            "writer bond is both a tree edge and a closed closure"
+        )
+    if atom_component[active.atom] != current:
+        _invalid_snapshot("writer active atom is outside current component")
+    for atom in key.visited_atoms:
+        if atom_component[atom] not in allowed_components:
+            _invalid_snapshot("writer visited atom is outside completed/current components")
+    for bond in key.written_bonds:
+        if bond_component[bond] not in allowed_components:
+            _invalid_snapshot("writer written bond is outside completed/current components")
+    for endpoint in key.ring_state.open_endpoints:
+        if bond_component.get(endpoint.bond) != current:
+            _invalid_snapshot(
+                "writer open closure is outside current component"
+            )
+    for closure in key.ring_state.closed_closures:
+        index = bond_component.get(closure.bond)
+        if index is None or index > current:
+            _invalid_snapshot(
+                "writer closed closure is outside completed/current components"
+            )
+    pending = key.obligations.pending_entry
+    if pending is not None:
+        if (
+            atom_component[pending.parent] != current
+            or atom_component[pending.child] != current
+            or bond_component[pending.bond] != current
+        ):
+            _invalid_snapshot("writer pending entry is outside current component")
+    for frame in key.branch_stack:
+        if atom_component[frame.return_atom.atom] != current:
+            _invalid_snapshot("writer branch return atom is outside current component")
+    for index, component in enumerate(prepared.facts.components):
+        if index >= current:
+            break
+        if not frozenset(component.atoms).issubset(key.visited_atoms):
+            _invalid_snapshot("writer completed component has unvisited atoms")
+        component_bonds = frozenset(component.bonds)
+        component_materialized = frozenset(
+            bond
+            for bond in materialized_bonds
+            if bond_component[bond] == index
+        )
+        if component_materialized != component_bonds:
+            _invalid_snapshot(
+                "writer completed component has unresolved bonds"
+            )
+
+
+def _validate_current_component_tree_fragment(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+) -> None:
+    current = key.component_cursor.component_index
+    component = prepared.facts.components[current]
+    component_atoms = frozenset(component.atoms)
+    component_bonds = frozenset(component.bonds)
+    root = key.component_cursor.component_roots[current]
+    visited = frozenset(atom for atom in key.visited_atoms if atom in component_atoms)
+    written = frozenset(bond for bond in key.written_bonds if bond in component_bonds)
+    if not visited:
+        if written:
+            _invalid_snapshot("writer current component has written bonds before root")
+        return
+    if root not in visited:
+        _invalid_snapshot("writer current component visited atoms do not include root")
+    if len(written) != len(visited) - 1:
+        _invalid_snapshot("writer current component written graph is not a tree fragment")
+    reachable = _reachable_written_atoms(prepared, root, written)
+    if reachable != visited:
+        _invalid_snapshot("writer current component visited atoms are not root-reachable")
+    active = key.active
+    if active.atom_emitted and active.atom not in reachable:
+        _invalid_snapshot("writer active atom is not in reachable written graph")
+    for frame in key.branch_stack:
+        if frame.return_atom.atom not in reachable:
+            _invalid_snapshot("writer branch return atom is not in reachable written graph")
+    pending = key.obligations.pending_entry
+    if pending is not None:
+        if pending.parent not in reachable:
+            _invalid_snapshot("writer pending parent is not in reachable written graph")
+        if pending.phase is PendingEntryPhase.NEEDS_ATOM_AFTER_BOND:
+            if pending.bond in written or pending.child in visited:
+                _invalid_snapshot("writer pending post-bond edge is already materialized")
+
+
+def _reachable_written_atoms(
+    prepared: SouthStarPreparedMol,
+    root: AtomId,
+    written_bonds: frozenset[BondId],
+) -> frozenset[AtomId]:
+    adjacency: dict[AtomId, set[AtomId]] = {}
+    for bond in written_bonds:
+        fact = prepared.graph_index.bond_by_id[bond]
+        adjacency.setdefault(fact.a, set()).add(fact.b)
+        adjacency.setdefault(fact.b, set()).add(fact.a)
+    seen = {root}
+    stack = [root]
+    while stack:
+        atom = stack.pop()
+        for neighbor in adjacency.get(atom, ()):
+            if neighbor in seen:
+                continue
+            seen.add(neighbor)
+            stack.append(neighbor)
+    return frozenset(seen)
+
+
+def _validate_writer_frame_tree_path(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+) -> None:
+    parent_links = _written_tree_parent_links(prepared, key)
+    root = key.component_cursor.component_roots[key.component_cursor.component_index]
+    _validate_atom_frame_tree_edge(key.active, root, parent_links)
+    for frame in key.branch_stack:
+        _validate_atom_frame_tree_edge(frame.return_atom, root, parent_links)
+    if not key.active.atom_emitted:
+        if key.branch_stack:
+            _invalid_snapshot("writer branch stack requires emitted active atom")
+        return
+    active_path = _root_to_atom_path(root, key.active.atom, parent_links)
+    ancestor_positions = {atom: index for index, atom in enumerate(active_path[:-1])}
+    previous_position = -1
+    for frame in key.branch_stack:
+        position = ancestor_positions.get(frame.return_atom.atom)
+        if position is None:
+            _invalid_snapshot("writer branch return atom is not an active ancestor")
+        if position <= previous_position:
+            _invalid_snapshot("writer branch stack does not follow root-to-active path")
+        previous_position = position
+
+
+def _validate_atom_frame_tree_edge(
+    frame: WriterAtomFrame,
+    root: AtomId,
+    parent_links: dict[AtomId, tuple[AtomId, BondId]],
+) -> None:
+    if not frame.atom_emitted:
+        return
+    if frame.atom == root:
+        if frame.parent is not None or frame.incoming_bond is not None:
+            _invalid_snapshot("writer root frame disagrees with written-tree root")
+        return
+    expected = parent_links.get(frame.atom)
+    if expected is None:
+        _invalid_snapshot("writer atom frame is missing from written-tree parent links")
+    if (frame.parent, frame.incoming_bond) != expected:
+        _invalid_snapshot("writer atom frame disagrees with written-tree orientation")
+
+
+def _root_to_atom_path(
+    root: AtomId,
+    atom: AtomId,
+    parent_links: dict[AtomId, tuple[AtomId, BondId]],
+) -> tuple[AtomId, ...]:
+    reversed_path = [atom]
+    current = atom
+    seen = {atom}
+    while current != root:
+        parent = parent_links.get(current)
+        if parent is None:
+            _invalid_snapshot("writer active atom is not connected to written-tree root")
+        current = parent[0]
+        if current in seen:
+            _invalid_snapshot("writer written-tree parent links contain a cycle")
+        seen.add(current)
+        reversed_path.append(current)
+    return tuple(reversed(reversed_path))
+
+
+def _validate_written_bond_coherence(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+) -> None:
+    for bond in key.written_bonds:
+        fact = prepared.graph_index.bond_by_id[bond]
+        left, right = fact.a, fact.b
+        if left not in key.visited_atoms or right not in key.visited_atoms:
+            _invalid_snapshot("writer written bond has unvisited endpoint")
+
+
+def _validate_obligations(
+    obligations: ObligationStateKey,
+    key: WriterStateKey,
+    atom_ids: frozenset[AtomId],
+    bond_ids: frozenset[BondId],
+    prepared: SouthStarPreparedMol,
+    context: WriterGraphObligationContext,
+) -> None:
+    pending = obligations.pending_entry
+    if pending is None:
+        return
+    _validate_pending_entry(pending, atom_ids, bond_ids, prepared)
+    _validate_pending_entry_role(context, pending)
+    if key.active.atom != pending.parent:
+        _invalid_snapshot("writer pending entry parent is not active")
+    if not key.active.atom_emitted:
+        _invalid_snapshot("writer pending entry parent is not emitted")
+    if pending.parent not in key.visited_atoms:
+        _invalid_snapshot("writer pending parent is not visited")
+    if pending.child in key.visited_atoms or pending.bond in key.written_bonds:
+        _invalid_snapshot("writer pending entry is already written")
+    has_bond_record = _has_bond_occurrence_record(
+        key.stereo_state,
+        pending.bond,
+        pending.parent,
+        pending.child,
+    )
+    if pending.phase is PendingEntryPhase.NEEDS_ATOM_AFTER_BOND:
+        if not has_bond_record:
+            _invalid_snapshot("writer pending post-bond entry lacks bond occurrence")
+    elif pending.phase is PendingEntryPhase.NEEDS_BOND_OR_ATOM:
+        if has_bond_record:
+            _invalid_snapshot("writer pending pre-bond entry already has bond occurrence")
+    else:
+        _invalid_snapshot("writer pending entry has unknown phase")
+
+
+def _validate_pending_entry(
+    pending: PendingWriterEntry,
+    atom_ids: frozenset[AtomId],
+    bond_ids: frozenset[BondId],
+    prepared: SouthStarPreparedMol,
+) -> None:
+    if pending.parent not in atom_ids or pending.child not in atom_ids:
+        _invalid_snapshot("writer pending entry references unknown atom")
+    if pending.bond not in bond_ids:
+        _invalid_snapshot("writer pending entry references unknown bond")
+    _require_graph_bond(prepared, pending.parent, pending.child, pending.bond)
+
+
+def _validate_pending_entry_role(
+    context: WriterGraphObligationContext,
+    pending: PendingWriterEntry,
+) -> None:
+    summary = context.residual_summary
+    children = tuple(
+        sorted(
+            (*_boundary_children_for_atom(summary, pending.parent), (pending.bond, pending.child)),
+            key=lambda item: (int(item[0]), int(item[1])),
+        )
+    )
+    if (pending.bond, pending.child) not in children:
+        _invalid_snapshot("writer pending entry is not a live child obligation")
+    if pending.branch:
+        if len(children) <= 1:
+            _invalid_snapshot("writer pending branch entry has no sibling obligations")
+    elif children != ((pending.bond, pending.child),):
+        _invalid_snapshot("writer pending inline entry is not the final child")
+
+
+def _validate_live_frontier_structure(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+    context: WriterGraphObligationContext,
+) -> None:
+    summary = context.residual_summary
+    current = key.component_cursor.component_index
+    component = prepared.facts.components[current]
+    component_atoms = frozenset(component.atoms)
+    visited = frozenset(atom for atom in key.visited_atoms if atom in component_atoms)
+    unvisited = component_atoms - visited
+    if not visited:
+        return
+    boundary_edges = [
+        incidence
+        for attachment in summary.attachments.attachments
+        for incidence in attachment.boundary
+    ]
+    branch_return_atoms = tuple(frame.return_atom.atom for frame in key.branch_stack)
+    branch_owned_atoms = {
+        incidence.written_atom
+        for incidence in boundary_edges
+        if incidence.owner_kind is WriterBoundaryOwnerKind.BRANCH_RETURN
+    }
+    action_by_id = {
+        action.attachment_id: action for action in summary.attachment_actions
+    }
+    for attachment in summary.attachments.attachments:
+        action = action_by_id[attachment.attachment_id]
+        if action.kind is WriterResidualAttachmentActionKind.CLOSURE_OPEN_READY:
+            continue
+        if any(
+            incidence.owner_kind is WriterBoundaryOwnerKind.UNOWNED
+            for incidence in attachment.boundary
+        ) and action.kind is not WriterResidualAttachmentActionKind.BLOCKED_UNOWNED:
+            _invalid_snapshot("writer unowned frontier was not classified unowned")
+    pending_owned_attachment = any(
+        _attachment_is_owned_by_pending_entry(key, attachment.atoms)
+        for attachment in summary.attachments.attachments
+    )
+    if unvisited and not boundary_edges and not pending_owned_attachment:
+        if not any(
+            action.kind is WriterResidualAttachmentActionKind.BLOCKED_ORPHAN
+            for action in summary.attachment_actions
+        ):
+            _invalid_snapshot(
+                "writer frontier without a boundary was not classified orphaned"
+            )
+    if key.branch_stack and not unvisited:
+        _invalid_snapshot("writer branch stack has no unresolved return obligation")
+    if any(atom not in branch_owned_atoms for atom in branch_return_atoms):
+        _invalid_snapshot("writer branch return frame owns no unresolved obligation")
+    if (
+        not unvisited
+        and key.obligations.pending_entry is None
+        and not key.branch_stack
+        and not _active_is_terminal_leaf(prepared, key)
+    ):
+        _invalid_snapshot("writer completed component active frame is not terminal")
+def _boundary_children_for_atom(
+    summary: WriterGraphObligationSummary,
+    atom: AtomId,
+) -> tuple[tuple[BondId, AtomId], ...]:
+    attachments_by_id = {
+        attachment.attachment_id: attachment
+        for attachment in summary.attachments.attachments
+    }
+    children = []
+    for action in summary.attachment_actions:
+        if action.kind not in (
+            WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY,
+            WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY,
+        ):
+            continue
+        attachment = attachments_by_id[action.attachment_id]
+        boundary = tuple(
+            incidence
+            for incidence in attachment.boundary
+            if incidence.written_atom == atom
+        )
+        if not boundary:
+            continue
+        if len(boundary) != 1:
+            _invalid_snapshot("writer residual attachment has multiple incidences")
+        incidence = boundary[0]
+        children.append((incidence.bond, incidence.residual_atom))
+    return tuple(sorted(children, key=lambda item: (int(item[0]), int(item[1]))))
+
+
+def _attachment_is_owned_by_pending_entry(
+    key: WriterStateKey,
+    atoms: frozenset[AtomId],
+) -> bool:
+    pending = key.obligations.pending_entry
+    return pending is not None and pending.child in atoms
+
+
+def _active_is_terminal_leaf(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+) -> bool:
+    active = key.active
+    if not active.atom_emitted:
+        return False
+    current = key.component_cursor.component_index
+    component = prepared.facts.components[current]
+    if len(component.atoms) == 1:
+        return active.atom == key.component_cursor.component_roots[current]
+    parent_links = _written_tree_parent_links(prepared, key)
+    children = {
+        child
+        for child, (parent, _) in parent_links.items()
+        if parent == active.atom
+    }
+    return not children
+
+
+def _validate_stereo_occurrences_bound_to_graph_state(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+    context: WriterGraphObligationContext,
+) -> None:
+    atom_occurrence_atoms = frozenset(
+        record.atom for record in key.stereo_state.atom_occurrences
+    )
+    if atom_occurrence_atoms != key.visited_atoms:
+        _invalid_snapshot("writer atom occurrences do not cover visited atoms")
+    pending_bond = _pending_post_bond_edge(key)
+    expected_bonds = set(key.written_bonds)
+    if pending_bond is not None:
+        expected_bonds.add(pending_bond.bond)
+    directional_carrier_bonds = frozenset(
+        _directional_sites_by_carrier_bond(prepared)
+    )
+    closed_directional_closure_bonds = frozenset(
+        closure.bond
+        for closure in key.ring_state.closed_closures
+        if closure.bond in directional_carrier_bonds
+    )
+    expected_bonds.update(closed_directional_closure_bonds)
+    bond_occurrence_bonds = frozenset(
+        record.bond for record in key.stereo_state.bond_occurrences
+    )
+    if bond_occurrence_bonds != frozenset(expected_bonds):
+        _invalid_snapshot("writer bond occurrences do not cover emitted bonds")
+    parent_links = _written_tree_parent_links(prepared, key)
+    parent_by_child = {
+        child: parent
+        for child, (parent, _bond) in parent_links.items()
+    }
+    _validate_atom_occurrence_traversal_order(prepared, key, parent_links)
+    for record in key.stereo_state.atom_occurrences:
+        if record.atom not in key.visited_atoms:
+            _invalid_snapshot("writer atom occurrence is not backed by visited atom")
+    for record in key.stereo_state.local_orders:
+        if record.atom not in key.visited_atoms:
+            _invalid_snapshot("writer local-order record is not backed by visited atom")
+    for record in key.stereo_state.bond_occurrences:
+        if record.bond in key.written_bonds:
+            if record.parent not in key.visited_atoms or record.child not in key.visited_atoms:
+                _invalid_snapshot("writer bond occurrence has unvisited written endpoint")
+            expected = parent_links.get(record.child)
+            if expected != (record.parent, record.bond):
+                _invalid_snapshot("writer bond occurrence has wrong writer orientation")
+            continue
+        if (
+            pending_bond is not None
+            and pending_bond.bond == record.bond
+            and pending_bond.parent == record.parent
+            and pending_bond.child == record.child
+        ):
+            if record.parent not in key.visited_atoms:
+                _invalid_snapshot("writer pending bond occurrence has unvisited parent")
+            if record.child in key.visited_atoms or record.bond in key.written_bonds:
+                _invalid_snapshot("writer pending bond occurrence is already materialized")
+            continue
+        if record.bond in closed_directional_closure_bonds:
+            closure = next(
+                item
+                for item in key.ring_state.closed_closures
+                if item.bond == record.bond
+            )
+            if (
+                record.parent not in key.visited_atoms
+                or record.child not in key.visited_atoms
+            ):
+                _invalid_snapshot("writer closure bond occurrence has unvisited endpoint")
+            if frozenset((record.parent, record.child)) != frozenset(
+                (closure.first_atom, closure.second_atom)
+            ):
+                _invalid_snapshot("writer closure bond occurrence has wrong endpoints")
+            continue
+        _invalid_snapshot("writer bond occurrence is not backed by emitted graph state")
+
+    actual_by_atom = {
+        record.atom: record
+        for record in key.stereo_state.local_orders
+    }
+    open_frame_atoms = {
+        frame.return_atom.atom
+        for frame in key.branch_stack
+    }
+    if key.active.atom_emitted:
+        open_frame_atoms.add(key.active.atom)
+
+    closed_atoms = set(key.visited_atoms) - open_frame_atoms
+    active_record = actual_by_atom.get(key.active.atom)
+    active_is_closed = active_record is not None and active_record.closed
+    if active_is_closed:
+        if not _state_is_terminal_shape(prepared, key, context):
+            _invalid_snapshot(
+                "writer active local order is closed before terminal shape"
+            )
+        closed_atoms.add(key.active.atom)
+
+    for atom in {
+        frame.return_atom.atom
+        for frame in key.branch_stack
+    }:
+        record = actual_by_atom.get(atom)
+        if record is not None and record.closed:
+            _invalid_snapshot(
+                "writer branch-return local order is prematurely closed"
+            )
+
+    expected_records = reconstruct_writer_local_order_records(
+        prepared,
+        atom_occurrences=key.stereo_state.atom_occurrences,
+        parent_by_child=parent_by_child,
+        closed_atoms=frozenset(closed_atoms),
+        ring_incidences_by_atom=_ring_incidences_by_atom(key),
+    )
+    expected_by_atom = {
+        record.atom: record
+        for record in expected_records
+    }
+    if actual_by_atom != expected_by_atom:
+        _invalid_snapshot(
+            "writer local-order history does not match emitted tree history"
+        )
+
+
+def _ring_incidences_by_atom(
+    key: WriterStateKey,
+) -> dict[AtomId, tuple[tuple[BondId, AtomId], ...]]:
+    incidences: dict[AtomId, list[tuple[BondId, AtomId]]] = {}
+    for endpoint in key.ring_state.open_endpoints:
+        incidences.setdefault(endpoint.first_atom, []).append(
+            (endpoint.bond, endpoint.second_atom),
+        )
+    for closure in key.ring_state.closed_closures:
+        incidences.setdefault(closure.first_atom, []).append(
+            (closure.bond, closure.second_atom),
+        )
+        incidences.setdefault(closure.second_atom, []).append(
+            (closure.bond, closure.first_atom),
+        )
+    return {
+        atom: tuple(entries)
+        for atom, entries in incidences.items()
+    }
+
+
+def _validate_atom_occurrence_traversal_order(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+    parent_links: Mapping[AtomId, tuple[AtomId, BondId]],
+) -> None:
+    occurrence_atoms = tuple(
+        record.atom
+        for record in key.stereo_state.atom_occurrences
+    )
+    position = {
+        atom: index
+        for index, atom in enumerate(occurrence_atoms)
+    }
+
+    for child, (parent, _bond) in parent_links.items():
+        if position[parent] >= position[child]:
+            _invalid_snapshot(
+                "writer atom occurrence precedes its tree parent"
+            )
+
+    children_by_parent: dict[AtomId, list[AtomId]] = {}
+    for child, (parent, _bond) in parent_links.items():
+        children_by_parent.setdefault(parent, []).append(child)
+    for children in children_by_parent.values():
+        children.sort(key=position.__getitem__)
+
+    component_by_atom = _atom_component_index(prepared)
+    component_sequence = tuple(
+        component_by_atom[atom]
+        for atom in occurrence_atoms
+    )
+    if any(
+        left > right
+        for left, right in zip(component_sequence, component_sequence[1:])
+    ):
+        _invalid_snapshot(
+            "writer atom occurrence component order is not depth-first"
+        )
+
+    for index in range(key.component_cursor.component_index + 1):
+        root = key.component_cursor.component_roots[index]
+        component_occurrences = tuple(
+            atom
+            for atom in occurrence_atoms
+            if component_by_atom.get(atom) == index
+        )
+        if not component_occurrences:
+            continue
+        if component_occurrences[0] != root:
+            _invalid_snapshot(
+                "writer atom occurrence component does not start at root"
+            )
+
+        expected: list[AtomId] = []
+
+        def visit(atom: AtomId) -> None:
+            expected.append(atom)
+            for child in children_by_parent.get(atom, ()):
+                visit(child)
+
+        visit(root)
+        expected_seen = tuple(
+            atom
+            for atom in expected
+            if atom in position and component_by_atom.get(atom) == index
+        )
+        if component_occurrences != expected_seen:
+            _invalid_snapshot(
+                "writer atom occurrence order is not depth-first"
+            )
+
+    current_index = key.component_cursor.component_index
+    current_component_occurrences = tuple(
+        atom
+        for atom in occurrence_atoms
+        if component_by_atom.get(atom) == current_index
+    )
+    if key.active.atom_emitted:
+        if not current_component_occurrences:
+            _invalid_snapshot(
+                "writer emitted active frame lacks atom occurrence"
+            )
+        if not _is_tree_ancestor_or_self(
+            key.active.atom,
+            current_component_occurrences[-1],
+            parent_links,
+        ):
+            _invalid_snapshot(
+                "writer active frame is inconsistent with atom occurrence order"
+            )
+    elif current_component_occurrences:
+        _invalid_snapshot(
+            "writer unemitted active frame has atom occurrence history"
+        )
+
+
+def _is_tree_ancestor_or_self(
+    ancestor: AtomId,
+    atom: AtomId,
+    parent_links: Mapping[AtomId, tuple[AtomId, BondId]],
+) -> bool:
+    current = atom
+    while True:
+        if current == ancestor:
+            return True
+        link = parent_links.get(current)
+        if link is None:
+            return False
+        current = link[0]
+
+
+def _pending_post_bond_edge(key: WriterStateKey) -> PendingWriterEntry | None:
+    pending = key.obligations.pending_entry
+    if pending is None or pending.phase is not PendingEntryPhase.NEEDS_ATOM_AFTER_BOND:
+        return None
+    return pending
+
+
+def _written_tree_parent_links(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+) -> dict[AtomId, tuple[AtomId, BondId]]:
+    parent_by_child: dict[AtomId, tuple[AtomId, BondId]] = {}
+    for index in range(key.component_cursor.component_index + 1):
+        component = prepared.facts.components[index]
+        component_bonds = frozenset(component.bonds)
+        written = frozenset(bond for bond in key.written_bonds if bond in component_bonds)
+        root = key.component_cursor.component_roots[index]
+        adjacency: dict[AtomId, list[tuple[AtomId, BondId]]] = {}
+        for bond in written:
+            fact = prepared.graph_index.bond_by_id[bond]
+            adjacency.setdefault(fact.a, []).append((fact.b, bond))
+            adjacency.setdefault(fact.b, []).append((fact.a, bond))
+        seen = {root}
+        stack = [root]
+        while stack:
+            parent = stack.pop()
+            for child, bond in adjacency.get(parent, ()):
+                if child in seen:
+                    continue
+                seen.add(child)
+                parent_by_child[child] = (parent, bond)
+                stack.append(child)
+    return parent_by_child
+
+
+def _state_is_terminal_shape(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+    context: WriterGraphObligationContext,
+) -> bool:
+    if key.obligations.pending_entry is not None or key.branch_stack:
+        return False
+    if key.ring_state.open_endpoints:
+        return False
+    if _active_owns_live_attachment_action(key, context):
+        return False
+    if key.component_cursor.component_index + 1 < len(key.component_cursor.component_roots):
+        return False
+    if not writer_graph_completion_status(prepared, key, context).complete:
+        return False
+    return _active_is_terminal_leaf(prepared, key)
+
+
+def _active_owns_live_attachment_action(
+    key: WriterStateKey,
+    context: WriterGraphObligationContext,
+) -> bool:
+    live_kinds = (
+        WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY,
+        WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY,
+        WriterResidualAttachmentActionKind.CLOSURE_OPEN_READY,
+    )
+    return any(
+        action.kind in live_kinds and key.active.atom in action.owner_atoms
+        for action in context.residual_summary.attachment_actions
+    )
+
+
+def _validate_policy_state(
+    key: WriterStateKey,
+    atom_ids: frozenset[AtomId],
+    bond_ids: frozenset[BondId],
+) -> None:
+    if any(atom not in atom_ids for atom, _ in key.policy_state.atom_text):
+        _invalid_snapshot("writer policy atom text references unknown atom")
+    if any(bond not in bond_ids for bond, _ in key.policy_state.bond_text):
+        _invalid_snapshot("writer policy bond text references unknown bond")
+
+
+def _validate_stereo_state(
+    prepared: SouthStarPreparedMol,
+    stereo_state: WriterStereoStateKey,
+    *,
+    ring_state: WriterRingStateKey | None = None,
+    stereo_residual_cache: dict[
+        tuple[WriterStereoStateKey, WriterRingStateKey],
+        ResidualStoreValueSnapshot,
+    ] | None = None,
+) -> None:
+    _round_trip_residual_snapshot(stereo_state.residual_snapshot)
+    _validate_unique_stereo_records(stereo_state)
+    occurrence_by_id = {item.id: item for item in prepared.facts.ligand_occurrences}
+    atom_ids = frozenset(prepared.atom_ids)
+    bond_ids = frozenset(bond.id for bond in prepared.facts.bonds)
+    tetra_by_center = {template.center: template for template in prepared.tetra_templates}
+    directional_sites_by_bond = _directional_sites_by_carrier_bond(prepared)
+    _validate_atom_occurrence_records(
+        stereo_state,
+        atom_ids,
+        tetra_by_center,
+    )
+    _validate_bond_occurrence_records(
+        stereo_state,
+        atom_ids,
+        bond_ids,
+        prepared,
+        directional_sites_by_bond,
+    )
+    _validate_local_order_records(
+        prepared,
+        stereo_state,
+        occurrence_by_id,
+        atom_ids,
+        tetra_by_center,
+    )
+    try:
+        cache_key = None
+        if ring_state is not None:
+            cache_key = (stereo_state, ring_state)
+        if (
+            stereo_residual_cache is not None
+            and cache_key is not None
+            and cache_key in stereo_residual_cache
+        ):
+            expected_residual = stereo_residual_cache[cache_key]
+        else:
+            expected_residual = reconstruct_writer_stereo_residual_snapshot(
+                prepared,
+                stereo_state,
+                ring_state=ring_state,
+            )
+            if stereo_residual_cache is not None and cache_key is not None:
+                stereo_residual_cache[cache_key] = expected_residual
+    except (ValueError, SouthStarError) as exc:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "writer stereo history does not define a valid residual state",
+        ) from exc
+
+    if stereo_state.residual_snapshot != expected_residual:
+        _invalid_snapshot(
+            "writer residual snapshot does not match stereo event history"
+        )
+
+
+def _validate_unique_stereo_records(stereo_state: WriterStereoStateKey) -> None:
+    _reject_duplicate_items(
+        (record.atom for record in stereo_state.atom_occurrences),
+        "writer atom occurrence records contain duplicates",
+    )
+    _reject_duplicate_items(
+        ((record.bond, record.parent, record.child) for record in stereo_state.bond_occurrences),
+        "writer bond occurrence records contain duplicate orientations",
+    )
+    _reject_duplicate_items(
+        (record.bond for record in stereo_state.bond_occurrences),
+        "writer bond occurrence records contain duplicate bonds",
+    )
+    _reject_duplicate_items(
+        (record.atom for record in stereo_state.local_orders),
+        "writer local-order records contain duplicate atoms",
+    )
+    _reject_duplicate_items(
+        stereo_state.residual_snapshot.factors,
+        "writer residual factor snapshots contain duplicates",
+    )
+    _reject_duplicate_items(
+        (var for var, _ in stereo_state.residual_snapshot.domains),
+        "writer residual domains contain duplicate variables",
+    )
+    _reject_duplicate_items(
+        (var for var, _ in stereo_state.residual_snapshot.assignments),
+        "writer residual assignments contain duplicate variables",
+    )
+
+
+def _validate_atom_occurrence_records(
+    stereo_state: WriterStereoStateKey,
+    atom_ids: frozenset[AtomId],
+    tetra_by_center,
+) -> None:
+    for record in stereo_state.atom_occurrences:
+        if record.atom not in atom_ids:
+            _invalid_snapshot("writer atom occurrence references unknown atom")
+        template = tetra_by_center.get(record.atom)
+        if template is None:
+            if record.token is not TetraToken.NONE:
+                _invalid_snapshot("writer atom occurrence has unexpected tetra token")
+            continue
+        if template.status is SiteStatus.UNSPECIFIED and record.token is not TetraToken.NONE:
+            _invalid_snapshot("writer unspecified tetra occurrence has token")
+        if template.status is SiteStatus.SPECIFIED and record.token not in {
+            TetraToken.AT,
+            TetraToken.ATAT,
+        }:
+            _invalid_snapshot("writer specified tetra occurrence lacks token")
+
+
+def _validate_bond_occurrence_records(
+    stereo_state: WriterStereoStateKey,
+    atom_ids: frozenset[AtomId],
+    bond_ids: frozenset[BondId],
+    prepared: SouthStarPreparedMol,
+    directional_sites_by_bond: dict[BondId, tuple[SiteId, ...]],
+) -> None:
+    for record in stereo_state.bond_occurrences:
+        if record.bond not in bond_ids or record.parent not in atom_ids or record.child not in atom_ids:
+            _invalid_snapshot("writer bond occurrence references unknown graph item")
+        _require_graph_bond(prepared, record.parent, record.child, record.bond)
+        eligible_sites = directional_sites_by_bond.get(record.bond, ())
+        if not eligible_sites and record.mark is not DirectionMark.ABSENT:
+            _invalid_snapshot("writer bond occurrence has unexpected direction mark")
+
+
+def _validate_local_order_records(
+    prepared: SouthStarPreparedMol,
+    stereo_state: WriterStereoStateKey,
+    occurrence_by_id,
+    atom_ids: frozenset[AtomId],
+    tetra_by_center,
+) -> None:
+    for record in stereo_state.local_orders:
+        if record.atom not in atom_ids:
+            _invalid_snapshot("writer local-order record references unknown atom")
+        if len(set(record.order)) != len(record.order):
+            _invalid_snapshot("writer local-order record repeats ligand occurrence")
+        template = tetra_by_center.get(record.atom)
+        allowed = _allowed_local_order_occurrences(prepared, record.atom, template)
+        for occurrence_id in record.order:
+            occurrence = occurrence_by_id.get(occurrence_id)
+            if occurrence is None:
+                _invalid_snapshot("writer local-order record references unknown ligand occurrence")
+            if occurrence_id not in allowed:
+                _invalid_snapshot("writer local-order occurrence belongs to another site")
+            if occurrence.kind is LigandKind.IMPLICIT_H:
+                if occurrence.atom != record.atom:
+                    _invalid_snapshot("writer local-order implicit-H occurrence is on another atom")
+            elif occurrence.kind is LigandKind.NEIGHBOR_ATOM:
+                if occurrence.atom not in atom_ids or occurrence.bond is None:
+                    _invalid_snapshot("writer local-order neighbor occurrence references unknown atom")
+                _require_graph_bond(prepared, record.atom, occurrence.atom, occurrence.bond)
+            else:
+                _invalid_snapshot("writer local-order pseudo occurrence is unsupported")
+        if record.closed and template is not None:
+            if set(record.order) != set(template.ligand_occurrences):
+                _invalid_snapshot("writer closed tetra local order is incomplete")
+
+
+def _directional_reference_pair(template) -> tuple[OccurrenceId, OccurrenceId]:
+    if template.reference_pair is not None:
+        return template.reference_pair
+    return (min(template.left_ligands, key=int), min(template.right_ligands, key=int))
+
+
+def _neighbor_ligands_by_bond(
+    occurrence_by_id,
+    ligand_ids: tuple[OccurrenceId, ...],
+) -> dict[BondId, OccurrenceId]:
+    out = {}
+    for ligand_id in ligand_ids:
+        occurrence = occurrence_by_id[ligand_id]
+        if occurrence.kind is not LigandKind.NEIGHBOR_ATOM:
+            continue
+        if occurrence.bond is None:
+            _invalid_snapshot("writer directional neighbor occurrence lacks bond")
+        out[occurrence.bond] = ligand_id
+    return out
+
+
+def _directional_template_substituent_bonds(
+    prepared: SouthStarPreparedMol,
+    template,
+) -> frozenset[BondId]:
+    occurrence_by_id = {item.id: item for item in prepared.facts.ligand_occurrences}
+    bonds: set[BondId] = set()
+    for occurrence_id in template.left_ligands + template.right_ligands:
+        occurrence = occurrence_by_id[occurrence_id]
+        if occurrence.kind is not LigandKind.NEIGHBOR_ATOM:
+            continue
+        if occurrence.bond is None:
+            _invalid_snapshot("writer directional neighbor occurrence lacks bond")
+        bonds.add(occurrence.bond)
+    return frozenset(bonds)
+
+
+def _directional_sites_by_carrier_bond(
+    prepared: SouthStarPreparedMol,
+) -> dict[BondId, tuple[SiteId, ...]]:
+    by_bond: dict[BondId, list[SiteId]] = {}
+    for template in prepared.directional_templates:
+        for bond in _directional_template_substituent_bonds(prepared, template):
+            by_bond.setdefault(bond, []).append(template.site)
+    return {
+        bond: tuple(sorted(sites, key=int))
+        for bond, sites in by_bond.items()
+    }
+
+
+def _allowed_local_order_occurrences(
+    prepared: SouthStarPreparedMol,
+    atom: AtomId,
+    template,
+) -> frozenset[OccurrenceId]:
+    if template is not None:
+        return frozenset(template.ligand_occurrences)
+    return frozenset(
+        occurrence.id
+        for occurrence in prepared.facts.ligand_occurrences
+        if occurrence.kind is LigandKind.IMPLICIT_H and occurrence.atom == atom
+    )
+
+
+def _local_order_record(
+    stereo_state: WriterStereoStateKey,
+    atom: AtomId,
+):
+    for record in stereo_state.local_orders:
+        if record.atom == atom:
+            return record
+    return None
+
+
+def _has_bond_occurrence_record(
+    stereo_state: WriterStereoStateKey,
+    bond: BondId,
+    parent: AtomId,
+    child: AtomId,
+) -> bool:
+    return any(
+        record.bond == bond
+        and record.parent == parent
+        and record.child == child
+        for record in stereo_state.bond_occurrences
+    )
+
+
+def _reject_duplicate_items(items, message: str) -> None:
+    seen = set()
+    for item in items:
+        if item in seen:
+            _invalid_snapshot(message)
+        seen.add(item)
+
+
+def _require_graph_bond(
+    prepared: SouthStarPreparedMol,
+    left: AtomId,
+    right: AtomId,
+    bond: BondId,
+) -> None:
+    actual = prepared.graph_index.bond_between.get((min(left, right), max(left, right)))
+    if actual != bond:
+        _invalid_snapshot("writer state contains graph-invalid atom/bond triple")
+
+
+def _atom_component_index(prepared: SouthStarPreparedMol) -> dict[AtomId, int]:
+    out: dict[AtomId, int] = {}
+    for index, component in enumerate(prepared.facts.components):
+        for atom in component.atoms:
+            out[atom] = index
+    return out
+
+
+def _bond_component_index(prepared: SouthStarPreparedMol) -> dict[BondId, int]:
+    out: dict[BondId, int] = {}
+    for index, component in enumerate(prepared.facts.components):
+        for bond in component.bonds:
+            out[bond] = index
+    return out
+
+
+def _invalid_snapshot(message: str) -> None:
+    raise SouthStarError(SouthStarErrorKind.INTERNAL_INVARIANT, message)
+
+
+__all__ = (
+    "WriterDecoderBoundary",
+    "WriterFrontierFrame",
+    "WriterPreparedIdentity",
+    "WriterSearchSnapshot",
+    "WriterSnapshotFrame",
+    "capture_writer_frontier_snapshot",
+    "capture_initial_writer_frontier_snapshot",
+    "advance_writer_frontier_snapshot",
+    "resume_writer_frontier_choices_from_snapshot",
+    "validate_writer_cursor_against_prepared",
+    "validate_writer_search_snapshot",
+    "writer_frontier_cursor_from_snapshot",
+)

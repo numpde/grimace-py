@@ -1,0 +1,1852 @@
+"""Residual graph-obligation classification for writer-shaped states."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from enum import Enum
+from typing import TYPE_CHECKING
+
+from .errors import SouthStarError
+from .errors import SouthStarErrorKind
+from .writer_execution_evidence import WriterGraphObligationWorkEvidence
+from .facts import BondOrder
+from .facts import LigandKind
+from .ids import AtomId
+from .ids import BondId
+from .policy import DirectionMark
+from .policy import RingLabel
+from .writer_state import WriterStateKey
+
+if TYPE_CHECKING:
+    from .prepared_runtime import SouthStarPreparedMol
+
+
+class WriterBoundaryOwnerKind(Enum):
+    ACTIVE_ATOM = "active_atom"
+    BRANCH_RETURN = "branch_return"
+    PENDING_PARENT = "pending_parent"
+    OPEN_RING_ENDPOINT = "open_ring_endpoint"
+    UNOWNED = "unowned"
+
+
+class WriterEdgeObligationKind(Enum):
+    TREE_ENTRY = "tree_entry"
+    PENDING_ENTRY = "pending_entry"
+    LATENT_RESIDUAL = "latent_residual"
+    BOUNDARY_INCIDENCE = "boundary_incidence"
+    CLOSURE_CANDIDATE = "closure_candidate"
+    OPEN_CLOSURE_ENDPOINT = "open_closure_endpoint"
+    CLOSED_CLOSURE = "closed_closure"
+
+
+class WriterClosureCandidateResolutionKind(Enum):
+    LIVE_BRANCH_RETURN = "live_branch_return"
+    DEFERRED_BRANCH_RETURN = "deferred_branch_return"
+    DEFERRED_CONTROL_LIVE = "deferred_control_live"
+    UNSUPPORTED_NOT_ACTIVE = "unsupported_not_active"
+    UNSUPPORTED_FROZEN_PARTNER = "unsupported_frozen_partner"
+
+
+class WriterControlLiveAtomRole(Enum):
+    ACTIVE = "active"
+    BRANCH_RETURN = "branch_return"
+    PENDING_PARENT = "pending_parent"
+    OPEN_RING_ENDPOINT = "open_ring_endpoint"
+
+
+@dataclass(frozen=True, slots=True)
+class WriterControlLiveAtom:
+    atom: AtomId
+    role: WriterControlLiveAtomRole
+
+
+@dataclass(frozen=True, slots=True)
+class WriterClosureBondTextRelation:
+    rows: tuple[tuple[str, tuple[str, ...]], ...]
+
+    @property
+    def texts(self) -> tuple[str, ...]:
+        return tuple(first_text for first_text, _ in self.rows)
+
+    @property
+    def openable_first_texts(self) -> tuple[str, ...]:
+        return tuple(
+            first_text
+            for first_text, second_texts in self.rows
+            if second_texts
+        )
+
+    @property
+    def compatible_pairs(self) -> tuple[tuple[str, str], ...]:
+        return tuple(
+            (first_text, second_text)
+            for first_text, second_texts in self.rows
+            for second_text in second_texts
+        )
+
+    def compatible_seconds(self, first_text: str) -> tuple[str, ...]:
+        for candidate, second_texts in self.rows:
+            if candidate == first_text:
+                return second_texts
+        return ()
+
+    def pair_ok(self, first_text: str, second_text: str) -> bool:
+        return second_text in self.compatible_seconds(first_text)
+
+
+@dataclass(frozen=True, slots=True)
+class WriterClosureEndpointChoice:
+    bond_text: str
+    direction_mark: DirectionMark
+
+    @property
+    def rendered_text(self) -> str:
+        if self.direction_mark is DirectionMark.FWD:
+            return "/"
+        if self.direction_mark is DirectionMark.REV:
+            return "\\"
+        return self.bond_text
+
+
+@dataclass(frozen=True, slots=True)
+class WriterClosureEndpointRelation:
+    rows: tuple[
+        tuple[
+            WriterClosureEndpointChoice,
+            tuple[WriterClosureEndpointChoice, ...],
+        ],
+        ...
+    ]
+
+    @property
+    def choices(self) -> tuple[WriterClosureEndpointChoice, ...]:
+        return tuple(first for first, _seconds in self.rows)
+
+    @property
+    def openable_first_choices(self) -> tuple[WriterClosureEndpointChoice, ...]:
+        return tuple(first for first, seconds in self.rows if seconds)
+
+    def compatible_seconds(
+        self,
+        first: WriterClosureEndpointChoice,
+    ) -> tuple[WriterClosureEndpointChoice, ...]:
+        for candidate, seconds in self.rows:
+            if candidate == first:
+                return seconds
+        return ()
+
+    def pair_ok(
+        self,
+        first: WriterClosureEndpointChoice,
+        second: WriterClosureEndpointChoice,
+    ) -> bool:
+        return second in self.compatible_seconds(first)
+
+
+class WriterResidualAttachmentActionKind(Enum):
+    ACYCLIC_TREE_ENTRY = "acyclic_tree_entry"
+    CYCLIC_TREE_ENTRY = "cyclic_tree_entry"
+    CLOSURE_OPEN_READY = "closure_open_ready"
+    BLOCKED_UNOWNED = "blocked_unowned"
+    BLOCKED_ORPHAN = "blocked_orphan"
+    BLOCKED_UNSUPPORTED = "blocked_unsupported"
+
+
+@dataclass(frozen=True, slots=True)
+class WriterEdgeObligation:
+    bond: BondId
+    kind: WriterEdgeObligationKind
+    a: AtomId
+    b: AtomId
+
+
+@dataclass(frozen=True, slots=True)
+class WriterEdgeObligationPartition:
+    obligations: tuple[WriterEdgeObligation, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class WriterClosureCandidateResolution:
+    bond: BondId
+    first_atom: AtomId | None
+    second_atom: AtomId | None
+    resolution_kind: WriterClosureCandidateResolutionKind
+    first_atom_roles: frozenset[WriterControlLiveAtomRole] = frozenset()
+    second_atom_roles: frozenset[WriterControlLiveAtomRole] = frozenset()
+
+
+@dataclass(frozen=True, slots=True)
+class WriterGraphCompletionStatus:
+    complete: bool
+    unresolved_kinds: tuple[WriterEdgeObligationKind, ...]
+    unresolved_bonds: tuple[BondId, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class WriterBoundaryIncidence:
+    bond: BondId
+    written_atom: AtomId
+    residual_atom: AtomId
+    owner_kind: WriterBoundaryOwnerKind
+
+
+@dataclass(frozen=True, slots=True)
+class WriterResidualAttachment:
+    attachment_id: int
+    atoms: frozenset[AtomId]
+    latent_bonds: frozenset[BondId]
+    boundary: tuple[WriterBoundaryIncidence, ...]
+    cyclic_rank: int
+    block_ids: frozenset[int]
+
+
+@dataclass(frozen=True, slots=True)
+class WriterResidualAttachmentState:
+    attachments: tuple[WriterResidualAttachment, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class WriterResidualAttachmentAction:
+    attachment_id: int
+    kind: WriterResidualAttachmentActionKind
+    owner_atoms: tuple[AtomId, ...]
+    boundary_bonds: tuple[BondId, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class WriterResidualAttachmentActionIncidence:
+    action: WriterResidualAttachmentAction
+    attachment: WriterResidualAttachment
+    incidence: WriterBoundaryIncidence
+
+
+@dataclass(frozen=True, slots=True)
+class WriterGraphObligationSummary:
+    attachments: WriterResidualAttachmentState
+    attachment_actions: tuple[WriterResidualAttachmentAction, ...]
+    boundary_by_owner_atom: tuple[tuple[AtomId, tuple[int, ...]], ...]
+    boundary_by_pending_parent: tuple[tuple[AtomId, tuple[int, ...]], ...]
+    has_cyclic_attachment: bool
+
+
+@dataclass(frozen=True, slots=True)
+class WriterBlockCutMetadata:
+    bridge_bonds: frozenset[BondId]
+    biconnected_block_by_bond: tuple[tuple[BondId, int], ...]
+    cyclic_blocks: frozenset[int]
+
+
+@dataclass(frozen=True, slots=True)
+class WriterComponentConnectivity:
+    component_index: int
+    atoms: frozenset[AtomId]
+    bonds: frozenset[BondId]
+    connected: bool
+
+
+@dataclass(frozen=True, slots=True)
+class WriterGraphPreparedMetadata:
+    block_cut: WriterBlockCutMetadata
+    component_connectivity: tuple[WriterComponentConnectivity, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class WriterGraphObligationContext:
+    edge_partition: WriterEdgeObligationPartition
+    residual_summary: WriterGraphObligationSummary
+    prepared_metadata: WriterGraphPreparedMetadata
+
+
+def build_writer_block_cut_metadata(
+    prepared: SouthStarPreparedMol,
+) -> WriterBlockCutMetadata:
+    return _build_writer_block_cut_metadata_from_graph(prepared.atom_ids, prepared.graph_index)
+
+
+def build_writer_graph_prepared_metadata(
+    prepared: SouthStarPreparedMol,
+) -> WriterGraphPreparedMetadata:
+    return build_writer_graph_prepared_metadata_from_facts(
+        prepared.facts,
+        prepared.graph_index,
+        prepared.atom_ids,
+    )
+
+
+def build_writer_graph_prepared_metadata_from_facts(
+    facts,
+    graph_index,
+    atom_ids: tuple[AtomId, ...],
+) -> WriterGraphPreparedMetadata:
+    return WriterGraphPreparedMetadata(
+        block_cut=_build_writer_block_cut_metadata_from_graph(atom_ids, graph_index),
+        component_connectivity=_component_connectivity(facts, graph_index),
+    )
+
+
+def _build_writer_block_cut_metadata_from_graph(
+    atom_ids: tuple[AtomId, ...],
+    graph,
+) -> WriterBlockCutMetadata:
+    time = 0
+    seen: set[AtomId] = set()
+    discovery: dict[AtomId, int] = {}
+    low: dict[AtomId, int] = {}
+    edge_stack: list[BondId] = []
+    blocks: list[tuple[BondId, ...]] = []
+
+    def dfs(atom: AtomId, parent_bond: BondId | None) -> None:
+        nonlocal time
+        seen.add(atom)
+        discovery[atom] = time
+        low[atom] = time
+        time += 1
+        for neighbor in graph.neighbors[atom]:
+            bond = graph.bond_between[(min(atom, neighbor), max(atom, neighbor))]
+            if bond == parent_bond:
+                continue
+            if neighbor not in seen:
+                edge_stack.append(bond)
+                dfs(neighbor, bond)
+                low[atom] = min(low[atom], low[neighbor])
+                if low[neighbor] >= discovery[atom]:
+                    block_edges = []
+                    while edge_stack:
+                        popped = edge_stack.pop()
+                        block_edges.append(popped)
+                        if popped == bond:
+                            break
+                    blocks.append(tuple(block_edges))
+            elif discovery[neighbor] < discovery[atom]:
+                edge_stack.append(bond)
+                low[atom] = min(low[atom], discovery[neighbor])
+
+    for atom in atom_ids:
+        if atom in seen:
+            continue
+        dfs(atom, None)
+        if edge_stack:
+            blocks.append(tuple(edge_stack))
+            edge_stack.clear()
+
+    bridge_bonds: set[BondId] = set()
+    cyclic_blocks: set[int] = set()
+    block_by_bond: list[tuple[BondId, int]] = []
+    for block_id, block_edges in enumerate(blocks):
+        unique_edges = frozenset(block_edges)
+        if len(unique_edges) == 1:
+            bridge_bonds.update(unique_edges)
+        else:
+            cyclic_blocks.add(block_id)
+        for bond in unique_edges:
+            block_by_bond.append((bond, block_id))
+
+    return WriterBlockCutMetadata(
+        bridge_bonds=frozenset(bridge_bonds),
+        biconnected_block_by_bond=tuple(
+            sorted(block_by_bond, key=lambda item: int(item[0]))
+        ),
+        cyclic_blocks=frozenset(cyclic_blocks),
+    )
+
+
+def build_writer_graph_obligation_context(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+) -> WriterGraphObligationContext:
+    _current_component(prepared, key)
+    partition = classify_writer_edge_obligations(prepared, key)
+    validate_writer_edge_obligation_partition(prepared, key, partition)
+    metadata = prepared.writer_graph_metadata
+    summary = classify_writer_residual_attachments(
+        prepared,
+        key,
+        metadata.block_cut,
+        partition=partition,
+    )
+    return WriterGraphObligationContext(
+        edge_partition=partition,
+        residual_summary=summary,
+        prepared_metadata=metadata,
+    )
+
+
+def writer_graph_obligation_work_evidence(
+    *,
+    operation: str,
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+    context: WriterGraphObligationContext,
+) -> WriterGraphObligationWorkEvidence:
+    component_index = key.component_cursor.component_index
+    component = prepared.facts.components[component_index]
+    obligations = context.edge_partition.obligations
+    attachments = context.residual_summary.attachments.attachments
+    closure_candidate_resolutions = writer_closure_candidate_resolutions(
+        key,
+        context.edge_partition,
+    )
+
+    return WriterGraphObligationWorkEvidence(
+        operation=operation,
+        component_index=component_index,
+        component_atom_count=len(component.atoms),
+        component_bond_count=len(component.bonds),
+        edge_obligation_count=len(obligations),
+        residual_attachment_count=len(attachments),
+        residual_attachment_action_count=(
+            len(context.residual_summary.attachment_actions)
+        ),
+        boundary_incidence_count=sum(
+            len(attachment.boundary)
+            for attachment in attachments
+        ),
+        closure_candidate_count=sum(
+            1
+            for obligation in obligations
+            if obligation.kind is WriterEdgeObligationKind.CLOSURE_CANDIDATE
+        ),
+        live_branch_return_closure_candidate_count=sum(
+            1
+            for resolution in closure_candidate_resolutions
+            if (
+                resolution.resolution_kind
+                is WriterClosureCandidateResolutionKind.LIVE_BRANCH_RETURN
+            )
+        ),
+        deferred_branch_return_closure_candidate_count=sum(
+            1
+            for resolution in closure_candidate_resolutions
+            if (
+                resolution.resolution_kind
+                is WriterClosureCandidateResolutionKind.DEFERRED_BRANCH_RETURN
+            )
+        ),
+        deferred_control_live_closure_candidate_count=sum(
+            1
+            for resolution in closure_candidate_resolutions
+            if (
+                resolution.resolution_kind
+                is WriterClosureCandidateResolutionKind.DEFERRED_CONTROL_LIVE
+            )
+        ),
+        unsupported_closure_candidate_count=sum(
+            1
+            for resolution in closure_candidate_resolutions
+            if (
+                resolution.resolution_kind
+                not in (
+                    WriterClosureCandidateResolutionKind.LIVE_BRANCH_RETURN,
+                    WriterClosureCandidateResolutionKind.DEFERRED_BRANCH_RETURN,
+                    WriterClosureCandidateResolutionKind.DEFERRED_CONTROL_LIVE,
+                )
+            )
+        ),
+        open_closure_count=sum(
+            1
+            for obligation in obligations
+            if obligation.kind is (
+                WriterEdgeObligationKind.OPEN_CLOSURE_ENDPOINT
+            )
+        ),
+        closed_closure_count=sum(
+            1
+            for obligation in obligations
+            if obligation.kind is WriterEdgeObligationKind.CLOSED_CLOSURE
+        ),
+        max_attachment_atom_count=max(
+            (len(attachment.atoms) for attachment in attachments),
+            default=0,
+        ),
+        max_attachment_boundary_count=max(
+            (len(attachment.boundary) for attachment in attachments),
+            default=0,
+        ),
+        max_attachment_cyclic_rank=max(
+            (attachment.cyclic_rank for attachment in attachments),
+            default=0,
+        ),
+    )
+
+
+def validate_writer_transition_graph_surface(
+    prepared: SouthStarPreparedMol,
+) -> None:
+    for surface in prepared.writer_graph_metadata.component_connectivity:
+        if not surface.connected:
+            raise SouthStarError(
+                SouthStarErrorKind.UNSUPPORTED_POLICY,
+                "WRITER_SHAPED raw transitions require connected components",
+            )
+
+
+def validate_writer_snapshot_graph_coherence(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+    context: WriterGraphObligationContext,
+) -> None:
+    _validate_closure_state_supported_for_snapshot(prepared, key, context)
+
+
+def classify_writer_residual_attachments(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+    block_cut: WriterBlockCutMetadata,
+    *,
+    partition: WriterEdgeObligationPartition | None = None,
+) -> WriterGraphObligationSummary:
+    component = _current_component(prepared, key)
+    component_atoms = frozenset(component.atoms)
+    visited = frozenset(atom for atom in key.visited_atoms if atom in component_atoms)
+    residual_atoms = component_atoms - visited
+    block_by_bond = dict(block_cut.biconnected_block_by_bond)
+    if partition is None:
+        partition = classify_writer_edge_obligations(prepared, key)
+        validate_writer_edge_obligation_partition(prepared, key, partition)
+    latent_obligations = tuple(
+        obligation
+        for obligation in partition.obligations
+        if obligation.kind is WriterEdgeObligationKind.LATENT_RESIDUAL
+    )
+    boundary_obligations = tuple(
+        obligation
+        for obligation in partition.obligations
+        if obligation.kind is WriterEdgeObligationKind.BOUNDARY_INCIDENCE
+    )
+    has_closure_candidate = any(
+        obligation.kind is WriterEdgeObligationKind.CLOSURE_CANDIDATE
+        for obligation in partition.obligations
+    )
+    attachments: list[WriterResidualAttachment] = []
+
+    for atoms in _residual_atom_components(prepared, residual_atoms, latent_obligations):
+        latent_bonds = frozenset(
+            obligation.bond
+            for obligation in latent_obligations
+            if obligation.a in atoms and obligation.b in atoms
+        )
+        boundary = tuple(
+            sorted(
+                _boundary_incidences(prepared, key, atoms, boundary_obligations),
+                key=writer_boundary_incidence_sort_tuple,
+            )
+        )
+        block_ids = frozenset(
+            block_by_bond[bond]
+            for bond in (*latent_bonds, *(incidence.bond for incidence in boundary))
+            if bond in block_by_bond
+        )
+        cyclic_rank = len(latent_bonds) - len(atoms) + 1
+        attachments.append(
+            WriterResidualAttachment(
+                attachment_id=0,
+                atoms=frozenset(atoms),
+                latent_bonds=latent_bonds,
+                boundary=boundary,
+                cyclic_rank=cyclic_rank,
+                block_ids=block_ids,
+            )
+        )
+
+    sorted_attachments = []
+    for attachment_id, attachment in enumerate(
+        sorted(attachments, key=writer_residual_attachment_sort_tuple)
+    ):
+        sorted_attachments.append(
+            WriterResidualAttachment(
+                attachment_id=attachment_id,
+                atoms=attachment.atoms,
+                latent_bonds=attachment.latent_bonds,
+                boundary=attachment.boundary,
+                cyclic_rank=attachment.cyclic_rank,
+                block_ids=attachment.block_ids,
+            )
+        )
+
+    boundary_by_owner: dict[AtomId, set[int]] = {}
+    boundary_by_pending: dict[AtomId, set[int]] = {}
+    for attachment in sorted_attachments:
+        for incidence in attachment.boundary:
+            if incidence.owner_kind in (
+                WriterBoundaryOwnerKind.ACTIVE_ATOM,
+                WriterBoundaryOwnerKind.BRANCH_RETURN,
+            ):
+                boundary_by_owner.setdefault(incidence.written_atom, set()).add(
+                    attachment.attachment_id
+                )
+            if incidence.owner_kind is WriterBoundaryOwnerKind.PENDING_PARENT:
+                boundary_by_pending.setdefault(incidence.written_atom, set()).add(
+                    attachment.attachment_id
+                )
+
+    attachment_actions = tuple(
+        _residual_attachment_action(
+            attachment,
+            block_cut,
+            key,
+            has_visited=bool(visited),
+        )
+        for attachment in sorted_attachments
+    )
+    has_cyclic_attachment = any(
+        attachment.cyclic_rank > 0
+        or len(attachment.boundary) > 1
+        for attachment in sorted_attachments
+    ) or has_closure_candidate
+    return WriterGraphObligationSummary(
+        attachments=WriterResidualAttachmentState(
+            attachments=tuple(sorted_attachments)
+        ),
+        attachment_actions=attachment_actions,
+        boundary_by_owner_atom=_canonical_boundary_index(boundary_by_owner),
+        boundary_by_pending_parent=_canonical_boundary_index(boundary_by_pending),
+        has_cyclic_attachment=has_cyclic_attachment,
+    )
+
+
+def writer_residual_attachment_action_incidences(
+    summary: WriterGraphObligationSummary,
+) -> tuple[WriterResidualAttachmentActionIncidence, ...]:
+    attachments_by_id: dict[int, WriterResidualAttachment] = {}
+    for attachment in summary.attachments.attachments:
+        if attachment.attachment_id in attachments_by_id:
+            raise ValueError(
+                f"duplicate writer residual attachment id: {attachment.attachment_id!r}"
+            )
+        attachments_by_id[attachment.attachment_id] = attachment
+
+    incidences: list[WriterResidualAttachmentActionIncidence] = []
+    for action in summary.attachment_actions:
+        attachment = attachments_by_id.get(action.attachment_id)
+        if attachment is None:
+            raise ValueError(
+                "writer residual attachment action references unknown "
+                f"attachment: {action.attachment_id!r}"
+            )
+        for incidence in attachment.boundary:
+            incidences.append(
+                WriterResidualAttachmentActionIncidence(
+                    action=action,
+                    attachment=attachment,
+                    incidence=incidence,
+                )
+            )
+    return tuple(incidences)
+
+
+def writer_residual_attachment_action_incidences_for_atom(
+    summary: WriterGraphObligationSummary,
+    atom: AtomId,
+) -> tuple[WriterResidualAttachmentActionIncidence, ...]:
+    return tuple(
+        incidence
+        for incidence in writer_residual_attachment_action_incidences(summary)
+        if incidence.incidence.written_atom == atom
+    )
+
+
+def classify_writer_edge_obligations(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+) -> WriterEdgeObligationPartition:
+    component = _current_component(prepared, key)
+    pending = key.obligations.pending_entry
+    open_bonds = {endpoint.bond for endpoint in key.ring_state.open_endpoints}
+    closed_bonds = {closure.bond for closure in key.ring_state.closed_closures}
+    obligations = []
+    for bond in sorted(component.bonds, key=int):
+        fact = prepared.graph_index.bond_by_id[bond]
+        if bond in closed_bonds:
+            kind = WriterEdgeObligationKind.CLOSED_CLOSURE
+        elif bond in open_bonds:
+            kind = WriterEdgeObligationKind.OPEN_CLOSURE_ENDPOINT
+        elif bond in key.written_bonds:
+            kind = WriterEdgeObligationKind.TREE_ENTRY
+        elif pending is not None and pending.bond == bond:
+            kind = WriterEdgeObligationKind.PENDING_ENTRY
+        else:
+            left_visited = fact.a in key.visited_atoms
+            right_visited = fact.b in key.visited_atoms
+            if left_visited and right_visited:
+                kind = WriterEdgeObligationKind.CLOSURE_CANDIDATE
+            elif left_visited or right_visited:
+                kind = WriterEdgeObligationKind.BOUNDARY_INCIDENCE
+            else:
+                kind = WriterEdgeObligationKind.LATENT_RESIDUAL
+        obligations.append(
+            WriterEdgeObligation(
+                bond=bond,
+                kind=kind,
+                a=fact.a,
+                b=fact.b,
+            )
+        )
+    return WriterEdgeObligationPartition(obligations=tuple(obligations))
+
+
+def writer_closure_candidate_resolutions(
+    key: WriterStateKey,
+    partition: WriterEdgeObligationPartition,
+) -> tuple[WriterClosureCandidateResolution, ...]:
+    roles_by_atom = writer_control_live_roles_by_atom(key)
+    branch_return_role = WriterControlLiveAtomRole.BRANCH_RETURN
+    pending_parent_role = WriterControlLiveAtomRole.PENDING_PARENT
+    active_atom = key.active.atom
+    resolutions: list[WriterClosureCandidateResolution] = []
+
+    for obligation in partition.obligations:
+        if obligation.kind is not WriterEdgeObligationKind.CLOSURE_CANDIDATE:
+            continue
+
+        if active_atom == obligation.a:
+            partner = obligation.b
+        elif active_atom == obligation.b:
+            partner = obligation.a
+        else:
+            left_roles = roles_by_atom.get(obligation.a, frozenset())
+            right_roles = roles_by_atom.get(obligation.b, frozenset())
+            if branch_return_role in left_roles and branch_return_role in right_roles:
+                kind = (
+                    WriterClosureCandidateResolutionKind
+                    .DEFERRED_BRANCH_RETURN
+                )
+            elif (
+                (
+                    pending_parent_role in left_roles
+                    and branch_return_role in right_roles
+                )
+                or (
+                    branch_return_role in left_roles
+                    and pending_parent_role in right_roles
+                )
+            ):
+                kind = (
+                    WriterClosureCandidateResolutionKind
+                    .DEFERRED_CONTROL_LIVE
+                )
+            else:
+                kind = (
+                    WriterClosureCandidateResolutionKind
+                    .UNSUPPORTED_NOT_ACTIVE
+                )
+            resolutions.append(
+                WriterClosureCandidateResolution(
+                    bond=obligation.bond,
+                    first_atom=None,
+                    second_atom=None,
+                    resolution_kind=kind,
+                    first_atom_roles=left_roles,
+                    second_atom_roles=right_roles,
+                )
+            )
+            continue
+
+        active_roles = roles_by_atom.get(active_atom, frozenset())
+        partner_roles = roles_by_atom.get(partner, frozenset())
+        if branch_return_role in partner_roles:
+            resolutions.append(
+                WriterClosureCandidateResolution(
+                    bond=obligation.bond,
+                    first_atom=active_atom,
+                    second_atom=partner,
+                    resolution_kind=(
+                        WriterClosureCandidateResolutionKind
+                        .LIVE_BRANCH_RETURN
+                    ),
+                    first_atom_roles=active_roles,
+                    second_atom_roles=partner_roles,
+                )
+            )
+        else:
+            resolutions.append(
+                WriterClosureCandidateResolution(
+                    bond=obligation.bond,
+                    first_atom=active_atom,
+                    second_atom=partner,
+                    resolution_kind=(
+                        WriterClosureCandidateResolutionKind
+                        .UNSUPPORTED_FROZEN_PARTNER
+                    ),
+                    first_atom_roles=active_roles,
+                    second_atom_roles=partner_roles,
+                )
+            )
+
+    return tuple(resolutions)
+
+
+def writer_control_live_atoms(
+    key: WriterStateKey,
+) -> tuple[WriterControlLiveAtom, ...]:
+    atoms: list[WriterControlLiveAtom] = [
+        WriterControlLiveAtom(
+            atom=key.active.atom,
+            role=WriterControlLiveAtomRole.ACTIVE,
+        )
+    ]
+    atoms.extend(
+        WriterControlLiveAtom(
+            atom=frame.return_atom.atom,
+            role=WriterControlLiveAtomRole.BRANCH_RETURN,
+        )
+        for frame in key.branch_stack
+    )
+
+    pending = key.obligations.pending_entry
+    if pending is not None:
+        atoms.append(
+            WriterControlLiveAtom(
+                atom=pending.parent,
+                role=WriterControlLiveAtomRole.PENDING_PARENT,
+            )
+        )
+
+    atoms.extend(
+        WriterControlLiveAtom(
+            atom=endpoint.second_atom,
+            role=WriterControlLiveAtomRole.OPEN_RING_ENDPOINT,
+        )
+        for endpoint in key.ring_state.open_endpoints
+    )
+    return tuple(atoms)
+
+
+def writer_control_live_roles_by_atom(
+    key: WriterStateKey,
+) -> dict[AtomId, frozenset[WriterControlLiveAtomRole]]:
+    grouped: dict[AtomId, set[WriterControlLiveAtomRole]] = {}
+    for item in writer_control_live_atoms(key):
+        grouped.setdefault(item.atom, set()).add(item.role)
+    return {
+        atom: frozenset(roles)
+        for atom, roles in grouped.items()
+    }
+
+
+def writer_live_branch_return_closure_candidate_resolutions(
+    key: WriterStateKey,
+    partition: WriterEdgeObligationPartition,
+) -> tuple[WriterClosureCandidateResolution, ...]:
+    return tuple(
+        resolution
+        for resolution in writer_closure_candidate_resolutions(key, partition)
+        if (
+            resolution.resolution_kind
+            is WriterClosureCandidateResolutionKind.LIVE_BRANCH_RETURN
+        )
+    )
+
+
+def writer_deferred_branch_return_closure_candidate_resolutions(
+    key: WriterStateKey,
+    partition: WriterEdgeObligationPartition,
+) -> tuple[WriterClosureCandidateResolution, ...]:
+    return tuple(
+        resolution
+        for resolution in writer_closure_candidate_resolutions(key, partition)
+        if (
+            resolution.resolution_kind
+            is WriterClosureCandidateResolutionKind.DEFERRED_BRANCH_RETURN
+        )
+    )
+
+
+def writer_deferred_control_live_closure_candidate_resolutions(
+    key: WriterStateKey,
+    partition: WriterEdgeObligationPartition,
+) -> tuple[WriterClosureCandidateResolution, ...]:
+    return tuple(
+        resolution
+        for resolution in writer_closure_candidate_resolutions(key, partition)
+        if (
+            resolution.resolution_kind
+            is WriterClosureCandidateResolutionKind.DEFERRED_CONTROL_LIVE
+        )
+    )
+
+
+def writer_residual_attachment_action_is_blocked(
+    action: WriterResidualAttachmentAction,
+) -> bool:
+    return action.kind in (
+        WriterResidualAttachmentActionKind.BLOCKED_UNOWNED,
+        WriterResidualAttachmentActionKind.BLOCKED_ORPHAN,
+        WriterResidualAttachmentActionKind.BLOCKED_UNSUPPORTED,
+    )
+
+
+def writer_residual_attachment_closure_deficit(
+    attachment: WriterResidualAttachment,
+) -> int:
+    return attachment.cyclic_rank + max(len(attachment.boundary) - 1, 0)
+
+
+def _residual_attachment_action(
+    attachment: WriterResidualAttachment,
+    block_cut: WriterBlockCutMetadata,
+    key: WriterStateKey,
+    *,
+    has_visited: bool,
+) -> WriterResidualAttachmentAction:
+    boundary_count = len(attachment.boundary)
+    owner_atoms = tuple(
+        sorted(
+            {
+                incidence.written_atom
+                for incidence in attachment.boundary
+                if _boundary_owner_is_open(incidence.owner_kind)
+            },
+            key=int,
+        )
+    )
+    boundary_bonds = tuple(
+        sorted({incidence.bond for incidence in attachment.boundary}, key=int)
+    )
+    cyclic_backed = (
+        attachment.cyclic_rank > 0
+        or _attachment_is_cyclic_block_backed(attachment, block_cut)
+    )
+    if boundary_count == 0:
+        pending = key.obligations.pending_entry
+        if pending is not None and pending.child in attachment.atoms:
+            owner_atoms = (pending.parent,)
+            boundary_bonds = (pending.bond,)
+            kind = (
+                WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY
+                if cyclic_backed
+                else WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY
+            )
+        elif not has_visited:
+            owner_atoms = (key.active.atom,)
+            kind = (
+                WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY
+                if cyclic_backed
+                else WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY
+            )
+        else:
+            kind = WriterResidualAttachmentActionKind.BLOCKED_ORPHAN
+    elif boundary_count == 1:
+        if owner_atoms:
+            kind = (
+                WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY
+                if cyclic_backed
+                else WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY
+            )
+        else:
+            kind = WriterResidualAttachmentActionKind.BLOCKED_UNOWNED
+    elif any(
+        incidence.owner_kind is WriterBoundaryOwnerKind.UNOWNED
+        for incidence in attachment.boundary
+    ):
+        kind = WriterResidualAttachmentActionKind.BLOCKED_UNOWNED
+    elif owner_atoms:
+        kind = WriterResidualAttachmentActionKind.CLOSURE_OPEN_READY
+    else:
+        kind = WriterResidualAttachmentActionKind.BLOCKED_UNOWNED
+    return WriterResidualAttachmentAction(
+        attachment_id=attachment.attachment_id,
+        kind=kind,
+        owner_atoms=owner_atoms,
+        boundary_bonds=boundary_bonds,
+    )
+
+
+def _attachment_is_cyclic_block_backed(
+    attachment: WriterResidualAttachment,
+    block_cut: WriterBlockCutMetadata,
+) -> bool:
+    return bool(attachment.block_ids & block_cut.cyclic_blocks)
+
+
+def _boundary_owner_is_open(kind: WriterBoundaryOwnerKind) -> bool:
+    return kind in (
+        WriterBoundaryOwnerKind.ACTIVE_ATOM,
+        WriterBoundaryOwnerKind.BRANCH_RETURN,
+        WriterBoundaryOwnerKind.PENDING_PARENT,
+        WriterBoundaryOwnerKind.OPEN_RING_ENDPOINT,
+    )
+
+
+def validate_writer_edge_obligation_partition(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+    partition: WriterEdgeObligationPartition,
+) -> None:
+    component = _current_component(prepared, key)
+    component_bonds = frozenset(component.bonds)
+    seen_bonds = [obligation.bond for obligation in partition.obligations]
+    if len(set(seen_bonds)) != len(seen_bonds):
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "writer edge obligation partition contains duplicate bonds",
+        )
+    if frozenset(seen_bonds) != component_bonds:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "writer edge obligation partition does not cover current component bonds",
+        )
+    pending = key.obligations.pending_entry
+    open_bond_records = tuple(endpoint.bond for endpoint in key.ring_state.open_endpoints)
+    closed_bond_records = tuple(closure.bond for closure in key.ring_state.closed_closures)
+    if len(set(open_bond_records)) != len(open_bond_records):
+        _invalid_edge_partition("writer open closure endpoint bonds contain duplicates")
+    if len(set(closed_bond_records)) != len(closed_bond_records):
+        _invalid_edge_partition("writer closed closure bonds contain duplicates")
+    open_by_bond = {endpoint.bond: endpoint for endpoint in key.ring_state.open_endpoints}
+    closed_by_bond = {closure.bond: closure for closure in key.ring_state.closed_closures}
+    ring_bonds = set(open_by_bond) | set(closed_by_bond)
+    if set(open_by_bond) & set(closed_by_bond):
+        _invalid_edge_partition("writer closure bond cannot be both open and closed")
+    if ring_bonds & key.written_bonds:
+        _invalid_edge_partition("writer closure bond cannot also be a tree-entry bond")
+    if pending is not None and pending.bond in ring_bonds:
+        _invalid_edge_partition("writer closure bond cannot also be pending")
+    _validate_ring_label_state(prepared, key)
+    if pending is not None and pending.bond in key.written_bonds:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "writer pending bond is already written",
+        )
+    pending_entries = [
+        obligation
+        for obligation in partition.obligations
+        if obligation.kind is WriterEdgeObligationKind.PENDING_ENTRY
+    ]
+    if pending is None:
+        if pending_entries:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "writer edge partition has pending entry without pending state",
+            )
+    elif len(pending_entries) != 1 or pending_entries[0].bond != pending.bond:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "writer edge partition does not match pending entry",
+        )
+    for obligation in partition.obligations:
+        fact = prepared.graph_index.bond_by_id[obligation.bond]
+        if (obligation.a, obligation.b) != (fact.a, fact.b):
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "writer edge obligation endpoints do not match prepared bond",
+            )
+        left_visited = obligation.a in key.visited_atoms
+        right_visited = obligation.b in key.visited_atoms
+        if obligation.kind is WriterEdgeObligationKind.TREE_ENTRY:
+            if obligation.bond not in key.written_bonds:
+                _invalid_edge_partition("tree-entry obligation is not written")
+            if not left_visited or not right_visited:
+                _invalid_edge_partition("tree-entry obligation has unvisited endpoint")
+        elif obligation.kind is WriterEdgeObligationKind.PENDING_ENTRY:
+            if pending is None or obligation.bond != pending.bond:
+                _invalid_edge_partition("pending obligation does not match pending state")
+            _require_pending_orientation(pending, obligation)
+            if obligation.bond in key.written_bonds:
+                _invalid_edge_partition("pending obligation is already written")
+            if pending.parent not in key.visited_atoms or pending.child in key.visited_atoms:
+                _invalid_edge_partition("pending obligation has invalid visited endpoints")
+        elif obligation.kind is WriterEdgeObligationKind.BOUNDARY_INCIDENCE:
+            if obligation.bond in key.written_bonds:
+                _invalid_edge_partition("boundary obligation is already written")
+            if pending is not None and obligation.bond == pending.bond:
+                _invalid_edge_partition("boundary obligation is also pending")
+            if left_visited == right_visited:
+                _invalid_edge_partition("boundary obligation must have one visited endpoint")
+        elif obligation.kind is WriterEdgeObligationKind.LATENT_RESIDUAL:
+            if obligation.bond in key.written_bonds:
+                _invalid_edge_partition("latent obligation is already written")
+            if pending is not None and obligation.bond == pending.bond:
+                _invalid_edge_partition("latent obligation is also pending")
+            if left_visited or right_visited:
+                _invalid_edge_partition("latent obligation has visited endpoint")
+        elif obligation.kind is WriterEdgeObligationKind.CLOSURE_CANDIDATE:
+            if obligation.bond in key.written_bonds:
+                _invalid_edge_partition("closure candidate is already written")
+            if pending is not None and obligation.bond == pending.bond:
+                _invalid_edge_partition("closure candidate is also pending")
+            if not left_visited or not right_visited:
+                _invalid_edge_partition("closure candidate must have visited endpoints")
+        elif obligation.kind in (
+            WriterEdgeObligationKind.OPEN_CLOSURE_ENDPOINT,
+            WriterEdgeObligationKind.CLOSED_CLOSURE,
+        ):
+            _validate_closure_obligation(prepared, key, obligation, left_visited, right_visited)
+        else:
+            _invalid_edge_partition("unknown writer edge obligation kind")
+
+
+def writer_graph_completion_status(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+    context: WriterGraphObligationContext,
+) -> WriterGraphCompletionStatus:
+    del prepared, key
+    unresolved = tuple(
+        obligation
+        for obligation in context.edge_partition.obligations
+        if obligation.kind
+        not in (
+            WriterEdgeObligationKind.TREE_ENTRY,
+            WriterEdgeObligationKind.CLOSED_CLOSURE,
+        )
+    )
+    return WriterGraphCompletionStatus(
+        complete=not unresolved and not context.residual_summary.attachment_actions,
+        unresolved_kinds=tuple(obligation.kind for obligation in unresolved),
+        unresolved_bonds=tuple(obligation.bond for obligation in unresolved),
+    )
+
+
+def writer_residual_attachment_sort_tuple(
+    attachment: WriterResidualAttachment,
+) -> tuple[object, ...]:
+    return (
+        tuple(sorted(int(atom) for atom in attachment.atoms)),
+        tuple(sorted(int(bond) for bond in attachment.latent_bonds)),
+        tuple(writer_boundary_incidence_sort_tuple(item) for item in attachment.boundary),
+        int(attachment.cyclic_rank),
+        tuple(sorted(attachment.block_ids)),
+    )
+
+
+def writer_boundary_incidence_sort_tuple(
+    incidence: WriterBoundaryIncidence,
+) -> tuple[object, ...]:
+    return (
+        int(incidence.bond),
+        int(incidence.written_atom),
+        int(incidence.residual_atom),
+        incidence.owner_kind.value,
+    )
+
+
+def writer_edge_obligation_sort_tuple(
+    obligation: WriterEdgeObligation,
+) -> tuple[object, ...]:
+    return (
+        int(obligation.bond),
+        obligation.kind.value,
+        int(obligation.a),
+        int(obligation.b),
+    )
+
+
+def writer_edge_obligation_partition_sort_tuple(
+    partition: WriterEdgeObligationPartition,
+) -> tuple[object, ...]:
+    return tuple(
+        writer_edge_obligation_sort_tuple(obligation)
+        for obligation in partition.obligations
+    )
+
+
+def _validate_closure_state_supported_for_snapshot(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+    context: WriterGraphObligationContext,
+) -> None:
+    _validate_ring_label_state(prepared, key)
+    partition_by_bond = {
+        obligation.bond: obligation.kind
+        for obligation in context.edge_partition.obligations
+    }
+    current_index = key.component_cursor.component_index
+    current_bonds = frozenset(
+        prepared.facts.components[current_index].bonds
+    )
+    completed_bonds = frozenset(
+        bond
+        for component in prepared.facts.components[:current_index]
+        for bond in component.bonds
+    )
+    for endpoint in key.ring_state.open_endpoints:
+        if endpoint.bond not in current_bonds:
+            _invalid_edge_partition(
+                "writer open closure endpoint is outside current component"
+            )
+        if partition_by_bond.get(endpoint.bond) is not WriterEdgeObligationKind.OPEN_CLOSURE_ENDPOINT:
+            _invalid_edge_partition("writer open closure endpoint lacks open edge obligation")
+        fact = prepared.graph_index.bond_by_id.get(endpoint.bond)
+        if fact is None:
+            _invalid_edge_partition("writer open closure endpoint references unknown bond")
+        if {endpoint.first_atom, endpoint.second_atom} != {fact.a, fact.b}:
+            _invalid_edge_partition("writer open closure endpoint has wrong endpoints")
+        if endpoint.first_atom not in key.visited_atoms:
+            _invalid_edge_partition("writer open closure endpoint first atom is not visited")
+        _validate_open_endpoint_text(prepared, endpoint)
+        _validate_open_endpoint_partner_liveness(prepared, key, endpoint, context)
+    for closure in key.ring_state.closed_closures:
+        if closure.bond in current_bonds:
+            if partition_by_bond.get(closure.bond) is not WriterEdgeObligationKind.CLOSED_CLOSURE:
+                _invalid_edge_partition("writer current closure lacks closed edge obligation")
+        elif closure.bond not in completed_bonds:
+            _invalid_edge_partition(
+                "writer closed closure belongs to a future component"
+            )
+        fact = prepared.graph_index.bond_by_id.get(closure.bond)
+        if fact is None:
+            _invalid_edge_partition("writer closed closure references unknown bond")
+        if {closure.first_atom, closure.second_atom} != {fact.a, fact.b}:
+            _invalid_edge_partition("writer closed closure has wrong endpoints")
+        if closure.first_atom not in key.visited_atoms or closure.second_atom not in key.visited_atoms:
+            _invalid_edge_partition("writer closed closure endpoint is not visited")
+        _validate_closed_closure_text(prepared, closure)
+
+
+def _validate_ring_label_state(prepared: SouthStarPreparedMol, key: WriterStateKey) -> None:
+    open_labels = tuple(endpoint.label for endpoint in key.ring_state.open_endpoints)
+    closed_labels = tuple(closure.label for closure in key.ring_state.closed_closures)
+    allocated = key.ring_state.label_state.allocated
+    reusable = key.ring_state.label_state.reusable
+    if len(set(open_labels)) != len(open_labels):
+        _invalid_edge_partition("writer open closure labels contain duplicates")
+    if len(set(allocated)) != len(allocated) or len(set(reusable)) != len(reusable):
+        _invalid_edge_partition("writer ring label state contains duplicate labels")
+    if set(allocated) & set(reusable):
+        _invalid_edge_partition("writer ring label is both allocated and reusable")
+    if set(allocated) != set(open_labels):
+        _invalid_edge_partition("writer allocated ring labels must match open closures")
+    if not set(reusable).issubset(set(closed_labels)):
+        _invalid_edge_partition("writer reusable ring label lacks closed closure")
+    for label in open_labels:
+        _validate_closure_label(prepared, label)
+        if label not in allocated:
+            _invalid_edge_partition("writer open closure label is not allocated")
+        if label in reusable:
+            _invalid_edge_partition("writer open closure label is reusable")
+    for label in closed_labels:
+        _validate_closure_label(prepared, label)
+        if label not in allocated and label not in reusable:
+            _invalid_edge_partition("writer closed closure label is not tracked")
+    for label in (*allocated, *reusable):
+        _validate_closure_label(prepared, label)
+
+
+def _validate_open_endpoint_partner_liveness(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+    endpoint,
+    context: WriterGraphObligationContext,
+) -> None:
+    if endpoint.second_atom in key.visited_atoms:
+        if endpoint.second_atom not in _open_writer_atoms(key):
+            _invalid_edge_partition("writer open closure partner atom is frozen")
+        return
+
+    open_writer_atoms = _open_writer_atoms(key)
+    if any(
+        (
+            endpoint.second_atom == open_endpoint.second_atom
+            and open_endpoint.first_atom in open_writer_atoms
+        )
+        or (
+            endpoint.second_atom == open_endpoint.first_atom
+            and open_endpoint.second_atom in open_writer_atoms
+        )
+        for open_endpoint in key.ring_state.open_endpoints
+    ):
+        return
+
+    pending = key.obligations.pending_entry
+    if pending is not None:
+        if (
+            endpoint.second_atom == pending.child
+            and pending.parent in open_writer_atoms
+        ):
+            return
+        if (
+            endpoint.second_atom == pending.parent
+            and pending.child in open_writer_atoms
+        ):
+            return
+        if _pending_entry_preserves_open_partner_reachability(
+            prepared,
+            key,
+            endpoint,
+            context,
+        ):
+            return
+
+    if not any(
+        endpoint.second_atom in attachment.atoms and attachment.boundary
+        for attachment in context.residual_summary.attachments.attachments
+    ):
+        _invalid_edge_partition("writer open closure partner atom is unreachable")
+
+
+def _open_writer_atoms(key: WriterStateKey) -> frozenset[AtomId]:
+    atoms = {key.active.atom}
+    atoms.update(frame.return_atom.atom for frame in key.branch_stack)
+    pending = key.obligations.pending_entry
+    if pending is not None:
+        atoms.add(pending.parent)
+    return frozenset(atoms)
+
+
+def _pending_entry_preserves_open_partner_reachability(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+    endpoint,
+    context: WriterGraphObligationContext,
+) -> bool:
+    pending = key.obligations.pending_entry
+    if pending is None:
+        return False
+
+    open_atoms = _open_writer_atoms(key)
+    if pending.parent in open_atoms:
+        entered_atom = pending.child
+    elif pending.child in open_atoms:
+        entered_atom = pending.parent
+    else:
+        return False
+    pending_bond = prepared.graph_index.bond_by_id.get(pending.bond)
+    if pending_bond is None:
+        return False
+    endpoint_bond = prepared.graph_index.bond_by_id.get(endpoint.bond)
+    if endpoint_bond is None:
+        return False
+    if (
+        endpoint.first_endpoint_direction_mark is DirectionMark.ABSENT
+        and pending_bond.order is BondOrder.SINGLE
+        and endpoint_bond.order is BondOrder.SINGLE
+        and endpoint.bond not in _directional_carrier_bonds(prepared)
+    ):
+        return False
+
+    return any(
+        endpoint.second_atom in attachment.atoms
+        and entered_atom in attachment.atoms
+        for attachment in context.residual_summary.attachments.attachments
+    )
+
+
+def _directional_carrier_bonds(
+    prepared: SouthStarPreparedMol,
+) -> frozenset[BondId]:
+    occurrence_by_id = {
+        occurrence.id: occurrence
+        for occurrence in prepared.facts.ligand_occurrences
+    }
+    bonds: set[BondId] = set()
+    for template in prepared.directional_templates:
+        for occurrence_id in template.left_ligands + template.right_ligands:
+            occurrence = occurrence_by_id.get(occurrence_id)
+            if occurrence is None:
+                continue
+            if occurrence.kind is not LigandKind.NEIGHBOR_ATOM:
+                continue
+            if occurrence.bond is not None:
+                bonds.add(occurrence.bond)
+    return frozenset(bonds)
+
+
+def _validate_open_endpoint_text(prepared: SouthStarPreparedMol, endpoint) -> None:
+    _validate_closure_label(prepared, endpoint.label)
+    if endpoint.first_endpoint_text != endpoint.label.text:
+        _invalid_edge_partition("writer open closure endpoint text does not match label")
+    relation = _writer_closure_endpoint_relation_for_validation(
+        prepared,
+        bond=endpoint.bond,
+        first_atom=endpoint.first_atom,
+        second_atom=endpoint.second_atom,
+    )
+    choice = WriterClosureEndpointChoice(
+        endpoint.first_endpoint_bond_text,
+        endpoint.first_endpoint_direction_mark,
+    )
+    if choice not in relation.choices:
+        _invalid_edge_partition("writer open closure bond text is outside policy domain")
+    if choice not in relation.openable_first_choices:
+        _invalid_edge_partition(
+            "writer open closure bond text has no compatible partner"
+        )
+
+
+def _validate_closed_closure_text(prepared: SouthStarPreparedMol, closure) -> None:
+    _validate_closure_label(prepared, closure.label)
+    if closure.first_endpoint_text != closure.label.text:
+        _invalid_edge_partition("writer closed closure first endpoint text does not match label")
+    if closure.second_endpoint_text != closure.label.text:
+        _invalid_edge_partition("writer closed closure second endpoint text does not match label")
+    relation = _writer_closure_endpoint_relation_for_validation(
+        prepared,
+        bond=closure.bond,
+        first_atom=closure.first_atom,
+        second_atom=closure.second_atom,
+    )
+    first = WriterClosureEndpointChoice(
+        closure.first_endpoint_bond_text,
+        closure.first_endpoint_direction_mark,
+    )
+    second = WriterClosureEndpointChoice(
+        closure.second_endpoint_bond_text,
+        closure.second_endpoint_direction_mark,
+    )
+    if first not in relation.choices:
+        _invalid_edge_partition("writer closed closure first bond text is outside policy domain")
+    if second not in relation.choices:
+        _invalid_edge_partition("writer closed closure second bond text is outside policy domain")
+    if not relation.pair_ok(first, second):
+        _invalid_edge_partition("writer closed closure bond texts do not decode")
+
+
+def _writer_closure_endpoint_relation_for_validation(
+    prepared: SouthStarPreparedMol,
+    *,
+    bond: BondId,
+    first_atom: AtomId,
+    second_atom: AtomId,
+) -> WriterClosureEndpointRelation:
+    from .writer_stereo import writer_closure_endpoint_relation as relation
+
+    return relation(
+        prepared,
+        bond=bond,
+        first_atom=first_atom,
+        second_atom=second_atom,
+    )
+
+
+def writer_closure_bond_text_relation(
+    prepared: SouthStarPreparedMol,
+    bond: BondId,
+    *,
+    max_choice_count: int | None = None,
+) -> WriterClosureBondTextRelation:
+    eligible = _closure_bond_text_choices(prepared, bond)
+
+    if (
+        max_choice_count is not None
+        and len(eligible) > max_choice_count
+    ):
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            "writer closure bond-text domain exceeds bounded relation envelope "
+            f"for {bond!r}",
+        )
+
+    rows = tuple(
+        (
+            first.base_text,
+            tuple(
+                second.base_text
+                for second in eligible
+                if prepared.semantics.ring_pair_decode_ok(
+                    prepared.facts,
+                    bond,
+                    first,
+                    DirectionMark.ABSENT,
+                    second,
+                    DirectionMark.ABSENT,
+                )
+            ),
+        )
+        for first in eligible
+    )
+    return WriterClosureBondTextRelation(rows=rows)
+
+
+def writer_closure_endpoint_relation(
+    prepared: SouthStarPreparedMol,
+    bond: BondId,
+    *,
+    max_choice_count: int | None = None,
+    include_direction_marks: bool = False,
+) -> WriterClosureEndpointRelation:
+    eligible = _closure_bond_text_choices(prepared, bond)
+
+    if (
+        max_choice_count is not None
+        and len(eligible) > max_choice_count
+    ):
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            "writer closure bond-text domain exceeds bounded relation envelope "
+            f"for {bond!r}",
+        )
+
+    endpoint_choices = tuple(
+        (policy_choice, endpoint_choice)
+        for policy_choice in eligible
+        for endpoint_choice in _closure_endpoint_choices(
+            policy_choice,
+            include_direction_marks=include_direction_marks,
+        )
+    )
+    rows = tuple(
+        (
+            first_choice,
+            tuple(
+                second_choice
+                for second_policy, second_choice in endpoint_choices
+                if prepared.semantics.ring_pair_decode_ok(
+                    prepared.facts,
+                    bond,
+                    first_policy,
+                    first_choice.direction_mark,
+                    second_policy,
+                    second_choice.direction_mark,
+                )
+            ),
+        )
+        for first_policy, first_choice in endpoint_choices
+    )
+    return WriterClosureEndpointRelation(rows=rows)
+
+
+def _closure_endpoint_choices(
+    choice,
+    *,
+    include_direction_marks: bool,
+) -> tuple[WriterClosureEndpointChoice, ...]:
+    out = [
+        WriterClosureEndpointChoice(
+            choice.base_text,
+            DirectionMark.ABSENT,
+        )
+    ]
+    if include_direction_marks and choice.permits_direction:
+        out.extend(
+            (
+                WriterClosureEndpointChoice(
+                    choice.base_text,
+                    DirectionMark.FWD,
+                ),
+                WriterClosureEndpointChoice(
+                    choice.base_text,
+                    DirectionMark.REV,
+                ),
+            )
+        )
+    return tuple(out)
+
+
+def _closure_bond_text_choices(
+    prepared: SouthStarPreparedMol,
+    bond: BondId,
+):
+    try:
+        choices = prepared.policy.bond_text_domain_unchecked(
+            bond,
+            slot_kind="ring_endpoint",
+        )
+    except KeyError as exc:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            f"writer closure bond lacks ring-endpoint policy domain: {bond!r}",
+        ) from exc
+    bond_order = _closure_bond_order(prepared, bond)
+    eligible = tuple(
+        choice
+        for choice in choices
+        if _closure_bond_text_choice_is_eligible(
+            bond_order,
+            choice.base_text,
+        )
+    )
+    texts = tuple(choice.base_text for choice in eligible)
+    if len(set(texts)) != len(texts):
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            "writer closure bond domain has ambiguous rendered choices "
+            f"for {bond!r}",
+        )
+    if not eligible:
+        _invalid_edge_partition("writer closure bond text policy domain is empty")
+    return eligible
+
+
+def _closure_bond_text_choice_is_eligible(
+    bond_order: BondOrder,
+    base_text: str,
+) -> bool:
+    if base_text in {"/", "\\"}:
+        return False
+    if bond_order in {
+        BondOrder.SINGLE,
+        BondOrder.DOUBLE,
+        BondOrder.TRIPLE,
+        BondOrder.AROMATIC,
+    }:
+        return True
+    return False
+
+
+def _closure_bond_order(prepared: SouthStarPreparedMol, bond: BondId) -> BondOrder:
+    try:
+        return prepared.graph_index.bond_by_id[bond].order
+    except KeyError as exc:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            f"writer closure bond is unknown: {bond!r}",
+        ) from exc
+
+
+def _validate_closure_label(prepared: SouthStarPreparedMol, label) -> None:
+    try:
+        policy_label = RingLabel(label.value)
+        expected = policy_label.text()
+    except ValueError as exc:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "writer closure label has invalid value",
+        ) from exc
+    if policy_label not in prepared.policy.ring_labels:
+        _invalid_edge_partition("writer closure label is outside policy domain")
+    if label.text != expected:
+        _invalid_edge_partition("writer closure label text does not match label value")
+
+
+def _validate_closure_obligation(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+    obligation: WriterEdgeObligation,
+    left_visited: bool,
+    right_visited: bool,
+) -> None:
+    open_endpoint = next(
+        (
+            endpoint
+            for endpoint in key.ring_state.open_endpoints
+            if endpoint.bond == obligation.bond
+        ),
+        None,
+    )
+    closed_closure = next(
+        (
+            closure
+            for closure in key.ring_state.closed_closures
+            if closure.bond == obligation.bond
+        ),
+        None,
+    )
+    fact = prepared.graph_index.bond_by_id[obligation.bond]
+    if obligation.kind is WriterEdgeObligationKind.OPEN_CLOSURE_ENDPOINT:
+        if open_endpoint is None:
+            _invalid_edge_partition("open closure obligation lacks endpoint state")
+        if closed_closure is not None:
+            _invalid_edge_partition("open closure obligation is also closed")
+        if {open_endpoint.first_atom, open_endpoint.second_atom} != {fact.a, fact.b}:
+            _invalid_edge_partition("open closure endpoint has wrong endpoints")
+        if open_endpoint.first_atom not in key.visited_atoms:
+            _invalid_edge_partition("open closure first endpoint is not visited")
+        return
+    if obligation.kind is WriterEdgeObligationKind.CLOSED_CLOSURE:
+        if closed_closure is None:
+            _invalid_edge_partition("closed closure obligation lacks closure state")
+        if open_endpoint is not None:
+            _invalid_edge_partition("closed closure obligation is also open")
+        if {closed_closure.first_atom, closed_closure.second_atom} != {fact.a, fact.b}:
+            _invalid_edge_partition("closed closure has wrong endpoints")
+        if not left_visited or not right_visited:
+            _invalid_edge_partition("closed closure must have visited endpoints")
+        return
+    _invalid_edge_partition("unknown closure obligation kind")
+
+
+def _component_connectivity(
+    facts,
+    graph_index,
+) -> tuple[WriterComponentConnectivity, ...]:
+    surfaces = []
+    for index, component in enumerate(facts.components):
+        atoms = frozenset(component.atoms)
+        bonds = frozenset(component.bonds)
+        connected_components = _component_connected_count(atoms, bonds, graph_index)
+        surfaces.append(
+            WriterComponentConnectivity(
+                component_index=index,
+                atoms=atoms,
+                bonds=bonds,
+                connected=connected_components == 1,
+            )
+        )
+    return tuple(surfaces)
+
+
+def _component_connected_count(
+    atoms: frozenset[AtomId],
+    bonds: frozenset[BondId],
+    graph_index,
+) -> int:
+    remaining = set(atoms)
+    count = 0
+    while remaining:
+        count += 1
+        start = min(remaining)
+        remaining.remove(start)
+        stack = [start]
+        while stack:
+            atom = stack.pop()
+            for neighbor in graph_index.neighbors[atom]:
+                if neighbor not in remaining:
+                    continue
+                bond = graph_index.bond_between[(min(atom, neighbor), max(atom, neighbor))]
+                if bond not in bonds:
+                    continue
+                remaining.remove(neighbor)
+                stack.append(neighbor)
+    return count
+
+
+def _residual_atom_components(
+    prepared: SouthStarPreparedMol,
+    residual_atoms: frozenset[AtomId],
+    latent_obligations: tuple[WriterEdgeObligation, ...],
+) -> tuple[frozenset[AtomId], ...]:
+    adjacency: dict[AtomId, list[AtomId]] = {}
+    for obligation in latent_obligations:
+        adjacency.setdefault(obligation.a, []).append(obligation.b)
+        adjacency.setdefault(obligation.b, []).append(obligation.a)
+    remaining = set(residual_atoms)
+    components = []
+    while remaining:
+        start = min(remaining)
+        seen = {start}
+        stack = [start]
+        remaining.remove(start)
+        while stack:
+            atom = stack.pop()
+            for neighbor in adjacency.get(atom, ()):
+                if neighbor not in remaining:
+                    continue
+                remaining.remove(neighbor)
+                seen.add(neighbor)
+                stack.append(neighbor)
+        components.append(frozenset(seen))
+    return tuple(components)
+
+
+def _boundary_incidences(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+    residual_atoms: frozenset[AtomId],
+    boundary_obligations: tuple[WriterEdgeObligation, ...],
+) -> tuple[WriterBoundaryIncidence, ...]:
+    incidences = []
+    for obligation in boundary_obligations:
+        if obligation.a in residual_atoms:
+            written_atom, residual_atom = obligation.b, obligation.a
+        elif obligation.b in residual_atoms:
+            written_atom, residual_atom = obligation.a, obligation.b
+        else:
+            continue
+        incidences.append(
+            WriterBoundaryIncidence(
+                bond=obligation.bond,
+                written_atom=written_atom,
+                residual_atom=residual_atom,
+                owner_kind=_owner_kind_for_boundary(key, written_atom),
+            )
+        )
+    return tuple(incidences)
+
+
+def _current_component(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+):
+    current = key.component_cursor.component_index
+    if current < 0 or current >= len(prepared.facts.components):
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "writer component index is outside prepared components",
+        )
+    return prepared.facts.components[current]
+
+
+def _require_pending_orientation(
+    pending,
+    obligation: WriterEdgeObligation,
+) -> None:
+    if pending.bond != obligation.bond:
+        _invalid_edge_partition("pending obligation has wrong bond")
+    if {pending.parent, pending.child} != {obligation.a, obligation.b}:
+        _invalid_edge_partition("pending obligation has wrong endpoints")
+
+
+def _invalid_edge_partition(message: str) -> None:
+    raise SouthStarError(SouthStarErrorKind.INTERNAL_INVARIANT, message)
+
+
+def _owner_kind_for_boundary(
+    key: WriterStateKey,
+    written_atom: AtomId,
+) -> WriterBoundaryOwnerKind:
+    pending = key.obligations.pending_entry
+    if pending is not None and pending.parent == written_atom:
+        return WriterBoundaryOwnerKind.PENDING_PARENT
+    active = key.active
+    if active.atom == written_atom:
+        return WriterBoundaryOwnerKind.ACTIVE_ATOM
+    if any(frame.return_atom.atom == written_atom for frame in key.branch_stack):
+        return WriterBoundaryOwnerKind.BRANCH_RETURN
+    return WriterBoundaryOwnerKind.UNOWNED
+
+
+def _bond_endpoints_in(
+    prepared: SouthStarPreparedMol,
+    bond: BondId,
+    atoms: frozenset[AtomId],
+) -> bool:
+    fact = prepared.graph_index.bond_by_id[bond]
+    return fact.a in atoms and fact.b in atoms
+
+
+def _canonical_boundary_index(
+    items: dict[AtomId, set[int]],
+) -> tuple[tuple[AtomId, tuple[int, ...]], ...]:
+    return tuple(
+        (atom, tuple(sorted(attachment_ids)))
+        for atom, attachment_ids in sorted(items.items(), key=lambda item: int(item[0]))
+    )
+
+
+__all__ = (
+    "WriterBlockCutMetadata",
+    "WriterBoundaryIncidence",
+    "WriterBoundaryOwnerKind",
+    "WriterClosureCandidateResolution",
+    "WriterClosureCandidateResolutionKind",
+    "WriterControlLiveAtom",
+    "WriterControlLiveAtomRole",
+    "WriterComponentConnectivity",
+    "WriterEdgeObligation",
+    "WriterEdgeObligationKind",
+    "WriterEdgeObligationPartition",
+    "WriterGraphCompletionStatus",
+    "WriterGraphObligationContext",
+    "WriterGraphObligationSummary",
+    "WriterGraphPreparedMetadata",
+    "WriterResidualAttachment",
+    "WriterResidualAttachmentAction",
+    "WriterResidualAttachmentActionIncidence",
+    "WriterResidualAttachmentActionKind",
+    "WriterResidualAttachmentState",
+    "build_writer_graph_obligation_context",
+    "build_writer_graph_prepared_metadata",
+    "build_writer_graph_prepared_metadata_from_facts",
+    "build_writer_block_cut_metadata",
+    "classify_writer_edge_obligations",
+    "classify_writer_residual_attachments",
+    "validate_writer_snapshot_graph_coherence",
+    "validate_writer_transition_graph_surface",
+    "validate_writer_edge_obligation_partition",
+    "writer_boundary_incidence_sort_tuple",
+    "writer_closure_candidate_resolutions",
+    "writer_deferred_branch_return_closure_candidate_resolutions",
+    "writer_deferred_control_live_closure_candidate_resolutions",
+    "writer_control_live_atoms",
+    "writer_control_live_roles_by_atom",
+    "writer_edge_obligation_partition_sort_tuple",
+    "writer_edge_obligation_sort_tuple",
+    "writer_graph_obligation_work_evidence",
+    "writer_graph_completion_status",
+    "writer_live_branch_return_closure_candidate_resolutions",
+    "writer_residual_attachment_sort_tuple",
+    "writer_residual_attachment_action_is_blocked",
+    "writer_residual_attachment_closure_deficit",
+    "writer_residual_attachment_action_incidences",
+    "writer_residual_attachment_action_incidences_for_atom",
+)

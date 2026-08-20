@@ -6,9 +6,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import Literal, TypeAlias
 
-import grimace._runtime as _runtime
-from grimace._runtime_inputs import _internal_option_kwargs
-from grimace._runtime_states import DecoderCacheKey
+from grimace import _runtime
 
 SmilesDeviationReason: TypeAlias = Literal["unexpected_text", "unexpected_token", "incomplete"]
 
@@ -39,14 +37,14 @@ def _common_prefix_len(left: str, right: str) -> int:
     return idx
 
 
-def _decoder_key(decoder: _runtime.MolToSmilesDeterminizedDecoder) -> DecoderCacheKey:
-    return decoder._cache_key()
+def _decoder_key(decoder: _runtime.MolToSmilesDeterminizedDecoder) -> _runtime.DecoderCacheKey:
+    return _runtime._state_cache_key(decoder._state)
 
 
 def _dedupe_decoders(
     decoders: Iterable[_runtime.MolToSmilesDeterminizedDecoder],
 ) -> tuple[_runtime.MolToSmilesDeterminizedDecoder, ...]:
-    by_key: dict[DecoderCacheKey, _runtime.MolToSmilesDeterminizedDecoder] = {}
+    by_key: dict[_runtime.DecoderCacheKey, _runtime.MolToSmilesDeterminizedDecoder] = {}
     for decoder in decoders:
         by_key.setdefault(_decoder_key(decoder), decoder)
     return tuple(by_key.values())
@@ -62,13 +60,20 @@ def _next_token_texts(
     )
 
 
+def _initial_decoder(
+    mol_or_prepared: object,
+    options: DecoderOptions,
+) -> _runtime.MolToSmilesDeterminizedDecoder:
+    return _runtime.MolToSmilesDeterminizedDecoder(mol_or_prepared, **options)
+
+
 def _string_deviation(
     mol_or_prepared: object,
     candidate: str,
     options: DecoderOptions,
 ) -> SmilesDeviation | None:
-    initial = _runtime.MolToSmilesDeterminizedDecoder(mol_or_prepared, **options)
-    active_by_offset: dict[int, dict[DecoderCacheKey, _runtime.MolToSmilesDeterminizedDecoder]] = {
+    initial = _initial_decoder(mol_or_prepared, options)
+    active_by_offset: dict[int, dict[_runtime.DecoderCacheKey, _runtime.MolToSmilesDeterminizedDecoder]] = {
         0: {_decoder_key(initial): initial}
     }
     pending_offsets = {0}
@@ -104,10 +109,9 @@ def _string_deviation(
                     continue
                 next_offset = offset + len(choice.text)
                 next_bucket = active_by_offset.setdefault(next_offset, {})
-                next_state = choice.next_state
-                key = _decoder_key(next_state)
+                key = _decoder_key(choice.next_state)
                 if key not in next_bucket:
-                    next_bucket[key] = next_state
+                    next_bucket[key] = choice.next_state
                     pending_offsets.add(next_offset)
 
     final_decoders = tuple(active_by_offset.get(len(candidate), {}).values())
@@ -162,15 +166,13 @@ def _sequence_deviation(
     options: DecoderOptions,
 ) -> SmilesDeviation | None:
     candidate_text, tokens, token_starts = _candidate_token_text_and_starts(candidate)
-    active_decoders = (
-        _runtime.MolToSmilesDeterminizedDecoder(mol_or_prepared, **options),
-    )
+    active_decoders = (_initial_decoder(mol_or_prepared, options),)
 
     for token_index, token in enumerate(tokens):
-        choices_by_text: dict[str, list[_runtime.MolToSmilesChoice]] = {}
+        choices_by_text: dict[str, list[_runtime.MolToSmilesDeterminizedDecoder]] = {}
         for decoder in active_decoders:
             for choice in decoder.next_choices:
-                choices_by_text.setdefault(choice.text, []).append(choice)
+                choices_by_text.setdefault(choice.text, []).append(choice.next_state)
 
         token_start = token_starts[token_index]
         if token not in choices_by_text:
@@ -184,9 +186,7 @@ def _sequence_deviation(
                 legal_next_tokens=_sorted_tokens(choices_by_text),
             )
 
-        active_decoders = _dedupe_decoders(
-            choice.next_state for choice in choices_by_text[token]
-        )
+        active_decoders = _dedupe_decoders(choices_by_text[token])
 
     if any(decoder.is_terminal for decoder in active_decoders):
         return None
@@ -217,7 +217,16 @@ def mol_to_smiles_deviation(
 ) -> SmilesDeviation | None:
     """Return the first candidate location outside the molecule's SMILES language."""
 
-    options: DecoderOptions = _internal_option_kwargs(locals())
+    options: DecoderOptions = {
+        "isomeric_smiles": isomeric_smiles,
+        "kekule_smiles": kekule_smiles,
+        "rooted_at_atom": rooted_at_atom,
+        "canonical": canonical,
+        "all_bonds_explicit": all_bonds_explicit,
+        "all_hs_explicit": all_hs_explicit,
+        "do_random": do_random,
+        "ignore_atom_map_numbers": ignore_atom_map_numbers,
+    }
 
     if isinstance(candidate, str):
         return _string_deviation(mol_or_prepared, candidate, options)

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 import unittest
 
-from tests.helpers.fixture_paths import checked_in_fixture_path, read_fixture_json_object
+from tests.helpers.fixture_paths import checked_in_fixture_path
 
 
 FIXTURE_FAMILY_ROOT = checked_in_fixture_path("rdkit_upstream_serializer_sources")
@@ -29,7 +30,7 @@ class RdkitUpstreamSerializerSourceFixtureTest(unittest.TestCase):
 
     def _assert_manifest_matches_copied_source_files(self, fixture_root: Path) -> None:
         manifest_path = fixture_root / "manifest.json"
-        manifest = read_fixture_json_object(manifest_path, context="source manifest")
+        manifest = json.loads(manifest_path.read_text())
 
         self.assertEqual(fixture_root.name, manifest["rdkit_version"])
         self.assert_nonempty_string(manifest, "source_commit", manifest_path)

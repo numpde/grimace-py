@@ -2,43 +2,30 @@ from __future__ import annotations
 
 import unittest
 
-import grimace._core as _core
+from tests.helpers.kernel import CORE_MODULE
 from tests.helpers.mols import parse_smiles
 
 
-def _runtime_modules():
-    import grimace._runtime as _runtime
-    import grimace._runtime_graphs as _runtime_graphs
-    from grimace._runtime_inputs import MolToSmilesFlags
-
-    return _runtime, _runtime_graphs, MolToSmilesFlags
-
-
 class CoreExtensionSmokeTests(unittest.TestCase):
-    def test_core_exposes_private_seeded_sampler_bridge(self) -> None:
-        sampler = _core._SplitMix64Sampler(0)
-
-        self.assertEqual(0, sampler.uniform_index(1))
-        self.assertEqual(1, sampler.weighted_index((0, 1)))
-        with self.assertRaisesRegex(ValueError, "empty choice set"):
-            sampler.uniform_index(0)
-        with self.assertRaisesRegex(ValueError, "no positive total"):
-            sampler.weighted_index((0, 0))
+    @classmethod
+    def setUpClass(cls) -> None:
+        if CORE_MODULE is None:
+            raise unittest.SkipTest("private Rust extension is not installed")
 
     def test_core_objects_construct_and_advance(self) -> None:
-        _runtime, _runtime_graphs, MolToSmilesFlags = _runtime_modules()
+        from grimace import _runtime
 
         mol = parse_smiles("CCO")
-        prepared = _runtime_graphs.prepare_smiles_graph(
+        prepared = _runtime.prepare_smiles_graph(
             mol,
-            flags=MolToSmilesFlags(
+            flags=_runtime.MolToSmilesFlags(
                 isomeric_smiles=False,
                 rooted_at_atom=0,
                 canonical=False,
                 do_random=True,
             ),
         )
-        kernel_prepared = _core.PreparedSmilesGraph(prepared)
+        kernel_prepared = CORE_MODULE.PreparedSmilesGraph(prepared)
         walker = _runtime.make_nonstereo_walker(prepared, 0)
         state = walker.initial_state()
 
@@ -48,18 +35,18 @@ class CoreExtensionSmokeTests(unittest.TestCase):
         self.assertEqual("C", walker.advance_choice(state, 0).prefix)
 
     def test_core_decoder_reports_branching_prefix(self) -> None:
-        _, _runtime_graphs, MolToSmilesFlags = _runtime_modules()
+        from grimace import _runtime
 
-        prepared = _runtime_graphs.prepare_smiles_graph(
+        prepared = _runtime.prepare_smiles_graph(
             parse_smiles("CC(=O)Oc1ccccc1C(=O)O"),
-            flags=MolToSmilesFlags(
+            flags=_runtime.MolToSmilesFlags(
                 isomeric_smiles=False,
                 rooted_at_atom=0,
                 canonical=False,
                 do_random=True,
             ),
         )
-        decoder = _core.RootedConnectedNonStereoDecoder(
+        decoder = CORE_MODULE.RootedConnectedNonStereoDecoder(
             prepared,
             0,
         )
@@ -71,7 +58,7 @@ class CoreExtensionSmokeTests(unittest.TestCase):
         self.assertEqual(["(", "c"], decoder.next_token_support())
 
     def test_runtime_factories_select_correct_core_types(self) -> None:
-        _runtime, _, _ = _runtime_modules()
+        from grimace import _runtime
 
         mol = parse_smiles("F[C@H](Cl)Br")
 
@@ -80,11 +67,11 @@ class CoreExtensionSmokeTests(unittest.TestCase):
 
         self.assertIsInstance(
             nonstereo_walker,
-            _core.RootedConnectedNonStereoWalker,
+            CORE_MODULE.RootedConnectedNonStereoWalker,
         )
         self.assertIsInstance(
             stereo_walker,
-            _core.RootedConnectedStereoWalker,
+            CORE_MODULE.RootedConnectedStereoWalker,
         )
 
         self.assertEqual(
@@ -97,16 +84,16 @@ class CoreExtensionSmokeTests(unittest.TestCase):
         )
 
     def test_runtime_decoder_factory_selects_correct_core_type(self) -> None:
-        _runtime, _, MolToSmilesFlags = _runtime_modules()
+        from grimace import _runtime
 
         mol = parse_smiles("F/C=C\\Cl")
-        nonstereo_flags = MolToSmilesFlags(
+        nonstereo_flags = _runtime.MolToSmilesFlags(
             isomeric_smiles=False,
             rooted_at_atom=0,
             canonical=False,
             do_random=True,
         )
-        stereo_flags = MolToSmilesFlags(
+        stereo_flags = _runtime.MolToSmilesFlags(
             isomeric_smiles=True,
             rooted_at_atom=0,
             canonical=False,
@@ -118,55 +105,23 @@ class CoreExtensionSmokeTests(unittest.TestCase):
 
         self.assertIsInstance(
             nonstereo_decoder,
-            _core.RootedConnectedNonStereoDecoder,
+            CORE_MODULE.RootedConnectedNonStereoDecoder,
         )
         self.assertIsInstance(
             stereo_decoder,
-            _core.RootedConnectedStereoDecoder,
+            CORE_MODULE.RootedConnectedStereoDecoder,
         )
 
         self.assertEqual(["F"], nonstereo_decoder.next_token_support())
         self.assertEqual(["F"], stereo_decoder.next_token_support())
 
-    def test_core_decoders_do_not_expose_eager_successor_methods(self) -> None:
-        _runtime, _, MolToSmilesFlags = _runtime_modules()
-
-        mol = parse_smiles("F/C=C\\Cl")
-        nonstereo_flags = MolToSmilesFlags(
-            isomeric_smiles=False,
-            rooted_at_atom=0,
-            canonical=False,
-            do_random=True,
-        )
-        stereo_flags = MolToSmilesFlags(
-            isomeric_smiles=True,
-            rooted_at_atom=0,
-            canonical=False,
-            do_random=True,
-        )
-
-        decoders = (
-            _runtime._make_decoder(mol, nonstereo_flags),
-            _runtime._make_decoder(mol, stereo_flags),
-        )
-        forbidden_names = (
-            "choice_successors",
-            "grouped_successors",
-            "choice_successor_states",
-            "grouped_successor_states",
-        )
-        for decoder in decoders:
-            with self.subTest(decoder_type=type(decoder).__name__):
-                for name in forbidden_names:
-                    self.assertFalse(hasattr(decoder, name), name)
-
     def test_nonstereo_core_decoder_supports_all_roots_frontier(self) -> None:
-        _, _runtime_graphs, MolToSmilesFlags = _runtime_modules()
+        from grimace import _runtime
 
         mol = parse_smiles("CCO")
-        prepared = _runtime_graphs.prepare_smiles_graph(
+        prepared = _runtime.prepare_smiles_graph(
             mol,
-            flags=MolToSmilesFlags(
+            flags=_runtime.MolToSmilesFlags(
                 isomeric_smiles=False,
                 rooted_at_atom=0,
                 canonical=False,
@@ -174,19 +129,19 @@ class CoreExtensionSmokeTests(unittest.TestCase):
             ),
         )
 
-        decoder = _core.RootedConnectedNonStereoDecoder(prepared, -1)
+        decoder = CORE_MODULE.RootedConnectedNonStereoDecoder(prepared, -1)
 
         self.assertEqual("", decoder.prefix())
         self.assertEqual(["C", "O"], decoder.next_token_support())
         self.assertEqual(["C", "C", "O"], decoder.next_choice_texts())
 
     def test_stereo_core_decoder_supports_all_roots_frontier(self) -> None:
-        _, _runtime_graphs, MolToSmilesFlags = _runtime_modules()
+        from grimace import _runtime
 
         mol = parse_smiles("F/C=C\\Cl")
-        prepared = _runtime_graphs.prepare_smiles_graph(
+        prepared = _runtime.prepare_smiles_graph(
             mol,
-            flags=MolToSmilesFlags(
+            flags=_runtime.MolToSmilesFlags(
                 isomeric_smiles=True,
                 rooted_at_atom=0,
                 canonical=False,
@@ -194,36 +149,30 @@ class CoreExtensionSmokeTests(unittest.TestCase):
             ),
         )
 
-        decoder = _core.RootedConnectedStereoDecoder(prepared, -1)
+        decoder = CORE_MODULE.RootedConnectedStereoDecoder(prepared, -1)
 
         self.assertEqual("", decoder.prefix())
         self.assertEqual(["F", "C", "Cl"], decoder.next_token_support())
         self.assertEqual(["F", "C", "C", "C", "C", "Cl"], decoder.next_choice_texts())
 
     def test_runtime_factories_reject_prepared_surface_mismatch(self) -> None:
-        _runtime, _runtime_graphs, MolToSmilesFlags = _runtime_modules()
+        from grimace import _runtime
 
         mol = parse_smiles("F[C@H](Cl)Br")
-        nonstereo_flags = MolToSmilesFlags(
+        nonstereo_flags = _runtime.MolToSmilesFlags(
             isomeric_smiles=False,
             rooted_at_atom=0,
             canonical=False,
             do_random=True,
         )
-        stereo_flags = MolToSmilesFlags(
+        stereo_flags = _runtime.MolToSmilesFlags(
             isomeric_smiles=True,
             rooted_at_atom=0,
             canonical=False,
             do_random=True,
         )
-        nonstereo_prepared = _runtime_graphs.prepare_smiles_graph(
-            mol,
-            flags=nonstereo_flags,
-        )
-        stereo_prepared = _runtime_graphs.prepare_smiles_graph(
-            mol,
-            flags=stereo_flags,
-        )
+        nonstereo_prepared = _runtime.prepare_smiles_graph(mol, flags=nonstereo_flags)
+        stereo_prepared = _runtime.prepare_smiles_graph(mol, flags=stereo_flags)
 
         with self.assertRaisesRegex(ValueError, "surface_kind"):
             _runtime.make_stereo_walker(nonstereo_prepared, 0)

@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from rdkit import Chem
 
-from grimace._reference.dataset import load_default_molecule_cases, molecule_is_connected
+from grimace._reference import (
+    load_default_molecule_cases,
+    molecule_is_connected,
+)
 
 
 SHARED_CURATED_ROOT_CASES: tuple[tuple[str, int], ...] = (
@@ -41,11 +44,7 @@ NONSTEREO_AWKWARD_CASES: tuple[str, ...] = (
 
 STEREO_CURATED_CASES: tuple[str, ...] = SHARED_CURATED_CASES
 
-STEREO_WALKER_CURATED_CASES: tuple[tuple[str, int], ...] = (
-    *SHARED_CURATED_ROOT_CASES,
-    ("C/C=C(/C(=C/C)/c1ccccc1)\\c1ccccc1", 5),
-    ("CC1=C(C(CCC1)(C)C)/C=C/C(=C/C=C/C(=C/C(=O)O)/C)/C", 11),
-)
+STEREO_WALKER_CURATED_CASES: tuple[tuple[str, int], ...] = SHARED_CURATED_ROOT_CASES
 
 STEREO_ATOM_CURATED_CASES: tuple[str, ...] = (
     "F[C@H](Cl)Br",

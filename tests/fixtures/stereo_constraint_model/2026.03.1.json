@@ -1,0 +1,323 @@
+{
+  "cases": [
+    {
+      "expected_component_side_domain_sizes": [
+        [
+          1,
+          1
+        ]
+      ],
+      "expected_grimace_runtime_support_count": 3,
+      "expected_marker_row_diagnostics": {
+        "max_model_marker_row_count": 2,
+        "max_semantic_marker_obligation_survivor_row_count": 1,
+        "max_semantic_marker_survivor_row_count": 1,
+        "output_row_count": 6,
+        "total_model_marker_row_count": 2
+      },
+      "expected_support_state_selected_neighbor_diagnostics": {
+        "joined_support_boundary_mismatch_count": 0,
+        "max_carrier_assignment_count": 1,
+        "max_forced_side_neighbor_count": 0,
+        "max_marker_row_count_after_events": 1,
+        "max_marker_row_count_before_events": 1,
+        "max_token_phase_assignment_count": 1,
+        "max_unresolved_side_count": 0,
+        "output_row_count": 6,
+        "runtime_mismatch_count": 0
+      },
+      "expected_rdkit_local_writer_assignment_count": 1,
+      "expected_rdkit_traversal_writer_assignment_count": 1,
+      "expected_semantic_assignment_count": 1,
+      "expected_token_flip_adjustment_reason_counts": {
+        "root_begin_side_orientation": 4,
+        "value_true": 4
+      },
+      "expected_token_flip_inference_branch_counts": {
+        "isolated_all_single_candidate": 6
+      },
+      "id": "isolated_single_candidate_alkene",
+      "smiles": "C/C=C/C",
+      "source": "tmp/exploration/stereo_assignment/030_mine_token_inference_branch_witnesses.py"
+    },
+    {
+      "expected_component_side_domain_sizes": [
+        [
+          1,
+          1,
+          1,
+          1
+        ]
+      ],
+      "expected_grimace_runtime_support_count": 5,
+      "expected_marker_row_diagnostics": {
+        "max_model_marker_row_count": 2,
+        "max_semantic_marker_obligation_survivor_row_count": 1,
+        "max_semantic_marker_survivor_row_count": 1,
+        "output_row_count": 10,
+        "total_model_marker_row_count": 2
+      },
+      "expected_support_state_selected_neighbor_diagnostics": {
+        "joined_support_boundary_mismatch_count": 0,
+        "max_carrier_assignment_count": 1,
+        "max_forced_side_neighbor_count": 0,
+        "max_marker_row_count_after_events": 1,
+        "max_marker_row_count_before_events": 1,
+        "max_token_phase_assignment_count": 1,
+        "max_unresolved_side_count": 0,
+        "output_row_count": 10,
+        "runtime_mismatch_count": 0
+      },
+      "expected_rdkit_local_writer_assignment_count": 1,
+      "expected_rdkit_traversal_writer_assignment_count": 1,
+      "expected_semantic_assignment_count": 1,
+      "expected_token_flip_adjustment_reason_counts": {
+        "root_begin_side_orientation": 6,
+        "value_true": 6
+      },
+      "expected_token_flip_inference_branch_counts": {
+        "coupled_one_candidate_begin_side": 10
+      },
+      "id": "coupled_single_candidate_diene",
+      "smiles": "C/C=C/C=C/C",
+      "source": "tmp/exploration/stereo_assignment/030_mine_token_inference_branch_witnesses.py"
+    },
+    {
+      "expected_component_side_domain_sizes": [
+        [
+          2,
+          1,
+          1,
+          1
+        ]
+      ],
+      "expected_grimace_runtime_support_count": 28,
+      "expected_marker_row_diagnostics": {
+        "max_model_marker_row_count": 12,
+        "max_semantic_marker_obligation_survivor_row_count": 2,
+        "max_semantic_marker_survivor_row_count": 2,
+        "output_row_count": 28,
+        "total_model_marker_row_count": 12
+      },
+      "expected_support_state_selected_neighbor_diagnostics": {
+        "joined_support_boundary_mismatch_count": 0,
+        "max_carrier_assignment_count": 1,
+        "max_forced_side_neighbor_count": 0,
+        "max_marker_row_count_after_events": 1,
+        "max_marker_row_count_before_events": 3,
+        "max_token_phase_assignment_count": 1,
+        "max_unresolved_side_count": 0,
+        "output_row_count": 28,
+        "runtime_mismatch_count": 0
+      },
+      "expected_rdkit_local_writer_assignment_count": 2,
+      "expected_rdkit_traversal_writer_assignment_count": 2,
+      "expected_semantic_assignment_count": 2,
+      "expected_token_flip_adjustment_reason_counts": {
+        "root_begin_side_orientation": 14,
+        "value_true": 14
+      },
+      "expected_token_flip_inference_branch_counts": {
+        "coupled_one_candidate_begin_side": 14,
+        "coupled_two_candidate_begin_side": 14
+      },
+      "id": "coupled_two_candidate_branched_diene",
+      "smiles": "CC/C(C)=C/C=C/C",
+      "source": "tmp/exploration/stereo_assignment/030_mine_token_inference_branch_witnesses.py"
+    },
+    {
+      "expected_component_side_domain_sizes": [
+        [
+          1,
+          1,
+          2,
+          1
+        ]
+      ],
+      "expected_grimace_runtime_support_count": 24,
+      "expected_marker_row_diagnostics": {
+        "max_model_marker_row_count": 12,
+        "max_semantic_marker_obligation_survivor_row_count": 3,
+        "max_semantic_marker_survivor_row_count": 3,
+        "output_row_count": 24,
+        "total_model_marker_row_count": 12
+      },
+      "expected_support_state_selected_neighbor_diagnostics": {
+        "joined_support_boundary_mismatch_count": 0,
+        "max_carrier_assignment_count": 1,
+        "max_forced_side_neighbor_count": 0,
+        "max_marker_row_count_after_events": 1,
+        "max_marker_row_count_before_events": 3,
+        "max_token_phase_assignment_count": 1,
+        "max_unresolved_side_count": 0,
+        "output_row_count": 24,
+        "runtime_mismatch_count": 0
+      },
+      "expected_rdkit_local_writer_assignment_count": 2,
+      "expected_rdkit_traversal_writer_assignment_count": 2,
+      "expected_semantic_assignment_count": 2,
+      "expected_token_flip_adjustment_reason_counts": {
+        "adjacent_two_candidate_first_emitted": 1,
+        "root_begin_side_orientation": 13,
+        "value_true": 14
+      },
+      "expected_token_flip_inference_branch_counts": {
+        "coupled_one_candidate_begin_side": 18,
+        "coupled_two_candidate_begin_side": 6
+      },
+      "id": "coupled_adjacent_two_candidate_token_adjustment",
+      "smiles": "C/C=C/C(C)=C/C",
+      "source": "tmp/exploration/stereo_assignment/030_mine_token_inference_branch_witnesses.py"
+    },
+    {
+      "expected_component_side_domain_sizes": [
+        [
+          2,
+          2,
+          2,
+          1
+        ]
+      ],
+      "expected_grimace_runtime_support_count": 144,
+      "expected_joined_support_boundary_mismatch_count": 0,
+      "expected_marker_row_diagnostics": {
+        "max_model_marker_row_count": 432,
+        "max_semantic_marker_obligation_survivor_row_count": 12,
+        "max_semantic_marker_survivor_row_count": 12,
+        "output_row_count": 144,
+        "total_model_marker_row_count": 432
+      },
+      "expected_support_state_selected_neighbor_diagnostics": {
+        "joined_support_boundary_mismatch_count": 0,
+        "max_carrier_assignment_count": 1,
+        "max_forced_side_neighbor_count": 0,
+        "max_marker_row_count_after_events": 1,
+        "max_marker_row_count_before_events": 27,
+        "max_token_phase_assignment_count": 1,
+        "max_unresolved_side_count": 0,
+        "output_row_count": 144,
+        "runtime_mismatch_count": 0
+      },
+      "expected_rdkit_local_writer_assignment_count": 8,
+      "expected_rdkit_traversal_writer_assignment_count": 8,
+      "expected_semantic_assignment_count": 8,
+      "expected_shared_carrier_group_count": 1,
+      "expected_shared_carrier_resolution_changed_row_count": 0,
+      "expected_token_flip_adjustment_reason_counts": {
+        "root_begin_side_orientation": 64,
+        "value_true": 64
+      },
+      "expected_token_flip_inference_branch_counts": {
+        "coupled_one_candidate_begin_side": 24,
+        "coupled_two_candidate_begin_side": 120
+      },
+      "id": "ambiguous_shared_carrier_substituted_diene",
+      "smiles": "CC/C(C)=C(\\C)C(/C)=C/C",
+      "source": "manual: substituted diene exercising ambiguous_shared_edge_groups"
+    },
+    {
+      "expected_component_side_domain_sizes": [
+        [
+          1,
+          2,
+          2,
+          1
+        ]
+      ],
+      "expected_direction_erased_skeletons_with_different_marker_sequence_count": 0,
+      "expected_direction_erased_skeletons_with_same_marker_sequence_count": 22,
+      "expected_grimace_runtime_outputs_with_ring_digit_direction_count": 12,
+      "expected_grimace_runtime_support_count": 22,
+      "expected_marker_row_diagnostics": {
+        "max_model_marker_row_count": 144,
+        "max_semantic_marker_obligation_survivor_row_count": 4,
+        "max_semantic_marker_survivor_row_count": 4,
+        "output_row_count": 44,
+        "total_model_marker_row_count": 144
+      },
+      "expected_support_state_selected_neighbor_diagnostics": {
+        "joined_support_boundary_mismatch_count": 0,
+        "max_carrier_assignment_count": 1,
+        "max_forced_side_neighbor_count": 0,
+        "max_marker_row_count_after_events": 1,
+        "max_marker_row_count_before_events": 9,
+        "max_token_phase_assignment_count": 1,
+        "max_unresolved_side_count": 0,
+        "output_row_count": 44,
+        "runtime_mismatch_count": 0
+      },
+      "expected_rdkit_local_writer_assignment_count": 3,
+      "expected_rdkit_sampled_outputs_with_ring_digit_direction_count": 18,
+      "expected_rdkit_sampled_exact_local_invalid_overlap_count": 0,
+      "expected_rdkit_sampled_exact_support_overlap_count": 10,
+      "expected_rdkit_sampled_outside_current_exact_direction_erased_overlap_count": 12,
+      "expected_rdkit_sampled_outside_current_exact_identity_equivalent_count": 18,
+      "expected_rdkit_sampled_outside_current_exact_parse_failure_count": 0,
+      "expected_rdkit_sampled_outside_current_exact_ring_digit_direction_erased_overlap_count": 2,
+      "expected_rdkit_sampled_outside_current_exact_support_count": 18,
+      "expected_rdkit_sampled_outside_current_exact_with_ring_digit_direction_count": 12,
+      "expected_rdkit_sampled_support_count": 28,
+      "expected_rdkit_traversal_writer_assignment_count": 3,
+      "expected_ring_closure_marker_transform_exact_overlap_count": 12,
+      "expected_ring_closure_marker_transform_outside_rdkit_count": 10,
+      "expected_ring_closure_marker_transform_residual_provenance_classes": {
+        "branch_to_before_ring_label": 2,
+        "ring_open_to_before_bracket_atom": 4,
+        "tree_or_chain_to_before_bracket_atom": 2,
+        "tree_or_chain_to_before_ring_label": 2
+      },
+      "expected_ring_closure_marker_transform_support_count": 22,
+      "expected_semantic_assignment_count": 4,
+      "id": "minimal_nonstereo_double_hazard",
+      "smiles": "C/N=C1C=C/C(=N/C)[N-]/1",
+      "source": "tmp/exploration/stereo_assignment/027_investigate_rdkit_bond_dir_policy.py"
+    },
+    {
+      "expected_component_side_domain_sizes": [
+        [
+          1,
+          2
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          2,
+          1
+        ]
+      ],
+      "expected_grimace_runtime_support_count": 1536,
+      "expected_marker_row_diagnostics": {
+        "max_model_marker_row_count": 12,
+        "max_semantic_marker_obligation_survivor_row_count": 2,
+        "max_semantic_marker_survivor_row_count": 2,
+        "output_row_count": 6144,
+        "total_model_marker_row_count": 48
+      },
+      "expected_support_state_selected_neighbor_diagnostics": {
+        "joined_support_boundary_mismatch_count": 0,
+        "max_carrier_assignment_count": 1,
+        "max_forced_side_neighbor_count": 0,
+        "max_marker_row_count_after_events": 1,
+        "max_marker_row_count_before_events": 3,
+        "max_token_phase_assignment_count": 1,
+        "max_unresolved_side_count": 0,
+        "output_row_count": 6144,
+        "runtime_mismatch_count": 0
+      },
+      "expected_rdkit_local_writer_assignment_count": 16,
+      "expected_rdkit_traversal_writer_assignment_count": 12,
+      "expected_semantic_assignment_count": 16,
+      "id": "reduced_porphyrin_traversal_coupling",
+      "smiles": "c1cc2[n-]c1/N=c1/cc/c([n-]1)=N/c1ccc([n-]1)/N=c1/cc/c([n-]1)=N/2",
+      "source": "tmp/exploration/stereo_assignment/028_investigate_rdkit_traversal_coupling.py",
+      "test_tier": "diagnostic"
+    }
+  ],
+  "rdkit_version": "2026.03.1"
+}

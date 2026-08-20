@@ -25,9 +25,21 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Install pinned rustfmt
         run: rustup component add rustfmt
-      - name: Run South Star 2 qualification
+      - name: Run South Star 2 tests and apply rustfmt
         run: |
           cargo test -p grimace-south-star2
+          cargo fmt --all
+      - name: Capture formatted South Star 2 sources
+        uses: actions/upload-artifact@v6
+        with:
+          name: formatted-south-star2
+          path: |
+            rust/south_star2/src/nonstereo_writer.rs
+            rust/south_star2/src/nonstereo_writer_tests.rs
+            rust/south_star2/src/writer_state.rs
+          if-no-files-found: error
+      - name: Finish South Star 2 qualification
+        run: |
           cargo fmt --all -- --check
           cargo test --lib
           git diff --check

@@ -10,6 +10,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -22,6 +25,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: south-star-2-ci
       - uses: dtolnay/rust-toolchain@stable
       - name: Install pinned rustfmt
         run: rustup component add rustfmt
@@ -29,15 +34,16 @@ jobs:
         run: |
           cargo test -p grimace-south-star2
           cargo fmt --all
-      - name: Capture formatted South Star 2 sources
-        uses: actions/upload-artifact@v6
-        with:
-          name: formatted-south-star2
-          path: |
-            rust/south_star2/src/nonstereo_writer.rs
-            rust/south_star2/src/nonstereo_writer_tests.rs
-            rust/south_star2/src/writer_state.rs
-          if-no-files-found: error
+      - name: Commit formatted sources on the disposable branch
+        run: |
+          if git diff --quiet -- rust/south_star2/src; then
+            exit 0
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add rust/south_star2/src
+          git commit -m "Format temporary South Star 2 projection"
+          git push origin HEAD:south-star-2-ci
       - name: Finish South Star 2 qualification
         run: |
           cargo fmt --all -- --check

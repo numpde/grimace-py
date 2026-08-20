@@ -1,17 +1,20 @@
 //! Connected non-stereo visible-token state.
 //!
 //! Graph and constraint semantics live in `WriterState`. This module owns only
-//! concrete non-stereo spelling facts, live ring-label assignments, and the
+//! concrete non-stereo spelling facts, visible ring-label assignments, and the
 //! small lexical commitments forced by multi-token SMILES constructs.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
+use std::error::Error;
 use std::fmt;
 use std::sync::Arc;
 
 use crate::ids::{AtomId, BondId};
 use crate::prepared::{AdjacentBond, PreparedBond, PreparedGraph, PreparedMolecule};
 use crate::solver::ConstraintSolver;
-use crate::writer_state::{StructuralFrontier, WriterState};
+use crate::writer_state::{
+    StructuralFrontier, TransitionError, WriterContradiction, WriterState,
+};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(crate) enum NonStereoBondToken {
@@ -167,7 +170,81 @@ impl fmt::Display for PreparedConnectedNonStereoError {
     }
 }
 
-impl std::error::Error for PreparedConnectedNonStereoError {}
+impl Error for PreparedConnectedNonStereoError {}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum SpellingError {
+    RingLabelOutOfRange { label: usize },
+}
+
+impl fmt::Display for SpellingError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::RingLabelOutOfRange { label } => write!(
+                formatter,
+                "ring label {label} is outside the selected 1..=99 spelling dialect"
+            ),
+        }
+    }
+}
+
+impl Error for SpellingError {}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum NonStereoFrontierError {
+    Writer(WriterContradiction),
+    Spelling(SpellingError),
+}
+
+impl fmt::Display for NonStereoFrontierError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Writer(error) => write!(formatter, "writer state contradicted: {error}"),
+            Self::Spelling(error) => write!(formatter, "writer spelling failed: {error}"),
+        }
+    }
+}
+
+impl Error for NonStereoFrontierError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Writer(error) => Some(error),
+            Self::Spelling(error) => Some(error),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) enum NonStereoAdvanceError<E> {
+    Constraint(E),
+    Writer(WriterContradiction),
+    Spelling(SpellingError),
+    ChoiceUnavailable(NonStereoChoice),
+}
+
+impl<E: fmt::Display> fmt::Display for NonStereoAdvanceError<E> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Constraint(error) => write!(formatter, "constraint transition failed: {error}"),
+            Self::Writer(error) => write!(formatter, "writer transition contradicted: {error}"),
+            Self::Spelling(error) => write!(formatter, "writer spelling failed: {error}"),
+            Self::ChoiceUnavailable(choice) => {
+                write!(formatter, "non-stereo choice is not available: {choice:?}")
+            }
+        }
+    }
+}
+
+impl<E: Error + 'static> Error for NonStereoAdvanceError<E> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Constraint(error) => Some(error),
+            Self::Writer(error) => Some(error),
+            Self::Spelling(error) => Some(error),
+            Self::ChoiceUnavailable(_) => None,
+        }
+    }
+}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct RingLabelSlot(usize);
@@ -178,40 +255,44 @@ impl RingLabelSlot {
     }
 }
 
+/// Visible ring-label assignment. Closed labels are immediately reusable; this
+/// is the minimal least-free spelling law rather than a copied batch-planner
+/// schedule.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct RingLabels {
     bonds_by_slot: BTreeMap<RingLabelSlot, BondId>,
-    released_in_current_suffix: BTreeSet<RingLabelSlot>,
 }
 
 impl RingLabels {
-    fn next_available(&self) -> RingLabelSlot {
-        let mut candidate = RingLabelSlot(0);
-        while self.bonds_by_slot.contains_key(&candidate)
-            || self.released_in_current_suffix.contains(&candidate)
-        {
-            candidate = RingLabelSlot(
-                candidate
-                    .index()
-                    .checked_add(1)
-                    .expect("visible ring-label space must not overflow"),
-            );
+    fn next_available(&self) -> Result<RingLabelSlot, SpellingError> {
+        let mut candidate = 0_usize;
+        for slot in self.bonds_by_slot.keys() {
+            if slot.index() != candidate {
+                break;
+            }
+            candidate += 1;
         }
-        candidate
+        let label = candidate
+            .checked_add(1)
+            .expect("visible ring-label number must not overflow");
+        if label > 99 {
+            return Err(SpellingError::RingLabelOutOfRange { label });
+        }
+        Ok(RingLabelSlot(candidate))
     }
 
-    fn allocate(&mut self, bond: BondId) -> RingLabelSlot {
+    fn allocate(&mut self, bond: BondId) -> Result<RingLabelSlot, SpellingError> {
         assert!(
             self.bonds_by_slot.values().all(|owner| *owner != bond),
             "one ring bond may own only one visible label"
         );
-        let slot = self.next_available();
+        let slot = self.next_available()?;
         assert_eq!(
             self.bonds_by_slot.insert(slot, bond),
             None,
             "a newly allocated visible ring label must be free"
         );
-        slot
+        Ok(slot)
     }
 
     fn slot_for_bond(&self, bond: BondId) -> RingLabelSlot {
@@ -227,22 +308,10 @@ impl RingLabels {
             Some(bond),
             "a closing ring must release its own visible label"
         );
-        assert!(
-            self.released_in_current_suffix.insert(slot),
-            "one visible ring label may be released once per atom suffix"
-        );
     }
 
-    fn finish_atom_suffix(&mut self) {
-        self.released_in_current_suffix.clear();
-    }
-
-    fn has_open_labels(&self) -> bool {
-        !self.bonds_by_slot.is_empty()
-    }
-
-    fn is_clean(&self) -> bool {
-        self.bonds_by_slot.is_empty() && self.released_in_current_suffix.is_empty()
+    fn is_empty(&self) -> bool {
+        self.bonds_by_slot.is_empty()
     }
 }
 
@@ -323,102 +392,92 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
 
     pub(crate) fn is_accepted(&self) -> bool {
         self.pending.is_none()
-            && self.labels.is_clean()
+            && self.labels.is_empty()
             && self.structural.active_atom().is_none()
             && self.structural.graph_is_complete()
     }
 
-    pub(crate) fn choices(&self) -> Vec<VisibleChoice> {
+    pub(crate) fn choices(&self) -> Result<Vec<VisibleChoice>, NonStereoFrontierError> {
         if self.is_accepted() {
-            return Vec::new();
+            return Ok(Vec::new());
         }
         if self.pending.is_some() {
-            return vec![self.visible_choice(NonStereoChoice::Pending)];
+            return Ok(vec![self.visible_choice(NonStereoChoice::Pending)?]);
         }
 
-        let frontier = self.frontier();
-        if !frontier.component_roots().is_empty() {
-            return frontier
-                .component_roots()
-                .iter()
-                .copied()
-                .map(NonStereoChoice::Root)
-                .map(|choice| self.visible_choice(choice))
-                .collect();
+        match self.frontier()? {
+            StructuralFrontier::ComponentRoots(roots) => {
+                self.visible_choices(roots.iter().copied().map(NonStereoChoice::Root))
+            }
+            StructuralFrontier::RingSuffix { openings, closures } => self.visible_choices(
+                closures
+                    .iter()
+                    .copied()
+                    .map(NonStereoChoice::RingClose)
+                    .chain(openings.iter().copied().map(NonStereoChoice::RingOpen)),
+            ),
+            StructuralFrontier::BranchChildren(children) => self.visible_choices(
+                children
+                    .iter()
+                    .copied()
+                    .map(NonStereoChoice::BranchOpen),
+            ),
+            StructuralFrontier::InlineChild(incident) => {
+                Ok(vec![self.visible_choice(NonStereoChoice::InlineChild(incident))?])
+            }
+            StructuralFrontier::CompletePath => {
+                assert!(
+                    !self.structural.graph_is_complete(),
+                    "complete connected components must normalize before frontier inspection"
+                );
+                Ok(vec![self.visible_choice(NonStereoChoice::BranchClose)?])
+            }
+            StructuralFrontier::Terminal => {
+                assert!(
+                    self.is_accepted(),
+                    "terminal structural state must have clean spelling state"
+                );
+                Ok(Vec::new())
+            }
         }
-
-        let mut choices = Vec::new();
-        choices.extend(
-            frontier
-                .ring_closures()
-                .iter()
-                .copied()
-                .map(NonStereoChoice::RingClose)
-                .map(|choice| self.visible_choice(choice)),
-        );
-        choices.extend(
-            frontier
-                .ring_openings()
-                .iter()
-                .copied()
-                .map(NonStereoChoice::RingOpen)
-                .map(|choice| self.visible_choice(choice)),
-        );
-        if !choices.is_empty() {
-            return choices;
-        }
-
-        choices.extend(
-            frontier
-                .branch_children()
-                .iter()
-                .copied()
-                .map(NonStereoChoice::BranchOpen)
-                .map(|choice| self.visible_choice(choice)),
-        );
-        choices.extend(
-            frontier
-                .inline_children()
-                .iter()
-                .copied()
-                .map(NonStereoChoice::InlineChild)
-                .map(|choice| self.visible_choice(choice)),
-        );
-        if frontier.can_complete_path() && !self.structural.graph_is_complete() {
-            choices.push(self.visible_choice(NonStereoChoice::BranchClose));
-        }
-        choices
     }
 
-    pub(crate) fn advance(&self, choice: NonStereoChoice) -> Result<(String, Self), S::Error> {
+    pub(crate) fn advance(
+        &self,
+        choice: NonStereoChoice,
+    ) -> Result<(String, Self), NonStereoAdvanceError<S::Error>> {
         let visible = self
             .choices()
+            .map_err(frontier_advance_error)?
             .into_iter()
             .find(|candidate| candidate.choice == choice)
-            .expect("advance requires an advertised non-stereo choice");
+            .ok_or(NonStereoAdvanceError::ChoiceUnavailable(choice))?;
         let token = visible.text;
 
         let successor = match choice {
-            NonStereoChoice::Root(root) => {
-                assert!(
-                    self.labels.is_clean(),
-                    "a connected component must start with clean ring-label spelling state"
-                );
-                Self {
-                    surface: self.surface.clone(),
-                    structural: self.structural.begin_component(root),
-                    labels: self.labels.clone(),
-                    pending: None,
-                }
-                .normalize_component_completion()
+            NonStereoChoice::Root(root) => Self {
+                surface: self.surface.clone(),
+                structural: self
+                    .structural
+                    .begin_component(root)
+                    .map_err(NonStereoAdvanceError::Writer)?,
+                labels: self.labels.clone(),
+                pending: None,
             }
+            .normalize_component_completion()
+            .map_err(NonStereoAdvanceError::Writer)?,
             NonStereoChoice::RingOpen(incident) => {
-                let structural = self.structural.open_ring_endpoint(incident)?;
+                let structural = self
+                    .structural
+                    .open_ring_endpoint(incident)
+                    .map_err(transition_advance_error)?;
                 let mut labels = self.labels.clone();
-                let slot = labels.allocate(incident.bond());
+                let slot = labels
+                    .allocate(incident.bond())
+                    .map_err(NonStereoAdvanceError::Spelling)?;
                 assert_eq!(
                     token,
-                    ring_label_text(slot),
+                    ring_label_text(slot).map_err(NonStereoAdvanceError::Spelling)?,
                     "advertised ring label must match the allocated label"
                 );
                 Self {
@@ -429,11 +488,17 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
                 }
             }
             NonStereoChoice::RingClose(incident) => {
-                let first_endpoint = self.structural.ring_closure_first_endpoint(incident);
+                let first_endpoint = self
+                    .structural
+                    .ring_closure_first_endpoint(incident)
+                    .map_err(NonStereoAdvanceError::Writer)?;
                 let label_slot = self.labels.slot_for_bond(incident.bond());
                 let bond_text = self.surface.bond_text(incident.bond(), first_endpoint);
                 if bond_text.is_empty() {
-                    let structural = self.structural.close_ring_endpoint(incident);
+                    let structural = self
+                        .structural
+                        .close_ring_endpoint(incident)
+                        .map_err(NonStereoAdvanceError::Writer)?;
                     let mut labels = self.labels.clone();
                     labels.release(label_slot, incident.bond());
                     Self {
@@ -443,6 +508,7 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
                         pending: None,
                     }
                     .normalize_component_completion()
+                    .map_err(NonStereoAdvanceError::Writer)?
                 } else {
                     Self {
                         surface: self.surface.clone(),
@@ -455,67 +521,70 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
                     }
                 }
             }
-            NonStereoChoice::BranchOpen(incident) => {
-                let structural = self.structural.commit_traversal_edge(incident)?;
-                let mut labels = self.labels.clone();
-                labels.finish_atom_suffix();
-                Self {
-                    surface: self.surface.clone(),
-                    structural,
-                    labels,
-                    pending: Some(PendingEmission::BranchBondOrAtom(incident)),
-                }
-            }
+            NonStereoChoice::BranchOpen(incident) => Self {
+                surface: self.surface.clone(),
+                structural: self
+                    .structural
+                    .commit_traversal_edge(incident)
+                    .map_err(transition_advance_error)?,
+                labels: self.labels.clone(),
+                pending: Some(PendingEmission::BranchBondOrAtom(incident)),
+            },
             NonStereoChoice::InlineChild(incident) => {
                 let parent = self
                     .structural
                     .active_atom()
                     .expect("inline emission requires an active atom");
                 let bond_text = self.surface.bond_text(incident.bond(), parent);
-                let structural = self.structural.commit_traversal_edge(incident)?;
-                let mut labels = self.labels.clone();
-                labels.finish_atom_suffix();
+                let structural = self
+                    .structural
+                    .commit_traversal_edge(incident)
+                    .map_err(transition_advance_error)?;
                 if bond_text.is_empty() {
                     Self {
                         surface: self.surface.clone(),
-                        structural: structural.enter_inline_child(incident),
-                        labels,
+                        structural: structural
+                            .enter_inline_child(incident)
+                            .map_err(NonStereoAdvanceError::Writer)?,
+                        labels: self.labels.clone(),
                         pending: None,
                     }
                     .normalize_component_completion()
+                    .map_err(NonStereoAdvanceError::Writer)?
                 } else {
                     Self {
                         surface: self.surface.clone(),
                         structural,
-                        labels,
+                        labels: self.labels.clone(),
                         pending: Some(PendingEmission::InlineAtom(incident)),
                     }
                 }
             }
-            NonStereoChoice::Pending => self.advance_pending(),
-            NonStereoChoice::BranchClose => {
-                let mut labels = self.labels.clone();
-                labels.finish_atom_suffix();
-                Self {
-                    surface: self.surface.clone(),
-                    structural: self.structural.complete_path(),
-                    labels,
-                    pending: None,
-                }
-            }
+            NonStereoChoice::Pending => self
+                .advance_pending()
+                .map_err(NonStereoAdvanceError::Writer)?,
+            NonStereoChoice::BranchClose => Self {
+                surface: self.surface.clone(),
+                structural: self
+                    .structural
+                    .complete_path()
+                    .map_err(NonStereoAdvanceError::Writer)?,
+                labels: self.labels.clone(),
+                pending: None,
+            },
         };
 
         Ok((token, successor))
     }
 
-    fn advance_pending(&self) -> Self {
+    fn advance_pending(&self) -> Result<Self, WriterContradiction> {
         let pending = self.pending.expect("no committed text is pending");
         let incident = pending.incident();
 
         match pending {
             PendingEmission::InlineAtom(_) => Self {
                 surface: self.surface.clone(),
-                structural: self.structural.enter_inline_child(incident),
+                structural: self.structural.enter_inline_child(incident)?,
                 labels: self.labels.clone(),
                 pending: None,
             }
@@ -528,23 +597,23 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
                 if self.surface.bond_text(incident.bond(), parent).is_empty() {
                     Self {
                         surface: self.surface.clone(),
-                        structural: self.structural.enter_branch_child(incident),
+                        structural: self.structural.enter_branch_child(incident)?,
                         labels: self.labels.clone(),
                         pending: None,
                     }
                     .normalize_component_completion()
                 } else {
-                    Self {
+                    Ok(Self {
                         surface: self.surface.clone(),
                         structural: self.structural.clone(),
                         labels: self.labels.clone(),
                         pending: Some(PendingEmission::BranchAtom(incident)),
-                    }
+                    })
                 }
             }
             PendingEmission::BranchAtom(_) => Self {
                 surface: self.surface.clone(),
-                structural: self.structural.enter_branch_child(incident),
+                structural: self.structural.enter_branch_child(incident)?,
                 labels: self.labels.clone(),
                 pending: None,
             }
@@ -555,7 +624,7 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
                     label_slot,
                     "a pending ring label must retain its assignment"
                 );
-                let structural = self.structural.close_ring_endpoint(incident);
+                let structural = self.structural.close_ring_endpoint(incident)?;
                 let mut labels = self.labels.clone();
                 labels.release(label_slot, incident.bond());
                 Self {
@@ -569,91 +638,123 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
         }
     }
 
-    fn visible_choice(&self, choice: NonStereoChoice) -> VisibleChoice {
-        VisibleChoice {
-            choice,
-            text: self.choice_text(choice),
-        }
+    fn visible_choices(
+        &self,
+        choices: impl IntoIterator<Item = NonStereoChoice>,
+    ) -> Result<Vec<VisibleChoice>, NonStereoFrontierError> {
+        choices
+            .into_iter()
+            .map(|choice| self.visible_choice(choice))
+            .collect()
     }
 
-    fn choice_text(&self, choice: NonStereoChoice) -> String {
+    fn visible_choice(
+        &self,
+        choice: NonStereoChoice,
+    ) -> Result<VisibleChoice, NonStereoFrontierError> {
+        Ok(VisibleChoice {
+            choice,
+            text: self.choice_text(choice)?,
+        })
+    }
+
+    fn choice_text(&self, choice: NonStereoChoice) -> Result<String, NonStereoFrontierError> {
         match choice {
-            NonStereoChoice::Root(root) => self.surface.atom_text(root).to_owned(),
-            NonStereoChoice::RingOpen(_) => ring_label_text(self.labels.next_available()),
+            NonStereoChoice::Root(root) => Ok(self.surface.atom_text(root).to_owned()),
+            NonStereoChoice::RingOpen(_) => ring_label_text(
+                self.labels
+                    .next_available()
+                    .map_err(NonStereoFrontierError::Spelling)?,
+            )
+            .map_err(NonStereoFrontierError::Spelling),
             NonStereoChoice::RingClose(incident) => {
-                let first_endpoint = self.structural.ring_closure_first_endpoint(incident);
+                let first_endpoint = self
+                    .structural
+                    .ring_closure_first_endpoint(incident)
+                    .map_err(NonStereoFrontierError::Writer)?;
                 let bond_text = self.surface.bond_text(incident.bond(), first_endpoint);
                 if bond_text.is_empty() {
                     ring_label_text(self.labels.slot_for_bond(incident.bond()))
+                        .map_err(NonStereoFrontierError::Spelling)
                 } else {
-                    bond_text.to_owned()
+                    Ok(bond_text.to_owned())
                 }
             }
-            NonStereoChoice::BranchOpen(_) => "(".to_owned(),
+            NonStereoChoice::BranchOpen(_) => Ok("(".to_owned()),
             NonStereoChoice::InlineChild(incident) => {
                 let parent = self
                     .structural
                     .active_atom()
                     .expect("inline choice requires an active atom");
-                self.surface.child_prefix(parent, incident).to_owned()
+                Ok(self.surface.child_prefix(parent, incident).to_owned())
             }
             NonStereoChoice::Pending => {
                 let pending = self.pending.expect("no committed text is pending");
                 let incident = pending.incident();
                 match pending {
                     PendingEmission::InlineAtom(_) | PendingEmission::BranchAtom(_) => {
-                        self.surface.atom_text(incident.atom()).to_owned()
+                        Ok(self.surface.atom_text(incident.atom()).to_owned())
                     }
                     PendingEmission::BranchBondOrAtom(_) => {
                         let parent = self
                             .structural
                             .active_atom()
                             .expect("a committed branch child requires its active parent");
-                        self.surface.child_prefix(parent, incident).to_owned()
+                        Ok(self.surface.child_prefix(parent, incident).to_owned())
                     }
                     PendingEmission::RingClosureLabel { label_slot, .. } => {
-                        ring_label_text(label_slot)
+                        ring_label_text(label_slot).map_err(NonStereoFrontierError::Spelling)
                     }
                 }
             }
-            NonStereoChoice::BranchClose => ")".to_owned(),
+            NonStereoChoice::BranchClose => Ok(")".to_owned()),
         }
     }
 
-    fn frontier(&self) -> StructuralFrontier {
-        let frontier = self.structural.structural_frontier();
-        assert!(
-            !frontier.is_contradiction(),
-            "connected non-stereo writer reached a structural contradiction"
-        );
-        frontier
+    fn frontier(&self) -> Result<StructuralFrontier, NonStereoFrontierError> {
+        self.structural
+            .structural_frontier()
+            .map_err(NonStereoFrontierError::Writer)
     }
 
-    fn normalize_component_completion(mut self) -> Self {
+    fn normalize_component_completion(mut self) -> Result<Self, WriterContradiction> {
         if self.pending.is_some() || !self.structural.graph_is_complete() {
-            return self;
+            return Ok(self);
         }
         assert!(
-            !self.labels.has_open_labels(),
-            "a complete structural graph must not retain open visible ring labels"
+            self.labels.is_empty(),
+            "a complete structural graph must not retain visible ring labels"
         );
-        self.labels.finish_atom_suffix();
-        assert!(
-            self.frontier().can_complete_path(),
-            "a complete connected graph must have a completable top-level path"
-        );
-        let completed = self.structural.complete_path();
         assert_eq!(
-            completed.active_atom(),
+            self.structural.structural_frontier()?,
+            StructuralFrontier::CompletePath,
+            "a complete connected graph must have one completable top-level path"
+        );
+        self.structural = self.structural.complete_path()?;
+        assert_eq!(
+            self.structural.active_atom(),
             None,
             "connected graph completion must not restore a branch parent"
         );
-        self.structural = completed;
-        self
+        Ok(self)
     }
 }
 
-fn ring_label_text(label_slot: RingLabelSlot) -> String {
+fn frontier_advance_error<E>(error: NonStereoFrontierError) -> NonStereoAdvanceError<E> {
+    match error {
+        NonStereoFrontierError::Writer(error) => NonStereoAdvanceError::Writer(error),
+        NonStereoFrontierError::Spelling(error) => NonStereoAdvanceError::Spelling(error),
+    }
+}
+
+fn transition_advance_error<E>(error: TransitionError<E>) -> NonStereoAdvanceError<E> {
+    match error {
+        TransitionError::Constraint(error) => NonStereoAdvanceError::Constraint(error),
+        TransitionError::Writer(error) => NonStereoAdvanceError::Writer(error),
+    }
+}
+
+fn ring_label_text(label_slot: RingLabelSlot) -> Result<String, SpellingError> {
     let label = label_slot
         .index()
         .checked_add(1)
@@ -661,16 +762,14 @@ fn ring_label_text(label_slot: RingLabelSlot) -> String {
     ring_label_number_text(label)
 }
 
-fn ring_label_number_text(label: usize) -> String {
-    assert!(label > 0, "visible ring labels are one-based");
-    assert!(
-        label <= 99,
-        "ring labels above 99 require an explicit dialect policy"
-    );
+fn ring_label_number_text(label: usize) -> Result<String, SpellingError> {
+    if !(1..=99).contains(&label) {
+        return Err(SpellingError::RingLabelOutOfRange { label });
+    }
     if label < 10 {
-        label.to_string()
+        Ok(label.to_string())
     } else {
-        format!("%{label}")
+        Ok(format!("%{label}"))
     }
 }
 
@@ -701,466 +800,5 @@ fn graph_is_connected(graph: &PreparedGraph) -> bool {
 }
 
 #[cfg(test)]
-#[path = "nonstereo_reference.rs"]
-mod reference;
-
-#[cfg(test)]
-mod tests {
-    use std::collections::BTreeSet;
-
-    use super::*;
-    use crate::native::NativeSolverState;
-    use crate::prepared::PreparedGraphBuilder;
-
-    type State = ConnectedNonStereoWriterState<NativeSolverState>;
-
-    fn fixture(
-        atom_text: &[&str],
-        edges: &[(usize, usize, NonStereoBondToken)],
-    ) -> (PreparedConnectedNonStereo, Vec<AtomId>, Vec<BondId>) {
-        let mut graph = PreparedGraphBuilder::new();
-        let atoms = atom_text
-            .iter()
-            .map(|_| graph.add_atom().unwrap())
-            .collect::<Vec<_>>();
-        let mut bonds = Vec::with_capacity(edges.len());
-        let mut bond_tokens = Vec::with_capacity(edges.len());
-        for &(a, b, token) in edges {
-            bonds.push(graph.add_bond(atoms[a], atoms[b]).unwrap());
-            bond_tokens.push(token);
-        }
-        let surface = PreparedConnectedNonStereo::new(
-            PreparedMolecule::new(graph.build()),
-            atom_text.iter().map(|text| (*text).to_owned()).collect(),
-            bond_tokens,
-        )
-        .unwrap();
-        (surface, atoms, bonds)
-    }
-
-    fn incident(surface: &PreparedConnectedNonStereo, atom: AtomId, bond: BondId) -> AdjacentBond {
-        surface
-            .molecule()
-            .graph()
-            .neighbors(atom)
-            .expect("fixture atom must exist")
-            .iter()
-            .copied()
-            .find(|candidate| candidate.bond() == bond)
-            .expect("fixture bond must be incident to the atom")
-    }
-
-    fn only_choice(state: &State, expected: NonStereoChoice, text: &str) {
-        let choices = state.choices();
-        assert_eq!(choices.len(), 1);
-        assert_eq!(choices[0].choice(), expected);
-        assert_eq!(choices[0].text(), text);
-    }
-
-    fn advance(state: &State, choice: NonStereoChoice) -> (String, State) {
-        state.advance(choice).unwrap()
-    }
-
-    #[test]
-    fn surface_rejects_invalid_bindings() {
-        let empty = PreparedMolecule::new(PreparedGraphBuilder::new().build());
-        assert!(matches!(
-            PreparedConnectedNonStereo::new(empty, Vec::new(), Vec::new()),
-            Err(PreparedConnectedNonStereoError::EmptyMolecule)
-        ));
-
-        let mut graph = PreparedGraphBuilder::new();
-        graph.add_atom().unwrap();
-        graph.add_atom().unwrap();
-        let disconnected = PreparedMolecule::new(graph.build());
-        assert!(matches!(
-            PreparedConnectedNonStereo::new(
-                disconnected,
-                vec!["C".to_owned(), "O".to_owned()],
-                Vec::new(),
-            ),
-            Err(PreparedConnectedNonStereoError::DisconnectedMolecule)
-        ));
-
-        let mut graph = PreparedGraphBuilder::new();
-        graph.add_atom().unwrap();
-        let single = PreparedMolecule::new(graph.build());
-        assert!(matches!(
-            PreparedConnectedNonStereo::new(single.clone(), Vec::new(), Vec::new()),
-            Err(PreparedConnectedNonStereoError::AtomTextCountMismatch { .. })
-        ));
-        assert!(matches!(
-            PreparedConnectedNonStereo::new(single, vec![String::new()], Vec::new()),
-            Err(PreparedConnectedNonStereoError::EmptyAtomText(atom))
-                if atom == AtomId::new(0)
-        ));
-
-        let mut graph = PreparedGraphBuilder::new();
-        let atoms: [AtomId; 2] = std::array::from_fn(|_| graph.add_atom().unwrap());
-        graph.add_bond(atoms[0], atoms[1]).unwrap();
-        let bonded = PreparedMolecule::new(graph.build());
-        assert!(matches!(
-            PreparedConnectedNonStereo::new(
-                bonded,
-                vec!["C".to_owned(), "O".to_owned()],
-                Vec::new(),
-            ),
-            Err(PreparedConnectedNonStereoError::BondTokenCountMismatch { .. })
-        ));
-    }
-
-    #[test]
-    fn closed_labels_become_reusable_after_the_atom_suffix() {
-        let first = BondId::new(0);
-        let second = BondId::new(1);
-        let third = BondId::new(2);
-        let mut labels = RingLabels::default();
-
-        let zero = labels.allocate(first);
-        let one = labels.allocate(second);
-        assert_eq!(zero, RingLabelSlot(0));
-        assert_eq!(one, RingLabelSlot(1));
-        labels.release(zero, first);
-        assert_eq!(labels.next_available(), RingLabelSlot(2));
-        labels.finish_atom_suffix();
-        assert_eq!(labels.allocate(third), RingLabelSlot(0));
-    }
-
-    #[test]
-    fn ring_label_spelling_matches_the_selected_smiles_dialect() {
-        assert_eq!(ring_label_number_text(1), "1");
-        assert_eq!(ring_label_number_text(9), "9");
-        assert_eq!(ring_label_number_text(10), "%10");
-        assert_eq!(ring_label_number_text(99), "%99");
-    }
-
-    #[test]
-    #[should_panic(expected = "above 99 require an explicit dialect policy")]
-    fn unselected_large_ring_label_dialect_fails_at_rendering() {
-        let _ = ring_label_number_text(100);
-    }
-
-    #[test]
-    fn elided_triangle_emits_a_complete_ring() {
-        let (surface, atoms, bonds) = fixture(
-            &["C", "C", "C"],
-            &[
-                (0, 1, NonStereoBondToken::Elided),
-                (0, 2, NonStereoBondToken::Elided),
-                (1, 2, NonStereoBondToken::Elided),
-            ],
-        );
-        let initial = State::initial(&surface).unwrap();
-        let left = incident(&surface, atoms[0], bonds[0]);
-        let right = incident(&surface, atoms[0], bonds[1]);
-        let between = incident(&surface, atoms[2], bonds[2]);
-        let closing = incident(&surface, atoms[1], bonds[0]);
-
-        let (root, rooted) = advance(&initial, NonStereoChoice::Root(atoms[0]));
-        assert_eq!(
-            rooted.choices(),
-            vec![
-                VisibleChoice {
-                    choice: NonStereoChoice::RingOpen(left),
-                    text: "1".to_owned(),
-                },
-                VisibleChoice {
-                    choice: NonStereoChoice::RingOpen(right),
-                    text: "1".to_owned(),
-                },
-            ]
-        );
-        let (open, opened) = advance(&rooted, NonStereoChoice::RingOpen(left));
-        only_choice(&opened, NonStereoChoice::InlineChild(right), "C");
-        let (first_child, walked) = advance(&opened, NonStereoChoice::InlineChild(right));
-        let (second_child, walked) = advance(&walked, NonStereoChoice::InlineChild(between));
-        only_choice(&walked, NonStereoChoice::RingClose(closing), "1");
-        let (close, accepted) = advance(&walked, NonStereoChoice::RingClose(closing));
-
-        assert_eq!(
-            [root, open, first_child, second_child, close].concat(),
-            "C1CC1"
-        );
-        assert!(accepted.is_accepted());
-    }
-
-    #[test]
-    fn explicit_ring_bond_is_emitted_at_closure_before_its_label() {
-        let (surface, atoms, bonds) = fixture(
-            &["C", "C", "C"],
-            &[
-                (0, 1, NonStereoBondToken::Double),
-                (0, 2, NonStereoBondToken::Elided),
-                (1, 2, NonStereoBondToken::Elided),
-            ],
-        );
-        let initial = State::initial(&surface).unwrap();
-        let ring = incident(&surface, atoms[0], bonds[0]);
-        let entry = incident(&surface, atoms[0], bonds[1]);
-        let between = incident(&surface, atoms[2], bonds[2]);
-        let closing = incident(&surface, atoms[1], bonds[0]);
-
-        let (root, rooted) = advance(&initial, NonStereoChoice::Root(atoms[0]));
-        let (open, opened) = advance(&rooted, NonStereoChoice::RingOpen(ring));
-        let (first_child, walked) = advance(&opened, NonStereoChoice::InlineChild(entry));
-        let (second_child, walked) = advance(&walked, NonStereoChoice::InlineChild(between));
-        only_choice(&walked, NonStereoChoice::RingClose(closing), "=");
-
-        let (bond, pending_label) = advance(&walked, NonStereoChoice::RingClose(closing));
-        assert_eq!(bond, "=");
-        assert_eq!(pending_label.active_atom(), Some(atoms[1]));
-        assert!(!pending_label.graph_is_complete());
-        only_choice(&pending_label, NonStereoChoice::Pending, "1");
-
-        let (label, accepted) = advance(&pending_label, NonStereoChoice::Pending);
-        assert_eq!(
-            [root, open, first_child, second_child, bond, label].concat(),
-            "C1CC=1"
-        );
-        assert!(accepted.is_accepted());
-    }
-
-    #[test]
-    fn explicit_inline_bond_commits_before_child_entry() {
-        let (surface, atoms, bonds) = fixture(&["C", "O"], &[(0, 1, NonStereoBondToken::Double)]);
-        let initial = State::initial(&surface).unwrap();
-        let edge = incident(&surface, atoms[0], bonds[0]);
-        let (_, rooted) = advance(&initial, NonStereoChoice::Root(atoms[0]));
-        let (bond, pending) = advance(&rooted, NonStereoChoice::InlineChild(edge));
-
-        assert_eq!(bond, "=");
-        assert_eq!(rooted.active_atom(), Some(atoms[0]));
-        assert_eq!(pending.active_atom(), Some(atoms[0]));
-        only_choice(&pending, NonStereoChoice::Pending, "O");
-        let (atom, accepted) = advance(&pending, NonStereoChoice::Pending);
-        assert_eq!(atom, "O");
-        assert!(accepted.is_accepted());
-    }
-
-    #[test]
-    fn dative_bond_text_follows_prepared_orientation() {
-        let (surface, atoms, bonds) =
-            fixture(&["N", "B"], &[(0, 1, NonStereoBondToken::DativeAToB)]);
-        let initial = State::initial(&surface).unwrap();
-        let edge_from_n = incident(&surface, atoms[0], bonds[0]);
-        let edge_from_b = incident(&surface, atoms[1], bonds[0]);
-
-        let (_, rooted_at_n) = advance(&initial, NonStereoChoice::Root(atoms[0]));
-        only_choice(
-            &rooted_at_n,
-            NonStereoChoice::InlineChild(edge_from_n),
-            "->",
-        );
-
-        let (_, rooted_at_b) = advance(&initial, NonStereoChoice::Root(atoms[1]));
-        only_choice(
-            &rooted_at_b,
-            NonStereoChoice::InlineChild(edge_from_b),
-            "<-",
-        );
-    }
-
-    #[test]
-    fn explicit_branch_commits_at_open_parenthesis() {
-        let (surface, atoms, bonds) = fixture(
-            &["C", "O", "N"],
-            &[
-                (0, 1, NonStereoBondToken::Double),
-                (0, 2, NonStereoBondToken::Elided),
-            ],
-        );
-        let initial = State::initial(&surface).unwrap();
-        let oxygen = incident(&surface, atoms[0], bonds[0]);
-        let nitrogen = incident(&surface, atoms[0], bonds[1]);
-        let (root, rooted) = advance(&initial, NonStereoChoice::Root(atoms[0]));
-        let (open, pending_branch) = advance(&rooted, NonStereoChoice::BranchOpen(oxygen));
-        let (bond, pending_atom) = advance(&pending_branch, NonStereoChoice::Pending);
-        let (atom, branch) = advance(&pending_atom, NonStereoChoice::Pending);
-        let (close, restored) = advance(&branch, NonStereoChoice::BranchClose);
-        let (inline, accepted) = advance(&restored, NonStereoChoice::InlineChild(nitrogen));
-
-        assert_eq!([root, open, bond, atom, close, inline].concat(), "C(=O)N");
-        assert!(accepted.is_accepted());
-    }
-
-    fn reachable_strings(surface: &PreparedConnectedNonStereo) -> BTreeSet<String> {
-        let initial = State::initial(surface).unwrap();
-        let mut pending = vec![(initial, String::new())];
-        let mut complete = BTreeSet::new();
-        let mut explored = 0_usize;
-
-        while let Some((state, prefix)) = pending.pop() {
-            explored += 1;
-            assert!(
-                explored <= 100_000,
-                "writer test exceeded its exploration bound"
-            );
-            if state.is_accepted() {
-                complete.insert(prefix);
-                continue;
-            }
-
-            let choices = state.choices();
-            assert!(
-                !choices.is_empty(),
-                "writer must not dead-end before acceptance"
-            );
-            for visible in choices {
-                let (token, successor) = state.advance(visible.choice()).unwrap();
-                assert_eq!(token, visible.text());
-                pending.push((successor, format!("{prefix}{token}")));
-            }
-        }
-        complete
-    }
-
-    #[test]
-    fn connected_tree_support_remains_exact() {
-        let fixtures = [
-            fixture(&["C"], &[]).0,
-            fixture(
-                &["C", "N", "O"],
-                &[
-                    (0, 1, NonStereoBondToken::Elided),
-                    (1, 2, NonStereoBondToken::Elided),
-                ],
-            )
-            .0,
-            fixture(
-                &["C", "N", "O", "F"],
-                &[
-                    (0, 1, NonStereoBondToken::Elided),
-                    (0, 2, NonStereoBondToken::Elided),
-                    (0, 3, NonStereoBondToken::Elided),
-                ],
-            )
-            .0,
-            fixture(
-                &["C", "N", "O", "F", "S"],
-                &[
-                    (0, 1, NonStereoBondToken::Elided),
-                    (0, 2, NonStereoBondToken::Elided),
-                    (1, 3, NonStereoBondToken::Elided),
-                    (1, 4, NonStereoBondToken::Double),
-                ],
-            )
-            .0,
-        ];
-        for surface in fixtures {
-            assert_eq!(reachable_strings(&surface), reference::support(&surface));
-        }
-    }
-
-    #[test]
-    fn connected_triangle_support_is_writer_shaped() {
-        let surface = fixture(
-            &["C", "C", "C"],
-            &[
-                (0, 1, NonStereoBondToken::Elided),
-                (0, 2, NonStereoBondToken::Elided),
-                (1, 2, NonStereoBondToken::Elided),
-            ],
-        )
-        .0;
-
-        assert_eq!(
-            reachable_strings(&surface),
-            BTreeSet::from(["C1CC1".to_owned()])
-        );
-    }
-
-    #[test]
-    fn adversarial_connected_support_matches_the_main_reference() {
-        let fixtures = [
-            (
-                "two cycles sharing a vertex with an explicit ring bond",
-                fixture(
-                    &["A", "B", "C", "D", "E"],
-                    &[
-                        (0, 1, NonStereoBondToken::Double),
-                        (1, 2, NonStereoBondToken::Elided),
-                        (2, 0, NonStereoBondToken::Elided),
-                        (0, 3, NonStereoBondToken::Elided),
-                        (3, 4, NonStereoBondToken::Elided),
-                        (4, 0, NonStereoBondToken::Elided),
-                    ],
-                )
-                .0,
-                48_usize,
-            ),
-            (
-                "fused triangles",
-                fixture(
-                    &["A", "B", "C", "D"],
-                    &[
-                        (0, 1, NonStereoBondToken::Elided),
-                        (1, 2, NonStereoBondToken::Elided),
-                        (2, 0, NonStereoBondToken::Elided),
-                        (1, 3, NonStereoBondToken::Elided),
-                        (2, 3, NonStereoBondToken::Elided),
-                    ],
-                )
-                .0,
-                28,
-            ),
-            (
-                "three-path bridged system",
-                fixture(
-                    &["A", "B", "C", "D", "E"],
-                    &[
-                        (0, 1, NonStereoBondToken::Elided),
-                        (1, 3, NonStereoBondToken::Elided),
-                        (0, 2, NonStereoBondToken::Elided),
-                        (2, 3, NonStereoBondToken::Elided),
-                        (0, 4, NonStereoBondToken::Elided),
-                        (4, 3, NonStereoBondToken::Elided),
-                    ],
-                )
-                .0,
-                36,
-            ),
-            (
-                "ring with a branched substituent",
-                fixture(
-                    &["A", "B", "C", "D", "E"],
-                    &[
-                        (0, 1, NonStereoBondToken::Elided),
-                        (1, 2, NonStereoBondToken::Elided),
-                        (2, 0, NonStereoBondToken::Elided),
-                        (0, 3, NonStereoBondToken::Elided),
-                        (3, 4, NonStereoBondToken::Elided),
-                    ],
-                )
-                .0,
-                16,
-            ),
-            (
-                "directed ring bond",
-                fixture(
-                    &["N", "B", "C"],
-                    &[
-                        (0, 1, NonStereoBondToken::DativeAToB),
-                        (0, 2, NonStereoBondToken::Elided),
-                        (1, 2, NonStereoBondToken::Elided),
-                    ],
-                )
-                .0,
-                6,
-            ),
-        ];
-
-        for (name, surface, expected_count) in fixtures {
-            let expected = reference::support(&surface);
-            assert_eq!(
-                expected.len(),
-                expected_count,
-                "reference fixture drift: {name}"
-            );
-            assert_eq!(
-                reachable_strings(&surface),
-                expected,
-                "connected non-stereo support mismatch: {name}"
-            );
-        }
-    }
-}
+#[path = "nonstereo_writer_tests.rs"]
+mod tests;

@@ -4,6 +4,9 @@
 //! policy is stricter: each residual attachment receives exactly one traversal
 //! entry, while its other active incidences become ring endpoints.
 
+use std::error::Error;
+use std::fmt;
+
 use crate::domain::Domain;
 use crate::ids::{AtomId, BondId, VariableId};
 use crate::model::BondRole;
@@ -11,45 +14,92 @@ use crate::prepared::{AdjacentBond, PreparedMolecule};
 use crate::solver::ConstraintSolver;
 use crate::traversal::{IncidentBondState, TraversalState};
 
-#[derive(Debug, Default)]
-pub(crate) struct StructuralFrontier {
-    component_roots: Vec<AtomId>,
-    branch_children: Vec<AdjacentBond>,
-    inline_children: Vec<AdjacentBond>,
-    ring_openings: Vec<AdjacentBond>,
-    ring_closures: Vec<AdjacentBond>,
-    can_complete_path: bool,
-    contradiction: bool,
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum WriterContradiction {
+    UnrepresentedVisitedEndpoint {
+        active: AtomId,
+        incident: AdjacentBond,
+    },
+    ResidualAttachmentHasNoTraversalEntry {
+        active: AtomId,
+        incidences: Box<[AdjacentBond]>,
+    },
+    ResidualAttachmentCannotChooseRing {
+        active: AtomId,
+        incidences: Box<[AdjacentBond]>,
+    },
+    ActivePathCannotComplete {
+        active: AtomId,
+    },
 }
 
-impl StructuralFrontier {
-    pub(crate) fn component_roots(&self) -> &[AtomId] {
-        &self.component_roots
+impl fmt::Display for WriterContradiction {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::UnrepresentedVisitedEndpoint { active, incident } => write!(
+                formatter,
+                "active atom {active:?} has an unrepresented bond to visited atom {:?}",
+                incident.atom()
+            ),
+            Self::ResidualAttachmentHasNoTraversalEntry {
+                active,
+                incidences,
+            } => write!(
+                formatter,
+                "active atom {active:?} has a residual attachment without a Traversal-capable entry: {incidences:?}"
+            ),
+            Self::ResidualAttachmentCannotChooseRing {
+                active,
+                incidences,
+            } => write!(
+                formatter,
+                "active atom {active:?} cannot reduce a residual attachment to one entry: {incidences:?}"
+            ),
+            Self::ActivePathCannotComplete { active } => write!(
+                formatter,
+                "active atom {active:?} has no writer action and cannot complete its path"
+            ),
+        }
     }
+}
 
-    pub(crate) fn branch_children(&self) -> &[AdjacentBond] {
-        &self.branch_children
-    }
+impl Error for WriterContradiction {}
 
-    pub(crate) fn inline_children(&self) -> &[AdjacentBond] {
-        &self.inline_children
-    }
+#[derive(Debug)]
+pub(crate) enum TransitionError<E> {
+    Constraint(E),
+    Writer(WriterContradiction),
+}
 
-    pub(crate) fn ring_openings(&self) -> &[AdjacentBond] {
-        &self.ring_openings
+impl<E: fmt::Display> fmt::Display for TransitionError<E> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Constraint(error) => write!(formatter, "constraint transition failed: {error}"),
+            Self::Writer(error) => write!(formatter, "writer transition contradicted: {error}"),
+        }
     }
+}
 
-    pub(crate) fn ring_closures(&self) -> &[AdjacentBond] {
-        &self.ring_closures
+impl<E: Error + 'static> Error for TransitionError<E> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Constraint(error) => Some(error),
+            Self::Writer(error) => Some(error),
+        }
     }
+}
 
-    pub(crate) const fn can_complete_path(&self) -> bool {
-        self.can_complete_path
-    }
-
-    pub(crate) const fn is_contradiction(&self) -> bool {
-        self.contradiction
-    }
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum StructuralFrontier {
+    ComponentRoots(Box<[AtomId]>),
+    RingSuffix {
+        openings: Box<[AdjacentBond]>,
+        closures: Box<[AdjacentBond]>,
+    },
+    BranchChildren(Box<[AdjacentBond]>),
+    InlineChild(AdjacentBond),
+    CompletePath,
+    Terminal,
 }
 
 #[derive(Clone, Debug)]
@@ -77,16 +127,19 @@ impl<S: ConstraintSolver> WriterState<S> {
         self.traversal.graph_is_complete()
     }
 
-    pub(crate) fn ring_closure_first_endpoint(&self, incident: AdjacentBond) -> AtomId {
-        assert_eq!(
-            self.traversal
-                .classify_active_incident(self.prepared.graph(), incident),
-            IncidentBondState::RingOpenAtOtherAtom,
-            "ring-closure facts require an endpoint opened at the other atom"
-        );
-        self.traversal
+    pub(crate) fn ring_closure_first_endpoint(
+        &self,
+        incident: AdjacentBond,
+    ) -> Result<AtomId, WriterContradiction> {
+        match self.structural_frontier()? {
+            StructuralFrontier::RingSuffix { closures, .. }
+                if closures.contains(&incident) => {}
+            _ => panic!("ring-closure facts require an advertised closure"),
+        }
+        Ok(self
+            .traversal
             .ring_first_endpoint_for_active_incident(self.prepared.graph(), incident)
-            .expect("an advertised ring closure must retain its first endpoint")
+            .expect("an advertised ring closure must retain its first endpoint"))
     }
 
     fn bond_role_domain(&self, bond: BondId) -> Domain {
@@ -96,17 +149,24 @@ impl<S: ConstraintSolver> WriterState<S> {
             .expect("prepared bond role must belong to the writer constraint model")
     }
 
-    pub(crate) fn structural_frontier(&self) -> StructuralFrontier {
+    pub(crate) fn structural_frontier(
+        &self,
+    ) -> Result<StructuralFrontier, WriterContradiction> {
         let graph = self.prepared.graph();
         let Some(active) = self.traversal.active_atom() else {
-            return StructuralFrontier {
-                component_roots: self.traversal.unvisited_atoms(graph).collect(),
-                ..StructuralFrontier::default()
+            let roots = self.traversal.unvisited_atoms(graph).collect::<Vec<_>>();
+            return if roots.is_empty() {
+                Ok(StructuralFrontier::Terminal)
+            } else {
+                Ok(StructuralFrontier::ComponentRoots(
+                    roots.into_boxed_slice(),
+                ))
             };
         };
 
-        let mut frontier = StructuralFrontier::default();
         let mut ring_phase = false;
+        let mut openings = Vec::new();
+        let mut closures = Vec::new();
         let mut children = Vec::new();
 
         for incident in graph
@@ -118,12 +178,13 @@ impl<S: ConstraintSolver> WriterState<S> {
             match self.traversal.classify_active_incident(graph, incident) {
                 IncidentBondState::RingOpenAtOtherAtom => {
                     ring_phase = true;
-                    frontier.ring_closures.push(incident);
+                    closures.push(incident);
                 }
                 IncidentBondState::UnrepresentedToVisitedAtom => {
-                    panic!(
-                        "a visited endpoint must already be represented or own an open ring endpoint"
-                    );
+                    return Err(WriterContradiction::UnrepresentedVisitedEndpoint {
+                        active,
+                        incident,
+                    });
                 }
                 IncidentBondState::Represented
                 | IncidentBondState::RingOpenAtCurrentAtom
@@ -149,8 +210,10 @@ impl<S: ConstraintSolver> WriterState<S> {
                 .count();
 
             if traversal_capable_count == 0 {
-                frontier.contradiction = true;
-                continue;
+                return Err(WriterContradiction::ResidualAttachmentHasNoTraversalEntry {
+                    active,
+                    incidences: incidences.to_vec().into_boxed_slice(),
+                });
             }
 
             if incidences.len() == 1 {
@@ -159,152 +222,183 @@ impl<S: ConstraintSolver> WriterState<S> {
             }
 
             ring_phase = true;
-            let ring_opening_count = frontier.ring_openings.len();
+            let opening_count = openings.len();
             for (candidate, domain) in role_domains {
                 if !domain.contains(BondRole::Ring.value_index()) {
                     continue;
                 }
                 let candidate_can_traverse = domain.contains(BondRole::Traversal.value_index());
                 if traversal_capable_count > usize::from(candidate_can_traverse) {
-                    frontier.ring_openings.push(candidate);
+                    openings.push(candidate);
                 }
             }
-            if frontier.ring_openings.len() == ring_opening_count {
-                frontier.contradiction = true;
+            if openings.len() == opening_count {
+                return Err(WriterContradiction::ResidualAttachmentCannotChooseRing {
+                    active,
+                    incidences: incidences.to_vec().into_boxed_slice(),
+                });
             }
         }
 
-        if frontier.contradiction {
-            frontier.branch_children.clear();
-            frontier.inline_children.clear();
-            frontier.ring_openings.clear();
-            frontier.ring_closures.clear();
-            return frontier;
-        }
         if ring_phase {
-            return frontier;
+            return Ok(StructuralFrontier::RingSuffix {
+                openings: openings.into_boxed_slice(),
+                closures: closures.into_boxed_slice(),
+            });
         }
 
         match children.len() {
-            0 => frontier.can_complete_path = self.traversal.can_complete_path(),
-            1 => frontier.inline_children = children,
-            _ => frontier.branch_children = children,
+            0 if self.traversal.can_complete_path() => Ok(StructuralFrontier::CompletePath),
+            0 => Err(WriterContradiction::ActivePathCannotComplete { active }),
+            1 => Ok(StructuralFrontier::InlineChild(children[0])),
+            _ => Ok(StructuralFrontier::BranchChildren(
+                children.into_boxed_slice(),
+            )),
         }
-        frontier
     }
 
-    pub(crate) fn begin_component(&self, root: AtomId) -> Self {
-        let frontier = self.structural_frontier();
-        assert!(!frontier.is_contradiction());
-        assert!(
-            frontier.component_roots().contains(&root),
-            "component root must be advertised by the structural frontier"
-        );
+    pub(crate) fn begin_component(
+        &self,
+        root: AtomId,
+    ) -> Result<Self, WriterContradiction> {
+        match self.structural_frontier()? {
+            StructuralFrontier::ComponentRoots(roots) if roots.contains(&root) => {}
+            _ => panic!("component root must be advertised by the structural frontier"),
+        }
         let mut successor = self.clone();
         successor
             .traversal
             .begin_component(self.prepared.graph(), root);
-        successor
+        successor.checked()
     }
 
     /// Commit one advertised child incidence as the traversal entry of its
     /// residual attachment without entering the child atom yet.
-    pub(crate) fn commit_traversal_edge(&self, incident: AdjacentBond) -> Result<Self, S::Error> {
-        let frontier = self.structural_frontier();
-        assert!(!frontier.is_contradiction());
-        assert!(
-            frontier.branch_children().contains(&incident)
-                || frontier.inline_children().contains(&incident),
-            "a traversal commitment requires an advertised child"
-        );
+    pub(crate) fn commit_traversal_edge(
+        &self,
+        incident: AdjacentBond,
+    ) -> Result<Self, TransitionError<S::Error>> {
+        match self
+            .structural_frontier()
+            .map_err(TransitionError::Writer)?
+        {
+            StructuralFrontier::BranchChildren(children) if children.contains(&incident) => {}
+            StructuralFrontier::InlineChild(child) if child == incident => {}
+            _ => panic!("a traversal commitment requires an advertised child"),
+        }
 
-        let constraints = self.restricted_role(incident.bond(), BondRole::Traversal)?;
-        Ok(Self {
+        let constraints = self
+            .restricted_role(incident.bond(), BondRole::Traversal)
+            .map_err(TransitionError::Constraint)?;
+        Self {
             prepared: self.prepared.clone(),
             traversal: self.traversal.clone(),
             constraints,
-        })
+        }
+        .checked()
+        .map_err(TransitionError::Writer)
     }
 
-    pub(crate) fn enter_inline_child(&self, incident: AdjacentBond) -> Self {
+    pub(crate) fn enter_inline_child(
+        &self,
+        incident: AdjacentBond,
+    ) -> Result<Self, WriterContradiction> {
+        match self.structural_frontier()? {
+            StructuralFrontier::InlineChild(child) if child == incident => {}
+            _ => panic!("the inline child must be the sole advertised child"),
+        }
         assert_eq!(
             self.bond_role_domain(incident.bond()),
             BondRole::Traversal.singleton_domain(),
             "an inline child must already be committed to Traversal"
         );
-        assert_eq!(
-            self.structural_frontier().inline_children(),
-            &[incident],
-            "the sole remaining residual attachment is the inline continuation"
-        );
+
         let mut successor = self.clone();
         successor
             .traversal
             .enter_inline_child(self.prepared.graph(), incident);
-        successor
+        successor.checked()
     }
 
-    pub(crate) fn enter_branch_child(&self, incident: AdjacentBond) -> Self {
+    pub(crate) fn enter_branch_child(
+        &self,
+        incident: AdjacentBond,
+    ) -> Result<Self, WriterContradiction> {
+        match self.structural_frontier()? {
+            StructuralFrontier::BranchChildren(children) if children.contains(&incident) => {}
+            _ => panic!("a branch child requires another residual attachment"),
+        }
         assert_eq!(
             self.bond_role_domain(incident.bond()),
             BondRole::Traversal.singleton_domain(),
             "a branch child must already be committed to Traversal"
         );
-        assert!(
-            self.structural_frontier()
-                .branch_children()
-                .contains(&incident),
-            "a branch child requires another residual attachment"
-        );
+
         let mut successor = self.clone();
         successor
             .traversal
             .enter_branch_child(self.prepared.graph(), incident);
-        successor
+        successor.checked()
     }
 
-    pub(crate) fn open_ring_endpoint(&self, incident: AdjacentBond) -> Result<Self, S::Error> {
-        let frontier = self.structural_frontier();
-        assert!(!frontier.is_contradiction());
-        assert!(
-            frontier.ring_openings().contains(&incident),
-            "a ring opening must be advertised by the residual-attachment frontier"
-        );
+    pub(crate) fn open_ring_endpoint(
+        &self,
+        incident: AdjacentBond,
+    ) -> Result<Self, TransitionError<S::Error>> {
+        match self
+            .structural_frontier()
+            .map_err(TransitionError::Writer)?
+        {
+            StructuralFrontier::RingSuffix { openings, .. }
+                if openings.contains(&incident) => {}
+            _ => panic!("a ring opening must be advertised by the structural frontier"),
+        }
 
-        let constraints = self.restricted_role(incident.bond(), BondRole::Ring)?;
+        let constraints = self
+            .restricted_role(incident.bond(), BondRole::Ring)
+            .map_err(TransitionError::Constraint)?;
         let mut traversal = self.traversal.clone();
         traversal.open_ring_endpoint(self.prepared.graph(), incident);
-        Ok(Self {
+        Self {
             prepared: self.prepared.clone(),
             traversal,
             constraints,
-        })
+        }
+        .checked()
+        .map_err(TransitionError::Writer)
     }
 
-    pub(crate) fn close_ring_endpoint(&self, incident: AdjacentBond) -> Self {
-        let frontier = self.structural_frontier();
-        assert!(!frontier.is_contradiction());
-        assert!(
-            frontier.ring_closures().contains(&incident),
-            "a ring closure must be advertised by the structural frontier"
-        );
+    pub(crate) fn close_ring_endpoint(
+        &self,
+        incident: AdjacentBond,
+    ) -> Result<Self, WriterContradiction> {
+        match self.structural_frontier()? {
+            StructuralFrontier::RingSuffix { closures, .. }
+                if closures.contains(&incident) => {}
+            _ => panic!("a ring closure must be advertised by the structural frontier"),
+        }
         let mut successor = self.clone();
         successor
             .traversal
             .close_ring_endpoint(self.prepared.graph(), incident);
-        successor
+        successor.checked()
     }
 
-    pub(crate) fn complete_path(&self) -> Self {
-        let frontier = self.structural_frontier();
-        assert!(!frontier.is_contradiction());
-        assert!(
-            frontier.can_complete_path(),
-            "the active path can complete only after all residual attachments and ring work"
-        );
+    pub(crate) fn complete_path(&self) -> Result<Self, WriterContradiction> {
+        match self.structural_frontier()? {
+            StructuralFrontier::CompletePath => {}
+            _ => panic!("the active path is not ready to complete"),
+        }
         let mut successor = self.clone();
         successor.traversal.complete_path();
-        successor
+        successor.checked()
+    }
+
+    /// Validate only the immediately constructed writer state. This is not a
+    /// support-enumeration proof that every visible prefix has a complete walk.
+    fn checked(self) -> Result<Self, WriterContradiction> {
+        self.structural_frontier()?;
+        Ok(self)
     }
 
     fn restricted_role(&self, bond: BondId, role: BondRole) -> Result<S, S::Error> {
@@ -349,8 +443,12 @@ mod tests {
             .expect("fixture bond must be incident to the atom")
     }
 
+    fn frontier(state: &WriterState<NativeSolverState>) -> StructuralFrontier {
+        state.structural_frontier().unwrap()
+    }
+
     #[test]
-    fn triangle_requires_one_ring_before_its_single_attachment_entry() {
+    fn triangle_requires_one_ring_before_its_attachment_entry() {
         let mut graph = PreparedGraphBuilder::new();
         let atoms: [AtomId; 3] = std::array::from_fn(|_| graph.add_atom().unwrap());
         let left = graph.add_bond(atoms[0], atoms[1]).unwrap();
@@ -359,14 +457,18 @@ mod tests {
         let prepared = PreparedMolecule::new(graph.build());
         let rooted = WriterState::<NativeSolverState>::initial(&prepared)
             .unwrap()
-            .begin_component(atoms[0]);
+            .begin_component(atoms[0])
+            .unwrap();
         let left_incident = incident(&prepared, atoms[0], left);
         let right_incident = incident(&prepared, atoms[0], right);
 
-        let frontier = rooted.structural_frontier();
-        assert_eq!(frontier.ring_openings(), &[left_incident, right_incident]);
-        assert!(frontier.branch_children().is_empty());
-        assert!(frontier.inline_children().is_empty());
+        assert_eq!(
+            frontier(&rooted),
+            StructuralFrontier::RingSuffix {
+                openings: vec![left_incident, right_incident].into_boxed_slice(),
+                closures: Vec::new().into_boxed_slice(),
+            }
+        );
 
         let opened = rooted.open_ring_endpoint(left_incident).unwrap();
         assert_eq!(
@@ -374,9 +476,7 @@ mod tests {
             BondRole::role_domain(),
             "the source state must remain unchanged"
         );
-        let opened_frontier = opened.structural_frontier();
-        assert!(opened_frontier.ring_openings().is_empty());
-        assert_eq!(opened_frontier.inline_children(), &[right_incident]);
+        assert_eq!(frontier(&opened), StructuralFrontier::InlineChild(right_incident));
         assert_eq!(
             opened.bond_role_domain(left),
             BondRole::Ring.singleton_domain()
@@ -391,31 +491,41 @@ mod tests {
         );
 
         let committed = opened.commit_traversal_edge(right_incident).unwrap();
-        let walked = committed.enter_inline_child(right_incident);
+        let walked = committed.enter_inline_child(right_incident).unwrap();
         let between_incident = incident(&prepared, atoms[2], between);
         let committed = walked.commit_traversal_edge(between_incident).unwrap();
-        let walked = committed.enter_inline_child(between_incident);
+        let walked = committed.enter_inline_child(between_incident).unwrap();
         let closing = incident(&prepared, atoms[1], left);
-        assert_eq!(walked.structural_frontier().ring_closures(), &[closing]);
-        assert_eq!(walked.ring_closure_first_endpoint(closing), atoms[0]);
+        assert_eq!(
+            frontier(&walked),
+            StructuralFrontier::RingSuffix {
+                openings: Vec::new().into_boxed_slice(),
+                closures: vec![closing].into_boxed_slice(),
+            }
+        );
+        assert_eq!(
+            walked.ring_closure_first_endpoint(closing).unwrap(),
+            atoms[0]
+        );
 
-        let closed = walked.close_ring_endpoint(closing);
+        let closed = walked.close_ring_endpoint(closing).unwrap();
         assert!(closed.graph_is_complete());
-        let finished = closed.complete_path();
+        assert_eq!(frontier(&closed), StructuralFrontier::CompletePath);
+        let finished = closed.complete_path().unwrap();
         assert_eq!(finished.active_atom(), None);
+        assert_eq!(frontier(&finished), StructuralFrontier::Terminal);
     }
 
     #[test]
-    fn a_matroid_basis_can_still_contradict_writer_policy() {
+    fn a_matroid_basis_can_contradict_writer_policy() {
         let mut graph = PreparedGraphBuilder::new();
         let atoms: [AtomId; 3] = std::array::from_fn(|_| graph.add_atom().unwrap());
         let left = graph.add_bond(atoms[0], atoms[1]).unwrap();
         let right = graph.add_bond(atoms[0], atoms[2]).unwrap();
         let between = graph.add_bond(atoms[1], atoms[2]).unwrap();
         let prepared = PreparedMolecule::new(graph.build());
-        let rooted = WriterState::<NativeSolverState>::initial(&prepared)
-            .unwrap()
-            .begin_component(atoms[0]);
+        let initial = WriterState::<NativeSolverState>::initial(&prepared).unwrap();
+        let rooted = initial.begin_component(atoms[0]).unwrap();
         let constraints = rooted
             .constraints
             .restricted(&[
@@ -427,14 +537,23 @@ mod tests {
         let basis = WriterState {
             prepared: rooted.prepared.clone(),
             traversal: rooted.traversal.clone(),
-            constraints,
+            constraints: constraints.clone(),
         };
 
-        let frontier = basis.structural_frontier();
-        assert!(frontier.is_contradiction());
-        assert!(frontier.ring_openings().is_empty());
-        assert!(frontier.branch_children().is_empty());
-        assert!(frontier.inline_children().is_empty());
+        assert!(matches!(
+            basis.structural_frontier(),
+            Err(WriterContradiction::ResidualAttachmentCannotChooseRing { .. })
+        ));
+
+        let inactive_basis = WriterState {
+            prepared: initial.prepared.clone(),
+            traversal: initial.traversal.clone(),
+            constraints,
+        };
+        assert!(matches!(
+            inactive_basis.begin_component(atoms[0]),
+            Err(WriterContradiction::ResidualAttachmentCannotChooseRing { .. })
+        ));
     }
 
     #[test]
@@ -449,24 +568,28 @@ mod tests {
         let prepared = PreparedMolecule::new(graph.build());
         let rooted = WriterState::<NativeSolverState>::initial(&prepared)
             .unwrap()
-            .begin_component(atoms[0]);
+            .begin_component(atoms[0])
+            .unwrap();
         let children = bonds.map(|bond| incident(&prepared, atoms[0], bond));
 
-        assert_eq!(rooted.structural_frontier().branch_children(), &children);
-        let committed = rooted.commit_traversal_edge(children[0]).unwrap();
-        let branch = committed.enter_branch_child(children[0]);
-        let restored = branch.complete_path();
-
         assert_eq!(
-            restored.structural_frontier().branch_children(),
-            &children[1..]
+            frontier(&rooted),
+            StructuralFrontier::BranchChildren(children.to_vec().into_boxed_slice())
         );
-        let committed = restored.commit_traversal_edge(children[1]).unwrap();
-        let branch = committed.enter_branch_child(children[1]);
-        let restored = branch.complete_path();
+        let committed = rooted.commit_traversal_edge(children[0]).unwrap();
+        let branch = committed.enter_branch_child(children[0]).unwrap();
+        let restored = branch.complete_path().unwrap();
         assert_eq!(
-            restored.structural_frontier().inline_children(),
-            &[children[2]]
+            frontier(&restored),
+            StructuralFrontier::BranchChildren(children[1..].to_vec().into_boxed_slice())
+        );
+
+        let committed = restored.commit_traversal_edge(children[1]).unwrap();
+        let branch = committed.enter_branch_child(children[1]).unwrap();
+        let restored = branch.complete_path().unwrap();
+        assert_eq!(
+            frontier(&restored),
+            StructuralFrontier::InlineChild(children[2])
         );
     }
 
@@ -481,27 +604,21 @@ mod tests {
         let prepared = PreparedMolecule::new(graph.build());
         let rooted = WriterState::<NativeSolverState>::initial(&prepared)
             .unwrap()
-            .begin_component(atoms[0]);
-
-        let frontier = rooted.structural_frontier();
-        assert_eq!(
-            frontier.ring_openings(),
-            &[
-                incident(&prepared, atoms[0], left),
-                incident(&prepared, atoms[0], right),
-            ]
-        );
-        assert!(frontier.branch_children().is_empty());
+            .begin_component(atoms[0])
+            .unwrap();
 
         let opened = rooted
             .open_ring_endpoint(incident(&prepared, atoms[0], left))
             .unwrap();
         assert_eq!(
-            opened.structural_frontier().branch_children(),
-            &[
-                incident(&prepared, atoms[0], right),
-                incident(&prepared, atoms[0], substituent),
-            ]
+            frontier(&opened),
+            StructuralFrontier::BranchChildren(
+                vec![
+                    incident(&prepared, atoms[0], right),
+                    incident(&prepared, atoms[0], substituent),
+                ]
+                .into_boxed_slice()
+            )
         );
     }
 
@@ -520,10 +637,16 @@ mod tests {
         let prepared = PreparedMolecule::new(graph.build());
         let rooted = WriterState::<NativeSolverState>::initial(&prepared)
             .unwrap()
-            .begin_component(atoms[0]);
+            .begin_component(atoms[0])
+            .unwrap();
         let openings = root_edges.map(|bond| incident(&prepared, atoms[0], bond));
 
-        assert_eq!(rooted.structural_frontier().ring_openings(), &openings);
-        assert!(rooted.structural_frontier().branch_children().is_empty());
+        assert_eq!(
+            frontier(&rooted),
+            StructuralFrontier::RingSuffix {
+                openings: openings.to_vec().into_boxed_slice(),
+                closures: Vec::new().into_boxed_slice(),
+            }
+        );
     }
 }

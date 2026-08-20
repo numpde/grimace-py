@@ -92,11 +92,7 @@ fn surface_rejects_invalid_bindings() {
     graph.add_bond(atoms[0], atoms[1]).unwrap();
     let bonded = PreparedMolecule::new(graph.build());
     assert!(matches!(
-        PreparedConnectedNonStereo::new(
-            bonded,
-            vec!["C".to_owned(), "O".to_owned()],
-            Vec::new(),
-        ),
+        PreparedConnectedNonStereo::new(bonded, vec!["C".to_owned(), "O".to_owned()], Vec::new(),),
         Err(PreparedConnectedNonStereoError::BondTokenCountMismatch { .. })
     ));
 }
@@ -388,8 +384,7 @@ fn reference_tree_subtrees(
     for order in permutations(&children) {
         let mut partial = vec![surface.atom_text(atom).to_owned()];
         for (index, incident) in order.iter().copied().enumerate() {
-            let child_support =
-                reference_tree_subtrees(surface, incident.atom(), Some(atom));
+            let child_support = reference_tree_subtrees(surface, incident.atom(), Some(atom));
             let bond = surface.bond_text(incident.bond(), atom);
             let inline = index + 1 == order.len();
             let mut next = Vec::new();
@@ -451,7 +446,10 @@ fn connected_tree_support_remains_exact() {
         .0,
     ];
     for surface in fixtures {
-        assert_eq!(reachable_strings(&surface), reference_tree_strings(&surface));
+        assert_eq!(
+            reachable_strings(&surface),
+            reference_tree_strings(&surface)
+        );
     }
 }
 

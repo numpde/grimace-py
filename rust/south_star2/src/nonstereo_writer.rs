@@ -12,9 +12,7 @@ use std::sync::Arc;
 use crate::ids::{AtomId, BondId};
 use crate::prepared::{AdjacentBond, PreparedBond, PreparedGraph, PreparedMolecule};
 use crate::solver::ConstraintSolver;
-use crate::writer_state::{
-    StructuralFrontier, TransitionError, WriterContradiction, WriterState,
-};
+use crate::writer_state::{StructuralFrontier, TransitionError, WriterContradiction, WriterState};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(crate) enum NonStereoBondToken {
@@ -416,15 +414,12 @@ impl<S: ConstraintSolver> ConnectedNonStereoWriterState<S> {
                     .map(NonStereoChoice::RingClose)
                     .chain(openings.iter().copied().map(NonStereoChoice::RingOpen)),
             ),
-            StructuralFrontier::BranchChildren(children) => self.visible_choices(
-                children
-                    .iter()
-                    .copied()
-                    .map(NonStereoChoice::BranchOpen),
-            ),
-            StructuralFrontier::InlineChild(incident) => {
-                Ok(vec![self.visible_choice(NonStereoChoice::InlineChild(incident))?])
+            StructuralFrontier::BranchChildren(children) => {
+                self.visible_choices(children.iter().copied().map(NonStereoChoice::BranchOpen))
             }
+            StructuralFrontier::InlineChild(incident) => Ok(vec![
+                self.visible_choice(NonStereoChoice::InlineChild(incident))?
+            ]),
             StructuralFrontier::CompletePath => {
                 assert!(
                     !self.structural.graph_is_complete(),

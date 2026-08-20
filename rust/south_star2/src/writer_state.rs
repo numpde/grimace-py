@@ -132,8 +132,7 @@ impl<S: ConstraintSolver> WriterState<S> {
         incident: AdjacentBond,
     ) -> Result<AtomId, WriterContradiction> {
         match self.structural_frontier()? {
-            StructuralFrontier::RingSuffix { closures, .. }
-                if closures.contains(&incident) => {}
+            StructuralFrontier::RingSuffix { closures, .. } if closures.contains(&incident) => {}
             _ => panic!("ring-closure facts require an advertised closure"),
         }
         Ok(self
@@ -149,18 +148,14 @@ impl<S: ConstraintSolver> WriterState<S> {
             .expect("prepared bond role must belong to the writer constraint model")
     }
 
-    pub(crate) fn structural_frontier(
-        &self,
-    ) -> Result<StructuralFrontier, WriterContradiction> {
+    pub(crate) fn structural_frontier(&self) -> Result<StructuralFrontier, WriterContradiction> {
         let graph = self.prepared.graph();
         let Some(active) = self.traversal.active_atom() else {
             let roots = self.traversal.unvisited_atoms(graph).collect::<Vec<_>>();
             return if roots.is_empty() {
                 Ok(StructuralFrontier::Terminal)
             } else {
-                Ok(StructuralFrontier::ComponentRoots(
-                    roots.into_boxed_slice(),
-                ))
+                Ok(StructuralFrontier::ComponentRoots(roots.into_boxed_slice()))
             };
         };
 
@@ -257,10 +252,7 @@ impl<S: ConstraintSolver> WriterState<S> {
         }
     }
 
-    pub(crate) fn begin_component(
-        &self,
-        root: AtomId,
-    ) -> Result<Self, WriterContradiction> {
+    pub(crate) fn begin_component(&self, root: AtomId) -> Result<Self, WriterContradiction> {
         match self.structural_frontier()? {
             StructuralFrontier::ComponentRoots(roots) if roots.contains(&root) => {}
             _ => panic!("component root must be advertised by the structural frontier"),
@@ -349,8 +341,7 @@ impl<S: ConstraintSolver> WriterState<S> {
             .structural_frontier()
             .map_err(TransitionError::Writer)?
         {
-            StructuralFrontier::RingSuffix { openings, .. }
-                if openings.contains(&incident) => {}
+            StructuralFrontier::RingSuffix { openings, .. } if openings.contains(&incident) => {}
             _ => panic!("a ring opening must be advertised by the structural frontier"),
         }
 
@@ -373,8 +364,7 @@ impl<S: ConstraintSolver> WriterState<S> {
         incident: AdjacentBond,
     ) -> Result<Self, WriterContradiction> {
         match self.structural_frontier()? {
-            StructuralFrontier::RingSuffix { closures, .. }
-                if closures.contains(&incident) => {}
+            StructuralFrontier::RingSuffix { closures, .. } if closures.contains(&incident) => {}
             _ => panic!("a ring closure must be advertised by the structural frontier"),
         }
         let mut successor = self.clone();
@@ -476,7 +466,10 @@ mod tests {
             BondRole::role_domain(),
             "the source state must remain unchanged"
         );
-        assert_eq!(frontier(&opened), StructuralFrontier::InlineChild(right_incident));
+        assert_eq!(
+            frontier(&opened),
+            StructuralFrontier::InlineChild(right_incident)
+        );
         assert_eq!(
             opened.bond_role_domain(left),
             BondRole::Ring.singleton_domain()

@@ -23,8 +23,12 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
-      - name: Run Rust tests
-        run: cargo test --lib
+      - name: Run South Star 2 qualification
+        run: |
+          cargo test -p grimace-south-star2
+          cargo fmt --all -- --check
+          cargo test --lib
+          git diff --check
 
   tests:
     runs-on: ubuntu-latest

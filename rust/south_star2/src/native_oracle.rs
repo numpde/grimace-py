@@ -11,7 +11,7 @@ use crate::model::{
     SpanningTreeFactor,
 };
 use crate::native::NativeSolverState;
-use crate::solver::ConstraintSolver;
+use crate::solver::{Consistency, ConstraintSolver};
 
 #[derive(Clone, Debug)]
 struct ExhaustiveSolverState {
@@ -20,35 +20,39 @@ struct ExhaustiveSolverState {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-enum ExhaustiveSolverError {
+enum ExhaustiveSolverFailure {
     UnknownVariable(VariableId),
-    Contradiction,
 }
 
-impl fmt::Display for ExhaustiveSolverError {
+impl fmt::Display for ExhaustiveSolverFailure {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::UnknownVariable(variable) => {
                 write!(formatter, "unknown constraint variable {variable:?}")
             }
-            Self::Contradiction => formatter.write_str("constraint state is contradictory"),
         }
     }
 }
 
-impl std::error::Error for ExhaustiveSolverError {}
+impl std::error::Error for ExhaustiveSolverFailure {}
 
 impl ConstraintSolver for ExhaustiveSolverState {
-    type Error = ExhaustiveSolverError;
+    type Failure = ExhaustiveSolverFailure;
 
-    fn initial(model: Arc<ConstraintModel>) -> Result<Self, Self::Error> {
+    fn initial(model: Arc<ConstraintModel>) -> Result<Consistency<Self>, Self::Failure> {
         let initial = model.initial_domains().collect::<Vec<_>>();
-        let domains = exhaustive_projected_domains(model.as_ref(), &initial)
-            .ok_or(ExhaustiveSolverError::Contradiction)?;
-        Ok(Self { model, domains })
+        Ok(
+            match exhaustive_projected_domains(model.as_ref(), &initial) {
+                Some(domains) => Consistency::Consistent(Self { model, domains }),
+                None => Consistency::Contradiction,
+            },
+        )
     }
 
-    fn restricted(&self, restrictions: &[(VariableId, Domain)]) -> Result<Self, Self::Error> {
+    fn restricted(
+        &self,
+        restrictions: &[(VariableId, Domain)],
+    ) -> Result<Consistency<Self>, Self::Failure> {
         let mut requested = BTreeMap::new();
         let mut contradictory = false;
 
@@ -57,25 +61,28 @@ impl ConstraintSolver for ExhaustiveSolverState {
                 .domains
                 .get(variable.index())
                 .copied()
-                .ok_or(ExhaustiveSolverError::UnknownVariable(variable))?;
+                .ok_or(ExhaustiveSolverFailure::UnknownVariable(variable))?;
             let restricted = requested.entry(variable).or_insert(current);
             *restricted = restricted.intersect(allowed);
             contradictory |= restricted.is_empty();
         }
         if contradictory {
-            return Err(ExhaustiveSolverError::Contradiction);
+            return Ok(Consistency::Contradiction);
         }
 
         let mut candidate = self.domains.to_vec();
         for (variable, restricted) in requested {
             candidate[variable.index()] = restricted;
         }
-        let domains = exhaustive_projected_domains(self.model.as_ref(), &candidate)
-            .ok_or(ExhaustiveSolverError::Contradiction)?;
-        Ok(Self {
-            model: Arc::clone(&self.model),
-            domains,
-        })
+        Ok(
+            match exhaustive_projected_domains(self.model.as_ref(), &candidate) {
+                Some(domains) => Consistency::Consistent(Self {
+                    model: Arc::clone(&self.model),
+                    domains,
+                }),
+                None => Consistency::Contradiction,
+            },
+        )
     }
 
     fn domain(&self, variable: VariableId) -> Option<Domain> {
@@ -253,8 +260,12 @@ fn solve_triangle<S: ConstraintSolver>(
     variables: [VariableId; 3],
     restrictions: &[(VariableId, Domain)],
 ) -> Option<[Domain; 3]> {
-    let state = S::initial(model).ok()?;
-    let state = state.restricted(restrictions).ok()?;
+    let Consistency::Consistent(state) = S::initial(model).ok()? else {
+        return None;
+    };
+    let Consistency::Consistent(state) = state.restricted(restrictions).ok()? else {
+        return None;
+    };
     Some(std::array::from_fn(|index| {
         state
             .domain(variables[index])
@@ -300,8 +311,12 @@ fn solve_role_domains<S: ConstraintSolver>(
     variables: &[VariableId],
     restrictions: &[(VariableId, Domain)],
 ) -> Option<Vec<Domain>> {
-    let state = S::initial(model).ok()?;
-    let state = state.restricted(restrictions).ok()?;
+    let Consistency::Consistent(state) = S::initial(model).ok()? else {
+        return None;
+    };
+    let Consistency::Consistent(state) = state.restricted(restrictions).ok()? else {
+        return None;
+    };
     Some(
         variables
             .iter()
@@ -503,7 +518,8 @@ fn contraction_preserves_parallel_quotient_edges() {
     let state = NativeSolverState::initial(Arc::clone(&model)).unwrap();
     let successor = state
         .restricted(&[(variables[0], BondRole::Traversal.singleton_domain())])
-        .unwrap();
+        .unwrap()
+        .unwrap_consistent();
 
     assert_eq!(
         successor.domain(variables[0]),
@@ -531,7 +547,8 @@ fn contracted_internal_edge_is_forced_to_ring() {
             (variables[0], BondRole::Traversal.singleton_domain()),
             (variables[1], BondRole::Traversal.singleton_domain()),
         ])
-        .unwrap();
+        .unwrap()
+        .unwrap_consistent();
 
     assert_eq!(
         successor.domain(variables[2]),
@@ -547,15 +564,18 @@ fn forced_traversal_cycle_is_a_contradiction() {
     }]);
     let state = NativeSolverState::initial(model).unwrap();
 
-    assert!(state
-        .restricted(
-            &variables
-                .iter()
-                .copied()
-                .map(|variable| (variable, BondRole::Traversal.singleton_domain()))
-                .collect::<Vec<_>>()
-        )
-        .is_err());
+    assert!(matches!(
+        state
+            .restricted(
+                &variables
+                    .iter()
+                    .copied()
+                    .map(|variable| (variable, BondRole::Traversal.singleton_domain()))
+                    .collect::<Vec<_>>()
+            )
+            .unwrap(),
+        Consistency::Contradiction
+    ));
 }
 
 #[test]
@@ -566,10 +586,13 @@ fn removing_all_edges_at_one_vertex_is_a_contradiction() {
     }]);
     let state = NativeSolverState::initial(model).unwrap();
 
-    assert!(state
-        .restricted(&[
-            (variables[0], BondRole::Ring.singleton_domain()),
-            (variables[3], BondRole::Ring.singleton_domain()),
-        ])
-        .is_err());
+    assert!(matches!(
+        state
+            .restricted(&[
+                (variables[0], BondRole::Ring.singleton_domain()),
+                (variables[3], BondRole::Ring.singleton_domain()),
+            ])
+            .unwrap(),
+        Consistency::Contradiction
+    ));
 }

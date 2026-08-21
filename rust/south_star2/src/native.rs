@@ -8,6 +8,9 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fmt;
 use std::sync::Arc;
 
+#[cfg(test)]
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use crate::domain::Domain;
 use crate::ids::{FactorId, VariableId};
 use crate::model::{
@@ -18,6 +21,8 @@ use crate::model::{
 pub(crate) struct NativeSolverState {
     model: Arc<ConstraintModel>,
     domains: Box<[Domain]>,
+    #[cfg(test)]
+    mixed_search_branches: Arc<AtomicUsize>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -47,7 +52,12 @@ impl NativeSolverState {
             .into_boxed_slice();
         let factor_count = model.factor_count();
         let variable_count = model.variable_count();
-        let mut state = Self { model, domains };
+        let mut state = Self {
+            model,
+            domains,
+            #[cfg(test)]
+            mixed_search_branches: Arc::new(AtomicUsize::new(0)),
+        };
         state.enforce_consistency(
             (0..factor_count).map(factor_id_from_index),
             (0..variable_count).map(variable_id_from_index),
@@ -57,6 +67,16 @@ impl NativeSolverState {
 
     pub(crate) fn domain(&self, variable: VariableId) -> Option<Domain> {
         self.domains.get(variable.index()).copied()
+    }
+
+    #[cfg(test)]
+    fn reset_mixed_search_branch_count(&self) {
+        self.mixed_search_branches.store(0, Ordering::Relaxed);
+    }
+
+    #[cfg(test)]
+    fn mixed_search_branch_count(&self) -> usize {
+        self.mixed_search_branches.load(Ordering::Relaxed)
     }
 
     /// Return one atomically restricted and propagated successor.
@@ -119,8 +139,10 @@ impl NativeSolverState {
         exact_seeds.extend(self.propagate(factor_seeds)?);
 
         while !exact_seeds.is_empty() {
-            let exact_reductions =
-                self.complete_filter_binary_components(exact_seeds.iter().copied())?;
+            let seeds = exact_seeds.iter().copied().collect::<Vec<_>>();
+            let mut exact_reductions =
+                self.complete_filter_binary_components(seeds.iter().copied())?;
+            exact_reductions.extend(self.complete_filter_mixed_components(seeds)?);
             if exact_reductions.is_empty() {
                 break;
             }
@@ -275,6 +297,227 @@ impl NativeSolverState {
             factors: factors.into_iter().collect(),
         }
     }
+
+    fn complete_filter_mixed_components(
+        &mut self,
+        seeds: impl IntoIterator<Item = VariableId>,
+    ) -> Result<BTreeSet<VariableId>, NativeSolverError> {
+        let mut covered = BTreeSet::new();
+        let mut reductions = BTreeSet::new();
+
+        for seed in seeds {
+            if covered.contains(&seed) {
+                continue;
+            }
+            let Some(component) = self.mixed_semantic_component(seed) else {
+                continue;
+            };
+            covered.extend(component.projected_variables.iter().copied());
+            reductions.extend(self.complete_filter_mixed_component(&component)?);
+        }
+
+        Ok(reductions)
+    }
+
+    fn complete_filter_mixed_component(
+        &mut self,
+        component: &MixedSemanticComponent,
+    ) -> Result<Vec<VariableId>, NativeSolverError> {
+        if !component
+            .core_variables
+            .iter()
+            .any(|variable| self.domains[variable.index()].len() > 1)
+        {
+            return Ok(Vec::new());
+        }
+
+        let target = component
+            .projected_variables
+            .iter()
+            .map(|variable| self.domains[variable.index()])
+            .collect::<Vec<_>>();
+        let mut supported = vec![Domain::empty(); component.projected_variables.len()];
+        let mut stack = vec![self.clone()];
+        let mut found_solution = false;
+
+        while let Some(candidate) = stack.pop() {
+            let Some(variable) = component
+                .core_variables
+                .iter()
+                .copied()
+                .find(|variable| candidate.domains[variable.index()].len() > 1)
+            else {
+                found_solution = true;
+                for (accumulator, variable) in supported
+                    .iter_mut()
+                    .zip(component.projected_variables.iter().copied())
+                {
+                    *accumulator = accumulator.union(candidate.domains[variable.index()]);
+                }
+                if supported == target {
+                    break;
+                }
+                continue;
+            };
+
+            #[cfg(test)]
+            candidate
+                .mixed_search_branches
+                .fetch_add(1, Ordering::Relaxed);
+
+            let mut values = candidate.domains[variable.index()]
+                .iter()
+                .collect::<Vec<_>>();
+            values.reverse();
+            for value in values {
+                match candidate
+                    .restricted_and_propagated(variable, Domain::from_bits(1_u64 << value))
+                {
+                    Ok(child) => stack.push(child),
+                    Err(NativeSolverError::Contradiction) => {}
+                    Err(failure) => return Err(failure),
+                }
+            }
+        }
+
+        if !found_solution {
+            return Err(NativeSolverError::Contradiction);
+        }
+
+        let mut reductions = Vec::new();
+        for (variable, supported_domain) in
+            component.projected_variables.iter().copied().zip(supported)
+        {
+            let current = self.domains[variable.index()];
+            debug_assert!(supported_domain.is_subset_of(current));
+            if supported_domain != current {
+                self.domains[variable.index()] = supported_domain;
+                reductions.push(variable);
+            }
+        }
+        Ok(reductions)
+    }
+
+    fn mixed_semantic_component(&self, seed: VariableId) -> Option<MixedSemanticComponent> {
+        let mut core_variables = BTreeSet::new();
+        let mut structural_factors = BTreeSet::new();
+        let mut projected_variables = BTreeSet::new();
+        let mut pending = VecDeque::new();
+        if self.variable_has_binary_factor(seed) {
+            pending.push_back(seed);
+        } else {
+            for &factor_id in self
+                .model
+                .factors_for_variable(seed)
+                .expect("known variable must have an adjacency row")
+            {
+                let FactorDefinition::SpanningTree(spanning_tree) = self
+                    .model
+                    .factor(factor_id)
+                    .expect("factor adjacency must reference a prepared factor")
+                else {
+                    continue;
+                };
+                pending.extend(
+                    spanning_tree
+                        .variables()
+                        .iter()
+                        .copied()
+                        .filter(|candidate| self.variable_has_binary_factor(*candidate)),
+                );
+            }
+        }
+        if pending.is_empty() {
+            return None;
+        }
+
+        while let Some(variable) = pending.pop_front() {
+            if !core_variables.insert(variable) {
+                continue;
+            }
+            projected_variables.insert(variable);
+
+            for &factor_id in self
+                .model
+                .factors_for_variable(variable)
+                .expect("known variable must have an adjacency row")
+            {
+                match self
+                    .model
+                    .factor(factor_id)
+                    .expect("factor adjacency must reference a prepared factor")
+                {
+                    FactorDefinition::BinaryRelation(relation) => {
+                        pending.extend(relation.variables().iter().copied());
+                    }
+                    FactorDefinition::SpanningTree(spanning_tree) => {
+                        structural_factors.insert(factor_id);
+                        projected_variables.extend(spanning_tree.variables().iter().copied());
+                        pending.extend(
+                            spanning_tree
+                                .variables()
+                                .iter()
+                                .copied()
+                                .filter(|candidate| self.variable_has_binary_factor(*candidate)),
+                        );
+                    }
+                }
+            }
+        }
+
+        (!structural_factors.is_empty()).then(|| MixedSemanticComponent {
+            core_variables: core_variables.into_iter().collect(),
+            projected_variables: projected_variables.into_iter().collect(),
+        })
+    }
+
+    fn variable_has_binary_factor(&self, variable: VariableId) -> bool {
+        self.model
+            .factors_for_variable(variable)
+            .expect("known variable must have an adjacency row")
+            .iter()
+            .any(|factor_id| {
+                matches!(
+                    self.model
+                        .factor(*factor_id)
+                        .expect("factor adjacency must reference a prepared factor"),
+                    FactorDefinition::BinaryRelation(_)
+                )
+            })
+    }
+
+    fn restricted_and_propagated(
+        &self,
+        variable: VariableId,
+        allowed: Domain,
+    ) -> Result<Self, NativeSolverError> {
+        let current = self
+            .domain(variable)
+            .ok_or(NativeSolverError::UnknownVariable(variable))?;
+        let restricted = current.intersect(allowed);
+        if restricted.is_empty() {
+            return Err(NativeSolverError::Contradiction);
+        }
+        if restricted == current {
+            return Ok(self.clone());
+        }
+
+        let mut successor = self.clone();
+        successor.domains[variable.index()] = restricted;
+        let seed_factors = successor
+            .model
+            .factors_for_variable(variable)
+            .expect("known variable must have an adjacency row")
+            .to_vec();
+        successor.propagate(seed_factors)?;
+        Ok(successor)
+    }
+}
+
+#[derive(Debug)]
+struct MixedSemanticComponent {
+    core_variables: Vec<VariableId>,
+    projected_variables: Vec<VariableId>,
 }
 
 #[derive(Debug)]
@@ -756,7 +999,7 @@ fn variable_id_from_index(index: usize) -> VariableId {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::ConstraintModelBuilder;
+    use crate::model::{ConstraintModelBuilder, SpanningTreeEdge};
 
     fn two_values() -> Domain {
         Domain::from_indices([0, 1]).unwrap()
@@ -988,6 +1231,79 @@ mod tests {
             NativeSolverState::initial(Arc::new(builder.build())),
             Err(NativeSolverError::Contradiction)
         ));
+    }
+
+    #[test]
+    fn equality_chain_cannot_cross_a_triangle_spanning_tree() {
+        let mut builder = ConstraintModelBuilder::new();
+        let variables: [VariableId; 3] =
+            std::array::from_fn(|_| builder.add_variable(BondRole::role_domain()).unwrap());
+        builder
+            .add_binary_relation(variables[0], variables[1], [(0, 0), (1, 1)])
+            .unwrap();
+        builder
+            .add_binary_relation(variables[1], variables[2], [(0, 0), (1, 1)])
+            .unwrap();
+        let atoms = [
+            crate::AtomId::new(0),
+            crate::AtomId::new(1),
+            crate::AtomId::new(2),
+        ];
+        builder
+            .add_spanning_tree(
+                atoms,
+                [
+                    SpanningTreeEdge::new(variables[0], atoms[0], atoms[1]),
+                    SpanningTreeEdge::new(variables[1], atoms[1], atoms[2]),
+                    SpanningTreeEdge::new(variables[2], atoms[2], atoms[0]),
+                ],
+            )
+            .unwrap();
+
+        assert!(matches!(
+            NativeSolverState::initial(Arc::new(builder.build())),
+            Err(NativeSolverError::Contradiction)
+        ));
+    }
+
+    #[test]
+    fn mixed_search_branches_only_on_the_semantic_core() {
+        const EDGE_COUNT: usize = 100;
+
+        let mut builder = ConstraintModelBuilder::new();
+        let variables = (0..EDGE_COUNT)
+            .map(|_| builder.add_variable(BondRole::role_domain()).unwrap())
+            .collect::<Vec<_>>();
+        builder
+            .add_binary_relation(variables[0], variables[50], [(0, 0), (1, 1)])
+            .unwrap();
+        let atoms = (0..EDGE_COUNT)
+            .map(|index| crate::AtomId::new(u32::try_from(index).unwrap()))
+            .collect::<Vec<_>>();
+        let edges = (0..EDGE_COUNT)
+            .map(|index| {
+                SpanningTreeEdge::new(
+                    variables[index],
+                    atoms[index],
+                    atoms[(index + 1) % EDGE_COUNT],
+                )
+            })
+            .collect::<Vec<_>>();
+        builder.add_spanning_tree(atoms, edges).unwrap();
+
+        let state = NativeSolverState::initial(Arc::new(builder.build())).unwrap();
+
+        assert_eq!(
+            state.domain(variables[0]),
+            Some(BondRole::Traversal.singleton_domain())
+        );
+        assert_eq!(
+            state.domain(variables[50]),
+            Some(BondRole::Traversal.singleton_domain())
+        );
+        assert_eq!(state.mixed_search_branch_count(), 1);
+        state.reset_mixed_search_branch_count();
+        assert_eq!(state.mixed_search_branch_count(), 0);
     }
 
     #[test]

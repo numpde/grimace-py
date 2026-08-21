@@ -306,6 +306,62 @@ fn spanning_model(components: &[SpanningFixture<'_>]) -> (Arc<ConstraintModel>, 
     (Arc::new(builder.build()), variables)
 }
 
+fn mixed_triangle_model(masks: [u16; 2]) -> (Arc<ConstraintModel>, Vec<VariableId>) {
+    let mut builder = ConstraintModelBuilder::new();
+    let variables = (0..3)
+        .map(|_| builder.add_variable(BondRole::role_domain()).unwrap())
+        .collect::<Vec<_>>();
+    builder
+        .add_binary_relation(variables[0], variables[1], relation_rows(masks[0]))
+        .unwrap();
+    builder
+        .add_binary_relation(variables[1], variables[2], relation_rows(masks[1]))
+        .unwrap();
+    let atoms = [AtomId::new(0), AtomId::new(1), AtomId::new(2)];
+    builder
+        .add_spanning_tree(
+            atoms,
+            [
+                SpanningTreeEdge::new(variables[0], atoms[0], atoms[1]),
+                SpanningTreeEdge::new(variables[1], atoms[1], atoms[2]),
+                SpanningTreeEdge::new(variables[2], atoms[2], atoms[0]),
+            ],
+        )
+        .unwrap();
+    (Arc::new(builder.build()), variables)
+}
+
+fn split_semantic_core_model() -> (Arc<ConstraintModel>, Vec<VariableId>) {
+    let mut builder = ConstraintModelBuilder::new();
+    let variables = (0..6)
+        .map(|_| builder.add_variable(BondRole::role_domain()).unwrap())
+        .collect::<Vec<_>>();
+    let equality = [(0, 0), (1, 1)];
+    builder
+        .add_binary_relation(variables[0], variables[1], equality)
+        .unwrap();
+    builder
+        .add_binary_relation(variables[2], variables[3], equality)
+        .unwrap();
+    let atoms = [
+        AtomId::new(0),
+        AtomId::new(1),
+        AtomId::new(2),
+        AtomId::new(3),
+    ];
+    let endpoints = [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)];
+    builder
+        .add_spanning_tree(
+            atoms,
+            endpoints
+                .into_iter()
+                .enumerate()
+                .map(|(index, (a, b))| SpanningTreeEdge::new(variables[index], atoms[a], atoms[b])),
+        )
+        .unwrap();
+    (Arc::new(builder.build()), variables)
+}
+
 fn solve_role_domains<S: ConstraintSolver>(
     model: Arc<ConstraintModel>,
     variables: &[VariableId],
@@ -440,6 +496,52 @@ fn native_and_exhaustive_backends_share_restriction_semantics() {
             solve_triangle::<ExhaustiveSolverState>(Arc::clone(&model), variables, &restrictions,),
             expected,
             "exhaustive restrictions {restrictions:?}"
+        );
+    }
+}
+
+#[test]
+fn mixed_triangle_relations_match_exhaustive_projection() {
+    for xy in 0_u16..16 {
+        for yz in 0_u16..16 {
+            let masks = [xy, yz];
+            let (model, variables) = mixed_triangle_model(masks);
+            let expected =
+                solve_role_domains::<ExhaustiveSolverState>(Arc::clone(&model), &variables, &[]);
+            let actual =
+                solve_role_domains::<NativeSolverState>(Arc::clone(&model), &variables, &[]);
+            assert_eq!(actual, expected, "mixed triangle relation masks {masks:?}");
+        }
+    }
+
+    let equality = 0b1001;
+    let (model, variables) = mixed_triangle_model([equality, equality]);
+    for restrictions in partial_role_restrictions(&variables) {
+        assert_eq!(
+            solve_role_domains::<NativeSolverState>(Arc::clone(&model), &variables, &restrictions,),
+            solve_role_domains::<ExhaustiveSolverState>(
+                Arc::clone(&model),
+                &variables,
+                &restrictions,
+            ),
+            "mixed equality triangle restrictions {restrictions:?}"
+        );
+    }
+}
+
+#[test]
+fn structural_only_restrictions_join_disconnected_semantic_relations() {
+    let (model, variables) = split_semantic_core_model();
+
+    for restrictions in partial_role_restrictions(&variables[4..]) {
+        assert_eq!(
+            solve_role_domains::<NativeSolverState>(Arc::clone(&model), &variables, &restrictions,),
+            solve_role_domains::<ExhaustiveSolverState>(
+                Arc::clone(&model),
+                &variables,
+                &restrictions,
+            ),
+            "structural-only restrictions {restrictions:?}"
         );
     }
 }

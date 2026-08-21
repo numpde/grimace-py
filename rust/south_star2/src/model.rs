@@ -315,6 +315,21 @@ impl ConstraintModelBuilder {
             if !seen_variables.insert(variable) {
                 return Err(ConstraintModelError::RepeatedVariableInFactor(variable));
             }
+            if self.factors_by_variable[variable.index()]
+                .iter()
+                .any(|factor| {
+                    matches!(
+                        self.factors
+                            .get(factor.index())
+                            .expect("prepared factor adjacency must resolve"),
+                        FactorDefinition::SpanningTree(_)
+                    )
+                })
+            {
+                return Err(ConstraintModelError::OverlappingSpanningTreeVariable(
+                    variable,
+                ));
+            }
             variables.push(variable);
         }
 
@@ -369,6 +384,7 @@ pub enum ConstraintModelError {
     SpanningTreeSelfEdge(AtomId),
     SpanningTreeEdgeOutsideAtomSet(AtomId),
     InvalidBondRoleDomain(VariableId),
+    OverlappingSpanningTreeVariable(VariableId),
 }
 
 impl fmt::Display for ConstraintModelError {
@@ -426,6 +442,12 @@ impl fmt::Display for ConstraintModelError {
                 write!(
                     formatter,
                     "spanning-tree variable {variable:?} contains a value outside the bond-role domain"
+                )
+            }
+            Self::OverlappingSpanningTreeVariable(variable) => {
+                write!(
+                    formatter,
+                    "constraint variable {variable:?} belongs to multiple spanning-tree factors"
                 )
             }
         }
@@ -695,6 +717,30 @@ mod tests {
                 .add_spanning_tree([AtomId::new(0)], std::iter::empty())
                 .unwrap(),
             FactorId::new(0)
+        );
+    }
+
+    #[test]
+    fn spanning_tree_projectors_cannot_overlap_on_a_variable() {
+        let mut builder = ConstraintModelBuilder::new();
+        let role = builder.add_variable(BondRole::role_domain()).unwrap();
+        let atoms = [AtomId::new(0), AtomId::new(1)];
+        assert_eq!(
+            builder
+                .add_spanning_tree(atoms, [SpanningTreeEdge::new(role, atoms[0], atoms[1])],)
+                .unwrap(),
+            FactorId::new(0)
+        );
+
+        assert_eq!(
+            builder.add_spanning_tree(atoms, [SpanningTreeEdge::new(role, atoms[0], atoms[1])],),
+            Err(ConstraintModelError::OverlappingSpanningTreeVariable(role))
+        );
+        assert_eq!(
+            builder
+                .add_spanning_tree([AtomId::new(2)], std::iter::empty())
+                .unwrap(),
+            FactorId::new(1)
         );
     }
 }

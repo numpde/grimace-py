@@ -1,8 +1,8 @@
 # Authoritative successor choices and hardening lanes
 
-## Current split
+## Starting split
 
-South Star 2 currently has two transition paths for the same visible move:
+South Star 2 began this revision with two transition paths for the same visible move:
 
 1. `ConnectedNonStereoWriterState::choices()` derives a `StructuralFrontier` and publishes a descriptor.
 2. `advance()` calls `choices()` again, then invokes `WriterState` helpers which derive the frontier again before applying the transition.
@@ -28,7 +28,7 @@ ConnectedNonStereoWriterState
     publishes text plus an already-valid successor
 ```
 
-No durable candidate batch, capability object, continuation cache, or public solver adapter is introduced. Dense state clones remain temporarily as a correctness baseline.
+No durable candidate batch, capability object, continuation cache, or public solver adapter is introduced. Dense state clones remained temporarily as a correctness baseline until the residual-state shape was established.
 
 ## Ownership boundaries
 
@@ -72,3 +72,11 @@ No durable candidate batch, capability object, continuation cache, or public sol
 - Mixed equality-plus-triangle contradiction matches exhaustive projection.
 - Incremental residual attachments match test-only full recomputation.
 - Locality counters show no unconditional whole-molecule scan and no full successor materialization for rejected candidates after persistent storage lands.
+
+## Implemented locality shape
+
+The persistent store is a private radix tree with 64-value leaves and at most 32 children per index node. A state clone shares one root; a write path-copies only the index path and the touched leaf. Domain values, bond progress, visited words, live atom-to-component IDs, and residual-component slots use this store.
+
+Residual components keep immutable ordered member lists plus small live metadata. The paged atom-to-component store remains the live membership authority. A no-split deletion therefore changes only paged IDs and component metadata; an actual split walks and rebuilds only the affected component.
+
+Writer frames and their suspended stack nodes are `Arc`-shared; restoring a parent therefore shares the complete frame as well as its ancestors until a later local mutation. Candidate attempts use ordinary state clones as ephemeral transactions: persistent roots are initially shared, candidate-local writes path-copy their touched pages, contradictions drop the tentative fork, and only successful forks become visible successors.

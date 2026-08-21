@@ -4,7 +4,7 @@
 //! suspended writer frames. Concrete SMILES spelling, including ring-label
 //! assignment, remains outside structural traversal state.
 
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use crate::ids::{AtomId, BondId};
 use crate::prepared::{AdjacentBond, PreparedGraph};
@@ -214,6 +214,210 @@ pub(crate) struct ResidualAttachment {
     incidences: Vec<AdjacentBond>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ResidualComponent {
+    atoms: BTreeSet<AtomId>,
+}
+
+impl ResidualComponent {
+    fn minimum(&self) -> AtomId {
+        *self
+            .atoms
+            .first()
+            .expect("a live residual component must contain an atom")
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ResidualPartition {
+    component_by_atom: Box<[Option<usize>]>,
+    components: BTreeMap<usize, ResidualComponent>,
+    next_component: usize,
+    #[cfg(test)]
+    atoms_scanned_while_splitting: usize,
+}
+
+impl ResidualPartition {
+    fn new(graph: &PreparedGraph) -> Self {
+        let mut component_by_atom = vec![None; graph.atom_count()];
+        let mut components = BTreeMap::new();
+
+        for (component, prepared) in graph.components().iter().enumerate() {
+            let atoms = prepared.atoms().iter().copied().collect::<BTreeSet<_>>();
+            for &atom in &atoms {
+                assert_eq!(
+                    graph.component_of_atom(atom),
+                    Some(component),
+                    "prepared component metadata must agree"
+                );
+                component_by_atom[atom.index()] = Some(component);
+            }
+            components.insert(component, ResidualComponent { atoms });
+        }
+
+        Self {
+            component_by_atom: component_by_atom.into_boxed_slice(),
+            components,
+            next_component: graph.components().len(),
+            #[cfg(test)]
+            atoms_scanned_while_splitting: 0,
+        }
+    }
+
+    fn atom_is_unvisited(&self, atom: AtomId) -> bool {
+        self.component_by_atom
+            .get(atom.index())
+            .copied()
+            .flatten()
+            .is_some()
+    }
+
+    fn remove_atom(&mut self, graph: &PreparedGraph, atom: AtomId) {
+        let component_id = self.component_by_atom[atom.index()]
+            .take()
+            .expect("an entered atom must belong to one live residual component");
+        let mut component = self
+            .components
+            .remove(&component_id)
+            .expect("a live atom component identifier must resolve");
+        assert!(
+            component.atoms.remove(&atom),
+            "the live residual component must contain its entered atom"
+        );
+
+        let residual_neighbours = graph
+            .neighbors(atom)
+            .expect("entered atom must have an adjacency row")
+            .iter()
+            .filter(|incident| {
+                self.component_by_atom[incident.atom().index()] == Some(component_id)
+            })
+            .count();
+
+        match residual_neighbours {
+            0 => assert!(
+                component.atoms.is_empty(),
+                "a connected residual component cannot retain atoms beyond an isolated deletion"
+            ),
+            1 => {
+                assert!(!component.atoms.is_empty());
+                self.components.insert(component_id, component);
+            }
+            _ => self.split_component(graph, component_id, component),
+        }
+
+        #[cfg(test)]
+        self.assert_consistent(graph);
+    }
+
+    fn split_component(
+        &mut self,
+        graph: &PreparedGraph,
+        original_id: usize,
+        component: ResidualComponent,
+    ) {
+        #[cfg(test)]
+        {
+            self.atoms_scanned_while_splitting += component.atoms.len();
+        }
+
+        let mut unassigned = component.atoms;
+        let mut groups = Vec::new();
+        while let Some(&root) = unassigned.first() {
+            unassigned.remove(&root);
+            let mut atoms = BTreeSet::from([root]);
+            let mut pending = VecDeque::from([root]);
+            while let Some(current) = pending.pop_front() {
+                for incident in graph
+                    .neighbors(current)
+                    .expect("residual atom must have an adjacency row")
+                {
+                    let neighbour = incident.atom();
+                    if self.component_by_atom[neighbour.index()] != Some(original_id)
+                        || !unassigned.remove(&neighbour)
+                    {
+                        continue;
+                    }
+                    atoms.insert(neighbour);
+                    pending.push_back(neighbour);
+                }
+            }
+            groups.push(atoms);
+        }
+
+        for (offset, atoms) in groups.into_iter().enumerate() {
+            let component_id = if offset == 0 {
+                original_id
+            } else {
+                let fresh = self.next_component;
+                self.next_component += 1;
+                fresh
+            };
+            for &member in &atoms {
+                self.component_by_atom[member.index()] = Some(component_id);
+            }
+            self.components
+                .insert(component_id, ResidualComponent { atoms });
+        }
+    }
+
+    fn attachments(
+        &self,
+        graph: &PreparedGraph,
+        progress: &GraphProgress,
+        active: AtomId,
+    ) -> Vec<ResidualAttachment> {
+        let mut groups = BTreeMap::<(AtomId, usize), Vec<AdjacentBond>>::new();
+        for incident in graph
+            .neighbors(active)
+            .expect("active atom must have an adjacency row")
+            .iter()
+            .copied()
+        {
+            if progress.classify_incident(graph, active, incident)
+                != IncidentBondState::UnrepresentedToUnvisitedAtom
+            {
+                continue;
+            }
+            let component_id = self.component_by_atom[incident.atom().index()]
+                .expect("an unvisited endpoint must belong to a live residual component");
+            let component = self
+                .components
+                .get(&component_id)
+                .expect("a live residual component identifier must resolve");
+            groups
+                .entry((component.minimum(), component_id))
+                .or_default()
+                .push(incident);
+        }
+        groups
+            .into_values()
+            .map(|incidences| ResidualAttachment { incidences })
+            .collect()
+    }
+
+    #[cfg(test)]
+    fn assert_consistent(&self, graph: &PreparedGraph) {
+        for atom in graph.atom_ids() {
+            let component = self.component_by_atom[atom.index()];
+            if let Some(component) = component {
+                assert!(self.components[&component].atoms.contains(&atom));
+            } else {
+                assert!(self
+                    .components
+                    .values()
+                    .all(|candidate| !candidate.atoms.contains(&atom)));
+            }
+        }
+        for (&component, members) in &self.components {
+            assert!(!members.atoms.is_empty());
+            for &atom in &members.atoms {
+                assert_eq!(self.component_by_atom[atom.index()], Some(component));
+            }
+        }
+    }
+}
+
 impl ResidualAttachment {
     pub(crate) fn incidences(&self) -> &[AdjacentBond] {
         &self.incidences
@@ -227,11 +431,20 @@ struct WriterFrame {
 }
 
 impl WriterFrame {
-    fn new(graph: &PreparedGraph, progress: &GraphProgress, atom: AtomId) -> Self {
-        Self {
-            atom,
-            attachments: residual_attachments(graph, progress, atom),
-        }
+    fn new(
+        graph: &PreparedGraph,
+        progress: &GraphProgress,
+        residual: &ResidualPartition,
+        atom: AtomId,
+    ) -> Self {
+        let attachments = residual.attachments(graph, progress, atom);
+        #[cfg(test)]
+        assert_eq!(
+            attachments,
+            residual_attachments_full(graph, progress, atom),
+            "incremental residual partition must match full recomputation"
+        );
+        Self { atom, attachments }
     }
 
     fn remove_ring_incidence(&mut self, incident: AdjacentBond) {
@@ -276,6 +489,7 @@ pub(crate) enum IncidentBondState {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct TraversalState {
     progress: GraphProgress,
+    residual: ResidualPartition,
     active: Option<WriterFrame>,
     branch_returns: Vec<WriterFrame>,
 }
@@ -284,6 +498,7 @@ impl TraversalState {
     pub(crate) fn new(graph: &PreparedGraph) -> Self {
         Self {
             progress: GraphProgress::new(graph),
+            residual: ResidualPartition::new(graph),
             active: None,
             branch_returns: Vec::new(),
         }
@@ -315,7 +530,7 @@ impl TraversalState {
     ) -> impl Iterator<Item = AtomId> + 'a {
         graph
             .atom_ids()
-            .filter(|atom| !self.progress.atom_is_visited(*atom))
+            .filter(|atom| self.residual.atom_is_unvisited(*atom))
     }
 
     pub(crate) fn begin_component(&mut self, graph: &PreparedGraph, root: AtomId) {
@@ -326,7 +541,13 @@ impl TraversalState {
             "a component can begin only after the previous component is closed"
         );
         self.progress.visit_atom(root);
-        self.active = Some(WriterFrame::new(graph, &self.progress, root));
+        self.residual.remove_atom(graph, root);
+        self.active = Some(WriterFrame::new(
+            graph,
+            &self.progress,
+            &self.residual,
+            root,
+        ));
     }
 
     pub(crate) fn enter_inline_child(&mut self, graph: &PreparedGraph, incident: AdjacentBond) {
@@ -380,7 +601,7 @@ impl TraversalState {
         self.progress.ring_first_endpoint(incident.bond())
     }
 
-    pub(crate) fn complete_path(&mut self) -> Option<AtomId> {
+    pub(crate) fn complete_path(&mut self, _graph: &PreparedGraph) -> Option<AtomId> {
         let active = self.active.take().expect("no active path to complete");
         assert!(
             active.attachments.is_empty(),
@@ -394,6 +615,20 @@ impl TraversalState {
             );
         }
         self.active = restored;
+        #[cfg(test)]
+        if let Some(active) = &self.active {
+            assert_eq!(
+                active.attachments,
+                self.residual
+                    .attachments(_graph, &self.progress, active.atom),
+                "a restored parent frame must match the live residual partition"
+            );
+            assert_eq!(
+                active.attachments,
+                residual_attachments_full(_graph, &self.progress, active.atom),
+                "a restored parent frame must match full residual recomputation"
+            );
+        }
         self.active_atom()
     }
 
@@ -448,11 +683,23 @@ impl TraversalState {
         self.progress
             .traverse_bond(incident.bond(), parent_atom, child);
         self.progress.visit_atom(child);
-        self.active = Some(WriterFrame::new(graph, &self.progress, child));
+        self.residual.remove_atom(graph, child);
+        self.active = Some(WriterFrame::new(
+            graph,
+            &self.progress,
+            &self.residual,
+            child,
+        ));
+    }
+
+    #[cfg(test)]
+    fn residual_split_scan_count(&self) -> usize {
+        self.residual.atoms_scanned_while_splitting
     }
 }
 
-fn residual_attachments(
+#[cfg(test)]
+fn residual_attachments_full(
     graph: &PreparedGraph,
     progress: &GraphProgress,
     active: AtomId,
@@ -546,6 +793,142 @@ mod tests {
             .expect("fixture bond must be incident to the atom")
     }
 
+    fn graph_fixture(atom_count: usize, edges: &[(usize, usize)]) -> PreparedGraph {
+        let mut builder = PreparedGraphBuilder::new();
+        let atoms = (0..atom_count)
+            .map(|_| builder.add_atom().unwrap())
+            .collect::<Vec<_>>();
+        for &(a, b) in edges {
+            builder.add_bond(atoms[a], atoms[b]).unwrap();
+        }
+        builder.build()
+    }
+
+    fn permutations(values: &[AtomId]) -> Vec<Vec<AtomId>> {
+        fn extend(
+            prefix: &mut Vec<AtomId>,
+            remaining: &mut Vec<AtomId>,
+            out: &mut Vec<Vec<AtomId>>,
+        ) {
+            if remaining.is_empty() {
+                out.push(prefix.clone());
+                return;
+            }
+            for index in 0..remaining.len() {
+                let value = remaining.remove(index);
+                prefix.push(value);
+                extend(prefix, remaining, out);
+                prefix.pop();
+                remaining.insert(index, value);
+            }
+        }
+
+        let mut out = Vec::new();
+        extend(&mut Vec::new(), &mut values.to_vec(), &mut out);
+        out
+    }
+
+    fn full_residual_components(
+        graph: &PreparedGraph,
+        deleted: &BTreeSet<AtomId>,
+    ) -> Vec<Vec<AtomId>> {
+        let mut unseen = graph
+            .atom_ids()
+            .filter(|atom| !deleted.contains(atom))
+            .collect::<BTreeSet<_>>();
+        let mut components = Vec::new();
+
+        while let Some(&root) = unseen.first() {
+            unseen.remove(&root);
+            let mut component = vec![root];
+            let mut pending = VecDeque::from([root]);
+            while let Some(atom) = pending.pop_front() {
+                for incident in graph.neighbors(atom).unwrap() {
+                    if unseen.remove(&incident.atom()) {
+                        component.push(incident.atom());
+                        pending.push_back(incident.atom());
+                    }
+                }
+            }
+            component.sort_unstable();
+            components.push(component);
+        }
+        components.sort();
+        components
+    }
+
+    fn incremental_components(residual: &ResidualPartition) -> Vec<Vec<AtomId>> {
+        let mut components = residual
+            .components
+            .values()
+            .map(|component| component.atoms.iter().copied().collect::<Vec<_>>())
+            .collect::<Vec<_>>();
+        components.sort();
+        components
+    }
+
+    #[test]
+    fn residual_partition_matches_full_recomputation_for_bounded_deletions() {
+        let fixtures = [
+            ("path", graph_fixture(5, &[(0, 1), (1, 2), (2, 3), (3, 4)])),
+            ("star", graph_fixture(5, &[(0, 1), (0, 2), (0, 3), (0, 4)])),
+            (
+                "cycle",
+                graph_fixture(5, &[(0, 1), (1, 2), (2, 3), (3, 4), (4, 0)]),
+            ),
+            (
+                "articulation",
+                graph_fixture(5, &[(0, 1), (1, 2), (2, 0), (0, 3), (3, 4)]),
+            ),
+            (
+                "fused cycles",
+                graph_fixture(5, &[(0, 1), (1, 2), (2, 0), (1, 3), (2, 3), (3, 4)]),
+            ),
+            (
+                "disconnected mixture",
+                graph_fixture(5, &[(0, 1), (1, 2), (2, 0), (3, 4)]),
+            ),
+        ];
+
+        for (name, graph) in fixtures {
+            let atoms = graph.atom_ids().collect::<Vec<_>>();
+            for order in permutations(&atoms) {
+                let mut residual = ResidualPartition::new(&graph);
+                let mut deleted = BTreeSet::new();
+                for atom in order {
+                    residual.remove_atom(&graph, atom);
+                    assert!(deleted.insert(atom));
+                    assert_eq!(
+                        incremental_components(&residual),
+                        full_residual_components(&graph, &deleted),
+                        "{name} after deleting {atom:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn endpoint_path_walk_never_scans_a_residual_component() {
+        const ATOM_COUNT: usize = 64;
+
+        let mut builder = PreparedGraphBuilder::new();
+        let atoms = (0..ATOM_COUNT)
+            .map(|_| builder.add_atom().unwrap())
+            .collect::<Vec<_>>();
+        let bonds = (0..ATOM_COUNT - 1)
+            .map(|index| builder.add_bond(atoms[index], atoms[index + 1]).unwrap())
+            .collect::<Vec<_>>();
+        let graph = builder.build();
+        let mut state = TraversalState::new(&graph);
+        state.begin_component(&graph, atoms[0]);
+        for index in 0..ATOM_COUNT - 1 {
+            state.enter_inline_child(&graph, incident(&graph, atoms[index], bonds[index]));
+        }
+
+        assert_eq!(state.residual_split_scan_count(), 0);
+    }
+
     #[test]
     fn triangle_root_owns_one_residual_attachment() {
         let mut builder = PreparedGraphBuilder::new();
@@ -599,7 +982,7 @@ mod tests {
 
         state.begin_component(&graph, atoms[0]);
         state.enter_branch_child(&graph, incident(&graph, atoms[0], branch));
-        assert_eq!(state.complete_path(), Some(atoms[0]));
+        assert_eq!(state.complete_path(&graph), Some(atoms[0]));
         assert_eq!(state.active_attachments().len(), 1);
         assert_eq!(
             state.active_attachments()[0].incidences(),
@@ -654,6 +1037,6 @@ mod tests {
         );
         state.close_ring_endpoint(&graph, closing);
         assert!(state.graph_is_complete());
-        assert_eq!(state.complete_path(), None);
+        assert_eq!(state.complete_path(&graph), None);
     }
 }

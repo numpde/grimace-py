@@ -58,6 +58,24 @@ pub struct PreparedGraph {
     atom_count: usize,
     bonds: Box<[PreparedBond]>,
     adjacency: Box<[Box<[AdjacentBond]>]>,
+    components: Box<[PreparedComponent]>,
+    component_by_atom: Box<[usize]>,
+}
+
+#[derive(Debug)]
+pub(crate) struct PreparedComponent {
+    atoms: Box<[AtomId]>,
+    bonds: Box<[BondId]>,
+}
+
+impl PreparedComponent {
+    pub(crate) fn atoms(&self) -> &[AtomId] {
+        &self.atoms
+    }
+
+    pub(crate) fn bonds(&self) -> &[BondId] {
+        &self.bonds
+    }
 }
 
 impl PreparedGraph {
@@ -83,6 +101,14 @@ impl PreparedGraph {
 
     pub fn neighbors(&self, atom: AtomId) -> Option<&[AdjacentBond]> {
         self.adjacency.get(atom.index()).map(AsRef::as_ref)
+    }
+
+    pub(crate) fn components(&self) -> &[PreparedComponent] {
+        &self.components
+    }
+
+    pub(crate) fn component_of_atom(&self, atom: AtomId) -> Option<usize> {
+        self.component_by_atom.get(atom.index()).copied()
     }
 }
 
@@ -132,60 +158,19 @@ fn compile_graph_constraints(graph: &PreparedGraph) -> (ConstraintModel, Box<[Va
         );
     }
 
-    for component in graph_components(graph) {
-        let edges = component.bonds.iter().map(|bond_id| {
+    for component in graph.components() {
+        let edges = component.bonds().iter().map(|bond_id| {
             let bond = graph
                 .bond(*bond_id)
                 .expect("component bond must belong to the prepared graph");
             SpanningTreeEdge::new(bond_role_variables[bond_id.index()], bond.a(), bond.b())
         });
         builder
-            .add_spanning_tree(component.atoms, edges)
+            .add_spanning_tree(component.atoms().iter().copied(), edges)
             .expect("prepared components must define valid spanning-tree factors");
     }
 
     (builder.build(), bond_role_variables.into_boxed_slice())
-}
-
-#[derive(Debug)]
-struct GraphComponent {
-    atoms: Vec<AtomId>,
-    bonds: BTreeSet<BondId>,
-}
-
-fn graph_components(graph: &PreparedGraph) -> Vec<GraphComponent> {
-    let mut visited = vec![false; graph.atom_count()];
-    let mut components = Vec::new();
-
-    for root in graph.atom_ids() {
-        if visited[root.index()] {
-            continue;
-        }
-        visited[root.index()] = true;
-        let mut pending = VecDeque::from([root]);
-        let mut atoms = Vec::new();
-        let mut bonds = BTreeSet::new();
-
-        while let Some(atom) = pending.pop_front() {
-            atoms.push(atom);
-            for incident in graph
-                .neighbors(atom)
-                .expect("prepared atom must have an adjacency row")
-            {
-                bonds.insert(incident.bond());
-                let neighbour = incident.atom();
-                if !visited[neighbour.index()] {
-                    visited[neighbour.index()] = true;
-                    pending.push_back(neighbour);
-                }
-            }
-        }
-
-        atoms.sort_unstable();
-        components.push(GraphComponent { atoms, bonds });
-    }
-
-    components
 }
 
 #[derive(Debug, Default)]
@@ -249,6 +234,8 @@ impl PreparedGraphBuilder {
             row.sort_unstable();
         }
 
+        let (components, component_by_atom) = prepared_components(self.atom_count, &adjacency);
+
         PreparedGraph {
             atom_count: self.atom_count,
             bonds: self.bonds.into_boxed_slice(),
@@ -257,6 +244,8 @@ impl PreparedGraphBuilder {
                 .map(Vec::into_boxed_slice)
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
+            components,
+            component_by_atom,
         }
     }
 
@@ -267,6 +256,48 @@ impl PreparedGraphBuilder {
             Err(PreparedGraphError::UnknownAtom(atom))
         }
     }
+}
+
+fn prepared_components(
+    atom_count: usize,
+    adjacency: &[Vec<AdjacentBond>],
+) -> (Box<[PreparedComponent]>, Box<[usize]>) {
+    let mut component_by_atom = vec![usize::MAX; atom_count];
+    let mut components = Vec::new();
+
+    for root_index in 0..atom_count {
+        if component_by_atom[root_index] != usize::MAX {
+            continue;
+        }
+        let component = components.len();
+        component_by_atom[root_index] = component;
+        let root = atom_id_from_index(root_index);
+        let mut pending = VecDeque::from([root]);
+        let mut atoms = Vec::new();
+        let mut bonds = BTreeSet::new();
+
+        while let Some(atom) = pending.pop_front() {
+            atoms.push(atom);
+            for incident in &adjacency[atom.index()] {
+                bonds.insert(incident.bond());
+                let neighbour = incident.atom();
+                if component_by_atom[neighbour.index()] == usize::MAX {
+                    component_by_atom[neighbour.index()] = component;
+                    pending.push_back(neighbour);
+                }
+            }
+        }
+        atoms.sort_unstable();
+        components.push(PreparedComponent {
+            atoms: atoms.into_boxed_slice(),
+            bonds: bonds.into_iter().collect::<Vec<_>>().into_boxed_slice(),
+        });
+    }
+
+    (
+        components.into_boxed_slice(),
+        component_by_atom.into_boxed_slice(),
+    )
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -427,6 +458,19 @@ mod tests {
         for atom in &atoms[3..] {
             assert!(graph.neighbors(*atom).unwrap().is_empty());
         }
+        assert_eq!(graph.components().len(), 3);
+        assert_eq!(graph.components()[0].atoms(), &atoms[..3]);
+        assert_eq!(
+            graph.components()[0].bonds(),
+            &[BondId::new(0), BondId::new(1), BondId::new(2)]
+        );
+        assert_eq!(graph.components()[1].atoms(), &atoms[3..4]);
+        assert!(graph.components()[1].bonds().is_empty());
+        assert_eq!(graph.components()[2].atoms(), &atoms[4..]);
+        assert_eq!(
+            atoms.map(|atom| graph.component_of_atom(atom).unwrap()),
+            [0, 0, 0, 1, 2]
+        );
     }
 
     #[test]
